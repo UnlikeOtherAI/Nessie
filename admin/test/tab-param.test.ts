@@ -369,6 +369,7 @@ test('every tab host resolves its tab through the one hook', () => {
     ['../src/pages/AgentDesignerPage.tsx', 'designerMode'],
     ['../src/pages/AgentDesignerPage.tsx', 'designerSection'],
     ['../src/components/features/projects/kanban/TaskDialog.tsx', 'taskTab'],
+    ['../src/components/shared/ChannelSettingsDialog.tsx', 'channelSettingsTab'],
     ['../src/components/features/triggers/useTriggersPageState.ts', 'status'],
     ['../src/components/features/agents/AgentDetailTabs.tsx', 'agentTab'],
     ['../src/components/features/agents/AgentsList.tsx', 'scope'],

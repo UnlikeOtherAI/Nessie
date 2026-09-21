@@ -41,6 +41,10 @@ param, and the project's seven route entries. They are now one model —
 const [tab, selectTab] = useTabParam('tab', CHANNEL_TABS, 'messages')
 ```
 
+Channel settings uses its own `channelSettingsTab` parameter, so choosing Agent
+decisions preserves the channel's current `tab` and survives reopening the dialog
+or reloading. Tab changes replace the current history entry.
+
 It reads the param, validates it against the strip's own values (an unknown or
 absent value reads as the fallback, so an old bookmark degrades to the tab the
 host opens on rather than a blank panel), and writes with

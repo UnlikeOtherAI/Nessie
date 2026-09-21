@@ -4,38 +4,29 @@ import {
   checkBudget,
   decideAgentEngagement,
   isCreditsExhaustedError,
-  partitionByDisclosure,
-  resolveDisclosureViewer,
+  DecisionInputLimitError,
   resolveMentionedAgentDecisions,
-  selectFollowingAgentIds,
   type OrchestratorDecision,
   type PgRealtimeTransport,
   type ModelClient,
+  type DecisionModelClient,
 } from '@nessie/runtime'
 import {
   type AgentMention,
+  type AuthorizedActionContext,
   type OrchestrateDecideJobPayload,
-  parseAgentId,
-  parseRunId,
-  parseTaskId,
-  parseThreadId,
-  withActionContext,
+  ChannelDecisionPolicySchema,
+  DEFAULT_CHANNEL_DECISION_POLICY,
 } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
-import { enqueueRunExecution } from '../queue.js'
+import { dispatchOrchestratorDecisions } from './orchestrate-dispatch.js'
 import { isDelegatedSystemDmChannelType } from './delegated-identity.js'
-import { describeAttachments, loadMessageAttachments } from './message-attachments.js'
+import { loadOrchestrationContext } from './orchestrate-context.js'
+import { evaluateChannelPolicy } from './orchestrate-policy.js'
 import { postOrchestrationNotice } from './orchestration-notice.js'
-import { claimThreadRunOrPend } from './thread-serialization.js'
-import {
-  acknowledgeDecision,
-  logReplyDecision,
-  publishReplyRunStarted,
-} from './orchestrate-publications.js'
 import {
   asEngagementCandidate,
   engagementIdFor,
-  runActorContextForCandidate,
   type ChannelAgent,
 } from './orchestrate-candidates.js'
 
@@ -43,6 +34,7 @@ export { runActorContextForCandidate } from './orchestrate-candidates.js'
 
 export type OrchestrateDecideDeps = {
   modelClient: ModelClient
+  decisionClient?: DecisionModelClient
   prisma: PrismaClient
   realtimeTransport: PgRealtimeTransport
 }
@@ -178,7 +170,6 @@ export const executeOrchestrateDecideJob = async (
     agentMentions,
     channelAgents,
     channelId,
-    content,
     messageId,
     role,
     threadId,
@@ -188,11 +179,17 @@ export const executeOrchestrateDecideJob = async (
     select: {
       organizationId: true,
       systemChannelType: true,
+      type: true,
+      visibility: true,
+      decisionPolicy: true,
+      decisionPolicyAuthorizer: true,
+      archivedAt: true,
+      deletedAt: true,
     },
   })
 
   // Belt-and-suspenders guard — API already checks before enqueueing.
-  if (channelAgents.length === 0 || !channel) {
+  if (channelAgents.length === 0 || !channel || channel.archivedAt || channel.deletedAt) {
     return
   }
 
@@ -210,10 +207,18 @@ export const executeOrchestrateDecideJob = async (
       id: true,
       role: true,
       rootMessageId: true,
+      createdAt: true,
       threadId: true,
+      channelDecision: true,
+      basisScopes: { select: { scopeType: true, scopeId: true } },
       thread: { select: { agentId: true, startedByUserId: true } },
     },
   })
+  if ((triggerMessage?.role ?? role) !== 'user') return
+  const parsedPolicy = ChannelDecisionPolicySchema.safeParse(channel.decisionPolicy)
+  const policy = parsedPolicy.success ? parsedPolicy.data : DEFAULT_CHANNEL_DECISION_POLICY
+  const usePolicy = channel.type === 'standard'
+    && (policy.enabled || triggerMessage?.channelDecision != null)
   const replyRootContextId = triggerMessage
     ? triggerMessage.rootMessageId ?? triggerMessage.id
     : undefined
@@ -250,6 +255,7 @@ export const executeOrchestrateDecideJob = async (
     return
   }
 
+  let policyAuthorizer: AuthorizedActionContext | null = null
   let decisions = resolveSystemDmDecisions(
     channel.systemChannelType,
     role,
@@ -276,104 +282,29 @@ export const executeOrchestrateDecideJob = async (
     role: triggerMessage?.role ?? role,
     thread: triggerInConversationThread ? triggerMessage.thread : null,
   })
-  if (!decisions) {
-    // Fetch the last 6 messages for orchestrator context. The most recent one
-    // is the triggering message (already persisted before this job was enqueued).
-    // After .reverse(), it sits at the end; .slice(0, -1) removes it so the LLM
-    // sees only prior conversation history.
-    const recentDbMessages = await deps.prisma.message.findMany({
-      where: { threadId },
-      orderBy: { createdAt: 'desc' },
-      take: 6,
-      include: {
-        agent: { select: { name: true } },
-        basisScopes: { select: { scopeType: true, scopeId: true } },
-      },
-    })
-
-    // The window the *run* reads is disclosure-filtered (`prompt.ts`); this one
-    // was not, so the engagement judgement for one person's message could be
-    // formed over another person's restricted exchange. It decides only whether
-    // and where to reply, but a judgement is still a reading, and the two
-    // windows disagreeing about what exists is its own defect. Withheld turns
-    // are dropped rather than placeheld: there is no reader here to show a
-    // placeholder to.
-    const viewer = await resolveDisclosureViewer(
-      deps.prisma,
-      channel.organizationId,
-      actorContext.actionContext.effectiveUserId
-        ?? (actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : undefined),
-      {
-        agentId: actorContext.actor.actorType === 'agent'
-          ? actorContext.actor.actorId
-          : actorContext.actionContext.agentId,
-        uoaIdentity: actorContext.actionContext.uoaIdentity,
-      },
+  if (!decisions || usePolicy) {
+    const structuralDecisions = decisions
+      ?? (agentMentions?.length ? resolveMentionedAgentDecisions(channelAgents, agentMentions) : null)
+    const decisionContext = await loadOrchestrationContext(
+      deps, payload, channel, replyRootContextId, usePolicy, triggerMessage?.createdAt,
     )
-    const recentOrdered = partitionByDisclosure(recentDbMessages, viewer).visible.reverse()
-    // A message can be nothing but a photo. Naming its files gives the
-    // engagement judgement something to read — without an inventory line an
-    // image-only post looks like an empty message and nobody answers it.
-    const attachments = await loadMessageAttachments(
-      deps.prisma,
-      channel.organizationId,
-      [...recentOrdered.map((m) => m.id), messageId],
-    )
-    const annotate = (messageContent: string, id: string): string => {
-      const note = describeAttachments(attachments.get(id) ?? [])
-      if (!note) return messageContent
-      return messageContent.trim() ? `${messageContent}\n${note}` : note
-    }
-
-    const recentMessages = recentOrdered
-      .slice(0, -1)
-      .map((m) => ({
-        role: m.role,
-        content: annotate(m.content, m.id),
-        agentName: m.agent?.name ?? undefined,
-      }))
-
-    // Thread-following remains local to the reply thread when one is active.
-    const triggerIsHuman = role === 'user'
-    let followingAgentIds: string[] = []
-    if (triggerIsHuman) {
-      const candidateAgentIds = channelAgents.map((agent) => agent.id)
-      const authored = await deps.prisma.message.findMany({
-        where: {
-          threadId,
-          role: 'assistant',
-          agentId: { in: candidateAgentIds },
-          ...(replyRootContextId
-            ? { OR: [{ rootMessageId: replyRootContextId }, { id: replyRootContextId }] }
-            : {}),
-        },
-        distinct: ['agentId', 'onBehalfOfUserId'],
-        select: { agentId: true, onBehalfOfUserId: true },
-      })
-      followingAgentIds = selectFollowingAgentIds(
-        candidateAgentIds,
-        authored.flatMap((message) => {
-          if (!message.agentId) return []
-          const candidate = channelAgents.find(
-            (agent) =>
-              agent.id === message.agentId
-              && (agent.principalUserId ?? null) === message.onBehalfOfUserId,
-          )
-          return candidate ? [engagementIdFor(candidate)] : []
-        }),
-      )
-    }
-
     try {
-      decisions = await decideAgentEngagement(deps.modelClient, {
+      if (usePolicy) {
+        const evaluated = await evaluateChannelPolicy(deps, {
+          payload, policy, authorizer: channel.decisionPolicyAuthorizer,
+          snapshot: triggerMessage?.channelDecision,
+          structuralDecisions, context: decisionContext,
+          restrictedTrigger: (triggerMessage?.basisScopes?.length ?? 0) > 0,
+        })
+        decisions = evaluated.decisions
+        policyAuthorizer = evaluated.authorizer
+      } else decisions = await decideAgentEngagement(deps.modelClient, {
         // channelAgents from the payload is structurally identical to OrchestratorAgent[].
         // The Zod schema shape and the type both require { id, name, role, systemPrompt }.
         agents: channelAgents.map(asEngagementCandidate),
         agentMentions,
-        content: annotate(content, messageId),
-        recentMessages,
-        triggerIsHuman,
-        followingAgentIds,
+        ...decisionContext,
+        triggerIsHuman: role === 'user',
         usage: attributionFromActorContext(actorContext, {
           systemComponent: 'orchestrator',
         }),
@@ -382,24 +313,32 @@ export const executeOrchestrateDecideJob = async (
       // `decideAgentEngagement` already fail-opens every generic model error.
       // The only error it rethrows is Ledger's typed exhausted-credit refusal,
       // which must be visible even though no run exists to terminalize.
-      if (!isCreditsExhaustedError(error)) throw error
+      const creditsExhausted = isCreditsExhaustedError(error)
+      if (!creditsExhausted && !usePolicy) throw error
       const respondingAgent = channelAgents[0]
       if (respondingAgent) {
         await postOrchestrationNotice(deps, {
           agentId: respondingAgent.id,
           channelId,
-          content: `⚠️ ${CREDITS_EXHAUSTED_USER_MESSAGE} — this request was not run.`,
-          kind: 'credits_exhausted',
+          content: error instanceof DecisionInputLimitError
+            ? 'This message and the channel decision policy exceed Jev’s input limits. '
+              + 'Shorten the channel guidance, reduce its decision options, or address an agent directly.'
+            : creditsExhausted
+            ? `⚠️ ${CREDITS_EXHAUSTED_USER_MESSAGE} — automatic channel decisions could not run.`
+            : 'Automatic channel decisions are unavailable. Check Ledger evaluation access in this installation. '
+              + 'You can still address an agent directly.',
+          kind: creditsExhausted ? 'credits_exhausted' : 'decision_unavailable',
           principalUserId: respondingAgent.principalUserId,
           replyRootMessageId: replyRootContextId,
           threadId,
           triggerMessageId: messageId,
         })
       }
-      console.warn(
-        `[worker] orchestrate.decide refused by Ledger credits (channel ${channelId})`,
-      )
-      return
+      console.warn(`[worker] orchestrate.decide unavailable (channel ${channelId})`)
+      // Classifier failure never erases a structural address. There is no
+      // speculative fallback for policy work; the ordinary run reports its own failures.
+      if (!usePolicy || !structuralDecisions?.length) return
+      decisions = structuralDecisions
     }
   }
 
@@ -407,202 +346,5 @@ export const executeOrchestrateDecideJob = async (
     return
   }
 
-  const scopes =
-    isSingleAgentSystemDm(channel.systemChannelType)
-      ? [
-          {
-            kind: 'channel' as const,
-            channelId,
-          },
-        ]
-      : [
-          {
-            kind: 'organization' as const,
-            organizationId: actorContext.tenant.organizationId,
-          },
-          {
-            kind: 'channel' as const,
-            // channelId is already ChannelId-branded from the payload schema — no re-parse needed.
-            channelId,
-          },
-        ]
-
-  for (const decision of decisions) {
-    if (decision.action === 'none') continue
-    const candidate = channelAgents.find(
-      (agent) =>
-        agent.id === decision.agentId
-        && (agent.principalUserId ?? undefined) === decision.principalUserId,
-    )
-    // A stale or malformed decision cannot turn an agent id into a different
-    // member's PA. Decisions are accepted only for the exact binding candidate
-    // that entered this job.
-    if (!candidate) continue
-    const runActorContext = runActorContextForCandidate(actorContext, candidate)
-
-    if (decision.action === 'reply') {
-      // Per-(agent, thread) serialization: claim the run slot inside this
-      // transaction. If a run is already in flight, the message is recorded as
-      // a durable pending marker and delivered in the batched follow-up run
-      // the completion path enqueues — no concurrent run is spawned. The queue
-      // is at-least-once: a redelivery of THIS decide job (already committed)
-      // comes back as 'duplicate' and no-ops, so the message is never replied
-      // to twice.
-      const outcome = await deps.prisma.$transaction(
-        async (tx): Promise<
-          | { kind: 'pended' }
-          | { kind: 'duplicate' }
-          | {
-              kind: 'claimed'
-              run: { agentId: string; id: string; status: string; threadId: string }
-              task: { id: string }
-            }
-        > => {
-        const claim = await claimThreadRunOrPend(tx, {
-          agentId: decision.agentId,
-          ...(candidate.principalUserId
-            ? { principalUserId: candidate.principalUserId }
-            : {}),
-          threadId,
-          pending: {
-            actorContext: runActorContext,
-            channelId,
-            // Same rule as the run payload below: a live human chat turn is
-            // interactive, an agent-authored trigger is automation.
-            interactive: actorContext.actor.actorType === 'user',
-            messageId,
-          },
-        })
-        if (claim !== 'claimed') {
-          return claim === 'pended' ? { kind: 'pended' as const } : { kind: 'duplicate' as const }
-        }
-
-        // Wrap run + task creation and job enqueueing in a transaction.
-        // If any step fails the whole unit rolls back, leaving no orphaned run
-        // for the retry to trip over.
-        const createdRun = await tx.run.create({
-          data: {
-            agentId: decision.agentId,
-            principalUserId: candidate.principalUserId ?? null,
-            // threadId is ThreadId-branded; Prisma's generated types accept branded strings
-            // because the brand is a compile-time-only structural extension of string.
-            threadId,
-            status: 'pending',
-            // Backlink to the user message that started this run. Enables the
-            // cancel handoff-guard and restart replay (see api/src/services/runs.ts).
-            triggerMessageId: messageId,
-            // Pre-run reply-placement judgement (model-made, or structural for
-            // @mentions/PA DMs). Null keeps the historical threaded default.
-            replyPlacement: decision.replyPlacement ?? null,
-          },
-          select: { agentId: true, id: true, status: true, threadId: true },
-        })
-
-        const createdTask = await tx.task.create({
-          data: {
-            runId: createdRun.id,
-            agentId: decision.agentId,
-            organizationId: actorContext.tenant.organizationId,
-            status: 'inbox',
-            purpose: content.slice(0, 200),
-          },
-          select: { id: true },
-        })
-
-        await enqueueRunExecution(
-          tx,
-          {
-            actorContext: withActionContext(runActorContext, {
-              // run.agentId and run.threadId are plain strings from Prisma — parse needed.
-              agentId: parseAgentId(createdRun.agentId),
-              channelId,
-              taskId: parseTaskId(createdTask.id),
-              threadId: parseThreadId(createdRun.threadId),
-            }),
-            agentId: parseAgentId(createdRun.agentId),
-            ...(candidate.principalUserId
-              ? { principalUserId: candidate.principalUserId }
-              : {}),
-            // A reply to a human chat message is a live interactive turn; an agent
-            // posting in a channel is automation. Drives budget human-exemption.
-            interactive: actorContext.actor.actorType === 'user',
-            messageId,
-            runId: parseRunId(createdRun.id),
-            taskId: parseTaskId(createdTask.id),
-            threadId: parseThreadId(createdRun.threadId),
-          },
-          // Deterministic key: if this job retries (e.g., publishWs fails after
-          // the transaction commits), a second run.create produces a new run.id.
-          // Using messageId+agentId prevents the duplicate run.execute from being
-          // enqueued, so the agent does not reply twice even if a second run row
-          // is created as an orphan.
-          `run:${messageId}:${decision.agentId}:${candidate.principalUserId ?? 'ordinary'}`,
-        )
-
-        return { kind: 'claimed' as const, run: createdRun, task: createdTask }
-      })
-
-      if (outcome.kind === 'pended') {
-        console.log(
-          JSON.stringify({
-            event: 'orchestrate.pended',
-            agentId: decision.agentId,
-            messageId,
-            threadId,
-          }),
-        )
-        continue
-      }
-      if (outcome.kind === 'duplicate') {
-        // At-least-once redelivery of a decide job that already committed:
-        // the run (or pending marker) for this exact message exists, so this
-        // delivery must not reply again.
-        console.log(
-          JSON.stringify({
-            event: 'orchestrate.duplicate',
-            agentId: decision.agentId,
-            messageId,
-            threadId,
-          }),
-        )
-        continue
-      }
-      const { run, task } = outcome
-
-      // Publish after commit: pg_notify cannot roll back, but the run/task now
-      // exist durably, so the live event cannot point at an orphan.
-      await publishReplyRunStarted({
-        channelId,
-        content,
-        isSingleAgentSystemDm: isSingleAgentSystemDm(channel.systemChannelType),
-        messageId,
-        realtimeTransport: deps.realtimeTransport,
-        role,
-        run,
-        scopes,
-      })
-      logReplyDecision(messageId, run, task.id, threadId)
-    }
-
-    if (decision.action === 'acknowledge') {
-      await acknowledgeDecision({
-        candidate,
-        decision,
-        messageId,
-        prisma: deps.prisma,
-        realtimeTransport: deps.realtimeTransport,
-        scopes,
-        threadId,
-      })
-
-      console.log(
-        JSON.stringify({
-          event: 'orchestrate.acknowledge',
-          agentId: decision.agentId,
-          emoji: decision.emoji,
-          messageId,
-        }),
-      )
-    }
-  }
+  await dispatchOrchestratorDecisions(deps, payload, channel, decisions, policyAuthorizer)
 }

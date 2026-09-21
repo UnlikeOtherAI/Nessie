@@ -48,7 +48,7 @@ import { createRunInference } from './run-inference.js'
 import { prepareRunExecution } from './run-setup.js'
 import { WIND_DOWN_INSTRUCTION } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
-import { markWorking } from './working-marker.js'
+import { markWorking, workingMessageIdForTrigger } from './working-marker.js'
 import { runExternalConversation } from '../external-conversation.js'
 import {
   assertExecutorHoldsRun,
@@ -80,6 +80,7 @@ import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
 import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
 import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
 import { admitTriggerMessageLineage } from './private-conversation-lineage.js'
+import { revalidateChannelPolicyRun } from './channel-policy-admission.js'
 import { persistCurrentRunBasis } from './agent-message.js'
 import { coverProviderInputComponent } from './provenanced-provider-input.js'
 import {
@@ -189,27 +190,24 @@ const runJobUnderFence = async (
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
     select: {
+      agentId: true,
+      channelDecision: true,
       basisScopes: { select: { scopeType: true, scopeId: true } },
       content: true,
       disclosureSources: {
         select: { sourceAuthorUserId: true, sourceChannelId: true },
       },
       metadata: true,
+      onBehalfOfUserId: true,
+      role: true,
       rootMessageId: true,
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
+      userId: true,
     },
   })
   if (!message) {
     return
   }
-
-  // The trigger message becomes this run's prompt, so it is a read that enters
-  // the run's context and owes the sink its provenance. `loadConversation`
-  // already inherits the basis of every window turn, which covers the ordinary
-  // case twice over — but a `system`-role trigger message is excluded from that
-  // window by design, so a hidden server-authored brief (the `agent_handoff`
-  // one, a trigger kickoff) would otherwise carry its restriction into the run
-  // and out again through a reply computed from an empty basis.
-  await admitTriggerMessageLineage(deps.prisma, context.consumedSources, message)
 
   let prompt = payload.promptOverride?.trim() || message.content
   const handoffMarker = resolveDeepWaterHandoffMarker(message.metadata)
@@ -266,6 +264,11 @@ const runJobUnderFence = async (
   )
 
   try {
+    // Trigger and classifier input may be outside the recent transcript. Admit
+    // both before checking the policy author's current right to read the prompt.
+    // Malformed saved lineage goes through the terminal failure path as well.
+    await admitTriggerMessageLineage(deps.prisma, context.consumedSources, message)
+    payload = await revalidateChannelPolicyRun(deps.prisma, payload, context)
     assertPrivateAgentRunPlacement(context)
     assertGlobalAgentRunPlacement(context)
     // External-agent turns bypass the inference loop entirely: the driver
@@ -437,7 +440,7 @@ const runJobUnderFence = async (
     // remember to take it back off.
     await markWorking(deps.prisma, deps.realtimeTransport, {
       agentId: context.agent.id,
-      messageId: payload.messageId,
+      messageId: workingMessageIdForTrigger({ ...message, id: payload.messageId }),
       ...(context.run.principalUserId
         ? { onBehalfOfUserId: context.run.principalUserId }
         : {}),

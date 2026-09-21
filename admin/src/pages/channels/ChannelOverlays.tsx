@@ -233,6 +233,7 @@ export const ChannelOverlays = ({
 
     {activeChannel ? (
       <ChannelSettingsDialog
+        boundAgents={boundAgents}
         channel={activeChannel}
         onClose={onCloseSettings}
         open={showChannelSettings}

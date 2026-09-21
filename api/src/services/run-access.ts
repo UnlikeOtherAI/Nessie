@@ -35,9 +35,11 @@ export type AccessibleRun = {
   threadId: string
   triggerMessageId: string | null
   triggerMessageMetadata: unknown
+  triggerMessageDecision: unknown
   // Pre-run reply-placement judgement, replayed onto restarted and continued
   // runs so the re-run lands where the original one was judged to belong.
   replyPlacement: RunReplyPlacement | null
+  promptOverride?: string | null
 }
 
 /**
@@ -77,13 +79,14 @@ export const loadRunForActor = async (
       threadId: true,
       triggerMessageId: true,
       replyPlacement: true,
+      promptOverride: true,
       thread: {
         select: {
           channelId: true,
           channel: { select: { systemChannelType: true } },
         },
       },
-      triggerMessage: { select: { metadata: true } },
+      triggerMessage: { select: { metadata: true, channelDecision: true } },
     },
   })
   if (!run) return null
@@ -97,7 +100,9 @@ export const loadRunForActor = async (
     threadId: run.threadId,
     triggerMessageId: run.triggerMessageId,
     triggerMessageMetadata: run.triggerMessage?.metadata ?? null,
+    triggerMessageDecision: run.triggerMessage?.channelDecision ?? null,
     replyPlacement: run.replyPlacement,
+    promptOverride: run.promptOverride,
   }
 }
 

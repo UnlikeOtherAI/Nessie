@@ -1,6 +1,9 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
-import type { ChannelRecord } from '@nessie/schemas'
+import { randomUUID } from 'node:crypto'
+import { writeAuditEntryInTransaction } from '@nessie/db'
+import type { ResolveLiveEntitlementsDeps } from '@nessie/runtime'
+import type { AuthorizedActionContext, ChannelRecord, ChannelDecisionPolicy } from '@nessie/schemas'
 
 import { channelTeamInclude, mapChannelRecord } from './channel-records.js'
 import type { ChannelSlugScope } from './channel-slugs.js'
@@ -11,6 +14,8 @@ import {
   validateChannelLabel,
 } from './channel-slugs.js'
 import { canModifyChannel } from './resource-authority.js'
+import { ChannelDecisionPolicyError, validateChannelDecisionPolicy } from './channel-decision-policy.js'
+import { captureChannelPolicyAuthorizer, resolveChannelPolicyAuthorizer } from './channel-policy-authority.js'
 
 /**
  * The channel writes `canModifyChannel` gates (`resource-authority.ts`: any
@@ -34,6 +39,8 @@ export const updateChannel = async (
     label?: string
     topic?: string | null
     description?: string | null
+    decisionPolicy?: ChannelDecisionPolicy | null
+    actorContext?: AuthorizedActionContext
     /**
      * `public` or `protected` only. A DM or system surface keeps the stored
      * `private` the database CHECK constraints require, and the guard below
@@ -41,11 +48,17 @@ export const updateChannel = async (
      */
     visibility?: 'public' | 'protected'
   },
+  authorityDeps: ResolveLiveEntitlementsDeps = {},
 ): Promise<ChannelRecord | null> => {
   const manage = await canModifyChannel(prisma, input)
   if (!manage) {
     return null
   }
+  if (input.decisionPolicy !== undefined && manage.channel.type !== 'standard') {
+    throw new ChannelDecisionPolicyError('Decision policies are available only for standard channels')
+  }
+  const authorizer = input.decisionPolicy ? captureChannelPolicyAuthorizer(input.actorContext, input) : null
+  if (authorizer) await resolveChannelPolicyAuthorizer(prisma, { ...input, authorizer }, authorityDeps)
 
   const data: Prisma.ChannelUpdateInput = {}
   // A standalone channel renamed into a taken name was told the conflict was
@@ -84,10 +97,42 @@ export const updateChannel = async (
   }
 
   try {
-    const channel = await prisma.channel.update({
-      where: { id: input.channelId },
-      data,
-      include: channelTeamInclude,
+    const channel = await prisma.$transaction(async (tx) => {
+      if (input.decisionPolicy !== undefined) {
+        const policy = await validateChannelDecisionPolicy(tx, {
+          ...input,
+          policy: input.decisionPolicy,
+        })
+        data.decisionPolicy = policy ?? Prisma.DbNull
+        data.decisionPolicyAuthorizer = authorizer ?? Prisma.DbNull
+      }
+      const updated = await tx.channel.update({
+        where: { id: input.channelId },
+        data,
+        include: channelTeamInclude,
+      })
+      const context = input.actorContext
+      await writeAuditEntryInTransaction(tx, {
+        organizationId: input.organizationId,
+        projectId: updated.projectId,
+        teamId: updated.teamId,
+        channelId: input.channelId,
+        actorType: context?.actor.actorType ?? 'user',
+        actorId: context?.actor.actorId ?? input.userId,
+        action: 'channel.updated',
+        resourceType: 'channel',
+        resourceId: input.channelId,
+        outcome: 'success',
+        requestId: context?.actionContext.requestId ?? randomUUID(),
+        metadata: {
+          changed: Object.keys(data).filter((key) => key !== 'slug' && key !== 'decisionPolicyAuthorizer'),
+          ...(context?.actionContext.agentCredentialId ? {
+            agentCredentialId: context.actionContext.agentCredentialId,
+            via: 'mcp_agent_credential',
+          } : {}),
+        },
+      })
+      return updated
     })
     return mapChannelRecord(prisma, channel, input.userId, {
       isOrganizationAdmin: input.isOrganizationAdmin,

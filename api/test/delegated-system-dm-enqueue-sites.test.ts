@@ -62,7 +62,9 @@ const ENQUEUE_RUN_EXECUTION_SITES: Record<string, 'stamps' | 'inherits' | 'unatt
   // `resolveDelegatedRequesterUserId` refuses either way.
   'worker/src/control/agent-run-start.ts': 'unattended',
   'worker/src/run/execute/continuation.ts': 'unattended',
-  'worker/src/run/orchestrate.ts': 'inherits',
+  // Conversational replies inherit the stamped decide job. Configured policy
+  // work uses a revalidated policy authorizer and always runs unattended.
+  'worker/src/run/orchestrate-dispatch.ts': 'inherits',
   // `agent_conversation_start`. The destination is wherever the conversation
   // was placed, which for the commonest case — "ask the researcher to…" — is
   // the person's own DM with that agent, a single-member system DM. The run is

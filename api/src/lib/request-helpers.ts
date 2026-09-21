@@ -346,8 +346,9 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     // realtime scope check (`filterAuthorizedScopes`) that asks this.
     if (!channel || channel.deletedAt) return null
     if (channel.organizationId !== organizationId) return null
-    // Public channels are visible to all org members
-    if (channel.visibility === 'public') {
+    // DMs and system rooms are participant-only, regardless of their stored
+    // visibility. Keep this aligned with buildAccessibleChannelWhere/search.
+    if (channel.type === 'standard' && channel.systemChannelType === null && channel.visibility === 'public') {
       return {
         systemChannelType: channel.systemChannelType ?? undefined,
         type: channel.type,

@@ -122,6 +122,7 @@ export const loadAgentMessages = async (
     : undefined
   const directWhere: Prisma.MessageWhereInput = {
     agentId,
+    role: { not: 'system' },
   }
   const scanLimit = Math.min(
     Math.max(input.limit * 4, input.limit),
@@ -157,7 +158,7 @@ export const loadAgentMessages = async (
           CROSS JOIN LATERAL (
             SELECT m.id, m.created_at
             FROM messages AS m
-            WHERE m.thread_id = run_threads.thread_id ${keyset} ${snapshotKeyset}
+            WHERE m.thread_id = run_threads.thread_id AND m.role <> 'system' ${keyset} ${snapshotKeyset}
             ORDER BY m.created_at DESC, m.id DESC
             LIMIT ${scanLimit + 1}
           ) AS candidate
@@ -178,7 +179,7 @@ export const loadAgentMessages = async (
           CROSS JOIN LATERAL (
             SELECT m.id, m.created_at
             FROM messages AS m
-            WHERE m.thread_id = run_threads.thread_id ${keyset} ${snapshotKeyset}
+            WHERE m.thread_id = run_threads.thread_id AND m.role <> 'system' ${keyset} ${snapshotKeyset}
             ORDER BY m.created_at ASC, m.id ASC
             LIMIT ${scanLimit + 1}
           ) AS candidate

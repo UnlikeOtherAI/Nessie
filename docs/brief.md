@@ -62,7 +62,17 @@ defines the implementation, privacy boundaries, friendly automatic discovery,
 and decision-based UI inventory. This is planned work, with no automatic cloud
 fallback, and creates no UOA identity or membership copies.
 
-## Vision
+## Channel decision automation (2026-09-21)
+
+Channels can use Jev through Ledger to choose among named outcomes for response
+engagement, acknowledgements, reply detail and custom decisions. Configured
+outcomes can ask a bound agent to record decisions, update documentation or do
+other authorized work. The classifier chooses; a normal agent run performs
+the work. Channel settings and the Personal Assistant share one policy and
+its authorization rules. See the
+[channel decision policy standard](standards/channel-decision-policy.md).
+
+## Original vision
 
 A personal AI agent that lives on your Mac, voice-first but keyboard-capable. You talk to it, it talks back. When you need deep research done across your computer, it spins up a sub-agent to do the work. When you're in keyboard mode, it types into whatever app you're using — no UI, no interruption, just you and the machine working together.
 

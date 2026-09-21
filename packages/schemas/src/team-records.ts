@@ -21,6 +21,7 @@ import {
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 import { AgentSpeakingStyleSchema } from './agent-speech.js'
 import { VoiceNameSchema } from './voice.js'
+import { ChannelDecisionPolicySchema } from './channel-decisions.js'
 
 /**
  * Records the API returns for channels, agents, and triggers.
@@ -53,6 +54,7 @@ export type PersonalAssistantPresenceParticipant = z.infer<
 >
 
 export const ChannelRecordSchema = z.object({
+  decisionPolicy: ChannelDecisionPolicySchema.nullish(),
   id: ChannelIdSchema,
   label: NonEmptyStringSchema,
   slug: z.string().nullish(),

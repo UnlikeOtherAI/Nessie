@@ -1,5 +1,6 @@
-import type { ChannelRecord } from '@nessie/schemas'
+import { ChannelDecisionPolicySchema, ChannelIdSchema, type ChannelRecord } from '@nessie/schemas'
 import {
+  ChannelDecisionPolicyError,
   ChannelSlugConflictError,
   ChannelValidationError,
   setChannelArchived,
@@ -15,8 +16,10 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-typ
 import {
   buildVisibleChannelWhere,
   requireActingUserId,
+  resolveActingMember,
 } from './access.js'
 import { recordChannelDirectoryRead } from './message-search-basis.js'
+import { requireConsumedSources, resolveToolPostBasis } from './tool-message-basis.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
 // The shared writes answer with the flat channel record; the assistant's
@@ -29,7 +32,7 @@ const toChannelRef = (channel: ChannelRecord) => ({
 
 export const runChannelListTool = async (
   context: BuiltinToolRuntimeContext,
-  input: { includeArchived?: boolean; limit?: unknown },
+  input: { channelId?: string; includeArchived?: boolean; limit?: unknown },
 ): Promise<ToolExecutionResult> => {
   const userId = requireActingUserId(context)
   const organizationId = context.channel.organizationId
@@ -38,6 +41,7 @@ export const runChannelListTool = async (
   const channels = await context.prisma.channel.findMany({
     where: {
       ...buildVisibleChannelWhere(organizationId, userId),
+      ...(input.channelId ? { id: ChannelIdSchema.parse(input.channelId) } : {}),
       ...(input.includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: { createdAt: 'asc' },
@@ -48,6 +52,8 @@ export const runChannelListTool = async (
       visibility: true,
       topic: true,
       archivedAt: true,
+      decisionPolicy: true,
+      agentBindings: { select: { agentId: true, principalUserId: true } },
       team: {
         select: {
           name: true,
@@ -72,7 +78,10 @@ export const runChannelListTool = async (
   return {
     inputSummary: `includeArchived=${Boolean(input.includeArchived)}`,
     outputPreview:
-      formatSection(`Channels (${lines.length})`, lines) || 'No channels visible.',
+      (formatSection(`Channels (${lines.length})`, lines) || 'No channels visible.')
+      + (input.channelId && channels[0] ? `\nDecision policy: ${JSON.stringify(
+        ChannelDecisionPolicySchema.nullable().parse(channels[0].decisionPolicy ?? null),
+      )}\nAgent participants: ${JSON.stringify(channels[0].agentBindings)}` : ''),
     toolName: 'channel_list',
   }
 }
@@ -152,10 +161,11 @@ export const runChannelUpdateTool = async (
     label?: string
     topic?: string
     description?: string
+    decisionPolicy?: unknown
   },
 ): Promise<ToolExecutionResult> => {
-  const userId = requireActingUserId(context)
-  const organizationId = context.channel.organizationId
+  const member = await resolveActingMember(context)
+  const { userId, organizationId } = member
   if (!input.channelId) {
     throw new Error('channelId is required.')
   }
@@ -163,23 +173,41 @@ export const runChannelUpdateTool = async (
     input.label === undefined
     && input.topic === undefined
     && input.description === undefined
+    && input.decisionPolicy === undefined
   ) {
-    throw new Error('Provide at least one of label, topic, or description.')
+    throw new Error('Provide at least one of label, topic, description, or decisionPolicy.')
+  }
+
+  // Policies are readable channel content and have no per-reader basis rows.
+  // A PA holding restricted material may author one only where the complete
+  // channel audience already has that material. Clearing a policy writes none.
+  if (input.decisionPolicy !== undefined && input.decisionPolicy !== null) {
+    requireConsumedSources(context)
+    if ((await resolveToolPostBasis(context, input.channelId)).length > 0) {
+      throw new Error('I cannot copy restricted information into this channel’s decision policy.')
+    }
   }
 
   let channel: ChannelRecord | null
   try {
     channel = await updateChannel(context.prisma, {
+      actorContext: member.actorContext,
       channelId: input.channelId,
       organizationId,
       userId,
+      isOrganizationAdmin: member.isOrganizationAdmin,
       ...(input.label !== undefined ? { label: input.label } : {}),
       ...(input.topic !== undefined ? { topic: input.topic } : {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.decisionPolicy !== undefined ? {
+        decisionPolicy: ChannelDecisionPolicySchema.nullable().parse(input.decisionPolicy),
+      } : {}),
     })
   } catch (error) {
     // The shared write states the rule; the assistant says it as a sentence.
-    if (error instanceof ChannelValidationError || error instanceof ChannelSlugConflictError) {
+    if (error instanceof ChannelValidationError
+      || error instanceof ChannelSlugConflictError
+      || error instanceof ChannelDecisionPolicyError) {
       throw new Error(`${error.message}.`)
     }
     throw error
@@ -189,6 +217,7 @@ export const runChannelUpdateTool = async (
   }
 
   const channelRef = toChannelRef(channel)
+  recordChannelDirectoryRead(context, [channel])
   return {
     inputSummary: `channelId=${input.channelId}`,
     outputPreview: [
@@ -197,6 +226,9 @@ export const runChannelUpdateTool = async (
       `slug=${getScopedChannelSlug(channelRef)}`,
       `topic=${channel.topic ? `"${channel.topic}"` : '(none)'}`,
       `description=${channel.description ? `"${truncate(channel.description, 120)}"` : '(none)'}`,
+      ...(input.decisionPolicy !== undefined ? [
+        `decisionPolicy=${JSON.stringify(channel.decisionPolicy ?? null)}`,
+      ] : []),
     ].join('\n'),
     toolName: 'channel_update',
   }

@@ -192,6 +192,43 @@ const queueJobCount = async (prisma: PrismaClient, idempotencyKey: string) => {
   return Number(rows[0]?.count ?? 0)
 }
 
+runDatabaseTest('queued policy work preserves instructions and placement and drains alone', async (t) => {
+  const prisma = new PrismaClient()
+  await assertGlobalQueuesQuiet(prisma)
+  const seed = await seedTeam(prisma)
+  t.after(async () => { await cleanup(prisma, seed); await prisma.$disconnect() })
+  const start = Date.now()
+  const first = await postMessage(prisma, seed, 'Explain the proposal', new Date(start))
+  const policy = await postMessage(prisma, seed, 'Platí, zapiš rozhodnutí.', new Date(start + 10))
+  const ordinary = await postMessage(prisma, seed, 'Another request', new Date(start + 20))
+  assert.equal(await decideReplyForMessage(prisma, seed, first), 'claimed')
+  const authorizer = actorFor(seed)
+  authorizer.actionContext.purpose = 'channel.policy'
+  const promptOverride = 'Record the confirmed decision in the project log.'
+  assert.equal(await prisma.$transaction((tx) => claimThreadRunOrPend(tx, {
+    agentId: seed.agentId, threadId: seed.threadId,
+    pending: { actorContext: authorizer, channelId: seed.channelId, interactive: false,
+      messageId: policy.id, promptOverride, replyPlacement: 'channel' },
+  })), 'pended')
+  assert.equal(await decideReplyForMessage(prisma, seed, ordinary), 'pended')
+  const firstRun = (await runsForThread(prisma, seed))[0]!
+  await prisma.run.update({ where: { id: firstRun.id }, data: { status: 'completed' } })
+  const nextId = await drainPendingThreadMessages(prisma, { agentId: seed.agentId, threadId: seed.threadId })
+  const next = await prisma.run.findUniqueOrThrow({ where: { id: nextId! } })
+  assert.equal(next.triggerMessageId, policy.id)
+  assert.equal(next.promptOverride, promptOverride)
+  assert.equal(next.replyPlacement, 'channel')
+  const jobs = await prisma.$queryRaw<{ payload: RunExecuteJobPayload }[]>`
+    SELECT payload FROM queue_jobs WHERE idempotency_key = ${`run:batch:${next.id}`}
+  `
+  assert.equal(jobs[0]?.payload.promptOverride, promptOverride)
+  assert.equal(jobs[0]?.payload.interactive, false)
+  assert.equal(jobs[0]?.payload.actorContext.actionContext.purpose, 'channel.policy')
+  const pending = await prisma.runThreadPendingMessage.findMany({ where: { threadId: seed.threadId } })
+  assert.deepEqual(pending.map((row) => row.messageId), [ordinary.id])
+  assert.equal(await decideReplyForMessage(prisma, seed, policy), 'duplicate')
+})
+
 runDatabaseTest('5 rapid messages spawn at most 2 runs; the batch preserves order', async (t) => {
   const prisma = new PrismaClient()
   await assertGlobalQueuesQuiet(prisma)

@@ -27,6 +27,9 @@ const HANDOFF_CANCEL_HINT =
   'This run is managed by an integration handoff. Cancel it through the product '
   + 'itself (for Deep Water, ask the Personal Assistant to run research_cancel).'
 
+const POLICY_AUTHORITY_HINT =
+  'This run’s saved channel policy authorization is no longer valid. A channel manager must review the agent decisions.'
+
 // Why a stopped run has nothing to resume from. All three are the same 409
 // code; the message tells the operator which situation they are in.
 const NOT_CONTINUABLE_MESSAGE: Record<NotContinuableDetail, string> = {
@@ -145,6 +148,9 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RouteDeps): void =
           'The original input for this run is no longer available to replay',
         )
         return reply
+      case 'policy_authority_unavailable':
+        sendApiError(reply, 403, 'RUN_POLICY_AUTHORITY_UNAVAILABLE', POLICY_AUTHORITY_HINT)
+        return reply
       case 'thread_busy':
         sendApiError(
           reply,
@@ -196,6 +202,9 @@ export const registerRunRoutes = (app: FastifyInstance, deps: RouteDeps): void =
           'RUN_CHECKPOINT_CONSUMED',
           'This run has already been continued',
         )
+        return reply
+      case 'policy_authority_unavailable':
+        sendApiError(reply, 403, 'RUN_POLICY_AUTHORITY_UNAVAILABLE', POLICY_AUTHORITY_HINT)
         return reply
       case 'not_continuable':
         sendApiError(

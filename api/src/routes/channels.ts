@@ -23,7 +23,7 @@ import {
   updateChannel,
 } from '../services/channels.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { ChannelTeamAccessError } from '@nessie/team-admin'
+import { ChannelDecisionPolicyError, ChannelTeamAccessError } from '@nessie/team-admin'
 import { resolveSystemAgentConversation } from '../services/system-agent-conversations.js'
 import { registerChannelDirectoryRoutes } from './channel-directory.js'
 import { registerChannelMemberRoutes } from './channel-members.js'
@@ -201,6 +201,7 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     let channel
     try {
       channel = await updateChannel(prisma, {
+        actorContext,
         channelId,
         isOrganizationAdmin: isAdminActor(actorContext),
         organizationId: actorContext.tenant.organizationId,
@@ -209,8 +210,13 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
         ...(body.topic !== undefined ? { topic: body.topic } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
         ...(body.visibility !== undefined ? { visibility: body.visibility } : {}),
+        ...(body.decisionPolicy !== undefined ? { decisionPolicy: body.decisionPolicy } : {}),
       })
     } catch (error) {
+      if (error instanceof ChannelDecisionPolicyError) {
+        sendApiError(reply, 400, 'INVALID_CHANNEL_DECISION_POLICY', error.message)
+        return reply
+      }
       if (error instanceof ChannelValidationError) {
         sendApiError(reply, 400, 'INVALID_CHANNEL_NAME', error.message)
         return reply
@@ -226,15 +232,6 @@ export const registerChannelRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       sendApiError(reply, 403, 'CHANNEL_FORBIDDEN', 'Channel not found or insufficient permissions')
       return reply
     }
-
-    await emitAuditEvent(prisma, {
-      actorContext,
-      action: 'channel.updated',
-      resourceId: channel.id,
-      resourceType: 'channel',
-      outcome: 'success',
-      metadata: { changed: Object.keys(body) },
-    })
 
     return createApiResponse(ChannelRecordSchema.parse(channel))
   })

@@ -86,7 +86,7 @@ export const isProjectDelegatedRun = (run: {
   run.agentKind === 'shared'
   && run.channelProjectId !== null
   && run.actorType === 'user'
-  && (run.interactive || run.purpose === 'agent.peer_delegation')
+  && (run.interactive || run.purpose === 'agent.peer_delegation' || run.purpose === 'channel.policy')
 
 /**
  * The project tools admitted for this run: none unless the run is a real
