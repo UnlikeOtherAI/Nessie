@@ -3,7 +3,7 @@ import { DndContext } from '@dnd-kit/core'
 import { SortableContext } from '@dnd-kit/sortable'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type {
   TaskAttachmentRecord,
   TaskCommentRecord,
@@ -13,7 +13,7 @@ import type {
 
 import { KanbanCard } from '../../src/components/features/projects/kanban/KanbanCard'
 import { TaskDialog } from '../../src/components/features/projects/kanban/TaskDialog'
-import { LabelsSettingsSection } from '../../src/pages/project/settings/LabelsSettingsSection'
+import { BoardSettingsPage } from '../../src/pages/project/BoardSettingsPage'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
@@ -22,13 +22,19 @@ import '../../src/styles.css'
  * The ticket dialog over a stubbed API (docs/plans/2026-09-21-ticket-comments-
  * attachments-labels/delivery.md §6.5).
  *
- * The real `TaskDialog`, `KanbanCard` and `LabelsSettingsSection` render; only
+ * The real `TaskDialog`, `KanbanCard` and `BoardSettingsPage` render; only
  * the transport is fake, so what a screenshot shows is what a person gets. The
  * scenario is chosen with `?scenario=`: `details` (a Linear-mirrored ticket,
- * read & write, with every kind of comment and file), `mirrored-readonly`,
- * `viewer` (`viewerCanEdit: false`), `create`, `settings` and `card`. Bytes
- * (`/api/attachments/…`, `/api/uploads`) are answered by the runner's
- * `page.route`, because they leave through `fetch`/XHR, not the ApiClient.
+ * read & write, with every kind of comment and file, one of them removed),
+ * `mirrored-readonly`, `viewer` (`viewerCanEdit: false`), `create`, `settings`
+ * (Board → Settings → Labels) and `card`. Bytes (`/api/attachments/…`,
+ * `/api/uploads`) and the session (`/api/auth/me`) are answered by the
+ * runner's `page.route`, because they leave through `fetch`/XHR, not the
+ * ApiClient.
+ *
+ * Labels belong to a board: the ticket's board (the project's default) has
+ * seven, a second board has two of its own, and only the first seven may ever
+ * reach the ticket's field.
  */
 
 const params = new URLSearchParams(location.search)
@@ -41,10 +47,21 @@ try {
 } catch {
   // A draft left by a previous run would change what the dialog shows.
 }
+if (scenario === 'settings') {
+  // Board settings gates its controls on the session: a stored token makes
+  // the provider restore one, and the runner answers `/api/auth/me` as an
+  // organisation owner.
+  try {
+    window.localStorage.setItem('nessie.admin.token', 'task-dialog-fixture')
+  } catch {
+    // Without storage the page renders read-only and the settings proof says so.
+  }
+}
 
 const ORG = '10000000-0000-4000-8000-000000000001'
 const PROJECT = '10000000-0000-4000-8000-000000000002' as TaskLabelRecord['projectId']
 const BOARD = '10000000-0000-4000-8000-000000000003'
+const OTHER_BOARD = '10000000-0000-4000-8000-000000000008'
 const COLUMN_TODO = '10000000-0000-4000-8000-000000000004'
 const COLUMN_DOING = '10000000-0000-4000-8000-000000000005'
 const TASK = '10000000-0000-4000-8000-000000000006' as TaskRecord['id']
@@ -56,12 +73,15 @@ const IMAGE_ID = '40000000-0000-4000-8000-000000000001'
 const PDF_ID = '40000000-0000-4000-8000-000000000002'
 const LINK_ID = '40000000-0000-4000-8000-000000000003'
 const FAILED_ID = '40000000-0000-4000-8000-000000000004'
+const REMOVED_ID = '40000000-0000-4000-8000-000000000005'
 const T0 = '2026-09-20T09:00:00.000Z'
+type RemoverId = NonNullable<NonNullable<TaskAttachmentRecord['removed']>['byUserId']>
 
 const mirrored = scenario === 'details' || scenario === 'mirrored-readonly'
 const writeMode = scenario === 'mirrored-readonly' ? 'read_only' : 'read_write'
 
-const label = (n: number, name: string, color: string, external = false): TaskLabelRecord => ({
+const label = (n: number, name: string, color: string, external = false, boardId = BOARD): TaskLabelRecord => ({
+  boardId,
   color,
   createdAt: T0,
   external,
@@ -83,6 +103,11 @@ let labels: TaskLabelRecord[] = [
   label(5, 'Backend', '#22c55e'),
   label(6, 'Needs review', '#eab308'),
   label(7, 'Customer', '#ec4899'),
+]
+// Another board's vocabulary: listed project-wide, never on this ticket.
+const otherBoardLabels: TaskLabelRecord[] = [
+  label(8, 'Research', '#14b8a6', false, OTHER_BOARD),
+  label(9, 'Interview', '#64748b', false, OTHER_BOARD),
 ]
 const summary = (record: TaskLabelRecord) =>
   ({ color: record.color, external: record.external, id: record.id, name: record.name })
@@ -159,6 +184,7 @@ const attachment = (
   inline: false,
   kind: mime.startsWith('image/') ? 'image' : 'file',
   mime,
+  removed: null,
   sizeBytes: '48213',
   taskId: TASK,
   thumbnailPath: null,
@@ -190,6 +216,21 @@ let attachments: TaskAttachmentRecord[] = [
   }),
 ]
 if (!mirrored) attachments = [attachments[0]!, attachment(PDF_ID, 'requirements.pdf', 'application/pdf')]
+// A file a colleague marked removed two hours ago, with a reason: still here,
+// still downloadable, and not counted on the card.
+attachments = [
+  ...attachments,
+  attachment(REMOVED_ID, 'checkout-v1.pdf', 'application/pdf', {
+    createdAt: '2026-09-19T15:00:00.000Z',
+    removed: {
+      at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      byAgentId: null,
+      byUserId: COLLEAGUE as RemoverId,
+      reason: 'Superseded by v2',
+    },
+    sizeBytes: '96256',
+  }),
+]
 
 const comment = (n: number, author: TaskCommentRecord['author'], body: string, extra: Partial<TaskCommentRecord> = {}) =>
   ({
@@ -245,6 +286,9 @@ const board = {
   filter: {}, iconEmoji: null, id: BOARD, isDefault: true, name: 'Engineering', position: 0,
   projectId: PROJECT, style: 'cards',
 }
+const otherBoard = {
+  ...board, columns: [], id: OTHER_BOARD, isDefault: false, name: 'Research', position: 1,
+}
 
 const get = async (path: string) => {
   calls.push({ method: 'GET', path })
@@ -254,10 +298,13 @@ const get = async (path: string) => {
   if (route === '/api/users' || route === '/api/tasks/assignees') return users
   if (route === '/api/agents') return agents
   if (route === '/api/personal-assistant') return null
-  if (route === '/api/projects') return [{ id: PROJECT, name: 'Checkout', organizationId: ORG }]
+  if (route === '/api/projects') return [{ id: PROJECT, memberCount: 2, name: 'Checkout', organizationId: ORG }]
   if (route === `/api/projects/${PROJECT}/fields`) return []
-  if (route === `/api/projects/${PROJECT}/boards`) return [board]
-  if (route === `/api/projects/${PROJECT}/labels`) return { labels }
+  if (route === `/api/projects/${PROJECT}/boards`) return [board, otherBoard]
+  if (route === `/api/projects/${PROJECT}/labels`) return { labels: [...labels, ...otherBoardLabels] }
+  if (route === `/api/projects/${PROJECT}/boards/${BOARD}/labels`) return { labels }
+  if (route === `/api/projects/${PROJECT}/boards/${OTHER_BOARD}/labels`) return { labels: otherBoardLabels }
+  if (route === `/api/projects/${PROJECT}/sources`) return []
   if (route === `/api/projects/${PROJECT}/sources/${SOURCE}`) {
     return { connectionOwnerDisplayName: 'Ondřej Rafaj', id: SOURCE, provider: 'linear', writeMode }
   }
@@ -277,21 +324,21 @@ const now = () => new Date().toISOString()
 const mutate = (method: string) => async (path: string, body?: Record<string, unknown>) => {
   calls.push({ body, method, path })
   const route = new URL(path, location.origin).pathname
-  if (method === 'POST' && route === `/api/projects/${PROJECT}/labels`) {
+  if (method === 'POST' && route === `/api/projects/${PROJECT}/boards/${BOARD}/labels`) {
     const name = String(body?.name)
     const existing = labels.find((entry) => entry.name.toLowerCase() === name.toLowerCase())
     if (existing) {
       throw new ApiClientError('A label with this name exists', 'LABEL_NAME_TAKEN', 409, { label: existing })
     }
     const created: TaskLabelRecord = {
-      color: String(body?.color ?? '#6b7280'), createdAt: now(), external: false,
+      boardId: BOARD, color: String(body?.color ?? '#6b7280'), createdAt: now(), external: false,
       id: `50000000-0000-4000-8000-0000000001${String(labels.length).padStart(2, '0')}`,
       name, projectId: PROJECT, source: null, taskCount: 0, updatedAt: now(),
     }
     labels = [...labels, created]
     return created
   }
-  const labelMatch = /^\/api\/projects\/[^/]+\/labels\/([^/]+)$/.exec(route)
+  const labelMatch = new RegExp(`^/api/projects/${PROJECT}/boards/${BOARD}/labels/([^/]+)$`).exec(route)
   if (labelMatch) {
     if (method === 'DELETE') {
       labels = labels.filter((entry) => entry.id !== labelMatch[1])
@@ -327,8 +374,19 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   }
   const attachmentMatch = /^\/api\/tasks\/[^/]+\/attachments\/([^/]+)$/.exec(route)
   if (attachmentMatch && method === 'DELETE') {
-    attachments = attachments.filter((entry) => entry.id !== attachmentMatch[1])
-    return null
+    // A mark, not a delete: the row stays and answers who removed it and why.
+    const target = attachments.find((entry) => entry.id === attachmentMatch[1])
+    if (!target) throw new ApiClientError('Not found', 'NOT_FOUND', 404)
+    if (target.removed) {
+      throw new ApiClientError('That file is already marked as removed.', 'ATTACHMENT_ALREADY_REMOVED', 409)
+    }
+    const reason = typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : null
+    const removed: TaskAttachmentRecord = {
+      ...target,
+      removed: { at: now(), byAgentId: null, byUserId: PERSON as RemoverId, reason },
+    }
+    attachments = attachments.map((entry) => (entry.id === target.id ? removed : entry))
+    return removed
   }
   if (route === `/api/tasks/${TASK}` || route === '/api/tasks') return { ...task, ...body }
   return { ok: true }
@@ -348,15 +406,16 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 const Scenario = () => {
   if (scenario === 'settings') {
     return (
-      <div className="mx-auto max-w-3xl p-6">
-        <LabelsSettingsSection canAdminister onSaveError={() => {}} onSaved={() => {}} projectId={PROJECT} />
-      </div>
+      <Routes>
+        <Route element={<BoardSettingsPage />} path="/projects/:projectId/boards/:boardId/settings" />
+      </Routes>
     )
   }
   if (scenario === 'card') {
+    // Three stored files, one removed: the server's count is of live files.
     const cardTask = {
       ...task,
-      attachmentCount: 3,
+      attachmentCount: 2,
       commentCount: 4,
       labels: labels.slice(0, 4).map(summary),
     } as TaskRecord
@@ -387,7 +446,11 @@ createRoot(document.getElementById('root')!).render(
     <AuthSessionProvider>
       <ApiClientProvider client={client}>
         <AgentIdentityProvider>
-          <MemoryRouter initialEntries={[`/projects/${PROJECT}/board`]}>
+          <MemoryRouter
+            initialEntries={[scenario === 'settings'
+              ? `/projects/${PROJECT}/boards/${BOARD}/settings?tab=labels`
+              : `/projects/${PROJECT}/board`]}
+          >
             <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
               <Scenario />
             </div>
