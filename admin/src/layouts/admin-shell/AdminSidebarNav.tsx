@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useMemo } from 'react';
 import { useFailedWorkflowRuns } from '../../facades/workflows/hooks';
+import { useExecutorAttention } from '../../facades/executors/attention';
 import { isReactNativeWebView, requestNativeFullRefresh } from '../../lib/native-shell';
 import { SidebarMenuSection, useCookieBackedSidebarSections } from './SidebarMenuSection';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
@@ -64,9 +65,11 @@ const AdminNavSection = ({
               {item.badgeCount ? (
                 <span
                   className="rounded-full bg-[color:var(--danger-soft)] px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--danger-text)]"
-                  data-testid="nav-workflows-failed-count"
+                  data-testid={item.badgeTestId}
+                  title={item.badgeLabel}
                 >
-                  {item.badgeCount}
+                  <span aria-hidden={Boolean(item.badgeLabel)}>{item.badgeCount}</span>
+                  {item.badgeLabel ? <span className="sr-only">{item.badgeLabel}</span> : null}
                 </span>
               ) : null}
             </Link>
@@ -101,17 +104,31 @@ export const AdminSidebarNav = ({
   // W29: the nav itself answers "did anything break?" — the count is the
   // entitlement-scoped failed-runs feed the triage column reads.
   const { data: failedWorkflowRuns = [] } = useFailedWorkflowRuns();
+  const executorAttention = useExecutorAttention();
+  const executorAttentionCount = executorAttention.isSuccess ? executorAttention.data.total : 0;
   const groupsWithBadges = useMemo(
     () =>
       visibleGroups.map((group) => ({
         ...group,
         items: group.items.map((item) =>
           item.path === '/agents/workflows'
-            ? { ...item, badgeCount: failedWorkflowRuns.length }
+            ? {
+              ...item,
+              badgeCount: failedWorkflowRuns.length,
+              badgeLabel: `${failedWorkflowRuns.length} failed workflow runs`,
+              badgeTestId: 'nav-workflows-failed-count',
+            }
+            : item.path === '/agents/executors'
+              ? {
+                ...item,
+                badgeCount: executorAttentionCount,
+                badgeLabel: `${executorAttentionCount} ${executorAttentionCount === 1 ? 'change' : 'changes'} to review`,
+                badgeTestId: 'nav-executors-attention-count',
+              }
             : item,
         ),
       })),
-    [failedWorkflowRuns.length, visibleGroups],
+    [executorAttentionCount, failedWorkflowRuns.length, visibleGroups],
   );
 
   return (

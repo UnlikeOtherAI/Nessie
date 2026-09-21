@@ -5,6 +5,7 @@
 
 export const executorKeys = {
   all: ['executors'] as const,
+  attention: ['executors', 'attention'] as const,
   detail: (executorId: string) => ['executors', executorId] as const,
   access: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'access'] as const,
