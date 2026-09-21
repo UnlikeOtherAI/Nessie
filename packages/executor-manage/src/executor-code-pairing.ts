@@ -34,9 +34,9 @@ export const startExecutorCodePairing = async (
     await lockPairing(tx, parsed.requestId)
     const existing = await tx.executorPairingCode.findUnique({ where: { id: parsed.requestId } })
     if (existing) {
-      if (existing.requestDigest !== requestDigest || existing.expiresAt <= now || existing.rejectedAt) {
-        pairingUnavailable()
-      }
+      // A lost mint response must be recoverable even after expiry/cancel.
+      // This only returns the old receipt; it never extends or reopens it.
+      if (existing.requestDigest !== requestDigest) pairingUnavailable()
       return {
         pairingId: existing.id, code: pairingCode(secret, existing.id, existing.codeNonce),
         fingerprint, expiresAt: existing.expiresAt.toISOString(), pollIntervalSeconds: 3,

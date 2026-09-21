@@ -3,13 +3,14 @@ import { generateKeyPairSync, randomUUID, sign, type KeyObject } from 'node:cryp
 import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
 import {
-  ExecutorPairingClaimRequestSchema, ExecutorPairingStartRequestSchema,
+  AuthorizedActionContextSchema, ExecutorPairingClaimRequestSchema, ExecutorPairingStartRequestSchema,
   type ExecutorPairingDecisionRequest,
 } from '@nessie/schemas'
 import {
   claimExecutorCodePairing, decideExecutorCodePairing, pollExecutorCodePairing,
   previewExecutorCodePairing, startExecutorCodePairing,
   expireExecutorCodePairings,
+  claimExecutorConnection, confirmExecutorEnrollment, recordExecutorDaemonChallenge,
   type PairingAudit, type PairingClaimAuthority, type PairingNames,
 } from '../src/index.js'
 import { canonicalExecutorPayload } from '../src/executor-canonical-json.js'
@@ -102,6 +103,15 @@ dbTest('codes bind one machine, claim once, and require exact local consent befo
     assert.equal(executor.status, 'pending_pairing')
     assert.equal(executor.machinePublicKey, null)
     assert.equal(await prisma.executorEnrollment.count({ where: { executorId: executor.id } }), 0)
+    await assert.rejects(confirmExecutorEnrollment(prisma, AuthorizedActionContextSchema.parse({
+      actor: { actorType: 'user', actorId: userId }, tenant: { organizationId },
+      actionContext: { requestId: randomUUID() },
+    }), { executorId: executor.id, fingerprint: started.fingerprint }), /No active executor enrollment/)
+    const challenge = randomUUID()
+    await recordExecutorDaemonChallenge(prisma, {
+      executorId: executor.id, challenge, expiresAt: new Date(Date.now() + 60_000),
+    })
+    assert.equal(await prisma.executorDaemonChallenge.count({ where: { executorId: executor.id } }), 0)
     await assert.rejects(previewExecutorCodePairing(prisma, secret, started.code), /no longer available/)
     const pollPayload = { pairingId: started.pairingId, timestamp: new Date().toISOString() }
     const attacker = machine()
@@ -134,6 +144,14 @@ dbTest('codes bind one machine, claim once, and require exact local consent befo
     assert.equal(paired.status, 'offline')
     assert.equal(paired.machinePublicKey, first.input.machinePublicKey)
     assert.equal(events.filter((event) => event === 'executor.pairing.confirmed').length, 1)
+    await recordExecutorDaemonChallenge(prisma, {
+      executorId: executor.id, challenge, expiresAt: new Date(Date.now() + 60_000),
+    })
+    const daemonClaim = { executorId: executor.id, challenge }
+    const connected = await claimExecutorConnection(prisma, {
+      ...daemonClaim, signature: signature(first.key, 'nessie.executor.daemon.claim.v1', daemonClaim),
+    })
+    assert.equal(connected.status, 'online')
 
     const replacement = machine(new Date(), executor.id, first.key)
     pairingIds.push(replacement.input.requestId)
@@ -142,11 +160,17 @@ dbTest('codes bind one machine, claim once, and require exact local consent befo
       ...replacement.input,
       replacementSignature: signature(attacker.key, 'nessie.executor.pairing.replace.v1', badPayload),
     }, audit), /proof is invalid/)
-    assert.equal((await prisma.executor.findUniqueOrThrow({ where: { id: executor.id } })).status, 'offline')
+    assert.equal((await prisma.executor.findUniqueOrThrow({ where: { id: executor.id } })).status, 'online')
     const next = await startExecutorCodePairing(prisma, secret, replacement.input, audit)
     const retired = await prisma.executor.findUniqueOrThrow({ where: { id: executor.id } })
     assert.equal(retired.status, 'revoked')
-    assert.equal(retired.activeConnectionEpoch, paired.activeConnectionEpoch + 1n)
+    assert.equal(retired.activeConnectionEpoch, BigInt(connected.connectionEpoch) + 1n)
+    const retiredPollPayload = { pairingId: started.pairingId, timestamp: new Date().toISOString() }
+    const retiredPoll = await pollExecutorCodePairing(prisma, {
+      ...retiredPollPayload, signature: signature(first.key, 'nessie.executor.pairing.poll.v1', retiredPollPayload),
+    }, names)
+    assert.equal(retiredPoll.status, 'rejected')
+    assert.equal(retiredPoll.claim, undefined)
     await startExecutorCodePairing(prisma, secret, replacement.input, audit)
     assert.equal(events.filter((event) => event === 'executor.pairing.replaced').length, 1)
     const cancelPayload = { pairingId: next.pairingId, timestamp: new Date().toISOString() }
@@ -160,6 +184,11 @@ dbTest('codes bind one machine, claim once, and require exact local consent befo
     const expiredMachine = machine(past)
     pairingIds.push(expiredMachine.input.requestId)
     const expired = await startExecutorCodePairing(prisma, secret, expiredMachine.input, audit, past)
+    const expiredRetryPayload = { ...pairingStartPayload(expiredMachine.input), timestamp: new Date().toISOString() }
+    const expiredRetry = { ...expiredRetryPayload,
+      signature: signature(expiredMachine.key, 'nessie.executor.pairing.start.v1', expiredRetryPayload),
+    }
+    assert.deepEqual(await startExecutorCodePairing(prisma, secret, expiredRetry, audit), expired)
     await assert.rejects(previewExecutorCodePairing(prisma, secret, expired.code), /no longer available/)
     await assert.rejects(claimExecutorCodePairing(prisma, secret, {
       ...claimInput, code: expired.code, fingerprint: expired.fingerprint,
@@ -170,6 +199,7 @@ dbTest('codes bind one machine, claim once, and require exact local consent befo
     }
     assert.equal((await decideExecutorCodePairing(prisma, expiredCancel, 'cancel', names, audit)).status, 'rejected')
     assert.equal((await decideExecutorCodePairing(prisma, expiredCancel, 'cancel', names, audit)).status, 'rejected')
+    assert.deepEqual(await startExecutorCodePairing(prisma, secret, expiredRetry, audit), expired)
 
     // Force the first derivation to collide; mint must choose another code and
     // response-loss retry must recover that choice, not get stuck forever.

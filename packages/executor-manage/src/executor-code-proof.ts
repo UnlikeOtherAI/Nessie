@@ -28,7 +28,8 @@ export const assertPairingProof = (
   }
 }
 export const assertPairingTimestamp = (timestamp: string, now: Date): void => {
-  if (Math.abs(now.getTime() - new Date(timestamp).getTime()) > 60_000) {
+  const requestTime = new Date(timestamp).getTime()
+  if (!Number.isFinite(requestTime) || Math.abs(now.getTime() - requestTime) > 60_000) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ENROLLMENT_PROOF_INVALID, 'Machine request has expired.')
   }
 }

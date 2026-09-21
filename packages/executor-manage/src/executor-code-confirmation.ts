@@ -34,7 +34,7 @@ export const pollExecutorCodePairing = async (
   if (!pairing) pairingUnavailable()
   const { signature, ...payload } = input
   assertPairingProof(pairing.machinePublicKey, 'nessie.executor.pairing.poll.v1', payload, signature)
-  const status = pairing.rejectedAt ? 'rejected'
+  const status = pairing.rejectedAt || pairing.executor?.status === 'revoked' ? 'rejected'
     : pairing.confirmedAt ? 'confirmed'
       : pairing.expiresAt <= now ? 'expired'
         : pairing.executorId ? 'awaiting_confirmation' : 'waiting'
@@ -63,8 +63,8 @@ export const decideExecutorCodePairing = async (
   return prisma.$transaction(async (tx) => {
     await lockPairing(tx, input.pairingId)
     const pairing = await tx.executorPairingCode.findUnique({
-    where: { id: input.pairingId }, include: { executor: true },
-  })
+      where: { id: input.pairingId }, include: { executor: true },
+    })
     if (!pairing) pairingUnavailable()
     const executor = pairing.executor
     if (action !== 'cancel' && (
