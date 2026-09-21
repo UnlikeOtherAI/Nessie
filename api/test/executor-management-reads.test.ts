@@ -4,7 +4,9 @@ import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { PrismaClient } from '@prisma/client'
 import Fastify from 'fastify'
-import { confirmExecutorAccessChange, ensureExecutorLogicalTools, prepareExecutorAccessChange } from '@nessie/executor-manage'
+import {
+  confirmExecutorAccessChange, ensureExecutorLogicalTools, prepareExecutorAccessChange, rejectExecutorAccessChange,
+} from '@nessie/executor-manage'
 import { AuthorizedActionContextSchema, ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
 import { applyExecutorAgentPolicyChange } from '../src/services/executor-agent-access-policy.js'
 import { getExecutorAttentionSummary, listExecutorAgentAccess } from '../src/services/executor-management-reads.js'
@@ -12,6 +14,20 @@ import { registerExecutorRoutes } from '../src/routes/executors.js'
 import type { RouteDeps } from '../src/routes/types.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
+const signal = <T>() => {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
+const waitForBlockedTransaction = async (prisma: PrismaClient, blockerPid: number) => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [locks] = await prisma.$queryRaw<{ blocked: boolean }[]>`
+      SELECT EXISTS(SELECT 1 FROM pg_locks WHERE NOT granted AND ${blockerPid} = ANY(pg_blocking_pids(pid))) AS blocked`
+    if (locks!.blocked) return
+    await delay(10)
+  }
+  assert.fail('Expected the competing transaction to wait on its database lock')
+}
 dbTest('executor agent pages preserve privacy, count filtered rows and page the roster/grant union', async () => {
   const prisma = new PrismaClient()
   const organizationId = randomUUID()
@@ -216,6 +232,61 @@ dbTest('agent policy and executor access commit together only after a valid cont
       assert.ok(response.statusCode >= 400 && response.statusCode < 500, `${reason}: ${response.body}`)
       assert.deepEqual(await snapshot(), before, `${reason} cannot mutate policy, grants, roster or authorization`)
     }
+
+    // Confirmation has read pending but cannot pass its executor lock yet.
+    // A successful cancellation must win even when confirmation resumes later.
+    const cancelled = await prepare('denied')
+    const beforeCancel = await snapshot()
+    const executorLocked = signal<number>()
+    const unlockExecutor = signal<void>()
+    const holdingExecutor = prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`executor:${executorId}`}, 0))`
+      const [backend] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+      executorLocked.resolve(backend!.pid)
+      await unlockExecutor.promise
+    })
+    const blockerPid = await executorLocked.promise
+    const delayedConfirmation = assert.rejects(confirm(cancelled), /no longer pending/)
+    try {
+      await waitForBlockedTransaction(prisma, blockerPid)
+      await rejectExecutorAccessChange(prisma, actor, cancelled)
+    } finally {
+      unlockExecutor.resolve()
+      await Promise.all([holdingExecutor, delayedConfirmation])
+    }
+    assert.equal((await prisma.executorContinuation.findUniqueOrThrow({
+      where: { id: cancelled.accessChangeId },
+    })).status, 'rejected')
+    assert.deepEqual(await snapshot(), beforeCancel, 'successful cancellation prevents all delayed access effects')
+
+    // If confirmation claims first, cancellation waits and reports stale; it
+    // cannot promise cancellation then have confirmation overwrite that result.
+    const winningConfirm = await prepare('denied')
+    const policyApplied = signal<number>()
+    const completeConfirmation = signal<void>()
+    const confirming = confirmExecutorAccessChange(prisma, actor, {
+      ...winningConfirm, freshVerificationSatisfied: true,
+    }, async (tx, change) => {
+      await applyExecutorAgentPolicyChange(tx, { ...change, organizationId, actorUserId: userId })
+      const [backend] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+      policyApplied.resolve(backend!.pid)
+      await completeConfirmation.promise
+    })
+    const confirmPid = await policyApplied.promise
+    const losingRejection = assert.rejects(
+      rejectExecutorAccessChange(prisma, actor, winningConfirm), /no longer pending/,
+    )
+    try {
+      await waitForBlockedTransaction(prisma, confirmPid)
+    } finally {
+      completeConfirmation.resolve()
+      await Promise.all([confirming, losingRejection])
+    }
+    assert.equal((await prisma.executorContinuation.findUniqueOrThrow({
+      where: { id: winningConfirm.accessChangeId },
+    })).status, 'consumed')
+    assert.deepEqual((await snapshot()).agent.toolPolicy, {})
+    await confirm(await prepare('allowed'))
 
     // A later access failure rolls the already-applied policy change back.
     const denied = await prepare('denied')

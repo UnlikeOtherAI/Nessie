@@ -32,6 +32,9 @@ confirmations cannot alter it. The agent policy lock also covers the read of
 grants held on other executors, so concurrent changes cannot disable a policy
 the agent still holds elsewhere. The existing authorization checks,
 per-mutation connection fences, and audit events remain in force.
+Confirmation and cancellation atomically claim the same pending continuation;
+only one can succeed. A successful cancellation prevents a delayed confirmation
+from applying, and a failed confirmation rolls its claim back with its writes.
 Failure to grant rolls the new private assignment back. Removing one agent
 does not remove another agent's grants on the same machine.
 

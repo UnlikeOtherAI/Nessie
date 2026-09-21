@@ -372,6 +372,15 @@ export const confirmExecutorAccessChange = async (
         'Executor authorization changed; prepare the change again.',
       )
     }
+    // Confirmation and rejection compete for this pending row. Claim before
+    // any policy/grant effects; a failed mutation rolls the claim back as well.
+    const claimed = await tx.executorContinuation.updateMany({
+      where: { id: continuation.id, status: 'pending' },
+      data: { status: 'consumed', consumedAt: new Date() },
+    })
+    if (claimed.count !== 1) {
+      throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
+    }
     // Route-owned policy effects share this validated continuation transaction;
     // invalid tokens, stale authority or a failed access mutation write nothing.
     await applyPolicy?.(tx, { executorId: executor.id, change: stored.change })
@@ -381,13 +390,6 @@ export const confirmExecutorAccessChange = async (
       executor.id,
       stored.change,
     )
-    await tx.executorContinuation.update({
-      where: { id: continuation.id },
-      data: {
-        status: 'consumed',
-        consumedAt: new Date(),
-      },
-    })
     return { authorizationRevision, executorId: executor.id }
   })
 
@@ -419,9 +421,12 @@ export const rejectExecutorAccessChange = async (
   if (continuation.status !== 'pending') {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
   }
-  await tx.executorContinuation.update({
-    where: { id: continuation.id },
+  const rejected = await tx.executorContinuation.updateMany({
+    where: { id: continuation.id, status: 'pending' },
     data: { status: 'rejected', consumedAt: new Date() },
   })
+  if (rejected.count !== 1) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
+  }
   return { executorId: continuation.executorId }
 })
