@@ -138,6 +138,8 @@ export const BoardSourceFieldTargetSchema = z.union([
   z.literal('native:storyPoints'),
   z.literal('native:title'),
   z.literal('native:detail'),
+  /** First-class project labels (`TaskLabel`), replacing a *Labels* multi_select field. */
+  z.literal('native:labels'),
   z.string().regex(/^field:[0-9a-f-]{36}$/, 'expected field:<definitionId>'),
 ])
 

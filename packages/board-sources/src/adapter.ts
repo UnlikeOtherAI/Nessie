@@ -1,5 +1,9 @@
+import type { Readable } from 'node:stream'
+
 import type {
+  NormalisedComment,
   NormalisedItem,
+  NormalisedItemLabel,
   OutboundChange,
   SyncCheckpoint,
   SyncPage,
@@ -80,6 +84,18 @@ export type ContainerDescription = {
   states: ContainerState[]
   fields: ContainerField[]
   members: ContainerMember[]
+  /**
+   * The container's labels, first-class. An adapter that lists labels here
+   * stops declaring a `labels` field.
+   */
+  labels?: NormalisedItemLabel[]
+}
+
+/** A provider file's bytes, as `fetchAsset` streams them. */
+export type AssetStream = {
+  stream: Readable
+  contentType: string | null
+  sizeBytes: number | null
 }
 
 export type OAuthExchangeInput = {
@@ -280,4 +296,35 @@ export interface BoardSourceAdapter {
     item: { externalId: string; externalKey: string },
     change: OutboundChange,
   ): Promise<NormalisedItem>
+
+  // ─── Optional capabilities ────────────────────────────────────────────────
+  // An adapter that lacks one is honest by omission rather than by a stub.
+
+  /** Hosts `fetchAsset` may dial; the streaming envelope refuses everything else. */
+  readonly assetHosts?: readonly string[]
+
+  /** Stream one provider file. `null` means it is gone upstream (404). */
+  fetchAsset?(ctx: ConnectionContext, asset: { url: string }): Promise<AssetStream | null>
+
+  /** Post a comment upstream and return the provider's echo. */
+  createComment?(
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    item: { externalId: string; externalKey: string },
+    body: string,
+  ): Promise<NormalisedComment>
+
+  /** Edit a comment upstream and return the provider's echo. */
+  updateComment?(
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    comment: { externalId: string },
+    body: string,
+  ): Promise<NormalisedComment>
+
+  deleteComment?(
+    ctx: ConnectionContext,
+    container: Record<string, unknown>,
+    comment: { externalId: string },
+  ): Promise<void>
 }

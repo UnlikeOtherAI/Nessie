@@ -212,6 +212,8 @@ export type WsEventMap = {
   }
   /** Content-free revision invalidation; the entitled REST read remains authoritative. */
   'dashboard.updated': { dashboardId: string; revision: number }
+  /** Content-free: a ticket's comments, attachments or labels changed. */
+  'task.activity': { taskId: TaskId; projectId: string }
 }
 
 export const AgentStatusEventSchema = z.object({
@@ -452,6 +454,22 @@ export const BoardUpdatedEventSchema = z.object({
 })
 export type BoardUpdatedEvent = z.infer<typeof BoardUpdatedEventSchema>
 
+/**
+ * A ticket's comments, attachments or labels changed — added, edited, removed,
+ * or applied by a sync.
+ *
+ * Content-free for the `board.updated` reason: ids only, on the organisation
+ * scope, and the client's refetch of the comments/attachments reads is
+ * entitlement-checked, so a task id reaching a non-member reveals nothing they
+ * can read. A new name inside the unchanged envelope, so a replica or client
+ * that predates it ignores it.
+ */
+export const TaskActivityEventSchema = z.object({
+  taskId: TaskIdSchema,
+  projectId: z.string().uuid(),
+})
+export type TaskActivityEvent = z.infer<typeof TaskActivityEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -480,6 +498,7 @@ export const WsEventNameSchema = z.enum([
   'call.updated',
   'dashboard.updated',
   'board.updated',
+  'task.activity',
 ])
 
 export const WsScopeSchema = z.union([
@@ -728,6 +747,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('board.updated'),
     data: BoardUpdatedEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('task.activity'),
+    data: TaskActivityEventSchema,
     ts: TimestampSchema,
   }),
 ])

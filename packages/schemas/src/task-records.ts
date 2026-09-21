@@ -10,6 +10,7 @@ import {
 } from './ids.js'
 import { TaskExternalLinkRecordSchema } from './board-sources.js'
 import { TaskStatusSchema } from './lifecycle.js'
+import { TaskLabelSummarySchema } from './task-labels.js'
 import { TimestampSchema } from './schema-primitives.js'
 
 /**
@@ -48,6 +49,18 @@ export const TaskRecordSchema = z.object({
   ownerUserId: UserIdSchema.nullable(),
   ownerName: z.string().nullable(),
   createdByUserId: UserIdSchema.nullable(),
+  /** The ticket's labels, in name order. */
+  labels: z.array(TaskLabelSummarySchema),
+  /** Comments not deleted. */
+  commentCount: z.number().int().nonnegative(),
+  /** Files linked to the ticket (`Attachment.taskId`), comment files included. */
+  attachmentCount: z.number().int().nonnegative(),
+  /**
+   * Whether the viewer this record was mapped for may change the ticket —
+   * decided server-side from the same rule the task routes gate on, so a
+   * client never guesses from a role.
+   */
+  viewerCanEdit: z.boolean(),
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
 })
