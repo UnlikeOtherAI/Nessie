@@ -15,6 +15,39 @@ can carry instructions for an existing channel agent to perform the work.
 The classifier's fixed engagement, reply-depth, and placement questions are
 separate from these custom questions.
 
+When enabled, a human message is evaluated once through Ledger's
+`POST /v1/vercel-evaluate/evaluate` with model `typesafe-ai/jev`. The worker
+reuses the installation's Ledger URL, credential, signed identity and usage
+sink. Installations using a direct provider endpoint must configure Ledger
+before enabling the policy. The classifier remains separate from the agent's
+generative model and the utility model used by other subsystems.
+
+The engagement enum is `reply`, `acknowledge`, `leave_to_human`, or
+`no_action`. Separate choices select the agent, an optional configured emoji,
+qualitative reply depth (`brief`, `normal`, `detailed`), and thread/channel
+placement. Custom questions are independent: a message can receive a reaction
+and also start documentation work. Work for the same agent is combined into
+one run, including a conversational reply; any such custom work uses policy
+authority and remains subject to automation budgets. A background-only run
+is prompted to conclude silently unless it has a useful result or needs help.
+Instructions never grant a tool or bypass its existing approval rules.
+
+Each choice must meet the policy's minimum selected-option probability.
+Below it, automatic effects are skipped; explicit structured mentions and
+structurally addressed conversations remain answerable. Model errors do not
+fall back to a generative classifier. A notice explains missing evaluation
+access, exhausted credits, or oversized inputs. Agent-authored messages never
+trigger another policy evaluation. Disabled or absent policies retain normal
+engagement behavior, and system DMs keep their structural response rules.
+
+Agent descriptions and the last five context turns use bounded excerpts.
+The latest message and saved policy instructions are not silently shortened.
+Serialized UTF-8 requests are capped at 24 KB per state/question and 48 KB
+total, conservatively below Jev's token limits; a Choice has at most 255
+options. Unknown choices and malformed probability distributions are refused.
+The normal signed Ledger attribution and both input/output usage counters
+are recorded; free output pricing does not mean output usage is discarded.
+
 `canModifyChannel` owns edit authority: channel members and organisation
 administrators, with its existing direct-message and system-surface rules.
 Decision policies are accepted only on standard, non-system channels. A
@@ -44,6 +77,11 @@ queue redelivery reuses it instead of choosing new actions under a changed
 policy. `Run.promptOverride` pins the selected work instructions for run
 restart. `RunThreadPendingMessage.promptOverride` preserves them when the
 target agent is already running and the message must wait.
+Pending rows also preserve `replyPlacement` and drain individually whenever
+they carry policy instructions, preventing unrelated turns from replacing
+the selected work or changing its reply location. Normal pending turns retain
+their existing batching behavior. Automatic continuations and explicit
+restarts preserve the pinned instructions.
 
 Custom work runs as the person who last saved the policy, never as the person
 whose later message triggered it. `Channel.decisionPolicyAuthorizer` captures

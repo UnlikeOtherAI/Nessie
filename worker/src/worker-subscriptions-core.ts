@@ -41,7 +41,7 @@ import {
   WorkflowRunFailureDispatchJobPayloadSchema,
 } from '@nessie/schemas'
 import { DASHBOARD_REFRESH_TOPIC } from '@nessie/dashboard'
-import { isLedgerEndpoint } from '@nessie/runtime'
+import { createLedgerDecisionClient, isLedgerEndpoint, recordInferenceUsage } from '@nessie/runtime'
 import { createMcpSecretResolver } from '@nessie/mcp-manage'
 import { refreshDashboardDataSource } from './control/dashboard-refresh.js'
 import { runDeepSignalInsightFanout } from './control/deepsignal-insight.js'
@@ -122,6 +122,16 @@ export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps
   // embed with no captured session identity is refused on every attempt.
   const ledgerSigningConfigured =
     ledgerIdentity !== null && isLedgerEndpoint(config.model.baseUrl)
+  const decisionClient = config.model.baseUrl && config.model.apiKey && isLedgerEndpoint(config.model.baseUrl)
+    ? createLedgerDecisionClient({
+        baseUrl: config.model.baseUrl,
+        apiKey: config.model.apiKey,
+        requestHeaders: ledgerIdentity
+          ? (attribution) => ledgerIdentity.requestHeaders(attribution, { requireUoaIdentity: true })
+          : undefined,
+        recordUsage: (invocations, attribution) => recordInferenceUsage(prisma, { attribution, invocations }),
+      })
+    : undefined
 subscribe(
   'call.ring-timeout',
   async (job) => {
@@ -202,7 +212,7 @@ subscribe(
   async (job) => {
     const payload = OrchestrateDecideJobPayloadSchema.parse(job.payload)
     await executeOrchestrateDecideJob(
-      { modelClient, prisma, realtimeTransport },
+      { modelClient, decisionClient, prisma, realtimeTransport },
       payload,
     )
   },

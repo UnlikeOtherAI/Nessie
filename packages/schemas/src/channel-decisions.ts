@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseAcknowledgeEmoji } from './agent-reaction.js'
 
 const DecisionIdSchema = z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/)
 
@@ -38,7 +39,9 @@ export const ChannelDecisionPolicySchema = z.object({
   instructions: z.string().trim().min(1).max(4000),
   minimumProbability: z.number().min(0).max(1),
   reactions: z.array(z.object({
-    emoji: z.string().trim().min(1).max(32),
+    emoji: z.string().trim().min(1).max(32)
+      .refine((value) => parseAcknowledgeEmoji(value) !== null, 'Use an emoji for the reaction')
+      .refine((value) => value !== '👀', 'The eyes reaction is reserved for work in progress'),
     description: z.string().trim().min(1).max(500),
   }).strict()).max(16),
   questions: z.array(QuestionSchema).max(8),

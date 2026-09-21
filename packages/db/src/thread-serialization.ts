@@ -118,6 +118,8 @@ export const claimThreadRunOrPend = async (
       channelId: string
       interactive: boolean
       messageId: string
+      promptOverride?: string
+      replyPlacement?: 'thread' | 'channel'
       // Trigger provenance, set only by trigger-fire paths. Copied onto the
       // batched follow-up run when the LATEST pending row carries it.
       triggerId?: string
@@ -170,6 +172,8 @@ export const claimThreadRunOrPend = async (
       messageId: input.pending.messageId,
       channelId: input.pending.channelId,
       interactive: input.pending.interactive,
+      promptOverride: input.pending.promptOverride ?? null,
+      replyPlacement: input.pending.replyPlacement ?? null,
       actorContext: JSON.parse(
         JSON.stringify(input.pending.actorContext),
       ) as Prisma.InputJsonValue,
@@ -235,8 +239,8 @@ export const drainPendingThreadMessages = async (
     if (pendings.length === 0) {
       return null
     }
-    const firstPeerIndex = pendings.findIndex((pending) =>
-      AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose === 'agent.peer_delegation')
+    const firstPeerIndex = pendings.findIndex((pending) => pending.promptOverride
+      || AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose === 'agent.peer_delegation')
     // Preserve arrival order. Drain ordinary work before the first peer as its
     // usual batch; drain a first peer alone. Later markers remain durable for
     // the next terminal drain, rather than being silently coalesced under a
@@ -286,6 +290,7 @@ export const drainPendingThreadMessages = async (
 
     const run = await tx.run.create({
       data: {
+        promptOverride: latest.promptOverride ?? null,
         agentId: input.agentId,
         principalUserId: latest.principalUserId,
         threadId: input.threadId,
@@ -300,7 +305,7 @@ export const drainPendingThreadMessages = async (
         // is the second, and the rule was always "a hidden root cannot own a
         // reply". Structural either way — derived from the row, never content.
         replyPlacement:
-          latest.triggerId || latest.message.role === 'system' ? 'channel' : null,
+          latest.replyPlacement ?? (latest.triggerId || latest.message.role === 'system' ? 'channel' : null),
         status: 'pending',
         triggerMessageId: scheduledKickoff?.id ?? latest.messageId,
         triggerId: latest.triggerId ?? null,
@@ -330,6 +335,7 @@ export const drainPendingThreadMessages = async (
       agentId: parseAgentId(input.agentId),
       ...(latest.principalUserId ? { principalUserId: latest.principalUserId } : {}),
       interactive: latest.interactive,
+      ...(latest.promptOverride ? { promptOverride: latest.promptOverride } : {}),
       messageId: scheduledKickoff?.id ?? latest.messageId,
       runId: parseRunId(run.id),
       taskId: parseTaskId(task.id),

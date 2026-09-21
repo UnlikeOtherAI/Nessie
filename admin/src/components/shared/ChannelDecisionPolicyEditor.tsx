@@ -41,7 +41,7 @@ export const ChannelDecisionPolicyEditor = ({ agents, errors, onChange, policy }
     </FormField>
     <FormField
       error={errors.minimumProbability}
-      help="Below this confidence, Jev leaves the message alone."
+      help="Low-confidence choices do not start automatic actions. Directly addressed agents can still reply."
       label="Minimum confidence (%)"
     >
       <Input

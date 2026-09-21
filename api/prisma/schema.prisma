@@ -4063,6 +4063,7 @@ model RunThreadPendingMessage {
   interactive       Boolean               @default(false)
   // Durable classifier directive retained when an active run defers the message.
   promptOverride    String?               @map("prompt_override")
+  replyPlacement    RunReplyPlacement?    @map("reply_placement")
   // The base AuthorizedActionContext of the triggering message (before the
   // run/task ids are injected); the drain re-injects fresh ids for the
   // follow-up run it creates.

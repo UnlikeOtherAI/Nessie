@@ -32,3 +32,9 @@ For a CI preview build, set `NESSIE_CHANNEL_DECISIONS_E2E_FIXTURE=1` and
 `NAV_E2E_ADMIN_MODE=preview`. The flag adds this fixture to Vite's explicit
 inputs and to the admin build cache key. Ordinary production builds omit it.
 `CHROMIUM_PATH` can select an installed Chromium executable.
+
+The on-request `Browser Suites` workflow enables the fixture, runs the flow,
+and retains the `channel-decisions-screenshots` artifact. Runtime suites also
+pin enum construction, probabilities, Ledger usage and credit refusals,
+snapshot replay, live binding checks, private-source disclosure, and queued
+instructions and reply placement.

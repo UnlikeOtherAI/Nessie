@@ -122,3 +122,5 @@ export * from './local-inference.js'
 export * from './local-agent-inference.js'
 export * from './local-inference-policy.js'
 export * from './executor-management.js'
+
+export * from './agent-reaction.js'

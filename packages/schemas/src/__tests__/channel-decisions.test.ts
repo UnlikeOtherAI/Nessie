@@ -69,3 +69,16 @@ test('unknown action fields cannot become hidden capabilities', () => {
     }] }],
   }).success, false)
 })
+
+test('reaction choices are emojis and cannot impersonate the working marker', () => {
+  for (const emoji of ['plain text', '👀', '👍 leaked text', '']) {
+    assert.equal(ChannelDecisionPolicySchema.safeParse({
+      ...DEFAULT_CHANNEL_DECISION_POLICY, reactions: [{ emoji, description: 'Acknowledged' }],
+    }).success, false)
+  }
+  for (const emoji of ['👍🏽', '✅', '👩‍💻']) {
+    assert.equal(ChannelDecisionPolicySchema.safeParse({
+      ...DEFAULT_CHANNEL_DECISION_POLICY, reactions: [{ emoji, description: 'Acknowledged' }],
+    }).success, true)
+  }
+})

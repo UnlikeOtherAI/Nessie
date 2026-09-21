@@ -23,7 +23,7 @@ export const postOrchestrationNotice = async (
     agentId: string
     channelId: string
     content: string
-    kind: 'budget_blocked' | 'credits_exhausted'
+    kind: 'budget_blocked' | 'credits_exhausted' | 'decision_unavailable'
     principalUserId?: string
     replyRootMessageId?: string
     threadId: string

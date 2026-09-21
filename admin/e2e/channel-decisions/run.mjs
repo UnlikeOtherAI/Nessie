@@ -10,14 +10,15 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/channel-decisions')
 const admin = await startAdmin({ reuseExisting: false })
 const browser = await launchBrowser()
+const errors = []
 try {
   const html = await (await fetch(ADMIN_URL)).text()
   if (adminMode() === 'dev') assert.ok(html.includes('@vite/client'), 'verification must use the worktree dev server')
   await mkdir(screenshots, { recursive: true })
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 } })
-  const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
-  await page.goto(`${ADMIN_URL}/e2e/channel-decisions/index.html`)
+  await page.goto(`${ADMIN_URL}/e2e/channel-decisions/index.html`, { timeout: 120_000, waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'Channel settings', exact: true }).waitFor({ timeout: 120_000 })
   const open = async () => {
     await page.getByRole('button', { name: 'Channel settings', exact: true }).click()
     await page.getByRole('tab', { name: 'Agent decisions', exact: true }).click()
@@ -113,6 +114,10 @@ try {
   assert.equal(await page.getByRole('dialog').count(), 0, 'a viewer cannot reach edit controls')
   assert.deepEqual(errors, [], 'the settings flow must not throw browser errors')
   console.log(`Channel decision settings passed. Screenshots: ${screenshots}`)
+} catch (error) {
+  console.error('Channel decisions browser errors:', errors)
+  console.error(admin.output())
+  throw error
 } finally {
   await browser.close()
   await stopProcess(admin)
