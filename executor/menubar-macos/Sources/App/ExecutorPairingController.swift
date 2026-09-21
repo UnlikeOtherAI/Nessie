@@ -11,6 +11,7 @@ final class ExecutorPairingController: ObservableObject {
 
     var onPaired: (() -> Void)?
     var onChanged: (() -> Void)?
+    var beforeStart: (() -> Bool)?
     var beforeReplace: (() -> Bool)?
     private let runner: ExecutorProcessRunner?
     private let stateDirectory: String
@@ -30,6 +31,7 @@ final class ExecutorPairingController: ObservableObject {
 
     func begin(origin: String, workspace: String, replace: Bool) {
         guard !busy else { return }
+        guard beforeStart?() != false else { return }
         guard !replace || beforeReplace?() == true else { return }
         do {
             let approved = try ApprovedAPIOrigin.approve(origin, isDevelopmentBuild: isDevelopmentBuild).get()

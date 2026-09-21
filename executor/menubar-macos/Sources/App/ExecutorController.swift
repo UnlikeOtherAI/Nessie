@@ -98,10 +98,23 @@ final class ExecutorController: ObservableObject {
         )
         pairing.onPaired = { [weak self] in self?.refresh(startWhenPaired: true) }
         pairing.onChanged = { [weak self] in self?.refresh() }
+        pairing.beforeStart = { [weak self] in self?.canBeginPairing() ?? false }
         pairing.beforeReplace = { [weak self] in
             guard let self, self.model.daemon != .stopping else { return false }
             return self.stopDaemon()
         }
+    }
+
+    private func canBeginPairing() -> Bool {
+        switch ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild) {
+        case let .success(directory) where directory == stateDirectory:
+            return true
+        case .success:
+            fail("This Mac gained another connection. Reopen Nessie Executor to review it before pairing again.")
+        case let .failure(refusal):
+            fail(refusal.message)
+        }
+        return false
     }
 
     private var runner: ExecutorProcessRunner? {
