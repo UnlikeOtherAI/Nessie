@@ -80,6 +80,16 @@ export const useTaskAssignees = () => {
   })
 }
 
+// The ticket dialog reads one ticket through `taskKeys.presented`, which sits
+// outside the `['tasks']` root on purpose (see keys.ts), so invalidating that
+// root never reaches it. Every mutation of a ticket refreshes it by id too:
+// otherwise a ticket reopened after a save seeds its draft from the record
+// cached on the first open — without the label just added, or with the title
+// just replaced, which the next save would write back.
+const refreshPresentedTask = (queryClient: ReturnType<typeof useQueryClient>, id: string) => {
+  void queryClient.invalidateQueries({ queryKey: taskKeys.presented(id) })
+}
+
 /**
  * The body of `POST /api/tasks` (`api/src/contracts/tasks-board.ts`).
  * `labelIds` names the card's labels; `attachmentIds` links uploads made
@@ -144,7 +154,8 @@ export const useUpdateTask = () => {
       const { id, ...fields } = input
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)
     },
-    onSuccess: () => {
+    onSuccess: (_task, input) => {
+      refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
       void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
@@ -176,7 +187,8 @@ export const useSetTaskIteration = () => {
       apiClient.post<TaskRecord>(`/api/tasks/${input.id}/iteration`, {
         iterationId: input.iterationId,
       }),
-    onSuccess: () => {
+    onSuccess: (_task, input) => {
+      refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
       void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
@@ -189,7 +201,8 @@ export const useUpdateTaskPoints = () => {
   return useMutation({
     mutationFn: (input: { id: string; storyPoints: number | null }) =>
       apiClient.patch<TaskRecord>(`/api/tasks/${input.id}`, { storyPoints: input.storyPoints }),
-    onSuccess: () => {
+    onSuccess: (_task, input) => {
+      refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
       void queryClient.invalidateQueries({ queryKey: iterationKeys.all })
     },
@@ -209,7 +222,8 @@ export const useAssignTask = () => {
         assigneeUserId: input.assigneeUserId ?? null,
         assigneeAgentId: input.assigneeAgentId ?? null,
       }),
-    onSuccess: () => {
+    onSuccess: (_task, input) => {
+      refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
@@ -252,7 +266,8 @@ export const useMoveTask = () => {
         columnId: input.columnId,
         position: input.position,
       }),
-    onSettled: () => {
+    onSettled: (_task, _error, input) => {
+      refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
@@ -275,7 +290,8 @@ export const useTransitionTask = () => {
     onError: (_error, _input, context) => {
       context?.snapshots.forEach(([key, data]) => queryClient.setQueryData(key, data))
     },
-    onSettled: () => {
+    onSettled: (_task, _error, input) => {
+      refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
   })
