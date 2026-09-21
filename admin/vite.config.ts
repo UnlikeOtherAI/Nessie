@@ -40,6 +40,10 @@ export default defineConfig(({ command, mode }) => {
   const includeChannelAgentControlsFixture =
     env.NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE === '1'
   const includeExecutorLocalMcpFixture = env.NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE === '1'
+  const includeExecutorPairingFixture = env.NESSIE_EXECUTOR_PAIRING_E2E_FIXTURE === '1'
+  const includeExecutorAgentsFixture = env.NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE === '1'
+  const includeExecutorDetailFixture = env.NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE === '1'
+  const includeExecutorAttentionFixture = env.NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE === '1'
   const includeLocalOllamaAgentsFixture = env.NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
@@ -59,6 +63,10 @@ export default defineConfig(({ command, mode }) => {
     || includeChannelAgentControlsFixture
     || includeVisibilityAffordancesFixture
     || includeExecutorLocalMcpFixture
+    || includeExecutorPairingFixture
+    || includeExecutorAgentsFixture
+    || includeExecutorDetailFixture
+    || includeExecutorAttentionFixture
     || includeLocalOllamaAgentsFixture ? {
     build: {
       rollupOptions: {
@@ -81,6 +89,18 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeExecutorLocalMcpFixture ? {
             executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),
+          } : {}),
+          ...(includeExecutorPairingFixture ? {
+            executorPairing: resolve(__dirname, 'e2e/executor-pairing/index.html'),
+          } : {}),
+          ...(includeExecutorAgentsFixture ? {
+            executorAgents: resolve(__dirname, 'e2e/executor-agents/index.html'),
+          } : {}),
+          ...(includeExecutorDetailFixture ? {
+            executorDetail: resolve(__dirname, 'e2e/executor-detail/index.html'),
+          } : {}),
+          ...(includeExecutorAttentionFixture ? {
+            executorAttention: resolve(__dirname, 'e2e/executor-attention/index.html'),
           } : {}),
           ...(includeLocalOllamaAgentsFixture ? {
             localOllamaAgents: resolve(__dirname, 'e2e/local-ollama-agents/index.html'),

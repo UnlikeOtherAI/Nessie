@@ -56,14 +56,18 @@ jobs:
       # A built bundle rather than the dev server: CI has no hot-reload loop
       # to preserve, and preview serves the same code deterministically.
       NAV_E2E_ADMIN_MODE: preview
-      # The isolated member-management fixture is a separate Vite entry only
-      # for this browser evaluation; release bundles never include either one.
+      # Isolated fixtures are separate Vite entries only for this browser
+      # evaluation; ordinary release bundles omit these entries.
       NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE: '1'
       NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE: '1'
       NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE: '1'
       NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE: '1'
       NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_PAIRING_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE: '1'
       NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE: '1'
 
     steps:

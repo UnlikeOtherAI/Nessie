@@ -136,6 +136,8 @@ sentence changes only if the invariant itself did.
   because `startAdmin()` defaults to the dev server. Verify a new suite with
   `NAV_E2E_ADMIN_MODE=preview` against a build made with the flag, and confirm
   the flag actually changes `admin/dist`, before trusting it.
+  The executor pairing, agent access, machine detail and attention fixture
+  flags are listed in [their browser guide](docs/testing/executor-attention.md).
 - **Channel agent-control coverage:** run
   `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
   suite — it drives the real members popup over each answer to

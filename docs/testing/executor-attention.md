@@ -15,8 +15,9 @@ a previous successful result remains cached. The shared query refreshes every
 the existing executor cache family.
 
 Run `node admin/e2e/executor-attention/run.mjs` from the repository root. The
-headless evaluation starts this checkout's live Vite server on its configured
-ports and refuses to adopt an existing one. It renders the actual sidebar and
+headless evaluation starts this checkout's live Vite server by default, or its
+built preview when `NAV_E2E_ADMIN_MODE=preview`, on its configured ports and
+refuses to adopt an existing server. It renders the actual sidebar and
 executor table at desktop and phone widths, tests keyboard/touch review
 navigation, checks the shared fetch, clears resolved counts and verifies that
 a denied refresh removes cached badges. Screenshots are written under
@@ -24,5 +25,22 @@ a denied refresh removes cached badges. Screenshots are written under
 
 The fixture supplies API responses and does not claim server authorization
 coverage. The executor-management API tests own latest-revision selection and
-caller entitlement. The fixture is a development entry and is not a production
-bundle input.
+caller entitlement.
+
+The Browser Suites workflow enables four isolated executor preview entries in
+its Navigation Transitions job:
+
+| Fixture | Build flag |
+| --- | --- |
+| Pairing | `NESSIE_EXECUTOR_PAIRING_E2E_FIXTURE=1` |
+| Agent access | `NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE=1` |
+| Machine detail | `NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE=1` |
+| Attention badges | `NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE=1` |
+
+Each flag adds its `admin/e2e/executor-<name>/index.html` as a Vite build input
+and participates in Turbo's admin-build cache key. Ordinary release builds
+leave these flags unset and omit the fixture entries. To verify the CI path
+locally, build with the relevant flags and run the suites with
+`NAV_E2E_ADMIN_MODE=preview`; the runners require `@vite/client` only in dev
+mode. Dispatch Browser Suites for a branch with
+`gh workflow run browser-suites.yml --ref <branch>`.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { launchBrowser } from '../navigation/lib/browser.mjs'
-import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
+import { ADMIN_URL, REPO_ROOT, adminMode } from '../navigation/lib/config.mjs'
 import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 
 const executorId = '33333333-3333-4333-8333-333333333333'
@@ -11,8 +11,10 @@ await assertFreshServersAvailable()
 const admin = await startAdmin({ reuseExisting: false })
 const browser = await launchBrowser()
 try {
-  const served = await fetch(ADMIN_URL).then((response) => response.text())
-  assert.ok(served.includes('@vite/client'), 'Attention evaluation must run this worktree’s live Vite source')
+  if (adminMode() !== 'preview') {
+    const served = await fetch(ADMIN_URL).then((response) => response.text())
+    assert.ok(served.includes('@vite/client'), 'Attention evaluation must run this worktree’s live Vite source')
+  }
   await mkdir(output, { recursive: true })
   for (const width of [1280, 390]) {
     const context = await browser.newContext({ hasTouch: width === 390, viewport: { width, height: 900 } })
