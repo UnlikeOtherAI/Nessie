@@ -37,7 +37,7 @@ test('fine-pointer message actions use the reference floating toolbar', () => {
   assert.match(actions, /gap: 2px;/)
   assert.match(actions, /border: 0;/)
   assert.match(actions, /border-radius: 10px;/)
-  assert.match(actions, /background: var\(--message-action-bg\);/)
+  assert.match(actions, /background: var\(--panel\);/)
   assert.match(actions, /padding: 3px;/)
   assert.match(actions, /0 1px 2px rgb\(0 0 0 \/ 5%\)/)
   assert.match(actions, /0 6px 20px rgb\(0 0 0 \/ 5%\)/)

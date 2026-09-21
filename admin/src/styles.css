@@ -79,10 +79,6 @@
   --radius-lg: 14px;
   --radius-xl: 20px;
   --radius-panel: 2rem;
-  /* Message action toolbar values mirror the supplied Nessie Chat HTML. */
-  --message-action-bg: #ffffff;
-  --message-action-fg: #0a0a0a;
-  --message-action-hover: #f3f5f8;
   /* One horizontal edge for every page. Page headers (ResponsivePageHeader),
      the shared PageBody/SettingsPanel bodies, and every hand-rolled page body
      use this single value so content runs edge-to-edge and the header title
@@ -4153,7 +4149,7 @@ button.reaction-pill-active:focus-visible {
   margin-top: 6px;
   border: 0;
   border-radius: 10px;
-  background: var(--message-action-bg);
+  background: var(--panel);
   padding: 3px;
   box-shadow:
     0 1px 2px rgb(0 0 0 / 5%),
@@ -4169,14 +4165,14 @@ button.reaction-pill-active:focus-visible {
   justify-content: center;
   border-radius: 10px;
   border: 0;
-  color: var(--message-action-fg);
+  color: var(--tx2);
   transition: background 120ms;
 }
 
 .admin-msg-action-button:hover,
 .admin-msg-action-button:focus-visible {
-  background: var(--message-action-hover);
-  color: var(--message-action-fg);
+  background: var(--overlay);
+  color: var(--tx);
   outline: none;
 }
 
