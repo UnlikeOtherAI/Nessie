@@ -10,7 +10,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
-import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeNode } from './SidebarTree';
+import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeNode } from '../../components/primitives/SidebarTree';
 import { useSidebarRowMenu } from './useSidebarRowMenu';
 import type {
   CreateChannelTarget,

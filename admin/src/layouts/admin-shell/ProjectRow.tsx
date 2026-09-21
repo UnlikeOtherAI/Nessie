@@ -8,7 +8,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { ProjectSectionRows, type ProjectListId } from './ProjectSectionRows'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 import { useSidebarRowMenu } from './useSidebarRowMenu'
-import { SidebarTreeChevron } from './SidebarTree'
+import { SidebarTreeChevron } from '../../components/primitives/SidebarTree'
 import type { StarredItem } from './types'
 
 type ProjectRowProps = {

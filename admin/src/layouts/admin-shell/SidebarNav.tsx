@@ -6,7 +6,7 @@ import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
-import { SidebarTreePanel } from './SidebarTree';
+import { SidebarTreePanel } from '../../components/primitives/SidebarTree';
 import { renderUnreadCount } from './SidebarRow';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import type {

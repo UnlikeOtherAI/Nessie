@@ -49,7 +49,7 @@ test('the Channels sidebar adopts the compact guided tree geometry', () => {
 })
 
 test('Channels and Knowledge reuse the sidebar tree presentation primitives', () => {
-  const tree = readSource('../src/layouts/admin-shell/SidebarTree.tsx')
+  const tree = readSource('../src/components/primitives/SidebarTree.tsx')
   const menuSection = readSource('../src/layouts/admin-shell/SidebarMenuSection.tsx')
   const knowledgeTree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
   const styles = readSource('../src/styles.css')

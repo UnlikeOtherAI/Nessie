@@ -94,7 +94,7 @@ export const SidebarTreeSectionHeader = ({
         ) : (
           <div className="admin-sec-hdr">{label}</div>
         )}
-      {action}
+        {action}
       </div>
     </div>
   )

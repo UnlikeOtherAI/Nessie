@@ -8,7 +8,7 @@ import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
 import { BOARD_ICON, projectSections } from '../../navigation/project-sections'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 import { SidebarEmptyNote } from './SidebarEmptyNote'
-import { SidebarTreeChevron } from './SidebarTree'
+import { SidebarTreeChevron } from '../../components/primitives/SidebarTree'
 
 /**
  * A subordinate row's glyph, at the size and dimness the channel `#` already

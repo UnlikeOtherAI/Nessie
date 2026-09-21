@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import { getCookie, setCookie } from '../../lib/storage'
-import { SidebarTreeSectionHeader } from './SidebarTree'
+import { SidebarTreeSectionHeader } from '../../components/primitives/SidebarTree'
 
 type SidebarMenuSectionProps = {
   action?: ReactNode

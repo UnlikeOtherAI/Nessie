@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { faFile, faFileLines, faFolder } from '@fortawesome/free-solid-svg-icons'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode, SidebarTreePanel } from '../../../../layouts/admin-shell/SidebarTree'
+import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode, SidebarTreePanel } from '../../../primitives/SidebarTree'
 import { FinderRow } from './FinderRow'
 
 type FinderTreeViewProps = {
