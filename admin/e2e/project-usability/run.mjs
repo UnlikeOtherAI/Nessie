@@ -57,7 +57,7 @@ const openNewTask = async (page) => {
 const createTask = async (page, title, detail) => {
   const dialog = await openNewTask(page)
   await dialog.getByRole('textbox', { name: 'Title' }).fill(title)
-  if (detail) await dialog.getByRole('textbox', { name: 'Detail' }).fill(detail)
+  if (detail) await dialog.getByRole('textbox', { name: 'Description' }).fill(detail)
   await dialog.getByRole('button', { name: 'Create task' }).click()
   await dialog.waitFor({ state: 'hidden' })
   await page.locator('[data-kanban-card]').filter({ hasText: title }).waitFor()
