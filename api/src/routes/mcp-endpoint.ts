@@ -105,6 +105,7 @@ export const registerMcpEndpointRoutes = (
       const server = buildNessieMcpServer({
         actorContext,
         encryptionKeyRing: deps.encryptionKeyRing,
+        fileService: deps.fileService,
         checkPolicy: (client, actor, resourceType, action) =>
           checkPolicy(client, actor, resourceType, action),
         // The same narrowing the task routes apply. Owners see the whole
@@ -128,6 +129,7 @@ export const registerMcpEndpointRoutes = (
         isProjectAccessibleToActor,
         knowledge,
         prisma,
+        realtime: deps.realtimeHub,
         scopes: credential.scopes,
         spreadsheet: spreadsheetContext?.service ?? null,
       })
