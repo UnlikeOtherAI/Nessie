@@ -1,6 +1,7 @@
 export * from './adapter.js'
 export * from './errors.js'
 export * from './http.js'
+export * from './inline-assets.js'
 export * from './items.js'
 export * from './registry.js'
 export * from './webhook.js'

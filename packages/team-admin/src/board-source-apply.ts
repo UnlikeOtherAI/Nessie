@@ -1,12 +1,22 @@
-import type { PrismaClient, TaskStatus } from '@prisma/client'
-import { type NormalisedItem, itemFingerprint } from '@nessie/board-sources'
+import type { Prisma, PrismaClient, TaskStatus } from '@prisma/client'
+import {
+  type NormalisedItem,
+  type NormalisedItemLabel,
+  itemFingerprint,
+} from '@nessie/board-sources'
 import {
   type BoardSourceFieldMapping,
   BoardSourceFieldMappingSchema,
   type BoardSourceStateMapping,
   BoardSourceStateMappingsSchema,
   type ColumnCategory,
+  DEFAULT_LABEL_COLOR,
+  LabelColorSchema,
+  TASK_LABEL_NAME_MAX_CHARS,
+  normalizeLabelName,
 } from '@nessie/schemas'
+
+import { loadStoredAssetUrls, rewriteProviderUrls } from './board-source-apply-activity.js'
 
 /**
  * Turning one external item into one Nessie task.
@@ -103,6 +113,8 @@ type MappedNativeFields = {
 type FieldTargets = {
   taskData: MappedNativeFields
   fieldValues: Record<string, unknown>
+  /** The source maps the item's labels onto native project labels. */
+  labels: boolean
 }
 
 const applyFieldMappings = (
@@ -111,8 +123,15 @@ const applyFieldMappings = (
 ): FieldTargets => {
   const taskData: MappedNativeFields = {}
   const fieldValues: Record<string, unknown> = {}
+  let labels = false
 
   for (const mapping of mappings) {
+    // Fed from `item.labels`, not `item.fields.labels`: labels are first-class
+    // on the item and carry their colour, which a field value cannot.
+    if (mapping.target === 'native:labels') {
+      labels = true
+      continue
+    }
     const raw = item.fields[mapping.externalKey]
     const mapped = mapping.valueMap
       ? Array.isArray(raw)
@@ -146,8 +165,160 @@ const applyFieldMappings = (
       }
     }
   }
-  return { taskData, fieldValues }
+  return { taskData, fieldValues, labels }
 }
+
+type Db = PrismaClient | Prisma.TransactionClient
+
+/** The project and source a set of provider labels belongs to. */
+export type SourceLabelOwner = { id: string; organizationId: string; projectId: string }
+
+const labelColour = (colour: string | undefined): string | null => {
+  const parsed = LabelColorSchema.safeParse(colour?.toLowerCase())
+  return parsed.success ? parsed.data : null
+}
+
+/**
+ * Make each provider label a project label owned by the source, keyed by
+ * `(sourceId, externalId)`, with the provider's name and colour.
+ *
+ * A project label a person already made with the same name (case-folded) is
+ * **adopted** rather than duplicated: whoever made *Bug* before connecting
+ * Linear keeps their label, and it becomes the source's. A name another source
+ * already owns is left alone — two sources cannot own one label — and that
+ * provider label is not linked. A rename upstream that would collide with an
+ * existing label keeps the old name and still takes the colour.
+ *
+ * Returns provider label id → project label id for the labels that resolved.
+ */
+export const upsertSourceLabels = async (
+  db: Db,
+  source: SourceLabelOwner,
+  labels: readonly NormalisedItemLabel[],
+): Promise<Map<string, string>> => {
+  const resolved = new Map<string, string>()
+  const unique = [...new Map(labels.filter((label) => label.id).map((l) => [l.id, l])).values()]
+  if (unique.length === 0) return resolved
+
+  const owned = await db.taskLabel.findMany({
+    where: { sourceId: source.id, externalId: { in: unique.map((label) => label.id) } },
+    select: { id: true, externalId: true, name: true, color: true },
+  })
+  const byExternalId = new Map(owned.map((row) => [row.externalId as string, row]))
+
+  for (const label of unique) {
+    const name = label.label.trim().slice(0, TASK_LABEL_NAME_MAX_CHARS).trim()
+    if (!name) continue
+    const normalizedName = normalizeLabelName(name)
+    const colour = labelColour(label.color)
+    const current = byExternalId.get(label.id)
+
+    if (current) {
+      const data: Prisma.TaskLabelUpdateInput = {}
+      if (current.name !== name) {
+        const clash = await db.taskLabel.findUnique({
+          where: { projectId_normalizedName: { projectId: source.projectId, normalizedName } },
+          select: { id: true },
+        })
+        if (!clash || clash.id === current.id) {
+          data.name = name
+          data.normalizedName = normalizedName
+        }
+      }
+      if (colour && current.color !== colour) data.color = colour
+      if (Object.keys(data).length > 0) {
+        await db.taskLabel.update({ where: { id: current.id }, data })
+      }
+      resolved.set(label.id, current.id)
+      continue
+    }
+
+    // ON CONFLICT DO NOTHING on either unique key, so a concurrent apply of
+    // the same label — or a person's same-name label — never aborts the
+    // surrounding transaction; the re-read below says which case it was.
+    await db.taskLabel.createMany({
+      data: [
+        {
+          organizationId: source.organizationId,
+          projectId: source.projectId,
+          name,
+          normalizedName,
+          color: colour ?? DEFAULT_LABEL_COLOR,
+          sourceId: source.id,
+          externalId: label.id,
+        },
+      ],
+      skipDuplicates: true,
+    })
+    const mine = await db.taskLabel.findUnique({
+      where: { sourceId_externalId: { sourceId: source.id, externalId: label.id } },
+      select: { id: true },
+    })
+    if (mine) {
+      resolved.set(label.id, mine.id)
+      continue
+    }
+    const sameName = await db.taskLabel.findUnique({
+      where: { projectId_normalizedName: { projectId: source.projectId, normalizedName } },
+      select: { id: true, sourceId: true },
+    })
+    if (!sameName || sameName.sourceId !== null) continue
+    const adopted = await db.taskLabel.updateMany({
+      where: { id: sameName.id, sourceId: null },
+      data: { sourceId: source.id, externalId: label.id, name, ...(colour ? { color: colour } : {}) },
+    })
+    if (adopted.count === 1) resolved.set(label.id, sameName.id)
+  }
+  return resolved
+}
+
+/**
+ * Replace the task's **source-owned** labels with the item's set. A label a
+ * person added in Nessie (no source) is never touched: the sync replaces only
+ * the subset it knows about. Writes one `labels_changed` event when anything
+ * changed on a task that already existed.
+ */
+export const syncTaskSourceLabels = async (
+  db: Db,
+  source: SourceLabelOwner,
+  taskId: string,
+  labels: readonly NormalisedItemLabel[],
+  options: { recordEvent: boolean },
+): Promise<{ added: string[]; removed: string[] }> => {
+  const byExternalId = await upsertSourceLabels(db, source, labels)
+  const wanted = new Set(byExternalId.values())
+  const current = await db.taskLabelLink.findMany({
+    where: { taskId, label: { sourceId: source.id } },
+    select: { labelId: true },
+  })
+  const have = new Set(current.map((link) => link.labelId))
+  const added = [...wanted].filter((id) => !have.has(id))
+  const removed = [...have].filter((id) => !wanted.has(id))
+
+  if (removed.length > 0) {
+    await db.taskLabelLink.deleteMany({ where: { taskId, labelId: { in: removed } } })
+  }
+  if (added.length > 0) {
+    await db.taskLabelLink.createMany({
+      data: added.map((labelId) => ({ taskId, labelId })),
+      skipDuplicates: true,
+    })
+  }
+  if (options.recordEvent && (added.length > 0 || removed.length > 0)) {
+    await db.taskEvent.create({
+      data: {
+        taskId,
+        eventType: 'labels_changed',
+        payload: { by: `source:${source.id}`, bySourceId: source.id, added, removed },
+      },
+    })
+  }
+  return { added, removed }
+}
+
+/** Whether a source maps labels natively — the arm `syncTaskSourceLabels` serves. */
+export const mapsNativeLabels = (mappings: BoardSourceFieldMapping[]): boolean =>
+  mappings.some((mapping) => mapping.target === 'native:labels')
 
 /**
  * Apply one item. Returns what happened so the caller can decide whether to
@@ -225,7 +396,7 @@ export const applyInboundItem = async (
       ? source.identityByExternalUserId.get(item.assignee.externalUserId) ?? null
       : null
     const identity = linked?.userId || linked?.agentId ? linked : null
-    const { taskData, fieldValues } = applyFieldMappings(item, source.fieldMappings)
+    const { taskData, fieldValues, labels } = applyFieldMappings(item, source.fieldMappings)
     const status = statusForItem(category, identity !== null)
 
     const base = {
@@ -236,6 +407,13 @@ export const applyInboundItem = async (
       assigneeAgentId: identity?.agentId ?? null,
       archivedAt: item.archived ? new Date() : null,
       ...taskData,
+    }
+    // A provider image already stored here keeps its Nessie path: without this
+    // every changed item would flip the description back to the provider URL,
+    // which only the connection's owner can open.
+    if (existing && base.detail) {
+      const stored = await loadStoredAssetUrls(tx, source.id, [existing.taskId])
+      base.detail = rewriteProviderUrls(base.detail, stored.get(existing.taskId) ?? [])
     }
 
     const changes: ApplyChange[] = []
@@ -290,6 +468,12 @@ export const applyInboundItem = async (
            SET "field_values" = "field_values" || ${merge}::jsonb
          WHERE "id" = ${id}::uuid
       `
+    }
+
+    if (labels) {
+      await syncTaskSourceLabels(tx, source, id as string, item.labels, {
+        recordEvent: Boolean(existing),
+      })
     }
 
     const linkData = {

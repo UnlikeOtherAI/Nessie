@@ -421,3 +421,33 @@ test('the raw-key scan detects a literal when one is present', () => {
     assert.ok(!caught(allowed), `scan flagged a factory-built key: ${allowed}`)
   }
 })
+
+/**
+ * Ticket activity (docs/plans/2026-09-21-ticket-comments-attachments-labels
+ * §2.7): a ticket's comments and files nest under the task root so every task
+ * mutation and every `task.updated` nudge reaches an open dialog, and a
+ * project's labels nest under the project so a board repaint reaches them. None
+ * of them may join ROOT_EXCEPTIONS — that would be the unreachable-child bug.
+ */
+test('ticket comments, attachments and labels are reachable from their roots', () => {
+  const taskKeys = familyNamed('taskKeys') as {
+    all: readonly string[]
+    attachments: (taskId?: string) => readonly unknown[]
+    comments: (taskId?: string) => readonly unknown[]
+    forProject: (projectId?: string) => readonly unknown[]
+  }
+  const projectKeys = familyNamed('projectKeys') as {
+    all: readonly string[]
+    labels: (projectId: string) => readonly unknown[]
+  }
+
+  assert.deepEqual(taskKeys.comments('t-1'), ['tasks', 'comments', 't-1'])
+  assert.deepEqual(taskKeys.attachments('t-1'), ['tasks', 'attachments', 't-1'])
+  assert.deepEqual(projectKeys.labels('p-1'), ['projects', 'p-1', 'labels'])
+  for (const qualified of ['taskKeys.comments', 'taskKeys.attachments', 'projectKeys.labels']) {
+    assert.ok(!(qualified in ROOT_EXCEPTIONS), `${qualified} must stay nested`)
+  }
+  // Per-task keys never collide with a board list: those are keyed by a
+  // project UUID, never by the words `comments` or `attachments`.
+  assert.notDeepEqual(taskKeys.comments('x').slice(0, 2), taskKeys.forProject('x'))
+})
