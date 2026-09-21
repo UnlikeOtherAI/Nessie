@@ -5,8 +5,10 @@ import { ProjectIdSchema } from './ids.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 /**
- * Ticket labels: project-scoped, coloured, optionally owned by a board source
- * (docs/plans/2026-09-21-ticket-comments-attachments-labels/data-model.md §1.4).
+ * Ticket labels: board-scoped, coloured, optionally owned by a board source
+ * (docs/plans/2026-09-21-ticket-comments-attachments-labels/board-labels-and-attachment-removal.md §8).
+ * A ticket's labels are the labels of its home board; a ticket moved to another
+ * board keeps them by name.
  *
  * Colour is data on the row, not a theme token — the same carve-out the
  * organisation theme took — so it is a strict lower-case `#rrggbb`.
@@ -33,8 +35,14 @@ export const TaskLabelSummarySchema = z.object({
 })
 export type TaskLabelSummary = z.infer<typeof TaskLabelSummarySchema>
 
+/**
+ * The summary a `TaskRecord` and a card carry is unchanged: a pill never asks
+ * which board its label is on — it is the task's board.
+ */
 export const TaskLabelRecordSchema = TaskLabelSummarySchema.extend({
   projectId: ProjectIdSchema,
+  /** The board the label belongs to; its name is unique on that board. */
+  boardId: z.string().uuid(),
   source: z
     .object({
       sourceId: z.string().uuid(),
@@ -73,5 +81,5 @@ export const TaskLabelIdsSchema = z
   .max(TASK_LABELS_PER_TASK_MAX)
   .refine((ids) => new Set(ids).size === ids.length, 'duplicate label id')
 
-/** The uniqueness key: "Bug" and " bug " are one label in a project. */
+/** The uniqueness key: "Bug" and " bug " are one label on a board. */
 export const normalizeLabelName = (name: string): string => name.trim().toLowerCase()
