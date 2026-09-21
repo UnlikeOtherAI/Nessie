@@ -13,7 +13,13 @@ struct PairingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let state = pairing.state, state.isPending {
-                pending(state)
+                PairingAttemptView(
+                    state: state,
+                    busy: pairing.busy || controller.busy,
+                    confirm: { pairing.confirm(state) },
+                    cancel: { pairing.cancel() },
+                    openNessie: { NSWorkspace.shared.open(controller.nessieExecutorsURL) }
+                )
             } else if controller.model.description != nil && !replacing {
                 pairedSummary
             } else {
@@ -112,8 +118,28 @@ struct PairingSection: View {
         }
     }
 
-    @ViewBuilder
-    private func pending(_ state: ExecutorPairing) -> some View {
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.message = "Choose the folder Nessie may read for you"
+        panel.prompt = "Choose"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        NSApp.activate(ignoringOtherApps: true)
+        if panel.runModal() == .OK { chosenWorkspace = panel.url }
+    }
+}
+
+/// The visible pending attempt is a value. Its confirmation closure captures
+/// this exact claim, so a background refresh cannot substitute another one.
+struct PairingAttemptView: View {
+    let state: ExecutorPairing
+    let busy: Bool
+    let confirm: () -> Void
+    let cancel: () -> Void
+    let openNessie: () -> Void
+
+    var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let seconds = max(0, Int(state.expiration?.timeIntervalSince(context.date) ?? 0))
             VStack(alignment: .leading, spacing: 12) {
@@ -122,24 +148,24 @@ struct PairingSection: View {
                     Text("Cancel this attempt, then get a new code.").font(.callout)
                 } else if state.status == .confirmation {
                     confirmation(state)
-                    Button("Confirm and connect") { pairing.confirm(state) }
+                    Button("Confirm and connect", action: confirm)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(pairing.busy || controller.busy)
+                        .disabled(busy)
                 } else {
                     Text("Enter this code in Nessie").font(.headline)
                     Text("Open Agents → Executors → Pair executor.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     PairingCodeBoxes(code: state.code ?? "")
-                    Button("Open Nessie") { NSWorkspace.shared.open(controller.nessieExecutorsURL) }
+                    Button("Open Nessie", action: openNessie)
                 }
                 if seconds > 0 {
                     Text("Expires in \(seconds / 60):\(String(format: "%02d", seconds % 60))")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                Button("Cancel pairing") { pairing.cancel() }
-                    .disabled(pairing.busy)
+                Button("Cancel pairing", action: cancel)
+                    .disabled(busy)
             }
         }
     }
@@ -155,16 +181,6 @@ struct PairingSection: View {
         }
     }
 
-    private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.message = "Choose the folder Nessie may read for you"
-        panel.prompt = "Choose"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        NSApp.activate(ignoringOtherApps: true)
-        if panel.runModal() == .OK { chosenWorkspace = panel.url }
-    }
 }
 
 struct PairingCodeBoxes: View {

@@ -69,7 +69,7 @@ final class ExecutorController: ObservableObject {
     /// A state file that fell behind is behind by a handful of revisions, not by
     /// hundreds; a loop with no ceiling would hammer Nessie instead of saying it
     /// could not fix this.
-    private static let reProposalCeiling = 25
+    nonisolated private static let reProposalCeiling = 25
 
     init(isDevelopmentBuild: Bool) {
         self.isDevelopmentBuild = isDevelopmentBuild
