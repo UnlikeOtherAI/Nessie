@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { originalHumanAuthorId } from '@nessie/runtime'
+import { originalHumanAuthorId, type RawHumanMessage } from '@nessie/runtime'
 
 import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
 
@@ -75,12 +75,30 @@ export const admitPrivateConversationLineage = async (
   )
 }
 
-/** Admit server-authored hidden trigger content before it becomes a run prompt. */
+/**
+ * A trigger can age out of the recent transcript while its agent is busy.
+ * Its own channel and raw human author must therefore enter the sink here,
+ * before the trigger (or pinned instructions containing it) becomes a prompt.
+ * Hidden system kickoffs retain their explicit lineage rather than acquiring
+ * an invented author from the room they were delivered into.
+ */
 export const admitTriggerMessageLineage = async (
   prisma: PrismaClient,
   sink: ConsumedSourceSink,
-  message: PrivateConversationLineage,
-): Promise<void> => admitPrivateConversationLineage(prisma, sink, message)
+  message: PrivateConversationLineage & RawHumanMessage & {
+    thread: { channel: { id: string; visibility: string } }
+  },
+): Promise<void> => {
+  const sources = [...message.disclosureSources]
+  const channel = message.thread.channel
+  if (channel.visibility !== 'public' && message.role !== 'system') {
+    const authorUserId = originalHumanAuthorId(message)
+    if (authorUserId || sources.length === 0) {
+      sources.push({ sourceAuthorUserId: authorUserId, sourceChannelId: channel.id })
+    }
+  }
+  await admitPrivateConversationLineage(prisma, sink, { ...message, disclosureSources: sources })
+}
 
 /** Mark known non-public channels when their source author is unavailable. */
 export const markUnknownPrivateConversationChannels = (

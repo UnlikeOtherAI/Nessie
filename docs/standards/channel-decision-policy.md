@@ -33,6 +33,12 @@ Response producers validate stored JSON before exposing the typed
 also lists current agent/principal references so it never invents targets;
 the read records the channel disclosure scope.
 
+The assistant's policy write requires a disclosure sink and checks the target
+channel through the same `resolveToolPostBasis` used by message tools. A policy
+has no per-reader basis rows, so any source restriction not already implied by
+the entire channel prevents the write, including accompanying metadata edits.
+Clearing a policy writes no source content and remains available.
+
 `Message.channelDecision` stores the validated classifier outcome once;
 queue redelivery reuses it instead of choosing new actions under a changed
 policy. `Run.promptOverride` pins the selected work instructions for run
@@ -58,3 +64,9 @@ also refuses. A policy without an authorizer must be saved again.
 An organisation administrator's management standing does not grant access to
 a protected conversation: target execution also requires that authorizer to
 be an actual member of a non-public channel.
+
+The execution-time trigger read always admits its original non-public channel
+and raw human author, independently of the recent-message window. A queued
+trigger cannot lose its author's disclosure boundary just because later
+conversation pushes it outside that window; delegated and legacy triggers keep
+their explicit or unknown source authors rather than borrowing a later speaker.

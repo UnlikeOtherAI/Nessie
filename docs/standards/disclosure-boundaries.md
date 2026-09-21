@@ -165,6 +165,10 @@ Facts not restated there:
   hidden trigger message, never an untracked prompt override:
   it stamps the inherited basis and these same original authors before the child
   run receives its bytes. Public conversations create none.
+- A queued trigger owns its author provenance even after it leaves the recent
+  transcript window. `admitTriggerMessageLineage` reads the trigger's own
+  channel, role and raw-human author fields before its content or pinned
+  instructions enter a prompt; hidden system briefs keep their stored lineage.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
   `canModifyChannel` (`packages/team-admin/src/resource-authority.ts`, applied

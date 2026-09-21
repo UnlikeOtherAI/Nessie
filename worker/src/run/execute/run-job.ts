@@ -189,13 +189,18 @@ const runJobUnderFence = async (
   const message = await deps.prisma.message.findUnique({
     where: { id: payload.messageId },
     select: {
+      agentId: true,
       basisScopes: { select: { scopeType: true, scopeId: true } },
       content: true,
       disclosureSources: {
         select: { sourceAuthorUserId: true, sourceChannelId: true },
       },
       metadata: true,
+      onBehalfOfUserId: true,
+      role: true,
       rootMessageId: true,
+      thread: { select: { channel: { select: { id: true, visibility: true } } } },
+      userId: true,
     },
   })
   if (!message) {

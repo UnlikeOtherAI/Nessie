@@ -19,6 +19,7 @@ import {
   resolveActingMember,
 } from './access.js'
 import { recordChannelDirectoryRead } from './message-search-basis.js'
+import { requireConsumedSources, resolveToolPostBasis } from './tool-message-basis.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
 // The shared writes answer with the flat channel record; the assistant's
@@ -175,6 +176,16 @@ export const runChannelUpdateTool = async (
     && input.decisionPolicy === undefined
   ) {
     throw new Error('Provide at least one of label, topic, description, or decisionPolicy.')
+  }
+
+  // Policies are readable channel content and have no per-reader basis rows.
+  // A PA holding restricted material may author one only where the complete
+  // channel audience already has that material. Clearing a policy writes none.
+  if (input.decisionPolicy !== undefined && input.decisionPolicy !== null) {
+    requireConsumedSources(context)
+    if ((await resolveToolPostBasis(context, input.channelId)).length > 0) {
+      throw new Error('I cannot copy restricted information into this channel’s decision policy.')
+    }
   }
 
   let channel: ChannelRecord | null
