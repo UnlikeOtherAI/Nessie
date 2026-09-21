@@ -58,3 +58,12 @@ test('pairing refuses missing identity, epoch mismatch, foreign org and withdraw
   } })), /unavailable/)
   await assert.rejects(executorPairingAuthority(fake(), input, deps(payload('member', []))), /unavailable/)
 })
+
+test('pairing team options omit projects the person cannot administer', async () => {
+  const prisma = fake()
+  prisma.project.findMany = (async (args: { where: { members?: unknown } }) =>
+    args.where.members ? [] : [{ id: projectId, teamId: localTeamId }]) as typeof prisma.project.findMany
+  const result = await executorPairingAuthority(prisma, input, deps(payload()))
+  assert.deepEqual(result.options.teams, [{ id: 'team-live', name: 'Live team', projectIds: [] }])
+  assert.deepEqual(result.options.scopes, ['private'])
+})

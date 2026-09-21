@@ -84,7 +84,8 @@ export const executorPairingAuthority = async (
   }, select: { id: true } })
   const projectIds = manageableProjects.map((project) => project.id)
   return { userId: input.userId, projectIds, options: {
-    organization: { id: organization.id, name: organizationName }, teams,
+    organization: { id: organization.id, name: organizationName },
+    teams: teams.map((team) => ({ ...team, projectIds: team.projectIds.filter((id) => projectIds.includes(id)) })),
     scopes: ['private', ...(projectIds.length ? ['project' as const] : []), ...(manager ? ['organization' as const] : [])],
   } }
 }
