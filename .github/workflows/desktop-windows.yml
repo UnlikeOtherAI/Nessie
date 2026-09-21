@@ -230,6 +230,12 @@ jobs:
       - name: Install the WiX toolset
         run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
 
+      # The dialog set the package's UI comes from. It is a separate install
+      # from the toolset, and without it `wix build` fails on the `ui:WixUI`
+      # element with WIX0144 rather than on anything that names a dialog.
+      - name: Install the WiX UI extension
+        run: wix extension add --global WixToolset.UI.wixext/${{ env.WIX_VERSION }}
+
       - name: Enable VBScript for MSI validation
         shell: pwsh
         run: |

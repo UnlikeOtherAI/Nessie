@@ -31,10 +31,13 @@ import {
 const packaging = dirname(fileURLToPath(import.meta.url))
 const authoring = await readFile(join(packaging, 'nessie-executor.wxs'), 'utf8')
 const buildScript = await readFile(join(packaging, 'build-msi.mjs'), 'utf8')
-const windowsWorkflow = await readFile(
-  join(packaging, '..', '..', '..', '.github', 'workflows', 'desktop-windows.yml'),
-  'utf8',
-)
+const workflowsDirectory = join(packaging, '..', '..', '..', '.github', 'workflows')
+const windowsWorkflow = await readFile(join(workflowsDirectory, 'desktop-windows.yml'), 'utf8')
+/** Both workflows that run `build-msi.mjs`, by the name a person would look for. */
+const packageBuildingWorkflows = {
+  'ci.yml': await readFile(join(workflowsDirectory, 'ci.yml'), 'utf8'),
+  'desktop-windows.yml': windowsWorkflow,
+}
 const script = async (name) => readFile(join(packaging, 'scripts', name), 'utf8')
 
 test('the tray build uses the supported no-installer option', () => {
@@ -52,6 +55,27 @@ test('WiX builds first and validates with the intended ICE exceptions', () => {
   assert.equal(buildScript.includes("'-sice:ICE38'"), false)
   assert.equal(buildScript.includes("'-sice:ICE64'"), false)
   assert.ok(buildScript.indexOf("'build',") < buildScript.indexOf("'msi', 'validate',"))
+})
+
+/**
+ * The dialog set is a separate install from the toolset, so a workflow that
+ * installs `wix` and stops there builds everything right up to the `ui:WixUI`
+ * element and then fails with WIX0144 — an error that names an extension
+ * rather than anything a reader would connect to the installer's appearance.
+ */
+test('every workflow that builds the package installs the WiX UI extension', () => {
+  const extension = buildScript.match(/const UI_EXTENSION = `([^`]+)`/)?.[1]
+  assert.equal(extension, 'WixToolset.UI.wixext/${WIX_VERSION}')
+  for (const [name, workflow] of Object.entries(packageBuildingWorkflows)) {
+    assert.ok(
+      workflow.includes('wix extension add --global WixToolset.UI.wixext/'),
+      `${name} runs build-msi.mjs, so it must install the UI extension`,
+    )
+    assert.ok(
+      workflow.includes('dotnet tool install --global wix --version'),
+      `${name} must install the toolset itself`,
+    )
+  }
 })
 
 test('a Hyper-V socket GUID is the guest port in the VSOCK template', () => {

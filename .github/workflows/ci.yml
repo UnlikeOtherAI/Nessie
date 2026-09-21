@@ -479,6 +479,13 @@ jobs:
         if: steps.scope.outputs.windows_native == '1'
         run: dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
 
+      # The dialog set the package's UI comes from. It is a separate install
+      # from the toolset, and without it `wix build` fails on the `ui:WixUI`
+      # element with WIX0144 rather than on anything that names a dialog.
+      - name: Install the WiX UI extension
+        if: steps.scope.outputs.windows_native == '1'
+        run: wix extension add --global WixToolset.UI.wixext/${{ env.WIX_VERSION }}
+
       - name: Enable VBScript for MSI validation
         if: steps.scope.outputs.windows_native == '1'
         shell: pwsh
