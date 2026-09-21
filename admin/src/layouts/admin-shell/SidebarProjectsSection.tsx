@@ -322,6 +322,7 @@ export const SidebarProjectsSection = ({
                           style={menuPosition}
                         >
                           <span
+                            aria-label="Add new channel within project"
                             onClick={(e) => {
                               e.stopPropagation();
                               closeProjectMenu();
