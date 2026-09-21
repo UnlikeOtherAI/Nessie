@@ -7,13 +7,16 @@ import {
   type ReactNode,
 } from 'react'
 import type { Editor } from '@tiptap/react'
+import { faImage } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../../overlays/Popover'
 
 type ToolbarButtonProps = {
   /** Set for a toggle (a mark or a block type); omitted for a one-shot action. */
   active?: boolean
   disabled?: boolean
-  label: string
+  /** The visible glyph: a letter or two, or an icon. */
+  label: ReactNode
   onClick: () => void
   title: string
 }
@@ -146,7 +149,7 @@ const ImageToolbarButton = ({ onPickImages }: { onPickImages: (files: File[]) =>
   const inputRef = useRef<HTMLInputElement>(null)
   return (
     <>
-      <ToolbarButton label="🖼" onClick={() => inputRef.current?.click()} title="Image" />
+      <ToolbarButton label={<FontAwesomeIcon icon={faImage} />} onClick={() => inputRef.current?.click()} title="Image" />
       <input
         accept="image/*"
         aria-hidden="true"

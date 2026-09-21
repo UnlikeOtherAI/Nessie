@@ -1,6 +1,9 @@
+import { faXmark } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskFieldDefinitionRecord } from '../../../../facades/task-fields/hooks'
 import { Input, Select } from '../../../shared/FormControls'
 import { Pill } from '../../../primitives/Pill'
+import { TokenInput } from '../../../shared/TokenInput'
 
 type TaskFieldControlProps = {
   definition: TaskFieldDefinitionRecord
@@ -79,34 +82,48 @@ export const TaskFieldControl = ({
         </Select>
       )
     case 'multi_select': {
+      // The same growing pill field as Labels, without the create row: a
+      // field's options are the project's vocabulary, managed in Settings.
       const selected = asArray(value)
+      const tokens = selected.flatMap((id) => {
+        const option = definition.options.find((entry) => entry.id === id)
+        return option ? [{ id, label: option.label }] : []
+      })
       return (
-        <div className="flex flex-wrap gap-1">
-          {live.map((option) => {
-            const on = selected.includes(option.id)
-            return (
-              <button
-                aria-pressed={on}
-                className="rounded-full"
-                disabled={disabled}
-                key={option.id}
-                onClick={() =>
-                  onChange(
-                    on
-                      ? selected.filter((entry) => entry !== option.id)
-                      : [...selected, option.id],
-                  )
-                }
-                type="button"
-              >
-                <Pill tone={on ? option.tone ?? 'accent' : 'outline'}>{option.label}</Pill>
-              </button>
-            )
-          })}
-          {live.length === 0 ? (
-            <span className="text-xs text-[color:var(--tx3)]">No options yet.</span>
-          ) : null}
-        </div>
+        <TokenInput
+          ariaLabel={definition.name}
+          disabled={disabled}
+          onAdd={(id) => onChange(selected.includes(id) ? selected : [...selected, id])}
+          onRemove={(id) => onChange(selected.filter((entry) => entry !== id))}
+          options={live.map((option) => ({ id: option.id, label: option.label }))}
+          placeholder={live.length === 0 ? 'No options yet.' : `Add ${definition.name.toLowerCase()}`}
+          renderToken={(token, remove) => (
+            <Pill
+              className="gap-1"
+              size="sm"
+              tone={definition.options.find((option) => option.id === token.id)?.tone ?? 'muted'}
+              uppercase={false}
+            >
+              {token.label}
+              {remove ? (
+                <button
+                  aria-label={`Remove ${token.label}`}
+                  className="admin-label-pill-remove"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    remove()
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  tabIndex={-1}
+                  type="button"
+                >
+                  <FontAwesomeIcon icon={faXmark} />
+                </button>
+              ) : null}
+            </Pill>
+          )}
+          tokens={tokens}
+        />
       )
     }
     case 'user':

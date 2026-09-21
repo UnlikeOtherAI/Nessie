@@ -57,7 +57,10 @@ const PANEL_STYLE: Record<DialogSize, CSSProperties> = {
     maxHeight: PANEL_MAX_HEIGHT,
     maxWidth: 'none',
     overflowY: 'auto',
-    width: 'min(80vw, 1100px)',
+    // 80vw on a desktop; on a phone 80vw is a 300 px panel, so the panel
+    // widens to the page gutter there (up to 40rem) — the task dialog's
+    // two-column form stacks into it (ticket plan ui.md §5.13).
+    width: 'min(max(80vw, min(100vw - 2 * var(--page-gutter), 40rem)), 1100px)',
   },
   // A table needs to stay within a small viewport gutter while preserving its
   // columns, not inherit the constrained editor geometry of ordinary dialogs.

@@ -1,0 +1,131 @@
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import type { TaskLabelSummary } from '@nessie/schemas'
+import { FieldLabel } from '../../../primitives/FieldLabel'
+import { LabelPill } from '../../../primitives/LabelPill'
+import { Notice } from '../../../primitives/Notice'
+import { TokenInput } from '../../../shared/TokenInput'
+import { formErrorMessage } from '../../../../facades/forms/form-errors'
+import {
+  nextLabelColor,
+  useCreateProjectLabel,
+  useProjectLabels,
+} from '../../../../facades/task-labels/hooks'
+
+type TaskLabelsFieldProps = {
+  disabled?: boolean
+  onChange: (labelIds: string[]) => void
+  projectId: string
+  /**
+   * The provider's name when the ticket mirrors a source read-only: its own
+   * labels are then locked here, because the source would put them back.
+   */
+  readOnlySourceName?: string | null
+  /** The task's labels as the server last sent them — names for ids the list has not loaded. */
+  taskLabels?: TaskLabelSummary[]
+  value: string[]
+}
+
+/**
+ * The ticket's labels as pills inside one growing field (ui.md §5.7).
+ *
+ * Every label of the project is one focus away in the list, and a name that
+ * does not exist yet is one Enter away from existing: the *Create label "x"*
+ * row adopts an existing label on a name clash instead of failing, because the
+ * person meant "this label" either way. Management — rename, recolour, delete —
+ * lives in Settings → Labels, which the list's footer links to.
+ */
+export const TaskLabelsField = ({
+  disabled = false,
+  onChange,
+  projectId,
+  readOnlySourceName,
+  taskLabels = [],
+  value,
+}: TaskLabelsFieldProps) => {
+  const labelsQuery = useProjectLabels(projectId)
+  const createLabel = useCreateProjectLabel(projectId)
+  const labels = useMemo(() => labelsQuery.data ?? [], [labelsQuery.data])
+
+  const byId = useMemo(() => {
+    const map = new Map<string, TaskLabelSummary>()
+    for (const label of taskLabels) map.set(label.id, label)
+    for (const label of labels) map.set(label.id, label)
+    return map
+  }, [labels, taskLabels])
+
+  const lockedTitle = readOnlySourceName ? `${readOnlySourceName} owns this label` : undefined
+  const locked = (label: TaskLabelSummary | undefined) => Boolean(readOnlySourceName && label?.external)
+
+  const tokens = value.flatMap((id) => {
+    const label = byId.get(id)
+    return label ? [{ id, label: label.name, removable: !locked(label) }] : []
+  })
+  const options = labels.map((label) => ({
+    disabled: locked(label) || undefined,
+    id: label.id,
+    label: label.name,
+    title: locked(label) ? lockedTitle : undefined,
+  }))
+
+  const loading = labelsQuery.isLoading
+  const inputId = `task-labels-${projectId}`
+
+  return (
+    <div className="grid gap-1.5">
+      <FieldLabel htmlFor={inputId}>Labels</FieldLabel>
+      <TokenInput
+        ariaLabel="Labels"
+        createLabel={(text) => `Create label “${text}”`}
+        disabled={disabled || loading}
+        footer={<Link to={`/projects/${projectId}/settings?section=labels`}>Manage labels…</Link>}
+        id={inputId}
+        onAdd={(id) => onChange(value.includes(id) ? value : [...value, id])}
+        onCreate={async (text) => {
+          // The field shows a rejection under its list; this makes it a sentence.
+          try {
+            const created = await createLabel.mutateAsync({
+              adoptExisting: true,
+              color: nextLabelColor(labels.length),
+              name: text.trim(),
+            })
+            return { id: created.id }
+          } catch (cause) {
+            throw new Error(formErrorMessage(cause, 'Could not create the label'))
+          }
+        }}
+        onRemove={(id) => onChange(value.filter((entry) => entry !== id))}
+        options={options}
+        placeholder={loading ? 'Loading labels…' : 'Add labels'}
+        renderOption={(option) => {
+          const label = byId.get(option.id)
+          return label
+            ? <LabelPill color={label.color} external={label.external} name={label.name} size="sm" />
+            : option.label
+        }}
+        renderToken={(token, remove) => {
+          const label = byId.get(token.id)
+          return (
+            <LabelPill
+              color={label?.color ?? ''}
+              external={label?.external}
+              name={token.label}
+              onRemove={remove}
+              size="sm"
+              title={locked(label) ? lockedTitle : undefined}
+            />
+          )
+        }}
+        tokens={tokens}
+      />
+      {labelsQuery.isError ? (
+        <Notice size="sm" tone="danger">
+          Couldn't load labels.{' '}
+          <button className="underline" onClick={() => void labelsQuery.refetch()} type="button">
+            Retry
+          </button>
+        </Notice>
+      ) : null}
+    </div>
+  )
+}
