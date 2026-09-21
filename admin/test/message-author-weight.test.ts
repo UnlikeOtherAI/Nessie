@@ -15,3 +15,46 @@ test('message author names resolve the bold font-weight token', () => {
   assert.match(messageRow, /font-bold text-\[var\(--tx\)\]/)
   assert.match(transientRows, /font-bold text-\[var\(--tx\)\]/)
 })
+
+test('message reactions precede the reply summary', () => {
+  const messageBody = readSource('../src/components/features/channels/ChannelMessageBody.tsx')
+  const reactions = messageBody.indexOf('<ChannelMessageActions')
+  const replySummary = messageBody.indexOf('<ReplySummaryBar')
+
+  assert.notEqual(reactions, -1)
+  assert.notEqual(replySummary, -1)
+  assert.ok(reactions < replySummary)
+})
+
+test('fine-pointer message actions use the reference floating toolbar', () => {
+  const styles = readSource('../src/styles.css')
+  const actions = styles.slice(
+    styles.indexOf('.admin-msg-actions {'),
+    styles.indexOf('.admin-msg-action-button {'),
+  )
+  const finePointer = styles.slice(styles.indexOf('@media (hover: hover) and (pointer: fine)'))
+
+  assert.match(actions, /gap: 2px;/)
+  assert.match(actions, /border: 0;/)
+  assert.match(actions, /border-radius: 10px;/)
+  assert.match(actions, /background: var\(--panel\);/)
+  assert.match(actions, /padding: 3px;/)
+  assert.match(actions, /0 1px 2px rgb\(0 0 0 \/ 5%\)/)
+  assert.match(actions, /0 6px 20px rgb\(0 0 0 \/ 5%\)/)
+  assert.match(finePointer, /top: -12px;/)
+  assert.match(finePointer, /right: 20px;/)
+  assert.match(finePointer, /width: 26px;/)
+  assert.match(finePointer, /height: 26px;/)
+  assert.match(finePointer, /border-radius: 10px;/)
+  assert.match(finePointer, /width: 14px;/)
+  assert.match(finePointer, /height: 14px;/)
+})
+
+test('message action toolbar uses the reference Lucide icon set', () => {
+  const actions = readSource('../src/components/features/channels/ChannelMessageActions.tsx')
+
+  assert.match(actions, /from 'lucide-react'/)
+  for (const icon of ['Check', 'Copy', 'Smile', 'Reply', 'Pencil', 'Trash2']) {
+    assert.match(actions, new RegExp(`<${icon}(?:\\s|>)`))
+  }
+})

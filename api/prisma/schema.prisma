@@ -2503,6 +2503,8 @@ model Channel {
   // sp-channels: channel lifecycle metadata + soft-archive
   topic                                 String?
   description                           String?
+  decisionPolicy                        Json?                                  @map("decision_policy") @db.JsonB
+  decisionPolicyAuthorizer              Json?                                  @map("decision_policy_authorizer") @db.JsonB
   archivedAt                            DateTime?                              @map("archived_at")
   // Soft delete. `DELETE /api/channels/:channelId` stamps this together with
   // `archivedAt`, so every archived-channel filter already hides the row and
@@ -2964,6 +2966,8 @@ model UserStatusRule {
 }
 
 model Message {
+  // One validated channel-classification outcome, reused on queue redelivery.
+  channelDecision Json? @map("channel_decision") @db.JsonB
   id                          String                         @id @default(uuid()) @db.Uuid
   threadId                    String                         @map("thread_id") @db.Uuid
   agentId                     String?                        @map("agent_id") @db.Uuid
@@ -3531,6 +3535,8 @@ model AgentBinding {
 }
 
 model Run {
+  // Pinned classifier instructions survive restart and queue replay.
+  promptOverride String? @map("prompt_override")
   id                                  String                          @id @default(uuid()) @db.Uuid
   inferenceResourceAdmissionId        String?                         @map("inference_resource_admission_id") @db.Uuid
   agentId                             String                          @map("agent_id") @db.Uuid
@@ -4059,6 +4065,9 @@ model RunThreadPendingMessage {
   // Mirrors RunExecuteJobPayload.interactive at record time: a live human chat
   // turn stays budget-exempt when the batched follow-up run executes it.
   interactive       Boolean               @default(false)
+  // Durable classifier directive retained when an active run defers the message.
+  promptOverride    String?               @map("prompt_override")
+  replyPlacement    RunReplyPlacement?    @map("reply_placement")
   // The base AuthorizedActionContext of the triggering message (before the
   // run/task ids are injected); the drain re-injects fresh ids for the
   // follow-up run it creates.

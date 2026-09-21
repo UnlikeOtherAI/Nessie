@@ -39,6 +39,7 @@ export default defineConfig(({ command, mode }) => {
   const includeAgentProposalCardFixture = env.NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE === '1'
   const includeChannelAgentControlsFixture =
     env.NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE === '1'
+  const includeChannelDecisionsFixture = env.NESSIE_CHANNEL_DECISIONS_E2E_FIXTURE === '1'
   const includeExecutorLocalMcpFixture = env.NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE === '1'
   const includeExecutorPairingFixture = env.NESSIE_EXECUTOR_PAIRING_E2E_FIXTURE === '1'
   const includeExecutorAgentsFixture = env.NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE === '1'
@@ -64,6 +65,7 @@ export default defineConfig(({ command, mode }) => {
     || includeAppConnectScopeFixture
     || includeAgentProposalCardFixture
     || includeChannelAgentControlsFixture
+    || includeChannelDecisionsFixture
     || includeVisibilityAffordancesFixture
     || includeTaskSetsFixture
     || includeTaskDialogFixture
@@ -89,6 +91,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeChannelAgentControlsFixture ? {
             channelAgentControls: resolve(__dirname, 'e2e/channel-agent-controls/index.html'),
+          } : {}),
+          ...(includeChannelDecisionsFixture ? {
+            channelDecisions: resolve(__dirname, 'e2e/channel-decisions/index.html'),
           } : {}),
           ...(includeVisibilityAffordancesFixture ? {
             visibilityAffordances: resolve(__dirname, 'e2e/visibility-affordances/index.html'),

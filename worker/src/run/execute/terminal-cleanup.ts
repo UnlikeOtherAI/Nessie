@@ -5,7 +5,7 @@ import { releaseAgentTodosForTerminalRun } from '@nessie/team-admin'
 import { releaseRunCloudBrowsers } from '../browser-cloud/release-hook.js'
 import { clearCrashCheckpoint, clearCrashCheckpointForUnheldRun } from './crash-checkpoint.js'
 import { clearRunToolEffects } from './tool-effect-ledger.js'
-import { clearWorking } from './working-marker.js'
+import { clearWorking, workingMessageIdForTrigger } from './working-marker.js'
 
 type CleanupMode = 'best-effort' | 'required'
 
@@ -53,7 +53,10 @@ export const cleanupTerminalRun = async (
   await cleanupRunResumeState(prisma, runId, input)
   await runCleanup(input.mode, 'finish terminal cleanup', runId, async () => {
     const run = await prisma.run.findUnique({
-      select: { agentId: true, principalUserId: true, threadId: true, triggerMessageId: true },
+      select: {
+        agentId: true, principalUserId: true, threadId: true, triggerMessageId: true,
+        triggerMessage: { select: { role: true, metadata: true } },
+      },
       where: { id: runId },
     })
     await releaseAgentTodosForTerminalRun(prisma, runId)
@@ -61,7 +64,7 @@ export const cleanupTerminalRun = async (
     if (!run?.triggerMessageId) return
     await clearWorking(prisma, transport, {
       agentId: run.agentId,
-      messageId: run.triggerMessageId,
+      messageId: workingMessageIdForTrigger({ ...run.triggerMessage, id: run.triggerMessageId }),
       ...(run.principalUserId ? { onBehalfOfUserId: run.principalUserId } : {}),
       threadId: run.threadId,
     })

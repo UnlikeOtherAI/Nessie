@@ -86,6 +86,7 @@ export const searchMessages = async (
 
   const conditions: Prisma.Sql[] = [
     Prisma.sql`m."deleted_at" IS NULL`,
+    Prisma.sql`m."role" <> 'system'`,
     Prisma.sql`t."channel_id" IN (${Prisma.join(
       channelIds.map((id) => Prisma.sql`${id}::uuid`),
     )})`,

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { DEFAULT_CHANNEL_DECISION_POLICY } from '@nessie/schemas'
 
 import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
@@ -75,6 +76,23 @@ test('channel_find stamps the same way', async () => {
   assert.deepEqual(consumedSources.list(), [
     { scopeId: 'channel-private', scopeType: 'channel' },
   ])
+})
+
+test('a channel-specific policy read includes current enum options and participant principals', async () => {
+  const { consumedSources, context } = buildContext()
+  const channelId = '33333333-3333-4333-8333-333333333333'
+  const participants = [{ agentId: '44444444-4444-4444-8444-444444444444', principalUserId: USER }]
+  context.prisma = {
+    channel: { findMany: async (query: { where: { id: string } }) => {
+      assert.equal(query.where.id, channelId)
+      return [{ ...CHANNELS[1], id: channelId, decisionPolicy: DEFAULT_CHANNEL_DECISION_POLICY,
+        agentBindings: participants }]
+    } },
+  } as unknown as BuiltinToolRuntimeContext['prisma']
+  const result = await runChannelListTool(context, { channelId })
+  assert.ok(result.outputPreview?.includes(JSON.stringify(DEFAULT_CHANNEL_DECISION_POLICY)))
+  assert.ok(result.outputPreview?.includes(JSON.stringify(participants)))
+  assert.deepEqual(consumedSources.list(), [{ scopeId: channelId, scopeType: 'channel' }])
 })
 
 test('agent_list stamps private agents only, never team-visible ones', () => {

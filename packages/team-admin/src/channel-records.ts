@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import type { Channel, PrismaClient } from '@prisma/client'
 import {
+  ChannelDecisionPolicySchema,
   parseChannelId,
   parseOrganizationId,
   parseProjectId,
@@ -403,6 +404,7 @@ export const mapChannelRecord = async (
     lastMessageAt,
     topic: channel.topic ?? null,
     description: channel.description ?? null,
+    decisionPolicy: ChannelDecisionPolicySchema.nullable().parse(channel.decisionPolicy ?? null),
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     viewerIsMember,
     viewerCanManage,

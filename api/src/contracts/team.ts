@@ -1,5 +1,6 @@
 import {
   AgentIdSchema,
+  ChannelDecisionPolicySchema,
   ChannelIdSchema,
   TeamIdSchema,
   UserIdSchema,
@@ -42,16 +43,18 @@ export const UpdateChannelBodySchema = z
     topic: z.string().max(500).nullable().optional(),
     description: z.string().max(2000).nullable().optional(),
     visibility: SelectableVisibilitySchema.optional(),
+    decisionPolicy: ChannelDecisionPolicySchema.nullable().optional(),
   })
   .refine(
     (body) =>
       body.label !== undefined
       || body.topic !== undefined
       || body.description !== undefined
-      || body.visibility !== undefined,
+      || body.visibility !== undefined
+      || body.decisionPolicy !== undefined,
     {
       message:
-        'At least one of label, topic, description, or visibility is required',
+        'At least one channel field is required',
     },
   )
 export type UpdateChannelBody = z.infer<typeof UpdateChannelBodySchema>

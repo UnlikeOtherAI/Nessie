@@ -21,6 +21,20 @@ import type { PgRealtimeTransport } from '@nessie/runtime'
 
 export const WORKING_EMOJI = '👀'
 
+/** A hidden policy task works from the original visible message. */
+export const workingMessageIdForTrigger = (trigger: {
+  id: string; role?: string; metadata?: unknown
+}): string => {
+  const metadata = trigger.metadata
+  if (trigger.role !== 'system' || !metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return trigger.id
+  }
+  const kickoff = (metadata as Record<string, unknown>).channelPolicyKickoff
+  if (!kickoff || typeof kickoff !== 'object' || Array.isArray(kickoff)) return trigger.id
+  const source = (kickoff as Record<string, unknown>).sourceMessageId
+  return typeof source === 'string' && source.length > 0 ? source : trigger.id
+}
+
 export const publishReactionChanged = async (
   transport: PgRealtimeTransport,
   input: {

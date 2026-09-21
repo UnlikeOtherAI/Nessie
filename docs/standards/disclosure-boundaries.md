@@ -54,6 +54,17 @@ non-public channels, search fails closed, every read path asks one predicate,
 live lanes cut by `runReplyIsRestricted`, containment = memory recall only): stated above.
 Facts not restated there:
 
+- Thread reach is the channel's read audience: only public standard non-system
+  channels are browsable without joining. DMs and system rooms require actual
+  channel membership even if stored as public; deleted channels are unreadable.
+  `buildAccessibleChannelWhere` supplies this rule to thread, conversation and
+  agent-history readers, and the request visibility helper applies the same rule.
+- **System messages are internal run instructions, never conversation history.**
+  Thread feeds, search (human and agent), agent history and direct message reads
+  exclude `role: system` even when the row has no disclosure basis. Hidden roots
+  are not followable. The executing run reads its exact trigger through the run
+  admission path, which separately checks and inherits its provenance; hiding a
+  row is not a substitute for stamping its canonical basis and source authors.
 - The remainder after `computeReplyBasis` is stamped as `MessageBasisScope` +
   `RunBasisScope` in the same transaction as the message; `agent-message.ts`
   opens that transaction itself rather than trusting callers.
@@ -169,6 +180,10 @@ Facts not restated there:
   hidden trigger message, never an untracked prompt override:
   it stamps the inherited basis and these same original authors before the child
   run receives its bytes. Public conversations create none.
+- A queued trigger owns its author provenance even after it leaves the recent
+  transcript window. `admitTriggerMessageLineage` reads the trigger's own
+  channel, role and raw-human author fields before its content or pinned
+  instructions enter a prompt; hidden system briefs keep their stored lineage.
 - Since viewer channel scope comes from `ChannelMember` rows alone, adding or
   removing one of those rows is itself a disclosure decision: it takes
   `canModifyChannel` (`packages/team-admin/src/resource-authority.ts`, applied

@@ -1,4 +1,5 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
+import { channelDecisionPolicyParameters } from './channel-decision-tool-schema.js'
 
 /**
  * Channel lifecycle tools (sp-channels). Finding and listing are open to any
@@ -40,7 +41,8 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'List Channels',
     description:
       'List channels visible in the current organization. Returns each ' +
-      'channel id, label, project/team scope, scoped slug, visibility, topic, and whether it is archived.',
+      'channel id, label, project/team scope, scoped slug, visibility, topic, and whether it is archived. ' +
+      'Pass channelId to read that channel\'s decision policy and its bound agent references before editing the policy.',
     parameters: {
       type: 'object',
       properties: {
@@ -48,6 +50,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'boolean',
           description: 'Include archived channels in the result (default false).',
         },
+        channelId: { type: 'string', description: 'Read the current policy and bound agent references for this channel.' },
         limit: {
           type: 'integer',
           description: 'Maximum number of channels to return.',
@@ -59,14 +62,16 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'channel_update',
     category: 'channels',
-    summary: "Update a channel's label, topic, or description.",
+    summary: "Update a channel's details or agent decision policy.",
     label: 'Update Channel',
     personalAssistantOnly: true,
     description:
       'Update a channel label, topic, and/or description. Requires the acting ' +
       'principal to be able to change the channel: any member of it, or an ' +
       'organisation owner or admin when the channel is public. A direct message ' +
-      'can only be changed by its participants.',
+      'can only be changed by its participants. Agent decision policies apply only to standard channels. ' +
+      'Read the current policy with channel_list(channelId) first. Each enum question needs at least ' +
+      'two options and one option without follow-up work. Follow-ups preserve the agent\'s existing permissions.',
     parameters: {
       type: 'object',
       properties: {
@@ -86,6 +91,7 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
           type: 'string',
           description: 'New longer description for the channel.',
         },
+        decisionPolicy: channelDecisionPolicyParameters,
       },
       required: ['channelId'],
     },

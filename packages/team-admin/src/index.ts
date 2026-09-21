@@ -247,3 +247,6 @@ export * from './task-set-controls.js'
 export * from './task-set-documents.js'
 
 export * from './task-set-disclosure.js'
+export * from './channel-decision-policy.js'
+export * from './channel-policy-authority.js'
+export * from './channel-policy-replay.js'

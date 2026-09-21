@@ -230,6 +230,10 @@ when one changes, the same turn updates it, not this section.
   but no answer, and paint 👀 on the message a run is working from.
   Read [`docs/standards/agent-voice.md`](docs/standards/agent-voice.md)
   before writing code here.
+- **Jev channel decisions.** Channel settings and the Personal Assistant share
+  the enum policy; configured work carries its authorizer through queued runs.
+  Read [`docs/standards/channel-decision-policy.md`](docs/standards/channel-decision-policy.md)
+  before changing classification, policy editing or its execution.
 - **A recurring watch keeps one rolling status message.** A sweep that finds
   nothing edits the watch's own status line in place instead of adding a
   message, so ninety-six quiet sweeps a day stay one line.

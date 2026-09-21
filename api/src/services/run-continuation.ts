@@ -1,7 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext, RunStatus } from '@nessie/schemas'
+import { ChannelDecisionPolicyError } from '@nessie/team-admin'
 
 import { canUserReadRunBasis } from './run-disclosure.js'
+import { resolveRunReplayContext } from './run-policy-replay.js'
 import {
   ACTIVE_RUN_STATUSES,
   handoffProductSlug,
@@ -26,6 +28,7 @@ export type ContinueRunResult =
   | { kind: 'checkpoint_consumed' }
   // Another run is in flight on the same (agent, thread) slot.
   | { kind: 'busy' }
+  | { kind: 'policy_authority_unavailable' }
   | { kind: 'continued'; runId: string; taskId: string; agentId: string; channelId: string }
 
 /**
@@ -36,7 +39,8 @@ export type ContinueRunResult =
  * run in the first place — continuing is "post this turn again", not a new
  * privilege. `loadRunForActor` is that gate: the agent must be visible to this
  * person and the run's channel public in their organisation or one they joined.
- * The continuation run is attributed to the caller.
+ * Ordinary continuation runs are attributed to the caller. Configured policy
+ * work retains the authorizer captured with the original trigger decision.
  *
  * What this module owns is that gate. The continuation sequence itself —
  * slot check, set-once checkpoint claim, run, task, `run.continued` event and
@@ -91,6 +95,15 @@ export const continueRun = async (
   const triggerMessageId = run.triggerMessageId
 
   try {
+    const replay = await resolveRunReplayContext(prisma, run, actorContext)
+    if (replay.actorContext.actionContext.purpose === 'channel.policy'
+      && !await canUserReadRunBasis(prisma, {
+        organizationId: input.organizationId, runId: run.id,
+        uoaIdentity: replay.actorContext.actionContext.uoaIdentity,
+        userId: replay.actorContext.actor.actorId,
+      })) {
+      return { kind: 'policy_authority_unavailable' }
+    }
     const resumed = await prisma.$transaction((tx) =>
       resumeSuspendedRun(tx, {
         // Read outside the claim transaction on purpose: run basis scopes are
@@ -103,12 +116,12 @@ export const continueRun = async (
             uoaIdentity: actorContext.actionContext.uoaIdentity,
             userId: actorContext.actor.actorId,
           }),
-        interactive: actorContext.actor.actorType === 'user',
+        interactive: replay.interactive,
         organizationId: input.organizationId,
         // A fresh run id keys the job so it never collides with the original
         // run's enqueue key (`run:<messageId>:<agentId>`), which would be a no-op.
         queueKeyPrefix: 'run:continue',
-        resumeActorContext: actorContext,
+        resumeActorContext: replay.actorContext,
         runId: run.id,
         // Already terminal: a Continue press is only offered on a stopped run,
         // so there is no parked status to claim.
@@ -123,6 +136,7 @@ export const continueRun = async (
       channelId: run.channelId,
     }
   } catch (error) {
+    if (error instanceof ChannelDecisionPolicyError) return { kind: 'policy_authority_unavailable' }
     if (error instanceof ResumeNotEntitled) {
       return { kind: 'not_continuable', detail: 'no_checkpoint', status: run.status }
     }

@@ -37,7 +37,7 @@ export const registerThreadReplyRoutes = (app: FastifyInstance, deps: RouteDeps)
     }
 
     const message = await prisma.message.findFirst({
-      where: { id: messageId, threadId: thread.id },
+      where: { id: messageId, threadId: thread.id, role: { not: 'system' } },
       include: messageInclude,
     })
     if (!message) {
@@ -97,9 +97,9 @@ export const registerThreadReplyRoutes = (app: FastifyInstance, deps: RouteDeps)
       return reply
     }
 
-    // Only root messages own a followable reply thread.
+    // Only visible root messages own a followable reply thread.
     const message = await prisma.message.findFirst({
-      where: { id: messageId, threadId: thread.id, rootMessageId: null },
+      where: { id: messageId, threadId: thread.id, rootMessageId: null, role: { not: 'system' } },
       select: { id: true },
     })
     if (!message) {

@@ -43,7 +43,9 @@ export const buildAccessibleChannelWhere = (
     ? {}
     : {
         OR: [
-          { visibility: 'public' },
+          // DMs and system rooms remain participant-only even if their stored
+          // visibility is public. Only ordinary channels are browsable.
+          { type: 'standard', systemChannelType: null, visibility: 'public' },
           { members: { some: { userId: visibility.userId } } },
         ],
       }),

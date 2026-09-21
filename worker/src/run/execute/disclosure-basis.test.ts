@@ -154,6 +154,8 @@ test('a delegated trigger keeps its original private author without adding an un
     { channel: { findMany: async () => [] } } as never,
     sink,
     {
+      agentId: null, metadata: null, onBehalfOfUserId: null, role: 'system', userId: null,
+      thread: { channel: { id: 'destination', visibility: 'private' } },
       basisScopes: [scope('channel', 'private-room')],
       disclosureSources: [{ sourceAuthorUserId: 'author-b', sourceChannelId: 'private-room' }],
     },
@@ -180,12 +182,85 @@ test('a legacy delegated trigger becomes an unknown private source', async () =>
   await admitTriggerMessageLineage(
     { channel: { findMany: async () => [{ id: 'private-room', visibility: 'private' }] } } as never,
     sink,
-    { basisScopes: [scope('channel', 'private-room')], disclosureSources: [] },
+    {
+      agentId: null, metadata: null, onBehalfOfUserId: null, role: 'system', userId: null,
+      thread: { channel: { id: 'destination', visibility: 'private' } },
+      basisScopes: [scope('channel', 'private-room')], disclosureSources: [],
+    },
   )
 
   assert.deepEqual(sink.privateConversationSources(), [
     { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
   ])
+})
+
+test('an old private human trigger keeps its own author independently of the later transcript', async () => {
+  const sink = createConsumedSourceSink()
+  // The latest transcript contains only a later speaker. The waiting trigger
+  // is already outside that window, so only its explicit admission records A.
+  sink.addPrivateConversationSource({ sourceAuthorUserId: 'later-author', sourceChannelId: 'private-room' })
+  await admitTriggerMessageLineage({} as never, sink, {
+    agentId: null, metadata: null, onBehalfOfUserId: null, role: 'user', userId: 'original-author',
+    thread: { channel: { id: 'private-room', visibility: 'protected' } },
+    basisScopes: [], disclosureSources: [],
+  })
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'later-author', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: 'original-author', sourceChannelId: 'private-room' },
+  ])
+})
+
+test('a user-shaped delegated trigger never treats its effective person as the original author', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage({} as never, sink, {
+    agentId: null, metadata: { delegatedByAgentId: 'agent-1' }, onBehalfOfUserId: null,
+    role: 'user', userId: 'effective-user',
+    thread: { channel: { id: 'private-room', visibility: 'private' } },
+    basisScopes: [], disclosureSources: [],
+  })
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: null, sourceChannelId: 'private-room' },
+  ])
+})
+
+test('a public human trigger adds no private source and retains inherited source restrictions', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage({} as never, sink, {
+    agentId: null, metadata: null, onBehalfOfUserId: null, role: 'user', userId: 'public-author',
+    thread: { channel: { id: 'public-room', visibility: 'public' } },
+    basisScopes: [],
+    disclosureSources: [{ sourceAuthorUserId: 'private-author', sourceChannelId: 'private-room' }],
+  })
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'private-author', sourceChannelId: 'private-room' },
+  ])
+})
+
+test('a saved classifier input keeps older authors and personal restrictions outside the transcript', async () => {
+  const sink = createConsumedSourceSink()
+  await admitTriggerMessageLineage({} as never, sink, {
+    agentId: null, metadata: null, onBehalfOfUserId: null, role: 'user', userId: 'trigger-author',
+    thread: { channel: { id: 'private-room', visibility: 'protected' } },
+    basisScopes: [], disclosureSources: [],
+    channelDecision: {
+      decisions: [], policyFingerprint: 'saved',
+      basisScopes: [{ scopeType: 'user', scopeId: 'document-owner' }],
+      disclosureSources: [{ sourceAuthorUserId: 'older-author', sourceChannelId: 'private-room' }],
+    },
+  })
+  assert.deepEqual(sink.privateConversationSources(), [
+    { sourceAuthorUserId: 'trigger-author', sourceChannelId: 'private-room' },
+    { sourceAuthorUserId: 'older-author', sourceChannelId: 'private-room' },
+  ])
+  assert.ok(sink.list().some((scope) => scope.scopeType === 'user' && scope.scopeId === 'document-owner'))
+})
+
+test('a malformed saved classifier lineage refuses prompt admission', async () => {
+  await assert.rejects(admitTriggerMessageLineage({} as never, createConsumedSourceSink(), {
+    agentId: null, metadata: null, onBehalfOfUserId: null, role: 'user', userId: 'trigger-author',
+    thread: { channel: { id: 'public-room', visibility: 'public' } },
+    basisScopes: [], disclosureSources: [], channelDecision: { decisions: [] },
+  }))
 })
 
 test('private conversation material reaches only the disclosure-stamped knowledge writers', () => {

@@ -11,7 +11,7 @@ import { originalHumanAuthorId } from '../execute/private-conversation-lineage.j
  */
 
 /**
- * Exclude any message carrying a disclosure basis, in raw SQL.
+ * Exclude internal system messages and any row carrying a disclosure basis.
  *
  * `m` must be the alias of the `messages` table in the surrounding query.
  *
@@ -22,7 +22,7 @@ import { originalHumanAuthorId } from '../execute/private-conversation-lineage.j
  * one — a person reading a snippet keeps it on their own screen, whereas an
  * agent can carry it into another room in its next sentence.
  */
-export const UNRESTRICTED_MESSAGES_ONLY = Prisma.sql`NOT EXISTS (
+export const UNRESTRICTED_MESSAGES_ONLY = Prisma.sql`m."role" <> 'system' AND NOT EXISTS (
   SELECT 1 FROM "message_basis_scopes" mbs WHERE mbs."message_id" = m."id"
 )`
 
@@ -30,7 +30,7 @@ export const UNRESTRICTED_MESSAGES_ONLY = Prisma.sql`NOT EXISTS (
  * The Prisma-query spelling of the same rule, for the searches that hydrate
  * rows through `message.findMany` rather than raw SQL.
  */
-export const unrestrictedMessagesOnly = { basisScopes: { none: {} } } as const
+export const unrestrictedMessagesOnly = { role: { not: 'system' }, basisScopes: { none: {} } } as const
 
 /**
  * Record the channels a search actually read from as run provenance.

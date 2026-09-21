@@ -67,6 +67,7 @@ export const enqueueAutoContinuation = async (
         // run that checkpointed it. Dropping `channel` here makes the resolver
         // fall back to a hidden peer brief's root and hides later parts.
         replyPlacement: context.run.replyPlacement,
+        promptOverride: payload.promptOverride ?? null,
         status: 'pending',
         threadId: context.run.threadId,
         triggerMessageId: payload.messageId,
