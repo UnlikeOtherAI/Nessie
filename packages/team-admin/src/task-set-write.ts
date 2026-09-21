@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import {
-  TaskSetCreateSchema, TaskSetUpdateSchema, TaskSetProcessorSchema,
+  TaskSetCreateSchema, TaskSetUpdateSchema, TaskSetProcessorSchema, TaskSetDisclosureSchema,
   type AuthorizedActionContext, type TaskSetCreate, type TaskSetUpdate,
 } from '@nessie/schemas'
 import { personalAssistantDmKey } from './approval-card.js'
@@ -10,6 +10,7 @@ import {
   assertTaskSetActor, auditTaskSetMutation, getTaskSetForActor, taskSetJson, TaskSetError,
 } from './task-set-access.js'
 import { taskSetRecord } from './task-set-read.js'
+import { authorizeTaskSetSource, authorizeTaskSetOutput } from './task-set-documents.js'
 
 export const validateTaskSetReceiver = async (
   prisma: TaskSetModelDeps['prisma'], actor: AuthorizedActionContext, receiver: TaskSetCreate['receiver'],
@@ -31,6 +32,8 @@ export const createTaskSetForActor = async (
   const input = TaskSetCreateSchema.parse(raw)
   const { userId } = await assertTaskSetActor(deps.prisma, actor)
   const processor = await resolveTaskSetProcessor(deps, actor, input.processor)
+  const source = input.source ? await authorizeTaskSetSource(deps.prisma, actor, input.source) : null
+  if (input.output.kind !== 'journal') await authorizeTaskSetOutput(deps.prisma, actor, input.output)
   await validateTaskSetReceiver(deps.prisma, actor, input.receiver)
   if (input.source && input.items?.length) throw new TaskSetError('TASK_SET_SOURCE', 'Choose a source or manual tasks.')
   const channel = await deps.prisma.channel.findFirst({ where: {
@@ -44,8 +47,13 @@ export const createTaskSetForActor = async (
       channel: { organizationId: actor.tenant.organizationId, members: { some: { userId } } } }, select: { id: true } })
     if (!origin) throw new TaskSetError('TASK_SET_ORIGIN', 'Origin conversation not found.', 404)
   }
-  const basis = disclosure ?? {
-    classified: true, basisScopes: [{ scopeType: 'user', scopeId: userId }], disclosureSources: [],
+  const inherited = TaskSetDisclosureSchema.parse(disclosure ?? {
+    classified: true, basisScopes: [], disclosureSources: [],
+  })
+  const basis = {
+    classified: true,
+    basisScopes: [{ scopeType: 'user', scopeId: userId }, ...(source?.disclosure.basisScopes ?? []), ...inherited.basisScopes],
+    disclosureSources: [...(source?.disclosure.disclosureSources ?? []), ...inherited.disclosureSources],
   }
   return deps.prisma.$transaction(async (tx) => {
     const thread = await tx.thread.create({ data: { channelId: channel.id, title: input.name } })
@@ -77,6 +85,8 @@ export const updateTaskSetForActor = async (
 ) => {
   const previous = await getTaskSetForActor(deps.prisma, actor, id)
   const patch = TaskSetUpdateSchema.parse(raw)
+  if (patch.source) await authorizeTaskSetSource(deps.prisma, actor, patch.source)
+  if (patch.output && patch.output.kind !== 'journal') await authorizeTaskSetOutput(deps.prisma, actor, patch.output)
   const processor = patch.processor
     ? await resolveTaskSetProcessor(deps, actor, patch.processor)
     : null

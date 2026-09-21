@@ -23,6 +23,7 @@
     "@nessie/config": "workspace:*",
     "@nessie/db": "workspace:*",
     "@nessie/executor-manage": "workspace:*",
+    "@nessie/knowledge": "workspace:*",
     "@nessie/model-subscriptions": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
