@@ -83,6 +83,11 @@ The rules below are the standing implementation contract.
   stopped, the owner can run `local-inference confirm-stopped
   --confirm-ollama-stopped`; persisted terminal proofs must still be acknowledged
   before a slot is reused. Resume alone cannot discard an uncertain call.
+- Poll tokens are written before dispatch and stored uniquely on the attempt.
+  A transport recovering a never-started poll asks for that same attempt and
+  admission; it cannot choose the next row because a response was interrupted.
+  A paused replay returns its fence only for settlement, never for invocation.
+  Completed encrypted receipts replay independently before new work is polled.
 - Both updated server and native runtime are required. A host without its shared
   resource enrollment cannot poll for inference work.
 

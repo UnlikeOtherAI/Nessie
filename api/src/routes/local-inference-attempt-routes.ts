@@ -33,6 +33,28 @@ export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: 
     const now = new Date()
     const attempt = await prisma.$transaction(async (tx) => {
       if (!await daemon.stillAuthorized(tx)) return null
+      const previous = await tx.localInferenceAttempt.findUnique({ where: { pollRequestId: body.poll.requestId } })
+      if (previous) {
+        if (previous.hostId !== daemon.hostId || !previous.encryptedRequest || !previous.resourceAdmissionId) {
+          return null
+        }
+        const admission = await tx.inferenceResourceAdmission.findUnique({
+          where: { id: previous.resourceAdmissionId },
+        })
+        if (!admission || admission.attemptId !== previous.id || admission.state !== 'running') return null
+        const active = await tx.localInferenceHost.findFirst({
+          where: { id: daemon.hostId, pausedAt: null, revokedAt: null }, select: { id: true },
+        })
+        const resource = await tx.localInferenceResource.findUnique({ where: { id: admission.resourceId } })
+        return {
+          admission: { admissionId: admission.id, fence: admission.fence, resourceId: admission.resourceId },
+          dispatchFence: active && resource && !resource.pausedAt && !resource.healthReason
+            ? previous.dispatchFence : null,
+          request: openLocalInferenceAttempt<Record<string, unknown>>(
+            deps.encryptionKeyRing, previous.encryptedRequest,
+          ),
+        }
+      }
       const active = await tx.localInferenceHost.findFirst({
         where: { id: daemon.hostId, pausedAt: null, revokedAt: null }, select: { id: true, inferenceResourceId: true },
       })
@@ -58,7 +80,7 @@ export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: 
         if (admission.kind !== 'admitted') continue
         const leased = await tx.localInferenceAttempt.updateMany({
           where: { id: candidate.id, OR: [{ state: 'queued' }, { leaseExpiresAt: { lt: now }, state: 'leased' }] },
-          data: { leaseExpiresAt: new Date(now.getTime() + 60_000), state: 'leased' },
+          data: { leaseExpiresAt: new Date(now.getTime() + 60_000), pollRequestId: body.poll.requestId, state: 'leased' },
         })
         if (leased.count !== 1) throw new Error('Inference attempt changed while its resource was locked.')
         return {

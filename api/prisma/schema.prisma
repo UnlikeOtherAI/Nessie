@@ -8684,6 +8684,7 @@ model LocalInferenceChallenge {
 /// transcript rows and are swept after acknowledgement or hard expiry.
 model LocalInferenceAttempt {
   id                 String                     @id @default(uuid()) @db.Uuid
+  pollRequestId      String?                    @unique @map("poll_request_id") @db.Uuid
   resourceAdmissionId String?                    @map("resource_admission_id") @db.Uuid
   invocationId       String                     @unique @map("invocation_id")
   organizationId     String                     @map("organization_id") @db.Uuid

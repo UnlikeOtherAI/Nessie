@@ -8,6 +8,25 @@ host is only a bounded inference processor.
 
 ## Safety checks currently exercised
 
+The 2026-09-21 shared-resource checks add real independent-process coordinator
+competition and restart recovery (`executor/test/local-inference-coordinator.test.ts`),
+lost-poll replay and same-host capacity greater than one
+(`executor/test/local-inference-host.test.ts`), and two Prisma-client admission
+competition (`packages/runtime/test/local-inference-resource-admission.test.ts`).
+The API fixtures cover exact poll replay, paused replay refusing invocation,
+owner-only capacity, shared pause, stale control revisions, and rejection of
+cross-organisation enrollment for one resource key. Configured Ollama account
+search fixtures cover fixed endpoints, credential errors and exhausted quota
+without fallback.
+
+Those focused fixtures passed through Turbo with an exported dedicated
+`DATABASE_URL`; temporary test file lists were restored after each focused run.
+Executor, runtime, schemas and host-protocol typechecks passed. Full Windows
+executor tests still require the packaged state-security helper and symlink
+permissions; unrelated browser/session and queue-fence suites stalled in this
+checkout. This record does not claim installed native runtime, live Ollama,
+real Ollama account search or end-to-end task-set research verification.
+
 From the repository root, with dependencies installed:
 
 ```powershell

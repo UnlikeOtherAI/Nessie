@@ -159,6 +159,8 @@ export class LocalInferenceHostLoop {
   #active = new Map<string, AbortController>()
   #frameSequences = new Map<string, number>()
   #polling = false
+  #stopped = false
+  #pendingPoll: LocalInferenceCoordinatorLease | null = null
   #sequences = new Map<LocalInferenceEnvelopePurpose, number>()
 
   constructor(private readonly dependencies: {
@@ -185,11 +187,14 @@ export class LocalInferenceHostLoop {
   }
 
   async pollOnce(): Promise<LocalInferencePollOutcome> {
-    if (this.#polling || this.dependencies.isPaused()) return { kind: 'idle' }
+    if (this.#polling || this.#stopped || this.dependencies.isPaused()) return { kind: 'idle' }
     this.#polling = true
+    let pollingReleased = false
+    const releasePoll = () => { if (!pollingReleased) { pollingReleased = true; this.#polling = false } }
     let slot: LocalInferenceCoordinatorLease | null = null
     let bound = false
     let ran = false
+    let answered = false
     try {
       let pending: JournalResultReceipt[]
       try { pending = await this.dependencies.journal.pending() }
@@ -200,16 +205,27 @@ export class LocalInferenceHostLoop {
       for (const receipt of pending) await this.submitReceipt(receipt)
       if (pending[0]) return { attemptId: pending[0].attemptId, kind: 'completed' }
       await this.flushTerminations()
-      slot = await this.dependencies.coordinator.acquire()
+      slot = this.#pendingPoll ?? await this.dependencies.coordinator.acquire(this.dependencies.identity.hostId)
       if (!slot) return { kind: 'idle' }
-      const poll = {} as Record<string, never>
+      this.#pendingPoll = slot
+      const poll = { requestId: slot.requestId }
       const lease = await this.dependencies.api.poll({ envelope: this.envelope('poll', poll), poll })
-      if (lease.attempt === null || lease.dispatchFence === null || !lease.admission) return { kind: 'idle' }
+      if (lease.attempt === null && lease.dispatchFence === null && lease.admission === null) {
+        answered = true
+        return { kind: 'idle' }
+      }
+      if (!lease.attempt || !lease.admission) throw new Error('Local inference poll response is incomplete.')
       await slot.bind({
         ...LocalInferenceResourceAdmissionSchema.parse(lease.admission), attemptId: lease.attempt.attemptId,
       })
       bound = true
-      if (!Number.isSafeInteger(lease.dispatchFence) || lease.dispatchFence < 1) return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
+      answered = true
+      if (this.#stopped || (await this.dependencies.coordinator.control()).paused) {
+        return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
+      }
+      if (lease.dispatchFence === null || !Number.isSafeInteger(lease.dispatchFence) || lease.dispatchFence < 1) {
+        return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
+      }
       if (!this.isCurrentLease(lease.attempt)) return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
       if (deadlinePassed(lease.attempt, this.now())) return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
 
@@ -228,13 +244,17 @@ export class LocalInferenceHostLoop {
         return { attemptId: lease.attempt.attemptId, kind: 'completed' }
       }
       ran = true
+      this.#pendingPoll = null
+      releasePoll()
       return await this.run(lease.attempt, lease.dispatchFence, slot)
     } finally {
       try {
-        if (slot && !bound) await slot.releaseIdle()
+        if (answered && !pollingReleased) this.#pendingPoll = null
+        if (slot && answered && !bound) await slot.releaseIdle()
         if (slot && bound && !ran) await slot.finish(true)
         await this.flushTerminations()
-      } finally { this.#polling = false }
+        if (this.#stopped && this.#pendingPoll) await this.#pendingPoll.abandonPoll()
+      } finally { releasePoll() }
     }
   }
 
@@ -244,7 +264,9 @@ export class LocalInferenceHostLoop {
 
   /** Stop every in-flight local request when this host loses its authority. */
   stop(): void {
+    this.#stopped = true
     for (const controller of this.#active.values()) controller.abort('host_stopped')
+    if (!this.#polling && this.#pendingPoll) void this.#pendingPoll.abandonPoll().catch(() => undefined)
   }
 
   private async run(

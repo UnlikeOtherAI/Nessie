@@ -15,12 +15,15 @@ type CoordinatorState = {
 }
 type Slot = {
   owner: string
+  hostId: string | null
   pid: number
   state: 'reserved' | 'running' | 'confirmed' | 'uncertain'
   termination: LocalInferenceTermination | null
 }
 
 export type LocalInferenceCoordinatorLease = {
+  requestId: string
+  abandonPoll: () => Promise<void>
   bind: (termination: Omit<LocalInferenceTermination, 'confirmed'>) => Promise<void>
   finish: (confirmed: boolean) => Promise<void>
   releaseIdle: () => Promise<void>
@@ -38,7 +41,8 @@ const stateIsValid = (value: unknown): value is CoordinatorState => {
 const slotIsValid = (value: unknown): value is Slot => {
   if (!value || typeof value !== 'object') return false
   const slot = value as Slot
-  return typeof slot.owner === 'string' && Number.isSafeInteger(slot.pid) && slot.pid > 0
+  return typeof slot.owner === 'string' && Number.isSafeInteger(slot.pid) && slot.pid >= 0
+    && (slot.hostId === null || typeof slot.hostId === 'string')
     && ['reserved', 'running', 'confirmed', 'uncertain'].includes(slot.state)
     && (slot.termination === null || LocalInferenceTerminationSchema.safeParse(slot.termination).success)
 }
@@ -141,6 +145,9 @@ export class LocalInferenceCoordinator {
         const slot = await this.read(name)
         if (slot === null) continue
         if (!slotIsValid(slot)) throw new Error('Local inference slot metadata needs repair.')
+        if (slot.state === 'reserved' && slot.hostId) {
+          throw new Error('Reconnect the original host to reconcile its pending poll before confirming termination.')
+        }
         if (['reserved', 'running'].includes(slot.state) && processIsAlive(slot.pid)) {
           throw new Error('A Nessie host still owns an active request. Stop that host before confirming termination.')
         }
@@ -156,13 +163,25 @@ export class LocalInferenceCoordinator {
       const slot = await this.read(`slot-${index}.json`)
       if (slot === null) continue
       if (!slotIsValid(slot) || slot.state === 'uncertain'
-        || slot.state !== 'confirmed' && !processIsAlive(slot.pid)) return 'termination_uncertain'
+        || slot.state === 'running' && !processIsAlive(slot.pid)) return 'termination_uncertain'
     }
     return null
   }
 
-  async acquire(): Promise<LocalInferenceCoordinatorLease | null> {
+  async acquire(hostId?: string): Promise<LocalInferenceCoordinatorLease | null> {
     return this.mutate(async () => {
+      // A dead process with a reserved slot has never invoked Ollama: bind is
+      // durable before invocation. Reuse that poll token to learn whether the
+      // server committed its admission before the response was interrupted.
+      for (let index = 0; hostId && index < 16; index += 1) {
+        const name = `slot-${index}.json`
+        const slot = await this.read(name)
+        if (slotIsValid(slot) && slot.state === 'reserved' && slot.hostId === hostId
+          && (slot.pid === 0 || !processIsAlive(slot.pid))) {
+          await this.replace(name, { ...slot, pid: process.pid })
+          return this.lease(name, slot.owner)
+        }
+      }
       const control = await this.control()
       if (control.paused || await this.healthReason()) return null
       // Count all slots, including those above a newly lowered limit: lowering
@@ -178,29 +197,37 @@ export class LocalInferenceCoordinator {
       if (index === undefined) return null
       const name = `slot-${index}.json`
       const owner = randomUUID()
-      await this.replace(name, { owner, pid: process.pid, state: 'reserved', termination: null } satisfies Slot)
-      const update = async (fn: (slot: Slot) => Promise<void>): Promise<void> => this.mutate(async () => {
-        const slot = await this.read(name)
-        if (!slotIsValid(slot) || slot.owner !== owner) throw new Error('Local inference slot was fenced.')
-        await fn(slot)
-      })
-      return {
-        bind: (termination) => update(async (slot) => {
-          if (slot.state !== 'reserved' || slot.termination) throw new Error('Local inference slot is already bound.')
-          await this.replace(name, { ...slot, state: 'running', termination: { ...termination, confirmed: false } })
-        }),
-        finish: (confirmed) => update(async (slot) => {
-          if (!slot.termination) throw new Error('Local inference slot is not bound.')
-          await this.replace(name, {
-            ...slot, state: confirmed ? 'confirmed' : 'uncertain', termination: { ...slot.termination, confirmed },
-          })
-        }),
-        releaseIdle: () => update(async (slot) => {
-          if (slot.state !== 'reserved' || slot.termination) throw new Error('An active local inference slot cannot expire.')
-          await unlink(join(this.directory, name))
-        }),
-      }
+      await this.replace(name, { owner, hostId: hostId ?? null, pid: process.pid, state: 'reserved', termination: null } satisfies Slot)
+      return this.lease(name, owner)
     })
+  }
+
+  private lease(name: string, owner: string): LocalInferenceCoordinatorLease {
+    const update = async (fn: (slot: Slot) => Promise<void>): Promise<void> => this.mutate(async () => {
+      const slot = await this.read(name)
+      if (!slotIsValid(slot) || slot.owner !== owner) throw new Error('Local inference slot was fenced.')
+      await fn(slot)
+    })
+    return {
+      requestId: owner,
+      abandonPoll: () => update(async (slot) => {
+        if (slot.state === 'reserved') await this.replace(name, { ...slot, pid: 0 })
+      }),
+      bind: (termination) => update(async (slot) => {
+        if (slot.state !== 'reserved' || slot.termination) throw new Error('Local inference slot is already bound.')
+        await this.replace(name, { ...slot, state: 'running', termination: { ...termination, confirmed: false } })
+      }),
+      finish: (confirmed) => update(async (slot) => {
+        if (!slot.termination) throw new Error('Local inference slot is not bound.')
+        await this.replace(name, {
+          ...slot, state: confirmed ? 'confirmed' : 'uncertain', termination: { ...slot.termination, confirmed },
+        })
+      }),
+      releaseIdle: () => update(async (slot) => {
+        if (slot.state !== 'reserved' || slot.termination) throw new Error('An active local inference slot cannot expire.')
+        await unlink(join(this.directory, name))
+      }),
+    }
   }
 
   /** Replay terminal confirmations before opening another slot after a restart. */
@@ -279,6 +306,10 @@ export class LocalInferenceCoordinator {
       const pid = (await readFile(path, 'utf8')).trim()
       if (!/^[1-9][0-9]{0,9}$/.test(pid) || processIsAlive(Number(pid))) return
       if ((await lstat(path)).ino === metadata.ino) await unlink(path)
+    } catch (error) {
+      // The current owner can finish between any two reads while this separate
+      // recovery guard is held. Absence means the next normal acquire may try.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     } finally { await recovery.close(); await unlink(recoveryPath) }
   }
 }

@@ -1,13 +1,20 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { z } from 'zod'
 
 const MAX_RESPONSE_BYTES = 48 * 1024
-const searchResult = z.object({
-  results: z.array(z.object({ title: z.string(), url: z.string().url(), content: z.string() })),
-})
-const fetchedPage = z.object({ title: z.string(), content: z.string(), links: z.array(z.string()) })
+const record = (value: unknown): value is Record<string, unknown> => (
+  !!value && typeof value === 'object' && !Array.isArray(value)
+)
+const validResult = (name: string, value: unknown): boolean => {
+  if (!record(value)) return false
+  if (name === 'ollama_web_search') {
+    return Array.isArray(value.results) && value.results.every((entry: unknown) => record(entry)
+      && typeof entry.title === 'string' && typeof entry.content === 'string' && typeof entry.url === 'string')
+  }
+  return typeof value.title === 'string' && typeof value.content === 'string'
+    && Array.isArray(value.links) && value.links.every((link: unknown) => typeof link === 'string')
+}
 const tools = [
   {
     name: 'ollama_web_search', description: 'Search using this executor’s configured Ollama account. Returns source URLs and excerpts.',
@@ -88,7 +95,8 @@ export const callOllamaSearch = async (input: {
       chunks.push(next.value)
     }
     const result = JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown
-    return (input.name === 'ollama_web_search' ? searchResult : fetchedPage).parse(result)
+    if (!validResult(input.name, result)) throw new Error('shape')
+    return result
   } catch (error) {
     if (error instanceof OllamaSearchError) throw error
     throw new OllamaSearchError('search_invalid_response')

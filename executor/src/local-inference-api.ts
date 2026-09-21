@@ -55,7 +55,7 @@ export type LocalInferenceDaemonApi = {
   heartbeat: (
     input: ApiEnvelopeRequest<'heartbeat', { inventory: ObservedLocalModel[]; paused: boolean }>,
   ) => Promise<{ serverTime: string }>
-  poll: (input: ApiEnvelopeRequest<'poll', Record<string, never>>) => Promise<LocalInferenceAttemptLease>
+  poll: (input: ApiEnvelopeRequest<'poll', { requestId: string }>) => Promise<LocalInferenceAttemptLease>
   control: (input: ApiEnvelopeRequest<'control', LocalInferenceAttemptControl>) => Promise<{
     state: 'active' | 'cancelled' | 'expired' | 'fenced'
   }>

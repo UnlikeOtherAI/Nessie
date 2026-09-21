@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { generateKeyPairSync } from 'node:crypto'
+import { generateKeyPairSync, randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -285,6 +285,74 @@ test('a durable encrypted receipt is retried without dialing Ollama again', asyn
   assert.equal(ollamaCalls, 0)
   assert.equal(calls.results[0]?.receipt.result.content, 'saved result')
   assert.equal(await journal.get({ attemptId: ATTEMPT_ID, dispatchFence: 1 }), undefined)
+})
+
+test('a lost poll response keeps its exact request token and cannot admit a second transport', async (t) => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api } = apiFor(attempt())
+  const coordinator = await coordinatorFixture(t)
+  const ids: string[] = []
+  const original = api.poll
+  api.poll = async (input) => {
+    ids.push(input.poll.requestId)
+    if (ids.length === 1) throw new Error('response interrupted after server commit')
+    return original(input)
+  }
+  const loop = new LocalInferenceHostLoop({
+    api, coordinator, fetchImpl: ollama([{ done: true, message: { content: 'done' } }]),
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false, journal, origin: 'http://127.0.0.1:11434',
+  })
+  await assert.rejects(loop.pollOnce(), /response interrupted/)
+  assert.equal(await coordinator.acquire('different-host'), null)
+  await loop.pollOnce()
+  assert.equal(ids.length, 2)
+  assert.equal(ids[0], ids[1])
+  assert.ok(await coordinator.acquire())
+})
+
+test('one host can fill two configured slots while a third call waits', async (t) => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api } = apiFor(attempt())
+  const coordinator = await coordinatorFixture(t)
+  await coordinator.syncControl({
+    resourceId: RESOURCE_ID, capacity: 2, controlRevision: 1, paused: false, healthReason: null,
+  })
+  api.poll = async () => ({
+    admission: { ...ADMISSION, admissionId: randomUUID(), fence: randomUUID() },
+    attempt: { ...attempt(), attemptId: randomUUID() }, dispatchFence: 1,
+  })
+  const finishes: Array<() => void> = []
+  const fetchImpl: OllamaFetch = (url, init) => url.endsWith('/api/chat')
+    ? Promise.resolve(new Response(new ReadableStream({
+      start(controller) {
+        finishes.push(() => {
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ done: true, message: { content: 'ok' } })}\n`))
+          controller.close()
+        })
+      },
+    })))
+    : ollama([])(url, init)
+  const loop = new LocalInferenceHostLoop({
+    api, coordinator, fetchImpl,
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false, journal, origin: 'http://127.0.0.1:11434',
+  })
+  const first = loop.pollOnce()
+  const until = async (count: number) => {
+    const deadline = Date.now() + 2_000
+    while (finishes.length < count && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
+    assert.equal(finishes.length, count)
+  }
+  await until(1)
+  const second = loop.pollOnce()
+  await until(2)
+  assert.deepEqual(await loop.pollOnce(), { kind: 'idle' })
+  for (const finish of finishes) finish()
+  assert.equal((await first).kind, 'completed')
+  assert.equal((await second).kind, 'completed')
 })
 
 test('a signed control response aborts a blocked Ollama stream before its next frame', async (t) => {

@@ -16,6 +16,7 @@ import { signLocalInferenceEnvelope } from '@nessie/local-inference-host'
 import { createLocalInferenceDaemonApi } from './local-inference-api.js'
 import { LocalInferenceHostLoop } from './local-inference-host.js'
 import { LocalInferenceCoordinator } from './local-inference-coordinator.js'
+import { LocalInferencePollPump } from './local-inference-poll-pump.js'
 import { EncryptedLocalInferenceReceiptJournal } from './local-inference-receipts.js'
 import { discoverOllamaInventory } from './ollama-observed.js'
 
@@ -152,10 +153,11 @@ export const superviseDirectLocalInference = async (input: {
   let loopStopped = false
   let resolveFailure: (() => void) | null = null
   const failed = new Promise<void>((resolve) => { resolveFailure = resolve })
+  const pump = new LocalInferencePollPump(input.loop)
   const stopLoop = (): void => {
     if (loopStopped) return
     loopStopped = true
-    input.loop.stop()
+    void pump.stop()
   }
   const heartbeatTick = (): void => {
     if (stopping || heartbeat !== null) return
@@ -167,7 +169,7 @@ export const superviseDirectLocalInference = async (input: {
   }
   const poller = (async () => {
     while (!stopping) {
-      await input.loop.pollOnce().catch(() => undefined)
+      pump.tick()
       if (!stopping) await wait(pollIntervalMs)
     }
   })()
@@ -180,6 +182,7 @@ export const superviseDirectLocalInference = async (input: {
     stopLoop()
     await Promise.allSettled([
       poller,
+      pump.stop(),
       ...(heartbeat === null ? [] : [heartbeat]),
     ])
   }

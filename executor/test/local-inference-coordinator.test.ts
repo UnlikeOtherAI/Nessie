@@ -3,6 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 import { LocalInferenceCoordinator } from '../src/local-inference-coordinator.js'
@@ -16,6 +19,33 @@ const fixture = async (t: test.TestContext) => {
   const executor = await LocalInferenceCoordinator.open({ directory, security })
   return { desktop, executor, directory, security }
 }
+
+test('a restarted transport reuses only its never-started poll token across OS processes', async (t) => {
+  const { desktop, directory, security } = await fixture(t)
+  const hostId = randomUUID()
+  const child = fileURLToPath(new URL('./fixtures/local-inference-coordinator-child.mjs', import.meta.url))
+  const { stdout } = await promisify(execFile)(process.execPath, ['--import', 'tsx', child, directory, hostId])
+  const reservation = JSON.parse(stdout) as { publicKey: string; requestId: string }
+  assert.equal(reservation.publicKey, desktop.identity.publicKey)
+  assert.equal(await desktop.acquire(randomUUID()), null)
+  const restarted = await LocalInferenceCoordinator.open({ directory, security })
+  const recovered = await restarted.acquire(hostId)
+  assert.equal(recovered?.requestId, reservation.requestId)
+  await recovered?.releaseIdle()
+  assert.ok(await desktop.acquire())
+})
+
+test('two OS processes racing first enrollment publish one key and admit only one poll', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-inference-process-race-'))
+  t.after(async () => { await rm(directory, { recursive: true, force: true }) })
+  const child = fileURLToPath(new URL('./fixtures/local-inference-coordinator-child.mjs', import.meta.url))
+  const contenders = await Promise.all([randomUUID(), randomUUID()].map(async (hostId) => {
+    const { stdout } = await promisify(execFile)(process.execPath, ['--import', 'tsx', child, directory, hostId])
+    return JSON.parse(stdout) as { publicKey: string; requestId: string | null }
+  }))
+  assert.equal(contenders[0]?.publicKey, contenders[1]?.publicKey)
+  assert.equal(contenders.filter((contender) => contender.requestId !== null).length, 1)
+})
 
 test('Desktop and executor share one key and one slot across all models', async (t) => {
   const { desktop, executor } = await fixture(t)
