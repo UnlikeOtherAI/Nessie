@@ -85,7 +85,10 @@ test('a file under the cap streams through whole, with its type', async () => {
 })
 
 test('the counting transform holds for any source, not just a fetch body', async () => {
-  await assert.rejects(drain(limitAssetStream(Readable.from([Buffer.alloc(10), Buffer.alloc(10)]), 15)), SourceAssetTooLargeError)
+  await assert.rejects(
+    drain(limitAssetStream(Readable.from([Buffer.alloc(10), Buffer.alloc(10)]), 15)),
+    SourceAssetTooLargeError,
+  )
   assert.equal(await drain(limitAssetStream(Readable.from([Buffer.alloc(10)]), 15)), 10)
 })
 
