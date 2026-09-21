@@ -182,7 +182,9 @@ dbTest('channel policy replay: Continue refuses checkpoint sources the authorize
     await prisma.$disconnect()
   })
   await prisma.channelMember.create({ data: { channelId: source.id, userId: f.clicker.actor.actorId } })
-  await prisma.runBasisScope.create({ data: { runId: f.run.id, scopeType: 'channel', scopeId: source.id } })
+  await prisma.runBasisScope.create({
+    data: { runId: f.run.id, organizationId: f.org.id, scopeType: 'channel', scopeId: source.id },
+  })
   assert.deepEqual(await continueRun(prisma, f.clicker, { organizationId: f.org.id, runId: f.run.id }), {
     kind: 'policy_authority_unavailable',
   })

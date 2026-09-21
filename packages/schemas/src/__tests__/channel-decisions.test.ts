@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ChannelDecisionPolicySchema, DEFAULT_CHANNEL_DECISION_POLICY } from '../channel-decisions.js'
+import {
+  ChannelDecisionPolicySchema, DEFAULT_CHANNEL_DECISION_POLICY, MAX_CHANNEL_DECISION_POLICY_BYTES,
+} from '../channel-decisions.js'
 
 const question = {
   id: 'decision_record',
@@ -81,4 +83,44 @@ test('reaction choices are emojis and cannot impersonate the working marker', ()
       ...DEFAULT_CHANNEL_DECISION_POLICY, reactions: [{ emoji, description: 'Acknowledged' }],
     }).success, true)
   }
+})
+
+test('the aggregate policy budget rejects individually valid guidance and options before saving', () => {
+  const result = ChannelDecisionPolicySchema.safeParse({
+    ...DEFAULT_CHANNEL_DECISION_POLICY,
+    instructions: 'x'.repeat(4000),
+    questions: Array.from({ length: 4 }, (_, index) => ({
+      ...question, id: `decision${index}`, instructions: 'y'.repeat(3000),
+    })),
+  })
+  assert.equal(result.success, false)
+  if (!result.success) assert.match(result.error.message, /16,000 UTF-8 bytes.*Shorten its guidance or options/)
+})
+
+test('multilingual policy guidance is bounded by serialized UTF-8 bytes rather than character count', () => {
+  const policy = (character: string) => ({
+    ...DEFAULT_CHANNEL_DECISION_POLICY,
+    instructions: character.repeat(3000),
+    questions: [{ ...question, instructions: character.repeat(3000) }],
+  })
+  assert.equal(ChannelDecisionPolicySchema.safeParse(policy('a')).success, true)
+  assert.equal(ChannelDecisionPolicySchema.safeParse(policy('ž')).success, true)
+  const japanese = ChannelDecisionPolicySchema.safeParse(policy('決'))
+  assert.equal(japanese.success, false)
+  if (!japanese.success) assert.match(japanese.error.message, /UTF-8 bytes/)
+})
+
+test('the serialized policy may occupy exactly the budget, but no more', () => {
+  const policy = {
+    ...DEFAULT_CHANNEL_DECISION_POLICY, instructions: 'a'.repeat(4000), reactions: [],
+    questions: [{ id: 'decision', instructions: 'b', options: Array.from({ length: 8 }, (_, index) => ({
+      id: `option${index}`, description: 'c'.repeat(1000),
+    })) }],
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify(policy)).byteLength
+  policy.questions[0]!.instructions += 'd'.repeat(MAX_CHANNEL_DECISION_POLICY_BYTES - bytes)
+  assert.equal(new TextEncoder().encode(JSON.stringify(policy)).byteLength, MAX_CHANNEL_DECISION_POLICY_BYTES)
+  assert.equal(ChannelDecisionPolicySchema.safeParse(policy).success, true)
+  policy.questions[0]!.instructions += 'd'
+  assert.equal(ChannelDecisionPolicySchema.safeParse(policy).success, false)
 })

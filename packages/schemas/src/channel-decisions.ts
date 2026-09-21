@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { parseAcknowledgeEmoji } from './agent-reaction.js'
 
+export const MAX_CHANNEL_DECISION_POLICY_BYTES = 16_000
+
 const DecisionIdSchema = z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/)
 
 const FollowUpSchema = z.object({
@@ -46,6 +48,12 @@ export const ChannelDecisionPolicySchema = z.object({
   }).strict()).max(16),
   questions: z.array(QuestionSchema).max(8),
 }).strict().superRefine((policy, context) => {
+  if (new TextEncoder().encode(JSON.stringify(policy)).byteLength > MAX_CHANNEL_DECISION_POLICY_BYTES) {
+    context.addIssue({
+      code: 'custom',
+      message: 'The decision policy is too large (maximum 16,000 UTF-8 bytes). Shorten its guidance or options.',
+    })
+  }
   const ids = new Set<string>()
   policy.questions.forEach((question, index) => {
     if (ids.has(question.id)) {

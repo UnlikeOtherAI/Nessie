@@ -53,6 +53,13 @@ options. Unknown choices and malformed probability distributions are refused.
 The normal signed Ledger attribution and both input/output usage counters
 are recorded; free output pricing does not mean output usage is discarded.
 
+The complete serialized policy is limited to 16,000 UTF-8 bytes, including
+all guidance, options, reactions and follow-up instructions. The shared
+schema enforces this when saved through either the UI, REST or assistant
+tool, leaving room for message and conversation context in the classifier
+request. Oversized policies ask the editor to shorten guidance or options;
+the bound counts bytes, so it also covers multilingual text accurately.
+
 `canModifyChannel` owns edit authority: channel members and organisation
 administrators, with its existing direct-message and system-surface rules.
 Decision policies are accepted only on standard, non-system channels. A
