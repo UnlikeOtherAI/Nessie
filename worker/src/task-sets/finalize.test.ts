@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { taskSetFinalizationFixture } from '../../test/task-set-finalization-fixture.js'
 import { finalizeTaskSet } from './finalize.js'
@@ -134,4 +135,44 @@ dbTest('revocation, unclassified results, shared export and machine-restricted d
   await finalizeTaskSet(f.deps, f.set.id)
   assert.equal((await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })).reason,
     'TASK_SET_AUTHORIZATION')
+})
+
+dbTest('receiver source grants are checked at enqueue and again at mailbox dispatch', async (t) => {
+  const f = await taskSetFinalizationFixture(t)
+  await f.prisma.knowledgeSpace.update({ where: { id: f.space.id }, data: { userId: f.user.id } })
+  const attachment = await f.prisma.attachment.create({ data: {
+    organizationId: f.org.id, filename: 'input.json', mime: 'application/json', kind: 'file',
+    sizeBytes: 2n, storageKey: randomUUID(),
+  } })
+  const page = await f.prisma.knowledgePage.create({ data: {
+    organizationId: f.org.id, projectId: f.space.projectId, spaceId: f.space.id,
+    kind: 'file', title: 'Input', createdBy: f.user.id,
+    versions: { create: { versionNumber: 1, attachmentId: attachment.id, authorType: 'user', authorId: f.user.id } },
+  }, include: { versions: true } })
+  await f.prisma.taskSet.update({ where: { id: f.set.id }, data: {
+    source: { kind: 'document', pageId: page.id, versionId: page.versions[0]!.id, format: 'json', selection: {} },
+    sourceAttachmentId: attachment.id,
+    receiver: { agentId: f.receiver.id, channelId: f.channel.id, instructions: 'Report.' }, deliveryStatus: 'pending',
+  } })
+  await finalizeTaskSet(f.deps, f.set.id)
+  const denied = await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })
+  assert.equal(denied.status, 'completed')
+  assert.equal(denied.deliveryStatus, 'blocked')
+  assert.equal(denied.reason, 'authorization_lost')
+  assert.equal(await f.prisma.agentMailboxMessage.count({ where: { taskSetId: f.set.id } }), 0)
+  await f.prisma.knowledgeSpaceMember.create({ data: {
+    organizationId: f.org.id, spaceId: f.space.id, agentId: f.receiver.id,
+  } })
+  await f.prisma.knowledgeSpaceMember.deleteMany({ where: { spaceId: f.space.id, agentId: f.agent.id } })
+  await f.prisma.taskSet.update({ where: { id: f.set.id }, data: { deliveryStatus: 'pending', reason: null } })
+  await finalizeTaskSet(f.deps, f.set.id)
+  const mail = await f.prisma.agentMailboxMessage.findFirstOrThrow({ where: { taskSetId: f.set.id } })
+  const input = { ...mail, taskSetId: f.set.id, toAgentId: f.receiver.id }
+  assert.equal(await authorizeTaskSetMailbox(f.prisma, input), 'ready')
+  await f.prisma.knowledgePage.update({ where: { id: page.id }, data: { sensitivityTier: 'restricted' } })
+  await assert.rejects(authorizeTaskSetMailbox(f.prisma, input), /source document is not accessible/)
+  await finalizeTaskSet(f.deps, f.set.id)
+  const revoked = await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })
+  assert.equal(revoked.status, 'completed')
+  assert.equal(revoked.deliveryStatus, 'blocked')
 })

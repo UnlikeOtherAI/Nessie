@@ -1,8 +1,9 @@
 import { Prisma, type PrismaClient, type TaskSet } from '@prisma/client'
 import {
-  AuthorizedActionContextSchema, TaskSetReceiverSchema, type AuthorizedActionContext, type TaskSetDisclosure,
+  AuthorizedActionContextSchema, TaskSetReceiverSchema, TaskSetSourceSchema,
+  type AuthorizedActionContext, type TaskSetDisclosure,
 } from '@nessie/schemas'
-import { assertTaskSetDisclosure, lockTaskSet, validateTaskSetReceiver } from '@nessie/team-admin'
+import { assertTaskSetDisclosure, authorizeTaskSetSource, lockTaskSet, validateTaskSetReceiver } from '@nessie/team-admin'
 import { computeReplyBasis } from '../run/execute/disclosure-basis.js'
 import { TaskSetBlocked, TaskSetWait } from './state.js'
 
@@ -13,6 +14,13 @@ export const assertTaskSetDeliveryDestination = async (
   const receiver = TaskSetReceiverSchema.parse(set.receiver)
   await assertTaskSetDisclosure(prisma, actor, disclosure)
   await validateTaskSetReceiver(prisma, actor, receiver)
+  if (set.source) {
+    // A handoff reads the result as the receiver, independently from the original processor's grants.
+    const source = await authorizeTaskSetSource(prisma, actor, TaskSetSourceSchema.parse(set.source), {
+      processingAgentId: receiver.agentId,
+    })
+    if (source.attachmentId !== set.sourceAttachmentId) throw new TaskSetBlocked('source_revision_changed')
+  }
   const channel = await prisma.channel.findFirstOrThrow({
     where: { id: receiver.channelId, organizationId: set.organizationId, deletedAt: null, archivedAt: null },
     select: {

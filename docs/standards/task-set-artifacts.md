@@ -115,7 +115,10 @@ again. Output persistence completes the task set before delivery; a pending or
 blocked receiver is tracked separately and never changes completed items.
 Delivery retries use the persisted disclosure and artifact receipt without
 resolving the processor or requiring its former output permissions. Current
-owner/source and receiver authority still apply. A blocked delivery persists
+owner/source and receiver authority still apply.
+The receiver's own source knowledge permissions are checked both before enqueue
+and immediately before mailbox dispatch; the original processor's grant is
+never inherited by the receiver. A blocked delivery persists
 its remedy and one owner alert per health transition; retry is explicit.
 Mailbox admission stamps the same lineage on the hidden prompt and run.
 Database regressions cover completion gates, replica takeover, receipt recovery,

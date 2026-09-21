@@ -1,7 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { PrismaClient } from '@prisma/client'
-import { AuthorizedActionContextSchema, TaskSetDisclosureSchema, TaskSetReceiverSchema, TaskSetSourceSchema } from '@nessie/schemas'
-import { authorizeTaskSetSource } from '@nessie/team-admin'
+import { AuthorizedActionContextSchema, TaskSetDisclosureSchema, TaskSetReceiverSchema } from '@nessie/schemas'
 import { assertTaskSetDeliveryDestination } from '../task-sets/delivery.js'
 
 /** Revalidate the captured task-set capability at delivery, including after a mailbox retry. */
@@ -27,10 +26,7 @@ export const authorizeTaskSetMailbox = async (prisma: PrismaClient, mail: {
   })
   const saved = TaskSetDisclosureSchema.parse((set.outputState as { disclosure?: unknown } | null)?.disclosure)
   if (!isDeepStrictEqual(disclosure, saved)) throw new Error('Task set delivery disclosure changed.')
-  if (set.source) {
-    const source = await authorizeTaskSetSource(prisma, actor, TaskSetSourceSchema.parse(set.source))
-    if (source.attachmentId !== set.sourceAttachmentId) throw new Error('Task set source revision changed.')
-  }
+  // The same check as enqueue requires both current owner and receiving-agent source authority.
   await assertTaskSetDeliveryDestination(prisma, set, actor, disclosure)
   return 'ready'
 }
