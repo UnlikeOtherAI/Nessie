@@ -4,16 +4,18 @@ import {
   type ProviderMessage, type ToolSchemaDescriptor, type InferenceResult,
 } from '@nessie/runtime'
 import {
-  AuthorizedActionContextSchema, TaskSetDisclosureSchema, TaskSetProcessorSchema,
+  AuthorizedActionContextSchema, TaskSetDisclosureSchema, TaskSetProcessorSchema, TaskSetOutputSchema,
   type TaskSetDisclosure,
 } from '@nessie/schemas'
 import { assertTaskSetActor, assertTaskSetDisclosure } from '@nessie/team-admin'
+import { validateTaskSetArtifactRow } from '@nessie/knowledge'
 import { createConsumedSourceSink } from '../run/execute/disclosure-basis.js'
 import { persistCurrentRunBasis } from '../run/execute/agent-message.js'
 import { createRunInference } from '../run/execute/run-inference.js'
 import {
-  persistRunLocalInferenceBinding, resolveRunLocalInferenceBinding,
+  persistRunLocalInferenceBinding, resolveRunLocalInferenceBinding, resolveLocalInferenceReceiptBinding,
 } from '../run/execute/local-inference-binding.js'
+import { recoverCompletedLocalInferenceResult } from '../run/execute/local-inference-dispatch.js'
 import {
   persistRunSubscriptionBinding, resolveRunSubscriptionBinding,
 } from '../run/execute/subscription-binding.js'
@@ -98,6 +100,23 @@ export const processTaskSetItem = async (
     addDisclosure(context, value)
   }
   await persistCurrentRunBasis(deps.prisma, context)
+  const output = TaskSetOutputSchema.parse(set.output)
+  const disclosure = (): TaskSetDisclosure => ({
+    classified: true, basisScopes: context.consumedSources.list(),
+    disclosureSources: context.consumedSources.privateConversationSources(),
+  })
+  // Validate fixed source cells before spending a model call. Validate the
+  // returned mapping with the same artifact rules before advancing this row.
+  validateTaskSetArtifactRow(output, { ...item, result: null, disclosure: disclosure() })
+  const complete = async (result: InferenceResult) => {
+    if (result.finishReason === 'length') throw new TaskSetBlocked('processor_output_too_large')
+    if (result.finishReason === 'error' || !result.outputText.trim()) throw new Error('Processor returned no complete result')
+    validateTaskSetArtifactRow(output, { ...item, result: result.outputText, disclosure: disclosure() })
+    await persistInvocationLedgerEvents(deps.prisma, {
+      actorContext, agentId: context.agent.id, runId: attempt.runId, invocations: result.invocations,
+    })
+    return { result: result.outputText, disclosure: disclosure() }
+  }
   const last = await deps.prisma.taskSetStep.findFirst({
     where: { attemptId: attempt.id, completedAt: { not: null }, sequence: { gte: 0 } },
     orderBy: { sequence: 'desc' },
@@ -106,13 +125,21 @@ export const processTaskSetItem = async (
   if (receipt && Array.isArray(receipt.toolCalls) && receipt.toolCalls.length === 0
     && typeof receipt.outputText === 'string' && receipt.outputText.trim()
     && receipt.finishReason !== 'length' && receipt.finishReason !== 'error') {
-    await persistInvocationLedgerEvents(deps.prisma, {
-      actorContext, agentId: context.agent.id, runId: attempt.runId, invocations: receipt.invocations,
-    })
-    return { result: receipt.outputText, disclosure: {
-      classified: true, basisScopes: context.consumedSources.list(),
-      disclosureSources: context.consumedSources.privateConversationSources(),
-    } }
+    return complete(receipt)
+  }
+  if (processor.localInferenceBindingId) {
+    const run = await deps.prisma.run.findUniqueOrThrow({ where: { id: attempt.runId } })
+    const recovery = await resolveLocalInferenceReceiptBinding(deps, context)
+    if (recovery.kind === 'local' && run.localInferenceHostEpoch !== null
+      && run.localInferenceBindingId === recovery.binding.bindingId
+      && run.localInferenceBindingRevision === recovery.binding.revision
+      && run.localInferenceHostId === recovery.binding.hostId
+      && run.localInferenceModelDigest === recovery.binding.manifestDigest) {
+      const recovered = await recoverCompletedLocalInferenceResult({
+        deps, context, binding: { ...recovery.binding, hostEpoch: run.localInferenceHostEpoch },
+      })
+      if (recovered) return complete(recovered)
+    }
   }
   const local = await resolveRunLocalInferenceBinding(deps, context)
   if (local.kind === 'unavailable') {
@@ -176,6 +203,10 @@ export const processTaskSetItem = async (
       set.search === 'processor'
         ? 'Use the provided processor search when research is required. Report no findings honestly.' : '',
       `Objective:\n${set.objective}`, `Instructions:\n${set.instructions}`,
+      output.kind === 'spreadsheet' && Object.keys(output.fields).length
+        ? 'Return valid JSON without Markdown fences. Include each mapped result path: '
+          + `${JSON.stringify(output.fields)}. `
+          + 'The mapping keys are output column labels; values are paths in your JSON result.' : '',
     ].filter(Boolean).join('\n\n') }, 'prompt_system'),
     coverProviderInputComponent({ role: 'user', content: JSON.stringify({
       sequence: item.sequence, prompt: item.prompt, input: item.input,
@@ -209,12 +240,7 @@ export const processTaskSetItem = async (
       actorContext, agentId: context.agent.id, runId: attempt.runId, invocations: result.invocations,
     })
     if (!result.toolCalls.length) {
-      if (result.finishReason === 'length') throw new TaskSetBlocked('processor_output_too_large')
-      if (!result.outputText.trim()) throw new Error('Processor returned an empty result')
-      return { result: result.outputText, disclosure: {
-        classified: true, basisScopes: context.consumedSources.list(),
-        disclosureSources: context.consumedSources.privateConversationSources(),
-      } }
+      return complete(result)
     }
     messages.push(coverProviderInputComponent({ role: 'assistant', content: result.outputText, toolCalls: result.toolCalls }, 'assistant_output'))
     for (const call of result.toolCalls) {

@@ -1,6 +1,7 @@
 import { releaseLocalInferenceResource, type FileService } from '@nessie/runtime'
 import { AuthorizedActionContextSchema, TaskSetSourceSchema, TaskSetDisclosureSchema } from '@nessie/schemas'
 import { z } from 'zod'
+import { TaskSetSourceError } from '@nessie/knowledge'
 import {
   assertTaskSetActor, assertTaskSetDisclosure, authorizeTaskSetSource,
   enqueueTaskSet, lockTaskSet, taskSetJson, TaskSetError,
@@ -97,6 +98,7 @@ const classify = (error: unknown): Exclude<Outcome, { result: string }> => {
   if (error instanceof TaskSetWait) return { reason: error.reason, waiting: true, offline: error.offline }
   if (error instanceof TaskSetBlocked) return { reason: error.reason, waiting: false }
   if (error instanceof TaskSetError) return { reason: error.code.toLowerCase(), waiting: false }
+  if (error instanceof TaskSetSourceError) return { reason: error.code, waiting: false }
   // Raw provider messages can contain prompts or credentials. The persisted
   // remedy is structural; diagnostic data stays in the provider's own journal.
   return { reason: 'processor_failed', waiting: false }

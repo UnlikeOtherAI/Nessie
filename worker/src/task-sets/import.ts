@@ -51,6 +51,7 @@ export const importTaskSetSource = async (
     if (live.status !== 'importing') return
     const updated = await tx.taskSet.update({ where: { id }, data: {
       status: 'running', inputClosedAt: new Date(), statusChangedAt: new Date(), revision: { increment: 1 },
+      nextAttemptAt: new Date(),
     } })
     await enqueueTaskSet(tx, id, updated.revision)
   })
