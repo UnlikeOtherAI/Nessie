@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChannelRecordSchema, type SetChannelMuteRequest } from '@nessie/schemas'
+import { ChannelRecordSchema, type ChannelDecisionPolicy, type SetChannelMuteRequest } from '@nessie/schemas'
 import type { ChannelRecord } from '../../lib/api-client'
 import { agentKeys } from '../agents/keys'
 import { userKeys } from '../users/keys'
@@ -139,6 +139,7 @@ export const useUpdateChannel = () => {
       label?: string
       topic?: string | null
       description?: string | null
+      decisionPolicy?: ChannelDecisionPolicy | null
     }) => {
       const { channelId, ...body } = input
       return apiClient.patch<ChannelRecord>(
