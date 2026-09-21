@@ -1,19 +1,27 @@
 import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import type { LedgerAttribution } from '@nessie/runtime'
 
-import type { TaskActor } from '../src/index.js'
+import type { BoardRef, TaskActor } from '../src/index.js'
 
 /**
  * One organisation with a project, three people and two tickets — one native,
  * one mirrored from a Linear source — for the label, comment and attachment
- * suites. Cleanup is this seed's own organisation and users only.
+ * suites. The project has two boards, its default ("Board") and "Dev", each
+ * with one To-do column; both tickets are on the default (`boardId: null`).
+ * The other project has a default board of its own. Cleanup is this seed's
+ * own organisation and users only.
  */
 export type TaskActivitySeed = {
   organizationId: string
   projectId: string
   otherProjectId: string
+  /** The project's default board, and a second board "Dev". */
+  board: BoardRef
+  devBoard: BoardRef
+  otherProjectBoard: BoardRef
+  boardColumnId: string
+  devColumnId: string
   sourceId: string
   otherSourceId: string
   nativeTaskId: string
@@ -51,6 +59,20 @@ export const seedTaskActivity = async (
   await prisma.projectMember.createMany({
     data: [member!, secondMember!].map((user) => ({ projectId: project.id, userId: user.id, role: 'member' })),
   })
+  const makeBoard = async (projectId: string, name: string, isDefault: boolean, position: number) => {
+    const board = await prisma.board.create({
+      data: { projectId, organizationId: organization.id, name, isDefault, position },
+      select: { id: true, projectId: true, organizationId: true },
+    })
+    const column = await prisma.boardColumn.create({
+      data: { boardId: board.id, organizationId: organization.id, name: 'To do', category: 'todo', position: 0 },
+      select: { id: true },
+    })
+    return { board, columnId: column.id }
+  }
+  const defaultBoard = await makeBoard(project.id, 'Board', true, 0)
+  const devBoard = await makeBoard(project.id, 'Dev', false, 1)
+  const otherProjectBoard = await makeBoard(otherProject.id, 'Board', true, 0)
   const team = await prisma.team.create({ data: { name: `activity-team-${suffix}`, projectId: project.id } })
   const agent = await prisma.agent.create({
     data: { name: `activity-agent-${suffix}`, organizationId: organization.id, projectId: project.id, teamId: team.id },
@@ -105,6 +127,11 @@ export const seedTaskActivity = async (
     organizationId: organization.id,
     projectId: project.id,
     otherProjectId: otherProject.id,
+    board: defaultBoard.board,
+    devBoard: devBoard.board,
+    otherProjectBoard: otherProjectBoard.board,
+    boardColumnId: defaultBoard.columnId,
+    devColumnId: devBoard.columnId,
     sourceId: source.id,
     otherSourceId: otherSource.id,
     nativeTaskId: nativeTask.id,
@@ -143,21 +170,26 @@ export const createUpload = async (
     },
   })
 
-/** A stand-in file service: records every delete and removes the row, as the real one does. */
-export const recordingFileService = (prisma: PrismaClient) => {
-  const deleted: string[] = []
-  return {
-    deleted,
-    fileService: {
-      delete: async (attachmentId: string, organizationId: string) => {
-        deleted.push(attachmentId)
-        const { count } = await prisma.attachment.deleteMany({ where: { id: attachmentId, organizationId } })
-        return count > 0
-      },
+/** A label row as a board source or a person left it. */
+export const createLabel = (
+  prisma: PrismaClient,
+  board: BoardRef,
+  name: string,
+  owner: { sourceId: string; externalId: string } | null = null,
+  color = '#6b7280',
+) =>
+  prisma.taskLabel.create({
+    data: {
+      organizationId: board.organizationId,
+      projectId: board.projectId,
+      boardId: board.id,
+      name,
+      normalizedName: name.trim().toLowerCase(),
+      color,
+      sourceId: owner?.sourceId ?? null,
+      externalId: owner?.externalId ?? null,
     },
-    attribution: { organizationId: 'test' } as unknown as LedgerAttribution,
-  }
-}
+  })
 
 export const eventsOf = async (prisma: PrismaClient, taskId: string, eventType: string) =>
   (await prisma.taskEvent.findMany({ where: { taskId, eventType }, orderBy: { createdAt: 'asc' } }))
