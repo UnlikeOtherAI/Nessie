@@ -10,10 +10,16 @@ export class TaskSetBlocked extends Error {
 
 export const changeTaskSetHealth = async (
   prisma: PrismaClient, id: string,
-  input: { reason: string; waiting?: boolean; offline?: boolean; now?: Date },
+  input: TaskSetHealthChange,
+): Promise<void> => prisma.$transaction((tx) => changeTaskSetHealthInTransaction(tx, id, input))
+
+type TaskSetHealthChange = { reason: string; waiting?: boolean; offline?: boolean; now?: Date; delayMs?: number }
+
+export const changeTaskSetHealthInTransaction = async (
+  tx: Prisma.TransactionClient, id: string, input: TaskSetHealthChange,
 ): Promise<void> => {
   const now = input.now ?? new Date()
-  await prisma.$transaction(async (tx) => {
+  const delayMs = input.delayMs ?? 30_000
     await lockTaskSet(tx, id)
     const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
     if (['paused', 'cancelled', 'completed'].includes(set.status)) return
@@ -26,7 +32,7 @@ export const changeTaskSetHealth = async (
       status: input.waiting ? 'waiting' : 'blocked', reason, offlineSince,
       statusChangedAt: changed ? now : set.statusChangedAt,
       healthRevision: { increment: changed ? 1 : 0 }, revision: { increment: 1 },
-      nextAttemptAt: new Date(now.getTime() + 30_000),
+      nextAttemptAt: new Date(now.getTime() + delayMs),
     } })
     if (shouldAlert) await tx.userAlert.upsert({
       where: { userId_eventKey: { userId: set.ownerUserId, eventKey: `task-set-health:${id}:${updated.healthRevision}` } },
@@ -34,8 +40,7 @@ export const changeTaskSetHealth = async (
         kind: 'task_set_health', taskSetId: id, eventKey: `task-set-health:${id}:${updated.healthRevision}` },
       update: {},
     })
-    if (input.waiting) await enqueueTaskSet(tx, id, updated.revision, 30_000)
-  })
+    if (input.waiting) await enqueueTaskSet(tx, id, updated.revision, delayMs)
 }
 
 export const sweepTaskSets = async (prisma: PrismaClient, now = new Date()): Promise<void> => {
@@ -51,7 +56,9 @@ export const sweepTaskSets = async (prisma: PrismaClient, now = new Date()): Pro
   for (const row of due) await prisma.$transaction(async (tx) => {
     const updated = await tx.taskSet.updateMany({
       where: { id: row.id, ...active, nextAttemptAt: { lte: now } },
-      data: { nextAttemptAt: new Date(now.getTime() + 60_000), revision: { increment: 1 } },
+      // Waking a due set must not move its eligibility into the future. Run
+      // fencing makes duplicate sweep deliveries harmless during execution.
+      data: { revision: { increment: 1 } },
     })
     if (updated.count === 0) return
     const set = await tx.taskSet.findUniqueOrThrow({ where: { id: row.id }, select: { revision: true } })
@@ -60,5 +67,5 @@ export const sweepTaskSets = async (prisma: PrismaClient, now = new Date()): Pro
 }
 
 export const lockTaskSetCapacity = async (tx: Prisma.TransactionClient, key: string): Promise<void> => {
-  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 17))`)
+  await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 17))`)
 }

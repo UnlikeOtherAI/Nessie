@@ -9,6 +9,19 @@ import { taskSetJournalStep } from './journal.js'
 import type { TaskSetClaim, TaskSetSearchTools } from './processor.js'
 import { TaskSetBlocked } from './state.js'
 
+export const taskSetSearchFailure = (output: string): string => {
+  try {
+    const body = JSON.parse(output) as { code?: string; content?: Array<{ type?: string; text?: string }> }
+    if (body.code === 'EXECUTOR_MCP_RESULT_TOO_LARGE') return 'input_too_large'
+    const text = body.content?.find((entry) => entry.type === 'text')?.text
+    const code = text ? (JSON.parse(text) as { code?: string }).code : undefined
+    const known = ['search_credentials_missing', 'search_credentials_rejected', 'search_quota_exhausted',
+      'search_result_too_large', 'search_invalid_response']
+    if (code && known.includes(code)) return code
+  } catch { /* Only structured protocol reason codes are eligible for display. */ }
+  return 'processor_search_unavailable'
+}
+
 /** Research uses only the selected local processor's approved Ollama server. */
 export const buildTaskSetSearchTools = async (
   deps: ExecutionDependencies, claim: TaskSetClaim, context: RunContext,
@@ -17,11 +30,15 @@ export const buildTaskSetSearchTools = async (
   if (processor.provider !== 'local/ollama' || !processor.localInferenceBindingId) {
     throw new TaskSetBlocked('processor_search_unsupported')
   }
-  const binding = await deps.prisma.agentLocalInferenceBinding.findUnique({ where: { id: processor.localInferenceBindingId } })
+  const binding = await deps.prisma.agentLocalInferenceBinding.findUnique({
+    where: { id: processor.localInferenceBindingId },
+  })
   const host = binding ? await deps.prisma.localInferenceHost.findUnique({ where: { id: binding.hostId } }) : null
   if (!host?.executorId) throw new TaskSetBlocked('processor_search_setup_required')
   const existing = await deps.prisma.executorBinding.findMany({ where: { runId: claim.attempt.runId } })
-  if (existing.some((entry) => entry.executorId !== host.executorId)) throw new TaskSetBlocked('processor_search_binding_changed')
+  if (existing.some((entry) => entry.executorId !== host.executorId)) {
+    throw new TaskSetBlocked('processor_search_binding_changed')
+  }
   if (existing.length === 0) {
     const actor = AuthorizedActionContextSchema.parse(claim.set.launchOrigin)
     const result = await resolveExecutorAvailabilityCandidates(deps.prisma, actor, {
@@ -35,7 +52,9 @@ export const buildTaskSetSearchTools = async (
       operationKeys: ['mcp.tools', 'mcp.call'], runId: claim.attempt.runId,
     }))
   }
-  const agent = await deps.prisma.agent.findUniqueOrThrow({ where: { id: context.agent.id }, select: { toolPolicy: true } })
+  const agent = await deps.prisma.agent.findUniqueOrThrow({
+    where: { id: context.agent.id }, select: { toolPolicy: true },
+  })
   const toolset = await buildExecutorToolset(deps.prisma, {
     agentId: context.agent.id, agentToolPolicy: agent.toolPolicy as Record<string, boolean> | null,
     encryptionSecret: deps.executorCommandEncryptionSecret,
@@ -61,9 +80,7 @@ export const buildTaskSetSearchTools = async (
     call: async (name, args, callId) => {
       if (!allowed.includes(name)) throw new TaskSetBlocked('processor_unapproved_tool')
       const result = await toolset.dispatch('executor.mcp.call', { server: 'ollama-search', tool: name, arguments: args }, callId)
-      if (!result.success) throw new TaskSetBlocked('processor_search_unavailable')
-      const body = JSON.parse(result.output) as { result?: { isError?: boolean } }
-      if (body.result?.isError) throw new TaskSetBlocked('processor_search_unavailable')
+      if (!result.success) throw new TaskSetBlocked(taskSetSearchFailure(result.output))
       return result.output
     },
   }

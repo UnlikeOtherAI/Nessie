@@ -20,7 +20,7 @@ export const importTaskSetSource = async (
     if (fresh.length === 0) return true
     await tx.taskSetItem.createMany({ data: fresh.map((record, index) => ({
       taskSetId: id, sequence: live.totalItems + index + 1, clientKey: record.key,
-      prompt: '', input: taskSetJson(record.input), sourceLocator: record.sourceLocator,
+      prompt: '', input: taskSetJson(record.input), sourceLocator: record.sourceLocator, inputHash: record.inputHash,
       disclosure: taskSetJson(record.disclosure),
     })) })
     await tx.taskSet.update({ where: { id }, data: {

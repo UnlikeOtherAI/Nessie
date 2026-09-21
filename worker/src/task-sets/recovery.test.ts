@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test, { type TestContext } from 'node:test'
 import { PrismaClient, type TaskSet } from '@prisma/client'
+import { taskSetJson } from '@nessie/team-admin'
 import { claimTaskSetItem } from './admission.js'
 import { taskSetJournalStep } from './journal.js'
 import { changeTaskSetHealth, TaskSetBlocked, TaskSetWait } from './state.js'
@@ -38,11 +39,12 @@ const seed = async (t: TestContext) => {
     } })
     sets.push(set.id)
     const one = await prisma.taskSetItem.create({ data: {
-      taskSetId: set.id, sequence: 1, clientKey: 'first', prompt: 'Summarize', input: { row: 1 }, disclosure: set.disclosure,
+      taskSetId: set.id, sequence: 1, clientKey: 'first', prompt: 'Summarize', input: { row: 1 },
+      disclosure: taskSetJson(set.disclosure),
     } })
     await prisma.taskSetItem.create({ data: {
       taskSetId: set.id, sequence: 2, clientKey: 'second', prompt: 'Use prior result', input: { row: 2 },
-      dependencies: [one.id], disclosure: set.disclosure,
+      dependencies: [one.id], disclosure: taskSetJson(set.disclosure),
     } })
     return set
   }
@@ -57,7 +59,8 @@ databaseTest('two workers claim one sequential item; provider receipts replay an
   assert.ok(claim && !('blocked' in claim))
   assert.equal(await prisma.taskSetAttempt.count({ where: { itemId: claim.item.id } }), 1)
   assert.equal(claim.item.sequence, 1)
-  const execution = await withRunExecutorFence(claim.attempt.runId, () => claimRunForExecution(prisma, claim.attempt.runId))
+  const execution = await withRunExecutorFence(claim.attempt.runId,
+    () => claimRunForExecution(prisma, claim.attempt.runId))
   assert.ok(execution.claimed)
   assert.equal((await claimRunForExecution(second, claim.attempt.runId)).claimed, false)
   let calls = 0

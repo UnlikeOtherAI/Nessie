@@ -64,6 +64,12 @@
         "NESSIE_TEST_PRISTINE_DATABASE"
       ]
     },
+    "test:task-sets": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": [],
+      "env": ["DATABASE_URL"]
+    },
     // `test` depends only on `^build`, so Turbo — unlike `pnpm -r`, which is
     // topological — is free to run @nessie/api's and @nessie/worker's suites at
     // the same time, against the one database. `worker/test/db` drives the

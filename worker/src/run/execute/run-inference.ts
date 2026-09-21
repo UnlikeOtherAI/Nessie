@@ -127,7 +127,7 @@ export const createRunInference = (
           await publishSafeLocalText(content)
         },
         providerInput: finalizeProvenancedProviderInput(messages),
-        runFence: options.local.runFence, tools,
+        runFence: options.local.runFence, signal, tools,
       })
       if (!allowEmptySuccess && !result.outputText && result.toolCalls.length === 0) {
         throw new Error('Inference execution produced no final answer')
@@ -248,7 +248,10 @@ export const createRunInference = (
     },
     runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
-      return call(messages, tools, runModel, true, callOptions?.stream !== false, callOptions?.maxOutputTokens, callOptions?.signal)
+      return call(
+        messages, tools, runModel, true, callOptions?.stream !== false,
+        callOptions?.maxOutputTokens, callOptions?.signal,
+      )
     },
     runUtility: (messages, tools) =>
       call(

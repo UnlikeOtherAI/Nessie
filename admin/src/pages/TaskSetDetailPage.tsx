@@ -20,7 +20,7 @@ import { TaskSetItemEditor } from '../components/features/task-sets/TaskSetItemE
 import { TaskSetItemDetail } from '../components/features/task-sets/TaskSetItemDetail'
 import { LocalInferenceHostStatus } from '../components/features/local-inference/LocalInferenceHostStatus'
 import {
-  TaskSetStatus, taskSetDocumentPath, taskSetProgress, taskSetTimestamp,
+  TaskSetStatus, taskSetDocumentPath, taskSetProgress, taskSetTimestamp, taskSetReason,
 } from '../components/features/task-sets/presentation'
 
 export const TaskSetDetailPage = () => {
@@ -88,7 +88,7 @@ export const TaskSetDetailPage = () => {
                 </p> : null}
                 <p className="text-[color:var(--tx3)]">Status updated {taskSetTimestamp(set.statusChangedAt)}
                   {set.skippedItems ? ` · ${set.skippedItems} skipped` : ''}</p>
-                {set.reason ? <FormError>{set.reason}</FormError> : null}
+                {set.reason ? <FormError>{taskSetReason(set.reason)}</FormError> : null}
                 <FormError>{action.error ? formErrorMessage(action.error, 'The task set could not be updated.') : null}</FormError>
                 {set.currentItemId ? <button className="admin-button admin-button-secondary justify-self-start"
                   onClick={() => selectItem(set.currentItemId ?? undefined)} type="button">Open current item</button> : null}

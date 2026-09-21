@@ -72,6 +72,7 @@ export const dispatchLocalInference = async (input: {
   maxOutputTokens?: number
   providerInput: ProviderInputFinalization
   runFence: string
+  signal?: AbortSignal
   context: RunContext
   onTextDelta?: (text: string) => Promise<void>
   tools: ToolSchemaDescriptor[]
@@ -178,6 +179,9 @@ export const dispatchLocalInference = async (input: {
     }
   }
   while (Date.now() < deadlineAt.getTime()) {
+    // A worker drain abandons waiting, not the durable generation. Its
+    // successor recovers the same invocation and the host keeps its slot.
+    input.signal?.throwIfAborted()
     await consumeFrames()
     const row = await input.deps.prisma.localInferenceAttempt.findUnique({
       where: { id: request.attemptId },

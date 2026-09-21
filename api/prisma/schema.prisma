@@ -9724,6 +9724,7 @@ model TaskSetItem {
   input           Json
   dependencies    String[] @default([]) @db.Uuid
   sourceLocator   String?  @map("source_locator")
+  inputHash       String?  @map("input_hash")
   disclosure      Json
   status          String   @default("pending")
   attempts        Int      @default(0)
@@ -9756,6 +9757,7 @@ model TaskSetAttempt {
   status          String   @default("pending")
   reason          String?
   inputSnapshot   Json?    @map("input_snapshot")
+  pendingOutcome  Json?    @map("pending_outcome")
   createdAt       DateTime @default(now()) @map("created_at")
   statusChangedAt DateTime @default(now()) @map("status_changed_at")
   item            TaskSetItem @relation(fields: [itemId], references: [id], onDelete: Cascade)

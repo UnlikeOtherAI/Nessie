@@ -5,7 +5,7 @@ import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { FormError } from '../../shared/FormActions'
 import { QueryState } from '../../shared/QueryState'
 import { TaskSetItemEditor } from './TaskSetItemEditor'
-import { TaskSetStatus, taskSetDocumentPath, taskSetTimestamp } from './presentation'
+import { TaskSetStatus, taskSetDocumentPath, taskSetTimestamp, taskSetReason } from './presentation'
 
 export const TaskSetItemDetail = ({ setId, itemId, editable }: {
   setId: string
@@ -24,7 +24,7 @@ export const TaskSetItemDetail = ({ setId, itemId, editable }: {
           <span className="text-xs text-[color:var(--tx3)]">Updated {taskSetTimestamp(item.statusChangedAt)} · {item.attempts} attempts</span>
         </div>
         {item.sourceLocator ? <p className="text-sm text-[color:var(--tx2)]">{item.sourceLocator}</p> : null}
-        {item.reason ? <FormError>{item.reason}</FormError> : null}
+        {item.reason ? <FormError>{taskSetReason(item.reason)}</FormError> : null}
         <p className="whitespace-pre-wrap text-sm">{item.prompt}</p>
         {item.input != null ? <section className="grid gap-2">
           <h3 className="font-semibold">Input</h3>

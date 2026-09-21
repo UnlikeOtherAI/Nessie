@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto'
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient, TaskSet, TaskSetItem, TaskSetAttempt } from '@prisma/client'
 import { lockTaskSet, taskSetJson } from '@nessie/team-admin'
 import { reserveLocalInferenceResource } from '@nessie/runtime'
 import { TaskSetProcessorSchema } from '@nessie/schemas'
 import { lockTaskSetCapacity, TaskSetBlocked, TaskSetWait } from './state.js'
 
-export const claimTaskSetItem = async (prisma: PrismaClient, id: string) => prisma.$transaction(async (tx) => {
+type Claim = { set: TaskSet; item: TaskSetItem; attempt: TaskSetAttempt } | { blocked: 'blocked_dependency' } | null
+
+export const claimTaskSetItem = async (
+  prisma: PrismaClient, id: string,
+): Promise<Claim> => prisma.$transaction(async (tx) => {
   await lockTaskSet(tx, id)
   const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
   if (set.currentItemId) {
@@ -13,9 +17,11 @@ export const claimTaskSetItem = async (prisma: PrismaClient, id: string) => pris
     const attempt = item.currentAttemptId
       ? await tx.taskSetAttempt.findUniqueOrThrow({ where: { id: item.currentAttemptId } }) : null
     if (!attempt) throw new TaskSetBlocked('attempt_missing')
+    if (attempt.status === 'settling' && set.nextAttemptAt > new Date()) return null
     return { set, item, attempt }
   }
   if (!['running', 'waiting'].includes(set.status)) return null
+  if (set.nextAttemptAt > new Date()) return null
   const item = await tx.taskSetItem.findFirst({ where: { taskSetId: id, sequence: set.nextSequence } })
   if (!item) return null
   if (item.status === 'completed' || item.status === 'skipped') throw new TaskSetBlocked('cursor_conflict')

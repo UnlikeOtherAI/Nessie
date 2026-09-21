@@ -41,7 +41,8 @@ export const listTaskSetProcessors = async (
     local.push({
       id: `local:${binding.id}`, label: `${binding.modelName} · ${host.displayLabel}`,
       provider: 'local/ollama', model: binding.modelName, localInferenceBindingId: binding.id,
-      localInferenceHostId: host.id, ...(host.inferenceResourceId ? { inferenceResourceId: host.inferenceResourceId } : {}),
+      localInferenceHostId: host.id,
+      ...(host.inferenceResourceId ? { inferenceResourceId: host.inferenceResourceId } : {}),
       source: 'local', resourceLabel: host.displayLabel, available: reason === null,
       reason, setupUrl: '/settings/executors',
     })
@@ -51,7 +52,9 @@ export const listTaskSetProcessors = async (
     const result = await listAgentModelOptionsForUser(deps.prisma, {
       config: deps.modelConfig, organizationId: actor.tenant.organizationId, userId,
       teamId: actor.tenant.teamId,
-      requestHeaders: await ledgerAgentModelCatalogRequestHeaders({ actorContext: actor, ledgerIdentity: deps.ledgerIdentity }),
+      requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
+        actorContext: actor, ledgerIdentity: deps.ledgerIdentity,
+      }),
     })
     hosted = result.options.map((option) => ({
       id: `${option.provider}:${option.model}:${option.modelSubscriptionId ?? ''}`,
@@ -98,7 +101,9 @@ export const resolveTaskSetProcessor = async (
     ...processor, actingUserId: userId, ownerUserId: userId,
     organizationId: actor.tenant.organizationId, teamId: actor.tenant.teamId,
     config: deps.modelConfig,
-    requestHeaders: await ledgerAgentModelCatalogRequestHeaders({ actorContext: actor, ledgerIdentity: deps.ledgerIdentity }),
+    requestHeaders: await ledgerAgentModelCatalogRequestHeaders({
+      actorContext: actor, ledgerIdentity: deps.ledgerIdentity,
+    }),
   })
   const agent = await deps.prisma.agent.findFirst({ where: {
     organizationId: actor.tenant.organizationId, agentKind: 'personal_assistant', deletedAt: null,
