@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { faFaceSmile } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../overlays/Popover'
@@ -17,12 +17,14 @@ import { EmojiPickerPanel } from './EmojiPickerPanel'
 
 type EmojiReactionButtonProps = {
   className?: string
+  icon?: ReactNode
   onSelect: (emoji: string) => void
   title?: string
 }
 
 export const EmojiReactionButton = ({
   className = 'admin-msg-action-button',
+  icon,
   onSelect,
   title = 'Add emoji reaction',
 }: EmojiReactionButtonProps) => {
@@ -48,7 +50,7 @@ export const EmojiReactionButton = ({
         title={title}
         type="button"
       >
-        <FontAwesomeIcon icon={faFaceSmile} />
+        {icon ?? <FontAwesomeIcon icon={faFaceSmile} />}
       </button>
       <Popover
         anchorRef={triggerRef}
