@@ -26,8 +26,12 @@ The prepared change `{kind: "agent_executor_access", agentId, state}` combines
 private roster membership and the existing whole-suite grant. Allow adds both;
 deny withdraws both. Project and organisation executors use the existing
 whole-suite grant alone. All writes and continuation consumption share one
-transaction. The existing authorization checks, per-mutation connection fences,
-per-agent logical tool policy updates, and audit events remain in force.
+transaction. The per-agent logical tool policy update runs after continuation
+validation in that same transaction; invalid, expired, rejected, or stale
+confirmations cannot alter it. The agent policy lock also covers the read of
+grants held on other executors, so concurrent changes cannot disable a policy
+the agent still holds elsewhere. The existing authorization checks,
+per-mutation connection fences, and audit events remain in force.
 Failure to grant rolls the new private assignment back. Removing one agent
 does not remove another agent's grants on the same machine.
 

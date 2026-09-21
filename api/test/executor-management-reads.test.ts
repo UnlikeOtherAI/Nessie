@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import { PrismaClient } from '@prisma/client'
 import Fastify from 'fastify'
-import { prepareExecutorAccessChange } from '@nessie/executor-manage'
-import { AuthorizedActionContextSchema } from '@nessie/schemas'
+import { confirmExecutorAccessChange, ensureExecutorLogicalTools, prepareExecutorAccessChange } from '@nessie/executor-manage'
+import { AuthorizedActionContextSchema, ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
+import { applyExecutorAgentPolicyChange } from '../src/services/executor-agent-access-policy.js'
 import { getExecutorAttentionSummary, listExecutorAgentAccess } from '../src/services/executor-management-reads.js'
 import { registerExecutorRoutes } from '../src/routes/executors.js'
 import type { RouteDeps } from '../src/routes/types.js'
@@ -132,6 +134,170 @@ dbTest('executor agent pages preserve privacy, count filtered rows and page the 
       await prisma.agent.deleteMany({ where: { id: { in: ids }, organizationId } })
       await prisma.organizationMember.deleteMany({ where: { organizationId } })
       await prisma.user.deleteMany({ where: { id: { in: [userId, otherUserId] } } })
+      await prisma.organization.deleteMany({ where: { id: organizationId } })
+    } finally { await prisma.$disconnect() }
+  }
+})
+
+dbTest('agent policy and executor access commit together only after a valid continuation', async () => {
+  const prisma = new PrismaClient()
+  const organizationId = randomUUID()
+  const userId = randomUUID()
+  const agentId = randomUUID()
+  const executorId = randomUUID()
+  const secondExecutorId = randomUUID()
+  const actor = AuthorizedActionContextSchema.parse({
+    actor: { actorType: 'user', actorId: userId }, tenant: { organizationId },
+    actionContext: { requestId: randomUUID() },
+  })
+  const app = Fastify()
+  registerExecutorRoutes(app, {
+    prisma, requireActorContext: () => actor, requireUserActor: () => true,
+  } as unknown as RouteDeps)
+  const prepare = (state: 'allowed' | 'denied') => prepareExecutorAccessChange(prisma, actor, {
+    executorId, change: { kind: 'agent_executor_access', agentId, state },
+  })
+  const snapshot = async () => ({
+    agent: await prisma.agent.findUniqueOrThrow({ where: { id: agentId }, select: { toolPolicy: true } }),
+    grants: await prisma.executorAgentOperationGrant.findMany({ where: { executorId, agentId } }),
+    roster: await prisma.executorPrivateAssignment.findMany({ where: { executorId } }),
+    executor: await prisma.executor.findUniqueOrThrow({ where: { id: executorId } }),
+  })
+  const confirm = (prepared: Awaited<ReturnType<typeof prepare>>, failAfterPolicy = false) =>
+    confirmExecutorAccessChange(prisma, actor, {
+      ...prepared, freshVerificationSatisfied: true,
+    }, async (tx, change) => {
+      await applyExecutorAgentPolicyChange(tx, { ...change, organizationId, actorUserId: userId })
+      if (failAfterPolicy) throw new Error('Downstream access mutation failed')
+    })
+  try {
+    await prisma.organization.create({ data: { id: organizationId, name: 'Atomic executor access test' } })
+    await prisma.user.create({ data: { id: userId, email: `${userId}@example.test`, displayName: 'Admin' } })
+    await prisma.organizationMember.create({ data: { organizationId, userId, role: 'owner' } })
+    const tools = await ensureExecutorLogicalTools(prisma, organizationId)
+    const policyKey = tools.get('file.read')!
+    await prisma.agent.create({ data: {
+      id: agentId, name: agentId, organizationId, toolPolicy: { [policyKey]: true },
+    } })
+    await prisma.executor.create({ data: {
+      id: executorId, organizationId, pairingOwnerUserId: userId,
+      label: 'Shared workstation', scopeKind: 'organization', status: 'online',
+    } })
+    const descriptor = ExecutorCapabilityDescriptorSchema.parse({
+      protocolVersion: 1, revision: 1, profiles: ['workspace_sandbox'], operationKeys: ['file.read'],
+      platform: { architecture: 'x64', os: 'windows', osMajorVersion: 26100 },
+      supervisor: 'service', sandboxBackend: 'none', localPolicyDigest: `sha256:${'1'.repeat(64)}`,
+      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 2 },
+    })
+    await prisma.executorCapabilityRevision.create({ data: {
+      executorId, revision: 1, descriptor, signature: 'test', reviewStatus: 'active',
+      localPolicyDigest: descriptor.localPolicyDigest,
+    } })
+    await prisma.executorAgentOperationGrant.create({ data: {
+      executorId, agentId, operationKey: 'file.read', state: 'allowed', authorizationRevision: 1, updatedByUserId: userId,
+    } })
+    for (const reason of ['wrong_token', 'stale', 'rejected', 'expired'] as const) {
+      const prepared = await prepare('denied')
+      assert.equal(prepared.requiresFreshVerification, false, 'shared-scope removal preserves its existing gate')
+      if (reason === 'stale') await prisma.executor.update({
+        where: { id: executorId }, data: { authorizationRevision: { increment: 1 } },
+      })
+      if (reason === 'rejected') await prisma.executorContinuation.update({
+        where: { id: prepared.accessChangeId }, data: { status: 'rejected' },
+      })
+      if (reason === 'expired') await prisma.executorContinuation.update({
+        where: { id: prepared.accessChangeId }, data: { expiresAt: new Date(0) },
+      })
+      const before = await snapshot()
+      const response = await app.inject({
+        method: 'POST', url: `/api/executor-access-changes/${prepared.accessChangeId}/confirm`,
+        payload: { confirmationToken: reason === 'wrong_token' ? 'x'.repeat(43) : prepared.confirmationToken },
+      })
+      assert.ok(response.statusCode >= 400 && response.statusCode < 500, `${reason}: ${response.body}`)
+      assert.deepEqual(await snapshot(), before, `${reason} cannot mutate policy, grants, roster or authorization`)
+    }
+
+    // A later access failure rolls the already-applied policy change back.
+    const denied = await prepare('denied')
+    const before = await snapshot()
+    await assert.rejects(confirm(denied, true), /Downstream access mutation failed/)
+    assert.deepEqual(await snapshot(), before)
+    await confirm(denied)
+    assert.deepEqual((await snapshot()).agent.toolPolicy, {})
+    assert.equal((await snapshot()).grants[0]?.state, 'denied')
+
+    // The same transaction enables logical policy before granting a private roster entry.
+    await prisma.executor.update({ where: { id: executorId }, data: {
+      scopeKind: 'private', privateAssignments: { create: { principalKind: 'user', userId, role: 'admin' } },
+    } })
+    const allowed = await prepare('allowed')
+    assert.equal(allowed.requiresFreshVerification, true)
+    await confirm(allowed)
+    assert.deepEqual((await snapshot()).agent.toolPolicy, { [policyKey]: true })
+    assert.equal((await snapshot()).grants[0]?.state, 'allowed')
+    assert.equal(await prisma.executorPrivateAssignment.count({ where: { executorId, agentId } }), 1)
+
+    // Hold the new grant transaction after its policy write. Removal from the
+    // old machine must wait before reading grants elsewhere, then see this grant.
+    await prisma.executor.create({ data: {
+      id: secondExecutorId, organizationId, pairingOwnerUserId: userId,
+      label: 'Second machine', scopeKind: 'organization', status: 'online',
+    } })
+    await prisma.executorCapabilityRevision.create({ data: {
+      executorId: secondExecutorId, revision: 1, descriptor, signature: 'test', reviewStatus: 'active',
+      localPolicyDigest: descriptor.localPolicyDigest,
+    } })
+    const addSecond = await prepareExecutorAccessChange(prisma, actor, {
+      executorId: secondExecutorId, change: { kind: 'agent_executor_access', agentId, state: 'allowed' },
+    })
+    const removeFirst = await prepare('denied')
+    let releaseAdd!: () => void
+    let markPolicyWritten!: () => void
+    let markRemoveStarted!: (pid: number) => void
+    const mayCommit = new Promise<void>((resolve) => { releaseAdd = resolve })
+    const policyWritten = new Promise<void>((resolve) => { markPolicyWritten = resolve })
+    const removeStarted = new Promise<number>((resolve) => { markRemoveStarted = resolve })
+    const adding = confirmExecutorAccessChange(prisma, actor, {
+      ...addSecond, freshVerificationSatisfied: true,
+    }, async (tx, change) => {
+      await applyExecutorAgentPolicyChange(tx, { ...change, organizationId, actorUserId: userId })
+      markPolicyWritten()
+      await mayCommit
+    })
+    await policyWritten
+    const removing = confirmExecutorAccessChange(prisma, actor, {
+      ...removeFirst, freshVerificationSatisfied: true,
+    }, async (tx, change) => {
+      const [backend] = await tx.$queryRaw<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`
+      markRemoveStarted(backend!.pid)
+      await applyExecutorAgentPolicyChange(tx, { ...change, organizationId, actorUserId: userId })
+    })
+    try {
+      const pid = await removeStarted
+      let blocked = false
+      for (let attempt = 0; attempt < 100 && !blocked; attempt += 1) {
+        const [locks] = await prisma.$queryRaw<{ blocked: boolean }[]>`
+          SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid = ${pid} AND locktype = 'advisory' AND NOT granted) AS blocked`
+        blocked = locks!.blocked
+        if (!blocked) await delay(10)
+      }
+      assert.ok(blocked, 'removal waits on the same agent policy lock while the other grant is uncommitted')
+    } finally {
+      releaseAdd()
+      await Promise.all([adding, removing])
+    }
+    assert.deepEqual((await snapshot()).agent.toolPolicy, { [policyKey]: true }, 'new machine retains logical tool access')
+    assert.equal((await snapshot()).grants.length, 0)
+    assert.equal(await prisma.executorAgentOperationGrant.count({
+      where: { executorId: secondExecutorId, agentId, state: 'allowed' },
+    }), 1)
+  } finally {
+    try {
+      await app.close()
+      await prisma.executor.deleteMany({ where: { id: { in: [executorId, secondExecutorId] }, organizationId } })
+      await prisma.agent.deleteMany({ where: { id: agentId, organizationId } })
+      await prisma.organizationMember.deleteMany({ where: { organizationId } })
+      await prisma.user.deleteMany({ where: { id: userId } })
       await prisma.organization.deleteMany({ where: { id: organizationId } })
     } finally { await prisma.$disconnect() }
   }

@@ -304,6 +304,9 @@ export const confirmExecutorAccessChange = async (
     confirmationToken: string
     freshVerificationSatisfied: boolean
   },
+  applyPolicy?: (
+    tx: Prisma.TransactionClient, input: { executorId: string; change: ExecutorAccessChange },
+  ) => Promise<void>,
 ): Promise<{ authorizationRevision: number; executorId: string }> =>
   prisma.$transaction(async (tx) => {
     const continuation = await tx.executorContinuation.findUnique({
@@ -369,6 +372,9 @@ export const confirmExecutorAccessChange = async (
         'Executor authorization changed; prepare the change again.',
       )
     }
+    // Route-owned policy effects share this validated continuation transaction;
+    // invalid tokens, stale authority or a failed access mutation write nothing.
+    await applyPolicy?.(tx, { executorId: executor.id, change: stored.change })
     const authorizationRevision = await applyChange(
       tx,
       actorContext,

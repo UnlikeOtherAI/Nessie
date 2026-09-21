@@ -396,15 +396,13 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       }
     }
     try {
-      await applyExecutorAgentPolicyChange(prisma, {
-        change: accessChange.change, executorId: accessChange.executorId,
-        organizationId: actorContext.tenant.organizationId, actorUserId: actorContext.actor.actorId,
-      })
       const result = await confirmExecutorAccessChange(prisma, actorContext, {
         accessChangeId,
         confirmationToken: body.confirmationToken,
         freshVerificationSatisfied,
-      })
+      }, (tx, change) => applyExecutorAgentPolicyChange(tx, {
+        ...change, organizationId: actorContext.tenant.organizationId, actorUserId: actorContext.actor.actorId,
+      }))
       await emitAuditEvent(prisma, {
         actorContext,
         action: 'executor.access_change.confirmed',
