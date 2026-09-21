@@ -6,14 +6,7 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import {
-  faCheck,
-  faCopy,
-  faPen,
-  faReply,
-  faTrashCan,
-} from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Check, Copy, Pencil, Reply, Smile, Trash2 } from 'lucide-react'
 import type { MessageReaction } from '../../../lib/api-client'
 import { EmojiReactionButton } from '../../shared/EmojiReactionButton'
 import { ReactionPills, type ResolveReactorName } from './ReactionPills'
@@ -105,9 +98,13 @@ export const ChannelMessageActions = ({
           title={copied ? 'Copied' : 'Copy message'}
           type="button"
         >
-          <FontAwesomeIcon icon={copied ? faCheck : faCopy} />
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
         </button>
-        <EmojiReactionButton onSelect={addReaction} title="Add emoji reaction" />
+        <EmojiReactionButton
+          icon={<Smile aria-hidden="true" />}
+          onSelect={addReaction}
+          title="Add emoji reaction"
+        />
         {onReply ? (
           <button
             aria-label="Reply in thread"
@@ -116,7 +113,7 @@ export const ChannelMessageActions = ({
             title="Reply in thread"
             type="button"
           >
-            <FontAwesomeIcon icon={faReply} />
+            <Reply aria-hidden="true" />
           </button>
         ) : null}
         {canEdit ? (
@@ -127,7 +124,7 @@ export const ChannelMessageActions = ({
             title="Edit message"
             type="button"
           >
-            <FontAwesomeIcon icon={faPen} />
+            <Pencil aria-hidden="true" />
           </button>
         ) : null}
         {canDelete ? (
@@ -138,7 +135,7 @@ export const ChannelMessageActions = ({
             title="Delete message"
             type="button"
           >
-            <FontAwesomeIcon icon={faTrashCan} />
+            <Trash2 aria-hidden="true" />
           </button>
         ) : null}
       </div>

@@ -4344,11 +4344,13 @@ button.reaction-pill-active:focus-visible {
   align-items: center;
   gap: 2px;
   margin-top: 6px;
-  border: 1px solid var(--sep);
+  border: 0;
   border-radius: 10px;
   background: var(--panel);
   padding: 3px;
-  box-shadow: 0 8px 18px rgb(0 0 0 / 12%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 5%),
+    0 6px 20px rgb(0 0 0 / 5%);
   z-index: 30;
 }
 
@@ -4358,8 +4360,10 @@ button.reaction-pill-active:focus-visible {
   height: 44px;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: 10px;
+  border: 0;
   color: var(--tx2);
+  transition: background 120ms;
 }
 
 .admin-msg-action-button:hover,
@@ -4394,8 +4398,8 @@ button.reaction-pill-active:focus-visible {
 @media (hover: hover) and (pointer: fine) {
   .admin-msg-actions {
     position: absolute;
-    top: 2px;
-    right: 12px;
+    top: -12px;
+    right: 20px;
     margin-top: 0;
   }
 
@@ -4404,12 +4408,14 @@ button.reaction-pill-active:focus-visible {
   }
 
   .admin-msg-action-button {
-    width: 36px;
-    height: 36px;
+    width: 26px;
+    height: 26px;
+    border-radius: 10px;
   }
 
   .admin-msg-action-button svg {
-    font-size: 16px;
+    width: 14px;
+    height: 14px;
   }
 }
 
