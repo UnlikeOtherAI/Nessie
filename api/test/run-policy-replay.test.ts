@@ -165,3 +165,26 @@ dbTest('channel policy replay: an ordinary reply beside custom work retains the 
   assert.equal(jobs[0]!.payload.interactive, true)
   assert.equal(jobs[0]!.payload.promptOverride, ordinaryPrompt)
 })
+
+dbTest('channel policy replay: Continue refuses checkpoint sources the authorizer can no longer read', async (t) => {
+  const prisma = new PrismaClient()
+  const f = await fixture(prisma)
+  const source = await prisma.channel.create({
+    data: {
+      label: 'Restricted source', slug: `source-${randomUUID()}`, organizationId: f.org.id,
+      projectId: f.channel.projectId, teamId: f.channel.teamId, visibility: 'protected',
+    },
+  })
+  t.after(async () => {
+    await prisma.channelMember.deleteMany({ where: { channelId: source.id } })
+    await prisma.channel.delete({ where: { id: source.id } })
+    await f.cleanup()
+    await prisma.$disconnect()
+  })
+  await prisma.channelMember.create({ data: { channelId: source.id, userId: f.clicker.actor.actorId } })
+  await prisma.runBasisScope.create({ data: { runId: f.run.id, scopeType: 'channel', scopeId: source.id } })
+  assert.deepEqual(await continueRun(prisma, f.clicker, { organizationId: f.org.id, runId: f.run.id }), {
+    kind: 'policy_authority_unavailable',
+  })
+  assert.equal((await prisma.runCheckpoint.findUniqueOrThrow({ where: { runId: f.run.id } })).consumedByRunId, null)
+})
