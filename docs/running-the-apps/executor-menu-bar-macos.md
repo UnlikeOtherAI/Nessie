@@ -151,6 +151,14 @@ shared by the standalone and nested copies of the menu bar app. Pending code
 pairing and completed pairing use the same root. Changing packaging cannot
 strand a pairing under an old bundle identifier.
 
+Before creating a connection, the app also checks the documented Desktop,
+older menu bar, and CLI state roots, one level deep. A single existing pairing
+is reused in place and described by the runtime, including its live organisation
+and team names. Several existing pairings stop setup so the app cannot silently
+add another. Discovery never opens keys, follows symbolic links, or scans other
+folders. Development builds with an explicit state-directory override stay
+isolated to that directory.
+
 That directory is owner-only and is yours. Nothing in it is uploaded, and no
 part of it is a copy of anything Nessie owns.
 

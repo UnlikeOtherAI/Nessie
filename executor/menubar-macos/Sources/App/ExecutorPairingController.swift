@@ -88,10 +88,11 @@ final class ExecutorPairingController: ObservableObject {
                 self.busy = false
                 switch result {
                 case let .success(state):
+                    let recoveredConfirmation = self.state?.isPending == true && state.isPaired
                     self.state = state
                     self.updatePolling()
                     self.onChanged?()
-                    if startWhenPaired, state.isPaired { self.onPaired?() }
+                    if state.isPaired, startWhenPaired || recoveredConfirmation { self.onPaired?() }
                 case .failure:
                     self.failure = "Nessie could not finish this step. Check your connection and try again."
                 }

@@ -28,6 +28,20 @@ enum ExecutorPaths {
             .path
     }
 
+    static func discover(isDevelopmentBuild: Bool) -> Result<String, ExecutorRefusal> {
+        let preferred = stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
+        if isDevelopmentBuild,
+           ProcessInfo.processInfo.environment[stateDirectoryOverrideVariable]?.isEmpty == false {
+            return .success(preferred)
+        }
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return ExecutorStateDiscovery.resolve(preferredDirectory: preferred, legacyRoots: [
+            support.appendingPathComponent("com.unlikeotherai.nessie.desktop/executors").path,
+            support.appendingPathComponent("com.unlikeotherai.nessie.executor.menubar/executors").path,
+            (NSHomeDirectory() as NSString).appendingPathComponent(".local/state/nessie-executor"),
+        ])
+    }
+
     /// The file `pair` writes. Its presence is the difference between "nobody
     /// has paired this Mac" and "something is wrong with a pairing that exists",
     /// and those two need different words. The file is never opened here.
@@ -73,8 +87,9 @@ final class ExecutorController: ObservableObject {
 
     init(isDevelopmentBuild: Bool) {
         self.isDevelopmentBuild = isDevelopmentBuild
-        self.stateDirectory = ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
-        self.runtime = PackagedRuntime.locate(in: Bundle.main.resourceURL)
+        let discovery = ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild)
+        self.stateDirectory = (try? discovery.get()) ?? ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
+        self.runtime = discovery.flatMap { _ in PackagedRuntime.locate(in: Bundle.main.resourceURL) }
         let runtime = try? self.runtime.get()
         self.pairing = ExecutorPairingController(
             runner: runtime.map { ExecutorProcessRunner(runtime: $0, isDevelopmentBuild: isDevelopmentBuild) },
