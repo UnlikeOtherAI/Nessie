@@ -43,3 +43,13 @@ test('low-risk denial and pause changes still require structural user confirmati
     status: 'disabled',
   }), false)
 })
+
+test('combined agent access retains fresh verification for a grant', () => {
+  assert.equal(requiresFreshExecutorVerification({
+    kind: 'agent_executor_access', agentId: 'agent-1', state: 'allowed',
+  }), true)
+  // Private removal adds the roster's verification requirement at prepare time.
+  assert.equal(requiresFreshExecutorVerification({
+    kind: 'agent_executor_access', agentId: 'agent-1', state: 'denied',
+  }), false)
+})

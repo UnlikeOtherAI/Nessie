@@ -43,8 +43,10 @@ export type AdminNavItem = {
    * other `/agents/...` paths belong to their named sibling items.
    */
   alsoActiveWhen?: (pathname: string) => boolean;
-  /** W29: live count badge rendered beside the label (failed-runs triage). */
+  /** Caller-scoped work that needs attention, rendered beside the label. */
   badgeCount?: number;
+  badgeLabel?: string;
+  badgeTestId?: string;
 };
 
 const agentDetailRoutePrefixes = [

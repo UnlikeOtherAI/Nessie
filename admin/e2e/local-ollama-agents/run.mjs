@@ -42,7 +42,7 @@ try {
   // Executor detail reuses the same host controls, scoped to its one executor.
   const executor = page.getByTestId('executor-detail')
   await executor.getByText('Paired executor · offline', { exact: true }).waitFor()
-  await executor.getByRole('button', { name: 'Pause', exact: true }).click()
+  await executor.getByRole('button', { name: 'Pause local models', exact: true }).click()
   const callsAfterPause = await page.evaluate(() => window.localOllamaFixtureCalls)
   assert.ok(callsAfterPause.some((call) => call.path.endsWith('/hosts/00000000-0000-4000-8000-0000000000e1/pause')))
   await page.screenshot({ fullPage: true, path: resolve(screenshots, 'executor-shared-controls.png') })

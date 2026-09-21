@@ -77,7 +77,7 @@ const renderPanels = (accessView: ExecutorAccessViewResponse): string =>
   renderToStaticMarkup(
     createElement(
       MemoryRouter,
-      { initialEntries: ['/agents/executors'] },
+      { initialEntries: ['/agents/executors?tab=permissions'] },
       createElement(
         QueryClientProvider,
         { client: new QueryClient() },
@@ -95,11 +95,8 @@ const renderPanels = (accessView: ExecutorAccessViewResponse): string =>
               isLoading: false,
               refetch: () => undefined,
             } as never,
-            agents: [],
             executor,
             onPrepared: () => undefined,
-            reviews: [],
-            users: [],
           }),
         ),
       ),
@@ -110,16 +107,16 @@ test('the policy proposal names the programs beside its review control', () => {
   const html = renderPanels(access(['git', 'node', 'rg']))
   assert.match(html, /Permitted programs \(3\)/)
   assert.match(html, /git, node, rg/)
-  assert.match(html, /Review activation/)
+  assert.match(html, /Review changes/)
 })
 
 test('a proposal that names no program says so rather than leaving a gap', () => {
   const html = renderPanels(access())
   assert.match(html, /Permitted programs: none named/)
-  assert.match(html, /can run nothing until its local policy names one/)
+  assert.match(html, /No programs can run until one is selected/)
   // An absent list must never be dressed up as a list, empty or otherwise.
   assert.doesNotMatch(html, /Permitted programs \(0\)/)
-  assert.match(html, /Review activation/)
+  assert.match(html, /Review changes/)
 })
 
 test('the two states do not render alike', () => {
@@ -142,7 +139,7 @@ test('a list without command.run is still shown, and says it is not enabled', ()
     }),
   )
   assert.match(html, /Permitted programs \(1\)/)
-  assert.match(html, /does not enable command.run/)
+  assert.match(html, /running programs is not enabled/)
 })
 
 const renderReviewed = (
@@ -162,8 +159,8 @@ test('the prepared descriptor review states what that revision permits', () => {
     { kind: 'descriptor_review', revision: 4, status: 'active' },
     ['git', 'node', 'rg'],
   )
-  assert.match(html, /Revision 4 local policy/)
-  assert.match(html, /command.run, workspace.review, sandbox.stop/)
+  assert.doesNotMatch(html, /Revision 4|sha256:/)
+  assert.match(html, /Run permitted programs.*Review draft changes.*Stop a work session/s)
   assert.match(html, /Permitted programs \(3\).*git, node, rg/s)
 })
 
@@ -217,11 +214,11 @@ test('a reviewer reads the folders a revision reaches, and the three states diff
   assert.match(named, /code, notes/u)
   // A descriptor signed before folders had names reaches exactly one folder;
   // rendering nothing would read as "no folders", the opposite of the truth.
-  assert.match(unnamed, /one, named before this revision recorded folder names/u)
+  assert.match(unnamed, /one folder; its name was not provided/u)
   assert.notEqual(named, unnamed)
   // Several folders with a guest operation enabled says so, because the guest
   // refuses rather than silently binding one of them.
-  assert.match(guestRefused, /a guest session mounts one folder/u)
+  assert.match(guestRefused, /requires selecting a single folder/u)
   assert.notEqual(named, guestRefused)
   // Host paths never reach a reviewer: the visible text carries names only, so
   // it holds no path separator once the markup's own tags are removed.

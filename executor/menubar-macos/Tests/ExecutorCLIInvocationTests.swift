@@ -3,19 +3,18 @@ import XCTest
 final class ExecutorCLIInvocationTests: XCTestCase {
     private let stateDirectory = "/private/state"
 
-    /// The property this whole file exists for: a pairing challenge and a
-    /// workspace path never appear in `argv`, where every process on this Mac
-    /// could read them. `--pair-input-stdin` is what makes that true.
+    /// The runtime owns the keys. The app sends a workspace and explicit replace
+    /// choice through stdin, and never handles an invitation credential.
     func testPairingKeepsSensitiveInputOffTheProcessList() throws {
-        let invocation = try ExecutorCLI.pair(
+        let invocation = try ExecutorCLI.pairingStart(
             apiBaseUrl: "https://api.nessie.works",
-            enrollmentId: "00000000-0000-4000-8000-000000000001",
-            challenge: "secret-challenge",
             workspaceRoot: "/private/workspace",
+            replace: true,
             stateDirectory: stateDirectory
         )
-        XCTAssertTrue(invocation.arguments.contains("--pair-input-stdin"))
-        XCTAssertFalse(invocation.arguments.contains("secret-challenge"))
+        XCTAssertEqual(invocation.arguments.first, "pairing-start")
+        XCTAssertTrue(invocation.arguments.contains("--pairing-input-stdin"))
+        XCTAssertTrue(invocation.arguments.contains("--json"))
         XCTAssertFalse(invocation.arguments.contains("/private/workspace"))
         XCTAssertFalse(invocation.arguments.contains("--challenge"))
         XCTAssertFalse(invocation.arguments.contains("--workspace"))
@@ -24,7 +23,7 @@ final class ExecutorCLIInvocationTests: XCTestCase {
         let parsed = try XCTUnwrap(
             JSONSerialization.jsonObject(with: payload) as? [String: Any]
         )
-        XCTAssertEqual(parsed["challenge"] as? String, "secret-challenge")
+        XCTAssertEqual(parsed["replace"] as? Bool, true)
         XCTAssertEqual(parsed["workspaceRoot"] as? String, "/private/workspace")
     }
 
@@ -36,7 +35,7 @@ final class ExecutorCLIInvocationTests: XCTestCase {
             operationKeys: ["file.read", "sandbox.stop"],
             workspaceFolders: [
                 ExecutorDescription.Folder(name: "nessie", path: "/private/workspace"),
-                ExecutorDescription.Folder(name: "notes", path: "/private/notes"),
+                ExecutorDescription.Folder(name: "notes", path: "/private/notes")
             ],
             commandAllowlist: ["git", "node"],
             stateDirectory: stateDirectory
@@ -60,7 +59,7 @@ final class ExecutorCLIInvocationTests: XCTestCase {
         let folders = try XCTUnwrap(parsed["workspaceFolders"] as? [[String: String]])
         XCTAssertEqual(folders, [
             ["name": "nessie", "path": "/private/workspace"],
-            ["name": "notes", "path": "/private/notes"],
+            ["name": "notes", "path": "/private/notes"]
         ])
     }
 
@@ -102,12 +101,18 @@ final class ExecutorCLIInvocationTests: XCTestCase {
         )
     }
 
-    /// The fingerprint is read out of the CLI's own success line. This app never
-    /// sees the machine key, so it could not compute one if it wanted to.
-    func testTheFingerprintIsReadFromThePairSuccessLine() {
-        let output = "Pairing request submitted. Confirm fingerprint SHA256:abc123 in Nessie, "
-            + "then run connect.\n"
-        XCTAssertEqual(PairingOutput.fingerprint(in: output), "SHA256:abc123")
-        XCTAssertNil(PairingOutput.fingerprint(in: "Executor daemon connection established.\n"))
+    func testConfirmationPinsTheClaimThePersonSaw() {
+        XCTAssertEqual(
+            ExecutorCLI.pairingConfirm(stateDirectory: stateDirectory, claimDigest: "reviewed-claim").arguments,
+            ["pairing-confirm", "--json", "--state-dir", stateDirectory, "--claim-digest", "reviewed-claim"]
+        )
+        XCTAssertEqual(
+            ExecutorCLI.pairingStatus(stateDirectory: stateDirectory).arguments,
+            ["pairing-status", "--json", "--state-dir", stateDirectory]
+        )
+        XCTAssertEqual(
+            ExecutorCLI.pairingCancel(stateDirectory: stateDirectory).arguments,
+            ["pairing-cancel", "--json", "--state-dir", stateDirectory]
+        )
     }
 }

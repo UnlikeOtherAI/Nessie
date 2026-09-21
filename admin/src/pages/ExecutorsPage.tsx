@@ -14,13 +14,11 @@ import { ExecutorsTable } from '../components/features/executors/ExecutorsTable'
 import { createListPageStore } from '../components/shared/list-page-state'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { useAgents } from '../facades/agents/hooks'
 import {
   useExecutors,
   useMyExecutorWorkspaceReviews,
 } from '../facades/executors/hooks'
 import { useProjects } from '../facades/projects/hooks'
-import { useUsers } from '../facades/users/hooks'
 import { useScrollMemory } from '../hooks/useScrollMemory'
 import { useAuthSession } from '../providers/AuthSessionProvider'
 import { parseHashParam, useConsumedHashIntent, useConsumedIntents } from '../navigation/intent'
@@ -62,8 +60,6 @@ export const ExecutorsPage = () => {
 
   const executorsQuery = useExecutors()
   const executors = executorsQuery.data ?? []
-  const agentsQuery = useAgents()
-  const usersQuery = useUsers()
   const projectsQuery = useProjects()
   const myReviewsQuery = useMyExecutorWorkspaceReviews()
   const draftCount = myReviewsQuery.data?.length ?? 0
@@ -182,18 +178,14 @@ export const ExecutorsPage = () => {
 
       {me ? (
         <ExecutorPairDialog
-          agents={agentsQuery.data ?? []}
-          currentUserId={me.user.id}
           {...(fixedProjectId ? { fixedProjectId } : {})}
           onClose={() => setShowPair(false)}
-          onFinished={(created) => {
+          onFinished={(executorId) => {
             setShowPair(false)
-            void navigate(`/agents/executors/${created.executor.id}`)
+            void navigate(`/agents/executors/${executorId}`)
           }}
           open={showPair}
-          organizationId={me.context.organizationId}
           projects={projectsQuery.data ?? []}
-          users={usersQuery.data ?? []}
         />
       ) : null}
 

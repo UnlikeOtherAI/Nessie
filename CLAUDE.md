@@ -17,6 +17,8 @@ this file — open it.
 Agent response length is prompt-guided rather than application-capped; follow
 the run-budget standard linked from `AGENTS.md` for provider protocol limits.
 
+Executor code pairing and its browser verification follow [docs/executor-pairing.md](docs/executor-pairing.md).
+
 > **Rule zero — a capability is not done until a person can reach it.** A
 > feature nobody can navigate to counts as unfinished. The four checks and the
 > history behind each are in [`AGENTS.md`](AGENTS.md) → "Rule zero".
@@ -134,6 +136,8 @@ sentence changes only if the invariant itself did.
   because `startAdmin()` defaults to the dev server. Verify a new suite with
   `NAV_E2E_ADMIN_MODE=preview` against a build made with the flag, and confirm
   the flag actually changes `admin/dist`, before trusting it.
+  The executor pairing, agent access, machine detail and attention fixture
+  flags are listed in [their browser guide](docs/testing/executor-attention.md).
 - **Channel agent-control coverage:** run
   `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
   suite — it drives the real members popup over each answer to

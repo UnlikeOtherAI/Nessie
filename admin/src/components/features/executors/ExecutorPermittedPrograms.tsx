@@ -34,14 +34,13 @@ export const ExecutorPermittedPrograms = ({
           Permitted programs ({commandAllowlist.length}):
         </span>{' '}
         {commandAllowlist.join(', ')}
-        {permitsCommandRun ? null : ' (this proposal does not enable command.run)'}
+        {permitsCommandRun ? null : ' (running programs is not enabled)'}
       </p>
     )
     : (
       <p className="mt-1 text-[color:var(--warning-text)]">
         <span className="font-medium">Permitted programs: none named.</span>{' '}
-        This proposal enables command.run but names no program, so the executor
-        can run nothing until its local policy names one.
+        No programs can run until one is selected on the machine.
       </p>
     )
 }

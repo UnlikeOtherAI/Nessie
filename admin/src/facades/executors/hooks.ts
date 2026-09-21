@@ -3,18 +3,14 @@ import {
   ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeResponseSchema,
   ExecutorAvailabilityResponseSchema,
-  ExecutorCreateResponseSchema,
   ExecutorRecordResponseSchema,
   ExecutorRunLaunchResponseSchema,
   ExecutorWorkspaceReviewRecordResponseSchema,
   ExecutorWorkspacePromotionRecordResponseSchema,
   OriginatingExecutorWorkspaceReviewRecordResponseSchema,
-  PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
   type ImplementedExecutorOperationKey,
-  type ExecutorPrivateAssignment,
-  type ExecutorScope,
 } from '@nessie/schemas'
 
 import type { ApiClient } from '../../lib/api-client'
@@ -44,7 +40,8 @@ export const fetchExecutorAccess = (apiClient: ApiClient, executorId: string) =>
 export const useExecutorAccess = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    placeholderData: keepPreviousData,
+    // Consent must never show permissions retained from a different machine.
+    placeholderData: undefined,
     queryKey: executorKeys.access(executorId),
     // Parsed by the client, not here. A hand-rolled `.parse()` throws a bare
     // ZodError, and this screen has to tell two failures apart: a server that
@@ -95,44 +92,17 @@ export const useExecutorWorkspacePromotion = (promotionId?: string) => {
   })
 }
 
-export const usePendingExecutorEnrollment = (executorId?: string) => {
-  const apiClient = useApiClient()
-  return useQuery({
-    placeholderData: keepPreviousData,
-    queryKey: executorKeys.pairing(executorId),
-    queryFn: async () => PendingExecutorEnrollmentResponseSchema.parse(
-      await apiClient.get(`/api/executors/${executorId}/pairing-pending`),
-    ),
-    enabled: false,
-    retry: false,
-  })
-}
-
 export const useExecutorAccessChange = (accessChangeId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    placeholderData: keepPreviousData,
+    // Each token approves one exact change; a previous change cannot stand in.
+    placeholderData: undefined,
     queryKey: executorKeys.accessChange(accessChangeId),
     queryFn: async () => ExecutorAccessChangeResponseSchema.parse(
       await apiClient.get(`/api/executor-access-changes/${accessChangeId}`),
     ),
     enabled: Boolean(accessChangeId),
     retry: false,
-  })
-}
-
-export const useCreateExecutor = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: {
-      label: string
-      privateAssignments?: ExecutorPrivateAssignment[]
-      scope: ExecutorScope
-    }) => ExecutorCreateResponseSchema.parse(await apiClient.post('/api/executors', input)),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
-    },
   })
 }
 
@@ -212,20 +182,6 @@ export const useRejectExecutorWorkspacePromotion = () => {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: executorKeys.all })
-    },
-  })
-}
-
-export const useConfirmExecutorEnrollment = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { executorId: string; fingerprint: string }) =>
-      apiClient.post(`/api/executors/${input.executorId}/pairing-confirm`, {
-        fingerprint: input.fingerprint,
-      }),
-    onSuccess: (_result, input) => {
-      void queryClient.invalidateQueries({ queryKey: executorKeys.detail(input.executorId) })
     },
   })
 }

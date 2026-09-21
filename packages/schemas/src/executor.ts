@@ -1048,6 +1048,11 @@ export const ExecutorAccessChangeRequestSchema = z.union([
     state: ExecutorAgentOperationGrantStateSchema,
   }).strict(),
   z.object({
+    kind: z.literal('agent_executor_access'),
+    agentId: AgentIdSchema,
+    state: ExecutorAgentOperationGrantStateSchema,
+  }).strict(),
+  z.object({
     kind: z.literal('lifecycle'),
     action: ExecutorLifecycleActionSchema,
   }).strict(),
@@ -1290,6 +1295,7 @@ export const ExecutorAccessChangeResponseSchema = z.object({
   change: z.record(z.string(), z.unknown()),
   expiresAt: TimestampSchema,
   requiresFreshVerification: z.boolean(),
+  verificationMethod: z.enum(['password', 'unavailable']).optional(),
   status: z.enum(['pending', 'confirmed', 'rejected', 'expired', 'consumed']),
 })
 export type ExecutorAccessChangeResponse = z.infer<

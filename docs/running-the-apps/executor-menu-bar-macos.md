@@ -84,33 +84,44 @@ for the lease. A daemon Desktop started itself stays Desktop's to stop.
 
 ## First run and pairing
 
-Pairing is started in Nessie, not on the Mac: **Agents → Executors → Pair
-executor** issues an enrollment id and a one-time challenge. In the menu bar
-app's **Settings** those two are pasted, together with the workspace folder the
-executor may read — chosen through a normal macOS folder picker.
+In the menu bar app, open **Settings**, choose the folder this Mac may read,
+and click **Get pairing code**. The app displays eight decimal digits in
+separate boxes with a countdown, followed by this Mac's name and fingerprint.
+In Nessie, open **Agents → Executors → Pair
+executor** and enter those digits. Choose the organisation, team, and access
+offered there, and review the machine fingerprint.
 
-**Which Nessie** is its own choice above the paste: **Nessie**
-(`https://api.nessie.works`) and **DeepTest** (`https://api.deeptest.live`) are
-named, so the hosted cases are one click and cannot be typo-squatted, and
-**A Nessie you host yourself** takes the HTTPS origin of your own instance's
-API. The panel names the host it is about to trust underneath that choice — an
-invitation that carries its own `--api` wins over the picker and the panel says
-so — and refuses plain HTTP, credentials in the address, and anything carrying a
-path, query or fragment, because `https://evil.example.com/api.nessie.works` is
-how one host is dressed up as another in a label. A development build adds the
-local API (`http://127.0.0.1:5454`) as a fourth choice; a release never has it.
-The list is one contract read by three apps —
-`packages/schemas/src/executor-pairing-origins.ts`, restated in Swift and Rust
-with tests that hold them against that file.
+The Mac then names that organisation and team beside its machine fingerprint.
+Click **Confirm and connect** on the Mac only when those names match the
+destination you chose. Confirmation is bound to the exact claim displayed;
+the runtime refuses a changed claim. Polling never confirms a connection.
+Expired codes cannot be confirmed, and **Cancel pairing** cancels the pending
+attempt through the same runtime that created it. Closing the window leaves
+the attempt available until it expires, including after reopening the app.
 
-The app then runs the bundled `nessie-executor pair`, which creates the
-machine's private key and prints a fingerprint. **Confirm that fingerprint in
-Nessie** — the app shows it beside the host this Mac is now paired with,
-because confirming a key belongs to a machine says nothing on its own about
-which Nessie that machine talks to. Settings keeps naming that host afterwards. Until an entitled human has confirmed it there and reviewed the local
-policy, the executor does nothing: the policy revision lands as
-`pending_review`, exactly as it does when a tool is added to the allowlist
-later.
+An already paired Mac shows the organisation and team by name. **Replace
+pairing…** explains which connection will close and offers replacement or
+cancel. Replacement stops this app's executor, retires its old server binding
+through the shared runtime, and only then requests another code. The app never
+deletes the local pairing itself or creates an additional executor beside it.
+Names are read live from Nessie and held only in memory.
+If replacement is blocked by unfinished local work, the app asks you to remove
+local drafts and stop sandboxes before trying again. This preserves those
+artifacts until you explicitly clear them.
+
+**Which Nessie** offers the named hosted services **Nessie** and **DeepTest**,
+plus **A Nessie you host yourself**. The latter accepts the secure address of
+the person's instance. A development build also offers **Local development**;
+a release does not. Origin validation remains shared with the CLI contract in
+`packages/schemas/src/executor-pairing-origins.ts`, with Swift tests checking
+the pinned hosted choices. No copied command, enrollment credential, state
+path, or server address appears as the identity of a paired organisation.
+
+The app uses the bundled runtime's JSON `pairing-start`, `pairing-status`,
+`pairing-confirm`, and `pairing-cancel` commands. The selected folder and
+replacement choice travel on stdin. Keys and pairing state belong exclusively
+to that runtime. Once confirmed, the executor starts automatically; reviewed
+policy still decides which work it can perform.
 
 The CLI the app runs is inside the app, at
 `/Applications/Nessie Executor.app/Contents/Resources/executor-runtime/`, next
@@ -124,6 +135,13 @@ bundle and the Linux package install, produced by the same
 The app supervises the daemon it starts: it spawns
 `nessie-executor serve --parent-liveness-stdin` and holds the pipe, so quitting
 the app ends the daemon rather than leaving one running with no visible owner.
+Opening the app starts an already paired executor after checking its local
+state and daemon lease. **Open Nessie Executor when I log in** therefore starts
+the paired executor at login too. Stopping it from the menu keeps it stopped
+for that app session; status refreshes do not restart it.
+An unfinished replacement keeps the prior executor stopped, including after an
+app restart when Nessie is temporarily unreachable. Pairing recovery or
+cancellation must finish before that machine can start again.
 
 ## Where state lives
 
@@ -132,15 +150,21 @@ the reviewed local policy, the daemon lease — is under the app's own private
 application-support directory:
 
 ```
-~/Library/Application Support/<bundle identifier>/executors/<executorId>
+~/Library/Application Support/Nessie Executor/executor
 ```
 
-`<bundle identifier>` is what the installed app reports
-(`mdls -name kMDItemCFBundleIdentifier "/Applications/Nessie Executor.app"`); it
-always begins `com.unlikeotherai.nessie.`, because the installer refuses to
-package an app identified as anything else. The `executors/<executorId>` shape
-is the one Nessie Desktop already uses on macOS, so a Mac that has both keeps
-two separate, owner-only state roots rather than one shared one.
+This stable product directory is independent of the bundle identifier and is
+shared by the standalone and nested copies of the menu bar app. Pending code
+pairing and completed pairing use the same root. Changing packaging cannot
+strand a pairing under an old bundle identifier.
+
+Before creating a connection, the app also checks the documented Desktop,
+older menu bar, and CLI state roots, one level deep. A single existing pairing
+is reused in place and described by the runtime, including its live organisation
+and team names. Several existing pairings stop setup so the app cannot silently
+add another. Discovery never opens keys, follows symbolic links, or scans other
+folders. Development builds with an explicit state-directory override stay
+isolated to that directory.
 
 That directory is owner-only and is yours. Nothing in it is uploaded, and no
 part of it is a copy of anything Nessie owns.
@@ -155,7 +179,7 @@ part of it is a copy of anything Nessie owns.
 3. Drag `/Applications/Nessie Executor.app` to the Trash.
 4. The pairing state survives on purpose, so a reinstall does not re-pair. To
    forget it, delete
-   `~/Library/Application Support/<bundle identifier>/executors/`.
+   `~/Library/Application Support/Nessie Executor/executor/`.
 
 If the app registered itself to launch at login, removing the app is enough:
 `SMAppService` registrations are keyed to the bundle and stop being honoured

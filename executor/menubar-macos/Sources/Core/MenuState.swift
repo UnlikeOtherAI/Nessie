@@ -79,16 +79,16 @@ public func menuHeader(for model: MenuModel) -> String {
         return "Nessie Executor — \(reason)"
     case .unpaired:
         return "Nessie Executor — nothing paired"
-    case let .paired(description):
+    case .paired:
         switch model.daemon {
         case .running:
-            return "Nessie Executor \(description.shortExecutorId) — running"
+            return "Nessie Executor — running"
         case .stopped:
-            return "Nessie Executor \(description.shortExecutorId) — stopped"
+            return "Nessie Executor — stopped"
         case .stopping:
-            return "Nessie Executor \(description.shortExecutorId) — stopping"
+            return "Nessie Executor — stopping"
         case .awaitingConfirmation:
-            return "Nessie Executor \(description.shortExecutorId) — confirm its fingerprint in Nessie"
+            return "Nessie Executor — finish pairing in Settings"
         }
     }
 }

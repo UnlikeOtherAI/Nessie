@@ -276,6 +276,9 @@ impl Supervisor {
         if !has_executor_state(&state_dir) {
             return Err("This executor has not been paired on this computer.".to_owned());
         }
+        if state_dir.join("executor-pairing-code.json").exists() {
+            return Err("Finish pairing this computer before starting it.".to_owned());
+        }
         if self.child_status(executor_id) == "running" {
             return Ok("running".to_owned());
         }

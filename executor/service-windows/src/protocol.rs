@@ -45,6 +45,10 @@ pub enum Command {
     Describe { executor_id: String },
     EnrollControlClient,
     Pair(PairCommand),
+    PairingStart { api_base_url: String, workspace_root: String, replace: bool },
+    PairingStatus,
+    PairingConfirm { claim_digest: String },
+    PairingCancel,
     Start { executor_id: String },
     Status,
     Stop { executor_id: String },
@@ -79,6 +83,10 @@ enum Request {
         enrollment_id: String,
         workspace_root: String,
     },
+    PairingStart { api_base_url: String, workspace_root: String, replace: bool },
+    PairingStatus,
+    PairingConfirm { claim_digest: String },
+    PairingCancel,
     Start { executor_id: String },
     Status,
     Stop { executor_id: String },
@@ -105,6 +113,7 @@ pub enum Response {
     PairOk { executor_id: String, fingerprint: String },
     #[serde(rename = "describe")]
     DescribeOk { description: serde_json::Value },
+    Pairing { pairing: serde_json::Value },
 }
 
 impl Response {
@@ -220,6 +229,18 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
     let request: Request = serde_json::from_str(line)
         .map_err(|_| "The control request is malformed.".to_owned())?;
     match request {
+        Request::PairingStart { api_base_url, workspace_root: workspace, replace } => Ok(Command::PairingStart {
+            api_base_url: approved_api_base_url(&api_base_url)?, workspace_root: workspace_root(workspace)?, replace,
+        }),
+        Request::PairingStatus => Ok(Command::PairingStatus),
+        Request::PairingCancel => Ok(Command::PairingCancel),
+        Request::PairingConfirm { claim_digest } => {
+            if claim_digest.len() != 71 || !claim_digest.starts_with("sha256:")
+                || !claim_digest[7..].bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err("Review the organisation and team before confirming.".to_owned());
+            }
+            Ok(Command::PairingConfirm { claim_digest })
+        },
         Request::Configure { executor_id, operation_keys } => Ok(Command::Configure {
             executor_id: identifier(executor_id, "executor id")?,
             operation_keys: workspace_operation_keys(operation_keys)?,

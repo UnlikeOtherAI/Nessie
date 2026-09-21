@@ -129,3 +129,6 @@ export {
   type PreparedWorkspacePromotion,
   type WorkspacePromotionForUser,
 } from './executor-workspace-promotions.js'
+export * from './executor-code-pairing.js'
+export * from './executor-code-confirmation.js'
+export * from './executor-code-expiry.js'

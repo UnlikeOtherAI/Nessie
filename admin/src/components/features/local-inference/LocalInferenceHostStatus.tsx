@@ -9,6 +9,8 @@ import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { QueryState } from '../../shared/QueryState'
 
 type LocalInferenceHostStatusProps = {
+  /** Use the shared blocking confirmation when this surface is in a dialog. */
+  confirmInDialog?: boolean
   /** Restricts the shared controls to one paired executor when it is known. */
   executorId?: string
   /** The owning surface supplies the only useful empty-state doorway. */
@@ -31,7 +33,9 @@ const hostCopy = (host: LocalInferenceHost): string => {
  * Connections passes every own host; an executor detail passes just that
  * executor, so following either doorway reaches the same control and facts.
  */
-export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHostStatusProps) => {
+export const LocalInferenceHostStatus = ({
+  executorId, empty, confirmInDialog = false,
+}: LocalInferenceHostStatusProps) => {
   const hosts = useLocalInferenceHosts()
   const action = useLocalInferenceHostAction()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -91,7 +95,7 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
                       onClick={() => performHostAction(host.id, host.paused ? 'resume' : 'pause')}
                       type="button"
                     >
-                      {host.paused ? 'Resume' : 'Pause'}
+                      {host.paused ? 'Resume local models' : 'Pause local models'}
                     </button>
                   ) : null}
                   <button
@@ -100,7 +104,7 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
                     onClick={() => setRevokeTarget(host)}
                     type="button"
                   >
-                    Revoke
+                    Disconnect local models
                   </button>
                 </div>
               </div>
@@ -109,7 +113,8 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
         ) : empty}
       </QueryState>
       <ConfirmDialog
-        body="This disconnects Nessie’s relationship with this computer. Its local key and Ollama state stay on that computer until you repair the connection or rotate its key."
+        blocking={confirmInDialog}
+        body="Agents will stop using this computer’s local models. The executor pairing and other machine permissions stay connected."
         confirmLabel="Disconnect"
         destructive
         onCancel={() => setRevokeTarget(null)}
@@ -119,7 +124,7 @@ export const LocalInferenceHostStatus = ({ executorId, empty }: LocalInferenceHo
         }}
         open={revokeTarget !== null}
         pending={action.isPending}
-        title="Disconnect this local Ollama connection?"
+        title="Disconnect local models?"
       />
     </div>
   )

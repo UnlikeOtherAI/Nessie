@@ -39,8 +39,7 @@ const MENU_BAR_STATE_COMPONENTS: [&str; 2] = ["Nessie Executor", "executor"];
 /// daemon. It names where the controls are, because "unavailable" with no
 /// remedy is the thing this replaces.
 pub const MENU_BAR_SUPERVISING_REASON: &str =
-    "The Nessie Executor menu bar app is running this Mac's executor. Start and stop it from its \
-     menu bar icon — Nessie Desktop will not start a second daemon beside it.";
+    "Nessie Executor is running this Mac. Use its menu bar icon to start or stop it.";
 
 /// Which copy of the menu bar app Desktop opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -413,7 +412,7 @@ mod tests {
     /// distinctive clause has to survive in both.
     #[test]
     fn the_panel_says_the_same_thing_the_refusal_does() {
-        const CLAUSE: &str = "will not start a second daemon beside it";
+        const CLAUSE: &str = "Use its menu bar icon to start or stop it.";
         assert!(MENU_BAR_SUPERVISING_REASON.contains(CLAUSE));
         assert!(
             EXECUTORS_PANEL_SOURCE.contains(CLAUSE),

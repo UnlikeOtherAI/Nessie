@@ -27,27 +27,24 @@ const cases = [
   {
     scenario: 'available',
     must: [
-      'Local MCP servers',
+      'Local apps',
       'available',
-      'Kelpie 0.1.11 · 145 tools',
       'Ondrej’s MacBook Pro',
       'MacBookPro18,2',
       'Ondrej’s iPhone',
       'paired',
       'pair on the device',
-      'Discovered, not drivable — Kelpie refuses automation until a person pairs on the device itself.',
+      'Open Kelpie on this device to pair it before an agent can use it.',
       'ci-runner-2',
-      '192.168.1.20:8421',
-      '1512×982',
       'last seen',
     ],
-    mustNot: ['not installed on this machine'],
+    mustNot: ['Install Kelpie', '192.168.1.20:8421', '1512×982'],
   },
   {
     scenario: 'not-installed',
     must: [
       'not installed',
-      'Kelpie is not installed on this machine. Install it there and the next heartbeat reports it.',
+      'Install Kelpie on this machine to use it.',
     ],
     // The pairing affordance by its own words. A bare 'paired' also matches
     // the panel's standing "paired executors run only the reviewed local
@@ -58,17 +55,15 @@ const cases = [
     scenario: 'launch-failed',
     must: [
       'launch failed',
-      'Kelpie is installed, but the daemon could not start it.',
-      'The server process exited with status 1 during launch.',
+      'Kelpie could not start. Check it on the machine.',
     ],
     mustNot: ['not installed on this machine'],
   },
   {
     scenario: 'handshake-failed',
     must: [
-      'handshake failed',
-      'Kelpie started, but did not answer the MCP handshake.',
-      'The server closed the connection during initialize.',
+      'connection failed',
+      'Kelpie started but could not connect. Check it on the machine.',
     ],
     mustNot: ['not installed on this machine', 'could not start it'],
   },
@@ -79,20 +74,20 @@ const cases = [
   },
   {
     scenario: 'not-probed',
-    must: ['not probed', 'The daemon has not probed Kelpie yet; a later heartbeat should say.'],
+    must: ['not checked', 'Kelpie has not been checked yet.'],
     mustNot: ['not installed on this machine'],
   },
   {
     scenario: 'no-browsers',
     must: [
       'available',
-      'Kelpie answered, but no browser announced itself on the network.',
+      'No nearby browsers found. Open Kelpie on the device you want to use.',
     ],
     mustNot: ['not installed on this machine', 'has not probed the network'],
   },
   {
     scenario: 'unprobed-inventory',
-    must: ['available', 'The daemon has not probed the network for Kelpie instances.'],
+    must: ['available', 'Nearby Kelpie devices have not been checked yet.'],
     mustNot: ['no browser announced itself'],
   },
   {
@@ -104,9 +99,9 @@ const cases = [
   {
     scenario: 'never-heard',
     must: [
-      'This daemon has never reported local MCP status',
+      'The machine has not reported whether these apps are available yet.',
       'never reported',
-      'The active reviewed policy names this server; the daemon has never reported its status.',
+      'This app is permitted, but the machine has not reported its status yet.',
     ],
     // The availability pills by their own words. A bare 'available' also
     // matches the executor's scope line ("available only to entitled
@@ -117,22 +112,22 @@ const cases = [
     scenario: 'named-unreported',
     must: [
       'not in the last report',
-      'The active reviewed policy names this server, but the daemon’s last report does not.',
+      'This app is permitted, but the machine did not include it in its last update.',
     ],
     mustNot: ['has never reported local MCP status'],
   },
   {
     scenario: 'policy-named',
-    must: ['Revision 3 local policy', 'Local MCP servers (1):', 'kelpie'],
+    must: ['Local apps (1):', 'kelpie'],
     mustNot: ['none named'],
   },
   {
     scenario: 'policy-none-named',
     must: [
-      'Local MCP servers: none named.',
-      'This proposal enables mcp.tools and mcp.call but names no server, so the executor proxies none until its local policy names one.',
+      'Local apps: none selected.',
+      'Choose an app on the machine before an agent can use its tools.',
     ],
-    mustNot: ['Local MCP servers (0)'],
+    mustNot: ['Local apps (0)'],
   },
   {
     // The one prepared change whose stored JSON tells a person nothing: it
@@ -142,13 +137,11 @@ const cases = [
     // to run — and must not list the one operation only a person may issue.
     scenario: 'whole-suite-grant',
     must: [
-      'Give Repo Researcher everything this executor offers',
-      'An executor grant is whole-suite',
-      'file.list',
-      'file.read',
-      'file.write',
-      'command.run',
-      'workspace.review',
+      'Browse files',
+      'Read files',
+      'Edit draft copies',
+      'Run permitted programs',
+      'Review draft changes',
     ],
     mustNot: ['workspace.promote', 'agent_executor_grant'],
   },
@@ -169,7 +162,7 @@ try {
     await page.getByText(
       testCase.scenario.startsWith('policy-') || testCase.scenario === 'whole-suite-grant'
         ? 'Review prepared executor change'
-        : 'Local MCP servers',
+        : 'Local apps',
       { exact: true },
     ).waitFor()
     const text = await page.locator('body').innerText()

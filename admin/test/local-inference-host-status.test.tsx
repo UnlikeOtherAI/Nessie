@@ -84,7 +84,7 @@ test('an executor detail gets its own host status and real repairs', () => {
 
   assert.match(html, /Online — ready for a selected local model\./)
   assert.match(html, /Pause/)
-  assert.match(html, /Revoke/)
+  assert.match(html, /Disconnect local models/)
   assert.doesNotMatch(html, /Offline — start Nessie Desktop/)
   assert.doesNotMatch(html, /Open executor/)
 })
@@ -159,7 +159,7 @@ const mountHostStatus = async () => {
     })
   }
   const revoke = () => {
-    const button = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Revoke')
+    const button = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === 'Disconnect local models')
     assert.ok(button, 'the host has a revoke action')
     return button
   }
@@ -191,11 +191,11 @@ test('revocation remains a shared repair but only reaches the server after expli
   const view = await mountHostStatus()
   try {
     await view.click(view.revoke())
-    assert.match(view.dialogText(), /Disconnect this local Ollama connection\?/)
-    assert.match(view.dialogText(), /disconnects Nessie’s relationship with this computer/)
+    assert.match(view.dialogText(), /Disconnect local models\?/)
+    assert.match(view.dialogText(), /Agents will stop using this computer’s local models/)
     assert.match(
       view.dialogText(),
-      /local key and Ollama state stay on that computer until you repair the connection or rotate its key/,
+      /executor pairing and other machine permissions stay connected/,
     )
     assert.equal(view.calls.length, 0, 'opening the destructive confirmation must not revoke')
 

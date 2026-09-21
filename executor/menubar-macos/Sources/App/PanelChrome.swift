@@ -41,8 +41,7 @@ struct UnpairedNotice: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(
-                "This Mac is not paired with Nessie yet. Paste the invitation from Agents → Executors "
-                    + "in Nessie to pair it.",
+                "This Mac is not paired with Nessie yet. Get a pairing code in Settings to connect it.",
                 systemImage: "link.badge.plus"
             )
             .font(.callout)

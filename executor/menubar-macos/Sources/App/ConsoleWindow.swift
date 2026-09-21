@@ -21,6 +21,7 @@ final class ConsoleWindowController: NSObject, NSWindowDelegate {
 
     func show(_ section: ConsoleSection) {
         controller.refresh()
+        controller.pairing.restore()
         selection.section = section
         if let window {
             NSApp.activate(ignoringOtherApps: true)
@@ -30,6 +31,7 @@ final class ConsoleWindowController: NSObject, NSWindowDelegate {
         let hosting = NSHostingController(
             rootView: ConsoleView()
                 .environmentObject(controller)
+                .environmentObject(controller.pairing)
                 .environmentObject(selection)
         )
         hosting.sizingOptions = [.preferredContentSize]

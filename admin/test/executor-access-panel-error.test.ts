@@ -112,14 +112,11 @@ const render = (accessQuery: unknown): Promise<string> => withDom(async () => {
         { client },
         h(
           MemoryRouter,
-          { initialEntries: ['/agents/executors?tab=operations'] },
+          { initialEntries: ['/agents/executors?tab=permissions'] },
           h(ExecutorDetailPanels, {
             accessQuery: accessQuery as never,
-            agents: [],
             executor,
             onPrepared: () => {},
-            reviews: [],
-            users: [],
           }),
         ),
       ),
@@ -159,7 +156,7 @@ test('a payload this build cannot read is said out loud, not rendered as a lack 
   // person had navigated to. Naming the executor is the screen header's job on
   // `/agents/executors/:executorId`, not this panel's — it used to repeat the
   // label and status inside its own card, one heading below the screen's.
-  assert.match(text, /Operations/)
+  assert.match(text, /Permissions/)
 })
 
 test('an ordinary failure keeps the ordinary sentence and the Retry', async () => {
@@ -177,7 +174,7 @@ test('when the access view reads, the grant controls are on screen', async () =>
     isLoading: false,
     refetch: () => {},
   })
-  assert.match(text, /Prepare paired agent-operation grant/)
+  assert.match(text, /machine has not sent its permissions yet/)
   assert.doesNotMatch(text, /could not be loaded/)
-  assert.ok(selects >= 3, 'agent, operation and state pickers')
+  assert.equal(selects, 0, 'grant forms stay in a popup')
 })

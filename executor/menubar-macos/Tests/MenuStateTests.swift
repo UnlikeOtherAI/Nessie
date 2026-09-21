@@ -11,7 +11,7 @@ final class MenuStateTests: XCTestCase {
     func testARunningDaemonIsTheRunningIcon() {
         let model = MenuModel(pairing: .paired(sampleDescription()), daemon: .running)
         XCTAssertEqual(menuIcon(for: model), .running)
-        XCTAssertEqual(menuHeader(for: model), "Nessie Executor 32b7de69 — running")
+        XCTAssertEqual(menuHeader(for: model), "Nessie Executor — running")
         XCTAssertTrue(stopIsAvailable(for: model))
         XCTAssertFalse(startIsAvailable(for: model))
     }
@@ -60,7 +60,4 @@ final class MenuStateTests: XCTestCase {
         )
     }
 
-    func testAMenuLineShowsEnoughOfAnIdToTellTwoApart() {
-        XCTAssertEqual(sampleDescription().shortExecutorId, "32b7de69")
-    }
 }

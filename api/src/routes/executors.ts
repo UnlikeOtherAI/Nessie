@@ -3,9 +3,7 @@ import {
   confirmExecutorEnrollment,
   bindExecutorCandidate,
   createExecutor,
-  ensureExecutorLogicalTools,
-  executorGrantedOperationKeys,
-  executorOperationKeysHeldElsewhere,
+  expireExecutorCodePairings,
   ExecutorError,
   getExecutorAccessChangeForUser,
   getExecutorAccessView,
@@ -16,13 +14,8 @@ import {
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   resolveExecutorAvailabilityCandidates,
-  resolveExecutorWholeSuiteOperationKeys,
 } from '@nessie/executor-manage'
 import type { FastifyInstance } from 'fastify'
-import {
-  ImplementedExecutorOperationKeySchema,
-  type ImplementedExecutorOperationKey,
-} from '@nessie/schemas'
 
 import {
   ConfirmExecutorAccessChangeBodySchema,
@@ -46,13 +39,16 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { resolveOptionalPublicOrigin } from '../lib/public-origin.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { executorPairingAudit } from '../services/executor-pairing-audit.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { publishMessageNew } from '../services/message-delivery.js'
-import { setAgentToolPolicyForRegistryEntry } from '../services/agent-tool-policy-registry.js'
+import { applyExecutorAgentPolicyChange } from '../services/executor-agent-access-policy.js'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorDaemonRoutes } from './executor-daemon-routes.js'
+import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
+import { registerExecutorManagementReadRoutes } from './executor-management-reads.js'
 import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
 import type { RouteDeps } from './types.js'
 
@@ -62,6 +58,8 @@ import type { RouteDeps } from './types.js'
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  registerExecutorPairingCodeRoutes(app, deps)
+  registerExecutorManagementReadRoutes(app, deps)
   registerExecutorWorkspacePromotionRoutes(app, deps)
   const {
     buildChannelRealtimeScopes,
@@ -76,6 +74,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   app.get('/api/executors', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    await expireExecutorCodePairings(prisma, actorContext.tenant.organizationId, executorPairingAudit)
     const executors = await listVisibleExecutors(prisma, actorContext)
     return createApiResponse(ExecutorRecordSchema.array().parse(executors))
   })
@@ -257,6 +256,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   app.get('/api/executors/:executorId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    await expireExecutorCodePairings(prisma, actorContext.tenant.organizationId, executorPairingAudit)
     const { executorId } = request.params as { executorId: string }
     const found = await getExecutorForUser(prisma, actorContext, executorId)
     if (!found) {
@@ -360,8 +360,11 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       sendApiError(reply, 404, 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND', 'Access change not found')
       return reply
     }
+    const user = found.requiresFreshVerification ? await prisma.user.findUnique({
+      where: { id: actorContext.actor.actorId }, select: { passwordHash: true },
+    }) : null
     return createApiResponse(ExecutorAccessChangeRecordSchema.parse({
-      ...found,
+      ...found, verificationMethod: user?.passwordHash ? 'password' : 'unavailable',
       expiresAt: found.expiresAt.toISOString(),
     }))
   })
@@ -393,75 +396,13 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       }
     }
     try {
-      // An agent needs both the exact executor-operation grant and the
-      // matching logical executor tool policy, so the two kinds differ only in
-      // how many keys they carry: one named operation, or the whole suite
-      // (derived here rather than stored, exactly as the apply path derives
-      // it).
-      //
-      // A whole-suite REVOKE takes the keys the agent actually holds, not the
-      // ones the live policy offers. Those two sets differ the moment a
-      // revision narrows, and clearing only the live set would leave the
-      // dropped keys' tool policy enabled — dormant now, live again the day a
-      // later revision re-adds the key. The apply path makes the same
-      // distinction, and the two must not drift.
-      const grantChange =
-        accessChange.change.kind === 'agent_operation_grant'
-        || accessChange.change.kind === 'agent_executor_grant'
-          ? accessChange.change
-          : null
-      const grantedOperationKeys = grantChange === null
-        ? []
-        : grantChange.kind === 'agent_operation_grant'
-          ? [ImplementedExecutorOperationKeySchema.parse(grantChange.operationKey)]
-          : grantChange.state === 'allowed'
-            ? await resolveExecutorWholeSuiteOperationKeys(prisma, accessChange.executorId)
-            : await executorGrantedOperationKeys(
-                prisma,
-                accessChange.executorId,
-                grantChange.agentId,
-              )
-      if (grantChange && grantedOperationKeys.length > 0) {
-        const tools = await ensureExecutorLogicalTools(prisma, actorContext.tenant.organizationId)
-        // The logical tool policy is ORGANISATION-wide — one
-        // `executor.<operation>` entry, never a per-machine projection — while
-        // the grant row is the per-machine half. So a revoke on one executor
-        // must leave the shared entry alone when the agent still holds that
-        // operation on another machine, or withdrawing consent for one laptop
-        // silently cuts the agent off every executor it is still granted on.
-        // The binding gate reads the policy entry with no executor dimension,
-        // so it cannot tell the difference.
-        const heldElsewhere = grantChange.state === 'allowed'
-          ? new Set<ImplementedExecutorOperationKey>()
-          : await executorOperationKeysHeldElsewhere(prisma, {
-              agentId: grantChange.agentId,
-              excludeExecutorId: accessChange.executorId,
-              organizationId: actorContext.tenant.organizationId,
-            })
-        // Apply the policy half first. A stale/failed confirmation can only
-        // leave a logical grant without the exact executor-operation grant,
-        // which remains fail-closed; the reverse ordering could confirm a
-        // resource grant and then strand its mandatory policy update.
-        for (const operationKey of grantedOperationKeys) {
-          if (heldElsewhere.has(operationKey)) continue
-          const toolRegistryEntryId = tools.get(operationKey)
-          if (!toolRegistryEntryId) {
-            throw new Error('Executor logical tool registry is incomplete.')
-          }
-          await setAgentToolPolicyForRegistryEntry(prisma, {
-            agentId: grantChange.agentId,
-            actorUserId: actorContext.actor.actorId,
-            enabled: grantChange.state === 'allowed',
-            organizationId: actorContext.tenant.organizationId,
-            toolRegistryEntryId,
-          })
-        }
-      }
       const result = await confirmExecutorAccessChange(prisma, actorContext, {
         accessChangeId,
         confirmationToken: body.confirmationToken,
         freshVerificationSatisfied,
-      })
+      }, (tx, change) => applyExecutorAgentPolicyChange(tx, {
+        ...change, organizationId: actorContext.tenant.organizationId, actorUserId: actorContext.actor.actorId,
+      }))
       await emitAuditEvent(prisma, {
         actorContext,
         action: 'executor.access_change.confirmed',

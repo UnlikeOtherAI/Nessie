@@ -25,10 +25,11 @@
 
 mod commands;
 mod description;
+mod user_pairing;
 mod grant;
-mod invitation;
 mod menu;
 mod pairing_origin;
+mod pairing_code;
 mod permitted_command;
 mod pipe_client;
 mod service_identity;
@@ -193,8 +194,11 @@ fn main() {
             commands::executor_hide_status,
             commands::executor_open_logs,
             commands::executor_open_nessie,
-            commands::executor_pair,
             commands::executor_pairing_backends,
+            pairing_code::executor_pairing_start,
+            pairing_code::executor_pairing_status,
+            pairing_code::executor_pairing_confirm,
+            pairing_code::executor_pairing_cancel,
             commands::executor_remove_command,
             commands::executor_remove_folder,
             commands::executor_start,

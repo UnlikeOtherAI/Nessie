@@ -21,6 +21,7 @@ import {
   hashExecutorContinuationValue,
 } from './executor-continuation-security.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { setExecutorAgentAccessInTransaction } from './executor-agent-access.js'
 import {
   reviewExecutorDescriptorInTransaction,
   transitionExecutorLifecycleInTransaction,
@@ -28,6 +29,7 @@ import {
 } from './executor-lifecycle.js'
 
 export type ExecutorAccessChange =
+  | { kind: 'agent_executor_access'; agentId: string; state: 'allowed' | 'denied' }
   | {
       kind: 'private_assignment'
       action: 'set'
@@ -91,6 +93,7 @@ export const requiresFreshExecutorVerification = (change: ExecutorAccessChange):
   // The same rule as one operation, for the same reason: widening what an
   // agent may reach on somebody's machine is the moment to re-prove the human.
   || (change.kind === 'agent_executor_grant' && change.state === 'allowed')
+  || (change.kind === 'agent_executor_access' && change.state === 'allowed')
   || (change.kind === 'lifecycle' && change.action === 'revoke')
   || (change.kind === 'descriptor_review' && change.status === 'active')
 
@@ -136,7 +139,7 @@ const parseStoredAccessChange = (value: unknown): StoredAccessChange | null => {
     return stored as StoredAccessChange
   }
   if (
-    change.kind === 'agent_executor_grant'
+    (change.kind === 'agent_executor_grant' || change.kind === 'agent_executor_access')
     && typeof change.agentId === 'string'
     && (change.state === 'allowed' || change.state === 'denied')
   ) {
@@ -165,6 +168,11 @@ const applyChange = async (
   executorId: string,
   change: ExecutorAccessChange,
 ): Promise<number> => {
+  if (change.kind === 'agent_executor_access') {
+    return setExecutorAgentAccessInTransaction(tx, actorContext, {
+      executorId, agentId: change.agentId, state: change.state,
+    })
+  }
   if (change.kind === 'private_assignment') {
     return change.action === 'set'
       ? setPrivateAssignmentInTransaction(tx, actorContext, {
@@ -222,6 +230,7 @@ export const prepareExecutorAccessChange = async (
   const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
   const confirmationToken = randomBytes(32).toString('base64url')
   const verificationRequired = requiresFreshExecutorVerification(input.change)
+    || (input.change.kind === 'agent_executor_access' && executor.scopeKind === 'private')
   const expiresAt = new Date(Date.now() + EXECUTOR_CONTINUATION_TTL_MS)
   const revisions: StoredAccessChange = {
     authorizationRevision: executor.authorizationRevision,
@@ -295,6 +304,9 @@ export const confirmExecutorAccessChange = async (
     confirmationToken: string
     freshVerificationSatisfied: boolean
   },
+  applyPolicy?: (
+    tx: Prisma.TransactionClient, input: { executorId: string; change: ExecutorAccessChange },
+  ) => Promise<void>,
 ): Promise<{ authorizationRevision: number; executorId: string }> =>
   prisma.$transaction(async (tx) => {
     const continuation = await tx.executorContinuation.findUnique({
@@ -360,19 +372,24 @@ export const confirmExecutorAccessChange = async (
         'Executor authorization changed; prepare the change again.',
       )
     }
+    // Confirmation and rejection compete for this pending row. Claim before
+    // any policy/grant effects; a failed mutation rolls the claim back as well.
+    const claimed = await tx.executorContinuation.updateMany({
+      where: { id: continuation.id, status: 'pending' },
+      data: { status: 'consumed', consumedAt: new Date() },
+    })
+    if (claimed.count !== 1) {
+      throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
+    }
+    // Route-owned policy effects share this validated continuation transaction;
+    // invalid tokens, stale authority or a failed access mutation write nothing.
+    await applyPolicy?.(tx, { executorId: executor.id, change: stored.change })
     const authorizationRevision = await applyChange(
       tx,
       actorContext,
       executor.id,
       stored.change,
     )
-    await tx.executorContinuation.update({
-      where: { id: continuation.id },
-      data: {
-        status: 'consumed',
-        consumedAt: new Date(),
-      },
-    })
     return { authorizationRevision, executorId: executor.id }
   })
 
@@ -404,9 +421,12 @@ export const rejectExecutorAccessChange = async (
   if (continuation.status !== 'pending') {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
   }
-  await tx.executorContinuation.update({
-    where: { id: continuation.id },
+  const rejected = await tx.executorContinuation.updateMany({
+    where: { id: continuation.id, status: 'pending' },
     data: { status: 'rejected', consumedAt: new Date() },
   })
+  if (rejected.count !== 1) {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
+  }
   return { executorId: continuation.executorId }
 })

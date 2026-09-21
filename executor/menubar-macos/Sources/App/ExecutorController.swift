@@ -28,6 +28,20 @@ enum ExecutorPaths {
             .path
     }
 
+    static func discover(isDevelopmentBuild: Bool) -> Result<String, ExecutorRefusal> {
+        let preferred = stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
+        if isDevelopmentBuild,
+           ProcessInfo.processInfo.environment[stateDirectoryOverrideVariable]?.isEmpty == false {
+            return .success(preferred)
+        }
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return ExecutorStateDiscovery.resolve(preferredDirectory: preferred, legacyRoots: [
+            support.appendingPathComponent("com.unlikeotherai.nessie.desktop/executors").path,
+            support.appendingPathComponent("com.unlikeotherai.nessie.executor.menubar/executors").path,
+            (NSHomeDirectory() as NSString).appendingPathComponent(".local/state/nessie-executor")
+        ])
+    }
+
     /// The file `pair` writes. Its presence is the difference between "nobody
     /// has paired this Mac" and "something is wrong with a pairing that exists",
     /// and those two need different words. The file is never opened here.
@@ -35,6 +49,19 @@ enum ExecutorPaths {
         FileManager.default.fileExists(
             atPath: (directory as NSString).appendingPathComponent("executor-state.json")
         )
+    }
+
+    static func refusalBeforePairing(in directory: String, isDevelopmentBuild: Bool) -> ExecutorRefusal? {
+        switch discover(isDevelopmentBuild: isDevelopmentBuild) {
+        case let .success(discovered) where discovered == directory:
+            return nil
+        case .success:
+            return ExecutorRefusal(
+                "This Mac gained another connection. Reopen Nessie Executor to review it before pairing again."
+            )
+        case let .failure(refusal):
+            return refusal
+        }
     }
 
     /// Owner-only, created before anything is written into it.
@@ -55,9 +82,7 @@ final class ExecutorController: ObservableObject {
     /// the API's own sentence alone — see `ExecutorFailure`.
     @Published var failure: ExecutorFailure?
     @Published private(set) var busy = false
-    /// The fingerprint the most recent `pair` printed, held until the daemon
-    /// starts, because confirming it in Nessie is the next thing a person does.
-    @Published private(set) var pendingFingerprint: String?
+    let pairing: ExecutorPairingController
 
     let isDevelopmentBuild: Bool
     let stateDirectory: String
@@ -65,17 +90,34 @@ final class ExecutorController: ObservableObject {
     private let work = DispatchQueue(label: "com.unlikeotherai.nessie.executor.menubar.cli")
     private var daemon: (process: Process, parentLiveness: FileHandle)?
     private var refreshTimer: Timer?
-
-    /// How many fresh revisions `reProposePolicy` will offer before it gives up.
-    /// A state file that fell behind is behind by a handful of revisions, not by
-    /// hundreds; a loop with no ceiling would hammer Nessie instead of saying it
-    /// could not fix this.
-    private static let reProposalCeiling = 25
+    private var startAfterRefresh = false
 
     init(isDevelopmentBuild: Bool) {
         self.isDevelopmentBuild = isDevelopmentBuild
-        self.stateDirectory = ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
-        self.runtime = PackagedRuntime.locate(in: Bundle.main.resourceURL)
+        let discovery = ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild)
+        self.stateDirectory = (try? discovery.get())
+            ?? ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
+        self.runtime = discovery.flatMap { _ in PackagedRuntime.locate(in: Bundle.main.resourceURL) }
+        let runtime = try? self.runtime.get()
+        self.pairing = ExecutorPairingController(
+            runner: runtime.map { ExecutorProcessRunner(runtime: $0, isDevelopmentBuild: isDevelopmentBuild) },
+            stateDirectory: stateDirectory,
+            isDevelopmentBuild: isDevelopmentBuild
+        )
+        pairing.onPaired = { [weak self] in self?.refresh(startWhenPaired: true) }
+        pairing.onChanged = { [weak self] in self?.refresh() }
+        pairing.beforeStart = { [weak self] in
+            guard let self else { return false }
+            guard let refusal = ExecutorPaths.refusalBeforePairing(
+                in: self.stateDirectory, isDevelopmentBuild: self.isDevelopmentBuild
+            ) else { return true }
+            self.fail(refusal.message)
+            return false
+        }
+        pairing.beforeReplace = { [weak self] in
+            guard let self, self.model.daemon != .stopping else { return false }
+            return self.stopDaemon()
+        }
     }
 
     private var runner: ExecutorProcessRunner? {
@@ -87,24 +129,11 @@ final class ExecutorController: ObservableObject {
     /// is never what authorizes an origin — `ApprovedAPIOrigin.approve` is.
     var defaultAPIOrigin: String { ApprovedAPIOrigin.default(isDevelopmentBuild: isDevelopmentBuild) }
 
-    /// The Nessie a paste is actually pairing with: the origin the invitation
-    /// names, and otherwise the one the person chose. The panel shows the answer
-    /// beside the button, and `pair` resolves it exactly the same way, so what
-    /// is on screen is what is sent.
-    func approvedOrigin(
-        invitationText: String,
-        chosenOrigin: String
-    ) -> Result<String, ExecutorRefusal> {
-        ApprovedAPIOrigin.approve(
-            InvitationParser.apiBaseUrl(in: invitationText) ?? chosenOrigin,
-            isDevelopmentBuild: isDevelopmentBuild
-        )
-    }
-
     // MARK: - Reading
 
     func start() {
-        refresh()
+        pairing.restore()
+        refresh(startWhenPaired: true)
         // The daemon's own lease and a child that exited on its own are both
         // facts this app has to notice without being clicked, so the icon can
         // never be showing something that stopped being true.
@@ -113,7 +142,8 @@ final class ExecutorController: ObservableObject {
         }
     }
 
-    func refresh() {
+    func refresh(startWhenPaired: Bool = false) {
+        if startWhenPaired { startAfterRefresh = true }
         guard let runner else {
             if case let .failure(refusal) = runtime {
                 model = MenuModel(pairing: .unavailable(refusal.message), daemon: .stopped)
@@ -131,8 +161,16 @@ final class ExecutorController: ObservableObject {
             let lease = DaemonLeaseReader.read(in: stateDirectory)
             Task { @MainActor [weak self] in
                 self?.apply(description: description, completion: completion, lease: lease)
+                self?.startIfRequested()
             }
         }
+    }
+
+    private func startIfRequested() {
+        guard startAfterRefresh, model.description != nil, model.daemon == .stopped,
+              !busy, !pairingBlocksStart else { return }
+        startAfterRefresh = false
+        startDaemon()
     }
 
     private func apply(
@@ -170,7 +208,6 @@ final class ExecutorController: ObservableObject {
             self.daemon = nil
         }
         if leaseBlocksStart(lease, daemonIsLive: { kill($0, 0) == 0 }) { return .stopping }
-        if pendingFingerprint != nil { return .awaitingConfirmation }
         return .stopped
     }
 
@@ -206,37 +243,6 @@ final class ExecutorController: ObservableObject {
                     self.fail(refusal.message)
                 }
                 self.refresh()
-            }
-        }
-    }
-
-    func pair(invitationText: String, chosenOrigin: String, workspaceRoot: String) {
-        switch InvitationParser.parse(invitationText, defaultApiBaseUrl: chosenOrigin) {
-        case let .failure(refusal):
-            self.fail(refusal.message)
-        case let .success(invitation):
-            switch ApprovedAPIOrigin.approve(invitation.apiBaseUrl, isDevelopmentBuild: isDevelopmentBuild) {
-            case let .failure(refusal):
-                self.fail(refusal.message)
-            case let .success(apiBaseUrl):
-                do {
-                    try ExecutorPaths.prepare(stateDirectory)
-                    let invocation = try ExecutorCLI.pair(
-                        apiBaseUrl: apiBaseUrl,
-                        enrollmentId: invitation.enrollmentId,
-                        challenge: invitation.challenge,
-                        workspaceRoot: workspaceRoot,
-                        stateDirectory: stateDirectory
-                    )
-                    perform(
-                        invocation,
-                        fallbackRefusal: "Nessie executor pairing was rejected. No pairing output was retained."
-                    ) { [weak self] output in
-                        self?.pendingFingerprint = PairingOutput.fingerprint(in: output)
-                    }
-                } catch {
-                    fail("Nessie Executor could not prepare its private state directory.")
-                }
             }
         }
     }
@@ -299,7 +305,7 @@ final class ExecutorController: ObservableObject {
     /// nessie.works would be a remedy pointing at a stranger's console.
     var nessieExecutorsURL: URL {
         ApprovedAPIOrigin.consoleURL(
-            forAPIOrigin: model.description?.apiBaseUrl ?? defaultAPIOrigin,
+            forAPIOrigin: pairing.state?.apiBaseUrl ?? model.description?.apiBaseUrl ?? defaultAPIOrigin,
             isDevelopmentBuild: isDevelopmentBuild
         )
     }
@@ -318,64 +324,38 @@ final class ExecutorController: ObservableObject {
             fail("Pair this Mac with Nessie before changing its local policy.")
             return
         }
-        let stateDirectory = self.stateDirectory
-        let operationKeys = description.policy.operations
-        let workspaceFolders = description.reach.folders
-        let commandAllowlist = description.policy.permittedPrograms
+        let proposal = ExecutorPolicyReproposal(
+            runner: runner, description: description, stateDirectory: stateDirectory
+        )
         let wasRunning = model.daemon == .running
         if wasRunning { _ = stopDaemon() }
         busy = true
         work.async { [weak self] in
-            var attempts = 0
-            var lastRefusal = "Nessie Executor could not propose these settings again."
-            while attempts < ExecutorController.reProposalCeiling {
-                attempts += 1
-                guard let invocation = try? ExecutorCLI.configure(
-                    operationKeys: operationKeys,
-                    workspaceFolders: workspaceFolders,
-                    commandAllowlist: commandAllowlist,
-                    stateDirectory: stateDirectory
-                ), let configured = try? runner.run(invocation), configured.succeeded else {
-                    break
-                }
-                guard let connected = try? runner.run(ExecutorCLI.connect(stateDirectory: stateDirectory))
-                else { break }
-                if connected.succeeded {
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        self.busy = false
-                        self.failure = nil
-                        if wasRunning { self.startDaemon() } else { self.refresh() }
-                    }
-                    return
-                }
-                lastRefusal = ExecutorProcessRunner.refusal(
-                    from: connected, fallback: lastRefusal
-                ).message
-                // Only a rollback is worth another revision. Any other refusal
-                // is a different problem and gets its own words.
-                guard ExecutorFailureTranslator.translate(lastRefusal).remedy == .reProposePolicy else {
-                    break
-                }
-            }
-            let attempted = attempts
+            let result = proposal.run()
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.busy = false
-                self.fail(
-                    ExecutorFailureTranslator.translate(lastRefusal).code == "EXECUTOR_DESCRIPTOR_ROLLBACK"
-                        ? "Nessie still considers this Mac's settings older than the ones it has "
-                            + "recorded after \(attempted) attempts. Pair this Mac again from Settings."
-                        : lastRefusal
-                )
-                self.refresh()
+                switch result {
+                case .success:
+                    self.failure = nil
+                    if wasRunning { self.startDaemon() } else { self.refresh() }
+                case let .failure(refusal):
+                    self.fail(refusal.message)
+                    self.refresh()
+                }
             }
         }
     }
 
     // MARK: - Supervision
 
+    private var pairingBlocksStart: Bool {
+        pairing.busy || pairing.state?.isAttemptOpen == true
+            || ExecutorStateDiscovery.pendingAttemptBlocksStart(in: stateDirectory)
+    }
+
     func startDaemon() {
+        guard !busy, !pairingBlocksStart else { return }
         guard let runner else {
             fail(PackagedRuntime.missingRefusal)
             return
@@ -418,7 +398,6 @@ final class ExecutorController: ObservableObject {
                     return
                 }
                 self.daemon = spawned
-                self.pendingFingerprint = nil
                 self.refresh()
             }
         }
@@ -429,6 +408,7 @@ final class ExecutorController: ObservableObject {
     /// never abandoned half-torn-down.
     @discardableResult
     func stopDaemon() -> Bool {
+        startAfterRefresh = false
         guard let daemon else { return true }
         if !daemon.process.isRunning {
             self.daemon = nil
@@ -454,6 +434,7 @@ final class ExecutorController: ObservableObject {
     /// its own, but the app waits for the teardown rather than exiting while
     /// guests are still running.
     func shutdown() {
+        pairing.shutdown()
         guard daemon != nil else { return }
         _ = stopDaemon()
         daemon?.parentLiveness.closeFile()

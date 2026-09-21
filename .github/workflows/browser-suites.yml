@@ -56,8 +56,8 @@ jobs:
       # A built bundle rather than the dev server: CI has no hot-reload loop
       # to preserve, and preview serves the same code deterministically.
       NAV_E2E_ADMIN_MODE: preview
-      # The isolated member-management fixture is a separate Vite entry only
-      # for this browser evaluation; release bundles never include either one.
+      # Isolated fixtures are separate Vite entries only for this browser
+      # evaluation; ordinary release bundles omit these entries.
       NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE: '1'
       NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE: '1'
       NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE: '1'
@@ -65,6 +65,10 @@ jobs:
       NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE: '1'
       NESSIE_TASK_DIALOG_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_LOCAL_MCP_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_PAIRING_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE: '1'
       NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE: '1'
 
     steps:
@@ -187,6 +191,22 @@ jobs:
       - name: Run local Ollama agents browser suite
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:local-ollama-agents
+
+      - name: Run executor pairing and management browser suites
+        if: steps.scope.outputs.code == '1'
+        run: |
+          pnpm --filter @nessie/admin test:e2e:executor-pairing
+          pnpm --filter @nessie/admin test:e2e:executor-agents
+          pnpm --filter @nessie/admin test:e2e:executor-detail
+          pnpm --filter @nessie/admin test:e2e:executor-attention
+
+      - name: Upload executor screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: executor-screenshots
+          path: e2e/screenshots/executor-*
+          if-no-files-found: error
 
       # Two Chromium contexts on one spreadsheet: a batch from one pane landing
       # live in the other, the presence overlay, and a structural batch forcing

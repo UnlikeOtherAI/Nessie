@@ -5,12 +5,18 @@
 
 export const executorKeys = {
   all: ['executors'] as const,
+  attention: ['executors', 'attention'] as const,
   detail: (executorId: string) => ['executors', executorId] as const,
   access: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'access'] as const,
   accessChange: (accessChangeId?: string) =>
     ['executors', 'access-change', accessChangeId ?? 'none'] as const,
+  agents: (executorId: string) => ['executors', executorId, 'agents'] as const,
+  agentCandidates: (executorId: string) => ['executors', executorId, 'agent-candidates'] as const,
   myWorkspaceReviews: ['executors', 'workspace-reviews', 'mine'] as const,
+  pairingOptions: ['executors', 'pairing-options'] as const,
+  pairingStatus: (executorId: string | null) =>
+    ['executors', executorId ?? 'none', 'pairing-status'] as const,
   pairing: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'pairing'] as const,
   workspacePromotion: (promotionId?: string) =>

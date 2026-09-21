@@ -33,7 +33,7 @@ pub enum ServiceResponse {
     Status(Vec<ExecutorStatus>),
     Pair { executor_id: String, fingerprint: String },
     Describe(serde_json::Value),
-    Error(String),
+    Pairing(serde_json::Value),
 }
 
 /// Reads one complete line from a pipe response. A named-pipe server may close
@@ -153,6 +153,8 @@ fn decode(answer: &str) -> Result<ServiceResponse, String> {
     let parsed: serde_json::Value = serde_json::from_str(answer.trim())
         .map_err(|_| "the service answered in a shape this tray does not understand".to_owned())?;
     match parsed.get("status").and_then(serde_json::Value::as_str) {
+        Some("pairing") => parsed.get("pairing").cloned().map(ServiceResponse::Pairing)
+            .ok_or_else(|| "Pairing returned no answer.".to_owned()),
         Some("ok") => {
             let executors = serde_json::from_value(
                 parsed.get("executors").cloned().unwrap_or(serde_json::Value::Null),
