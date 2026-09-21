@@ -25,6 +25,11 @@ const ADOPTED_SURFACES: { file: string; key: string; label: string }[] = [
     label: 'the task dialog',
   },
   {
+    file: 'components/features/projects/kanban/TaskCommentComposer.tsx',
+    key: "draftKey('task-comment', taskId)",
+    label: 'the ticket comment composer',
+  },
+  {
     file: 'components/features/agents/designer/useAgentDesigner.ts',
     key: "draftKey('agent-designer', agentId ?? 'new')",
     label: 'the agent designer',

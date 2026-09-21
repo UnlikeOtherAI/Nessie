@@ -6,11 +6,12 @@ import { PageBody } from '../../components/shared/PageBody'
 import { useConsumedIntents } from '../../navigation/intent'
 import { useTabParam } from '../../navigation/useTabParam'
 import { FieldsSettingsSection } from './settings/FieldsSettingsSection'
+import { LabelsSettingsSection } from './settings/LabelsSettingsSection'
 import { SourcesSettingsSection } from './settings/SourcesSettingsSection'
 import { TabBar } from '../../components/primitives/TabBar'
 import { LegacyProjectBoardSettingsRedirect } from '../../navigation/LegacyProjectBoardSettingsRedirect'
 
-const SECTIONS = ['fields', 'sources'] as const
+const SECTIONS = ['fields', 'labels', 'sources'] as const
 
 /** Declared on the project surface row in `navigation/surfaces.ts`. */
 const PROJECT_SETTINGS_INTENTS = ['connect'] as const
@@ -82,6 +83,7 @@ const ProjectSettingsContent = ({
           idPrefix="project-settings"
           items={[
             { label: 'Fields', value: 'fields' },
+            { label: 'Labels', value: 'labels' },
             { label: 'Sources', value: 'sources' },
           ]}
           onChange={selectSection}
@@ -99,6 +101,13 @@ const ProjectSettingsContent = ({
             projectId={projectId}
             selectedSourceId={selectedSourceId}
             startWithConnect={startWithConnect}
+          />
+        ) : section === 'labels' ? (
+          <LabelsSettingsSection
+            canAdminister={canModify}
+            onSaveError={(message) => setSaveState({ status: 'error', message })}
+            onSaved={() => setSaveState({ status: 'success' })}
+            projectId={projectId}
           />
         ) : (
           <FieldsSettingsSection

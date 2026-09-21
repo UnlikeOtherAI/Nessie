@@ -43,6 +43,7 @@ export default defineConfig(({ command, mode }) => {
   const includeLocalOllamaAgentsFixture = env.NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
+  const includeTaskDialogFixture = env.NESSIE_TASK_DIALOG_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -58,6 +59,7 @@ export default defineConfig(({ command, mode }) => {
     || includeAgentProposalCardFixture
     || includeChannelAgentControlsFixture
     || includeVisibilityAffordancesFixture
+    || includeTaskDialogFixture
     || includeExecutorLocalMcpFixture
     || includeLocalOllamaAgentsFixture ? {
     build: {
@@ -78,6 +80,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeVisibilityAffordancesFixture ? {
             visibilityAffordances: resolve(__dirname, 'e2e/visibility-affordances/index.html'),
+          } : {}),
+          ...(includeTaskDialogFixture ? {
+            taskDialog: resolve(__dirname, 'e2e/task-dialog/index.html'),
           } : {}),
           ...(includeExecutorLocalMcpFixture ? {
             executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),

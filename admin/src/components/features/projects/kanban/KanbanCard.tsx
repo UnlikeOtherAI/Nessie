@@ -1,7 +1,7 @@
 import { useMemo, useRef, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { faGripVertical, faSignal } from '@fortawesome/free-solid-svg-icons'
+import { faComment, faGripVertical, faPaperclip, faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
 import { Pill } from '../../../primitives/Pill'
@@ -27,8 +27,21 @@ type KanbanCardProps = {
 
 const MAX_EXCERPT_CHARS = 180
 
+/**
+ * The description is Markdown now; a card reads it as words. Images drop out
+ * (the dialog shows them), links keep their text, and block and emphasis
+ * markers go — this is presentation of the stored text, nothing is inferred.
+ */
+export const markdownToPlainText = (markdown: string): string =>
+  markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/^\s*(?:```|~~~).*$/gm, '')
+    .replace(/(\*\*|__|\*|_|`)(?=\S)([^\n]*?\S)\1/g, '$2')
+
 const buildCardExcerpt = (value: string | null | undefined): string | null => {
-  const normalized = value?.replace(/\s+/g, ' ').trim()
+  const normalized = value ? markdownToPlainText(value).replace(/\s+/g, ' ').trim() : undefined
   if (!normalized) return null
   if (normalized.length <= MAX_EXCERPT_CHARS) return normalized
   return `${normalized.slice(0, MAX_EXCERPT_CHARS).trimEnd()}...`
@@ -74,11 +87,12 @@ export const KanbanCardContent = ({
 
       <TaskFieldChips
         definitions={fieldDefinitions}
+        labels={task.labels ?? []}
         people={peopleById}
         values={task.fieldValues ?? {}}
       />
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <FontAwesomeIcon
           className={`shrink-0 text-xs ${PRIORITY_SIGNAL[task.priority]}`}
           icon={faSignal}
@@ -99,11 +113,31 @@ export const KanbanCardContent = ({
             {task.assigneeName ?? 'Unassigned'}
           </Pill>
         )}
+        {/* Discussion and material to read are a different decision from a
+            bare card, which is what earns the glyphs — shown only when > 0. */}
+        {task.commentCount > 0 ? (
+          <span
+            className="flex shrink-0 items-center gap-1 text-[10px] text-[color:var(--tx3)]"
+            title={`${task.commentCount} ${task.commentCount === 1 ? 'comment' : 'comments'}`}
+          >
+            <FontAwesomeIcon icon={faComment} />
+            {task.commentCount}
+          </span>
+        ) : null}
+        {task.attachmentCount > 0 ? (
+          <span
+            className="flex shrink-0 items-center gap-1 text-[10px] text-[color:var(--tx3)]"
+            title={`${task.attachmentCount} ${task.attachmentCount === 1 ? 'file' : 'files'}`}
+          >
+            <FontAwesomeIcon icon={faPaperclip} />
+            {task.attachmentCount}
+          </span>
+        ) : null}
         {task.dueDate || archived ? (
           <span className="ml-auto flex items-center gap-1.5">
             {task.dueDate ? (
               <Pill
-                className="gap-1 font-semibold"
+                className="gap-1 whitespace-nowrap font-semibold"
                 size="sm"
                 tone={isOverdue(task.dueDate) ? 'danger' : 'muted'}
                 uppercase={false}
