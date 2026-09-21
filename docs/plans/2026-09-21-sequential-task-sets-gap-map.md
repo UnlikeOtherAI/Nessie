@@ -488,3 +488,12 @@ This document changes no runtime, UI, MCP contract or migrations. The expanded
 accepted scope is recorded here; existing runtime standards and `AGENTS.md`
 remain unchanged. No production search, model call or source-data mutation was
 performed for the audit or this design update.
+
+## Independent design review
+
+[Kimix's 2026-09-21 review](2026-09-21-sequential-task-sets-kimix-review.md)
+records six open findings covering alerts, disclosure registration, context
+overflow, shared resource identity, skipped dependencies and recovery/browser
+evaluations. It reviews revision `0f31c4383`; it does not claim an implementation
+or runtime validation. The report separates the reviewer's findings from the
+maintainer's qualifications.
