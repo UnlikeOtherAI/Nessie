@@ -1,17 +1,15 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { launchBrowser } from '../navigation/lib/browser.mjs'
 import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
-import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
+import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 
-const here = dirname(fileURLToPath(import.meta.url))
-const fixturePath = resolve(here, 'fixture.tsx').replaceAll('\\', '/')
 const screenshotPath = resolve(REPO_ROOT, 'e2e/screenshots/executors/windows-companion.png')
 const failureScreenshotPath = resolve(REPO_ROOT, 'e2e/screenshots/executors/windows-companion-failure.png')
 const executorId = '00000000-0000-4000-8000-000000000701'
 
+await assertFreshServersAvailable()
 const admin = await startAdmin()
 const browser = await launchBrowser()
 let page
@@ -63,9 +61,9 @@ try {
   page = await context.newPage()
   const errors = []
   page.on('pageerror', (error) => errors.push(String(error)))
-  await page.goto(`${ADMIN_URL}/agents/executors`)
-  await page.setContent(`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import "/@fs/${fixturePath}"</script></body></html>`)
+  await page.goto(`${ADMIN_URL}/e2e/executor-companion/index.html`)
   await page.getByRole('heading', { name: 'Nessie Desktop companion' }).waitFor()
+  await page.waitForFunction(() => getComputedStyle(document.documentElement).getPropertyValue('--main').trim() !== '')
 
   const text = await page.locator('body').innerText()
   for (const expected of [
