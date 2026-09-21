@@ -55,12 +55,8 @@ export const updateChannel = async (
   if (input.decisionPolicy !== undefined && manage.channel.type !== 'standard') {
     throw new ChannelDecisionPolicyError('Decision policies are available only for standard channels')
   }
-  const authorizer = input.decisionPolicy
-    ? await resolveChannelPolicyAuthorizer(prisma, {
-      ...input,
-      authorizer: captureChannelPolicyAuthorizer(input.actorContext, input),
-    })
-    : null
+  const authorizer = input.decisionPolicy ? captureChannelPolicyAuthorizer(input.actorContext, input) : null
+  if (authorizer) await resolveChannelPolicyAuthorizer(prisma, { ...input, authorizer })
 
   const data: Prisma.ChannelUpdateInput = {}
   // A standalone channel renamed into a taken name was told the conflict was

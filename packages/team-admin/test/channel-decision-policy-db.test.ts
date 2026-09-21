@@ -68,6 +68,7 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
     const saved = await prisma.channel.findUniqueOrThrow({ where: { id: channel.id } })
     const authorizer = AuthorizedActionContextSchema.parse(saved.decisionPolicyAuthorizer)
     assert.equal(authorizer.actor.actorId, memberId)
+    assert.equal(authorizer.actor.roles, undefined)
     assert.equal(authorizer.actionContext.purpose, 'channel.policy')
   })
 
