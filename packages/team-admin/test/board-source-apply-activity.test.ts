@@ -73,6 +73,8 @@ type Seed = {
   sourceId: string
   userId: string
   ownerUserId: string
+  /** The project's default board — where a synced ticket and its labels land. */
+  defaultBoardId: string
 }
 
 const seed = async (prisma: PrismaClient): Promise<Seed> => {
@@ -86,6 +88,15 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   })
   const project = await prisma.project.create({
     data: { name: `project-${suffix}`, organizationId: organization.id },
+  })
+  const board = await prisma.board.create({
+    data: {
+      projectId: project.id,
+      organizationId: organization.id,
+      name: 'Dev',
+      isDefault: true,
+      position: 0,
+    },
   })
   const connection = await prisma.boardSourceConnection.create({
     data: {
@@ -115,6 +126,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     sourceId: source.id,
     userId: user.id,
     ownerUserId: user.id,
+    defaultBoardId: board.id,
   }
 }
 
@@ -213,6 +225,7 @@ runDatabaseTest('a provider label adopts the Nessie label a person made with the
       data: {
         organizationId: seeded.organizationId,
         projectId: seeded.projectId,
+        boardId: seeded.defaultBoardId,
         name: 'bug',
         normalizedName: 'bug',
         color: '#6b7280',
@@ -259,6 +272,7 @@ runDatabaseTest('the sync replaces only the source-owned labels and keeps Nessie
       data: {
         organizationId: seeded.organizationId,
         projectId: seeded.projectId,
+        boardId: seeded.defaultBoardId,
         name: 'Needs design',
         normalizedName: 'needs design',
       },
@@ -288,6 +302,92 @@ runDatabaseTest('the sync replaces only the source-owned labels and keeps Nessie
     assert.equal(payload.by, `source:${seeded.sourceId}`)
     assert.equal(payload.added.length, 1)
     assert.equal(payload.removed.length, 1)
+  } finally {
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('a mirrored ticket on another board takes its source labels on that board, as a second row', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  try {
+    const review = await prisma.board.create({
+      data: { projectId: seeded.projectId, organizationId: seeded.organizationId, name: 'Review', position: 1 },
+    })
+    // A person made *perf* on the Review board before the ticket arrived there.
+    const localPerf = await prisma.taskLabel.create({
+      data: {
+        organizationId: seeded.organizationId,
+        projectId: seeded.projectId,
+        boardId: review.id,
+        name: 'perf',
+        normalizedName: 'perf',
+      },
+    })
+    const context = applyContext(seeded)
+    const bug = { id: 'l-bug', label: 'Bug', color: '#eb5757' }
+    const perf = { id: 'l-perf', label: 'Perf', color: '#f2c94c' }
+
+    // ENG-1 stays on the default board (boardId null); ENG-2 is moved to Review.
+    await applyInboundItem(prisma, context, item({ labels: [bug] }))
+    const second = item({ externalId: 'issue-2', externalKey: 'ENG-2', labels: [] })
+    const created = await applyInboundItem(prisma, context, second)
+    assert.equal(created.applied, 'created')
+    const onReview = (created as { taskId: string }).taskId
+    await prisma.task.update({ where: { id: onReview }, data: { boardId: review.id } })
+
+    const changed = { ...second, updatedAt: '2026-09-05T00:00:00.000Z', labels: [bug, perf] }
+    const outcome = await applyInboundItem(prisma, context, changed)
+    assert.equal(outcome.applied, 'updated')
+
+    const rows = await prisma.taskLabel.findMany({
+      where: { sourceId: seeded.sourceId, externalId: 'l-bug' },
+      orderBy: { boardId: 'asc' },
+    })
+    assert.equal(rows.length, 2, 'one provider label, one row per board that needed it')
+    assert.deepEqual(
+      new Set(rows.map((row) => row.boardId)),
+      new Set([seeded.defaultBoardId, review.id]),
+    )
+    assert.ok(rows.every((row) => row.name === 'Bug' && row.color === '#eb5757'))
+
+    const reviewLinks = await prisma.taskLabelLink.findMany({
+      where: { taskId: onReview },
+      include: { label: true },
+    })
+    assert.ok(
+      reviewLinks.every((link) => link.label.boardId === review.id),
+      'every link of the moved ticket is to a label on its own board',
+    )
+    assert.deepEqual(reviewLinks.map((link) => link.label.name).sort(), ['Bug', 'Perf'])
+    // Adoption is per board: Review's *perf* became the source's; the default
+    // board has no *Perf*, because no ticket there needed one.
+    const adopted = await prisma.taskLabel.findUniqueOrThrow({ where: { id: localPerf.id } })
+    assert.equal(adopted.sourceId, seeded.sourceId)
+    assert.equal(adopted.externalId, 'l-perf')
+    assert.equal(
+      await prisma.taskLabel.count({ where: { boardId: seeded.defaultBoardId, normalizedName: 'perf' } }),
+      0,
+    )
+
+    const defaultTask = await prisma.task.findFirstOrThrow({
+      where: { projectId: seeded.projectId, id: { not: onReview } },
+      include: { labels: { include: { label: true } } },
+    })
+    assert.deepEqual(
+      defaultTask.labels.map((link) => link.label.boardId),
+      [seeded.defaultBoardId],
+    )
+
+    // The fingerprint never saw a board: the same item again is unchanged, and
+    // the stored fingerprint is the item's own.
+    const again = await applyInboundItem(prisma, context, changed)
+    assert.equal(again.applied, 'unchanged')
+    const link = await prisma.taskExternalLink.findFirstOrThrow({
+      where: { sourceId: seeded.sourceId, externalId: 'issue-2' },
+    })
+    assert.equal(link.inboundFingerprint, itemFingerprint(changed, ['labels']))
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
