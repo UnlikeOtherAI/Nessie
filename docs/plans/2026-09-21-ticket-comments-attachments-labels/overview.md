@@ -15,6 +15,8 @@ re-deriving decisions. Every chapter is authoritative for its own area; this
 page is the map, the decision table and the open questions. Section numbers
 are stable across chapters.
 
+## Table of Contents
+
 - **[Data model](data-model.md)** — §1. Prisma models, the migration, the
   wire shapes in `@nessie/schemas`.
 - **[API and services](api-and-services.md)** — §2. The shared
