@@ -19,6 +19,12 @@ type SidebarChannelsSectionProps = {
   toggleChannelsCollapsed: () => void;
 };
 
+const PlusIcon = () => (
+  <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+  </svg>
+);
+
 export const SidebarChannelsSection = ({
   channelsCollapsed,
   currentChannelId,
@@ -40,12 +46,13 @@ export const SidebarChannelsSection = ({
           onClick={() => onOpenCreateChannel({ scope: 'standalone' })}
           type="button"
         >
-          +
+          <PlusIcon />
         </button>
       }
       id="sidebar-nav-channels"
       isCollapsed={channelsCollapsed}
       onToggle={toggleChannelsCollapsed}
+      className="sidebar-shared-section"
       title="Shared channels"
     >
       {standaloneChannels.length === 0 ? (
@@ -58,7 +65,7 @@ export const SidebarChannelsSection = ({
             aria-current={sidebarAriaCurrent(channel.id === currentChannelId)}
             key={channel.id}
             className={[
-              'admin-sb-item group',
+              'admin-sb-item sidebar-shared-channel group',
               (channel.unreadCount ?? 0) > 0 ? 'unread' : '',
               channel.id === currentChannelId ? 'active' : '',
             ].join(' ')}

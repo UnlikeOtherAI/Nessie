@@ -2199,6 +2199,202 @@ html[data-desktop-platform='linux'] #root {
   color: var(--tx);
 }
 
+/* The Channels tree follows the compact, guided hierarchy used by the 1a
+   sidebar study. Keep this scoped to the Channels surface: Projects and Admin
+   have their own information density and continue to use the shared defaults. */
+.admin-sidebar-nav .admin-sidebar-scroll {
+  padding: 14px 10px;
+}
+
+/* One structural shell is shared by the Channels tree and the Knowledge Tree
+   browser. It is intentionally colourless: the active theme owns every
+   surface and separator token below. */
+.sidebar-tree-panel {
+  min-width: 0;
+  background: var(--sb);
+  color: var(--tx);
+}
+
+.knowledge-sidebar-tree-panel {
+  flex: 0 0 280px;
+  width: 280px;
+  overflow-y: auto;
+  padding: 14px 10px;
+}
+
+.sidebar-tree-children {
+  min-width: 0;
+}
+
+.sidebar-tree-section {
+  min-width: 0;
+}
+
+.knowledge-sidebar-tree-panel .finder-row-item {
+  list-style: none;
+}
+
+.knowledge-sidebar-tree-panel .finder-row {
+  min-height: 30px;
+  border-radius: 8px;
+  padding-inline: 8px;
+}
+
+.knowledge-sidebar-tree-panel .finder-row[data-finder-kind='folder'],
+.knowledge-sidebar-tree-panel .finder-row[data-finder-variant='root'] {
+  min-height: 32px;
+  font-weight: 500;
+}
+
+.knowledge-sidebar-tree-panel .sidebar-tree-depth {
+  margin-left: 23px;
+  padding-left: 12px;
+  border-left: 1px solid var(--sep);
+}
+
+.sidebar-tree-panel .admin-sec-row,
+.admin-sidebar-nav .admin-sec-row {
+  align-items: center;
+  height: 30px;
+}
+
+.sidebar-tree-panel .admin-sec-hdr,
+.admin-sidebar-nav .admin-sec-hdr {
+  height: 30px;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--tx3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-sidebar-nav .admin-sidebar-plus {
+  width: 22px;
+  height: 22px;
+  margin: 0 6px 0 auto;
+  border-radius: 6px;
+  font-size: 0;
+}
+
+.admin-sidebar-nav .admin-sidebar-plus svg {
+  width: 14px;
+  height: 14px;
+}
+
+.admin-sidebar-nav .sidebar-project-group {
+  margin-top: 4px;
+}
+
+.admin-sidebar-nav .sidebar-projects-section {
+  margin-top: 10px;
+}
+
+.admin-sidebar-nav .sidebar-project-tile {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  gap: 8px;
+  padding: 0 6px 0 18px;
+  border-radius: 8px;
+  color: var(--tx);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.admin-sidebar-nav .sidebar-project-link {
+  gap: 8px;
+}
+
+.admin-sidebar-nav .sidebar-project-disclosure {
+  width: 10px;
+  height: 10px;
+  overflow: visible;
+  border-radius: 0;
+  color: var(--tx3);
+}
+
+.admin-sidebar-nav .sidebar-project-disclosure:hover {
+  background: transparent;
+}
+
+.admin-sidebar-nav .sidebar-project-disclosure svg {
+  width: 10px;
+  height: 10px;
+}
+
+.admin-sidebar-nav .sidebar-project-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 41px;
+  padding-left: 12px;
+  border-left: 1px solid var(--sep);
+}
+
+.admin-sidebar-nav .sidebar-project-children .admin-sb-item {
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+  gap: 8px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.admin-sidebar-nav .admin-sb-item.sidebar-shared-channel {
+  width: 100%;
+  min-height: 30px;
+  margin: 0;
+  padding: 0 8px 0 30px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.admin-sidebar-nav .sidebar-shared-section {
+  margin-top: 12px;
+}
+
+.admin-sidebar-nav .admin-sb-item.sidebar-threads {
+  width: 100%;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--tx2);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.admin-sidebar-nav .admin-sidebar-more.is-open {
+  border: 1px solid var(--sep);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--tx);
+  opacity: 1;
+}
+
+/* 1a keeps the folder rows quiet until the row is active; 1d reveals the
+   three-dot affordance in the same hover state as the highlighted folder.
+   Coarse pointers keep it visible because they have no hover transition. */
+@media (pointer: fine) {
+  .admin-sidebar-nav .sidebar-project-tile > .relative > .admin-sidebar-more:not(.sidebar-project-disclosure) {
+    opacity: 0;
+  }
+
+  .admin-sidebar-nav .sidebar-project-tile:hover > .relative > .admin-sidebar-more:not(.sidebar-project-disclosure),
+  .admin-sidebar-nav .sidebar-project-tile > .relative > .admin-sidebar-more:not(.sidebar-project-disclosure):focus-visible,
+  .admin-sidebar-nav .sidebar-project-tile > .relative > .admin-sidebar-more.is-open {
+    opacity: 1;
+  }
+}
+
+.admin-sidebar-nav .admin-sidebar-more:not(.sidebar-project-disclosure) svg {
+  width: 14px;
+  height: 14px;
+}
+
 .admin-sidebar-menu {
   position: absolute;
   z-index: 20;
@@ -2210,6 +2406,8 @@ html[data-desktop-platform='linux'] #root {
   border-radius: 12px;
   background: var(--panel);
   padding: 6px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   box-shadow: 0 16px 48px var(--scrim-strong);
 }
 
@@ -2225,6 +2423,27 @@ html[data-desktop-platform='linux'] #root {
   left: 0;
   right: auto;
   width: 220px;
+}
+
+.admin-sidebar-menu-channel-project {
+  /* The portal anchors at the three-dot trigger. 1d places the 220px menu
+     mostly over the sidebar, with its right edge extending just beyond it. */
+  transform: translateX(-120px);
+}
+
+.admin-sidebar-menu.admin-sidebar-menu-channel-project [role="button"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+}
+
+.admin-sidebar-menu-channel-project [role="button"] svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--tx2);
 }
 
 .admin-sidebar-menu button {

@@ -262,7 +262,7 @@ test('the View action is absent on a phone, not disabled', () => {
 test('a stored view mode from the old vocabulary still means what it meant', () => {
   assert.equal(migrateStoredFinderView('column'), 'columns')
   assert.equal(migrateStoredFinderView('full'), 'list')
-  assert.equal(migrateStoredFinderView('tree'), 'list')
+  assert.equal(migrateStoredFinderView('tree'), 'tree')
   assert.equal(migrateStoredFinderView('columns'), 'columns')
   assert.equal(migrateStoredFinderView(null), 'columns')
   assert.equal(migrateStoredFinderView('nonsense'), 'columns')

@@ -31,9 +31,9 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
 }
 ```
 
-- `?view=columns|list` — the view strip (`useTabParam('view', FINDER_VIEWS, cookieDefault)`),
-  written with `replace`. Old values `column` → `columns`, `full`/`tree` →
-  `list` by the hook's unknown-value fallback; the cookie
+- `?view=tree|columns|list` — the view strip (`useTabParam('view', FINDER_VIEWS, cookieDefault)`),
+  written with `replace`. Old values `column` → `columns` and `full` → `list`;
+  `tree` is now a first-class guided hierarchy view; the cookie
   `knowledgeViewMode` is rewritten with the new vocabulary on first change.
 - `?sort=` — one of the ten sort keys (§6), `useTabParam('sort', FINDER_SORTS, cookieDefault)`.
 - `?folder=<pageId>` — the deepest open folder. Read with `useSearchParams`,
@@ -217,6 +217,15 @@ None beyond the title; every state sentence is a `title`/tooltip and is
 listed in [uploads-and-indexing.md](uploads-and-indexing.md) §4 and
 [menus-and-dialogs.md](menus-and-dialogs.md).
 
+### Tree view (`?view=tree`)
+
+Tree is the compact recursive hierarchy view shared visually with the Channels
+sidebar. It renders only the current space's `rootPages` and `childrenOf`
+pages, with 32px folder rows, 30px leaf rows and a token-coloured guide line
+per depth. Folder clicks use the existing `browseTo` state and document clicks
+use the existing document stage; the root column remains the space selector in
+organisation scope. Tree adds no data source, navigation doorway or mutation.
+
 ### List view (`?view=list`)
 
 One folder at a time, full width, in place of the column track:
@@ -245,9 +254,8 @@ top with the root folder as its first crumb, then a header row and the rows.
   the status glyph (rendered after the name) — is identical to columns view.
 - On `single` the view does not exist: a column *is* one folder full-width.
 
-*Rejected:* a tree view with disclosure triangles (today's `tree`). It was a
-sidebar affordance; with the sidebar gone and columns doing the drilling, a
-third way to expand folders is the fork Rule zero names.
+Tree is a view of the current space alongside Columns and List; it is not a
+second root navigator or a replacement for the organisation root column.
 
 ## 5. Icons
 
@@ -296,7 +304,7 @@ and the project tab need no separate rules. Order is priority, high first.
 | `new-file` | menu | "New file" | `faPlus` | 100 | **yes** | the active column is writable (`canWrite` of its space) and not virtual |
 | `new-folder` | button | "New folder" | `faFolderPlus` | 90 | | same; at the root column it opens **New shared folder…** instead |
 | `sort` | menu | "Sort: {Name}" | `faArrowDownWideShort` | 80 | | always, disabled (`aria-disabled`) in virtual columns with `title="Latest and Shared with me are ordered by time"` |
-| `view` | menu | "View: {Columns}" | `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
+| `view` | menu | "View: {Tree}" | `faSitemap` / `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
 | `needs-review` | toggle | "Needs review ({n})" | | 60 | | `agentDraftCount > 0 || needsReviewOnly` for the active space (unchanged behaviour) |
 | `sharing-settings` | button, compact | "Sharing & settings" | `faGear` | 10 | | active space `canManageAccess || canWrite`, and the space is neither personal nor a project Documents space (those have nothing to set — the read-out covers them) |
 
@@ -340,7 +348,8 @@ name. Ties break on `position`, then `id`. Default `name`. The choice is
 *Rejected:* per-folder sort — Finder keeps it in `.DS_Store`; we would need a
 `(userId, folderId)` store and a write on every menu pick.
 
-**View** menu: Columns (`faColumns`), List (`faList`), `menuitemradio`.
+**View** menu: Tree (`faSitemap`), Columns (`faColumns`), List (`faList`),
+`menuitemradio`.
 `?view=` is the state. On `single` the action is omitted, not disabled.
 
 Where the actions render: on `/knowledge-base*` in the root column's
@@ -506,6 +515,7 @@ read as a capsule; nothing uses `rounded-xl`.
 |---|---|
 | `DocumentsFinder.tsx` | composes the viewport, columns, pane, status bar; takes `scope: { kind: 'org' } \| { kind: 'project'; projectId } \| { kind: 'agent'; spaceId; agentId }` |
 | `FinderRootColumn.tsx` | §3; reads `useKnowledgeRoot()` |
+| `FinderTreeView.tsx` | compact recursive Tree view; reuses root/pages data and existing navigation callbacks |
 | `FinderFolderColumn.tsx` | one space folder level: rows, NewFolderRow, upload placeholders, drop target |
 | `FinderVirtualColumn.tsx` | Latest and Shared with me: paged rows with `home` line, "Load more" row at the cursor |
 | `FinderListView.tsx` | §4's list view: header row with sortable columns Name / Date modified / Size / Kind, one folder at a time with `KnowledgeBreadcrumb` |
@@ -515,7 +525,7 @@ read as a capsule; nothing uses `rounded-xl`.
 | `RenameRow.tsx` | §7 |
 | `finder-sort.ts` | `FINDER_SORTS`, `sortFinderRows`, `familyForRow` |
 | `finder-selection.ts` | the pure selection reducer |
-| `finder-view.ts` | `FINDER_VIEWS = ['columns','list']`, cookie migration |
+| `finder-view.ts` | `FINDER_VIEWS = ['tree','columns','list']`, cookie migration |
 | `finder-toolbar-actions.ts` | §6 |
 | `useFinderKeyboard.ts` | §7's key table |
 | `useFinderDrag.ts` | §8, and the cross-root branch in [transfer.md](transfer.md) §1 |

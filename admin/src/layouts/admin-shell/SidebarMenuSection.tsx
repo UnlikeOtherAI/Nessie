@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import { getCookie, setCookie } from '../../lib/storage'
+import { SidebarTreeSectionHeader } from '../../components/primitives/SidebarTree'
 
 type SidebarMenuSectionProps = {
   action?: ReactNode
@@ -47,31 +48,10 @@ export const SidebarMenuSection = ({
   titleIcon,
 }: SidebarMenuSectionProps) => (
   <div className={className}>
-    <div className="admin-sec-row">
-      <button
-        aria-controls={id}
-        aria-expanded={!isCollapsed}
-        className="admin-sec-hdr"
-        onClick={onToggle}
-        type="button"
-      >
-        <svg
-          className={[
-            'h-3 w-3 text-[color:var(--tx3)] transition-transform',
-            isCollapsed ? '-rotate-90' : '',
-          ].join(' ')}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          viewBox="0 0 24 24"
-        >
-          <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {titleIcon}
-        {title}
-      </button>
-      {action}
-    </div>
+    <SidebarTreeSectionHeader action={action} collapsed={isCollapsed} controls={id} onToggle={onToggle}>
+      {titleIcon}
+      {title}
+    </SidebarTreeSectionHeader>
     {!isCollapsed ? <div id={id}>{children}</div> : null}
   </div>
 )

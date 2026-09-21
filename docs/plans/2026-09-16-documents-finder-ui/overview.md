@@ -19,7 +19,7 @@ Files in this directory, in reading order:
    migration notes, every wire shape in typed code, access rules, audit
    actions, and how indexing status and Get Info are computed.
 3. [browser-ui.md](browser-ui.md) — the browser itself: surfaces, the root
-   column, columns and list view, the row to the pixel with every state,
+   tree, columns and list views, the row to the pixel with every state,
    icons, the toolbar, sort and view state, keyboard and selection, the
    phone, and theming.
 4. [menus-and-dialogs.md](menus-and-dialogs.md) — the context-menu
@@ -164,7 +164,7 @@ Each row is decided here and specified in the linked file.
 | 5 | Get Info is a `Dialog` fed by `GET …/pages/:pageId/info`, computed on read with one recursive CTE and a hard row cap | a `Sheet` (a drawer is for a task that lasts; Get Info is a glance); maintained counters (a second ledger to keep true) | [data-and-api.md](data-and-api.md) §5, [menus-and-dialogs.md](menus-and-dialogs.md) §3 |
 | 6 | The context menu is one new `ContextMenu` on `Popover`, anchored at the pointer, a bottom `Sheet` on `single`; no submenus | a bespoke fixed div (the third private flip routine); submenus (a hover-timing problem on touch) | [menus-and-dialogs.md](menus-and-dialogs.md) §1 |
 | 7 | Sort is one global choice in `?sort=` (10 values, direction folded in), cookie default, folders always first | per-folder sort (needs a per-person-per-folder store) | [browser-ui.md](browser-ui.md) §6 |
-| 8 | Two view modes, `columns` and `list`; `full` and `tree` retire | keeping three (tree was a sidebar affordance; full *is* list) | [browser-ui.md](browser-ui.md) §6 |
+| 8 | Three view modes, `tree`, `columns` and `list`; Tree is the compact guided hierarchy while Columns and List retain their existing workflows | hiding Tree as a sidebar-only affordance | [browser-ui.md](browser-ui.md) §6 |
 | 9 | New file is a `Popover` menu off the one primary button: Document → the editor, Upload → the file input; a Spreadsheet item is a reserved seam that is absent, not disabled, until a spreadsheet kind exists | a `Dialog` picker (two dialogs to reach an editor); a greyed "coming soon" item | [menus-and-dialogs.md](menus-and-dialogs.md) §6 |
 | 10 | Drop uploads every file (and folders, via `webkitGetAsEntry`) into the column dropped on, two at a time, with a placeholder row per file and a queue in the status bar | first-file-only (today); an overlay card per file | [uploads-and-indexing.md](uploads-and-indexing.md) |
 | 11 | Indexing state is derived server-side from chunks, embeddings and the queue job, and polled every 5 s only while a row is pending | a status column (a second truth beside the chunks); a new realtime kind (a mixed-version deploy hazard for a progress glyph) | [uploads-and-indexing.md](uploads-and-indexing.md) §4 |
@@ -192,8 +192,8 @@ Explicitly, so nothing lingers.
   `components/features/knowledge/finder/*` ([browser-ui.md](browser-ui.md)).
   `NewFolderRow` moves into `finder/` unchanged in behaviour.
 - **View modes.** `column` survives as `columns`; `full` becomes `list`;
-  `tree` is gone. An old `?view=tree` link degrades to the fallback the way
-  `useTabParam` already degrades an unknown value.
+  `tree` is the shared compact hierarchy view. The `?view=tree` URL is now
+  preserved and opens the tree directly.
 - **`NestedStage` layers.** `knowledge:folder` is retired: the Finder sits on
   `ColumnBrowserViewport`, whose columns are already `column:<k>` stages on
   `single`. `knowledge:document` (12), `knowledge:history` (13) and
