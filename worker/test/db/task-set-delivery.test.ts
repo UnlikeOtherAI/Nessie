@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { finalizeTaskSet } from '../../src/task-sets/finalize.js'
 import { dispatchNextMailboxMessage } from '../../src/control/mailbox.js'
-import { taskSetFinalizationFixture } from '../task-set-finalization-fixture.js'
+import { taskSetFinalizationFixture } from '../../src/task-sets/finalization-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 import { realtime } from './mailbox-serialization-fixture.js'
 

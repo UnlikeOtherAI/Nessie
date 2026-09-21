@@ -28,7 +28,7 @@ dbTest('the real processor transport commits ordered results, dependencies and o
   t.after(() => { globalThis.fetch = fetch })
   // The production inference factory captures its config at module load.
   const { executeTaskSet } = await import('./execute.js')
-  const { taskSetFinalizationFixture } = await import('../../test/task-set-finalization-fixture.js')
+  const { taskSetFinalizationFixture } = await import('./finalization-fixture.js')
   const fixture = async (context: Parameters<typeof taskSetFinalizationFixture>[0], count = 1) => {
     const f = await taskSetFinalizationFixture(context, 0)
     await f.prisma.taskSet.update({ where: { id: f.set.id }, data: {

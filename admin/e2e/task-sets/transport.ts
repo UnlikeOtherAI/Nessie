@@ -147,8 +147,9 @@ Object.assign(window, { taskSetFixture: {
     if (name === 'waiting') { set.status = 'waiting'; set.reason = 'Waiting for Mac mini to reconnect.' }
     if (name === 'stopping') { set.status = 'paused'; set.currentItemId = items[0]?.id ?? null }
     if (name === 'completed') {
-      set.status = 'completed'; set.completedItems = items.length; set.currentItemId = null
-      items = items.map((item) => ({ ...item, status: 'completed', result: 'Verified company summary. Source: https://example.com' }))
+      set.status = 'completed'; set.completedItems = items.length; set.currentItemId = null; set.reason = null
+      items = items.map((item) => ({ ...item, status: 'completed', reason: null,
+        result: 'Verified company summary. Source: https://example.com' }))
     }
     if (name === 'delivery') { set.status = 'completed'; set.deliveryStatus = 'blocked'; set.reason = 'Output folder access was revoked.' }
     set.statusChangedAt = new Date().toISOString()

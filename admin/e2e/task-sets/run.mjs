@@ -137,6 +137,8 @@ try {
   await event('completed')
   await page.getByRole('button', { name: 'Open item 1', exact: true }).click()
   await page.getByText('Verified company summary. Source: https://example.com').waitFor()
+  assert.equal(await page.getByRole('dialog', { name: 'Task set item' })
+    .getByText('Dependency context exceeds the model capacity. Edit the input before retrying.').count(), 0)
   await shot('stored-result-no-receiver')
   await page.getByRole('dialog', { name: 'Task set item' }).getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('dialog', { name: 'Task set item' }).waitFor({ state: 'hidden' })

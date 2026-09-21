@@ -3,7 +3,7 @@ import { Readable } from 'node:stream'
 import type { TestContext } from 'node:test'
 import { Prisma, PrismaClient } from '@prisma/client'
 import type { FileService } from '@nessie/runtime'
-import type { ExecutionDependencies } from '../src/run/execute/types.js'
+import type { ExecutionDependencies } from '../run/execute/types.js'
 
 export const taskSetFinalizationFixture = async (t: TestContext, count = 1) => {
   const prisma = new PrismaClient()
@@ -22,7 +22,7 @@ export const taskSetFinalizationFixture = async (t: TestContext, count = 1) => {
   const project = await prisma.project.create({ data: { organizationId: org.id, name: 'Project' } })
   const team = await prisma.team.create({ data: { projectId: project.id, name: 'Team' } })
   const channel = await prisma.channel.create({ data: {
-    organizationId: org.id, projectId: project.id, teamId: team.id, label: 'Private', visibility: 'private',
+    organizationId: org.id, projectId: project.id, teamId: team.id, label: 'Private', slug: 'private', visibility: 'private',
     members: { create: { userId: user.id } },
   } })
   const thread = await prisma.thread.create({ data: { channelId: channel.id, title: 'General' } })
