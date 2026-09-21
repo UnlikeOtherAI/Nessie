@@ -48,6 +48,7 @@ export default defineConfig(({ command, mode }) => {
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
   const includeTaskDialogFixture = env.NESSIE_TASK_DIALOG_E2E_FIXTURE === '1'
+  const includeOverlayLayerFixture = env.NESSIE_OVERLAY_LAYER_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -64,6 +65,7 @@ export default defineConfig(({ command, mode }) => {
     || includeChannelAgentControlsFixture
     || includeVisibilityAffordancesFixture
     || includeTaskDialogFixture
+    || includeOverlayLayerFixture
     || includeExecutorLocalMcpFixture
     || includeExecutorPairingFixture
     || includeExecutorAgentsFixture
@@ -91,6 +93,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeTaskDialogFixture ? {
             taskDialog: resolve(__dirname, 'e2e/task-dialog/index.html'),
+          } : {}),
+          ...(includeOverlayLayerFixture ? {
+            overlayLayer: resolve(__dirname, 'e2e/overlay-layer/index.html'),
           } : {}),
           ...(includeExecutorLocalMcpFixture ? {
             executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),

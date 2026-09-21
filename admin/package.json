@@ -35,6 +35,7 @@
     "test:e2e:model-subscription-deepseek": "node e2e/model-subscription-deepseek/run.mjs",
     "test:e2e:navigation": "node e2e/navigation/run.mjs",
     "test:e2e:organization-theme": "node e2e/organization-theme/run.mjs",
+    "test:e2e:overlay-layer": "node e2e/overlay-layer/run.mjs",
     "test:e2e:page-header": "node e2e/page-header/run.mjs",
     "test:e2e:project-team-channel": "node e2e/project-usability/project-team-channel.mjs",
     "test:e2e:project-usability": "node e2e/project-usability/run.mjs",

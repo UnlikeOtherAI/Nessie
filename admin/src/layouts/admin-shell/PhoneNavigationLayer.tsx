@@ -1,6 +1,7 @@
 import { NavigationType, UNSAFE_LocationContext } from 'react-router-dom'
 import { adminQueryClient } from '../../providers/QueryProvider'
-import { useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useRef, type ContextType, type CSSProperties, type ReactNode } from 'react'
+import { OverlayLayerProvider } from '../../navigation/overlay-layer'
 import { dimAt, NAV_MOTION } from '../../navigation/motion'
 import { ScreenBarLayerProvider } from '../../navigation/ScreenBarLayer'
 import { usePullToRefresh } from '../../navigation/pull-to-refresh'
@@ -147,6 +148,9 @@ export const PhoneNavigationLayer = ({
   transition,
 }: PhoneNavigationLayerProps) => {
   const hidden = role === 'hidden'
+  // Overlays opened from this screen follow it: covered while it is.
+  const screenRef = useRef<HTMLDivElement | null>(null)
+  const screenElement = useCallback(() => screenRef.current, [])
   const inertLayer = role === 'bottom' || Boolean(transition && role === 'top')
   const classes = ['phone-navigation-screen']
   let style: CSSProperties | undefined
@@ -198,11 +202,14 @@ export const PhoneNavigationLayer = ({
       data-phone-navigation-route={entry.key}
       hidden={hidden || undefined}
       inert={inertLayer || undefined}
+      ref={screenRef}
       style={style}
     >
-      <ScreenBarLayerProvider layerKey={entry.layerKey}>
-        <NavigationScreen pathname={entry.pathname} payload={entry.payload} />
-      </ScreenBarLayerProvider>
+      <OverlayLayerProvider element={screenElement}>
+        <ScreenBarLayerProvider layerKey={entry.layerKey}>
+          <NavigationScreen pathname={entry.pathname} payload={entry.payload} />
+        </ScreenBarLayerProvider>
+      </OverlayLayerProvider>
       <div
         aria-hidden
         className="phone-navigation-dim"

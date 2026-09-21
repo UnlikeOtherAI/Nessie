@@ -65,6 +65,46 @@ Two consequences worth stating:
   real screen in the phone navigation stack and must travel with its layer, so
   it portals only on `split`, where it visually is a centred dialog.
 
+### An overlay belongs to its layer
+
+Leaving the page tree also leaves the stack layer that hides a covered screen.
+The stack keeps a covered screen mounted — inert beneath the one on top,
+`hidden` deeper down — and that screen keeps the URL that opened the overlay: a
+board under Board → Settings still carries `?task=`. Portalled to the body, the
+ticket dialog stayed painted over the pushed screen, kept its focus trap and
+stayed first in line for Back and Escape.
+
+So **an overlay follows the screen it was opened from**. The layer publishes
+its DOM element through **`OverlayLayerProvider`**
+(`navigation/overlay-layer.tsx`): `PhoneNavigationLayer` for a route's screen,
+and `NestedStage` for a stage, whose children are portalled from the page's
+React position and would otherwise read the route layer beneath them.
+`useOverlayLayerCovered()` watches that element, and the
+`[data-phone-navigation-route]` screen around it, for `hidden` or `inert`.
+While it is covered:
+
+- **`OverlayPortal` hides the overlay's slot.** Every overlay renders inside
+  its own `.admin-overlay-slot` (`display: contents`, so still addressing
+  rather than layout); a covered slot is `hidden`, which takes the overlay out
+  of paint, focus and the accessibility tree without unmounting it. Its state
+  and draft survive, and it is back as it was when its screen is on top again.
+- **`useOverlay` is dormant.** It returns `covered`, and a covered overlay
+  registers no Back, holds no focus trap, answers no Escape and holds no native
+  chrome suspended — so Back and Escape act on the screen on top.
+
+A **nested stage asks the same question about itself**
+(`useLayerCovered` on its own container): a route pushed over an open stage
+retains the stage inert beneath it, and the stage gives up its Back
+registration until it is on top again, so Back pops the route rather than
+closing the stage underneath.
+
+Where nothing provides a layer (outside the stack, a test without a viewport)
+an overlay is never covered. `Popover`'s "press in a higher overlay" check
+compares slots, since each direct child of the host is now one overlay's slot.
+`admin/test/overlay-layer.test.ts` pins the predicate and the slot;
+`pnpm --filter @nessie/admin test:e2e:overlay-layer` walks the real stack on
+`split` and `single` and through a nested stage.
+
 **`useOverlay({ id, kind, label, open, onClose, … })`**
 (`components/overlays/useOverlay.ts`) is the shared work every overlay does
 once: it registers `overlay:<id>` with the Back registry while open (so

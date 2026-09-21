@@ -18,10 +18,17 @@ export const overlayHostIn = (doc: Document): HTMLElement => {
   return host as HTMLElement
 }
 
-/** The topmost overlay's outermost element — a scrim, a panel or an anchored surface. */
+/**
+ * The topmost overlay's outermost element — a scrim, a panel or an anchored
+ * surface — inside its `.admin-overlay-slot`, the per-overlay wrapper that
+ * hides an overlay while its screen is covered.
+ */
 export const openOverlayIn = (doc: Document): HTMLElement => {
   const host = overlayHostIn(doc)
-  const overlay = host.lastElementChild
-  assert.ok(overlay, 'the overlay host is empty: nothing is open')
+  const slot = host.lastElementChild
+  assert.ok(slot, 'the overlay host is empty: nothing is open')
+  assert.ok(slot.classList.contains('admin-overlay-slot'), 'every overlay renders in its own slot')
+  const overlay = slot.firstElementChild
+  assert.ok(overlay, 'the overlay slot is empty')
   return overlay as HTMLElement
 }

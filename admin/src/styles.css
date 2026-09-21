@@ -157,6 +157,18 @@
   display: contents;
 }
 
+/* One slot per overlay, addressing like its host. A slot is `hidden` while
+   the screen that opened its overlay is covered by one pushed over it
+   (navigation/overlay-layer.tsx): out of paint, focus and the a11y tree,
+   still mounted. */
+.admin-overlay-slot {
+  display: contents;
+}
+
+.admin-overlay-slot[hidden] {
+  display: none;
+}
+
 [data-theme="midnight"] {
   color-scheme: dark;
   --rail: #0f172a; --sb: #111827; --sb-active: #1d4ed8; --ink: #0f172a;

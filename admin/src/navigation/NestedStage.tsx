@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -9,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { OverlayLayerProvider, useLayerCovered } from './overlay-layer'
 import { useLocalBack } from './LocalBackContext'
 import { ScreenBarLayerProvider } from './ScreenBarLayer'
 import { setLayerFallback } from './screen-bar'
@@ -90,10 +92,16 @@ export const NestedStage = ({
 }: NestedStageProps) => {
   const host = useContext(NestedStageHostContext)
   const [container] = useState(createContainer)
+  // The stage's own layer, not the route layer its page renders in.
+  const containerElement = useCallback(() => container, [container])
   const hosted = host !== null && container !== null
 
+  // A route pushed over an open stage retains the stage, inert, beneath it:
+  // Back then belongs to that route, not to the stage it covers.
+  const covered = useLayerCovered(hosted ? containerElement : null)
+
   useLocalBack({
-    active: active && hosted,
+    active: active && hosted && !covered,
     id: `stage:${id}`,
     label,
     onBack,
@@ -165,13 +173,15 @@ export const NestedStage = ({
     // from context and publish its bar over the page beneath it.
     return shown
       ? createPortal(
-        <ScreenBarLayerProvider
-          back={stageBack}
-          isStage
-          layerKey={owned ? host.layerKeyOf(id) : null}
-        >
-          {children}
-        </ScreenBarLayerProvider>,
+        <OverlayLayerProvider element={containerElement}>
+          <ScreenBarLayerProvider
+            back={stageBack}
+            isStage
+            layerKey={owned ? host.layerKeyOf(id) : null}
+          >
+            {children}
+          </ScreenBarLayerProvider>
+        </OverlayLayerProvider>,
         container,
       )
       : null
