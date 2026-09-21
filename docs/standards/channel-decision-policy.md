@@ -83,6 +83,16 @@ the selected work or changing its reply location. Normal pending turns retain
 their existing batching behavior. Automatic continuations and explicit
 restarts preserve the pinned instructions.
 
+The execution-time trigger read always admits its original non-public channel
+and raw human author, independently of the recent-message window. A queued
+trigger cannot lose its author's disclosure boundary just because later
+conversation pushes it outside that window; delegated and legacy triggers keep
+their explicit or unknown source authors rather than borrowing a later speaker.
+The classifier snapshot also carries its input basis and private source authors,
+which are admitted even when those older turns are no longer in the transcript.
+Malformed snapshot lineage stops execution. At run start, the refreshed policy
+authorizer must satisfy every saved input scope before any provider receives it.
+
 Custom work runs as the person who last saved the policy, never as the person
 whose later message triggered it. `Channel.decisionPolicyAuthorizer` captures
 that authenticated human's stable user/UOA references and original tenant;
@@ -102,9 +112,3 @@ also refuses. A policy without an authorizer must be saved again.
 An organisation administrator's management standing does not grant access to
 a protected conversation: target execution also requires that authorizer to
 be an actual member of a non-public channel.
-
-The execution-time trigger read always admits its original non-public channel
-and raw human author, independently of the recent-message window. A queued
-trigger cannot lose its author's disclosure boundary just because later
-conversation pushes it outside that window; delegated and legacy triggers keep
-their explicit or unknown source authors rather than borrowing a later speaker.

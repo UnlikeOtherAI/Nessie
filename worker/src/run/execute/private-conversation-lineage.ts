@@ -1,7 +1,18 @@
 import type { PrismaClient } from '@prisma/client'
 import { originalHumanAuthorId, type RawHumanMessage } from '@nessie/runtime'
+import { z } from 'zod'
 
-import type { BasisScope, ConsumedSourceSink } from './disclosure-basis.js'
+import {
+  BasisScopeSchema,
+  PrivateConversationSourceSchema,
+  type BasisScope,
+  type ConsumedSourceSink,
+} from './disclosure-basis.js'
+
+const ChannelDecisionLineageSchema = z.object({
+  basisScopes: z.array(BasisScopeSchema),
+  disclosureSources: z.array(PrivateConversationSourceSchema),
+})
 
 export type PrivateConversationLineage = {
   basisScopes: readonly BasisScope[]
@@ -86,6 +97,7 @@ export const admitTriggerMessageLineage = async (
   prisma: PrismaClient,
   sink: ConsumedSourceSink,
   message: PrivateConversationLineage & RawHumanMessage & {
+    channelDecision?: unknown
     thread: { channel: { id: string; visibility: string } }
   },
 ): Promise<void> => {
@@ -98,6 +110,13 @@ export const admitTriggerMessageLineage = async (
     }
   }
   await admitPrivateConversationLineage(prisma, sink, { ...message, disclosureSources: sources })
+  // The classifier can have read older turns and policy instructions that no
+  // longer appear in the transcript when its selected work starts. Their
+  // durable provenance follows every outcome derived from that classification.
+  if (message.channelDecision !== undefined && message.channelDecision !== null) {
+    const lineage = ChannelDecisionLineageSchema.parse(message.channelDecision)
+    await admitPrivateConversationLineage(prisma, sink, lineage)
+  }
 }
 
 /** Mark known non-public channels when their source author is unavailable. */
