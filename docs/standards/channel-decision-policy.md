@@ -112,3 +112,14 @@ also refuses. A policy without an authorizer must be saved again.
 An organisation administrator's management standing does not grant access to
 a protected conversation: target execution also requires that authorizer to
 be an actual member of a non-public channel.
+
+Restart and Continue keep their existing caller access gate, then select the
+original work by exact agent, PA principal and persisted prompt from the
+trigger's `ChannelDecisionSnapshotSchema`. An ordinary reply retains the
+caller's authority even when the same trigger also selected custom work.
+Policy work revalidates the snapshot's authorizer and source access, retains
+the pinned instructions, and runs with `interactive: false`; Continue also
+checks the authorizer can still read the checkpoint's run basis. Current
+channel configuration never replaces replay authority. Revoked authority,
+removed bindings, ambiguous decisions and altered instructions return a
+specific HTTP 403 before a new run or checkpoint claim is written.

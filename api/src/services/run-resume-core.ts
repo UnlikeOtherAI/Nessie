@@ -100,6 +100,7 @@ export const resumeSuspendedRun = async (
       agentId: true,
       principalUserId: true,
       replyPlacement: true,
+      promptOverride: true,
       thread: {
         select: {
           channelId: true,
@@ -156,6 +157,7 @@ export const resumeSuspendedRun = async (
       continuationOfRunId: input.runId,
       principalUserId: run.principalUserId,
       replyPlacement: run.replyPlacement,
+      promptOverride: run.promptOverride ?? null,
       status: 'pending',
       threadId: run.threadId,
       triggerMessageId: message.id,
@@ -229,8 +231,9 @@ export const resumeSuspendedRun = async (
       actorContext,
       agentId: parseAgentId(run.agentId),
       ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
-      interactive: input.interactive,
+      interactive: actorContext.actionContext.purpose === 'channel.policy' ? false : input.interactive,
       messageId: message.id,
+      ...(run.promptOverride ? { promptOverride: run.promptOverride } : {}),
       runId: parseRunId(continuation.id),
       taskId: parseTaskId(task.id),
       threadId: parseThreadId(run.threadId),

@@ -13,7 +13,8 @@ import {
 } from '@nessie/schemas'
 
 import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
-import { buildAgentVisibilityWhere } from '@nessie/team-admin'
+import { buildAgentVisibilityWhere, ChannelDecisionPolicyError } from '@nessie/team-admin'
+import { resolveRunReplayContext } from './run-policy-replay.js'
 import { cancelAgentCardsForRun } from './agent-card-sweep.js'
 import { expirePendingToolApprovalsForRun } from './approval-resume.js'
 import {
@@ -219,6 +220,7 @@ export type RestartRunResult =
   | { kind: 'not_terminal'; status: RunStatus }
   | { kind: 'not_restartable'; status: RunStatus }
   | { kind: 'input_unavailable' }
+  | { kind: 'policy_authority_unavailable' }
   // Another run is in flight on the same (agent, thread): a human explicitly
   // restarting into a busy thread gets a clear 409, not a silent queue.
   | { kind: 'thread_busy' }
@@ -261,6 +263,14 @@ export const restartRun = async (
   })
   if (!message) return { kind: 'input_unavailable' }
 
+  let replay: Awaited<ReturnType<typeof resolveRunReplayContext>>
+  try {
+    replay = await resolveRunReplayContext(prisma, run, actorContext)
+  } catch (error) {
+    if (error instanceof ChannelDecisionPolicyError) return { kind: 'policy_authority_unavailable' }
+    throw error
+  }
+
   const created = await prisma.$transaction(async (tx) => {
     // Same (agent, thread) slot as every other run-creation path: restarting
     // into a busy thread is rejected, never silently queued.
@@ -282,6 +292,7 @@ export const restartRun = async (
         // A restart replays the same trigger message, so it inherits the
         // original run's placement judgement rather than silently re-defaulting.
         replyPlacement: run.replyPlacement,
+        promptOverride: run.promptOverride ?? null,
       },
       select: { id: true },
     })
@@ -302,7 +313,7 @@ export const restartRun = async (
         // keeps its own principal, and otherwise a single-member system DM
         // stamps the person restarting, who is that DM's one member.
         actorContext: withActionContext(
-          withDelegatedSystemDmIdentity(actorContext, {
+          withDelegatedSystemDmIdentity(replay.actorContext, {
             systemChannelType: run.channelSystemChannelType,
           }),
           {
@@ -317,8 +328,9 @@ export const restartRun = async (
         ),
         agentId: parseAgentId(run.agentId),
         ...(run.principalUserId ? { principalUserId: run.principalUserId } : {}),
-        interactive: actorContext.actor.actorType === 'user',
+        interactive: replay.interactive,
         messageId: message.id,
+        ...(run.promptOverride ? { promptOverride: run.promptOverride } : {}),
         runId: parseRunId(newRun.id),
         taskId: parseTaskId(newTask.id),
         threadId: parseThreadId(run.threadId),
