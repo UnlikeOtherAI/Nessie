@@ -229,16 +229,6 @@ export const ChannelMessageBody = ({
           from a thread
         </button>
       ) : null}
-      {!message.rootMessageId && (message.replyCount ?? 0) > 0 && onOpenThread ? (
-        <ReplySummaryBar
-          lastReplyAt={message.lastReplyAt ?? null}
-          participantIds={message.replyParticipantIds ?? []}
-          replyCount={message.replyCount ?? 0}
-          resolveParticipant={resolveThreadParticipant ?? (() => null)}
-          token={token}
-          onOpen={() => onOpenThread(message.id)}
-        />
-      ) : null}
       {!isEditingMessage ? (
         <ChannelMessageActions
           canDelete={canDelete}
@@ -252,6 +242,16 @@ export const ChannelMessageBody = ({
           onConfirmDelete={onConfirmDelete}
           onReply={openThread}
           onStartEdit={onStartEdit}
+        />
+      ) : null}
+      {!message.rootMessageId && (message.replyCount ?? 0) > 0 && onOpenThread ? (
+        <ReplySummaryBar
+          lastReplyAt={message.lastReplyAt ?? null}
+          participantIds={message.replyParticipantIds ?? []}
+          replyCount={message.replyCount ?? 0}
+          resolveParticipant={resolveThreadParticipant ?? (() => null)}
+          token={token}
+          onOpen={() => onOpenThread(message.id)}
         />
       ) : null}
     </div>
