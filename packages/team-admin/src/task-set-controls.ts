@@ -19,13 +19,21 @@ export const controlTaskSetForActor = async (
 ) => {
   const action = TaskSetActionSchema.parse(raw)
   const previous = await getTaskSetForActor(deps.prisma, actor, id)
-  if (['start', 'resume', 'retry'].includes(action.action)) {
+  if (previous.status !== 'completed' && ['start', 'resume', 'retry'].includes(action.action)) {
     await resolveTaskSetProcessor(deps, actor, TaskSetProcessorSchema.parse(previous.processor))
   }
   return deps.prisma.$transaction(async (tx) => {
     await lockTaskSet(tx, id)
     const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
     const now = new Date()
+    if (set.status === 'completed' && action.action === 'retry' && set.deliveryStatus === 'blocked') {
+      const updated = await tx.taskSet.update({ where: { id }, data: {
+        deliveryStatus: 'pending', reason: null, revision: { increment: 1 }, nextAttemptAt: now,
+      } })
+      await enqueueTaskSet(tx, id, updated.revision)
+      await auditTaskSetMutation(tx, actor, id, 'delivery_retried')
+      return taskSetRecord(updated)
+    }
     if (['completed', 'cancelled'].includes(set.status)) {
       throw new TaskSetError('TASK_SET_FINISHED', 'This set is finished. Create a new set to process it again.')
     }
@@ -54,7 +62,7 @@ export const controlTaskSetForActor = async (
       status = 'paused'
     } else {
       if (set.currentItemId) throw new TaskSetError('TASK_SET_BUSY', 'Wait for the active processor to stop.')
-      if (action.action === 'start' && set.status !== 'draft') {
+      if (action.action === 'start' && !['draft', 'ready'].includes(set.status)) {
         throw new TaskSetError('TASK_SET_ALREADY_STARTED', 'Use Resume to continue this set.')
       }
       if (action.action !== 'start' && !['paused', 'blocked', 'waiting'].includes(set.status)) {
@@ -63,8 +71,11 @@ export const controlTaskSetForActor = async (
       if (!set.source && set.totalItems === 0) throw new TaskSetError('TASK_SET_EMPTY', 'Add tasks before starting.')
       if (action.action === 'retry') {
         const item = await tx.taskSetItem.findFirst({ where: { taskSetId: id, sequence: set.nextSequence } })
+        if (action.itemId && item?.id !== action.itemId) {
+          throw new TaskSetError('TASK_SET_RETRY', 'Only the next unfinished item can be retried.')
+        }
         if (item) await tx.taskSetItem.update({ where: { id: item.id }, data: {
-          status: 'pending', reason: null, statusChangedAt: now,
+          status: 'pending', retryBase: item.attempts, reason: null, statusChangedAt: now,
         } })
       }
       status = set.source && !set.inputClosedAt ? 'importing' : 'running'

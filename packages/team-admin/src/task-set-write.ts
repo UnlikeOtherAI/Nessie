@@ -63,6 +63,7 @@ export const createTaskSetForActor = async (
       executionAgentId: processor.agentId, capacityKey: processor.capacityKey, executionThreadId: thread.id,
       processor: taskSetJson(input.processor), source: input.source ? taskSetJson(input.source) : Prisma.DbNull,
       sourceVersionId: input.source?.versionId,
+      sourceAttachmentId: source?.attachmentId,
       output: taskSetJson(input.output), receiver: input.receiver ? taskSetJson(input.receiver) : Prisma.DbNull,
       disclosure: taskSetJson(basis),
       launchOrigin: taskSetJson({
@@ -85,7 +86,7 @@ export const updateTaskSetForActor = async (
 ) => {
   const previous = await getTaskSetForActor(deps.prisma, actor, id)
   const patch = TaskSetUpdateSchema.parse(raw)
-  if (patch.source) await authorizeTaskSetSource(deps.prisma, actor, patch.source)
+  const source = patch.source ? await authorizeTaskSetSource(deps.prisma, actor, patch.source) : null
   if (patch.output && patch.output.kind !== 'journal') await authorizeTaskSetOutput(deps.prisma, actor, patch.output)
   const processor = patch.processor
     ? await resolveTaskSetProcessor(deps, actor, patch.processor)
@@ -105,9 +106,15 @@ export const updateTaskSetForActor = async (
       ...(patch.objective === undefined ? {} : { objective: patch.objective }),
       ...(patch.instructions === undefined ? {} : { instructions: patch.instructions }),
       ...(processor ? { executionAgentId: processor.agentId, capacityKey: processor.capacityKey,
+        processorPin: Prisma.DbNull,
         processor: taskSetJson(patch.processor ?? TaskSetProcessorSchema.parse(previous.processor)) } : {}),
       ...(patch.source === undefined ? {} : { source: patch.source ? taskSetJson(patch.source) : Prisma.DbNull,
-        sourceVersionId: patch.source?.versionId ?? null }),
+        sourceVersionId: patch.source?.versionId ?? null, sourceAttachmentId: source?.attachmentId ?? null }),
+      ...(source ? { disclosure: taskSetJson({
+        classified: true,
+        basisScopes: [...TaskSetDisclosureSchema.parse(set.disclosure).basisScopes, ...source.disclosure.basisScopes],
+        disclosureSources: [...TaskSetDisclosureSchema.parse(set.disclosure).disclosureSources, ...source.disclosure.disclosureSources],
+      }) } : {}),
       ...(patch.output ? { output: taskSetJson(patch.output) } : {}),
       ...(patch.receiver === undefined ? {} : { receiver: patch.receiver ? taskSetJson(patch.receiver) : Prisma.DbNull,
         deliveryStatus: patch.receiver ? 'pending' : 'none' }),

@@ -31,7 +31,11 @@ export const importTaskSetSource = async (
   })
   for await (const record of iterateTaskSetSource({
     fileService, organizationId: set.organizationId,
-    authorize: () => authorizeTaskSetSource(prisma, actor, source),
+    authorize: async () => {
+      const resolved = await authorizeTaskSetSource(prisma, actor, source, { processingAgentId: set.executionAgentId })
+      if (resolved.attachmentId !== set.sourceAttachmentId) throw new Error('source_revision_changed')
+      return resolved
+    },
   }, { source, afterOrdinal: set.importOrdinal })) {
     if (signal?.aborted) return
     batch.push(record)

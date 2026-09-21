@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
-import { lockTaskSet } from '@nessie/team-admin'
+import { lockTaskSet, taskSetJson } from '@nessie/team-admin'
 import { reserveLocalInferenceResource } from '@nessie/runtime'
 import { TaskSetProcessorSchema } from '@nessie/schemas'
 import { lockTaskSetCapacity, TaskSetBlocked, TaskSetWait } from './state.js'
@@ -8,7 +8,6 @@ import { lockTaskSetCapacity, TaskSetBlocked, TaskSetWait } from './state.js'
 export const claimTaskSetItem = async (prisma: PrismaClient, id: string) => prisma.$transaction(async (tx) => {
   await lockTaskSet(tx, id)
   const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
-  if (!['running', 'waiting'].includes(set.status)) return null
   if (set.currentItemId) {
     const item = await tx.taskSetItem.findUniqueOrThrow({ where: { id: set.currentItemId } })
     const attempt = item.currentAttemptId
@@ -16,9 +15,14 @@ export const claimTaskSetItem = async (prisma: PrismaClient, id: string) => pris
     if (!attempt) throw new TaskSetBlocked('attempt_missing')
     return { set, item, attempt }
   }
+  if (!['running', 'waiting'].includes(set.status)) return null
   const item = await tx.taskSetItem.findFirst({ where: { taskSetId: id, sequence: set.nextSequence } })
   if (!item) return null
   if (item.status === 'completed' || item.status === 'skipped') throw new TaskSetBlocked('cursor_conflict')
+  const failures = await tx.taskSetAttempt.count({ where: {
+    itemId: item.id, number: { gt: item.retryBase }, status: 'failed',
+  } })
+  if (failures >= set.maxAttempts) throw new TaskSetBlocked('retry_limit_reached')
   const dependencies = await tx.taskSetItem.findMany({ where: { taskSetId: id, id: { in: item.dependencies } } })
   if (dependencies.length !== item.dependencies.length
     || dependencies.some((dependency) => dependency.sequence >= item.sequence || dependency.status !== 'completed' || dependency.result === null)) {
@@ -61,6 +65,11 @@ export const claimTaskSetItem = async (prisma: PrismaClient, id: string) => pris
   } })
   const attempt = await tx.taskSetAttempt.create({ data: {
     itemId: item.id, number: item.attempts + 1, runId, taskId: task.id,
+    inputSnapshot: taskSetJson({
+      itemRevision: item.revision, setRevision: set.revision, input: item.input, prompt: item.prompt,
+      objective: set.objective, instructions: set.instructions, processor: set.processor,
+      dependencies: item.dependencies, disclosure: item.disclosure,
+    }),
   } })
   const updatedItem = await tx.taskSetItem.update({ where: { id: item.id }, data: {
     attempts: { increment: 1 }, currentAttemptId: attempt.id, reason: null,

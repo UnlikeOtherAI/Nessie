@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { isDeepStrictEqual } from 'node:util'
 import {
   TaskSetItemInputSchema, TaskSetItemUpdateSchema,
   type AuthorizedActionContext, type TaskSetItemInput, type TaskSetItemUpdate,
@@ -40,7 +41,14 @@ export const appendTaskSetItems = async (
     const existing = await tx.taskSetItem.findUnique({
       where: { taskSetId_clientKey: { taskSetId, clientKey: input.clientKey } },
     })
-    if (existing) { added.push(existing); continue }
+    if (existing) {
+      if (existing.prompt !== input.prompt || !isDeepStrictEqual(existing.input, input.input ?? {})
+        || !isDeepStrictEqual(existing.dependencies, input.dependencies ?? [])) {
+        throw new TaskSetError('TASK_SET_ITEM_CONFLICT', 'This client key already names a different task.')
+      }
+      added.push(existing)
+      continue
+    }
     sequence += 1
     await validateTaskSetDependencies(tx, taskSetId, sequence, input.dependencies ?? [])
     added.push(await tx.taskSetItem.create({ data: {
@@ -75,15 +83,23 @@ export const updateTaskSetItemForActor = async (
     const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
     const item = await tx.taskSetItem.findFirst({ where: { id: itemId, taskSetId: id } })
     if (!item) throw new TaskSetError('TASK_SET_ITEM_NOT_FOUND', 'Task item not found.', 404)
-    if (!['draft', 'paused', 'blocked'].includes(set.status) || ['running', 'completed'].includes(item.status)) {
+    if (!['draft', 'paused', 'blocked'].includes(set.status) || ['running', 'completed', 'skipped'].includes(item.status)) {
       throw new TaskSetError('TASK_SET_ITEM_BUSY', 'Pause the set to edit an unfinished item.')
     }
     if (input.dependencies) await validateTaskSetDependencies(tx, id, item.sequence, input.dependencies)
+    if (Buffer.byteLength(JSON.stringify(input.input ?? {})) > 256_000) {
+      throw new TaskSetError('TASK_SET_INPUT_SIZE', 'An item input exceeds 256 KB; select fewer fields.')
+    }
+    await tx.taskSetItemRevision.create({ data: {
+      itemId, revision: item.revision, snapshot: taskSetJson({
+        prompt: item.prompt, input: item.input, dependencies: item.dependencies, disclosure: item.disclosure,
+      }),
+    } })
     const updated = await tx.taskSetItem.update({ where: { id: itemId }, data: {
       ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
       ...(Object.hasOwn(input, 'input') ? { input: taskSetJson(input.input) } : {}),
       ...(input.dependencies ? { dependencies: input.dependencies } : {}),
-      revision: { increment: 1 }, reason: null, status: 'pending', statusChangedAt: new Date(),
+      revision: { increment: 1 }, retryBase: item.attempts, reason: null, status: 'pending', statusChangedAt: new Date(),
     } })
     await auditTaskSetMutation(tx, actor, id, 'item_updated')
     return taskSetItemRecord(updated)
