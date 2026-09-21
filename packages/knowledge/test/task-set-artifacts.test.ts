@@ -68,7 +68,7 @@ test('crash after storing an artifact resumes from its receipt; a completed effe
     } : null } } as unknown as PrismaClient,
     fileService: {
       store: async (input) => {
-        for await (const _chunk of input.body) { /* drain exactly as FileService does */ }
+        for await (const chunk of input.body) { void chunk /* drain exactly as FileService does */ }
         stored++
         return { attachment: { id: UUID } as never, bytesWritten: 50 }
       },

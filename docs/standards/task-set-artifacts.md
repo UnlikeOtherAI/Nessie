@@ -9,7 +9,7 @@ results, execution and output receipts. Neither adapter invokes an LLM.
 A source pins a Documents page and exact version; its current attachment is
 never substituted. `resolveTaskSetDocumentSource` checks the current home or
 share entitlement and the pinned version's disclosure basis. Ingestion calls
-that resolver initially and at every page of at most 200 admitted records;
+that resolver initially and at every page of at most 200 scanned records;
 dispatch must repeat the live check when consuming an already imported item.
 The adapter returns classified version/home provenance with each item, and
 `consumeTaskSetDisclosure` registers it into a consuming run's source sink.
@@ -44,7 +44,12 @@ The byte limit is 256 MiB per source, also applied to declared expanded XLSX
 ZIP content. Selected records are at most 1 MiB with nesting depth at most 64;
 tabular records have at most 512 columns. These parser admission limits are
 not model-context guarantees. Overflow refuses the input without truncation.
-XLSX caches its shared-string/style tables but streams worksheet rows; SQLite
+XLSX caches its shared-string/style tables but streams worksheet rows; its
+ZIP entries have both declared and actual expansion budgets. A pinned ExcelJS
+4.4 XML-parser seam reads explicit ZIP entries in metadata-first order because
+its whole-archive reader loses late metadata in ordinary multi-sheet files.
+All entry streams close when an iterator stops early, without ExcelJS's
+deferred worksheet scratch files. SQLite
 uses a read-only disposable disk copy. Scratch files live in the OS temporary
 directory and are removed on ordinary completion/failure, never inside a
 checkout. Durable bytes remain exclusively in Documents/FileService.

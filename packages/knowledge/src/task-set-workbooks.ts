@@ -1,16 +1,17 @@
-import { createReadStream, createWriteStream } from 'node:fs'
+import { createWriteStream } from 'node:fs'
 import { mkdtemp, open, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 import type { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import ExcelJS from 'exceljs'
+import type ExcelJS from 'exceljs'
 import type { TaskSetSource } from '@nessie/schemas'
 import {
   TASK_SET_SOURCE_LIMITS, TaskSetSourceError, taskSetHeaders, taskSetTableRecord,
   type TaskSetSourceRecord,
 } from './task-set-records.js'
+import { readTaskSetExcelRows } from './task-set-xlsx.js'
 
 /** Scratch copies are disposable and outside all checkouts; FileService owns the durable bytes. */
 async function* withSourceFile(
@@ -70,7 +71,7 @@ const excelValue = (cell: ExcelJS.Cell): unknown => {
   if (value === null || typeof value !== 'object') return value
   if (value instanceof Date) return value.toISOString()
   if ('formula' in value || 'sharedFormula' in value) {
-    if (value.result === undefined) {
+    if (value.result === undefined || (typeof value.result === 'object' && value.result !== null)) {
       throw new TaskSetSourceError('invalid_input', 'A formula has no cached result; recalculate and save the source workbook.')
     }
     return { formula: cell.formula, value: value.result }
@@ -88,39 +89,29 @@ export async function* taskSetExcelRecords(
   if (!selectedSheet) throw new TaskSetSourceError('invalid_mapping', 'Choose the source worksheet explicitly.')
   yield* withSourceFile(stream, async function* (path) {
     await assertWorkbookBudget(path)
-    const reader = new ExcelJS.stream.xlsx.WorkbookReader(createReadStream(path), {
-      worksheets: 'emit', sharedStrings: 'cache', styles: 'cache', hyperlinks: 'ignore',
-    })
-    let found = false
-    for await (const sheet of reader) {
-      // ExcelJS 4.4 sets name in WorkbookReader._parseWorksheet but omits it in its declarations.
-      if ((sheet as typeof sheet & { name: string }).name !== selectedSheet) continue
-      found = true
-      let headers: string[] | null = null
-      const headerRow = source.selection.headerRow
-      let lastRow = 0
-      for await (const row of sheet) {
-        for (let blank = lastRow + 1; blank < row.number; blank++) {
-          if (headerRow && blank <= headerRow) continue
-          const locator = `${selectedSheet}!${blank}`
-          const values = headers ? headers.map(() => null) : []
-          yield { ordinal: blank, value: taskSetTableRecord(values, headers, locator), columns: values, locator }
-        }
-        lastRow = row.number
-        if (row.cellCount > TASK_SET_SOURCE_LIMITS.columns) {
-          throw new TaskSetSourceError('input_too_large', 'The source worksheet has too many columns.')
-        }
-        const values = Array.from({ length: row.cellCount }, (_, index) => excelValue(row.getCell(index + 1)))
-        if (row.number === headerRow) { headers = taskSetHeaders(values); continue }
-        if (headerRow && row.number < headerRow) continue
-        const locator = `${selectedSheet}!${row.number}`
-        yield { ordinal: row.number, value: taskSetTableRecord(values, headers, locator), columns: values, locator }
+    let headers: string[] | null = null
+    const headerRow = source.selection.headerRow
+    let lastRow = 0
+    for await (const row of readTaskSetExcelRows(path, selectedSheet)) {
+      for (let blank = lastRow + 1; blank < row.number; blank++) {
+        if (headerRow && blank <= headerRow) continue
+        const locator = `${selectedSheet}!${blank}`
+        const values = headers ? headers.map(() => null) : []
+        yield { ordinal: blank, value: taskSetTableRecord(values, headers, locator), columns: values, locator }
       }
-      if (headerRow && (!headers || lastRow < headerRow)) {
-        throw new TaskSetSourceError('invalid_mapping', 'The selected worksheet header does not exist.')
+      lastRow = row.number
+      if (row.cellCount > TASK_SET_SOURCE_LIMITS.columns) {
+        throw new TaskSetSourceError('input_too_large', 'The source worksheet has too many columns.')
       }
+      const values = Array.from({ length: row.cellCount }, (_, index) => excelValue(row.getCell(index + 1)))
+      if (row.number === headerRow) { headers = taskSetHeaders(values); continue }
+      if (headerRow && row.number < headerRow) continue
+      const locator = `${selectedSheet}!${row.number}`
+      yield { ordinal: row.number, value: taskSetTableRecord(values, headers, locator), columns: values, locator }
     }
-    if (!found) throw new TaskSetSourceError('invalid_mapping', 'The selected worksheet does not exist.')
+    if (headerRow && (!headers || lastRow < headerRow)) {
+      throw new TaskSetSourceError('invalid_mapping', 'The selected worksheet header does not exist.')
+    }
   })
 }
 

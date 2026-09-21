@@ -39,6 +39,10 @@ test('XLSX selects the named sheet, preserves row gaps/formulas, and maps header
   assert.deepEqual(taskSetMapInput(rows[0]?.value, source('xlsx', selection), rows[0]?.columns),
     { number: 125, label: 'Ondřej' })
   assert.deepEqual(rows[1]?.value, { id: null, name: null, calculated: null })
+  const interrupted = parseTaskSetSource(createReadStream(file), source('xlsx', selection))
+  assert.equal((await interrupted.next()).value?.ordinal, 2)
+  await interrupted.return(undefined)
+  assert.deepEqual(await collect(parseTaskSetSource(createReadStream(file), source('xlsx', selection))), rows)
   await assert.rejects(collect(parseTaskSetSource(createReadStream(file), source('xlsx', { sheet: 'Missing' }))),
     /does not exist/)
 })
