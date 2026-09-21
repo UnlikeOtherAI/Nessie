@@ -12,7 +12,7 @@ import {
 import { applyTaskLabelPlan, planTaskLabels, type TaskLabelSetError } from './task-labels.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { dropStalePlacements } from './project-task-move.js'
-import { boardTaskPoolWhere } from './board-placement.js'
+import { boardTaskPoolWhere, resolveTaskHomeBoard } from './board-placement.js'
 import {
   resolveOutboundAssignee,
   type BoardSourceWriteBack,
@@ -167,16 +167,21 @@ export const createProjectTask = async (
   if (input.ownerUserId && !(await isOrganizationMember(prisma, input.organizationId, input.ownerUserId))) return { error: 'OWNER_NOT_MEMBER' }
   const labelIds = [...new Set(input.labelIds ?? [])]
   if (labelIds.length > 0) {
-    // A new ticket is native, so every label is local; it only has to be this project's.
-    const labels = input.projectId
+    // A new ticket is native, so every label is local; it only has to be a
+    // label of the board the ticket lands on (`boardId`, else the default).
+    const board = await resolveTaskHomeBoard(prisma, {
+      projectId: input.projectId ?? null,
+      boardId: input.boardId ?? null,
+    })
+    const labels = board
       ? await prisma.taskLabel.findMany({
-          where: { id: { in: labelIds.filter(isUuid) }, projectId: input.projectId },
+          where: { id: { in: labelIds.filter(isUuid) }, boardId: board.id },
           select: { id: true },
         })
       : []
     const found = new Set(labels.map((label) => label.id))
     const missing = labelIds.find((id) => !found.has(id))
-    if (missing) return { error: 'LABEL_NOT_IN_PROJECT', labelId: missing }
+    if (missing) return { error: 'LABEL_NOT_ON_BOARD', labelId: missing }
   }
   const status: TaskStatus = input.assigneeUserId || input.assigneeAgentId ? 'assigned' : 'inbox'
   const task = await prisma.$transaction(async (tx) => {
@@ -371,14 +376,25 @@ export const updateProjectTask = async (
 > => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
-    select: { id: true, projectId: true, detail: true, externalLink: { select: { sourceId: true } } },
+    select: {
+      id: true,
+      projectId: true,
+      boardId: true,
+      detail: true,
+      externalLink: { select: { sourceId: true } },
+    },
   })
   if (!existing) return { error: 'NOT_FOUND' }
   const labelPlan = input.fields.labelIds === undefined
     ? null
     : await planTaskLabels(
         prisma,
-        { id: existing.id, projectId: existing.projectId, sourceId: existing.externalLink?.sourceId ?? null },
+        {
+          id: existing.id,
+          projectId: existing.projectId,
+          boardId: existing.boardId ?? null,
+          sourceId: existing.externalLink?.sourceId ?? null,
+        },
         input.fields.labelIds,
       )
   if (labelPlan && 'error' in labelPlan) return labelPlan

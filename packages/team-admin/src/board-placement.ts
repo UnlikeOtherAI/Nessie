@@ -14,6 +14,7 @@ import {
   projectTaskInclude,
   type ProjectTaskRecord,
 } from './project-task-records.js'
+import type { BoardRef } from './task-labels.js'
 
 /**
  * Which tasks a board holds, and where each one renders on it.
@@ -166,6 +167,28 @@ export const resolveProjectTaskDetailPlacement = async (
     columnId: placement?.columnId ?? null,
     position: placement?.position ?? null,
   }
+}
+
+/**
+ * The board a task's labels live on: its own, or the project's default.
+ * Null for a projectless task, and for a project with no boards at all —
+ * nothing can show a label there, so nothing may carry one.
+ *
+ * A task is on exactly one board (`Task.boardId`, null ⇒ the default), which
+ * is why "the ticket's labels" and "its board's labels" are the same set.
+ */
+export const resolveTaskHomeBoard = async (
+  db: PrismaClient | Prisma.TransactionClient,
+  task: { projectId: string | null; boardId: string | null },
+): Promise<BoardRef | null> => {
+  if (!task.projectId) return null
+  return db.board.findFirst({
+    where: {
+      projectId: task.projectId,
+      ...(task.boardId ? { id: task.boardId } : { isDefault: true }),
+    },
+    select: { id: true, projectId: true, organizationId: true },
+  })
 }
 
 /**

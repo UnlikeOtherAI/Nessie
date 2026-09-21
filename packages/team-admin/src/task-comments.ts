@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { NormalisedComment } from '@nessie/board-sources'
 import {
+  COMMENT_REMOVAL_REASON,
   inlineAttachmentIds,
   parseAgentId,
   parseTaskId,
@@ -13,19 +14,19 @@ import {
 import type { BoardSourceCommentWriteBackError as BoardSourceWriteBackError } from './board-source-writeback.js'
 import { findAccessibleTask, isUuid, taskEventBy, type TaskActor } from './task-access.js'
 import {
+  attachmentRemover,
   linkUploadsToTask,
   mapTaskAttachment,
   recordAttachmentsAdded,
   taskAttachmentSelect,
-  type TaskFileDeleter,
 } from './task-attachments.js'
 
 /**
  * A ticket's flat comment thread. A comment belongs to its author — the
  * person, or the agent whose run wrote it — and only the author edits or
  * deletes it (the `softDeleteMessage` rule). Deletion is soft: the body is
- * blanked, `deletedAt` set, and the comment's files go through the file
- * service.
+ * blanked, `deletedAt` set, and the comment's files are marked removed —
+ * they stay on the ticket, downloadable, like any removed file.
  */
 
 /**
@@ -376,14 +377,16 @@ export const updateTaskComment = async (
 }
 
 /**
- * Delete a comment: author only, soft (body blanked, `deletedAt` set), and its
- * files deleted through the file service — the only place bytes go.
+ * Delete a comment: author only, soft (body blanked, `deletedAt` set). Its
+ * files are marked removed with the deleter as remover and
+ * `COMMENT_REMOVAL_REASON`, one `attachment_removed` each; a file somebody
+ * already removed keeps its first remover. No bytes are deleted.
  */
 export const deleteTaskComment = async (
   prisma: PrismaClient,
   actor: TaskActor,
   input: { taskId: string; commentId: string },
-  deps: TaskFileDeleter & { writeBack?: TaskCommentWriteBack },
+  deps: { writeBack?: TaskCommentWriteBack } = {},
 ): Promise<{ ok: true; projectId: string | null } | TaskCommentError | BoardSourceWriteBackError> => {
   const target = await loadOwnComment(prisma, actor, input, 'deleteComment', deps.writeBack)
   if ('error' in target) return target
@@ -396,21 +399,29 @@ export const deleteTaskComment = async (
     })
     if (outcome && 'error' in outcome) return outcome
   }
+  const by = taskEventBy(actor)
   await prisma.$transaction(async (tx) => {
     await tx.taskComment.update({
       where: { id: comment.id },
       data: { body: '', deletedAt: new Date() },
     })
     await tx.taskEvent.create({
-      data: { taskId: task.id, eventType: 'comment_deleted', payload: { by: taskEventBy(actor), commentId: comment.id } },
+      data: { taskId: task.id, eventType: 'comment_deleted', payload: { by, commentId: comment.id } },
+    })
+    const live = { taskCommentId: comment.id, organizationId: task.organizationId, removedAt: null }
+    const files = await tx.attachment.findMany({ where: live, select: { id: true } })
+    if (files.length === 0) return
+    await tx.attachment.updateMany({
+      where: { ...live, id: { in: files.map((file) => file.id) } },
+      data: { removedAt: new Date(), ...attachmentRemover(actor), removedReason: COMMENT_REMOVAL_REASON },
+    })
+    await tx.taskEvent.createMany({
+      data: files.map((file) => ({
+        taskId: task.id,
+        eventType: 'attachment_removed',
+        payload: { by, attachmentId: file.id, reason: COMMENT_REMOVAL_REASON, commentId: comment.id },
+      })),
     })
   })
-  const files = await prisma.attachment.findMany({
-    where: { taskCommentId: comment.id, organizationId: task.organizationId },
-    select: { id: true },
-  })
-  for (const file of files) {
-    await deps.fileService.delete(file.id, task.organizationId, deps.attribution)
-  }
   return { ok: true, projectId: task.projectId }
 }

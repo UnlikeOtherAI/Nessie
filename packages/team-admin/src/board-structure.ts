@@ -15,6 +15,8 @@ import {
   parseProjectId,
 } from '@nessie/schemas'
 
+import { rehomeBoardLabels } from './task-labels.js'
+
 /**
  * Boards and their columns — the shared implementation behind the API routes,
  * project creation (clicked and from chat), and the personal assistant's
@@ -313,7 +315,7 @@ export const deleteBoard = async (
 ): Promise<{ ok: true } | BoardMutationError> => {
   const board = await prisma.board.findFirst({
     where: { id: boardId, projectId },
-    select: { id: true, isDefault: true },
+    select: { id: true, projectId: true, organizationId: true, isDefault: true },
   })
   if (!board) return { error: 'BOARD_NOT_FOUND' }
   if ((await prisma.board.count({ where: { projectId } })) <= 1) {
@@ -329,6 +331,14 @@ export const deleteBoard = async (
     if (replacement === 0) return { error: 'BOARD_DEFAULT_REPLACEMENT_REQUIRED' }
   }
   await prisma.$transaction(async (tx) => {
+    // Its tasks fall back to the default board (`ON DELETE SET NULL`) — the
+    // replacement when this one was the default — so its labels go there
+    // first, links and all, and the storage cascade finds nothing to take.
+    const heir = await tx.board.findFirst({
+      where: board.isDefault ? { id: newDefaultBoardId, projectId } : { projectId, isDefault: true },
+      select: { id: true, projectId: true, organizationId: true },
+    })
+    if (heir) await rehomeBoardLabels(tx, board, heir)
     await tx.board.delete({ where: { id: boardId } })
     if (board.isDefault && newDefaultBoardId) {
       await tx.board.update({
