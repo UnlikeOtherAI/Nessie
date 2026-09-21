@@ -217,12 +217,35 @@ test('the state root is created and never removed', () => {
   // RemoveFolder would take a paired executor's machine key with it.
   assert.ok(!authoring.includes('<RemoveFolder'))
   assert.ok(authoring.includes('Id="SecureServiceStateRoot"'))
-  assert.ok(authoring.includes('ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor&quot;"'))
   assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?Impersonate="no"[\s\S]*?Return="check"/.test(authoring))
   assert.ok(authoring.includes('Action="SecureServiceStateRoot" After="InstallServices"'))
+  // One action establishes all three directories, and it runs the service
+  // binary. The helper would do the same job, but it is a console program, so
+  // calling it here drew a black window per directory in the middle of an
+  // install; the service binary has no console and runs the helper with its
+  // output piped. The executors and pending roots are therefore no longer
+  // separate actions — `--secure-state-root` derives all three itself.
+  assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?FileRef="ServiceExe"/.test(authoring))
+  assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?ExeCommand="--secure-state-root"/.test(authoring))
   for (const id of ['SecureServiceExecutorsRoot', 'SecureServicePendingRoot']) {
-    assert.ok(authoring.includes(`Id="${id}"`), `${id} must repair an existing child root`)
-    assert.ok(new RegExp(`Action="${id}" After=`).test(authoring), `${id} must run before StartServices`)
+    assert.ok(!authoring.includes(`Id="${id}"`), `${id} was folded into --secure-state-root`)
+  }
+})
+
+/**
+ * The anti-flash guarantee, as a property rather than a spelling: no custom
+ * action may run the packaged native helper. It is a console program by design
+ * — a person can run it by hand and read its JSON — so every console window an
+ * install drew came from naming it here.
+ */
+test('no custom action runs a console program', () => {
+  const actions = authoring.match(/<CustomAction[\s\S]*?\/>/g) ?? []
+  assert.ok(actions.length > 0, 'the authoring must declare custom actions')
+  for (const action of actions) {
+    assert.ok(
+      !action.includes('FileRef="NativeHelper"'),
+      `a custom action runs the console helper: ${action.replace(/\s+/g, ' ').trim()}`,
+    )
   }
 })
 
