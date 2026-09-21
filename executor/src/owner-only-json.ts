@@ -20,4 +20,3 @@ export const replaceOwnerOnlyJson = async (path: string, value: unknown): Promis
     await unlink(temporaryPath).catch(() => undefined)
   }
 }
-

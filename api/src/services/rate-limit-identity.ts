@@ -37,4 +37,3 @@ export const canonicalizeIpIdentity = (ip: string): string => {
   if (!isIPv6(ip)) return ip
   return `${expandIPv6Hextets(ip).slice(0, 4).join(':')}::/64`
 }
-
