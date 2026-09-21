@@ -11,7 +11,8 @@
 
   Built by build-msi.mjs, which passes Version and StagingDir.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package
     Name="Nessie Executor"
     Manufacturer="UnlikeOtherAI"
@@ -27,6 +28,24 @@
          re-registers the service, and never touches the state root. -->
     <MajorUpgrade DowngradeErrorMessage="A newer Nessie Executor is already installed." />
     <MediaTemplate EmbedCab="yes" />
+
+    <!-- A person double-clicking this package sees a product, not Windows
+         Installer's bare progress bar and a system dialog with an OK button.
+         WixUI_Minimal is the right set here: the package installs to one fixed
+         location under Program Files and exposes no features to choose, so a
+         directory or feature page would only offer choices that do not exist. -->
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="!(bindpath.Assets)\license.rtf" />
+    <WixVariable Id="WixUIDialogBmp" Value="!(bindpath.Assets)\dialog.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="!(bindpath.Assets)\banner.bmp" />
+
+    <!-- What Apps & features shows about this package. Without these it lists a
+         nameless entry with the generic installer icon. -->
+    <Icon Id="NessieExecutorIcon" SourceFile="!(bindpath.Assets)\nessie-executor.ico" />
+    <Property Id="ARPPRODUCTICON" Value="NessieExecutorIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://nessie.works" />
+    <Property Id="ARPHELPLINK" Value="https://nessie.works/docs/executors" />
+    <Property Id="ARPNOREPAIR" Value="1" />
 
     <!-- The packaged Node and the guest artifacts are x86_64 only. -->
     <Launch
@@ -221,34 +240,22 @@
       Impersonate="no"
       Return="ignore" />
 
+    <!-- One action, not three, and the service binary rather than the helper.
+         The helper is a console program: calling it here opened a black window
+         per directory, three times, in the middle of an install. The service
+         binary has no console of its own and runs the helper with its output
+         piped, so nothing is ever drawn; it derives the same three paths the
+         service itself uses, so the installer cannot name a different root. -->
     <CustomAction
       Id="SecureServiceStateRoot"
-      FileRef="NativeHelper"
-      ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor&quot;"
-      Execute="deferred"
-      Impersonate="no"
-      Return="check" />
-
-    <CustomAction
-      Id="SecureServiceExecutorsRoot"
-      FileRef="NativeHelper"
-      ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor\executors&quot;"
-      Execute="deferred"
-      Impersonate="no"
-      Return="check" />
-
-    <CustomAction
-      Id="SecureServicePendingRoot"
-      FileRef="NativeHelper"
-      ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor\pending&quot;"
+      FileRef="ServiceExe"
+      ExeCommand="--secure-state-root"
       Execute="deferred"
       Impersonate="no"
       Return="check" />
 
     <InstallExecuteSequence>
       <Custom Action="SecureServiceStateRoot" After="InstallServices" Condition="NOT Installed" />
-      <Custom Action="SecureServiceExecutorsRoot" After="SecureServiceStateRoot" Condition="NOT Installed" />
-      <Custom Action="SecureServicePendingRoot" After="SecureServiceExecutorsRoot" Condition="NOT Installed" />
       <Custom Action="JoinHypervAdministrators" After="StartServices" Condition="NOT Installed" />
     </InstallExecuteSequence>
 

@@ -31,10 +31,13 @@ import {
 const packaging = dirname(fileURLToPath(import.meta.url))
 const authoring = await readFile(join(packaging, 'nessie-executor.wxs'), 'utf8')
 const buildScript = await readFile(join(packaging, 'build-msi.mjs'), 'utf8')
-const windowsWorkflow = await readFile(
-  join(packaging, '..', '..', '..', '.github', 'workflows', 'desktop-windows.yml'),
-  'utf8',
-)
+const workflowsDirectory = join(packaging, '..', '..', '..', '.github', 'workflows')
+const windowsWorkflow = await readFile(join(workflowsDirectory, 'desktop-windows.yml'), 'utf8')
+/** Both workflows that run `build-msi.mjs`, by the name a person would look for. */
+const packageBuildingWorkflows = {
+  'ci.yml': await readFile(join(workflowsDirectory, 'ci.yml'), 'utf8'),
+  'desktop-windows.yml': windowsWorkflow,
+}
 const script = async (name) => readFile(join(packaging, 'scripts', name), 'utf8')
 
 test('the tray build uses the supported no-installer option', () => {
@@ -52,6 +55,27 @@ test('WiX builds first and validates with the intended ICE exceptions', () => {
   assert.equal(buildScript.includes("'-sice:ICE38'"), false)
   assert.equal(buildScript.includes("'-sice:ICE64'"), false)
   assert.ok(buildScript.indexOf("'build',") < buildScript.indexOf("'msi', 'validate',"))
+})
+
+/**
+ * The dialog set is a separate install from the toolset, so a workflow that
+ * installs `wix` and stops there builds everything right up to the `ui:WixUI`
+ * element and then fails with WIX0144 — an error that names an extension
+ * rather than anything a reader would connect to the installer's appearance.
+ */
+test('every workflow that builds the package installs the WiX UI extension', () => {
+  const extension = buildScript.match(/const UI_EXTENSION = `([^`]+)`/)?.[1]
+  assert.equal(extension, 'WixToolset.UI.wixext/${WIX_VERSION}')
+  for (const [name, workflow] of Object.entries(packageBuildingWorkflows)) {
+    assert.ok(
+      workflow.includes('wix extension add --global WixToolset.UI.wixext/'),
+      `${name} runs build-msi.mjs, so it must install the UI extension`,
+    )
+    assert.ok(
+      workflow.includes('dotnet tool install --global wix --version'),
+      `${name} must install the toolset itself`,
+    )
+  }
 })
 
 test('a Hyper-V socket GUID is the guest port in the VSOCK template', () => {
@@ -217,12 +241,35 @@ test('the state root is created and never removed', () => {
   // RemoveFolder would take a paired executor's machine key with it.
   assert.ok(!authoring.includes('<RemoveFolder'))
   assert.ok(authoring.includes('Id="SecureServiceStateRoot"'))
-  assert.ok(authoring.includes('ExeCommand="secure-service-directory &quot;[CommonAppDataFolder]Nessie Executor&quot;"'))
   assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?Impersonate="no"[\s\S]*?Return="check"/.test(authoring))
   assert.ok(authoring.includes('Action="SecureServiceStateRoot" After="InstallServices"'))
+  // One action establishes all three directories, and it runs the service
+  // binary. The helper would do the same job, but it is a console program, so
+  // calling it here drew a black window per directory in the middle of an
+  // install; the service binary has no console and runs the helper with its
+  // output piped. The executors and pending roots are therefore no longer
+  // separate actions — `--secure-state-root` derives all three itself.
+  assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?FileRef="ServiceExe"/.test(authoring))
+  assert.ok(/Id="SecureServiceStateRoot"[\s\S]*?ExeCommand="--secure-state-root"/.test(authoring))
   for (const id of ['SecureServiceExecutorsRoot', 'SecureServicePendingRoot']) {
-    assert.ok(authoring.includes(`Id="${id}"`), `${id} must repair an existing child root`)
-    assert.ok(new RegExp(`Action="${id}" After=`).test(authoring), `${id} must run before StartServices`)
+    assert.ok(!authoring.includes(`Id="${id}"`), `${id} was folded into --secure-state-root`)
+  }
+})
+
+/**
+ * The anti-flash guarantee, as a property rather than a spelling: no custom
+ * action may run the packaged native helper. It is a console program by design
+ * — a person can run it by hand and read its JSON — so every console window an
+ * install drew came from naming it here.
+ */
+test('no custom action runs a console program', () => {
+  const actions = authoring.match(/<CustomAction[\s\S]*?\/>/g) ?? []
+  assert.ok(actions.length > 0, 'the authoring must declare custom actions')
+  for (const action of actions) {
+    assert.ok(
+      !action.includes('FileRef="NativeHelper"'),
+      `a custom action runs the console helper: ${action.replace(/\s+/g, ' ').trim()}`,
+    )
   }
 })
 
