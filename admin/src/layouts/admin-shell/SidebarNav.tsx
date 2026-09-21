@@ -141,7 +141,7 @@ export const SidebarNav = (props: SidebarNavProps) => {
       ].join(' ')}
     >
       <div
-        className="min-h-0 flex-1 overflow-y-auto py-1"
+        className="admin-sidebar-scroll min-h-0 flex-1 overflow-y-auto"
         onScroll={channelListScroll.onScroll}
         ref={channelListScroll.ref}
       >

@@ -28,13 +28,40 @@ test('the organisation-wide channel section names its shared scope', () => {
   assert.match(source, /title="Shared channels"/)
 })
 
-test('Threads aligns with section chevrons and remains a bold top-level destination', () => {
+test('the Channels sidebar adopts the compact guided tree geometry', () => {
   const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
+  const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
   const styles = readSource('../src/styles.css')
 
   assert.match(sidebar, /admin-sb-item sidebar-threads group/)
   assert.doesNotMatch(sidebar, /sidebar-top-level/)
-  assert.match(styles, /\.admin-sb-item\.sidebar-threads\s*\{[\s\S]*?padding-left: 10px;[\s\S]*?font-weight: 700;/)
+  assert.match(projects, /className="sidebar-project-group"/)
+  assert.match(projects, /className="sidebar-project-children"/)
+  assert.match(
+    styles,
+    /\.admin-sidebar-nav \.sidebar-project-children\s*\{[\s\S]*?border-left: 1px solid var\(--sep\);/,
+  )
+  assert.match(
+    styles,
+    /\.admin-sidebar-nav \.admin-sb-item\.sidebar-threads\s*\{[\s\S]*?min-height: 32px;[\s\S]*?padding: 0 10px;/,
+  )
+  assert.match(styles, /\.admin-sidebar-nav \.sidebar-project-tile\s*\{[\s\S]*?padding: 0 6px 0 18px;/)
+})
+
+test('the Channels project menu uses the 1d icon-row treatment without adding actions', () => {
+  const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
+  const styles = readSource('../src/styles.css')
+  const menu = projects.slice(projects.indexOf('admin-sidebar-menu-channel-project'))
+
+  assert.match(menu, /<AddChannelIcon \/>/)
+  assert.match(menu, /<EditProjectIcon \/>/)
+  assert.match(menu, />Add channel to project</)
+  assert.match(menu, />Rename &amp; icon</)
+  assert.doesNotMatch(menu, /Archive project|Delete project|Move channels/)
+  assert.match(
+    styles,
+    /\.admin-sidebar-menu-channel-project \[role="button"\]\s*\{[\s\S]*?height: 32px;[\s\S]*?gap: 10px;/,
+  )
 })
 
 test('Threads appears directly above Starred in the chat sidebar', () => {

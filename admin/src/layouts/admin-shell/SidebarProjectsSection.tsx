@@ -21,6 +21,32 @@ import type {
 
 const COLLAPSED_PROJECT_IDS_COOKIE = 'collapsedProjectIds';
 
+const PlusIcon = () => (
+  <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+  </svg>
+);
+
+const AddChannelIcon = () => (
+  <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+  </svg>
+);
+
+const EditProjectIcon = () => (
+  <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const MoreIcon = () => (
+  <svg aria-hidden="true" fill="currentColor" viewBox="0 0 24 24">
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </svg>
+);
+
 export const parseCollapsedProjectIds = (value: string | null): Set<string> => {
   if (!value) return new Set();
 
@@ -175,12 +201,13 @@ export const SidebarProjectsSection = ({
           onClick={onOpenCreateProject}
           type="button"
         >
-          +
+          <PlusIcon />
         </button>
       }
       id="sidebar-nav-projects"
       isCollapsed={projectsCollapsed}
       onToggle={toggleProjectsCollapsed}
+      className="sidebar-projects-section"
       title="Projects"
     >
       {visibleSidebarProjects.length === 0 ? (
@@ -197,7 +224,7 @@ export const SidebarProjectsSection = ({
         ) + (attentionCountByProjectId.get(project.id) ?? 0);
 
         return (
-          <div key={project.id} className="mt-1">
+          <div key={project.id} className="sidebar-project-group">
             <div
               className={[
                 'admin-sb-item sidebar-project-tile group',
@@ -205,6 +232,30 @@ export const SidebarProjectsSection = ({
                 projectSelectionClassName(project.id, currentProjectId, currentChannelId),
               ].join(' ')}
             >
+              <button
+                aria-controls={projectChannelsId}
+                aria-expanded={!isProjectCollapsed}
+                aria-label={`${isProjectCollapsed ? 'Expand' : 'Collapse'} ${project.name} channels`}
+                className="admin-sidebar-more sidebar-project-disclosure flex-shrink-0"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleProjectCollapsed(project.id);
+                }}
+                type="button"
+              >
+                <svg
+                  className={[
+                    'transition-transform',
+                    isProjectCollapsed ? '-rotate-90' : '',
+                  ].join(' ')}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
               <button
                 aria-current={sidebarAriaCurrent(
                   projectSelectionClassName(project.id, currentProjectId, currentChannelId) === 'active',
@@ -217,35 +268,11 @@ export const SidebarProjectsSection = ({
                 <ProjectAvatar
                   avatarAttachmentId={project.avatarAttachmentId}
                   avatarEmoji={project.avatarEmoji}
-                  size={18}
+                  size={15}
                   token={token}
                 />
                 <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 {isProjectCollapsed ? renderUnreadCount(projectUnreadCount) : null}
-              </button>
-              <button
-                aria-controls={projectChannelsId}
-                aria-expanded={!isProjectCollapsed}
-                aria-label={`${isProjectCollapsed ? 'Expand' : 'Collapse'} ${project.name} channels`}
-                className="admin-sidebar-more flex-shrink-0"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggleProjectCollapsed(project.id);
-                }}
-                type="button"
-              >
-                <svg
-                  className={[
-                    'h-3 w-3 transition-transform',
-                    isProjectCollapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
               </button>
               <span
                 className={[
@@ -266,7 +293,10 @@ export const SidebarProjectsSection = ({
                   aria-label={`Project actions for ${project.name}`}
                   aria-expanded={isProjectMenuOpen}
                   aria-haspopup="menu"
-                  className="admin-sidebar-more"
+                  className={[
+                    'admin-sidebar-more',
+                    isProjectMenuOpen ? 'is-open' : '',
+                  ].join(' ')}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isProjectMenuOpen) {
@@ -280,7 +310,7 @@ export const SidebarProjectsSection = ({
                   role="button"
                   tabIndex={0}
                 >
-                  ⋯
+                  <MoreIcon />
                 </span>
                 {isProjectMenuOpen && menuPosition
                   ? createPortal(
@@ -296,7 +326,7 @@ export const SidebarProjectsSection = ({
                           type="button"
                         />
                         <span
-                          className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[var(--layer-popover)]"
+                          className="admin-sidebar-menu admin-sidebar-menu-project fixed z-[var(--layer-popover)] admin-sidebar-menu-channel-project"
                           onClick={(e) => e.stopPropagation()}
                           role="menu"
                           style={menuPosition}
@@ -314,7 +344,8 @@ export const SidebarProjectsSection = ({
                             role="button"
                             tabIndex={0}
                           >
-                            Add new channel within project
+                            <AddChannelIcon />
+                            <span>Add channel to project</span>
                           </span>
                           <span
                             onClick={(e) => {
@@ -325,7 +356,8 @@ export const SidebarProjectsSection = ({
                             role="button"
                             tabIndex={0}
                           >
-                            Edit
+                            <EditProjectIcon />
+                            <span>Rename &amp; icon</span>
                           </span>
                         </span>
                       </>,
@@ -336,7 +368,7 @@ export const SidebarProjectsSection = ({
             </div>
 
             {!isProjectCollapsed ? (
-              <div id={projectChannelsId}>
+              <div className="sidebar-project-children" id={projectChannelsId}>
                 {project.channels.length === 0 ? (
                   <SidebarEmptyNote indent="child">There are no channels yet.</SidebarEmptyNote>
                 ) : null}
