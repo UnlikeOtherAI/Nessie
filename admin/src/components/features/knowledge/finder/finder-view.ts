@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SetURLSearchParams } from 'react-router-dom'
-import { faColumns, faList, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
+import { faColumns, faList, faSitemap, type IconDefinition } from '@fortawesome/free-solid-svg-icons'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { getCookie, getStoredJson, setStoredJson } from '../../../../lib/storage'
 import type { ColumnResizeConfig } from '../../../shared/column-browser/ColumnBrowserColumn'
@@ -8,14 +8,13 @@ import type { ColumnResizeConfig } from '../../../shared/column-browser/ColumnBr
 /**
  * What the URL says the browser is showing: which view, and which folder.
  *
- * Two view modes, not three (browser-ui.md §6, overview decision 8).
+ * Three view modes: tree, columns and list.
  *
  * `column` becomes `columns`; `full` *is* `list`, so it keeps the rows and
- * loses the name; `tree` retires — it was a sidebar affordance, and with the
- * sidebar gone and columns doing the drilling, a third way to expand a folder
- * is the fork Rule zero names.
+ * loses the name. Tree is the guided all-folders view and the first-class
+ * entry in the Finder view switcher.
  */
-export const FINDER_VIEWS = ['columns', 'list'] as const
+export const FINDER_VIEWS = ['tree', 'columns', 'list'] as const
 
 export type FinderView = (typeof FINDER_VIEWS)[number]
 
@@ -29,9 +28,7 @@ export const isFinderView = (value: string | null | undefined): value is FinderV
 /**
  * The cookie is shared with the vocabulary it had before, because a person who
  * chose "Column" last week must not be handed the default this week. A stored
- * value is read through this once, and the *new* word is written back on the
- * first change — a `?view=tree` link degrades the same way, through
- * `useTabParam`'s unknown-value fallback.
+ * value is read through this once and migrated to the current view vocabulary.
  */
 export const migrateStoredFinderView = (stored: string | null | undefined): FinderView => {
   if (isFinderView(stored)) return stored
@@ -39,7 +36,6 @@ export const migrateStoredFinderView = (stored: string | null | undefined): Find
     case 'column':
       return 'columns'
     case 'full':
-    case 'tree':
       return 'list'
     default:
       return DEFAULT_FINDER_VIEW
@@ -52,6 +48,12 @@ export const finderViewOptions: Array<{
   title: string
   value: FinderView
 }> = [
+  {
+    icon: faSitemap,
+    label: 'Tree',
+    title: 'Browse all folders in one guided tree',
+    value: 'tree',
+  },
   {
     icon: faColumns,
     label: 'Columns',

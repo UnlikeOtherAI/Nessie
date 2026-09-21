@@ -8,6 +8,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { ProjectSectionRows, type ProjectListId } from './ProjectSectionRows'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 import { useSidebarRowMenu } from './useSidebarRowMenu'
+import { SidebarTreeChevron } from './SidebarTree'
 import type { StarredItem } from './types'
 
 type ProjectRowProps = {
@@ -123,15 +124,7 @@ export const ProjectRow = ({
           }}
           type="button"
         >
-          <svg
-            className={['h-3 w-3 transition-transform', isExpanded ? '' : '-rotate-90'].join(' ')}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            viewBox="0 0 24 24"
-          >
-            <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <SidebarTreeChevron expanded={isExpanded} className="h-3 w-3" />
         </button>
         <span
           className={[

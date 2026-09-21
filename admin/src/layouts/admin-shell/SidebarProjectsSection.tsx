@@ -10,6 +10,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeNode } from './SidebarTree';
 import { useSidebarRowMenu } from './useSidebarRowMenu';
 import type {
   CreateChannelTarget,
@@ -224,7 +225,7 @@ export const SidebarProjectsSection = ({
         ) + (attentionCountByProjectId.get(project.id) ?? 0);
 
         return (
-          <div key={project.id} className="sidebar-project-group">
+          <SidebarTreeNode key={project.id} className="sidebar-project-group">
             <div
               className={[
                 'admin-sb-item sidebar-project-tile group',
@@ -243,18 +244,7 @@ export const SidebarProjectsSection = ({
                 }}
                 type="button"
               >
-                <svg
-                  className={[
-                    'transition-transform',
-                    isProjectCollapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <SidebarTreeChevron expanded={!isProjectCollapsed} />
               </button>
               <button
                 aria-current={sidebarAriaCurrent(
@@ -368,7 +358,7 @@ export const SidebarProjectsSection = ({
             </div>
 
             {!isProjectCollapsed ? (
-              <div className="sidebar-project-children" id={projectChannelsId}>
+              <SidebarTreeChildren className="sidebar-project-children" id={projectChannelsId}>
                 {project.channels.length === 0 ? (
                   <SidebarEmptyNote indent="child">There are no channels yet.</SidebarEmptyNote>
                 ) : null}
@@ -407,9 +397,9 @@ export const SidebarProjectsSection = ({
                     </button>
                   );
                 })}
-              </div>
+              </SidebarTreeChildren>
             ) : null}
-          </div>
+          </SidebarTreeNode>
         );
       })}
     </SidebarMenuSection>

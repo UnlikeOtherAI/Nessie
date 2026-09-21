@@ -11,7 +11,6 @@ import { getCookie, setCookie } from '../../../../lib/storage'
 import { useNavigationLayout } from '../../../../navigation/mobile-shell'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { ColumnBrowserColumn } from '../../../shared/column-browser/ColumnBrowserColumn'
-import { QueryState } from '../../../shared/QueryState'
 import { ScreenHeader } from '../../../shared/ScreenHeader'
 import { ColumnBrowserViewport } from '../../../shared/column-browser/ColumnBrowserViewport'
 import { useKnowledge } from '../KnowledgeProvider'
@@ -22,6 +21,8 @@ import { FinderRootColumn, type FinderRootRow } from './FinderRootColumn'
 import { FinderStatusStrip } from './FinderStatusBar'
 import type { FinderVirtualRow } from './FinderVirtualColumn'
 import { FinderVirtualPane } from './FinderVirtualPane'
+import { FinderTreePane } from './FinderTreePane'
+import { FinderScopeReadState } from './FinderScopeReadState'
 import { FinderFolderHost, type FinderFolderLevel } from './FinderFolderColumn'
 import { emptyFinderSelection, finderSelectionReducer } from './finder-selection'
 import {
@@ -544,16 +545,12 @@ export const DocumentsFinder = ({
       {toolbar}
       <div className="flex min-h-0 flex-1">
         {scopeReadFailed ? (
-          <div className="min-w-0 flex-1">
-            <QueryState
-              className="py-6"
-              errorLabel="Couldn’t load these documents."
-              loadingLabel="Loading documents…"
-              query={pagesQuery}
-            >
-              {() => null}
-            </QueryState>
-          </div>
+          <FinderScopeReadState query={pagesQuery} />
+        ) : view === 'tree' && !single && !virtualColumnKey && levels.length > 0 ? (
+          <FinderTreePane activePageId={knowledge.openPageId} browseTo={browseTo}
+            onOpenDocument={(page, path) => openDocument(page, () => knowledge.openPagePath(path))}
+            pagePath={pagePath} query={pagesQuery} rootColumn={orgScope ? rootColumn : undefined}
+            rootColumnWidth={orgScope ? widthFor('root') : undefined} rowsIn={rowsIn} />
         ) : listView ? (
           <>
             {orgScope ? (

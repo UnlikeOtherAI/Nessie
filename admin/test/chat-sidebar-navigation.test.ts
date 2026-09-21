@@ -48,6 +48,31 @@ test('the Channels sidebar adopts the compact guided tree geometry', () => {
   assert.match(styles, /\.admin-sidebar-nav \.sidebar-project-tile\s*\{[\s\S]*?padding: 0 6px 0 18px;/)
 })
 
+test('Channels and Knowledge reuse the sidebar tree presentation primitives', () => {
+  const tree = readSource('../src/layouts/admin-shell/SidebarTree.tsx')
+  const menuSection = readSource('../src/layouts/admin-shell/SidebarMenuSection.tsx')
+  const knowledgeTree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.match(tree, /export const SidebarTreePanel/)
+  assert.match(tree, /export const SidebarTreeSectionHeader/)
+  assert.match(tree, /export const SidebarTreeChildren/)
+  assert.match(menuSection, /SidebarTreeSectionHeader/)
+  assert.match(knowledgeTree, /SidebarTreePanel/)
+  assert.match(knowledgeTree, /SidebarTreeChildren/)
+  assert.match(
+    styles,
+    /\.knowledge-sidebar-tree-panel\s*\{[\s\S]*?flex: 0 0 280px;[\s\S]*?width: 280px;[\s\S]*?overflow-y: auto;/,
+  )
+  assert.match(styles, /\.knowledge-sidebar-tree-panel \.finder-row\s*\{[\s\S]*?min-height: 30px;/)
+  assert.match(styles, /\.knowledge-sidebar-tree-panel \.finder-row\[data-finder-kind='folder'\]/)
+  assert.ok(styles.includes('.admin-sidebar-menu.admin-sidebar-menu-channel-project [role="button"]'))
+  assert.ok(styles.includes('display: flex;'))
+  assert.ok(styles.includes('height: 32px;'))
+  assert.ok(styles.includes('padding: 0 10px;'))
+  assert.doesNotMatch(styles, /\.knowledge-sidebar-tree-panel[^}]*#[0-9a-fA-F]{3,8}/)
+})
+
 test('the Channels project menu uses the 1d icon-row treatment without adding actions', () => {
   const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
   const styles = readSource('../src/styles.css')
@@ -60,7 +85,7 @@ test('the Channels project menu uses the 1d icon-row treatment without adding ac
   assert.doesNotMatch(menu, /Archive project|Delete project|Move channels/)
   assert.match(
     styles,
-    /\.admin-sidebar-menu-channel-project \[role="button"\]\s*\{[\s\S]*?height: 32px;[\s\S]*?gap: 10px;/,
+    /\.admin-sidebar-menu\.admin-sidebar-menu-channel-project \[role="button"\]/,
   )
 })
 

@@ -6,6 +6,7 @@ import { SidebarChannelsSection } from './SidebarChannelsSection';
 import { SidebarDmSection } from './SidebarDmSection';
 import { SidebarProjectsSection } from './SidebarProjectsSection';
 import { SidebarStarredSection } from './SidebarStarredSection';
+import { SidebarTreePanel } from './SidebarTree';
 import { renderUnreadCount } from './SidebarRow';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import type {
@@ -140,11 +141,12 @@ export const SidebarNav = (props: SidebarNavProps) => {
         nativeTouchShell ? 'touch-sidebar' : '',
       ].join(' ')}
     >
-      <div
-        className="admin-sidebar-scroll min-h-0 flex-1 overflow-y-auto"
-        onScroll={channelListScroll.onScroll}
-        ref={channelListScroll.ref}
-      >
+      <SidebarTreePanel className="min-h-0 flex-1 overflow-hidden">
+        <div
+          className="admin-sidebar-scroll min-h-0 h-full overflow-y-auto"
+          onScroll={channelListScroll.onScroll}
+          ref={channelListScroll.ref}
+        >
         <button
           aria-current={sidebarAriaCurrent(pathname === '/threads')}
           className={`admin-sb-item sidebar-threads group ${pathname === '/threads' ? 'active' : ''}`}
@@ -240,7 +242,8 @@ export const SidebarNav = (props: SidebarNavProps) => {
           toggleDmCollapsed={toggleDmCollapsed}
           unreadCountByChannelId={unreadCountByChannelId}
         />
-      </div>
+        </div>
+      </SidebarTreePanel>
     </aside>
   );
 };

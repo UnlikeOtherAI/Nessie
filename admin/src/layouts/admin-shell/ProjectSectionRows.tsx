@@ -8,6 +8,7 @@ import { prewarmRowHandlers, usePrewarm } from '../../navigation/prewarm'
 import { BOARD_ICON, projectSections } from '../../navigation/project-sections'
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y'
 import { SidebarEmptyNote } from './SidebarEmptyNote'
+import { SidebarTreeChevron } from './SidebarTree'
 
 /**
  * A subordinate row's glyph, at the size and dimness the channel `#` already
@@ -136,18 +137,7 @@ export const ProjectSectionRows = ({
                   }}
                   type="button"
                 >
-                  <svg
-                    className={[
-                      'h-3 w-3 transition-transform',
-                      boardsExpanded ? '' : '-rotate-90',
-                    ].join(' ')}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <SidebarTreeChevron expanded={boardsExpanded} className="h-3 w-3" />
                 </button>
                 {canModifyProject ? (
                   <button

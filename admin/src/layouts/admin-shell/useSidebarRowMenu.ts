@@ -8,6 +8,7 @@ export type SidebarRowMenuPosition = {
 type MenuAnchorRect = {
   bottom: number
   left: number
+  top: number
 }
 
 /**
@@ -27,7 +28,15 @@ export const useSidebarRowMenu = (isOpen: boolean, onClose: () => void) => {
   const [position, setPosition] = useState<SidebarRowMenuPosition | null>(null)
 
   const openAt = useCallback((rect: MenuAnchorRect) => {
-    setPosition({ left: rect.left, top: rect.bottom + 4 })
+    // Keep the portal menu inside the viewport when a project near the bottom
+    // of the tree opens it. The menu still opens below by default; only the
+    // presentation position changes when there is not enough room.
+    const estimatedMenuHeight = 104
+    const below = rect.bottom + 4
+    const top = below + estimatedMenuHeight <= window.innerHeight - 8
+      ? below
+      : Math.max(8, rect.top - estimatedMenuHeight - 4)
+    setPosition({ left: rect.left, top })
   }, [])
 
   // The identity of the open row can change (or close) through means other

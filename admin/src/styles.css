@@ -2206,11 +2206,59 @@ html[data-desktop-platform='linux'] #root {
   padding: 14px 10px;
 }
 
+/* One structural shell is shared by the Channels tree and the Knowledge Tree
+   browser. It is intentionally colourless: the active theme owns every
+   surface and separator token below. */
+.sidebar-tree-panel {
+  min-width: 0;
+  background: var(--sb);
+  color: var(--tx);
+}
+
+.knowledge-sidebar-tree-panel {
+  flex: 0 0 280px;
+  width: 280px;
+  overflow-y: auto;
+  padding: 14px 10px;
+}
+
+.sidebar-tree-children {
+  min-width: 0;
+}
+
+.sidebar-tree-section {
+  min-width: 0;
+}
+
+.knowledge-sidebar-tree-panel .finder-row-item {
+  list-style: none;
+}
+
+.knowledge-sidebar-tree-panel .finder-row {
+  min-height: 30px;
+  border-radius: 8px;
+  padding-inline: 8px;
+}
+
+.knowledge-sidebar-tree-panel .finder-row[data-finder-kind='folder'],
+.knowledge-sidebar-tree-panel .finder-row[data-finder-variant='root'] {
+  min-height: 32px;
+  font-weight: 500;
+}
+
+.knowledge-sidebar-tree-panel .sidebar-tree-depth {
+  margin-left: 23px;
+  padding-left: 12px;
+  border-left: 1px solid var(--sep);
+}
+
+.sidebar-tree-panel .admin-sec-row,
 .admin-sidebar-nav .admin-sec-row {
   align-items: center;
   height: 30px;
 }
 
+.sidebar-tree-panel .admin-sec-hdr,
 .admin-sidebar-nav .admin-sec-hdr {
   height: 30px;
   gap: 6px;
@@ -2358,6 +2406,8 @@ html[data-desktop-platform='linux'] #root {
   border-radius: 12px;
   background: var(--panel);
   padding: 6px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   box-shadow: 0 16px 48px var(--scrim-strong);
 }
 
@@ -2381,7 +2431,7 @@ html[data-desktop-platform='linux'] #root {
   transform: translateX(-120px);
 }
 
-.admin-sidebar-menu-channel-project [role="button"] {
+.admin-sidebar-menu.admin-sidebar-menu-channel-project [role="button"] {
   display: flex;
   align-items: center;
   gap: 10px;
