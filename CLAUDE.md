@@ -167,6 +167,16 @@ sentence changes only if the invariant itself did.
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
   [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
+- **Overlay layer coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
+  over the real navigation stack, in the same lifecycle after the task-dialog
+  suite. It pushes Board → Settings from inside an open ticket dialog without
+  closing it, on `split` and `single`, and pins that the dialog then leaves
+  paint, focus, the accessibility tree and Back — and is the same node, with
+  what was typed, after Back. A nested stage's dialog is walked too; one
+  assertion deliberately pins a known gap (a covered stage keeps owning Back)
+  and says so in its message. The rule is in
+  [`docs/navigation/overlays.md`](docs/navigation/overlays.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the
