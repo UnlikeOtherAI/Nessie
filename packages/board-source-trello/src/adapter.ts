@@ -93,7 +93,9 @@ export const createTrelloAdapter = (config: TrelloAdapterConfig): BoardSourceAda
     // paths, and `trello.com` is mostly card links — declaring it would turn
     // every card linked from a comment into a "file" to download. Trello
     // attaches a pasted image to the card, so the card's own attachment list
-    // (and this adapter's path-aware scan) already carries them.
+    // (and this adapter's path-aware scan) already carries them. The comment
+    // lane's text is scanned with the same path-aware predicate.
+    isAssetUrl: isTrelloUploadUrl,
 
     auth: {
       oauth: {

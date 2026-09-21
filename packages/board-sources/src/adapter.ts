@@ -303,6 +303,14 @@ export interface BoardSourceAdapter {
   /** Hosts `fetchAsset` may dial; the streaming envelope refuses everything else. */
   readonly assetHosts?: readonly string[]
 
+  /**
+   * Whether a URL found in comment text is one of this provider's files. Set
+   * when the upload host also serves ordinary pages, so a host list would turn
+   * every linked PR or card into a download; wins over `assetHosts` for the
+   * inline scan.
+   */
+  isAssetUrl?(url: string): boolean
+
   /** Stream one provider file. `null` means it is gone upstream (404). */
   fetchAsset?(ctx: ConnectionContext, asset: { url: string }): Promise<AssetStream | null>
 

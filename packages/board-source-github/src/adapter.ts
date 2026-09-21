@@ -48,6 +48,7 @@ import { fetchCommentsLane, fetchIssueComments, fetchIssuesLane } from './lanes.
 import {
   GITHUB_ASSET_HOSTS,
   GITHUB_ISSUE_STATES,
+  isGitHubAssetUrl,
   type GitHubIssue,
   type ProjectV2Item,
   normaliseGitHubIssue,
@@ -112,6 +113,7 @@ export const createGitHubAdapter = (config: GitHubAdapterConfig): BoardSourceAda
     // `github.com/user-attachments/…` files are found by this adapter's own
     // normaliser instead, and `fetchAsset` dials its own list.
     assetHosts: GITHUB_ASSET_HOSTS,
+    isAssetUrl: isGitHubAssetUrl,
 
     auth: {
       oauth: {

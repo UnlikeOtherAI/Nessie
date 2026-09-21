@@ -336,19 +336,23 @@ export const removeInboundComments = async (
  */
 export const inlineAssetsForComments = (
   comments: readonly NormalisedComment[],
-  assetHosts: readonly string[] | undefined,
-): NormalisedAttachment[] =>
-  assetHosts && assetHosts.length > 0
+  adapter: { assetHosts?: readonly string[]; isAssetUrl?: (url: string) => boolean },
+): NormalisedAttachment[] => {
+  const matcher = adapter.isAssetUrl
+    ? (url: string) => adapter.isAssetUrl?.(url) ?? false
+    : adapter.assetHosts
+  return matcher && (typeof matcher === 'function' || matcher.length > 0)
     ? comments
       .filter((comment) => !comment.restricted)
       .flatMap((comment) =>
-        inlineAssetsIn(comment.body, assetHosts, {
+        inlineAssetsIn(comment.body, matcher, {
           issueExternalId: comment.issueExternalId,
           commentExternalId: comment.externalId,
           createdAt: comment.createdAt,
         }),
       )
     : []
+}
 
 // ─── Files ────────────────────────────────────────────────────────────────────
 

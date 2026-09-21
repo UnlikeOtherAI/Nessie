@@ -90,7 +90,7 @@ export const applyPageActivity = async (
   deps: Pick<BoardSourceSyncDeps, 'prisma'>,
   source: ActivitySourceContext,
   tenant: IdentityTenant,
-  adapter: Pick<BoardSourceAdapter, 'assetHosts'>,
+  adapter: Pick<BoardSourceAdapter, 'assetHosts' | 'isAssetUrl'>,
   page: { items: readonly NormalisedItem[]; comments?: readonly NormalisedComment[] },
 ): Promise<Set<string>> => {
   const laneComments = page.comments ?? []
@@ -99,7 +99,7 @@ export const applyPageActivity = async (
   const touched = await applyInboundComments(deps.prisma, source, comments)
   const assets = [
     ...page.items.flatMap((item) => item.attachments ?? []),
-    ...inlineAssetsForComments(laneComments, adapter.assetHosts),
+    ...inlineAssetsForComments(laneComments, adapter),
   ]
   for (const taskId of await applyInboundAssets(deps.prisma, source, assets)) touched.add(taskId)
   return touched

@@ -121,3 +121,15 @@ test('inline asset URLs are only the adapter’s own hosts, over https, once eac
   ])
   assert.deepEqual(inlineAssetUrls(null, ['uploads.linear.app']), [])
 })
+
+test('a path-aware predicate picks uploads on a host that also serves pages', () => {
+  const markdown = [
+    '![shot](https://github.com/user-attachments/assets/1f2e3d)',
+    'Fixed in [#42](https://github.com/acme/app/pull/42).',
+  ].join('\n')
+  const isUpload = (url: string) => new URL(url).pathname.startsWith('/user-attachments/')
+  assert.deepEqual(inlineAssetUrls(markdown, isUpload), [
+    'https://github.com/user-attachments/assets/1f2e3d',
+  ])
+  assert.deepEqual(inlineAssetUrls(markdown, ['github.com']).length, 2)
+})

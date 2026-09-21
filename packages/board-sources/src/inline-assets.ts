@@ -14,12 +14,20 @@ import type { NormalisedAttachment } from './items.js'
 // the closing paren, which is how CommonMark ends an unbracketed destination.
 const MARKDOWN_LINK = /!?\[[^\]]*\]\(\s*<?([^\s)>]+)>?(?:\s+"[^"]*")?\s*\)/g
 
-/** Every distinct asset-host URL a Markdown text references, in order. */
+/**
+ * What counts as a provider file: a host list, or an adapter's own path-aware
+ * predicate for providers whose upload host also serves ordinary pages
+ * (`github.com/user-attachments/…`, Trello's attachment downloads).
+ */
+export type AssetUrlMatcher = readonly string[] | ((url: string) => boolean)
+
+/** Every distinct asset URL a Markdown text references, in order. */
 export const inlineAssetUrls = (
   markdown: string | null | undefined,
-  assetHosts: readonly string[],
+  assetHosts: AssetUrlMatcher,
 ): string[] => {
-  if (!markdown || assetHosts.length === 0) return []
+  if (!markdown) return []
+  if (typeof assetHosts !== 'function' && assetHosts.length === 0) return []
   const seen = new Set<string>()
   for (const match of markdown.matchAll(MARKDOWN_LINK)) {
     const raw = match[1]
@@ -30,7 +38,9 @@ export const inlineAssetUrls = (
     } catch {
       continue
     }
-    if (url.protocol !== 'https:' || !assetHosts.includes(url.hostname)) continue
+    if (url.protocol !== 'https:') continue
+    const isAsset = typeof assetHosts === 'function' ? assetHosts(raw) : assetHosts.includes(url.hostname)
+    if (!isAsset) continue
     seen.add(raw)
   }
   return [...seen]
@@ -39,7 +49,7 @@ export const inlineAssetUrls = (
 /** The same scan, shaped as the attachments the apply step upserts. */
 export const inlineAssetsIn = (
   markdown: string | null | undefined,
-  assetHosts: readonly string[],
+  assetHosts: AssetUrlMatcher,
   at: { issueExternalId: string; commentExternalId?: string; createdAt: string },
 ): NormalisedAttachment[] =>
   inlineAssetUrls(markdown, assetHosts).map((url) => ({
