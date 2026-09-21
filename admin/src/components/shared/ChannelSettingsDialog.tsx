@@ -17,6 +17,9 @@ import { Dialog } from './Dialog'
 import { fieldErrorAria, fieldErrorProps } from './FormFieldError'
 import { TabBar } from '../primitives/TabBar'
 import { ChannelDecisionPolicyEditor } from './ChannelDecisionPolicyEditor'
+import { useTabParam } from '../../navigation/useTabParam'
+
+const CHANNEL_SETTINGS_TABS = ['channel', 'decisions'] as const
 
 type ChannelSettingsDialogProps = {
   boundAgents?: AgentRecord[]
@@ -41,7 +44,7 @@ export const ChannelSettingsDialog = (
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'channel' | 'decisions'>('channel')
+  const [tab, setTab] = useTabParam('channelSettingsTab', CHANNEL_SETTINGS_TABS, 'channel')
   const [policy, setPolicy] = useState<ChannelDecisionPolicy>(
     channel.decisionPolicy ?? DEFAULT_CHANNEL_DECISION_POLICY,
   )
@@ -65,7 +68,6 @@ export const ChannelSettingsDialog = (
       setConfirmDelete(false)
       setConfirmArchive(false)
       setFormError(null)
-      setTab('channel')
       const initialPolicy = channel.decisionPolicy ?? DEFAULT_CHANNEL_DECISION_POLICY
       setPolicy(initialPolicy)
       setSavedPolicy(JSON.stringify(initialPolicy))

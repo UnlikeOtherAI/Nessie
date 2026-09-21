@@ -3,7 +3,7 @@ import { ChannelDecisionPolicySchema, ChannelRecordSchema } from '@nessie/schema
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import { ChannelSettingsDialog } from '../../src/components/shared/ChannelSettingsDialog'
 import type { AgentRecord, ChannelRecord } from '../../src/lib/api-client'
 import '../../src/styles.css'
@@ -72,7 +72,7 @@ const Fixture = () => {
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>
     <ApiClientProvider client={client}>
-      <MemoryRouter><Fixture /></MemoryRouter>
+      <BrowserRouter><Fixture /></BrowserRouter>
     </ApiClientProvider>
   </QueryClientProvider>,
 )

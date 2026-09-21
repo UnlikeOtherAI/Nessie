@@ -50,6 +50,11 @@ non-public channels, search fails closed, every read path asks one predicate,
 live lanes cut by `runReplyIsRestricted`, containment = memory recall only): stated above.
 Facts not restated there:
 
+- Thread reach is the channel's read audience: only public standard non-system
+  channels are browsable without joining. DMs and system rooms require actual
+  channel membership even if stored as public; deleted channels are unreadable.
+  `buildAccessibleChannelWhere` supplies this rule to thread, conversation and
+  agent-history readers, and the request visibility helper applies the same rule.
 - **System messages are internal run instructions, never conversation history.**
   Thread feeds, search (human and agent), agent history and direct message reads
   exclude `role: system` even when the row has no disclosure basis. Hidden roots

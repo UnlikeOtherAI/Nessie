@@ -26,7 +26,7 @@ test('buildViewerThreadWhere is the room-is-the-audience predicate, and nothing 
       // A soft-deleted channel's threads are nobody's audience.
       deletedAt: null,
       OR: [
-        { visibility: 'public' },
+        { type: 'standard', systemChannelType: null, visibility: 'public' },
         { members: { some: { userId: USER } } },
       ],
     },

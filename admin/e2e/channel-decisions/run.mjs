@@ -17,13 +17,23 @@ try {
   await mkdir(screenshots, { recursive: true })
   const page = await browser.newPage({ viewport: { width: 1100, height: 900 } })
   page.on('pageerror', (error) => errors.push(String(error)))
-  await page.goto(`${ADMIN_URL}/e2e/channel-decisions/index.html`, { timeout: 120_000, waitUntil: 'domcontentloaded' })
+  await page.goto(`${ADMIN_URL}/e2e/channel-decisions/index.html?tab=messages`, {
+    timeout: 120_000, waitUntil: 'domcontentloaded',
+  })
   await page.getByRole('button', { name: 'Channel settings', exact: true }).waitFor({ timeout: 120_000 })
   const open = async () => {
     await page.getByRole('button', { name: 'Channel settings', exact: true }).click()
     await page.getByRole('tab', { name: 'Agent decisions', exact: true }).click()
   }
+  const initialHistoryLength = await page.evaluate(() => history.length)
   await open()
+  await page.waitForURL((url) => url.searchParams.get('channelSettingsTab') === 'decisions')
+  assert.equal(new URL(page.url()).searchParams.get('tab'), 'messages', 'channel tab must survive settings changes')
+  assert.equal(await page.evaluate(() => history.length), initialHistoryLength, 'settings tabs replace history')
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'Channel settings', exact: true }).click()
+  assert.equal(await page.getByRole('tab', { name: 'Agent decisions', exact: true }).getAttribute('aria-selected'), 'true',
+    'the selected settings tab survives a reload and reopening the dialog')
   assert.equal(await page.getByRole('checkbox', { name: 'Use Jev for this channel' }).isChecked(), false)
   await page.getByRole('checkbox', { name: 'Use Jev for this channel' }).check()
   await page.getByLabel('Channel guidance').fill('Keep the conversation useful. Record settled decisions once.')

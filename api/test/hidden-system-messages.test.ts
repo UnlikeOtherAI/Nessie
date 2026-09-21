@@ -4,8 +4,10 @@ import test from 'node:test'
 import Fastify from 'fastify'
 import { PrismaClient } from '@prisma/client'
 import { AuthorizedActionContextSchema } from '@nessie/schemas'
+import { createRequestHelpers } from '../src/lib/request-helpers.js'
 import { registerThreadReplyRoutes } from '../src/routes/thread-replies.js'
 import { loadAgentMessages } from '../src/services/agent-message-history.js'
+import { findThreadForUser } from '../src/services/message-read-state.js'
 import { searchMessages } from '../src/services/message-search.js'
 import { seed } from './disclosure-read-fixtures.js'
 
@@ -100,24 +102,44 @@ databaseTest('internal system messages stay out of search, paginated agent histo
     }), 0)
   })
 
-  await t.test('a guessed message id cannot cross threads or grant access to another person’s DM', async () => {
+  await t.test('a guessed message id cannot cross threads', async () => {
     const otherThread = await prisma.thread.create({ data: { channelId: s.channelId } })
     assert.equal((await app.inject({
       method: 'GET', url: `/api/threads/${otherThread.id}/messages/${visibleHuman.id}`,
     })).statusCode, 404)
-    const dm = await prisma.channel.create({ data: {
-      organizationId: s.organizationId, projectId: s.projectId, teamId: s.teamId,
-      label: 'Private DM', type: 'dm', visibility: 'public', dmKey: randomUUID(),
-      members: { create: { userId: s.insiderId } },
-    } })
-    const dmThread = await prisma.thread.create({ data: { channelId: dm.id } })
-    const privateMessage = await prisma.message.create({ data: {
-      threadId: dmThread.id, role: 'user', userId: s.insiderId, content: 'Private direct-message content',
-    } })
-    const response = await app.inject({
-      method: 'GET', url: `/api/threads/${dmThread.id}/messages/${privateMessage.id}`,
-    })
-    assert.equal(response.statusCode, 404)
-    assert.ok(!response.body.includes(privateMessage.content))
+  })
+
+  await t.test('direct thread reads and realtime reach share the channel audience, not its public flag alone', async () => {
+    const { getVisibleChannel } = createRequestHelpers(prisma)
+    for (const shape of [
+      { type: 'dm', systemChannelType: null, visibility: 'public', browsable: false },
+      { type: 'standard', systemChannelType: 'agent_email', visibility: 'public', browsable: false },
+      { type: 'standard', systemChannelType: null, visibility: 'protected', browsable: false },
+      { type: 'standard', systemChannelType: null, visibility: 'public', browsable: true },
+    ] as const) {
+      const channel = await prisma.channel.create({ data: {
+        organizationId: s.organizationId, projectId: s.projectId, teamId: s.teamId,
+        label: 'Audience test', type: shape.type, systemChannelType: shape.systemChannelType,
+        visibility: shape.visibility, ...(shape.type === 'dm' ? { dmKey: randomUUID() } : { slug: randomUUID() }),
+        members: { create: { userId: s.insiderId } },
+      } })
+      const thread = await prisma.thread.create({ data: { channelId: channel.id } })
+      const message = await prisma.message.create({ data: {
+        threadId: thread.id, role: 'user', userId: s.insiderId, content: 'Audience-restricted content',
+      } })
+      const url = `/api/threads/${thread.id}/messages/${message.id}`
+      const response = await app.inject({ method: 'GET', url })
+      assert.equal(response.statusCode, shape.browsable ? 200 : 404)
+      if (!shape.browsable) assert.ok(!response.body.includes(message.content))
+      assert.equal(Boolean(await getVisibleChannel(s.outsiderId, s.organizationId, channel.id)), shape.browsable)
+      assert.equal(await findThreadForUser(prisma, thread.id, s.outsiderId, randomUUID()), null)
+
+      await prisma.channelMember.create({ data: { channelId: channel.id, userId: s.outsiderId } })
+      assert.equal((await app.inject({ method: 'GET', url })).statusCode, 200, 'participants retain access')
+      assert.ok(await getVisibleChannel(s.outsiderId, s.organizationId, channel.id))
+      await prisma.channel.update({ where: { id: channel.id }, data: { deletedAt: new Date() } })
+      assert.equal((await app.inject({ method: 'GET', url })).statusCode, 404, 'deleted rooms are unreadable')
+      assert.equal(await getVisibleChannel(s.outsiderId, s.organizationId, channel.id), null)
+    }
   })
 })
