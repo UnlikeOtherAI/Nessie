@@ -26,7 +26,9 @@ databaseTest('two authenticated hosts share one resource and only its owner cont
     organizationId: id, userId: custodianUserId,
   })) })
   t.after(async () => {
-    await prisma.localInferenceHost.deleteMany({ where: { organizationId: { in: [organizationId, otherOrganizationId] } } })
+    await prisma.localInferenceHost.deleteMany({
+      where: { organizationId: { in: [organizationId, otherOrganizationId] } },
+    })
     await prisma.localInferenceResource.deleteMany({ where: { organizationId, publicKey } })
     await prisma.organization.deleteMany({ where: { id: { in: [organizationId, otherOrganizationId] } } })
     await prisma.user.delete({ where: { id: custodianUserId } })
