@@ -120,7 +120,7 @@ Output writers use configured destinations and field mappings, preserve raw
 results and source provenance, and require no receiving agent. Generating a
 new interpretation of those results is the optional receiver's work.
 
-The existing task-set detail owns its paginated **Items** table for every
+The proposed task-set detail owns its paginated **Items** table for every
 source; it shows progress and results, not a second spreadsheet editor. Its
 entry points include **Add tasks** for manual work and **Import/connect source**
 for external records. The source document's processing entry and originating
@@ -492,8 +492,169 @@ performed for the audit or this design update.
 ## Independent design review
 
 [Kimix's 2026-09-21 review](2026-09-21-sequential-task-sets-kimix-review.md)
-records six open findings covering alerts, disclosure registration, context
-overflow, shared resource identity, skipped dependencies and recovery/browser
-evaluations. It reviews revision `0f31c4383`; it does not claim an implementation
-or runtime validation. The report separates the reviewer's findings from the
-maintainer's qualifications.
+provided advisory findings against revision `0f31c4383`. The decisions below
+resolve all six at the design level and govern implementation of this proposal.
+They are the maintainer's decisions, not a claim that Kimix approved a later
+revision. Implementation and runtime verification remain outstanding.
+
+## Decisions after review
+
+### Failure alerts have a concrete threshold and repair destination
+
+Persist the set's health reason and a monotonic health revision. A transition
+requiring intervention creates one durable `UserAlert` per authorized recipient,
+using the existing `(user_id, event_key)` uniqueness with set ID and health
+revision. Record the alert intent durably with the transition; retries cannot
+lose it or create another alert. The doorway opens the affected set and its
+recovery action through the navigation framework. Generic push text must not
+include source data or provider errors.
+
+Alert immediately for exhausted processing retries, lost authorization,
+unavailable pinned source, invalid input, context overflow, unusable search
+credentials/quota or a blocked output destination that requires repair. An
+ordinary capacity wait, intentional pause or brief offline interval is visible
+in the set detail but does not create an alert. An offline resource becomes a
+prolonged-outage health transition after **30 continuous minutes** while the
+set has unfinished work and neither the set nor the resource is intentionally
+paused. Pausing clears that timer; explicit resume starts it again if the
+resource is still offline. An outage gets one alert, not one per retry; a fresh
+readiness check ends that outage. Transient readiness recovery can resume
+unpaused work automatically. Authorization failures and intentional pauses
+still require their explicit repair/resume actions.
+
+Capture the responsible person's existing identity reference when the set is
+created, including agent-created sets. Send task alerts only to a person who
+can currently read and repair the set; use the existing host-custodian route
+for host repair without exposing another person's task data. Revalidate alert
+visibility on read. Do not copy user profiles or alert all organization owners
+merely because the trigger subsystem has owner-only administration.
+
+### Every processor and receiver read registers its disclosure basis
+
+Before content enters a processor invocation, each source adapter, manual-item
+reader and dependency-result reader must feed `ConsumedSourceSink` with the
+content's actual disclosure basis. A dependency carries the producing result's
+basis; a versioned source carries that exact version's basis. Persist the run
+basis before persisting derived prompts, checkpoints or previews. Tool results
+and restored checkpoints follow the same rule. A lineage column on the item is
+not a substitute for registration into the consuming run.
+
+The invocation builder rejects an unclassified input component before storing
+or delivering the provider request. Explicitly classified public input can
+legitimately have an empty basis; missing classification cannot. Receiver
+delivery revalidates its destination, and each result page the receiver reads
+registers its basis in that run. A summary reference or item count does not
+authorize the underlying results. Deterministic output writers propagate the
+result basis through the existing document/spreadsheet write boundary even
+when there is no receiver.
+
+### Context overflow stops the item without losing input
+
+Validate fixed instructions, tool schemas and configured field selections at
+authoring/preview. Then enforce the resolved processor's context limit before
+every inference request, including requests following tool responses. Account
+for shared instructions, item prompt/input, selected dependency results,
+tool/history content and the provider's required output allowance together.
+Use provider token accounting where available and a conservative estimator
+otherwise; never assume a larger window than the authorized local contract.
+The audited local contract is 8,192 tokens, not a universal limit for all
+processors. A preview sample cannot prove that later dependency results fit.
+
+An oversized invocation blocks at the current item with `input_too_large`,
+identifies the oversized components, and offers the existing configuration/edit
+doorway. It consumes no model-error retry and cannot advance the cursor. The
+remedy is an explicit input projection, smaller authored task, bounded
+dependency selection or newly authorized processor configuration. Keep the
+original input and completed results intact and record the revised pending-item
+configuration. No silent truncation, automatic model switch or extra summarizer
+is allowed. Explicit field selection and artifact references remain valid;
+later artifact reads must also fit and register their disclosure basis.
+
+### Local capacity belongs to one enrolled resource and one local gate
+
+Use an opaque `inferenceResourceId` issued through authenticated enrollment,
+backed by one host-local admission coordinator. The coordinator's key and
+durable state live outside the checkout. Desktop and executor on the same
+computer use that coordinator; each proves the same resource key when its
+transport identity is attached. A model name, hostname, endpoint string or
+caller-supplied resource ID cannot create another independent pool. Linking
+transport identities still checks the existing host custodian and exact local
+consent; sharing capacity never grants either transport new execution authority.
+
+The first local release supports one coordinator for the custodian's OS
+account on a computer. Both transports must use it or only one may serve local
+inference. Concurrent independent coordinators across OS accounts are outside
+that release's supported configuration; do not describe them as a machine-wide
+guarantee. Requests made directly by unrelated Ollama clients are also outside
+Nessie's admission control.
+
+The server atomically claims the next item and reserves capacity against the
+resource ID. Its local limit defaults to **one** across models and all Nessie
+inference callers, including ordinary agent and utility calls. The coordinator
+enforces the same limit locally with a shared gate so transport reconnects or
+server lease expiry cannot double-book the computer. A per-set active-item
+limit remains one even if the shared resource permits three requests. Hosted
+processors use their authorized account/provider capacity pool instead.
+
+Each admission carries a fenced attempt identity. A slot is released only on
+confirmed completion/termination, never just because its server lease expired.
+After a crash, reconcile durable receipts and any active local request before
+releasing it. If termination cannot be established, expose an intervention
+reason and keep the slot occupied; do not automatically restart Ollama or risk
+a second request. Pause/resume applies to the shared resource across both
+transports. Lowering its limit drains existing calls before admitting more.
+
+### A missing dependency blocks; skipping never rewrites dependencies
+
+Only a committed, valid result satisfies a declared dependency. A skipped or
+permanently failed prerequisite leaves its dependent `blocked_dependency`,
+naming the prerequisite and its remedy. A valid explicit no-finding result is
+still a result; an absent result is not. Skipping an item can advance through
+subsequent independent items, but the set stops when its next ordered item is
+blocked. It cannot jump over that item to run a later one.
+
+The existing item editor can explicitly revise a pending item's dependencies,
+or the person can explicitly skip the blocked item. Record that change and
+retain completed history. There is no automatic dependency removal and no new
+per-dependent confirmation dialog. Retrying a prerequisite reuses its stable
+item identity; the dependent becomes eligible only after a valid result is
+committed and all applicable pause/authority checks pass.
+
+### Recovery and browser verification use durable, named harnesses
+
+The implementation must extend the existing multi-instance harness at
+`worker/test-harness/smoke-multi.ts` and its runtime helpers with task-set
+scenarios. Use `@nessie/mock-llm` for scripted provider outcomes plus a
+controllable local-inference transport for offline, slow and cancelled calls.
+Add explicit test barriers after result persistence, after output commit but
+before cursor advance, and after receiver delivery but before acknowledgement.
+Restart the worker at each barrier and assert persisted results, cursor and
+idempotency keys. Process exit by itself is not evidence that recovery passed.
+
+Use two server workers and two transport identities sharing one local resource;
+hold a mock inference open and prove that a second set and an ordinary agent
+cannot exceed the physical slot limit. Cover stale leases, duplicate delivery,
+pause during an active call, restart while paused and uncertain termination.
+Drive retries and the 30-minute health threshold with a controlled clock.
+Database-backed assertions run through Turbo with `DATABASE_URL`, following
+the [testing standard](../standards/testing.md); the multi-instance smoke uses
+its dedicated database and existing `test:smoke:multi` entry point.
+
+Add a dedicated headless task-set flow under the existing `admin/e2e` managed
+API/admin harness and explicitly include it in the opt-in Browser Suites
+workflow. This is a new required flow for the implementation, not an existing
+passing test. Exercise the conversation, document and manual-task doorways;
+independent set/resource Pause and Resume; Cancel; retry exhaustion and Retry;
+resume-time authorization refusal; alert deep links; missing dependencies and
+context overflow; and output access with and without a receiver. Reuse the
+local-Ollama fixture for native-control state rendering, but also verify the
+controls against persisted API state. Request Browser Suites on the feature
+branch before merging because ordinary required checks do not run them.
+
+Add disclosure regressions that omit classification deliberately, propagate a
+restricted dependency into a new run, and read restricted results in a
+receiver run. Assert refusal before provider dispatch or authorized restricted
+delivery as appropriate. Combine a synthetic 80,000-item recovery run with a
+small authorized, already-installed Ollama model/tool sample; only the latter
+can support compatibility and measured-throughput claims. These tests remain
+implementation acceptance gates, not results of this document change.
