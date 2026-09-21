@@ -10,7 +10,7 @@ const otherOrganizationId = '00000000-0000-4000-8000-000000000010'
 const channelId = '00000000-0000-4000-8000-000000000002'
 const userId = '00000000-0000-4000-8000-000000000003'
 
-test('channel visibility filter allows public channels and explicit memberships', () => {
+test('channel visibility filter allows public standard rooms and explicit memberships', () => {
   assert.deepEqual(
     buildAccessibleChannelWhere({ organizationId, userId }),
     {
@@ -18,7 +18,7 @@ test('channel visibility filter allows public channels and explicit memberships'
       // Soft-deleted channels are hidden from every reader built on this.
       deletedAt: null,
       OR: [
-        { visibility: 'public' },
+        { type: 'standard', systemChannelType: null, visibility: 'public' },
         { members: { some: { userId } } },
       ],
     },
