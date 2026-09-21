@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   type BoardSourceAdapter,
+  type NormalisedComment,
   type NormalisedItem,
   type OutboundChange,
   SourceRejectedError,
@@ -12,9 +13,12 @@ import type { ColumnCategory } from '@nessie/schemas'
 import {
   applyInboundItem,
   mappedFieldKeys,
+  mapsNativeLabels,
   parseFieldMappings,
   parseStateMapping,
+  syncTaskSourceLabels,
 } from './board-source-apply.js'
+import { loadStoredAssetUrls, rewriteForProvider } from './board-source-apply-activity.js'
 import {
   isBoardSourceCredentialError,
   loadBoardSourceConnectionContext,
@@ -70,6 +74,13 @@ export type WriteBackDeps = {
   prisma: PrismaClient
   encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput
   resolveAdapter?: (provider: string) => BoardSourceAdapter
+  /**
+   * This deployment's public admin origin, when known. A description written
+   * back upstream turns a Nessie-born image into an absolute link here — which
+   * needs a Nessie sign-in to open (the stated v1 gap) — instead of a relative
+   * path the provider cannot resolve at all.
+   */
+  appOrigin?: string | null
 }
 
 export const createBoardSourceWriteBack = (deps: WriteBackDeps): BoardSourceWriteBack => ({
@@ -108,6 +119,16 @@ export const createBoardSourceWriteBack = (deps: WriteBackDeps): BoardSourceWrit
 
     const outbound: OutboundChange = { ...change, ...(stateId ? { stateId } : {}) }
     if (Object.keys(outbound).length === 0) return { ok: true }
+    // The description is stored with our own paths for images the sync
+    // fetched; upstream gets the provider's URLs back.
+    if (typeof outbound.description === 'string') {
+      const stored = await loadStoredAssetUrls(prisma, source.id, [taskId])
+      outbound.description = rewriteForProvider(
+        outbound.description,
+        stored.get(taskId) ?? [],
+        deps.appOrigin,
+      )
+    }
 
     if (source.writeMode === 'read_only') {
       return {
@@ -174,9 +195,198 @@ export const createBoardSourceWriteBack = (deps: WriteBackDeps): BoardSourceWrit
       },
       echo,
     )
+    // The fingerprint stamped above makes that apply an `echo`, which writes
+    // nothing — right for fields the caller then writes itself, but labels are
+    // links the caller does not own. The source-owned subset is mirrored from
+    // what the provider actually stored, never from what was asked for.
+    if (change.labelIds !== undefined && mapsNativeLabels(fieldMappings)) {
+      await syncTaskSourceLabels(prisma, source, taskId, echo.labels, { recordEvent: false })
+    }
     return { ok: true }
   },
 })
+
+/** A comment write-back can also find the adapter cannot edit comments at all. */
+export type BoardSourceCommentWriteBackError =
+  | BoardSourceWriteBackError
+  | { error: 'COMMENT_NOT_WRITABLE'; provider: string; detail: string }
+
+/** What a comment write-back stored upstream: the row is written from this. */
+export type CommentEcho = {
+  sourceId: string
+  externalId: string
+  externalUrl: string | null
+  externalUpdatedAt: Date
+  editedAt: Date | null
+  body: string
+}
+
+/**
+ * Comments on a mirrored ticket (§4.6). The comment service calls this before
+ * its own transaction, exactly as the task mutations call `apply`.
+ *
+ * - `create` answers `{ propagated: false }` when the comment stays in Nessie:
+ *   the task is not mirrored, the source is read only (a comment is Nessie's
+ *   own conversation about the ticket, not a mapped field), or the provider has
+ *   no comment write. Otherwise the provider's echo, which carries the
+ *   `externalId` that stops the next sync importing it a second time.
+ * - `update`/`remove` answer `null` for a comment that was never upstream, so
+ *   the caller edits it locally; an imported comment on a read-only source is
+ *   refused `SOURCE_READ_ONLY`, and one whose provider cannot edit comments
+ *   `COMMENT_NOT_WRITABLE`.
+ */
+export type BoardSourceCommentWriteBack = {
+  create: (input: { taskId: string; body: string }) => Promise<
+    | { propagated: true; echo: CommentEcho }
+    | { propagated: false; reason: 'not_mirrored' | 'read_only' | 'unsupported' }
+    | BoardSourceCommentWriteBackError
+  >
+  update: (input: { commentId: string; body: string }) => Promise<
+    { ok: true; echo: CommentEcho } | BoardSourceCommentWriteBackError | null
+  >
+  remove: (input: { commentId: string }) => Promise<
+    { ok: true } | BoardSourceCommentWriteBackError | null
+  >
+}
+
+const commentEcho = (sourceId: string, echo: NormalisedComment): CommentEcho => ({
+  sourceId,
+  externalId: echo.externalId,
+  externalUrl: echo.url ?? null,
+  externalUpdatedAt: new Date(echo.updatedAt),
+  editedAt: echo.editedAt ? new Date(echo.editedAt) : null,
+  body: echo.body,
+})
+
+type CommentSourceRow = {
+  id: string
+  provider: import('@nessie/board-sources').BoardSourceProvider
+  connectionId: string
+  writeMode: string
+  container: unknown
+}
+
+export const createBoardSourceCommentWriteBack = (
+  deps: WriteBackDeps,
+): BoardSourceCommentWriteBack => {
+  const { prisma } = deps
+  const resolveAdapter = deps.resolveAdapter ?? resolveBoardSourceAdapter
+
+  /** The adapter and credential for one write, or the refusal a person sees. */
+  const prepare = async (
+    source: CommentSourceRow,
+  ): Promise<
+    | { adapter: BoardSourceAdapter; context: import('@nessie/board-sources').ConnectionContext }
+    | BoardSourceCommentWriteBackError
+  > => {
+    const context = await loadBoardSourceConnectionContext(
+      prisma,
+      source.connectionId,
+      deps.encryptionSecret,
+    )
+    if (isBoardSourceCredentialError(context)) {
+      return {
+        error: 'SOURCE_UNAVAILABLE',
+        detail: `${providerName(source.provider)} cannot be reached with this source's connection. Reconnect it in Settings → Sources.`,
+      }
+    }
+    return { adapter: resolveAdapter(source.provider), context }
+  }
+
+  const readOnly = (provider: string): BoardSourceCommentWriteBackError => ({
+    error: 'SOURCE_READ_ONLY',
+    provider,
+    detail: `${providerName(provider)} owns this ticket's comments. Switch the source to read & write in Settings → Sources to change them from here.`,
+  })
+
+  const notWritable = (provider: string): BoardSourceCommentWriteBackError => ({
+    error: 'COMMENT_NOT_WRITABLE',
+    provider,
+    detail: `${providerName(provider)} comments cannot be changed from Nessie.`,
+  })
+
+  const refusal = (provider: string, cause: unknown): BoardSourceCommentWriteBackError =>
+    cause instanceof SourceRejectedError
+      ? { error: 'SOURCE_REJECTED', code: cause.code, detail: cause.detail }
+      : { error: 'SOURCE_UNAVAILABLE', detail: `${providerName(provider)} could not be reached.` }
+
+  /** The imported comment and its source, or null for a comment born here. */
+  const loadImported = async (commentId: string) => {
+    const comment = await prisma.taskComment.findUnique({
+      where: { id: commentId },
+      select: { externalId: true, source: true },
+    })
+    if (!comment?.externalId || !comment.source) return null
+    return { externalId: comment.externalId, source: comment.source }
+  }
+
+  return {
+    create: async ({ taskId, body }) => {
+      const link = await prisma.taskExternalLink.findUnique({
+        where: { taskId },
+        select: { externalId: true, externalKey: true, source: true },
+      })
+      if (!link) return { propagated: false, reason: 'not_mirrored' }
+      const source = link.source
+      if (source.writeMode === 'read_only') return { propagated: false, reason: 'read_only' }
+      const prepared = await prepare(source)
+      if ('error' in prepared) return prepared
+      if (!prepared.adapter.createComment) return { propagated: false, reason: 'unsupported' }
+      try {
+        const echo = await prepared.adapter.createComment(
+          prepared.context,
+          source.container as Record<string, unknown>,
+          { externalId: link.externalId, externalKey: link.externalKey },
+          body,
+        )
+        return { propagated: true, echo: commentEcho(source.id, echo) }
+      } catch (cause) {
+        return refusal(source.provider, cause)
+      }
+    },
+
+    update: async ({ commentId, body }) => {
+      const imported = await loadImported(commentId)
+      if (!imported) return null
+      const { source } = imported
+      if (source.writeMode === 'read_only') return readOnly(source.provider)
+      const prepared = await prepare(source)
+      if ('error' in prepared) return prepared
+      if (!prepared.adapter.updateComment) return notWritable(source.provider)
+      try {
+        const echo = await prepared.adapter.updateComment(
+          prepared.context,
+          source.container as Record<string, unknown>,
+          { externalId: imported.externalId },
+          body,
+        )
+        return { ok: true, echo: commentEcho(source.id, echo) }
+      } catch (cause) {
+        return refusal(source.provider, cause)
+      }
+    },
+
+    remove: async ({ commentId }) => {
+      const imported = await loadImported(commentId)
+      if (!imported) return null
+      const { source } = imported
+      if (source.writeMode === 'read_only') return readOnly(source.provider)
+      const prepared = await prepare(source)
+      if ('error' in prepared) return prepared
+      if (!prepared.adapter.deleteComment) return notWritable(source.provider)
+      try {
+        await prepared.adapter.deleteComment(
+          prepared.context,
+          source.container as Record<string, unknown>,
+          { externalId: imported.externalId },
+        )
+        return { ok: true }
+      } catch (cause) {
+        return refusal(source.provider, cause)
+      }
+    },
+  }
+}
 
 const PROVIDER_NAMES: Record<string, string> = {
   jira: 'Jira',
