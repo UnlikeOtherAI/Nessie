@@ -47,10 +47,12 @@ import {
 } from './control/message-embedding-sweep.js'
 import { sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import type { WorkerSweepDeps } from './worker-runtime-types.js'
+import { startTaskSetSweep } from './task-sets/register.js'
 
 export const startWorkerSweeps = (
   deps: WorkerSweepDeps,
 ): { stop: () => void } => {
+  const stopTaskSetSweep = startTaskSetSweep(deps)
   const {
     abortSignal,
     automaticMembershipEnabled,
@@ -481,6 +483,7 @@ const messageEmbeddingSweepInterval = setInterval(() => {
 
   return {
     stop: () => {
+      stopTaskSetSweep()
       clearInterval(triggerSweepInterval)
       clearInterval(gmailSendSweepInterval)
       clearInterval(activeCallExpiryInterval)

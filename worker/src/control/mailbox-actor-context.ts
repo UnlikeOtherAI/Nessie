@@ -22,19 +22,22 @@ export const buildMailboxActorContext = (input: {
   targetAgentId: string
   teamId: string | null
   peerDelegationDepth?: number | null
+  taskSetId?: string | null
   uoaIdentity?: unknown
   taskId?: string
   threadId: string
 }): AuthorizedActionContext => {
   const isPeerDelegation =
     input.peerDelegationDepth !== null && input.peerDelegationDepth !== undefined
+  const isTaskSetDelivery = input.taskSetId !== null && input.taskSetId !== undefined
+  const carriesRequester = isPeerDelegation || isTaskSetDelivery
   // This immutable tuple is run provenance, never an identity or credential
   // store. Ledger revalidates it against the original human's live UOA link.
-  const uoaIdentity = isPeerDelegation && input.uoaIdentity !== undefined && input.uoaIdentity !== null
+  const uoaIdentity = carriesRequester && input.uoaIdentity !== undefined && input.uoaIdentity !== null
     ? UoaSessionIdentitySchema.parse(input.uoaIdentity)
     : undefined
-  if (isPeerDelegation && input.actorType !== 'user') {
-    throw new Error('Peer delegation requires its original human requester.')
+  if (carriesRequester && input.actorType !== 'user') {
+    throw new Error('Provenance-carrying delivery requires its original human requester.')
   }
   return {
     actor: {
@@ -49,11 +52,11 @@ export const buildMailboxActorContext = (input: {
       purpose: 'mailbox.delivery',
       requestId: randomUUID(),
       ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
-      ...(isPeerDelegation
+      ...(carriesRequester
         ? {
             effectiveUserId: parseUserId(input.actorId),
-            purpose: 'agent.peer_delegation',
-            correlationId: String(input.peerDelegationDepth),
+            purpose: isTaskSetDelivery ? 'task_set.delivery' : 'agent.peer_delegation',
+            correlationId: isTaskSetDelivery ? `task-set:${input.taskSetId}` : String(input.peerDelegationDepth),
             ...(uoaIdentity ? { uoaIdentity } : {}),
           }
         : {}),

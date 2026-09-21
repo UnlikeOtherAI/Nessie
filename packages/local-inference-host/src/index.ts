@@ -15,3 +15,4 @@ export {
   verifyLocalInferenceEnvelope,
   type LocalInferenceEnvelopeVerification,
 } from './signed-envelope.js'
+export * from './resource-proof.js'

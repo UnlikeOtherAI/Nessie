@@ -66,6 +66,36 @@ The rules below are the standing implementation contract.
 
 ## Presence and surfaces
 
+- Desktop and paired executors under the same OS account use one owner-private
+  coordinator at `~/.nessie/local-inference`. Its Ed25519 resource key is signed
+  into each authenticated host enrollment. The shared physical resource is
+  scoped to one Nessie organisation and custodian in v1; a second organisation
+  cannot enroll the same key as another pool.
+- Server admissions lock the shared resource row. Ordinary generations, utility
+  calls and task-set item reservations all count against capacity, initially
+  one. Owner controls may set 1–16 slots; lowering the limit drains existing
+  reservations. Host Pause/Resume applies to the whole resource. Local
+  `local-inference pause` persists before contacting the server, and resume
+  remains pending until an authenticated acknowledgement arrives.
+- Physical slots never expire. A process exit or an aborted HTTP request does
+  not prove Ollama stopped generating. Such slots report `termination_uncertain`
+  and admit nothing further. After independently confirming that generation
+  stopped, the owner can run `local-inference confirm-stopped
+  --confirm-ollama-stopped`; persisted terminal proofs must still be acknowledged
+  before a slot is reused. Resume alone cannot discard an uncertain call.
+- Poll tokens are written before dispatch and stored uniquely on the attempt.
+  A transport recovering a never-started poll asks for that same attempt and
+  admission; it cannot choose the next row because a response was interrupted.
+  A paused replay returns its fence only for settlement, never for invocation.
+  Completed encrypted receipts replay independently before new work is polled.
+- A completed pinned result may be recovered after its generation deadline or
+  host reconnect. Receipt recovery rechecks the current binding, policy,
+  custodian and source disclosure, but need not contact an online host. It may
+  never create a generation under an old host epoch or recover an unfinished
+  call as a successful final answer.
+- Both updated server and native runtime are required. A host without its shared
+  resource enrollment cannot poll for inference work.
+
 - Availability is a separate server-derived `online | offline | unknown`
   lease. It never reuses human presence or the agent activity state. A busy
   reachable model remains online; stale or unverifiable authority is unknown.

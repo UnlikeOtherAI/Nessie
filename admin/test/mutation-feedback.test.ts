@@ -55,6 +55,8 @@ const REASON = 'Swallowed before the app-wide MutationCache.onError default (aud
   + 'toFormErrors/formErrorMessage here, then delete this line.'
 
 const MUTATION_FEEDBACK_ALLOWLIST: Record<string, string> = {
+  'components/features/task-sets/TaskSetItemEditor.tsx':
+    'Both mutations run inside useFormSubmit; its formError and fieldErrors render beside the item fields.',
   'components/features/agents/AgentOwnershipState.tsx': REASON,
   'components/features/agents/AgentTriggerPanel.tsx': REASON,
   'components/features/billing/UoaBillingAutoTopUpDialog.tsx': REASON,

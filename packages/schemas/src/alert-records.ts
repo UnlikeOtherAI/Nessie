@@ -47,6 +47,7 @@ export const UserAlertKindSchema = z.enum([
   // deliberately separate from this parse contract so a rolling deploy never
   // sends an unparseable realtime alert to an older replica.
   'local_inference_health',
+  'task_set_health',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -79,6 +80,7 @@ export const UserAlertRecordSchema = z.object({
   channelLabel: z.string().nullable(),
   projectId: z.string().uuid().nullable(),
   taskId: z.string().uuid().nullable(),
+  taskSetId: z.string().uuid().nullable().optional(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
   // An automatic-membership health alert is actionable only when the bell can

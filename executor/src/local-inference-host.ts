@@ -1,14 +1,17 @@
 import {
   LOCAL_INFERENCE_PROTOCOL_VERSION,
+  LocalInferenceResourceAdmissionSchema,
+  LocalInferenceResourceControlSchema,
   type LocalInferenceAttemptRequest,
   type LocalInferenceResult,
   type LocalInferenceEnvelopePurpose,
   type ModelCapabilitySnapshot,
   type ObservedLocalModel,
 } from '@nessie/schemas'
-import { signLocalInferenceEnvelope } from '@nessie/local-inference-host'
+import { signLocalInferenceEnvelope, signLocalInferenceResourceAttachment } from '@nessie/local-inference-host'
 
 import {
+  LocalInferenceApiError,
   type LocalInferenceDaemonApi,
   type LocalInferenceResultReceipt as ApiResultReceipt,
 } from './local-inference-api.js'
@@ -24,6 +27,7 @@ import {
   type ObservedOllamaModel,
 } from './ollama-observed.js'
 import { type OllamaFetch } from './ollama-client.js'
+import type { LocalInferenceCoordinator, LocalInferenceCoordinatorLease } from './local-inference-coordinator.js'
 
 const MAX_FRAME_BYTES = 16 * 1024
 const MAX_OUTPUT_BYTES = 512 * 1024
@@ -155,10 +159,13 @@ export class LocalInferenceHostLoop {
   #active = new Map<string, AbortController>()
   #frameSequences = new Map<string, number>()
   #polling = false
+  #stopped = false
+  #pendingPoll: LocalInferenceCoordinatorLease | null = null
   #sequences = new Map<LocalInferenceEnvelopePurpose, number>()
 
   constructor(private readonly dependencies: {
     api: LocalInferenceDaemonApi
+    coordinator: Pick<LocalInferenceCoordinator, 'identity' | 'control' | 'syncControl' | 'healthReason' | 'acquire' | 'flushTerminations'>
     fetchImpl?: OllamaFetch
     identity: LocalInferenceHostIdentity
     isPaused: () => boolean
@@ -169,23 +176,56 @@ export class LocalInferenceHostLoop {
   }) {}
 
   async heartbeat(): Promise<void> {
+    await this.syncResource()
     const now = this.now()
     const inventory = await observeOllamaInventory(this.dependencies.origin, this.dependencies.fetchImpl)
     const heartbeat = {
       inventory: inventory.models.map((model) => publishedModel(model, now.toISOString())),
-      paused: this.dependencies.isPaused(),
+      paused: this.dependencies.isPaused() || (await this.dependencies.coordinator.control()).paused,
     }
     await this.dependencies.api.heartbeat({ envelope: this.envelope('heartbeat', heartbeat), heartbeat })
   }
 
   async pollOnce(): Promise<LocalInferencePollOutcome> {
-    if (this.#polling || this.dependencies.isPaused()) return { kind: 'idle' }
+    if (this.#polling || this.#stopped || this.dependencies.isPaused()) return { kind: 'idle' }
     this.#polling = true
+    let pollingReleased = false
+    const releasePoll = () => { if (!pollingReleased) { pollingReleased = true; this.#polling = false } }
+    let slot: LocalInferenceCoordinatorLease | null = null
+    let bound = false
+    let ran = false
+    let answered = false
     try {
-      const poll = {} as Record<string, never>
+      let pending: JournalResultReceipt[]
+      try { pending = await this.dependencies.journal.pending() }
+      catch (error) {
+        if (error instanceof LocalInferenceReceiptError) return { kind: 'refused', reason: 'protected_storage_unavailable' }
+        throw error
+      }
+      for (const receipt of pending) await this.submitReceipt(receipt)
+      if (pending[0]) return { attemptId: pending[0].attemptId, kind: 'completed' }
+      await this.flushTerminations()
+      slot = this.#pendingPoll ?? await this.dependencies.coordinator.acquire(this.dependencies.identity.hostId)
+      if (!slot) return { kind: 'idle' }
+      this.#pendingPoll = slot
+      const poll = { requestId: slot.requestId }
       const lease = await this.dependencies.api.poll({ envelope: this.envelope('poll', poll), poll })
-      if (lease.attempt === null || lease.dispatchFence === null) return { kind: 'idle' }
-      if (!Number.isSafeInteger(lease.dispatchFence) || lease.dispatchFence < 1) return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
+      if (lease.attempt === null && lease.dispatchFence === null && lease.admission === null) {
+        answered = true
+        return { kind: 'idle' }
+      }
+      if (!lease.attempt || !lease.admission) throw new Error('Local inference poll response is incomplete.')
+      await slot.bind({
+        ...LocalInferenceResourceAdmissionSchema.parse(lease.admission), attemptId: lease.attempt.attemptId,
+      })
+      bound = true
+      answered = true
+      if (this.#stopped || (await this.dependencies.coordinator.control()).paused) {
+        return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
+      }
+      if (lease.dispatchFence === null || !Number.isSafeInteger(lease.dispatchFence) || lease.dispatchFence < 1) {
+        return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
+      }
       if (!this.isCurrentLease(lease.attempt)) return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
       if (deadlinePassed(lease.attempt, this.now())) return { attemptId: lease.attempt.attemptId, kind: 'fenced' }
 
@@ -203,9 +243,18 @@ export class LocalInferenceHostLoop {
         await this.submitReceipt(recovered)
         return { attemptId: lease.attempt.attemptId, kind: 'completed' }
       }
-      return await this.run(lease.attempt, lease.dispatchFence)
+      ran = true
+      this.#pendingPoll = null
+      releasePoll()
+      return await this.run(lease.attempt, lease.dispatchFence, slot)
     } finally {
-      this.#polling = false
+      try {
+        if (answered && !pollingReleased) this.#pendingPoll = null
+        if (slot && answered && !bound) await slot.releaseIdle()
+        if (slot && bound && !ran) await slot.finish(true)
+        await this.flushTerminations()
+        if (this.#stopped && this.#pendingPoll) await this.#pendingPoll.abandonPoll()
+      } finally { releasePoll() }
     }
   }
 
@@ -215,10 +264,16 @@ export class LocalInferenceHostLoop {
 
   /** Stop every in-flight local request when this host loses its authority. */
   stop(): void {
+    this.#stopped = true
     for (const controller of this.#active.values()) controller.abort('host_stopped')
+    if (!this.#polling && this.#pendingPoll) void this.#pendingPoll.abandonPoll().catch(() => undefined)
   }
 
-  private async run(attempt: LocalInferenceAttemptRequest, dispatchFence: number): Promise<LocalInferencePollOutcome> {
+  private async run(
+    attempt: LocalInferenceAttemptRequest, dispatchFence: number, slot: LocalInferenceCoordinatorLease,
+  ): Promise<LocalInferencePollOutcome> {
+    let invoked = false
+    let confirmed = false
     const controller = new AbortController()
     this.#active.set(attempt.attemptId, controller)
     this.#frameSequences.set(attempt.attemptId, 1)
@@ -248,7 +303,10 @@ export class LocalInferenceHostLoop {
         return { attemptId: attempt.attemptId, kind: 'fenced' }
       }
 
+      invoked = true
       const result = await this.invoke(attempt, dispatchFence, model, controller.signal)
+      await slot.finish(true)
+      confirmed = true
       // A second observation catches a selected tag changing while Ollama was
       // generating. A terminal result is never accepted on that stale digest.
       if (await this.selectedModel(attempt) === undefined) return { attemptId: attempt.attemptId, kind: 'fenced' }
@@ -274,6 +332,7 @@ export class LocalInferenceHostLoop {
       clearInterval(controlTimer)
       this.#active.delete(attempt.attemptId)
       this.#frameSequences.delete(attempt.attemptId)
+      if (!confirmed) await slot.finish(!invoked)
     }
   }
 
@@ -341,8 +400,40 @@ export class LocalInferenceHostLoop {
 
   private async submitReceipt(receipt: JournalResultReceipt): Promise<void> {
     const apiReceipt: ApiResultReceipt = receipt
-    await this.dependencies.api.submitResult({ envelope: this.envelope('result', apiReceipt), receipt: apiReceipt })
+    try {
+      await this.dependencies.api.submitResult({ envelope: this.envelope('result', apiReceipt), receipt: apiReceipt })
+    } catch (error) {
+      // A current signed host may learn that an expired/fenced result can no
+      // longer be accepted; discard that receipt without re-running its model.
+      if (!(error instanceof LocalInferenceApiError) || error.code !== 'LOCAL_ATTEMPT_FENCED') throw error
+    }
     await this.dependencies.journal.acknowledge(receipt)
+  }
+
+  async syncResource(action?: 'pause' | 'resume'): Promise<void> {
+    const coordinator = this.dependencies.coordinator
+    const current = await coordinator.control()
+    const requestedAction = action ?? current.pendingAction ?? undefined
+    const attachment = {
+      connectionEpoch: this.dependencies.identity.connectionEpoch, hostId: this.dependencies.identity.hostId,
+      organizationId: this.dependencies.identity.organizationId, publicKey: coordinator.identity.publicKey,
+    }
+    const resource = {
+      attachment: {
+        ...attachment, signature: signLocalInferenceResourceAttachment(attachment, coordinator.identity.privateKey),
+      },
+      controlRevision: current.controlRevision, healthReason: await coordinator.healthReason(), paused: current.paused,
+      ...(requestedAction ? { action: requestedAction } : {}),
+    }
+    const control = await this.dependencies.api.attachResource({ envelope: this.envelope('resource', resource), resource })
+    await coordinator.syncControl(LocalInferenceResourceControlSchema.parse(control), requestedAction)
+    await this.flushTerminations()
+  }
+
+  private async flushTerminations(): Promise<void> {
+    await this.dependencies.coordinator.flushTerminations(async (termination) => {
+      await this.dependencies.api.terminateAttempt({ envelope: this.envelope('termination', termination), termination })
+    })
   }
 
   private async selectedModel(attempt: LocalInferenceAttemptRequest): Promise<EligibleModel | undefined> {

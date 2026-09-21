@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { faDownload, faPaperclip, faTable } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
@@ -20,6 +21,7 @@ import { KnowledgePane } from './KnowledgePane'
 import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
+import { taskSetCreatePath, taskSetSourceFormat } from '../../../navigation/task-sets'
 
 // Which filenames can become a workbook is `file-icons.ts`'s answer, because
 // the Finder's file-row menu asks the same question and two spellings of it
@@ -54,6 +56,7 @@ export const FileNodeViewer = ({
   onUploadVersion,
   onToggleAttachments,
 }: FileNodeViewerProps) => {
+  const navigate = useNavigate()
   const { token } = useAuthSession()
   const version = page.latestVersion
   const titlePreviewKind = previewKindForFilename(page.title)
@@ -91,6 +94,14 @@ export const FileNodeViewer = ({
     previewMime,
   )
   const headerActions: PageHeaderAction[] = [
+    ...(version && taskSetSourceFormat(page.title) ? [{
+      id: 'process-task-set',
+      label: 'Process with Task Set',
+      onSelect: () => navigate(taskSetCreatePath({
+        pageId: page.id, versionId: version.id, format: taskSetSourceFormat(page.title),
+      })),
+      priority: 75,
+    } satisfies PageHeaderAction] : []),
     {
       icon: faPaperclip,
       id: 'attachments',

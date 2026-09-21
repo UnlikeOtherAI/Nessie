@@ -57,11 +57,11 @@ test('direct Desktop supervision aborts polling when a heartbeat loses authority
   let release: (() => void) | null = null
   const stopped = new Promise<void>((resolve) => { release = resolve })
   let stoppedLoops = 0
-  let releasePoll: (() => void) | null = null
+  const releasePolls: Array<() => void> = []
   const loop = {
     heartbeat: async () => { throw new Error('LOCAL_HOST_UNAVAILABLE') },
-    pollOnce: async () => new Promise<{ kind: 'idle' }>((resolve) => { releasePoll = () => resolve({ kind: 'idle' }) }),
-    stop: () => { stoppedLoops += 1; releasePoll?.() },
+    pollOnce: async () => new Promise<{ kind: 'idle' }>((resolve) => { releasePolls.push(() => resolve({ kind: 'idle' })) }),
+    stop: () => { stoppedLoops += 1; for (const releasePoll of releasePolls) releasePoll() },
   }
   await assert.rejects(
     superviseDirectLocalInference({

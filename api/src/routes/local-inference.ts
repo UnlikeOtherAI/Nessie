@@ -17,6 +17,8 @@ import { registerLocalInferenceConsentRoutes } from './local-inference-consent-r
 import { registerLocalInferenceExecutorHostRoute } from './local-inference-executor-host.js'
 import { registerLocalInferenceDesktopEnrollmentRoute } from './local-inference-desktop-enrollment.js'
 import { registerLocalInferenceAttemptRoutes } from './local-inference-attempt-routes.js'
+import { registerLocalInferenceResourceRoutes } from './local-inference-resource-routes.js'
+import { resourceControl } from '../services/local-inference-resource.js'
 import { authenticateLocalInferenceDaemonEnvelope } from '../services/local-inference-daemon-intake.js'
 import type { RouteDeps } from './types.js'
 
@@ -31,6 +33,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
   registerLocalInferenceConsentRoutes(app, deps)
   registerLocalInferenceDesktopEnrollmentRoute(app, deps)
   registerLocalInferenceAttemptRoutes(app, deps)
+  registerLocalInferenceResourceRoutes(app, deps)
   // The native dialog fetches its own text through a machine-signed, one-use
   // challenge capability. This is deliberately public only in transport terms:
   // a browser session, deep link, or copied challenge cannot read or choose the
@@ -107,9 +110,13 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
       take: 100,
       select: {
         executorId: true, id: true, inventory: true, inventoryObservedAt: true, lastSeenAt: true,
-        pausedAt: true, revokedAt: true, transport: true,
+        pausedAt: true, revokedAt: true, transport: true, inferenceResourceId: true,
       },
     })
+    const resources = await prisma.localInferenceResource.findMany({
+      where: { id: { in: rows.flatMap((host) => host.inferenceResourceId ? [host.inferenceResourceId] : []) } },
+    })
+    const byResource = new Map(resources.map((resource) => [resource.id, resourceControl(resource)]))
     const bindings = rows.length === 0 ? [] : await prisma.agentLocalInferenceBinding.findMany({
       where: {
         hostId: { in: rows.map((host) => host.id) },
@@ -146,6 +153,7 @@ export const registerLocalInferenceRoutes = (app: FastifyInstance, deps: RouteDe
         lastSeenAt: host.lastSeenAt?.toISOString() ?? null,
         models: Array.isArray(host.inventory) ? host.inventory : [],
         paused: host.pausedAt !== null,
+        ...(host.inferenceResourceId ? { resource: byResource.get(host.inferenceResourceId) } : {}),
         status: host.revokedAt ? 'revoked' : bindingStatus.get(host.id) ?? 'unconfigured',
         transport: host.transport,
       })),

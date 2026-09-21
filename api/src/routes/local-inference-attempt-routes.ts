@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 
 import type { FastifyInstance } from 'fastify'
-import { openLocalInferenceAttempt, sealLocalInferenceAttempt } from '@nessie/runtime'
+import { claimLocalInferenceAttemptAdmission, openLocalInferenceAttempt, sealLocalInferenceAttempt } from '@nessie/runtime'
 import {
   LOCAL_INFERENCE_MAX_FRAME_BYTES,
   LOCAL_INFERENCE_MAX_RESULT_BYTES,
@@ -33,34 +33,70 @@ export const registerLocalInferenceAttemptRoutes = (app: FastifyInstance, deps: 
     const now = new Date()
     const attempt = await prisma.$transaction(async (tx) => {
       if (!await daemon.stillAuthorized(tx)) return null
+      const previous = await tx.localInferenceAttempt.findUnique({ where: { pollRequestId: body.poll.requestId } })
+      if (previous) {
+        if (previous.hostId !== daemon.hostId || !previous.encryptedRequest || !previous.resourceAdmissionId) {
+          return null
+        }
+        const admission = await tx.inferenceResourceAdmission.findUnique({
+          where: { id: previous.resourceAdmissionId },
+        })
+        if (!admission || admission.attemptId !== previous.id || admission.state !== 'running') return null
+        const active = await tx.localInferenceHost.findFirst({
+          where: { id: daemon.hostId, pausedAt: null, revokedAt: null }, select: { id: true },
+        })
+        const resource = await tx.localInferenceResource.findUnique({ where: { id: admission.resourceId } })
+        return {
+          admission: { admissionId: admission.id, fence: admission.fence, resourceId: admission.resourceId },
+          dispatchFence: active && resource && !resource.pausedAt && !resource.healthReason
+            ? previous.dispatchFence : null,
+          request: openLocalInferenceAttempt<Record<string, unknown>>(
+            deps.encryptionKeyRing, previous.encryptedRequest,
+          ),
+        }
+      }
       const active = await tx.localInferenceHost.findFirst({
-        where: { id: daemon.hostId, pausedAt: null, revokedAt: null }, select: { id: true },
+        where: { id: daemon.hostId, pausedAt: null, revokedAt: null }, select: { id: true, inferenceResourceId: true },
       })
-      if (!active) return null
+      if (!active?.inferenceResourceId) return null
       await tx.localInferenceAttempt.updateMany({
         where: { deadlineAt: { lte: now }, hostId: daemon.hostId, state: { in: ['queued', 'leased', 'accepted'] } },
         data: { failureReason: 'deadline_exceeded', state: 'expired', terminalAt: now },
       })
-      const candidate = await tx.localInferenceAttempt.findFirst({
+      const candidates = await tx.localInferenceAttempt.findMany({
         where: {
           deadlineAt: { gt: now }, hostId: daemon.hostId,
           OR: [{ state: 'queued' }, { leaseExpiresAt: { lt: now }, state: 'leased' }],
         },
         orderBy: { createdAt: 'asc' },
-        select: { dispatchFence: true, encryptedRequest: true, id: true },
+        select: { dispatchFence: true, encryptedRequest: true, id: true, runId: true, resourceAdmissionId: true },
+        take: 100,
       })
-      if (!candidate?.encryptedRequest) return null
-      const leased = await tx.localInferenceAttempt.updateMany({
-        where: { id: candidate.id, OR: [{ state: 'queued' }, { leaseExpiresAt: { lt: now }, state: 'leased' }] },
-        data: { leaseExpiresAt: new Date(now.getTime() + 60_000), state: 'leased' },
-      })
-      if (leased.count !== 1) return null
-      return {
-        dispatchFence: candidate.dispatchFence,
-        request: openLocalInferenceAttempt<Record<string, unknown>>(deps.encryptionKeyRing, candidate.encryptedRequest),
+      for (const candidate of candidates) {
+        if (!candidate.encryptedRequest || candidate.resourceAdmissionId) continue
+        const admission = await claimLocalInferenceAttemptAdmission(tx, {
+          attemptId: candidate.id, resourceId: active.inferenceResourceId, runId: candidate.runId,
+        })
+        if (admission.kind !== 'admitted') continue
+        const leased = await tx.localInferenceAttempt.updateMany({
+          where: { id: candidate.id, OR: [{ state: 'queued' }, { leaseExpiresAt: { lt: now }, state: 'leased' }] },
+          data: { leaseExpiresAt: new Date(now.getTime() + 60_000), pollRequestId: body.poll.requestId, state: 'leased' },
+        })
+        if (leased.count !== 1) throw new Error('Inference attempt changed while its resource was locked.')
+        return {
+          admission: admission.admission,
+          dispatchFence: candidate.dispatchFence,
+          request: openLocalInferenceAttempt<Record<string, unknown>>(
+            deps.encryptionKeyRing, candidate.encryptedRequest,
+          ),
+        }
       }
+      return null
     })
-    return createApiResponse({ attempt: attempt?.request ?? null, dispatchFence: attempt?.dispatchFence ?? null })
+    return createApiResponse({
+      admission: attempt?.admission ?? null, attempt: attempt?.request ?? null,
+      dispatchFence: attempt?.dispatchFence ?? null,
+    })
   })
 
   app.post('/api/local-inference/daemon/attempts/control', { config: { public: true } }, async (request, reply) => {

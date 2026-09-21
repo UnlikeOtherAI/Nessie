@@ -29,7 +29,8 @@
         "NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE",
         "NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE",
         "NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE",
-        "NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE"
+        "NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE",
+        "NESSIE_TASK_SETS_E2E_FIXTURE"
       ]
     },
     "lint": {
@@ -63,6 +64,12 @@
         "NESSIE_ENCRYPTION_KEY_RING",
         "NESSIE_TEST_PRISTINE_DATABASE"
       ]
+    },
+    "test:task-sets": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": [],
+      "env": ["DATABASE_URL"]
     },
     // `test` depends only on `^build`, so Turbo — unlike `pnpm -r`, which is
     // topological — is free to run @nessie/api's and @nessie/worker's suites at

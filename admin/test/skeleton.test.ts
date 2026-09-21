@@ -113,6 +113,8 @@ const KEEP_PREVIOUS_EXEMPT = [
   // prior task. Replaying them while a different task resolves would disclose
   // private work under a new ticket identity.
   'src/facades/tasks/hooks.ts',
+  // Task sets and item results carry the source's private disclosure basis.
+  'src/facades/task-sets/hooks.ts',
   // A spreadsheet's bootstrap is the bytes a workbook is BUILT from, and its
   // filter model decides which rows are hidden and where the funnel buttons
   // sit. Replaying either from the previously open page would construct the

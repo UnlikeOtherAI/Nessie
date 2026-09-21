@@ -94,6 +94,7 @@ export const serveExecutor = async (
       clearInterval(interval)
       clearInterval(commandInterval)
       executorApi.cancelPending()
+      await localInference.supervisor.stop()
       await Promise.allSettled([
         ...(commandPoll.current() ? [commandPoll.current()] : []),
         ...(heartbeat.current() ? [heartbeat.current()] : []),

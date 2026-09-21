@@ -1,11 +1,13 @@
 import { connectExecutorLocalInference } from './local-inference-runtime.js'
 import type { LocalInferencePollOutcome } from './local-inference-host.js'
 import type { ExecutorLocalState } from './state-store.js'
+import { LocalInferencePollPump } from './local-inference-poll-pump.js'
 
 export type ExecutorLocalInferenceSupervisor = {
   heartbeat: () => Promise<void>
   poll: () => Promise<LocalInferencePollOutcome>
   reconnect: (state: ExecutorLocalState) => Promise<ExecutorLocalState>
+  stop: () => Promise<void>
 }
 
 /**
@@ -20,9 +22,14 @@ export const startExecutorLocalInferenceSupervisor = async (
 ): Promise<{ state: ExecutorLocalState; supervisor: ExecutorLocalInferenceSupervisor }> => {
   let desiredState = state
   let connected: Awaited<ReturnType<typeof connectExecutorLocalInference>> | null = null
+  let pump: LocalInferencePollPump | null = null
   const connect = async (nextState: ExecutorLocalState): Promise<ExecutorLocalState> => {
+    await pump?.stop()
     desiredState = nextState
     connected = await connectLocal(stateDir, desiredState)
+    pump = new LocalInferencePollPump(connected.loop, (error) => {
+      console.error('[nessie-executor] local inference poll failed:', error instanceof Error ? error.message : String(error))
+    })
     desiredState = connected.state
     return desiredState
   }
@@ -44,18 +51,16 @@ export const startExecutorLocalInferenceSupervisor = async (
           if (!live) return
           await live.loop.heartbeat()
         } catch {
+          await pump?.stop()
+          pump = null
           connected = null
         }
       },
       poll: async () => {
-        if (!connected) return { kind: 'idle' }
-        try {
-          return await connected.loop.pollOnce()
-        } catch (error) {
-          connected = null
-          throw error
-        }
+        pump?.tick()
+        return { kind: 'idle' }
       },
+      stop: async () => { await pump?.stop(); pump = null; connected = null },
       reconnect: async (nextState) => {
         try {
           return await connect(nextState)

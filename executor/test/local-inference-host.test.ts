@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { generateKeyPairSync } from 'node:crypto'
+import { generateKeyPairSync, randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -13,6 +16,7 @@ import type {
 import { LocalInferenceAttemptFrameSchema } from '@nessie/schemas'
 
 import { LocalInferenceHostLoop } from '../src/local-inference-host.js'
+import { LocalInferenceCoordinator } from '../src/local-inference-coordinator.js'
 import { EncryptedLocalInferenceReceiptJournal } from '../src/local-inference-receipts.js'
 import { OllamaChatError, streamOllamaChat } from '../src/ollama-chat.js'
 import type { LocalInferenceDaemonApi } from '../src/local-inference-api.js'
@@ -24,6 +28,14 @@ const ATTEMPT_ID = '33333333-3333-4333-8333-333333333333'
 const BINDING_ID = '44444444-4444-4444-8444-444444444444'
 const RUN_ID = '55555555-5555-4555-8555-555555555555'
 const DIGEST = 'a'.repeat(64)
+const RESOURCE_ID = '66666666-6666-4666-8666-666666666666'
+const ADMISSION = { admissionId: '77777777-7777-4777-8777-777777777777', fence: '88888888-8888-4888-8888-888888888888', resourceId: RESOURCE_ID }
+
+const coordinatorFixture = async (t: import('node:test').TestContext) => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-host-coordinator-'))
+  t.after(async () => { await rm(directory, { recursive: true, force: true }) })
+  return LocalInferenceCoordinator.open({ directory, security: process.platform === 'win32' ? { helper: async () => undefined } : {} })
+}
 
 const machineKeys = (): { privateKey: string; publicKey: string } => {
   const keys = generateKeyPairSync('ed25519')
@@ -137,13 +149,19 @@ const apiFor = (
   const calls: ApiCalls = { frames: [], heartbeats: [], results: [] }
   return {
     api: {
+      attachResource: async () => ({
+        capacity: 1, controlRevision: 1, paused: false, resourceId: RESOURCE_ID, healthReason: null,
+      }),
+      terminateAttempt: async () => ({ acknowledged: true }),
       claim: async () => ({ connectionEpoch: '2', serverTime: new Date().toISOString() }),
       issueChallenge: async () => ({ challenge: 'a'.repeat(43), expiresAt: new Date().toISOString() }),
       heartbeat: async (input) => {
         calls.heartbeats.push(input)
         return { serverTime: new Date().toISOString() }
       },
-      poll: async () => ({ attempt: lease, dispatchFence: lease === null ? null : dispatchFence }),
+      poll: async () => ({
+        admission: lease ? ADMISSION : null, attempt: lease, dispatchFence: lease === null ? null : dispatchFence,
+      }),
       control: async () => ({ state: 'active' }),
       submitFrame: async (input) => {
         calls.frames.push(input)
@@ -158,12 +176,13 @@ const apiFor = (
   }
 }
 
-test('the host relays a fixed typed Ollama request and signs independent daemon lanes', async () => {
+test('the host relays a fixed typed Ollama request and signs independent daemon lanes', async (t) => {
   const keys = machineKeys()
   const { journal } = receiptJournal()
   const { api, calls } = apiFor(attempt())
   const loop = new LocalInferenceHostLoop({
     api,
+    coordinator: await coordinatorFixture(t),
     fetchImpl: ollama([
       { done: false, message: { content: 'hello' }, model: 'local:latest' },
       { done: true, done_reason: 'stop', eval_count: 2, message: { content: '' }, model: 'local:latest', prompt_eval_count: 3 },
@@ -196,12 +215,13 @@ test('the host relays a fixed typed Ollama request and signs independent daemon 
   }).ok, true)
 })
 
-test('a model without a reported context size still produces a signed receipt', async () => {
+test('a model without a reported context size still produces a signed receipt', async (t) => {
   const keys = machineKeys()
   const { journal } = receiptJournal()
   const { api, calls } = apiFor(attempt())
   const loop = new LocalInferenceHostLoop({
     api,
+    coordinator: await coordinatorFixture(t),
     fetchImpl: ollama([
       { done: false, message: { content: 'hello' }, model: 'local:latest' },
       { done: true, done_reason: 'stop', message: { content: '' }, model: 'local:latest' },
@@ -217,12 +237,13 @@ test('a model without a reported context size still produces a signed receipt', 
   assert.equal(calls.results[0]?.envelope.purpose, 'result')
 })
 
-test('a remote marker in any streamed chat object aborts acceptance', async () => {
+test('a remote marker in any streamed chat object aborts acceptance', async (t) => {
   const keys = machineKeys()
   const { journal } = receiptJournal()
   const { api, calls } = apiFor(attempt())
   const loop = new LocalInferenceHostLoop({
     api,
+    coordinator: await coordinatorFixture(t),
     fetchImpl: ollama([{ done: true, message: {}, model: 'local:latest', remote_model: 'cloud:latest' }]),
     identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
     isPaused: () => false,
@@ -238,7 +259,7 @@ test('a remote marker in any streamed chat object aborts acceptance', async () =
   assert.match(error, /protocol_error/)
 })
 
-test('a durable encrypted receipt is retried without dialing Ollama again', async () => {
+test('a durable encrypted receipt is retried without dialing Ollama again', async (t) => {
   const keys = machineKeys()
   const { getStored, journal } = receiptJournal()
   await journal.record({ attemptId: ATTEMPT_ID, dispatchFence: 1, result: localResult() })
@@ -248,6 +269,7 @@ test('a durable encrypted receipt is retried without dialing Ollama again', asyn
   let ollamaCalls = 0
   const loop = new LocalInferenceHostLoop({
     api,
+    coordinator: await coordinatorFixture(t),
     fetchImpl: ((url, init) => {
       ollamaCalls += 1
       return ollama([])(url, init)
@@ -265,7 +287,75 @@ test('a durable encrypted receipt is retried without dialing Ollama again', asyn
   assert.equal(await journal.get({ attemptId: ATTEMPT_ID, dispatchFence: 1 }), undefined)
 })
 
-test('a signed control response aborts a blocked Ollama stream before its next frame', async () => {
+test('a lost poll response keeps its exact request token and cannot admit a second transport', async (t) => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api } = apiFor(attempt())
+  const coordinator = await coordinatorFixture(t)
+  const ids: string[] = []
+  const original = api.poll
+  api.poll = async (input) => {
+    ids.push(input.poll.requestId)
+    if (ids.length === 1) throw new Error('response interrupted after server commit')
+    return original(input)
+  }
+  const loop = new LocalInferenceHostLoop({
+    api, coordinator, fetchImpl: ollama([{ done: true, message: { content: 'done' } }]),
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false, journal, origin: 'http://127.0.0.1:11434',
+  })
+  await assert.rejects(loop.pollOnce(), /response interrupted/)
+  assert.equal(await coordinator.acquire('different-host'), null)
+  await loop.pollOnce()
+  assert.equal(ids.length, 2)
+  assert.equal(ids[0], ids[1])
+  assert.ok(await coordinator.acquire())
+})
+
+test('one host can fill two configured slots while a third call waits', async (t) => {
+  const keys = machineKeys()
+  const { journal } = receiptJournal()
+  const { api } = apiFor(attempt())
+  const coordinator = await coordinatorFixture(t)
+  await coordinator.syncControl({
+    resourceId: RESOURCE_ID, capacity: 2, controlRevision: 1, paused: false, healthReason: null,
+  })
+  api.poll = async () => ({
+    admission: { ...ADMISSION, admissionId: randomUUID(), fence: randomUUID() },
+    attempt: { ...attempt(), attemptId: randomUUID() }, dispatchFence: 1,
+  })
+  const finishes: Array<() => void> = []
+  const fetchImpl: OllamaFetch = (url, init) => url.endsWith('/api/chat')
+    ? Promise.resolve(new Response(new ReadableStream({
+      start(controller) {
+        finishes.push(() => {
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ done: true, message: { content: 'ok' } })}\n`))
+          controller.close()
+        })
+      },
+    })))
+    : ollama([])(url, init)
+  const loop = new LocalInferenceHostLoop({
+    api, coordinator, fetchImpl,
+    identity: { connectionEpoch: '1', hostId: HOST_ID, machinePrivateKey: keys.privateKey, organizationId: ORG_ID },
+    isPaused: () => false, journal, origin: 'http://127.0.0.1:11434',
+  })
+  const first = loop.pollOnce()
+  const until = async (count: number) => {
+    const deadline = Date.now() + 2_000
+    while (finishes.length < count && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 5))
+    assert.equal(finishes.length, count)
+  }
+  await until(1)
+  const second = loop.pollOnce()
+  await until(2)
+  assert.deepEqual(await loop.pollOnce(), { kind: 'idle' })
+  for (const finish of finishes) finish()
+  assert.equal((await first).kind, 'completed')
+  assert.equal((await second).kind, 'completed')
+})
+
+test('a signed control response aborts a blocked Ollama stream before its next frame', async (t) => {
   const keys = machineKeys()
   const { journal } = receiptJournal()
   const { api, calls } = apiFor(attempt())
@@ -273,6 +363,7 @@ test('a signed control response aborts a blocked Ollama stream before its next f
   api.control = async () => ({ state: 'cancelled' })
   const loop = new LocalInferenceHostLoop({
     api,
+    coordinator: await coordinatorFixture(t),
     controlIntervalMs: 1,
     fetchImpl: ((url, init) => {
       if (url.endsWith('/api/chat')) {

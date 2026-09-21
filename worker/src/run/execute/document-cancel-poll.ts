@@ -4,6 +4,7 @@ import type { DocumentStreamRecorder } from './document-stream.js'
 const POLL_INTERVAL_MS = 1_000
 
 type PollInput = {
+  always?: boolean
   documentStream: DocumentStreamRecorder | undefined
   onCancelled: () => void
   prisma: PrismaClient
@@ -26,7 +27,7 @@ export const startCancellationPoll = (input: PollInput): { stop: () => void } =>
 
   const timer = setInterval(() => {
     if (stopped || checking) return
-    if (!input.documentStream?.hasOpenSession()) return
+    if (!input.always && !input.documentStream?.hasOpenSession()) return
     checking = true
     void input.prisma.run
       .findUnique({ select: { cancelRequestedAt: true }, where: { id: input.runId } })

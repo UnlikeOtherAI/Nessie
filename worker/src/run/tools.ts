@@ -1,3 +1,4 @@
+import { TASK_SET_TOOL_RUNNERS, runTaskSetTool } from './task-set-tools.js'
 import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import { appendStubbedBuiltinSchema } from './builtin-toolset-deferred.js'
 import { resolveDashboardToolServices } from './pa-tools/dashboard-context.js'
@@ -142,6 +143,9 @@ const executeBuiltinToolUncorrected = async (
   dependencies: BuiltinToolDependencies = DEFAULT_BUILTIN_TOOL_DEPENDENCIES,
 ): Promise<AgenticToolResult> => {
   const inputSummary = summarizeToolInput(args)
+  if (Object.hasOwn(TASK_SET_TOOL_RUNNERS, toolName)) {
+    return wrapTool(inputSummary, () => runTaskSetTool(toolName, context, args))
+  }
   const executorTool = executorManagementTool(toolName, args, context)
   if (executorTool) return wrapTool(inputSummary, executorTool)
   const connectorTool = connectorManagementTool(toolName, args, context)

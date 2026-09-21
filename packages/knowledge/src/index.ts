@@ -266,3 +266,14 @@ export { readableKnowledgePageVersionsWhere } from './version-disclosure-where.j
 // builders. A separate namespace rather than a flat re-export — the surface is
 // large and every name in it is spreadsheet-specific.
 export * from './spreadsheet/index.js'
+export { resolveTaskSetDocumentSource, resolveTaskSetArtifactDestination } from './task-set-access.js'
+export type {
+  TaskSetKnowledgeAccess, TaskSetResolvedSource, TaskSetArtifactDestination,
+} from './task-set-access.js'
+export { iterateTaskSetSource, parseTaskSetSource, consumeTaskSetDisclosure } from './task-set-sources.js'
+export type { TaskSetSourceDeps, TaskSetConsumedSourceSink } from './task-set-sources.js'
+export { TaskSetSourceError, TASK_SET_SOURCE_LIMITS, taskSetCanonicalJson, taskSetHash } from './task-set-records.js'
+export { finalizeTaskSetArtifact, taskSetArtifactPageId } from './task-set-artifacts.js'
+export type { TaskSetArtifactDeps, TaskSetArtifactReceipt } from './task-set-artifacts.js'
+export type { TaskSetArtifactRow, TaskSetArtifactFormat } from './task-set-output-render.js'
+export { validateTaskSetArtifactRow } from './task-set-output-render.js'

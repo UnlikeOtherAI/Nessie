@@ -98,7 +98,9 @@ import {
   resolvePersistedKnowledgeOrigin,
 } from '@nessie/knowledge'
 import type { WorkerCoreSubscriptionDeps } from './worker-runtime-types.js'
+import { registerTaskSetWorker } from './task-sets/register.js'
 export const registerWorkerCoreSubscriptions = (deps: WorkerCoreSubscriptionDeps): boolean => {
+  registerTaskSetWorker(deps)
   const {
     abortSignal,
     cloudBrowser,

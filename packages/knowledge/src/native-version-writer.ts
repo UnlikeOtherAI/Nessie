@@ -153,6 +153,7 @@ export const createPage = async (
     })
     const page = await tx.knowledgePage.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         title: input.title,
         summary: input.summary ?? null,
         metadata: input.metadata as Prisma.InputJsonValue,

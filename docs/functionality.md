@@ -14,6 +14,13 @@ The checkbox-based tool policy model is documented as a separate target-state de
 
 ## 1) Interface contracts
 
+Current addition (2026-09-21): **Agents → Task sets** and Documents' processing
+doorway expose durable sequential workloads. Native agents use the same
+authorized services as the UI; pinned file versions and manual items produce
+database results, optional Documents artifacts and an optional receiver handoff.
+The detailed contract and verification limits are in
+[Task Sets](standards/task-sets.md).
+
 `UI/admin/tag.md`:
 
 - `tag: nessie-ui-admin-v1`

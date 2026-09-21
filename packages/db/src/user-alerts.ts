@@ -21,6 +21,13 @@ export const visibleUserAlertWhere = (input: {
   },
   OR: [
     {
+      kind: 'task_set_health',
+      taskSet: { is: {
+        organizationId: input.organizationId, ownerUserId: input.userId,
+        OR: [{ status: 'blocked' }, { status: 'waiting', offlineSince: { not: null } }, { deliveryStatus: 'blocked' }],
+      } },
+    },
+    {
       // A mention surfaces while its recipient can read the room: as a member,
       // or — for an open channel (public, not a DM, not a system conversation)
       // — as any active member of the organisation, which the outer clause

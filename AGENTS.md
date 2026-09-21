@@ -391,6 +391,10 @@ when one changes, the same turn updates it, not this section.
   [`docs/standards/local-ollama-agents.md`](docs/standards/local-ollama-agents.md)
   before touching local discovery, bindings, host transport, presence or its
   user/executor surfaces.
+- **Sequential task sets** use deterministic import, scheduling and output;
+  native agent tools share the UI's authority, and configured Ollama search
+  stays on the selected executor. Read
+  [docs/standards/task-sets.md](docs/standards/task-sets.md) before changing them.
 - **A capability that can stop working owns the way a person finds out.**
   Classify the failure into a state that names its remedy, persist the reason,
   and alert exactly once per transition; recovery is explicit, never

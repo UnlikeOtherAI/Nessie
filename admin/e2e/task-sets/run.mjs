@@ -1,0 +1,168 @@
+import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { launchBrowser } from '../navigation/lib/browser.mjs'
+import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
+import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
+
+await assertFreshServersAvailable()
+const admin = await startAdmin()
+const browser = await launchBrowser()
+const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/task-sets')
+await mkdir(screenshots, { recursive: true })
+const errors = []
+let page
+const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } })
+const open = async (scenario) => {
+  if (page) await page.close()
+  page = await context.newPage()
+  page.on('pageerror', (error) => errors.push(String(error)))
+  await page.goto(`${ADMIN_URL}/e2e/task-sets/index.html?scenario=${scenario}`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  await page.getByRole('heading', { level: 1 }).waitFor()
+}
+const headerAction = async (name) => {
+  const button = page.getByRole('button', { name, exact: true })
+  const more = page.getByRole('button', { name: 'More page actions', exact: true })
+  await button.or(more).first().waitFor()
+  if (await button.isVisible()) await button.click()
+  else {
+    await page.getByRole('button', { name: 'More page actions', exact: true }).click()
+    await page.getByRole('menuitem', { name, exact: true }).click()
+  }
+}
+const event = async (name) => {
+  await page.evaluate((value) => window.taskSetFixture.event(value), name)
+  await headerAction('Refresh')
+}
+const calls = () => page.evaluate(() => window.taskSetFixture.calls)
+const shot = (name) => page.screenshot({ fullPage: true, path: resolve(screenshots, `${name}.png`) })
+try {
+  // The real create form stores drafts and submits the same shared DTO as agents.
+  await open('create')
+  await page.getByLabel(/^Name/).fill('Manual company research')
+  await page.getByLabel(/^Objective/).fill('Find the company website.')
+  await page.getByLabel('Shared instructions', { exact: true }).fill('Return a coherent summary and evidence URLs.')
+  await page.getByLabel(/^Processor model/).selectOption('local')
+  assert.equal(await page.locator('option[value="setup"]').isDisabled(), true)
+  await page.getByRole('link', { name: 'Set up a local processor' }).waitFor()
+  // Navigating away cannot discard the unsent objective or model choice.
+  await page.waitForFunction(() => window.localStorage.getItem('draft:task-set:new:manual:')?.includes('Manual company research'))
+  await page.reload()
+  await page.getByLabel(/^Name/).waitFor()
+  assert.equal(await page.getByLabel(/^Name/).inputValue(), 'Manual company research')
+  await shot('create-independent-processor')
+  await page.getByRole('button', { name: 'Create task set', exact: true }).click()
+  await page.getByRole('heading', { name: 'Manual company research', exact: true }).waitFor()
+  const create = (await calls()).find((call) => call.method === 'POST' && call.path === '/api/task-sets')
+  assert.equal(create.body.maxParallelRequests, 1)
+  assert.equal(create.body.receiver, null)
+  assert.equal(create.body.processor.localInferenceBindingId, '00000000-0000-4000-8000-000000000003')
+  await headerAction('Add item')
+  let dialog = page.getByRole('dialog', { name: 'Add item' })
+  await dialog.getByLabel('Item instructions').fill('Research Acme')
+  await dialog.getByLabel('Input data').fill('Acme company')
+  await dialog.getByRole('button', { name: 'Add item', exact: true }).click()
+  await dialog.waitFor({ state: 'hidden' })
+  await headerAction('Add item')
+  dialog = page.getByRole('dialog', { name: 'Add item' })
+  await dialog.getByLabel('Item instructions').fill('Combine earlier findings')
+  await dialog.getByLabel('Add a prerequisite').selectOption({ label: 'Item 1: Research Acme' })
+  await dialog.getByRole('button', { name: 'Add item', exact: true }).click()
+  await dialog.waitFor({ state: 'hidden' })
+  const added = (await calls()).filter((call) => call.method === 'POST' && call.path.endsWith('/items'))
+  assert.equal(added[1].body.items[0].dependencies.length, 1)
+  await headerAction('Start processing')
+  await headerAction('Pause task set')
+  await page.getByRole('button', { name: 'Resume task set', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Pause local models', exact: true }).click()
+  await page.getByRole('button', { name: 'Resume local models', exact: true }).waitFor()
+  await page.getByLabel('Shared parallel requests').selectOption('3')
+  assert.ok((await calls()).some((call) => call.path.endsWith('/capacity') && call.body.capacity === 3))
+  await shot('set-pause-and-shared-resource')
+  await event('denied')
+  await headerAction('Resume task set')
+  await page.getByText('Source access was revoked. Choose an accessible source before resuming.').waitFor()
+  await shot('resume-access-denied')
+
+  // Pinned file identity, output mapping and explicit receiver conversation.
+  await open('source')
+  await page.getByLabel(/^Name/).fill('Spreadsheet enrichment')
+  await page.getByLabel(/^Objective/).fill('Enrich every company row.')
+  await page.getByLabel(/^Processor model/).selectOption('hosted')
+  await page.getByLabel('Parallel requests across task sets', { exact: true }).fill('3')
+  assert.equal(await page.getByLabel('File format', { exact: true }).inputValue(), 'xlsx')
+  await page.getByLabel('Worksheet').fill('Companies')
+  await page.getByLabel('First row').fill('125')
+  await page.getByLabel('Last row').fill('127')
+  await page.getByLabel('Save results as').selectOption('spreadsheet')
+  await page.getByLabel('Output folder space').selectOption('00000000-0000-4000-8000-000000000004')
+  await page.getByLabel('Result columns').fill('Summary = summary\nWebsite = website')
+  await page.getByLabel('Receiver agent').selectOption('00000000-0000-4000-8000-000000000007')
+  await page.getByLabel('Receiver conversation').selectOption('00000000-0000-4000-8000-000000000008')
+  await page.getByLabel('Receiver instructions').fill('Write a report from the completed spreadsheet.')
+  await shot('source-and-new-spreadsheet-output')
+  await page.getByRole('button', { name: 'Create task set', exact: true }).click()
+  await page.getByRole('heading', { name: 'Spreadsheet enrichment', exact: true }).waitFor()
+  const source = (await calls()).find((call) => call.method === 'POST' && call.path === '/api/task-sets').body
+  assert.equal(source.source.versionId, '00000000-0000-4000-8000-000000000006')
+  assert.equal(source.maxParallelRequests, 3)
+  assert.deepEqual(source.source.selection, { sheet: 'Companies', firstRow: 125, lastRow: 127 })
+  assert.deepEqual(source.output.fields, { Summary: 'summary', Website: 'website' })
+  assert.ok(source.receiver.channelId)
+
+  // Results remain paged. Item failures describe a remedy and stay actionable.
+  await open('blocked')
+  await page.getByRole('button', { name: 'Next page', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Open item 26', exact: true }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Open item 1', exact: true }).count(), 0)
+  await shot('ordered-items-page-two')
+  await page.getByRole('button', { name: 'Previous page', exact: true }).first().click()
+  await page.getByRole('button', { name: 'Open item 1', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: 'Task set item' })
+  await dialog.getByText('Dependency context exceeds the model capacity. Edit the input before retrying.').waitFor()
+  await shot('failed-item-remedy')
+  await dialog.getByRole('button', { name: 'Skip item', exact: true }).click()
+  await dialog.getByText('Skipped', { exact: true }).waitFor()
+  await page.getByRole('dialog', { name: 'Task set item' }).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Task set item' }).waitFor({ state: 'hidden' })
+  await event('waiting')
+  await page.getByText('Waiting for Mac mini to reconnect.').waitFor()
+  await event('stopping')
+  await page.getByText('Waiting for the current item to stop.', { exact: false }).waitFor()
+  assert.equal(await page.getByText('Edit task set', { exact: true }).count(), 0)
+  await event('uncertain')
+  await page.getByText('Confirm on this computer that the previous Ollama request has stopped', { exact: false }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Pause local models', exact: true }).isDisabled(), true)
+  await shot('stopping-and-uncertain-local-request')
+  await event('completed')
+  await page.getByRole('button', { name: 'Open item 1', exact: true }).click()
+  await page.getByText('Verified company summary. Source: https://example.com').waitFor()
+  assert.equal(await page.getByRole('dialog', { name: 'Task set item' })
+    .getByText('Dependency context exceeds the model capacity. Edit the input before retrying.').count(), 0)
+  await shot('stored-result-no-receiver')
+  await page.getByRole('dialog', { name: 'Task set item' }).getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Task set item' }).waitFor({ state: 'hidden' })
+  await event('delivery')
+  await headerAction('Retry delivery')
+  assert.ok((await calls()).some((call) => call.body?.action === 'retry' && !call.body.itemId))
+
+  await open('list')
+  await page.getByRole('heading', { name: 'Task Sets', exact: true }).waitFor()
+  await shot('task-set-home')
+  await page.setViewportSize({ height: 844, width: 390 })
+  await shot('task-set-home-phone')
+  assert.deepEqual(errors, [], errors.join('\n'))
+  console.log(`Task Set UI contract proofs passed: ${screenshots}`)
+} catch (error) {
+  console.error(errors.join('\n'))
+  console.error(admin.output())
+  if (page) {
+    await shot('failure')
+    console.error(await page.locator('body').innerText())
+  }
+  throw error
+} finally {
+  await context.close()
+  await browser.close()
+  await stopProcess(admin)
+}

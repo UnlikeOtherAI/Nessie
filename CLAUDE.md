@@ -24,6 +24,10 @@ Assistant's `channel_list` / `channel_update` tools. Read
 
 Executor code pairing and its browser verification follow [docs/executor-pairing.md](docs/executor-pairing.md).
 
+Sequential Task Sets, their native agent tools and the configured
+`serve-ollama-search-mcp` executor bridge follow
+[docs/standards/task-sets.md](docs/standards/task-sets.md).
+
 > **Rule zero — a capability is not done until a person can reach it.** A
 > feature nobody can navigate to counts as unfinished. The four checks and the
 > history behind each are in [`AGENTS.md`](AGENTS.md) → "Rule zero".

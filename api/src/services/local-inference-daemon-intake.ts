@@ -16,7 +16,7 @@ type Envelope = {
 
 export const authenticateLocalInferenceDaemonEnvelope = async (
   prisma: PrismaClient,
-  input: { body: unknown; envelope: Envelope; purpose: 'control' | 'frames' | 'poll' | 'result' | 'goodbye' },
+  input: { body: unknown; envelope: Envelope; purpose: 'control' | 'frames' | 'poll' | 'result' | 'goodbye' | 'resource' | 'termination' },
 ): Promise<{
   authorization: NonNullable<Awaited<ReturnType<typeof authorizeLocalInferenceDaemon>>>
   hostId: string

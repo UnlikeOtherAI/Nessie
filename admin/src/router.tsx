@@ -68,6 +68,9 @@ import {
   UserSettingsPage,
   WorkflowDesignerPage,
   WorkflowsPage,
+  TaskSetsPage,
+  TaskSetCreatePage,
+  TaskSetDetailPage,
 } from './router-lazy-pages'
 
 // Every route below is imported eagerly except the seven eager names above:
@@ -362,6 +365,18 @@ export const router = createBrowserRouter([
       {
         path: '/agents/workflows',
         element: lazyElement(WorkflowsPage, 'list'),
+      },
+      {
+        path: '/agents/task-sets',
+        element: lazyElement(TaskSetsPage, 'list'),
+      },
+      {
+        path: '/agents/task-sets/new',
+        element: lazyElement(TaskSetCreatePage, 'detail'),
+      },
+      {
+        path: '/agents/task-sets/:taskSetId',
+        element: lazyElement(TaskSetDetailPage, 'detail'),
       },
       {
         path: '/agents/tools',

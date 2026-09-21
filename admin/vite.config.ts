@@ -48,6 +48,7 @@ export default defineConfig(({ command, mode }) => {
   const includeLocalOllamaAgentsFixture = env.NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
+  const includeTaskSetsFixture = env.NESSIE_TASK_SETS_E2E_FIXTURE === '1'
   const includeTaskDialogFixture = env.NESSIE_TASK_DIALOG_E2E_FIXTURE === '1'
   const includeOverlayLayerFixture = env.NESSIE_OVERLAY_LAYER_E2E_FIXTURE === '1'
 
@@ -66,6 +67,7 @@ export default defineConfig(({ command, mode }) => {
     || includeChannelAgentControlsFixture
     || includeChannelDecisionsFixture
     || includeVisibilityAffordancesFixture
+    || includeTaskSetsFixture
     || includeTaskDialogFixture
     || includeOverlayLayerFixture
     || includeExecutorLocalMcpFixture
@@ -95,6 +97,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeVisibilityAffordancesFixture ? {
             visibilityAffordances: resolve(__dirname, 'e2e/visibility-affordances/index.html'),
+          } : {}),
+          ...(includeTaskSetsFixture ? {
+            taskSets: resolve(__dirname, 'e2e/task-sets/index.html'),
           } : {}),
           ...(includeTaskDialogFixture ? {
             taskDialog: resolve(__dirname, 'e2e/task-dialog/index.html'),

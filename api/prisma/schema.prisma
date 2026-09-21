@@ -2652,6 +2652,7 @@ model MessageConversationReadState {
 }
 
 enum UserAlertKind {
+  task_set_health
   mention
   task_assigned
   knowledge_published
@@ -2717,6 +2718,8 @@ model UserAlert {
   // A source-event generation key. New attention rows must carry one; legacy
   // mention rows predate this field and remain NULL.
   eventKey                  String?                  @map("event_key")
+  taskSetId                 String?                  @map("task_set_id") @db.Uuid
+  taskSet                   TaskSet?                 @relation(fields: [taskSetId], references: [id], onDelete: Cascade)
   // Ephemeral UOA invitation display/acceptance payload. Reconciled from each
   // verified directory read and deleted as soon as the invite disappears.
   metadata                  Json?                    @db.JsonB
@@ -3535,6 +3538,7 @@ model Run {
   // Pinned classifier instructions survive restart and queue replay.
   promptOverride String? @map("prompt_override")
   id                                  String                          @id @default(uuid()) @db.Uuid
+  inferenceResourceAdmissionId        String?                         @map("inference_resource_admission_id") @db.Uuid
   agentId                             String                          @map("agent_id") @db.Uuid
   threadId                            String                          @map("thread_id") @db.Uuid
   // Set only for a PA presence run. This makes its per-principal slot durable
@@ -4375,15 +4379,18 @@ model AgentMailboxMessage {
   subject             String?
   body                String
   correlationId       String?              @map("correlation_id")
+  /// A task-set handoff carries the original requester and full disclosure basis independently from peer depth.
+  taskSetId           String?              @map("task_set_id") @db.Uuid
+  taskSet             TaskSet?             @relation(fields: [taskSetId], references: [id], onDelete: Cascade)
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
   peerDelegationDepth Int?                 @map("peer_delegation_depth")
-  /// Immutable UOA login proof captured by the peer-delegation tool. This is
+  /// Immutable UOA login proof captured by peer delegation or a task-set handoff. This is
   /// run provenance, not a local identity or credential record: Ledger still
   /// verifies its subject and epoch against the originating person's live link.
   uoaIdentity         Json?                @map("uoa_identity")
-  /// Provenance carried by a durable peer brief. Existing mailbox producers
-  /// leave this empty; peer delivery stamps it on the prompt and target run.
+  /// Provenance carried by a durable peer brief or task-set handoff. Other mailbox producers
+  /// leave this empty; admitted delivery stamps it on the prompt and target run.
   basis               Json                 @default("[]")
   /// Original private-conversation authors carried independently from scope.
   /// A null author is an intentional unknown marker and must never be dropped.
@@ -4399,6 +4406,7 @@ model AgentMailboxMessage {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([toAgentId, correlationId])
+  @@index([taskSetId])
   @@index([organizationId, status, visibleAt])
   @@index([toAgentId, status, visibleAt])
   @@index([planId, createdAt])
@@ -8574,6 +8582,7 @@ model ScopedSetting {
 /// dial target.  `inventory` is a bounded last observation, not authority.
 model LocalInferenceHost {
   id                       String                    @id @default(uuid()) @db.Uuid
+  inferenceResourceId      String?                   @map("inference_resource_id") @db.Uuid
   organizationId           String                    @map("organization_id") @db.Uuid
   custodianUserId          String                    @map("custodian_user_id") @db.Uuid
   transport                LocalInferenceTransport
@@ -8596,6 +8605,7 @@ model LocalInferenceHost {
   userAlerts               UserAlert[]               @relation("LocalInferenceHealthAlert")
 
   @@index([organizationId, custodianUserId])
+  @@index([inferenceResourceId])
   @@index([organizationId, lastSeenAt])
   @@map("local_inference_hosts")
 }
@@ -8687,6 +8697,8 @@ model LocalInferenceChallenge {
 /// transcript rows and are swept after acknowledgement or hard expiry.
 model LocalInferenceAttempt {
   id                 String                     @id @default(uuid()) @db.Uuid
+  pollRequestId      String?                    @unique @map("poll_request_id") @db.Uuid
+  resourceAdmissionId String?                    @map("resource_admission_id") @db.Uuid
   invocationId       String                     @unique @map("invocation_id")
   organizationId     String                     @map("organization_id") @db.Uuid
   runId              String                     @map("run_id") @db.Uuid
@@ -8710,6 +8722,7 @@ model LocalInferenceAttempt {
   updatedAt          DateTime                   @updatedAt @map("updated_at")
 
   @@index([hostId, state, deadlineAt])
+  @@index([resourceAdmissionId])
   @@index([runId, state])
   @@index([terminalAt])
   @@map("local_inference_attempts")
@@ -9617,4 +9630,174 @@ model AgentAccessCredential {
   @@index([userId, revokedAt])
   @@index([organizationId, revokedAt])
   @@map("agent_access_credentials")
+}
+
+/// Shared local capacity is enrolled independently of Desktop/executor transport.
+model LocalInferenceResource {
+  id                   String   @id @default(uuid()) @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  custodianUserId       String   @map("custodian_user_id") @db.Uuid
+  publicKey            String   @map("public_key")
+  publicKeyFingerprint String   @unique @map("public_key_fingerprint")
+  capacity             Int      @default(1)
+  pausedAt             DateTime? @map("paused_at")
+  controlRevision      Int      @default(1) @map("control_revision")
+  healthReason         String?  @map("health_reason")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  admissions           InferenceResourceAdmission[]
+
+  @@index([organizationId, custodianUserId])
+  @@map("local_inference_resources")
+}
+
+/// Never expire an occupied slot merely because a server lease elapsed.
+model InferenceResourceAdmission {
+  id             String   @id @default(uuid()) @db.Uuid
+  resourceId     String   @map("resource_id") @db.Uuid
+  reservationKey String   @unique @map("reservation_key")
+  runId          String?  @map("run_id") @db.Uuid
+  attemptId      String?  @unique @map("attempt_id") @db.Uuid
+  fence          String   @unique @default(uuid()) @db.Uuid
+  state          String   @default("reserved")
+  confirmedAt    DateTime? @map("confirmed_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  resource       LocalInferenceResource @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+
+  @@index([resourceId, state])
+  @@map("inference_resource_admissions")
+}
+
+/// An ordered, finite work ledger. Source bytes remain in Documents versions.
+model TaskSet {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  ownerUserId         String   @map("owner_user_id") @db.Uuid
+  executionAgentId    String   @map("execution_agent_id") @db.Uuid
+  executionThreadId   String   @map("execution_thread_id") @db.Uuid
+  name                String
+  objective           String
+  instructions        String
+  processor           Json
+  processorPin        Json?    @map("processor_pin")
+  capacityKey         String   @map("capacity_key")
+  source              Json?
+  sourceVersionId     String?  @map("source_version_id") @db.Uuid
+  sourceAttachmentId  String?  @map("source_attachment_id") @db.Uuid
+  output              Json
+  receiver            Json?
+  launchOrigin        Json     @map("launch_origin")
+  disclosure          Json
+  search              String   @default("none")
+  status              String   @default("draft")
+  reason              String?
+  maxParallelRequests Int      @default(1) @map("max_parallel_requests")
+  maxAttempts         Int      @default(3) @map("max_attempts")
+  totalItems          Int      @default(0) @map("total_items")
+  completedItems      Int      @default(0) @map("completed_items")
+  skippedItems        Int      @default(0) @map("skipped_items")
+  nextSequence        Int      @default(1) @map("next_sequence")
+  importOrdinal       Int      @default(0) @map("import_ordinal")
+  inputClosedAt       DateTime? @map("input_closed_at")
+  currentItemId       String?  @map("current_item_id") @db.Uuid
+  originThreadId      String?  @map("origin_thread_id") @db.Uuid
+  originMessageId     String?  @map("origin_message_id") @db.Uuid
+  outputPageId        String?  @map("output_page_id") @db.Uuid
+  outputState         Json?    @map("output_state")
+  deliveryStatus      String   @default("none") @map("delivery_status")
+  healthRevision      Int      @default(0) @map("health_revision")
+  offlineSince        DateTime? @map("offline_since")
+  nextAttemptAt       DateTime @default(now()) @map("next_attempt_at")
+  revision            Int      @default(1)
+  createdAt           DateTime @default(now()) @map("created_at")
+  statusChangedAt     DateTime @default(now()) @map("status_changed_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  items               TaskSetItem[]
+  userAlerts          UserAlert[]
+  mailboxMessages     AgentMailboxMessage[]
+
+  @@index([organizationId, ownerUserId, createdAt, id])
+  @@index([status, nextAttemptAt])
+  @@index([capacityKey, status])
+  @@index([sourceVersionId])
+  @@map("task_sets")
+}
+
+model TaskSetItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  taskSetId       String   @map("task_set_id") @db.Uuid
+  sequence        Int
+  clientKey       String   @map("client_key")
+  prompt          String
+  input           Json
+  dependencies    String[] @default([]) @db.Uuid
+  sourceLocator   String?  @map("source_locator")
+  inputHash       String?  @map("input_hash")
+  disclosure      Json
+  status          String   @default("pending")
+  attempts        Int      @default(0)
+  retryBase       Int      @default(0) @map("retry_base")
+  reason          String?
+  result          String?
+  resultDisclosure Json?   @map("result_disclosure")
+  outputPageId    String?  @map("output_page_id") @db.Uuid
+  currentAttemptId String? @map("current_attempt_id") @db.Uuid
+  revision        Int      @default(1)
+  createdAt       DateTime @default(now()) @map("created_at")
+  statusChangedAt DateTime @default(now()) @map("status_changed_at")
+  taskSet         TaskSet  @relation(fields: [taskSetId], references: [id], onDelete: Cascade)
+  history         TaskSetAttempt[]
+  revisions       TaskSetItemRevision[]
+
+  @@unique([taskSetId, sequence])
+  @@unique([taskSetId, clientKey])
+  @@index([taskSetId, status, sequence])
+  @@map("task_set_items")
+}
+
+model TaskSetAttempt {
+  id              String   @id @default(uuid()) @db.Uuid
+  itemId          String   @map("item_id") @db.Uuid
+  number          Int
+  runId           String   @unique @map("run_id") @db.Uuid
+  taskId          String   @map("task_id") @db.Uuid
+  fence           String   @default(uuid()) @db.Uuid
+  status          String   @default("pending")
+  reason          String?
+  inputSnapshot   Json?    @map("input_snapshot")
+  pendingOutcome  Json?    @map("pending_outcome")
+  createdAt       DateTime @default(now()) @map("created_at")
+  statusChangedAt DateTime @default(now()) @map("status_changed_at")
+  item            TaskSetItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  steps           TaskSetStep[]
+
+  @@unique([itemId, number])
+  @@map("task_set_attempts")
+}
+
+model TaskSetItemRevision {
+  id        String      @id @default(uuid()) @db.Uuid
+  itemId    String      @map("item_id") @db.Uuid
+  revision  Int
+  snapshot  Json
+  createdAt DateTime    @default(now()) @map("created_at")
+  item      TaskSetItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, revision])
+  @@map("task_set_item_revisions")
+}
+
+model TaskSetStep {
+  id          String         @id @default(uuid()) @db.Uuid
+  attemptId   String         @map("attempt_id") @db.Uuid
+  sequence    Int
+  inputHash   String         @map("input_hash")
+  result      Json?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  completedAt DateTime?      @map("completed_at")
+  attempt     TaskSetAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, sequence])
+  @@map("task_set_steps")
 }

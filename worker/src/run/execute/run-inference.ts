@@ -47,7 +47,7 @@ export type RunInference = {
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
-    options?: { maxOutputTokens?: number },
+    options?: { maxOutputTokens?: number; stream?: boolean; signal?: AbortSignal },
   ) => Promise<InferenceResult>
   /**
    * Silent, non-streaming inference on the pinned utility model (falling back
@@ -61,7 +61,7 @@ export type RunInference = {
 
 export const createRunInference = (
   deps: ExecutionDependencies,
-  payload: RunExecuteJobPayload,
+  payload: Pick<RunExecuteJobPayload, 'actorContext'>,
   context: RunContext,
   options: {
     budgetModelOverride: BudgetModelOverride | null
@@ -104,6 +104,7 @@ export const createRunInference = (
     allowEmptySuccess: boolean,
     streaming: boolean,
     maxOutputTokens?: number,
+    signal?: AbortSignal,
   ): Promise<InferenceResult> => {
     if (options.local) {
       let localTextReceived = false
@@ -126,7 +127,7 @@ export const createRunInference = (
           await publishSafeLocalText(content)
         },
         providerInput: finalizeProvenancedProviderInput(messages),
-        runFence: options.local.runFence, tools,
+        runFence: options.local.runFence, signal, tools,
       })
       if (!allowEmptySuccess && !result.outputText && result.toolCalls.length === 0) {
         throw new Error('Inference execution produced no final answer')
@@ -143,10 +144,11 @@ export const createRunInference = (
       return result
     }
     const documentStream = streaming ? deps.documentStream : undefined
-    const controller = documentStream ? new AbortController() : null
+    const controller = documentStream || !streaming || signal ? new AbortController() : null
     const cancelPoll = controller
       ? startCancellationPoll({
         documentStream,
+        always: !streaming,
         onCancelled: () => controller.abort(),
         prisma: deps.prisma,
         runId: context.run.id,
@@ -206,7 +208,7 @@ export const createRunInference = (
         organizationId: context.channel.organizationId,
         reasoningEffort,
         requestHeadersForProvider,
-        signal: controller?.signal,
+        signal: signal && controller ? AbortSignal.any([signal, controller.signal]) : controller?.signal ?? signal,
         // Note/compaction calls carry no tools at all; providers reject an empty
         // tool array, so the whole tool block is omitted instead.
         ...(tools.length > 0 ? { toolChoice: 'auto' as const, tools } : {}),
@@ -246,7 +248,10 @@ export const createRunInference = (
     },
     runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
-      return call(messages, tools, runModel, true, true, callOptions?.maxOutputTokens)
+      return call(
+        messages, tools, runModel, true, callOptions?.stream !== false,
+        callOptions?.maxOutputTokens, callOptions?.signal,
+      )
     },
     runUtility: (messages, tools) =>
       call(

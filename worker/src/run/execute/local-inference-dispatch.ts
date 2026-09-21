@@ -4,12 +4,15 @@ import { setTimeout as delay } from 'node:timers/promises'
 import {
   assertLocalInferenceSerializedSize,
   LOCAL_INFERENCE_MAX_REQUEST_BYTES,
+  LocalInferenceAttemptRequestSchema,
   LocalInferenceResultSchema,
   type LocalInferenceAttemptRequest,
 } from '@nessie/schemas'
 import { openLocalInferenceAttempt, sealLocalInferenceAttempt, type InferenceResult, type ToolSchemaDescriptor } from '@nessie/runtime'
 
-import { resolveRunLocalInferenceBinding, type RunLocalInferenceBinding } from './local-inference-binding.js'
+import {
+  resolveLocalInferenceReceiptBinding, resolveRunLocalInferenceBinding, type RunLocalInferenceBinding,
+} from './local-inference-binding.js'
 import { openProvenancedProviderInput, type ProviderInputFinalization } from './provenanced-provider-input.js'
 import { authorizeLocalInferenceRecipient } from './local-inference-recipient.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
@@ -61,6 +64,62 @@ export const localInferenceFrameEvent = (event: unknown): { error?: string; text
   return { ...(text ? { text } : {}), ...(error ? { error } : {}) }
 }
 
+const decodeReceipt = (
+  keyRing: NonNullable<ExecutionDependencies['atRestEncryptionKeyRing']>,
+  binding: RunLocalInferenceBinding, invocationId: string, encryptedResult: Uint8Array,
+): InferenceResult => {
+  const result = LocalInferenceResultSchema.parse(openLocalInferenceAttempt(keyRing, encryptedResult))
+  if (result.remoteHost !== null || result.remoteModel !== null || result.modelDigest !== binding.manifestDigest) {
+    throw new LocalInferenceDispatchError('The local host reported an unpinned model.')
+  }
+  if (result.finishReason === 'error') throw new LocalInferenceDispatchError('The local inference host reported an error.')
+  return {
+    finishReason: result.finishReason,
+    invocations: [{
+      invocationId, latencyMs: 0, model: binding.modelName, operationType: 'chat',
+      provider: 'openai-compatible', requestId: invocationId,
+      usage: {
+        ...(result.usage.inputTokens === null ? {} : { inputTokens: result.usage.inputTokens }),
+        ...(result.usage.outputTokens === null ? {} : { outputTokens: result.usage.outputTokens }),
+      },
+    }],
+    model: binding.modelName, outputText: result.content ?? '', provider: 'openai-compatible',
+    requestId: invocationId, toolCalls: result.toolCalls,
+  }
+}
+
+/** Recovery never creates a request, re-pins a host or relaxes recipient authority. */
+export const recoverCompletedLocalInferenceResult = async (input: {
+  binding: RunLocalInferenceBinding; deps: ExecutionDependencies; context: RunContext;
+}): Promise<InferenceResult | null> => {
+  const keyRing = input.deps.atRestEncryptionKeyRing
+  if (!keyRing) return null
+  const current = await resolveLocalInferenceReceiptBinding(input.deps, input.context)
+  if (current.kind !== 'local' || current.binding.bindingId !== input.binding.bindingId
+    || current.binding.hostId !== input.binding.hostId || current.binding.revision !== input.binding.revision
+    || current.binding.manifestDigest !== input.binding.manifestDigest
+    || current.binding.modelName !== input.binding.modelName || current.binding.numCtx !== input.binding.numCtx
+    || !await authorizeLocalInferenceRecipient(input.deps, input.context)) return null
+  const attempts = await input.deps.prisma.localInferenceAttempt.findMany({
+    where: { runId: input.context.run.id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 33,
+  })
+  if (attempts.length === 0 || attempts.length > 32) return null
+  let final: InferenceResult | null = null
+  for (const attempt of attempts) {
+    if (final || attempt.state !== 'completed' || !attempt.encryptedRequest || !attempt.encryptedResult) return null
+    const request = LocalInferenceAttemptRequestSchema.parse(openLocalInferenceAttempt(
+      keyRing, attempt.encryptedRequest,
+    ))
+    if (request.runId !== input.context.run.id || request.bindingId !== input.binding.bindingId
+      || request.hostId !== input.binding.hostId || request.hostEpoch !== input.binding.hostEpoch
+      || request.bindingRevision !== input.binding.revision || request.modelDigest !== input.binding.manifestDigest
+      || request.modelName !== input.binding.modelName || request.numCtx !== input.binding.numCtx) return null
+    const result = decodeReceipt(keyRing, input.binding, attempt.invocationId, attempt.encryptedResult)
+    if (result.toolCalls.length === 0) final = result
+  }
+  return final
+}
+
 /**
  * Durable local-device handoff.  The worker writes one sealed attempt then
  * waits on the receipt row; it never dials an endpoint or retries accepted
@@ -72,6 +131,7 @@ export const dispatchLocalInference = async (input: {
   maxOutputTokens?: number
   providerInput: ProviderInputFinalization
   runFence: string
+  signal?: AbortSignal
   context: RunContext
   onTextDelta?: (text: string) => Promise<void>
   tools: ToolSchemaDescriptor[]
@@ -97,8 +157,10 @@ export const dispatchLocalInference = async (input: {
   if (
     current.kind !== 'local'
     || current.binding.bindingId !== input.binding.bindingId
-    || current.binding.hostEpoch !== input.binding.hostEpoch
     || current.binding.revision !== input.binding.revision
+    || current.binding.manifestDigest !== input.binding.manifestDigest
+    || current.binding.modelName !== input.binding.modelName
+    || current.binding.numCtx !== input.binding.numCtx
   ) throw new LocalInferenceDispatchError('The selected local host needs repair.')
   if (!(await authorizeLocalInferenceRecipient(input.deps, input.context))) {
     throw new LocalInferenceDispatchError('source_not_allowed')
@@ -130,11 +192,19 @@ export const dispatchLocalInference = async (input: {
     throw new LocalInferenceDispatchError('The local inference request is too large.')
   }
   const existing = await input.deps.prisma.localInferenceAttempt.findUnique({
-    where: { invocationId }, select: { deadlineAt: true, id: true, modelDigest: true, requestDigest: true },
+    where: { invocationId },
+    select: { deadlineAt: true, encryptedResult: true, id: true, modelDigest: true, requestDigest: true, state: true },
   })
   if (existing && (existing.id !== request.attemptId || existing.requestDigest !== requestDigest
     || existing.modelDigest !== input.binding.manifestDigest)) {
     throw new LocalInferenceDispatchError('Local inference invocation conflict.')
+  }
+  // Reconnection cannot authorize a new request under an old native epoch.
+  // The exact already-persisted result may still be consumed after the live
+  // owner, binding, policy and disclosure checks above have succeeded.
+  if (current.binding.hostEpoch !== input.binding.hostEpoch
+    && !(existing?.state === 'completed' && existing.encryptedResult)) {
+    throw new LocalInferenceDispatchError('The selected local host needs repair.')
   }
   if (!existing) {
     await input.deps.prisma.localInferenceAttempt.create({
@@ -177,39 +247,25 @@ export const dispatchLocalInference = async (input: {
       if (text) await input.onTextDelta?.(text)
     }
   }
-  while (Date.now() < deadlineAt.getTime()) {
-    await consumeFrames()
+  for (;;) {
+    // A worker drain abandons waiting, not the durable generation. Its
+    // successor recovers the same invocation and the host keeps its slot.
+    input.signal?.throwIfAborted()
     const row = await input.deps.prisma.localInferenceAttempt.findUnique({
       where: { id: request.attemptId },
       select: { encryptedResult: true, failureReason: true, state: true },
     })
     if (row?.state === 'completed' && row.encryptedResult) {
-      const result = LocalInferenceResultSchema.parse(openLocalInferenceAttempt(
-        atRestEncryptionKeyRing, row.encryptedResult as Uint8Array,
-      ))
-      if (result.remoteHost !== null || result.remoteModel !== null) {
-        throw new LocalInferenceDispatchError('The local host reported a remote model.')
-      }
-      if (result.finishReason === 'error') {
-        throw new LocalInferenceDispatchError('The local inference host reported an error.')
-      }
-      return {
-        finishReason: result.finishReason,
-        invocations: [{
-          invocationId, latencyMs: 0, model: input.binding.modelName,
-          operationType: 'chat', provider: 'openai-compatible', requestId: invocationId,
-          usage: {
-            ...(result.usage.inputTokens === null ? {} : { inputTokens: result.usage.inputTokens }),
-            ...(result.usage.outputTokens === null ? {} : { outputTokens: result.usage.outputTokens }),
-          },
-        }],
-        model: input.binding.modelName, outputText: result.content ?? '', provider: 'openai-compatible',
-        requestId: invocationId, toolCalls: result.toolCalls,
-      }
+      await consumeFrames()
+      return decodeReceipt(atRestEncryptionKeyRing, input.binding, invocationId, row.encryptedResult)
     }
     if (row?.state === 'cancelled' || row?.state === 'expired' || row?.state === 'failed') {
       throw new LocalInferenceDispatchError(row.failureReason ?? 'The local inference attempt did not complete.')
     }
+    // Deadline limits generation, not recovery of a receipt already accepted
+    // before that deadline. A later worker still consumes that exact result.
+    if (Date.now() >= deadlineAt.getTime()) break
+    await consumeFrames()
     const run = await input.deps.prisma.run.findUnique({
       where: { id: input.context.run.id }, select: { cancelRequestedAt: true },
     })

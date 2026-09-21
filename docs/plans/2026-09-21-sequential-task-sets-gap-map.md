@@ -1,7 +1,8 @@
 # Sequential task sets: work-item sources and processing gap map
 
-Status: source audit and proposed delivery scope; the task-set capability is not
-implemented by this document. Audited 2026-09-21 against `57a2642d2` on `main`.
+Status: historical source audit and accepted delivery decisions. The implementation
+contract now lives in [Task Sets](../standards/task-sets.md), with file details in
+[task-set artifacts](../standards/task-set-artifacts.md). Audited 2026-09-21 against `57a2642d2` on `main`.
 Source references below refer to that revision. This is not an 80,000-row
 benchmark or a verification of a particular Mac, installed model or production
 deployment.
@@ -9,7 +10,10 @@ deployment.
 The original source audit used spreadsheet research as its worked example.
 The accepted scope now covers any supported source of work items, including
 manually authored tasks with no dataset or file. The source adapter designs
-below are proposals, not claims that new importers already exist.
+below record the original proposal. The current implementation's owning surface
+is **Agents → Task sets**, reusing the existing Agents section; output creates a
+new Documents artifact. Native Nessie agent tools are included; paired external
+MCP credentials do not inherit execution authority from their document scopes.
 
 ## Accepted requirements
 

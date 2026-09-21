@@ -21,6 +21,7 @@ import {
   PrivateConversationSourceSchema,
 } from '../run/execute/disclosure-basis.js'
 import { persistablePrivateConversationSources } from '../run/execute/private-conversation-source-storage.js'
+import { authorizeTaskSetMailbox } from './task-set-mailbox.js'
 
 const CLAIM_TIMEOUT_MS = 60_000
 
@@ -40,6 +41,7 @@ type ClaimedMailboxMessage = {
   planId: string | null
   planStepId: string | null
   peerDelegationDepth: number | null
+  taskSetId: string | null
   subject: string | null
   threadId: string | null
   toAgentId: string
@@ -106,6 +108,7 @@ const claimNextMailboxMessage = async (
         amm."plan_id" AS "planId",
         amm."plan_step_id" AS "planStepId",
         amm."peer_delegation_depth" AS "peerDelegationDepth",
+        amm."task_set_id" AS "taskSetId",
         amm."subject" AS "subject",
         amm."thread_id" AS "threadId",
         amm."to_agent_id" AS "toAgentId",
@@ -181,6 +184,19 @@ export const dispatchNextMailboxMessage = async (
   if (!message) {
     return false
   }
+  if (message.taskSetId) {
+    try {
+      if (await authorizeTaskSetMailbox(prisma, { ...message, taskSetId: message.taskSetId }) === 'paused') {
+        await prisma.agentMailboxMessage.updateMany({ where: { id: message.id, status: 'processing' }, data: {
+          status: 'queued', claimedAt: null, attempts: { decrement: 1 }, visibleAt: new Date(Date.now() + 30_000),
+        } })
+        return true
+      }
+    } catch {
+      await deadLetterMailboxMessage(prisma, message)
+      return true
+    }
+  }
 
   const targetThreadId =
     message.threadId ??
@@ -239,15 +255,15 @@ export const dispatchNextMailboxMessage = async (
     } as const)
 
   const publishPayload = await prisma.$transaction(async (tx) => {
-    // `agent_peer_delegate` is the sole producer allowed to carry a source
-    // chain. Other mailbox producers intentionally retain their historical
-    // empty-basis semantics even if a future writer supplies a JSON value.
+    // Peer delegation and task-set finalization explicitly carry a source
+    // chain. Other producers retain their historical empty-basis semantics.
     // The prompt basis is then admitted by run-job and conversation loading
     // into the target's ConsumedSourceSink on every retry and resume.
-    const basis = message.peerDelegationDepth === null
+    const carriesBasis = message.peerDelegationDepth != null || message.taskSetId != null
+    const basis = !carriesBasis
       ? []
       : BasisScopeSchema.array().parse(message.basis)
-    const disclosureSources = message.peerDelegationDepth === null
+    const disclosureSources = !carriesBasis
       ? []
       : PrivateConversationSourceSchema.array().parse(message.disclosureSources)
     const promptMessage = await tx.message.create({
@@ -294,6 +310,7 @@ export const dispatchNextMailboxMessage = async (
       targetAgentId: message.toAgentId,
       teamId: thread.channel.teamId,
       peerDelegationDepth: message.peerDelegationDepth,
+      taskSetId: message.taskSetId,
       threadId: targetThreadId,
       uoaIdentity: message.uoaIdentity,
     })
@@ -364,6 +381,7 @@ export const dispatchNextMailboxMessage = async (
             targetAgentId: message.toAgentId,
             teamId: thread.channel.teamId,
             peerDelegationDepth: message.peerDelegationDepth,
+            taskSetId: message.taskSetId,
             taskId: task.id,
             threadId: targetThreadId,
             uoaIdentity: message.uoaIdentity,
