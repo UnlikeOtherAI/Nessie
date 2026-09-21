@@ -97,7 +97,7 @@ export const TASK_SET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'task_set_create', category: 'workflows', label: 'Create Task Set', safe: false,
-    summary: 'Create durable ordered work for a chosen processor, with an optional receiving agent.',
+    summary: 'Create sequential work with a processor and optional receiving agent.',
     description: 'Create a DRAFT; task_set_control starts it. Choose a processor from task_set_processors. '
       + 'For large data, upload the file to Documents and pin source page/version plus row selection. '
       + 'Use items only for small manual batches, at most 500. Dependencies name earlier item ids and do not '
