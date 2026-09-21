@@ -25,6 +25,10 @@ An unavailable identity verifier must display an explanation with no password
 field and no enabled approval action. Screenshots are written to
 `e2e/screenshots/executor-agents/` and should be visually inspected.
 
+The review names the Personal Assistant through the same entitled `scope=all`
+agent directory used by candidate eligibility. A disappeared identity keeps
+approval disabled, and agent changes never request the people directory.
+
 This fixture proves the UI flow. The executor management database and HTTP
 tests prove entitlement filtering, private roster changes, grant atomicity,
 and fresh verification enforcement. It does not exercise a real UOA verifier;

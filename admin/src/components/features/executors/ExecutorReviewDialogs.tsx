@@ -63,15 +63,17 @@ export const ExecutorAccessChangeDialog = ({
   const [error, setError] = useState<string | null>(null)
   const pending = confirmChange.isPending || rejectChange.isPending
   const agents = useAgents({ scope: 'all' })
-  const users = useUsers(open)
   const executorAccess = useExecutorAccess(change?.executorId)
   const terms = change?.change ?? {}
   const principal = terms.assignment ?? terms.principal
   const assignment = principal && typeof principal === 'object' ? principal as Record<string, unknown> : {}
   const agentId = typeof terms.agentId === 'string' ? terms.agentId : assignment.agentId
+  const personId = terms.kind === 'private_assignment' && assignment.principalKind === 'user'
+    && typeof assignment.userId === 'string' ? assignment.userId : undefined
+  const users = useUsers(open && Boolean(personId))
   const copy = executorChangePresentation(terms,
     agents.data?.find((agent) => agent.id === agentId)?.name,
-    users.data?.find((user) => user.id === assignment.userId)?.displayName)
+    users.data?.find((user) => user.id === personId)?.displayName)
   const unavailable = change?.requiresFreshVerification && change.verificationMethod !== 'password'
   const revisions = executorAccess.data?.executorId === change?.executorId
     ? executorAccess.data?.descriptorRevisions : descriptorRevisions

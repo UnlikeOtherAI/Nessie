@@ -18,10 +18,12 @@ const makeAgent = (number, name) => ({
 const fixtureApi = () => {
   const roster = Array.from({ length: 26 }, (_, index) => makeAgent(index + 1, `Agent ${String(index + 1).padStart(2, '0')}`))
   const candidates = Array.from({ length: 26 }, (_, index) => makeAgent(index + 101, `Candidate ${String(index + 1).padStart(2, '0')}`))
+  candidates[2].name = 'Personal Assistant'
   const prepared = new Map()
   const requests = []
   let failure = null
   let verification = 'password'
+  let hiddenIdentity = null
   const paginate = (rows, url) => {
     const query = url.searchParams.get('q') ?? ''
     const matching = rows.filter((row) => row.name.toLowerCase().includes(query.toLowerCase()))
@@ -39,6 +41,7 @@ const fixtureApi = () => {
     roster, candidates, requests,
     failNext: (endpoint) => { failure = endpoint },
     verification: (method) => { verification = method },
+    hideIdentity: (agentId) => { hiddenIdentity = agentId },
     route: async (route) => {
       const request = route.request()
       const url = new URL(request.url())
@@ -51,8 +54,13 @@ const fixtureApi = () => {
       }
       if (url.pathname === `/api/executors/${executorId}/agents`) return send(paginate(roster, url))
       if (url.pathname === `/api/executors/${executorId}/agent-candidates`) return send(paginate(candidates, url))
-      if (url.pathname === '/api/agents') return send({ data: [...roster, ...candidates].map((agent) => ({
+      if (url.pathname === '/api/agents') return send({ data: [...roster, ...candidates]
+        .filter((agent) => agent.agentId !== hiddenIdentity)
+        .filter((agent) => url.searchParams.get('scope') === 'all' || agent.agentId !== uuid(103))
+        .map((agent) => ({
         id: agent.agentId, name: agent.name, role: 'Assistant', visibility: agent.visibility,
+        agentKind: agent.agentId === uuid(103) ? 'personal_assistant' : 'shared',
+        systemManaged: agent.agentId === uuid(103),
         status: 'idle', todosEnabled: false, channelIds: [],
         lastActivityAt: '2026-09-21T12:00:00.000Z', createdAt: '2026-09-21T12:00:00.000Z',
         updatedAt: '2026-09-21T12:00:00.000Z',
@@ -233,6 +241,39 @@ const evaluate = async (browser, viewport) => {
     await visible(page.getByText('Agents could not be loaded.', { exact: false }))
     await page.getByRole('button', { name: 'Retry', exact: true }).click()
     await visible(table.getByText('Agent 04', { exact: true }))
+
+    // The default agent list omits the system tier; the review must use the
+    // entitled scope=all list shared with the candidate endpoint.
+    api.verification('password')
+    await page.getByRole('button', { name: 'Add agent', exact: true }).click()
+    await addDialog.getByRole('searchbox').fill('Personal Assistant')
+    await visible(addDialog.getByRole('button', { name: 'Add Personal Assistant', exact: true }))
+    await addDialog.getByRole('button', { name: 'Add Personal Assistant', exact: true }).click()
+    await visible(review)
+    await visible(review.getByText('Personal Assistant will be able to use this machine’s approved permissions.'))
+    assert.ok(api.requests.some((entry) => entry.path === '/api/agents' && entry.search === '?scope=all'))
+    assert.equal(await review.getByRole('button', { name: 'Allow access' }).isEnabled(), true)
+    await page.screenshot({ path: resolve(screenshots, `personal-assistant-review-${viewport.width}.png`) })
+    await review.getByRole('button', { name: 'Cancel change' }).click()
+    await absent(review)
+    assert.equal(api.roster.length, 26)
+
+    // Entitlement can disappear between candidate selection and review. A
+    // cached picker label must not replace the review's live identity read.
+    api.hideIdentity(uuid(104))
+    await page.getByRole('button', { name: 'Add agent', exact: true }).click()
+    await addDialog.getByRole('searchbox').fill('Candidate 04')
+    await visible(addDialog.getByRole('button', { name: 'Add Candidate 04', exact: true }))
+    await addDialog.getByRole('button', { name: 'Add Candidate 04', exact: true }).click()
+    await visible(review)
+    await visible(review.getByText('The selected agent could not be loaded. Close this change and try again.'))
+    assert.equal(await review.getByRole('button', { name: 'Allow access' }).isDisabled(), true)
+    assert.doesNotMatch(await review.innerText(), /44444444/)
+    await review.getByRole('button', { name: 'Cancel change' }).click()
+    await absent(review)
+    assert.equal(api.roster.length, 26)
+    assert.equal(api.requests.filter((entry) => entry.path === '/api/users').length, 0,
+      'Agent changes must not query the people directory')
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
     assert.deepEqual(errors, [])
     console.log(`Executor agents ${viewport.width}px: pagination, search, add, reject, confirm, remove and retry passed`)
