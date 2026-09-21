@@ -92,6 +92,12 @@ While it is covered:
   registers no Back, holds no focus trap, answers no Escape and holds no native
   chrome suspended — so Back and Escape act on the screen on top.
 
+A **nested stage asks the same question about itself**
+(`useLayerCovered` on its own container): a route pushed over an open stage
+retains the stage inert beneath it, and the stage gives up its Back
+registration until it is on top again, so Back pops the route rather than
+closing the stage underneath.
+
 Where nothing provides a layer (outside the stack, a test without a viewport)
 an overlay is never covered. `Popover`'s "press in a higher overlay" check
 compares slots, since each direct child of the host is now one overlay's slot.

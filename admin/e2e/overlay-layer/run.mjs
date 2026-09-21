@@ -109,7 +109,7 @@ const tabLandings = async (page, presses = 6) => {
  * After the push: the dialog is out of paint, the a11y tree, focus and Back,
  * and neither Escape nor Back reaches it — yet it is still mounted.
  */
-const assertCovered = async (page, { backOwner = null, dialogName, closesBefore, label }) => {
+const assertCovered = async (page, { dialogName, closesBefore, label }) => {
   const dialog = page.getByRole('dialog', { name: dialogName })
   assert.equal(await dialog.count(), 0, `${label}: the covered dialog is not in the accessibility tree`)
   const panel = page.locator('[role="dialog"]', { hasText: dialogName })
@@ -123,16 +123,9 @@ const assertCovered = async (page, { backOwner = null, dialogName, closesBefore,
 
   const action = await backAction(page)
   assert.ok(!action?.id?.startsWith('overlay:'), `${label}: Back never reaches the covered dialog (${JSON.stringify(action)})`)
-  if (backOwner) {
-    // KNOWN GAP, pinned on purpose: a nested stage keeps its Back registration
-    // while a route is pushed over it (NestedStage registers on `active`
-    // alone), so Back on the pushed screen would close the stage beneath it
-    // rather than pop the route. Not an overlay's doing; when the stage learns
-    // to go dormant under a push, this expectation becomes `route`.
-    assert.deepEqual(action, { id: backOwner, kind: 'owner' }, `${label}: known gap — the covered stage still owns Back`)
-  } else {
-    assert.equal(action?.kind, 'route', `${label}: Back acts on the pushed screen (${JSON.stringify(action)})`)
-  }
+  // A route pushed over an open stage owns Back too: the stage beneath it is
+  // covered like any overlay (NestedStage asks the same layer question).
+  assert.equal(action?.kind, 'route', `${label}: Back acts on the pushed screen (${JSON.stringify(action)})`)
 
   const owners = await tabLandings(page)
   assert.ok(!owners.includes('overlay'), `${label}: Tab never enters the covered dialog (${owners})`)
@@ -251,7 +244,7 @@ const stageCase = async (context) => {
   await page.waitForURL((url) => url.pathname === SETTINGS_PATH)
   await settled(page, SETTINGS_ROUTE)
   await assertCovered(page, {
-    backOwner: 'stage:fixture-folder', closesBefore: [], dialogName: 'Stage dialog', label: 'phone stage',
+    closesBefore: [], dialogName: 'Stage dialog', label: 'phone stage',
   })
   await page.screenshot({ path: shot('phone-stage-3-after-push.png') })
 

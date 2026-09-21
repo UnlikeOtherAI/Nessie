@@ -37,17 +37,31 @@ const LAYER_SELECTOR = '[data-phone-navigation-route]'
 const layerScreenOf = (element: HTMLElement | null): HTMLElement | null =>
   element?.closest<HTMLElement>(LAYER_SELECTOR) ?? null
 
-/** Covered: the layer's own element or its stack screen is hidden or inert. */
+const isInertOrHidden = (node: HTMLElement): boolean => node.hidden || node.hasAttribute('inert')
+
+/**
+ * Covered: the layer's own element, or the stack screen around it, is hidden
+ * or inert — except a screen sliding in to become current (`incoming`, inert
+ * only for the length of its slide), which is about to be on top, not beneath.
+ */
 export const isLayerCovered = (element: HTMLElement | null): boolean => {
   if (!element?.isConnected) return false
   const screen = layerScreenOf(element)
-  return [element, screen].some((node) => node !== null && (node.hidden || node.hasAttribute('inert')))
+  if (screen !== element && isInertOrHidden(element)) return true
+  if (!screen) return isInertOrHidden(element)
+  if (screen.hidden) return true
+  return screen.hasAttribute('inert') && screen.dataset.phoneNavigationLayer !== 'incoming'
 }
 
 const NEVER_COVERED = () => () => undefined
 
-export const useOverlayLayerCovered = (): boolean => {
-  const getElement = useContext(OverlayLayerContext)
+/**
+ * Whether the layer element `getElement` names is covered. Overlays ask about
+ * the layer they were opened from (`useOverlayLayerCovered`); a nested stage
+ * asks about its own container, so it gives up Back while a route is pushed
+ * over it.
+ */
+export const useLayerCovered = (getElement: LayerElementGetter | null): boolean => {
   const subscribe = useCallback(
     (onChange: () => void) => {
       if (!getElement || typeof MutationObserver === 'undefined') return () => undefined
@@ -61,7 +75,11 @@ export const useOverlayLayerCovered = (): boolean => {
         watched = screen
         // The screen's own attributes, and its subtree for a stage container
         // that is moved into (or out of) a layer after it first rendered.
-        observer.observe(screen, { attributeFilter: ['hidden', 'inert'], attributes: true, subtree: true })
+        observer.observe(screen, {
+          attributeFilter: ['hidden', 'inert', 'data-phone-navigation-layer'],
+          attributes: true,
+          subtree: true,
+        })
       }
       watch()
       // A stage container reaches its layer after the first commit.
@@ -81,3 +99,5 @@ export const useOverlayLayerCovered = (): boolean => {
     () => false,
   )
 }
+
+export const useOverlayLayerCovered = (): boolean => useLayerCovered(useContext(OverlayLayerContext))

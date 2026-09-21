@@ -87,6 +87,18 @@ test('an element is covered while the stack screen around it is inert or hidden'
   layer.remove()
 })
 
+test('a screen sliding in to become current is not covered, though inert for its slide', () => {
+  const { inner, layer } = screen()
+  layer.setAttribute('inert', '')
+  layer.dataset.phoneNavigationLayer = 'incoming'
+  assert.equal(isLayerCovered(inner), false, 'an incoming screen keeps its overlays and its Back')
+  layer.dataset.phoneNavigationLayer = 'underlay'
+  assert.equal(isLayerCovered(inner), true, 'the screen beneath a push is covered')
+  layer.dataset.phoneNavigationLayer = 'outgoing'
+  assert.equal(isLayerCovered(inner), true, 'a screen sliding out is covered')
+  layer.remove()
+})
+
 test('a layer element that is itself inert or hidden is covered — a stage container', () => {
   const container = doc.createElement('div')
   doc.body.appendChild(container)

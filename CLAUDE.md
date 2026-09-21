@@ -173,9 +173,9 @@ sentence changes only if the invariant itself did.
   suite. It pushes Board → Settings from inside an open ticket dialog without
   closing it, on `split` and `single`, and pins that the dialog then leaves
   paint, focus, the accessibility tree and Back — and is the same node, with
-  what was typed, after Back. A nested stage's dialog is walked too; one
-  assertion deliberately pins a known gap (a covered stage keeps owning Back)
-  and says so in its message. The rule is in
+  what was typed, after Back. A nested stage's dialog is walked too, and a
+  route pushed over an open stage owns Back rather than the stage beneath it.
+  The rule is in
   [`docs/navigation/overlays.md`](docs/navigation/overlays.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
