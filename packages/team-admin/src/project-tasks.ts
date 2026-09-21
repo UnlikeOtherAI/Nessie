@@ -2,7 +2,7 @@ import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/cli
 import { parseUserId, type AuthorizedActionContext } from '@nessie/schemas'
 import { isAgentAccessibleToActor } from './access-checks.js'
 import { projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
-import { projectTaskVisibilityWhere, type ProjectTaskVisibility } from './task-access.js'
+import { isUuid, projectTaskVisibilityWhere, type ProjectTaskVisibility } from './task-access.js'
 import {
   linkUploadsToTask,
   mapProjectTaskWithCount,
@@ -169,7 +169,10 @@ export const createProjectTask = async (
   if (labelIds.length > 0) {
     // A new ticket is native, so every label is local; it only has to be this project's.
     const labels = input.projectId
-      ? await prisma.taskLabel.findMany({ where: { id: { in: labelIds }, projectId: input.projectId }, select: { id: true } })
+      ? await prisma.taskLabel.findMany({
+          where: { id: { in: labelIds.filter(isUuid) }, projectId: input.projectId },
+          select: { id: true },
+        })
       : []
     const found = new Set(labels.map((label) => label.id))
     const missing = labelIds.find((id) => !found.has(id))
