@@ -23,12 +23,8 @@ public struct ExecutorPairing: Decodable, Equatable, Sendable {
     /// Interpret only the shared runtime's known structural error code. Raw
     /// output and unknown messages never become pairing-screen copy.
     public static func failureMessage(from data: Data) -> String {
-        struct Failure: Decodable {
-            struct Detail: Decodable { let code: String }
-            let error: Detail
-        }
-        let failure = try? JSONDecoder().decode(Failure.self, from: data)
-        guard failure?.error.code == "workspace_cleanup_required" else { return genericFailureMessage }
+        let failure = try? JSONDecoder().decode([String: [String: String]].self, from: data)
+        guard failure?["error"]?["code"] == "workspace_cleanup_required" else { return genericFailureMessage }
         return "Remove every local draft and stop every sandbox before replacing this pairing "
             + "or changing its workspace folders."
     }

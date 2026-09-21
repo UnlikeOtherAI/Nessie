@@ -51,6 +51,19 @@ enum ExecutorPaths {
         )
     }
 
+    static func refusalBeforePairing(in directory: String, isDevelopmentBuild: Bool) -> ExecutorRefusal? {
+        switch discover(isDevelopmentBuild: isDevelopmentBuild) {
+        case let .success(discovered) where discovered == directory:
+            return nil
+        case .success:
+            return ExecutorRefusal(
+                "This Mac gained another connection. Reopen Nessie Executor to review it before pairing again."
+            )
+        case let .failure(refusal):
+            return refusal
+        }
+    }
+
     /// Owner-only, created before anything is written into it.
     static func prepare(_ directory: String) throws {
         try FileManager.default.createDirectory(
@@ -93,23 +106,18 @@ final class ExecutorController: ObservableObject {
         )
         pairing.onPaired = { [weak self] in self?.refresh(startWhenPaired: true) }
         pairing.onChanged = { [weak self] in self?.refresh() }
-        pairing.beforeStart = { [weak self] in self?.canBeginPairing() ?? false }
+        pairing.beforeStart = { [weak self] in
+            guard let self else { return false }
+            guard let refusal = ExecutorPaths.refusalBeforePairing(
+                in: self.stateDirectory, isDevelopmentBuild: self.isDevelopmentBuild
+            ) else { return true }
+            self.fail(refusal.message)
+            return false
+        }
         pairing.beforeReplace = { [weak self] in
             guard let self, self.model.daemon != .stopping else { return false }
             return self.stopDaemon()
         }
-    }
-
-    private func canBeginPairing() -> Bool {
-        switch ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild) {
-        case let .success(directory) where directory == stateDirectory:
-            return true
-        case .success:
-            fail("This Mac gained another connection. Reopen Nessie Executor to review it before pairing again.")
-        case let .failure(refusal):
-            fail(refusal.message)
-        }
-        return false
     }
 
     private var runner: ExecutorProcessRunner? {
