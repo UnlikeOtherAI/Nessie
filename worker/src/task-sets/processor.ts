@@ -218,7 +218,9 @@ export const processTaskSetItem = async (
   let step = 0
   for (let iteration = 0; iteration < 32; iteration += 1) {
     if (signal?.aborted) throw signal.reason
-    const live = await deps.prisma.run.findUniqueOrThrow({ where: { id: attempt.runId }, select: { cancelRequestedAt: true } })
+    const live = await deps.prisma.run.findUniqueOrThrow({
+      where: { id: attempt.runId }, select: { cancelRequestedAt: true },
+    })
     if (live.cancelRequestedAt) throw new TaskSetWait('paused')
     await assertTaskSetActor(deps.prisma, actorContext)
     await assertTaskSetDisclosure(deps.prisma, actorContext, {

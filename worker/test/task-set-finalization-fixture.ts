@@ -11,6 +11,8 @@ export const taskSetFinalizationFixture = async (t: TestContext, count = 1) => {
   const user = await prisma.user.create({ data: { email: `${randomUUID()}@task-set.test`, displayName: 'Owner' } })
   t.after(async () => {
     await prisma.$executeRaw(Prisma.sql`DELETE FROM queue_jobs WHERE payload->'actorContext'->'tenant'->>'organizationId' = ${org.id}`)
+    await prisma.$executeRaw(Prisma.sql`DELETE FROM queue_jobs WHERE payload->>'taskSetId' IN
+      (SELECT id::text FROM task_sets WHERE organization_id = ${org.id}::uuid)`)
     await prisma.taskSet.deleteMany({ where: { organizationId: org.id } })
     await prisma.organization.delete({ where: { id: org.id } })
     await prisma.user.delete({ where: { id: user.id } })

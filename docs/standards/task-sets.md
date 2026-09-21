@@ -70,6 +70,7 @@ Agent-authored instructions and item mutations inherit their consumed-source
 lineage. Reads stamp that lineage before returning data to a model. Native
 tools do not expand paired external MCP credentials' existing scopes; paired
 MCP execution needs a separately defined scope.
+The native tool contracts are in [task-set agent tools](task-set-agent-tools.md).
 
 The processor picker reuses available models and approved local bindings.
 Selection pins the local binding revision/model digest or subscription epoch.
@@ -135,3 +136,6 @@ stateful transport fixture proves production UI contracts, not live Ollama
 quality or an installed Mac's performance. Live model/device validation must
 be reported separately; synthetic large-file checks are not an 80,000-prompt
 live model run.
+
+The advisory review and accepted fixes are recorded in
+[Task Sets implementation review](../testing/task-sets-review.md).
