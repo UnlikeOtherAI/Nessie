@@ -438,13 +438,20 @@ test('ticket comments, attachments and labels are reachable from their roots', (
   }
   const projectKeys = familyNamed('projectKeys') as {
     all: readonly string[]
+    boardLabels: (projectId: string, boardId: string) => readonly unknown[]
     labels: (projectId: string) => readonly unknown[]
   }
 
   assert.deepEqual(taskKeys.comments('t-1'), ['tasks', 'comments', 't-1'])
   assert.deepEqual(taskKeys.attachments('t-1'), ['tasks', 'attachments', 't-1'])
   assert.deepEqual(projectKeys.labels('p-1'), ['projects', 'p-1', 'labels'])
-  for (const qualified of ['taskKeys.comments', 'taskKeys.attachments', 'projectKeys.labels']) {
+  // A label belongs to a board (board-labels-and-attachment-removal.md §8.10):
+  // each board's list nests under the project's label root, so the realtime
+  // `board.updated` handler's one invalidation of `labels` reaches every board.
+  assert.deepEqual(projectKeys.boardLabels('p-1', 'b-1'), ['projects', 'p-1', 'labels', 'b-1'])
+  assert.deepEqual(projectKeys.boardLabels('p-1', 'b-1').slice(0, 3), projectKeys.labels('p-1'))
+  assert.notDeepEqual(projectKeys.boardLabels('p-1', 'b-1'), projectKeys.boardLabels('p-1', 'b-2'))
+  for (const qualified of ['taskKeys.comments', 'taskKeys.attachments', 'projectKeys.labels', 'projectKeys.boardLabels']) {
     assert.ok(!(qualified in ROOT_EXCEPTIONS), `${qualified} must stay nested`)
   }
   // Per-task keys never collide with a board list: those are keyed by a

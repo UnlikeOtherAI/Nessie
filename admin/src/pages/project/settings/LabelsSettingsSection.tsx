@@ -13,13 +13,15 @@ import { formErrorMessage } from '../../../facades/forms/form-errors'
 import {
   nextLabelColor,
   takenLabelFromError,
-  useCreateProjectLabel,
-  useDeleteProjectLabel,
-  useProjectLabels,
-  useUpdateProjectLabel,
+  useBoardLabels,
+  useCreateBoardLabel,
+  useDeleteBoardLabel,
+  useUpdateBoardLabel,
 } from '../../../facades/task-labels/hooks'
 
 type LabelsSettingsSectionProps = {
+  /** The board whose labels these are — a label belongs to one board. */
+  boardId: string
   canAdminister: boolean
   onSaveError: (message: string) => void
   onSaved: () => void
@@ -35,6 +37,7 @@ const ticketCount = (count: number | undefined): string | null =>
   count && count > 0 ? `${count} ${count === 1 ? 'ticket' : 'tickets'}` : null
 
 type LabelRowProps = {
+  boardId: string
   canAdminister: boolean
   label: TaskLabelRecord
   onSaveError: (message: string) => void
@@ -42,9 +45,9 @@ type LabelRowProps = {
   projectId: string
 }
 
-const LabelRow = ({ canAdminister, label, onSaveError, onSaved, projectId }: LabelRowProps) => {
-  const update = useUpdateProjectLabel(projectId)
-  const remove = useDeleteProjectLabel(projectId)
+const LabelRow = ({ boardId, canAdminister, label, onSaveError, onSaved, projectId }: LabelRowProps) => {
+  const update = useUpdateBoardLabel(projectId, boardId)
+  const remove = useDeleteBoardLabel(projectId, boardId)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(label.name)
   const [nameError, setNameError] = useState<string | null>(null)
@@ -178,18 +181,20 @@ const LabelRow = ({ canAdminister, label, onSaveError, onSaved, projectId }: Lab
 }
 
 /**
- * The project's labels (ui.md §5.10): rename, recolour, delete. Tickets pick
- * them up — and create new ones — from the token field in the ticket dialog;
- * this is where the vocabulary is tidied.
+ * A board's labels (ui.md §5.10, board-labels-and-attachment-removal.md §8.9):
+ * rename, recolour, delete. Tickets on the board pick them up — and create new
+ * ones — from the token field in the ticket dialog; this is where the board's
+ * vocabulary is tidied. It is Board → Settings → Labels.
  */
 export const LabelsSettingsSection = ({
+  boardId,
   canAdminister,
   onSaveError,
   onSaved,
   projectId,
 }: LabelsSettingsSectionProps) => {
-  const labelsQuery = useProjectLabels(projectId)
-  const create = useCreateProjectLabel(projectId)
+  const labelsQuery = useBoardLabels(projectId, boardId)
+  const create = useCreateBoardLabel(projectId, boardId)
   const labels = [...(labelsQuery.data ?? [])].sort((a, b) => a.name.localeCompare(b.name))
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
@@ -234,8 +239,7 @@ export const LabelsSettingsSection = ({
           New label
         </button>
       ) : null}
-      description="Labels belong to the project, so a ticket carries the same ones on every board.
-        Renaming or recolouring one changes it on every ticket that has it."
+      description="Labels belong to this board. A ticket moved to another board keeps its labels by name."
       title="Labels"
     >
       {!canAdminister ? (
@@ -295,6 +299,7 @@ export const LabelsSettingsSection = ({
           <ul aria-label="Labels" className="grid divide-y divide-[color:var(--sep)]">
             {labels.map((label) => (
               <LabelRow
+                boardId={boardId}
                 canAdminister={canAdminister}
                 key={label.id}
                 label={label}

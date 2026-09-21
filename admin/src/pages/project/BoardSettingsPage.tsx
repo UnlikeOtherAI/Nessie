@@ -23,8 +23,9 @@ import { useProjects } from '../../facades/projects/hooks'
 import { useTabParam } from '../../navigation/useTabParam'
 import { BoardColumnsEditor, type BindableState } from './settings/BoardColumnsEditor'
 import { BoardWatchersEditor } from './settings/BoardWatchersEditor'
+import { LabelsSettingsSection } from './settings/LabelsSettingsSection'
 
-const TABS = ['general', 'columns', 'watchers'] as const
+const TABS = ['general', 'columns', 'watchers', 'labels'] as const
 
 type SaveState = { message?: string; status: 'error' | 'idle' | 'success' }
 
@@ -231,6 +232,7 @@ export const BoardSettingsPage = () => {
               { label: 'General', value: 'general' },
               { label: 'Columns', value: 'columns' },
               { label: 'Watchers', value: 'watchers' },
+              { label: 'Labels', value: 'labels' },
             ]}
             onChange={selectTab}
             role="tablist"
@@ -290,6 +292,17 @@ export const BoardSettingsPage = () => {
               <BoardWatchersEditor
                 boardId={board.id}
                 boardName={board.name}
+                projectId={projectId}
+              />
+            ) : null}
+            {/* Every member reads the board's labels; the section itself
+                withholds the controls from somebody who may not change them. */}
+            {tab === 'labels' ? (
+              <LabelsSettingsSection
+                boardId={board.id}
+                canAdminister={canAdminister}
+                onSaveError={(message) => setSaveState({ message, status: 'error' })}
+                onSaved={() => setSaveState({ status: 'success' })}
                 projectId={projectId}
               />
             ) : null}

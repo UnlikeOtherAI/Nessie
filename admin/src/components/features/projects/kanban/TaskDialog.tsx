@@ -15,6 +15,8 @@ import { Input, Select, Textarea } from '../../../shared/FormControls'
 import { useAgents } from '../../../../facades/agents/queries'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { useProjects } from '../../../../facades/projects/hooks'
+import { useProjectBoards } from '../../../../facades/boards/hooks'
+import { resolveHomeBoardId } from '../../../../facades/boards/resolve-home-board'
 import {
   type CreateTaskInput,
   type TaskPriority,
@@ -192,6 +194,8 @@ export const TaskDialog = ({
     (patch: Partial<TaskDraft>) => setDraft((current) => ({ ...current, ...patch })),
     [setDraft],
   )
+  // The project's boards answer which board a ticket's labels live on.
+  const boardsQuery = useProjectBoards(fieldsProjectId ?? (formProjectId || undefined))
 
   // Who the provider says is on it, when that is nobody Nessie knows. Hidden as
   // soon as the draft names somebody, because choosing a colleague is the
@@ -247,6 +251,14 @@ export const TaskDialog = ({
   // The server decides; a viewer outside the project reads the ticket only.
   const canEdit = task ? task.viewerCanEdit : true
   const labelsProjectId = fieldsProjectId ?? (formProjectId || null)
+  // A label belongs to a board: the ticket's own, or — for a ticket on no
+  // board, and for a create from the backlog — the project's default board,
+  // which is also where such a create lands. Null until the boards load.
+  const labelsBoardId = labelsProjectId && !boardsQuery.isPlaceholderData
+    // An existing ticket's `boardId` alone decides (null is the default
+    // board, as on the server); only a create takes the board it was opened on.
+    ? resolveHomeBoardId(boardsQuery.data, task ? task.boardId : boardId ?? null)
+    : null
   const readOnlySourceName = task?.externalLink?.writeMode === 'read_only'
     ? PROVIDER_LABEL[task.externalLink.provider]
     : null
@@ -454,6 +466,7 @@ export const TaskDialog = ({
 
           {labelsProjectId ? (
             <TaskLabelsField
+              boardId={labelsBoardId}
               disabled={!canEdit || pending}
               onChange={(next) => patchDraft({ labelIds: next })}
               projectId={labelsProjectId}
