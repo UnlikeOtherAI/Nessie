@@ -27,8 +27,21 @@ type KanbanCardProps = {
 
 const MAX_EXCERPT_CHARS = 180
 
+/**
+ * The description is Markdown now; a card reads it as words. Images drop out
+ * (the dialog shows them), links keep their text, and block and emphasis
+ * markers go — this is presentation of the stored text, nothing is inferred.
+ */
+export const markdownToPlainText = (markdown: string): string =>
+  markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/^\s*(?:```|~~~).*$/gm, '')
+    .replace(/(\*\*|__|\*|_|`)(?=\S)([^\n]*?\S)\1/g, '$2')
+
 const buildCardExcerpt = (value: string | null | undefined): string | null => {
-  const normalized = value?.replace(/\s+/g, ' ').trim()
+  const normalized = value ? markdownToPlainText(value).replace(/\s+/g, ' ').trim() : undefined
   if (!normalized) return null
   if (normalized.length <= MAX_EXCERPT_CHARS) return normalized
   return `${normalized.slice(0, MAX_EXCERPT_CHARS).trimEnd()}...`

@@ -75,3 +75,11 @@ test('Settings → Labels is a section of the project settings strip', () => {
   const field = read('components/features/projects/kanban/TaskLabelsField.tsx')
   assert.match(field, /settings\?section=labels/)
 })
+
+test('a card reads a Markdown description as words, not syntax', async () => {
+  const { markdownToPlainText } = await import('../src/components/features/projects/kanban/KanbanCard')
+  const text = markdownToPlainText(
+    '## Plan\n\n- first step\n- **second** with [a link](https://x.test)\n\n![shot](/api/attachments/0d101a5e-e58b-4dc8-b138-64c9d68b1337)',
+  ).replace(/\s+/g, ' ').trim()
+  assert.equal(text, 'Plan first step second with a link')
+})
