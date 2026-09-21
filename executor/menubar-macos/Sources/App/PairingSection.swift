@@ -155,6 +155,9 @@ struct PairingAttemptView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     PairingCodeBoxes(code: state.code ?? "")
+                    if let fingerprint = state.fingerprint {
+                        FactRow(label: "\(state.machineName ?? "This Mac") · Fingerprint", value: fingerprint)
+                    }
                     Button("Open Nessie", action: openNessie)
                 }
                 if seconds > 0 {

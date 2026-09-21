@@ -86,7 +86,8 @@ for the lease. A daemon Desktop started itself stays Desktop's to stop.
 
 In the menu bar app, open **Settings**, choose the folder this Mac may read,
 and click **Get pairing code**. The app displays eight decimal digits in
-separate boxes with a countdown. In Nessie, open **Agents → Executors → Pair
+separate boxes with a countdown, followed by this Mac's name and fingerprint.
+In Nessie, open **Agents → Executors → Pair
 executor** and enter those digits. Choose the organisation, team, and access
 offered there, and review the machine fingerprint.
 

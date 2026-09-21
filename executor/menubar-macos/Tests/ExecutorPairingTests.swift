@@ -8,12 +8,16 @@ final class ExecutorPairingTests: XCTestCase {
     func testCodePreservesLeadingZeroesAndRequiresExactlyEightASCIIDigits() throws {
         let waiting: [String: Any] = [
             "status": "waiting", "code": "00123456", "expiresAt": "2026-09-21T12:00:00.123Z",
+            "fingerprint": "SHA256:machine-key",
         ]
         let state = try decode(waiting)
         XCTAssertEqual(state.code, "00123456")
         XCTAssertNotNil(state.expiration)
         XCTAssertTrue(state.isPending)
         XCTAssertFalse(state.isPaired)
+        var missingFingerprint = waiting
+        missingFingerprint.removeValue(forKey: "fingerprint")
+        XCTAssertThrowsError(try decode(missingFingerprint))
         for invalid in ["1234567", "123456789", "ABCDEFGH", "１２３４５６７８", "1234 567"] {
             var payload = waiting
             payload["code"] = invalid

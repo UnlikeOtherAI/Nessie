@@ -21,7 +21,8 @@ public struct ExecutorPairing: Decodable, Equatable, Sendable {
         let pairing = try JSONDecoder().decode(ExecutorPairing.self, from: data)
         if pairing.status == .waiting {
             guard let code = pairing.code, code.utf8.count == 8,
-                  code.utf8.allSatisfy({ (48...57).contains($0) }), pairing.expiration != nil else {
+                  code.utf8.allSatisfy({ (48...57).contains($0) }),
+                  let fingerprint = pairing.fingerprint, !fingerprint.isEmpty, pairing.expiration != nil else {
                 throw ExecutorRefusal("Nessie could not provide a pairing code. Try again.")
             }
         }
