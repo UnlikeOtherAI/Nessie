@@ -47,7 +47,7 @@ export type RunInference = {
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
-    options?: { maxOutputTokens?: number },
+    options?: { maxOutputTokens?: number; stream?: boolean },
   ) => Promise<InferenceResult>
   /**
    * Silent, non-streaming inference on the pinned utility model (falling back
@@ -61,7 +61,7 @@ export type RunInference = {
 
 export const createRunInference = (
   deps: ExecutionDependencies,
-  payload: RunExecuteJobPayload,
+  payload: Pick<RunExecuteJobPayload, 'actorContext'>,
   context: RunContext,
   options: {
     budgetModelOverride: BudgetModelOverride | null
@@ -246,7 +246,7 @@ export const createRunInference = (
     },
     runMain: (messages, tools, callOptions) => {
       currentTurnStreamed = false
-      return call(messages, tools, runModel, true, true, callOptions?.maxOutputTokens)
+      return call(messages, tools, runModel, true, callOptions?.stream !== false, callOptions?.maxOutputTokens)
     },
     runUtility: (messages, tools) =>
       call(

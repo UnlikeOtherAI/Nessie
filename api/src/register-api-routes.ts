@@ -102,6 +102,7 @@ import { registerWebPushRoutes } from './routes/web-push.js'
 import { registerVoiceRoutes } from './routes/voice.js'
 import { registerWellKnownOAuthClientRoutes } from './routes/well-known-oauth-client.js'
 import { registerWorkflowRoutes } from './routes/workflows.js'
+import { registerTaskSetRoutes } from './routes/task-sets.js'
 import { registerTeamAvatarRoutes } from './routes/team-avatar.js'
 import { registerTeamInvitationAcceptanceRoute } from './routes/team-invitations.js'
 import { registerTeamMembersRoutes } from './routes/team-members.js'
@@ -140,6 +141,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerWellKnownMcpResourceRoutes(app, deps)
   registerPlanRoutes(app, deps)
   registerWorkflowRoutes(app, deps)
+  registerTaskSetRoutes(app, deps)
   registerExecutionEnvironmentRoutes(app, deps)
   registerDisclosureGrantRoutes(app, deps)
   registerExecutorRoutes(app, deps)
