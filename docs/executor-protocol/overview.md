@@ -58,6 +58,9 @@ and revokes. An organization owner can perform revocation-only break-glass
 without seeing private roster, sessions, or content; private access is never
 silently transferred.
 
+Paginated agent lists, atomic agent access changes, and actionable policy
+counts are specified in [Executor management](management.md).
+
 `ExecutorAgentOperationGrant(executorId, agentId, operationKey)` controls one
 exact executor operation. It is required in addition to the stable logical
 tool grant. New descriptor operations start denied. This prevents an allowance

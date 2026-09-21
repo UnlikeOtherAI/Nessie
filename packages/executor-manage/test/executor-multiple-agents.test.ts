@@ -23,6 +23,7 @@ dbTest('two agents share a private executor and revoking one preserves the other
   })
   const apply = async (change: ExecutorAccessChange) => {
     const prepared = await prepareExecutorAccessChange(prisma, actor, { executorId, change })
+    assert.equal(prepared.requiresFreshVerification, true, 'both adding and removing a private agent preserve verification')
     // This package seam receives the route's completed human verification.
     // HTTP/SSO verification is deliberately outside this multi-agent test.
     return confirmExecutorAccessChange(prisma, actor, {
@@ -62,8 +63,7 @@ dbTest('two agents share a private executor and revoking one preserves the other
     } })
 
     for (const agentId of agents) {
-      await apply({ kind: 'private_assignment', action: 'set', assignment: { principalKind: 'agent', agentId, role: 'use' } })
-      await apply({ kind: 'agent_executor_grant', agentId, state: 'allowed' })
+      await apply({ kind: 'agent_executor_access', agentId, state: 'allowed' })
     }
     assert.equal(await prisma.executorPrivateAssignment.count({
       where: { executorId, principalKind: 'agent' },
@@ -84,16 +84,23 @@ dbTest('two agents share a private executor and revoking one preserves the other
     assert.ok(candidates.every((candidate) => candidate.executorId === executorId))
 
     const secondAgentGrants = await grants(agents[1])
-    await apply({ kind: 'agent_executor_grant', agentId: agents[0], state: 'denied' })
-    assert.ok((await grants(agents[0])).every((grant) => grant.state === 'denied'))
+    await apply({ kind: 'agent_executor_access', agentId: agents[0], state: 'denied' })
+    assert.deepEqual(await grants(agents[0]), [])
+    assert.equal(await prisma.executorPrivateAssignment.count({ where: { executorId, agentId: agents[0] } }), 0)
     assert.deepEqual(await grants(agents[1]), secondAgentGrants)
     const revoked = await availability(agents[0])
     assert.deepEqual(revoked.candidates, [])
-    assert.deepEqual(revoked.explanations, [{ readiness: 'unavailable', reason: 'operation_ungranted' }])
+    assert.deepEqual(revoked.explanations, [{ readiness: 'unavailable', reason: 'scope_mismatch' }])
     const stillAvailable = await availability(agents[1])
     assert.deepEqual(stillAvailable.explanations, [])
     assert.equal(stillAvailable.candidates.length, 1)
     assert.deepEqual(stillAvailable.candidates[0]!.operationKeys, operationKeys)
+
+    // A failed suite grant must roll its new private roster entry back too.
+    await prisma.executorCapabilityRevision.updateMany({ where: { executorId }, data: { reviewStatus: 'disabled' } })
+    await assert.rejects(apply({ kind: 'agent_executor_access', agentId: agents[0], state: 'allowed' }), /no active reviewed policy/)
+    assert.equal(await prisma.executorPrivateAssignment.count({ where: { executorId, agentId: agents[0] } }), 0)
+    assert.deepEqual(await grants(agents[1]), secondAgentGrants)
   } finally {
     try {
       await prisma.executor.deleteMany({ where: { id: executorId, organizationId } })
