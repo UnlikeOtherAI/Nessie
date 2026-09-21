@@ -79,7 +79,8 @@ final class ExecutorStateDiscoveryTests: XCTestCase {
                 preferredDirectory: preferred, legacyRoots: [desktop.path]
             ).get(), preferred)
             try FileManager.default.createSymbolicLink(
-                at: desktop.appendingPathComponent("linked"), withDestinationURL: desktop.appendingPathComponent("unrelated")
+                at: desktop.appendingPathComponent("linked"),
+                withDestinationURL: desktop.appendingPathComponent("unrelated")
             )
             XCTAssertThrowsError(try ExecutorStateDiscovery.resolve(
                 preferredDirectory: preferred, legacyRoots: [desktop.path]

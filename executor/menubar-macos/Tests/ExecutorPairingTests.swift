@@ -8,7 +8,7 @@ final class ExecutorPairingTests: XCTestCase {
     func testCodePreservesLeadingZeroesAndRequiresExactlyEightASCIIDigits() throws {
         let waiting: [String: Any] = [
             "status": "waiting", "code": "00123456", "expiresAt": "2026-09-21T12:00:00.123Z",
-            "fingerprint": "SHA256:machine-key",
+            "fingerprint": "SHA256:machine-key"
         ]
         let state = try decode(waiting)
         XCTAssertEqual(state.code, "00123456")
@@ -29,7 +29,7 @@ final class ExecutorPairingTests: XCTestCase {
         let confirmation: [String: Any] = [
             "status": "confirmation", "organizationName": "UnlikeOtherAI", "teamName": "Platform",
             "fingerprint": "SHA256:machine-key", "claimDigest": "reviewed-claim",
-            "expiresAt": "2026-09-21T12:00:00Z",
+            "expiresAt": "2026-09-21T12:00:00Z"
         ]
         let state = try decode(confirmation)
         XCTAssertEqual(state.connectionName, "UnlikeOtherAI, in the Platform team")
@@ -45,7 +45,7 @@ final class ExecutorPairingTests: XCTestCase {
 
     func testPairedConnectionUsesLiveNamesWithoutRequiringAPendingCode() throws {
         let state = try decode([
-            "status": "paired", "organizationName": "Example", "teamName": NSNull(),
+            "status": "paired", "organizationName": "Example", "teamName": NSNull()
         ])
         XCTAssertTrue(state.isPaired)
         XCTAssertFalse(state.isPending)
@@ -56,7 +56,7 @@ final class ExecutorPairingTests: XCTestCase {
     func testUnknownStateAndUnparseableExpirationAreRefused() {
         XCTAssertThrowsError(try decode(["status": "confirmedAutomatically"]))
         XCTAssertThrowsError(try decode([
-            "status": "waiting", "code": "12345678", "expiresAt": "later",
+            "status": "waiting", "code": "12345678", "expiresAt": "later"
         ]))
     }
 
@@ -66,5 +66,21 @@ final class ExecutorPairingTests: XCTestCase {
         XCTAssertTrue(expired.isAttemptOpen)
         XCTAssertFalse(try decode(["status": "cancelled"]).isAttemptOpen)
         XCTAssertFalse(try decode(["status": "idle"]).isAttemptOpen)
+    }
+
+    func testCleanupRefusalShowsTheRemedyWithoutRenderingRuntimeMessages() {
+        let known = #"{"error":{"code":"workspace_cleanup_required","message":"secret path"}}"#
+        let message = ExecutorPairing.failureMessage(from: Data(known.utf8))
+        XCTAssertTrue(message.contains("Remove every local draft"))
+        XCTAssertTrue(message.contains("stop every sandbox"))
+        XCTAssertFalse(message.contains("secret path"))
+        for unknown in [
+            #"{"error":{"code":"unexpected","message":"secret path"}}"#,
+            "workspace_cleanup_required secret path"
+        ] {
+            XCTAssertEqual(
+                ExecutorPairing.failureMessage(from: Data(unknown.utf8)), ExecutorPairing.genericFailureMessage
+            )
+        }
     }
 }

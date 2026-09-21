@@ -35,7 +35,7 @@ final class ExecutorCLIInvocationTests: XCTestCase {
             operationKeys: ["file.read", "sandbox.stop"],
             workspaceFolders: [
                 ExecutorDescription.Folder(name: "nessie", path: "/private/workspace"),
-                ExecutorDescription.Folder(name: "notes", path: "/private/notes"),
+                ExecutorDescription.Folder(name: "notes", path: "/private/notes")
             ],
             commandAllowlist: ["git", "node"],
             stateDirectory: stateDirectory
@@ -59,7 +59,7 @@ final class ExecutorCLIInvocationTests: XCTestCase {
         let folders = try XCTUnwrap(parsed["workspaceFolders"] as? [[String: String]])
         XCTAssertEqual(folders, [
             ["name": "nessie", "path": "/private/workspace"],
-            ["name": "notes", "path": "/private/notes"],
+            ["name": "notes", "path": "/private/notes"]
         ])
     }
 

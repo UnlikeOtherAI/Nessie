@@ -49,11 +49,11 @@ public enum ExecutorCLI {
                 "pairing-start", "--json",
                 "--api", apiBaseUrl,
                 "--pairing-input-stdin",
-                "--state-dir", stateDirectory,
+                "--state-dir", stateDirectory
             ],
             standardInput: try canonicalJSON([
                 "replace": replace,
-                "workspaceRoot": workspaceRoot,
+                "workspaceRoot": workspaceRoot
             ])
         )
     }
@@ -64,7 +64,7 @@ public enum ExecutorCLI {
 
     public static func pairingConfirm(stateDirectory: String, claimDigest: String) -> ExecutorCLIInvocation {
         ExecutorCLIInvocation(arguments: [
-            "pairing-confirm", "--json", "--state-dir", stateDirectory, "--claim-digest", claimDigest,
+            "pairing-confirm", "--json", "--state-dir", stateDirectory, "--claim-digest", claimDigest
         ])
     }
 
@@ -93,7 +93,7 @@ public enum ExecutorCLI {
             standardInput: try canonicalJSON([
                 "commandAllowlist": commandAllowlist,
                 "operationKeys": operationKeys,
-                "workspaceFolders": workspaceFolders.map { ["name": $0.name, "path": $0.path] },
+                "workspaceFolders": workspaceFolders.map { ["name": $0.name, "path": $0.path] }
             ])
         )
     }

@@ -17,6 +17,22 @@ public struct ExecutorPairing: Decodable, Equatable, Sendable {
     public let apiBaseUrl: String?
     public let claimDigest: String?
 
+    public static let genericFailureMessage =
+        "Nessie could not finish this step. Check your connection and try again."
+
+    /// Interpret only the shared runtime's known structural error code. Raw
+    /// output and unknown messages never become pairing-screen copy.
+    public static func failureMessage(from data: Data) -> String {
+        struct Failure: Decodable {
+            struct Detail: Decodable { let code: String }
+            let error: Detail
+        }
+        let failure = try? JSONDecoder().decode(Failure.self, from: data)
+        guard failure?.error.code == "workspace_cleanup_required" else { return genericFailureMessage }
+        return "Remove every local draft and stop every sandbox before replacing this pairing "
+            + "or changing its workspace folders."
+    }
+
     public static func decode(_ data: Data) throws -> ExecutorPairing {
         let pairing = try JSONDecoder().decode(ExecutorPairing.self, from: data)
         if pairing.status == .waiting {

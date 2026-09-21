@@ -75,15 +75,15 @@ final class ExecutorPairingController: ObservableObject {
         busy = true
         failure = nil
         work.async { [weak self] in
-            let result: Result<ExecutorPairing, Error>
+            let result: Result<ExecutorPairing, ExecutorRefusal>
             do {
                 let completion = try runner.run(invocation)
-                guard completion.succeeded else {
-                    throw ExecutorRefusal("Nessie could not finish this step. Check your connection and try again.")
-                }
-                result = .success(try ExecutorPairing.decode(Data(completion.standardOutput.utf8)))
+                let output = Data(completion.standardOutput.utf8)
+                result = completion.succeeded
+                    ? .success(try ExecutorPairing.decode(output))
+                    : .failure(ExecutorRefusal(ExecutorPairing.failureMessage(from: output)))
             } catch {
-                result = .failure(error)
+                result = .failure(ExecutorRefusal(ExecutorPairing.genericFailureMessage))
             }
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -95,8 +95,8 @@ final class ExecutorPairingController: ObservableObject {
                     self.updatePolling()
                     self.onChanged?()
                     if state.isPaired, startWhenPaired || recoveredConfirmation { self.onPaired?() }
-                case .failure:
-                    self.failure = "Nessie could not finish this step. Check your connection and try again."
+                case let .failure(refusal):
+                    self.failure = refusal.message
                 }
             }
         }

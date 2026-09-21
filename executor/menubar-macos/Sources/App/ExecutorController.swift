@@ -38,7 +38,7 @@ enum ExecutorPaths {
         return ExecutorStateDiscovery.resolve(preferredDirectory: preferred, legacyRoots: [
             support.appendingPathComponent("com.unlikeotherai.nessie.desktop/executors").path,
             support.appendingPathComponent("com.unlikeotherai.nessie.executor.menubar/executors").path,
-            (NSHomeDirectory() as NSString).appendingPathComponent(".local/state/nessie-executor"),
+            (NSHomeDirectory() as NSString).appendingPathComponent(".local/state/nessie-executor")
         ])
     }
 
@@ -79,16 +79,11 @@ final class ExecutorController: ObservableObject {
     private var refreshTimer: Timer?
     private var startAfterRefresh = false
 
-    /// How many fresh revisions `reProposePolicy` will offer before it gives up.
-    /// A state file that fell behind is behind by a handful of revisions, not by
-    /// hundreds; a loop with no ceiling would hammer Nessie instead of saying it
-    /// could not fix this.
-    nonisolated private static let reProposalCeiling = 25
-
     init(isDevelopmentBuild: Bool) {
         self.isDevelopmentBuild = isDevelopmentBuild
         let discovery = ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild)
-        self.stateDirectory = (try? discovery.get()) ?? ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
+        self.stateDirectory = (try? discovery.get())
+            ?? ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
         self.runtime = discovery.flatMap { _ in PackagedRuntime.locate(in: Bundle.main.resourceURL) }
         let runtime = try? self.runtime.get()
         self.pairing = ExecutorPairingController(
@@ -321,57 +316,25 @@ final class ExecutorController: ObservableObject {
             fail("Pair this Mac with Nessie before changing its local policy.")
             return
         }
-        let stateDirectory = self.stateDirectory
-        let operationKeys = description.policy.operations
-        let workspaceFolders = description.reach.folders
-        let commandAllowlist = description.policy.permittedPrograms
+        let proposal = ExecutorPolicyReproposal(
+            runner: runner, description: description, stateDirectory: stateDirectory
+        )
         let wasRunning = model.daemon == .running
         if wasRunning { _ = stopDaemon() }
         busy = true
         work.async { [weak self] in
-            var attempts = 0
-            var lastRefusal = "Nessie Executor could not propose these settings again."
-            while attempts < ExecutorController.reProposalCeiling {
-                attempts += 1
-                guard let invocation = try? ExecutorCLI.configure(
-                    operationKeys: operationKeys,
-                    workspaceFolders: workspaceFolders,
-                    commandAllowlist: commandAllowlist,
-                    stateDirectory: stateDirectory
-                ), let configured = try? runner.run(invocation), configured.succeeded else {
-                    break
-                }
-                guard let connected = try? runner.run(ExecutorCLI.connect(stateDirectory: stateDirectory))
-                else { break }
-                if connected.succeeded {
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        self.busy = false
-                        self.failure = nil
-                        if wasRunning { self.startDaemon() } else { self.refresh() }
-                    }
-                    return
-                }
-                lastRefusal = ExecutorProcessRunner.refusal(
-                    from: connected, fallback: lastRefusal
-                ).message
-                // Only a rollback is worth another revision. Any other refusal
-                // is a different problem and gets its own words.
-                guard ExecutorFailureTranslator.translate(lastRefusal).remedy == .reProposePolicy else {
-                    break
-                }
-            }
-            let attempted = attempts
+            let result = proposal.run()
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.busy = false
-                self.fail(
-                    ExecutorFailureTranslator.translate(lastRefusal).code == "EXECUTOR_DESCRIPTOR_ROLLBACK"
-                        ? "Nessie still considers this Mac's settings older than the ones it has "
-                            + "recorded after \(attempted) attempts. Pair this Mac again from Settings."
-                        : lastRefusal
-                )
-                self.refresh()
+                switch result {
+                case .success:
+                    self.failure = nil
+                    if wasRunning { self.startDaemon() } else { self.refresh() }
+                case let .failure(refusal):
+                    self.fail(refusal.message)
+                    self.refresh()
+                }
             }
         }
     }

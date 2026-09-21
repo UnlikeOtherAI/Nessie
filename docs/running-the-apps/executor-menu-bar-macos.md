@@ -105,6 +105,9 @@ cancel. Replacement stops this app's executor, retires its old server binding
 through the shared runtime, and only then requests another code. The app never
 deletes the local pairing itself or creates an additional executor beside it.
 Names are read live from Nessie and held only in memory.
+If replacement is blocked by unfinished local work, the app asks you to remove
+local drafts and stop sandboxes before trying again. This preserves those
+artifacts until you explicitly clear them.
 
 **Which Nessie** offers the named hosted services **Nessie** and **DeepTest**,
 plus **A Nessie you host yourself**. The latter accepts the secure address of
