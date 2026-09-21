@@ -133,9 +133,14 @@ test('team catalogue filters the live rows after removing organisation-disabled 
     const body = response.json() as { data: Array<{ model: string }>; meta: { total: number } }
     assert.deepEqual(body.data.map((row) => row.model), ['gpt-5-mini'])
     assert.equal(body.meta.total, 1)
+    // A sign-in-provisioned team reaches its organisation only through its
+    // anchor project, so the lookup must accept the legacy edge as well.
     assert.deepEqual(prisma.teamLookups[0], {
       id: 'team-1',
-      projects: { some: { organizationId: 'organization-1' } },
+      OR: [
+        { project: { organizationId: 'organization-1' } },
+        { projects: { some: { organizationId: 'organization-1' } } },
+      ],
     })
   })
 })

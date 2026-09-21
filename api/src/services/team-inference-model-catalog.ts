@@ -68,9 +68,18 @@ const assertTeamInOrganization = async (
 ): Promise<void> => {
   const team = await prisma.team.findFirst({
     select: { id: true },
-    // Project.teamId is the forward ownership edge. Team.projectId is the
-    // legacy inverted relation and must not gain another authorization use.
-    where: { id: teamId, projects: { some: { organizationId } } },
+    // Project.teamId is the forward ownership edge, but a team provisioned at
+    // sign-in hangs from its anchor project through the legacy Team.projectId
+    // alone until the inversion backfill reaches it. Requiring only the forward
+    // edge refused every such team. Accept either edge, exactly as
+    // listTeamsForOrganization does for the team list this page is reached from.
+    where: {
+      id: teamId,
+      OR: [
+        { project: { organizationId } },
+        { projects: { some: { organizationId } } },
+      ],
+    },
   })
   if (!team) {
     throw new TeamModelCatalogError(
