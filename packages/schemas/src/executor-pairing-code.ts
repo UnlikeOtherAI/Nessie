@@ -54,7 +54,9 @@ export const ExecutorPairingClaimResponseSchema = z.object({
   executorId: z.string().uuid(), pairingId: z.string().uuid(), status: z.literal('awaiting_confirmation'),
 }).strict()
 export const ExecutorPairingOptionsSchema = z.object({
-  organization: NamedReference, teams: z.array(NamedReference), scopes: z.array(ExecutorScopeKindSchema),
+  organization: NamedReference,
+  teams: z.array(NamedReference.extend({ projectIds: z.array(z.string().uuid()) }).strict()),
+  scopes: z.array(ExecutorScopeKindSchema),
 }).strict()
 export type ExecutorPairingStartRequest = z.infer<typeof ExecutorPairingStartRequestSchema>
 export type ExecutorPairingStartResponse = z.infer<typeof ExecutorPairingStartResponseSchema>
