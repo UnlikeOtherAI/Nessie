@@ -12,7 +12,7 @@ struct PairingSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let state = pairing.state, state.isPending {
+            if let state = pairing.state, state.isAttemptOpen {
                 PairingAttemptView(
                     state: state,
                     busy: pairing.busy || controller.busy,
@@ -62,8 +62,6 @@ struct PairingSection: View {
                 Text("This Mac is already paired to \(pairing.state?.connectionName ?? "Nessie"). "
                     + "Replacing it closes that connection before creating a new code.")
                     .font(.callout)
-            } else if pairing.state?.status == .expired {
-                Text("The code expired. Get a new one to continue.").font(.callout)
             }
             Picker("Which Nessie", selection: Binding(
                 get: { selectedTarget }, set: { target = $0 }

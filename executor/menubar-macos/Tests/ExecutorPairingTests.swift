@@ -55,4 +55,12 @@ final class ExecutorPairingTests: XCTestCase {
             "status": "waiting", "code": "12345678", "expiresAt": "later",
         ]))
     }
+
+    func testExpiredAttemptKeepsCancellationReachableUntilRuntimeClearsIt() throws {
+        let expired = try decode(["status": "expired"])
+        XCTAssertFalse(expired.isPending)
+        XCTAssertTrue(expired.isAttemptOpen)
+        XCTAssertFalse(try decode(["status": "cancelled"]).isAttemptOpen)
+        XCTAssertFalse(try decode(["status": "idle"]).isAttemptOpen)
+    }
 }

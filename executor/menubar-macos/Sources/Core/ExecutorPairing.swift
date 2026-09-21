@@ -44,6 +44,9 @@ public struct ExecutorPairing: Decodable, Equatable, Sendable {
     }
 
     public var isPending: Bool { status == .waiting || status == .confirmation }
+    /// An expired attempt still owns pending machine material until the runtime
+    /// cancels it. Keep its cancel control reachable before offering a new code.
+    public var isAttemptOpen: Bool { isPending || status == .expired }
     public var isPaired: Bool { status == .paired || status == .alreadyPaired }
 
     public var connectionName: String? {
