@@ -5489,6 +5489,15 @@ button.reaction-pill-active:focus-visible {
   }
 }
 
+/* A ticket file marked removed (board-labels-and-attachment-removal.md §9.6):
+   the same row at reduced emphasis. Opacity on the thumbnail and the name
+   only — never a strike-through, which reads as *deleted* when the file is
+   still there and still downloads. The removal line keeps full contrast. */
+.task-attachment-removed .task-attachment-thumb,
+.task-attachment-removed .task-attachment-name {
+  opacity: 0.5;
+}
+
 /* Under a finger every icon action in the dialog is a 44 px target — the
    page-header rule, applied through the same media query. */
 @media (pointer: coarse) {

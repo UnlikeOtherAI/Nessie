@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useCanModifyProject } from '../../facades/projects/administration'
+import { useProjectBoards } from '../../facades/boards/hooks'
+import { resolveHomeBoardId } from '../../facades/boards/resolve-home-board'
 import { FormError, FormSuccess } from '../../components/shared/FormActions'
 import { PageBody } from '../../components/shared/PageBody'
 import { useConsumedIntents } from '../../navigation/intent'
 import { useTabParam } from '../../navigation/useTabParam'
 import { FieldsSettingsSection } from './settings/FieldsSettingsSection'
-import { LabelsSettingsSection } from './settings/LabelsSettingsSection'
 import { SourcesSettingsSection } from './settings/SourcesSettingsSection'
 import { TabBar } from '../../components/primitives/TabBar'
 import { LegacyProjectBoardSettingsRedirect } from '../../navigation/LegacyProjectBoardSettingsRedirect'
+import { LegacyProjectLabelsRedirect } from '../../navigation/LegacyProjectLabelsRedirect'
 
-const SECTIONS = ['fields', 'labels', 'sources'] as const
+// Labels are not here: a label belongs to a board, so they are managed on
+// Board → Settings → Labels, and `?section=labels` redirects there.
+const SECTIONS = ['fields', 'sources'] as const
 
 /** Declared on the project surface row in `navigation/surfaces.ts`. */
 const PROJECT_SETTINGS_INTENTS = ['connect'] as const
@@ -31,8 +35,21 @@ type ProjectSettingsPageProps = {
 export const ProjectSettingsPage = ({ projectId }: ProjectSettingsPageProps) => {
   const [section, selectSection] = useTabParam('section', SECTIONS, 'fields')
   const [searchParams] = useSearchParams()
+  const legacyLabels = searchParams.get('section') === 'labels'
+  // Read only for the retired Labels address, which needs the default board.
+  const boardsQuery = useProjectBoards(legacyLabels ? projectId : undefined)
   if (searchParams.get('section') === 'boards') {
     return <LegacyProjectBoardSettingsRedirect projectId={projectId} />
+  }
+  if (legacyLabels) {
+    // Wait for this project's own answer; a placeholder is another project's.
+    if (boardsQuery.isPending || boardsQuery.isPlaceholderData) return null
+    return (
+      <LegacyProjectLabelsRedirect
+        defaultBoardId={resolveHomeBoardId(boardsQuery.data, null)}
+        projectId={projectId}
+      />
+    )
   }
 
   return <ProjectSettingsContent projectId={projectId} section={section} selectSection={selectSection} />
@@ -83,7 +100,6 @@ const ProjectSettingsContent = ({
           idPrefix="project-settings"
           items={[
             { label: 'Fields', value: 'fields' },
-            { label: 'Labels', value: 'labels' },
             { label: 'Sources', value: 'sources' },
           ]}
           onChange={selectSection}
@@ -101,13 +117,6 @@ const ProjectSettingsContent = ({
             projectId={projectId}
             selectedSourceId={selectedSourceId}
             startWithConnect={startWithConnect}
-          />
-        ) : section === 'labels' ? (
-          <LabelsSettingsSection
-            canAdminister={canModify}
-            onSaveError={(message) => setSaveState({ status: 'error', message })}
-            onSaved={() => setSaveState({ status: 'success' })}
-            projectId={projectId}
           />
         ) : (
           <FieldsSettingsSection

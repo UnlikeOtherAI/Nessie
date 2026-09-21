@@ -313,3 +313,26 @@ test('a caller can abort an in-flight post without bypassing session auth', asyn
 
   assert.equal(signal, controller.signal)
 })
+
+test('a DELETE carries a JSON body when one is given, and none otherwise', async () => {
+  const requests: Array<{ body: unknown; contentType: string | null; method: string | undefined }> = []
+  await withMockFetch(
+    async (_input, init) => {
+      requests.push({
+        body: init?.body ?? null,
+        contentType: new Headers(init?.headers).get('content-type'),
+        method: init?.method,
+      })
+      return new Response(null, { status: 204 })
+    },
+    async () => {
+      const client = createApiClient({ baseUrl: 'https://api.nessie.works', token: 't' })
+      await client.delete('/api/tasks/t-1/attachments/a-1', { reason: 'Superseded by v2' })
+      await client.delete('/api/tasks/t-1/attachments/a-2')
+    },
+  )
+  assert.deepEqual(requests, [
+    { body: '{"reason":"Superseded by v2"}', contentType: 'application/json', method: 'DELETE' },
+    { body: null, contentType: null, method: 'DELETE' },
+  ])
+})
