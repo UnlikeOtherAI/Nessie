@@ -3,6 +3,7 @@ import {
   confirmExecutorEnrollment,
   bindExecutorCandidate,
   createExecutor,
+  expireExecutorCodePairings,
   ensureExecutorLogicalTools,
   executorGrantedOperationKeys,
   executorOperationKeysHeldElsewhere,
@@ -46,6 +47,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { resolveOptionalPublicOrigin } from '../lib/public-origin.js'
 import { emitAuditEvent } from '../services/audit.js'
+import { executorPairingAudit } from '../services/executor-pairing-audit.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { publishMessageNew } from '../services/message-delivery.js'
 import { setAgentToolPolicyForRegistryEntry } from '../services/agent-tool-policy-registry.js'
@@ -53,6 +55,7 @@ import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorDaemonRoutes } from './executor-daemon-routes.js'
+import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
 import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
 import type { RouteDeps } from './types.js'
 
@@ -62,6 +65,7 @@ import type { RouteDeps } from './types.js'
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  registerExecutorPairingCodeRoutes(app, deps)
   registerExecutorWorkspacePromotionRoutes(app, deps)
   const {
     buildChannelRealtimeScopes,
@@ -76,6 +80,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   app.get('/api/executors', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    await expireExecutorCodePairings(prisma, actorContext.tenant.organizationId, executorPairingAudit)
     const executors = await listVisibleExecutors(prisma, actorContext)
     return createApiResponse(ExecutorRecordSchema.array().parse(executors))
   })
@@ -257,6 +262,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   app.get('/api/executors/:executorId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
+    await expireExecutorCodePairings(prisma, actorContext.tenant.organizationId, executorPairingAudit)
     const { executorId } = request.params as { executorId: string }
     const found = await getExecutorForUser(prisma, actorContext, executorId)
     if (!found) {

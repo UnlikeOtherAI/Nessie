@@ -5130,6 +5130,8 @@ model Executor {
   projectId              String?                         @map("project_id") @db.Uuid
   scopeKind              ExecutorScopeKind               @map("scope_kind")
   pairingOwnerUserId     String                          @map("pairing_owner_user_id") @db.Uuid
+  /// Informational stable team reference; scopeKind remains the authorization boundary.
+  pairingTeamId          String?                         @map("pairing_team_id")
   label                  String
   profiles               ExecutorProfile[]               @default([])
   platformFacts          Json                            @default("{}") @map("platform_facts")
@@ -5157,6 +5159,7 @@ model Executor {
   project                Project?                        @relation(fields: [projectId], references: [id], onDelete: Restrict)
   pairingOwner           User                            @relation("ExecutorPairingOwner", fields: [pairingOwnerUserId], references: [id], onDelete: Restrict)
   enrollments            ExecutorEnrollment[]
+  pairingCodes           ExecutorPairingCode[]
   capabilityRevisions    ExecutorCapabilityRevision[]
   privateAssignments     ExecutorPrivateAssignment[]
   operationGrants        ExecutorAgentOperationGrant[]
@@ -5172,6 +5175,29 @@ model Executor {
   @@index([projectId])
   @@index([pairingOwnerUserId])
   @@map("executors")
+}
+
+model ExecutorPairingCode {
+  id                   String    @id @db.Uuid
+  codeVerifier         String    @unique @map("code_verifier")
+  codeNonce            Int       @default(0) @map("code_nonce")
+  requestDigest        String    @map("request_digest")
+  machinePublicKey     String    @map("machine_public_key")
+  fingerprint          String
+  machineName          String    @map("machine_name")
+  descriptor           Json
+  expiresAt            DateTime  @map("expires_at")
+  claimedAt            DateTime? @map("claimed_at")
+  confirmedAt          DateTime? @map("confirmed_at")
+  rejectedAt           DateTime? @map("rejected_at")
+  claimDigest          String?   @map("claim_digest")
+  executorId           String?   @map("executor_id") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("created_at")
+  executor             Executor? @relation(fields: [executorId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@index([fingerprint])
+  @@map("executor_pairing_codes")
 }
 
 model ExecutorEnrollment {

@@ -82,6 +82,16 @@ are buckets in the table below (`threadMessageIp`, `agentWriteIp`,
   `[rate-limit] FAIL-OPEN` line, increments `storeErrors`, and allows the
   request — availability beats lockout.
 
+Machine pairing is deliberately stricter: its eight-digit code is protected by
+additional **fail-closed** counters in `executor-pairing-codes.ts`, backed by the
+same atomic Postgres store. Minting permits five attempts per source per ten
+minutes; preview and claim share ten attempts per account and per source per
+ten minutes. Machine polling and signed decisions share 120 attempts per source
+per minute. IPv6 sources share their /64 counter. A store failure returns 503
+and does no pairing work; lockout returns 429 with `Retry-After`. The ordinary
+global request limit still applies. Codes, keys and signatures never enter the
+counter identity or audit log.
+
 ## 2) Where the check runs
 
 `registerGlobalAuthHook` (`api/src/lib/global-auth-hook.ts`) builds the API-wide
