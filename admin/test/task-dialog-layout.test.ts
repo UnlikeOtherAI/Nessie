@@ -67,13 +67,22 @@ test('no section in the body draws a bordered box inside the dialog', () => {
   }
 })
 
-test('Settings → Labels is a section of the project settings strip', () => {
-  const page = read('pages/project/ProjectSettingsPage.tsx')
-  assert.match(page, /const SECTIONS = \['fields', 'labels', 'sources'\] as const/)
-  assert.match(page, /\{ label: 'Labels', value: 'labels' \}/)
-  assert.match(page, /<LabelsSettingsSection/)
+test('Labels are a tab of Board → Settings, and the old project address redirects there', () => {
+  // A label belongs to a board (board-labels-and-attachment-removal.md §8.9).
+  const board = read('pages/project/BoardSettingsPage.tsx')
+  assert.match(board, /const TABS = \['general', 'columns', 'watchers', 'labels'\] as const/)
+  assert.match(board, /\{ label: 'Labels', value: 'labels' \}/)
+  assert.match(board, /<LabelsSettingsSection\s+boardId=\{board\.id\}/)
+  const project = read('pages/project/ProjectSettingsPage.tsx')
+  assert.match(project, /const SECTIONS = \['fields', 'sources'\] as const/)
+  assert.doesNotMatch(project, /<LabelsSettingsSection/)
+  assert.match(project, /<LegacyProjectLabelsRedirect/)
   const field = read('components/features/projects/kanban/TaskLabelsField.tsx')
-  assert.match(field, /settings\?section=labels/)
+  assert.match(field, /\/boards\/\$\{boardId\}\/settings\?tab=labels/)
+  assert.doesNotMatch(field, /section=labels/)
+  // The field reads and creates on the board, never on the project.
+  assert.match(field, /useBoardLabels\(projectId, boardId\)/)
+  assert.match(dialog, /boardId=\{labelsBoardId\}/)
 })
 
 test('a card reads a Markdown description as words, not syntax', async () => {

@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   MESSAGE_UPLOAD_MAX_BYTES,
+  type RemoveTaskAttachmentBody,
   type TaskAttachmentList,
   type TaskAttachmentRecord,
 } from '@nessie/schemas'
@@ -60,13 +61,29 @@ export const useLinkTaskAttachments = (taskId: string) => {
   })
 }
 
+export type RemoveTaskAttachmentInput = { attachmentId: string; reason?: string }
+
+/**
+ * Mark a file on the ticket as removed (board-labels-and-attachment-removal.md
+ * §9): the row stays, still downloadable, and answers who removed it and why.
+ * A blank reason sends no body at all (the body is optional, and the server
+ * would store an empty reason as null anyway).
+ */
 export const useRemoveTaskAttachment = (taskId: string) => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
-  return useMutation<null, Error, string>({
-    mutationFn: (attachmentId) =>
-      apiClient.delete<null>(`/api/tasks/${taskId}/attachments/${attachmentId}`),
-    onSuccess: () => invalidateActivity(queryClient),
+  return useMutation<TaskAttachmentRecord, Error, RemoveTaskAttachmentInput>({
+    mutationFn: ({ attachmentId, reason }) => {
+      const trimmed = reason?.trim()
+      const body: RemoveTaskAttachmentBody | undefined = trimmed ? { reason: trimmed } : undefined
+      return apiClient.delete<TaskAttachmentRecord>(
+        `/api/tasks/${taskId}/attachments/${attachmentId}`,
+        body,
+      )
+    },
+    // On success the row now says who removed it; on a 409 somebody else got
+    // there first, and the refetch shows who. Either way the list is re-read.
+    onSettled: () => invalidateActivity(queryClient),
   })
 }
 

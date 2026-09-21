@@ -104,7 +104,7 @@ export type ProjectTaskMapContext = {
   viewerCanEdit?: boolean
 }
 
-/** Count the files linked to each task, for `ProjectTaskMapContext.attachmentCount`. */
+/** Count the live (not removed) files linked to each task, for `ProjectTaskMapContext.attachmentCount`. */
 export const countTaskAttachments = async (
   prisma: { attachment: { groupBy: PrismaClient['attachment']['groupBy'] } },
   taskIds: readonly string[],
@@ -112,7 +112,9 @@ export const countTaskAttachments = async (
   if (taskIds.length === 0) return new Map()
   const rows = await prisma.attachment.groupBy({
     by: ['taskId'],
-    where: { taskId: { in: [...taskIds] } },
+    // The card's paperclip counts live files only; a removed file stays on the
+    // ticket's list, marked, but not here.
+    where: { taskId: { in: [...taskIds] }, removedAt: null },
     _count: { _all: true },
   })
   return new Map(rows.flatMap((row) => (row.taskId ? [[row.taskId, row._count._all] as const] : [])))

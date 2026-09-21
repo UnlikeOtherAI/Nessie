@@ -7,13 +7,14 @@ import {
   faXmark,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { TaskAttachmentRecord } from '@nessie/schemas'
+import { ApiClientError } from '@nessie/client-core'
+import { COMMENT_REMOVAL_REASON, type TaskAttachmentRecord } from '@nessie/schemas'
 import { Notice } from '../../../primitives/Notice'
 import { Pill } from '../../../primitives/Pill'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { Skeleton } from '../../../primitives/Skeleton'
 import { canViewAttachment, useAttachmentViewer } from '../../../shared/AttachmentViewer'
-import { ConfirmDialog } from '../../../shared/ConfirmDialog'
+import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { DropZoneOverlay } from '../../../shared/DropZoneOverlay'
 import { UserAvatar } from '../../../shared/UserAvatar'
 import { iconForFilename } from '../../../shared/file-icons'
@@ -28,6 +29,7 @@ import { useFileDrop } from '../../../../hooks/useFileDrop'
 import { formatBytes, isUploadAborted } from '../../../../lib/upload-xhr'
 import { attachmentThumbnailPath, downloadAuthedPath, useAuthedObjectUrlFromPath } from '../../../../lib/uploads'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
+import { RemoveAttachmentDialog } from './RemoveAttachmentDialog'
 import { ProviderTile, asAttachmentRecord, exactTime, relativeTime } from './TaskCommentRow'
 
 type Uploading = { abort: () => void; error?: string; filename: string; key: string; pct: number }
@@ -74,6 +76,11 @@ const hostOf = (url: string): string => {
  * the description or a comment, or copied in from the source. Uploads and
  * removals are immediate — the file is the ticket's the moment it lands, not
  * when *Save changes* is pressed.
+ *
+ * Removing is a mark, not a delete (board-labels-and-attachment-removal.md
+ * §9): anyone who may edit the ticket removes a file, with a reason if they
+ * have one; the row stays, dimmed, still downloadable, and says who uploaded
+ * it, who removed it, when and why.
  */
 export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; taskId: string }) => {
   const { token } = useAuthSession()
@@ -85,6 +92,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState<Uploading[]>([])
   const [confirming, setConfirming] = useState<TaskAttachmentRecord | null>(null)
+  const [removeError, setRemoveError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const patch = (key: string, next: Partial<Uploading> | null) =>
@@ -111,11 +119,25 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
 
   const drop = useFileDrop(upload, !canEdit)
   const attachments = attachmentsQuery.data ?? []
+  const removedCount = attachments.filter((attachment) => attachment.removed).length
+  const liveCount = attachments.length - removedCount
 
-  const remove = (attachment: TaskAttachmentRecord) => {
+  const askRemove = (attachment: TaskAttachmentRecord) => {
     setError(null)
-    removeAttachment.mutate(attachment.id, {
-      onError: (cause) => setError(cause.message || `Could not remove ${attachment.filename}.`),
+    setRemoveError(null)
+    setConfirming(attachment)
+  }
+
+  const remove = (attachment: TaskAttachmentRecord, reason: string) => {
+    setRemoveError(null)
+    removeAttachment.mutate({ attachmentId: attachment.id, reason }, {
+      onError: (cause) => {
+        // Somebody else got there first: the refetch the mutation settles
+        // with shows who, so there is nothing left to ask.
+        if (cause instanceof ApiClientError && cause.status === 409) setConfirming(null)
+        else setRemoveError(cause.message || `Could not remove ${attachment.filename}.`)
+      },
+      onSuccess: () => setConfirming(null),
     })
   }
 
@@ -124,6 +146,41 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
     if (canViewAttachment(record)) openAttachment(record)
     else void downloadAuthedPath(attachment.downloadPath, attachment.filename, token).catch(() => undefined)
   }
+
+  const remover = (removal: NonNullable<TaskAttachmentRecord['removed']>) => {
+    if (removal.byUserId) {
+      const actor = resolveActor('user', removal.byUserId)
+      return (
+        <span className="inline-flex items-center gap-1.5" title={`${actor.kind} ${actor.id}`}>
+          <UserAvatar displayName={actor.name} size={16} token={token} userId={removal.byUserId} />
+          <span>{actor.name}</span>
+        </span>
+      )
+    }
+    if (removal.byAgentId) {
+      const actor = resolveActor('agent', removal.byAgentId)
+      return (
+        <span className="inline-flex items-center gap-1.5" title={`${actor.kind} ${actor.id}`}>
+          <AgentAvatar agentId={removal.byAgentId} size={16} token={token} />
+          <span>{actor.name}</span>
+        </span>
+      )
+    }
+    return <span>someone</span>
+  }
+
+  const removalLine = (removal: NonNullable<TaskAttachmentRecord['removed']>) => (
+    <span className="flex flex-wrap items-center gap-x-1.5 text-xs text-[color:var(--tx3)]" data-testid="attachment-removal">
+      <span className="inline-flex items-center gap-1.5">Removed by {remover(removal)}</span>
+      <span aria-hidden="true">·</span>
+      <time dateTime={removal.at} title={exactTime(removal.at)}>{relativeTime(removal.at)}</time>
+      {removal.reason === COMMENT_REMOVAL_REASON ? (
+        <span className="italic">{COMMENT_REMOVAL_REASON}</span>
+      ) : removal.reason ? (
+        <span className="min-w-0 break-words text-[color:var(--tx2)]">“{removal.reason}”</span>
+      ) : null}
+    </span>
+  )
 
   const who = (attachment: TaskAttachmentRecord) => {
     if (attachment.external) {
@@ -171,23 +228,34 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
         </li>
       )
     }
+    const removal = attachment.removed
     return (
-      <li className={rowClass} data-attachment-id={attachment.id} key={attachment.id}>
+      <li
+        className={removal ? `${rowClass} task-attachment-removed` : rowClass}
+        data-attachment-id={attachment.id}
+        data-attachment-removed={removal ? 'true' : undefined}
+        key={attachment.id}
+      >
         <button
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
           onClick={() => open(attachment)}
           type="button"
         >
-          <Thumbnail attachment={attachment} token={token} />
+          <span className="task-attachment-thumb flex-none">
+            <Thumbnail attachment={attachment} token={token} />
+          </span>
           <span className="grid min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm text-[color:var(--tx)]" title={attachment.filename}>
+              <span className="task-attachment-name truncate text-sm text-[color:var(--tx)]" title={attachment.filename}>
                 {attachment.filename}
               </span>
               {attachment.inline ? (
                 <Pill size="sm" tone="muted" uppercase={false}>
                   {attachment.commentId ? 'in comment' : 'in description'}
                 </Pill>
+              ) : null}
+              {removal ? (
+                <Pill size="sm" tone="muted" uppercase={false}>Removed</Pill>
               ) : null}
             </span>
             <span className="flex flex-wrap items-center gap-x-2 text-xs text-[color:var(--tx3)]">
@@ -197,6 +265,7 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
                 {relativeTime(attachment.createdAt)}
               </time>
             </span>
+            {removal ? removalLine(removal) : null}
           </span>
         </button>
         <button
@@ -209,11 +278,11 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
         >
           <FontAwesomeIcon icon={faDownload} />
         </button>
-        {canEdit && !external ? (
+        {canEdit && !external && !removal ? (
           <button
             aria-label={`Remove ${attachment.filename}`}
             className={iconButtonClass}
-            onClick={() => (attachment.inline ? setConfirming(attachment) : remove(attachment))}
+            onClick={() => askRemove(attachment)}
             title="Remove"
             type="button"
           >
@@ -233,7 +302,8 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionLabel as="span" size="sm">
-          Attachments{attachments.length > 0 ? ` · ${attachments.length}` : ''}
+          Attachments{liveCount > 0 ? ` · ${liveCount}` : ''}
+          {removedCount > 0 ? ` · ${removedCount} removed` : ''}
         </SectionLabel>
         {canEdit ? (
           <button
@@ -310,19 +380,14 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
       {error ? <Notice role="alert" size="sm" tone="danger">{error}</Notice> : null}
       <DropZoneOverlay active={drop.isDragging} count={drop.draggingCount} label="Drop files to attach" />
       {attachmentViewer}
-      <ConfirmDialog
-        blocking
-        body={`It is shown in ${confirming?.commentId ? 'a comment' : 'the description'}; the image will read “Image removed”.`}
-        confirmLabel="Remove"
-        destructive
+      <RemoveAttachmentDialog
+        attachment={confirming}
+        error={removeError}
         onCancel={() => setConfirming(null)}
-        onConfirm={() => {
-          const target = confirming
-          setConfirming(null)
-          if (target) remove(target)
+        onConfirm={(reason) => {
+          if (confirming) remove(confirming, reason)
         }}
-        open={confirming !== null}
-        title={confirming ? `Remove “${confirming.filename}”?` : 'Remove this file?'}
+        pending={removeAttachment.isPending}
       />
     </section>
   )

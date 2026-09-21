@@ -12,12 +12,15 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  * attachments-labels/delivery.md §6.5).
  *
  * A pure fixture over a stubbed ApiClient: the real TaskDialog, KanbanCard and
- * Labels settings section, no database. What it pins is geometry and
+ * Board → Settings → Labels, no database. What it pins is geometry and
  * behaviour a unit test cannot see — Documents sitting directly under the
  * description in the left column rather than under the whole grid, the Labels
  * field staying a compact growing field instead of a wall of every label, the
- * token field's keys, the three read-only states and the phone's stacked
- * order — and every state is screenshotted under e2e/screenshots/task-dialog/.
+ * token field's keys, the three read-only states, the phone's stacked order,
+ * a label list that is the ticket's board's and no other's, and a file removed
+ * with a reason that stays on the ticket (board-labels-and-attachment-
+ * removal.md §10.5) — and every state is screenshotted under
+ * e2e/screenshots/task-dialog/.
  */
 
 const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/task-dialog')
@@ -70,10 +73,33 @@ const png = (() => {
 
 const uploads = { hold: false, count: 0 }
 
+const PROJECT = '10000000-0000-4000-8000-000000000002'
+const BOARD = '10000000-0000-4000-8000-000000000003'
+const PERSON = '20000000-0000-4000-8000-000000000001'
+const IMAGE_ID = '40000000-0000-4000-8000-000000000001'
+const REMOVED_ID = '40000000-0000-4000-8000-000000000005'
+
+// The settings scenario stores a token so the session restores as an owner;
+// every other scenario has none and stays signed out, as it always has.
+const me = {
+  auth: { autoRedirectToSso: false, providerId: 'local', providerType: 'local' },
+  context: { bootstrapMode: false, channelId: null, organizationId: '10000000-0000-4000-8000-000000000001', projectId: null, teamId: null },
+  session: { issuedAt: '2026-09-20T09:00:00.000Z', sessionId: '90000000-0000-4000-8000-000000000001' },
+  user: { displayName: 'Ondřej Rafaj', email: 'ondrej@example.test', id: PERSON, roleIds: ['owner'] },
+}
+
 /** Bytes leave through fetch/XHR, not the ApiClient: answer them here. */
 const routeBytes = async (context) => {
   await context.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
+    if (url.pathname === '/api/auth/me') {
+      if (!route.request().headers().authorization) {
+        await route.fulfill({ body: '{"error":{"message":"signed out"}}', contentType: 'application/json', status: 401 })
+      } else {
+        await route.fulfill({ body: JSON.stringify({ data: me }), contentType: 'application/json', status: 200 })
+      }
+      return
+    }
     if (url.pathname.startsWith('/api/attachments/')) {
       await route.fulfill({ body: png, contentType: 'image/png', status: 200 })
       return
@@ -120,6 +146,29 @@ const settled = async (page) => {
 
 const calls = (page) => page.evaluate(() => window.taskDialogCalls)
 
+/**
+ * A removed file (§9.6): dimmed, the `Removed` pill, the second line naming
+ * who removed it, when and why — and Download still offered, Remove not.
+ */
+const assertRemovedRow = async (attachments, { byName, id = REMOVED_ID, reason }) => {
+  const row = attachments.locator(`li[data-attachment-id="${id}"]`)
+  assert.equal(await row.getAttribute('data-attachment-removed'), 'true')
+  await row.getByText('Removed', { exact: true }).waitFor()
+  const line = row.getByTestId('attachment-removal')
+  await line.getByText(byName, { exact: true }).waitFor()
+  const text = (await line.innerText()).replace(/\s+/g, ' ').trim()
+  assert.match(text, /^Removed by .+?\s*·\s*(just now|\d+ (min|h|d) ago)/u, text)
+  await line.getByText(reason, { exact: true }).waitFor()
+  const filename = await row.locator('.task-attachment-name').innerText()
+  assert.equal(await row.getByRole('button', { name: `Download ${filename}` }).count(), 1, 'a removed file still downloads')
+  assert.equal(await row.getByRole('button', { name: `Remove ${filename}` }).count(), 0, 'and is not removed twice')
+  const opacity = await row.locator('.task-attachment-name').evaluate((node) => Number(getComputedStyle(node).opacity))
+  assert.ok(opacity < 0.75, `the removed name is dimmed (${opacity})`)
+  const decoration = await row.locator('.task-attachment-name').evaluate((node) => getComputedStyle(node).textDecorationLine)
+  assert.equal(decoration, 'none', 'never struck through')
+  return row
+}
+
 const assertDetails = async (page) => {
   const dialog = page.getByRole('dialog', { name: 'Task details' })
   await dialog.waitFor()
@@ -150,11 +199,14 @@ const assertDetails = async (page) => {
   assert.equal(await page.getByRole('listbox', { name: 'Labels' }).count(), 0, 'no label list until the field is used')
 
   const attachments = dialog.getByTestId('task-attachments')
-  assert.equal(await attachments.locator('li[data-attachment-id]').count(), 3)
+  assert.equal(await attachments.locator('li[data-attachment-id]').count(), 4)
   await attachments.getByText('in description').waitFor()
   await attachments.getByText('Checkout redesign — Figma').waitFor()
   await attachments.getByText("Couldn't copy from Linear").waitFor()
   assert.equal(await attachments.getByRole('link', { name: 'Open in Linear ↗' }).count(), 1)
+  await assertRemovedRow(attachments, { byName: 'Jana Nováková', reason: '“Superseded by v2”' })
+  // The header counts live rows, then the removed ones.
+  await attachments.getByText('Attachments · 3 · 1 removed').waitFor()
 
   const comments = dialog.getByTestId('task-comments')
   assert.equal(await comments.locator('li[data-comment-id]').count(), 3)
@@ -202,7 +254,7 @@ try {
     await dialog.getByTestId('task-attachments-input').setInputFiles({
       buffer: Buffer.from('profiling notes'), mimeType: 'text/plain', name: 'notes.txt',
     })
-    await dialog.getByTestId('task-attachments').locator('li[data-attachment-id]').nth(3).waitFor()
+    await dialog.getByTestId('task-attachments').locator('li[data-attachment-id]').nth(4).waitFor()
     const linked = (await calls(page)).find((call) => call.method === 'POST' && call.path.endsWith('/attachments'))
     assert.equal(linked?.body?.attachmentIds?.length, 1, 'the upload was linked to the ticket at once')
     await page.close()
@@ -247,12 +299,17 @@ try {
     const list = page.getByRole('listbox', { name: 'Labels' })
     await list.waitFor()
     const options = list.getByRole('option')
-    assert.equal(await options.count(), 7, 'every label of the project is listed')
+    assert.equal(await options.count(), 7, "every label of the ticket's board is listed")
+    assert.equal(await list.getByText('Research', { exact: true }).count(), 0, "another board's labels are not")
+    assert.ok(
+      (await calls(page)).some((call) => call.method === 'GET' && call.path === `/api/projects/${PROJECT}/boards/${BOARD}/labels`),
+      "the field reads the board's labels",
+    )
     for (let index = 0; index < 4; index += 1) {
       assert.equal(await options.nth(index).getAttribute('aria-selected'), 'true', 'chosen labels come first')
     }
     const manage = page.getByRole('link', { name: 'Manage labels…' })
-    assert.equal(await manage.getAttribute('href'), '/projects/10000000-0000-4000-8000-000000000002/settings?section=labels')
+    assert.equal(await manage.getAttribute('href'), `/projects/${PROJECT}/boards/${BOARD}/settings?tab=labels`)
     await settled(page)
     await page.screenshot({ path: shot('03-labels-open.png') })
 
@@ -265,6 +322,7 @@ try {
     await page.keyboard.press('Enter')
     await dialog.locator('.admin-token-input').first().getByText('perf', { exact: true }).waitFor()
     const created = (await calls(page)).find((call) => call.method === 'POST' && call.path.endsWith('/labels'))
+    assert.equal(created?.path, `/api/projects/${PROJECT}/boards/${BOARD}/labels`, "created on the ticket's board")
     assert.equal(created?.body?.name, 'perf')
     assert.match(String(created?.body?.color), /^#[0-9a-f]{6}$/)
     assert.equal(await input.inputValue(), '', 'the text cleared')
@@ -326,6 +384,7 @@ try {
     assert.equal(await dialog.getByRole('textbox', { name: 'Comment' }).count(), 0, 'no composer')
     assert.equal(await dialog.getByTestId('task-attachments').getByRole('button', { name: 'Upload file' }).count(), 0)
     assert.equal(await dialog.getByRole('button', { name: /^Remove / }).count(), 0, 'nothing removable')
+    await assertRemovedRow(dialog.getByTestId('task-attachments'), { byName: 'Jana Nováková', reason: '“Superseded by v2”' })
     assert.equal(await dialog.getByRole('button', { name: 'New note' }).count(), 0, 'no document creation')
     assert.equal(await dialog.getByRole('button', { name: 'Comment actions' }).count(), 0)
     assert.ok(await dialog.getByRole('combobox', { name: 'Labels' }).isDisabled(), 'labels are read-only')
@@ -347,10 +406,59 @@ try {
     await page.close()
   }
 
-  // 10 — Settings → Labels: rename in progress, the colour popover open.
+  // 12, 13 — removing a file asks why, and the row stays, saying so.
+  {
+    const page = await open(desktop, 'scenario=details')
+    const dialog = await assertDetails(page)
+    const attachments = dialog.getByTestId('task-attachments')
+    await attachments.getByRole('button', { name: 'Remove profile.png' }).click()
+    const confirm = page.getByRole('dialog', { name: 'Remove “profile.png”?' })
+    await confirm.getByText('It stays on the ticket, marked as removed by you, and can still be downloaded.').waitFor()
+    await confirm.getByText('It is shown in the description and keeps rendering there.').waitFor()
+    await confirm.getByText('Optional — why it is being removed').waitFor()
+    const reasonBox = confirm.getByRole('textbox', { name: 'Reason' })
+    assert.ok(await reasonBox.evaluate((node) => node === document.activeElement), 'the reason has focus')
+    const reasonText = 'Replaced by a sharper profile capture'
+    await reasonBox.pressSequentially(reasonText)
+    assert.equal(await confirm.getByTestId('remove-attachment-reason-count').innerText(), `${reasonText.length}/500`)
+    assert.equal(await reasonBox.getAttribute('maxlength'), '500')
+    // Enter is a newline, not a submit: the dialog stays open.
+    await page.keyboard.press('Enter')
+    assert.equal(await reasonBox.inputValue(), `${reasonText}\n`)
+    await page.keyboard.press('Backspace')
+    assert.equal((await calls(page)).filter((call) => call.method === 'DELETE').length, 0)
+    await settled(page)
+    await page.screenshot({ path: shot('12-remove-confirm.png') })
+
+    // ⌘/Ctrl+Enter removes.
+    await page.keyboard.press('Control+Enter')
+    await confirm.waitFor({ state: 'hidden' })
+    const removed = (await calls(page)).find((call) => call.method === 'DELETE')
+    assert.equal(removed?.path, `/api/tasks/10000000-0000-4000-8000-000000000006/attachments/${IMAGE_ID}`)
+    assert.deepEqual(removed?.body, { reason: reasonText }, 'the DELETE carries the reason')
+    await assertRemovedRow(attachments, { byName: 'Ondřej Rafaj', id: IMAGE_ID, reason: `“${reasonText}”` })
+    await attachments.getByText('Attachments · 2 · 2 removed').waitFor()
+    // The bytes are still there, so the description keeps rendering the image.
+    await dialog.getByTestId('task-description-read').locator('img[src^="blob:"]').waitFor()
+    await attachments.scrollIntoViewIfNeeded()
+    // No row under the pointer: a hover wash would read as a second state.
+    await page.mouse.move(0, 0)
+    await settled(page)
+    await attachments.screenshot({ path: shot('13-attachment-removed.png') })
+    await page.close()
+  }
+
+  // 10 — Board → Settings → Labels: rename in progress, the colour popover open.
   {
     const page = await open(desktop, 'scenario=settings')
+    const tabs = page.getByRole('tablist', { name: 'Board settings' })
+    await tabs.waitFor()
+    assert.deepEqual(await tabs.getByRole('tab').allInnerTexts(), ['General', 'Columns', 'Watchers', 'Labels'])
+    assert.equal(await tabs.getByRole('tab', { name: 'Labels' }).getAttribute('aria-selected'), 'true')
+    await page.getByText('Labels belong to this board. A ticket moved to another board keeps its labels by name.').waitFor()
     await page.getByText('12 tickets').waitFor()
+    // This board's labels only: the other board's are not in its settings.
+    assert.equal(await page.getByText('Research', { exact: true }).count(), 0)
     await page.getByRole('button', { name: 'Delete Bug' }).click()
     await page.getByRole('dialog', { name: 'Delete “Bug”?' }).getByText('It comes off 12 tickets.').waitFor()
     await page.getByRole('button', { name: 'Cancel' }).click()
@@ -365,6 +473,7 @@ try {
     await page.waitForFunction(() => window.taskDialogCalls.some((call) => call.method === 'PATCH'))
     const renamed = (await calls(page)).find((call) => call.method === 'PATCH')
     assert.deepEqual(renamed.body, { name: 'Perf' })
+    assert.equal(renamed.path, `/api/projects/${PROJECT}/boards/${BOARD}/labels/50000000-0000-4000-8000-000000000003`)
     await page.getByRole('button', { name: 'Rename Design' }).click()
     await page.getByRole('textbox', { name: 'Name of Design' }).fill('Design syst')
     await page.getByRole('button', { name: /Colour of Backend/ }).click()
@@ -375,6 +484,7 @@ try {
   }
 
   // 11 — a card: three label pills, +1, the comment and paperclip counts.
+  // Three stored files, one removed: the paperclip counts the two live ones.
   {
     const page = await open(desktop, 'scenario=card')
     const card = page.locator('[data-kanban-card]')
@@ -382,7 +492,8 @@ try {
     assert.equal(await card.locator('.admin-label-pill').count(), 3)
     await card.getByText('+1', { exact: true }).waitFor()
     await card.locator('[title="4 comments"]').waitFor()
-    await card.locator('[title="3 files"]').waitFor()
+    await card.locator('[title="2 files"]').waitFor()
+    assert.equal(await card.locator('[title="3 files"]').count(), 0, 'the removed file is not counted')
     await settled(page)
     await card.screenshot({ path: shot('11-card.png') })
     await page.close()

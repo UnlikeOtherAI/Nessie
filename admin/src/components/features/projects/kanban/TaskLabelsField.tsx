@@ -8,13 +8,26 @@ import { TokenInput } from '../../../shared/TokenInput'
 import { formErrorMessage } from '../../../../facades/forms/form-errors'
 import {
   nextLabelColor,
-  useCreateProjectLabel,
-  useProjectLabels,
+  useBoardLabels,
+  useCreateBoardLabel,
 } from '../../../../facades/task-labels/hooks'
 
 type TaskLabelsFieldProps = {
+  /**
+   * The ticket's home board — the board whose labels the field lists and
+   * creates on (a label belongs to a board). Null until the project's boards
+   * have loaded; the field waits, disabled, rather than guess.
+   */
+  boardId: string | null
   disabled?: boolean
   onChange: (labelIds: string[]) => void
+  /**
+   * Called as *Manage labels…* is followed. The board's settings are pushed
+   * over the board, which stays mounted beneath them, and the ticket dialog is
+   * portalled out of that retained layer — so the host closes it here or it
+   * stays open over the page it just opened.
+   */
+  onLeave?: () => void
   projectId: string
   /**
    * The provider's name when the ticket mirrors a source read-only: its own
@@ -29,22 +42,25 @@ type TaskLabelsFieldProps = {
 /**
  * The ticket's labels as pills inside one growing field (ui.md §5.7).
  *
- * Every label of the project is one focus away in the list, and a name that
- * does not exist yet is one Enter away from existing: the *Create label "x"*
- * row adopts an existing label on a name clash instead of failing, because the
- * person meant "this label" either way. Management — rename, recolour, delete —
- * lives in Settings → Labels, which the list's footer links to.
+ * Every label of the ticket's board is one focus away in the list, and a name
+ * that does not exist yet is one Enter away from existing on that board: the
+ * *Create label "x"* row adopts an existing label on a name clash instead of
+ * failing, because the person meant "this label" either way. Management —
+ * rename, recolour, delete — lives in Board → Settings → Labels, which the
+ * list's footer links to.
  */
 export const TaskLabelsField = ({
+  boardId,
   disabled = false,
   onChange,
+  onLeave,
   projectId,
   readOnlySourceName,
   taskLabels = [],
   value,
 }: TaskLabelsFieldProps) => {
-  const labelsQuery = useProjectLabels(projectId)
-  const createLabel = useCreateProjectLabel(projectId)
+  const labelsQuery = useBoardLabels(projectId, boardId)
+  const createLabel = useCreateBoardLabel(projectId, boardId ?? '')
   const labels = useMemo(() => labelsQuery.data ?? [], [labelsQuery.data])
 
   const byId = useMemo(() => {
@@ -68,7 +84,8 @@ export const TaskLabelsField = ({
     title: locked(label) ? lockedTitle : undefined,
   }))
 
-  const loading = labelsQuery.isLoading
+  // No board yet reads as loading: the list it would show is not known.
+  const loading = !boardId || labelsQuery.isLoading
   const inputId = `task-labels-${projectId}`
 
   return (
@@ -78,7 +95,9 @@ export const TaskLabelsField = ({
         ariaLabel="Labels"
         createLabel={(text) => `Create label “${text}”`}
         disabled={disabled || loading}
-        footer={<Link to={`/projects/${projectId}/settings?section=labels`}>Manage labels…</Link>}
+        footer={boardId
+          ? <Link onClick={onLeave} to={`/projects/${projectId}/boards/${boardId}/settings?tab=labels`}>Manage labels…</Link>
+          : undefined}
         id={inputId}
         onAdd={(id) => onChange(value.includes(id) ? value : [...value, id])}
         onCreate={async (text) => {

@@ -22,7 +22,13 @@ export const projectKeys = {
   fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
   // Nested for the same reason as `fields`: a label rename or recolour alters
   // every card that carries it, and deleting the project takes them with it.
+  // The family root of every board's labels: the project-wide read lives here
+  // and each board's list nests under it, so the realtime `board.updated`
+  // handler's one invalidation of this key reaches every board.
   labels: (projectId: string) => ['projects', projectId, 'labels'] as const,
+  // One board's labels (a label belongs to a board). Nested under `labels`.
+  boardLabels: (projectId: string, boardId: string) =>
+    ['projects', projectId, 'labels', boardId] as const,
   // Nested for the same reason: attaching or removing a source changes what
   // the project's boards show.
   sources: (projectId: string, boardId?: string) =>

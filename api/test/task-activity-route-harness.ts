@@ -14,7 +14,9 @@ import type { RouteDeps } from '../src/routes/types.js'
 /**
  * The route suites for ticket labels, comments and attachments: a real
  * database, the real shared project predicates, and a stand-in realtime hub
- * and file service that record what they were asked to do. `as` switches the
+ * and file service that record what they were asked to do (removing a ticket
+ * file must never reach the file service). The project has its default board
+ * and a second board "Dev"; the ticket is on the default. `as` switches the
  * signed-in person between requests.
  */
 export type RouteHarness = {
@@ -25,6 +27,8 @@ export type RouteHarness = {
   ids: {
     organizationId: string
     projectId: string
+    defaultBoardId: string
+    devBoardId: string
     taskId: string
     memberId: string
     secondMemberId: string
@@ -50,6 +54,14 @@ export const createRouteHarness = async (
   await prisma.projectMember.createMany({
     data: [member, second].map((user) => ({ projectId: project.id, userId: user.id })),
   })
+  const [defaultBoard, devBoard] = await Promise.all([
+    prisma.board.create({
+      data: { projectId: project.id, organizationId: organization.id, name: 'Board', isDefault: true, position: 0 },
+    }),
+    prisma.board.create({
+      data: { projectId: project.id, organizationId: organization.id, name: 'Dev', isDefault: false, position: 1 },
+    }),
+  ])
   const task = await prisma.task.create({
     data: { organizationId: organization.id, projectId: project.id, title: 'Ticket', status: 'inbox' },
   })
@@ -106,6 +118,8 @@ export const createRouteHarness = async (
     ids: {
       organizationId: organization.id,
       projectId: project.id,
+      defaultBoardId: defaultBoard.id,
+      devBoardId: devBoard.id,
       taskId: task.id,
       memberId: member.id,
       secondMemberId: second.id,

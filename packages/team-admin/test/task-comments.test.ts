@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
+import { COMMENT_REMOVAL_REASON } from '@nessie/schemas'
 
 import {
   createTaskComment,
@@ -10,7 +11,7 @@ import {
   updateTaskComment,
   type TaskActor,
 } from '../src/index.js'
-import { createUpload, eventsOf, recordingFileService, seedTaskActivity } from './task-activity-db-fixture.js'
+import { createUpload, eventsOf, seedTaskActivity } from './task-activity-db-fixture.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -37,9 +38,8 @@ runDatabaseTest('only a person author edits or deletes their comment', async (t)
     await updateTaskComment(prisma, s.secondMember, { taskId: s.nativeTaskId, commentId, body: 'Hijack' }),
     { error: 'COMMENT_NOT_AUTHOR' },
   )
-  const files = recordingFileService(prisma)
   assert.deepEqual(
-    await deleteTaskComment(prisma, s.secondMember, { taskId: s.nativeTaskId, commentId }, files),
+    await deleteTaskComment(prisma, s.secondMember, { taskId: s.nativeTaskId, commentId }),
     { error: 'COMMENT_NOT_AUTHOR' },
   )
   // Somebody outside the project cannot even find the task.
@@ -54,7 +54,7 @@ runDatabaseTest('only a person author edits or deletes their comment', async (t)
   assert.ok(edited.comment.editedAt)
 
   assert.deepEqual(
-    await deleteTaskComment(prisma, s.member, { taskId: s.nativeTaskId, commentId }, files),
+    await deleteTaskComment(prisma, s.member, { taskId: s.nativeTaskId, commentId }),
     { ok: true, projectId: s.projectId },
   )
   const row = await prisma.taskComment.findUniqueOrThrow({ where: { id: commentId } })
@@ -102,7 +102,7 @@ runDatabaseTest('an agent author owns its comment; the person it acts for does n
   assert.equal((await eventsOf(prisma, s.nativeTaskId, 'comment_added'))[1]?.['by'], `agent:${s.agentId}`)
 })
 
-runDatabaseTest('a comment links only its author\'s uploads, and deleting it deletes them through the file service', async (t) => {
+runDatabaseTest('a comment links only its author\'s uploads, and deleting it marks them removed', async (t) => {
   const prisma = new PrismaClient()
   const s = await seedTaskActivity(prisma)
   t.after(async () => {
@@ -110,24 +110,43 @@ runDatabaseTest('a comment links only its author\'s uploads, and deleting it del
     await prisma.$disconnect()
   })
   const mine = await createUpload(prisma, s, s.memberId)
+  const already = await createUpload(prisma, s, s.memberId)
   const theirs = await createUpload(prisma, s, s.secondMemberId)
   const created = await createTaskComment(prisma, s.member, {
     taskId: s.nativeTaskId,
     body: `See ![](/api/attachments/${mine.id})`,
-    attachmentIds: [mine.id, theirs.id],
+    attachmentIds: [mine.id, already.id, theirs.id],
   })
   assert.ok(!('error' in created))
-  assert.deepEqual(created.comment.attachments.map((file) => [file.id, file.inline]), [[mine.id, true]])
+  assert.deepEqual(
+    created.comment.attachments.map((file) => [file.id, file.inline]).sort(),
+    [[mine.id, true], [already.id, false]].sort(),
+  )
   assert.equal((await prisma.attachment.findUniqueOrThrow({ where: { id: theirs.id } })).taskId, null)
-  assert.deepEqual(await eventsOf(prisma, s.nativeTaskId, 'attachment_added'), [
-    { by: s.memberId, attachmentIds: [mine.id], commentId: created.comment.id },
-  ])
+  assert.deepEqual(
+    (await eventsOf(prisma, s.nativeTaskId, 'attachment_added')).map((event) => event['commentId']),
+    [created.comment.id],
+  )
+  // Somebody removed one of its files first; that removal stands.
+  await prisma.attachment.update({
+    where: { id: already.id },
+    data: { removedAt: new Date(), removedByUserId: s.secondMemberId, removedReason: 'Wrong file' },
+  })
 
-  const files = recordingFileService(prisma)
-  await deleteTaskComment(prisma, s.member, { taskId: s.nativeTaskId, commentId: created.comment.id }, files)
-  assert.deepEqual(files.deleted, [mine.id])
-  assert.equal(await prisma.attachment.count({ where: { id: mine.id } }), 0)
+  // No file service is involved: the signature has none to call, and the rows stay.
+  await deleteTaskComment(prisma, s.member, { taskId: s.nativeTaskId, commentId: created.comment.id })
+  const marked = await prisma.attachment.findUniqueOrThrow({ where: { id: mine.id } })
+  assert.ok(marked.removedAt)
+  assert.equal(marked.removedByUserId, s.memberId)
+  assert.equal(marked.removedReason, COMMENT_REMOVAL_REASON)
+  assert.equal(marked.taskId, s.nativeTaskId, 'still on the ticket, still downloadable')
+  const untouched = await prisma.attachment.findUniqueOrThrow({ where: { id: already.id } })
+  assert.equal(untouched.removedByUserId, s.secondMemberId)
+  assert.equal(untouched.removedReason, 'Wrong file')
   assert.equal(await prisma.attachment.count({ where: { id: theirs.id } }), 1)
+  assert.deepEqual(await eventsOf(prisma, s.nativeTaskId, 'attachment_removed'), [
+    { by: s.memberId, attachmentId: mine.id, reason: COMMENT_REMOVAL_REASON, commentId: created.comment.id },
+  ])
 })
 
 runDatabaseTest('on a mirrored ticket a comment follows the source\'s write mode', async (t) => {
@@ -174,7 +193,7 @@ runDatabaseTest('on a mirrored ticket a comment follows the source\'s write mode
   assert.equal(calls.length, 1)
   const refused = await deleteTaskComment(prisma, s.member, {
     taskId: s.mirroredTaskId, commentId: created.comment.id,
-  }, recordingFileService(prisma))
+  })
   assert.ok('error' in refused && refused.error === 'SOURCE_READ_ONLY')
 })
 

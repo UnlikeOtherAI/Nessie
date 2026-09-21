@@ -86,8 +86,8 @@ export const processBoardSourceWebhook = async (
     const container = source.container as Record<string, unknown>
 
     // A label changed upstream: no issue did, so nothing is re-read — the
-    // container is re-described and every source-owned label takes the
-    // provider's name and colour.
+    // container is re-described and every source-owned label, on every board
+    // that has one, takes the provider's name and colour.
     if (delivery.resource === 'label') {
       if (await refreshSourceLabels(deps, adapter, context, source, container)) {
         await deps.publishBoardUpdated({

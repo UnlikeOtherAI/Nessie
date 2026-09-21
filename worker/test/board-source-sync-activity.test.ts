@@ -32,7 +32,15 @@ const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 const ENCRYPTION_SECRET = 'board-source-activity-test-secret'
 const SHOT = 'https://uploads.linear.app/ws/1/screen.png'
 
-type Seed = { organizationId: string; projectId: string; sourceId: string; userId: string; teamId: string }
+type Seed = {
+  organizationId: string
+  projectId: string
+  sourceId: string
+  userId: string
+  teamId: string
+  /** The project's default board — where a synced ticket and its labels land. */
+  defaultBoardId: string
+}
 
 const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const suffix = randomUUID()
@@ -44,6 +52,9 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   await prisma.organizationMember.create({ data: { organizationId: organization.id, userId: user.id } })
   const project = await prisma.project.create({
     data: { name: `project-${suffix}`, organizationId: organization.id },
+  })
+  const board = await prisma.board.create({
+    data: { projectId: project.id, organizationId: organization.id, name: 'Dev', isDefault: true, position: 0 },
   })
   const connection = await prisma.boardSourceConnection.create({
     data: {
@@ -81,7 +92,14 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
       nextRunAt: new Date(),
     },
   })
-  return { organizationId: organization.id, projectId: project.id, sourceId: source.id, userId: user.id, teamId }
+  return {
+    organizationId: organization.id,
+    projectId: project.id,
+    sourceId: source.id,
+    userId: user.id,
+    teamId,
+    defaultBoardId: board.id,
+  }
 }
 
 const cleanup = async (prisma: PrismaClient, seeded: Seed): Promise<void> => {
@@ -246,6 +264,10 @@ runDatabaseTest('a sync walks both lanes, stores the image and tells the ticket 
       orderBy: { name: 'asc' },
     })
     assert.deepEqual(labels.map((label) => `${label.name}:${label.color}`), ['Bug:#eb5757', 'Perf:#f2c94c'])
+    assert.ok(
+      labels.every((label) => label.boardId === seeded.defaultBoardId),
+      'the container is offered on the default board, where the synced tickets land',
+    )
 
     // One task.activity for the one ticket, however many of its comments and
     // files the job touched.
@@ -270,6 +292,7 @@ runDatabaseTest('an IssueLabel delivery re-describes the container and recolours
       data: {
         organizationId: seeded.organizationId,
         projectId: seeded.projectId,
+        boardId: seeded.defaultBoardId,
         name: 'Bug',
         normalizedName: 'bug',
         color: '#eb5757',
@@ -300,6 +323,75 @@ runDatabaseTest('an IssueLabel delivery re-describes the container and recolours
     assert.equal(label.name, 'Defect')
     assert.equal(label.color, '#000000')
     assert.equal(seen.boards, 1, 'the board repaints its pills')
+  } finally {
+    clearBoardSourceAdapters()
+    await cleanup(prisma, seeded)
+    await prisma.$disconnect()
+  }
+})
+
+runDatabaseTest('an IssueLabel rename reaches every board, and keeps the old name where it collides', async () => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  const seen = { activity: [] as string[], boards: 0, stores: 0 }
+  try {
+    const review = await prisma.board.create({
+      data: { projectId: seeded.projectId, organizationId: seeded.organizationId, name: 'Review', position: 1 },
+    })
+    const row = (boardId: string, name: string, extra: { sourceId?: string; externalId?: string; color?: string }) =>
+      prisma.taskLabel.create({
+        data: {
+          organizationId: seeded.organizationId,
+          projectId: seeded.projectId,
+          boardId,
+          name,
+          normalizedName: name.toLowerCase(),
+          color: extra.color ?? '#eb5757',
+          sourceId: extra.sourceId ?? null,
+          externalId: extra.externalId ?? null,
+        },
+      })
+    const owned = { sourceId: seeded.sourceId, externalId: 'l-bug' }
+    const onDefault = await row(seeded.defaultBoardId, 'Bug', owned)
+    const onReview = await row(review.id, 'Bug', owned)
+    // A person's own *defect* on Review: the rename cannot take that name there.
+    const theirs = await row(review.id, 'defect', { color: '#123456' })
+
+    clearBoardSourceAdapters()
+    registerBoardSourceAdapter('linear', () =>
+      standInAdapter({
+        delivery: { deliveryId: 'd1', containerKey: seeded.teamId, externalIds: [], resource: 'label' },
+        describe: {
+          states: [],
+          fields: [],
+          members: [],
+          labels: [{ id: 'l-bug', label: 'Defect', color: '#000000' }],
+        },
+      }),
+    )
+    await processBoardSourceWebhook(deps(prisma, seen), {
+      provider: 'linear',
+      headers: {},
+      rawBody: JSON.stringify({ type: 'IssueLabel' }),
+    })
+
+    const after = async (id: string) => prisma.taskLabel.findUniqueOrThrow({ where: { id } })
+    const renamed = await after(onDefault.id)
+    assert.equal(renamed.name, 'Defect')
+    assert.equal(renamed.color, '#000000')
+    const kept = await after(onReview.id)
+    assert.equal(kept.name, 'Bug', 'the name collides on Review, so that row keeps its own')
+    assert.equal(kept.color, '#000000', 'and still takes the colour')
+    const untouched = await after(theirs.id)
+    assert.equal(untouched.name, 'defect')
+    assert.equal(untouched.color, '#123456')
+    assert.equal(untouched.sourceId, null)
+    assert.equal(
+      await prisma.taskLabel.count({ where: { sourceId: seeded.sourceId, externalId: 'l-bug' } }),
+      2,
+      'a re-describe creates nothing on a board that has no row',
+    )
+    assert.equal(seen.boards, 1)
   } finally {
     clearBoardSourceAdapters()
     await cleanup(prisma, seeded)

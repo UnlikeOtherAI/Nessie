@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
-import { attributionFromActorContext } from '@nessie/runtime'
 import {
   CreateTaskCommentBodySchema,
   TaskCommentListSchema,
@@ -91,8 +90,6 @@ export const registerTaskCommentRoutes = (app: FastifyInstance, deps: RouteDeps)
     const access = await gate(request, reply, taskId)
     if (!access) return reply
     const result = await deleteTaskComment(prisma, access.actor, { taskId, commentId }, {
-      fileService: deps.fileService,
-      attribution: attributionFromActorContext(access.actorContext),
       writeBack: createTaskCommentWriteBack(prisma, deps.encryptionKeyRing),
     })
     if ('error' in result) {

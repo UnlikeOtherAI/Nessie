@@ -1779,8 +1779,11 @@ model Board {
   tasks            Task[]
   resourceShares   ResourceShare[]
   sharePublication BoardSharePublication?
+  labels           TaskLabel[]
 
   @@unique([id, projectId, organizationId])
+  // The composite target of TaskLabel.board — Prisma needs the exact tuple.
+  @@unique([id, projectId])
   @@index([projectId, position])
   @@map("boards")
 }
@@ -2226,15 +2229,20 @@ enum TaskExternalAssetStatus {
   link
 }
 
-/// A project's label. `sourceId`/`externalId` are set when a board source
-/// owns it (Linear team label, GitHub label, …); a label a person made in
-/// Nessie has both null and is "Nessie-only" on a mirrored ticket.
+/// A board's label. `sourceId`/`externalId` are set when a board source owns
+/// it (Linear team label, GitHub label, …) — per board, so a mirrored ticket
+/// on any board finds its source labels on its own board. A label a person
+/// made in Nessie has both null and is "Nessie-only" on a mirrored ticket.
+/// A ticket's labels are its home board's (`Task.boardId ?? default board`)
+/// and follow it by name when it moves to another board.
 model TaskLabel {
   id              String   @id @default(uuid()) @db.Uuid
   organizationId  String   @map("organization_id") @db.Uuid
+  /// Denormalised from the board and pinned to it by the composite FK below.
   projectId       String   @map("project_id") @db.Uuid
+  boardId         String   @map("board_id") @db.Uuid
   name            String
-  /// lower(trim(name)); the uniqueness key, so "Bug" and "bug" are one label.
+  /// lower(trim(name)); the uniqueness key on a board, so "Bug" and "bug" are one label.
   normalizedName  String   @map("normalized_name")
   /// `#rrggbb`, lower-case. Data, not a theme token (design-system carve-out).
   color           String   @default("#6b7280")
@@ -2246,12 +2254,18 @@ model TaskLabel {
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // COMPOSITE on (boardId, projectId): a label's project is its board's project
+  // by construction, not by the one writer remembering to check. The cascade
+  // is a backstop — deleteBoard re-homes a board's labels onto the default
+  // board before the row goes.
+  board        Board           @relation(fields: [boardId, projectId], references: [id, projectId], onDelete: Cascade)
   source       BoardSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   links        TaskLabelLink[]
 
-  @@unique([projectId, normalizedName])
-  @@unique([sourceId, externalId])
-  @@index([projectId, name])
+  @@unique([boardId, normalizedName])
+  @@unique([boardId, sourceId, externalId])
+  @@index([boardId, name])
+  @@index([projectId])
   @@map("task_labels")
 }
 
@@ -6947,6 +6961,17 @@ model Attachment {
   /// task attachment, so `taskCommentId` is never set without `taskId`.
   taskId             String?  @map("task_id") @db.Uuid
   taskCommentId      String?  @map("task_comment_id") @db.Uuid
+  /// Soft removal from a ticket (ticket files only). The bytes stay and the
+  /// `taskId` ACL arm keeps serving them; the row is rendered as removed.
+  removedAt          DateTime? @map("removed_at")
+  /// The person who removed it — the actor's person, or null for an
+  /// unattended agent run (then `removedByAgentId` is set alone).
+  removedByUserId    String?   @map("removed_by_user_id") @db.Uuid
+  /// Set when an agent removed it as itself (a shared agent in a project
+  /// channel); a personal assistant acts as its person and leaves it null.
+  removedByAgentId   String?   @map("removed_by_agent_id") @db.Uuid
+  /// Free text the remover gave, at most 500 characters; null when none.
+  removedReason      String?   @map("removed_reason") @db.Text
   kind               String
   mime               String
   filename           String

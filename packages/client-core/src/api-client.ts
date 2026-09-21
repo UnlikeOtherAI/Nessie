@@ -13,7 +13,9 @@ export type ApiResponseDataSchema<TData> = {
 }
 
 export type ApiClient = {
-  delete: <TData>(path: string) => Promise<TData>
+  // `body` exists for the one DELETE that says why: removing a ticket file
+  // carries an optional reason (`RemoveTaskAttachmentBody`).
+  delete: <TData>(path: string, body?: unknown) => Promise<TData>
   get: <TData>(path: string, schema?: ApiResponseDataSchema<TData>) => Promise<TData>
   /**
    * A GET that keeps the response envelope instead of unwrapping it, for a
@@ -207,7 +209,11 @@ export const createApiClient = ({ baseUrl, token, onUnauthorized }: ApiClientCon
 
   return {
     getPage: (path, schema) => requestEnvelope(path, { method: 'GET' }, schema),
-    delete: (path) => request(path, { method: 'DELETE' }),
+    delete: (path, body) =>
+      request(path, {
+        method: 'DELETE',
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
     get: (path, schema) => request(path, { method: 'GET' }, schema),
     patch: (path, body, headers, schema) =>
       request(path, {

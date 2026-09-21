@@ -173,41 +173,83 @@ type Db = PrismaClient | Prisma.TransactionClient
 /** The project and source a set of provider labels belongs to. */
 export type SourceLabelOwner = { id: string; organizationId: string; projectId: string }
 
+/**
+ * The board a source's labels land on. Structurally `task-labels.ts`'s
+ * `BoardRef`; kept local so this file does not wait on that module.
+ */
+type SourceLabelBoard = { id: string; projectId: string; organizationId: string }
+
+const boardSelect = { id: true, projectId: true, organizationId: true } as const
+
+/**
+ * The board a task's labels live on: its own, or its project's default board
+ * when `boardId` is null (every board-unaware writer, the sync included).
+ * Null when the project has no such board — then the task carries no labels.
+ */
+const labelHomeBoard = (
+  db: Db,
+  task: { projectId: string; boardId: string | null },
+): Promise<SourceLabelBoard | null> =>
+  db.board.findFirst({
+    where: {
+      projectId: task.projectId,
+      ...(task.boardId ? { id: task.boardId } : { isDefault: true }),
+    },
+    select: boardSelect,
+  })
+
 const labelColour = (colour: string | undefined): string | null => {
   const parsed = LabelColorSchema.safeParse(colour?.toLowerCase())
   return parsed.success ? parsed.data : null
 }
 
+const labelName = (label: NormalisedItemLabel): string =>
+  label.label.trim().slice(0, TASK_LABEL_NAME_MAX_CHARS).trim()
+
+const uniqueLabels = (labels: readonly NormalisedItemLabel[]): NormalisedItemLabel[] => [
+  ...new Map(labels.filter((label) => label.id).map((label) => [label.id, label])).values(),
+]
+
 /**
- * Make each provider label a project label owned by the source, keyed by
- * `(sourceId, externalId)`, with the provider's name and colour.
+ * Make each provider label a label of `board` owned by the source, keyed by
+ * `(boardId, sourceId, externalId)`, with the provider's name and colour. One
+ * provider label is one row **per board**: the same Linear *Bug* on two
+ * boards is two rows, each created lazily by whatever first needs it there.
  *
- * A project label a person already made with the same name (case-folded) is
- * **adopted** rather than duplicated: whoever made *Bug* before connecting
+ * A label a person already made on this board with the same name (case-folded)
+ * is **adopted** rather than duplicated: whoever made *Bug* before connecting
  * Linear keeps their label, and it becomes the source's. A name another source
- * already owns is left alone — two sources cannot own one label — and that
- * provider label is not linked. A rename upstream that would collide with an
- * existing label keeps the old name and still takes the colour.
+ * already owns on this board is left alone — two sources cannot own one label
+ * — and that provider label is not linked. A rename upstream that would
+ * collide on this board keeps the old name and still takes the colour.
  *
- * Returns provider label id → project label id for the labels that resolved.
+ * Returns provider label id → label id on `board` for the labels that resolved.
  */
 export const upsertSourceLabels = async (
   db: Db,
   source: SourceLabelOwner,
+  board: SourceLabelBoard,
   labels: readonly NormalisedItemLabel[],
 ): Promise<Map<string, string>> => {
   const resolved = new Map<string, string>()
-  const unique = [...new Map(labels.filter((label) => label.id).map((l) => [l.id, l])).values()]
-  if (unique.length === 0) return resolved
+  const unique = uniqueLabels(labels)
+  // A source only ever labels boards of its own project; the composite FK
+  // would refuse the row anyway, this just refuses it without aborting a
+  // surrounding transaction.
+  if (unique.length === 0 || board.projectId !== source.projectId) return resolved
 
   const owned = await db.taskLabel.findMany({
-    where: { sourceId: source.id, externalId: { in: unique.map((label) => label.id) } },
+    where: {
+      boardId: board.id,
+      sourceId: source.id,
+      externalId: { in: unique.map((label) => label.id) },
+    },
     select: { id: true, externalId: true, name: true, color: true },
   })
   const byExternalId = new Map(owned.map((row) => [row.externalId as string, row]))
 
   for (const label of unique) {
-    const name = label.label.trim().slice(0, TASK_LABEL_NAME_MAX_CHARS).trim()
+    const name = labelName(label)
     if (!name) continue
     const normalizedName = normalizeLabelName(name)
     const colour = labelColour(label.color)
@@ -217,7 +259,7 @@ export const upsertSourceLabels = async (
       const data: Prisma.TaskLabelUpdateInput = {}
       if (current.name !== name) {
         const clash = await db.taskLabel.findUnique({
-          where: { projectId_normalizedName: { projectId: source.projectId, normalizedName } },
+          where: { boardId_normalizedName: { boardId: board.id, normalizedName } },
           select: { id: true },
         })
         if (!clash || clash.id === current.id) {
@@ -240,7 +282,8 @@ export const upsertSourceLabels = async (
       data: [
         {
           organizationId: source.organizationId,
-          projectId: source.projectId,
+          projectId: board.projectId,
+          boardId: board.id,
           name,
           normalizedName,
           color: colour ?? DEFAULT_LABEL_COLOR,
@@ -251,7 +294,9 @@ export const upsertSourceLabels = async (
       skipDuplicates: true,
     })
     const mine = await db.taskLabel.findUnique({
-      where: { sourceId_externalId: { sourceId: source.id, externalId: label.id } },
+      where: {
+        boardId_sourceId_externalId: { boardId: board.id, sourceId: source.id, externalId: label.id },
+      },
       select: { id: true },
     })
     if (mine) {
@@ -259,7 +304,7 @@ export const upsertSourceLabels = async (
       continue
     }
     const sameName = await db.taskLabel.findUnique({
-      where: { projectId_normalizedName: { projectId: source.projectId, normalizedName } },
+      where: { boardId_normalizedName: { boardId: board.id, normalizedName } },
       select: { id: true, sourceId: true },
     })
     if (!sameName || sameName.sourceId !== null) continue
@@ -273,19 +318,101 @@ export const upsertSourceLabels = async (
 }
 
 /**
- * Replace the task's **source-owned** labels with the item's set. A label a
- * person added in Nessie (no source) is never touched: the sync replaces only
- * the subset it knows about. Writes one `labels_changed` event when anything
- * changed on a task that already existed.
+ * Bring every row the source owns up to the provider's description, on every
+ * board at once — a label changed upstream, no issue did. One provider label
+ * is one row per board, so this is an `updateMany` over `(sourceId,
+ * externalId)`; the collision rule runs per row: on a board where the new
+ * name is already another label's, that row keeps its old name and still
+ * takes the colour.
+ *
+ * Then the project's default board is seeded with the container's labels, the
+ * board every synced ticket lands on, so labels nobody has used on an issue
+ * yet — and their colours — are there to choose from. No other board gets a
+ * row until a ticket there needs it (§8.5, created lazily).
+ *
+ * Returns whether the description carried any label.
+ */
+export const describeSourceLabels = async (
+  db: Db,
+  source: SourceLabelOwner,
+  labels: readonly NormalisedItemLabel[],
+): Promise<boolean> => {
+  const unique = uniqueLabels(labels)
+  if (unique.length === 0) return false
+
+  for (const label of unique) {
+    const name = labelName(label)
+    if (!name) continue
+    const normalizedName = normalizeLabelName(name)
+    const colour = labelColour(label.color)
+    const rows = await db.taskLabel.findMany({
+      where: { sourceId: source.id, externalId: label.id },
+      select: { id: true, boardId: true, name: true },
+    })
+    if (rows.length === 0) continue
+
+    if (colour) {
+      await db.taskLabel.updateMany({
+        where: { sourceId: source.id, externalId: label.id, color: { not: colour } },
+        data: { color: colour },
+      })
+    }
+    const renaming = rows.filter((row) => row.name !== name)
+    if (renaming.length === 0) continue
+    // Another label on the same board already has the name — by id, not by
+    // `NOT { sourceId, externalId }`, which SQL's NULL logic would turn into
+    // "never a Nessie-only label".
+    const clashes = await db.taskLabel.findMany({
+      where: {
+        boardId: { in: renaming.map((row) => row.boardId) },
+        normalizedName,
+        id: { notIn: rows.map((row) => row.id) },
+      },
+      select: { boardId: true },
+    })
+    const blocked = new Set(clashes.map((clash) => clash.boardId))
+    const free = renaming.filter((row) => !blocked.has(row.boardId)).map((row) => row.id)
+    if (free.length > 0) {
+      await db.taskLabel.updateMany({
+        where: { id: { in: free }, sourceId: source.id, externalId: label.id },
+        data: { name, normalizedName },
+      })
+    }
+  }
+
+  const home = await labelHomeBoard(db, { projectId: source.projectId, boardId: null })
+  if (home) await upsertSourceLabels(db, source, home, unique)
+  return true
+}
+
+/**
+ * Replace the task's **source-owned** labels with the item's set, on the
+ * task's home board (a task the sync just created has `boardId: null` ⇒ the
+ * project's default board). A label a person added in Nessie (no source) is
+ * never touched: the sync replaces only the subset it knows about. Writes one
+ * `labels_changed` event when anything changed on a task that already existed.
+ *
+ * `task` may be a bare id when the caller does not hold the row; its board is
+ * then read here.
  */
 export const syncTaskSourceLabels = async (
   db: Db,
   source: SourceLabelOwner,
-  taskId: string,
+  task: { id: string; boardId: string | null } | string,
   labels: readonly NormalisedItemLabel[],
   options: { recordEvent: boolean },
 ): Promise<{ added: string[]; removed: string[] }> => {
-  const byExternalId = await upsertSourceLabels(db, source, labels)
+  const taskId = typeof task === 'string' ? task : task.id
+  const boardId =
+    typeof task === 'string'
+      ? (await db.task.findUnique({ where: { id: task }, select: { boardId: true } }))?.boardId ?? null
+      : task.boardId
+  const home = await labelHomeBoard(db, { projectId: source.projectId, boardId })
+  // No board to hold a label: nothing can be linked, and nothing is removed —
+  // a Nessie-side state the sync did not make is not its to clear.
+  if (!home) return { added: [], removed: [] }
+
+  const byExternalId = await upsertSourceLabels(db, source, home, labels)
   const wanted = new Set(byExternalId.values())
   const current = await db.taskLabelLink.findMany({
     where: { taskId, label: { sourceId: source.id } },
@@ -418,11 +545,15 @@ export const applyInboundItem = async (
 
     const changes: ApplyChange[] = []
     let id = existing?.taskId
+    // A task the sync creates is board-unaware (`boardId: null`, the default
+    // board); one a person moved keeps its board, and its labels live there.
+    let boardId: string | null = null
     if (id) {
       const previous = await tx.task.findUnique({
         where: { id },
-        select: { status: true, assigneeUserId: true, assigneeAgentId: true },
+        select: { status: true, assigneeUserId: true, assigneeAgentId: true, boardId: true },
       })
+      boardId = previous?.boardId ?? null
       await tx.task.update({ where: { id }, data: base })
       if (
         previous &&
@@ -471,7 +602,7 @@ export const applyInboundItem = async (
     }
 
     if (labels) {
-      await syncTaskSourceLabels(tx, source, id as string, item.labels, {
+      await syncTaskSourceLabels(tx, source, { id: id as string, boardId }, item.labels, {
         recordEvent: Boolean(existing),
       })
     }

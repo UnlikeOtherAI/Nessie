@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { BoardSourceProviderSchema } from './board-sources.js'
-import { TaskIdSchema, UserIdSchema } from './ids.js'
+import { AgentIdSchema, TaskIdSchema, UserIdSchema } from './ids.js'
 import { TimestampSchema } from './schema-primitives.js'
 
 /**
@@ -13,6 +13,28 @@ import { TimestampSchema } from './schema-primitives.js'
  */
 export const TaskAttachmentExternalStatusSchema = z.enum(['stored', 'failed', 'link'])
 export type TaskAttachmentExternalStatus = z.infer<typeof TaskAttachmentExternalStatusSchema>
+
+export const TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS = 500
+
+/**
+ * What the comment-delete path writes as the reason, so a client can render it
+ * as a system note rather than a quote.
+ */
+export const COMMENT_REMOVAL_REASON = 'Removed with the comment.'
+
+/**
+ * A file removed from a ticket is marked, never deleted
+ * (board-labels-and-attachment-removal.md §9): the bytes stay downloadable and
+ * the row says who removed it, when, and why. `byUserId` is null for an
+ * unattended agent run, which records `byAgentId` alone.
+ */
+export const TaskAttachmentRemovalSchema = z.object({
+  at: TimestampSchema,
+  byUserId: UserIdSchema.nullable(),
+  byAgentId: AgentIdSchema.nullable(),
+  reason: z.string().max(TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS).nullable(),
+})
+export type TaskAttachmentRemoval = z.infer<typeof TaskAttachmentRemovalSchema>
 
 export const TaskAttachmentRecordSchema = z.object({
   /** The Attachment id; for a link row, the TaskExternalAsset id. */
@@ -43,6 +65,8 @@ export const TaskAttachmentRecordSchema = z.object({
       status: TaskAttachmentExternalStatusSchema,
     })
     .nullable(),
+  /** Set once the file is removed from the ticket; always null on a link row. */
+  removed: TaskAttachmentRemovalSchema.nullable(),
   createdAt: TimestampSchema,
 })
 export type TaskAttachmentRecord = z.infer<typeof TaskAttachmentRecordSchema>
@@ -63,6 +87,14 @@ export const LinkTaskAttachmentsBodySchema = z
   })
   .strict()
 export type LinkTaskAttachmentsBody = z.infer<typeof LinkTaskAttachmentsBodySchema>
+
+/** Optional reason; empty after trim is stored as null. */
+export const RemoveTaskAttachmentBodySchema = z
+  .object({
+    reason: z.string().trim().max(TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS).optional(),
+  })
+  .strict()
+export type RemoveTaskAttachmentBody = z.infer<typeof RemoveTaskAttachmentBodySchema>
 
 /** The one URL form inline images take; the renderer and editor match it. */
 export const INLINE_ATTACHMENT_PATH = /^\/api\/attachments\/([0-9a-f-]{36})$/

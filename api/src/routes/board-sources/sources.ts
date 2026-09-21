@@ -30,7 +30,7 @@ import {
   isBoardSourceCredentialError,
   putBoardSourceMappings,
   updateBoardSource,
-  upsertSourceLabels,
+  describeSourceLabels,
 } from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -325,10 +325,11 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       sourceError(reply, result)
       return reply
     }
-    // The container's labels exist, with their colours, before the first sync
-    // links any of them, so the picker offers them from the moment of attach.
+    // The container's labels exist, with their colours, on the default board
+    // — where every synced ticket lands — before the first sync links any of
+    // them, so the picker offers them from the moment of attach.
     if (description.labels && description.labels.length > 0) {
-      await upsertSourceLabels(
+      await describeSourceLabels(
         prisma,
         { id: result.id, organizationId: project.organizationId, projectId: project.id },
         description.labels,

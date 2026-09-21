@@ -86,6 +86,9 @@ export const findAccessibleTask = async (
       id: true,
       organizationId: true,
       projectId: true,
+      // The home board (null ⇒ the project's default): a ticket's labels are
+      // that board's, so the label doors plan against it without a second read.
+      boardId: true,
       detail: true,
       externalLink: {
         select: {

@@ -1,10 +1,11 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import type { FileService, LedgerAttribution } from '@nessie/runtime'
 import {
   inlineAttachmentIds,
   inlineAttachmentPath,
+  parseAgentId,
   parseTaskId,
   parseUserId,
+  TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS,
   type TaskAttachmentRecord,
 } from '@nessie/schemas'
 
@@ -13,13 +14,14 @@ import {
   mapProjectTaskWithContext,
   type ProjectTaskRecord,
 } from './project-task-records.js'
-import { canModifyProject } from './resource-authority.js'
 import { findAccessibleTask, isUuid, taskEventBy, type TaskActor } from './task-access.js'
 
 /**
  * A ticket's files. Bytes arrive only through the one upload door
- * (`POST /api/uploads`) and are *linked* here; the only place bytes leave is
- * `FileService.delete`. `Attachment.taskId` is app-enforced, like `messageId`.
+ * (`POST /api/uploads`) and are *linked* here. Removing a file from a ticket
+ * marks the row (`removedAt` and who, and why) and never touches the bytes:
+ * no path deletes a ticket file's bytes short of deleting the task.
+ * `Attachment.taskId` is app-enforced, like `messageId`.
  */
 
 type TaskRowForMap = Parameters<typeof mapProjectTaskWithContext>[0]
@@ -51,6 +53,10 @@ export const taskAttachmentSelect = {
   height: true,
   thumbnailKey: true,
   uploaderId: true,
+  removedAt: true,
+  removedByUserId: true,
+  removedByAgentId: true,
+  removedReason: true,
   createdAt: true,
 } satisfies Prisma.AttachmentSelect
 
@@ -77,6 +83,14 @@ export const mapTaskAttachment = (
   thumbnailPath: row.thumbnailKey ? `${inlineAttachmentPath(row.id)}/thumbnail` : null,
   inline: options.inlineIds.has(row.id),
   external: options.external ?? null,
+  removed: row.removedAt
+    ? {
+        at: row.removedAt.toISOString(),
+        byUserId: row.removedByUserId ? parseUserId(row.removedByUserId) : null,
+        byAgentId: row.removedByAgentId ? parseAgentId(row.removedByAgentId) : null,
+        reason: row.removedReason,
+      }
+    : null,
   createdAt: row.createdAt.toISOString(),
 })
 
@@ -158,9 +172,10 @@ export const recordAttachmentsAdded = async (
 
 /**
  * The Attachments list: stored files (`Attachment.taskId`, comment files
- * included) and the external assets that have no stored copy (`link`, or a
- * fetch that gave up), newest first. A stored copy of a provider file is one
- * row, marked with its external origin.
+ * included, removed ones too — marked, in their place) and the external
+ * assets that have no stored copy (`link`, or a fetch that gave up), newest
+ * first. A stored copy of a provider file is one row, marked with its
+ * external origin.
  */
 export const listTaskAttachments = async (
   prisma: PrismaClient,
@@ -234,6 +249,7 @@ export const listTaskAttachments = async (
         title: asset.title,
         status: asset.status,
       },
+      removed: null,
       createdAt: asset.createdAt.toISOString(),
     })
   }
@@ -276,44 +292,88 @@ export const linkTaskAttachments = async (
   }
 }
 
-export type TaskFileDeleter = {
-  fileService: Pick<FileService, 'delete'>
-  attribution: LedgerAttribution
+/** A reason as stored: trimmed, capped, and null when nothing is left. */
+export const normalizeRemovalReason = (reason: string | null | undefined): string | null => {
+  const trimmed = reason?.trim().slice(0, TASK_ATTACHMENT_REMOVE_REASON_MAX_CHARS).trim() ?? ''
+  return trimmed === '' ? null : trimmed
 }
 
 /**
- * Remove a file from a ticket: its uploader, or anyone who may modify the
- * ticket's project (a ticket is joint work under the equal-rights rule). The
- * bytes go through `FileService.delete`, the only place they ever go.
+ * Who removed a file, as the row stores it: the actor's person (a personal
+ * assistant acts as its person), or — for an unattended agent run — the agent
+ * alone. An agent acting for a requester records both.
+ */
+export const attachmentRemover = (actor: TaskActor) => ({
+  removedByUserId: actor.unattended ? null : actor.userId,
+  removedByAgentId: actor.agentId ?? null,
+})
+
+/**
+ * Remove a file from a ticket: anyone who can see the ticket may. Removal
+ * marks the row — who, when, why — and the bytes stay, still downloadable
+ * through the `taskId` ACL arm; there is no restore door in v1, but the row
+ * keeps everything one would need. A provider-stored copy is the provider's
+ * file and is not removable here; a second removal never overwrites the
+ * first remover or reason.
  */
 export const removeTaskAttachment = async (
   prisma: PrismaClient,
   actor: TaskActor,
-  input: { taskId: string; attachmentId: string },
-  files: TaskFileDeleter,
+  input: { taskId: string; attachmentId: string; reason?: string | null },
 ): Promise<
-  | { ok: true; projectId: string | null }
-  | { error: 'NOT_FOUND' | 'ATTACHMENT_NOT_ON_TASK' | 'ATTACHMENT_NOT_REMOVABLE' }
+  | { ok: true; projectId: string | null; attachment: TaskAttachmentRecord }
+  | {
+      error:
+        | 'NOT_FOUND'
+        | 'ATTACHMENT_NOT_ON_TASK'
+        | 'ATTACHMENT_NOT_REMOVABLE'
+        | 'ATTACHMENT_ALREADY_REMOVED'
+    }
 > => {
   const task = await findAccessibleTask(prisma, actor, input.taskId)
   if (!task) return { error: 'NOT_FOUND' }
   if (!isUuid(input.attachmentId)) return { error: 'ATTACHMENT_NOT_ON_TASK' }
   const attachment = await prisma.attachment.findFirst({
     where: { id: input.attachmentId, taskId: task.id, organizationId: task.organizationId },
-    select: { id: true, uploaderId: true },
+    select: { id: true, taskCommentId: true, removedAt: true },
   })
   if (!attachment) return { error: 'ATTACHMENT_NOT_ON_TASK' }
-  const removable =
-    attachment.uploaderId === actor.userId
-    || (task.projectId !== null && (await canModifyProject(prisma, actor, task.projectId)))
-  if (!removable) return { error: 'ATTACHMENT_NOT_REMOVABLE' }
-  await files.fileService.delete(attachment.id, task.organizationId, files.attribution)
-  await prisma.taskEvent.create({
-    data: {
-      taskId: task.id,
-      eventType: 'attachment_removed',
-      payload: { by: taskEventBy(actor), attachmentId: attachment.id },
-    },
+  if (attachment.removedAt) return { error: 'ATTACHMENT_ALREADY_REMOVED' }
+  const providerCopy = await prisma.taskExternalAsset.count({
+    where: { taskId: task.id, attachmentId: attachment.id, status: 'stored' },
   })
-  return { ok: true, projectId: task.projectId }
+  if (providerCopy > 0) return { error: 'ATTACHMENT_NOT_REMOVABLE' }
+  const reason = normalizeRemovalReason(input.reason)
+  const removed = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.attachment.updateMany({
+      where: { id: attachment.id, taskId: task.id, removedAt: null },
+      data: { removedAt: new Date(), ...attachmentRemover(actor), removedReason: reason },
+    })
+    // Somebody else got there between the read and the write: theirs stands.
+    if (count === 0) return false
+    await tx.taskEvent.create({
+      data: {
+        taskId: task.id,
+        eventType: 'attachment_removed',
+        payload: {
+          by: taskEventBy(actor),
+          attachmentId: attachment.id,
+          reason,
+          ...(attachment.taskCommentId ? { commentId: attachment.taskCommentId } : {}),
+        },
+      },
+    })
+    return true
+  })
+  if (!removed) return { error: 'ATTACHMENT_ALREADY_REMOVED' }
+  // Not a provider copy (refused above), so the row has no external origin.
+  const [row, inlineIds] = await Promise.all([
+    prisma.attachment.findUniqueOrThrow({ where: { id: attachment.id }, select: taskAttachmentSelect }),
+    collectInlineAttachmentIds(prisma, task),
+  ])
+  return {
+    ok: true,
+    projectId: task.projectId,
+    attachment: mapTaskAttachment(row, { inlineIds }),
+  }
 }

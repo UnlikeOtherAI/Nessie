@@ -351,9 +351,12 @@ when one changes, the same turn updates it, not this section.
 - **Ticket comments, files and labels are one `@nessie/team-admin` function
   each, called alike by the route, the MCP tool and the worker builtin.**
   Bytes enter only through `POST /api/uploads` and are linked to a ticket,
-  readable through the `taskId` arm of `canAccessAttachment`; a comment is its
-  author's; sync replaces only source-owned labels and never imports a
-  narrower-audience comment.
+  readable through the `taskId` arm of `canAccessAttachment`; removing a file
+  is a mark (who, when, why), not a delete — it stays downloadable, has no
+  restore, and a comment delete marks its files; a comment is its author's;
+  labels belong to the ticket's home board (`Task.boardId ??` the project
+  default) and follow a moved ticket by name; sync replaces only source-owned
+  labels and never imports a narrower-audience comment.
   Read [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md)
   before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call

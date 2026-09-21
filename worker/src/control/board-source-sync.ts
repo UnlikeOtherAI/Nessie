@@ -29,8 +29,8 @@ import {
   fetchPendingAssets,
   type IdentityTenant,
   inlineAssetsForComments,
+  describeSourceLabels,
   mapsNativeLabels,
-  upsertSourceLabels,
   type BoardWatchEvent,
   externalTenantKeyFor,
   isBoardSourceCredentialError,
@@ -136,9 +136,11 @@ export const finishActivity = async (
 }
 
 /**
- * Re-read the container's labels and bring every project label the source owns
- * up to the provider's name and colour — so a recolour upstream reaches the
- * pill without any issue changing. Returns whether any label was described.
+ * Re-read the container's labels and bring every label the source owns — one
+ * row per board that has needed it — up to the provider's name and colour, so
+ * a recolour upstream reaches every board's pill without any issue changing.
+ * The default board also gets any label it lacks, so the picker offers the
+ * container's labels there. Returns whether any label was described.
  */
 export const refreshSourceLabels = async (
   deps: Pick<BoardSourceSyncDeps, 'prisma'>,
@@ -150,8 +152,7 @@ export const refreshSourceLabels = async (
   if (!mapsNativeLabels(parseFieldMappings(source.fieldMappings))) return false
   const description = await adapter.describeContainer(context, container)
   if (!description.labels || description.labels.length === 0) return false
-  await upsertSourceLabels(deps.prisma, source, description.labels)
-  return true
+  return describeSourceLabels(deps.prisma, source, description.labels)
 }
 
 /** Capped exponential backoff: 1m, 2m, 4m … up to the six-hour ceiling. */

@@ -32,6 +32,11 @@ are stable across chapters.
 - **[Delivery](delivery.md)** — §6. The contract wave, three implementation
   waves with exclusive file lists, gates, tests, browser checks, screenshots,
   and the documentation that changes with the code.
+- **[Board-scoped labels and attachment removal](board-labels-and-attachment-removal.md)**
+  — §8–§10. The addendum after Ondrej's answers to §2: labels belong to a
+  board and follow a ticket by name; a removed file is marked and kept, with
+  who, when and why; the waves that build both. Where it and an earlier
+  chapter disagree, it wins.
 
 ## 0. What was asked, and what is true today
 
@@ -98,23 +103,25 @@ Established by reading the code (chapter references say where):
 | Agent surfaces | MCP `nessie_task_comment_*`, `nessie_task_attachment_*`, `nessie_label_*`, and `labelIds` on task create/update; PA/peer `ticket_comment_*`, `ticket_labels_read`, `ticket_label_create`, `ticket_attachment_*`; both over the same `@nessie/team-admin` functions | MCP only | "Reflected in the MCP" is a test of reach: the peer agent in a project channel is the one Ondrej talks to about a ticket. |
 | Label management doorway | Project → Settings → **Labels** (rename inline, recolour, delete with count); reached from the token dropdown's last row *Manage labels…* and the settings strip | Managing in the dropdown | Rename/recolour/delete need a row with a count; a dropdown is for choosing. |
 
-## 2. Open questions for Ondrej
+## 2. Open questions for Ondrej — answered
 
-Only genuinely his calls; everything else is decided above.
+Asked when the design was written; answered after the build, on 2026-09-21.
+The answers are specified in
+[board-labels-and-attachment-removal.md](board-labels-and-attachment-removal.md).
 
-1. **Label scope beyond a project.** This design scopes labels to the project
-   (like custom fields). Linear workspace-level labels therefore import once
-   per project that syncs a team using them. If the organisation should share
-   one label set, that is a later migration (`organizationId` scope with a
-   project override), not a change to this design.
-2. **Attachments going back to Linear.** §4.6 writes comments and labels back
-   in `read_write`; files do not go up in v1 (Linear's `attachmentCreate`
-   needs a URL Linear can fetch, and ours are private). If that matters
-   sooner than the follow-up, say so and §4.6 gets a signed-URL door.
-3. **Who deletes a file on a ticket.** This design lets the uploader *or any
-   project member* remove an attachment (a ticket is joint work under the
-   equal-rights rule), while a comment stays author-only. If files should be
-   author-only too, it is one predicate in §2.3.
+1. **Label scope beyond a project.** Asked: project-scoped like custom fields,
+   or organisation-wide? **Answered: narrower — a label belongs to a board.**
+   §8 re-keys `TaskLabel` to `boardId`, lands source labels on the board of
+   the ticket that carries them, and follows a moved ticket by name. The §1
+   row "What a label is" is superseded by §8.
+2. **Attachments going back to Linear.** Asked whether files should go
+   upstream sooner. **Answered: no — "don't worry about files going back to
+   Linear."** §4.6 stands: comments and labels write back; files do not.
+3. **Who deletes a file on a ticket.** Asked uploader-only or any project
+   member. **Answered: anyone who can see the ticket, and it is a mark, not a
+   delete** — the file stays downloadable and the row shows who uploaded it,
+   who removed it and, optionally, why. §9 replaces the built predicate and
+   the comment-delete path that deleted files.
 
 ## 7. As built
 
@@ -146,6 +153,8 @@ The code wins over this plan; these are the deltas that matter to a reader.
   authorization header, Linear `Comment`/`IssueLabel` webhook field names,
   GitHub's upload redirect, Trello's download header, Jira `redirect=false`
   and `comment/list`. The §6.4 live check is still owed.
-- **Open questions (§2)** remain Ondrej's: organisation-wide labels, files
-  back to Linear, author-only attachment removal (built: uploader or any
-  project member).
+- **Open questions (§2)** were answered after this build; the code on PR #603
+  still has project-scoped labels and an uploader-or-member removal that
+  deletes bytes. Both change under
+  [§8–§10](board-labels-and-attachment-removal.md), which is the plan for
+  the follow-up waves, not a description of what is merged.

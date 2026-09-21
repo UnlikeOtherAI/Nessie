@@ -11,5 +11,6 @@
   { "migration": "20260903120000_conversational_setup_always_on", "reason": "Drops organizations.conversational_setup_enabled; tenant resolution selects it on nearly every request, so pre-swap replicas fail org-wide (P2022)." },
   { "migration": "20260906100000_project_boards", "reason": "Drops board_columns.project_id, tasks.column_id/position and projects.board_style, and sets board_columns.board_id NOT NULL; pre-swap replicas fail on the boards and tasks surfaces (P2022)." },
   { "migration": "20260912090000_versioned_at_rest_key_metadata", "reason": "Retypes three key_version columns from integer to text; old clients decode them as integers while this release writes opaque labels, so the generations must never serve together." },
-  { "migration": "20260916120000_dashboards_live_in_projects", "reason": "Drops dashboards.home/team_id/channel_id/owner_user_id and sets project_id NOT NULL; pre-swap replicas fail on the dashboards surface (P2022)." }
+  { "migration": "20260916120000_dashboards_live_in_projects", "reason": "Drops dashboards.home/team_id/channel_id/owner_user_id and sets project_id NOT NULL; pre-swap replicas fail on the dashboards surface (P2022)." },
+  { "migration": "20260921140000_board_labels_attachment_removal", "reason": "Sets task_labels.board_id NOT NULL and replaces the project-wide label keys; pre-swap replicas creating a label omit board_id and fail the constraint." }
 ]

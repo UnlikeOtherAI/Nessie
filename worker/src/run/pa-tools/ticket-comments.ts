@@ -8,11 +8,9 @@ import {
   type TaskActor,
   type TaskCommentWriteBack,
 } from '@nessie/team-admin'
-import { attributionFromActorContext } from '@nessie/runtime'
 import { TASK_COMMENT_MAX_CHARS, type TaskCommentAuthor, type TaskCommentRecord } from '@nessie/schemas'
 import { z } from 'zod'
 
-import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember, type ActingMember } from './access.js'
 import {
@@ -216,11 +214,7 @@ export const runTicketCommentDeleteTool = async (
     context.prisma,
     ticketActorFor(context, member),
     { taskId: ticket.id, commentId: args.commentId },
-    {
-      fileService: fileServiceFor(context.prisma),
-      attribution: attributionFromActorContext(context.actorContext),
-      writeBack: commentWriteBackFor(context),
-    },
+    { writeBack: commentWriteBackFor(context) },
   )
   if ('error' in deleted) return refuse(deleted)
   const { projectId } = deleted
