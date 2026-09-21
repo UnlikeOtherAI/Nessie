@@ -13,6 +13,10 @@ import { Dialog } from '../../shared/Dialog'
 import { FormActions, FormError } from '../../shared/FormActions'
 import { QueryState } from '../../shared/QueryState'
 import { ExecutorReviewedPolicy } from './ExecutorReviewedPolicy'
+import { useAgents } from '../../../facades/agents/hooks'
+import { useUsers } from '../../../facades/users/hooks'
+import { executorChangePresentation } from './executor-change-presentation'
+import { useExecutorAccess } from '../../../facades/executors/hooks'
 
 /**
  * The two one-time confirmations, as modals.
@@ -58,6 +62,23 @@ export const ExecutorAccessChangeDialog = ({
   const [currentPassword, setCurrentPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const pending = confirmChange.isPending || rejectChange.isPending
+  const agents = useAgents({ scope: 'all' })
+  const users = useUsers(open)
+  const executorAccess = useExecutorAccess(change?.executorId)
+  const terms = change?.change ?? {}
+  const principal = terms.assignment ?? terms.principal
+  const assignment = principal && typeof principal === 'object' ? principal as Record<string, unknown> : {}
+  const agentId = typeof terms.agentId === 'string' ? terms.agentId : assignment.agentId
+  const copy = executorChangePresentation(terms,
+    agents.data?.find((agent) => agent.id === agentId)?.name,
+    users.data?.find((user) => user.id === assignment.userId)?.displayName)
+  const unavailable = change?.requiresFreshVerification && change.verificationMethod !== 'password'
+  const revisions = executorAccess.data?.executorId === change?.executorId
+    ? executorAccess.data?.descriptorRevisions : descriptorRevisions
+  const policyFound = terms.kind !== 'descriptor_review' || revisions?.some((revision) => revision.revision === terms.revision)
+  const latest = [...(revisions ?? [])].sort((a, b) => b.revision - a.revision)[0]
+  const grantReady = !(['agent_executor_access', 'agent_executor_grant'].includes(String(terms.kind)) && terms.state === 'allowed')
+    || latest?.reviewStatus === 'active'
 
   const close = () => {
     setCurrentPassword('')
@@ -96,12 +117,11 @@ export const ExecutorAccessChangeDialog = ({
 
   return (
     <Dialog
-      description="This one-time change is bound to your account and the executor’s current authorization revision."
       dismissDisabled={pending}
       onClose={close}
       open={open}
       size="lg"
-      title="Review prepared executor change"
+      title={copy.title}
     >
       <QueryState
         className="py-6"
@@ -111,15 +131,20 @@ export const ExecutorAccessChangeDialog = ({
       >
         {() => change ? (
           <div className="grid gap-3">
-            <p className="text-xs text-[color:var(--tx3)]">It expires at {change.expiresAt}.</p>
+            <p className="text-sm text-[color:var(--tx2)]">{copy.description}</p>
             <ExecutorGrantedSuite change={change.change} executorId={change.executorId} />
-            <pre className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx2)]">{JSON.stringify(change.change, null, 2)}</pre>
             <ExecutorReviewedPolicy
               change={change.change}
-              {...(descriptorRevisions ? { descriptorRevisions } : {})}
+              {...(revisions ? { descriptorRevisions: revisions } : {})}
             />
+            {!policyFound ? <FormError>
+              The machine’s permissions could not be loaded. Close this change and try again.
+            </FormError> : null}
             <FormError>{confirmationToken ? undefined : MISSING_ACCESS_TOKEN}</FormError>
-            {change.requiresFreshVerification ? (
+            {unavailable ? <FormError>
+              Your sign-in provider does not yet support the extra identity check needed for this change.
+            </FormError> : null}
+            {change.requiresFreshVerification && !unavailable ? (
               <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
                 Confirm with current password
                 <input
@@ -138,15 +163,15 @@ export const ExecutorAccessChangeDialog = ({
                 onClick={() => void reject()}
                 type="button"
               >
-                Reject
+                Cancel change
               </button>
               <button
                 className="admin-button admin-button-primary"
-                disabled={!confirmationToken || pending}
+                disabled={!confirmationToken || pending || Boolean(unavailable) || !copy.reviewable || !policyFound || !grantReady || change.status !== 'pending'}
                 onClick={() => void confirm()}
                 type="button"
               >
-                Confirm change
+                {copy.action}
               </button>
             </FormActions>
           </div>

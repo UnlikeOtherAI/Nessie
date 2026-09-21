@@ -39,7 +39,10 @@ the chosen private, project or organisation scope still decides access.
 Several agents can use the same executor. Each agent has its own access and
 operation grants; granting a second agent does not replace the first, and
 removing one agent's access does not remove another's. Manage these grants on
-the executor's **Access** and **Operations** tabs. Pairing itself grants no
+the executor's **Agents** tab. **Add agent** opens a picker, then a confirmation
+that names the agent and the permissions it will receive. Private assignment
+and the agent's operation grants change together; removing one agent leaves
+other agents' access intact. Pairing itself grants no
 agent access. The selected team limit does not limit the number of agents.
 
 **SSO access-change blocker:** allowing an agent, changing private assignments
@@ -49,6 +52,31 @@ changes until a shared UOA-backed fresh-verification flow exists. The
 many-agent model is supported, but those grants are not yet usable by SSO-only
 accounts. An ordinary login or refreshed session is not a substitute for
 proof that a fresh authentication factor was checked for this exact change.
+The confirmation explains the missing verification support and does not ask
+SSO-only users to invent a local password. A new login or refresh is not proof
+of fresh authentication: UOA's currently published contract provides no
+authentication-time or factor-assurance claim for a relying party.
+
+## Manage a machine
+
+The default **Agents** tab lists one row per agent in the shared table, with
+server search, cursor pagination and the standard page-size picker. Rows state
+stored grants and private assignment, never claim that every runtime condition
+is currently satisfied.
+
+**Permissions** shows the latest machine proposal in plain language. Only a
+current proposal awaiting review contributes to the Executors menu badge and
+the row's review link. Superseded versions and old draft reviews are history,
+not work awaiting a decision. The permission review lists the same folders,
+programs and local apps that the machine signed; hashes and protocol names
+remain in the protocol and audit records.
+
+**Activity** shows the 20 most recent sessions and links to their conversations
+only when the viewer can open them. It has no per-session disconnect button:
+disconnecting revokes the whole executor. The **Machine** menu owns
+Pause/Resume, Disconnect, private-machine people, local models when connected,
+and local Desktop controls when available. Drain stays an operator API action;
+it is not a graceful finish-and-resume operation.
 
 **Older records without their machine key:** the current control plane keeps
 executor records and audit history after revocation; it has no delete/archive

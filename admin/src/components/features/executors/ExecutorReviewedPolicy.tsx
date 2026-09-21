@@ -2,6 +2,7 @@ import type { ExecutorDescriptorRevisionView } from '../../../facades/executors/
 import { ExecutorMcpServers } from './ExecutorMcpServers'
 import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
 import { ExecutorReachableFolders } from './ExecutorReachableFolders'
+import { executorOperationLabel } from './executor-presentation'
 
 /**
  * What a prepared `descriptor_review` change actually activates.
@@ -42,14 +43,15 @@ export const ExecutorReviewedPolicy = ({
     ? undefined
     : (descriptorRevisions ?? []).find((candidate) => candidate.revision === revisionNumber)
   if (!revision) return null
-  return (
-    <div className="grid gap-1 rounded border border-[color:var(--sep)] p-2 text-xs">
-      <p className="font-medium text-[color:var(--tx)]">
-        Revision {revision.revision} local policy
-      </p>
-      <p className="text-[color:var(--tx2)]">
-        {revision.profiles.join(', ')} · {revision.operationKeys.join(', ')}
-      </p>
+  return <ExecutorPermissionDetails revision={revision} />
+}
+
+/** The same readable terms appear on the machine and in its approval. */
+export const ExecutorPermissionDetails = ({ revision }: { revision: ExecutorDescriptorRevisionView }) => (
+    <div className="grid gap-3 text-sm text-[color:var(--tx2)]">
+      <ul className="grid gap-1">
+        {revision.operationKeys.map((key) => <li key={key}>{executorOperationLabel(key)}</li>)}
+      </ul>
       <ExecutorReachableFolders
         operationKeys={revision.operationKeys}
         workspaceFolders={revision.workspaceFolders}
@@ -62,6 +64,11 @@ export const ExecutorReviewedPolicy = ({
         commandAllowlist={revision.commandAllowlist}
         operationKeys={revision.operationKeys}
       />
+      {revision.operationKeys.includes('browser.open') ? (
+        <p>Browser access is limited to sites approved on the machine.</p>
+      ) : null}
+      {revision.operationKeys.includes('coding.launch') ? (
+        <p>Coding runs in an isolated copy. Login details stay on the machine.</p>
+      ) : null}
     </div>
-  )
-}
+)

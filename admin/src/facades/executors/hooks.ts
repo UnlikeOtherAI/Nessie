@@ -40,7 +40,8 @@ export const fetchExecutorAccess = (apiClient: ApiClient, executorId: string) =>
 export const useExecutorAccess = (executorId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    placeholderData: keepPreviousData,
+    // Consent must never show permissions retained from a different machine.
+    placeholderData: undefined,
     queryKey: executorKeys.access(executorId),
     // Parsed by the client, not here. A hand-rolled `.parse()` throws a bare
     // ZodError, and this screen has to tell two failures apart: a server that
@@ -94,7 +95,8 @@ export const useExecutorWorkspacePromotion = (promotionId?: string) => {
 export const useExecutorAccessChange = (accessChangeId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    placeholderData: keepPreviousData,
+    // Each token approves one exact change; a previous change cannot stand in.
+    placeholderData: undefined,
     queryKey: executorKeys.accessChange(accessChangeId),
     queryFn: async () => ExecutorAccessChangeResponseSchema.parse(
       await apiClient.get(`/api/executor-access-changes/${accessChangeId}`),
