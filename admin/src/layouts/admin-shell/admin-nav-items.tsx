@@ -54,6 +54,7 @@ const agentDetailRoutePrefixes = [
   '/agents/workflow-designer',
   '/agents/activity',
   '/agents/workflows',
+  '/agents/task-sets',
   '/agents/triggers',
   '/agents/tools',
   '/agents/executors',
@@ -121,6 +122,16 @@ export const ADMIN_NAV: AdminNavGroup[] = [
             <rect height="4" rx="1" width="6" x="4" y="16" />
             <path d="M10 6h2a2 2 0 012 2v4" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M14 12h-2a2 2 0 00-2 2v4" strokeLinecap="round" strokeLinejoin="round" />
+          </>,
+        ),
+      },
+      {
+        path: '/agents/task-sets',
+        label: 'Task Sets',
+        icon: icon(
+          <>
+            <path d="M8 6h12M8 12h12M8 18h12" strokeLinecap="round" />
+            <path d="M3 6h.01M3 12h.01M3 18h.01" strokeLinecap="round" />
           </>,
         ),
       },

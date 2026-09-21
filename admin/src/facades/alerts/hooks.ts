@@ -179,6 +179,9 @@ export const getAlertLink = (
   if (alert.kind === 'workflow_run_failed' && alert.workflowRunId) {
     return { to: `/agents/workflows?failedRuns=1&run=${alert.workflowRunId}` }
   }
+  if (alert.kind === 'task_set_health' && alert.taskSetId) {
+    return { to: `/agents/task-sets/${encodeURIComponent(alert.taskSetId)}` }
+  }
   if (alert.kind === 'task_assigned' && alert.projectId) {
     return { to: `/projects/${alert.projectId}/board` }
   }

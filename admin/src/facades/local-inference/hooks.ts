@@ -11,6 +11,13 @@ export type LocalInferenceHost = {
   paused: boolean
   status: 'consented_pending_activation' | 'needs_rebinding' | 'pending' | 'revoked' | 'active' | 'unconfigured'
   transport: 'desktop' | 'executor'
+  resource?: {
+    resourceId: string
+    capacity: number
+    controlRevision: number
+    paused: boolean
+    healthReason: 'termination_uncertain' | null
+  }
 }
 
 type HostList = { hosts: LocalInferenceHost[]; meta: { total: number } }
@@ -31,6 +38,16 @@ export const useLocalInferenceHostAction = () => {
     mutationFn: (input: { action: 'pause' | 'resume' | 'revoke'; hostId: string }) =>
       apiClient.post(`/api/local-inference/hosts/${input.hostId}/${input.action}`, {}),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: localInferenceKeys.all }),
+  })
+}
+
+export const useLocalInferenceCapacity = () => {
+  const api = useApiClient()
+  const cache = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { hostId: string; capacity: number }) =>
+      api.post(`/api/local-inference/hosts/${input.hostId}/capacity`, { capacity: input.capacity }),
+    onSuccess: () => void cache.invalidateQueries({ queryKey: localInferenceKeys.all }),
   })
 }
 

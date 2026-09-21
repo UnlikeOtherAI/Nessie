@@ -79,6 +79,9 @@ const describeAlert = (alert: UserAlertRecord): string => {
   if (alert.kind === 'workflow_run_failed') {
     return 'A workflow run failed'
   }
+  if (alert.kind === 'task_set_health') {
+    return 'A task set needs attention'
+  }
   if (alert.kind === 'approval_requested') {
     // Deliberately generic: the alert body reaches a lock screen, and what is
     // waiting for approval is exactly the thing that must not travel there.

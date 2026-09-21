@@ -162,3 +162,12 @@ export const WorkflowDesignerPage = lazy(() =>
 export const WorkflowsPage = lazy(() =>
   import('./pages/WorkflowsPage').then((m) => ({ default: m.WorkflowsPage })),
 )
+export const TaskSetsPage = lazy(() =>
+  import('./pages/TaskSetsPage').then((m) => ({ default: m.TaskSetsPage })),
+)
+export const TaskSetCreatePage = lazy(() =>
+  import('./pages/TaskSetCreatePage').then((m) => ({ default: m.TaskSetCreatePage })),
+)
+export const TaskSetDetailPage = lazy(() =>
+  import('./pages/TaskSetDetailPage').then((m) => ({ default: m.TaskSetDetailPage })),
+)

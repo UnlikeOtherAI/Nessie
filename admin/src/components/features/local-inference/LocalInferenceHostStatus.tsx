@@ -2,9 +2,12 @@ import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   useLocalInferenceHostAction,
+  useLocalInferenceCapacity,
   useLocalInferenceHosts,
   type LocalInferenceHost,
 } from '../../../facades/local-inference/hooks'
+import { FormField } from '../../shared/FormField'
+import { Select } from '../../shared/FormControls'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { QueryState } from '../../shared/QueryState'
 
@@ -13,6 +16,8 @@ type LocalInferenceHostStatusProps = {
   confirmInDialog?: boolean
   /** Restricts the shared controls to one paired executor when it is known. */
   executorId?: string
+  /** A task set selects one authorized processor host, not every own machine. */
+  hostId?: string
   /** The owning surface supplies the only useful empty-state doorway. */
   empty: ReactNode
 }
@@ -20,7 +25,10 @@ type LocalInferenceHostStatusProps = {
 const hostCopy = (host: LocalInferenceHost): string => {
   if (host.status === 'revoked') return 'Revoked — connect it again before an agent can use it.'
   if (host.status === 'needs_rebinding') return 'Needs reconsent before it can run an agent.'
-  if (host.paused) return 'Paused — resume when this computer is ready to accept an agent request.'
+  if (host.resource?.healthReason === 'termination_uncertain') {
+    return 'Confirm on this computer that the previous Ollama request has stopped before resuming local models.'
+  }
+  if (host.resource?.paused ?? host.paused) return 'Paused — resume when this computer is ready to accept an agent request.'
   if (host.availability === 'unknown') return 'Unknown — Nessie cannot currently verify this connection.'
   if (host.availability === 'offline') return 'Offline — start Nessie Desktop or its executor on this computer.'
   return host.models.length === 0
@@ -34,10 +42,11 @@ const hostCopy = (host: LocalInferenceHost): string => {
  * executor, so following either doorway reaches the same control and facts.
  */
 export const LocalInferenceHostStatus = ({
-  executorId, empty, confirmInDialog = false,
+  executorId, hostId, empty, confirmInDialog = false,
 }: LocalInferenceHostStatusProps) => {
   const hosts = useLocalInferenceHosts()
   const action = useLocalInferenceHostAction()
+  const capacity = useLocalInferenceCapacity()
   const [actionError, setActionError] = useState<string | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<LocalInferenceHost | null>(null)
 
@@ -57,7 +66,7 @@ export const LocalInferenceHostStatus = ({
   }
 
   const visibleHosts = (hosts.data?.hosts ?? []).filter((host) =>
-    executorId === undefined || host.executorId === executorId,
+    (executorId === undefined || host.executorId === executorId) && (hostId === undefined || host.id === hostId),
   )
 
   return (
@@ -81,8 +90,22 @@ export const LocalInferenceHostStatus = ({
                     {host.transport === 'desktop' ? 'Nessie Desktop' : 'Paired executor'} · {host.availability}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--tx3)]">{hostCopy(host)}</p>
+                  {host.resource ? <p className="mt-1 text-xs text-[color:var(--tx3)]">
+                    Shared capacity: {host.resource.capacity}. Pause applies to all local models using this resource.
+                  </p> : null}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-end gap-2">
+                  {host.resource ? <FormField label="Shared parallel requests">
+                    <Select disabled={capacity.isPending} onChange={(event) => {
+                      setActionError(null)
+                      capacity.mutate({ hostId: host.id, capacity: Number(event.target.value) }, {
+                        onError: () => setActionError('Could not update shared capacity. Try again.'),
+                      })
+                    }} value={host.resource.capacity}>
+                      {Array.from({ length: 16 }, (_, index) => index + 1).map((value) =>
+                        <option key={value} value={value}>{value}</option>)}
+                    </Select>
+                  </FormField> : null}
                   {executorId === undefined && host.transport === 'executor' && host.executorId ? (
                     <Link className="admin-button admin-button-secondary" to={`/agents/executors/${host.executorId}`}>
                       Open executor
@@ -91,11 +114,11 @@ export const LocalInferenceHostStatus = ({
                   {host.status !== 'revoked' ? (
                     <button
                       className="admin-button admin-button-secondary"
-                      disabled={action.isPending}
-                      onClick={() => performHostAction(host.id, host.paused ? 'resume' : 'pause')}
+                      disabled={action.isPending || host.resource?.healthReason === 'termination_uncertain'}
+                      onClick={() => performHostAction(host.id, (host.resource?.paused ?? host.paused) ? 'resume' : 'pause')}
                       type="button"
                     >
-                      {host.paused ? 'Resume local models' : 'Pause local models'}
+                      {(host.resource?.paused ?? host.paused) ? 'Resume local models' : 'Pause local models'}
                     </button>
                   ) : null}
                   <button
