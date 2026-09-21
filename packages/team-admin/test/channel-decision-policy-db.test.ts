@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { PrismaClient } from '@prisma/client'
-import { DEFAULT_CHANNEL_DECISION_POLICY, type ChannelDecisionPolicy } from '@nessie/schemas'
+import {
+  AuthorizedActionContextSchema, DEFAULT_CHANNEL_DECISION_POLICY, type ChannelDecisionPolicy,
+} from '@nessie/schemas'
 import { updateChannel } from '../src/channel-manage.js'
 import { ChannelDecisionPolicyError } from '../src/channel-decision-policy.js'
 
@@ -47,9 +49,14 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
     ] }],
   }
   const input = { organizationId, channelId: channel.id, userId: memberId }
+  const actorContext = AuthorizedActionContextSchema.parse({
+    actor: { actorType: 'user', actorId: memberId },
+    tenant: { organizationId },
+    actionContext: { requestId: randomUUID() },
+  })
 
   await t.test('an ordinary channel member saves and reads a multi-option policy', async () => {
-    const updated = await updateChannel(prisma, { ...input, decisionPolicy: policy })
+    const updated = await updateChannel(prisma, { ...input, actorContext, decisionPolicy: policy })
     assert.deepEqual(updated?.decisionPolicy, policy)
     const audits = await prisma.auditLog.findMany({ where: {
       organizationId, resourceId: channel.id, action: 'channel.updated',
@@ -58,6 +65,10 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
     assert.equal(audits[0]?.actorId, memberId)
     assert.deepEqual(audits[0]?.metadata, { changed: ['decisionPolicy'] })
     assert.ok(audits[0]?.entryHash)
+    const saved = await prisma.channel.findUniqueOrThrow({ where: { id: channel.id } })
+    const authorizer = AuthorizedActionContextSchema.parse(saved.decisionPolicyAuthorizer)
+    assert.equal(authorizer.actor.actorId, memberId)
+    assert.equal(authorizer.actionContext.purpose, 'channel.policy')
   })
 
   await t.test('an outsider cannot edit; an org admin can manage without joining', async () => {
@@ -69,7 +80,7 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
 
   await t.test('removing a target binding refuses a policy and its accompanying edits', async () => {
     await prisma.agentBinding.deleteMany({ where: { channelId: channel.id, agentId } })
-    await assert.rejects(updateChannel(prisma, { ...input, topic: 'Must not be saved', decisionPolicy: policy }),
+    await assert.rejects(updateChannel(prisma, { ...input, actorContext, topic: 'Must not be saved', decisionPolicy: policy }),
       ChannelDecisionPolicyError)
     const stored = await prisma.channel.findUniqueOrThrow({ where: { id: channel.id } })
     assert.equal(stored.topic, null)

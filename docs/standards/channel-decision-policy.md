@@ -38,3 +38,23 @@ queue redelivery reuses it instead of choosing new actions under a changed
 policy. `Run.promptOverride` pins the selected work instructions for run
 restart. `RunThreadPendingMessage.promptOverride` preserves them when the
 target agent is already running and the message must wait.
+
+Custom work runs as the person who last saved the policy, never as the person
+whose later message triggered it. `Channel.decisionPolicyAuthorizer` captures
+that authenticated human's stable user/UOA references and original tenant;
+it contains no session, approval, or verification proofs and is server-only.
+The classifier snapshot pins that context for replay. Saving a replacement
+reauthorizes it; clearing the policy clears its authorizer too.
+
+`resolveChannelPolicyAuthorizer` revalidates at dispatch and run start,
+including pending-message drains and run restarts. It asks UOA for fresh
+entitlements using the captured subject and credential epoch, verifies the
+original team still matches its UOA mapping, and checks current channel
+management rights and the exact target binding. Local mode rechecks active
+organisation membership. It never substitutes a stored account's newer
+identity for a stale captured one. A deactivation, lost channel access,
+removed agent, or unmatched PA principal refuses work; UOA unavailability
+also refuses. A policy without an authorizer must be saved again.
+An organisation administrator's management standing does not grant access to
+a protected conversation: target execution also requires that authorizer to
+be an actual member of a non-public channel.

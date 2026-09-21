@@ -14,6 +14,7 @@ import {
 } from './channel-slugs.js'
 import { canModifyChannel } from './resource-authority.js'
 import { ChannelDecisionPolicyError, validateChannelDecisionPolicy } from './channel-decision-policy.js'
+import { captureChannelPolicyAuthorizer, resolveChannelPolicyAuthorizer } from './channel-policy-authority.js'
 
 /**
  * The channel writes `canModifyChannel` gates (`resource-authority.ts`: any
@@ -54,6 +55,12 @@ export const updateChannel = async (
   if (input.decisionPolicy !== undefined && manage.channel.type !== 'standard') {
     throw new ChannelDecisionPolicyError('Decision policies are available only for standard channels')
   }
+  const authorizer = input.decisionPolicy
+    ? await resolveChannelPolicyAuthorizer(prisma, {
+      ...input,
+      authorizer: captureChannelPolicyAuthorizer(input.actorContext, input),
+    })
+    : null
 
   const data: Prisma.ChannelUpdateInput = {}
   // A standalone channel renamed into a taken name was told the conflict was
@@ -99,6 +106,7 @@ export const updateChannel = async (
           policy: input.decisionPolicy,
         })
         data.decisionPolicy = policy ?? Prisma.DbNull
+        data.decisionPolicyAuthorizer = authorizer ?? Prisma.DbNull
       }
       const updated = await tx.channel.update({
         where: { id: input.channelId },
@@ -119,7 +127,7 @@ export const updateChannel = async (
         outcome: 'success',
         requestId: context?.actionContext.requestId ?? randomUUID(),
         metadata: {
-          changed: Object.keys(data).filter((key) => key !== 'slug'),
+          changed: Object.keys(data).filter((key) => key !== 'slug' && key !== 'decisionPolicyAuthorizer'),
           ...(context?.actionContext.agentCredentialId ? {
             agentCredentialId: context.actionContext.agentCredentialId,
             via: 'mcp_agent_credential',
