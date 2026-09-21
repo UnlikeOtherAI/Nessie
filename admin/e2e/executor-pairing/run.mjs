@@ -109,6 +109,10 @@ try {
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByText('The code has expired.', { exact: false }).waitFor()
     assert.equal(claims.length, 2, 'Expired code never submits a claim')
+    await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?pending=1`)
+    await page.getByText('Open Nessie Executor on your machine to confirm', { exact: false }).waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Confirm fingerprint', exact: true }).count(), 0)
+    await page.screenshot({ path: resolve(output, `pending-${width}.png`) })
     assert.deepEqual(errors, [])
     await context.close()
   }

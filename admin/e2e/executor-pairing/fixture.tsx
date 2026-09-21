@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { useState } from 'react'
 import { BrowserRouter } from 'react-router-dom'
 import { ExecutorPairDialog } from '../../src/components/features/executors/ExecutorPairDialog'
+import { ExecutorPairingPendingNotice } from '../../src/components/features/executors/ExecutorPairingPendingNotice'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
 import '../../src/styles.css'
 
@@ -23,6 +24,7 @@ const Fixture = () => {
           <LocalBackProvider>
             <main className="min-h-screen bg-[color:var(--bg)] p-8 text-[color:var(--tx)]">
               <h1>Executors</h1>
+              {new URLSearchParams(location.search).has('pending') ? <ExecutorPairingPendingNotice /> : null}
               <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Pair executor</button>
               {finished ? <p>Executor opened</p> : null}
               <ExecutorPairDialog

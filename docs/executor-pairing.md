@@ -27,15 +27,38 @@ behind. Existing access and audit history stay with that old record.
 
 The Windows tray checks for older Desktop and default command-line connections
 before starting. If one exists, close it in the app that manages it first;
-Desktop has revoke and forget controls on its Executors page. The service does
-not copy a user's existing key into its own store.
+Desktop has a local forget control on its Executors page. Server-side
+revocation is a separate operation; do not forget the key before arranging it.
+The service does not copy a user's existing key into its own store.
 The Mac app reuses a single existing state directory in place and asks you
 to resolve multiple existing connections before pairing.
 
 One machine connects to one selected team in this flow. Connecting the same
 machine to several teams is deferred. The team name identifies the connection;
 the chosen private, project or organisation scope still decides access.
-Agents need their own grants for the operations they may perform.
+Several agents can use the same executor. Each agent has its own access and
+operation grants; granting a second agent does not replace the first, and
+removing one agent's access does not remove another's. Manage these grants on
+the executor's **Access** and **Operations** tabs. Pairing itself grants no
+agent access. The selected team limit does not limit the number of agents.
+
+**SSO access-change blocker:** allowing an agent, changing private assignments
+and activating a capability revision currently require the control plane's
+fresh local-password verification. UOA-only accounts cannot complete these
+changes until a shared UOA-backed fresh-verification flow exists. The
+many-agent model is supported, but those grants are not yet usable by SSO-only
+accounts. An ordinary login or refreshed session is not a substitute for
+proof that a fresh authentication factor was checked for this exact change.
+
+**Older records without their machine key:** the current control plane keeps
+executor records and audit history after revocation; it has no delete/archive
+operation. Its existing access-change revocation requires fresh local-password
+verification and has no UOA step-up verifier, so SSO-only accounts cannot yet
+retire those records through that flow. This is a separate known blocker. The
+remedy is shared, UOA-backed fresh verification bound to the exact access-change
+continuation, followed by an authorized retirement control. Do not add a local
+password or bypass fresh verification. Code-based replacement uses proof from
+the existing machine key and does not depend on that unavailable flow.
 
 ## Platform operation
 

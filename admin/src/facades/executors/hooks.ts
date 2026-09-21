@@ -8,7 +8,6 @@ import {
   ExecutorWorkspaceReviewRecordResponseSchema,
   ExecutorWorkspacePromotionRecordResponseSchema,
   OriginatingExecutorWorkspaceReviewRecordResponseSchema,
-  PendingExecutorEnrollmentResponseSchema,
   PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
   type ImplementedExecutorOperationKey,
@@ -88,19 +87,6 @@ export const useExecutorWorkspacePromotion = (promotionId?: string) => {
       await apiClient.get(`/api/executor-workspace-promotions/${promotionId}`),
     ),
     enabled: Boolean(promotionId),
-    retry: false,
-  })
-}
-
-export const usePendingExecutorEnrollment = (executorId?: string) => {
-  const apiClient = useApiClient()
-  return useQuery({
-    placeholderData: keepPreviousData,
-    queryKey: executorKeys.pairing(executorId),
-    queryFn: async () => PendingExecutorEnrollmentResponseSchema.parse(
-      await apiClient.get(`/api/executors/${executorId}/pairing-pending`),
-    ),
-    enabled: false,
     retry: false,
   })
 }
@@ -194,20 +180,6 @@ export const useRejectExecutorWorkspacePromotion = () => {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: executorKeys.all })
-    },
-  })
-}
-
-export const useConfirmExecutorEnrollment = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { executorId: string; fingerprint: string }) =>
-      apiClient.post(`/api/executors/${input.executorId}/pairing-confirm`, {
-        fingerprint: input.fingerprint,
-      }),
-    onSuccess: (_result, input) => {
-      void queryClient.invalidateQueries({ queryKey: executorKeys.detail(input.executorId) })
     },
   })
 }

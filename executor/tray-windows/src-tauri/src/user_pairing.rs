@@ -11,7 +11,7 @@ pub fn require_no_user_pairing(app: &tauri::AppHandle) -> Result<(), String> {
         .join("com.unlikeotherai.nessie.desktop")
         .join("executors");
     if contains_pairing(&root)? {
-        return Err("This computer already has a pairing managed by Nessie Desktop. Open its Executors page to revoke and forget that connection before pairing here.".to_owned());
+        return Err("This computer already has a pairing managed by Nessie Desktop. Its existing connection must be closed before pairing here.".to_owned());
     }
     let cli_root = app
         .path()

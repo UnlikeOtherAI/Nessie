@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import type { PreparedExecutorAccessChangeResponse } from '@nessie/schemas'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
+import { ExecutorPairingPendingNotice } from '../components/features/executors/ExecutorPairingPendingNotice'
 import { ExecutorAccessChangeDialog } from '../components/features/executors/ExecutorReviewDialogs'
 import { LocalInferenceHostStatus } from '../components/features/local-inference/LocalInferenceHostStatus'
 import {
@@ -16,11 +17,9 @@ import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import { useAgents } from '../facades/agents/hooks'
 import {
-  useConfirmExecutorEnrollment,
   useExecutorAccess,
   useExecutors,
   useExecutorWorkspaceReviews,
-  usePendingExecutorEnrollment,
 } from '../facades/executors/hooks'
 import { useUsers } from '../facades/users/hooks'
 
@@ -42,11 +41,6 @@ export const ExecutorDetailPage = () => {
   const reviewsQuery = useExecutorWorkspaceReviews(executorId)
   const agentsQuery = useAgents()
   const usersQuery = useUsers()
-  const pendingPairing = usePendingExecutorEnrollment(executorId)
-  // A plain const narrows across the closure below; `pendingPairing.data`
-  // itself does not.
-  const pendingFingerprint = pendingPairing.data?.fingerprint
-  const confirmPairing = useConfirmExecutorEnrollment()
   const [prepared, setPrepared] = useState<PreparedExecutorAccessChangeResponse | null>(null)
 
   const backToList = () => void navigate('/agents/executors')
@@ -97,36 +91,7 @@ export const ExecutorDetailPage = () => {
       <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-4">
         <div className="grid gap-4">
           {executor.status === 'pending_pairing' ? (
-            <section className="flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--sep)] p-4 text-sm text-[color:var(--tx2)]">
-              <span>When the companion has submitted its descriptor, inspect and confirm the fingerprint here.</span>
-              <button
-                className="admin-button admin-button-secondary"
-                onClick={() => void pendingPairing.refetch()}
-                type="button"
-              >
-                Check pairing
-              </button>
-              {pendingFingerprint ? (
-                <>
-                  <code className="text-xs">{pendingFingerprint}</code>
-                  <button
-                    className="admin-button admin-button-primary"
-                    disabled={confirmPairing.isPending}
-                    onClick={() => {
-                      // No local onError: the app-wide mutation default
-                      // (providers/QueryProvider.tsx) surfaces a failure as a
-                      // toast; `.catch` here only stops an unhandled rejection.
-                      void confirmPairing
-                        .mutateAsync({ executorId: executor.id, fingerprint: pendingFingerprint })
-                        .catch(() => undefined)
-                    }}
-                    type="button"
-                  >
-                    Confirm fingerprint
-                  </button>
-                </>
-              ) : null}
-            </section>
+            <ExecutorPairingPendingNotice />
           ) : null}
 
           <ExecutorDesktopCompanionPanel executorId={executor.id} />
