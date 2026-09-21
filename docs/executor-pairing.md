@@ -106,6 +106,9 @@ pairing does not weaken either verification gate.
 
 ## Protocol and verification
 
+The [management element audit](testing/executor-detail.md) records why each
+detail-page element remains, moves into a dialog, or is removed.
+
 The [executor protocol](executor-protocol/overview.md#42-machine-first-pairing)
 defines machine proof, expiry, atomic claims, replacement and local
 confirmation. The code is a lookup value, never a machine credential.

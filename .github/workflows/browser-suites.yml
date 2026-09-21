@@ -191,6 +191,22 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:local-ollama-agents
 
+      - name: Run executor pairing and management browser suites
+        if: steps.scope.outputs.code == '1'
+        run: |
+          pnpm --filter @nessie/admin test:e2e:executor-pairing
+          pnpm --filter @nessie/admin test:e2e:executor-agents
+          pnpm --filter @nessie/admin test:e2e:executor-detail
+          pnpm --filter @nessie/admin test:e2e:executor-attention
+
+      - name: Upload executor screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: executor-screenshots
+          path: e2e/screenshots/executor-*
+          if-no-files-found: error
+
       # Two Chromium contexts on one spreadsheet: a batch from one pane landing
       # live in the other, the presence overlay, and a structural batch forcing
       # the intent replay. Its own `ci.mjs` starts and stops the API and admin

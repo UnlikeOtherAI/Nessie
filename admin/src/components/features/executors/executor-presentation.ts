@@ -49,7 +49,9 @@ export const executorScopeSummary = (executor: ExecutorRecordResponse): string =
       : 'Organisation machine'
 
 export const executorProfilesLabel = (executor: ExecutorRecordResponse): string =>
-  executor.profiles.join(', ') || 'Awaiting descriptor review'
+  executor.profiles.map((profile) => ({
+    workspace_sandbox: 'Files and programs', coding_session: 'Coding', connected_browser: 'Connected browser',
+  })[profile]).join(', ') || 'Waiting for machine permissions'
 
 export const EXECUTOR_OPERATION_LABELS: Record<ImplementedExecutorOperationKey, string> = {
   'file.list': 'Browse files',

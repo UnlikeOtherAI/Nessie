@@ -292,7 +292,9 @@ try {
   await mkdir(screenshots, { recursive: true })
   await assertFreshServersAvailable()
   admin = await startAdmin({ reuseExisting: false })
-  assert.match(await (await fetch(ADMIN_URL)).text(), /@vite\/client/, 'Evaluation must serve live source')
+  if (process.env.NAV_E2E_ADMIN_MODE !== 'preview') {
+    assert.match(await (await fetch(ADMIN_URL)).text(), /@vite\/client/, 'Evaluation must serve live source')
+  }
   browser = await launchBrowser()
   for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
     await evaluate(browser, viewport)

@@ -59,11 +59,11 @@ const availabilityPill = (status: ExecutorLocalMcpStatus) => {
     case 'launch_failed':
       return <Pill size="sm" tone="warning" uppercase={false}>launch failed</Pill>
     case 'handshake_failed':
-      return <Pill size="sm" tone="warning" uppercase={false}>handshake failed</Pill>
+      return <Pill size="sm" tone="warning" uppercase={false}>connection failed</Pill>
     case 'unsupported_platform':
       return <Pill size="sm" tone="warning" uppercase={false}>unsupported platform</Pill>
     case 'not_probed':
-      return <Pill size="sm" tone="muted" uppercase={false}>not probed</Pill>
+      return <Pill size="sm" tone="muted" uppercase={false}>not checked</Pill>
     default:
       return <Pill size="sm" tone="warning" uppercase={false}>unavailable</Pill>
   }
@@ -79,45 +79,23 @@ const unavailableCopy = (status: ExecutorLocalMcpStatus): string => {
   const name = serverDisplayName(status.server)
   switch (status.reason) {
     case 'not_installed':
-      return `${name} is not installed on this machine. Install it there and the next heartbeat reports it.`
+      return `Install ${name} on this machine to use it.`
     case 'launch_failed':
-      return `${name} is installed, but the daemon could not start it.`
+      return `${name} could not start. Check it on the machine.`
     case 'handshake_failed':
-      return `${name} started, but did not answer the MCP handshake.`
+      return `${name} started but could not connect. Check it on the machine.`
     case 'unsupported_platform':
       return `${name} cannot run on this machine’s platform.`
     case 'not_probed':
-      return `The daemon has not probed ${name} yet; a later heartbeat should say.`
+      return `${name} has not been checked yet.`
     default:
-      return `${name} is not available, and the daemon gave no reason.`
+      return `${name} is unavailable. Check it on the machine.`
   }
 }
 
-const availableCopy = (status: ExecutorLocalMcpStatus): string => {
-  const facts = [
-    status.serverVersion ? `${serverDisplayName(status.server)} ${status.serverVersion}` : undefined,
-    typeof status.toolCount === 'number'
-      ? `${status.toolCount} tool${status.toolCount === 1 ? '' : 's'}`
-      : undefined,
-  ].filter((fact): fact is string => Boolean(fact))
-  return facts.length > 0
-    ? facts.join(' · ')
-    : 'The daemon completed an MCP handshake with it.'
-}
-
 const KelpieDeviceRow = ({ device }: { device: KelpieDevice }) => {
-  const facts = [
-    device.platform,
-    device.runtimeMode,
-    device.engine,
-    device.version ? `Kelpie ${device.version}` : undefined,
-  ].filter((fact): fact is string => Boolean(fact))
-  const where = [
-    `${device.address}:${device.port}`,
-    device.display ? `${device.display.width}×${device.display.height}` : undefined,
-  ].filter((fact): fact is string => Boolean(fact))
   return (
-    <li className="rounded border border-[color:var(--sep)] px-2 py-1.5">
+    <li className="py-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-[color:var(--tx)]">{device.name}</span>
         {device.model ? <span className="text-[color:var(--tx3)]">{device.model}</span> : null}
@@ -125,15 +103,12 @@ const KelpieDeviceRow = ({ device }: { device: KelpieDevice }) => {
           ? <Pill size="sm" tone="success" uppercase={false}>paired</Pill>
           : <Pill size="sm" tone="accent" uppercase={false}>pair on the device</Pill>}
       </div>
-      {facts.length > 0 ? <p className="mt-0.5 text-[color:var(--tx2)]">{facts.join(' · ')}</p> : null}
       <p className="mt-0.5 text-[color:var(--tx3)]">
-        {where.join(' · ')}{where.length > 0 ? ' · ' : ''}
         last seen <span title={device.lastSeenAt}>{observedAge(device.lastSeenAt)}</span>
       </p>
       {device.paired ? null : (
         <p className="mt-0.5 text-[color:var(--tx2)]">
-          Discovered, not drivable — Kelpie refuses automation until a person
-          pairs on the device itself.
+          Open Kelpie on this device to pair it before an agent can use it.
         </p>
       )}
     </li>
@@ -145,15 +120,14 @@ const KelpieInventory = ({ status }: { status: ExecutorLocalMcpStatus }) => {
   if (!status.kelpieDevices) {
     return (
       <p className="mt-1 text-[color:var(--tx3)]">
-        The daemon has not probed the network for Kelpie instances.
+        Nearby Kelpie devices have not been checked yet.
       </p>
     )
   }
   if (status.kelpieDevices.length === 0) {
     return (
       <p className="mt-1 text-[color:var(--tx2)]">
-        Kelpie answered, but no browser announced itself on the network. Open
-        Kelpie on a device and it appears here on a later heartbeat.
+        No nearby browsers found. Open Kelpie on the device you want to use.
       </p>
     )
   }
@@ -165,18 +139,15 @@ const KelpieInventory = ({ status }: { status: ExecutorLocalMcpStatus }) => {
 }
 
 const ServerStatusBlock = ({ status }: { status: ExecutorLocalMcpStatus }) => (
-  <div className="rounded border border-[color:var(--sep)] p-2 text-xs">
+  <div className="border-b border-[color:var(--sep)] py-3 text-sm">
     <div className="flex flex-wrap items-center gap-2">
-      <span className="font-medium text-[color:var(--tx)]">{status.server}</span>
+      <span className="font-medium text-[color:var(--tx)]">{serverDisplayName(status.server)}</span>
       {availabilityPill(status)}
       <span className="text-[color:var(--tx3)]" title={status.observedAt}>
         observed {observedAge(status.observedAt)}
       </span>
     </div>
-    <p className="mt-1 text-[color:var(--tx2)]">
-      {status.available ? availableCopy(status) : unavailableCopy(status)}
-      {!status.available && status.detail ? ` ${status.detail}` : null}
-    </p>
+    {!status.available ? <p className="mt-1 text-[color:var(--tx2)]">{unavailableCopy(status)}</p> : null}
     <KelpieInventory status={status} />
   </div>
 )
@@ -201,22 +172,18 @@ export const ExecutorLocalMcpPanel = ({
   if (namedServers.length === 0 && statuses.length === 0) return null
   return (
     <div className="grid gap-2 border-t border-[color:var(--sep)] pt-3">
-      <SectionLabel size="sm">Local MCP servers</SectionLabel>
+      <SectionLabel size="sm">Local apps</SectionLabel>
       <p className="text-xs text-[color:var(--tx3)]">
-        A last-observed snapshot from the daemon’s heartbeat, never live — the
-        daemon may be offline and instances come and go, so read each entry’s
-        age before acting on it.
+        Status when the machine last checked in; it may have changed since.
       </p>
       {!localMcp ? (
         <p className="text-xs text-[color:var(--tx2)]">
-          This daemon has never reported local MCP status — it predates the
-          report, or it has not connected since. The reviewed policy names the
-          servers below; nothing is known about them yet.
+          The machine has not reported whether these apps are available yet.
         </p>
       ) : null}
       {statuses.map((status) => <ServerStatusBlock key={status.server} status={status} />)}
       {unreported.map((name) => (
-        <div className="rounded border border-[color:var(--sep)] p-2 text-xs" key={name}>
+        <div className="border-b border-[color:var(--sep)] py-3 text-sm" key={name}>
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-[color:var(--tx)]">{name}</span>
             <Pill size="sm" tone="muted" uppercase={false}>
@@ -225,8 +192,8 @@ export const ExecutorLocalMcpPanel = ({
           </div>
           <p className="mt-1 text-[color:var(--tx2)]">
             {localMcp
-              ? 'The active reviewed policy names this server, but the daemon’s last report does not.'
-              : 'The active reviewed policy names this server; the daemon has never reported its status.'}
+              ? 'This app is permitted, but the machine did not include it in its last update.'
+              : 'This app is permitted, but the machine has not reported its status yet.'}
           </p>
         </div>
       ))}

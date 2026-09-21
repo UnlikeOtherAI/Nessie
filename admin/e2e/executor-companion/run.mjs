@@ -67,9 +67,9 @@ try {
 
   const text = await page.locator('body').innerText()
   for (const expected of [
-    'Local daemon: running · Folder: Nessie',
+    'Executor: running · Folder: Nessie',
     'Change folder',
-    'Save local policy',
+    'Save permissions',
     'Forget pairing on this computer',
     'permanently deletes local draft copies',
   ]) {

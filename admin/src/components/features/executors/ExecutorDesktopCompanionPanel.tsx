@@ -18,9 +18,9 @@ import { useShellEnvironment } from '../../../providers/ShellEnvironmentProvider
 const workspaceOperations = [
   { key: 'file.list', label: 'List files' },
   { key: 'file.read', label: 'Read files' },
-  { key: 'file.write', label: 'Create COW drafts' },
-  { key: 'workspace.review', label: 'Review COW drafts' },
-  { key: 'sandbox.stop', label: 'Stop sandboxes' },
+  { key: 'file.write', label: 'Edit draft copies' },
+  { key: 'workspace.review', label: 'Review draft changes' },
+  { key: 'sandbox.stop', label: 'Stop work sessions' },
 ] as const
 
 type ExecutorDesktopCompanionPanelProps = {
@@ -44,7 +44,7 @@ type CompanionAction = 'forget' | 'menuBar' | 'policy' | 'start' | 'stop' | 'wor
  * across rather than a start button that would race it for the daemon lease.
  */
 const MENU_BAR_SUPERVISING_COPY =
-  'The Nessie Executor menu bar app is running this Mac’s executor. Start and stop it from its menu bar icon — Nessie Desktop will not start a second daemon beside it.'
+  'Nessie Executor is running this Mac. Use its menu bar icon to start or stop it.'
 
 /** Availability states that still put pairing and daemon controls on screen. */
 const offersControls = (availability: ExecutorCompanionAvailability): boolean =>
@@ -65,18 +65,11 @@ const availabilityHeadline: Record<ExecutorCompanionAvailability, string> = {
  * why the person's computer cannot run sandboxed work.
  */
 const AvailabilityCard = ({ status }: { status: ExecutorCompanionStatusResponse }) => (
-  <section className="admin-card grid gap-2 border border-[color:var(--sep)] p-4">
+  <section className="grid gap-2">
     <h2 className="text-sm font-semibold text-[color:var(--tx)]">
       {availabilityHeadline[status.availability]}
     </h2>
     <p className="text-xs text-[color:var(--tx3)]">{status.reason}</p>
-    <p className="text-xs text-[color:var(--tx3)]">
-      Installing, upgrading and verifying the desktop companion is documented in{' '}
-      <code className="rounded bg-[color:var(--overlay-weak)] px-1 py-0.5 text-[color:var(--tx2)]">
-        docs/running-the-apps/overview.md
-      </code>
-      .
-    </p>
   </section>
 )
 
@@ -107,7 +100,7 @@ const MenuBarSection = ({
     <p className="text-xs text-[color:var(--tx3)]">
       {menuBar.supervising
         ? MENU_BAR_SUPERVISING_COPY
-        : 'The menu bar app is this Mac’s own executor surface: its settings, where it can reach, and which command-line tools it may run. Nessie Desktop ships it, so there is nothing else to install.'}
+        : 'Choose folders and permitted programs in Nessie Executor.'}
     </p>
   </div>
 )
@@ -165,7 +158,7 @@ export const ExecutorDesktopCompanionPanel = ({
   if (desktopPlatform === null) return null
   if (!companion) {
     return error ? (
-      <section className="admin-card grid gap-2 border border-[color:var(--danger)] p-4">
+      <section className="grid gap-2">
         <h2 className="text-sm font-semibold text-[color:var(--tx)]">Nessie Desktop companion</h2>
         <p className="text-xs text-[color:var(--danger-text)]">{error}</p>
       </section>
@@ -187,7 +180,7 @@ export const ExecutorDesktopCompanionPanel = ({
       <>
         {availabilityCard}
         {menuBarSection ? (
-          <section className="admin-card grid gap-3 border border-[color:var(--sep)] p-4">
+          <section className="grid gap-3">
             <h2 className="text-sm font-semibold text-[color:var(--tx)]">Nessie Executor on this Mac</h2>
             {menuBarSection}
           </section>
@@ -240,23 +233,21 @@ export const ExecutorDesktopCompanionPanel = ({
   return (
     <>
       {companion.availability === 'workspace_only' ? <AvailabilityCard status={companion} /> : null}
-      <section className="admin-card grid gap-3 border border-[color:var(--accent)] p-4">
+      <section className="grid gap-3">
         <div>
           <h2 className="text-sm font-semibold text-[color:var(--tx)]">Nessie Desktop companion</h2>
           <p className="mt-1 text-xs text-[color:var(--tx3)]">
-            Local workspace selection and every daemon action require a native confirmation.
-            Nessie never receives the full local path or pairing secret. When an allowed action
-            runs, requested file content and bounded result output are sent to Nessie and the
-            configured model provider.
+            Changes require confirmation on this computer. Files an agent reads are sent to
+            Nessie and its model provider.
           </p>
         </div>
 
         {menuBarSection}
 
         {status ? (
-          <div className="grid gap-3 rounded-md bg-[color:var(--overlay-weak)] p-3">
+          <div className="grid gap-3">
             <p className="text-xs text-[color:var(--tx2)]">
-              Local daemon: <span className="font-semibold text-[color:var(--tx)]">{status.daemonStatus}</span>
+              Executor: <span className="font-semibold text-[color:var(--tx)]">{status.daemonStatus.replaceAll('_', ' ')}</span>
               {' · '}Folder: <span className="font-semibold text-[color:var(--tx)]">{status.workspaceLabel}</span>
             </p>
             {status.daemonStatus === 'awaiting_confirmation' ? (
@@ -268,11 +259,11 @@ export const ExecutorDesktopCompanionPanel = ({
               {menuBar.supervising ? (
                 <span className="text-xs text-[color:var(--tx3)]">{MENU_BAR_SUPERVISING_COPY}</span>
               ) : status.daemonStatus === 'running' ? (
-                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop daemon'}</button>
+                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('stop', () => stopExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'stop' ? 'Stopping…' : 'Stop executor'}</button>
               ) : status.daemonStatus === 'stopping' ? (
-                <span className="text-xs text-[color:var(--tx3)]">Waiting for the prior daemon to stop…</span>
+                <span className="text-xs text-[color:var(--tx3)]">Waiting for the executor to stop…</span>
               ) : (
-                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start daemon'}</button>
+                <button className="admin-button admin-button-secondary" disabled={busy !== null} onClick={() => void run('start', () => startExecutorWithCompanion(activeExecutorId))} type="button">{busy === 'start' ? 'Starting…' : 'Start executor'}</button>
               )}
               <button
                 className="admin-button admin-button-secondary"
@@ -284,7 +275,7 @@ export const ExecutorDesktopCompanionPanel = ({
               </button>
             </div>
             <fieldset className="grid gap-2">
-              <legend className="text-xs font-semibold text-[color:var(--tx2)]">Local workspace policy</legend>
+              <legend className="text-xs font-semibold text-[color:var(--tx2)]">Folder permissions</legend>
               {workspaceOperations.map(({ key, label }) => (
                 <label className="flex items-center gap-2 text-xs text-[color:var(--tx2)]" key={key}>
                   <input checked={operationKeys.includes(key)} disabled={busy !== null} onChange={() => toggleOperation(key)} type="checkbox" />
@@ -297,11 +288,10 @@ export const ExecutorDesktopCompanionPanel = ({
                 onClick={() => void run('policy', () => configureExecutorWorkspaceWithCompanion(activeExecutorId, operationKeys))}
                 type="button"
               >
-                {busy === 'policy' ? 'Saving policy…' : 'Save local policy'}
+                {busy === 'policy' ? 'Saving…' : 'Save permissions'}
               </button>
               <p className="text-xs text-[color:var(--tx3)]">
-                A running daemon submits the signed revision for review now. If stopped, it is
-                submitted the next time you start this executor.
+                Permission changes need approval in Nessie after the executor connects.
               </p>
             </fieldset>
             <div className="grid gap-1 border-t border-[color:var(--sep)] pt-3">

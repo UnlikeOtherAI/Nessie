@@ -34,7 +34,7 @@ export const ExecutorReachableFolders = ({
     return (
       <p className="mt-1 text-[color:var(--tx2)]">
         <span className="font-medium text-[color:var(--tx)]">Folders:</span>{' '}
-        one, named before this revision recorded folder names.
+        one folder; its name was not provided by this older machine setup.
       </p>
     )
   }
@@ -49,8 +49,7 @@ export const ExecutorReachableFolders = ({
       {refusesGuestSessions
         ? (
           <span className="text-[color:var(--warning-text)]">
-            {' '}— a guest session mounts one folder, so command and coding
-            operations refuse while more than one is configured.
+            {' '}— running programs or coding requires selecting a single folder on the machine.
           </span>
         )
         : null}

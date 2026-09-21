@@ -36,17 +36,16 @@ export const ExecutorMcpServers = ({
     ? (
       <p className="mt-1 text-[color:var(--tx2)]">
         <span className="font-medium text-[color:var(--tx)]">
-          Local MCP servers ({mcpServers.length}):
+          Local apps ({mcpServers.length}):
         </span>{' '}
         {mcpServers.join(', ')}
-        {proxiesMcp ? null : ' (this proposal does not enable mcp.tools or mcp.call)'}
+        {proxiesMcp ? null : ' (using their tools is not enabled)'}
       </p>
     )
     : (
       <p className="mt-1 text-[color:var(--warning-text)]">
-        <span className="font-medium">Local MCP servers: none named.</span>{' '}
-        This proposal enables mcp.tools and mcp.call but names no server, so the
-        executor proxies none until its local policy names one.
+        <span className="font-medium">Local apps: none selected.</span>{' '}
+        Choose an app on the machine before an agent can use its tools.
       </p>
     )
 }

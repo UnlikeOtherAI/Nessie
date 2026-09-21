@@ -4,135 +4,101 @@ import type { PreparedExecutorAccessChangeResponse } from '@nessie/schemas'
 import { ExecutorDesktopCompanionPanel } from '../components/features/executors/ExecutorDesktopCompanionPanel'
 import { ExecutorDetailPanels } from '../components/features/executors/ExecutorDetailPanels'
 import { ExecutorPairingPendingNotice } from '../components/features/executors/ExecutorPairingPendingNotice'
+import { ExecutorPeopleDialog } from '../components/features/executors/ExecutorPeopleDialog'
 import { ExecutorAccessChangeDialog } from '../components/features/executors/ExecutorReviewDialogs'
 import { LocalInferenceHostStatus } from '../components/features/local-inference/LocalInferenceHostStatus'
-import {
-  EXECUTOR_STATUS_LABELS,
-  executorScopeSummary,
-  executorStatusTone,
-} from '../components/features/executors/executor-presentation'
+import { EXECUTOR_STATUS_LABELS, executorScopeSummary, executorStatusTone } from '../components/features/executors/executor-presentation'
 import { Pill } from '../components/primitives/Pill'
-import { SectionLabel } from '../components/primitives/SectionLabel'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
-import { useAgents } from '../facades/agents/hooks'
-import {
-  useExecutorAccess,
-  useExecutors,
-  useExecutorWorkspaceReviews,
-} from '../facades/executors/hooks'
-import { useUsers } from '../facades/users/hooks'
+import type { PageHeaderMenuItem } from '../components/shared/ResponsivePageHeader'
+import { Dialog } from '../components/shared/Dialog'
+import { FormError } from '../components/shared/FormActions'
+import { useExecutorAccess, useExecutors, usePrepareExecutorAccessChange } from '../facades/executors/hooks'
+import { useLocalInferenceHosts } from '../facades/local-inference/hooks'
+import { useAuthSession } from '../providers/AuthSessionProvider'
+import { useShellEnvironment } from '../providers/ShellEnvironmentProvider'
 
-/**
- * One paired machine: its boundary, its effective access, the operations its
- * agents may run, its sessions, and — on Nessie Desktop — this computer's own
- * daemon controls.
- *
- * Reached by opening a row in the Executors table. Every change it prepares is
- * a one-time, separately confirmed change, so the confirmation is a modal over
- * this screen and its token never enters the address.
- */
+/** One machine, its agent roster, current permissions and recent work. */
 export const ExecutorDetailPage = () => {
+  const { token } = useAuthSession()
+  return <ExecutorDetailContent token={token} />
+}
+
+export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
   const navigate = useNavigate()
   const { executorId } = useParams<{ executorId?: string }>()
+  const shell = useShellEnvironment()
   const executorsQuery = useExecutors()
   const executor = (executorsQuery.data ?? []).find((candidate) => candidate.id === executorId)
   const accessQuery = useExecutorAccess(executorId)
-  const reviewsQuery = useExecutorWorkspaceReviews(executorId)
-  const agentsQuery = useAgents()
-  const usersQuery = useUsers()
+  const access = accessQuery.data?.executorId === executorId ? accessQuery.data : undefined
+  const localModels = useLocalInferenceHosts()
+  const prepare = usePrepareExecutorAccessChange()
   const [prepared, setPrepared] = useState<PreparedExecutorAccessChangeResponse | null>(null)
-
+  const [panel, setPanel] = useState<'people' | 'models' | 'device' | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const backToList = () => void navigate('/agents/executors')
-
-  if (!executor) {
-    // The header is rendered here too: loading, failure and not-found are
-    // states of this screen, and a phone with no header has no Back at all.
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <ScreenHeader backLabel="Back to Executors" onBack={backToList} title="Executor" />
-        <QueryState
-          className="flex flex-1 items-center justify-center"
-          emptyLabel="This executor could not be found, or it is no longer visible to you."
-          errorLabel="Executors could not be loaded."
-          isEmpty
-          loadingLabel="Loading executor…"
-          query={executorsQuery}
-        >
-          {() => null}
-        </QueryState>
-      </div>
-    )
+  const lifecycle = async (action: 'pause' | 'resume' | 'revoke') => {
+    if (!executorId) return
+    setError(null)
+    try { setPrepared(await prepare.mutateAsync({ executorId, change: { kind: 'lifecycle', action } })) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The change could not be opened.') }
   }
-
-  // The loaded revisions belong to this executor, so they describe the prepared
-  // change only when that change is this executor's.
-  const preparedRevisions = prepared && prepared.executorId === accessQuery.data?.executorId
-    ? accessQuery.data?.descriptorRevisions
-    : undefined
-
+  if (!executor) return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ScreenHeader backLabel="Back to Executors" onBack={backToList} title="Executor" />
+      <QueryState className="flex flex-1 items-center justify-center" emptyLabel="This executor could not be found, or it is no longer visible to you."
+        errorLabel="Executors could not be loaded." isEmpty loadingLabel="Loading executor…" query={executorsQuery}>{() => null}</QueryState>
+    </div>
+  )
+  const menu: PageHeaderMenuItem[] = []
+  if (shell.runtime === 'tauri') menu.push({ id: 'device', label: 'On this computer', onSelect: () => setPanel('device') })
+  if (localModels.data?.hosts.some((host) => host.executorId === executor.id)) {
+    menu.push({ id: 'models', label: 'Local models', onSelect: () => setPanel('models') })
+  }
+  if (access?.canManage) {
+    if (executor.scope.kind === 'private') menu.push({ id: 'people', label: 'Manage people', onSelect: () => setPanel('people') })
+    if (executor.status === 'paused') {
+      menu.push({ id: 'resume', label: 'Resume executor', disabled: prepare.isPending, onSelect: () => void lifecycle('resume') })
+    } else if (['online', 'offline', 'error'].includes(executor.status)) {
+      menu.push({ id: 'pause', label: 'Pause executor', disabled: prepare.isPending, onSelect: () => void lifecycle('pause') })
+    }
+    if (!['revoked', 'pending_pairing'].includes(executor.status)) {
+      menu.push({ id: 'disconnect', label: 'Disconnect executor', disabled: prepare.isPending, onSelect: () => void lifecycle('revoke') })
+    }
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ScreenHeader
-        backLabel="Back to Executors"
-        eyebrow="Executors"
-        onBack={backToList}
-        subtitle={
-          <div className="flex flex-wrap items-center gap-2">
-            <Pill height="control" tone={executorStatusTone(executor.status)} uppercase={false}>
-              {EXECUTOR_STATUS_LABELS[executor.status]}
-            </Pill>
-            <p className="text-sm text-[color:var(--tx3)]">{executorScopeSummary(executor)}</p>
-          </div>
-        }
-        title={executor.label}
+      <ScreenHeader backLabel="Back to Executors" eyebrow="Executors" onBack={backToList} title={executor.label}
+        actions={menu.length ? [{ id: 'machine', kind: 'menu', label: 'Machine', priority: 20, items: menu }] : []}
+        subtitle={<div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--tx3)]">
+          <Pill height="control" tone={executorStatusTone(executor.status)} uppercase={false}>{EXECUTOR_STATUS_LABELS[executor.status]}</Pill>
+          <span>{executorScopeSummary(executor)}</span>
+          {executor.status === 'offline' && executor.lastSeenAt ? <time dateTime={executor.lastSeenAt}>Last connected {new Date(executor.lastSeenAt).toLocaleString()}</time> : null}
+        </div>}
       />
-
       <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-4">
         <div className="grid gap-4">
-          {executor.status === 'pending_pairing' ? (
-            <ExecutorPairingPendingNotice />
-          ) : null}
-
-          <ExecutorDesktopCompanionPanel executorId={executor.id} />
-
-          <section className="grid gap-2">
-            <div>
-              <SectionLabel as="h2">Local Ollama</SectionLabel>
-              <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                This executor’s local model status and controls.
-              </p>
-            </div>
-            <LocalInferenceHostStatus
-              empty={(
-                <p className="text-sm text-[color:var(--tx2)]">
-                  This executor has not connected a local Ollama host.
-                </p>
-              )}
-              executorId={executor.id}
-            />
-          </section>
-
-          <ExecutorDetailPanels
-            accessQuery={accessQuery}
-            agents={agentsQuery.data ?? []}
-            executor={executor}
-            onPrepared={setPrepared}
-            reviews={reviewsQuery.data ?? []}
-            users={usersQuery.data ?? []}
-          />
+          <FormError>{error}</FormError>
+          {executor.status === 'error' && executor.statusDetail ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{executor.statusDetail}</p> : null}
+          {executor.status === 'pending_pairing' ? <ExecutorPairingPendingNotice /> : null}
+          <ExecutorDetailPanels accessQuery={accessQuery} executor={executor} onPrepared={setPrepared} token={token} />
         </div>
       </div>
-
-      {prepared ? (
-        <ExecutorAccessChangeDialog
-          accessChangeId={prepared.accessChangeId}
-          confirmationToken={prepared.confirmationToken}
-          {...(preparedRevisions ? { descriptorRevisions: preparedRevisions } : {})}
-          onClose={() => setPrepared(null)}
-          open
-        />
-      ) : null}
+      {panel === 'people' && access?.canManage && executor.scope.kind === 'private' ? <ExecutorPeopleDialog access={access} onClose={() => setPanel(null)} onPrepared={setPrepared} /> : null}
+      {panel === 'models' ? <Dialog onClose={() => setPanel(null)} open title="Local models">
+        <LocalInferenceHostStatus confirmInDialog
+          empty={<p>No local model connection on this machine.</p>} executorId={executor.id} />
+      </Dialog> : null}
+      {panel === 'device' ? <Dialog onClose={() => setPanel(null)} open size="lg" title="On this computer">
+        <ExecutorDesktopCompanionPanel executorId={executor.id} />
+      </Dialog> : null}
+      {prepared ? <ExecutorAccessChangeDialog
+        accessChangeId={prepared.accessChangeId} confirmationToken={prepared.confirmationToken}
+        {...(prepared.executorId === access?.executorId && access.descriptorRevisions
+          ? { descriptorRevisions: access.descriptorRevisions } : {})}
+        onClose={() => setPrepared(null)} open /> : null}
     </div>
   )
 }
