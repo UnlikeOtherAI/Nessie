@@ -32,7 +32,7 @@ test('item validation rejects malformed mapped JSON and oversize input or result
   assert.throws(() => validateTaskSetArtifactRow(output, { ...row,
     result: JSON.stringify({ summary: 'x'.repeat(32_768) }) }), /Excel cell capacity/)
   assert.throws(() => validateTaskSetArtifactRow(output, { ...row,
-    input: { source: 'x'.repeat(32_768) }, result: '{}' }), /Excel cell capacity/)
+    input: { source: 'x'.repeat(32_768) }, result: '{"summary":"ok"}' }), /Excel cell capacity/)
   validateTaskSetArtifactRow({ ...output, fields: {} }, { ...row, result: 'x'.repeat(32_767) })
   validateTaskSetArtifactRow(output, { ...row, result: null })
   validateTaskSetArtifactRow({ kind: 'documents', spaceId: UUID, format: 'jsonl' },
