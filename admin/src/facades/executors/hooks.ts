@@ -3,7 +3,6 @@ import {
   ExecutorAccessChangeRequestSchema,
   ExecutorAccessChangeResponseSchema,
   ExecutorAvailabilityResponseSchema,
-  ExecutorCreateResponseSchema,
   ExecutorRecordResponseSchema,
   ExecutorRunLaunchResponseSchema,
   ExecutorWorkspaceReviewRecordResponseSchema,
@@ -13,8 +12,6 @@ import {
   PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
   type ImplementedExecutorOperationKey,
-  type ExecutorPrivateAssignment,
-  type ExecutorScope,
 } from '@nessie/schemas'
 
 import type { ApiClient } from '../../lib/api-client'
@@ -118,21 +115,6 @@ export const useExecutorAccessChange = (accessChangeId?: string) => {
     ),
     enabled: Boolean(accessChangeId),
     retry: false,
-  })
-}
-
-export const useCreateExecutor = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (input: {
-      label: string
-      privateAssignments?: ExecutorPrivateAssignment[]
-      scope: ExecutorScope
-    }) => ExecutorCreateResponseSchema.parse(await apiClient.post('/api/executors', input)),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: executorKeys.all })
-    },
   })
 }
 

@@ -55,13 +55,6 @@ export type ExecutorCompanionStatusResponse = {
   reason: string
 }
 
-type PairExecutorWithCompanionInput = {
-  apiBaseUrl: string
-  challenge: string
-  enrollmentId: string
-  executorId: string
-}
-
 const invokeCompanion = async <Result>(command: string, payload?: Record<string, unknown>): Promise<Result> => {
   if (!isDesktopApp()) throw new Error('Nessie Desktop is not available in this browser.')
   return invoke<Result>(command, payload)
@@ -69,16 +62,6 @@ const invokeCompanion = async <Result>(command: string, payload?: Record<string,
 
 export const executorCompanionStatus = (): Promise<ExecutorCompanionStatusResponse> =>
   invokeCompanion('executor_companion_status')
-
-export const pairExecutorWithCompanion = (
-  input: PairExecutorWithCompanionInput,
-): Promise<ExecutorCompanionStatus> =>
-  invokeCompanion('executor_companion_pair', {
-    apiBaseUrl: input.apiBaseUrl,
-    challenge: input.challenge,
-    enrollmentId: input.enrollmentId,
-    executorId: input.executorId,
-  })
 
 export const startExecutorWithCompanion = (
   executorId: string,

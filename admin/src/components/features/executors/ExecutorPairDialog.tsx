@@ -1,135 +1,169 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { ExecutorPairingPreview, ExecutorScope } from '@nessie/schemas'
+import type { ProjectRecord } from '../../../lib/api-client'
 import {
-  executorPairingOriginLabel,
-  type ExecutorCreateResponse,
-} from '@nessie/schemas'
-import type { AgentRecord, ProjectRecord, UserRecord } from '../../../lib/api-client'
-import { getExecutorApiOrigin } from '../../../lib/api-client'
-import { buildPairingCommand } from '../../../lib/executor-pairing'
+  useClaimExecutorPairing,
+  useExecutorPairingOptions,
+  useExecutorPairingStatus,
+  usePreviewExecutorPairing,
+} from '../../../facades/executors/pairing'
 import { Dialog } from '../../shared/Dialog'
-import { FormActions } from '../../shared/FormActions'
-import { ExecutorCreatePanel } from './ExecutorCreatePanel'
-import { ExecutorDesktopCompanionPanel } from './ExecutorDesktopCompanionPanel'
+import { FormActions, FormError } from '../../shared/FormActions'
+import { ExecutorPairingReview } from './ExecutorPairingReview'
 
 type ExecutorPairDialogProps = {
-  agents: AgentRecord[]
-  currentUserId: string
-  /** A project's "add executor" doorway pins the scope it opened from. */
   fixedProjectId?: string
   onClose: () => void
-  /** Called once the person is finished with the pairing instructions. */
-  onFinished: (created: ExecutorCreateResponse) => void
+  onFinished: (executorId: string) => void
   open: boolean
-  organizationId: string
   projects: ProjectRecord[]
-  users: UserRecord[]
 }
 
-/**
- * Pairing an executor, start to finish, in one modal: the scope-and-access form,
- * then the instructions for the machine that is about to be trusted.
- *
- * Both steps live here because the invitation only exists between them — it is
- * returned by the create call, never re-fetchable, and expires. A form that
- * closed on success would leave the one copy of the pairing command behind.
- */
-export const ExecutorPairDialog = ({
-  agents,
-  currentUserId,
-  fixedProjectId,
-  onClose,
-  onFinished,
-  open,
-  organizationId,
-  projects,
-  users,
-}: ExecutorPairDialogProps) => {
-  const [created, setCreated] = useState<ExecutorCreateResponse | null>(null)
+// Mount each opening afresh: a dismissed code must never reappear on reopening.
+export const ExecutorPairDialog = (props: ExecutorPairDialogProps) =>
+  props.open ? <PairingSession {...props} /> : null
 
-  // The state directory is not a free choice, so the command is built where a
-  // test can hold it against the systemd unit itself — see
-  // `lib/executor-pairing.ts`.
-  // One resolution of the origin, used by the command and named on screen
-  // beside it: the `--api` in a command nobody reads is not the same as being
-  // told which server this machine is about to trust.
-  const pairingOrigin = useMemo(
-    () => created ? getExecutorApiOrigin(created.invitation.apiBaseUrl) : null,
-    [created],
-  )
-  const pairingCommand = useMemo(() => created && pairingOrigin
-    ? buildPairingCommand({
-      apiOrigin: pairingOrigin,
-      challenge: created.invitation.challenge,
-      enrollmentId: created.invitation.enrollmentId,
-      executorId: created.executor.id,
-    })
-    : null, [created, pairingOrigin])
+const PairingSession = ({ fixedProjectId, onClose, onFinished, projects }: ExecutorPairDialogProps) => {
+  const options = useExecutorPairingOptions(true)
+  const previewMutation = usePreviewExecutorPairing()
+  const claimMutation = useClaimExecutorPairing()
+  const [code, setCode] = useState('')
+  const [preview, setPreview] = useState<ExecutorPairingPreview | null>(null)
+  const [executorId, setExecutorId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [now, setNow] = useState(Date.now)
+  const status = useExecutorPairingStatus(executorId)
+  const remaining = preview ? Math.max(0, Math.ceil((Date.parse(preview.expiresAt) - now) / 1_000)) : 0
+  const paired = status.data !== undefined && !['pending_pairing', 'revoked'].includes(status.data.status)
+  const rejected = status.data?.status === 'revoked'
+  const busy = previewMutation.isPending || claimMutation.isPending
 
-  const close = () => {
-    setCreated(null)
-    onClose()
+  useEffect(() => {
+    if (!preview || paired) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [paired, preview])
+
+  const lookup = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    try {
+      setPreview(await previewMutation.mutateAsync(code))
+      setNow(Date.now())
+    } catch {
+      setError('That code could not be checked. Check the eight digits on your machine and try again.')
+    }
+  }
+
+  const claim = async (input: { label: string; scope: ExecutorScope; teamId: string | null }) => {
+    if (!preview) return
+    setError(null)
+    try {
+      const result = await claimMutation.mutateAsync({ code, fingerprint: preview.fingerprint, ...input })
+      setExecutorId(result.executorId)
+      setCode('')
+      previewMutation.reset()
+      claimMutation.reset()
+    } catch {
+      setError('Pairing could not be completed. The code may have expired or already been used. Try a new code.')
+    }
+  }
+
+  const restart = () => {
+    setPreview(null)
+    setExecutorId(null)
+    setCode('')
+    setError(null)
+    previewMutation.reset()
+    claimMutation.reset()
   }
 
   return (
     <Dialog
-      description={created
-        ? 'Run this on the machine you are pairing, or pair it from the desktop companion below.'
-        : 'Scope cannot be changed after pairing. A private executor can be shared with any exact '
-          + 'combination of people and agents, but only its assigned people can administer that list.'}
-      onClose={close}
-      open={open}
-      size="lg"
-      title={created ? 'Finish pairing' : 'Pair an executor'}
+      description={!preview ? 'Open Nessie Executor on your machine and choose Pair with Nessie.' : undefined}
+      dismissDisabled={busy}
+      onClose={onClose}
+      open
+      title={paired ? 'Machine paired' : executorId ? 'Confirm on your machine' : 'Pair an executor'}
     >
-      {created ? (
-        <div className="grid gap-4">
-          {pairingCommand && pairingOrigin ? (
-            <section className="grid gap-2 rounded-lg border border-[color:var(--accent)] p-3">
-              <p className="text-xs text-[color:var(--tx3)]">
-                This pairs the machine with{' '}
-                <span className="font-semibold text-[color:var(--tx)]">
-                  {executorPairingOriginLabel(pairingOrigin)}
-                </span>
-                {' · '}
-                <code className="rounded bg-[color:var(--overlay-weak)] px-1 py-0.5 text-[color:var(--tx2)]">{pairingOrigin}</code>
-                . Confirm that host alongside the fingerprint the companion prints: the fingerprint
-                says a key belongs to that machine, the host says which Nessie it now talks to.
-              </p>
-              <p className="text-xs text-[color:var(--tx3)]">Replace the workspace placeholder with one existing absolute directory. The companion stores its canonical root and machine key in owner-only state, and can only read bounded files under that root. This invitation expires at {created.invitation.expiresAt}.</p>
-              <p className="text-xs text-[color:var(--tx3)]">This command is the Linux package’s: its systemd service reads that exact state directory, so pairing anywhere else leaves the service unable to start. On macOS, pair from the desktop companion below instead. On Windows the service owns its own state under <code>%ProgramData%\Nessie Executor</code> and pairs itself.</p>
-              <p className="text-xs text-[color:var(--tx3)]">Supported platforms: macOS 15+ on Apple Silicon, Ubuntu Linux x86_64, Windows 11/10 x86_64 (Windows and Linux support arrive with their releases).</p>
-              <code className="overflow-x-auto rounded bg-[color:var(--overlay-weak)] p-2 text-xs text-[color:var(--tx)]">{pairingCommand}</code>
-            </section>
-          ) : null}
-
-          <ExecutorDesktopCompanionPanel created={created} />
-
-          <FormActions>
-            <button
-              className="admin-button admin-button-primary"
-              onClick={() => {
-                const finished = created
-                setCreated(null)
-                onFinished(finished)
-              }}
-              type="button"
-            >
-              Open this executor
-            </button>
-          </FormActions>
-        </div>
-      ) : (
-        <ExecutorCreatePanel
-          agents={agents}
-          currentUserId={currentUserId}
-          fixedProjectId={fixedProjectId}
-          onCancel={close}
-          onCreated={setCreated}
-          organizationId={organizationId}
-          projects={projects}
-          users={users}
-        />
-      )}
+      <div className="grid gap-4">
+        {!preview ? (
+          <form className="grid gap-4" onSubmit={(event) => void lookup(event)}>
+            <label className="grid gap-2 text-sm font-medium text-[color:var(--tx2)]">
+              Eight-digit code
+              <input
+                autoComplete="one-time-code"
+                className="admin-input text-center font-mono text-2xl tracking-[0.3em]"
+                inputMode="numeric"
+                maxLength={8}
+                onChange={(event) => {
+                  setCode(event.target.value.replace(/\D/g, '').slice(0, 8))
+                  setError(null)
+                }}
+                pattern="[0-9]{8}"
+                required
+                value={code}
+              />
+            </label>
+            <FormError>{error}</FormError>
+            <FormActions>
+              <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Cancel</button>
+              <button className="admin-button admin-button-primary" disabled={busy || code.length !== 8} type="submit">
+                {busy ? 'Checking…' : 'Continue'}
+              </button>
+            </FormActions>
+          </form>
+        ) : executorId ? (
+          <>
+            <p className="text-sm text-[color:var(--tx2)]" role="status">
+              {paired
+                ? `${preview.machineName} is paired. You can now manage its access and allowed work.`
+                : rejected
+                  ? 'Pairing was declined on the machine. Start again when you are ready.'
+                  : remaining === 0
+                    ? 'The code has expired. Start pairing again on your machine to get a new one.'
+                    : `Confirm the organisation and team in Nessie Executor on ${preview.machineName}.`}
+            </p>
+            <FormError>{status.isError ? 'Unable to check pairing. Check your connection, then try again.' : null}</FormError>
+            <FormActions>
+              <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Close</button>
+              {paired ? (
+                <button className="admin-button admin-button-primary" onClick={() => onFinished(executorId)} type="button">
+                  Open executor
+                </button>
+              ) : rejected || remaining === 0 ? (
+                <button className="admin-button admin-button-primary" onClick={restart} type="button">Enter a new code</button>
+              ) : status.isError ? (
+                <button className="admin-button admin-button-primary" onClick={() => void status.refetch()} type="button">Try again</button>
+              ) : null}
+            </FormActions>
+          </>
+        ) : remaining === 0 ? (
+          <>
+            <p className="text-sm text-[color:var(--tx2)]">The code has expired. Get a new code from Nessie Executor.</p>
+            <button className="admin-button admin-button-primary" onClick={restart} type="button">Enter a new code</button>
+          </>
+        ) : options.data ? (
+          <ExecutorPairingReview
+            busy={busy}
+            error={error}
+            fixedProjectId={fixedProjectId}
+            onBack={restart}
+            onClaim={(input) => void claim(input)}
+            options={options.data}
+            preview={preview}
+            projects={projects}
+            remaining={remaining}
+          />
+        ) : (
+          <>
+            <p className="text-sm text-[color:var(--tx2)]">{options.isError ? 'Your teams could not be loaded.' : 'Loading your teams…'}</p>
+            {options.isError ? (
+              <button className="admin-button admin-button-secondary" onClick={() => void options.refetch()} type="button">Try again</button>
+            ) : null}
+          </>
+        )}
+      </div>
     </Dialog>
   )
 }

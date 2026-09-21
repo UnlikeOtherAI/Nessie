@@ -17,6 +17,8 @@ this file — open it.
 Agent response length is prompt-guided rather than application-capped; follow
 the run-budget standard linked from `AGENTS.md` for provider protocol limits.
 
+Executor code pairing and its browser verification follow [docs/executor-pairing.md](docs/executor-pairing.md).
+
 > **Rule zero — a capability is not done until a person can reach it.** A
 > feature nobody can navigate to counts as unfinished. The four checks and the
 > history behind each are in [`AGENTS.md`](AGENTS.md) → "Rule zero".

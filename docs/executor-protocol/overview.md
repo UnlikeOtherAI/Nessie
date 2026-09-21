@@ -99,34 +99,53 @@ executor ID. Consuming a handle creates the binding transactionally.
   public PKI chain; a client must not accept a self-signed Nessie endpoint.
   Client certificates are required before command dispatch is enabled.
 
-### 4.2 Enrollment
+### 4.2 Machine-first pairing
 
-1. An entitled human creates an executor with immutable scope. For private
-   scope, the user and agent assignments are explicit in the same transaction.
-2. The server creates `ExecutorEnrollment` with a 256-bit random challenge,
-   stores only its SHA-256 verifier, and expires it in ten minutes. Its single
-   use is linearized under an enrollment advisory lock.
-3. The daemon generates its signing key and signed request, then atomically
-   stores that exact material with the canonical workspace in its owner-only
-   state directory before making a network request. A retry after response loss
-   must reuse this prepared key; different pairing input is refused.
-4. The daemon submits `{ enrollmentId, challenge, publicKey,
-   descriptorDigest, proof }`. `proof` signs the canonical enrollment object
-    with `nessie.executor.enrollment.v1` domain separation. An exact replay of
-    the same pending request returns the existing fingerprint; a changed key,
-    descriptor, or proof is rejected.
-5. The server consumes the verifier once, records the pending key/fingerprint,
-    and presents the exact fingerprint and data boundary to the human. The
-    replay returns that pending result without creating another capability
-    revision. Only after the complete paired state is durable does the daemon
-    remove its local preparation record.
-6. The human confirms in web or companion UI. The executor remains offline
-   until its daemon proves possession of the paired key; pairing may never
-   complete from chat text or a terminal transcript.
+1. The machine enters pairing mode in Nessie Executor or its interactive CLI.
+   It prepares an Ed25519 key and signed descriptor in owner-only local state
+   before asking for a code. The private key and selected workspace stay local.
+2. A signed start request registers the machine before any organisation is
+   chosen. The server returns **eight digits**, including any leading zero,
+   with a ten-minute lifetime. The code locates this attempt; it cannot
+   authenticate a daemon or replace the registered public key.
+3. In **Agents → Executors → Pair executor**, a signed-in person enters the
+   code. The same popup is reached from a project's Executors tab. It shows
+   the machine and fingerprint, asks for organisation/team and existing access
+   scope, and requires fingerprint confirmation before the claim.
+4. Claiming atomically consumes the code and creates an executor in
+   `pending_pairing`. Private scope initially assigns the claimant as its
+   human administrator. Project and organisation scopes keep their existing
+   entitlement rules. Team selection does not invent a new team access scope.
+5. Signed machine polling returns the claiming organisation and team in words.
+   The person at that machine confirms or declines. Confirmation signs the
+   exact displayed claim digest, including its organisation/team, and is
+   checked against expiry and current claim state before the public key binds.
+   A web claim by itself can never activate the executor.
+6. On confirmation, the machine durably saves paired state before discarding
+   its preparation record. A lost response can be retried with the same key
+   and attempt. The executor becomes offline until normal signed daemon
+   presence succeeds; only then is it online.
 
-Enrollment fails closed with `ENROLLMENT_EXPIRED`, `ENROLLMENT_USED`,
-`ENROLLMENT_PROOF_INVALID`, `FINGERPRINT_NOT_CONFIRMED`, or
-`SCOPE_ENTITLEMENT_DENIED`.
+Minting is rate-limited by source, and preview/claim share per-account and
+per-source limits backed by the distributed rate limiter. Codes are single-use;
+concurrent claims cannot produce two executors. Polling and decisions require
+fresh domain-separated machine proofs. See the authoritative request/response
+schemas in `packages/schemas/src/executor-pairing-code.ts`.
+
+An existing local pairing is shown by its organisation and team before a
+replacement is offered. Replacement requires explicit local agreement and a
+proof from the old machine key; it revokes the old executor instead of leaving
+an abandoned active row. Several teams on one machine remain deferred.
+
+Organisation and team names are live projections from UOA for SSO-bound
+installs. Only stable references are retained; pairing creates no duplicate
+identity, membership, or organisation hierarchy store. An unbound install uses
+its existing local organisation and team authority.
+
+The older enrollment endpoints remain an operator/older-client protocol;
+the current website, tray and menu bar no longer present invitations or shell
+commands. Legacy confirmation cannot activate a code claim because it has no
+`ExecutorEnrollment` record.
 
 ### 4.3 Phase 1 daemon presence
 
@@ -184,14 +203,15 @@ receipt. Candidate responses never contain an executor ID. A later binding
 must consume exactly one unexpired digest and revalidate every recorded gate;
 the candidate is not an authorization cache or a caller-selectable machine.
 
-The initial `nessie-executor` CLI requires an explicit HTTPS API origin and an
-owner-only local state directory. The sole exception is the desktop-packaged
+The executor CLI defaults its service and owner-only state location for the
+interactive pairing flow. Operator configuration may select another HTTPS
+service and state directory. The sole exception is the desktop-packaged
 debug build, which injects an internal opt-in for exactly the loopback API
 origin resolved for that worktree (`http://127.0.0.1:${NESSIE_API_PORT}`, or
 `:5454` by default); no user-provided flag enables a non-TLS production origin
-or an arbitrary loopback listener. It prepares and stores the machine key and exact signed enrollment
-request locally before submission, and after the human confirms the
-fingerprint, claims a connection and sends heartbeats. Its initial companion
+or an arbitrary loopback listener. It prepares and stores the machine key and
+exact signed pairing request locally before submission, and after both human
+confirmations, claims a connection and sends heartbeats. Its initial companion
 profile is deliberately limited to daemon-owned COW team operations:
 `file.list`, `file.read`, `file.write`, `team.review`, and
 `sandbox.stop`. Browser work remains disabled until its owner configures the
@@ -712,8 +732,10 @@ and that both executable hashes match the manifest before it launches the
 daemon. A signed release's application signature protects the manifest and
 resources; the hash check makes a damaged or partial local bundle fail closed.
 
-The remote admin webview can ask the desktop process only to pair an existing
-server invitation, start/stop an already paired executor, or change the initial
+The remote admin webview manages already paired executors through start/stop
+and local policy controls. New pairing belongs to the native executor app;
+the earlier invitation IPC remains for older installed clients. That IPC can
+only pair an existing server invitation, start/stop, or change the initial
 team-operation policy. It cannot name an executable, a state directory, a
 team path, or arbitrary command arguments. Team selection occurs in a
 native folder dialog, the state directory is derived privately from the server
@@ -914,7 +936,7 @@ executor, other users, local paths, credentials, or raw output.
 
 | Threat | Required control |
 | --- | --- |
-| Stolen pairing link or key replay | Short-lived single-use verifier, proof of possession, human fingerprint confirmation, certificate/key rotation fencing. |
+| Stolen pairing link or key replay | Short-lived single-use code, rate-limited mint/claim, proof of possession, human fingerprint confirmation, local confirmation of the claiming organisation/team, certificate/key rotation fencing. |
 | Confused deputy through shared agent | Exact private human **and** agent assignment plus exact operation grant and immutable run context. |
 | Browser/CLI SSRF or DNS bypass | Guest-only forced gateway, no direct DNS/UDP/QUIC, pinned fetch on every route/redirect. |
 | Guest writes host team | COW only; daemon-owned `team.promote` with no-follow manifest validation, approval, fencing, journaled recovery. |

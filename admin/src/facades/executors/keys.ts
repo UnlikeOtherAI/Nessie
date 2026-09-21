@@ -11,6 +11,9 @@ export const executorKeys = {
   accessChange: (accessChangeId?: string) =>
     ['executors', 'access-change', accessChangeId ?? 'none'] as const,
   myWorkspaceReviews: ['executors', 'workspace-reviews', 'mine'] as const,
+  pairingOptions: ['executors', 'pairing-options'] as const,
+  pairingStatus: (executorId: string | null) =>
+    ['executors', executorId ?? 'none', 'pairing-status'] as const,
   pairing: (executorId?: string) =>
     ['executors', executorId ?? 'none', 'pairing'] as const,
   workspacePromotion: (promotionId?: string) =>

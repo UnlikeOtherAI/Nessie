@@ -1,12 +1,8 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import test from 'node:test'
 
 import { resolveExecutorApiOrigin } from '../src/lib/api-client.js'
 import { resolveExecutorApiPublicUrl } from '../vite.config.js'
-
-const readSource = (path: string): string => readFileSync(resolve(import.meta.dirname, path), 'utf8')
 
 test('executor invitations use the direct API origin Vite config supplies', () => {
   assert.equal(resolveExecutorApiOrigin('http://127.0.0.1:5454'), 'http://127.0.0.1:5454')
@@ -15,39 +11,6 @@ test('executor invitations use the direct API origin Vite config supplies', () =
     'https://api.nessie.works',
   )
   assert.throws(() => resolveExecutorApiOrigin(), /VITE_API_PUBLIC_URL/)
-})
-
-test('terminal and desktop companion pairing share the executor API-origin contract', () => {
-  for (const path of [
-    '../src/components/features/executors/ExecutorPairDialog.tsx',
-    '../src/components/features/executors/ExecutorDesktopCompanionPanel.tsx',
-  ]) {
-    const source = readSource(path)
-    assert.match(source, /getExecutorApiOrigin\(created\.invitation\.apiBaseUrl\)/)
-    assert.doesNotMatch(source, /https:\/\/api\.nessie\.works/)
-  }
-})
-
-/**
- * Pairing hands a machine key to a server, and since an executor may be pointed
- * at either hosted service or a Nessie somebody runs themselves, the host is no
- * longer a thing a person can assume. Both pairing surfaces have to name it
- * where the trust is given — an `--api` buried in a command nobody reads is not
- * the same as being told which server this machine is about to talk to.
- */
-test('both pairing surfaces name the host rather than assuming it', () => {
-  for (const path of [
-    '../src/components/features/executors/ExecutorPairDialog.tsx',
-    '../src/components/features/executors/ExecutorDesktopCompanionPanel.tsx',
-  ]) {
-    const source = readSource(path)
-    assert.match(source, /executorPairingOriginLabel\(/u, `${path} must name the origin`)
-    assert.match(source, /\{pairingOrigin\}/u, `${path} must show the origin itself`)
-  }
-  // And the fingerprint a person confirms is shown beside that host: confirming
-  // a key belongs to a machine says nothing about which Nessie it talks to.
-  const companion = readSource('../src/components/features/executors/ExecutorDesktopCompanionPanel.tsx')
-  assert.match(companion, /fingerprint[\s\S]{0,200}\$\{pairingOrigin\}/u)
 })
 
 test('Vite exports an operator API origin for executor invitations', () => {
