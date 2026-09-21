@@ -96,7 +96,8 @@ test('a label record names its board; the summary a card carries does not', () =
     updatedAt: '2026-09-21T12:00:00.000Z',
   }
   assert.equal(TaskLabelRecordSchema.safeParse(record).success, true)
-  const { boardId: _boardId, ...withoutBoard } = record
+  const withoutBoard: Partial<typeof record> = { ...record }
+  delete withoutBoard.boardId
   assert.equal(TaskLabelRecordSchema.safeParse(withoutBoard).success, false)
   assert.equal(TaskLabelRecordSchema.safeParse({ ...record, boardId: 'dev' }).success, false)
   assert.deepEqual(Object.keys(TaskLabelSummarySchema.shape).sort(), ['color', 'external', 'id', 'name'])
