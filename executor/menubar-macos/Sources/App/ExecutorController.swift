@@ -165,7 +165,7 @@ final class ExecutorController: ObservableObject {
 
     private func startIfRequested() {
         guard startAfterRefresh, model.description != nil, model.daemon == .stopped,
-              !busy, !pairing.busy, pairing.state?.isPending != true else { return }
+              !busy, !pairingBlocksStart else { return }
         startAfterRefresh = false
         startDaemon()
     }
@@ -378,8 +378,13 @@ final class ExecutorController: ObservableObject {
 
     // MARK: - Supervision
 
+    private var pairingBlocksStart: Bool {
+        pairing.busy || pairing.state?.isAttemptOpen == true
+            || ExecutorStateDiscovery.pendingAttemptBlocksStart(in: stateDirectory)
+    }
+
     func startDaemon() {
-        guard !busy, !pairing.busy, pairing.state?.isPending != true else { return }
+        guard !busy, !pairingBlocksStart else { return }
         guard let runner else {
             fail(PackagedRuntime.missingRefusal)
             return

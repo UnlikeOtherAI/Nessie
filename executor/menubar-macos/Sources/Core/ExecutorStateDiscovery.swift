@@ -5,6 +5,25 @@ import Foundation
 public enum ExecutorStateDiscovery {
     private static let stateFiles = ["executor-state.json", "executor-pairing-code.json"]
 
+    /// A saved replacement can coexist with the prior key until Nessie confirms
+    /// its retirement. A failed network refresh must not restart that executor.
+    /// Check metadata only; the CLI remains the sole reader of pairing secrets.
+    public static func pendingAttemptBlocksStart(
+        in directory: String,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        let path = (directory as NSString).appendingPathComponent("executor-pairing-code.json")
+        do {
+            _ = try fileManager.attributesOfItem(atPath: path)
+            return true
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain
+            && error.code == NSFileReadNoSuchFileError {
+            return false
+        } catch {
+            return true
+        }
+    }
+
     public static func resolve(
         preferredDirectory: String,
         legacyRoots: [String],

@@ -136,6 +136,9 @@ Opening the app starts an already paired executor after checking its local
 state and daemon lease. **Open Nessie Executor when I log in** therefore starts
 the paired executor at login too. Stopping it from the menu keeps it stopped
 for that app session; status refreshes do not restart it.
+An unfinished replacement keeps the prior executor stopped, including after an
+app restart when Nessie is temporarily unreachable. Pairing recovery or
+cancellation must finish before that machine can start again.
 
 ## Where state lives
 

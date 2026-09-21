@@ -56,6 +56,20 @@ final class ExecutorStateDiscoveryTests: XCTestCase {
         }
     }
 
+    func testSavedReplacementBlocksOldDaemonWithoutReadingItsSecrets() throws {
+        try withRoot { root in
+            let directory = root.appendingPathComponent("current")
+            try paired(directory)
+            XCTAssertFalse(ExecutorStateDiscovery.pendingAttemptBlocksStart(in: directory.path))
+            // The process may restart before any status response arrives. These
+            // bytes deliberately are not JSON: the host checks only presence.
+            try paired(directory, pending: true)
+            XCTAssertTrue(ExecutorStateDiscovery.pendingAttemptBlocksStart(in: directory.path))
+            try FileManager.default.removeItem(at: directory.appendingPathComponent("executor-pairing-code.json"))
+            XCTAssertFalse(ExecutorStateDiscovery.pendingAttemptBlocksStart(in: directory.path))
+        }
+    }
+
     func testDoesNotFollowLinksOrSearchBeyondKnownRootChildren() throws {
         try withRoot { root in
             let preferred = root.appendingPathComponent("current").path
