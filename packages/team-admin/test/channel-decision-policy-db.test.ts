@@ -31,7 +31,7 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
   const team = await prisma.team.create({ data: { projectId: project.id, name: 'Policy test' } })
   const channel = await prisma.channel.create({ data: {
     organizationId, projectId: project.id, teamId: team.id,
-    label: 'Decisions', visibility: 'protected', members: { create: { userId: memberId } },
+    label: 'Decisions', slug: 'decisions', visibility: 'protected', members: { create: { userId: memberId } },
   } })
   await prisma.agent.create({ data: { id: agentId, organizationId, teamId: team.id, name: 'Decision recorder' } })
   await prisma.agentBinding.create({ data: { agentId, channelId: channel.id } })
