@@ -22,6 +22,7 @@ import { persistInvocationLedgerEvents } from '../run/inference.js'
 import type { ExecutionDependencies, RunContext } from '../run/execute/types.js'
 import { TaskSetBlocked, TaskSetWait } from './state.js'
 import { taskSetJournalStep } from './journal.js'
+import { checkTaskSetBudget } from './budget.js'
 
 export type TaskSetClaim = { set: TaskSet; item: TaskSetItem; attempt: TaskSetAttempt }
 export type TaskSetSearchTools = {
@@ -153,10 +154,13 @@ export const processTaskSetItem = async (
     assertTaskSetContextFits(messages, search.descriptors, contextTokens, outputTokens)
     const result = await taskSetJournalStep({
       prisma: deps.prisma, claim, fence, sequence: step++, request: { messages, tools: search.descriptors },
-      recoverable: local.kind === 'local', execute: () => inference.runMain(messages, search.descriptors, {
-        maxOutputTokens: outputTokens, stream: false,
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300_000)]) : AbortSignal.timeout(300_000),
-      }),
+      recoverable: local.kind === 'local', execute: async () => {
+        await checkTaskSetBudget(deps, claim, local.kind !== 'local' && subscription.kind === 'ledger')
+        return inference.runMain(messages, search.descriptors, {
+          maxOutputTokens: outputTokens, stream: false,
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(300_000)]) : AbortSignal.timeout(300_000),
+        })
+      },
     })
     await persistInvocationLedgerEvents(deps.prisma, {
       actorContext, agentId: context.agent.id, runId: attempt.runId, invocations: result.invocations,

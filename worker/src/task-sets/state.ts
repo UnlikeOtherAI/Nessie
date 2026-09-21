@@ -39,13 +39,18 @@ export const changeTaskSetHealth = async (
 }
 
 export const sweepTaskSets = async (prisma: PrismaClient, now = new Date()): Promise<void> => {
+  const active = { OR: [
+    { status: { in: ['running', 'waiting', 'importing'] } },
+    { currentItemId: { not: null } },
+    { status: 'completed', deliveryStatus: 'pending' },
+  ] }
   const due = await prisma.taskSet.findMany({
-    where: { status: { in: ['running', 'waiting', 'importing'] }, nextAttemptAt: { lte: now } },
+    where: { ...active, nextAttemptAt: { lte: now } },
     orderBy: [{ nextAttemptAt: 'asc' }, { id: 'asc' }], take: 50, select: { id: true },
   })
   for (const row of due) await prisma.$transaction(async (tx) => {
     const updated = await tx.taskSet.updateMany({
-      where: { id: row.id, status: { in: ['running', 'waiting', 'importing'] }, nextAttemptAt: { lte: now } },
+      where: { id: row.id, ...active, nextAttemptAt: { lte: now } },
       data: { nextAttemptAt: new Date(now.getTime() + 60_000), revision: { increment: 1 } },
     })
     if (updated.count === 0) return

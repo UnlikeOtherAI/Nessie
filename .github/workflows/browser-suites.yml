@@ -71,6 +71,7 @@ jobs:
       NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE: '1'
       NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE: '1'
+      NESSIE_TASK_SETS_E2E_FIXTURE: '1'
 
     steps:
       - name: Checkout
@@ -192,6 +193,18 @@ jobs:
       - name: Run local Ollama agents browser suite
         if: steps.scope.outputs.code == '1'
         run: pnpm --filter @nessie/admin test:e2e:local-ollama-agents
+
+      - name: Run task sets browser suite
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:task-sets
+
+      - name: Upload task set screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-sets-screenshots
+          path: e2e/screenshots/task-sets
+          if-no-files-found: warn
 
       - name: Run executor pairing and management browser suites
         if: steps.scope.outputs.code == '1'

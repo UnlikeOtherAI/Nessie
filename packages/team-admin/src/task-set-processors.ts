@@ -88,7 +88,10 @@ export const resolveTaskSetProcessor = async (
     if (!binding || !agent || !host) {
       throw new TaskSetError('TASK_SET_LOCAL_CONSENT', 'Approve this exact local model in Agent Designer first.', 403)
     }
-    return { agentId: agent.id, capacityKey: `local:${host.inferenceResourceId ?? host.id}` }
+    return { agentId: agent.id, capacityKey: `local:${host.inferenceResourceId ?? host.id}`, pin: {
+      kind: 'local', bindingId: binding.id, hostId: host.id,
+      revision: binding.revision, manifestDigest: binding.manifestDigest, numCtx: binding.numCtx,
+    } }
   }
   if (processor.localInferenceBindingId) throw new TaskSetError('TASK_SET_PROCESSOR', 'Invalid processor binding.')
   await assertAgentModelSelection(deps.prisma, {
@@ -101,8 +104,15 @@ export const resolveTaskSetProcessor = async (
     organizationId: actor.tenant.organizationId, agentKind: 'personal_assistant', deletedAt: null,
   }, select: { id: true } })
   if (!agent) throw new TaskSetError('TASK_SET_SETUP', 'Open your personal assistant once to finish setup.')
+  const subscription = processor.modelSubscriptionId ? await deps.prisma.modelSubscription.findUniqueOrThrow({
+    where: { id: processor.modelSubscriptionId }, select: { id: true, credentialEpoch: true, provider: true },
+  }) : null
   return {
     agentId: agent.id,
+    pin: subscription ? {
+      kind: 'subscription', subscriptionId: subscription.id, epoch: subscription.credentialEpoch,
+      providerKey: subscription.provider, ownerUserId: userId,
+    } : { kind: 'ledger', ...processor },
     capacityKey: processor.modelSubscriptionId ? `subscription:${processor.modelSubscriptionId}`
       : `ledger:${actor.tenant.organizationId}:${processor.provider}`,
   }
