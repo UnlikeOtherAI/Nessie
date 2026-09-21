@@ -63,12 +63,24 @@ this layout exists to prevent.
   they lose the ticket. Comment files carry `taskId` too, so the one arm covers
   them. `DELETE /api/attachments/:id` (discard my unused upload) keeps refusing
   a linked file; a ticket's file is removed through
-  `DELETE /api/tasks/:taskId/attachments/:attachmentId`, the door that audits
-  and publishes.
-- **Removing a file is its uploader's, or anyone who may modify the ticket's
-  project** (`removeTaskAttachment`, `canModifyProject`) — a ticket is joint
-  work under the equal-rights rule. Deleting a comment deletes its files
-  through `FileService.delete`.
+  `DELETE /api/tasks/:taskId/attachments/:attachmentId` (optional `reason` in
+  the body), the door that marks, audits and publishes.
+- **Removing a file is a mark, not a delete, and anyone who can see the
+  ticket may do it** (`removeTaskAttachment`). The row keeps its bytes and
+  gains `removedAt`, the remover (`removedByUserId`, or `removedByAgentId`
+  alone for an unattended agent run — `attachmentRemover`) and an optional
+  `removedReason` (`normalizeRemovalReason`: trimmed, capped, null when
+  empty); one `attachment_removed` `TaskEvent` is written. A removed file stays
+  in the Attachments list in its place — the dialog shows who uploaded it, who
+  removed it, when and why — and **still downloads** through the same `taskId`
+  arm. There is **no restore door**; the row keeps everything one would need.
+  A second removal is `ATTACHMENT_ALREADY_REMOVED` and never overwrites the
+  first remover or reason; a provider-stored copy is the provider's file and is
+  `ATTACHMENT_NOT_REMOVABLE`. The card's paperclip counts live files only.
+- **Deleting a comment marks its files removed** (`deleteTaskComment`), with
+  the deleter as remover and `COMMENT_REMOVAL_REASON`, one
+  `attachment_removed` each; a file somebody already removed keeps its first
+  remover. No path deletes a ticket file's bytes short of deleting the task.
 - The unlinked-upload gap (nothing reaps an upload that was never linked) is
   pre-existing and shared with chat. Every client path links or discards; do
   not widen it.
@@ -115,24 +127,41 @@ this layout exists to prevent.
   whose author row is gone has no expressible author and is left out of the
   list rather than shown as nobody's.
 
-## Labels: source-owned and Nessie-only
+## Labels: board-scoped, source-owned and Nessie-only
 
-- A `TaskLabel` is **project-scoped**, unique by `normalizeLabelName`, with a
-  hex colour that is data. `sourceId`/`externalId` set means a board source
-  owns it; neither set means it is **Nessie-only**.
+- A `TaskLabel` **belongs to a board** (`boardId`, with `projectId`
+  denormalised and pinned to the board's project by a composite FK), unique on
+  that board by `normalizeLabelName`, with a hex colour that is data.
+  `sourceId`/`externalId` set means a board source owns it; neither set means
+  it is **Nessie-only**. The same name on two boards is two labels.
+- **A ticket's labels are its home board's**: `Task.boardId ?? the project's
+  default board` (`resolveTaskHomeBoard`; `resolveHomeBoardId` in the admin).
+  A requested id that is not a label of that board is refused
+  `LABEL_NOT_ON_BOARD`. Labels are managed in Board → Settings → Labels; the
+  dialog's *Manage labels…* links to the ticket's home board's tab, and the old
+  Project → Settings `?section=labels` redirects to the default board's.
+- **Labels follow a moved ticket by name.** A move to another board runs
+  `rehomeTaskLabels` in the move's transaction: each link is re-pointed to the
+  destination board's label with the same normalised name (a source-owned one
+  also by `(sourceId, externalId)`), creating it with the same name, colour and
+  ownership when missing, and one `labels_rehomed` event records the mapping.
+  Deleting a board runs `rehomeBoardLabels` onto the board its tasks fall back
+  to first, so no label or link is lost to the cascade.
 - **Sync replaces only the source-owned subset** (`syncTaskSourceLabels`, when
   the source maps `native:labels`): a label a person added in Nessie survives
-  every sync. `upsertSourceLabels` keeps each provider label's name and colour,
-  **adopts** a same-named Nessie-only label rather than duplicating it, never
-  takes a name another source owns, and keeps the old name (still taking the
-  colour) when an upstream rename would collide.
+  every sync. `upsertSourceLabels` works on the ticket's home board: it keeps
+  each provider label's name and colour, **adopts** a same-named Nessie-only
+  label of that board rather than duplicating it, never takes a name another
+  source owns there, and keeps the old name (still taking the colour) when an
+  upstream rename would collide on that board. The same provider label on two
+  boards is two rows, and a webhook rename recolours both.
 - **`setTaskLabels` / `planTaskLabels` partitions a requested set by
   ownership.** Nessie-only changes are always written locally. A changed
   source-owned subset is written upstream first through the
   `BoardSourceWriteBack` collaborator and the mirror follows the provider's
   echo; a `read_only` source refuses it `SOURCE_READ_ONLY`. A label owned by a
   *different* source than the ticket's is refused
-  `LABEL_NOT_IN_PROJECT_SOURCE` — it cannot mean anything upstream and the next
+  `LABEL_NOT_IN_TASK_SOURCE` — it cannot mean anything upstream and the next
   sync would drop it silently. `updateProjectTask` runs the same plan inside
   its own write, so `labelIds` on a task update and the label tools agree.
 - Renaming or recolouring a source-owned label in Nessie is local; the next

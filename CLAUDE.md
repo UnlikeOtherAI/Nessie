@@ -156,7 +156,12 @@ sentence changes only if the invariant itself did.
   layout Ondrej asked for — Documents directly under the Markdown description
   in the left column, then Attachments and Comments, labels as a compact token
   field on the right — plus the label keyboard, the read-only mirror and
-  viewer states, and the phone stack. The rules are in
+  viewer states, the phone stack, the board's own Labels tab, and removing an
+  attachment with a reason: the confirm (shot 12) and the removed row that
+  still shows its uploader, remover, reason and Download (shot 13). The
+  real-stack half — a label following a ticket to another board by name, a
+  removal persisting and still downloading — is in the project-usability
+  suite's `ticket-activity.mjs`. The rules are in
   [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
