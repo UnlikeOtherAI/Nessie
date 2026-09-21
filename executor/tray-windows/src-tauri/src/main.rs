@@ -25,6 +25,7 @@
 
 mod commands;
 mod description;
+mod user_pairing;
 mod grant;
 mod menu;
 mod pairing_origin;

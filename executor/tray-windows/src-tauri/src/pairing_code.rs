@@ -23,6 +23,7 @@ pub async fn executor_pairing_start(
     workspace_root: String,
     replace: bool,
 ) -> Result<serde_json::Value, String> {
+    crate::user_pairing::require_no_user_pairing(&app)?;
     let workspace = PathBuf::from(&workspace_root);
     if !workspace.is_absolute() || !workspace.is_dir() {
         return Err("Choose the folder this computer may read.".to_owned());

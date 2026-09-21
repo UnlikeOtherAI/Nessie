@@ -36,6 +36,7 @@ try {
         ],
       })
       if (path.endsWith('/preview')) {
+        if (data.code === '88888888') return route.fulfill({ status: 429, json: { error: { code: 'EXECUTOR_PAIRING_RATE_LIMITED', message: 'Wait' } } })
         if (data.code !== '01234567') return route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'Unavailable' } } })
         return respond({
           expiresAt: new Date(Date.now() + (expired ? -1_000 : 600_000)).toISOString(),
@@ -59,6 +60,9 @@ try {
     page.on('pageerror', (error) => errors.push(String(error)))
     await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html`)
     await page.getByRole('button', { name: 'Pair executor', exact: true }).click()
+    await page.getByLabel('Eight-digit code').fill('88888888')
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    await page.getByText('Too many attempts.', { exact: false }).waitFor()
     await page.getByLabel('Eight-digit code').fill('87654321')
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByRole('alert').waitFor()

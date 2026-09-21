@@ -25,6 +25,13 @@ offers to replace it or cancel. Replacement revokes the old executor using
 the machine's existing key, so it does not leave another active executor
 behind. Existing access and audit history stay with that old record.
 
+The Windows tray checks for older Desktop and default command-line connections
+before starting. If one exists, close it in the app that manages it first;
+Desktop has revoke and forget controls on its Executors page. The service does
+not copy a user's existing key into its own store.
+The Mac app reuses a single existing state directory in place and asks you
+to resolve multiple existing connections before pairing.
+
 One machine connects to one selected team in this flow. Connecting the same
 machine to several teams is deferred. The team name identifies the connection;
 the chosen private, project or organisation scope still decides access.

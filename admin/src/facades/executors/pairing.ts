@@ -51,6 +51,8 @@ export const useExecutorPairingStatus = (executorId: string | null) => {
   return useQuery({
     enabled: executorId !== null,
     queryKey: executorKeys.pairingStatus(executorId),
+    // A previous machine's consent must never mark a fresh attempt as paired.
+    placeholderData: undefined,
     queryFn: () => client.get(`/api/executors/${executorId}`, ExecutorRecordResponseSchema),
     refetchInterval: (query) => query.state.data?.status === 'pending_pairing' ? 3_000 : false,
     retry: false,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ApiClientError } from '@nessie/client-core'
 import type { ExecutorPairingPreview, ExecutorScope } from '@nessie/schemas'
 import type { ProjectRecord } from '../../../lib/api-client'
 import {
@@ -50,8 +51,10 @@ const PairingSession = ({ fixedProjectId, onClose, onFinished, projects }: Execu
     try {
       setPreview(await previewMutation.mutateAsync(code))
       setNow(Date.now())
-    } catch {
-      setError('That code could not be checked. Check the eight digits on your machine and try again.')
+    } catch (cause) {
+      setError(cause instanceof ApiClientError && cause.status === 429
+        ? 'Too many attempts. Wait a few minutes, then try again.'
+        : 'That code could not be checked. Check the eight digits on your machine and try again.')
     }
   }
 
@@ -64,8 +67,10 @@ const PairingSession = ({ fixedProjectId, onClose, onFinished, projects }: Execu
       setCode('')
       previewMutation.reset()
       claimMutation.reset()
-    } catch {
-      setError('Pairing could not be completed. The code may have expired or already been used. Try a new code.')
+    } catch (cause) {
+      setError(cause instanceof ApiClientError && cause.status === 429
+        ? 'Too many attempts. Wait a few minutes, then try again.'
+        : 'Pairing could not be completed. Try again. If the code has expired, get a new one from your machine.')
     }
   }
 
