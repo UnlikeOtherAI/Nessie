@@ -7,7 +7,8 @@ import {
 import {
   AuthorizedActionContextSchema,
   ChannelDecisionSnapshotSchema as SnapshotSchema,
-  type AuthorizedActionContext, type ChannelDecisionPolicy, type OrchestrateDecideJobPayload,
+  type AuthorizedActionContext, type ChannelDecisionChoice,
+  type ChannelDecisionPolicy, type OrchestrateDecideJobPayload,
 } from '@nessie/schemas'
 import { matchesChannelDecisionTarget } from '@nessie/team-admin'
 import { asEngagementCandidate } from './orchestrate-candidates.js'
@@ -49,6 +50,7 @@ export const evaluateChannelPolicy = async (
   // input. Explicit addressing still enters the normal run disclosure pipeline.
   if (input.restrictedTrigger) return { decisions: stillBound(structuralDecisions ?? []), authorizer: null }
   if (!deps.decisionClient) throw new Error('Channel decisions require the Ledger evaluation service.')
+  let choices: ChannelDecisionChoice[] = []
   const decisions = await decideChannelActions(deps.decisionClient, {
     policy, agents: agents.map(asEngagementCandidate),
     agentMentions: payload.agentMentions,
@@ -56,12 +58,14 @@ export const evaluateChannelPolicy = async (
     ...input.context,
     triggerIsHuman: payload.role === 'user',
     usage: attributionFromActorContext(payload.actorContext, { systemComponent: 'channel-decisions' }),
+    onEvaluated: (evaluated) => { choices = evaluated },
   })
   const snapshot = {
     policyFingerprint: createHash('sha256').update(JSON.stringify(policy)).digest('hex'),
     authorizer: AuthorizedActionContextSchema.nullable().parse(input.authorizer ?? null),
     basisScopes: input.context.basisScopes,
     disclosureSources: input.context.disclosureSources,
+    choices,
     decisions,
   }
   const claimed = await deps.prisma.message.updateMany({

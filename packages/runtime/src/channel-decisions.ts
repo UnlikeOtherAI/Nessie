@@ -1,4 +1,4 @@
-import type { ChannelDecisionPolicy } from '@nessie/schemas'
+import type { ChannelDecisionChoice, ChannelDecisionPolicy } from '@nessie/schemas'
 
 import type { DecisionAnswer, DecisionModelClient, DecisionQuestion } from './decision-model.js'
 import type { LedgerAttribution } from './ledger.js'
@@ -44,6 +44,7 @@ export const decideChannelActions = async (
     followingAgentIds: string[]
     triggerIsHuman: boolean
     usage: LedgerAttribution
+    onEvaluated?: (choices: ChannelDecisionChoice[]) => void
   },
 ): Promise<OrchestratorDecision[]> => {
   if (!input.triggerIsHuman || !input.agents.length) return []
@@ -98,6 +99,11 @@ export const decideChannelActions = async (
     questions,
     usage: input.usage,
   })
+  input.onEvaluated?.(Object.keys(questions).map((questionId) => {
+    const answer = answers[questionId]!
+    const probability = answer.probabilities[answer.choice] ?? 0
+    return { questionId, choice: answer.choice, probability, meetsThreshold: probability >= policy.minimumProbability }
+  }))
   const pick = (id: string): string | undefined =>
     confidentChoice(answers, id, policy.minimumProbability)
   const decisions: OrchestratorDecision[] = [...(addressed ?? [])]

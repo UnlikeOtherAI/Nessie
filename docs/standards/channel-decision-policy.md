@@ -40,6 +40,10 @@ fall back to a generative classifier. A notice explains missing evaluation
 access, exhausted credits, or oversized inputs. Agent-authored messages never
 trigger another policy evaluation. Disabled or absent policies retain normal
 engagement behavior, and system DMs keep their structural response rules.
+The saved snapshot retains each selected option, probability and threshold
+result, distinguishing deliberate no-action choices from uncertain abstentions
+without adding notices to chat. Reply routing also abstains when the agent
+choice is uncertain; an explicit mention remains the way to choose its recipient.
 
 Agent descriptions and the last five context turns use bounded excerpts.
 The latest message and saved policy instructions are not silently shortened.
@@ -82,6 +86,11 @@ target agent is already running and the message must wait.
 Configured work has a distinct hidden system kickoff, keyed by the original
 message, agent and optional PA principal. Its snapshot includes only that
 target's policy work and carries the original message's disclosure provenance.
+Its canonical message basis and private-source rows are written in that same
+transaction, so every reader retains the provenance independently of the snapshot.
+The source's current restrictions are unioned with the classification snapshot:
+replay cannot freeze an earlier, less restrictive disclosure boundary.
+Internal system kickoffs are excluded from the classifier's context window.
 The kickoff is not published as a chat message; an eventual reply is anchored
 to the original conversation. This keeps a poster's unrelated request from
 borrowing the policy author's authority and keeps retries from starting the

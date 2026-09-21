@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_CHANNEL_DECISION_POLICY, type ChannelDecisionPolicy } from '@nessie/schemas'
+import { DEFAULT_CHANNEL_DECISION_POLICY, type ChannelDecisionChoice, type ChannelDecisionPolicy } from '@nessie/schemas'
 import { decideChannelActions } from '../src/channel-decisions.js'
 import type { DecisionModelClient } from '../src/decision-model.js'
 
@@ -72,9 +72,11 @@ test('custom options are a multi-valued enum and all questions share one request
 })
 
 test('uncertain policy choices start no automatic work but keep explicit addressing', async () => {
+  let choices: ChannelDecisionChoice[] = []
   const decisions = await decideChannelActions(model({ custom_decision: 'confirmed' }, 0.2), {
     ...input('Archivist, explain our decision'),
     agentMentions: [{ agentId: agent.id }],
+    onEvaluated: (result) => { choices = result },
   })
   assert.equal(decisions.length, 1)
   const run = decisions[0]!
@@ -83,6 +85,26 @@ test('uncertain policy choices start no automatic work but keep explicit address
   assert.equal(run.background, undefined)
   assert.equal(run.policyWork, undefined)
   assert.doesNotMatch(run.promptOverride!, /Record the confirmed decision/)
+  assert.deepEqual(choices.find((choice) => choice.questionId === 'custom_decision'), {
+    questionId: 'custom_decision', choice: 'confirmed', probability: 0.2, meetsThreshold: false,
+  })
+})
+
+test('a confident reply request with an uncertain recipient records its abstention', async () => {
+  let choices: ChannelDecisionChoice[] = []
+  const client: DecisionModelClient = { evaluate: async (request) => {
+    const answers = await model({ engagement: 'reply', agent: agent.id, custom_decision: 'unrelated' }).evaluate(request)
+    answers.agent = { type: 'choice', choice: agent.id, probabilities: { [agent.id]: 0.55, none: 0.45 } }
+    return answers
+  } }
+  const decisions = await decideChannelActions(client, {
+    ...input('¿alguien puede explicar esto?'), onEvaluated: (result) => { choices = result },
+  })
+  assert.deepEqual(decisions, [])
+  assert.equal(choices.find((choice) => choice.questionId === 'engagement')?.meetsThreshold, true)
+  assert.deepEqual(choices.find((choice) => choice.questionId === 'agent'), {
+    questionId: 'agent', choice: agent.id, probability: 0.55, meetsThreshold: false,
+  })
 })
 
 test('a follow-up cannot name an unavailable agent or another principal', async () => {

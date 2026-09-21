@@ -19,7 +19,10 @@ export const loadOrchestrationContext = async (
   const { actorContext, channelAgents, content, messageId, role, threadId } = payload
   // Exclude the trigger by identity: another turn can arrive before this job runs.
   const recentDbMessages = await deps.prisma.message.findMany({
-    where: { threadId, ...(triggerCreatedAt ? { createdAt: { lte: triggerCreatedAt } } : {}) },
+    where: {
+      threadId, role: { not: 'system' },
+      ...(triggerCreatedAt ? { createdAt: { lte: triggerCreatedAt } } : {}),
+    },
     orderBy: { createdAt: 'desc' },
     take: 6,
     include: {

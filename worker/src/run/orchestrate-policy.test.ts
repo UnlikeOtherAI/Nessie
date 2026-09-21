@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import {
-  AuthorizedActionContextSchema, DEFAULT_CHANNEL_DECISION_POLICY, OrchestrateDecideJobPayloadSchema,
+  AuthorizedActionContextSchema, ChannelDecisionSnapshotSchema,
+  DEFAULT_CHANNEL_DECISION_POLICY, OrchestrateDecideJobPayloadSchema,
 } from '@nessie/schemas'
 import type { DecisionModelClient } from '@nessie/runtime'
 import { evaluateChannelPolicy } from './orchestrate-policy.js'
@@ -72,6 +73,10 @@ test('replay pins actions and policy authorizer despite a new policy or unavaila
   const first = await evaluateChannelPolicy({ prisma: f.prisma, decisionClient: f.client }, input)
   assert.equal(first.decisions.length, 2)
   assert.equal(first.authorizer?.actor.actorId, id(2))
+  assert.deepEqual(ChannelDecisionSnapshotSchema.parse(f.snapshot()).choices?.find(
+    (choice) => choice.questionId === 'custom_decision'), {
+    questionId: 'custom_decision', choice: 'record', probability: 1, meetsThreshold: true,
+  })
   const replay = await evaluateChannelPolicy({ prisma: f.prisma }, {
     ...input, snapshot: f.snapshot(), policy: { ...policy, questions: [] }, authorizer: payload.actorContext,
   })

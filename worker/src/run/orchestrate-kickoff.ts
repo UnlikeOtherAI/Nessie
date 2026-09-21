@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import { originalHumanAuthorId, type OrchestratorDecision } from '@nessie/runtime'
 import { ChannelDecisionSnapshotSchema, type OrchestrateDecideJobPayload } from '@nessie/schemas'
+import { persistablePrivateConversationSources } from './execute/private-conversation-source-storage.js'
 
 // One hidden kickoff per source/agent/principal. Its primary key is the replay
 // guard, including two workers reaching the upsert at the same time.
@@ -39,10 +40,14 @@ export const ensureChannelPolicyKickoff = async (
   }] : []
   const pinned = {
     ...snapshot, decisions: [decision],
+    // The source can become more restricted after classification. Admit that
+    // current boundary too; a pinned choice never freezes an earlier read grant.
     basisScopes: [...snapshot.basisScopes, ...source.basisScopes, ...ownScope],
     disclosureSources: [...snapshot.disclosureSources, ...source.disclosureSources, ...ownSources],
   }
   const id = kickoffId(source.id, decision.agentId, decision.principalUserId)
+  const organizationId = payload.actorContext.tenant.organizationId
+  const sources = await persistablePrivateConversationSources(tx, pinned.disclosureSources)
   await tx.message.upsert({
     where: { id }, update: {},
     create: {
@@ -50,6 +55,12 @@ export const ensureChannelPolicyKickoff = async (
       content: decision.promptOverride, rootMessageId: source.rootMessageId ?? source.id,
       channelDecision: pinned as Prisma.InputJsonValue,
       metadata: { channelPolicyKickoff: { sourceMessageId: source.id } },
+      basisScopes: { createMany: {
+        data: pinned.basisScopes.map((scope) => ({ ...scope, organizationId })), skipDuplicates: true,
+      } },
+      disclosureSources: { createMany: {
+        data: sources.map((entry) => ({ ...entry, organizationId })), skipDuplicates: true,
+      } },
     },
     select: { id: true },
   })

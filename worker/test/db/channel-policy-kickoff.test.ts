@@ -128,6 +128,10 @@ runDatabaseTest('a reply and policy kickoff preserve separate human authority th
   assert.equal(kickoff.rootMessageId, source.id)
   assert.equal(kickoff.threadId, threadId)
   assert.deepEqual(kickoff.metadata, { channelPolicyKickoff: { sourceMessageId: source.id } })
+  assert.deepEqual(kickoff.basisScopes.map(({ scopeType, scopeId }) => ({ scopeType, scopeId })),
+    [{ scopeType: 'channel', scopeId: channel.id }])
+  assert.deepEqual(new Set(kickoff.disclosureSources.map((entry) => entry.sourceAuthorUserId)),
+    new Set([authorizerId, posterId, null]), 'canonical readers retain the same authors as run admission')
   const sink = createConsumedSourceSink()
   await admitTriggerMessageLineage(prisma, sink, kickoff)
   assert.deepEqual(new Set(sink.privateConversationSources().map((entry) => entry.sourceAuthorUserId)),
@@ -162,6 +166,8 @@ runDatabaseTest('a reply and policy kickoff preserve separate human authority th
   assert.equal(await prisma.run.count({ where: { threadId } }), 2)
   assert.equal(await prisma.runThreadPendingMessage.count({ where: { threadId } }), 0)
   assert.equal(await prisma.message.count({ where: { threadId } }), 2)
+  assert.equal(await prisma.messageBasisScope.count({ where: { messageId: kickoff.id } }), 1)
+  assert.equal(await prisma.messageDisclosureSource.count({ where: { messageId: kickoff.id } }), 3)
   assert.equal((await queued()).length, 2)
   assert.equal(publications.length, 1, 'replay neither announces nor exposes the hidden kickoff')
 })
