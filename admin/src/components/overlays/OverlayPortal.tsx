@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { useOverlayLayerCovered } from '../../navigation/overlay-layer'
 
 /**
  * Every overlay leaves the page tree (docs/navigation/overview.md §7).
@@ -24,6 +25,11 @@ import { createPortal } from 'react-dom'
  * one portals into one host appended to `document.body`, where the only
  * stacking context is the root's and the only containing block is the
  * viewport.
+ *
+ * An overlay belongs to the screen it was opened from: while a screen is
+ * pushed over that one, the overlay stays mounted but hidden in its slot, and
+ * it is back as it was when its screen is on top again
+ * (`navigation/overlay-layer.tsx`).
  *
  * `active={false}` renders in place, for the one surface that is an overlay on
  * `split` and a real screen in the phone navigation stack on `single`
@@ -70,6 +76,7 @@ type OverlayPortalProps = {
 
 export const OverlayPortal = ({ active = true, children }: OverlayPortalProps): ReactNode => {
   const staticRender = useIsStaticRender()
+  const covered = useOverlayLayerCovered()
   if (!active || staticRender) return children
   // Resolved during render, not in an effect: `useOverlay` starts the open
   // motion in a layout effect on the panel it just rendered, so a host that
@@ -79,5 +86,13 @@ export const OverlayPortal = ({ active = true, children }: OverlayPortalProps): 
   // host rather than leaking a second.
   const resolved = overlayHost()
   if (!resolved) return children
-  return createPortal(children, resolved)
+  // One slot per overlay, `display: contents` (styles.css) so it is addressing
+  // rather than layout; `hidden` takes the covered overlay out of paint, focus
+  // and the accessibility tree without unmounting it.
+  return createPortal(
+    <div className="admin-overlay-slot" data-overlay-covered={covered || undefined} hidden={covered || undefined}>
+      {children}
+    </div>,
+    resolved,
+  )
 }

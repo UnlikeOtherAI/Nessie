@@ -209,15 +209,17 @@ export const Popover = ({
       // an "outside" press for the lower layer: closing this menu would
       // unmount the control that owns the higher overlay before its button's
       // click fires (the session-debug Copy action was the visible failure).
-      // Direct children of the shared host are independent overlay trees.
-      const host = panel?.parentElement
-      if (host?.classList.contains('admin-overlay-root')) {
+      // Each direct child of the shared host is one overlay's slot, an
+      // independent overlay tree.
+      const ownSlot = panel.parentElement
+      const host = ownSlot?.parentElement
+      if (ownSlot?.classList.contains('admin-overlay-slot') && host?.classList.contains('admin-overlay-root')) {
         const domElement = panel.ownerDocument.defaultView?.Element
         let overlayTree = domElement && target instanceof domElement ? target : target.parentElement
         while (overlayTree && overlayTree.parentElement !== host) {
           overlayTree = overlayTree.parentElement
         }
-        if (overlayTree && overlayTree !== panel) return
+        if (overlayTree && overlayTree !== ownSlot) return
       }
       requestClose()
     }

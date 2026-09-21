@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import { holdNativeChromeSuspended } from '../../navigation/full-bleed-layers'
 import { useLocalBack } from '../../navigation/LocalBackContext'
 import { useNavigationLayout } from '../../navigation/mobile-shell'
+import { useOverlayLayerCovered } from '../../navigation/overlay-layer'
 import {
   OVERLAY_BACK_PRIORITY,
   OVERLAY_LAYER,
@@ -42,6 +43,8 @@ export type OverlayState = {
   // True while open, and while the close motion plays out.
   mounted: boolean
   closing: boolean
+  // Open, but its screen is covered by one pushed over it (see above).
+  covered: boolean
   panelRef: RefObject<HTMLDivElement | null>
   layerStyle: { zIndex: string }
   requestClose: () => void
@@ -65,6 +68,12 @@ export const useOverlay = ({
   const layout = useNavigationLayout()
   const [closing, setClosing] = useState(false)
   const effectiveKind = kind === 'popover' && ownerKind === 'modal' ? 'modalPopover' : kind
+  // Opened from a screen something is now pushed over: the overlay stays
+  // mounted (its state and draft survive) but is dormant — no Back, no focus
+  // trap, no Escape, no native-chrome hold — until its screen is on top again.
+  // OverlayPortal hides it through the same hook.
+  const covered = useOverlayLayerCovered()
+  const live = open && !covered
 
   // The live handler and the live dismiss gate ride in refs so the callback
   // handed to the a11y hook stays stable: call sites rebuild `onClose` on
@@ -85,7 +94,7 @@ export const useOverlay = ({
   // before any route change. A modal-owned popover stays above its owner on
   // every layout; an ordinary popover owns Back on a single column only.
   useLocalBack({
-    active: open && (kind !== 'popover' || ownerKind === 'modal' || layout === 'single'),
+    active: live && (kind !== 'popover' || ownerKind === 'modal' || layout === 'single'),
     id: `overlay:${id}`,
     label,
     onBack: requestClose,
@@ -95,17 +104,17 @@ export const useOverlay = ({
   // A modal covers the document, so any native chrome placed over the page
   // beneath it is pointing at something the reader can no longer see.
   useEffect(() => {
-    if (!open || kind !== 'modal') return undefined
+    if (!live || kind !== 'modal') return undefined
     return holdNativeChromeSuspended()
-  }, [kind, open])
+  }, [kind, live])
 
   const trapsFocus = kind !== 'popover'
-  useModalA11y(panelRef, requestClose, open && trapsFocus, initialFocusRef)
+  useModalA11y(panelRef, requestClose, live && trapsFocus, initialFocusRef)
   // A field in any modal or sheet stays above the keyboard. Popovers do not
   // trap focus and place themselves through their own bounded geometry.
-  useFocusedOverlayControl(panelRef, open && trapsFocus)
+  useFocusedOverlayControl(panelRef, live && trapsFocus)
   useEffect(() => {
-    if (!open || trapsFocus) return undefined
+    if (!live || trapsFocus) return undefined
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (ownerKind === 'modal') {
@@ -126,7 +135,7 @@ export const useOverlay = ({
     // modal's focus trap sees Escape; a blocking panel owns focus, so it wins.
     document.addEventListener('keydown', onKeyDown, ownerKind === 'modal')
     return () => document.removeEventListener('keydown', onKeyDown, ownerKind === 'modal')
-  }, [escapeAnchorRef, open, ownerKind, requestClose, trapsFocus])
+  }, [escapeAnchorRef, live, ownerKind, requestClose, trapsFocus])
 
   const scrimProps = useOverlayDismiss(requestClose)
 
@@ -166,6 +175,7 @@ export const useOverlay = ({
 
   return {
     closing,
+    covered,
     layerStyle: { zIndex: `var(--layer-${effectiveKind.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}, ${OVERLAY_LAYER[effectiveKind]})` },
     mounted: open || closing,
     panelRef,
