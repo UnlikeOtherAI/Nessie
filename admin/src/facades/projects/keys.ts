@@ -20,6 +20,9 @@ export const projectKeys = {
   // Nested for the same reason as `boards`: a definition change alters what
   // every card of the project renders.
   fields: (projectId: string) => ['projects', projectId, 'fields'] as const,
+  // Nested for the same reason as `fields`: a label rename or recolour alters
+  // every card that carries it, and deleting the project takes them with it.
+  labels: (projectId: string) => ['projects', projectId, 'labels'] as const,
   // Nested for the same reason: attaching or removing a source changes what
   // the project's boards show.
   sources: (projectId: string, boardId?: string) =>

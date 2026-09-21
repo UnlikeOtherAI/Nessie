@@ -184,6 +184,20 @@ export const useAgentRealtime = (input: {
       return
     }
 
+    if (message.event === 'task.activity') {
+      // Content-free (a task id and its project id), like `board.updated`: a
+      // comment or file changed on this ticket. The refetch is the
+      // entitlement check. `presented` is its own root, so it is named; the
+      // board lists carry the card counts and refresh by project.
+      void queryClient.invalidateQueries({ queryKey: taskKeys.comments(message.data.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.attachments(message.data.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.presented(message.data.taskId) })
+      void queryClient.invalidateQueries({
+        queryKey: taskKeys.forProject(message.data.projectId),
+      })
+      return
+    }
+
     if (message.event === 'agent.todo.updated') {
       // The event carries no title, step, or note. A to-do card can therefore
       // only repaint after its regular entitled API read succeeds.
@@ -227,6 +241,10 @@ export const useAgentRealtime = (input: {
       })
       void queryClient.invalidateQueries({
         queryKey: projectKeys.sources(message.data.projectId),
+      })
+      // Label create, rename, recolour and delete publish this too.
+      void queryClient.invalidateQueries({
+        queryKey: projectKeys.labels(message.data.projectId),
       })
       return
     }

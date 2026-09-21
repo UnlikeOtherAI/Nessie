@@ -2,6 +2,7 @@ import React, { useMemo, type ReactNode } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { normalizeMessageMarkdown } from '../../../lib/message-markdown'
+import { AuthedAttachmentImage, isInlineAttachmentSrc } from '../../shared/AuthedAttachmentImage'
 import { ExpandableTable } from '../../shared/ExpandableTable'
 
 interface MessageMarkdownProps {
@@ -15,6 +16,14 @@ interface MessageMarkdownProps {
    */
   allowRemoteImages?: boolean
   children: string
+  /**
+   * Resolve `![alt](/api/attachments/<id>)` — the inline-image form a ticket
+   * description and its comments use — through the authed blob fetch, since a
+   * bare `<img src>` cannot carry the bearer token. Every other image renders
+   * as it would without the prop. Off by default: chat and every other caller
+   * are unchanged.
+   */
+  resolveAttachmentImages?: boolean
   renderInlineText: (text: string) => ReactNode
 }
 
@@ -45,15 +54,25 @@ const ImagePlaceholder = ({ alt }: { alt?: string }) => (
 export const MessageMarkdown = ({
   allowRemoteImages = true,
   children,
+  resolveAttachmentImages = false,
   renderInlineText,
 }: MessageMarkdownProps) => {
   const components = useMemo<Components>(
     () => ({
-      ...(allowRemoteImages
-        ? {}
-        : {
-            img: ({ alt }: { alt?: string }) => <ImagePlaceholder alt={alt} />,
-          }),
+      ...(resolveAttachmentImages
+        ? {
+            img: ({ node: _node, ...props }) => {
+              if (isInlineAttachmentSrc(props.src)) {
+                return <AuthedAttachmentImage alt={props.alt} src={props.src} />
+              }
+              return allowRemoteImages ? <img {...props} /> : <ImagePlaceholder alt={props.alt} />
+            },
+          }
+        : allowRemoteImages
+          ? {}
+          : {
+              img: ({ alt }: { alt?: string }) => <ImagePlaceholder alt={alt} />,
+            }),
       a: ({ children: linkChildren, node: _node, ...props }) => (
         <a
           {...props}
@@ -123,7 +142,7 @@ export const MessageMarkdown = ({
         <th {...props}>{renderTextChildren(cellChildren, renderInlineText)}</th>
       ),
     }),
-    [allowRemoteImages, renderInlineText],
+    [allowRemoteImages, renderInlineText, resolveAttachmentImages],
   )
 
   return (

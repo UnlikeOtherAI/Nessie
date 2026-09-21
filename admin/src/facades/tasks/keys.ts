@@ -13,6 +13,13 @@ export const taskKeys = {
   assignees: ['task-assignees'] as const,
   documents: (taskId?: string) => ['task-pages', taskId ?? 'none'] as const,
   checklist: (taskId?: string) => ['tasks', 'checklist', taskId ?? 'none'] as const,
+  // Nested under the root so `taskKeys.all` — every task mutation and every
+  // `task.updated` nudge — also refreshes an open ticket's activity. Both are
+  // stored as objects (an infinite-query page set, a `{ attachments }`
+  // envelope), never as an array, so the board's optimistic sweep over
+  // ['tasks'] skips them rather than patching a foreign shape.
+  comments: (taskId?: string) => ['tasks', 'comments', taskId ?? 'none'] as const,
+  attachments: (taskId?: string) => ['tasks', 'attachments', taskId ?? 'none'] as const,
   // Deliberately NOT nested, for the same reason `assignees` is not: a ticket
   // card shown in a conversation reads one TaskRecord, and the optimistic
   // sweep over ['tasks'] would hand a single record an array patch.
