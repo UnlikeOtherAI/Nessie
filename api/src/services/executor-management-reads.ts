@@ -22,7 +22,9 @@ export const listExecutorAgentAccess = async (
   const linked: Prisma.AgentWhereInput = { OR: [
     ...(managed.executor.scope.kind === 'private'
       ? [{ executorPrivateAssignments: { some: { executorId, principalKind: 'agent' as const } } }] : []),
-    { executorOperationGrants: { some: { executorId, state: 'allowed' } } },
+    { executorOperationGrants: { some: {
+      executorId, state: 'allowed', operationKey: { in: [...IMPLEMENTED_EXECUTOR_OPERATION_KEYS] },
+    } } },
   ] }
   const where: Prisma.AgentWhereInput = {
     organizationId: actor.tenant.organizationId, deletedAt: null,

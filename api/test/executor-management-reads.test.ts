@@ -62,6 +62,10 @@ dbTest('executor agent pages preserve privacy, count filtered rows and page the 
       executorId, agentId: ids[index]!, operationKey: 'file.read', state: 'allowed',
       authorizationRevision: 1, updatedByUserId: userId,
     })) })
+    await prisma.executorAgentOperationGrant.create({ data: {
+      executorId, agentId: ids[4]!, operationKey: 'coding.attach', state: 'allowed',
+      authorizationRevision: 1, updatedByUserId: userId,
+    } })
     const first = await listExecutorAgentAccess(prisma, actor, executorId, { limit: 1 })
     const routed = await app.inject({ method: 'GET', url: `/api/executors/${executorId}/agents?limit=1` })
     assert.equal(routed.statusCode, 200)
