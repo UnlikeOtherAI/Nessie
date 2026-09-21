@@ -95,8 +95,8 @@ nobody sets correctly:
 
 | Scope | Grants |
 | --- | --- |
-| `boards_read` | list projects/boards/columns, read tasks |
-| `boards_write` | create, update and move tasks |
+| `boards_read` | list projects/boards/columns, read tasks, their comments, files and a project's labels |
+| `boards_write` | create, update and move tasks; add, edit and delete comments and files; manage labels |
 | `documents_read` | list spaces, read pages |
 | `documents_write` | create and edit pages as drafts, and ask for one to be published |
 
@@ -142,6 +142,41 @@ by the next sync. That refusal is the interesting part of the design.
 | `nessie_task_create` | `boards:write` |
 | `nessie_task_update` | `boards:write` |
 | `nessie_task_move` | `boards:write` |
+| `nessie_task_comment_list` | `boards:read` |
+| `nessie_task_comment_add` | `boards:write` |
+| `nessie_task_comment_update` | `boards:write` |
+| `nessie_task_comment_delete` | `boards:write` |
+| `nessie_task_attachment_list` | `boards:read` |
+| `nessie_task_attachment_get` | `boards:read` |
+| `nessie_task_attachment_add` | `boards:write` |
+| `nessie_task_attachment_remove` | `boards:write` |
+| `nessie_label_list` | `boards:read` |
+| `nessie_label_create` | `boards:write` |
+| `nessie_label_update` | `boards:write` |
+| `nessie_label_delete` | `boards:write` |
+
+Inputs, as built (`api/src/mcp/tools/task-activity.ts`, `labels.ts`):
+
+- Comments take `taskId`; `_list` adds `cursor`/`limit` (≤ 100, 50 by
+  default, oldest first), `_add` takes `body`, `_update` takes `commentId` and
+  `body`, `_delete` takes `commentId`. A comment is authored as the person who
+  approved the credential, and only its author may edit or delete it. On a
+  `read_write` mirrored task `_add` posts upstream too; otherwise the result
+  says `propagated: false` and why.
+- Files take `taskId`; `_add` takes `contentBase64` (≤ 10 MiB decoded, secret
+  scanned), `filename` and `mime`, and returns the `markdown`
+  (`![alt](/api/attachments/<id>)`) to paste into a description or comment;
+  `_get` and `_remove` take `attachmentId`, and `_get` inlines only images and
+  text up to 4 MiB.
+- Labels take `projectId`; `_create` takes `name` and an optional `#rrggbb`
+  `color` (a taken name returns the existing label beside the error),
+  `_update` takes `labelId` and `name`/`color`, `_delete` takes `labelId`.
+  `nessie_task_create` and `nessie_task_update` take `labelIds`, which replaces
+  the whole set.
+
+The invariants these share with the routes and the Personal Assistant's
+`ticket_*` tools are in
+[`docs/standards/ticket-activity.md`](../standards/ticket-activity.md).
 
 Each task result carries its `origin` (`internal` or the provider) and, when
 mirrored, whether writes propagate — so the agent knows before it tries.
