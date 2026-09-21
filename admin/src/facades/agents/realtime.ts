@@ -181,6 +181,9 @@ export const useAgentRealtime = (input: {
       void queryClient.invalidateQueries({
         queryKey: taskKeys.checklist(message.data.taskId),
       })
+      // An open dialog reads `presented`, its own root: another writer's save
+      // (a person, an agent, a sync) must reach it too.
+      void queryClient.invalidateQueries({ queryKey: taskKeys.presented(message.data.taskId) })
       return
     }
 

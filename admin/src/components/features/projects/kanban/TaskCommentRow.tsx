@@ -6,7 +6,7 @@ import { IdentityTile } from '../../../primitives/IdentityTile'
 import { Pill } from '../../../primitives/Pill'
 import { ContextMenu } from '../../../overlays/ContextMenu'
 import { useContextMenu } from '../../../overlays/useContextMenu'
-import { ActorName, useActorNames } from '../../../shared/ActorName'
+import { useActorNames } from '../../../shared/ActorName'
 import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { ConfirmDialog } from '../../../shared/ConfirmDialog'
 import { MessageAttachments } from '../../../shared/MessageAttachments'
@@ -151,7 +151,8 @@ export const TaskCommentRow = ({ comment, mirrored, onOpenAttachment, taskId }: 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[color:var(--tx3)]">
           <span className="font-semibold text-[color:var(--tx)]">
             {actor ? (
-              <ActorName actor={actor} />
+              // The avatar already says person or agent; the audit-log suffix is noise here.
+              <span title={actor.id}>{actor.name}</span>
             ) : author.kind === 'external' ? (
               <span title={`${PROVIDER_LABEL[author.provider]} user ${author.externalUserId}`}>
                 {author.displayName}
