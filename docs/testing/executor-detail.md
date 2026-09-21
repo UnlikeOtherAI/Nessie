@@ -13,7 +13,7 @@ only that agent's assignment and grants, in one confirmed transaction.
 | Overview | Repeated status, permissions and diagnostics | Remove; Agents is the default |
 | Access | Ambiguous mix of people, agents and raw access rules | Replace with the Agents table and a private-machine people dialog |
 | Agents | See who has stored access and remove one agent | Shared DataTable, search and PaginationFooter; server filters rows and totals by entitlement |
-| Add agent | Choose another eligible agent | Button opens a paginated picker; review names the agent and the exact permission set |
+| Add agent | Choose another eligible agent | Button opens a paginated picker; review names the agent, exact permission set, folders and permitted programs |
 | Permissions | Review what the machine permits | Show only the latest signed proposal, using human operation names and its actual folders, programs and apps |
 | Old pending revisions | No current decision; superseded by the latest proposal | Remove from the detail page and attention counts; retain server history |
 | Review changes | Approve a current proposal | One dialog reuses the same permission details; no raw JSON, hashes or protocol identifiers |

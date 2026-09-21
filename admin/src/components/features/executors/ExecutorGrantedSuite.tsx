@@ -1,6 +1,6 @@
 import { executorWholeSuiteOperationKeys } from '@nessie/schemas'
 import { useExecutorAccess } from '../../../facades/executors/hooks'
-import { executorOperationLabel } from './executor-presentation'
+import { ExecutorPermissionDetails } from './ExecutorReviewedPolicy'
 
 export type ExecutorGrantedSuiteProps = { change: Record<string, unknown>; executorId: string }
 
@@ -12,9 +12,9 @@ export const ExecutorGrantedSuite = ({ change, executorId }: ExecutorGrantedSuit
   const access = accessQuery.data?.executorId === executorId ? accessQuery.data : undefined
   const latest = [...(access?.descriptorRevisions ?? [])].sort((a, b) => b.revision - a.revision)[0]
   const operations = latest?.reviewStatus === 'active' ? executorWholeSuiteOperationKeys(latest.operationKeys) : null
-  return operations ? (
+  return operations && latest ? (
     <div className="grid gap-2 text-sm text-[color:var(--tx2)]">
-      <ul className="grid gap-1">{operations.map((key) => <li key={key}>{executorOperationLabel(key)}</li>)}</ul>
+      <ExecutorPermissionDetails revision={{ ...latest, operationKeys: operations }} />
       {latest?.operationKeys.includes('workspace.promote') ? <p>Applying draft changes to the machine still requires a person’s approval.</p> : null}
     </div>
   ) : <p className="text-sm text-[color:var(--tx3)]">

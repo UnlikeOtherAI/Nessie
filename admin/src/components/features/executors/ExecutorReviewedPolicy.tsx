@@ -7,8 +7,7 @@ import { executorOperationLabel } from './executor-presentation'
 /**
  * What a prepared `descriptor_review` change actually activates.
  *
- * The confirmation card above it renders the stored change verbatim, and that
- * change names a revision number and nothing else. A person confirming it is
+ * The stored change names a revision number and nothing else. A person confirming it is
  * turning `command.run` on, so the revision's own terms — its profiles, its
  * operations, and the programs it permits — belong beside the confirm control
  * rather than one card further up the page.

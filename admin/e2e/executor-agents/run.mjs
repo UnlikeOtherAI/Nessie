@@ -72,6 +72,7 @@ const fixtureApi = () => {
         descriptorRevisions: [{
           revision: 1, reviewStatus: 'active', localPolicyDigest: `sha256:${'a'.repeat(64)}`,
           operationKeys: ['file.read', 'command.run'], profiles: ['workspace_sandbox'],
+          workspaceFolders: ['projects'], commandAllowlist: ['git'],
         }],
       } })
       if (url.pathname === '/api/executor-access-changes' && body) {
@@ -174,6 +175,9 @@ const evaluate = async (browser, viewport) => {
     await addDialog.getByRole('button', { name: 'Add Candidate 01', exact: true }).click()
     await absent(addDialog)
     await visible(review)
+    await visible(review.getByText('Folders (1):', { exact: false }))
+    assert.match(await review.innerText(), /projects/)
+    assert.match(await review.innerText(), /Permitted programs \(1\): git/)
     assert.deepEqual(prepareRequests().at(-1).body, {
       executorId, change: { kind: 'agent_executor_access', agentId: uuid(101), state: 'allowed' },
     })
