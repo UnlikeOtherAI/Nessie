@@ -80,6 +80,7 @@ test('the Channels project menu uses the 1d icon-row treatment without adding ac
 
   assert.match(menu, /<AddChannelIcon \/>/)
   assert.match(menu, /<EditProjectIcon \/>/)
+  assert.match(menu, /aria-label="Add new channel within project"/)
   assert.match(menu, />Add channel to project</)
   assert.match(menu, />Rename &amp; icon</)
   assert.doesNotMatch(menu, /Archive project|Delete project|Move channels/)
