@@ -90,41 +90,37 @@ for this FK (Prisma needs the exact referenced tuple).
 the board's labels onto the default board *before* the row goes (§8.5), so
 the cascade finds nothing.
 
-### 8.3 Migration — amend `20260921120000`, do not add a second one
+### 8.3 Migration — a new `20260921140000_board_labels_attachment_removal`
 
-**Amend the unmerged migration in place.** The board-sourced label table has
-never existed on `main` or in production; a second migration would move rows
-that exist only in developers' databases, and `scripts/lint-migrations.mjs`
-hard-fails only for a migration folder present at the merge-base with the
-base branch — this one is not. One clean migration is what a reader of the
-history should find.
+PR #603 merged and deployed `20260921120000` before this chapter was built,
+so that migration is immutable (`scripts/lint-migrations.mjs`) and may have
+run in production. This change is a **new forward migration**; production is
+greenfield, but the migration still converts what it finds rather than
+dropping it.
 
-Changes to `migration.sql`:
+In order:
 
-1. `CREATE TABLE "task_labels"` gains `"board_id" UUID NOT NULL`; the unique
-   indexes become `("board_id", "normalized_name")` and
-   `("board_id", "source_id", "external_id")`; the name index becomes
-   `("board_id", "name")` plus `("project_id")`; the FK is
-   `FOREIGN KEY ("board_id", "project_id") REFERENCES "boards"("id", "project_id") ON DELETE CASCADE`,
-   which needs `CREATE UNIQUE INDEX "boards_id_project_id_key" ON "boards"("id", "project_id")`
-   first.
-2. The conversion block (§4 of the file) lands each converted option **on
-   every board that needs it**: for each source, the set of boards is the
-   distinct home board of the project's tasks that carry a value for the
-   definition, plus the project's default board (`is_default = TRUE`). A
-   task's home board in SQL is `coalesce(t.board_id, default_board_id)`. One
-   label per (board, option), `ON CONFLICT ("board_id", "normalized_name") DO UPDATE`
-   as today; links join the task to the label on the task's own home board.
-   `option_labels` becomes keyed by `board_id || ':' || option_id`.
-3. Nothing else in the file changes. The header comment says labels are
-   board-scoped and why.
-
-A developer database that applied the earlier draft fails
-`prisma migrate deploy` with a checksum mismatch: reset it (they are
-throwaway — the E2E recipe rebuilds one in a minute). Say so in the PR's
-Testing section. The migration is re-proved on a clean pgvector container
-and on the upgrade baseline, with a seeded old-shape *Labels* field on a
-project whose tasks sit on two boards (§10.3).
+1. `CREATE UNIQUE INDEX "boards_id_project_id_key" ON "boards"("id", "project_id")`
+   (the composite FK target), then `ALTER TABLE "task_labels" ADD COLUMN "board_id" UUID`.
+2. **Re-home every existing project-scoped label onto every board that needs
+   it.** A task's home board in SQL is `coalesce(t.board_id, d.id)` where `d`
+   is the project's `is_default` board. For each label, the target boards are
+   the distinct home boards of the tasks linked to it, plus the project's
+   default board (so an unused label survives somewhere). The first target
+   keeps the existing row (`UPDATE … SET board_id`); every further board gets
+   a copy (`INSERT … SELECT` with a new uuid, same name, colour, source and
+   external id), and each `task_label_links` row is repointed to the copy on
+   its task's own home board. A project with no boards at all has its labels
+   deleted (nothing can show them).
+3. `ALTER COLUMN "board_id" SET NOT NULL`; drop the old unique indexes
+   `(project_id, normalized_name)` and `(source_id, external_id)` and the
+   `(project_id, name)` index; create `(board_id, normalized_name)` unique,
+   `(board_id, source_id, external_id)` unique, `(board_id, name)` and
+   `(project_id)` indexes; add
+   `FOREIGN KEY ("board_id", "project_id") REFERENCES "boards"("id", "project_id") ON DELETE CASCADE`.
+4. The attachment columns of §9.2 (`ALTER TABLE "attachments" ADD COLUMN …`).
+5. Must be a no-op-safe apply on an empty database and on the upgrade
+   baseline.
 
 ### 8.4 Shared functions — `packages/team-admin`
 
@@ -385,7 +381,7 @@ relation; the row outlives the people):
   removedReason    String?   @map("removed_reason") @db.Text
 ```
 
-Migration: in the amended `20260921120000` (§8.3), the `ALTER TABLE
+Migration: in `20260921140000` (§8.3, step 4), an `ALTER TABLE
 "attachments"` statement adds the four columns beside `task_id` and
 `task_comment_id`. No index — the list is read by `task_id` and the card
 count filters on `removed_at IS NULL` within that index's rows.
@@ -542,7 +538,7 @@ script globs, a DB-backed test proved to fail without its fix, `--no-daemon`.
 
 ```
 api/prisma/schema.prisma                                                    §8.2, §9.2
-api/prisma/migrations/20260921120000_task_labels_comments_attachments/migration.sql   §8.3, §9.2 (amended in place)
+api/prisma/migrations/20260921140000_board_labels_attachment_removal/migration.sql   §8.3, §9.2 (new)
 packages/schemas/src/task-labels.ts · task-attachments.ts                   §8.6, §9.3
 packages/team-admin/src/project-task-records.ts                             countTaskAttachments filters removedAt
 packages/team-admin/src/task-access.ts                                      findAccessibleTask selects boardId
@@ -621,11 +617,8 @@ scripts or a throwaway harness under C's worktree for the migration proof — no
 Tests C must add (DB-backed): a mirrored task on a non-default board gets
 its source labels on that board, and the same provider label on a
 default-board task is a second row; a webhook rename recolours both rows and
-keeps a colliding name on the one board where it collides; the amended
-migration on a seeded old-shape database (one source, a *Labels*
-multi_select, tasks on two boards with values) produces one label per
-(board, option), links on each task's own board, `native:labels` in the
-mapping, and the definition gone — run on a clean pgvector container and
+keeps a colliding name on the one board where it collides; the new
+migration proof of §10.4 (project-scoped labels re-homed per board), run
 on the upgrade baseline; the fingerprint is unchanged by the re-keying.
 
 Wave 1 gate: `DATABASE_URL=… pnpm exec turbo run test --no-daemon` (whole
@@ -643,22 +636,19 @@ on this worktree's ports.
 4. Real-stack run against this worktree's admin port (the E2E recipe): the
    §10.5 project-usability steps, screenshots looked at and named in the
    report.
-5. Update PR #603's description and Testing section (the checksum note from
-   §8.3 included); merge on green; clean up worktrees and branches.
+5. Open one new PR (PR #603 has merged); merge on green; clean up
+   worktrees and branches.
 
 ### 10.4 Migration proof, spelled out
 
-Because the migration is amended rather than added, the proof is the one
-the PR already owed plus the two-board case. On a clean pgvector container:
-apply the whole chain; seed a project with two boards, a board source whose
-`field_mappings` map `labels` to a multi_select *Labels* definition, three
-tasks (one on each board, one `board_id IS NULL`) with option values; run the
-migration; assert `task_labels` has one row per (board, option) for the two
-boards that hold tasks, every `task_label_links` row joins a task to a label
-on `coalesce(board_id, default)`, `field_values` lost the key, the mapping
-says `native:labels`, and the definition is gone. Then the upgrade baseline
-(`scripts/generate-upgrade-fixture.mjs` flow) with no sources: a no-op that
-still applies.
+On a clean pgvector container: apply the chain up to `20260921120000`; seed
+a project with two boards (one default), three project-scoped labels (one
+used by a task on each board, one used by a `board_id IS NULL` task, one
+unused) and their links; apply `20260921140000`; assert each label exists on
+exactly the boards whose tasks use it plus the default board, every link
+joins a task to a label on `coalesce(board_id, default)`, the new unique
+indexes hold, and a project with no boards lost its labels. Then the whole
+chain from empty, and the upgrade baseline: both apply cleanly.
 
 ### 10.5 Browser checks and screenshots
 
