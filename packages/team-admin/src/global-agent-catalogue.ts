@@ -74,6 +74,11 @@ export type GlobalAgentCatalogueFacts = {
    * itself.
    */
   writeSurface: GlobalAgentCatalogueWriteSurface
+  /**
+   * The protected-access verbs this run resolved. Absent is "none", which is
+   * what every face that only advises should say.
+   */
+  protectedAccess?: GlobalAgentProtectedAccessFacts
 }
 
 const MODEL_SHORTLIST = 20
@@ -95,6 +100,82 @@ const RESTRICTION_LABEL: Record<AgentToolRestriction, string> = {
 
 const describeRestricted = (entry: AgentToolCatalogRestrictedEntry): string =>
   bullet(`${entry.key} — ${RESTRICTION_LABEL[entry.restriction]}`)
+
+const describeGrantable = (entry: AgentToolCatalogRestrictedEntry): string =>
+  bullet(`${entry.key} (${entry.label}) — ${entry.summary}`)
+
+/**
+ * The protected-access verbs this particular run holds.
+ *
+ * Whether an explicit-grant tool is "yours to give" is not a property of the
+ * tool — it is a property of the agent reading this block. The Designer's own
+ * home DM resolves the three verbs below and can grant with the person's
+ * authority; the same catalogue rendered for a shared-channel face, or for any
+ * other agent, resolves none of them and must keep pointing at the owner
+ * surfaces. One blanket sentence cannot be true for both, and the blanket
+ * "nobody can do this from here" is what had the Designer refuse work it was
+ * holding the tools for.
+ */
+export type GlobalAgentProtectedAccessFacts = {
+  /** `agent_deepwater_access_set` — the complete DeepWater bundle. */
+  canSetDeepWater: boolean
+  /** `agent_tool_access_inspect` — read the target agent's grants. */
+  canInspect: boolean
+  /** `agent_tool_access_set` — grant or revoke one protected tool. */
+  canSet: boolean
+}
+
+const NO_PROTECTED_ACCESS: GlobalAgentProtectedAccessFacts = {
+  canInspect: false,
+  canSet: false,
+  canSetDeepWater: false,
+}
+
+/**
+ * How to actually use the grant verbs, stated only to a face that holds them.
+ * Every line here is a fact the handlers enforce: the owner check in
+ * `requireOwnerMember`, the registry-id argument, DeepWater's all-or-nothing
+ * bundle, and the executor carve-out.
+ */
+const protectedGrantSection = (
+  access: GlobalAgentProtectedAccessFacts,
+): string[] => [
+  'Explicit-grant tools you can grant yourself, with the person\'s own '
+  + 'authority:',
+  ...(access.canInspect
+    ? [bullet(
+        'agent_tool_access_inspect(agentId) first — it returns the exact '
+        + 'registry id of every protected builtin and connected-app tool, and '
+        + 'whether the agent already has it. Never guess an id.',
+      )]
+    : []),
+  ...(access.canSet
+    ? [bullet(
+        'agent_tool_access_set(agentId, toolRegistryEntryId, enabled) grants or '
+        + 'revokes one of them — browser tools and connector tools included.',
+      )]
+    : []),
+  ...(access.canSetDeepWater
+    ? [bullet(
+        'agent_deepwater_access_set(agentId, teamId, enabled) is the shortcut '
+        + 'that moves the whole DeepWater research bundle at once, and it '
+        + 'needs DeepWater ready for that team — the tool says so when it is '
+        + 'not. DeepWater is an ordinary explicit-grant tool otherwise: '
+        + 'agent_tool_access_set gives one of its tools to any agent, exactly '
+        + 'like a connector. Revoking one is refused while another still '
+        + 'depends on it.',
+      )]
+    : []),
+  bullet(
+    'These act as the person asking, so they are refused unless that person is '
+    + 'an organisation owner. If the tool refuses, say what it said. Do not '
+    + 'send an owner to the Tools tab for work you can do here.',
+  ),
+  bullet(
+    'Executor logical tools are the exception: they are managed from the '
+    + 'Executors access controls, not by these verbs.',
+  ),
+]
 
 const avatarLine = (facts: GlobalAgentCatalogueFacts): string => {
   const drawing = facts.writeSurface === 'agent_tools'
@@ -176,13 +257,21 @@ const parametersSection = (avatarLineText: string): string[] => [
   ),
 ]
 
-const neverSection = (): string[] => [
+const neverSection = (
+  access: GlobalAgentProtectedAccessFacts,
+): string[] => [
   'What nobody can do from here, stated as facts rather than preferences:',
-  bullet(
-    'Explicit-grant tools (deep research, DeepWater, browser, mailbox and '
-    + 'calendar, and any connector marked as needing a grant) are server-owned. '
-    + 'They are granted from the owner surfaces. Name them and point there.',
-  ),
+  // Only true for a face without the grant verbs. With them, the grant section
+  // above says how — and repeating this bullet there would be the prompt
+  // telling the agent it cannot do the thing it is holding the tool for.
+  ...(access.canSet
+    ? []
+    : [bullet(
+        'Explicit-grant tools (deep research, DeepWater, browser, mailbox and '
+        + 'calendar, and any connector marked as needing a grant) are '
+        + 'server-owned. They are granted from the owner surfaces. Name them '
+        + 'and point there.',
+      )]),
   bullet(
     'Nessie\'s own agents — the Personal Assistant, and built-in ones like you '
     + '— are defined by the deployment. Nobody edits them, organisation owners '
@@ -201,6 +290,7 @@ const neverSection = (): string[] => [
 
 const cloudBrowserSetupSection = (
   writeSurface: GlobalAgentCatalogueFacts['writeSurface'],
+  access: GlobalAgentProtectedAccessFacts,
 ): string[] => [
   ...(writeSurface === 'designer_form'
     ? [bullet(
@@ -209,7 +299,10 @@ const cloudBrowserSetupSection = (
         + 'through the Agent Designer conversation.',
       )]
     : []),
-  ...buildBrowserbaseSetupPrompt({ hasCardTool: writeSurface === 'agent_tools' })
+  ...buildBrowserbaseSetupPrompt({
+    canGrantBrowserTools: access.canSet,
+    hasCardTool: writeSurface === 'agent_tools',
+  })
     .split('\n')
     .map((line) => line === 'Cloud browser setup:' ? line : bullet(line)),
 ]
@@ -256,6 +349,11 @@ const proposalCardSection = (): string[] => [
   'Proposing an agent: one card, always the same card.',
   bullet('title — the agent\'s name. subtitle — its role, two or three words.'),
   bullet(
+    'message — your own words about this proposal, the sentence or two you '
+    + 'would otherwise have typed into the chat. It renders above the card, in '
+    + 'the same message, so the person reads it and the buttons as one thing.',
+  ),
+  bullet(
     'A text block of at most three lines saying what it will do. The work, '
     + 'not the machinery.',
   ),
@@ -276,11 +374,13 @@ const proposalCardSection = (): string[] => [
     + 'That fold is where your own blocks go — do not invent a different card '
     + 'because this one has no row for something.',
   ),
-  bullet('Three actions: Accept, which submits, then Edit and Discard, which do not.'),
-  'Post it without wait, so they can press it or simply answer in chat. '
+  bullet('Three actions: Accept, which submits, then Edit and Decline, which do not.'),
+  'Post it without wait, so they can press it or simply answer in chat, and '
+  + 'then end your turn without another word: the card carries your message, '
+  + 'and a sentence after it is the same thing said twice. '
   + 'Accept means build exactly what the card says, on the model they picked, '
   + 'and then say where it landed. Edit means ask what they want different and '
-  + 'post a fresh card. Discard means build nothing.',
+  + 'post a fresh card. Decline means build nothing.',
 ]
 
 const WRITE_SURFACE_LINE: Record<
@@ -322,6 +422,19 @@ export const buildGlobalAgentCatalogueBlock = (
     ...entries.map(describeTool),
   ])
 
+  // An explicit-grant tool is only "not yours to grant" when this face cannot
+  // grant it. Splitting the list by the verbs actually resolved is what keeps
+  // both sentences true on the same catalogue.
+  const access = facts.protectedAccess ?? NO_PROTECTED_ACCESS
+  const grantable = access.canSet
+    ? facts.catalogue.restricted.filter(
+        (entry) => entry.restriction === 'explicit_grant',
+      )
+    : []
+  const notGrantable = facts.catalogue.restricted.filter(
+    (entry) => !grantable.includes(entry),
+  )
+
   return [
     'Agent design catalogue (generated from this team, not remembered):',
     '',
@@ -331,11 +444,19 @@ export const buildGlobalAgentCatalogueBlock = (
     + 'policy key:',
     ...toolLines,
     '',
-    ...(facts.catalogue.restricted.length > 0
+    ...(grantable.length > 0
+      ? [
+          'Explicit-grant tools in this organisation, by registry key:',
+          ...grantable.map(describeGrantable),
+          '',
+        ]
+      : []),
+    ...(access.canSet ? [...protectedGrantSection(access), ''] : []),
+    ...(notGrantable.length > 0
       ? [
           'Tools that exist but are not yours to grant — name them and say '
           + 'where they come from:',
-          ...facts.catalogue.restricted.map(describeRestricted),
+          ...notGrantable.map(describeRestricted),
           '',
         ]
       : []),
@@ -344,9 +465,9 @@ export const buildGlobalAgentCatalogueBlock = (
     ...executorSection(facts.executors, facts.writeSurface),
     '',
     ...(facts.writeSurface === 'agent_tools' ? [...proposalCardSection(), ''] : []),
-    ...cloudBrowserSetupSection(facts.writeSurface),
+    ...cloudBrowserSetupSection(facts.writeSurface, access),
     '',
-    ...neverSection(),
+    ...neverSection(access),
     '',
     WRITE_SURFACE_LINE[facts.writeSurface],
   ].join('\n')

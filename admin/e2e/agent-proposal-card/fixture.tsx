@@ -14,6 +14,9 @@ import '../../src/styles.css'
  * only has to answer `GET /api/agent-cards/:id` — everything else on screen is
  * the product's own renderer, which is the point: this proves the standard
  * shape reads correctly in the chat card, not that a bespoke component exists.
+ *
+ * There is deliberately no second bubble beside it: the Designer's own words
+ * are the card's `message`, above the header, with the decision at the bottom.
  */
 
 const CARD_ID = '77777777-7777-4777-8777-777777777777'
@@ -23,7 +26,7 @@ const card: AgentCardPresenter = {
   actions: [
     { key: 'accept', label: 'Accept', style: 'primary', submits: true },
     { key: 'edit', label: 'Edit', style: 'secondary', submits: false },
-    { key: 'discard', label: 'Discard', style: 'danger', submits: false },
+    { key: 'decline', label: 'Decline', style: 'danger', submits: false },
   ],
   agentId: '88888888-8888-4888-8888-888888888888',
   agentName: 'Agent Designer',
@@ -87,6 +90,10 @@ const card: AgentCardPresenter = {
   browserLogin: null,
   cardId: CARD_ID,
   expiresAt: null,
+  message:
+    'Here is the sales agent I would build — it looks things up in Sales Portal '
+    + 'and answers in the channel it was asked in. Press Accept, or tell me what '
+    + 'to change.',
   messageId: '99999999-9999-4999-8999-999999999999',
   resolution: null,
   service: null,

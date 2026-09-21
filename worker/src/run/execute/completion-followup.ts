@@ -58,7 +58,9 @@ export const executeRunCompletionFollowup = async (
   )
   const { delivery } = payload
 
-  if (delivery.kind === 'reaction') {
+  if (delivery.kind === 'reaction' || delivery.kind === 'silent') {
+    // No message was written, so the only thing owed to a watching client is
+    // the end of the stream: without it the thinking bubble never clears.
     await deps.realtimeTransport.publishSse(context.run.threadId, 'stream.done', {
       agentId: parseAgentId(context.agent.id),
       runId: parseRunId(context.run.id),

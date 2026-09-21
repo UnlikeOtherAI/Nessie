@@ -3501,6 +3501,17 @@ button.reaction-pill-active:focus-visible {
   margin-top: 10px;
 }
 
+/* The agent's covering note, carried inside the card so a decision arrives as
+   one message. It reads as speech rather than card chrome — primary text
+   colour, ruled off from the header it introduces. */
+.agent-card-prose {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--sep);
+  color: var(--tx);
+  font-size: 12px;
+}
+
 .agent-card-footer {
   flex-wrap: wrap;
 }

@@ -13,6 +13,9 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  * fold at all: the whole tool and app selection has to be ON the card, because
  * approving the card is what approves that list — and it has to stay readable
  * while somebody decides whether the name and the placement are right.
+ *
+ * A third: the Designer's own sentence rides on the card rather than arriving
+ * as a second message, so the words and the decision are one thing.
  */
 
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/agent-proposal-card')
@@ -26,6 +29,11 @@ try {
   await page.goto(`${ADMIN_URL}/e2e/agent-proposal-card/index.html`)
 
   await page.getByText('Sales agent', { exact: true }).waitFor()
+  // One message: the Designer's own words are inside this card, above its
+  // header, and there is no second bubble repeating them.
+  const prose = page.locator('[data-testid="agent-card"] .agent-card-prose')
+  await prose.waitFor()
+  assert.match(await prose.innerText(), /Press Accept, or tell me what/)
   await page.getByText('sales researcher', { exact: true }).waitFor()
   await page.getByText('KiloMayo → Sales → #sales').waitFor()
 
@@ -42,7 +50,7 @@ try {
   assert.equal(await details.evaluate((node) => node.open), false)
   assert.equal(await page.getByText('send_message', { exact: true }).isVisible(), false)
 
-  for (const label of ['Accept', 'Edit', 'Discard']) {
+  for (const label of ['Accept', 'Edit', 'Decline']) {
     await page.getByRole('button', { name: label, exact: true }).waitFor()
   }
   await mkdir(screenshots, { recursive: true })

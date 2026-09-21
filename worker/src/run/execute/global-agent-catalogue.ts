@@ -92,6 +92,13 @@ export const loadGlobalAgentCatalogueBlock = async (
   ])
 
   return buildGlobalAgentCatalogueBlock({
+    // What the run actually resolved, never what the blueprint hopes for: a
+    // grant verb withheld for this run must not be described as available.
+    protectedAccess: {
+      canInspect: input.resolvedToolIds.has('agent_tool_access_inspect'),
+      canSet: input.resolvedToolIds.has('agent_tool_access_set'),
+      canSetDeepWater: input.resolvedToolIds.has('agent_deepwater_access_set'),
+    },
     avatarStyle,
     catalogue,
     executors,

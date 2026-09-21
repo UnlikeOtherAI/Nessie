@@ -17,8 +17,22 @@ import { z } from 'zod'
 import { randomAgentAvatarBackgroundColor } from './agent-create.js'
 
 const IMAGE_MODEL = 'gpt-image-2'
-const IMAGE_GENERATION_TIMEOUT_MS = 60_000
+// A 1024x1024 render goes to Ledger's purpose route, which owns the provider
+// fallback chain (Gemini first, OpenAI second), so one call can legitimately
+// pay for two renders in sequence. At 60s the second attempt was cut off
+// before it could answer, and the caller could not tell that from a refusal.
+const IMAGE_GENERATION_TIMEOUT_MS = 120_000
+/**
+ * The share a portrait gets when it is drawn inside somebody else's budget: a
+ * tool call in an agent run, which the worker kills at 75s (`TOOL_TIMEOUT_MS`,
+ * worker/src/run/run-budget.ts). Out-living that budget buys no picture — the
+ * call around it is killed first, and whatever it was doing finishes with
+ * nobody left to tell. It gives up early and says why instead.
+ */
+export const IN_TOOL_IMAGE_TIMEOUT_MS = 45_000
 const MAX_GENERATED_IMAGE_BYTES = 25 * 1024 * 1024
+/** Ledger's own failure text, kept short enough to sit in one log line. */
+const MAX_FAILURE_EXCERPT_CHARS = 400
 
 const ImageGenerationResponseSchema = z.object({
   data: z.array(z.object({ b64_json: z.string().min(1) })).min(1),
@@ -100,9 +114,21 @@ const avatarPromptMessages = (
   ]
 }
 
+/**
+ * The route the artwork was asked of, and the words every failure names it
+ * with. Which of the two was used is the single fact that separates the likely
+ * causes of a blank tile — a purpose route that is missing, unfunded or
+ * misconfigured, against the direct service route failing on its own — and
+ * without it a report from production narrows nothing.
+ */
+type ImageEndpoint = {
+  label: string
+  url: URL
+}
+
 const ledgerImageEndpoint = (
   config: Pick<ModelConfig, 'apiKey' | 'baseUrl' | 'imagePurposeApiId'>,
-): URL => {
+): ImageEndpoint => {
   if (!config.apiKey?.trim() || !config.baseUrl || !isLedgerEndpoint(config.baseUrl)) {
     throw new AgentAvatarGenerationError(
       'Generating agent avatars requires a Ledger-routed model API key.',
@@ -118,7 +144,9 @@ const ledgerImageEndpoint = (
     url.pathname = `/v1/purpose/${encodeURIComponent(purposeApiId)}/images/generations`
     url.search = ''
     url.hash = ''
-    return url
+    // The purpose id is deployment configuration, not a credential: it is the
+    // half of the address an operator can actually check against Ledger.
+    return { label: `Ledger purpose image route ${purposeApiId}`, url }
   }
 
   const baseUrl = resolveLedgerServiceBaseUrl(config.baseUrl, 'openai')
@@ -128,7 +156,46 @@ const ledgerImageEndpoint = (
     )
   }
 
-  return new URL(`${baseUrl.replace(/\/$/, '')}/images/generations`)
+  return {
+    label: 'Ledger OpenAI service image route',
+    url: new URL(`${baseUrl.replace(/\/$/, '')}/images/generations`),
+  }
+}
+
+/**
+ * Ledger's own words about a failure, flattened to a line and stripped of
+ * anything key-shaped. This text reaches an operator's log, the Designer's
+ * tool output and a 503 body, so it carries the reason and never a credential.
+ */
+const failureExcerpt = (body: string): string => {
+  const redacted = body
+    .replace(/\b(?:sk-|lk_)[A-Za-z0-9_-]{6,}/g, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (redacted.length <= MAX_FAILURE_EXCERPT_CHARS) return redacted || '<empty response body>'
+  return `${redacted.slice(0, MAX_FAILURE_EXCERPT_CHARS)}...`
+}
+
+const parsedJson = (body: string): unknown => {
+  try {
+    return JSON.parse(body)
+  } catch {
+    return null
+  }
+}
+
+/** The machine-readable code Ledger returns beside its message, when it does. */
+const failureCode = (body: string): string | null => {
+  const parsed = parsedJson(body)
+  if (!parsed || typeof parsed !== 'object') return null
+  const envelope = parsed as { code?: unknown; error?: unknown }
+  const inner = (
+    envelope.error && typeof envelope.error === 'object'
+      ? envelope.error
+      : {}
+  ) as { code?: unknown; type?: unknown }
+  const code = inner.code ?? inner.type ?? envelope.code
+  return typeof code === 'string' && code.trim() ? code.trim() : null
 }
 
 const defaultImageRequest: ImageRequest = (url, init) =>
@@ -139,8 +206,10 @@ const requestImage = async (input: {
   imageRequest: ImageRequest
   ledgerIdentity: LedgerIdentityService | null
   prompt: string
+  timeoutMs: number
   usage: ReturnType<typeof completeLedgerAttribution>
 }): Promise<Buffer> => {
+  const endpoint = ledgerImageEndpoint(input.config)
   const headers = new Headers({
     Authorization: `Bearer ${input.config.apiKey!.trim()}`,
     'Content-Type': 'application/json',
@@ -156,7 +225,7 @@ const requestImage = async (input: {
 
   let response: Response
   try {
-    response = await input.imageRequest(ledgerImageEndpoint(input.config), {
+    response = await input.imageRequest(endpoint.url, {
       body: JSON.stringify({
         model: IMAGE_MODEL,
         n: 1,
@@ -166,33 +235,55 @@ const requestImage = async (input: {
       }),
       headers,
       method: 'POST',
-      signal: AbortSignal.timeout(IMAGE_GENERATION_TIMEOUT_MS),
+      signal: AbortSignal.timeout(input.timeoutMs),
     })
   } catch (error) {
+    // Running out of time and never arriving are different operator problems —
+    // one is a slow provider chain, the other is an address or a network — so
+    // they are never reported as the same sentence. `AbortSignal.timeout`
+    // rejects with a `TimeoutError`, which undici may hand back as the cause
+    // of its own error rather than as the error itself.
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause : null
+    const timedOut = (error instanceof Error && error.name === 'TimeoutError')
+      || cause?.name === 'TimeoutError'
+    if (timedOut) {
+      throw new AgentAvatarGenerationError(
+        `Ledger image generation timed out after ${Math.round(input.timeoutMs / 1_000)}s `
+        + `on the ${endpoint.label}.`,
+      )
+    }
     const detail = error instanceof Error ? error.message : 'unknown error'
-    throw new AgentAvatarGenerationError(`Ledger image generation could not be reached: ${detail}`)
-  }
-
-  if (!response.ok) {
     throw new AgentAvatarGenerationError(
-      `Ledger image generation failed with HTTP ${response.status}.`,
+      `Ledger image generation could not reach the ${endpoint.label}: ${detail}`,
     )
   }
 
-  const parsed = ImageGenerationResponseSchema.safeParse(
-    await response.json().catch(() => null),
-  )
+  // Read the body once, whatever the status: a refusal Ledger explained in it
+  // is the whole diagnosis, and discarding it was what made a 400, a 403 and a
+  // 503 indistinguishable in a report.
+  const body = await response.text().catch(() => '')
+  if (!response.ok) {
+    const code = failureCode(body)
+    throw new AgentAvatarGenerationError(
+      `Ledger image generation failed with HTTP ${response.status} on the ${endpoint.label}`
+      + `${code ? ` (code ${code})` : ''}: ${failureExcerpt(body)}`,
+    )
+  }
+
+  const parsed = ImageGenerationResponseSchema.safeParse(parsedJson(body))
   const encoded = parsed.success ? parsed.data.data[0]?.b64_json : undefined
   if (!encoded) {
     throw new AgentAvatarGenerationError(
-      'Ledger image generation returned an invalid image response.',
+      'Ledger image generation returned an invalid image response from the '
+      + `${endpoint.label}: ${failureExcerpt(body)}`,
     )
   }
 
   const image = Buffer.from(encoded, 'base64')
   if (image.byteLength === 0 || image.byteLength > MAX_GENERATED_IMAGE_BYTES) {
     throw new AgentAvatarGenerationError(
-      'Ledger image generation returned an unusable image.',
+      `Ledger image generation returned an unusable image from the ${endpoint.label} `
+      + `(${image.byteLength} bytes).`,
     )
   }
   return image
@@ -209,6 +300,12 @@ export const generateAgentAvatar = async (input: {
   config: Pick<ModelConfig, 'apiKey' | 'baseUrl' | 'imagePurposeApiId'>
   fileService: Pick<FileService, 'store'>
   imageRequest?: ImageRequest
+  /**
+   * How long the artwork itself may take. Callers that own the whole wait get
+   * the default; the create seam shortens it, because there the picture is a
+   * bonus inside a budget somebody else is holding.
+   */
+  imageTimeoutMs?: number
   // Free-text guidance the person typed for this generation.
   instructions?: string
   ledgerIdentity: LedgerIdentityService | null
@@ -260,6 +357,7 @@ export const generateAgentAvatar = async (input: {
     imageRequest: input.imageRequest ?? defaultImageRequest,
     ledgerIdentity: input.ledgerIdentity,
     prompt,
+    timeoutMs: input.imageTimeoutMs ?? IMAGE_GENERATION_TIMEOUT_MS,
     usage: imageUsage,
   })
 
@@ -293,7 +391,8 @@ export const generateAgentAvatar = async (input: {
  * A picture is not worth failing a creation for: generation is a billed Ledger
  * call that can be unconfigured, out of credit, or simply slow, and an agent
  * with no portrait still works. Every failure therefore resolves to `undefined`
- * and is reported to `onFailure` for the caller's log — never thrown. The
+ * and is reported to `onFailure` — never thrown. Both callers log what they are
+ * handed, so the reason survives outside the chat the agent was made in. The
  * explicit `POST /api/agents/:id/avatar/generate` route keeps its own loud
  * error, because there the picture IS the request.
  */
@@ -325,6 +424,9 @@ export const generateAvatarForNewAgent = async (input: {
       config: input.config,
       fileService: input.fileService,
       ...(input.imageRequest ? { imageRequest: input.imageRequest } : {}),
+      // Both create paths take the tool-call share: one of them IS a tool
+      // call, and the HTTP route owes its caller a response either way.
+      imageTimeoutMs: IN_TOOL_IMAGE_TIMEOUT_MS,
       ledgerIdentity: input.ledgerIdentity,
       modelClient: input.modelClient,
       ...(input.style ? { style: input.style } : {}),

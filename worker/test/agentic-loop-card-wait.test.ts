@@ -122,3 +122,64 @@ test('a card posted without wait leaves the loop running normally', async () => 
   assert.equal(inferenceCalls, 2)
   assert.equal(result.finalText, 'Posted.')
 })
+
+/**
+ * The other half of "one message, not two": having posted a card, the model is
+ * told to stop talking, and the loop must let it. An empty final turn is
+ * normally a provider fault worth one recovery attempt — and that recovery
+ * asks in so many words for a final answer, which is exactly the duplicate
+ * prose the card replaced. A tool that already delivered this turn to the
+ * conversation excuses it.
+ */
+test('a card already in the conversation lets the run end without a word', async () => {
+  let inferenceCalls = 0
+
+  const result = await runAgenticLoop({
+    budget: { maxIterations: 5, maxToolCalls: 5, maxWallclockMs: 10_000 },
+    callbacks: {
+      onBudgetExhausted: async () => {},
+      onIterationStart: async () => {},
+      onTextDelta: async () => {},
+      onToolCallEnd: async () => {},
+      onToolCallStart: async () => {},
+    },
+    executeTool: async () => ({
+      deliveredToConversation: true,
+      inputSummary: 'title=Sales agent',
+      output: '{"cardId":"card-3","status":"open"}',
+      success: true,
+    }),
+    initialMessages: [{ content: 'Propose a sales agent.', role: 'user' }],
+    runInference: async () => {
+      inferenceCalls += 1
+      if (inferenceCalls === 1) {
+        return {
+          correlationId: 'corr-1',
+          finishReason: 'tool-call',
+          invocations: [invocation],
+          model: 'gpt-5-mini',
+          outputText: '',
+          provider: 'openai',
+          requestId: 'req-1',
+          toolCalls: [{ arguments: {}, toolCallId: 'call_1', toolName: 'card_post' }],
+        }
+      }
+      return {
+        correlationId: 'corr-1',
+        finishReason: 'stop',
+        invocations: [invocation],
+        model: 'gpt-5-mini',
+        outputText: '',
+        provider: 'openai',
+        requestId: 'req-2',
+        toolCalls: [],
+      }
+    },
+    tools: [cardTool],
+  })
+
+  // Two turns: the card, then the silence. No third turn begging for prose.
+  assert.equal(inferenceCalls, 2)
+  assert.equal(result.finalText, '')
+  assert.equal(result.incompleteReason, null)
+})

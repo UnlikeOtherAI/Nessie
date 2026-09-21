@@ -51,6 +51,8 @@ export const AGENT_CARD_MAX_CHIPS = 40
 /** Blocks folded inside one `details` block. */
 export const AGENT_CARD_MAX_DETAIL_BLOCKS = 6
 export const AGENT_CARD_MAX_OPTIONS = 20
+/** The card's covering note. Same bound as a `text` block: past it, say it on the card. */
+export const AGENT_CARD_MAX_MESSAGE_CHARS = 2000
 /** The normal input limit; a textarea must opt into a larger bounded value. */
 export const AGENT_CARD_DEFAULT_INPUT_MAX_CHARS = 500
 /** Email-sized text is allowed only when the card declares its own bound. */
@@ -386,6 +388,15 @@ export const AgentCardSpecSchema = z
     service: AgentCardServiceSchema.optional(),
     title: z.string().trim().min(1).max(120),
     subtitle: z.string().trim().min(1).max(200).optional(),
+    /**
+     * What the agent would otherwise have said in a separate chat message,
+     * carried inside the card so a decision arrives as one message rather than
+     * prose followed by a card. Rendered above the card's header, in the same
+     * bubble, with the actions still at the bottom. Optional: a card posted
+     * before this field existed, or one that needs no covering note, is
+     * unchanged.
+     */
+    message: z.string().trim().min(1).max(AGENT_CARD_MAX_MESSAGE_CHARS).optional(),
     blocks: z.array(AgentCardBlockSchema).min(1).max(AGENT_CARD_MAX_BLOCKS),
     actions: z.array(AgentCardActionSchema).min(1).max(AGENT_CARD_MAX_ACTIONS),
   })
@@ -540,6 +551,8 @@ export const AgentCardPresenterSchema = z
     agentName: z.string().nullable(),
     title: z.string(),
     subtitle: z.string().optional(),
+    /** The agent's own words, rendered above the header in the same bubble. */
+    message: z.string().optional(),
     service: z
       .object({
         key: z.string(),

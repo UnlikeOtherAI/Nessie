@@ -199,9 +199,17 @@ export const runAgentCreateTool = async (
     // A silent failure here is what left a person looking at a blank tile with
     // nobody able to say why: the seam swallowed the error and the tool output
     // never mentioned a portrait at all, so the agent that just built them an
-    // agent could not tell them it had no face.
+    // agent could not tell them it had no face. The reason now goes two ways —
+    // into the tool output for the person, and into the worker log for an
+    // operator, mirroring `request.log.warn` on `POST /api/agents`. A reason
+    // that exists only inside a chat transcript is a reason nobody can query.
     onFailure: (error) => {
       avatarFailure = error instanceof Error ? error.message : 'unknown error'
+      console.warn(
+        `[worker.agent-avatar] generation failed for "${args.name}"; `
+        + 'creating the agent without one',
+        avatarFailure,
+      )
     },
     style: await resolveAgentAvatarStyleSafely(context.prisma, {
       organizationId: member.organizationId,
@@ -272,9 +280,12 @@ export const runAgentCreateTool = async (
       generatedAvatar
         ? 'It has a generated portrait. agent_avatar_generate redraws it in a '
           + 'style they name.'
-        : 'It has NO portrait — only a tile colour — because the picture could '
-          + `not be drawn: ${avatarFailure ?? 'unknown error'}. Say so rather `
-          + 'than letting them find the blank tile.',
+        // The reason is the useful part and it is the part that gets lost:
+        // paraphrased to "the picture could not be drawn", nobody — person or
+        // operator — learns anything. Quote it.
+        : 'It has NO portrait, only a tile colour. Tell them so, and give them '
+          + 'this reason word for word rather than a paraphrase of it: '
+          + `"${avatarFailure ?? 'unknown error'}"`,
     ].join('\n'),
     toolName: 'agent_create',
   }

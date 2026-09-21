@@ -72,6 +72,14 @@ export const completeRunExecution = async (
           messageId: fold.messageId,
           restricted: fold.restricted,
         }
+      } else if (input.responseText.trim().length === 0) {
+        // Nothing was said, so nothing is posted. An agent that answers with a
+        // card has already put its whole turn in the conversation, and an empty
+        // bubble behind it is the second message this exists to remove. The
+        // test is emptiness and nothing else — a bare "👍" is a real message
+        // and is only ever suppressed by the reaction branch above, which knows
+        // the run actually reacted.
+        delivery = { kind: 'silent' }
       } else {
         const delegatedOwnerId =
           context.agent.agentKind === 'personal_assistant'

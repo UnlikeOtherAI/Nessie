@@ -102,6 +102,11 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   let totalToolMs = resume?.toolMs ?? 0
   let spend: SpendTotals = meterSpend(allInvocations, cacheReadWeight)
   let woundDown = resume?.woundDown ?? false
+  // Whether a tool has already put this turn into the conversation — today only
+  // `card_post`. It excuses an empty final answer from the empty-output
+  // recovery. Deliberately not checkpointed: a resumed run simply falls back to
+  // asking the model for a closing sentence, which is the older behaviour.
+  let deliveredToConversation = false
   // The batch that was dispatching when the previous executor died. Its
   // assistant message is already in `messages`, so re-entering it is the only
   // way back into the transcript that does not re-bill the inference that
@@ -404,6 +409,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       if (spendStop) return stop(spendStop)
 
       const finalization = advanceOutputFinalization(outputFinalization, {
+        deliveredToConversation,
         finishReason: result.finishReason,
         outputText: safeOutputText,
         toolCalls: result.toolCalls,
@@ -467,6 +473,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       toolTimeoutMs: budget.toolTimeoutMs,
     }))
     totalToolMs += batch.toolMs
+    deliveredToConversation ||= batch.deliveredToConversation
     const toolResults = batch.results
 
     toolCallsUsed += toolResults.length
