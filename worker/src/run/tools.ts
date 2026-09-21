@@ -94,6 +94,7 @@ import { runSpawnSubtaskTool } from './subtask-tools.js'
 import { summarizeToolInput, wrapTool } from './tool-util.js'
 import { dispatchKbTool } from './kb-tool-dispatch.js'
 import { dispatchSheetTool } from './sheet-tool-dispatch.js'
+import { TICKET_ACTIVITY_TOOL_RUNNERS } from './pa-tools/tickets.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 import { dispatchSandboxedBuiltinTool } from './sandboxed-tool-dispatch.js'
 
@@ -155,6 +156,10 @@ const executeBuiltinToolUncorrected = async (
   if (mailResult) return mailResult
   const sandboxedResult = await dispatchSandboxedBuiltinTool(toolName, args, context, inputSummary)
   if (sandboxedResult) return sandboxedResult
+  const ticketActivityTool = Object.hasOwn(TICKET_ACTIVITY_TOOL_RUNNERS, toolName)
+    ? TICKET_ACTIVITY_TOOL_RUNNERS[toolName]
+    : undefined
+  if (ticketActivityTool) return wrapTool(inputSummary, () => ticketActivityTool(context, args))
   switch (toolName) {
     case 'card_post':
       return wrapTool(inputSummary, () => runCardPostTool(context, args))

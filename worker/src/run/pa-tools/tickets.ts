@@ -13,10 +13,23 @@ import {
   updateProjectTask,
 } from '@nessie/team-admin'
 import { canUserReadRunDerivedRecord } from '@nessie/runtime'
+import { TaskLabelIdsSchema } from '@nessie/schemas'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import {
+  runTicketAttachmentAddTool,
+  runTicketAttachmentListTool,
+  runTicketAttachmentRemoveTool,
+} from './ticket-attachments.js'
+import {
+  runTicketCommentAddTool,
+  runTicketCommentDeleteTool,
+  runTicketCommentListTool,
+  runTicketCommentUpdateTool,
+} from './ticket-comments.js'
+import { runTicketLabelCreateTool, runTicketLabelsReadTool } from './ticket-labels.js'
 import {
   assertProjectWriteDestination,
   IdSchema,
@@ -52,6 +65,16 @@ const throwIfSourceRefused = (outcome: { error?: string; detail?: string }): voi
     outcome.error === 'SOURCE_UNAVAILABLE'
   ) {
     throw new Error(outcome.detail ?? 'The source refused that change.')
+  }
+}
+
+/** A label refusal from the shared functions, said so the model can correct it. */
+const throwIfLabelRefused = (outcome: { error?: string }): void => {
+  if (outcome.error === 'LABEL_NOT_IN_PROJECT') {
+    throw new Error('That label is not one of this project’s labels. Read them with ticket_labels_read.')
+  }
+  if (outcome.error === 'LABEL_NOT_IN_PROJECT_SOURCE') {
+    throw new Error('That label belongs to a different external source than this ticket, so it cannot be set here.')
   }
 }
 
@@ -97,13 +120,21 @@ export const runTicketReadTool = async (
   const member = await resolveActingMember(context)
   const ticket = await projectTicketFor(context, member, ticketId)
   recordProjectRead(context, member, ticket.projectId!)
+  const link = ticket.externalLink
   return result(
     'ticket_read',
     `ticketId=${ticketId}`,
     [
       ticketLine(ticket),
+      link
+        ? `Origin: mirrored from ${link.provider} (${link.externalKey}), `
+          + `${link.writeMode === 'read_write' ? 'changes here reach it' : 'read-only here'}`
+        : 'Origin: Nessie',
       `Purpose: ${ticket.purpose ?? 'none'}`,
-      `Detail: ${ticket.detail ?? 'none'}`,
+      `Detail (Markdown): ${ticket.detail ?? 'none'}`,
+      `Labels: ${ticket.labels.length ? ticket.labels.map((label) => `${label.name} (labelId=${label.id})`).join(', ') : 'none'}`,
+      `Attachments: ${ticket.attachmentCount}`,
+      `Comments: ${ticket.commentCount}`,
       `iterationId=${ticket.iterationId ?? 'none'} storyPoints=${ticket.storyPoints ?? 'none'}`,
     ].join('\n'),
   )
@@ -154,6 +185,7 @@ const CreateInput = z.object({
   dueDate: z.coerce.date().optional(),
   assigneeUserId: IdSchema.optional(),
   assigneeAgentId: IdSchema.optional(),
+  labelIds: TaskLabelIdsSchema.optional(),
 })
 
 export const runTicketCreateTool = async (
@@ -176,6 +208,7 @@ export const runTicketCreateTool = async (
     assignmentAttention: createProjectTaskAssignmentAttention,
   })
   if ('error' in created) {
+    throwIfLabelRefused(created)
     const message =
       created.error === 'PROJECT_NOT_FOUND' ||
       created.error === 'ITERATION_NOT_FOUND' ||
@@ -200,6 +233,7 @@ const UpdateInput = z.object({
   dueDate: z.coerce.date().nullable().optional(),
   storyPoints: z.number().int().min(0).nullable().optional(),
   fieldValues: z.record(z.string(), z.unknown()).optional(),
+  labelIds: TaskLabelIdsSchema.optional(),
 })
 
 export const runTicketUpdateTool = async (
@@ -219,11 +253,12 @@ export const runTicketUpdateTool = async (
   })
   const updated = await updateProjectTask(
     context.prisma,
-    { taskId: ticketId, organizationId: member.organizationId, fields },
+    { taskId: ticketId, organizationId: member.organizationId, fields, actorId: member.userId },
     writeBackFor(context),
   )
   if ('error' in updated) {
     throwIfSourceRefused(updated)
+    throwIfLabelRefused(updated)
     // A refused custom field says which one and why, so the model can correct
     // it rather than retry the same value.
     if (updated.error === 'FIELD_UNKNOWN') {
@@ -427,4 +462,25 @@ export const runTicketArchiveDoneTool = async (
     `projectId=${args.projectId}`,
     `Archived ${archived.count} completed ticket${archived.count === 1 ? '' : 's'}.`,
   )
+}
+
+type TicketToolRunner = (
+  context: BuiltinToolRuntimeContext,
+  input: Record<string, unknown>,
+) => Promise<ToolExecutionResult>
+
+/**
+ * A ticket's labels, comments and files, dispatched by id. One table rather
+ * than a `case` each in the main dispatcher, which is at its line cap.
+ */
+export const TICKET_ACTIVITY_TOOL_RUNNERS: Readonly<Record<string, TicketToolRunner>> = {
+  ticket_labels_read: runTicketLabelsReadTool,
+  ticket_label_create: runTicketLabelCreateTool,
+  ticket_comment_list: runTicketCommentListTool,
+  ticket_comment_add: runTicketCommentAddTool,
+  ticket_comment_update: runTicketCommentUpdateTool,
+  ticket_comment_delete: runTicketCommentDeleteTool,
+  ticket_attachment_list: runTicketAttachmentListTool,
+  ticket_attachment_add: runTicketAttachmentAddTool,
+  ticket_attachment_remove: runTicketAttachmentRemoveTool,
 }

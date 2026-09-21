@@ -58,11 +58,39 @@ import {
 
 const DELEGATE_TOOL_ID = 'delegate'
 const TODO_TOOL_IDS = new Set(TODO_TOOL_DEFINITIONS.map((tool) => tool.id))
-const PEER_PROJECT_TOOL_IDS = new Set([
+/**
+ * The project tools a shared agent may be lent in its project channel. Editing
+ * or deleting a comment and removing a file stay off it: a shared agent may
+ * only change what it authored, and v1 keeps those to the Personal Assistant.
+ */
+export const PEER_PROJECT_TOOL_IDS: ReadonlySet<string> = new Set([
   'ticket_list', 'ticket_read', 'ticket_board_read', 'ticket_board_create',
   'ticket_create', 'ticket_update', 'ticket_assign', 'ticket_move', 'ticket_transition',
   'ticket_checklist_read', 'ticket_checklist_apply', 'ticket_checklist_step_update',
+  'ticket_labels_read', 'ticket_label_create', 'ticket_comment_list', 'ticket_comment_add',
+  'ticket_attachment_list', 'ticket_attachment_add',
 ])
+
+/**
+ * The project tools admitted for this run: none unless the run is a real
+ * project delegation, and then only the peer set's tools the agent's policy
+ * explicitly grants. Pure, so the admission can be pinned without a run.
+ */
+export const resolveProjectDelegatedToolIds = (
+  projectDelegation: boolean,
+  toolPolicy: Record<string, boolean> | null,
+): Set<string> => new Set(
+  projectDelegation
+    ? BUILTIN_TOOL_DEFINITIONS
+      .filter(
+        (tool) =>
+          PEER_PROJECT_TOOL_IDS.has(tool.id)
+          && tool.projectDelegatedOnly
+          && toolPolicy?.[tool.id] === true,
+      )
+      .map((tool) => tool.id)
+    : [],
+)
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
   descriptors: ToolSchemaDescriptor[]
@@ -182,18 +210,7 @@ export const prepareRunExecution = async (
     && (await deps.prisma.agentBinding.count({
       where: { agentId: context.agent.id, channelId: context.channel.id },
     })) > 0
-  const projectDelegatedToolIds = new Set(
-    projectDelegation
-      ? BUILTIN_TOOL_DEFINITIONS
-        .filter(
-          (tool) =>
-            PEER_PROJECT_TOOL_IDS.has(tool.id)
-            && tool.projectDelegatedOnly
-            && toolPolicy?.[tool.id] === true,
-        )
-        .map((tool) => tool.id)
-      : [],
-  )
+  const projectDelegatedToolIds = resolveProjectDelegatedToolIds(projectDelegation, toolPolicy)
 
   // D3: the one place the identity-tool admission is decided. Both the schema
   // array below and the per-call gate downstream consume this same set, so a

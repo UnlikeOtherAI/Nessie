@@ -1,6 +1,8 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 const UUID = { type: 'string', description: 'The UUID returned by a resolving tool.' } as const
+const LABEL_IDS = { type: 'array', items: { type: 'string' }, description: 'The ticket’s whole label set, as label UUIDs from ticket_labels_read; an empty list clears it.' } as const
+const MARKDOWN = 'Ticket descriptions (detail) and comments are Markdown. To show an image inline, upload it with attachment_upload, attach it with ticket_attachment_add, and write ![alt](/api/attachments/<attachmentId>).'
 
 /**
  * Project ticket operations for a person's delegated Personal Assistant.
@@ -35,7 +37,7 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'ticket_read', category: 'projects', label: 'Read Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Read one ticket after resolving its ID.', safe: true,
-    description: 'Read a ticket returned by ticket_list, including its full detail and current assignment.',
+    description: `Read a ticket returned by ticket_list: its full detail, current assignment, labels, where it originates, and how many files and comments it has (read those with ticket_attachment_list and ticket_comment_list). ${MARKDOWN}`,
     parameters: { type: 'object', properties: { ticketId: UUID }, required: ['ticketId'] },
   },
   {
@@ -65,14 +67,68 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'ticket_create', category: 'projects', label: 'Create Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Create a ticket in an accessible project.', safe: false,
-    description: 'Create a project ticket. It is owned by the user and can be assigned to one person or agent. Give a boardId from ticket_board_read to put it on a particular board; without one it lands on the project’s default board.',
-    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID, title: { type: 'string' }, purpose: { type: 'string' }, detail: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: 'string', description: 'ISO date or timestamp.' }, assigneeUserId: UUID, assigneeAgentId: UUID }, required: ['projectId', 'title'] },
+    description: `Create a project ticket. It is owned by the user and can be assigned to one person or agent. Give a boardId from ticket_board_read to put it on a particular board; without one it lands on the project’s default board. ${MARKDOWN}`,
+    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID, title: { type: 'string' }, purpose: { type: 'string' }, detail: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: 'string', description: 'ISO date or timestamp.' }, assigneeUserId: UUID, assigneeAgentId: UUID, labelIds: LABEL_IDS }, required: ['projectId', 'title'] },
   },
   {
     id: 'ticket_update', category: 'projects', label: 'Update Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Edit a ticket’s fields.', safe: false,
-    description: 'Update one or more ticket fields. Use ticket_read first when you need its current values.',
-    parameters: { type: 'object', properties: { ticketId: UUID, title: { type: 'string' }, purpose: { type: ['string', 'null'] }, detail: { type: ['string', 'null'] }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: ['string', 'null'] }, storyPoints: { type: ['integer', 'null'] }, fieldValues: { type: 'object', description: 'Custom field values keyed by the field UUID from ticket_fields_read. A value of null clears that field.', additionalProperties: true } }, required: ['ticketId'] },
+    description: `Update one or more ticket fields. Use ticket_read first when you need its current values. labelIds replaces the whole label set. ${MARKDOWN}`,
+    parameters: { type: 'object', properties: { ticketId: UUID, title: { type: 'string' }, purpose: { type: ['string', 'null'] }, detail: { type: ['string', 'null'] }, labelIds: LABEL_IDS, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: ['string', 'null'] }, storyPoints: { type: ['integer', 'null'] }, fieldValues: { type: 'object', description: 'Custom field values keyed by the field UUID from ticket_fields_read. A value of null clears that field.', additionalProperties: true } }, required: ['ticketId'] },
+  },
+  {
+    id: 'ticket_labels_read', category: 'projects', label: 'Read Ticket Labels', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'List a project’s labels and their IDs.', safe: true,
+    description: 'Read a project’s labels before setting labelIds with ticket_create or ticket_update. Each line gives the labelId to use; do not guess them. A label an external source (Linear, Jira, GitHub, Trello) owns says so.',
+    parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
+  },
+  {
+    id: 'ticket_label_create', category: 'projects', label: 'Create Ticket Label', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Add a label to a project.', safe: false,
+    description: 'Create a label in a project. If the name is already taken (ignoring case), the existing label is returned instead; use it. color is #rrggbb and optional.',
+    parameters: { type: 'object', properties: { projectId: UUID, name: { type: 'string' }, color: { type: 'string', description: '#rrggbb' } }, required: ['projectId', 'name'] },
+  },
+  {
+    id: 'ticket_comment_list', category: 'projects', label: 'Read Ticket Comments', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Read the comments on one ticket.', safe: true,
+    description: `Read a ticket’s comments, oldest first. Each says whether a person, an agent or someone in an external system wrote it, with their id; pass nextCursor back as cursor for more. ${MARKDOWN}`,
+    parameters: { type: 'object', properties: { ticketId: UUID, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }, required: ['ticketId'] },
+  },
+  {
+    id: 'ticket_comment_add', category: 'projects', label: 'Comment on Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Add a comment to a ticket.', safe: false,
+    description: `Add a comment to a ticket. On a ticket mirrored from an external system with read & write access it is posted there too; otherwise it stays in Nessie and the result says so. ${MARKDOWN}`,
+    parameters: { type: 'object', properties: { ticketId: UUID, body: { type: 'string' } }, required: ['ticketId', 'body'] },
+  },
+  {
+    id: 'ticket_comment_update', category: 'projects', label: 'Edit Ticket Comment', personalAssistantOnly: true,
+    summary: 'Change the text of a comment you wrote.', safe: false,
+    description: `Change a comment’s text. Only its author can change a comment; take the commentId from ticket_comment_list. ${MARKDOWN}`,
+    parameters: { type: 'object', properties: { ticketId: UUID, commentId: UUID, body: { type: 'string' } }, required: ['ticketId', 'commentId', 'body'] },
+  },
+  {
+    id: 'ticket_comment_delete', category: 'projects', label: 'Delete Ticket Comment', personalAssistantOnly: true,
+    summary: 'Delete a comment you wrote.', safe: false,
+    description: 'Delete a comment, and the files attached to it. Only its author can delete a comment; take the commentId from ticket_comment_list.',
+    parameters: { type: 'object', properties: { ticketId: UUID, commentId: UUID }, required: ['ticketId', 'commentId'] },
+  },
+  {
+    id: 'ticket_attachment_list', category: 'projects', label: 'Read Ticket Files', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'List the files on one ticket.', safe: true,
+    description: 'List a ticket’s files, newest first, with the attachmentId to read one with attachment_read. Files an external system keeps are listed as links.',
+    parameters: { type: 'object', properties: { ticketId: UUID }, required: ['ticketId'] },
+  },
+  {
+    id: 'ticket_attachment_add', category: 'projects', label: 'Attach File to Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
+    summary: 'Attach an uploaded file to a ticket.', safe: false,
+    description: `Attach a file this conversation uploaded with attachment_upload (and has not yet sent) to a ticket. ${MARKDOWN}`,
+    parameters: { type: 'object', properties: { ticketId: UUID, attachmentId: UUID }, required: ['ticketId', 'attachmentId'] },
+  },
+  {
+    id: 'ticket_attachment_remove', category: 'projects', label: 'Remove Ticket File', personalAssistantOnly: true,
+    summary: 'Remove a file from a ticket and delete it.', safe: false,
+    description: 'Remove a file from a ticket and delete it. Whoever uploaded it, or any member of the project, can remove it; take the attachmentId from ticket_attachment_list.',
+    parameters: { type: 'object', properties: { ticketId: UUID, attachmentId: UUID }, required: ['ticketId', 'attachmentId'] },
   },
   {
     id: 'ticket_fields_read', category: 'projects', label: 'Read Ticket Fields', personalAssistantOnly: true,
