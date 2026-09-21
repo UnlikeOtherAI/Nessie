@@ -1,4 +1,4 @@
-import type { ExecutorRecordResponse, ExecutorStatus } from '@nessie/schemas'
+import type { ExecutorRecordResponse, ExecutorStatus, ImplementedExecutorOperationKey } from '@nessie/schemas'
 import type { PillTone } from '../../primitives/Pill'
 
 // One reading of an executor's status and scope, shared by the list row, the
@@ -43,10 +43,33 @@ export const executorScopeLabel = (executor: ExecutorRecordResponse): string =>
 /** The sentence under the executor's name: who this machine is reachable by. */
 export const executorScopeSummary = (executor: ExecutorRecordResponse): string =>
   executor.scope.kind === 'private'
-    ? 'Private — only exact assigned people and agents can use it.'
+    ? 'Private machine'
     : executor.scope.kind === 'project'
-      ? `Project — eligible only for runs in project ${executor.scope.projectId}.`
-      : 'Organization — available only to entitled organization work.'
+      ? 'Project machine'
+      : 'Organisation machine'
 
 export const executorProfilesLabel = (executor: ExecutorRecordResponse): string =>
   executor.profiles.join(', ') || 'Awaiting descriptor review'
+
+export const EXECUTOR_OPERATION_LABELS: Record<ImplementedExecutorOperationKey, string> = {
+  'file.list': 'Browse files',
+  'file.read': 'Read files',
+  'file.write': 'Edit draft copies',
+  'command.run': 'Run permitted programs',
+  'browser.open': 'Open an isolated browser',
+  'browser.observe': 'Read the isolated browser',
+  'browser.act': 'Use the isolated browser',
+  'browser.connected.open': 'Connect an approved browser tab',
+  'browser.connected.observe': 'Read the connected tab',
+  'browser.connected.act': 'Use the connected tab',
+  'coding.launch': 'Start a coding session',
+  'coding.observe': 'Check coding progress',
+  'workspace.review': 'Review draft changes',
+  'workspace.promote': 'Apply approved changes to the machine',
+  'sandbox.stop': 'Stop a work session',
+  'mcp.tools': 'Discover local app tools',
+  'mcp.call': 'Use local app tools',
+}
+
+export const executorOperationLabel = (key: string): string =>
+  EXECUTOR_OPERATION_LABELS[key as ImplementedExecutorOperationKey] ?? key
