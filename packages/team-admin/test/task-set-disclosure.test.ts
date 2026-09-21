@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import test, { type TestContext } from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext, TaskSetDisclosure } from '@nessie/schemas'
 import { mergeTaskSetDisclosure } from '../src/task-set-disclosure.js'
@@ -29,14 +29,33 @@ const actor = {
   actionContext: { effectiveUserId: userId, requestId: 'task-set-disclosure' },
 } as AuthorizedActionContext
 
+// This suite models an unbound local install. Other files configure UOA at module scope
+// under test-isolation=none; scope and restore the deployment mode for each local fixture.
+const localIdentity = (t: TestContext): void => {
+  for (const key of ['UOA_DOMAIN', 'UOA_CONFIG_URL']) {
+    const previous = process.env[key]
+    delete process.env[key]
+    t.after(() => {
+      if (previous === undefined) delete process.env[key]
+      else process.env[key] = previous
+    })
+  }
+}
+
 // Every queried identity delegate is explicit: no permissive Proxy hides a changed query.
 const reader = (channels = [channelId]) => ({
-  organization: { findUnique: async () => ({ externalOrgId: null }) },
-  organizationMember: { findFirst: async () => ({ id: userId }) },
+  organization: { findUnique: async ({ where }: { where: { id: string } }) => {
+    assert.deepEqual(where, { id: organizationId })
+    return { externalOrgId: null }
+  } },
+  organizationMember: { findFirst: async ({ where }: { where: unknown }) => {
+    assert.deepEqual(where, { organizationId, userId, deactivatedAt: null })
+    return { id: userId, role: 'member' }
+  } },
   channelMember: { findMany: async () => channels.map((id) => ({ channelId: id })) },
   teamMember: { findMany: async () => [] }, projectMember: { findMany: async () => [] },
   agent: { findMany: async () => [] },
-  taskSet: { findFirst: async () => ({ id: setId, disclosure: owner, totalItems: 1 }) },
+  taskSet: { findFirst: async () => ({ id: setId, disclosure: owner, totalItems: 1, source: null }) },
   taskSetItem: { findFirst: async () => item, findMany: async () => [item] },
 }) as unknown as PrismaClient
 
@@ -49,7 +68,8 @@ test('task-set disclosure union retains exact authors and unknown-author denial 
   assert.throws(() => mergeTaskSetDisclosure(owner, { classified: false }), /Invalid literal/)
 })
 
-test('task-set item readers observe set, input and result before returning their contents', async () => {
+test('task-set item readers observe set, input and result before returning their contents', async (t) => {
+  localIdentity(t)
   for (const read of [getTaskSetItemForActor, async (
     prisma: PrismaClient, context: AuthorizedActionContext, id: string, _itemId: string,
     observe: (value: TaskSetDisclosure) => void,
@@ -60,7 +80,8 @@ test('task-set item readers observe set, input and result before returning their
   }
 })
 
-test('task-set result access never replaces the narrower input boundary', async () => {
+test('task-set result access never replaces the narrower input boundary', async (t) => {
+  localIdentity(t)
   const prisma = reader([])
   prisma.taskSetItem.findFirst = (async () => ({ ...item, resultDisclosure: owner })) as never
   prisma.taskSetItem.findMany = (async () => [{ ...item, resultDisclosure: owner }]) as never
@@ -88,7 +109,8 @@ test('task-set idempotent append retains additional trusted lineage without anot
   assert.deepEqual(saved, mergeTaskSetDisclosure(owner, result))
 })
 
-test('task-set journal reads enforce current agent source access without denying the human UI', async () => {
+test('task-set journal reads enforce current agent source access without denying the human UI', async (t) => {
+  localIdentity(t)
   const source = { kind: 'document', pageId: setId, versionId: itemId, format: 'csv', selection: {} }
   const set = { id: setId, disclosure: owner, source, totalItems: 1, createdAt: new Date(),
     name: 'Sensitive source name', objective: 'Research', instructions: '', status: 'completed', reason: null,
