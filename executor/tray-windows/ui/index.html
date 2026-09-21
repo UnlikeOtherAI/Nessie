@@ -125,6 +125,9 @@
       .mono { font-family: "Cascadia Mono", Consolas, monospace; }
       .spacer { flex: 1; }
       .fingerprint { color: var(--attention); font-family: "Cascadia Mono", Consolas, monospace; }
+      #pairing-code { display:flex; gap:6px; margin:18px 0; }
+      #pairing-code span { display:grid; place-items:center; width:42px; height:52px; border:1px solid var(--line); border-radius:8px; background:var(--panel); font-size:26px; font-weight:600; }
+      #pairing-destination { font-size:17px; font-weight:600; }
     </style>
   </head>
   <body>
@@ -140,29 +143,28 @@
       <div class="panel" id="list-panel" data-open="true">
         <div id="executors-list"></div>
         <form id="pair-form">
-          <div class="form-field">
-            <label class="hint" for="backend">Nessie backend</label>
-            <select id="backend"></select>
-          </div>
-          <div class="form-field" id="custom-url-field" style="display:none">
-            <label class="hint" for="custom-url">Self-hosted Nessie origin</label>
-            <input type="text" id="custom-url" placeholder="https://nessie.example.com" />
-          </div>
-          <div class="form-field">
-            <label class="hint" for="invitation">
-              Paste the pairing command or link from the selected backend's Agents → Executors page.
-            </label>
-            <textarea id="invitation" spellcheck="false"></textarea>
-          </div>
+          <p>Connect this computer to your organisation in Nessie.</p>
           <div class="form-field">
             <button type="button" id="choose-workspace">Choose workspace folder…</button>
             <span class="hint" id="chosen-workspace">No folder chosen</span>
           </div>
           <div style="display: flex; gap: 6px">
-            <button type="submit" class="primary">Pair this computer</button>
+            <button type="submit" class="primary">Get pairing code</button>
             <button type="button" id="pair-cancel">Cancel</button>
           </div>
         </form>
+        <section id="pairing-progress" hidden aria-live="polite">
+          <p id="pairing-instruction"></p>
+          <div id="pairing-code" aria-label="Pairing code"></div>
+          <p class="hint" id="pairing-time"></p>
+          <p id="pairing-destination"></p>
+          <p class="hint" id="pairing-fingerprint" style="overflow-wrap:anywhere"></p>
+          <div style="display:flex;gap:6px">
+            <button class="primary" id="pairing-confirm" hidden>Connect this computer</button>
+            <button class="primary" id="pairing-replace" hidden>Replace pairing</button>
+            <button id="pairing-stop">Cancel</button>
+          </div>
+        </section>
       </div>
 
       <!-- Executor detail view -->
@@ -177,7 +179,8 @@
         <div class="tab-content" id="tab-settings" data-open="true">
           <div id="settings-paired">
             <div class="form-field"><span class="hint">Executor</span><div class="mono" id="setting-executor-id"></div></div>
-            <div class="form-field"><span class="hint">Nessie API</span><div id="setting-api-origin"></div></div>
+            <div class="form-field"><span class="hint">Organisation</span><div id="setting-organisation"></div></div>
+            <div class="form-field"><span class="hint">Team</span><div id="setting-team"></div></div>
             <div class="form-field" id="fingerprint-banner" style="display:none">
               <span class="hint">Confirm fingerprint</span>
               <div class="fingerprint" id="setting-fingerprint"></div>
@@ -213,352 +216,13 @@
     </main>
 
     <footer>
-      <button id="pair">Pair a new executor…</button>
+      <button id="pair">Pair with Nessie</button>
       <button id="open-nessie">Open Nessie</button>
       <button id="open-logs">Logs</button>
     </footer>
 
-    <script>
-      const invoke = window.__TAURI__.core.invoke
-      const event = window.__TAURI__.event
-      const dot = document.getElementById('dot')
-      const headline = document.getElementById('headline')
-      const listPanel = document.getElementById('list-panel')
-      const detailPanel = document.getElementById('detail-panel')
-      const executorsList = document.getElementById('executors-list')
-      const pairForm = document.getElementById('pair-form')
-      const backendSelect = document.getElementById('backend')
-      const customUrlField = document.getElementById('custom-url-field')
-      const customUrlInput = document.getElementById('custom-url')
-      const invitationInput = document.getElementById('invitation')
-      const chosenWorkspaceLabel = document.getElementById('chosen-workspace')
-      const chooseWorkspaceButton = document.getElementById('choose-workspace')
-      let busy = false
-      let currentView = null
-      let currentExecutorId = null
-      let currentTab = 'settings'
-      let chosenWorkspace = null
-      let pendingFingerprint = null
+    <script src="pairing.js"></script>
+    <script src="main.js"></script>
 
-      const trayState = (view) => {
-        if (view.kind !== 'reachable') return 'error'
-        if (view.executors.some((e) => ['starting', 'stopping', 'awaiting_confirmation'].includes(e.daemonStatus))) {
-          return 'attention'
-        }
-        return view.executors.some((e) => e.daemonStatus === 'running') ? 'running' : 'idle'
-      }
-
-      const headlineFor = (view) => {
-        if (view.kind !== 'reachable') return `Nessie Executor — ${view.reason}`
-        if (view.executors.length === 0) return 'Nessie Executor — nothing paired'
-        const running = view.executors.filter((e) => e.daemonStatus === 'running').length
-        return `Nessie Executor — ${running} of ${view.executors.length} running`
-      }
-
-      const renderList = (view) => {
-        executorsList.replaceChildren()
-        if (view.kind !== 'reachable') {
-          pairForm.style.display = 'none'
-          const problem = document.createElement('p')
-          problem.className = 'problem'
-          problem.textContent = view.reason
-          executorsList.append(problem)
-          return
-        }
-        if (view.executors.length === 0) {
-          const empty = document.createElement('p')
-          empty.className = 'empty'
-          empty.textContent = 'No executor is paired on this computer yet.'
-          executorsList.append(empty)
-          pairForm.style.display = 'flex'
-          pairForm.style.flexDirection = 'column'
-          return
-        }
-        pairForm.style.display = 'none'
-        for (const executor of view.executors) {
-          const row = document.createElement('div')
-          row.className = 'row'
-          const id = document.createElement('span')
-          id.className = 'id'
-          id.textContent = executor.executorId.split('-')[0]
-          const state = document.createElement('span')
-          state.className = 'state'
-          state.textContent = executor.daemonStatus
-          const start = document.createElement('button')
-          start.textContent = 'Start'
-          start.disabled = busy || ['running', 'starting'].includes(executor.daemonStatus)
-          start.onclick = () => act('executor_start', { executorId: executor.executorId })
-          const stop = document.createElement('button')
-          stop.textContent = 'Stop'
-          stop.disabled = busy || !['running', 'starting'].includes(executor.daemonStatus)
-          stop.onclick = () => act('executor_stop', { executorId: executor.executorId })
-          const settings = document.createElement('button')
-          settings.textContent = 'Settings…'
-          settings.disabled = busy
-          settings.onclick = () => showDetail(executor.executorId, 'settings')
-          row.append(id, state, start, stop, settings)
-          executorsList.append(row)
-        }
-      }
-
-      const render = (view) => {
-        currentView = view
-        dot.dataset.state = trayState(view)
-        headline.textContent = headlineFor(view)
-        if (detailPanel.dataset.open !== 'true') {
-          renderList(view)
-        }
-      }
-
-      const refresh = async () => {
-        render(await invoke('executor_view'))
-      }
-
-      const act = async (command, args) => {
-        if (busy) return
-        busy = true
-        let refused = false
-        try {
-          const result = await invoke(command, args)
-          if (command === 'executor_start' || command === 'executor_stop') {
-            render(result)
-          } else if (command === 'executor_pair') {
-            pendingFingerprint = result.fingerprint
-            render(result.view)
-            showList()
-          } else if (['executor_describe','executor_add_folder','executor_remove_folder','executor_add_command','executor_remove_command'].includes(command)) {
-            renderDetail(result)
-          }
-        } catch (reason) {
-          refused = true
-          headline.textContent = String(reason)
-          dot.dataset.state = 'attention'
-        } finally {
-          busy = false
-          if (!refused && command !== 'executor_pair') await refresh()
-        }
-      }
-
-      const showList = () => {
-        detailPanel.dataset.open = 'false'
-        listPanel.dataset.open = 'true'
-        document.getElementById('back').style.display = 'none'
-        if (currentView) renderList(currentView)
-      }
-
-      const showDetail = async (executorId, tab) => {
-        currentExecutorId = executorId
-        currentTab = tab || 'settings'
-        listPanel.dataset.open = 'false'
-        detailPanel.dataset.open = 'true'
-        document.getElementById('back').style.display = 'inline-block'
-        updateTabs()
-        await act('executor_describe', { executorId })
-      }
-
-      const updateTabs = () => {
-        for (const button of document.querySelectorAll('.tab-button')) {
-          button.classList.toggle('active', button.dataset.tab === currentTab)
-        }
-        for (const content of document.querySelectorAll('.tab-content')) {
-          content.dataset.open = (content.id === `tab-${currentTab}`).toString()
-        }
-      }
-
-      const renderDetail = (description) => {
-        document.getElementById('detail-executor').textContent = `Executor ${description.shortExecutorId}`
-        document.getElementById('setting-executor-id').textContent = description.executorId
-        document.getElementById('setting-api-origin').textContent = description.apiBaseUrl
-        const revision = document.getElementById('setting-revision')
-        revision.textContent = `Local policy is at revision ${description.policy.revision}. Saving a change writes revision ${description.policy.revision + 1} and submits it when the daemon next connects. It takes effect only after a person reviews it in Nessie.`
-        const fingerprintBanner = document.getElementById('fingerprint-banner')
-        if (pendingFingerprint && description.executorId === currentExecutorId) {
-          document.getElementById('setting-fingerprint').textContent = pendingFingerprint
-          fingerprintBanner.style.display = 'block'
-        } else {
-          fingerprintBanner.style.display = 'none'
-        }
-
-        const foldersContainer = document.getElementById('reach-folders')
-        foldersContainer.replaceChildren()
-        if (description.reach.folders.length === 0) {
-          const empty = document.createElement('div')
-          empty.className = 'empty'
-          empty.textContent = 'No folders are configured.'
-          foldersContainer.append(empty)
-        }
-        for (const folder of description.reach.folders) {
-          const item = document.createElement('div')
-          item.className = 'list-item'
-          const name = document.createElement('span')
-          name.className = 'name'
-          name.textContent = folder.name
-          const path = document.createElement('span')
-          path.className = 'path'
-          path.textContent = folder.path
-          const remove = document.createElement('button')
-          remove.textContent = 'Remove'
-          remove.disabled = busy
-          remove.onclick = () => act('executor_remove_folder', { executorId: description.executorId, name: folder.name })
-          item.append(name, path, remove)
-          foldersContainer.append(item)
-        }
-
-        const originsContainer = document.getElementById('reach-origins')
-        originsContainer.replaceChildren()
-        if (description.reach.allowedOrigins.length === 0) {
-          const empty = document.createElement('div')
-          empty.className = 'empty'
-          empty.textContent = description.sandbox.browserConfigured
-            ? 'No origin is allowed, so the guest browser can open nothing.'
-            : 'No guest browser is configured, so there is nothing to reach and browser operations cannot be enabled.'
-          originsContainer.append(empty)
-        }
-        for (const origin of description.reach.allowedOrigins) {
-          const div = document.createElement('div')
-          div.className = 'mono'
-          div.textContent = origin
-          originsContainer.append(div)
-        }
-        const reachNotes = document.getElementById('reach-notes')
-        reachNotes.textContent = `${description.guestSessionNote} ${description.sandbox.promotionHelperConfigured ? 'A promotion helper is configured: reviewed changes can be written back to these folders.' : 'No promotion helper is configured. Writes land in daemon-owned copy-on-write scratch and nothing is written back to these folders.'}`
-
-        const commandsContainer = document.getElementById('tools-commands')
-        commandsContainer.replaceChildren()
-        if (description.policy.permittedPrograms.length === 0) {
-          const empty = document.createElement('div')
-          empty.className = 'empty'
-          empty.textContent = 'No command is permitted, so nothing may start.'
-          commandsContainer.append(empty)
-        }
-        for (const program of description.policy.permittedPrograms) {
-          const item = document.createElement('div')
-          item.className = 'list-item'
-          const name = document.createElement('span')
-          name.className = 'mono'
-          name.textContent = program
-          const remove = document.createElement('button')
-          remove.textContent = 'Remove'
-          remove.disabled = busy
-          remove.onclick = () => act('executor_remove_command', { executorId: description.executorId, command: program })
-          item.append(name, document.createElement('div'), remove)
-          commandsContainer.append(item)
-        }
-        document.getElementById('tools-note').textContent = description.commandRunEnabled
-          ? 'command.run is enabled for this executor, so the list must always name at least one command.'
-          : 'command.run is not enabled for this executor. These commands take effect when somebody enables it in Nessie.'
-        document.getElementById('tools-grammar').textContent = 'A permitted command is a program the guest resolves through its fixed PATH, optionally followed by arguments and a trailing "*" — for example "git *" or "npm run *". Paths, shells and a leading "*" are refused, at most 64 entries.'
-      }
-
-      // Tab switching
-      for (const button of document.querySelectorAll('.tab-button')) {
-        button.onclick = () => {
-          currentTab = button.dataset.tab
-          updateTabs()
-        }
-      }
-
-      // Pair form
-      const openPairForm = () => {
-        chosenWorkspace = null
-        chosenWorkspaceLabel.textContent = 'No folder chosen'
-        invitationInput.value = ''
-        customUrlInput.value = ''
-        showList()
-        pairForm.style.display = 'flex'
-        pairForm.style.flexDirection = 'column'
-        invitationInput.focus()
-      }
-
-      backendSelect.onchange = () => {
-        customUrlField.style.display = backendSelect.value === 'custom' ? 'block' : 'none'
-      }
-
-      document.getElementById('pair').onclick = openPairForm
-      document.getElementById('pair-cancel').onclick = () => {
-        pairForm.style.display = 'none'
-      }
-
-      chooseWorkspaceButton.onclick = async () => {
-        const selected = await invoke('executor_choose_folder')
-        if (selected) {
-          chosenWorkspace = selected
-          chosenWorkspaceLabel.textContent = selected
-        }
-      }
-
-      pairForm.onsubmit = async (event) => {
-        event.preventDefault()
-        if (!chosenWorkspace) {
-          headline.textContent = 'Choose the folder this executor may read before pairing.'
-          dot.dataset.state = 'attention'
-          return
-        }
-        const backend = backendSelect.value
-        const customApiBaseUrl = backend === 'custom' ? customUrlInput.value.trim() : null
-        await act('executor_pair', { invitation: invitationInput.value, backend, customApiBaseUrl })
-      }
-
-      document.getElementById('open-nessie').onclick = () => {
-        const backend = backendSelect.value
-        let apiBaseUrl = backend
-        if (backend === 'custom') apiBaseUrl = customUrlInput.value.trim()
-        invoke('executor_open_nessie', { apiBaseUrl }).catch((reason) => {
-          headline.textContent = String(reason)
-          dot.dataset.state = 'attention'
-        })
-      }
-
-      document.getElementById('open-logs').onclick = () =>
-        invoke('executor_open_logs').catch((reason) => {
-          headline.textContent = String(reason)
-          dot.dataset.state = 'attention'
-        })
-      document.getElementById('hide').onclick = () => invoke('executor_hide_status')
-      document.getElementById('back').onclick = showList
-
-      document.getElementById('add-folder').onclick = async () => {
-        const selected = await invoke('executor_choose_folder')
-        if (selected && currentExecutorId) {
-          await act('executor_add_folder', { executorId: currentExecutorId, path: selected })
-        }
-      }
-
-      document.getElementById('add-command').onclick = async () => {
-        const input = document.getElementById('new-command')
-        if (!input.value.trim() || !currentExecutorId) return
-        await act('executor_add_command', { executorId: currentExecutorId, command: input.value })
-        input.value = ''
-      }
-
-      // Menu events
-      event.listen('tray://pair', openPairForm)
-      event.listen('tray://section/settings', () => {
-        const first = currentView?.kind === 'reachable' ? currentView.executors[0] : null
-        if (first) showDetail(first.executorId, 'settings')
-        else openPairForm()
-      })
-      event.listen('tray://section/reach', () => {
-        const first = currentView?.kind === 'reachable' ? currentView.executors[0] : null
-        if (first) showDetail(first.executorId, 'reach')
-      })
-      event.listen('tray://section/tools', () => {
-        const first = currentView?.kind === 'reachable' ? currentView.executors[0] : null
-        if (first) showDetail(first.executorId, 'tools')
-      })
-
-      const loadBackends = async () => {
-        backendSelect.replaceChildren()
-        for (const [value, label] of await invoke('executor_pairing_backends')) {
-          const option = document.createElement('option')
-          option.value = value
-          option.textContent = label
-          backendSelect.append(option)
-        }
-        backendSelect.onchange()
-      }
-      loadBackends().then(refresh)
-      setInterval(refresh, 3000)
-    </script>
   </body>
 </html>

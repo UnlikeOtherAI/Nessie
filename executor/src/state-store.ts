@@ -1,5 +1,5 @@
-import { randomBytes, randomUUID } from 'node:crypto'
-import { open, readFile, readdir, rename, unlink } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { open, readFile, readdir, unlink } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 import {
@@ -22,6 +22,7 @@ import {
   type ExecutorLocalMcpServer,
 } from './mcp-servers.js'
 import { assertOwnerOnlyStatePath, ensureOwnerOnlyStateDirectory } from './state-security.js'
+import { replaceOwnerOnlyJson } from './owner-only-json.js'
 import {
   assertExecutorWorkspaceFolders,
   deriveExecutorWorkspaceFolderName,
@@ -330,23 +331,6 @@ const assertOwnerOnly = async (path: string, expectedKind: 'directory' | 'file')
 
 const assertSecureDirectory = async (stateDir: string): Promise<void> => {
   await ensureOwnerOnlyStateDirectory(stateDir)
-}
-
-const replaceOwnerOnlyJson = async (path: string, value: unknown): Promise<void> => {
-  const temporaryPath = `${path}.${process.pid}.${randomUUID()}.new`
-  const handle = await open(temporaryPath, 'wx', 0o600)
-  try {
-    try {
-      await handle.writeFile(`${JSON.stringify(value)}\n`, 'utf8')
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-    await assertOwnerOnly(temporaryPath, 'file')
-    await rename(temporaryPath, path)
-  } finally {
-    await unlink(temporaryPath).catch(() => undefined)
-  }
 }
 
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === 'ENOENT'

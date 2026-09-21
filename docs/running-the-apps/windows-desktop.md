@@ -297,28 +297,35 @@ in place**. That is deliberate: a pairing is a machine key and a signed policy
 revision, and removing a program is not a request to destroy them. Reinstalling
 finds its pairings where it left them; delete the folder by hand to forget them.
 
-**Pair from the tray.** In Nessie, **Agents → Executors → Pair executor**
-produces an invitation. In the tray: **Pair a new executor…** → paste the
-pairing command or link, and select the Nessie backend that produced it → choose the workspace in the native picker → confirm →
-approve one Windows administrator prompt → confirm the fingerprint in Nessie.
-The icon turns green. After a reboot the service starts before anybody logs in.
-If the selected Nessie backend is temporarily unavailable during boot, the
-service keeps its signed runtime and local pairing state intact, answers the
-tray immediately with **starting**, and retries the enrollment and daemon start
-with bounded backoff until it reconnects. A person choosing **Stop** cancels
-those retries for the current service run; **Start** requests them again. A
-reboot deliberately returns every paired executor to its configured
-always-on state.
+**Pair from the tray.** Open **Nessie Executor → Pair with Nessie**, choose the
+workspace folder, and approve Windows granting the service read access. The
+tray shows eight digit boxes and the remaining ten-minute lifetime. In Nessie,
+open **Agents → Executors → Pair executor** and enter that code. Choose
+the organisation, team and sharing scope there. Back on the computer, review
+the organisation and team by name and choose **Connect this computer**. Only
+this local confirmation activates the pairing and starts its daemon.
 
-The tray offers `https://api.nessie.works` and the two explicit
-local-development choices,
-`http://127.0.0.1:5454` and `http://localhost:5454`. The tray compares the
-selected backend with the invitation before it creates a machine key or grants
-the workspace; it never retries a different origin or transfers pairing state
-between origins. This keeps the paired machine key and its enrollment proof
-bound to the backend a person selected. The HTTP exception is loopback-only;
-the service refuses every other HTTP origin. An unsigned or tampered release
-remains refused by the service.
+The tray restores an unfinished attempt after restart. A lost response keeps
+the same private machine key and code; a completed confirmation can also be
+recovered without claiming again. **Cancel** retires the server attempt before
+the local pending key is removed. An existing pairing is shown by organisation
+and team and offers **Replace pairing** or **Keep pairing**. Replacement stops
+the old daemon and proves possession of its key to revoke that server binding
+before the new pairing can continue. Several simultaneous teams are not part
+of this flow.
+
+The tray connects to Nessie by default. Self-hosted operators retain the CLI's
+configured-origin input; no address or invitation command appears in the
+normal tray flow. Organisation and team names are fetched live using the
+machine key and never copied into durable executor state. An unsigned or
+tampered release remains refused by the service: code pairing does not bypass
+the publisher or runtime-integrity checks.
+
+After a reboot the service starts before anybody logs in. If Nessie is
+unavailable, the tray shows **starting** while the service retries with bounded
+backoff. **Stop** cancels those retries for the current service run; **Start**
+requests them again. A reboot returns completed pairings to their configured
+always-on state. An unfinished pairing never starts a daemon.
 
 That administrator prompt is the only one, and it is worth knowing what it is
 for: the daemon runs as a service account with no rights anywhere a person
@@ -334,22 +341,26 @@ ordinary, unelevated tray to the control pipe afterwards, so nothing prompts
 again.
 
 **The tray.** Grey means nothing is running, green means a daemon is up, amber
-means something is in flight (awaiting a fingerprint confirmation, or a daemon
+means something is in flight (awaiting local confirmation, or a daemon
 still tearing its guests down), red means the service could not be reached or
 refused to supervise — and the menu's first line says which. Right-click gives
-that line, a submenu per paired executor with **Start** and **Stop**, **Pair a
-new executor…**, **Open Nessie**, **Open logs folder**, and **Quit**. Quit ends
+that line, a submenu per paired executor with **Start** and **Stop**, **Pair with Nessie**, **Open Nessie**, **Open logs folder**, and **Quit**. Quit ends
 the tray only: the service and every daemon it supervises keep running, and the
 menu entry says so. Left-click opens a small frameless status window with the
-same list and the same actions. Every change confirms in a native dialog first.
+same list and the same actions. Pairing confirmation names the organisation and
+team beside its local button; replacement additionally asks in a native dialog.
 
 **The service and the tray talk over `\\.\pipe\NessieExecutor`**, one JSON line
-each way, carrying the same five commands the desktop companion offers —
-status, pair, start, stop, configure — with the same argument validation. Its
-answers carry executor ids and daemon states and nothing else: no path, no key,
-no challenge, no child-process output. The pipe admits local Administrators and
-the accounts recorded at pairing, refuses remote clients outright, and is
-rebuilt with the current account list every time it accepts a connection.
+each way. `pairingStart`, `pairingStatus`, `pairingConfirm` and `pairingCancel`
+run the packaged CLI's corresponding JSON commands inside the verified service.
+A confirmation carries the digest of the exact organisation/team claim the
+person saw. The service serializes these actions, keeps pending keys private,
+and requires the Windows account that started the attempt to finish it.
+`status`, `start`, `stop`, `describe` and configuration controls remain on the
+same pipe. Pairing answers contain the code, expiry and live display labels;
+private keys never leave the service. The pipe admits local Administrators and
+recorded accounts, refuses remote clients, and refreshes its account list at
+each connection.
 
 **Folder and policy controls remain local.** The Executors page shows the
 selected folder's basename so a person can recognize the active boundary, but

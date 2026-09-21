@@ -1,66 +1,66 @@
-// Browser-level proof for the tray renderer. It serves the real tray HTML at
-// localhost:5455, but intercepts that one preview path so it never competes
-// with Nessie's running admin server. The Tauri bridge is deliberately mocked:
-// this proves renderer wiring only; Rust tests cover the native commands.
+// The real tray renderer, with only its Tauri transport replaced by a fixture.
 import assert from 'node:assert/strict'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 import { chromium } from 'playwright-core'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const html = await readFile(join(here, '../ui/index.html'), 'utf8')
-const output = join(here, '../../../.artifacts/tray-renderer-preview.png')
-await mkdir(dirname(output), { recursive: true })
-
+let html = await readFile(join(here, '../ui/index.html'), 'utf8')
+for (const script of ['pairing', 'main']) {
+  html = html.replace(`<script src="${script}.js"></script>`, `<script>${await readFile(join(here, `../ui/${script}.js`), 'utf8')}</script>`)
+}
+const output = join(here, '../../../.artifacts')
+await mkdir(output, { recursive: true })
 const bridge = `<script>
 window.__trayCalls = [];
+window.__pairingStatus = 'idle';
 window.__TAURI__ = { core: { invoke: async (command, args = {}) => {
   window.__trayCalls.push({ command, args });
-  if (command === 'executor_pairing_backends') return [
-    ['nessie', 'Nessie'],
-    ['deeptest', 'DeepTest'],
-    ['custom', 'Self-hosted Nessie'],
-  ];
-  if (command === 'executor_view') return { kind: 'reachable', executors: [] };
-  if (command === 'executor_pair') throw 'The invitation belongs to a different Nessie backend. Select the backend that created it; pairing never falls back to another origin.';
-  return undefined;
-}}, event: { listen: async () => undefined } };
+  if (command === 'executor_choose_folder') return 'C:/Users/person/Work';
+  if (command === 'executor_view') return {kind:'reachable',executors:window.__pairingStatus === 'paired' ? [{executorId:'computer',daemonStatus:'starting'}] : []};
+  if (command === 'executor_pairing_start') window.__pairingStatus = 'waiting';
+  if (command === 'executor_pairing_cancel') window.__pairingStatus = 'cancelled';
+  if (command === 'executor_pairing_confirm') window.__pairingStatus = 'paired';
+  if (command.startsWith('executor_pairing_')) return {
+    status:window.__pairingStatus, code:'01234567', expiresAt:new Date(Date.now()+590000).toISOString(),
+    claimDigest:'sha256:displayed-claim', fingerprint:'sha256:0123456789abcdef',
+    machineName:'My computer',organizationName:'UnlikeOtherAI',teamName:'Platform',executorId:'computer'
+  };
+}}, event:{listen:async()=>undefined}};
 </script>`
-
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
   ?? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const browser = await chromium.launch({ executablePath, headless: true })
 try {
   const page = await browser.newPage({ viewport: { width: 520, height: 480 } })
-  page.setDefaultTimeout(5_000)
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  page.setDefaultTimeout(7000)
   await page.route('http://localhost:5455/__tray-preview', (route) => route.fulfill({
     body: html.replace('<head>', `<head>${bridge}`), contentType: 'text/html', status: 200,
   }))
-  await page.goto('http://localhost:5455/__tray-preview', { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('#backend option:nth-child(3)', { state: 'attached' })
-  assert.equal(await page.locator('#backend option').count(), 3)
+  await page.goto('http://localhost:5455/__tray-preview')
+  await page.click('#pair-form button[type="submit"]')
+  await page.waitForSelector('#pairing-code span:nth-child(8)')
+  assert.equal(await page.locator('#pairing-code').textContent(), '01234567')
+  assert.match(await page.locator('#pairing-fingerprint').textContent(), /My computer.*0123456789abcdef/)
+  assert.match(await page.locator('#pairing-time').textContent(), /Expires in 9:/)
+  await page.screenshot({path:join(output,'tray-pairing-code.png')})
+  await page.evaluate(() => { window.__pairingStatus = 'confirmation' })
+  await page.waitForSelector('#pairing-confirm:visible')
+  assert.equal(await page.locator('#pairing-destination').textContent(), 'UnlikeOtherAI · Platform')
+  assert.equal(await page.locator('#pairing-code span').count(), 0)
+  await page.screenshot({path:join(output,'tray-pairing-confirm.png')})
+  await page.click('#pairing-confirm')
+  await page.waitForFunction(() => window.__pairingStatus === 'paired')
+  const calls = await page.evaluate(() => window.__trayCalls)
+  assert.deepEqual(calls.find(call => call.command === 'executor_pairing_confirm').args, {claimDigest:'sha256:displayed-claim'})
   await page.click('#pair')
-  await page.selectOption('#backend', 'custom')
-  await page.fill('#custom-url', 'http://127.0.0.1:5454')
-  await page.locator('#open-nessie').evaluate((button) => button.click())
-  assert.deepEqual(await page.evaluate(() => window.__trayCalls.find((call) => call.command === 'executor_open_nessie')), {
-    command: 'executor_open_nessie', args: { apiBaseUrl: 'http://127.0.0.1:5454' },
-  })
-  await page.fill('#invitation', 'pair --api https://api.nessie.works --enrollment id --challenge value')
-  await page.locator('#pair-form button[type="submit"]').click()
-  assert.deepEqual(await page.evaluate(() => window.__trayCalls.find((call) => call.command === 'executor_pair')), {
-    command: 'executor_pair', args: {
-      invitation: 'pair --api https://api.nessie.works --enrollment id --challenge value',
-      backend: 'custom',
-      customApiBaseUrl: 'http://127.0.0.1:5454',
-    },
-  })
-  const mismatch = await page.evaluate(() => String(document.querySelector('#headline')?.textContent))
-  assert.match(mismatch, /different Nessie backend/)
-  await page.screenshot({ path: output, timeout: 5_000 })
-  process.stdout.write(`Renderer fixture passed; screenshot: ${output}\n`)
-} finally {
-  await browser.close()
-}
+  await page.waitForSelector('#pairing-replace:visible')
+  assert.match(await page.locator('#pairing-instruction').textContent(), /already paired/)
+  await page.click('#pairing-stop')
+  assert.equal((await page.evaluate(() => window.__trayCalls)).filter(call => call.command === 'executor_pairing_cancel').length, 0)
+  assert.deepEqual(errors, [])
+  console.log(`Tray pairing, confirmation and keep-existing flows passed. Screenshots: ${output}`)
+} finally { await browser.close() }

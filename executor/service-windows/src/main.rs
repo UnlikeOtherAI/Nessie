@@ -37,6 +37,7 @@ mod security;
 mod service;
 mod supervisor;
 mod supervisor_commands;
+mod supervisor_pairing;
 
 const USAGE: &str = "nessie-executor-service runs as the Nessie Executor Windows service. \
                      Its only other modes are --secure-state-root and --join-hyperv-administrators, \

@@ -196,7 +196,7 @@ impl Supervisor {
 
     /// Promotes the API-named staged pairing without ever overwriting an
     /// existing machine key.
-    fn promote(&self, staging: &Path, paired_by: Option<&str>) -> Result<String, String> {
+    pub(crate) fn promote(&self, staging: &Path, paired_by: Option<&str>) -> Result<String, String> {
         let state: serde_json::Value = serde_json::from_slice(
             &fs::read(staging.join(crate::paths::EXECUTOR_STATE_FILE))
                 .map_err(|_| "Nessie executor pairing left no usable state.".to_owned())?,

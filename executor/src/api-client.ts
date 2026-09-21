@@ -21,6 +21,7 @@ export class ExecutorApiError extends Error {
 }
 
 export type ExecutorApiClient = {
+  pairing: (baseUrl: string, action: 'start' | 'poll' | 'confirm' | 'cancel' | 'connection', input: unknown) => Promise<unknown>
   cancelPending: () => void
   claim: (baseUrl: string, input: { challenge: string; executorId: string; signature: string }) =>
     Promise<{ connectionEpoch: string; status: string }>
@@ -133,6 +134,7 @@ export const createExecutorApi = (options: {
   }
 
   return {
+    pairing: (baseUrl, action, input) => post(baseUrl, `/api/executor-pairing/${action}`, input),
     cancelPending: () => {
       for (const controller of pending) controller.abort('cancelled')
     },

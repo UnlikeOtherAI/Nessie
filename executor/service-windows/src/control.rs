@@ -53,6 +53,21 @@ impl Control {
             return Response::error("The Nessie Executor service is not available.");
         };
         match command {
+            Command::PairingStart { api_base_url, workspace_root, replace } => {
+                match supervisor.pairing_start(&api_base_url, &workspace_root, replace, client_sid) {
+                    Ok(pairing) => Response::Pairing { pairing },
+                    Err(reason) => Response::error(reason),
+                }
+            }
+            Command::PairingStatus => match supervisor.pairing_action("status", None, client_sid) {
+                Ok(pairing) => Response::Pairing { pairing }, Err(reason) => Response::error(reason),
+            },
+            Command::PairingCancel => match supervisor.pairing_action("cancel", None, client_sid) {
+                Ok(pairing) => Response::Pairing { pairing }, Err(reason) => Response::error(reason),
+            },
+            Command::PairingConfirm { claim_digest } => match supervisor.pairing_action("confirm", Some(&claim_digest), client_sid) {
+                Ok(pairing) => Response::Pairing { pairing }, Err(reason) => Response::error(reason),
+            },
             // The pipe owns this command because it alone has the
             // impersonated Windows token needed to authenticate the SID.
             Command::EnrollControlClient => Response::error("The control request is malformed."),
@@ -152,6 +167,9 @@ mod tests {
         let control = Control::Refused(refusal.to_owned());
         for command in [
             Command::Status,
+            Command::PairingStatus,
+            Command::PairingCancel,
+            Command::PairingConfirm { claim_digest: format!("sha256:{}", "0".repeat(64)) },
             Command::Start { executor_id: "00000000-0000-4000-8000-000000000001".to_owned() },
             Command::Stop { executor_id: "00000000-0000-4000-8000-000000000001".to_owned() },
         ] {

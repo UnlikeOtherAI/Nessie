@@ -6,6 +6,7 @@ import { approveExecutorPairingOrigin } from '@nessie/schemas'
 import { claimExecutor, heartbeatExecutor } from './daemon.js'
 import { serveExecutor } from './daemon-server.js'
 import { describeExecutor } from './describe.js'
+import { runPairingCodeCli } from './pairing-code-cli.js'
 import { serveDeepTestSourceAdapter } from './deeptest-source-adapter.js'
 import { serveDeepTestExecutionAdapter } from './deeptest-execution-adapter.js'
 import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-native-host.js'
@@ -485,6 +486,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
 }
 
 export const run = async (args: string[]): Promise<void> => {
+  if (await runPairingCodeCli(args)) return
   const command = parseCommand(args)
   if (command.kind === 'pair') {
     const input = command.pairingInputFromStandardInput

@@ -15,17 +15,13 @@
 //! the CLI. That still keeps the tray from ever parsing or writing
 //! `executor-state.json` itself.
 
-use std::path::PathBuf;
-
-use nessie_windows_common::{LOGS_DIRECTORY, SERVICE_ACCOUNT};
+use nessie_windows_common::LOGS_DIRECTORY;
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::{
     description::ExecutorDescription,
-    grant::request_workspace_grant,
-    invitation::parse_invitation,
     pairing_origin,
     permitted_command,
     pipe_client::{call, ServiceResponse},
@@ -125,82 +121,6 @@ pub async fn stop<R: Runtime>(app: AppHandle<R>, executor_id: String) -> Result<
         ServiceResponse::Status(executors) => Ok(ServiceView::Reachable { executors }),
         _ => Err("the service answered in a shape this tray does not understand".to_owned()),
     }
-}
-
-async fn choose_workspace<R: Runtime>(app: AppHandle<R>) -> Result<PathBuf, String> {
-    let selection = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .set_title("Select the executor's read-only workspace")
-            .blocking_pick_folder()
-            .map(|path| path.into_path())
-    })
-    .await
-    .map_err(|_| "Nessie Executor could not open its workspace picker.".to_owned())?;
-    selection
-        .transpose()
-        .map_err(|_| "Nessie Executor could not resolve the selected workspace.".to_owned())?
-        .ok_or_else(|| "Workspace selection was cancelled.".to_owned())
-}
-
-/// Pairing, in the order the design fixes: read the invitation, choose the
-/// backend and workspace, confirm, grant the service account access to that
-/// workspace through one elevated relaunch, then hand the challenge to the
-/// service over the pipe. The challenge never reaches a command line, and the
-/// elevated step is what admits this account to the pipe from then on.
-pub async fn pair<R: Runtime>(
-    app: AppHandle<R>,
-    invitation: String,
-    backend: String,
-    custom_api_base_url: Option<String>,
-) -> Result<(ServiceView, String), String> {
-    let is_development_build = cfg!(debug_assertions);
-    let approved = pairing_origin::resolve(&backend, custom_api_base_url.as_deref(), is_development_build)
-        .map_err(|reason| format!("{reason} Select a Nessie backend first."))?;
-    let invitation = parse_invitation(&invitation)?;
-    if invitation.api_base_url != approved.origin {
-        return Err(
-            "The invitation belongs to a different Nessie backend. Select the backend that created it; pairing never falls back to another origin."
-                .to_owned(),
-        );
-    }
-    let workspace = choose_workspace(app.clone()).await?;
-    let backend_label = pairing_origin::label(&approved.origin);
-    if !confirm(
-        app,
-        "Pair Nessie executor",
-        format!(
-            "Nessie Executor will create a private machine key and pair this computer with \
-             {backend_label} at {}. Windows will ask for administrator approval once, to give the {SERVICE_ACCOUNT} \
-             service account read access to the workspace you chose. Selected file contents and \
-             command output may be sent to Nessie and its configured model, but only through \
-             the executor's reviewed policy.",
-            approved.origin,
-        ),
-        "Pair executor",
-    )
-    .await?
-    {
-        return Err("Executor pairing was cancelled.".to_owned());
-    }
-    let elevated = workspace.clone();
-    tauri::async_runtime::spawn_blocking(move || request_workspace_grant(&elevated))
-        .await
-        .map_err(|_| "Granting workspace access stopped unexpectedly.".to_owned())??;
-    let response = call(&serde_json::json!({
-        "command": "pair",
-        "apiBaseUrl": approved.origin,
-        "challenge": invitation.challenge,
-        "enrollmentId": invitation.enrollment_id,
-        "workspaceRoot": workspace.display().to_string(),
-    }))?;
-    let (executor_id, fingerprint) = match response {
-        ServiceResponse::Pair { executor_id, fingerprint } => (executor_id, fingerprint),
-        ServiceResponse::Error(reason) => return Err(reason),
-        _ => return Err("the service answered in a shape this tray does not understand".to_owned()),
-    };
-    let _ = executor_id;
-    Ok((view(), fingerprint))
 }
 
 /// Builds a new configuration by reading the current description, applying a
@@ -373,23 +293,6 @@ pub async fn executor_start(app: AppHandle, executor_id: String) -> Result<Servi
 #[tauri::command]
 pub async fn executor_stop(app: AppHandle, executor_id: String) -> Result<ServiceView, String> {
     stop(app, executor_id).await
-}
-
-#[derive(serde::Serialize)]
-pub struct PairResult {
-    pub view: ServiceView,
-    pub fingerprint: String,
-}
-
-#[tauri::command]
-pub async fn executor_pair(
-    app: AppHandle,
-    invitation: String,
-    backend: String,
-    custom_api_base_url: Option<String>,
-) -> Result<PairResult, String> {
-    let (view, fingerprint) = pair(app, invitation, backend, custom_api_base_url).await?;
-    Ok(PairResult { view, fingerprint })
 }
 
 #[tauri::command]
