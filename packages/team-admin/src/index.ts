@@ -232,3 +232,8 @@ export {
 } from './connected-mail-presentation.js'
 
 export * from './resource-shares.js'
+export * from './task-access.js'
+export * from './task-activity-realtime.js'
+export * from './task-attachments.js'
+export * from './task-comments.js'
+export * from './task-labels.js'
