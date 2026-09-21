@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  ChannelDecisionPolicySchema,
   isAdminRole,
   parseAgentId,
   parseChannelId,
@@ -269,6 +270,7 @@ export const listChannelsForUser = async (
       lastMessageAtByThread.get(defaultThreadIdByChannel.get(channel.id)!) ?? null,
     topic: channel.topic ?? null,
     description: channel.description ?? null,
+    decisionPolicy: ChannelDecisionPolicySchema.nullable().parse(channel.decisionPolicy ?? null),
     archivedAt: channel.archivedAt?.toISOString() ?? null,
     memberRole: channel.members[0]?.role ?? null,
     muted: channel.members[0]?.muted ?? false,
