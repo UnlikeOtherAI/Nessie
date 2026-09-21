@@ -25,6 +25,9 @@ deployment.
   automatically substitute Nessie's Ledger-backed search. An unavailable
   research capability is a setup/waiting failure, not permission to change
   provider or generate unsupported findings.
+- Recover automatically from transient Ollama/host loss and executor/Nessie
+  restarts. A person can pause the executor; intentional pause survives
+  reconnect/restart and requires explicit resume. Completed items are retained.
 - A concrete workload is an Excel file with 80,000 items uploaded into
   Documents, processed by worksheet row, one after another, over a long period
   on local Ollama. Only the current row and explicitly needed context enter a
@@ -203,6 +206,30 @@ resumption from durable item state; preserved exact model/host pin; no cloud
 fallback. Revocation, deleted principals and lost document access must block
 with their own reason rather than being treated as ordinary offline recovery.
 
+Existing owner-facing host Pause/Resume routes persist `pausedAt`
+(`api/src/routes/local-inference-consent-routes.ts`, lines 172–199); a restarted
+daemon cannot clear it by reporting `paused: false`
+(`api/src/routes/local-inference.ts`, lines 211–215). The reusable admin control
+is `LocalInferenceHostStatus.tsx`. However, both current host runtime factories
+pass `isPaused: () => false` (`executor/src/local-inference-runtime.ts`, line
+152; `executor/src/direct-local-inference-runtime.ts`, line 221). A local
+executor pause action needs to reach durable pause state and the active
+request controls rather than merely closing a window.
+
+| Event | Deterministic job behavior |
+| --- | --- |
+| Ollama becomes unreachable | Retain the current item; back off with a capped retry interval; retry when fresh readiness is established. Offline waiting does not consume the row's model-error retry budget. |
+| Executor/API/worker restarts | Recover durable item/result/write state and acquire a new fenced claim. Resume the first unfinished item; do not reset the cursor. |
+| Person pauses executor | Persist host pause, stop new dispatches and cooperatively stop the active local request. An uncommitted item remains unfinished; never discard a committed result. Do not recycle the inference slot until the old request is stopped/fenced. |
+| Paused executor reconnects | Remain paused. A heartbeat, automatic retry or process restart cannot act as Resume. |
+| Person resumes | Revalidate authority and exact processor/source pins, then admit the unfinished item when both set and host permit it. Resuming a host does not override a separately paused set. |
+| Retry limit reached for actual processing errors | Pause with the failed item and reason; explicit Retry preserves all completed items. A full start-over is a separate deliberate operation. |
+
+This is job recovery, not an instruction to restart or alter a person's Ollama
+installation automatically. Host-native pause and the task-set detail must
+show the same persisted reason; local inference runtime recovery alone cannot
+substitute for that product state.
+
 ### 6. Saving every row through ordinary live-sheet runs is expensive
 
 The first spreadsheet write per agent run requests a safety version
@@ -283,8 +310,8 @@ durable even when spreadsheet materialization is delayed or blocked.
 
 The proposed owning surface is **Automation → Task Sets**, reusing one detail
 view from an originating conversation status card and the source document's
-processing entry. Show completed/total items, current row, waiting/failure
-reason, output link and Pause/Resume/Cancel/Retry. Keep item attempt detail
+  processing entry. Show completed/total items, current row, waiting/failure
+  reason, output link and Pause/Resume/Cancel/Retry. Keep item attempt detail
 available without producing a chat message for every row. Documents remains
 the home of input/output artifacts, and the receiver stays optional.
 
@@ -319,6 +346,9 @@ the home of input/output artifacts, and the receiver stays optional.
   never promise exactly-once inference without provider support.
 - Sleep/offline longer than an inference deadline, explicit pause/cancel,
   model change, owner/grant revocation, deleted input and quota exhaustion.
+- Pause from the executor while inference is active; restart while paused;
+  automatic retry while paused; resume host while the set is independently
+  paused. None may start work before the applicable explicit resume.
 - Input sort/insert/version replacement and output edits: either pinned input
   is unchanged or a conflict blocks explicitly; no positional misdelivery.
 - Text-only processor refusal for tool-requiring research, search rate limits,
