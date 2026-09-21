@@ -86,6 +86,8 @@ const hydrateTask = (task: TaskFixture) => ({
     : null,
   assigneeAgent: null,
   owner: null,
+  labels: [],
+  _count: { comments: 0 },
 })
 
 /**
