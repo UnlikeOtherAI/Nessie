@@ -1200,6 +1200,8 @@ model User {
   boardWatchers               BoardWatcher[]               @relation("BoardWatcherUser")
   browserPersonalAccessGrants BrowserPersonalAccessGrant[] @relation("BrowserPersonalAccessGrantUser")
 
+  taskCommentsAuthored TaskComment[] @relation("TaskCommentAuthor")
+
   @@map("users")
 }
 
@@ -1487,6 +1489,10 @@ model Organization {
   voiceDeviceCredentials VoiceDeviceCredential[]
   agentAccessCredentials AgentAccessCredential[]
 
+  taskLabels         TaskLabel[]
+  taskComments       TaskComment[]
+  taskExternalAssets TaskExternalAsset[]
+
   @@unique([id, externalOrgId])
   @@map("organizations")
 }
@@ -1693,6 +1699,8 @@ model Project {
   resourceShares           ResourceShare[]
   boardSharePublications   BoardSharePublication[]
   avatarAttachment         Attachment?               @relation("ProjectAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
+
+  taskLabels TaskLabel[]
 
   @@unique([id, organizationId])
   @@unique([id, organizationId, teamId])
@@ -2159,6 +2167,9 @@ model BoardSource {
   connection   BoardSourceConnection @relation(fields: [connectionId], references: [id], onDelete: Restrict)
   links        TaskExternalLink[]
   healthAlerts UserAlert[]           @relation("BoardSourceHealthAlert")
+  labels       TaskLabel[]
+  comments     TaskComment[]
+  assets       TaskExternalAsset[]
 
   @@unique([projectId, provider, containerKey])
   @@index([nextRunAt, claimedAt])
@@ -2200,6 +2211,127 @@ model TaskExternalLink {
   @@unique([sourceId, externalId])
   @@index([organizationId])
   @@map("task_external_links")
+}
+
+enum TaskExternalAssetKind {
+  file
+  inline_image
+  link
+}
+
+enum TaskExternalAssetStatus {
+  pending
+  stored
+  failed
+  link
+}
+
+/// A project's label. `sourceId`/`externalId` are set when a board source
+/// owns it (Linear team label, GitHub label, …); a label a person made in
+/// Nessie has both null and is "Nessie-only" on a mirrored ticket.
+model TaskLabel {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+  name            String
+  /// lower(trim(name)); the uniqueness key, so "Bug" and "bug" are one label.
+  normalizedName  String   @map("normalized_name")
+  /// `#rrggbb`, lower-case. Data, not a theme token (design-system carve-out).
+  color           String   @default("#6b7280")
+  sourceId        String?  @map("source_id") @db.Uuid
+  externalId      String?  @map("external_id")
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  source       BoardSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  links        TaskLabelLink[]
+
+  @@unique([projectId, normalizedName])
+  @@unique([sourceId, externalId])
+  @@index([projectId, name])
+  @@map("task_labels")
+}
+
+model TaskLabelLink {
+  taskId    String   @map("task_id") @db.Uuid
+  labelId   String   @map("label_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  task  Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label TaskLabel @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+  @@map("task_label_links")
+}
+
+/// One comment on a ticket. At most one of `authorUserId` / `authorAgentId`
+/// is set (a CHECK enforces it); both are null for an imported comment whose
+/// author no identity link resolves, which then carries the provider's own
+/// display data. Soft-deleted: `deletedAt` set, `body` blanked.
+model TaskComment {
+  id                       String    @id @default(uuid()) @db.Uuid
+  organizationId           String    @map("organization_id") @db.Uuid
+  taskId                   String    @map("task_id") @db.Uuid
+  authorUserId             String?   @map("author_user_id") @db.Uuid
+  authorAgentId            String?   @map("author_agent_id") @db.Uuid
+  externalAuthorExternalId String?   @map("external_author_external_id")
+  externalAuthorDisplay    String?   @map("external_author_display")
+  /// Markdown. Images are `![alt](/api/attachments/<id>)`.
+  body                     String    @db.Text
+  sourceId                 String?   @map("source_id") @db.Uuid
+  externalId               String?   @map("external_id")
+  externalUrl              String?   @map("external_url")
+  parentExternalId         String?   @map("parent_external_id")
+  externalUpdatedAt        DateTime? @map("external_updated_at")
+  editedAt                 DateTime? @map("edited_at")
+  deletedAt                DateTime? @map("deleted_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorUser   User?        @relation("TaskCommentAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  authorAgent  Agent?       @relation("TaskCommentAgentAuthor", fields: [authorAgentId], references: [id], onDelete: SetNull)
+  source       BoardSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceId, externalId])
+  @@index([taskId, createdAt])
+  @@map("task_comments")
+}
+
+/// A provider file or link the sync saw on an issue or in its text. The
+/// idempotency key for re-sync and the place a failed fetch is remembered.
+/// `attachmentId` is the stored copy (app-enforced pointer, like every other
+/// Attachment link); null while `pending`/`failed`, always null for `link`.
+model TaskExternalAsset {
+  id             String                  @id @default(uuid()) @db.Uuid
+  organizationId String                  @map("organization_id") @db.Uuid
+  taskId         String                  @map("task_id") @db.Uuid
+  taskCommentId  String?                 @map("task_comment_id") @db.Uuid
+  sourceId       String                  @map("source_id") @db.Uuid
+  externalUrl    String                  @map("external_url")
+  externalId     String?                 @map("external_id")
+  kind           TaskExternalAssetKind
+  status         TaskExternalAssetStatus @default(pending)
+  title          String?
+  attachmentId   String?                 @map("attachment_id") @db.Uuid
+  attempts       Int                     @default(0)
+  lastError      String?                 @map("last_error")
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  source       BoardSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, externalUrl])
+  @@index([taskId])
+  @@index([status, updatedAt])
+  @@map("task_external_assets")
 }
 
 /// The only place a provider identity meets a Nessie identity. Scoped to the
@@ -3245,6 +3377,8 @@ model Agent {
   // "which agents does this person steward" — the first non-channel-derived
   // agent read, and the tree's level-3 query.
   boardWatchers               BoardWatcher[]                 @relation("BoardWatcherAgent")
+
+  taskCommentsAuthored TaskComment[] @relation("TaskCommentAgentAuthor")
 
   @@unique([organizationId, id])
   @@unique([organizationId, systemSlug])
@@ -5004,6 +5138,9 @@ model Task {
   externalLink            TaskExternalLink?
   boardWatchNotifications BoardWatchNotification[]
   checklist               TaskChecklist?
+  labels                  TaskLabelLink[]
+  comments                TaskComment[]
+  externalAssets          TaskExternalAsset[]
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -6779,6 +6916,11 @@ model Attachment {
   // MIME parts hang off the EmailMessage, never off the compact chat reference
   // message — chat visibility must not become an email attachment's authority.
   emailMessageId     String?  @map("email_message_id") @db.Uuid
+  /// App-enforced pointers, exactly like `messageId`: a file on a ticket, and
+  /// optionally the comment it was posted with. A comment attachment is also a
+  /// task attachment, so `taskCommentId` is never set without `taskId`.
+  taskId             String?  @map("task_id") @db.Uuid
+  taskCommentId      String?  @map("task_comment_id") @db.Uuid
   kind               String
   mime               String
   filename           String
@@ -6811,6 +6953,8 @@ model Attachment {
   @@index([messageId])
   @@index([knowledgePageId])
   @@index([emailMessageId])
+  @@index([taskId])
+  @@index([taskCommentId])
   @@index([organizationId, createdAt])
   @@map("attachments")
 }
