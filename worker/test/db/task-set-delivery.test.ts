@@ -17,7 +17,7 @@ runDatabaseTest('task-set mailbox delivery stamps full basis, private authors an
     receiver: { agentId: f.receiver.id, channelId: f.channel.id, instructions: 'Write documentation.' },
     deliveryStatus: 'pending',
   } })
-  await assert.rejects(finalizeTaskSet(f.deps, f.set.id), /receiver_delivery_pending/)
+  await finalizeTaskSet(f.deps, f.set.id)
   const mail = await f.prisma.agentMailboxMessage.findFirstOrThrow({ where: { taskSetId: f.set.id } })
   await f.prisma.agentMailboxMessage.update({ where: { id: mail.id }, data: { visibleAt: new Date(0) } })
   assert.equal(await dispatchNextMailboxMessage(f.prisma, realtime), true)

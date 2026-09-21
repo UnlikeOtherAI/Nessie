@@ -55,6 +55,7 @@ export const updateTaskSetFinalization = async (
   prisma: PrismaClient, claim: TaskSetFinalizationClaim,
   patch: { receipt?: TaskSetArtifactReceipt; outputPageId?: string; deliveryFailed?: boolean;
     disclosure?: z.infer<typeof TaskSetDisclosureSchema>;
+    deliveryFailure?: string;
     finished?: boolean; deliveryStatus?: 'none' | 'pending' | 'delivered' | 'blocked'; release?: boolean } = {},
 ): Promise<void> => prisma.$transaction(async (tx) => {
   await lockTaskSet(tx, claim.set.id)
@@ -66,14 +67,31 @@ export const updateTaskSetFinalization = async (
   if (patch.receipt) state.receipt = patch.receipt
   if (patch.disclosure) state.disclosure = patch.disclosure
   if (patch.deliveryFailed !== undefined) state.deliveryFailed = patch.deliveryFailed
-  if (patch.release || patch.finished) delete state.lease
+  if (patch.release) delete state.lease
   else state.lease = { token: claim.token, until: new Date(Date.now() + LEASE_MS).toISOString() }
-  await tx.taskSet.update({ where: { id: set.id }, data: {
+  const now = new Date()
+  const completing = patch.finished && set.status !== 'completed'
+  const reason = patch.deliveryFailure ?? (patch.deliveryStatus ? null : set.reason)
+  const healthChanged = patch.deliveryStatus !== undefined
+    && (set.deliveryStatus !== patch.deliveryStatus || set.reason !== reason)
+  const updated = await tx.taskSet.update({ where: { id: set.id }, data: {
     outputState: taskSetJson(state),
     ...(patch.outputPageId ? { outputPageId: patch.outputPageId } : {}),
     ...(patch.deliveryStatus ? { deliveryStatus: patch.deliveryStatus } : {}),
-    ...(patch.finished ? { status: 'completed', reason: null, statusChangedAt: new Date(),
-      revision: { increment: 1 } } : {}),
+    ...(patch.deliveryStatus ? { reason } : {}),
+    ...(completing ? { status: 'completed' } : {}),
+    ...((completing || healthChanged) ? { statusChangedAt: now, revision: { increment: 1 } } : {}),
+    ...(healthChanged ? { healthRevision: { increment: 1 } } : {}),
+    nextAttemptAt: new Date(now.getTime() + (patch.release ? 30_000 : LEASE_MS)),
   } })
+  if (patch.deliveryStatus === 'blocked' && healthChanged) await tx.userAlert.upsert({
+    where: { userId_eventKey: {
+      userId: set.ownerUserId, eventKey: `task-set-health:${set.id}:${updated.healthRevision}`,
+    } },
+    create: { organizationId: set.organizationId, userId: set.ownerUserId,
+      kind: 'task_set_health', taskSetId: set.id,
+      eventKey: `task-set-health:${set.id}:${updated.healthRevision}` }, update: {},
+  })
   claim.state = state
+  claim.set = updated
 })

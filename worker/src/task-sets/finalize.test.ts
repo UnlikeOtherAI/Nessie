@@ -68,23 +68,38 @@ dbTest('a crash after the output receipt reuses one attachment and one document,
 dbTest('receiver retry keeps one mailbox handoff and never reruns completed items', async (t) => {
   const f = await taskSetFinalizationFixture(t)
   await f.prisma.taskSet.update({ where: { id: f.set.id }, data: {
+    output: { kind: 'documents', spaceId: f.space.id, format: 'jsonl' },
     receiver: { agentId: f.receiver.id, channelId: f.channel.id, instructions: 'Write a final report.' },
     deliveryStatus: 'pending',
   } })
-  await assert.rejects(finalizeTaskSet(f.deps, f.set.id), /receiver_delivery_pending/)
+  await finalizeTaskSet(f.deps, f.set.id)
+  const completed = await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })
+  assert.equal(completed.status, 'completed')
+  assert.equal(completed.deliveryStatus, 'pending')
+  assert.ok(completed.outputPageId)
   const mail = await f.prisma.agentMailboxMessage.findFirstOrThrow({ where: { taskSetId: f.set.id } })
   assert.equal(mail.peerDelegationDepth, null)
   assert.equal(mail.correlationId, `task-set:${f.set.id}`)
   assert.deepEqual(mail.basis, f.disclosure.basisScopes)
   assert.equal(await authorizeTaskSetMailbox(f.prisma, { ...mail, taskSetId: f.set.id, toAgentId: f.receiver.id }), 'ready')
   await f.prisma.agentMailboxMessage.update({ where: { id: mail.id }, data: { status: 'dead_letter' } })
-  await assert.rejects(finalizeTaskSet(f.deps, f.set.id), /receiver_delivery_failed/)
-  await f.prisma.taskSet.update({ where: { id: f.set.id }, data: { status: 'blocked' } })
   await finalizeTaskSet(f.deps, f.set.id)
+  const blocked = await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })
+  assert.equal(blocked.status, 'completed')
+  assert.equal(blocked.deliveryStatus, 'blocked')
+  assert.equal(blocked.reason, 'receiver_delivery_failed')
+  await finalizeTaskSet(f.deps, f.set.id)
+  assert.equal(await f.prisma.userAlert.count({ where: { taskSetId: f.set.id } }), 1)
   assert.equal((await f.prisma.agentMailboxMessage.findUniqueOrThrow({ where: { id: mail.id } })).status, 'dead_letter')
-  await f.prisma.taskSet.update({ where: { id: f.set.id }, data: { status: 'running' } })
-  await assert.rejects(finalizeTaskSet(f.deps, f.set.id), /receiver_delivery_pending/)
+  // A processor that can no longer write the output does not block a delivery-only retry.
+  await f.prisma.knowledgeSpace.update({ where: { id: f.space.id }, data: { sensitivityTier: 'restricted' } })
+  await f.prisma.knowledgeSpaceMember.deleteMany({ where: { spaceId: f.space.id, agentId: f.agent.id } })
+  await f.prisma.taskSet.update({ where: { id: f.set.id }, data: { deliveryStatus: 'pending', reason: null } })
+  await finalizeTaskSet(f.deps, f.set.id)
   assert.equal(await f.prisma.agentMailboxMessage.count({ where: { taskSetId: f.set.id } }), 1)
+  assert.equal(f.stored(), 1)
+  const retried = await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })
+  assert.equal(retried.outputPageId, completed.outputPageId)
   await f.prisma.agentMailboxMessage.update({ where: { id: mail.id }, data: { status: 'delivered' } })
   await finalizeTaskSet(f.deps, f.set.id)
   assert.equal((await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })).deliveryStatus, 'delivered')
@@ -108,10 +123,15 @@ dbTest('revocation, unclassified results, shared export and machine-restricted d
   await f.prisma.taskSetItem.update({ where: { taskSetId_sequence: { taskSetId: f.set.id, sequence: 1 } },
     data: { resultDisclosure: f.disclosure } })
   await f.prisma.channel.update({ where: { id: f.channel.id }, data: { visibility: 'public' } })
-  await assert.rejects(finalizeTaskSet(f.deps, f.set.id), /receiver_source_access_required/)
+  await finalizeTaskSet(f.deps, f.set.id)
+  assert.equal((await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })).reason,
+    'receiver_source_access_required')
   assert.equal(await f.prisma.agentMailboxMessage.count({ where: { taskSetId: f.set.id } }), 0)
   await f.prisma.organizationMember.update({ where: {
     organizationId_userId: { organizationId: f.org.id, userId: f.user.id },
   }, data: { deactivatedAt: new Date() } })
-  await assert.rejects(finalizeTaskSet(f.deps, f.set.id), /reauthorization/)
+  await f.prisma.taskSet.update({ where: { id: f.set.id }, data: { deliveryStatus: 'pending', reason: null } })
+  await finalizeTaskSet(f.deps, f.set.id)
+  assert.equal((await f.prisma.taskSet.findUniqueOrThrow({ where: { id: f.set.id } })).reason,
+    'TASK_SET_AUTHORIZATION')
 })

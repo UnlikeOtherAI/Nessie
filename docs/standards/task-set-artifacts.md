@@ -111,6 +111,12 @@ task-set tools or the output document instead of receiving 80,000 inline rows.
 
 Delivery waiting/failure is independent from item execution. Retrying delivery
 reuses the same mailbox row and stored artifact; completed items never run
-again. Mailbox admission stamps the same lineage on the hidden prompt and run.
+again. Output persistence completes the task set before delivery; a pending or
+blocked receiver is tracked separately and never changes completed items.
+Delivery retries use the persisted disclosure and artifact receipt without
+resolving the processor or requiring its former output permissions. Current
+owner/source and receiver authority still apply. A blocked delivery persists
+its remedy and one owner alert per health transition; retry is explicit.
+Mailbox admission stamps the same lineage on the hidden prompt and run.
 Database regressions cover completion gates, replica takeover, receipt recovery,
 destination/source refusal, and mailbox lineage through real run enqueueing.

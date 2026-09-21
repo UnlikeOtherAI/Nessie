@@ -6,6 +6,7 @@ import {
 } from '@nessie/schemas'
 import {
   assertTaskSetActor, assertTaskSetDisclosure, authorizeTaskSetOutput, authorizeTaskSetSource,
+  TaskSetError,
 } from '@nessie/team-admin'
 import {
   createNativeKnowledgeProvider, finalizeTaskSetArtifact, type TaskSetArtifactRow,
@@ -31,12 +32,14 @@ const collectDisclosure = () => {
   }
 }
 
-const authorize = async (deps: Deps, set: TaskSet, actor: AuthorizedActionContext): Promise<void> => {
+const authorize = async (
+  deps: Deps, set: TaskSet, actor: AuthorizedActionContext, processing = true,
+): Promise<void> => {
   await assertTaskSetActor(deps.prisma, actor)
   await assertTaskSetDisclosure(deps.prisma, actor, set.disclosure)
   if (set.source) {
     const source = await authorizeTaskSetSource(deps.prisma, actor, TaskSetSourceSchema.parse(set.source), {
-      processingAgentId: set.executionAgentId,
+      ...(processing ? { processingAgentId: set.executionAgentId } : {}),
     })
     if (source.attachmentId !== set.sourceAttachmentId) throw new TaskSetBlocked('source_revision_changed')
   }
@@ -85,10 +88,13 @@ export const finalizeTaskSet = async (deps: Deps, id: string): Promise<void> => 
   const all = collectDisclosure()
   all.add(set.disclosure)
   try {
-    await authorize(deps, set, actor)
+    await authorize(deps, set, actor, set.status !== 'completed')
     const output = TaskSetOutputSchema.parse(set.output)
     let outputPageId = set.outputPageId
-    if (output.kind !== 'journal') {
+    if (set.status === 'completed') {
+      // Output completion pins this basis. Delivery retries never resolve the processor or rerender results.
+      all.add(claim.state.disclosure)
+    } else if (output.kind !== 'journal') {
       const channel = await deps.prisma.thread.findUniqueOrThrow({
         where: { id: set.executionThreadId }, select: { channel: { select: { teamId: true } } },
       })
@@ -120,22 +126,31 @@ export const finalizeTaskSet = async (deps: Deps, id: string): Promise<void> => 
     } else {
       for await (const row of resultRows(deps, claim, actor, all)) { void row }
     }
-    await authorize(deps, set, actor)
+    await authorize(deps, set, actor, set.status !== 'completed')
     await assertTaskSetDisclosure(deps.prisma, actor, all.value())
+    await updateTaskSetFinalization(deps.prisma, claim, {
+      finished: true, disclosure: all.value(), deliveryStatus: set.receiver ? 'pending' : 'none',
+      release: !set.receiver,
+    })
     if (set.receiver) {
-      await updateTaskSetFinalization(deps.prisma, claim, { disclosure: all.value() })
-      const delivery = await queueTaskSetDelivery(deps.prisma, set, all.value(), {
+      const delivery = await queueTaskSetDelivery(deps.prisma, claim.set, all.value(), {
         outputPageId, leaseToken: claim.token,
-        retryFailed: claim.state.deliveryFailed === true && set.status === 'running',
+        retryFailed: claim.state.deliveryFailed === true && claim.set.deliveryStatus === 'pending',
       })
       await updateTaskSetFinalization(deps.prisma, claim, {
-        deliveryStatus: delivery, deliveryFailed: delivery === 'blocked', release: delivery !== 'delivered',
-        finished: delivery === 'delivered',
+        deliveryStatus: delivery, deliveryFailed: delivery === 'blocked', release: true,
+        ...(delivery === 'blocked' ? { deliveryFailure: 'receiver_delivery_failed' } : {}),
       })
-      if (delivery === 'blocked') throw new TaskSetBlocked('receiver_delivery_failed')
-      if (delivery === 'pending') throw new TaskSetWait('receiver_delivery_pending')
-    } else await updateTaskSetFinalization(deps.prisma, claim, { finished: true, deliveryStatus: 'none' })
+    }
   } catch (error) {
+    if (claim.set.status === 'completed' && !(error instanceof TaskSetWait)) {
+      const reason = error instanceof TaskSetBlocked ? error.reason
+        : error instanceof TaskSetSourceError || error instanceof TaskSetError ? error.code : 'receiver_delivery_failed'
+      await updateTaskSetFinalization(deps.prisma, claim, {
+        release: true, deliveryStatus: 'blocked', deliveryFailed: true, deliveryFailure: reason,
+      })
+      return
+    }
     await updateTaskSetFinalization(deps.prisma, claim, { release: true }).catch(() => undefined)
     if (error instanceof TaskSetSourceError) throw new TaskSetBlocked(error.code)
     throw error

@@ -29,13 +29,13 @@ const spreadsheetValues = (row: TaskSetArtifactRow, output: TaskSetArtifactForma
   if (output.kind !== 'spreadsheet') return []
   const fields = Object.values(output.fields)
   let result: unknown = row.result
-  if (fields.length) {
-    try { result = JSON.parse(row.result ?? 'null') as unknown } catch {
+  if (fields.length && row.result !== null) {
+    try { result = JSON.parse(row.result) as unknown } catch {
       throw new TaskSetSourceError('invalid_output', 'Mapped spreadsheet output requires a JSON result.')
     }
   }
   return [row.sequence, row.id, taskSetCanonicalJson(row.input), row.result ?? '',
-    ...fields.map((field) => taskSetField(result, field))]
+    ...fields.map((field) => row.result === null ? '' : taskSetField(result, field))]
 }
 
 /** Validate before committing an item, using the exact rules the final artifact writer applies. */

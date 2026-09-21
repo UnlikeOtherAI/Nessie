@@ -28,9 +28,7 @@ export const authorizeTaskSetMailbox = async (prisma: PrismaClient, mail: {
   const saved = TaskSetDisclosureSchema.parse((set.outputState as { disclosure?: unknown } | null)?.disclosure)
   if (!isDeepStrictEqual(disclosure, saved)) throw new Error('Task set delivery disclosure changed.')
   if (set.source) {
-    const source = await authorizeTaskSetSource(prisma, actor, TaskSetSourceSchema.parse(set.source), {
-      processingAgentId: set.executionAgentId,
-    })
+    const source = await authorizeTaskSetSource(prisma, actor, TaskSetSourceSchema.parse(set.source))
     if (source.attachmentId !== set.sourceAttachmentId) throw new Error('Task set source revision changed.')
   }
   await assertTaskSetDeliveryDestination(prisma, set, actor, disclosure)
