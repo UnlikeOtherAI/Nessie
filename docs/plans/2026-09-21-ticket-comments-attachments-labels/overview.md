@@ -1,6 +1,6 @@
 # Ticket comments, attachments, labels and a Markdown description
 
-**Date:** 2026-09-21 · **Status:** designed, not built
+**Date:** 2026-09-21 · **Status:** built (see §7 As built)
 **Owning surface:** the ticket dialog (`TaskDialog`, opened by `?task=` on
 `/projects/:projectId/board`) and Project → Settings → **Labels**
 (`/projects/:projectId/settings?section=labels`).
@@ -115,3 +115,37 @@ Only genuinely his calls; everything else is decided above.
    project member* remove an attachment (a ticket is joint work under the
    equal-rights rule), while a comment stays author-only. If files should be
    author-only too, it is one predicate in §2.3.
+
+## 7. As built
+
+The code wins over this plan; these are the deltas that matter to a reader.
+
+- **Components moved for the layer lint:** `TokenInput` and
+  `AuthedAttachmentImage` live in `admin/src/components/shared/`; the pure key
+  table stays in `primitives/token-input-keys.ts`. The authed image uses its
+  own status-aware `useAuthedImage` (same blob cache) so a 404 can show
+  *Image removed*.
+- **Comment paging is oldest-first**; later pages are newer, so the control
+  is *Show more comments* below the list.
+- **One comment write-back builder**, `createTaskCommentWriteBackFromSource`,
+  used by the REST routes and the worker's agent tools alike.
+- **Path-aware inline scan:** adapters may declare `isAssetUrl`; GitHub
+  (`github.com/user-attachments/…`) and Trello (attachment downloads) do,
+  because their upload hosts also serve ordinary pages.
+- **MCP attachments** are stored, then linked through `linkTaskAttachments`
+  (the route's door); `nessie_task_attachment_get` returns metadata only for
+  large or binary files, because an agent credential cannot download outside
+  `/mcp`. MCP comments are authored by the person who approved the
+  credential; a shared agent in a project channel authors as itself.
+- **Jira:** Service Management internal notes are restricted like
+  `visibility` comments and never imported; comment bodies convert ADF to
+  Markdown, descriptions stay on the old converter so fingerprints do not
+  move. Every adapter still emits `fields.labels` beside native labels for the
+  same reason.
+- **Not verified against live providers:** Linear's uploads host with the
+  authorization header, Linear `Comment`/`IssueLabel` webhook field names,
+  GitHub's upload redirect, Trello's download header, Jira `redirect=false`
+  and `comment/list`. The §6.4 live check is still owed.
+- **Open questions (§2)** remain Ondrej's: organisation-wide labels, files
+  back to Linear, author-only attachment removal (built: uploader or any
+  project member).

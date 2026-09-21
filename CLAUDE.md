@@ -149,6 +149,15 @@ sentence changes only if the invariant itself did.
   carries no `locked` field — and all three composer states, including the one
   a unit test cannot show: an organisation admin who may open a protected
   room's settings, may not post in it, and is told why.
+- **Ticket dialog coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:task-dialog`. A pure fixture suite
+  (`NESSIE_TASK_DIALOG_E2E_FIXTURE`) that drives the real `TaskDialog` over a
+  stubbed client; CI runs it after the visibility-affordance one. It pins the
+  layout Ondrej asked for — Documents directly under the Markdown description
+  in the left column, then Attachments and Comments, labels as a compact token
+  field on the right — plus the label keyboard, the read-only mirror and
+  viewer states, and the phone stack. The rules are in
+  [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the
