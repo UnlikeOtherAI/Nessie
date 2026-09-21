@@ -42,10 +42,15 @@ const spreadsheetValues = (row: TaskSetArtifactRow, output: TaskSetArtifactForma
 export const renderTaskSetArtifact = async (
   path: string, output: TaskSetArtifactFormat, rows: AsyncIterable<TaskSetArtifactRow>,
   revalidate: () => Promise<unknown>,
+  baseDisclosure: TaskSetDisclosure = { classified: true, basisScopes: [], disclosureSources: [] },
 ): Promise<{ contentHash: string; disclosure: TaskSetDisclosure; count: number; mime: string; extension: string }> => {
   const digest = createHash('sha256').update(taskSetCanonicalJson(output))
   const scopes = new Map<string, TaskSetDisclosure['basisScopes'][number]>()
   const authors = new Map<string, TaskSetDisclosure['disclosureSources'][number]>()
+  const base = TaskSetDisclosureSchema.parse(baseDisclosure)
+  for (const scope of base.basisScopes) scopes.set(taskSetCanonicalJson(scope), scope)
+  for (const author of base.disclosureSources) authors.set(taskSetCanonicalJson(author), author)
+  digest.update(taskSetCanonicalJson(base))
   let count = 0
   const destination = createWriteStream(path, { flags: 'wx', mode: 0o600 })
   const destinationDone = finished(destination)

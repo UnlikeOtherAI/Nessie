@@ -5,6 +5,10 @@ so it is read when the work touches this area rather than loaded into every
 session. `AGENTS.md` carries the one-line invariant and points here; **this
 file is the rule**.
 
+Task-set processors and receiver handoffs retain the same source chain. See
+[task-set artifacts](task-set-artifacts.md) for pinned file reads, completion
+claims, machine permissions and the explicit mailbox provenance discriminator.
+
 - **A read that enters a run's context feeds the disclosure sink, in the same
   change.** An agent reaches material its audience cannot, and what stops it
   laundering that into a shared room is provenance: `ConsumedSourceSink`

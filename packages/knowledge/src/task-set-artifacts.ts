@@ -44,6 +44,7 @@ export const finalizeTaskSetArtifact = async (
     attribution: LedgerAttribution
     rows: AsyncIterable<TaskSetArtifactRow>
     receipt?: TaskSetArtifactReceipt
+    disclosure?: TaskSetDisclosure
   },
 ): Promise<{ pageId: string; attachmentId: string }> => {
   const destination = await deps.authorizeDestination()
@@ -72,7 +73,9 @@ export const finalizeTaskSetArtifact = async (
     const directory = await mkdtemp(join(tmpdir(), 'nessie-task-output-'))
     try {
       const path = join(directory, 'result')
-      const rendered = await renderTaskSetArtifact(path, input.output, input.rows, deps.authorizeDestination)
+      const rendered = await renderTaskSetArtifact(
+        path, input.output, input.rows, deps.authorizeDestination, input.disclosure,
+      )
       await deps.authorizeDestination()
       const name = input.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 160) || 'Results'
       const filename = `${name}.${rendered.extension}`

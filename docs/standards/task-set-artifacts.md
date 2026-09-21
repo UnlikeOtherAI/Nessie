@@ -84,3 +84,31 @@ The parser/output tests include synthetic 80,000-record JSONL restart and
 80,000-row XLSX iteration, SQLite ordering and rejection, disclosure refusal,
 formula-safe output and replay after receipt persistence. These exercise
 deterministic file handling, not 80,000 model calls or measured Ollama speed.
+
+## Worker completion and delivery
+
+The worker finalizes only sealed input with every item completed or explicitly
+skipped. A fenced, expiring claim in `TaskSet.outputState` coordinates replicas;
+short row-lock transactions persist the claim and receipts, and no lock spans
+file I/O. Results are read 200 rows at a time, with current owner/source checks
+and complete classified disclosure before each page is rendered. A paused or
+replaced claimant cannot persist a later boundary. Source and output operations
+also require the processing agent's knowledge permissions, including the
+humans-only restricted-content rule. Setup validation by a human grants no
+machine exemption.
+
+An optional receiver gets one `AgentMailboxMessage`, identified by
+`task-set:<id>` and the explicit `taskSetId` foreign key. It carries the original
+human's captured identity, full scope basis and private authors; peer-delegation
+depth is unrelated and stays unset. Both enqueue and delivery revalidate the
+recipient binding, current requester and source access, and destination scope
+containment. A private conversation whose only human member is the task owner
+can imply that owner's user scope. Membership alone never exports a narrower
+source to a shared conversation. The receiver reads results through bounded
+task-set tools or the output document instead of receiving 80,000 inline rows.
+
+Delivery waiting/failure is independent from item execution. Retrying delivery
+reuses the same mailbox row and stored artifact; completed items never run
+again. Mailbox admission stamps the same lineage on the hidden prompt and run.
+Database regressions cover completion gates, replica takeover, receipt recovery,
+destination/source refusal, and mailbox lineage through real run enqueueing.

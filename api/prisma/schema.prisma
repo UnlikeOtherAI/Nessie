@@ -4370,15 +4370,18 @@ model AgentMailboxMessage {
   subject             String?
   body                String
   correlationId       String?              @map("correlation_id")
+  /// A task-set handoff carries the original requester and full disclosure basis independently from peer depth.
+  taskSetId           String?              @map("task_set_id") @db.Uuid
+  taskSet             TaskSet?             @relation(fields: [taskSetId], references: [id], onDelete: Cascade)
   /// Set only by the bounded peer-delegation tool; ordinary mailbox traffic
   /// never receives a requester capability or delegation depth.
   peerDelegationDepth Int?                 @map("peer_delegation_depth")
-  /// Immutable UOA login proof captured by the peer-delegation tool. This is
+  /// Immutable UOA login proof captured by peer delegation or a task-set handoff. This is
   /// run provenance, not a local identity or credential record: Ledger still
   /// verifies its subject and epoch against the originating person's live link.
   uoaIdentity         Json?                @map("uoa_identity")
-  /// Provenance carried by a durable peer brief. Existing mailbox producers
-  /// leave this empty; peer delivery stamps it on the prompt and target run.
+  /// Provenance carried by a durable peer brief or task-set handoff. Other mailbox producers
+  /// leave this empty; admitted delivery stamps it on the prompt and target run.
   basis               Json                 @default("[]")
   /// Original private-conversation authors carried independently from scope.
   /// A null author is an intentional unknown marker and must never be dropped.
@@ -4394,6 +4397,7 @@ model AgentMailboxMessage {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([toAgentId, correlationId])
+  @@index([taskSetId])
   @@index([organizationId, status, visibleAt])
   @@index([toAgentId, status, visibleAt])
   @@index([planId, createdAt])
@@ -9702,6 +9706,7 @@ model TaskSet {
   updatedAt           DateTime @updatedAt @map("updated_at")
   items               TaskSetItem[]
   userAlerts          UserAlert[]
+  mailboxMessages     AgentMailboxMessage[]
 
   @@index([organizationId, ownerUserId, createdAt, id])
   @@index([status, nextAttemptAt])

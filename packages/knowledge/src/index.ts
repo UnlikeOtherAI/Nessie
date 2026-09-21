@@ -272,7 +272,7 @@ export type {
 } from './task-set-access.js'
 export { iterateTaskSetSource, parseTaskSetSource, consumeTaskSetDisclosure } from './task-set-sources.js'
 export type { TaskSetSourceDeps, TaskSetConsumedSourceSink } from './task-set-sources.js'
-export { TaskSetSourceError, TASK_SET_SOURCE_LIMITS } from './task-set-records.js'
+export { TaskSetSourceError, TASK_SET_SOURCE_LIMITS, taskSetCanonicalJson, taskSetHash } from './task-set-records.js'
 export { finalizeTaskSetArtifact, taskSetArtifactPageId } from './task-set-artifacts.js'
 export type { TaskSetArtifactDeps, TaskSetArtifactReceipt } from './task-set-artifacts.js'
 export type { TaskSetArtifactRow, TaskSetArtifactFormat } from './task-set-output-render.js'

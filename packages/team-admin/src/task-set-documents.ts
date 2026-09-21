@@ -8,23 +8,40 @@ import type { AuthorizedActionContext, TaskSetOutput, TaskSetSource } from '@nes
 import { assertTaskSetActor } from './task-set-access.js'
 
 export const taskSetKnowledgeAccess = async (
-  prisma: PrismaClient, actor: AuthorizedActionContext,
+  prisma: PrismaClient, actor: AuthorizedActionContext, options: { processingAgentId?: string } = {},
 ): Promise<TaskSetKnowledgeAccess> => {
   const { userId, decision } = await assertTaskSetActor(prisma, actor)
   const organizationId = actor.tenant.organizationId
   const disclosureViewer = await resolveDisclosureViewer(prisma, organizationId, userId, {
     allowStoredUoaIdentity: true, liveEntitlements: decision.entitlements,
   })
-  const viewer = await loadSpaceViewer(prisma, organizationId, { actorType: 'user', actorId: userId }, {
+  const principal = options.processingAgentId
+    ? { actorType: 'agent' as const, actorId: options.processingAgentId }
+    : { actorType: 'user' as const, actorId: userId }
+  const viewer = await loadSpaceViewer(prisma, organizationId, principal, {
     liveEntitlements: decision.entitlements, effectiveUserId: userId,
   })
-  return { prisma, organizationId, actorType: 'user', disclosureViewer, viewer }
+  return { prisma, organizationId, actorType: principal.actorType, disclosureViewer, viewer }
 }
 
 export const authorizeTaskSetSource = async (
   prisma: PrismaClient, actor: AuthorizedActionContext, source: TaskSetSource,
-) => resolveTaskSetDocumentSource(await taskSetKnowledgeAccess(prisma, actor), source)
+  options: { processingAgentId?: string } = {},
+) => {
+  const human = await resolveTaskSetDocumentSource(await taskSetKnowledgeAccess(prisma, actor), source)
+  if (options.processingAgentId) {
+    await resolveTaskSetDocumentSource(await taskSetKnowledgeAccess(prisma, actor, options), source)
+  }
+  return human
+}
 
 export const authorizeTaskSetOutput = async (
   prisma: PrismaClient, actor: AuthorizedActionContext, output: Exclude<TaskSetOutput, { kind: 'journal' }>,
-) => resolveTaskSetArtifactDestination(await taskSetKnowledgeAccess(prisma, actor), output)
+  options: { processingAgentId?: string } = {},
+) => {
+  const human = await resolveTaskSetArtifactDestination(await taskSetKnowledgeAccess(prisma, actor), output)
+  if (options.processingAgentId) {
+    await resolveTaskSetArtifactDestination(await taskSetKnowledgeAccess(prisma, actor, options), output)
+  }
+  return human
+}
