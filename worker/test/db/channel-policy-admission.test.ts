@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { RunExecuteJobPayloadSchema } from '@nessie/schemas'
+import { ChannelDecisionPolicyError } from '@nessie/team-admin'
 import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
 import { revalidateChannelPolicyRun } from '../../src/run/execute/channel-policy-admission.js'
 import type { RunContext } from '../../src/run/execute/types.js'
@@ -53,5 +54,5 @@ runDatabaseTest('queued policy admission refreshes authority and refuses newly u
   })
   await assert.rejects(revalidateChannelPolicyRun(prisma, payload, {
     ...context, consumedSources: createConsumedSourceSink(),
-  }), /no longer an active organisation member/)
+  }), (error: unknown) => error instanceof ChannelDecisionPolicyError && /has lost access/.test(error.message))
 })
