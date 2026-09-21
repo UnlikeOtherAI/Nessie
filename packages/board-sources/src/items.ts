@@ -5,7 +5,11 @@ import { createHash } from 'node:crypto'
  * and the fingerprint echo suppression compares.
  */
 
-export type NormalisedItemLabel = { id: string; label: string }
+/**
+ * A provider label. `color` is `#rrggbb` where the provider has one; the
+ * adapter maps a named colour (Trello) to hex itself.
+ */
+export type NormalisedItemLabel = { id: string; label: string; color?: string }
 
 export type NormalisedItemAssignee = {
   externalUserId: string
@@ -33,6 +37,51 @@ export type NormalisedItem = {
   updatedAt: string
   /** Deleted, trashed or cancelled upstream. */
   archived: boolean
+  /**
+   * The item's comments, when this call read them. `undefined` means "not read
+   * on this call, leave what is stored" — never "there are none".
+   */
+  comments?: NormalisedComment[]
+  /** The item's files and links (and inline assets), when this call read them. */
+  attachments?: NormalisedAttachment[]
+}
+
+/** One upstream comment on an item, normalised. */
+export type NormalisedComment = {
+  externalId: string
+  issueExternalId: string
+  /** Markdown. */
+  body: string
+  /** `null` = a bot or an unknown actor; see `authorDisplay`. */
+  author: NormalisedItemAssignee | null
+  /** What to show when `author` is null (a bot actor's name). */
+  authorDisplay?: string | null
+  createdAt: string
+  updatedAt: string
+  editedAt?: string | null
+  url?: string | null
+  parentExternalId?: string | null
+  /** Narrower audience than the issue (Jira `visibility`). Never imported. */
+  restricted?: boolean
+}
+
+/** One upstream file or link on an item, or an asset found inside its text. */
+export type NormalisedAttachment = {
+  /** The provider's id, where it has one. */
+  externalId?: string
+  issueExternalId: string
+  /** Set when the file hangs off a comment. */
+  commentExternalId?: string
+  /** The idempotency key, with the source: `(sourceId, url)`. */
+  url: string
+  title: string | null
+  contentType?: string | null
+  sizeBytes?: number | null
+  /** `file`: bytes `fetchAsset` can read; `link`: a URL that is the whole attachment. */
+  kind: 'file' | 'link'
+  /** Found inside the description or a comment body, not on the item's attachment list. */
+  inline?: boolean
+  createdAt: string
 }
 
 /** What a write-back asks the vendor to change. */
@@ -44,6 +93,8 @@ export type OutboundChange = {
   priority?: string | null
   dueDate?: string | null
   fields?: Record<string, unknown>
+  /** Provider label ids — the whole set the item should carry. */
+  labelIds?: string[]
 }
 
 export type SyncCheckpoint = {
@@ -51,10 +102,16 @@ export type SyncCheckpoint = {
   /** ISO timestamp the next incremental page starts from. */
   since?: string
   phase: 'initial' | 'incremental'
+  /** The incremental comment lane: after the item pages, the comment pages. */
+  lane?: 'items' | 'comments'
+  commentsCursor?: string
+  commentsSince?: string
 }
 
 export type SyncPage = {
   items: NormalisedItem[]
+  /** Comments that changed independently of their item (the comment lane). */
+  comments?: NormalisedComment[]
   checkpoint: SyncCheckpoint
   hasMore: boolean
 }

@@ -24,11 +24,10 @@ test('the registration asks for this team’s issues at this URL', () => {
   assert.equal(input.url, 'https://nessie.example/api/board-sources/webhooks/linear/tok')
   assert.equal(input.teamId, 'team-uuid')
   assert.equal(input.enabled, true)
-  // Issues only. Every other resource type is a delivery the processor would
-  // re-read an issue for and apply nothing from — comments stay out of the
-  // mirror deliberately, because an upstream comment can have a narrower
-  // audience than the issue it hangs on.
-  assert.deepEqual(input.resourceTypes, ['Issue'])
+  // Issues, their comments (a deletion only ever arrives this way) and their
+  // labels (a recolour changes no issue). Comments are imported under the
+  // task's own audience: Linear has no per-comment restriction (import §4.3).
+  assert.deepEqual(input.resourceTypes, ['Issue', 'Comment', 'IssueLabel'])
 })
 
 test('a webhook is scoped to the container, never to the whole workspace', () => {

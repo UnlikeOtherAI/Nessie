@@ -3,7 +3,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { McpScopeError } from './scopes.js'
 import { boardTools } from './tools/boards.js'
 import { documentTools } from './tools/documents.js'
+import { labelTools } from './tools/labels.js'
 import { spreadsheetTools } from './tools/spreadsheets.js'
+import { taskActivityTools } from './tools/task-activity.js'
 import type { McpToolContext, McpToolDefinition } from './tool-context.js'
 
 /**
@@ -17,6 +19,8 @@ import type { McpToolContext, McpToolDefinition } from './tool-context.js'
 
 export const nessieMcpTools = (): McpToolDefinition[] => [
   ...boardTools(),
+  ...taskActivityTools(),
+  ...labelTools(),
   ...documentTools(),
   ...spreadsheetTools(),
 ]
@@ -54,6 +58,9 @@ export const buildNessieMcpServer = (context: McpToolContext): McpServer => {
         'Nessie work surfaces. Boards cover both Nessie-native boards and those '
         + 'mirrored from Linear, Jira, GitHub and Trello — every task says which '
         + 'it is and whether writes through Nessie reach the external system. '
+        + 'A task carries labels, Markdown comments and files; an image in a '
+        + 'description or comment is `![alt](/api/attachments/<id>)` after '
+        + 'nessie_task_attachment_add. '
         + 'Documents are the knowledge base. Every tool runs as the person who '
         + 'approved this credential and can reach only what they can reach.',
     },

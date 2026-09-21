@@ -1,7 +1,15 @@
 import type { Prisma, PrismaClient, TaskPriority, TaskStatus } from '@prisma/client'
 import { parseUserId, type AuthorizedActionContext } from '@nessie/schemas'
 import { isAgentAccessibleToActor } from './access-checks.js'
-import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
+import { projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
+import { isUuid, projectTaskVisibilityWhere, type ProjectTaskVisibility } from './task-access.js'
+import {
+  linkUploadsToTask,
+  mapProjectTaskWithCount,
+  mapProjectTasksWithCounts,
+  recordAttachmentsAdded,
+} from './task-attachments.js'
+import { applyTaskLabelPlan, planTaskLabels, type TaskLabelSetError } from './task-labels.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { dropStalePlacements } from './project-task-move.js'
 import { boardTaskPoolWhere } from './board-placement.js'
@@ -20,19 +28,10 @@ import {
 
 export type AssignableProjectTaskUser = { id: string; displayName: string }
 
-export type ProjectTaskVisibility = { accessibleProjectIds: string[]; actorUserId: string }
-
-export const projectTaskVisibilityWhere = (visibility?: ProjectTaskVisibility) =>
-  visibility
-    ? {
-        OR: [
-          { projectId: { in: visibility.accessibleProjectIds } },
-          { projectId: null },
-          { ownerUserId: visibility.actorUserId },
-          { assigneeUserId: visibility.actorUserId },
-        ],
-      }
-    : {}
+export {
+  projectTaskVisibilityWhere,
+  type ProjectTaskVisibility,
+} from './task-access.js'
 
 const isOrganizationMember = async (
   prisma: PrismaClient,
@@ -83,7 +82,7 @@ export const listProjectTasks = async (
     orderBy: { updatedAt: 'desc' },
     take: 200,
   })
-  return tasks.map(mapProjectTask)
+  return mapProjectTasksWithCounts(prisma, tasks)
 }
 
 export const getProjectTask = async (
@@ -96,7 +95,7 @@ export const getProjectTask = async (
     where: { id: taskId, organizationId, ...projectTaskVisibilityWhere(visibility) },
     include: projectTaskInclude,
   })
-  return task ? mapProjectTask(task) : null
+  return task ? mapProjectTaskWithCount(prisma, task) : null
 }
 
 export type ProjectTaskAssignmentAttention = (
@@ -129,11 +128,15 @@ export type CreateProjectTaskInput = {
   assigneeAgentId?: string
   ownerUserId?: string
   assignmentAttention?: ProjectTaskAssignmentAttention
+  /** The project's labels to put on the new ticket. */
+  labelIds?: readonly string[]
+  /** The creator's own unlinked uploads (description images) to link to it. */
+  attachmentIds?: readonly string[]
 }
 
 export type ProjectTaskCreateError = {
   error: 'ASSIGNEE_NOT_MEMBER' | 'ASSIGNEE_AGENT_NOT_FOUND' | 'OWNER_NOT_MEMBER' | 'PROJECT_NOT_FOUND' | 'ITERATION_NOT_FOUND' | 'BOARD_NOT_FOUND'
-}
+} | TaskLabelSetError
 
 export const createProjectTask = async (
   prisma: PrismaClient,
@@ -162,6 +165,19 @@ export const createProjectTask = async (
   if (input.assigneeUserId && !(await isOrganizationMember(prisma, input.organizationId, input.assigneeUserId))) return { error: 'ASSIGNEE_NOT_MEMBER' }
   if (input.assigneeAgentId && !(await isAgentAccessibleToActor(prisma, input.actorContext, input.assigneeAgentId))) return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   if (input.ownerUserId && !(await isOrganizationMember(prisma, input.organizationId, input.ownerUserId))) return { error: 'OWNER_NOT_MEMBER' }
+  const labelIds = [...new Set(input.labelIds ?? [])]
+  if (labelIds.length > 0) {
+    // A new ticket is native, so every label is local; it only has to be this project's.
+    const labels = input.projectId
+      ? await prisma.taskLabel.findMany({
+          where: { id: { in: labelIds.filter(isUuid) }, projectId: input.projectId },
+          select: { id: true },
+        })
+      : []
+    const found = new Set(labels.map((label) => label.id))
+    const missing = labelIds.find((id) => !found.has(id))
+    if (missing) return { error: 'LABEL_NOT_IN_PROJECT', labelId: missing }
+  }
   const status: TaskStatus = input.assigneeUserId || input.assigneeAgentId ? 'assigned' : 'inbox'
   const task = await prisma.$transaction(async (tx) => {
     const created = await tx.task.create({
@@ -186,9 +202,22 @@ export const createProjectTask = async (
       eventKey: `task-assigned:${event.id}`, organizationId: input.organizationId,
       projectId: input.projectId ?? null, taskId: created.id,
     })
-    return created
+    if (labelIds.length > 0) {
+      await applyTaskLabelPlan(tx, {
+        taskId: created.id, added: labelIds, removed: [], localAdd: labelIds, localRemove: [],
+        ownedAdd: [], ownedRemove: [], upstreamLabelIds: null,
+      }, { by: input.createdByUserId, ownedWrittenUpstream: false })
+    }
+    const linked = await linkUploadsToTask(tx, {
+      organizationId: input.organizationId, uploaderUserId: input.createdByUserId,
+      taskId: created.id, attachmentIds: input.attachmentIds ?? [],
+    })
+    await recordAttachmentsAdded(tx, { taskId: created.id, by: input.createdByUserId, attachmentIds: linked })
+    return linked.length > 0 || labelIds.length > 0
+      ? tx.task.findFirstOrThrow({ where: { id: created.id }, include: projectTaskInclude })
+      : created
   })
-  return mapProjectTask(task)
+  return mapProjectTaskWithCount(prisma, task)
 }
 
 export type ProjectTaskAssignError = { error: 'NOT_FOUND' | 'ASSIGNEE_NOT_MEMBER' | 'ASSIGNEE_AGENT_NOT_FOUND' }
@@ -216,7 +245,7 @@ export const assignProjectTask = async (
   if (agentId && !(await isAgentAccessibleToActor(prisma, input.actorContext, agentId))) return { error: 'ASSIGNEE_AGENT_NOT_FOUND' }
   if (existing.assigneeUserId === userId && existing.assigneeAgentId === agentId) {
     const task = await prisma.task.findFirst({ where: { id: existing.id }, include: projectTaskInclude })
-    return task ? mapProjectTask(task) : { error: 'NOT_FOUND' }
+    return task ? mapProjectTaskWithCount(prisma, task) : { error: 'NOT_FOUND' }
   }
   const assigned = Boolean(userId || agentId)
 
@@ -275,7 +304,7 @@ export const assignProjectTask = async (
     })
     return tx.task.findFirst({ where: { id: input.taskId }, include: projectTaskInclude })
   })
-  return task ? mapProjectTask(task) : { error: 'NOT_FOUND' }
+  return task ? mapProjectTaskWithCount(prisma, task) : { error: 'NOT_FOUND' }
 }
 
 export type ProjectTaskTransitionError = { error: 'NOT_FOUND' | 'INVALID_TRANSITION'; from?: TaskStatus }
@@ -304,7 +333,7 @@ export const transitionProjectTask = async (
     await tx.taskEvent.create({ data: { taskId: input.taskId, eventType: 'status_changed', payload: { by: input.actorId, from: existing.status, to: input.status } } })
     return tx.task.findFirst({ where: { id: input.taskId }, include: projectTaskInclude })
   })
-  return task ? mapProjectTask(task) : { error: 'INVALID_TRANSITION', from: existing.status }
+  return task ? mapProjectTaskWithCount(prisma, task) : { error: 'INVALID_TRANSITION', from: existing.status }
 }
 
 export type ProjectTaskUpdateFields = {
@@ -317,20 +346,42 @@ export type ProjectTaskUpdateFields = {
   storyPoints?: number | null
   /** A partial merge of custom field values; `null` clears one. */
   fieldValues?: Record<string, unknown>
+  /** Replace-set of the ticket's labels (`setTaskLabels` semantics). */
+  labelIds?: readonly string[]
+  /** The actor's own unlinked uploads (description images) to link to the ticket. */
+  attachmentIds?: readonly string[]
 }
 
 export const updateProjectTask = async (
   prisma: PrismaClient,
-  input: { taskId: string; organizationId: string; fields: ProjectTaskUpdateFields },
+  input: {
+    taskId: string
+    organizationId: string
+    fields: ProjectTaskUpdateFields
+    /** `TaskEvent.by` for the history rows this write adds, and the uploader whose files link. */
+    actorId?: string
+  },
   writeBack?: BoardSourceWriteBack,
 ): Promise<
-  ProjectTaskRecord | { error: 'NOT_FOUND' } | TaskFieldError | BoardSourceWriteBackError
+  | ProjectTaskRecord
+  | { error: 'NOT_FOUND' }
+  | TaskFieldError
+  | TaskLabelSetError
+  | BoardSourceWriteBackError
 > => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
-    select: { id: true, projectId: true },
+    select: { id: true, projectId: true, detail: true, externalLink: { select: { sourceId: true } } },
   })
   if (!existing) return { error: 'NOT_FOUND' }
+  const labelPlan = input.fields.labelIds === undefined
+    ? null
+    : await planTaskLabels(
+        prisma,
+        { id: existing.id, projectId: existing.projectId, sourceId: existing.externalLink?.sourceId ?? null },
+        input.fields.labelIds,
+      )
+  if (labelPlan && 'error' in labelPlan) return labelPlan
 
   // Custom field values are validated against the project's own definitions
   // before anything is written, so the JSONB column cannot accumulate a key no
@@ -373,8 +424,10 @@ export const updateProjectTask = async (
   // field cannot leave an upstream write already made — and its echo, not this
   // request, becomes the mirror.
   const fields = { ...input.fields }
+  let labelsWrittenUpstream = false
   if (writeBack) {
     const change = {
+      ...(labelPlan?.upstreamLabelIds ? { labelIds: labelPlan.upstreamLabelIds } : {}),
       ...(fields.title !== undefined ? { title: fields.title } : {}),
       ...(fields.detail !== undefined ? { description: fields.detail } : {}),
       ...(fields.dueDate !== undefined
@@ -387,6 +440,7 @@ export const updateProjectTask = async (
       // The echo already wrote those columns; writing them again from the
       // request would overwrite whatever the provider actually stored.
       if (outcome) {
+        labelsWrittenUpstream = Boolean(labelPlan?.upstreamLabelIds)
         delete fields.title
         delete fields.detail
         delete fields.dueDate
@@ -408,9 +462,24 @@ export const updateProjectTask = async (
       await tx.task.update({ where: { id: existing.id }, data })
     }
     if (patch) await applyFieldValuesPatch(tx, existing.id, patch)
+    const by = input.actorId ?? null
+    if (labelPlan) {
+      await applyTaskLabelPlan(tx, labelPlan, { by, ownedWrittenUpstream: labelsWrittenUpstream })
+    }
+    // The description gets a history line at all; the text itself is not copied.
+    if (input.fields.detail !== undefined && (input.fields.detail ?? null) !== existing.detail) {
+      await tx.taskEvent.create({ data: { taskId: existing.id, eventType: 'detail_edited', payload: { by } } })
+    }
+    if (input.actorId && input.fields.attachmentIds?.length) {
+      const linked = await linkUploadsToTask(tx, {
+        organizationId: input.organizationId, uploaderUserId: input.actorId,
+        taskId: existing.id, attachmentIds: input.fields.attachmentIds,
+      })
+      await recordAttachmentsAdded(tx, { taskId: existing.id, by: input.actorId, attachmentIds: linked })
+    }
     return tx.task.findFirstOrThrow({ where: { id: existing.id }, include: projectTaskInclude })
   })
-  return mapProjectTask(task)
+  return mapProjectTaskWithCount(prisma, task)
 }
 
 export const setProjectTaskIteration = async (
@@ -433,7 +502,7 @@ export const setProjectTaskIteration = async (
     })
     if (!existing.projectId || !iteration) return { error: 'ITERATION_NOT_FOUND' }
   }
-  return mapProjectTask(await prisma.task.update({
+  return mapProjectTaskWithCount(prisma, await prisma.task.update({
     where: { id: existing.id },
     data: { iterationId: input.iterationId },
     include: projectTaskInclude,

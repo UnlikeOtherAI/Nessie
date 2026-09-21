@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   parseAgentId,
   parseOrganizationId,
@@ -45,6 +45,14 @@ export type ProjectTaskRecord = {
   ownerUserId: string | null
   ownerName: string | null
   createdByUserId: string | null
+  /** The ticket's labels, in name order. */
+  labels: { id: string; name: string; color: string; external: boolean }[]
+  /** Comments not deleted. */
+  commentCount: number
+  /** Files linked to the ticket (`Attachment.taskId`), comment files included. */
+  attachmentCount: number
+  /** Whether the viewer this record was mapped for may change the ticket. */
+  viewerCanEdit: boolean
   createdAt: string
   updatedAt: string
 }
@@ -67,11 +75,60 @@ export const projectTaskInclude = {
       source: { select: { provider: true, writeMode: true } },
     },
   },
+  labels: {
+    select: { label: { select: { id: true, name: true, color: true, sourceId: true } } },
+    orderBy: { label: { name: 'asc' } },
+  },
+  _count: { select: { comments: { where: { deletedAt: null } } } },
 } satisfies Prisma.TaskInclude
 
 type TaskWithPeople = Prisma.TaskGetPayload<{ include: typeof projectTaskInclude }>
 
-export const mapProjectTask = (task: TaskWithPeople): ProjectTaskRecord => ({
+/**
+ * What the mapper needs beyond the row. `Attachment.taskId` is an app-enforced
+ * pointer with no relation (the `messageId` precedent), so its count cannot
+ * ride the include; callers that render the count pass it, and it is 0
+ * otherwise.
+ */
+export type ProjectTaskMapContext = {
+  attachmentCount?: number
+  /**
+   * Defaults to `true`, and that default is the rule, not a guess: every door
+   * that returns a task today — the task list and detail, the board read, the
+   * search, the PA's ticket tools — gates on the same visibility the task
+   * mutation routes (`requireTaskAccess`) gate on, so a viewer holding a
+   * record may change it. A read door that ever shows a task to somebody who
+   * may not change it (an organisation member reading a public project they
+   * are not in) must pass `false`.
+   */
+  viewerCanEdit?: boolean
+}
+
+/** Count the files linked to each task, for `ProjectTaskMapContext.attachmentCount`. */
+export const countTaskAttachments = async (
+  prisma: { attachment: { groupBy: PrismaClient['attachment']['groupBy'] } },
+  taskIds: readonly string[],
+): Promise<Map<string, number>> => {
+  if (taskIds.length === 0) return new Map()
+  const rows = await prisma.attachment.groupBy({
+    by: ['taskId'],
+    where: { taskId: { in: [...taskIds] } },
+    _count: { _all: true },
+  })
+  return new Map(rows.flatMap((row) => (row.taskId ? [[row.taskId, row._count._all] as const] : [])))
+}
+
+/**
+ * Map one row with no extra context (`attachmentCount` 0, `viewerCanEdit`
+ * true). Single-argument so it stays safe to pass straight to `Array#map`.
+ */
+export const mapProjectTask = (task: TaskWithPeople): ProjectTaskRecord =>
+  mapProjectTaskWithContext(task, {})
+
+export const mapProjectTaskWithContext = (
+  task: TaskWithPeople,
+  context: ProjectTaskMapContext,
+): ProjectTaskRecord => ({
   id: parseTaskId(task.id),
   organizationId: parseOrganizationId(task.organizationId),
   projectId: task.projectId ? parseProjectId(task.projectId) : null,
@@ -111,6 +168,15 @@ export const mapProjectTask = (task: TaskWithPeople): ProjectTaskRecord => ({
   ownerUserId: task.ownerUserId ? parseUserId(task.ownerUserId) : null,
   ownerName: task.owner?.displayName ?? null,
   createdByUserId: task.createdByUserId ? parseUserId(task.createdByUserId) : null,
+  labels: task.labels.map(({ label }) => ({
+    id: label.id,
+    name: label.name,
+    color: label.color,
+    external: label.sourceId !== null,
+  })),
+  commentCount: task._count.comments,
+  attachmentCount: context.attachmentCount ?? 0,
+  viewerCanEdit: context.viewerCanEdit ?? true,
   createdAt: task.createdAt.toISOString(),
   updatedAt: task.updatedAt.toISOString(),
 })

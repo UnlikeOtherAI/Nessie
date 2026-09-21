@@ -33,8 +33,10 @@ file is the rule**.
   The twelve `sheet_*` builtins (`sheet_describe`, `sheet_read_range`,
   `sheet_find`, `sheet_replace`, `sheet_write_range`, `sheet_format_range`,
   `sheet_structure`, `sheet_filter`, `sheet_tabs`, `sheet_create`,
-  `sheet_export`, `sheet_versions`) and their `nessie_sheet_*` MCP mirrors
-  declare `category: 'spreadsheets'`. `knowledge` already held 13 ids, and
+  `sheet_export`, `sheet_versions`) declare `category: 'spreadsheets'`.
+  Their `nessie_sheet_*` MCP mirrors declare nothing: an MCP tool definition
+  (`McpToolDefinition`, `api/src/mcp/tool-context.ts`) carries no category at
+  all, because the MCP surface is gated by scopes, not by the tool picker. `knowledge` already held 13 ids, and
   adding twelve more would have put it over the quarter-of-the-catalogue cap
   the test enforces — but the cap is the symptom, not the reason. A person
   choosing tools asks "can it work in spreadsheets?" as one question, and the

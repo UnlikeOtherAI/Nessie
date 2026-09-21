@@ -2,7 +2,7 @@ import { Readable } from 'node:stream'
 
 import type { Attachment } from '@prisma/client'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { ATTACHMENT_THUMBNAIL_TOPIC, detectSecrets, MESSAGE_UPLOAD_MAX_BYTES } from '@nessie/schemas'
+import { ATTACHMENT_THUMBNAIL_TOPIC, detectSecrets, isAdminActor, MESSAGE_UPLOAD_MAX_BYTES } from '@nessie/schemas'
 import {
   type AttachmentDownload,
   attachmentDisposition,
@@ -287,6 +287,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       !(await canAccessAttachment(prisma, attachment, {
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        isOrganizationAdmin: isAdminActor(actorContext),
       }))
     ) {
       sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
@@ -329,6 +330,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       !(await canAccessAttachment(prisma, attachment, {
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
+        isOrganizationAdmin: isAdminActor(actorContext),
       }))
     ) {
       sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
@@ -358,7 +360,8 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   // Discard a staged-then-removed composer upload. Deliberately narrow: only
   // the uploader's own attachment, and only while nothing references it yet.
   // Anything already attached to a message, KB page, logo, avatar, or feedback
-  // item is not deletable here (its owning surface deletes it).
+  // item is not deletable here (its owning surface deletes it). A file on a
+  // ticket is removed through the task's own route, which audits and publishes.
   app.delete('/api/attachments/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -374,6 +377,8 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         uploaderId: actorContext.actor.actorId,
         messageId: null,
         knowledgePageId: null,
+        taskId: null,
+        taskCommentId: null,
         logoForOrganizations: { none: {} },
         avatarForUsers: { none: {} },
         avatarForAgents: { none: {} },

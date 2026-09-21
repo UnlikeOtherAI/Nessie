@@ -181,6 +181,23 @@ export const useAgentRealtime = (input: {
       void queryClient.invalidateQueries({
         queryKey: taskKeys.checklist(message.data.taskId),
       })
+      // An open dialog reads `presented`, its own root: another writer's save
+      // (a person, an agent, a sync) must reach it too.
+      void queryClient.invalidateQueries({ queryKey: taskKeys.presented(message.data.taskId) })
+      return
+    }
+
+    if (message.event === 'task.activity') {
+      // Content-free (a task id and its project id), like `board.updated`: a
+      // comment or file changed on this ticket. The refetch is the
+      // entitlement check. `presented` is its own root, so it is named; the
+      // board lists carry the card counts and refresh by project.
+      void queryClient.invalidateQueries({ queryKey: taskKeys.comments(message.data.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.attachments(message.data.taskId) })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.presented(message.data.taskId) })
+      void queryClient.invalidateQueries({
+        queryKey: taskKeys.forProject(message.data.projectId),
+      })
       return
     }
 
@@ -227,6 +244,10 @@ export const useAgentRealtime = (input: {
       })
       void queryClient.invalidateQueries({
         queryKey: projectKeys.sources(message.data.projectId),
+      })
+      // Label create, rename, recolour and delete publish this too.
+      void queryClient.invalidateQueries({
+        queryKey: projectKeys.labels(message.data.projectId),
       })
       return
     }

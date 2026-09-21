@@ -24,6 +24,16 @@ type SourceMappingPanelProps = {
   sourceId: string
 }
 
+/**
+ * The row labels map from. An adapter that lists labels first-class no longer
+ * declares a `labels` field, so the row is supplied here — every provider's
+ * items carry labels except a GitHub Projects board, whose items have none.
+ */
+const LABELS_FIELD = { key: 'labels', label: 'Labels', type: 'labels' } as const
+
+const carriesLabels = (source: { provider: string; container: Record<string, unknown> }): boolean =>
+  !(source.provider === 'github' && source.container.kind === 'project')
+
 const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: '', label: 'Not mapped' },
   ...CATEGORY_ORDER.map((category) => ({ value: category, label: CATEGORY_LABEL[category] })),
@@ -68,6 +78,11 @@ export const SourceMappingPanel = ({
   }, [source])
 
   if (!source) return null
+
+  const fieldRows: { key: string; label: string; type: string }[] =
+    source.fields.some((field) => field.key === LABELS_FIELD.key) || !carriesLabels(source)
+      ? source.fields
+      : [...source.fields, LABELS_FIELD]
 
   const linkByExternalUserId = new Map(
     source.identityLinks.map((link) => [link.externalUserId, link]),
@@ -213,8 +228,11 @@ export const SourceMappingPanel = ({
         title="Fields"
       >
         <div className="grid gap-2">
-          {source.fields.map((field) => {
+          {fieldRows.map((field) => {
             const mapped = fieldMappings.find((entry) => entry.externalKey === field.key)
+            // Labels import as the project's own labels, with their colour —
+            // never as a custom field's options, which could not carry it.
+            const isLabels = field.key === LABELS_FIELD.key
             return (
               <div className="grid gap-2 sm:flex sm:items-center" key={field.key}>
                 <span className="min-w-0 flex-1 truncate text-sm text-[color:var(--tx)]">
@@ -245,20 +263,30 @@ export const SourceMappingPanel = ({
                   value={mapped?.target ?? ''}
                 >
                   <option value="">Not imported</option>
-                  <option value="native:priority">Priority</option>
-                  <option value="native:dueDate">Deadline</option>
-                  <option value="native:storyPoints">Story points</option>
-                  <option value="native:detail">Detail</option>
-                  {definitions.map((definition) => (
-                    <option key={definition.id} value={`field:${definition.id}`}>
-                      {definition.name}
-                    </option>
-                  ))}
+                  {isLabels ? (
+                    <option value="native:labels">Labels (native)</option>
+                  ) : (
+                    <>
+                      <option value="native:priority">Priority</option>
+                      <option value="native:dueDate">Deadline</option>
+                      <option value="native:storyPoints">Story points</option>
+                      <option value="native:detail">Detail</option>
+                    </>
+                  )}
+                  {/* A labels row that still names a custom field keeps it
+                      selectable, so an older mapping is shown as it is. */}
+                  {definitions
+                    .filter((definition) => !isLabels || mapped?.target === `field:${definition.id}`)
+                    .map((definition) => (
+                      <option key={definition.id} value={`field:${definition.id}`}>
+                        {definition.name}
+                      </option>
+                    ))}
                 </Select>
               </div>
             )
           })}
-          {source.fields.length === 0 ? (
+          {fieldRows.length === 0 ? (
             <div className="text-sm text-[color:var(--tx3)]">
               Waiting for the first sync to read this container&rsquo;s fields.
             </div>

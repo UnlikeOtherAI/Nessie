@@ -6,9 +6,13 @@ import type {
   SpaceViewer,
   SpreadsheetServiceDeps,
 } from '@nessie/knowledge'
-import type { DisclosureViewer } from '@nessie/runtime'
-import type { AuthorizedActionContext } from '@nessie/schemas'
-import type { EncryptionKeyRingInput } from '@nessie/runtime'
+import type {
+  DisclosureViewer,
+  EncryptionKeyRingInput,
+  FileService,
+  PgRealtimeTransport,
+} from '@nessie/runtime'
+import type { AuthorizedActionContext, TaskLabelSummary } from '@nessie/schemas'
 
 /**
  * What a tool is handed, and what a tool is.
@@ -48,6 +52,13 @@ export type McpToolContext = {
     resourceType: 'knowledge_page' | 'knowledge_space',
     action: 'view' | 'read' | 'create' | 'edit' | 'approve',
   ) => Promise<{ allowed: boolean; reasonCode: string }>
+  /**
+   * The process's one file service — the chokepoint every stored byte goes
+   * through, as the upload and attachment routes use it. Optional so a caller
+   * that builds a partial context (tests of tools that touch no file) keeps
+   * compiling; a file tool refuses plainly when it is absent.
+   */
+  fileService?: FileService | null
   getTask: (taskId: string) => Promise<TaskWithOrigin | null>
   isProjectAccessibleToActor: (
     actorContext: AuthorizedActionContext,
@@ -61,6 +72,12 @@ export type McpToolContext = {
    */
   knowledge: KnowledgeAccess | null
   prisma: PrismaClient
+  /**
+   * The realtime hub the routes publish through, so a comment an agent adds
+   * refreshes an open ticket dialog exactly as a person's does. Optional for
+   * partial test contexts; absent means nothing is announced.
+   */
+  realtime?: Pick<PgRealtimeTransport, 'publishWs'> | null
   scopes: AgentAccessScope[]
   /**
    * The process's one spreadsheet service — the same instance the HTTP routes
@@ -77,8 +94,12 @@ export type McpToolContext = {
 
 /** The parts of a task record these tools read. */
 export type TaskWithOrigin = {
+  commentCount?: number
   externalLink: { externalUrl: string; provider: string; writeMode: string } | null
   id: string
+  labels?: TaskLabelSummary[]
+  projectId?: string | null
+  status?: string
 }
 
 /**

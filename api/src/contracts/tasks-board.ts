@@ -1,7 +1,9 @@
 import {
   AgentIdSchema,
   ProjectIdSchema,
+  TaskAttachmentIdsSchema,
   TaskFieldValuesPatchSchema,
+  TaskLabelIdsSchema,
   TaskDetailRecordSchema,
   TaskPrioritySchema,
   PaginationParamsSchema,
@@ -45,6 +47,10 @@ export const CreateTaskBodySchema = z.object({
   assigneeUserId: UserIdSchema.optional(),
   assigneeAgentId: AgentIdSchema.optional(),
   ownerUserId: UserIdSchema.optional(),
+  // The ticket's labels (replace-set) and uploads the caller made that the
+  // description references, linked on create.
+  labelIds: TaskLabelIdsSchema.optional(),
+  attachmentIds: TaskAttachmentIdsSchema.optional(),
 })
 
 export const UpdateTaskBodySchema = z.object({
@@ -57,6 +63,11 @@ export const UpdateTaskBodySchema = z.object({
   storyPoints: z.number().int().min(0).nullable().optional(),
   // A partial merge of custom field values; a key set to `null` clears it.
   fieldValues: TaskFieldValuesPatchSchema.optional(),
+  // Replace-set of the ticket's labels; absent leaves them alone.
+  labelIds: TaskLabelIdsSchema.optional(),
+  // Uploads the caller made to link to the ticket (an edited description's
+  // new inline images).
+  attachmentIds: TaskAttachmentIdsSchema.optional(),
 })
 
 // Archive completed work from one explicit project, and — when the caller is a

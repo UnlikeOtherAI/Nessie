@@ -26,9 +26,12 @@ import { useCreateSpreadsheet } from '../../../../facades/knowledge/spreadsheet-
 // Docs surface; a task without a project stays in the global Knowledge home.
 // Only rendered once a task exists (edit mode).
 export const TaskDocuments = ({
+  canEdit = true,
   projectId,
   taskId,
 }: {
+  /** False for a viewer who reads the ticket only: the list, no create buttons. */
+  canEdit?: boolean
   projectId?: string | null
   taskId: string
 }) => {
@@ -81,10 +84,12 @@ export const TaskDocuments = ({
   }
 
   return (
-    <div className="grid gap-2 rounded-md border border-[color:var(--sep)] p-3 md:col-span-2">
-      <div className="flex items-center justify-between">
+    // Directly under the description in the dialog's body group; spacing and
+    // the label separate it, never a bordered box (no nesting).
+    <section aria-label="Documents" className="grid gap-2" data-testid="task-documents">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionLabel as="span" size="sm">Documents</SectionLabel>
-        <div className="flex gap-2">
+        {canEdit ? <div className="flex flex-wrap gap-2">
           <button
             className="admin-button admin-button-secondary admin-button-compact gap-1.5"
             disabled={uploadFile.isPending}
@@ -122,7 +127,7 @@ export const TaskDocuments = ({
             <FontAwesomeIcon icon={faPlus} />
             New note
           </button>
-        </div>
+        </div> : null}
         <input
           accept="*"
           className="hidden"
@@ -201,6 +206,6 @@ export const TaskDocuments = ({
           ))}
         </div>
       )}
-    </div>
+    </section>
   )
 }

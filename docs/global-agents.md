@@ -360,6 +360,31 @@ so research read in a restricted room cannot be copied into a shared result.
 Applying again observes the existing snapshot, while `result: null` explicitly
 clears a recorded result.
 
+`ticket_labels_read`, `ticket_label_create`, `ticket_comment_list`,
+`ticket_comment_add`, `ticket_comment_update`, `ticket_comment_delete`,
+`ticket_attachment_list`, `ticket_attachment_add` and
+`ticket_attachment_remove` are `personalAssistantOnly` too, and
+`ticket_create`/`ticket_update` take `labelIds` (the whole set, ids from
+`ticket_labels_read`). Each calls the `@nessie/team-admin` function the
+comment, attachment and label routes call, and comments reach a mirrored
+ticket's provider through the same `createTaskCommentWriteBackFromSource`
+collaborator. A file reaches a ticket by `attachment_upload` then
+`ticket_attachment_add`; an image is shown inline as
+`![alt](/api/attachments/<attachmentId>)`. Label rename, recolour and delete
+stay on the project's settings page. The invariants are in
+[ticket activity](standards/ticket-activity.md).
+
+A shared agent in a project channel gets the peer subset
+(`PEER_PROJECT_TOOL_IDS` in `worker/src/run/execute/run-setup.ts`) only as
+each tool is explicitly granted: of the ticket tools above, `ticket_list`,
+`ticket_read`, `ticket_board_read`, `ticket_board_create`, `ticket_create`,
+`ticket_update`, `ticket_assign`, `ticket_move`, `ticket_transition`, the
+three checklist tools, `ticket_labels_read`, `ticket_label_create`,
+`ticket_comment_list`, `ticket_comment_add`, `ticket_attachment_list` and
+`ticket_attachment_add`. Editing or deleting a comment and removing a file
+are not lent. A Personal Assistant writes a comment as its person; a shared
+agent writes it as itself, so only that agent can later change it.
+
 Every ticket tool is project-scoped. It resolves the acting user's live project
 membership before it reads or writes; projectless and merely assigned tickets
 are deliberately outside this surface because they have no project disclosure

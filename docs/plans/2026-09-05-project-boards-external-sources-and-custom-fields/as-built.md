@@ -192,6 +192,41 @@ fact. Read this before treating any section above as a description of the code.
   are unchanged and still OAuth-only; the design for their key paths is
   [2026-09-05-api-key-board-source-connectors](../2026-09-05-api-key-board-source-connectors/overview.md).
 
+- **§5.3 "comments are not imported" is superseded** by
+  [ticket comments, attachments and labels §4.3](../2026-09-21-ticket-comments-attachments-labels/import.md).
+  The objection was that an upstream comment can have a narrower audience than
+  its issue; per provider that is true of exactly one feature. Linear, GitHub
+  and Trello comments are visible to everyone who can see the issue and are
+  imported. A Jira comment with a role or group `visibility` — and, as built, a
+  Service Management internal note (`jsdPublic: false`) — is flagged
+  `restricted` by the adapter, carries no text past it, and is never stored.
+  §8's "Comments, attachments and history import" non-goal is lifted for
+  comments and files; history import stays out.
+- **Labels are native project labels, not a *Labels* custom field.** Every
+  adapter now lists its container's labels first-class
+  (`ContainerDescription.labels`, with colour where the provider has one) and
+  no longer declares a `labels` field; the attach maps `labels` to
+  `native:labels` and creates no definition. `fields.labels` is still emitted
+  beside the native labels so an existing source's fingerprint does not move.
+  GitHub prefixes its hex; Trello's named colours map to Trello's own palette,
+  and a colour-only label is named after its colour; Jira labels have no colour
+  and no per-project list, so Jira describes `labels: []`.
+- **Webhook subscriptions grew.** Linear registers `resourceTypes: ['Issue',
+  'Comment', 'IssueLabel']`, a GitHub repository hook `['issues',
+  'issue_comment', 'label']`, and a Jira webhook adds `comment_created`,
+  `comment_updated` and `comment_deleted`. A comment delivery names its issue
+  for a re-read and, on deletion, the removed comment — the only way a deletion
+  lands. A label delivery re-describes the container. Registrations made
+  before this change keep their old subscription until re-registered; the
+  comment lanes still bring their comments on the poll.
+- **Comment lanes per provider.** Linear and GitHub page a flat comment feed
+  after the item pages, on a clock of their own; GitHub resolves a page's issue
+  numbers to node ids in one aliased GraphQL read. Trello walks the board's
+  `commentCard` actions backwards with `before`; an edit to an old Trello
+  comment arrives only through the webhook. Jira has no flat feed: comments
+  ride on the search page (50 issues per page, under the 1 MiB envelope), and
+  the webhook re-read tops a long thread up with its newest hundred.
+
 ### Live verification and remaining vendor checks
 
 Every adapter is unit-tested on its normalisation, its state mapping and its
@@ -210,7 +245,7 @@ See [configuration](../../deployment/configuration.md) → "Project board source
 The remaining provider checks are:
 
 - **Linear, webhooks** — that `webhookCreate` takes `{url, teamId,
-  resourceTypes: ['Issue'], enabled, label}` and returns the signing secret on
+  resourceTypes: ['Issue', 'Comment', 'IssueLabel'], enabled, label}` and returns the signing secret on
   `webhook { secret }`; that a *personal API key belonging to a workspace admin*
   may call it, since Linear documents the gate as "workspace admins, or OAuth
   applications with the `admin` scope"; and that `Linear-Signature` is an
@@ -228,3 +263,13 @@ The remaining provider checks are:
   (a GitHub App installation token does not).
 - **Trello** — that the token arrives in the fragment as `token=` and that
   `x-trello-webhook` is base64(HMAC-SHA1(body + callbackURL)).
+- **Comments and files, GitHub, Trello and Jira** (recorded fixtures only, no
+  live run yet) — that `github.com/user-attachments/…` answers a HEAD carrying
+  the token with a redirect to a signed `private-user-images` URL (the adapter
+  takes that one hop by hand, without the token); that a Trello upload
+  downloads from `api.trello.com` with `Authorization: OAuth
+  oauth_consumer_key=…, oauth_token=…` and no redirect; that Jira's
+  `attachment/content/{id}?redirect=false` streams through the gateway, that
+  `comment/list` answers each comment's `self` link, and that a dynamic webhook
+  accepts the three comment events. Each wrong assumption costs one file row or
+  one event kind, recorded on the row or covered by the poll.

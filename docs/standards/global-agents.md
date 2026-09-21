@@ -203,6 +203,13 @@ Content-bearing ticket, board, and checklist writes share
 `assertProjectWriteDestination`: they refuse material the run consumed from a
 scope the destination audience does not imply. Checklist snapshots additionally
 require that each project collaborator can see the template's source agent.
+The lendable set is `PEER_PROJECT_TOOL_IDS`; it now includes
+`ticket_labels_read`, `ticket_label_create`, `ticket_comment_list`,
+`ticket_comment_add`, `ticket_attachment_list` and `ticket_attachment_add`,
+but not comment edit/delete or file removal. The full ticket tool list is in
+[`docs/global-agents.md`](../global-agents.md) → "Project tickets from the
+Personal Assistant"; the comment, file and label invariants are in
+[ticket-activity.md](ticket-activity.md).
 
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 

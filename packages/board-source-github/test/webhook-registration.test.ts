@@ -24,9 +24,9 @@ test('the hook is signed with the secret this deployment offered', () => {
   assert.equal(config.insecure_ssl, '0')
 })
 
-test('the hook subscribes to issues and their labels, and nothing else', () => {
+test('the hook subscribes to issues, their comments and their labels, and nothing else', () => {
   const body = buildRepositoryHookBody({ url: 'https://x/y', secret: 's' })
-  assert.deepEqual(body.events, ['issues', 'label'])
+  assert.deepEqual(body.events, ['issues', 'issue_comment', 'label'])
   assert.equal(body.active, true)
   assert.equal(body.name, 'web')
 })

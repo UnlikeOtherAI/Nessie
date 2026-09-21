@@ -9,7 +9,8 @@ import {
 import type { Prisma } from '@prisma/client'
 
 import {
-  mapProjectTask,
+  countTaskAttachments,
+  mapProjectTaskWithContext,
   projectTaskInclude,
   type ProjectTaskRecord,
 } from './project-task-records.js'
@@ -217,6 +218,10 @@ export const listBoardTasks = async (
     select: { taskId: true, columnId: true, position: true },
   })
   const pinByTask = new Map(pins.map((pin) => [pin.taskId, pin]))
+  // Cards show a paperclip count, so the page's counts come in one grouped read.
+  const attachmentCounts = await countTaskAttachments(prisma, page.map((task) => task.id))
+  const mapProjectTask = (task: (typeof page)[number]) =>
+    mapProjectTaskWithContext(task, { attachmentCount: attachmentCounts.get(task.id) ?? 0 })
 
   const placed: BoardTaskRecord[] = []
   for (const task of page) {

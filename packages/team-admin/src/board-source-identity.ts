@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import type { NormalisedItem } from '@nessie/board-sources'
+import type { NormalisedComment, NormalisedItem } from '@nessie/board-sources'
 import type { BoardSourceProvider } from '@nessie/schemas'
 
 /**
@@ -213,15 +213,46 @@ export const autoMatchItemAssignees = async (
   tenant: IdentityTenant,
   items: readonly NormalisedItem[],
   known: Map<string, ResolvedIdentity>,
+): Promise<void> =>
+  autoMatchPeople(
+    prisma,
+    tenant,
+    items.flatMap((item) => (item.assignee ? [item.assignee] : [])),
+    known,
+  )
+
+/**
+ * The same, for the people who wrote comments — on a page's items and on the
+ * comment lane alike. Somebody who only ever commented upstream therefore
+ * appears in the People table with *Matched by email* exactly as an assignee
+ * does, and their comments carry their Nessie identity from the first sync.
+ */
+export const autoMatchCommentAuthors = async (
+  prisma: PrismaClient,
+  tenant: IdentityTenant,
+  comments: readonly NormalisedComment[],
+  known: Map<string, ResolvedIdentity>,
+): Promise<void> =>
+  autoMatchPeople(
+    prisma,
+    tenant,
+    comments.flatMap((comment) => (comment.author ? [comment.author] : [])),
+    known,
+  )
+
+const autoMatchPeople = async (
+  prisma: PrismaClient,
+  tenant: IdentityTenant,
+  people: readonly { externalUserId: string; displayName: string; email?: string }[],
+  known: Map<string, ResolvedIdentity>,
 ): Promise<void> => {
   const candidates = new Map<string, ExternalIdentityCandidate>()
-  for (const item of items) {
-    const assignee = item.assignee
-    if (!assignee?.email || known.has(assignee.externalUserId)) continue
-    candidates.set(assignee.externalUserId, {
-      externalUserId: assignee.externalUserId,
-      displayName: assignee.displayName,
-      email: assignee.email,
+  for (const person of people) {
+    if (!person.email || known.has(person.externalUserId)) continue
+    candidates.set(person.externalUserId, {
+      externalUserId: person.externalUserId,
+      displayName: person.displayName,
+      email: person.email,
     })
   }
   if (candidates.size === 0) return
@@ -254,6 +285,7 @@ export const reprojectIdentityLinks = async (
 
   let touched = 0
   for (const link of links) {
+    await reattributeComments(prisma, sourceIds, link)
     const rows = await prisma.taskExternalLink.findMany({
       where: { sourceId: { in: sourceIds }, remoteAssigneeExternalId: link.externalUserId },
       select: { id: true, taskId: true },
@@ -290,6 +322,43 @@ export const reprojectIdentityLinks = async (
     touched += rows.length
   }
   return touched
+}
+
+/**
+ * Re-attribute the imported comments one provider user wrote. A link that names
+ * somebody makes them the author and drops the provider's display name; a link
+ * that names nobody hands the comments back to the provider's name. A comment
+ * written in Nessie never carries an external author id, so it is never moved.
+ */
+const reattributeComments = async (
+  prisma: PrismaClient,
+  sourceIds: readonly string[],
+  link: IdentityLinkProjection,
+): Promise<number> => {
+  const where = {
+    sourceId: { in: [...sourceIds] },
+    externalAuthorExternalId: link.externalUserId,
+  }
+  if (link.userId || link.agentId) {
+    const result = await prisma.taskComment.updateMany({
+      where,
+      data: {
+        authorUserId: link.userId ?? null,
+        authorAgentId: link.userId ? null : link.agentId ?? null,
+        externalAuthorDisplay: null,
+      },
+    })
+    return result.count
+  }
+  const result = await prisma.taskComment.updateMany({
+    where,
+    data: {
+      authorUserId: null,
+      authorAgentId: null,
+      ...(link.displayName ? { externalAuthorDisplay: link.displayName } : {}),
+    },
+  })
+  return result.count
 }
 
 /** Every source in the organisation that reads this provider tenant. */

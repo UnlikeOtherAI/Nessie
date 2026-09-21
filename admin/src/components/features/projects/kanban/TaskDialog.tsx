@@ -16,8 +16,10 @@ import { useAgents } from '../../../../facades/agents/queries'
 import { useTabParam } from '../../../../navigation/useTabParam'
 import { useProjects } from '../../../../facades/projects/hooks'
 import {
+  type CreateTaskInput,
   type TaskPriority,
   type TaskRecord,
+  type UpdateTaskInput,
   useAssignTask,
   useCreateTask,
   useMoveTask,
@@ -28,7 +30,11 @@ import {
 import { draftKey, useDraft } from '../../../../navigation/useDraft'
 import { isArchivedStatus } from './kanban-config'
 import { TaskDialogActions } from './TaskDialogActions'
+import { TaskAttachmentsSection } from './TaskAttachmentsSection'
+import { TaskCommentsSection } from './TaskCommentsSection'
+import { TaskDescriptionField } from './TaskDescriptionField'
 import { TaskDocuments } from './TaskDocuments'
+import { TaskLabelsField } from './TaskLabelsField'
 import { TaskPlacementField } from './TaskPlacementField'
 import { TaskPriorityField } from './TaskPriorityField'
 import { TaskChecklistTab } from './TaskChecklistTab'
@@ -44,6 +50,10 @@ type TaskDraft = {
   due: string
   fieldValues: Record<string, unknown>
   formProjectId: string
+  /** The ticket's labels, replace-set on save. */
+  labelIds: string[]
+  /** Create mode: images uploaded into the description before the ticket exists. */
+  pendingAttachmentIds: string[]
   priority: TaskPriority
   purpose: string
   title: string
@@ -84,6 +94,9 @@ const fieldValuesPatch = (
   }
   return patch
 }
+
+const sameIds = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && [...left].sort().join(',') === [...right].sort().join(',')
 
 const changedFieldValues = (
   before: Record<string, unknown>,
@@ -143,6 +156,8 @@ export const TaskDialog = ({
       due: toDateInputValue(task?.dueDate ?? null),
       fieldValues: task?.fieldValues ?? {},
       formProjectId: '',
+      labelIds: task?.labels.map((label) => label.id) ?? [],
+      pendingAttachmentIds: [],
       priority: task?.priority ?? 'medium',
       purpose: task?.purpose ?? '',
       title: task?.title ?? '',
@@ -164,6 +179,10 @@ export const TaskDialog = ({
     due,
     fieldValues,
     formProjectId,
+    // A draft stored before labels existed has no such key; the ticket's own
+    // labels stand in, not an empty set that would clear them on save.
+    labelIds = baseline.labelIds,
+    pendingAttachmentIds = [],
     priority,
     purpose,
     title,
@@ -225,6 +244,12 @@ export const TaskDialog = ({
   if (!open) return null
 
   const archived = task ? isArchivedStatus(task.status) : false
+  // The server decides; a viewer outside the project reads the ticket only.
+  const canEdit = task ? task.viewerCanEdit : true
+  const labelsProjectId = fieldsProjectId ?? (formProjectId || null)
+  const readOnlySourceName = task?.externalLink?.writeMode === 'read_only'
+    ? PROVIDER_LABEL[task.externalLink.provider]
+    : null
   const canSubmit = title.trim().length > 0 && !pending
 
   const handleSubmit = async () => {
@@ -237,7 +262,9 @@ export const TaskDialog = ({
       const assigneeUserId = assignee?.kind === 'user' ? assignee.id : null
       const assigneeAgentId = assignee?.kind === 'agent' ? assignee.id : null
       if (isEdit && task) {
-        await updateTask.mutateAsync({
+        // `labelIds` rides only when it changed: it is a replace-set, and
+        // sending an untouched one would undo a label a colleague just added.
+        const update: UpdateTaskInput = {
           id: task.id,
           title: trimmedTitle,
           purpose: trimmedPurpose || null,
@@ -247,7 +274,9 @@ export const TaskDialog = ({
           ...(changedFieldValues(task.fieldValues ?? {}, fieldValues)
             ? { fieldValues: fieldValuesPatch(task.fieldValues ?? {}, fieldValues) }
             : {}),
-        })
+          ...(sameIds(baseline.labelIds, labelIds) ? {} : { labelIds }),
+        }
+        await updateTask.mutateAsync(update)
         const changed =
           (task.assigneeUserId ?? null) !== assigneeUserId ||
           (task.assigneeAgentId ?? null) !== assigneeAgentId
@@ -260,7 +289,7 @@ export const TaskDialog = ({
           await moveTask.mutateAsync({ id: task.id, columnId })
         }
       } else {
-        await createTask.mutateAsync({
+        const create: CreateTaskInput = {
           title: trimmedTitle,
           purpose: trimmedPurpose || undefined,
           detail: trimmedDetail || undefined,
@@ -273,7 +302,10 @@ export const TaskDialog = ({
           dueDate: fromDateInputValue(due),
           assigneeUserId: assigneeUserId ?? undefined,
           assigneeAgentId: assigneeAgentId ?? undefined,
-        })
+          ...(labelIds.length > 0 ? { labelIds } : {}),
+          ...(pendingAttachmentIds.length > 0 ? { attachmentIds: pendingAttachmentIds } : {}),
+        }
+        await createTask.mutateAsync(create)
       }
       taskDraft.clear()
       onClose()
@@ -351,13 +383,15 @@ export const TaskDialog = ({
       {isEdit && task && dialogTab === 'checklist' ? <TaskChecklistTab taskId={task.id} /> : null}
 
       <form
-        className={dialogTab === 'checklist' ? 'hidden' : 'grid gap-5 md:grid-cols-[1.7fr_1fr]'}
+        className={dialogTab === 'checklist' ? 'hidden' : 'task-dialog-form'}
         onSubmit={(event) => {
           event.preventDefault()
           if (canSubmit) void handleSubmit()
         }}
       >
-        <div className="grid content-start gap-4">
+        {/* Three groups: DOM order is the phone order (short controls, then
+            long content), grid placement is the desktop layout — ui.md §5.2. */}
+        <div className="task-dialog-head">
           <FormField label="Title" required>
             <Input
               autoComplete="off"
@@ -376,18 +410,9 @@ export const TaskDialog = ({
               value={purpose}
             />
           </FormField>
-
-          <FormField label="Detail">
-            <Textarea
-              onChange={(event) => patchDraft({ detail: event.target.value })}
-              placeholder="The full description, context, acceptance criteria…"
-              rows={10}
-              value={detail}
-            />
-          </FormField>
         </div>
 
-          <div className="grid content-start gap-4">
+        <div className="task-dialog-meta">
           <TaskPriorityField onChange={(value) => patchDraft({ priority: value })} value={priority} />
 
           <div className="grid gap-1.5">
@@ -427,6 +452,17 @@ export const TaskDialog = ({
             />
           ) : null}
 
+          {labelsProjectId ? (
+            <TaskLabelsField
+              disabled={!canEdit || pending}
+              onChange={(next) => patchDraft({ labelIds: next })}
+              projectId={labelsProjectId}
+              readOnlySourceName={readOnlySourceName}
+              taskLabels={task?.labels}
+              value={labelIds}
+            />
+          ) : null}
+
           <TaskFieldsSection
             definitions={fieldDefinitions}
             manageHref={
@@ -443,7 +479,10 @@ export const TaskDialog = ({
 
           {!isEdit && !projectId ? (
             <FormField label="Project">
-              <Select onChange={(event) => patchDraft({ formProjectId: event.target.value })} value={formProjectId}>
+              <Select
+                onChange={(event) => patchDraft({ formProjectId: event.target.value, labelIds: [] })}
+                value={formProjectId}
+              >
                 <option value="">No project</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
@@ -455,7 +494,34 @@ export const TaskDialog = ({
           ) : null}
         </div>
 
-        {isEdit && task ? <TaskDocuments projectId={task.projectId} taskId={task.id} /> : null}
+        <div className="task-dialog-body">
+          <TaskDescriptionField
+            canEdit={canEdit}
+            createMode={!isEdit}
+            key={task?.id ?? 'new'}
+            onChange={(markdown) => patchDraft({ detail: markdown })}
+            onPendingAttachment={(attachmentId) =>
+              setDraft((current) => ({
+                ...current,
+                pendingAttachmentIds: [...(current.pendingAttachmentIds ?? []), attachmentId],
+              }))
+            }
+            taskId={task?.id}
+            value={detail}
+          />
+          {isEdit && task ? (
+            <>
+              <TaskDocuments canEdit={canEdit} projectId={task.projectId} taskId={task.id} />
+              <TaskAttachmentsSection canEdit={canEdit} taskId={task.id} />
+              <TaskCommentsSection
+                canComment={canEdit}
+                externalLink={task.externalLink}
+                projectId={task.projectId}
+                taskId={task.id}
+              />
+            </>
+          ) : null}
+        </div>
 
         {/*
           One banner for four mutations (save, column move, status transition,
@@ -466,7 +532,7 @@ export const TaskDialog = ({
           on failure, so it announces once per rejected action.
         */}
         {error ? (
-          <Notice className="md:col-span-2" role="alert" size="sm" tone="danger">
+          <Notice role="alert" size="sm" tone="danger">
             {error}
           </Notice>
         ) : null}

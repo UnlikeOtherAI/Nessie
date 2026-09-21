@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
-import { isAgentVisibleToUser } from '@nessie/team-admin'
+import { isAdminRole } from '@nessie/schemas'
+import { isAgentVisibleToUser, isTaskAccessibleToUser } from '@nessie/team-admin'
 
 type AttachmentAccessRow = {
   id: string
@@ -7,6 +8,7 @@ type AttachmentAccessRow = {
   messageId: string | null
   knowledgePageId: string | null
   emailMessageId: string | null
+  taskId: string | null
   uploaderId: string | null
 }
 
@@ -105,12 +107,25 @@ export const canAccessEmailAttachment = async (
   )
 }
 
+const isOrganizationAdmin = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string },
+): Promise<boolean> => {
+  const member = await prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
+    select: { role: true, deactivatedAt: true },
+  })
+  return Boolean(member && !member.deactivatedAt && isAdminRole(member.role))
+}
+
 export const canAccessAttachment = async (
   prisma: PrismaClient,
   attachment: AttachmentAccessRow,
   input: {
     organizationId: string
     userId: string
+    /** From the verified request when the caller has it; otherwise read from the membership. */
+    isOrganizationAdmin?: boolean
   },
 ): Promise<boolean> => {
   if (attachment.organizationId !== input.organizationId) return false
@@ -127,6 +142,15 @@ export const canAccessAttachment = async (
       organizationId: input.organizationId,
       userId: input.userId,
     })
+  }
+  // A file on a ticket is readable by exactly whoever can read the ticket —
+  // the one predicate the comment and attachment doors ask too.
+  if (attachment.taskId) {
+    return isTaskAccessibleToUser(prisma, {
+      organizationId: input.organizationId,
+      userId: input.userId,
+      isOrganizationAdmin: input.isOrganizationAdmin ?? await isOrganizationAdmin(prisma, input),
+    }, attachment.taskId)
   }
   // Knowledge-base blobs (drawer attachments or file-node version objects) are
   // space-access-controlled and must only be served via the KB download routes,

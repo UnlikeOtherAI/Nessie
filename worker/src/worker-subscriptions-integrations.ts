@@ -3,6 +3,7 @@ import {
   resolveAgentMailReadiness,
 } from '@nessie/agent-mail'
 import { registerBoardSourceAdaptersFromEnv } from '@nessie/board-source-providers'
+import { publishTaskActivity } from '@nessie/team-admin'
 import { registerCommsConnectorsFromEnv } from '@nessie/comms-providers'
 import {
   BOARD_SOURCE_HEALTH_ALERT_TOPIC,
@@ -117,6 +118,11 @@ const boardSourceDeps = {
         data: { projectId: input.projectId },
       })
       .catch(() => undefined)
+  },
+  fileService,
+  publishTaskActivity: async (input: { organizationId: string; projectId: string; taskId: string }) => {
+    if (!realtimeTransport) return
+    await publishTaskActivity(realtimeTransport, input).catch(() => undefined)
   },
 }
 

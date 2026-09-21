@@ -3,6 +3,10 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import type { PrismaClient } from '@prisma/client'
 import {
   AdapterNotRegisteredError,
+  type BoardSourceAdapter,
+  type ConnectionContext,
+  type NormalisedComment,
+  type NormalisedItem,
   SourceAuthError,
   SourceContainerGoneError,
   SourceCursorExpiredError,
@@ -14,10 +18,19 @@ import {
   BOARD_SOURCE_BACKOFF_CEILING_MS,
   BOARD_SOURCE_CLAIM_TIMEOUT_MS,
 } from '@nessie/schemas'
-import { AT_REST_SECRET_PURPOSE, sealSecret } from '@nessie/runtime'
+import { AT_REST_SECRET_PURPOSE, type FileService, sealSecret } from '@nessie/runtime'
 import {
+  type ActivitySourceContext,
+  applyInboundAssets,
+  applyInboundComments,
   applyInboundItem,
+  autoMatchCommentAuthors,
   autoMatchItemAssignees,
+  fetchPendingAssets,
+  type IdentityTenant,
+  inlineAssetsForComments,
+  mapsNativeLabels,
+  upsertSourceLabels,
   type BoardWatchEvent,
   externalTenantKeyFor,
   isBoardSourceCredentialError,
@@ -49,6 +62,96 @@ export type BoardSourceSyncDeps = {
   publicApiUrl: string | null
   enqueueHealthAlert: (input: { sourceId: string; revision: number }) => Promise<void>
   publishBoardUpdated: (input: { organizationId: string; projectId: string }) => Promise<void>
+  /**
+   * The file chokepoint provider files are stored through. Absent, files are
+   * recorded `pending` and wait for a worker that has one.
+   */
+  fileService?: Pick<FileService, 'store'>
+  /**
+   * `task.activity` for one ticket whose comments or files a job changed —
+   * content-free, once per ticket per job. Absent, the board's own
+   * `board.updated` is the only refresh.
+   */
+  publishTaskActivity?: (input: {
+    organizationId: string
+    projectId: string
+    taskId: string
+  }) => Promise<void>
+}
+
+/**
+ * Everything on a page that is not the item's mapped fields: the people who
+ * commented, the comments themselves (an item's own and the comment lane's),
+ * and the files and links. Applied after the items, so every comment's task
+ * exists, and comments before files, so a file hanging off a comment finds it.
+ * Runs whatever the item outcome was — an `unchanged` item still has comments.
+ */
+export const applyPageActivity = async (
+  deps: Pick<BoardSourceSyncDeps, 'prisma'>,
+  source: ActivitySourceContext,
+  tenant: IdentityTenant,
+  adapter: Pick<BoardSourceAdapter, 'assetHosts' | 'isAssetUrl'>,
+  page: { items: readonly NormalisedItem[]; comments?: readonly NormalisedComment[] },
+): Promise<Set<string>> => {
+  const laneComments = page.comments ?? []
+  const comments = [...page.items.flatMap((item) => item.comments ?? []), ...laneComments]
+  await autoMatchCommentAuthors(deps.prisma, tenant, comments, source.identityByExternalUserId)
+  const touched = await applyInboundComments(deps.prisma, source, comments)
+  const assets = [
+    ...page.items.flatMap((item) => item.attachments ?? []),
+    ...inlineAssetsForComments(laneComments, adapter),
+  ]
+  for (const taskId of await applyInboundAssets(deps.prisma, source, assets)) touched.add(taskId)
+  return touched
+}
+
+/**
+ * Store what is pending, then tell each touched ticket once. The fetch is
+ * bounded per job; a failure inside it is the file's, recorded on its row.
+ */
+export const finishActivity = async (
+  deps: BoardSourceSyncDeps,
+  source: ActivitySourceContext,
+  adapter: Pick<BoardSourceAdapter, 'fetchAsset'>,
+  context: ConnectionContext,
+  touched: Set<string>,
+): Promise<void> => {
+  if (deps.fileService) {
+    const stored = await fetchPendingAssets(deps.prisma, {
+      source,
+      adapter,
+      context,
+      fileService: deps.fileService,
+    })
+    for (const taskId of stored) touched.add(taskId)
+  }
+  if (!deps.publishTaskActivity) return
+  for (const taskId of touched) {
+    await deps.publishTaskActivity({
+      organizationId: source.organizationId,
+      projectId: source.projectId,
+      taskId,
+    })
+  }
+}
+
+/**
+ * Re-read the container's labels and bring every project label the source owns
+ * up to the provider's name and colour — so a recolour upstream reaches the
+ * pill without any issue changing. Returns whether any label was described.
+ */
+export const refreshSourceLabels = async (
+  deps: Pick<BoardSourceSyncDeps, 'prisma'>,
+  adapter: Pick<BoardSourceAdapter, 'describeContainer'>,
+  context: ConnectionContext,
+  source: { id: string; organizationId: string; projectId: string; fieldMappings: unknown },
+  container: Record<string, unknown>,
+): Promise<boolean> => {
+  if (!mapsNativeLabels(parseFieldMappings(source.fieldMappings))) return false
+  const description = await adapter.describeContainer(context, container)
+  if (!description.labels || description.labels.length === 0) return false
+  await upsertSourceLabels(deps.prisma, source, description.labels)
+  return true
 }
 
 /** Capped exponential backoff: 1m, 2m, 4m … up to the six-hour ceiling. */
@@ -149,8 +252,15 @@ export const executeBoardSourceSync = async (
   const events: BoardWatchEvent[] = []
   let applied = 0
   let unmappedState: string | null = null
+  const touched = new Set<string>()
+  let labelsRefreshed = false
 
   try {
+    // Every initial sync re-describes, so labels nobody has used on an issue
+    // yet — and their colours — are there to choose from on the first day.
+    if (initialSync) {
+      labelsRefreshed = await refreshSourceLabels(deps, adapter, context, source, container)
+    }
     for (let page = 0; page < MAX_PAGES_PER_JOB; page += 1) {
       const result = await adapter.fetchPage(context, container, checkpoint, {
         syncWindowDays: source.syncWindowDays,
@@ -183,6 +293,8 @@ export const executeBoardSourceSync = async (
           }
         }
       }
+      const pageTouched = await applyPageActivity(deps, applyContext, tenant, adapter, result)
+      for (const taskId of pageTouched) touched.add(taskId)
       checkpoint = result.checkpoint
       // Persisted after every page, so a killed worker resumes rather than
       // restarting an import that may be thousands of items long.
@@ -192,6 +304,8 @@ export const executeBoardSourceSync = async (
       })
       if (!result.hasMore) break
     }
+
+    await finishActivity(deps, applyContext, adapter, context, touched)
 
     if (deps.publicApiUrl) await ensureWebhook(deps, adapter, context, source, container)
 
@@ -216,7 +330,9 @@ export const executeBoardSourceSync = async (
       await clearHealth(prisma, source.id)
     }
 
-    if (applied > 0) {
+    // Cards carry label pills and comment and file counts, so any of those
+    // changing repaints the board, not only a changed item.
+    if (applied > 0 || touched.size > 0 || labelsRefreshed) {
       await deps.publishBoardUpdated({
         organizationId: source.organizationId,
         projectId: source.projectId,

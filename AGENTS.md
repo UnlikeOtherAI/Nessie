@@ -347,6 +347,14 @@ when one changes, the same turn updates it, not this section.
   [docs/standards/team-model.md](docs/standards/team-model.md).
   Read [docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md](docs/plans/2026-09-05-project-boards-external-sources-and-custom-fields/overview.md)
   before writing code here.
+- **Ticket comments, files and labels are one `@nessie/team-admin` function
+  each, called alike by the route, the MCP tool and the worker builtin.**
+  Bytes enter only through `POST /api/uploads` and are linked to a ticket,
+  readable through the `taskId` arm of `canAccessAttachment`; a comment is its
+  author's; sync replaces only source-owned labels and never imports a
+  narrower-audience comment.
+  Read [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md)
+  before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call
   arguments; the live lane never touches durable storage, and editing is deltas
   rather than a rewrite.
