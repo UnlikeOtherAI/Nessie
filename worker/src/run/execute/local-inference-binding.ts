@@ -48,9 +48,10 @@ const selectedLocalModelIsFresh = (input: {
  * does not fall through to either Ledger or a subscription: a dangling pin is
  * a customer-visible repair state, not permission to move prompt bytes.
  */
-export const resolveRunLocalInferenceBinding = async (
+const resolveLocalInferenceBinding = async (
   deps: ExecutionDependencies,
   context: RunContext,
+  receiptOnly: boolean,
 ): Promise<RunLocalInferenceResolution> => {
   const bindingId = context.agent.localInferenceBindingId ?? null
   if (!bindingId && context.agent.provider !== 'local/ollama') {
@@ -96,7 +97,7 @@ export const resolveRunLocalInferenceBinding = async (
       reason: 'This agent’s local model connection needs repair',
     }
   }
-  if (host.revokedAt || host.pausedAt) {
+  if (host.revokedAt || !receiptOnly && host.pausedAt) {
     return {
       kind: 'unavailable',
       reason: host.pausedAt
@@ -104,13 +105,13 @@ export const resolveRunLocalInferenceBinding = async (
         : 'The selected local host was revoked',
     }
   }
-  if (!freshHost(host.lastSeenAt, new Date())) {
+  if (!receiptOnly && !freshHost(host.lastSeenAt, new Date())) {
     return {
       kind: 'unavailable',
       reason: 'The selected local host is offline',
     }
   }
-  if (!selectedLocalModelIsFresh({
+  if (!receiptOnly && !selectedLocalModelIsFresh({
     inventory: host.inventory,
     inventoryObservedAt: host.inventoryObservedAt,
     manifestDigest: binding.manifestDigest,
@@ -159,6 +160,15 @@ export const resolveRunLocalInferenceBinding = async (
     kind: 'local',
   }
 }
+
+export const resolveRunLocalInferenceBinding = (
+  deps: ExecutionDependencies, context: RunContext,
+): Promise<RunLocalInferenceResolution> => resolveLocalInferenceBinding(deps, context, false)
+
+/** Known receipts need live authority, but do not send another byte to the host. */
+export const resolveLocalInferenceReceiptBinding = (
+  deps: ExecutionDependencies, context: RunContext,
+): Promise<RunLocalInferenceResolution> => resolveLocalInferenceBinding(deps, context, true)
 
 /**
  * Write the selected local lane to the Run before a budget or provider path is

@@ -88,6 +88,11 @@ The rules below are the standing implementation contract.
   admission; it cannot choose the next row because a response was interrupted.
   A paused replay returns its fence only for settlement, never for invocation.
   Completed encrypted receipts replay independently before new work is polled.
+- A completed pinned result may be recovered after its generation deadline or
+  host reconnect. Receipt recovery rechecks the current binding, policy,
+  custodian and source disclosure, but need not contact an online host. It may
+  never create a generation under an old host epoch or recover an unfinished
+  call as a successful final answer.
 - Both updated server and native runtime are required. A host without its shared
   resource enrollment cannot poll for inference work.
 
