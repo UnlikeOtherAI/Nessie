@@ -1,8 +1,9 @@
 # Kimix review: sequential task sets
 
 Reviewer: kimix, using `k3-256k` through the Kimi provider, on 2026-09-21.
-The findings below are the reviewer's report; the maintainer's assessment is
-separate at the end. This records a review, not resolution of its findings.
+The findings below preserve the reviewer's original report. The maintainer's
+decisions and their design-level disposition are recorded separately at the
+end; implementation and runtime verification remain outstanding.
 
 **Revision:** document as of baseline commit `0f31c4383` (worktree `task-set-kimix-review`); the document's internal audit was against `57a2642d2`.
 **Scope:** static design review of `docs/plans/2026-09-21-sequential-task-sets-gap-map.md` only, plus two substantiating reads: `docs/standards/capability-health-alerts.md` and `api/src/routes/local-inference-attempt-routes.ts` (lines 30–70). The audited inventory was not redone. "Verified" below means confirmed in source this turn; otherwise the claim is a design assumption taken from the document.
@@ -39,32 +40,27 @@ This was a static design review of the document against two source/standard file
 
 ## Maintainer assessment
 
-The six findings identify requirements that should be made explicit before
-implementation. The referenced disclosure rule, health-alert rule and
-per-host lease predicate were checked again after the review. These are
-design risks, not evidence that the unimplemented task-set feature has leaked
-data or lost work. The proposal remains unchanged apart from a link to this
-review; the findings remain open.
+Kimix is an advisory reviewer. The maintainer owns the decisions below, now
+incorporated into the proposal's
+[Decisions after review](2026-09-21-sequential-task-sets-gap-map.md#decisions-after-review).
+All six findings are resolved in the design; none is claimed implemented or
+runtime-verified. The referenced disclosure rule, health-alert rule and per-host
+lease predicate were checked after the review. These are requirements for an
+unimplemented capability, not evidence of a deployed data leak or lost work.
 
-The recommendations need these qualifications when resolved:
+| Finding | Decision |
+| --- | --- |
+| Health alerts | Accept with narrower notification policy: immediate for intervention, once after 30 continuous unpaused offline minutes, quiet for routine capacity waits and intentional pauses. Reuse authorized, deduplicated alerts and repair deep links. |
+| Disclosure | Accept. Register every consumed source/dependency/result read in `ConsumedSourceSink`; reject missing classification before dispatch. Include receiver reads and deterministic output writes. |
+| Context overflow | Accept without banning explicit projections. Account for the complete invocation before each inference; stop with `input_too_large`, preserve inputs and require an explicit remedy. No silent truncation or automatic summarizer/model switch. |
+| Shared resource identity | Accept. Authenticated resource enrollment binds Desktop and executor to one local coordinator and server capacity pool. Default to one slot across Nessie callers; ambiguous termination cannot free it. State the OS-account and external-client limits explicitly. |
+| Skipped dependency | Accept deterministic blocking; reject extra per-dependent confirmation UI. Missing committed result means `blocked_dependency`, strict order still applies, and only an explicit authored change removes a dependency. |
+| Verification harness | Accept. Name the existing multi-instance/mock-provider foundations, deterministic crash barriers and a required new headless browser flow covering actual controls and persisted state. |
 
-- Alert on actionable or meaningfully prolonged stalls with a defined
-  transition policy; do not turn every routine capacity wait, brief offline
-  interval or intentional pause into another notification. Use the existing
-  deduplication and entitlement-aware alert paths.
-- Context admission must reject silent loss of requested inputs. Explicit
-  source-column selection, configured bounded projections and artifact
-  references remain valid ways to fit an item. Input, tool/schema and output
-  allowance need to be accounted for together.
-- A physical-resource identity must be backed by the authorized enrollment
-  and host enforcement, not guessed from a machine label. No lease timeout
-  alone proves a previous local inference has stopped.
-- A dependent without a committed required result must stay blocked. Dropping
-  a dependency is an explicit authored change, never an automatic retry or
-  skip behavior; the review does not require a new per-dependent dialog.
-- The elapsed-time examples are correct arithmetic scenarios. Their inputs
-  are not measured Ollama throughput, and neither the examples nor this
-  review establish performance on the user's Mac.
+The elapsed-time examples remain correct arithmetic scenarios, not measured
+Ollama throughput. Neither this review nor the design resolution establishes
+performance on the user's Mac. Kimix has not reviewed the later resolution;
+the original recommendations above remain intact as review history.
 
 The review is scoped to the proposal and two targeted source/standard reads;
 it is not an exhaustive implementation audit. No product, API, worker,
