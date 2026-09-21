@@ -1,6 +1,13 @@
 import { lstat, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
+export class WorkspaceCleanupRequiredError extends Error {
+  constructor() {
+    super('Remove every local draft and stop every sandbox before replacing this pairing or changing its workspace folders.')
+    this.name = 'WorkspaceCleanupRequiredError'
+  }
+}
+
 /**
  * Drafts and sandboxes belong to the folder set that produced them, so the whole
  * set is frozen while any of them exist. This is deliberately the run-level
@@ -23,9 +30,6 @@ export const assertWorkspaceMayChange = async (stateDir: string): Promise<void> 
     throw new Error('Local executor runtime state must be an ordinary directory.')
   }
   if ((await readdir(runtimeDirectory)).length > 0) {
-    throw new Error(
-      'Remove every local draft and stop every sandbox before replacing this pairing or changing its workspace folders.',
-    )
+    throw new WorkspaceCleanupRequiredError()
   }
 }
-

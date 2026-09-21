@@ -1,5 +1,6 @@
 //! Code pairing remains inside the provenance-checked service and its private root.
 use std::{
+    collections::BTreeSet,
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -14,30 +15,38 @@ use crate::{
 
 const PENDING_FILE: &str = "executor-pairing-code.json";
 
+fn pairing_failure(output: &str) -> String {
+    let response = serde_json::from_str::<serde_json::Value>(output).ok();
+    match response.as_ref().and_then(|value| value.pointer("/error/code")).and_then(serde_json::Value::as_str) {
+        Some("workspace_cleanup_required") => "Remove every local draft and stop every sandbox before replacing this pairing or changing its workspace folders.".to_owned(),
+        _ => "Nessie could not complete pairing. Check your connection and try again.".to_owned(),
+    }
+}
+
 impl Supervisor {
     fn pairing_directory(&self) -> Result<PathBuf, String> {
         let pending = pending_root(&self.root).join("machine");
+        let mut directories = BTreeSet::new();
         if pending.join(PENDING_FILE).exists() || has_executor_state(&pending) {
-            return Ok(pending);
+            directories.insert(pending.clone());
         }
-        let executors = paired_executors(&self.root);
+        for executor in paired_executors(&self.root) {
+            directories.insert(self.state_dir(&executor)?);
+        }
         if let Ok(entries) = fs::read_dir(executors_root(&self.root)) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if crate::protocol::valid_identifier(&name)
                     && entry.path().join(PENDING_FILE).exists()
                 {
-                    return self.state_dir(&name);
+                    directories.insert(self.state_dir(&name)?);
                 }
             }
         }
-        if executors.len() > 1 {
+        if directories.len() > 1 {
             return Err("This computer has several existing pairings. Remove the extra pairings before connecting it again.".to_owned());
         }
-        match executors.first() {
-            Some(executor) => self.state_dir(executor),
-            None => Ok(pending),
-        }
+        Ok(directories.into_iter().next().unwrap_or(pending))
     }
 
     fn run_pairing(
@@ -74,7 +83,8 @@ impl Supervisor {
                 )
                 .map_err(|_| "Pairing could not be started.".to_owned())?;
         }
-        if wait_bounded(&mut child, COMMAND_TIMEOUT)? != Some(0) {
+        let status = wait_bounded(&mut child, COMMAND_TIMEOUT)?;
+        if status.is_none() {
             let _ = child.kill();
             let _ = child.wait();
             return Err(
@@ -90,6 +100,9 @@ impl Supervisor {
             .take(65_536)
             .read_to_string(&mut output)
             .map_err(|_| "Pairing returned no answer.".to_owned())?;
+        if status != Some(0) {
+            return Err(pairing_failure(&output));
+        }
         serde_json::from_str(&output)
             .map_err(|_| "Pairing returned an unreadable answer.".to_owned())
     }
@@ -182,6 +195,23 @@ mod tests {
     }
 
     #[test]
+    fn only_known_pairing_error_codes_reach_the_tray() {
+        assert!(
+            pairing_failure(r#"{"error":{"code":"workspace_cleanup_required"}}"#)
+                .starts_with("Remove every local draft")
+        );
+        for output in [
+            r#"{"error":{"code":"unknown","message":"private path"}}"#,
+            "private path",
+        ] {
+            assert_eq!(
+                pairing_failure(output),
+                "Nessie could not complete pairing. Check your connection and try again."
+            );
+        }
+    }
+
+    #[test]
     fn replacement_recovers_pending_state_after_the_old_binding_was_retired() {
         let root = tempfile::tempdir().unwrap();
         let host = supervisor(root.path());
@@ -189,6 +219,39 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         fs::write(directory.join(PENDING_FILE), "{}").unwrap();
         assert_eq!(host.pairing_directory().unwrap(), directory);
+    }
+
+    #[test]
+    fn replacement_pending_state_and_its_old_binding_are_one_pairing() {
+        let root = tempfile::tempdir().unwrap();
+        let host = supervisor(root.path());
+        let directory = host.state_dir("old-executor").unwrap();
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join(PENDING_FILE), "{}").unwrap();
+        fs::write(directory.join("executor-state.json"), "{}").unwrap();
+        assert_eq!(host.pairing_directory().unwrap(), directory);
+    }
+
+    #[test]
+    fn a_pending_attempt_cannot_hide_a_separate_existing_pairing() {
+        for pending_is_promoted in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let host = supervisor(root.path());
+            let paired = host.state_dir("paired-executor").unwrap();
+            fs::create_dir_all(&paired).unwrap();
+            fs::write(paired.join("executor-state.json"), "{}").unwrap();
+            let pending = if pending_is_promoted {
+                host.state_dir("other-executor").unwrap()
+            } else {
+                pending_root(root.path()).join("machine")
+            };
+            fs::create_dir_all(&pending).unwrap();
+            fs::write(pending.join(PENDING_FILE), "{}").unwrap();
+            assert!(host
+                .pairing_directory()
+                .unwrap_err()
+                .contains("several existing pairings"));
+        }
     }
 
     #[test]

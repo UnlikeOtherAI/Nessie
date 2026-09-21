@@ -324,6 +324,11 @@ machine key and never copied into durable executor state. An unsigned or
 tampered release remains refused by the service: code pairing does not bypass
 the publisher or runtime-integrity checks.
 
+Running `nessie-executor pair` without an explicit state directory on Windows
+points to **Nessie Executor → Pair with Nessie**. It creates no separate pairing
+under the user's profile. Explicit operator state directories and the native
+JSON commands retain their configured behavior.
+
 After a reboot the service starts before anybody logs in. If Nessie is
 unavailable, the tray shows **starting** while the service retries with bounded
 backoff. **Stop** cancels those retries for the current service run; **Start**
@@ -359,6 +364,11 @@ run the packaged CLI's corresponding JSON commands inside the verified service.
 A confirmation carries the digest of the exact organisation/team claim the
 person saw. The service serializes these actions, keeps pending keys private,
 and requires the Windows account that started the attempt to finish it.
+A pending attempt in a different directory from an existing pairing is refused;
+an old binding and its replacement attempt in the same directory are one pairing.
+If retained drafts or sandboxes block replacement, the CLI returns the bounded
+`workspace_cleanup_required` error code and the tray explains the required cleanup.
+Unknown command failures use a fixed message; child output is never shown.
 `status`, `start`, `stop`, `describe` and configuration controls remain on the
 same pipe. Pairing answers contain the code, expiry and live display labels;
 private keys never leave the service. The pipe admits local Administrators and

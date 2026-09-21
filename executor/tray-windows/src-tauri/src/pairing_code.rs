@@ -12,7 +12,6 @@ use crate::{
 fn request(payload: serde_json::Value) -> Result<serde_json::Value, String> {
     match call(&payload)? {
         ServiceResponse::Pairing(view) => Ok(view),
-        ServiceResponse::Error(reason) => Err(reason),
         _ => Err("Nessie could not read the pairing status.".to_owned()),
     }
 }

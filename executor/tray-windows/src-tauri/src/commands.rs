@@ -52,7 +52,6 @@ pub fn describe(executor_id: &str) -> Result<ExecutorDescription, String> {
     match response {
         ServiceResponse::Describe(value) => serde_json::from_value(value)
             .map_err(|_| "the service answered in a shape this tray does not understand".to_owned()),
-        ServiceResponse::Error(reason) => Err(reason),
         _ => Err("the service answered in a shape this tray does not understand".to_owned()),
     }
 }
@@ -148,7 +147,6 @@ async fn reconfigure<R: Runtime, F: FnOnce(&mut ExecutorDescription)>(
     }))?;
     match response {
         ServiceResponse::Status(_) => Ok(describe(&executor_id)?),
-        ServiceResponse::Error(reason) => Err(reason),
         _ => Err("the service answered in a shape this tray does not understand".to_owned()),
     }
 }

@@ -8,10 +8,14 @@ import {
 import { workspaceFoldersFromInput } from './workspace-folder-arguments.js'
 import { acquireDefaultPairingLease, defaultPairingDirectory, promoteDefaultPairing } from './pairing-code-directory.js'
 import { createExecutorServiceEnvironment, enableExecutorService } from './service-linux.js'
+import { WorkspaceCleanupRequiredError } from './workspace-retirement.js'
 
 const value = (args: string[], flag: string): string | undefined => {
   const index = args.indexOf(flag)
-  return index < 0 ? undefined : args[index + 1]
+  if (index < 0) return undefined
+  const selected = args[index + 1]
+  if (!selected || selected.startsWith('--')) throw new Error('The command is missing a required setting.')
+  return selected
 }
 
 const stdin = async (): Promise<Record<string, unknown>> => {
@@ -41,16 +45,29 @@ const show = (view: PairingCodeView): void => {
   } else process.stdout.write(view.status === 'expired' ? 'The code expired. Start pairing again.\n' : 'Pairing cancelled.\n')
 }
 
+/** The Windows service owns the machine pairing; the ordinary CLI must not create a second user-owned one. */
+export const pairingUsesWindowsTray = (args: string[], platform: NodeJS.Platform): boolean => (
+  platform === 'win32'
+  && ['pair', 'pairing-start'].includes(args[0] ?? 'pair')
+  && !args.some((argument) => ['--state-dir', '--json', '--enrollment'].includes(argument))
+)
+
 /** Native clients consume JSON; a terminal gets one complete guided pairing flow. */
-export const runPairingCodeCli = async (args: string[]): Promise<boolean> => {
+export const runPairingCodeCli = async (
+  args: string[], platform: NodeJS.Platform = process.platform,
+): Promise<boolean> => {
   const command = args[0] ?? 'pair'
   if (!['pairing-start', 'pairing-status', 'pairing-confirm', 'pairing-cancel', 'pair'].includes(command)) return false
   if (command === 'pair' && args.includes('--enrollment')) return false
+  if (pairingUsesWindowsTray(args, platform)) {
+    process.stdout.write('Open Nessie Executor in the Windows tray and choose Pair with Nessie.\n')
+    return true
+  }
   const explicitDirectory = value(args, '--state-dir')
+  const json = args.includes('--json')
   const rootLease = explicitDirectory ? null : await acquireDefaultPairingLease()
   try {
     const directory = explicitDirectory ?? await defaultPairingDirectory()
-    const json = args.includes('--json')
     let view: PairingCodeView
     if (command === 'pairing-status') view = await pairingCodeStatus(directory)
     else if (command === 'pairing-confirm') {
@@ -99,7 +116,7 @@ export const runPairingCodeCli = async (args: string[]): Promise<boolean> => {
     }
     if (!explicitDirectory && view.status === 'paired' && view.executorId) {
       await promoteDefaultPairing(directory, view.executorId)
-      if (!json && process.stdin.isTTY && process.platform === 'linux'
+      if (!json && process.stdin.isTTY && platform === 'linux'
         && (command === 'pair' || command === 'pairing-start')) {
         const environment = createExecutorServiceEnvironment()
         await enableExecutorService({ executorId: view.executorId, assumeYes: true }, {
@@ -110,6 +127,11 @@ export const runPairingCodeCli = async (args: string[]): Promise<boolean> => {
     }
     if (json) process.stdout.write(`${JSON.stringify(view)}\n`)
     else show(view)
+    return true
+  } catch (error) {
+    if (!json || !(error instanceof WorkspaceCleanupRequiredError)) throw error
+    process.stdout.write(`${JSON.stringify({ error: { code: 'workspace_cleanup_required' } })}\n`)
+    process.exitCode = 1
     return true
   } finally { await rootLease?.release() }
 }

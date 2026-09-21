@@ -31,7 +31,7 @@ export const defaultPairingDirectory = async (): Promise<string> => {
     })
     if (state) paired.push(child)
   }
-  if (pending.length > 1 || paired.length > 1) {
+  if (new Set([...pending, ...paired]).size > 1) {
     throw new Error('This computer has several pairings. Choose the existing pairing before continuing.')
   }
   return pending[0] ?? paired[0] ?? resolve(directory, 'pairing')

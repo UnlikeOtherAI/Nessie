@@ -34,7 +34,6 @@ pub enum ServiceResponse {
     Pair { executor_id: String, fingerprint: String },
     Describe(serde_json::Value),
     Pairing(serde_json::Value),
-    Error(String),
 }
 
 /// Reads one complete line from a pipe response. A named-pipe server may close
