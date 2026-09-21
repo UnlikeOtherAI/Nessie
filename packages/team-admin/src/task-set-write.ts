@@ -1,8 +1,9 @@
 import { Prisma } from '@prisma/client'
 import {
-  TaskSetCreateSchema, TaskSetUpdateSchema, TaskSetProcessorSchema, TaskSetDisclosureSchema,
-  type AuthorizedActionContext, type TaskSetCreate, type TaskSetUpdate,
+  TaskSetCreateSchema, TaskSetUpdateSchema, TaskSetProcessorSchema,
+  type AuthorizedActionContext, type TaskSetCreate, type TaskSetUpdate, type TaskSetDisclosure,
 } from '@nessie/schemas'
+import { mergeTaskSetDisclosure } from './task-set-disclosure.js'
 import { personalAssistantDmKey } from './approval-card.js'
 import { appendTaskSetItems, lockTaskSet } from './task-set-items.js'
 import { resolveTaskSetProcessor, type TaskSetModelDeps } from './task-set-processors.js'
@@ -27,7 +28,7 @@ export const validateTaskSetReceiver = async (
 
 export const createTaskSetForActor = async (
   deps: TaskSetModelDeps, actor: AuthorizedActionContext, raw: TaskSetCreate,
-  disclosure?: unknown,
+  disclosure?: TaskSetDisclosure,
 ) => {
   const input = TaskSetCreateSchema.parse(raw)
   const { userId } = await assertTaskSetActor(deps.prisma, actor)
@@ -47,21 +48,17 @@ export const createTaskSetForActor = async (
       channel: { organizationId: actor.tenant.organizationId, members: { some: { userId } } } }, select: { id: true } })
     if (!origin) throw new TaskSetError('TASK_SET_ORIGIN', 'Origin conversation not found.', 404)
   }
-  const inherited = TaskSetDisclosureSchema.parse(disclosure ?? {
-    classified: true, basisScopes: [], disclosureSources: [],
-  })
-  const basis = {
-    classified: true,
-    basisScopes: [{ scopeType: 'user', scopeId: userId }, ...(source?.disclosure.basisScopes ?? []), ...inherited.basisScopes],
-    disclosureSources: [...(source?.disclosure.disclosureSources ?? []), ...inherited.disclosureSources],
-  }
+  const basis = mergeTaskSetDisclosure({
+    classified: true, basisScopes: [{ scopeType: 'user', scopeId: userId }], disclosureSources: [],
+  }, source?.disclosure, disclosure)
   return deps.prisma.$transaction(async (tx) => {
     const thread = await tx.thread.create({ data: { channelId: channel.id, title: input.name } })
     const set = await tx.taskSet.create({ data: {
       name: input.name, objective: input.objective, instructions: input.instructions,
       organizationId: actor.tenant.organizationId, ownerUserId: userId,
       executionAgentId: processor.agentId, capacityKey: processor.capacityKey, executionThreadId: thread.id,
-      processor: taskSetJson(input.processor), source: input.source ? taskSetJson(input.source) : Prisma.DbNull,
+      processor: taskSetJson(input.processor), processorPin: taskSetJson(processor.pin),
+      source: input.source ? taskSetJson(input.source) : Prisma.DbNull,
       sourceVersionId: input.source?.versionId,
       sourceAttachmentId: source?.attachmentId,
       output: taskSetJson(input.output), receiver: input.receiver ? taskSetJson(input.receiver) : Prisma.DbNull,
@@ -83,6 +80,7 @@ export const createTaskSetForActor = async (
 
 export const updateTaskSetForActor = async (
   deps: TaskSetModelDeps, actor: AuthorizedActionContext, id: string, raw: TaskSetUpdate,
+  disclosure?: TaskSetDisclosure,
 ) => {
   const previous = await getTaskSetForActor(deps.prisma, actor, id)
   const patch = TaskSetUpdateSchema.parse(raw)
@@ -106,15 +104,11 @@ export const updateTaskSetForActor = async (
       ...(patch.objective === undefined ? {} : { objective: patch.objective }),
       ...(patch.instructions === undefined ? {} : { instructions: patch.instructions }),
       ...(processor ? { executionAgentId: processor.agentId, capacityKey: processor.capacityKey,
-        processorPin: Prisma.DbNull,
+        processorPin: taskSetJson(processor.pin),
         processor: taskSetJson(patch.processor ?? TaskSetProcessorSchema.parse(previous.processor)) } : {}),
       ...(patch.source === undefined ? {} : { source: patch.source ? taskSetJson(patch.source) : Prisma.DbNull,
         sourceVersionId: patch.source?.versionId ?? null, sourceAttachmentId: source?.attachmentId ?? null }),
-      ...(source ? { disclosure: taskSetJson({
-        classified: true,
-        basisScopes: [...TaskSetDisclosureSchema.parse(set.disclosure).basisScopes, ...source.disclosure.basisScopes],
-        disclosureSources: [...TaskSetDisclosureSchema.parse(set.disclosure).disclosureSources, ...source.disclosure.disclosureSources],
-      }) } : {}),
+      disclosure: taskSetJson(mergeTaskSetDisclosure(set.disclosure, source?.disclosure, disclosure)),
       ...(patch.output ? { output: taskSetJson(patch.output) } : {}),
       ...(patch.receiver === undefined ? {} : { receiver: patch.receiver ? taskSetJson(patch.receiver) : Prisma.DbNull,
         deliveryStatus: patch.receiver ? 'pending' : 'none' }),

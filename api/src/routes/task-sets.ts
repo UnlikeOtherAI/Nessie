@@ -7,8 +7,7 @@ import {
 import {
   addTaskSetItemsForActor, controlTaskSetForActor, createTaskSetForActor,
   getTaskSetForActor, listTaskSetItemsForActor, listTaskSetProcessors, listTaskSetsForActor,
-  taskSetRecord, taskSetItemRecord, TaskSetError, updateTaskSetForActor, updateTaskSetItemForActor,
-  assertTaskSetDisclosure,
+  taskSetRecord, getTaskSetItemForActor, TaskSetError, updateTaskSetForActor, updateTaskSetItemForActor,
 } from '@nessie/team-admin'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
@@ -83,11 +82,7 @@ export const registerTaskSetRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const actor = deps.requireActorContext(request, reply)
     const params = parseInput(ItemParams, request.params, reply)
     if (!actor || !params) return reply
-    await getTaskSetForActor(deps.prisma, actor, params.id)
-    const item = await deps.prisma.taskSetItem.findFirst({ where: { id: params.itemId, taskSetId: params.id } })
-    if (!item) throw new TaskSetError('TASK_SET_ITEM_NOT_FOUND', 'Task item not found.', 404)
-    await assertTaskSetDisclosure(deps.prisma, actor, item.resultDisclosure ?? item.disclosure)
-    return createApiResponse(taskSetItemRecord(item))
+    return createApiResponse(await getTaskSetItemForActor(deps.prisma, actor, params.id, params.itemId))
   })
   route('PATCH', '/api/task-sets/:id/items/:itemId', async (request, reply) => {
     const actor = deps.requireActorContext(request, reply)

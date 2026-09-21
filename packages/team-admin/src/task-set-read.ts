@@ -1,10 +1,11 @@
 import { Prisma, type PrismaClient, type TaskSet, type TaskSetItem } from '@prisma/client'
 import {
   buildPage, decodeKeysetCursor, resolvePageLimit,
-  TaskSetRecordSchema, TaskSetItemRecordSchema,
+  TaskSetRecordSchema, TaskSetItemRecordSchema, TaskSetDisclosureSchema,
   type AuthorizedActionContext, type PaginationDirection,
 } from '@nessie/schemas'
-import { assertTaskSetActor, assertTaskSetDisclosure, getTaskSetForActor } from './task-set-access.js'
+import type { TaskSetReadObserver } from './task-set-disclosure.js'
+import { assertTaskSetActor, assertTaskSetDisclosure, getTaskSetForActor, TaskSetError } from './task-set-access.js'
 
 export const taskSetRecord = (row: TaskSet) => TaskSetRecordSchema.parse({
   ...row, createdAt: row.createdAt.toISOString(), statusChangedAt: row.statusChangedAt.toISOString(),
@@ -15,7 +16,7 @@ export const taskSetItemRecord = (row: TaskSetItem) => TaskSetItemRecordSchema.p
 
 type ListOptions = { cursor?: string; direction?: PaginationDirection; limit?: number; status?: string }
 export const listTaskSetsForActor = async (
-  prisma: PrismaClient, actor: AuthorizedActionContext, options: ListOptions = {},
+  prisma: PrismaClient, actor: AuthorizedActionContext, options: ListOptions = {}, onRead?: TaskSetReadObserver,
 ) => {
   const { userId } = await assertTaskSetActor(prisma, actor)
   const cursor = decodeKeysetCursor(options.cursor)
@@ -38,16 +39,23 @@ export const listTaskSetsForActor = async (
   })
   const visible = []
   for (const row of page.data) {
-    try { await assertTaskSetDisclosure(prisma, actor, row.disclosure); visible.push(taskSetRecord(row)) }
-    catch { /* No title, input or result metadata for a revoked source. */ }
+    try {
+      await assertTaskSetDisclosure(prisma, actor, row.disclosure)
+    } catch {
+      // No title, input or result metadata for a revoked source.
+      continue
+    }
+    onRead?.(TaskSetDisclosureSchema.parse(row.disclosure))
+    visible.push(taskSetRecord(row))
   }
   return { data: visible, meta: page.meta }
 }
 
 export const listTaskSetItemsForActor = async (
-  prisma: PrismaClient, actor: AuthorizedActionContext, id: string, options: ListOptions = {},
+  prisma: PrismaClient, actor: AuthorizedActionContext, id: string,
+  options: ListOptions = {}, onRead?: TaskSetReadObserver,
 ) => {
-  const set = await getTaskSetForActor(prisma, actor, id)
+  const set = await getTaskSetForActor(prisma, actor, id, onRead)
   const limit = resolvePageLimit(options.limit)
   const cursor = options.cursor ? Number(options.cursor) : null
   if (cursor !== null && (!Number.isSafeInteger(cursor) || cursor < 1)) {
@@ -64,7 +72,10 @@ export const listTaskSetItemsForActor = async (
   if (backward) page.reverse()
   const data = []
   for (const item of page) {
-    await assertTaskSetDisclosure(prisma, actor, item.resultDisclosure ?? item.disclosure)
+    await assertTaskSetDisclosure(prisma, actor, item.disclosure)
+    if (item.resultDisclosure) await assertTaskSetDisclosure(prisma, actor, item.resultDisclosure)
+    onRead?.(TaskSetDisclosureSchema.parse(item.disclosure))
+    if (item.resultDisclosure) onRead?.(TaskSetDisclosureSchema.parse(item.resultDisclosure))
     data.push(taskSetItemRecord(item))
   }
   return { data, meta: {
@@ -73,4 +84,17 @@ export const listTaskSetItemsForActor = async (
     prevCursor: (backward ? more : cursor !== null) && page.length ? String(page[0]!.sequence) : null,
     total: set.totalItems,
   } }
+}
+
+export const getTaskSetItemForActor = async (
+  prisma: PrismaClient, actor: AuthorizedActionContext, id: string, itemId: string, onRead?: TaskSetReadObserver,
+) => {
+  await getTaskSetForActor(prisma, actor, id, onRead)
+  const item = await prisma.taskSetItem.findFirst({ where: { id: itemId, taskSetId: id } })
+  if (!item) throw new TaskSetError('TASK_SET_ITEM_NOT_FOUND', 'Task item not found.', 404)
+  await assertTaskSetDisclosure(prisma, actor, item.disclosure)
+  if (item.resultDisclosure) await assertTaskSetDisclosure(prisma, actor, item.resultDisclosure)
+  onRead?.(TaskSetDisclosureSchema.parse(item.disclosure))
+  if (item.resultDisclosure) onRead?.(TaskSetDisclosureSchema.parse(item.resultDisclosure))
+  return taskSetItemRecord(item)
 }

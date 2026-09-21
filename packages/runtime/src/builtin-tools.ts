@@ -28,12 +28,10 @@ import { INTEGRATION_TOOL_DEFINITIONS } from './builtin-integration-tools.js'
 import { KB_COMMENT_TOOL_DEFINITIONS } from './builtin-kb-comment-tools.js'
 import { KB_TOOL_DEFINITIONS } from './builtin-kb-tools.js'
 import { SHEET_TOOL_DEFINITIONS } from './builtin-sheet-tools.js'
+import { TASK_SET_TOOL_DEFINITIONS } from './builtin-task-set-tools.js'
 import { TODO_TOOL_DEFINITIONS } from './builtin-todo-tools.js'
 import { DEMONSTRATION_TOOL_DEFINITIONS } from './builtin-demonstration-tools.js'
-import {
-  WEB_FETCH_TOOL_DEFINITION,
-  WEB_SEARCH_TOOL_DEFINITION,
-} from './builtin-web-tools.js'
+import { WEB_FETCH_TOOL_DEFINITION, WEB_SEARCH_TOOL_DEFINITION } from './builtin-web-tools.js'
 
 export { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from './builtin-kb-tools.js'
 import {
@@ -536,6 +534,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   MAIL_PRESENT_TOOL_DEFINITION,
   ...APP_SETUP_TOOL_DEFINITIONS,
   ...TODO_TOOL_DEFINITIONS,
+  ...TASK_SET_TOOL_DEFINITIONS,
   ...DEMONSTRATION_TOOL_DEFINITIONS,
 ]
 

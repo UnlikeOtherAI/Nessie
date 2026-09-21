@@ -245,3 +245,5 @@ export * from './task-set-processors.js'
 export * from './task-set-write.js'
 export * from './task-set-controls.js'
 export * from './task-set-documents.js'
+
+export * from './task-set-disclosure.js'

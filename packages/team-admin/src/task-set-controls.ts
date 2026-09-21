@@ -19,9 +19,8 @@ export const controlTaskSetForActor = async (
 ) => {
   const action = TaskSetActionSchema.parse(raw)
   const previous = await getTaskSetForActor(deps.prisma, actor, id)
-  if (previous.status !== 'completed' && ['start', 'resume', 'retry'].includes(action.action)) {
-    await resolveTaskSetProcessor(deps, actor, TaskSetProcessorSchema.parse(previous.processor))
-  }
+  const processor = previous.status !== 'completed' && ['start', 'resume', 'retry'].includes(action.action)
+    ? await resolveTaskSetProcessor(deps, actor, TaskSetProcessorSchema.parse(previous.processor)) : null
   return deps.prisma.$transaction(async (tx) => {
     await lockTaskSet(tx, id)
     const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
@@ -58,7 +57,9 @@ export const controlTaskSetForActor = async (
       await tx.taskSetItem.update({ where: { id: item.id }, data: {
         status: 'skipped', reason: 'Skipped explicitly', statusChangedAt: now,
       } })
-      await tx.taskSet.update({ where: { id }, data: { nextSequence: { increment: 1 }, skippedItems: { increment: 1 } } })
+      await tx.taskSet.update({ where: { id }, data: {
+        nextSequence: { increment: 1 }, skippedItems: { increment: 1 },
+      } })
       status = 'paused'
     } else {
       if (set.currentItemId) throw new TaskSetError('TASK_SET_BUSY', 'Wait for the active processor to stop.')
@@ -82,6 +83,7 @@ export const controlTaskSetForActor = async (
     }
     const updated = await tx.taskSet.update({ where: { id }, data: {
       status, statusChangedAt: now, reason: null, offlineSince: null,
+      ...(processor ? { capacityKey: processor.capacityKey } : {}),
       revision: { increment: 1 }, nextAttemptAt: now,
       ...(status === 'running' && !set.inputClosedAt ? { inputClosedAt: now } : {}),
     } })

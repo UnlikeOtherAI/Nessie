@@ -1,3 +1,4 @@
+import type { TaskSetReadObserver } from './task-set-disclosure.js'
 import type { Prisma, PrismaClient, TaskSet } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
@@ -46,7 +47,7 @@ export const assertTaskSetDisclosure = async (
 }
 
 export const getTaskSetForActor = async (
-  prisma: PrismaClient, actor: AuthorizedActionContext, id: string,
+  prisma: PrismaClient, actor: AuthorizedActionContext, id: string, onRead?: TaskSetReadObserver,
 ): Promise<TaskSet> => {
   const { userId } = await assertTaskSetActor(prisma, actor)
   const set = await prisma.taskSet.findFirst({
@@ -54,6 +55,7 @@ export const getTaskSetForActor = async (
   })
   if (!set) throw new TaskSetError('TASK_SET_NOT_FOUND', 'Task set not found.', 404)
   await assertTaskSetDisclosure(prisma, actor, set.disclosure)
+  onRead?.(TaskSetDisclosureSchema.parse(set.disclosure))
   return set
 }
 

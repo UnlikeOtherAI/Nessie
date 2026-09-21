@@ -2,9 +2,10 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { isDeepStrictEqual } from 'node:util'
 import {
   TaskSetItemInputSchema, TaskSetItemUpdateSchema,
-  type AuthorizedActionContext, type TaskSetItemInput, type TaskSetItemUpdate,
+  type AuthorizedActionContext, type TaskSetItemInput, type TaskSetItemUpdate, type TaskSetDisclosure,
 } from '@nessie/schemas'
 import { auditTaskSetMutation, getTaskSetForActor, taskSetJson, TaskSetError } from './task-set-access.js'
+import { mergeTaskSetDisclosure } from './task-set-disclosure.js'
 import { taskSetItemRecord } from './task-set-read.js'
 
 export const lockTaskSet = async (tx: Prisma.TransactionClient, id: string): Promise<void> => {
@@ -46,7 +47,9 @@ export const appendTaskSetItems = async (
         || !isDeepStrictEqual(existing.dependencies, input.dependencies ?? [])) {
         throw new TaskSetError('TASK_SET_ITEM_CONFLICT', 'This client key already names a different task.')
       }
-      added.push(existing)
+      added.push(await tx.taskSetItem.update({ where: { id: existing.id }, data: {
+        disclosure: taskSetJson(mergeTaskSetDisclosure(existing.disclosure, disclosure)),
+      } }))
       continue
     }
     sequence += 1
@@ -63,11 +66,16 @@ export const appendTaskSetItems = async (
 
 export const addTaskSetItemsForActor = async (
   prisma: PrismaClient, actor: AuthorizedActionContext, id: string, items: TaskSetItemInput[],
+  disclosure?: TaskSetDisclosure,
 ) => {
-  const set = await getTaskSetForActor(prisma, actor, id)
+  await getTaskSetForActor(prisma, actor, id)
   if (items.length > 500) throw new TaskSetError('TASK_SET_PAGE_SIZE', 'Add at most 500 tasks per call.')
   return prisma.$transaction(async (tx) => {
-    const added = await appendTaskSetItems(tx, id, items, set.disclosure)
+    await lockTaskSet(tx, id)
+    const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
+    const basis = mergeTaskSetDisclosure(set.disclosure, disclosure)
+    const added = await appendTaskSetItems(tx, id, items, basis)
+    await tx.taskSet.update({ where: { id }, data: { disclosure: taskSetJson(basis) } })
     await auditTaskSetMutation(tx, actor, id, 'items_added')
     return added.map(taskSetItemRecord)
   })
@@ -75,6 +83,7 @@ export const addTaskSetItemsForActor = async (
 
 export const updateTaskSetItemForActor = async (
   prisma: PrismaClient, actor: AuthorizedActionContext, id: string, itemId: string, raw: TaskSetItemUpdate,
+  disclosure?: TaskSetDisclosure,
 ) => {
   await getTaskSetForActor(prisma, actor, id)
   const input = TaskSetItemUpdateSchema.parse(raw)
@@ -83,7 +92,7 @@ export const updateTaskSetItemForActor = async (
     const set = await tx.taskSet.findUniqueOrThrow({ where: { id } })
     const item = await tx.taskSetItem.findFirst({ where: { id: itemId, taskSetId: id } })
     if (!item) throw new TaskSetError('TASK_SET_ITEM_NOT_FOUND', 'Task item not found.', 404)
-    if (!['draft', 'paused', 'blocked'].includes(set.status) || ['running', 'completed', 'skipped'].includes(item.status)) {
+    if (set.currentItemId || !['draft', 'paused', 'blocked'].includes(set.status) || ['running', 'completed', 'skipped'].includes(item.status)) {
       throw new TaskSetError('TASK_SET_ITEM_BUSY', 'Pause the set to edit an unfinished item.')
     }
     if (input.dependencies) await validateTaskSetDependencies(tx, id, item.sequence, input.dependencies)
@@ -95,10 +104,13 @@ export const updateTaskSetItemForActor = async (
         prompt: item.prompt, input: item.input, dependencies: item.dependencies, disclosure: item.disclosure,
       }),
     } })
+    const basis = mergeTaskSetDisclosure(set.disclosure, item.disclosure, disclosure)
+    await tx.taskSet.update({ where: { id }, data: { disclosure: taskSetJson(basis) } })
     const updated = await tx.taskSetItem.update({ where: { id: itemId }, data: {
       ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
       ...(Object.hasOwn(input, 'input') ? { input: taskSetJson(input.input) } : {}),
       ...(input.dependencies ? { dependencies: input.dependencies } : {}),
+      disclosure: taskSetJson(basis),
       revision: { increment: 1 }, retryBase: item.attempts, reason: null, status: 'pending', statusChangedAt: new Date(),
     } })
     await auditTaskSetMutation(tx, actor, id, 'item_updated')
