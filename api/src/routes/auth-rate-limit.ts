@@ -187,6 +187,8 @@ const EXECUTOR_DAEMON_SESSION_ROUTES = new Set([
   '/api/local-inference/daemon/claim',
   '/api/local-inference/daemon/executor-host',
   '/api/local-inference/daemon/heartbeat',
+  '/api/local-inference/daemon/resource',
+  '/api/local-inference/daemon/attempts/termination',
   '/api/local-inference/daemon/attempts/poll',
   '/api/local-inference/daemon/attempts/frame',
   '/api/local-inference/daemon/attempts/result',

@@ -13,6 +13,7 @@ import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-nati
 import { executorApi } from './api-client.js'
 import { signExecutorLocalInferenceConsent } from './local-inference-consent.js'
 import { connectExecutorLocalInference } from './local-inference-runtime.js'
+import { runLocalInferenceCli } from './local-inference-cli.js'
 import {
   fetchDirectLocalInferenceConsentDisplay,
   readDirectLocalInferenceConsentRequest,
@@ -486,6 +487,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
 }
 
 export const run = async (args: string[]): Promise<void> => {
+  if (await runLocalInferenceCli(args)) return
   if (await runPairingCodeCli(args)) return
   const command = parseCommand(args)
   if (command.kind === 'pair') {

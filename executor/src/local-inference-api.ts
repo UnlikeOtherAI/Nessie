@@ -3,6 +3,10 @@ import type {
   LocalInferenceResult,
   LocalInferenceSignedEnvelope,
   ObservedLocalModel,
+  LocalInferenceResourceControl,
+  LocalInferenceResourceAttachment,
+  LocalInferenceResourceAdmission,
+  LocalInferenceTermination,
 } from '@nessie/schemas'
 
 const REQUEST_TIMEOUT_MS = 25_000
@@ -14,6 +18,7 @@ type ApiEnvelopeRequest<TName extends string, TBody> = Record<TName, TBody> & {
 type LocalInferenceApiFetch = (url: string, init: RequestInit) => Promise<Response>
 
 export type LocalInferenceAttemptLease = {
+  admission: LocalInferenceResourceAdmission | null
   attempt: LocalInferenceAttemptRequest | null
   dispatchFence: number | null
 }
@@ -37,6 +42,11 @@ export type LocalInferenceAttemptControl = {
 }
 
 export type LocalInferenceDaemonApi = {
+  attachResource: (input: ApiEnvelopeRequest<'resource', {
+    attachment: LocalInferenceResourceAttachment; controlRevision: number; paused: boolean
+    healthReason: 'termination_uncertain' | null; action?: 'pause' | 'resume'
+  }>) => Promise<LocalInferenceResourceControl>
+  terminateAttempt: (input: ApiEnvelopeRequest<'termination', LocalInferenceTermination>) => Promise<{ acknowledged: true }>
   claim: (input: { challenge: string; envelope: LocalInferenceSignedEnvelope }) => Promise<{
     connectionEpoch: string
     serverTime: string
@@ -153,6 +163,8 @@ export const createLocalInferenceDaemonApi = (input: {
   }
 
   return {
+    attachResource: (body) => post('/api/local-inference/daemon/resource', body),
+    terminateAttempt: (body) => post('/api/local-inference/daemon/attempts/termination', body),
     claim: (body) => post('/api/local-inference/daemon/claim', body),
     issueChallenge: (body) => post('/api/local-inference/daemon/challenge', body),
     heartbeat: (body) => post('/api/local-inference/daemon/heartbeat', body),

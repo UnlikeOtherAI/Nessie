@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { PaginationMetaSchema } from './api.js'
+import { LocalInferenceResourceControlSchema } from './local-inference-resource.js'
 import {
   ModelCapabilitySnapshotSchema,
   ProviderMessageSchema,
@@ -32,6 +33,8 @@ const LocalInferenceMachineSignatureSchema = z
  * delaying a cancellation or liveness update, but cannot be replayed as one.
  */
 export const LocalInferenceEnvelopePurposeSchema = z.enum([
+  'resource',
+  'termination',
   'claim',
   'heartbeat',
   'poll',
@@ -130,6 +133,7 @@ export const LocalInferenceHostSchema = z.object({
   lastSeenAt: TimestampSchema.nullable(),
   models: z.array(ObservedLocalModelSchema).max(100),
   paused: z.boolean(),
+  resource: LocalInferenceResourceControlSchema.optional(),
   status: LocalInferenceBindingStatusSchema.or(z.literal('unconfigured')),
   transport: LocalInferenceTransportSchema,
 })

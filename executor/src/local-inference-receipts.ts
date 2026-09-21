@@ -101,6 +101,16 @@ export class EncryptedLocalInferenceReceiptJournal {
     })
   }
 
+  pending(): Promise<LocalInferenceResultReceipt[]> {
+    return this.withLock(async () => {
+      await this.load()
+      await this.sweep()
+      return [...this.#records.values()].map(({ attemptId, dispatchFence, result }) => ({
+        attemptId, dispatchFence, result: structuredClone(result),
+      }))
+    })
+  }
+
   record(receipt: LocalInferenceResultReceipt): Promise<void> {
     return this.withLock(async () => {
       if (resultSize(receipt.result) > MAX_RESULT_BYTES) {

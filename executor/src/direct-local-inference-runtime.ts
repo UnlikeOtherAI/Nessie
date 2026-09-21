@@ -15,6 +15,7 @@ import { signLocalInferenceEnvelope } from '@nessie/local-inference-host'
 
 import { createLocalInferenceDaemonApi } from './local-inference-api.js'
 import { LocalInferenceHostLoop } from './local-inference-host.js'
+import { LocalInferenceCoordinator } from './local-inference-coordinator.js'
 import { EncryptedLocalInferenceReceiptJournal } from './local-inference-receipts.js'
 import { discoverOllamaInventory } from './ollama-observed.js'
 
@@ -212,6 +213,7 @@ export const serveDirectLocalInference = async (): Promise<void> => {
   )
   const loop = new LocalInferenceHostLoop({
     api,
+    coordinator: await LocalInferenceCoordinator.open(),
     identity: {
       connectionEpoch: connection.connectionEpoch,
       hostId: config.hostId,

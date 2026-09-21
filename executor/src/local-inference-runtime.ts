@@ -8,6 +8,7 @@ import { executorApi } from './api-client.js'
 import { signExecutorDaemonPayload } from './daemon-signature.js'
 import { createLocalInferenceDaemonApi } from './local-inference-api.js'
 import { LocalInferenceHostLoop } from './local-inference-host.js'
+import { LocalInferenceCoordinator } from './local-inference-coordinator.js'
 import { EncryptedLocalInferenceReceiptJournal } from './local-inference-receipts.js'
 import { DEFAULT_OLLAMA_ORIGIN } from './ollama-client.js'
 import {
@@ -142,6 +143,7 @@ export const connectExecutorLocalInference = async (
   return {
     loop: new LocalInferenceHostLoop({
       api,
+      coordinator: await LocalInferenceCoordinator.open(),
       identity: {
         connectionEpoch: connected.localInference.connectionEpoch,
         executorConnectionEpoch: connected.connectionEpoch,

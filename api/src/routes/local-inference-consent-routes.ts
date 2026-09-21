@@ -15,6 +15,7 @@ import {
   prepareLocalInferenceBinding,
 } from '../services/local-inference-bindings.js'
 import type { RouteDeps } from './types.js'
+import { controlLocalInferenceResource } from '../services/local-inference-resource.js'
 
 const HostIdParamsSchema = z.object({ hostId: z.string().uuid() })
 const AgentIdParamsSchema = z.object({ agentId: z.string().uuid() })
@@ -175,16 +176,20 @@ export const registerLocalInferenceConsentRoutes = (
       if (!actor || !requireUserActor(actor, reply)) return reply
       const params = parseInput(HostIdParamsSchema, request.params, reply, 'params')
       if (!params) return reply
+      if (action !== 'revoke') {
+        const updated = await prisma.$transaction((tx) => controlLocalInferenceResource(tx, {
+          action, custodianUserId: actor.actor.actorId,
+          hostId: params.hostId, organizationId: actor.tenant.organizationId,
+        }))
+        if (!updated) { sendApiError(reply, 404, 'NOT_FOUND', 'Local host not found.'); return reply }
+        return createApiResponse({ ok: true })
+      }
       const where = {
         custodianUserId: actor.actor.actorId,
         id: params.hostId,
         organizationId: actor.tenant.organizationId,
       }
-      const data = action === 'pause'
-        ? { pausedAt: new Date() }
-        : action === 'resume'
-          ? { pausedAt: null }
-          : { authorizationRevision: { increment: 1 }, revokedAt: new Date() }
+      const data = { authorizationRevision: { increment: 1 }, revokedAt: new Date() }
       const updated = await prisma.localInferenceHost.updateMany({ where, data })
       if (updated.count === 0) {
         sendApiError(reply, 404, 'NOT_FOUND', 'Local host not found.')

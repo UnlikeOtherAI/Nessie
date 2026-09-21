@@ -5,6 +5,7 @@ import type { LocalInferenceAttemptRequest, LocalInferenceResult } from '@nessie
 
 import type { LocalInferenceDaemonApi } from '../src/local-inference-api.js'
 import { LocalInferenceHostLoop } from '../src/local-inference-host.js'
+import { LocalInferenceCoordinator } from '../src/local-inference-coordinator.js'
 import { EncryptedLocalInferenceReceiptJournal } from '../src/local-inference-receipts.js'
 import { discoverOllamaInventory, isStructurallyLocalOllamaModel } from '../src/ollama-observed.js'
 
@@ -12,6 +13,10 @@ const hostId = '00000000-0000-4000-8000-0000000000e1'
 const organizationId = '00000000-0000-4000-8000-0000000000e2'
 const attemptId = '00000000-0000-4000-8000-0000000000e3'
 const runId = '00000000-0000-4000-8000-0000000000e4'
+const coordinator = await LocalInferenceCoordinator.open()
+const resource = await coordinator.control()
+assert.ok(resource.resourceId, 'Enroll a local inference resource before the product-host smoke.')
+const admission = { admissionId: crypto.randomUUID(), fence: crypto.randomUUID(), resourceId: resource.resourceId }
 
 const inventory = await discoverOllamaInventory()
 const selected = inventory.models
@@ -47,6 +52,10 @@ let result: LocalInferenceResult | undefined
 const streamed: string[] = []
 const hostErrors: string[] = []
 const api: LocalInferenceDaemonApi = {
+  attachResource: async () => ({
+    ...resource, resourceId: admission.resourceId, healthReason: await coordinator.healthReason(),
+  }),
+  terminateAttempt: async () => ({ acknowledged: true }),
   claim: async () => { throw new Error('The isolated live smoke starts from an already claimed host.') },
   consentDisplay: async () => { throw new Error('The live smoke does not bypass native consent.') },
   control: async () => ({ state: 'active' }),
@@ -57,9 +66,9 @@ const api: LocalInferenceDaemonApi = {
   },
   issueChallenge: async () => { throw new Error('The isolated live smoke starts from an already claimed host.') },
   poll: async () => {
-    if (offered) return { attempt: null, dispatchFence: null }
+    if (offered) return { admission: null, attempt: null, dispatchFence: null }
     offered = true
-    return { attempt, dispatchFence: 1 }
+    return { admission, attempt, dispatchFence: 1 }
   },
   submitFrame: async ({ frame }) => {
     const event = JSON.parse(Buffer.from(frame.data, 'base64url').toString('utf8')) as {
@@ -90,6 +99,7 @@ const journal = new EncryptedLocalInferenceReceiptJournal({
 }, crypto.randomBytes(32))
 const loop = new LocalInferenceHostLoop({
   api,
+  coordinator,
   identity: { connectionEpoch: '1', hostId, machinePrivateKey, organizationId },
   isPaused: () => false,
   journal,

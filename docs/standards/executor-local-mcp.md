@@ -121,6 +121,22 @@ failure to `handshake_failed`; the fix and the test that pins it are in
   budget flag is `--scan-timeout`. Both were got wrong first and found only by
   running against the installed Kelpie.
 
+## Ollama account research
+
+An executor may configure an approved named server `ollama-search` using its
+installed executable and `serve-ollama-search-mcp`. The exact exported tools are
+`ollama_web_search` and `ollama_web_fetch`. The launch specification and
+`OLLAMA_API_KEY` stay in the executor's private configuration/environment; the
+run receives only the named, approved tool descriptors. The existing agent
+grant, executor binding, input schema and command authorization still apply.
+
+These tools call Ollama's fixed HTTPS account API, independently of the local
+generation endpoint. They require a configured account credential and available
+provider quota. Missing/rejected credentials, quota exhaustion and unavailability
+are separate failures, and none selects Ledger or another search provider.
+Search is not intrinsic to a bare Ollama model. A direct Desktop binding without
+an approved executor MCP binding cannot claim these tools are available.
+
 ## Verifying
 
 ```bash
