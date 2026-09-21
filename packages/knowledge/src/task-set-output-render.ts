@@ -15,15 +15,6 @@ export type TaskSetArtifactRow = {
 }
 export type TaskSetArtifactFormat = Exclude<TaskSetOutput, { kind: 'journal' }>
 
-const mergeDisclosure = (target: TaskSetDisclosure, incoming: TaskSetDisclosure): void => {
-  const scopes = new Map(target.basisScopes.map((scope) => [taskSetCanonicalJson(scope), scope]))
-  for (const scope of incoming.basisScopes) scopes.set(taskSetCanonicalJson(scope), scope)
-  const authors = new Map(target.disclosureSources.map((source) => [taskSetCanonicalJson(source), source]))
-  for (const source of incoming.disclosureSources) authors.set(taskSetCanonicalJson(source), source)
-  target.basisScopes = [...scopes.values()]
-  target.disclosureSources = [...authors.values()]
-}
-
 const excelText = (value: unknown): string | number | boolean => {
   const cell = typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string'
     ? value : taskSetCanonicalJson(value)
@@ -53,22 +44,25 @@ export const renderTaskSetArtifact = async (
   revalidate: () => Promise<unknown>,
 ): Promise<{ contentHash: string; disclosure: TaskSetDisclosure; count: number; mime: string; extension: string }> => {
   const digest = createHash('sha256').update(taskSetCanonicalJson(output))
-  const disclosure: TaskSetDisclosure = { classified: true, basisScopes: [], disclosureSources: [] }
+  const scopes = new Map<string, TaskSetDisclosure['basisScopes'][number]>()
+  const authors = new Map<string, TaskSetDisclosure['disclosureSources'][number]>()
   let count = 0
+  const destination = createWriteStream(path, { flags: 'wx', mode: 0o600 })
+  const destinationDone = finished(destination)
+  void destinationDone.catch(() => undefined)
   const spreadsheet = output.kind === 'spreadsheet'
-    ? new ExcelJS.stream.xlsx.WorkbookWriter({ filename: path, useSharedStrings: false, useStyles: false }) : null
+    ? new ExcelJS.stream.xlsx.WorkbookWriter({ stream: destination, useSharedStrings: false, useStyles: false }) : null
   const sheet = spreadsheet?.addWorksheet('Results')
   if (sheet && output.kind === 'spreadsheet') {
     sheet.addRow(['Sequence', 'Item ID', 'Source input (JSON)', 'Result', ...Object.keys(output.fields)]).commit()
   }
-  const text = spreadsheet ? null : createWriteStream(path, { flags: 'wx', mode: 0o600 })
-  const textDone = text ? finished(text) : Promise.resolve()
-  void textDone.catch(() => undefined)
+  const text = spreadsheet ? null : destination
   try {
     for await (const row of rows) {
       if (count % 200 === 0) await revalidate()
       const basis = TaskSetDisclosureSchema.parse(row.disclosure)
-      mergeDisclosure(disclosure, basis)
+      for (const scope of basis.basisScopes) scopes.set(taskSetCanonicalJson(scope), scope)
+      for (const author of basis.disclosureSources) authors.set(taskSetCanonicalJson(author), author)
       digest.update(taskSetCanonicalJson({ ...row, disclosure: basis })).update('\n')
       if (sheet) {
         if (count >= 1_048_575) throw new TaskSetSourceError('output_too_large', 'The result exceeds the Excel row limit.')
@@ -82,18 +76,18 @@ export const renderTaskSetArtifact = async (
       count++
     }
     if (spreadsheet) await spreadsheet.commit()
-    if (text) { text.end(); await textDone }
+    if (text) text.end()
+    await destinationDone
     return {
-      contentHash: digest.digest('hex'), disclosure, count,
+      contentHash: digest.digest('hex'), count,
+      disclosure: { classified: true, basisScopes: [...scopes.values()], disclosureSources: [...authors.values()] },
       mime: spreadsheet ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         : output.kind === 'documents' && output.format === 'jsonl' ? 'application/x-ndjson' : 'text/plain; charset=utf-8',
       extension: spreadsheet ? 'xlsx' : output.kind === 'documents' && output.format === 'jsonl' ? 'jsonl' : 'txt',
     }
   } catch (error) {
-    text?.destroy()
-    // ExcelJS exposes its destination stream for cancellation; a failed render must release the file.
-    if (spreadsheet) (spreadsheet.stream as NodeJS.WritableStream & { destroy?: () => void }).destroy?.()
-    await textDone.catch(() => undefined)
+    destination.destroy()
+    await destinationDone.catch(() => undefined)
     throw error
   }
 }

@@ -93,7 +93,8 @@ export async function* taskSetExcelRecords(
     })
     let found = false
     for await (const sheet of reader) {
-      if (sheet.name !== selectedSheet) continue
+      // ExcelJS 4.4 sets name in WorkbookReader._parseWorksheet but omits it in its declarations.
+      if ((sheet as typeof sheet & { name: string }).name !== selectedSheet) continue
       found = true
       let headers: string[] | null = null
       const headerRow = source.selection.headerRow
@@ -186,7 +187,7 @@ export async function* taskSetSqliteRecords(
         ordinal++
         const value = Object.fromEntries(names.map((name) => [name, jsonSqlValue(row[name] ?? null)]))
         const identity = primary.length ? JSON.stringify(primary.map((name) => value[name])) : String(ordinal)
-        yield { ordinal, value, locator: `${table}:${identity}` }
+        yield { ordinal, value, columns: names.map((name) => value[name]), locator: `${table}:${identity}` }
       }
     } finally { db.close() }
   })

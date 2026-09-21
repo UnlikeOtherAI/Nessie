@@ -1,10 +1,10 @@
 import { StringDecoder } from 'node:string_decoder'
 import { PassThrough, Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { parser } from 'stream-json'
-import { pick } from 'stream-json/filters/Pick.js'
-import { streamArray } from 'stream-json/streamers/StreamArray.js'
-import { streamValues } from 'stream-json/streamers/StreamValues.js'
+import StreamJson from 'stream-json'
+import Pick from 'stream-json/filters/Pick.js'
+import StreamArray from 'stream-json/streamers/StreamArray.js'
+import StreamValues from 'stream-json/streamers/StreamValues.js'
 import type { TaskSetSource } from '@nessie/schemas'
 import { TASK_SET_SOURCE_LIMITS, TaskSetSourceError, type TaskSetSourceRecord } from './task-set-records.js'
 
@@ -43,12 +43,12 @@ export async function* taskSetJsonRecords(
   const parts = path?.startsWith('/')
     ? path.slice(1).split('/').map((part) => part.replace(/~1/g, '/').replace(/~0/g, '~'))
     : path ? [path] : null
-  const selected = parts ? pick({
-    filter: (stack: (string | number)[]) => stack.length === parts.length
-      && stack.every((part, index) => String(part) === parts[index]),
+  const selected = parts ? Pick.pick({
+    filter: (stack) => stack.length === parts.length
+      && stack.every((part, index) => part !== null && String(part) === parts[index]),
     once: true,
   }) : new PassThrough({ objectMode: true })
-  const reading = pipeline(stream, parser(), selected, recordBudget(), tokens)
+  const reading = pipeline(stream, StreamJson.parser(), selected, recordBudget(), tokens)
   // The iterator observes this same failure; attach immediately so a fast parser cannot reject unhandled.
   void reading.catch(() => undefined)
   const iterator = tokens[Symbol.asyncIterator]()
@@ -61,7 +61,8 @@ export async function* taskSetJsonRecords(
     yield first.value as JsonToken
     for (;;) { const next = await iterator.next(); if (next.done) break; yield next.value as JsonToken }
   })())
-  const assembled = (first.value as JsonToken).name === 'startArray' ? streamArray() : streamValues()
+  const assembled = (first.value as JsonToken).name === 'startArray'
+    ? StreamArray.streamArray() : StreamValues.streamValues()
   const assembling = pipeline(remainder, assembled)
   void assembling.catch(() => undefined)
   let ordinal = 0
@@ -83,11 +84,13 @@ export async function* taskSetJsonRecords(
 export async function* taskSetJsonLinesRecords(stream: Readable): AsyncGenerator<TaskSetSourceRecord> {
   const decoder = new StringDecoder('utf8')
   let line = ''
+  let lineBytes = 0
   let ordinal = 0
   const record = (): TaskSetSourceRecord => {
     ordinal++
     const text = ordinal === 1 ? line.replace(/^\uFEFF/, '') : line
     line = ''
+    lineBytes = 0
     if (!text.trim()) throw new TaskSetSourceError('invalid_input', 'An empty JSONL record is invalid.', `line:${ordinal}`)
     try { return { ordinal, value: JSON.parse(text) as unknown, locator: `line:${ordinal}` } } catch {
       throw new TaskSetSourceError('invalid_input', 'The JSONL record is not valid JSON.', `line:${ordinal}`)
@@ -97,8 +100,8 @@ export async function* taskSetJsonLinesRecords(stream: Readable): AsyncGenerator
     const text = decoder.write(Buffer.from(chunk as Uint8Array))
     for (const character of text) {
       if (character === '\n') yield record()
-      else line += character
-      if (Buffer.byteLength(line) > TASK_SET_SOURCE_LIMITS.recordBytes) {
+      else { line += character; lineBytes += Buffer.byteLength(character) }
+      if (lineBytes > TASK_SET_SOURCE_LIMITS.recordBytes) {
         throw new TaskSetSourceError('input_too_large', 'The JSONL record exceeds the byte limit.', `line:${ordinal + 1}`)
       }
     }

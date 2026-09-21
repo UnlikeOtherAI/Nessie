@@ -30,6 +30,9 @@ export async function* parseTaskSetSource(
   input: Readable, source: TaskSetSource,
 ): AsyncGenerator<TaskSetSourceRecord> {
   TaskSetSourceSchema.parse(source)
+  if (source.selection.recordPath !== undefined && source.format !== 'json') {
+    throw new TaskSetSourceError('invalid_mapping', 'Record path selection applies to JSON sources only.')
+  }
   if ((source.selection.lastRow ?? Infinity) < (source.selection.firstRow ?? 1)) {
     throw new TaskSetSourceError('invalid_mapping', 'The selected end row precedes the first row.')
   }
@@ -79,16 +82,16 @@ export async function* iterateTaskSetSource(
     opened.stream.destroy()
     throw new TaskSetSourceError('input_too_large', 'The source exceeds the importer byte limit.')
   }
-  let emitted = 0
+  let scanned = 0
   for await (const record of parseTaskSetSource(opened.stream, source)) {
-    if (record.ordinal <= (options.afterOrdinal ?? 0)) continue
-    if (emitted % TASK_SET_SOURCE_LIMITS.pageSize === 0) {
+    if (scanned++ % TASK_SET_SOURCE_LIMITS.pageSize === 0) {
       const fresh = await deps.authorize()
       if (fresh.attachmentId !== initial.attachmentId) {
         throw new TaskSetSourceError('source_changed', 'The pinned version no longer identifies the same source bytes.')
       }
       disclosure = TaskSetDisclosureSchema.parse(fresh.disclosure)
     }
+    if (record.ordinal <= (options.afterOrdinal ?? 0)) continue
     if (deps.consumedSources) consumeTaskSetDisclosure(deps.consumedSources, disclosure)
     let input: unknown
     try { input = taskSetMapInput(record.value, source, record.columns) } catch (error) {
@@ -104,6 +107,5 @@ export async function* iterateTaskSetSource(
         source.selection.table ?? null, source.selection.recordPath ?? null, record.ordinal])),
       input, inputHash: taskSetHash(taskSetCanonicalJson(input)), sourceLocator: locator, disclosure,
     }
-    emitted++
   }
 }

@@ -84,10 +84,16 @@ export const resolveTaskSetArtifactDestination = async (
       where: {
         id: destination.parentId, spaceId: space.id, organizationId, deletedAt: null, status: { not: 'archived' },
       },
-      select: { id: true, kind: true, status: true, deletedAt: true },
+      select: {
+        id: true, kind: true, status: true, deletedAt: true, sensitivityTier: true, privateToAgentId: true,
+      },
     })
     if (!parent || parent.kind !== 'folder') {
       throw new TaskSetSourceError('output_unavailable', 'Choose an existing Documents folder.')
+    }
+    if (access.actorType === 'agent' && (parent.sensitivityTier === 'restricted'
+      || (parent.privateToAgentId !== null && parent.privateToAgentId !== viewer.agent?.id))) {
+      throw new TaskSetSourceError('authorization_lost', 'The output folder is not writable by this agent.')
     }
     shared = await viewerHoldsPageShare(prisma, {
       organizationId, actorType: access.actorType, page: { ...parent, deletedAt: null }, viewer, minimum: 'edit',
