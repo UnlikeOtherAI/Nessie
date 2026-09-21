@@ -11,6 +11,7 @@ import type { BoardSourceWriteBack, BoardSourceWriteBackError } from './board-so
 import { boardTaskPoolWhere, resolveBoardPlacement } from './board-placement.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
+import { rehomeTaskLabels } from './task-labels.js'
 
 export type ProjectTaskMoveError =
   | { error: 'NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_TRANSITION'; from?: TaskStatus }
@@ -130,6 +131,8 @@ export const moveProjectTaskToColumn = async (
       board: {
         select: {
           id: true,
+          projectId: true,
+          organizationId: true,
           isDefault: true,
           columns: { select: { id: true, category: true, position: true } },
         },
@@ -231,6 +234,9 @@ export const moveProjectTaskToColumn = async (
       await tx.taskBoardPlacement.deleteMany({
         where: { taskId: existing.id, NOT: { boardId: column.board.id } },
       })
+      // A ticket's labels are its board's, so they follow it by name: each
+      // gets its equivalent on the new board, created when missing.
+      await rehomeTaskLabels(tx, { id: existing.id }, column.board, input.actorId)
     }
 
     // The public move contract treats an omitted position as append.  A raw

@@ -12,9 +12,11 @@ import {
   moveProjectTaskToColumn,
   resolveBoardPlacement,
   resolveProjectTaskDetailPlacement,
+  resolveTaskHomeBoard,
   transitionProjectTask,
   updateBoard,
 } from '../src/index.js'
+import { seedTaskActivity } from './task-activity-db-fixture.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -455,4 +457,18 @@ runDatabaseTest('completing a task moves it to Done on a board it was pinned on'
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
   }
+})
+
+runDatabaseTest('a ticket\'s home board is its own, else the project\'s default, else none', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTaskActivity(prisma)
+  t.after(async () => {
+    await s.cleanup()
+    await prisma.$disconnect()
+  })
+  assert.deepEqual(await resolveTaskHomeBoard(prisma, { projectId: s.projectId, boardId: null }), s.board)
+  assert.deepEqual(await resolveTaskHomeBoard(prisma, { projectId: s.projectId, boardId: s.devBoard.id }), s.devBoard)
+  assert.equal(await resolveTaskHomeBoard(prisma, { projectId: null, boardId: null }), null, 'a projectless task has none')
+  // Another project's board is never this task's home.
+  assert.equal(await resolveTaskHomeBoard(prisma, { projectId: s.projectId, boardId: s.otherProjectBoard.id }), null)
 })

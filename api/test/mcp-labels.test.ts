@@ -10,10 +10,12 @@ import { nessieMcpTools } from '../src/mcp/server.js'
 import type { McpToolContext } from '../src/mcp/tool-context.js'
 import { getTask } from '../src/services/tasks.js'
 
-// A project's labels through the MCP server, against a real database: the
-// scope gate, the name clash that hands back the label to use, the replace-set
-// on a task, the delete that reports what it unlinked, the warning on renaming
-// a label an external source owns, and the repaint every change publishes.
+// A board's labels through the MCP server, against a real database: the
+// scope gate, `boardId` reaching the shared functions (absent ⇒ the default
+// board), the name clash that hands back the label to use, the replace-set on
+// a task and its board refusal, the delete that reports what it unlinked, the
+// warning on renaming a label an external source owns, and the repaint every
+// change publishes.
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
 const tool = (name: string) => {
@@ -43,7 +45,15 @@ test('every label tool refuses without its scope', async () => {
   }
 })
 
-type Seed = { organizationId: string; projectId: string; otherProjectId: string; userId: string }
+type Seed = {
+  organizationId: string
+  projectId: string
+  otherProjectId: string
+  otherProjectBoardId: string
+  boardId: string
+  devBoardId: string
+  userId: string
+}
 
 const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const org = await prisma.organization.create({ data: { name: `lb ${randomUUID()}` } })
@@ -53,10 +63,24 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     data: { displayName: 'Owner', email: `lb-${randomUUID()}@example.test` },
   })
   await prisma.organizationMember.create({ data: { organizationId: org.id, role: 'owner', userId: user.id } })
-  await prisma.board.create({
-    data: { name: 'Delivery', organizationId: org.id, position: 0, projectId: project!.id },
+  const board = await prisma.board.create({
+    data: { name: 'Delivery', organizationId: org.id, position: 0, projectId: project!.id, isDefault: true },
   })
-  return { organizationId: org.id, projectId: project!.id, otherProjectId: other!.id, userId: user.id }
+  const dev = await prisma.board.create({
+    data: { name: 'Dev', organizationId: org.id, position: 1, projectId: project!.id },
+  })
+  const otherBoard = await prisma.board.create({
+    data: { name: 'Board', organizationId: org.id, position: 0, projectId: other!.id, isDefault: true },
+  })
+  return {
+    organizationId: org.id,
+    projectId: project!.id,
+    otherProjectId: other!.id,
+    otherProjectBoardId: otherBoard.id,
+    boardId: board.id,
+    devBoardId: dev.id,
+    userId: user.id,
+  }
 }
 
 type Published = { event: string; data: Record<string, unknown> }
@@ -88,7 +112,7 @@ const cleanup = async (prisma: PrismaClient, s: Seed): Promise<void> => {
   await prisma.user.delete({ where: { id: s.userId } }).catch(() => undefined)
 }
 
-runDatabaseTest('an agent manages a project\'s labels and sets them on a task', async () => {
+runDatabaseTest('an agent manages a board\'s labels and sets them on a task', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma)
   try {
@@ -99,8 +123,9 @@ runDatabaseTest('an agent manages a project\'s labels and sets them on a task', 
       projectId: s.projectId,
       name: 'Bug',
       color: '#EF4444',
-    }) as { label: { id: string; color: string } }
+    }) as { label: { id: string; color: string; boardId: string } }
     assert.equal(bug.label.color, '#ef4444', 'stored lower-case')
+    assert.equal(bug.label.boardId, s.boardId, 'no boardId creates on the default board')
     assert.ok(
       published.some((event) => event.event === 'board.updated' && event.data.projectId === s.projectId),
       'cards repaint when a label appears',
@@ -114,6 +139,20 @@ runDatabaseTest('an agent manages a project\'s labels and sets them on a task', 
     assert.equal(clash.code, 'LABEL_NAME_TAKEN')
     assert.equal(clash.label?.id, bug.label.id)
 
+    // The same name on another board is that board's own label.
+    const devBug = await tool('nessie_label_create').run(context, {
+      projectId: s.projectId,
+      boardId: s.devBoardId,
+      name: 'Bug',
+    }) as { label: { id: string; boardId: string } }
+    assert.equal(devBug.label.boardId, s.devBoardId)
+    assert.notEqual(devBug.label.id, bug.label.id)
+    // A board of another project is not found.
+    assert.deepEqual(
+      await tool('nessie_label_create').run(context, { projectId: s.projectId, boardId: s.otherProjectBoardId, name: 'X' }),
+      { error: 'Board not found in this project.' },
+    )
+
     const created = await tool('nessie_task_create').run(context, {
       projectId: s.projectId,
       title: 'Crash on save',
@@ -121,30 +160,38 @@ runDatabaseTest('an agent manages a project\'s labels and sets them on a task', 
     }) as { task: { id: string; labels: Array<{ id: string }> } }
     assert.deepEqual(created.task.labels.map((label) => label.id), [bug.label.id])
 
-    // A label from another project means nothing on this task.
-    const foreign = await prisma.taskLabel.create({
-      data: {
-        organizationId: s.organizationId,
-        projectId: s.otherProjectId,
-        name: 'Elsewhere',
-        normalizedName: 'elsewhere',
-      },
-    })
+    // Another board's label means nothing on this task.
     const refused = await tool('nessie_task_update').run(context, {
       taskId: created.task.id,
-      labelIds: [foreign.id],
-    }) as { code?: string }
-    assert.equal(refused.code, 'LABEL_NOT_IN_PROJECT')
+      labelIds: [devBug.label.id],
+    }) as { code?: string; error?: string }
+    assert.equal(refused.code, 'LABEL_NOT_ON_BOARD')
+    assert.equal(refused.error, "That label is not on this task's board. Read them with nessie_label_list.")
 
-    const listed = await tool('nessie_label_list').run(context, { projectId: s.projectId }) as {
+    const listed = await tool('nessie_label_list').run(context, { projectId: s.projectId, boardId: s.boardId }) as {
       labels: Array<{ id: string; taskCount?: number }>
     }
     assert.deepEqual(listed.labels.map((label) => [label.id, label.taskCount]), [[bug.label.id, 1]])
+    const everyBoard = await tool('nessie_label_list').run(context, { projectId: s.projectId }) as {
+      labels: Array<{ id: string; boardId: string }>
+    }
+    assert.deepEqual(
+      everyBoard.labels.map((label) => [label.id, label.boardId]),
+      [[bug.label.id, s.boardId], [devBug.label.id, s.devBoardId]],
+    )
 
     const read = await tool('nessie_task_get').run(context, { taskId: created.task.id }) as {
       labels: Array<{ name: string }>
     }
     assert.deepEqual(read.labels.map((label) => label.name), ['Bug'])
+
+    // A boardId that is not the label's board is not found.
+    const wrongBoard = await tool('nessie_label_delete').run(context, {
+      projectId: s.projectId,
+      boardId: s.devBoardId,
+      labelId: bug.label.id,
+    }) as { code?: string }
+    assert.equal(wrongBoard.code, 'LABEL_NOT_FOUND')
 
     const deleted = await tool('nessie_label_delete').run(context, {
       projectId: s.projectId,
@@ -188,6 +235,7 @@ runDatabaseTest('renaming a label a source owns warns that the next sync restore
       data: {
         organizationId: s.organizationId,
         projectId: s.projectId,
+        boardId: s.devBoardId,
         name: 'Frontend',
         normalizedName: 'frontend',
         sourceId: source.id,
@@ -195,6 +243,14 @@ runDatabaseTest('renaming a label a source owns warns that the next sync restore
       },
     })
 
+    // Found by id in the project, whichever board it is on; a wrong board is not found.
+    const wrongBoard = await tool('nessie_label_update').run(context, {
+      projectId: s.projectId,
+      boardId: s.boardId,
+      labelId: owned.id,
+      name: 'Web',
+    }) as { code?: string }
+    assert.equal(wrongBoard.code, 'LABEL_NOT_FOUND')
     const renamed = await tool('nessie_label_update').run(context, {
       projectId: s.projectId,
       labelId: owned.id,
@@ -206,6 +262,7 @@ runDatabaseTest('renaming a label a source owns warns that the next sync restore
     // A recolour is not a rename, and needs no warning.
     const recoloured = await tool('nessie_label_update').run(context, {
       projectId: s.projectId,
+      boardId: s.devBoardId,
       labelId: owned.id,
       color: '#3b82f6',
     }) as { warning?: string }

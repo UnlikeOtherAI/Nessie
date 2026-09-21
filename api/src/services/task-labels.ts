@@ -10,11 +10,12 @@ import {
 // The label work is shared with the MCP tools and the worker's ticket tools
 // in @nessie/team-admin; the route only maps its typed results to statuses.
 export {
-  createProjectLabel,
-  deleteProjectLabel,
+  createBoardLabel,
+  deleteBoardLabel,
   isTaskLabelError,
+  listBoardLabels,
   listProjectLabels,
-  updateProjectLabel,
+  updateBoardLabel,
 } from '@nessie/team-admin'
 
 /** The acting member a route hands the shared ticket functions. */

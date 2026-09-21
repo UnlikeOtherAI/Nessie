@@ -11,8 +11,15 @@ import {
   PEER_PROJECT_TOOL_IDS,
   resolveProjectDelegatedToolIds,
 } from '../src/run/execute/run-setup.js'
+import {
+  relativeTime,
+  removedText,
+  runTicketAttachmentListTool,
+  runTicketAttachmentRemoveTool,
+} from '../src/run/pa-tools/ticket-attachments.js'
 import { runTicketCommentAddTool, runTicketCommentListTool } from '../src/run/pa-tools/ticket-comments.js'
-import { TICKET_ACTIVITY_TOOL_RUNNERS } from '../src/run/pa-tools/tickets.js'
+import { runTicketLabelCreateTool, runTicketLabelsReadTool } from '../src/run/pa-tools/ticket-labels.js'
+import { runTicketReadTool, runTicketUpdateTool, TICKET_ACTIVITY_TOOL_RUNNERS } from '../src/run/pa-tools/tickets.js'
 import type { BuiltinToolRuntimeContext } from '../src/run/tool-types.js'
 import { authorizeToolCall } from '../src/run/tool-policy.js'
 
@@ -89,6 +96,23 @@ test('the peer subset admits ticket_comment_add in a project channel and refuses
     actorType: 'agent',
     interactive: false,
   }), false)
+})
+
+test('a removed file\'s line names who removed it, when, and why', () => {
+  const now = new Date('2026-09-21T12:00:00Z')
+  assert.equal(relativeTime('2026-09-21T11:59:30Z', now), 'just now')
+  assert.equal(relativeTime('2026-09-21T10:00:00Z', now), '2 hours ago')
+  assert.equal(relativeTime('2026-09-20T12:00:00Z', now), '1 day ago')
+  const userId = randomUUID()
+  const agentId = randomUUID()
+  assert.equal(
+    removedText({ at: '2026-09-21T10:00:00Z', byUserId: userId as never, byAgentId: null, reason: 'Superseded by v2' }, now),
+    ` REMOVED 2 hours ago by person userId=${userId} — "Superseded by v2"`,
+  )
+  assert.equal(
+    removedText({ at: '2026-09-21T11:00:00Z', byUserId: null, byAgentId: agentId as never, reason: null }, now),
+    ` REMOVED 1 hour ago by agent agentId=${agentId}`,
+  )
 })
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -172,6 +196,132 @@ dbTest('a shared agent comments as itself for the person who asked, and reading 
     assert.match(listed.outputPreview, /Webhook is \*\*wired\*\*\./)
     assert.deepEqual(consumedSources.list(), [{ scopeId: projectId, scopeType: 'project' }])
   } finally {
+    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
+    await prisma.user.delete({ where: { id: requesterId } }).catch(() => undefined)
+    await prisma.$disconnect()
+  }
+})
+
+dbTest('board labels and file removal through the ticket tools', async () => {
+  const prisma = new PrismaClient()
+  const organizationId = randomUUID()
+  const requesterId = randomUUID()
+  const projectId = randomUUID()
+  const agentId = randomUUID()
+  const channelId = randomUUID()
+  const teamId = randomUUID()
+  try {
+    await prisma.organization.create({ data: { id: organizationId, name: 'Ticket labels org' } })
+    await prisma.user.create({
+      data: { id: requesterId, displayName: 'Requester', email: `${requesterId}@test.local` },
+    })
+    await prisma.organizationMember.create({ data: { organizationId, role: 'member', userId: requesterId } })
+    await prisma.project.create({ data: { id: projectId, name: 'Ticket labels project', organizationId } })
+    await prisma.projectMember.create({ data: { projectId, userId: requesterId } })
+    await prisma.team.create({ data: { id: teamId, name: 'Ticket labels team', projectId } })
+    await prisma.agent.create({ data: { id: agentId, name: 'Builder', organizationId } })
+    await prisma.channel.create({
+      data: {
+        id: channelId,
+        label: 'project room',
+        slug: `room-${randomUUID()}`,
+        organization: { connect: { id: organizationId } },
+        project: { connect: { id: projectId } },
+        team: { connect: { id: teamId } },
+      },
+    })
+    await prisma.agentBinding.create({ data: { agentId, channelId } })
+    const board = await prisma.board.create({
+      data: { projectId, organizationId, name: 'Board', isDefault: true, position: 0 },
+    })
+    const dev = await prisma.board.create({ data: { projectId, organizationId, name: 'Dev', position: 1 } })
+    const ticket = await prisma.task.create({
+      data: { organizationId, projectId, title: 'Label me', ownerUserId: requesterId },
+    })
+
+    const context = {
+      actorContext: {
+        actionContext: { requestId: randomUUID() },
+        actor: { actorId: requesterId, actorType: 'user', roles: ['member'] },
+        tenant: { organizationId },
+      },
+      agentId,
+      agentKind: 'shared',
+      channel: { id: channelId, organizationId, projectId },
+      consumedSources: createConsumedSourceSink(),
+      ledgerIdentity: null,
+      prisma,
+      realtimeTransport: { publishWs: async () => undefined },
+      run: { id: randomUUID(), interactive: true, messageId: randomUUID(), threadId: randomUUID() },
+      toolCallId: randomUUID(),
+    } as unknown as BuiltinToolRuntimeContext
+
+    // boardId reaches the create; absent means the default board.
+    const onDev = await runTicketLabelCreateTool(context, { projectId, boardId: dev.id, name: 'Bug' })
+    assert.match(onDev.outputPreview, /Created label on board "Dev"/)
+    const onDefault = await runTicketLabelCreateTool(context, { projectId, name: 'Bug' })
+    assert.match(onDefault.outputPreview, /Created label on board "Board"/)
+    const [devLabel, defaultLabel] = await Promise.all([
+      prisma.taskLabel.findFirstOrThrow({ where: { boardId: dev.id } }),
+      prisma.taskLabel.findFirstOrThrow({ where: { boardId: board.id } }),
+    ])
+
+    const everyBoard = await runTicketLabelsReadTool(context, { projectId })
+    assert.match(everyBoard.outputPreview, new RegExp(`Board "Board" boardId=${board.id}\\n- Bug \\| labelId=${defaultLabel.id} boardId=${board.id}`))
+    assert.match(everyBoard.outputPreview, new RegExp(`Board "Dev" boardId=${dev.id}\\n- Bug \\| labelId=${devLabel.id} boardId=${dev.id}`))
+    const devOnly = await runTicketLabelsReadTool(context, { projectId, boardId: dev.id })
+    assert.match(devOnly.outputPreview, new RegExp(`labelId=${devLabel.id}`))
+    assert.doesNotMatch(devOnly.outputPreview, new RegExp(`labelId=${defaultLabel.id}`))
+
+    // The ticket is on the default board, so Dev's label is refused in words.
+    await assert.rejects(
+      () => runTicketUpdateTool(context, { ticketId: ticket.id, labelIds: [devLabel.id] }),
+      { message: 'That label is not on this ticket\'s board. Read them with ticket_labels_read.' },
+    )
+    await runTicketUpdateTool(context, { ticketId: ticket.id, labelIds: [defaultLabel.id] })
+    const read = await runTicketReadTool(context, { ticketId: ticket.id })
+    assert.match(read.outputPreview, new RegExp(`Labels \\(the project's default board\\): Bug \\(labelId=${defaultLabel.id}\\)`))
+
+    // Removing a file marks it; the shared agent's person and the agent are both recorded.
+    const file = await prisma.attachment.create({
+      data: {
+        organizationId,
+        uploaderId: requesterId,
+        taskId: ticket.id,
+        kind: 'document',
+        mime: 'text/plain',
+        filename: 'draft.txt',
+        sizeBytes: BigInt(5),
+        storageKey: `test/${randomUUID()}`,
+      },
+    })
+    const removed = await runTicketAttachmentRemoveTool(context, {
+      ticketId: ticket.id,
+      attachmentId: file.id,
+      reason: 'Superseded by v2',
+    })
+    assert.equal(
+      removed.outputPreview,
+      'Marked draft.txt as removed. It stays downloadable; the ticket shows who removed it and why.',
+    )
+    const row = await prisma.attachment.findUniqueOrThrow({ where: { id: file.id } })
+    assert.ok(row.removedAt)
+    assert.equal(row.removedByUserId, requesterId)
+    assert.equal(row.removedByAgentId, agentId)
+    assert.equal(row.removedReason, 'Superseded by v2')
+
+    const listed = await runTicketAttachmentListTool(context, { ticketId: ticket.id })
+    assert.match(listed.outputPreview, /^Files \(0\) \(1 removed\)\n/)
+    assert.match(
+      listed.outputPreview,
+      new RegExp(`draft\\.txt .* REMOVED just now by person userId=${requesterId} — "Superseded by v2"$`),
+    )
+    await assert.rejects(
+      () => runTicketAttachmentRemoveTool(context, { ticketId: ticket.id, attachmentId: file.id }),
+      { message: 'That file is already marked as removed.' },
+    )
+  } finally {
+    await prisma.attachment.deleteMany({ where: { organizationId } }).catch(() => undefined)
     await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined)
     await prisma.user.delete({ where: { id: requesterId } }).catch(() => undefined)
     await prisma.$disconnect()

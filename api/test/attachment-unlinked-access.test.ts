@@ -207,3 +207,22 @@ test('an organisation admin reads a ticket file without being a project member',
   })
   assert.equal(allowed, true)
 })
+
+test('a removed ticket file stays readable through the ticket, and only through it', async () => {
+  // Removal marks the row and keeps the bytes; the task arm does not look at the mark.
+  const removed = {
+    ...onTask,
+    removedAt: new Date('2026-09-21T10:00:00Z'),
+    removedByUserId: otherMemberId,
+    removedByAgentId: null,
+    removedReason: 'Superseded by v2',
+  }
+  assert.equal(
+    await canAccessAttachment(makePrisma({ taskReadable: true }), removed, { organizationId, userId: otherMemberId }),
+    true,
+  )
+  assert.equal(
+    await canAccessAttachment(makePrisma(), removed, { organizationId, userId: otherMemberId }),
+    false,
+  )
+})

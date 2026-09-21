@@ -129,20 +129,20 @@ const describeFailure = (
       return { error: TASK_NOT_REACHABLE, retryable: false }
     case 'COLUMN_NOT_FOUND':
       return { error: "Column not found on this task's board.", retryable: false }
-    case 'LABEL_NOT_IN_PROJECT':
+    case 'LABEL_NOT_ON_BOARD':
       return {
-        error: "That label is not one of this project's labels. Read them with nessie_label_list.",
+        error: "That label is not on this task's board. Read them with nessie_label_list.",
         retryable: false,
       }
-    case 'LABEL_NOT_IN_PROJECT_SOURCE':
+    case 'LABEL_NOT_IN_TASK_SOURCE':
       return {
         error: 'That label belongs to a different external source than this task, so it cannot be set here.',
         retryable: false,
       }
     case 'LABEL_NAME_TAKEN':
-      return { error: 'This project already has a label with that name; use it.', retryable: false }
+      return { error: 'This board already has a label with that name; use it.', retryable: false }
     case 'LABEL_NOT_FOUND':
-      return { error: 'Label not found in this project.', retryable: false }
+      return { error: 'Label not found in this project (or not on that board).', retryable: false }
     case 'COMMENT_NOT_FOUND':
       return { error: 'Comment not found on this task.', retryable: false }
     case 'COMMENT_NOT_AUTHOR':
@@ -158,9 +158,11 @@ const describeFailure = (
       return { error: 'That attachment is not on this task.', retryable: false }
     case 'ATTACHMENT_NOT_REMOVABLE':
       return {
-        error: 'Only the person who uploaded that file, or a member of the project, can remove it.',
+        error: 'That file is a copy the external source keeps; it cannot be removed here.',
         retryable: false,
       }
+    case 'ATTACHMENT_ALREADY_REMOVED':
+      return { error: 'That file is already marked as removed.', retryable: false }
     case 'ATTACHMENT_TOO_LARGE':
       return { error: result.detail ?? 'That file is too large to attach.', retryable: false }
     default:

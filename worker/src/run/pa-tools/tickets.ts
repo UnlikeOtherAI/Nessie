@@ -70,10 +70,10 @@ const throwIfSourceRefused = (outcome: { error?: string; detail?: string }): voi
 
 /** A label refusal from the shared functions, said so the model can correct it. */
 const throwIfLabelRefused = (outcome: { error?: string }): void => {
-  if (outcome.error === 'LABEL_NOT_IN_PROJECT') {
-    throw new Error('That label is not one of this project’s labels. Read them with ticket_labels_read.')
+  if (outcome.error === 'LABEL_NOT_ON_BOARD') {
+    throw new Error('That label is not on this ticket\'s board. Read them with ticket_labels_read.')
   }
-  if (outcome.error === 'LABEL_NOT_IN_PROJECT_SOURCE') {
+  if (outcome.error === 'LABEL_NOT_IN_TASK_SOURCE') {
     throw new Error('That label belongs to a different external source than this ticket, so it cannot be set here.')
   }
 }
@@ -132,7 +132,9 @@ export const runTicketReadTool = async (
         : 'Origin: Nessie',
       `Purpose: ${ticket.purpose ?? 'none'}`,
       `Detail (Markdown): ${ticket.detail ?? 'none'}`,
-      `Labels: ${ticket.labels.length ? ticket.labels.map((label) => `${label.name} (labelId=${label.id})`).join(', ') : 'none'}`,
+      // A ticket's labels are its board's: say which, so ticket_labels_read can be asked for that board.
+      `Labels (${ticket.boardId ? `boardId=${ticket.boardId}` : 'the project\'s default board'}): `
+        + `${ticket.labels.length ? ticket.labels.map((label) => `${label.name} (labelId=${label.id})`).join(', ') : 'none'}`,
       `Attachments: ${ticket.attachmentCount}`,
       `Comments: ${ticket.commentCount}`,
       `iterationId=${ticket.iterationId ?? 'none'} storyPoints=${ticket.storyPoints ?? 'none'}`,

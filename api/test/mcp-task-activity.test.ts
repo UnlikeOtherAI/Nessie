@@ -205,6 +205,62 @@ runDatabaseTest('an agent attaches a file, linked the moment it is stored, and 1
   }
 })
 
+runDatabaseTest('an agent marks a file removed with a reason; it stays readable and says who removed it', async () => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  try {
+    const published: Published[] = []
+    const context = contextFor(prisma, s, published)
+    const taskId = await createTask(context, s.projectId, 'Remove from here')
+    const added = await tool('nessie_task_attachment_add').run(context, {
+      taskId,
+      filename: 'draft.txt',
+      mime: 'text/plain',
+      contentBase64: Buffer.from('first draft').toString('base64'),
+    }) as { attachment: { id: string } }
+
+    assert.equal(
+      tool('nessie_task_attachment_remove').description,
+      'Mark a file on a task as removed. It stays downloadable and the list shows who removed it and why; '
+        + 'give a reason when you have one.',
+    )
+    const removed = await tool('nessie_task_attachment_remove').run(context, {
+      taskId,
+      attachmentId: added.attachment.id,
+      reason: 'Superseded by v2',
+    }) as { removed?: boolean; attachment?: { removed: { byUserId: string; reason: string } } }
+    assert.equal(removed.removed, true)
+    assert.equal(removed.attachment?.removed.reason, 'Superseded by v2', 'the reason reaches the shared function')
+    assert.equal(removed.attachment?.removed.byUserId, s.userId)
+    assert.equal(await prisma.attachment.count({ where: { id: added.attachment.id } }), 1, 'nothing deleted')
+
+    const listed = await tool('nessie_task_attachment_list').run(context, { taskId }) as {
+      attachments: Array<{ id: string; removed: { reason: string } | null }>
+    }
+    assert.equal(listed.attachments[0]?.removed?.reason, 'Superseded by v2')
+
+    const got = await tool('nessie_task_attachment_get').run(context, {
+      taskId,
+      attachmentId: added.attachment.id,
+    }) as { contentBase64?: string; note?: string }
+    assert.equal(Buffer.from(got.contentBase64 ?? '', 'base64').toString('utf8'), 'first draft')
+    assert.match(
+      String(got.note),
+      new RegExp(`^This file was removed from the task on \\d{4}-\\d{2}-\\d{2} by user ${s.userId}: Superseded by v2$`),
+    )
+
+    const again = await tool('nessie_task_attachment_remove').run(context, {
+      taskId,
+      attachmentId: added.attachment.id,
+    }) as { code?: string; error?: string }
+    assert.equal(again.code, 'ATTACHMENT_ALREADY_REMOVED')
+    assert.equal(again.error, 'That file is already marked as removed.')
+  } finally {
+    await cleanup(prisma, s)
+    await prisma.$disconnect()
+  }
+})
+
 runDatabaseTest('a comment on a read-only mirror stays in Nessie and says so', async () => {
   const prisma = new PrismaClient()
   const s = await seed(prisma)
@@ -288,6 +344,7 @@ runDatabaseTest('a comment on a read-only mirror stays in Nessie and says so', a
     assert.equal(deleted.deleted, true)
     const row = await prisma.taskComment.findUniqueOrThrow({ where: { id: added.comment.id } })
     assert.ok(row.deletedAt, 'the author deleted it')
+    assert.match(tool('nessie_task_comment_delete').description, /its files are marked removed and stay downloadable/)
   } finally {
     await cleanup(prisma, s)
     await prisma.$disconnect()
