@@ -23,6 +23,8 @@ export const TaskSetProcessorOptionSchema = TaskSetProcessorSchema.extend({
   available: z.boolean(),
   reason: z.string().nullable(),
   setupUrl: z.string().nullable(),
+  localInferenceHostId: uuid.optional(),
+  inferenceResourceId: uuid.optional(),
 })
 
 export const TaskSetSourceSchema = z.object({
@@ -49,8 +51,7 @@ export const TaskSetOutputSchema = z.discriminatedUnion('kind', [
     format: z.enum(['text', 'jsonl']),
   }).strict(),
   z.object({
-    kind: z.literal('spreadsheet'), pageId: uuid, expectedVersionId: uuid,
-    sheet: z.string().min(1), firstRow: z.number().int().positive(),
+    kind: z.literal('spreadsheet'), spaceId: uuid, parentId: uuid.optional(),
     fields: z.record(z.string().min(1)),
   }).strict(),
 ])
