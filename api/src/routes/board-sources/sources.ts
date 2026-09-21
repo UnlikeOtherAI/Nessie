@@ -30,6 +30,7 @@ import {
   isBoardSourceCredentialError,
   putBoardSourceMappings,
   updateBoardSource,
+  upsertSourceLabels,
 } from '@nessie/team-admin'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
@@ -255,11 +256,27 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       return reply
     }
 
-    // The adapter's fields become custom fields of the project, reusing an
-    // existing definition of the same name rather than making a duplicate.
+    // Labels are first-class project labels, never a *Labels* custom field.
+    // An adapter that lists them in `labels` no longer declares the field, so
+    // the mapping is seeded from a stand-in entry; one that still declares a
+    // `labels` field (until it moves over) maps onto the same native target.
+    const fieldTargets: Record<string, string> = { labels: 'native:labels' }
+    const declaresLabels = description.fields.some((field) => field.key === 'labels')
+    const seededDescription = declaresLabels || !description.labels
+      ? description
+      : {
+        ...description,
+        fields: [
+          ...description.fields,
+          { key: 'labels', label: 'Labels', type: 'multi_select' as const },
+        ],
+      }
+
+    // The adapter's other fields become custom fields of the project, reusing
+    // an existing definition of the same name rather than making a duplicate.
     const existing = await listTaskFieldDefinitions(prisma, project.id)
-    const fieldTargets: Record<string, string> = {}
     for (const field of description.fields) {
+      if (field.key === 'labels') continue
       const match = existing.find(
         (definition) => definition.name === field.label && definition.type === field.type,
       )
@@ -301,12 +318,21 @@ export const registerBoardSourceRoutes = (app: FastifyInstance, deps: RouteDeps)
       containerKey: descriptor.key,
       name: body.name ?? descriptor.label,
       createdByUserId: actorContext.actor.actorId,
-      description,
+      description: seededDescription,
       fieldTargets,
     })
     if (isBoardSourceError(result)) {
       sourceError(reply, result)
       return reply
+    }
+    // The container's labels exist, with their colours, before the first sync
+    // links any of them, so the picker offers them from the moment of attach.
+    if (description.labels && description.labels.length > 0) {
+      await upsertSourceLabels(
+        prisma,
+        { id: result.id, organizationId: project.organizationId, projectId: project.id },
+        description.labels,
+      )
     }
 
     await enqueueQueueJob(prisma, {

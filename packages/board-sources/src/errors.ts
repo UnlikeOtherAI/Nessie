@@ -85,3 +85,20 @@ export class AdapterNotRegisteredError extends Error {
     this.provider = provider
   }
 }
+
+/**
+ * A provider file larger than the streaming envelope admits. Thrown before a
+ * byte is stored when the provider declares its length, and by the counting
+ * transform the moment the running total passes the cap when it does not —
+ * either way the file never reaches storage, and retrying cannot change the
+ * answer.
+ */
+export class SourceAssetTooLargeError extends Error {
+  readonly limitBytes: number
+
+  constructor(limitBytes: number) {
+    super(`The provider file is larger than ${Math.round(limitBytes / (1024 * 1024))} MiB`)
+    this.name = 'SourceAssetTooLargeError'
+    this.limitBytes = limitBytes
+  }
+}

@@ -15,9 +15,16 @@ import {
   loadIdentityLinks,
   parseFieldMappings,
   parseStateMapping,
+  removeInboundComments,
 } from '@nessie/team-admin'
 
-import { webhookCallbackUrl, type BoardSourceSyncDeps } from './board-source-sync.js'
+import {
+  applyPageActivity,
+  finishActivity,
+  refreshSourceLabels,
+  webhookCallbackUrl,
+  type BoardSourceSyncDeps,
+} from './board-source-sync.js'
 
 import { notifyBoardWatchers } from './board-watch-notify.js'
 
@@ -77,6 +84,27 @@ export const processBoardSourceWebhook = async (
     if (isBoardSourceCredentialError(context)) continue
 
     const container = source.container as Record<string, unknown>
+
+    // A label changed upstream: no issue did, so nothing is re-read — the
+    // container is re-described and every source-owned label takes the
+    // provider's name and colour.
+    if (delivery.resource === 'label') {
+      if (await refreshSourceLabels(deps, adapter, context, source, container)) {
+        await deps.publishBoardUpdated({
+          organizationId: source.organizationId,
+          projectId: source.projectId,
+        })
+      }
+      continue
+    }
+
+    // A deletion is only ever said here; polling cannot see an absence.
+    const touched = await removeInboundComments(
+      prisma,
+      source,
+      delivery.removedCommentExternalIds ?? [],
+    )
+
     // The delivery carries ids; the item is re-read so the mirror is written
     // from the provider's current state rather than from a payload that may
     // already be behind another change.
@@ -84,7 +112,16 @@ export const processBoardSourceWebhook = async (
       delivery.externalIds.length > 0
         ? await adapter.fetchItems(context, container, delivery.externalIds)
         : []
-    if (items.length === 0) continue
+    if (items.length === 0) {
+      if (touched.size > 0) {
+        await finishActivity(deps, { ...source, identityByExternalUserId: new Map() }, adapter, context, touched)
+        await deps.publishBoardUpdated({
+          organizationId: source.organizationId,
+          projectId: source.projectId,
+        })
+      }
+      continue
+    }
 
     const tenant = {
       organizationId: source.organizationId,
@@ -121,11 +158,18 @@ export const processBoardSourceWebhook = async (
       }
     }
 
+    // The re-read issue carries its comments and files, applied whatever the
+    // item's own outcome was: a `Comment` delivery changes no issue field.
+    for (const taskId of await applyPageActivity(deps, applyContext, tenant, adapter, { items })) {
+      touched.add(taskId)
+    }
+    await finishActivity(deps, applyContext, adapter, context, touched)
+
     // A webhook is "this one changed just now", which is the case a person asked
     // to hear about per ticket.
     await notifyBoardWatchers(prisma, events, { delivery: 'webhook' })
 
-    if (applied > 0) {
+    if (applied > 0 || touched.size > 0) {
       await deps.publishBoardUpdated({
         organizationId: source.organizationId,
         projectId: source.projectId,

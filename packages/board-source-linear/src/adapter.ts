@@ -1,11 +1,14 @@
 import {
+  type AssetStream,
   type BoardSourceAdapter,
   type ConnectResult,
   type ConnectionContext,
   type ContainerDescription,
   type ContainerDescriptor,
   type CredentialBundle,
+  type NormalisedComment,
   type NormalisedItem,
+  type NormalisedItemLabel,
   type OAuthExchangeInput,
   type OAuthMethod,
   type CredentialForm,
@@ -25,6 +28,7 @@ import {
   hmacHex,
   secureEquals,
   sourceFetchJson,
+  sourceFetchStream,
 } from '@nessie/board-sources'
 
 import {
@@ -33,10 +37,23 @@ import {
   LINEAR_AUTH_HOST,
   linearGraphQl,
 } from './graphql.js'
-import { linearStateCategory, normaliseLinearIssue, type LinearIssue } from './normalise.js'
+import { fetchCommentsLane, fetchIssuesLane, type LinearGraphQl } from './lanes.js'
 import {
+  LINEAR_ASSET_HOSTS,
+  type LinearComment,
+  type LinearIssue,
+  type LinearLabel,
+  linearStateCategory,
+  normaliseLinearComment,
+  normaliseLinearIssue,
+  normaliseLinearLabel,
+} from './normalise.js'
+import { parseLinearWebhook } from './webhook-parse.js'
+import {
+  COMMENT_CREATE_MUTATION,
+  COMMENT_DELETE_MUTATION,
+  COMMENT_UPDATE_MUTATION,
   ISSUES_BY_ID_QUERY,
-  ISSUES_PAGE_QUERY,
   ISSUE_SEARCH_QUERY,
   ISSUE_UPDATE_MUTATION,
   TEAMS_QUERY,
@@ -44,6 +61,7 @@ import {
   VIEWER_QUERY,
   WEBHOOK_CREATE_MUTATION,
   WEBHOOK_DELETE_MUTATION,
+  WORKSPACE_LABELS_QUERY,
 } from './queries.js'
 
 export type LinearAdapterConfig = {
@@ -57,7 +75,15 @@ export type LinearAdapterConfig = {
   clientSecret?: string
   /** The app-level webhook signing secret, when webhooks are configured. */
   webhookSecret?: string
+  /**
+   * The GraphQL call, replaceable so the lane machine and the mutations can be
+   * tested against recorded answers. Production never sets it: the default is
+   * the one envelope every Linear call goes through.
+   */
+  graphQl?: LinearGraphQl
 }
+
+
 
 /**
  * The OAuth half, present only when this deployment registered a Linear app.
@@ -236,314 +262,342 @@ const verifyLinearApiKey = async (values: Record<string, string>): Promise<Conne
  * and is not accepted by `api.linear.app`, and MCP has no cursors and no
  * webhooks. The MCP connector keeps its own job — an agent talking to Linear in
  * a run — and this keeps a board fresh. Design §5.2.
- */export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAdapter => ({
-  provider: 'linear',
+ */
+export const createLinearAdapter = (config: LinearAdapterConfig): BoardSourceAdapter => {
+  const gql: LinearGraphQl = config.graphQl ?? linearGraphQl
+  return {
+    provider: 'linear',
 
-  // Webhooks are the fast path; this is the floor, so a missed delivery costs
-  // freshness rather than correctness.
-  incrementalPollingIntervalMs: 5 * 60 * 1000,
+    // Webhooks are the fast path; this is the floor, so a missed delivery costs
+    // freshness rather than correctness.
+    incrementalPollingIntervalMs: 5 * 60 * 1000,
 
-  allowedHosts: LINEAR_ALLOWED_HOSTS,
+    allowedHosts: LINEAR_ALLOWED_HOSTS,
 
-  auth: {
-    ...buildOAuthMethod(config),
+    assetHosts: LINEAR_ASSET_HOSTS,
 
-    apiKey: {
-      form: LINEAR_API_KEY_FORM,
-      verify: verifyLinearApiKey,
+    auth: {
+      ...buildOAuthMethod(config),
+
+      apiKey: {
+        form: LINEAR_API_KEY_FORM,
+        verify: verifyLinearApiKey,
+      },
     },
-  },
 
-  listContainers: async (ctx: ConnectionContext): Promise<ContainerDescriptor[]> => {
-    const containers: ContainerDescriptor[] = []
-    let after: string | undefined
-    do {
-      const page = await linearGraphQl<{
-        teams: {
-          nodes: { id: string; key: string; name: string }[]
-          pageInfo: { hasNextPage: boolean; endCursor: string | null }
-        }
-      }>(ctx.credential.accessToken, TEAMS_QUERY, after ? { after } : {})
-      for (const team of page.teams.nodes) {
-        containers.push({
-          key: team.id,
-          container: { teamId: team.id, teamKey: team.key },
-          label: team.name,
-          hint: team.key,
-        })
-      }
-      after = page.teams.pageInfo.hasNextPage
-        ? page.teams.pageInfo.endCursor ?? undefined
-        : undefined
-    } while (after)
-    return containers
-  },
-
-  describeContainer: async (
-    ctx: ConnectionContext,
-    container: Record<string, unknown>,
-  ): Promise<ContainerDescription> => {
-    const teamId = String(container.teamId ?? '')
-    const data = await linearGraphQl<{
-      team: {
-        states: { nodes: { id: string; name: string; type: string; position: number }[] }
-        members: { nodes: { id: string; name: string; email: string | null; active: boolean }[] }
-        labels: { nodes: { id: string; name: string }[] }
-      } | null
-    }>(ctx.credential.accessToken, TEAM_DESCRIPTION_QUERY, { teamId })
-    if (!data.team) throw new SourceContainerGoneError('That Linear team is no longer reachable')
-
-    return {
-      states: [...data.team.states.nodes]
-        .sort((a, b) => a.position - b.position)
-        .map((state) => ({
-          id: state.id,
-          name: state.name,
-          suggestedCategory: linearStateCategory(state.type),
-        })),
-      fields: [
-        { key: 'estimate', label: 'Estimate', type: 'number' },
-        {
-          key: 'labels',
-          label: 'Labels',
-          type: 'multi_select',
-          options: data.team.labels.nodes.map((label) => ({
-            id: label.id,
-            label: label.name,
-          })),
-        },
-      ],
-      members: data.team.members.nodes
-        .filter((member) => member.active)
-        .map((member) => ({
-          externalUserId: member.id,
-          displayName: member.name,
-          ...(member.email ? { email: member.email } : {}),
-        })),
-    }
-  },
-
-  fetchPage: async (
-    ctx: ConnectionContext,
-    container: Record<string, unknown>,
-    checkpoint: SyncCheckpoint,
-    options: { syncWindowDays: number },
-  ): Promise<SyncPage> => {
-    const teamId = String(container.teamId ?? '')
-    // The first sync is bounded by the window; every later one resumes from the
-    // last item's `updatedAt`, minus an overlap so an item updated during the
-    // page boundary is not skipped.
-    const since =
-      checkpoint.since ??
-      new Date(Date.now() - options.syncWindowDays * 24 * 60 * 60 * 1000).toISOString()
-
-    const data = await linearGraphQl<{
-      issues: {
-        nodes: LinearIssue[]
-        pageInfo: { hasNextPage: boolean; endCursor: string | null }
-      }
-    }>(ctx.credential.accessToken, ISSUES_PAGE_QUERY, {
-      teamId,
-      updatedAfter: since,
-      ...(checkpoint.cursor ? { after: checkpoint.cursor } : {}),
-    })
-
-    const items = data.issues.nodes.map(normaliseLinearIssue)
-    const hasMore = data.issues.pageInfo.hasNextPage
-    const latest = items.reduce<string | null>(
-      (newest, item) => (newest === null || item.updatedAt > newest ? item.updatedAt : newest),
-      null,
-    )
-
-    return {
-      items,
-      hasMore,
-      checkpoint: hasMore
-        ? {
-            phase: checkpoint.phase,
-            since,
-            ...(data.issues.pageInfo.endCursor
-              ? { cursor: data.issues.pageInfo.endCursor }
-              : {}),
+    listContainers: async (ctx: ConnectionContext): Promise<ContainerDescriptor[]> => {
+      const containers: ContainerDescriptor[] = []
+      let after: string | undefined
+      do {
+        const page = await gql<{
+          teams: {
+            nodes: { id: string; key: string; name: string }[]
+            pageInfo: { hasNextPage: boolean; endCursor: string | null }
           }
-        : {
-            phase: 'incremental',
-            // A one-minute overlap: Linear orders by `updatedAt` and an item
-            // written in the same second as the page boundary would otherwise
-            // fall between two syncs.
-            since: latest
-              ? new Date(Date.parse(latest) - 60_000).toISOString()
-              : since,
-          },
-    }
-  },
+        }>(ctx.credential.accessToken, TEAMS_QUERY, after ? { after } : {})
+        for (const team of page.teams.nodes) {
+          containers.push({
+            key: team.id,
+            container: { teamId: team.id, teamKey: team.key },
+            label: team.name,
+            hint: team.key,
+          })
+        }
+        after = page.teams.pageInfo.hasNextPage
+          ? page.teams.pageInfo.endCursor ?? undefined
+          : undefined
+      } while (after)
+      return containers
+    },
 
-  fetchItems: async (
-    ctx: ConnectionContext,
-    _container: Record<string, unknown>,
-    externalIds: string[],
-  ): Promise<NormalisedItem[]> => {
-    if (externalIds.length === 0) return []
-    const data = await linearGraphQl<{ issues: { nodes: LinearIssue[] } }>(
-      ctx.credential.accessToken,
-      ISSUES_BY_ID_QUERY,
-      { ids: externalIds.slice(0, 100) },
-    )
-    return data.issues.nodes.map(normaliseLinearIssue)
-  },
-
-  searchItems: async (
-    ctx: ConnectionContext,
-    container: Record<string, unknown>,
-    query: RemoteItemQuery,
-  ): Promise<NormalisedItem[]> => {
-    const teamId = String(container.teamId ?? '')
-    const data = await linearGraphQl<{ searchIssues: { nodes: LinearIssue[] } }>(
-      ctx.credential.accessToken,
-      ISSUE_SEARCH_QUERY,
-      { term: query.text, teamId, first: Math.min(query.limit, 50) },
-    )
-    return data.searchIssues.nodes.map(normaliseLinearIssue)
-  },
-
-  /**
-   * Ask Linear to call this deployment when the team's issues change.
-   *
-   * An app-level webhook is the other way in, but it exists only where the
-   * deployment registered an OAuth app *and* configured one on it — which no
-   * install gets for free, and none at all gets for a pasted API key. So the
-   * source registers its own, and the deployment needs nothing configured to
-   * have a board that updates in seconds instead of five minutes.
-   *
-   * Linear only lets a workspace admin (or an OAuth grant carrying `admin`,
-   * which this adapter's `read,write` does not ask for) manage webhooks. That
-   * refusal is the expected answer for an ordinary member's key, not a fault,
-   * so it returns null and the declared poll stays the story.
-   */
-  ensureWebhook: async (
-    ctx: ConnectionContext,
-    container: Record<string, unknown>,
-    callback: { url: string },
-  ): Promise<WebhookRegistration | null> => {
-    let data: { webhookCreate: { success: boolean; webhook: LinearWebhook | null } }
-    try {
-      data = await linearGraphQl(ctx.credential.accessToken, WEBHOOK_CREATE_MUTATION, {
-        input: buildWebhookCreateInput(container, callback),
-      })
-    } catch (cause) {
-      if (isWebhookRegistrationRefused(cause)) return null
-      throw cause
-    }
-    const webhook = data.webhookCreate.webhook
-    if (!data.webhookCreate.success || !webhook) return null
-    return {
-      externalId: webhook.id,
-      // Linear webhooks do not expire; a disabled one is the workspace's own
-      // decision, and re-creating it behind their back would be wrong.
-      expiresAt: null,
-      // Handed over exactly once. Nothing reads it back, so a caller that does
-      // not persist it has silently downgraded itself to polling.
-      ...(webhook.secret ? { signingSecret: webhook.secret } : {}),
-    }
-  },
-
-  removeWebhook: async (
-    ctx: ConnectionContext,
-    _container: Record<string, unknown>,
-    externalId: string,
-  ): Promise<void> => {
-    await linearGraphQl(ctx.credential.accessToken, WEBHOOK_DELETE_MUTATION, {
-      id: externalId,
-    })
-  },
-
-  verifyWebhook: (request: WebhookRequest, secrets: WebhookSecrets): boolean => {
-    const signature = request.headers['linear-signature']
-    const secret = secrets.signingSecret ?? config.webhookSecret
-    if (!signature || !secret) return false
-    if (!secureEquals(signature, hmacHex('sha256', secret, request.rawBody))) return false
-
-    // Replay window: Linear stamps the payload, and a delivery older than a
-    // minute is a replay rather than a slow network.
-    try {
-      const parsed = JSON.parse(request.rawBody) as { webhookTimestamp?: number }
-      if (typeof parsed.webhookTimestamp === 'number') {
-        return Math.abs(Date.now() - parsed.webhookTimestamp) <= 60_000
-      }
-    } catch {
-      return false
-    }
-    return true
-  },
-
-  parseWebhook: (request: WebhookRequest): WebhookDelivery => {
-    const parsed = JSON.parse(request.rawBody) as {
-      action?: string
-      type?: string
-      data?: { id?: string; team?: { id?: string }; teamId?: string }
-      webhookId?: string
-      webhookTimestamp?: number
-    }
-    const externalId = parsed.data?.id
-    return {
-      // Linear has no delivery header; the payload names the webhook and the
-      // moment it fired, and a redelivery repeats both byte for byte. Without
-      // `webhookId` there is nothing provider-supplied to key on, so the
-      // caller hashes the body instead of keying on a partly-invented string.
-      deliveryId: parsed.webhookId
-        ? `${parsed.webhookId}:${externalId ?? 'none'}:${parsed.webhookTimestamp ?? 0}`
-        : null,
-      containerKey: parsed.data?.team?.id ?? parsed.data?.teamId ?? null,
-      externalIds: externalId ? [externalId] : [],
-    }
-  },
-
-  applyChange: async (
-    ctx: ConnectionContext,
-    _container: Record<string, unknown>,
-    item: { externalId: string; externalKey: string },
-    change: OutboundChange,
-  ): Promise<NormalisedItem> => {
-    const input: Record<string, unknown> = {}
-    if (change.stateId !== undefined) input.stateId = change.stateId
-    if (change.title !== undefined) input.title = change.title
-    if (change.description !== undefined) input.description = change.description
-    if (change.assigneeExternalUserId !== undefined) {
-      input.assigneeId = change.assigneeExternalUserId
-    }
-    if (change.dueDate !== undefined) input.dueDate = change.dueDate
-    if (change.priority !== undefined) {
-      input.priority = LINEAR_PRIORITY_NUMBERS[change.priority ?? 'none'] ?? 0
-    }
-    if (change.fields?.estimate !== undefined) input.estimate = change.fields.estimate
-    if (change.fields?.labels !== undefined) input.labelIds = change.fields.labels
-
-    if (Object.keys(input).length === 0) {
-      throw new SourceRejectedError('NOTHING_TO_APPLY', 'No mapped field changed')
-    }
-
-    const data = await linearGraphQl<{
-      issueUpdate: { success: boolean; issue: LinearIssue | null }
-    }>(ctx.credential.accessToken, ISSUE_UPDATE_MUTATION, { id: item.externalId, input })
-
-    if (!data.issueUpdate.success || !data.issueUpdate.issue) {
-      throw new SourceRejectedError(
-        'LINEAR_UPDATE_REFUSED',
-        `Linear refused the change to ${item.externalKey}`,
+    describeContainer: async (
+      ctx: ConnectionContext,
+      container: Record<string, unknown>,
+    ): Promise<ContainerDescription> => {
+      const teamId = String(container.teamId ?? '')
+      const data = await gql<{
+        team: {
+          states: { nodes: { id: string; name: string; type: string; position: number }[] }
+          members: { nodes: { id: string; name: string; email: string | null; active: boolean }[] }
+          labels: { nodes: LinearLabel[] }
+        } | null
+      }>(ctx.credential.accessToken, TEAM_DESCRIPTION_QUERY, { teamId })
+      if (!data.team) throw new SourceContainerGoneError('That Linear team is no longer reachable')
+      // A team's issues may carry workspace labels as well as the team's own.
+      const workspace = await gql<{ issueLabels: { nodes: LinearLabel[] } }>(
+        ctx.credential.accessToken,
+        WORKSPACE_LABELS_QUERY,
       )
-    }
-    return normaliseLinearIssue(data.issueUpdate.issue)
-  },
-})
+      const labels = new Map<string, NormalisedItemLabel>()
+      for (const label of [...data.team.labels.nodes, ...workspace.issueLabels.nodes]) {
+        labels.set(label.id, normaliseLinearLabel(label))
+      }
+
+      return {
+        states: [...data.team.states.nodes]
+          .sort((a, b) => a.position - b.position)
+          .map((state) => ({
+            id: state.id,
+            name: state.name,
+            suggestedCategory: linearStateCategory(state.type),
+          })),
+        // Labels are first-class (`labels` below), so they are no longer a
+        // custom field the attach would create a *Labels* definition for.
+        fields: [{ key: 'estimate', label: 'Estimate', type: 'number' }],
+        labels: [...labels.values()],
+        members: data.team.members.nodes
+          .filter((member) => member.active)
+          .map((member) => ({
+            externalUserId: member.id,
+            displayName: member.name,
+            ...(member.email ? { email: member.email } : {}),
+          })),
+      }
+    },
+
+    /**
+     * Two lanes over one checkpoint. Lane `items` pages issues exactly as it
+     * always did; when it runs out it hands over to lane `comments`, which pages
+     * the team's comments flat on their own clock and, on its last page, hands
+     * back. The worker loops until `hasMore` is false and persists the
+     * checkpoint after every page, so it needs to know nothing about lanes.
+     */
+    fetchPage: async (
+      ctx: ConnectionContext,
+      container: Record<string, unknown>,
+      checkpoint: SyncCheckpoint,
+      options: { syncWindowDays: number },
+    ): Promise<SyncPage> =>
+      checkpoint.lane === 'comments'
+        ? fetchCommentsLane(gql, ctx, container, checkpoint)
+        : fetchIssuesLane(gql, ctx, container, checkpoint, options),
+
+    fetchItems: async (
+      ctx: ConnectionContext,
+      container: Record<string, unknown>,
+      externalIds: string[],
+    ): Promise<NormalisedItem[]> => {
+      if (externalIds.length === 0) return []
+      const data = await gql<{ issues: { nodes: LinearIssue[] } }>(
+        ctx.credential.accessToken,
+        ISSUES_BY_ID_QUERY,
+        { ids: externalIds.slice(0, 100), teamId: String(container.teamId ?? '') },
+      )
+      return data.issues.nodes.map(normaliseLinearIssue)
+    },
+
+    searchItems: async (
+      ctx: ConnectionContext,
+      container: Record<string, unknown>,
+      query: RemoteItemQuery,
+    ): Promise<NormalisedItem[]> => {
+      const teamId = String(container.teamId ?? '')
+      const data = await gql<{ searchIssues: { nodes: LinearIssue[] } }>(
+        ctx.credential.accessToken,
+        ISSUE_SEARCH_QUERY,
+        { term: query.text, teamId, first: Math.min(query.limit, 50) },
+      )
+      return data.searchIssues.nodes.map(normaliseLinearIssue)
+    },
+
+    /**
+     * Ask Linear to call this deployment when the team's issues change.
+     *
+     * An app-level webhook is the other way in, but it exists only where the
+     * deployment registered an OAuth app *and* configured one on it — which no
+     * install gets for free, and none at all gets for a pasted API key. So the
+     * source registers its own, and the deployment needs nothing configured to
+     * have a board that updates in seconds instead of five minutes.
+     *
+     * Linear only lets a workspace admin (or an OAuth grant carrying `admin`,
+     * which this adapter's `read,write` does not ask for) manage webhooks. That
+     * refusal is the expected answer for an ordinary member's key, not a fault,
+     * so it returns null and the declared poll stays the story.
+     */
+    ensureWebhook: async (
+      ctx: ConnectionContext,
+      container: Record<string, unknown>,
+      callback: { url: string },
+    ): Promise<WebhookRegistration | null> => {
+      let data: { webhookCreate: { success: boolean; webhook: LinearWebhook | null } }
+      try {
+        data = await gql(ctx.credential.accessToken, WEBHOOK_CREATE_MUTATION, {
+          input: buildWebhookCreateInput(container, callback),
+        })
+      } catch (cause) {
+        if (isWebhookRegistrationRefused(cause)) return null
+        throw cause
+      }
+      const webhook = data.webhookCreate.webhook
+      if (!data.webhookCreate.success || !webhook) return null
+      return {
+        externalId: webhook.id,
+        // Linear webhooks do not expire; a disabled one is the workspace's own
+        // decision, and re-creating it behind their back would be wrong.
+        expiresAt: null,
+        // Handed over exactly once. Nothing reads it back, so a caller that does
+        // not persist it has silently downgraded itself to polling.
+        ...(webhook.secret ? { signingSecret: webhook.secret } : {}),
+      }
+    },
+
+    removeWebhook: async (
+      ctx: ConnectionContext,
+      _container: Record<string, unknown>,
+      externalId: string,
+    ): Promise<void> => {
+      await gql(ctx.credential.accessToken, WEBHOOK_DELETE_MUTATION, {
+        id: externalId,
+      })
+    },
+
+    verifyWebhook: (request: WebhookRequest, secrets: WebhookSecrets): boolean => {
+      const signature = request.headers['linear-signature']
+      const secret = secrets.signingSecret ?? config.webhookSecret
+      if (!signature || !secret) return false
+      if (!secureEquals(signature, hmacHex('sha256', secret, request.rawBody))) return false
+
+      // Replay window: Linear stamps the payload, and a delivery older than a
+      // minute is a replay rather than a slow network.
+      try {
+        const parsed = JSON.parse(request.rawBody) as { webhookTimestamp?: number }
+        if (typeof parsed.webhookTimestamp === 'number') {
+          return Math.abs(Date.now() - parsed.webhookTimestamp) <= 60_000
+        }
+      } catch {
+        return false
+      }
+      return true
+    },
+
+    parseWebhook: (request: WebhookRequest): WebhookDelivery => parseLinearWebhook(request),
+
+    applyChange: async (
+      ctx: ConnectionContext,
+      _container: Record<string, unknown>,
+      item: { externalId: string; externalKey: string },
+      change: OutboundChange,
+    ): Promise<NormalisedItem> => {
+      const input: Record<string, unknown> = {}
+      if (change.stateId !== undefined) input.stateId = change.stateId
+      if (change.title !== undefined) input.title = change.title
+      if (change.description !== undefined) input.description = change.description
+      if (change.assigneeExternalUserId !== undefined) {
+        input.assigneeId = change.assigneeExternalUserId
+      }
+      if (change.dueDate !== undefined) input.dueDate = change.dueDate
+      if (change.priority !== undefined) {
+        input.priority = LINEAR_PRIORITY_NUMBERS[change.priority ?? 'none'] ?? 0
+      }
+      if (change.fields?.estimate !== undefined) input.estimate = change.fields.estimate
+      if (change.labelIds !== undefined) input.labelIds = change.labelIds
+
+      if (Object.keys(input).length === 0) {
+        throw new SourceRejectedError('NOTHING_TO_APPLY', 'No mapped field changed')
+      }
+
+      const data = await gql<{
+        issueUpdate: { success: boolean; issue: LinearIssue | null }
+      }>(ctx.credential.accessToken, ISSUE_UPDATE_MUTATION, { id: item.externalId, input })
+
+      if (!data.issueUpdate.success || !data.issueUpdate.issue) {
+        throw new SourceRejectedError(
+          'LINEAR_UPDATE_REFUSED',
+          `Linear refused the change to ${item.externalKey}`,
+        )
+      }
+      return normaliseLinearIssue(data.issueUpdate.issue)
+    },
+
+    /**
+     * Linear's uploads are private and read with the same credential the API
+     * takes, as the `authorization` header. Streamed, never buffered, under the
+     * envelope's 25 MiB cap; a 404 is "gone upstream", which is a different
+     * answer from a failure and is reported as one.
+     */
+    fetchAsset: async (ctx: ConnectionContext, asset: { url: string }): Promise<AssetStream | null> => {
+      try {
+        const response = await sourceFetchStream({
+          url: asset.url,
+          allowedHosts: LINEAR_ASSET_HOSTS,
+          headers: { authorization: ctx.credential.accessToken },
+        })
+        return {
+          stream: response.stream,
+          contentType: response.contentType,
+          sizeBytes: response.sizeBytes,
+        }
+      } catch (cause) {
+        if (cause instanceof SourceHttpError && cause.status === 404) return null
+        throw cause
+      }
+    },
+
+    createComment: async (
+      ctx: ConnectionContext,
+      _container: Record<string, unknown>,
+      item: { externalId: string; externalKey: string },
+      body: string,
+    ): Promise<NormalisedComment> => {
+      const data = await gql<{
+        commentCreate: { success: boolean; comment: LinearComment | null }
+      }>(ctx.credential.accessToken, COMMENT_CREATE_MUTATION, {
+        input: { issueId: item.externalId, body },
+      })
+      if (!data.commentCreate.success || !data.commentCreate.comment) {
+        throw new SourceRejectedError(
+          'LINEAR_COMMENT_REFUSED',
+          `Linear refused the comment on ${item.externalKey}`,
+        )
+      }
+      return normaliseLinearComment(data.commentCreate.comment, item.externalId)
+    },
+
+    updateComment: async (
+      ctx: ConnectionContext,
+      _container: Record<string, unknown>,
+      comment: { externalId: string },
+      body: string,
+    ): Promise<NormalisedComment> => {
+      const data = await gql<{
+        commentUpdate: { success: boolean; comment: LinearComment | null }
+      }>(ctx.credential.accessToken, COMMENT_UPDATE_MUTATION, {
+        id: comment.externalId,
+        input: { body },
+      })
+      if (!data.commentUpdate.success || !data.commentUpdate.comment) {
+        throw new SourceRejectedError('LINEAR_COMMENT_REFUSED', 'Linear refused the comment edit')
+      }
+      return normaliseLinearComment(data.commentUpdate.comment)
+    },
+
+    deleteComment: async (
+      ctx: ConnectionContext,
+      _container: Record<string, unknown>,
+      comment: { externalId: string },
+    ): Promise<void> => {
+      const data = await gql<{ commentDelete: { success: boolean } }>(
+        ctx.credential.accessToken,
+        COMMENT_DELETE_MUTATION,
+        { id: comment.externalId },
+      )
+      if (!data.commentDelete.success) {
+        throw new SourceRejectedError('LINEAR_COMMENT_REFUSED', 'Linear refused the comment deletion')
+      }
+    },
+  }
+}
 
 type LinearWebhook = { id: string; enabled: boolean; secret?: string | null }
 
 /**
- * What `webhookCreate` is asked for: this team's issues, at this URL.
+ * What `webhookCreate` is asked for: this team's issues, their comments and
+ * their labels, at this URL.
  *
- * `Issue` alone, deliberately. The mirror holds issues, and every extra
- * resource type is a delivery the processor would fetch an issue for and then
- * apply nothing from — §5.3 keeps comments out of the mirror on purpose.
+ * `Comment` because the mirror now carries comments (and a deletion only ever
+ * arrives this way — polling cannot see an absence); `IssueLabel` because a
+ * rename or recolour upstream changes no issue, so without it a pill would
+ * keep its old colour until the next describe.
  */
 export const buildWebhookCreateInput = (
   container: Record<string, unknown>,
@@ -551,7 +605,7 @@ export const buildWebhookCreateInput = (
 ): Record<string, unknown> => ({
   url: callback.url,
   teamId: String(container.teamId ?? ''),
-  resourceTypes: ['Issue'],
+  resourceTypes: ['Issue', 'Comment', 'IssueLabel'],
   enabled: true,
   label: 'Nessie board source',
 })

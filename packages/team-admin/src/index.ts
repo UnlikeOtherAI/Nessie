@@ -232,6 +232,7 @@ export {
 } from './connected-mail-presentation.js'
 
 export * from './resource-shares.js'
+export * from './board-source-apply-activity.js'
 export * from './task-access.js'
 export * from './task-activity-realtime.js'
 export * from './task-attachments.js'

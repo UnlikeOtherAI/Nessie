@@ -30,6 +30,17 @@ export type WebhookDelivery = {
   containerKey: string | null
   /** External ids to re-read, when the payload carries ids rather than items. */
   externalIds: string[]
+  /**
+   * What the ids name. `item` (the default when absent): issues to re-read.
+   * `label`: the container's labels changed — the processor re-describes the
+   * container rather than re-reading any item, and `externalIds` is empty.
+   */
+  resource?: 'item' | 'label'
+  /**
+   * Comments the provider says were deleted. Polling can never see a deletion
+   * (a deleted comment is simply absent), so this is the only way one lands.
+   */
+  removedCommentExternalIds?: string[]
 }
 
 export type WebhookRegistration = {
