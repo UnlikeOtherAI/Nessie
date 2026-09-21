@@ -469,6 +469,7 @@ export const TaskDialog = ({
               boardId={labelsBoardId}
               disabled={!canEdit || pending}
               onChange={(next) => patchDraft({ labelIds: next })}
+              onLeave={onClose}
               projectId={labelsProjectId}
               readOnlySourceName={readOnlySourceName}
               taskLabels={task?.labels}

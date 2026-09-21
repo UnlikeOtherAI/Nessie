@@ -169,7 +169,13 @@ export const ProjectView = () => {
     params.delete('task')
     void navigate(
       { pathname: location.pathname, search: params.size > 0 ? `?${params.toString()}` : '' },
-      { replace: true, state: location.state },
+      // Synchronous, not the router's default transition: a doorway inside
+      // the ticket (Labels' *Manage labels…*) closes it and then pushes a
+      // nested screen in the same click. The board stays mounted beneath that
+      // screen with the location it had when the push landed, so the close
+      // has to commit first or the retained board keeps `?task` — and the
+      // dialog, portalled out of the inert layer, stays over the new page.
+      { flushSync: true, replace: true, state: location.state },
     )
   }
 

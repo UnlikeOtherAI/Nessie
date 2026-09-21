@@ -21,6 +21,13 @@ type TaskLabelsFieldProps = {
   boardId: string | null
   disabled?: boolean
   onChange: (labelIds: string[]) => void
+  /**
+   * Called as *Manage labels…* is followed. The board's settings are pushed
+   * over the board, which stays mounted beneath them, and the ticket dialog is
+   * portalled out of that retained layer — so the host closes it here or it
+   * stays open over the page it just opened.
+   */
+  onLeave?: () => void
   projectId: string
   /**
    * The provider's name when the ticket mirrors a source read-only: its own
@@ -46,6 +53,7 @@ export const TaskLabelsField = ({
   boardId,
   disabled = false,
   onChange,
+  onLeave,
   projectId,
   readOnlySourceName,
   taskLabels = [],
@@ -88,7 +96,7 @@ export const TaskLabelsField = ({
         createLabel={(text) => `Create label “${text}”`}
         disabled={disabled || loading}
         footer={boardId
-          ? <Link to={`/projects/${projectId}/boards/${boardId}/settings?tab=labels`}>Manage labels…</Link>
+          ? <Link onClick={onLeave} to={`/projects/${projectId}/boards/${boardId}/settings?tab=labels`}>Manage labels…</Link>
           : undefined}
         id={inputId}
         onAdd={(id) => onChange(value.includes(id) ? value : [...value, id])}
