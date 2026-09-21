@@ -26,9 +26,10 @@ The engagement enum is `reply`, `acknowledge`, `leave_to_human`, or
 `no_action`. Separate choices select the agent, an optional configured emoji,
 qualitative reply depth (`brief`, `normal`, `detailed`), and thread/channel
 placement. Custom questions are independent: a message can receive a reaction
-and also start documentation work. Work for the same agent is combined into
-one run, including a conversational reply; any such custom work uses policy
-authority and remains subject to automation budgets. A background-only run
+and also start documentation work. Custom work for the same agent is combined
+into one background run, separate from any conversational reply. The reply
+uses the posting person's authority; the configured task uses policy authority
+and remains subject to automation budgets. A background-only run
 is prompted to conclude silently unless it has a useful result or needs help.
 Instructions never grant a tool or bypass its existing approval rules.
 
@@ -77,6 +78,14 @@ queue redelivery reuses it instead of choosing new actions under a changed
 policy. `Run.promptOverride` pins the selected work instructions for run
 restart. `RunThreadPendingMessage.promptOverride` preserves them when the
 target agent is already running and the message must wait.
+
+Configured work has a distinct hidden system kickoff, keyed by the original
+message, agent and optional PA principal. Its snapshot includes only that
+target's policy work and carries the original message's disclosure provenance.
+The kickoff is not published as a chat message; an eventual reply is anchored
+to the original conversation. This keeps a poster's unrelated request from
+borrowing the policy author's authority and keeps retries from starting the
+same background work twice.
 Pending rows also preserve `replyPlacement` and drain individually whenever
 they carry policy instructions, preventing unrelated turns from replacing
 the selected work or changing its reply location. Normal pending turns retain

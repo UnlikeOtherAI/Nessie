@@ -1,36 +1,17 @@
 import { createHash } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { z } from 'zod'
 import {
   attributionFromActorContext, decideChannelActions, resolveMentionedAgentDecisions,
   type DecisionModelClient, type OrchestratorDecision,
 } from '@nessie/runtime'
 import {
   AuthorizedActionContextSchema,
+  ChannelDecisionSnapshotSchema as SnapshotSchema,
   type AuthorizedActionContext, type ChannelDecisionPolicy, type OrchestrateDecideJobPayload,
 } from '@nessie/schemas'
 import { matchesChannelDecisionTarget } from '@nessie/team-admin'
 import { asEngagementCandidate } from './orchestrate-candidates.js'
 import type { loadOrchestrationContext } from './orchestrate-context.js'
-import { BasisScopeSchema, PrivateConversationSourceSchema } from './execute/disclosure-basis.js'
-
-const IdentityShape = { agentId: z.string().uuid(), principalUserId: z.string().uuid().optional() }
-const SnapshotSchema = z.object({
-  policyFingerprint: z.string(),
-  authorizer: AuthorizedActionContextSchema.nullable(),
-  basisScopes: z.array(BasisScopeSchema),
-  disclosureSources: z.array(PrivateConversationSourceSchema),
-  decisions: z.array(z.discriminatedUnion('action', [
-    z.object({ action: z.literal('none') }),
-    z.object({ action: z.literal('acknowledge'), ...IdentityShape, emoji: z.string() }),
-    z.object({
-      action: z.literal('reply'), ...IdentityShape,
-      replyPlacement: z.enum(['thread', 'channel']).optional(),
-      promptOverride: z.string().optional(), background: z.boolean().optional(),
-      policyWork: z.boolean().optional(),
-    }),
-  ])),
-})
 
 /** One pinned result per message: retries never reinterpret a changed policy. */
 export const evaluateChannelPolicy = async (

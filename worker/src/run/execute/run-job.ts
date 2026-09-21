@@ -48,7 +48,7 @@ import { createRunInference } from './run-inference.js'
 import { prepareRunExecution } from './run-setup.js'
 import { WIND_DOWN_INSTRUCTION } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
-import { markWorking } from './working-marker.js'
+import { markWorking, workingMessageIdForTrigger } from './working-marker.js'
 import { runExternalConversation } from '../external-conversation.js'
 import {
   assertExecutorHoldsRun,
@@ -440,7 +440,7 @@ const runJobUnderFence = async (
     // remember to take it back off.
     await markWorking(deps.prisma, deps.realtimeTransport, {
       agentId: context.agent.id,
-      messageId: payload.messageId,
+      messageId: workingMessageIdForTrigger({ ...message, id: payload.messageId }),
       ...(context.run.principalUserId
         ? { onBehalfOfUserId: context.run.principalUserId }
         : {}),

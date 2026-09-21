@@ -12,6 +12,7 @@ import { claimThreadRunOrPend } from './thread-serialization.js'
 import { acknowledgeDecision, logReplyDecision, publishReplyRunStarted } from './orchestrate-publications.js'
 import { runActorContextForCandidate } from './orchestrate-candidates.js'
 import { postOrchestrationNotice } from './orchestration-notice.js'
+import { ensureChannelPolicyKickoff } from './orchestrate-kickoff.js'
 
 const isSingleAgentSystemDm = isDelegatedSystemDmChannelType
 
@@ -19,13 +20,15 @@ const isSingleAgentSystemDm = isDelegatedSystemDmChannelType
 export const dispatchOrchestratorDecisions = async (
   deps: { prisma: PrismaClient; realtimeTransport: PgRealtimeTransport },
   payload: OrchestrateDecideJobPayload,
-  channel: { systemChannelType: string | null },
+  channel: { systemChannelType: string | null; visibility?: string },
   decisions: OrchestratorDecision[],
   policyAuthorizer: AuthorizedActionContext | null = null,
 ): Promise<void> => {
   const { actorContext, channelAgents, channelId, content, messageId, role, threadId } = payload
+  const channelOnly = isSingleAgentSystemDm(channel.systemChannelType)
+    || (channel.visibility !== undefined && channel.visibility !== 'public')
   const scopes =
-    isSingleAgentSystemDm(channel.systemChannelType)
+    channelOnly
       ? [
           {
             kind: 'channel' as const,
@@ -95,6 +98,8 @@ export const dispatchOrchestratorDecisions = async (
               task: { id: string }
             }
         > => {
+        const triggerMessageId = isPolicyWork
+          ? await ensureChannelPolicyKickoff(tx, payload, decision) : messageId
         const claim = await claimThreadRunOrPend(tx, {
           agentId: decision.agentId,
           ...(candidate.principalUserId
@@ -107,7 +112,7 @@ export const dispatchOrchestratorDecisions = async (
             // Same rule as the run payload below: a live human chat turn is
             // interactive, an agent-authored trigger is automation.
             interactive: !isPolicyWork && actorContext.actor.actorType === 'user',
-            messageId,
+            messageId: triggerMessageId,
             ...(decision.promptOverride ? { promptOverride: decision.promptOverride } : {}),
             ...(decision.replyPlacement ? { replyPlacement: decision.replyPlacement } : {}),
           },
@@ -129,7 +134,7 @@ export const dispatchOrchestratorDecisions = async (
             status: 'pending',
             // Backlink to the user message that started this run. Enables the
             // cancel handoff-guard and restart replay (see api/src/services/runs.ts).
-            triggerMessageId: messageId,
+            triggerMessageId,
             // Pre-run reply-placement judgement (model-made, or structural for
             // @mentions/PA DMs). Null keeps the historical threaded default.
             replyPlacement: decision.replyPlacement ?? null,
@@ -144,7 +149,7 @@ export const dispatchOrchestratorDecisions = async (
             agentId: decision.agentId,
             organizationId: actorContext.tenant.organizationId,
             status: 'inbox',
-            purpose: content.slice(0, 200),
+            purpose: isPolicyWork ? 'Channel decision follow-up' : content.slice(0, 200),
           },
           select: { id: true },
         })
@@ -167,7 +172,7 @@ export const dispatchOrchestratorDecisions = async (
             // posting in a channel is automation. Drives budget human-exemption.
             interactive: !isPolicyWork && actorContext.actor.actorType === 'user',
             ...(decision.promptOverride ? { promptOverride: decision.promptOverride } : {}),
-            messageId,
+            messageId: triggerMessageId,
             runId: parseRunId(createdRun.id),
             taskId: parseTaskId(createdTask.id),
             threadId: parseThreadId(createdRun.threadId),
@@ -177,7 +182,7 @@ export const dispatchOrchestratorDecisions = async (
           // Using messageId+agentId prevents the duplicate run.execute from being
           // enqueued, so the agent does not reply twice even if a second run row
           // is created as an orphan.
-          `run:${messageId}:${decision.agentId}:${candidate.principalUserId ?? 'ordinary'}`,
+          `run:${triggerMessageId}:${decision.agentId}:${candidate.principalUserId ?? 'ordinary'}`,
         )
 
         return { kind: 'claimed' as const, run: createdRun, task: createdTask }
@@ -212,10 +217,10 @@ export const dispatchOrchestratorDecisions = async (
 
       // Publish after commit: pg_notify cannot roll back, but the run/task now
       // exist durably, so the live event cannot point at an orphan.
-      await publishReplyRunStarted({
+      if (!isPolicyWork) await publishReplyRunStarted({
         channelId,
         content,
-        isSingleAgentSystemDm: isSingleAgentSystemDm(channel.systemChannelType),
+        isSingleAgentSystemDm: channelOnly,
         messageId,
         realtimeTransport: deps.realtimeTransport,
         role,

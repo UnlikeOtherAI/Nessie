@@ -97,15 +97,20 @@ test('agent-authored messages never evaluate or trigger recursive work', async (
   assert.deepEqual(await decideChannelActions(client, { ...input('I updated the log.'), triggerIsHuman: false }), [])
 })
 
-test('reply depth is prompt guidance and custom work is combined into the same agent run', async () => {
+test('reply depth is prompt guidance and policy work stays separate from a conversational reply', async () => {
   const decisions = await decideChannelActions(model({
     engagement: 'reply', agent: agent.id, depth: 'detailed', custom_decision: 'confirmed', placement: 'thread',
   }), input('Explain the decision thoroughly and record it.'))
-  assert.equal(decisions.length, 1)
+  assert.equal(decisions.length, 2)
   const run = decisions[0]!
   if (run.action !== 'reply') throw new Error('Expected reply')
   assert.match(run.promptOverride!, /thorough answer/)
-  assert.match(run.promptOverride!, /Record the confirmed decision/)
+  assert.doesNotMatch(run.promptOverride!, /Record the confirmed decision/)
   assert.equal(run.background, undefined)
-  assert.equal(run.policyWork, true, 'coalescing must not borrow the conversational poster authority')
+  assert.equal(run.policyWork, undefined)
+  const work = decisions[1]!
+  if (work.action !== 'reply') throw new Error('Expected background work')
+  assert.equal(work.policyWork, true)
+  assert.equal(work.background, true)
+  assert.match(work.promptOverride!, /Record the confirmed decision/)
 })
