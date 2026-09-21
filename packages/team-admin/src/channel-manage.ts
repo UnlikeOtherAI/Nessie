@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import { randomUUID } from 'node:crypto'
 import { writeAuditEntryInTransaction } from '@nessie/db'
+import type { ResolveLiveEntitlementsDeps } from '@nessie/runtime'
 import type { AuthorizedActionContext, ChannelRecord, ChannelDecisionPolicy } from '@nessie/schemas'
 
 import { channelTeamInclude, mapChannelRecord } from './channel-records.js'
@@ -47,6 +48,7 @@ export const updateChannel = async (
      */
     visibility?: 'public' | 'protected'
   },
+  authorityDeps: ResolveLiveEntitlementsDeps = {},
 ): Promise<ChannelRecord | null> => {
   const manage = await canModifyChannel(prisma, input)
   if (!manage) {
@@ -56,7 +58,7 @@ export const updateChannel = async (
     throw new ChannelDecisionPolicyError('Decision policies are available only for standard channels')
   }
   const authorizer = input.decisionPolicy ? captureChannelPolicyAuthorizer(input.actorContext, input) : null
-  if (authorizer) await resolveChannelPolicyAuthorizer(prisma, { ...input, authorizer })
+  if (authorizer) await resolveChannelPolicyAuthorizer(prisma, { ...input, authorizer }, authorityDeps)
 
   const data: Prisma.ChannelUpdateInput = {}
   // A standalone channel renamed into a taken name was told the conflict was

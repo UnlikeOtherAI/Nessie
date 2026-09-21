@@ -49,6 +49,7 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
     ] }],
   }
   const input = { organizationId, channelId: channel.id, userId: memberId }
+  const localAuthority = { settings: null, uoaConfigured: false }
   const actorContext = AuthorizedActionContextSchema.parse({
     actor: { actorType: 'user', actorId: memberId },
     tenant: { organizationId },
@@ -56,7 +57,7 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
   })
 
   await t.test('an ordinary channel member saves and reads a multi-option policy', async () => {
-    const updated = await updateChannel(prisma, { ...input, actorContext, decisionPolicy: policy })
+    const updated = await updateChannel(prisma, { ...input, actorContext, decisionPolicy: policy }, localAuthority)
     assert.deepEqual(updated?.decisionPolicy, policy)
     const audits = await prisma.auditLog.findMany({ where: {
       organizationId, resourceId: channel.id, action: 'channel.updated',
@@ -81,7 +82,9 @@ databaseTest('channel decision policies keep channel authority, exact bindings, 
 
   await t.test('removing a target binding refuses a policy and its accompanying edits', async () => {
     await prisma.agentBinding.deleteMany({ where: { channelId: channel.id, agentId } })
-    await assert.rejects(updateChannel(prisma, { ...input, actorContext, topic: 'Must not be saved', decisionPolicy: policy }),
+    await assert.rejects(updateChannel(prisma, {
+      ...input, actorContext, topic: 'Must not be saved', decisionPolicy: policy,
+    }, localAuthority),
       ChannelDecisionPolicyError)
     const stored = await prisma.channel.findUniqueOrThrow({ where: { id: channel.id } })
     assert.equal(stored.topic, null)
