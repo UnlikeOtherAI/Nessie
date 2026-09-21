@@ -20,6 +20,7 @@ import { clearExecutorState, loadExecutorState, saveExecutorState, type Executor
 import { executorWorkspaceFolderNames, type ExecutorWorkspaceFolder } from './workspace-folders.js'
 import { acquireExecutorProcessLease } from './process-lease.js'
 import { ensureOwnerOnlyStateDirectory } from './state-security.js'
+import { assertWorkspaceMayChange } from './workspace-retirement.js'
 
 export type PairingCodeView = {
   status: 'idle' | 'waiting' | 'confirmation' | 'paired' | 'alreadyPaired' | 'expired' | 'cancelled'
@@ -49,6 +50,7 @@ export const postPairing: ExecutorApiClient['pairing'] = async (origin, action, 
 const pairingDependencies = {
   acquireExecutorDaemonLease, clearExecutorState, clearPairingCode, configureExecutorWorkspaceFolders,
   loadExecutorState, loadPairingCode, postPairing, saveExecutorState, savePairingCode,
+  assertWorkspaceMayChange,
   acquirePairingLease: async (directory: string) => {
     await ensureOwnerOnlyStateDirectory(directory)
     return acquireExecutorProcessLease(directory, 'pairing-operation.pid')
@@ -61,6 +63,7 @@ export const createPairingCodeClient = (overrides: Partial<typeof pairingDepende
     acquireExecutorDaemonLease, clearExecutorState, clearPairingCode, configureExecutorWorkspaceFolders,
     loadExecutorState, loadPairingCode, postPairing, saveExecutorState, savePairingCode,
     acquirePairingLease,
+    assertWorkspaceMayChange,
   } = { ...pairingDependencies, ...overrides }
 
   const existingState = async (directory: string): Promise<ExecutorLocalState | null> => (
@@ -133,6 +136,7 @@ export const createPairingCodeClient = (overrides: Partial<typeof pairingDepende
     }
     const lease = await acquireExecutorDaemonLease(input.stateDir)
     try {
+      if (existing) await assertWorkspaceMayChange(input.stateDir)
       const folders = await configureExecutorWorkspaceFolders(input.workspaceFolders)
       const keys = generateKeyPairSync('ed25519')
       const machinePrivateKey = keys.privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url')
@@ -193,6 +197,7 @@ export const createPairingCodeClient = (overrides: Partial<typeof pairingDepende
     await clearRetiredState(directory, pending)
     const result = await poll(pending)
     if (result.status === 'confirmed' && result.claim) await complete(directory, pending, result.claim)
+    if (result.status === 'rejected') await clearPairingCode(directory)
     return {
       status: result.status === 'awaiting_confirmation' ? 'confirmation'
         : result.status === 'confirmed' ? 'paired' : result.status === 'rejected' ? 'cancelled' : result.status,

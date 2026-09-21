@@ -313,6 +313,9 @@ and team and offers **Replace pairing** or **Keep pairing**. Replacement stops
 the old daemon and proves possession of its key to revoke that server binding
 before the new pairing can continue. Several simultaneous teams are not part
 of this flow.
+Replacement refuses while local drafts or sandbox artifacts remain, using the
+same guard as changing workspace folders; those bytes never move into a new
+organisation's binding implicitly.
 
 The tray connects to Nessie by default. Self-hosted operators retain the CLI's
 configured-origin input; no address or invitation command appears in the

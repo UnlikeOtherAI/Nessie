@@ -27,9 +27,13 @@ const fixture = () => {
   let loseConfirm = false
   let pairingLocked = false
   let mintGate: Promise<void> | null = null
+  let workspaceHasArtifacts = false
   const events: string[] = []
   const requests: Record<string, unknown>[] = []
   const client = createPairingCodeClient({
+    assertWorkspaceMayChange: async () => {
+      if (workspaceHasArtifacts) throw new Error('Resolve local drafts first')
+    },
     acquirePairingLease: async () => {
       if (pairingLocked) throw new Error('pairing busy')
       pairingLocked = true
@@ -84,6 +88,7 @@ const fixture = () => {
     claim: () => { stage = 'awaiting_confirmation' }, loseResponse: () => { loseStart = true },
     wait: () => { stage = 'waiting' },
     expire: () => { stage = 'expired' },
+    reject: () => { stage = 'rejected' },
     failRetirement: () => { failRetirement = true },
     loseConfirmation: () => { loseConfirm = true },
     holdMint: () => {
@@ -91,6 +96,7 @@ const fixture = () => {
       mintGate = new Promise<void>((done) => { release = done })
       return release
     },
+    retainDrafts: () => { workspaceHasArtifacts = true },
   }
 }
 
@@ -203,4 +209,33 @@ test('pairing serializes concurrent commands before reading or replacing pending
   await first
   await f.client.startPairingCode(input)
   assert.equal(f.events.filter((event) => event === 'start').length, 1)
+})
+
+test('replacement refuses retained workspace artifacts before revoking or generating another key', async () => {
+  const f = fixture()
+  await f.client.startPairingCode(input)
+  f.claim()
+  await f.client.confirmPairingCode(input.stateDir, claim.claimDigest)
+  const oldKey = f.state()?.machinePrivateKey
+  f.retainDrafts()
+  const priorEvents = [...f.events]
+  await assert.rejects(f.client.startPairingCode({ ...input, replace: true }), /local drafts/)
+  assert.deepEqual(f.events, priorEvents)
+  assert.equal(f.state()?.machinePrivateKey, oldKey)
+  assert.equal(f.pending(), null)
+})
+
+test('pairing clears a server-rejected attempt and retires a lost mint response after expiry', async () => {
+  const f = fixture()
+  await f.client.startPairingCode(input)
+  f.reject()
+  assert.equal((await f.client.pairingCodeStatus(input.stateDir)).status, 'cancelled')
+  assert.equal(f.pending(), null)
+  f.loseResponse()
+  await assert.rejects(f.client.startPairingCode(input), /response lost/)
+  f.expire()
+  await f.client.cancelPairingCode(input.stateDir)
+  assert.equal(f.pending(), null)
+  f.wait()
+  assert.equal((await f.client.startPairingCode(input)).status, 'waiting')
 })
