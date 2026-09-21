@@ -80,24 +80,53 @@ export const useTaskAssignees = () => {
   })
 }
 
+/**
+ * The body of `POST /api/tasks` (`api/src/contracts/tasks-board.ts`).
+ * `labelIds` names the card's labels; `attachmentIds` links uploads made
+ * before the task existed, so they become the new task's attachments.
+ */
+export type CreateTaskInput = {
+  title: string
+  purpose?: string
+  detail?: string
+  projectId?: string
+  /** The board the card lands on; absent ⇒ the project's default board. */
+  boardId?: string
+  iterationId?: string
+  storyPoints?: number
+  priority?: TaskPriority
+  dueDate?: string | null
+  assigneeUserId?: string
+  assigneeAgentId?: string
+  labelIds?: string[]
+  attachmentIds?: string[]
+}
+
+/** The body of `PATCH /api/tasks/:id`, plus the id it addresses. */
+export type UpdateTaskInput = {
+  id: string
+  title?: string
+  purpose?: string | null
+  detail?: string | null
+  priority?: TaskPriority
+  dueDate?: string | null
+  archivedAt?: string | null
+  /** A partial merge of custom field values; `null` clears one. */
+  fieldValues?: Record<string, unknown>
+  /**
+   * A replace-set: the task's labels become exactly these. Send it only when
+   * the set changed, or a colleague's concurrent label is undone.
+   */
+  labelIds?: string[]
+  /** Uploads to link to the task as attachments. */
+  attachmentIds?: string[]
+}
+
 export const useCreateTask = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: {
-      title: string
-      purpose?: string
-      detail?: string
-      projectId?: string
-      /** The board the card lands on; absent ⇒ the project's default board. */
-      boardId?: string
-      iterationId?: string
-      storyPoints?: number
-      priority?: TaskPriority
-      dueDate?: string | null
-      assigneeUserId?: string
-      assigneeAgentId?: string
-    }) => apiClient.post<TaskRecord>('/api/tasks', input),
+    mutationFn: (input: CreateTaskInput) => apiClient.post<TaskRecord>('/api/tasks', input),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
     },
@@ -111,17 +140,7 @@ export const useUpdateTask = () => {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: {
-      id: string
-      title?: string
-      purpose?: string | null
-      detail?: string | null
-      priority?: TaskPriority
-      dueDate?: string | null
-      archivedAt?: string | null
-      /** A partial merge of custom field values; `null` clears one. */
-      fieldValues?: Record<string, unknown>
-    }) => {
+    mutationFn: (input: UpdateTaskInput) => {
       const { id, ...fields } = input
       return apiClient.patch<TaskRecord>(`/api/tasks/${id}`, fields)
     },
