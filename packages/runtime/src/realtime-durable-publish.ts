@@ -29,6 +29,10 @@ const withOrderedPublish = async <T>(
 ): Promise<T> => {
   const client = await pool.connect()
   let destroyReason: Error | undefined
+  // A checked-out pg Client emits 'error' with no pool listener; without our own
+  // listener a dropped connection kills the whole process, so capture it here.
+  const onClientError = (error: Error) => { destroyReason = error }
+  client.on('error', onClientError)
   try {
     await client.query('BEGIN')
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [lockScope])
@@ -44,6 +48,7 @@ const withOrderedPublish = async <T>(
     }
     throw error
   } finally {
+    client.off('error', onClientError)
     client.release(destroyReason)
   }
 }
