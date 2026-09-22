@@ -1,5 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
-import { bindExecutorCandidateBundleInTransaction } from '@nessie/executor-manage'
+import {
+  bindExecutorCandidateBundleInTransaction,
+  createExecutorConversationLeaseInTransaction,
+  isExecutorLocalAppsBundle,
+} from '@nessie/executor-manage'
 import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
 import {
   parseAgentId,
@@ -114,6 +118,22 @@ export const launchExecutorRun = async (
       operationKeys: input.operationKeys,
       runId: run.id,
     })
+    // Local apps, and only local apps, open a conversation lease: the person's
+    // own later messages in this conversation may carry the pair forward.
+    // Created here so the launch, its bindings and the lease commit together.
+    if (isExecutorLocalAppsBundle(input.operationKeys)) {
+      const executorId = bindings[0]?.executorId
+      if (!executorId) throw new Error('Local-apps launch must bind one executor.')
+      await createExecutorConversationLeaseInTransaction(tx, {
+        actorContext,
+        agentId: agent.id,
+        bindingIds: bindings.map((binding) => binding.bindingId),
+        executorId,
+        launchRunId: run.id,
+        rootMessageId: message.id,
+        threadId: thread.id,
+      })
+    }
     const isBrowserRun = input.operationKeys.includes('browser.open')
     const isCodingRun = input.operationKeys.includes('coding.launch')
     const isCommandRun = input.operationKeys.includes('command.run')
