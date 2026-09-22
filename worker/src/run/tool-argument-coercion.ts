@@ -28,6 +28,29 @@ import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 
 type JsonKind = 'array' | 'object'
 
+const declaredType = (schema: unknown): string | null => {
+  if (!schema || typeof schema !== 'object') return null
+  const type = (schema as { type?: unknown }).type
+  return typeof type === 'string' ? type : null
+}
+
+const coerceScalar = (value: string, want: string | null): unknown => {
+  if (want === 'boolean') {
+    if (value === 'true') return true
+    if (value === 'false') return false
+    return undefined
+  }
+  if (want === 'number' || want === 'integer') {
+    const trimmed = value.trim()
+    if (!trimmed) return undefined
+    const num = Number(trimmed)
+    if (!Number.isFinite(num)) return undefined
+    if (want === 'integer' && !Number.isInteger(num)) return undefined
+    return num
+  }
+  return undefined
+}
+
 const declaredKind = (schema: unknown): JsonKind | null => {
   if (!schema || typeof schema !== 'object') return null
   const type = (schema as { type?: unknown }).type
@@ -77,8 +100,25 @@ const builtinParameterSchemas = (
 
 export const coerceJsonEncodedToolArguments = (
   toolName: string,
-  args: Record<string, unknown>,
+  args: Record<string, unknown> | string,
 ): Record<string, unknown> => {
+  // The whole arguments object may itself arrive as a JSON-encoded string.
+  if (typeof args === 'string') {
+    const trimmed = args.trim()
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed: unknown = JSON.parse(trimmed)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          args = parsed as Record<string, unknown>
+        }
+      } catch {
+        return {} as Record<string, unknown>
+      }
+    }
+  }
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return {} as Record<string, unknown>
+  }
   const properties = builtinParameterSchemas(toolName)
   if (!properties) return args
 
@@ -86,12 +126,17 @@ export const coerceJsonEncodedToolArguments = (
   for (const [key, value] of Object.entries(args)) {
     const schema = properties[key]
     const want = declaredKind(schema)
-    if (!want) continue
 
     let next: unknown = value
     if (typeof value === 'string') {
-      const parsed = parseAs(value, want)
-      if (parsed !== undefined) next = parsed
+      if (want) {
+        const parsed = parseAs(value, want)
+        if (parsed !== undefined) next = parsed
+      } else {
+        // Scalar declared types: "true"/"false" and numeric strings.
+        const scalar = coerceScalar(value, declaredType(schema))
+        if (scalar !== undefined) next = scalar
+      }
     }
     // An array may also arrive as real array of stringified records, which is
     // the same fault one level down.

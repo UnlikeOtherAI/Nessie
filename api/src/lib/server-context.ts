@@ -58,6 +58,16 @@ export class ServerConfigurationError extends Error {
 
 const DEFAULT_LOCAL_PROVIDER_TYPE = 'local-bootstrap'
 
+export const DEFAULT_ADMIN_PORT = 5455
+
+export const resolveAdminPort = (): number => {
+  const raw = process.env.NESSIE_ADMIN_PORT?.trim()
+  const parsed = raw ? Number(raw) : NaN
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_ADMIN_PORT
+}
+
+export const buildAdminBootstrapUrl = (token: string): string => `http://localhost:${resolveAdminPort()}/bootstrap?token=${token}`
+
 const MEMBERSHIP_ROLES = ['owner', 'admin', 'member', 'viewer'] as const
 type MembershipRole = (typeof MEMBERSHIP_ROLES)[number]
 
@@ -178,9 +188,9 @@ export const createServerContext = () => {
   }
 
   const logBootstrapUrl = (state: BootstrapTokenState): void => {
-    const baseUrl = `http://${config.api.host === '0.0.0.0' ? 'localhost' : config.api.host}:${config.api.port}`
+    const adminPort = resolveAdminPort()
     console.log('First-time setup. Open this URL to create your owner account:')
-    console.log(`${baseUrl}/bootstrap?token=${state.token}`)
+    console.log(`http://localhost:${adminPort}/bootstrap?token=${state.token}`)
   }
 
   const requireActorContext = (

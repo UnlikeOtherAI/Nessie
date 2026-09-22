@@ -42,7 +42,7 @@ import {
   workspaceViewForRun,
   writeSandboxFile,
 } from './sandbox-workspace.js'
-import { saveExecutorState, type ExecutorLocalState } from './state-store.js'
+import { loadExecutorState, saveExecutorState, type ExecutorLocalState } from './state-store.js'
 import { executorWorkspaceFolderNames } from './workspace-folders.js'
 import { listWorkspaceFiles, readWorkspaceFile, workspaceFailure } from './workspace.js'
 
@@ -60,13 +60,16 @@ export const claimExecutor = async (
     executorId: state.executorId,
     signature,
   })
-  const next = { ...state, connectionEpoch: connection.connectionEpoch }
+  // Reclaim from the persisted snapshot, not the caller's: other local writers
+  // may have updated the state file since this snapshot was read.
+  const persisted = await loadExecutorState(stateDir)
+  const next = { ...persisted, connectionEpoch: connection.connectionEpoch }
   await executorApi.submitDescriptor(next.apiBaseUrl, {
     connectionEpoch: connection.connectionEpoch,
     descriptor: signedDescriptorForState(next),
     executorId: next.executorId,
   })
-  await saveExecutorState(stateDir, next, state)
+  await saveExecutorState(stateDir, next, persisted)
   return next
 }
 
