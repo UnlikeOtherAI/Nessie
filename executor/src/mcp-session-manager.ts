@@ -5,6 +5,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import {
   canonicalExecutorJson,
+  EXECUTOR_MCP_CALL_TIMEOUT_MS,
+  EXECUTOR_MCP_START_TIMEOUT_MS,
   EXECUTOR_MCP_TOOL_MAXIMUM,
   type ExecutorMcpTool,
   type ExecutorMcpToolCatalog,
@@ -17,12 +19,12 @@ import {
   type ExecutorLocalMcpServer,
 } from './mcp-servers.js'
 
-// A server that cannot say what it is within ten seconds is not going to.
-const MCP_SESSION_START_TIMEOUT_MS = 10_000
-// One tool call gets a minute: long enough for a real-device screenshot or a
-// navigation, short enough that a wedged server cannot hold a run past its
-// own command expiry.
-const MCP_CALL_TIMEOUT_MS = 60_000
+// The start and call timeouts are shared with the worker, which builds each
+// mcp command's expiry from them (`@nessie/schemas` executor-timing.ts): a
+// start that may take ten seconds and a call that may take a minute both have
+// to fit inside the command before it expires into an unknown outcome.
+const MCP_SESSION_START_TIMEOUT_MS = EXECUTOR_MCP_START_TIMEOUT_MS
+const MCP_CALL_TIMEOUT_MS = EXECUTOR_MCP_CALL_TIMEOUT_MS
 // Sessions outlive single commands so a run's burst of tool calls reuses one
 // process, but a bridge that keeps a server alive forever after one call
 // leaks it; a minute of quiet retires the process.
