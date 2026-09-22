@@ -117,7 +117,7 @@ export const SettingsProfilePage = ({ tabs }: SettingsTabHostProps) => {
           <KeyValueList
             className="mt-4"
             items={[
-              { label: 'Organization', value: organizationName },
+              { label: 'Organisation', value: organizationName },
               { label: 'Team', value: teamName },
               {
                 label: 'Provider',

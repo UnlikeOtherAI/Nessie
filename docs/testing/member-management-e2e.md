@@ -3,12 +3,18 @@
 `pnpm --filter @nessie/admin test:e2e:member-management` renders the real
 Members roster and its facades against a stateful, in-browser UOA boundary. It
 never contacts UOA or sends email. The fixture proves desktop and phone flows
-for role changes, organisation activation, team removal, invitations (including
-an organisation invitation to several workspaces chosen by checkbox, with
-Select all / Deselect all and a refused empty selection, and a same-email,
-same-team resubmission sent through to UOA), explicit resend and
-cancellation, team access, live permission withdrawal, request refusal and
-list refreshes. It also seeds one failed automatic-membership grant and proves
+for role changes, organisation activation, team removal, adding an existing
+organisation member, invitations (including an organisation invitation to
+several teams chosen by checkbox, with Select all / Deselect all and a refused
+empty selection, and a same-email, same-team resubmission sent through to UOA),
+explicit resend and cancellation, team access, live permission withdrawal,
+request refusal and list refreshes.
+
+Each action that closes its dialog — adding an existing member, sending,
+resending and cancelling an invitation — is confirmed by a toast in the shell's
+one polite live region (`ToastProvider`, which the fixture mounts around the
+roster), and the runner asserts its wording: who, and where. A refused send
+keeps its dialog and draft and confirms nothing. It also seeds one failed automatic-membership grant and proves
 the unread shared bell item opens the precise rule, focuses its Re-authorize
 control, and submits that repair. UOA remains the authority for the atomic
 one-actionable-invitation rule; the fixture retains one pending row after that

@@ -316,8 +316,8 @@ test('missing, old, and cross-organisation subjects never fall back to backend m
 test('upstream failures identify the remedy without exposing provider response content', async () => {
   await withUoaEnv(async () => {
     for (const [status, expectedStatus, message] of [
-      [401, 403, /Sign in again/], [403, 403, /permission/], [404, 404, /no longer available/],
-      [409, 409, /conflicts/], [429, 429, /Wait a moment/], [500, 502, /temporarily unavailable/],
+      [401, 403, /Sign in again/], [403, 403, /permission/], [404, 404, /isn't here any more/],
+      [409, 409, /conflicts/], [429, 429, /Wait a moment/], [500, 502, /unavailable right now/],
     ] as const) {
       const app = await makeApp(actorContextFor(['owner']), rosterDeps([], () =>
         json({ code: 'PRIVATE_PROVIDER_DETAIL', message: 'secret account metadata' }, status)))

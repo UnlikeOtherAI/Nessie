@@ -119,7 +119,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
       setSwitchError(
         error instanceof Error
           ? error.message
-          : 'This team invitation could not be accepted.',
+          : 'Couldn’t accept this invitation. Try again.',
       )
     } finally {
       setBusyInviteId(null)

@@ -10,11 +10,7 @@ import {
   useTeamInvitations,
   useTeamMembers,
 } from '../../facades/users/team-members'
-import {
-  TeamAgentBuckets,
-  TeamMemberRow,
-  TEAM_TEAM_ROLE_OPTIONS,
-} from './TeamMemberPeople'
+import { TeamAgentBuckets, TeamMemberRow } from './TeamMemberPeople'
 import { FeedbackBanner } from './FeedbackBanner'
 import { Pill } from '../../components/primitives/Pill'
 import { SectionLabel } from '../../components/primitives/SectionLabel'
@@ -23,7 +19,7 @@ import { Card } from '../../components/shared/Card'
 import { EmptyState } from '../../components/shared/EmptyState'
 import { FormActions, FormError, FormSuccess } from '../../components/shared/FormActions'
 import { FormField } from '../../components/shared/FormField'
-import { Input, Select } from '../../components/shared/FormControls'
+import { Input } from '../../components/shared/FormControls'
 import { Section } from '../../components/shared/PageBody'
 
 /**
@@ -101,7 +97,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => review.mutateAsync({ action: 'approve', inviteId: invitation.inviteId }),
-                  'Failed to approve invitation',
+                  'Couldn’t approve this invitation. Try again.',
                 )}
               type="button"
             >
@@ -113,7 +109,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => review.mutateAsync({ action: 'deny', inviteId: invitation.inviteId }),
-                  'Failed to deny invitation',
+                  'Couldn’t deny this invitation. Try again.',
                 )}
               type="button"
             >
@@ -128,7 +124,7 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => resend.mutateAsync({ inviteId: invitation.inviteId }),
-                  'Failed to resend invitation',
+                  'Couldn’t resend this invitation. Try again.',
                 )}
               type="button"
             >
@@ -137,7 +133,9 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
             {/*
               Withdraw an invitation that is out in the world — the counterpart
               to Resend, and the only stop verb for an invite past the approval
-              queue. Revoking twice is fine; an accepted one is refused in words.
+              queue. Cancelling twice is fine; an accepted one is refused in words.
+              The route is still called revoke; the person-facing verb matches
+              the roster's "Cancel invitation".
             */}
             <button
               className="admin-button admin-button-secondary admin-button-compact"
@@ -145,11 +143,11 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
               onClick={() =>
                 void act(
                   () => revoke.mutateAsync({ inviteId: invitation.inviteId }),
-                  'Failed to revoke invitation',
+                  'Couldn’t cancel this invitation. Try again.',
                 )}
               type="button"
             >
-              Revoke
+              Cancel invitation
             </button>
           </>
         )}
@@ -163,7 +161,6 @@ export const InvitationRow = ({ invitation }: { invitation: TeamInvitationRecord
 const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
   const createInvitation = useCreateTeamInvitation()
   const [email, setEmail] = useState('')
-  const [teamRole, setTeamRole] = useState<string>('member')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [formError, setFormError] = useState<string | undefined>(undefined)
   const [success, setSuccess] = useState<string | undefined>(undefined)
@@ -173,18 +170,20 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
     setFieldErrors({})
     setFormError(undefined)
     setSuccess(undefined)
+    const address = email.trim()
     try {
-      await createInvitation.mutateAsync({ email: email.trim(), teamRole })
+      // An invitation is always for an ordinary member — the same body the
+      // roster's invite dialog sends. A role is changed after someone joins.
+      await createInvitation.mutateAsync({ email: address })
       setEmail('')
-      setTeamRole('member')
       // UOA decides the outcome for the address (invited, already a member, …)
       // and says so on its own hosted page; the route answers `{ok:true}` for
       // every accepted outcome, so there is no per-address verdict to relay.
-      setSuccess('Invitation sent.')
+      setSuccess(`Invitation sent to ${address}.`)
     } catch (caught) {
       const { fieldErrors: nextFieldErrors, formError: nextFormError } = toFormErrors(caught)
       setFieldErrors(nextFieldErrors)
-      setFormError(nextFormError ?? formErrorMessage(caught, 'Failed to send invitation.'))
+      setFormError(nextFormError ?? formErrorMessage(caught, 'Couldn’t send the invitation. Try again.'))
     }
   }
 
@@ -198,25 +197,8 @@ const InviteForm = ({ teamLabel }: { teamLabel?: string }) => {
           value={email}
         />
       </FormField>
-      <FormField label="Role">
-        <Select
-          onChange={(event) => setTeamRole(event.target.value)}
-          value={teamRole}
-        >
-          {TEAM_TEAM_ROLE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
-      </FormField>
-      {teamLabel ? (
-        <p className="text-xs text-[color:var(--tx3)]">
-          Invited people join {teamLabel} — every other team needs its own invitation.
-        </p>
-      ) : null}
       <p className="text-xs text-[color:var(--tx3)]">
-        UnlikeOtherAI emails the invitation and hosts the acceptance page.
+        {`They’ll get an email with a link to join ${teamLabel ?? 'this team'}.`}
       </p>
       <FormError>{formError}</FormError>
       <FormSuccess>{success}</FormSuccess>
@@ -297,7 +279,7 @@ export const TeamMembersSection = ({
     try {
       await onReconnect()
     } catch (error) {
-      setReconnectError(formErrorMessage(error, 'Unable to reconnect this team.'))
+      setReconnectError(formErrorMessage(error, 'Couldn’t reconnect this team. Try again.'))
     } finally {
       setIsReconnecting(false)
     }
@@ -311,14 +293,14 @@ export const TeamMembersSection = ({
             <FeedbackBanner
               feedback={{
                 kind: 'error',
-                message: 'This Nessie team can no longer be reached through UnlikeOtherAI.',
+                message: 'This team has lost its connection to UnlikeOtherAI. Reconnect it to see its members.',
               }}
             />
           ) : members.isError ? (
             <FeedbackBanner
               feedback={{
                 kind: 'error',
-                message: 'The UnlikeOtherAI directory could not be reached.',
+                message: 'Members couldn’t be loaded right now. Try again in a moment.',
               }}
             />
           ) : members.isLoading ? (
@@ -344,7 +326,7 @@ export const TeamMembersSection = ({
             />
           ))}
           {!members.isLoading && !members.isError && memberRows.length === 0 ? (
-            <EmptyState>This team has no members in UnlikeOtherAI yet.</EmptyState>
+            <EmptyState>This team has no members yet.</EmptyState>
           ) : null}
         </div>
 
@@ -371,7 +353,7 @@ export const TeamMembersSection = ({
                 <InvitationRow invitation={invitation} key={invitation.inviteId} />
               ))}
               {!invitations.isLoading && invitationRows.length === 0 ? (
-                <EmptyState>No invitations are waiting.</EmptyState>
+                <EmptyState>No pending invitations.</EmptyState>
               ) : null}
             </div>
           </Section>

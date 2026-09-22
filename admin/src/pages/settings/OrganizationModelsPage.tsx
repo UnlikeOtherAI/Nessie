@@ -189,7 +189,7 @@ export const ModelAvailabilitySettings = ({
 
   return (
     <SettingsPanel
-      eyebrow={teamId ? 'Team' : 'Organization'}
+      eyebrow={teamId ? 'Team' : 'Organisation'}
       footer={
         <PaginationFooter
           canNext={catalog.canNext}

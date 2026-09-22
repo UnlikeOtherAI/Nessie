@@ -4,7 +4,7 @@ import { useCurrentOrganization } from '../../facades/organization/hooks'
 import { SettingsPanel } from '../../components/shared/SettingsPanel'
 
 /**
- * One client gate for the whole Organization section. Its API counterpart
+ * One client gate for the whole Organisation section. Its API counterpart
  * always rechecks before a protected read or write; this only keeps denied
  * viewers from issuing the roster queries in the first place.
  */
@@ -14,7 +14,7 @@ export const OrganizationAdministrationGate = ({ children }: { children: ReactNo
 
   if (organization.isLoading) {
     return (
-      <SettingsPanel eyebrow="Organization" title="Organization">
+      <SettingsPanel eyebrow="Organisation" title="Organisation">
         <p className="text-sm text-[color:var(--tx3)]">Checking organisation access…</p>
       </SettingsPanel>
     )
@@ -22,9 +22,9 @@ export const OrganizationAdministrationGate = ({ children }: { children: ReactNo
 
   if (organization.isError) {
     return (
-      <SettingsPanel eyebrow="Organization" title="Organization unavailable">
+      <SettingsPanel eyebrow="Organisation" title="Organisation unavailable">
         <p className="text-sm text-[color:var(--tx2)]">
-          We could not load your organisation access. Try again shortly.
+          We couldn’t load your organisation access. Try again in a moment.
         </p>
       </SettingsPanel>
     )
@@ -32,9 +32,9 @@ export const OrganizationAdministrationGate = ({ children }: { children: ReactNo
 
   if (status === 'unavailable') {
     return (
-      <SettingsPanel eyebrow="Organization" title="Organization unavailable">
+      <SettingsPanel eyebrow="Organisation" title="Organisation unavailable">
         <p className="text-sm text-[color:var(--tx2)]">
-          UnlikeOtherAI could not confirm your organisation administrator access. Try again shortly.
+          We couldn’t check whether you’re an organisation admin. Try again in a moment.
         </p>
       </SettingsPanel>
     )
@@ -42,9 +42,9 @@ export const OrganizationAdministrationGate = ({ children }: { children: ReactNo
 
   if (status !== 'allowed') {
     return (
-      <SettingsPanel eyebrow="Organization" title="Organization">
+      <SettingsPanel eyebrow="Organisation" title="Organisation">
         <p className="text-sm text-[color:var(--tx2)]">
-          Organisation administrator access is required.
+          Only organisation admins can see this page.
         </p>
       </SettingsPanel>
     )

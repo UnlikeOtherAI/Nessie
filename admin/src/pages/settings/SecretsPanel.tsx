@@ -46,7 +46,7 @@ const COPY: Record<SecretPageScope, SecretsPanelCopy> = {
   organization: {
     cascade: 'A team or a person can save their own secret with the same key and theirs wins — '
       + 'unless this one is locked, in which case theirs is refused and this one applies everywhere.',
-    eyebrow: 'Organization',
+    eyebrow: 'Organisation',
     intro: 'The company\'s credentials. Every team and every person inherits these unless they '
       + 'save their own under the same key.',
   },

@@ -38,7 +38,7 @@ export const TeamMembersPage = () => {
         canManage={canManage}
         onReconnect={async () => {
           const providerId = me.auth.providerId
-          if (!providerId) throw new Error('UnlikeOtherAI sign-in is not configured.')
+          if (!providerId) throw new Error('Sign-in with UnlikeOtherAI isn’t set up on this Nessie.')
           await startExternalSignIn(providerId, signInTheme, {
             returnPath: window.location.pathname + window.location.search,
           })

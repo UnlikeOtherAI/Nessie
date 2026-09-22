@@ -74,7 +74,7 @@ test('team invitation alerts name the inviter and expose acceptance', () => {
   const withoutInviter = renderToStaticMarkup(createElement(AlertRow, {
     alert: { ...invitation, metadata: { ...invitation.metadata!, invitedBy: undefined } },
   }))
-  assert.match(withoutInviter, />Research</)
+  assert.match(withoutInviter, />You’re invited to Research</)
   assert.doesNotMatch(withoutInviter, /invited you/)
 })
 

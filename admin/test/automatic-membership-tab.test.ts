@@ -72,7 +72,7 @@ test('Send invitation does not render on the Automatic logins tab', () => {
 test('a roster error cannot blank the rules panel', () => {
   // The rules panel is rendered before, and outside, the roster's QueryState.
   const panelIndex = rosterPanel.indexOf('<AutomaticMembershipRulesPanel')
-  const queryStateIndex = rosterPanel.indexOf('errorLabel="Members could not be loaded."')
+  const queryStateIndex = rosterPanel.indexOf("'Members could not be loaded.'")
   assert.ok(panelIndex > 0 && queryStateIndex > 0)
   assert.ok(
     panelIndex < queryStateIndex,

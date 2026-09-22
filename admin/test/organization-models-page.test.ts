@@ -19,7 +19,7 @@ test('deployment model filters are server-side URL state', () => {
 test('the shared surface uses team-scoped catalogue controls when given a team', () => {
   assert.match(source, /useSetDeploymentModelsEnabled\(teamId\)/)
   assert.match(source, /useSetDeploymentModelEnabled\(teamId\)/)
-  assert.match(source, /eyebrow=\{teamId \? 'Team' : 'Organization'\}/)
+  assert.match(source, /eyebrow=\{teamId \? 'Team' : 'Organisation'\}/)
   assert.doesNotMatch(source, /Every model this deployment can run, as the model service/)
 })
 

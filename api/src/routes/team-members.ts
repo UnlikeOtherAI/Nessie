@@ -61,7 +61,7 @@ import type { RouteDeps } from './types.js'
  */
 
 const NOT_LINKED_MESSAGE =
-  'This team is not linked to an UnlikeOtherAI team'
+  "This team isn't connected to UnlikeOtherAI."
 
 const NOT_IN_TEAM_MESSAGE =
   'This person has no UnlikeOtherAI avatar in this team'

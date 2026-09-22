@@ -55,7 +55,7 @@ export const OrganizationProfilePage = ({ tabs }: SettingsTabHostProps) => {
   const canSave = dirty && name.trim().length > 0 && !updateOrganization.isPending
 
   return (
-    <SettingsPanel eyebrow="Organization" title="Profile">
+    <SettingsPanel eyebrow="Organisation" title="Profile">
       {tabs}
       <div className="grid gap-4">
         <Card as="section">

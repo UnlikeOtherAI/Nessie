@@ -118,7 +118,7 @@ export const MemberDetailsDialog = ({
       }
       onClose()
     } catch (caught) {
-      setError(formErrorMessage(caught, 'Unable to save member access.'))
+      setError(formErrorMessage(caught, 'Couldn’t save your changes. Try again.'))
     }
   }
 
@@ -130,7 +130,9 @@ export const MemberDetailsDialog = ({
 
   const name = memberDisplayName(member?.displayName, member?.email) ?? 'Member'
   const actionLabel = action === 'remove' ? 'Remove from team'
-    : action === 'deactivate' ? 'Deactivate in organization' : 'Reactivate in organization'
+    : action === 'deactivate' ? 'Deactivate' : 'Reactivate'
+  const actionTitle = action === 'remove' ? `Remove ${name} from this team?`
+    : action === 'deactivate' ? `Deactivate ${name}?` : `Reactivate ${name}?`
   const changeMembership = async () => {
     if (!member || !action) return
     setError(null)
@@ -140,7 +142,7 @@ export const MemberDetailsDialog = ({
       setAction(null)
       onClose()
     } catch (caught) {
-      setError(formErrorMessage(caught, 'Unable to change member access.'))
+      setError(formErrorMessage(caught, 'Couldn’t make that change. Try again.'))
     }
   }
   const hasRoleChange = role !== (currentRole ?? '')
@@ -152,8 +154,8 @@ export const MemberDetailsDialog = ({
     <>
     <Dialog
       description={scope === 'team'
-        ? 'Change this member’s role in the current team.'
-        : 'Change their organization role and select the teams they can access.'}
+        ? 'Change their role in this team.'
+        : 'Change their role in your organisation and choose which teams they’re in.'}
       dismissDisabled={busy}
       onClose={onClose}
       open={open && member !== null}
@@ -163,7 +165,7 @@ export const MemberDetailsDialog = ({
         {scope === 'team' || member?.orgRole !== 'owner' ? (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="member-role">
-              {scope === 'team' ? 'Role' : 'Organization role'}
+              {scope === 'team' ? 'Role' : 'Organisation role'}
             </label>
             <Select
               disabled={!canChangeRole || busy}
@@ -176,21 +178,25 @@ export const MemberDetailsDialog = ({
             {!canChangeRole ? (
               <p className="text-xs text-[color:var(--tx3)]">
                 {permissions?.changeMemberRole === true
-                  ? 'UnlikeOtherAI did not provide an assignable organization role.'
-                  : 'You don’t have permission to change this role.'}
+                  ? 'There are no other roles you can give them.'
+                  : 'You don’t have permission to change their role.'}
               </p>
             ) : null}
           </div>
-        ) : <p className="text-sm text-[color:var(--tx3)]">Organization ownership is transferred in UnlikeOtherAI.</p>}
+        ) : (
+          <p className="text-sm text-[color:var(--tx3)]">
+            They own this organisation. Ownership can only be handed over in UnlikeOtherAI.
+          </p>
+        )}
         {scope === 'organization' ? (
           <div className="space-y-3">
             <div>
               <p className="text-sm font-medium text-[color:var(--tx)]">Team access</p>
-              <p className="text-xs text-[color:var(--tx3)]">Only teams you can manage are shown.</p>
+              <p className="text-xs text-[color:var(--tx3)]">Only teams you manage are listed.</p>
             </div>
             <QueryState
               className="py-2"
-              emptyLabel="No editable team access is available."
+              emptyLabel="You don’t manage any teams."
               errorLabel="Team access could not be loaded."
               isEmpty={teams.length === 0}
               loadingLabel="Loading teams…"
@@ -210,7 +216,7 @@ export const MemberDetailsDialog = ({
             </div>}
             </QueryState>
             {!teamAccess.isLoading && !canChangeTeams && teams.length > 0 ? (
-              <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change this access.</p>
+              <p className="text-xs text-[color:var(--tx3)]">You don’t have permission to change their teams.</p>
             ) : null}
           </div>
         ) : null}
@@ -220,8 +226,8 @@ export const MemberDetailsDialog = ({
             <LocalInferenceEnablement scope="user" userId={member.userId} />
           ) : (
             <Notice tone="neutral">
-              This person needs to sign in to Nessie before a personal Local Ollama policy can be
-              saved. A team policy can still apply when they join.
+              You can set their own Local Ollama policy after they first sign in to Nessie. Until
+              then, any team policy applies.
             </Notice>
           )
         ) : null}
@@ -239,7 +245,7 @@ export const MemberDetailsDialog = ({
               <button className="admin-button admin-button-secondary" disabled={busy}
                 onClick={() => { setError(null); setAction(member?.status === 'DEACTIVATED' ? 'reactivate' : 'deactivate') }}
                 type="button">
-                {member?.status === 'DEACTIVATED' ? 'Reactivate in organization' : 'Deactivate in organization'}
+                {member?.status === 'DEACTIVATED' ? 'Reactivate in organisation' : 'Deactivate in organisation'}
               </button>
             ) : null}
           </div>
@@ -262,9 +268,9 @@ export const MemberDetailsDialog = ({
     <ConfirmDialog
       blocking
       body={<>
-        <p>{action === 'remove' ? 'This member will lose access to this team.'
-          : action === 'deactivate' ? 'This suspends their access across the entire organization, including its other teams.'
-            : 'This restores their active membership in the organization.'}</p>
+        <p>{action === 'remove' ? 'They’ll lose access to this team. Their other teams aren’t affected.'
+          : action === 'deactivate' ? 'They won’t be able to use any team in your organisation until you reactivate them.'
+            : 'They’ll be able to use your organisation again.'}</p>
         <FormError>{error}</FormError>
       </>}
       confirmLabel={actionLabel}
@@ -273,7 +279,7 @@ export const MemberDetailsDialog = ({
       onConfirm={() => void changeMembership()}
       open={open && action !== null}
       pending={busy}
-      title={`${actionLabel}: ${name}?`}
+      title={actionTitle}
     />
     </>
   )

@@ -13,7 +13,7 @@ export const OrganizationAgentsPage = ({ tabs }: SettingsTabHostProps) => {
   const { data: organization } = useCurrentOrganization()
 
   return (
-    <SettingsPanel eyebrow="Organization" title="Agents">
+    <SettingsPanel eyebrow="Organisation" title="Agents">
       {tabs}
       <div className="grid gap-4">
         <CallProviderSettingsPanel />

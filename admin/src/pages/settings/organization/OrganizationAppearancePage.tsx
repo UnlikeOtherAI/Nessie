@@ -138,7 +138,7 @@ export const OrganizationAppearancePage = ({ tabs }: SettingsTabHostProps) => {
   ]
 
   return (
-    <SettingsPanel actions={actions} eyebrow="Organization" title="Appearance">
+    <SettingsPanel actions={actions} eyebrow="Organisation" title="Appearance">
       {tabs}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card as="section">
