@@ -156,6 +156,18 @@ this standard, not an exception to it.
   through the one `isAgentCardResponseMessage` predicate — a "Deny" edited into
   an "Allow" would lie beside the card that is the authority. Deleting stays
   allowed; a tombstone changes nothing on the card.
+- **A committed press is a success.** The claim, any secret placement, the
+  response message and the resume commit in one transaction; everything after
+  it only announces the press — the audit events, a scrubbed message's
+  `message.updated`, `card.updated` and the response's `message.reply`
+  (`agent-card-response-announce.ts`) — and each step is logged, never thrown,
+  and never skips the next (the audit writer already swallows its own
+  failure). A realtime NOTIFY failure after commit used to answer 500 for a
+  card the server had resolved, while the admin refreshed the card only on
+  success, so Accept stayed pressable beside "Something went wrong". The route
+  answers 200 whenever the transaction committed, and `useRespondToAgentCard`
+  refreshes the card and its thread when the press settles, success or not, so
+  a pressed card never looks un-pressed.
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the

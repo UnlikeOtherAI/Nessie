@@ -47,7 +47,10 @@ export const useRespondToAgentCard = () => {
           ...(input.handoverSessionId ? { handoverSessionId: input.handoverSessionId } : {}),
         },
       ),
-    onSuccess: (_result, input) => {
+    // On settle, not on success: a press can fail after the server resolved
+    // the card (a dropped connection, or another door winning the claim), and
+    // refreshing only on success left a resolved card looking pressable.
+    onSettled: (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: agentCardKeys.card(input.cardId) })
       // The press wrote a real reply, so the feed and the reply panel refresh
       // through the path they already use for any other message.

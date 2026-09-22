@@ -15,7 +15,9 @@ import type { RouteDeps } from "./types.js";
  *
  * The press is one transaction: claim the card, place any secret, write the
  * response message. Either all of it happened or none of it did, so a card can
- * never read "resolved" beside a credential that was not stored.
+ * never read "resolved" beside a credential that was not stored. Once it
+ * commits, the press succeeded: the audit and realtime announcements after it
+ * are best-effort, so a dropped publish answers 200, not a failed press.
  */
 export const registerAgentCardRoutes = (
   app: FastifyInstance,
