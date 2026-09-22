@@ -10,6 +10,7 @@ type FinderTreeViewProps = {
   rowsIn: (parentPageId: string | null) => KnowledgePageRecord[]
   onOpenPage: (page: KnowledgePageRecord, path: string[]) => void
   pagePath: string[]
+  embedded?: boolean
 }
 
 export const FinderTreeView = ({
@@ -17,6 +18,7 @@ export const FinderTreeView = ({
   onOpenPage,
   pagePath,
   rowsIn,
+  embedded = false,
 }: FinderTreeViewProps) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(() => new Set())
   const selectedPageId = activePageId ?? pagePath.at(-1)
@@ -73,9 +75,7 @@ export const FinderTreeView = ({
     </SidebarTreeChildren>
   )
 
-  return (
-    <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">
-      {renderPages(rowsIn(null), [], 0)}
-    </SidebarTreePanel>
-  )
+  return embedded
+    ? <SidebarTreeChildren className="sidebar-tree-depth">{renderPages(rowsIn(null), [], 0)}</SidebarTreeChildren>
+    : <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">{renderPages(rowsIn(null), [], 0)}</SidebarTreePanel>
 }
