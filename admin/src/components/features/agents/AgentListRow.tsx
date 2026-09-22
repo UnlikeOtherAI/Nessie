@@ -1,14 +1,16 @@
-import { faChevronRight, faTrash } from '@fortawesome/free-solid-svg-icons'
+import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Trash2 } from 'lucide-react'
 import type { AgentRecord } from '../../../lib/api-client'
 import { prewarmRowHandlers } from '../../../navigation/prewarm'
-import { AgentAvatar } from '../../shared/AgentAvatar'
-import { useCanDeleteAgent } from './agent-edit-authority'
-import { AgentOwnerCell } from './AgentOwnerCell'
-import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
-import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
-import { AgentAvailability } from './AgentAvailability'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { SharedActionButton } from '../../shared/ActionToolbar'
+import { AgentAvatar } from '../../shared/AgentAvatar'
+import { AgentVisibilityPill } from '../../shared/AgentVisibilityPill'
+import { AgentOwnerCell } from './AgentOwnerCell'
+import { AgentAvailability } from './AgentAvailability'
+import { PrivateAgentHomeLink } from './PrivateAgentHomeLink'
+import { useCanDeleteAgent } from './agent-edit-authority'
 
 type AgentListRowProps = {
   agent: AgentRecord
@@ -92,9 +94,8 @@ export const AgentListRow = ({
     </td>
     <td className="w-9 py-2.5 pl-0 pr-1 text-right align-middle">
       {onDelete && canDelete ? (
-        <button
+        <SharedActionButton
           aria-label={`Delete ${agent.name}`}
-          className="admin-msg-action-button"
           title={`Delete ${agent.name}`}
           onClick={(event) => {
             // The row itself opens the agent; a delete must not do both.
@@ -103,8 +104,8 @@ export const AgentListRow = ({
           }}
           type="button"
         >
-          <FontAwesomeIcon className="h-3 w-3" icon={faTrash} />
-        </button>
+          <Trash2 aria-hidden="true" />
+        </SharedActionButton>
       ) : null}
     </td>
     <td className="w-9 py-2.5 pl-0 pr-4 text-right align-middle">

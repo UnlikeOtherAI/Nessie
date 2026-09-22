@@ -4579,6 +4579,14 @@ button.reaction-pill-active:focus-visible {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+.admin-comment-row {
+  padding-block: 10px;
+}
+
+.admin-comment-replies > .admin-comment-row + .admin-comment-row {
+  border-top: 1px solid var(--sep);
+}
+
 .admin-msg-actions {
   display: none;
   width: max-content;
@@ -4619,7 +4627,8 @@ button.reaction-pill-active:focus-visible {
 }
 
 .admin-msg-row[data-actions-open="true"] .admin-msg-actions,
-.admin-msg-row:focus-within .admin-msg-actions {
+.admin-msg-row:focus-visible .admin-msg-actions,
+.admin-msg-actions:focus-within {
   display: flex;
 }
 

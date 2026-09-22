@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useMemo, useState, type ReactNode } from 'react'
 import type {
   AgentRecord,
   PersonalAssistantPresenceParticipant,
@@ -179,7 +179,6 @@ export const ChannelMessageFeed = ({
       ? externalAgentDisplayName ?? 'Agent'
       : 'Agent'
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null)
-  const lastPointerDownAt = useRef(0)
   // One identity resolution for both the streaming reply rows and the bubbles.
   // The identity directory is consulted for exactly the agents `agentById`
   // omits — the system-managed tier, which posts into its own DMs. Without it
@@ -343,7 +342,6 @@ export const ChannelMessageFeed = ({
               getPresence={getPresence}
               isDedicatedAgentConversation={isDedicatedAgentConversation}
               isExternalAgentConversation={isExternalAgentConversation}
-              lastPointerDownAt={lastPointerDownAt}
               meAvatar={meAvatar}
               meDisplayName={meDisplayName}
               meUserId={meUserId}
