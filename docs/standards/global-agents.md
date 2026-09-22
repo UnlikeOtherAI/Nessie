@@ -225,6 +225,17 @@ without a single ticket tool. Only `ticket_board_create` is also
 `requiresExplicitGrant`, so it alone stays with the owner grant verbs; the rest
 are ordinary policy keys `agent_create` and `agent_update` accept.
 
+A lent tool that takes a `projectId` does not require one: omitted, it is the
+channel's project (`ticketProjectIdFor` in
+`worker/src/run/pa-tools/ticket-context.ts`), which is the only project
+`projectFor` lets a shared agent touch anyway. The agent holds no
+`project_list`, so no refusal it can receive points there — a named project
+elsewhere is refused with "omit projectId", and a requester who cannot open the
+project is told exactly that. Do not "fix" a missing id by having the agent
+call `channel_list`: that read stamps the run's disclosure basis and then
+blocks the project write it was resolving the id for. The Personal Assistant
+works across projects and still names one.
+
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 
 

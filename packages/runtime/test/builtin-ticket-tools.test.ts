@@ -30,6 +30,30 @@ test('project-ticket operations are personal-assistant tools in the projects cat
   assert.deepEqual(tools.map((tool) => tool.personalAssistantOnly), Array(TICKET_TOOL_IDS.length).fill(true))
 })
 
+// A shared agent is lent these only in its own project channel and holds no
+// project_list, so a required projectId was an id it could not find.
+test('a lendable project tool never requires a projectId and says what omitting it means', () => {
+  const lendable = SYSTEM_TOOL_DEFINITIONS.filter((tool) => tool.projectDelegatedOnly)
+  const takingProject = lendable.filter((tool) => {
+    const properties = (tool.parameters as { properties?: Record<string, unknown> }).properties
+    return properties !== undefined && 'projectId' in properties
+  })
+  assert.deepEqual(
+    takingProject.map((tool) => tool.id).sort(),
+    ['ticket_board_read', 'ticket_create', 'ticket_label_create', 'ticket_labels_read', 'ticket_list'],
+  )
+  for (const tool of takingProject) {
+    const parameters = tool.parameters as {
+      properties: { projectId: { description: string } }
+      required?: string[]
+    }
+    assert.equal(parameters.required?.includes('projectId') ?? false, false, `${tool.id} requires projectId`)
+    assert.match(parameters.properties.projectId.description, /Omit it in a project channel/)
+  }
+  const list = lendable.find((tool) => tool.id === 'ticket_list')
+  assert.doesNotMatch(list?.description ?? '', /project_list/)
+})
+
 test('ticket removal is a reversible status transition, not a destructive tool', () => {
   assert.equal(SYSTEM_TOOL_DEFINITIONS.some((tool) => tool.id === 'ticket_delete'), false)
   const transition = SYSTEM_TOOL_DEFINITIONS.find((tool) => tool.id === 'ticket_transition')

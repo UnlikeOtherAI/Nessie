@@ -40,6 +40,7 @@ import {
   recordProjectRead,
   result,
   ticketLine,
+  ticketProjectIdFor,
 } from './ticket-context.js'
 
 /**
@@ -78,13 +79,16 @@ const throwIfLabelRefused = (outcome: { error?: string }): void => {
   }
 }
 
-const ListInput = z.object({ projectId: IdSchema, status: TicketStatusSchema.optional() })
+// `projectId` is optional wherever a shared agent can be lent the tool: absent
+// means this channel's project (`ticketProjectIdFor`).
+const ListInput = z.object({ projectId: IdSchema.optional(), status: TicketStatusSchema.optional() })
 
 export const runTicketListTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = ListInput.parse(input)
+  const parsed = ListInput.parse(input)
+  const args = { ...parsed, projectId: ticketProjectIdFor(context, parsed.projectId) }
   const member = await resolveActingMember(context)
   await projectFor(context, member, args.projectId)
   const tickets = await listProjectTasks(context.prisma, member.organizationId, {
@@ -142,7 +146,7 @@ export const runTicketReadTool = async (
   )
 }
 
-const BoardInput = z.object({ projectId: IdSchema })
+const BoardInput = z.object({ projectId: IdSchema.optional() })
 
 // Mirrors `GET /api/projects/:projectId/boards`: a project has many boards,
 // and a `columnId` only means something together with the board it is on.
@@ -150,7 +154,7 @@ export const runTicketBoardReadTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const { projectId } = BoardInput.parse(input)
+  const projectId = ticketProjectIdFor(context, BoardInput.parse(input).projectId)
   const member = await resolveActingMember(context)
   await projectFor(context, member, projectId)
   const boards = await listBoards(context.prisma, {
@@ -177,7 +181,7 @@ export const runTicketBoardReadTool = async (
 }
 
 const CreateInput = z.object({
-  projectId: IdSchema,
+  projectId: IdSchema.optional(),
   /** From `ticket_board_read`; absent lands the card on the default board. */
   boardId: IdSchema.optional(),
   title: z.string().trim().min(1),
@@ -194,7 +198,8 @@ export const runTicketCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = CreateInput.parse(input)
+  const parsed = CreateInput.parse(input)
+  const args = { ...parsed, projectId: ticketProjectIdFor(context, parsed.projectId) }
   const member = await resolveActingMember(context)
   await projectFor(context, member, args.projectId)
   await assertProjectWriteDestination(context, {
