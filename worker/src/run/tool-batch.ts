@@ -1,6 +1,7 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
 import { circuitBreakerKey, ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
+import { countToolCall, strongerNudge } from './tool-loop-detection.js'
 import { summarizeToolInput } from './tool-util.js'
 
 export type ToolApprovalSuspension = {
@@ -82,7 +83,6 @@ export type PrepareToolFn = (
 ) => Promise<PreparedToolExecution>
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
-const LOOP_DETECTION_THRESHOLD = 3
 
 const withTimeout = async <T>(
   promise: Promise<T>,
@@ -114,9 +114,6 @@ const withTimeout = async <T>(
   }
 }
 
-const toolCallSignature = (name: string, args: Record<string, unknown>): string =>
-  `${name}:${JSON.stringify(args)}`
-
 type RunnableToolCall = {
   index: number
   toolCall: ProviderToolCall
@@ -138,6 +135,7 @@ export const executeToolBatch = async (input: {
   dispatchesInOrder?: (toolName: string) => boolean
   executeTool: ExecuteToolFn
   prepareTool?: PrepareToolFn
+  /** The run's loop-detection counts (`tool-loop-detection.ts`), mutated in call order. */
   signatureCounts: Map<string, number>
   toolCalls: ProviderToolCall[]
   toolTimeoutError?: (toolName: string) => Error | null
@@ -145,27 +143,25 @@ export const executeToolBatch = async (input: {
   toolTimeoutMsFor?: (toolName: string) => number | undefined
 }): Promise<{
   deliveredToConversation: boolean
-  loopDetected: boolean
+  /** What to tell the model when a call was refused as a loop; null when none was. */
+  loopNudge: string | null
   pendingApproval: ToolApprovalSuspension | null
   pendingInput: AgentCardSuspension | null
   results: ExecutedToolResult[]
   toolMs: number
 }> => {
-  let loopDetected = false
+  let loopNudge: string | null = null
   let toolMs = 0
   const resultSlots: Array<ExecutedToolResult | undefined> = []
   const runnable: RunnableToolCall[] = []
 
   for (const [index, toolCall] of input.toolCalls.entries()) {
-    const signature = toolCallSignature(toolCall.toolName, toolCall.arguments)
-    const count = (input.signatureCounts.get(signature) ?? 0) + 1
-    input.signatureCounts.set(signature, count)
-
-    if (count >= LOOP_DETECTION_THRESHOLD) {
-      loopDetected = true
+    const loop = countToolCall(input.signatureCounts, toolCall.toolName, toolCall.arguments)
+    if (loop) {
+      loopNudge = strongerNudge(loopNudge, loop)
       resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
-        output: 'Tool call loop detected — this exact call has been repeated too many times. Try a different approach.',
+        output: loop.output,
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
@@ -220,7 +216,7 @@ export const executeToolBatch = async (input: {
       }
       return {
         deliveredToConversation: false,
-        loopDetected,
+        loopNudge,
         pendingApproval: preparation.approval,
         pendingInput: null,
         results: resultSlots.filter((result): result is ExecutedToolResult => result !== undefined),
@@ -339,7 +335,7 @@ export const executeToolBatch = async (input: {
   const pendingInput = results.find((result) => result.pendingInput)?.pendingInput ?? null
   return {
     deliveredToConversation: results.some((result) => result.deliveredToConversation === true),
-    loopDetected,
+    loopNudge,
     pendingApproval: pending,
     pendingInput,
     results,

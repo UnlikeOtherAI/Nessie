@@ -97,7 +97,11 @@ export type LoopResumeState = {
    * gets six fresh attempts from every worker that touches it.
    */
   retriesUsed: number
-  /** Loop-detection counters, so a resumed run does not restart its patience. */
+  /**
+   * Loop-detection counters, so a resumed run does not restart its patience.
+   * Keyed by `tool-loop-detection.ts`; keys from before its prefixes are
+   * dropped on resume.
+   */
   signatureCounts: Record<string, number>
   toolCallsUsed: number
   /**
