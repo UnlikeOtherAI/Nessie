@@ -216,9 +216,20 @@ export const resolveAgentTools = (
   }
 
   const allowedDefinitions = allToolDefinitions.filter((tool) => allowedIds.has(tool.id))
+  // What this agent was deliberately given arrives with its schema rather
+  // than as a stub: the project tools this run was lent first (a board turn
+  // opens with them), then every other tool its policy sets `true`. Both in
+  // definition order so the array is byte-stable; the view caps how much this
+  // may add (`BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS`).
+  const lent = options.projectDelegatedToolIds
+  const promotedIds = [
+    ...allowedDefinitions.filter((tool) => lent?.has(tool.id)),
+    ...allowedDefinitions.filter((tool) => !lent?.has(tool.id) && agentToolPolicy?.[tool.id] === true),
+  ].map((tool) => tool.id)
   const view = buildBuiltinToolsetView(
     allowedDefinitions,
     options.inlineToolLimit ?? resolveBuiltinInlineToolLimit(),
+    { promotedIds },
   )
 
   return {
