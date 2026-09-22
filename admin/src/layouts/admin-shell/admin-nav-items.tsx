@@ -309,7 +309,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   },
   {
     id: 'organization',
-    heading: 'Organization',
+    heading: 'Organisation',
     visibleTo: ({ canManageOrganization }) => canManageOrganization,
     items: [
       {

@@ -43,6 +43,10 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [targetIds, setTargetIds] = useState<string[]>([])
+  // Names of the teams ticked so far. The team list is paged, so a team chosen
+  // on another page is no longer in `targets.items` when the invitation goes
+  // out — and the confirmation must name it, not print its id.
+  const [targetNames, setTargetNames] = useState<ReadonlyMap<string, string>>(new Map())
   const [targetError, setTargetError] = useState<string | null>(null)
   const [candidateQuery, setCandidateQuery] = useState('')
   const [debouncedCandidateQuery, setDebouncedCandidateQuery] = useState('')
@@ -72,6 +76,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
     setEmail('')
     setName('')
     setTargetIds([])
+    setTargetNames(new Map())
     resetInviteForm()
     resetAddCandidateForm()
     setCandidateQuery('')
@@ -95,7 +100,9 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
       ...(scope === 'organization' ? { teamIds: targetIds } : {}),
     })
     if (!result) return
-    const nameOf = (id: string) => targetItems.find((target) => target.id === id)?.name ?? id
+    const nameOf = (id: string) => targetNames.get(id)
+      ?? targetItems.find((target) => target.id === id)?.name
+      ?? id
     const failedTeamIds = result.failedTeamIds ?? []
     const invitedNames = targetIds.filter((id) => !failedTeamIds.includes(id)).map(nameOf)
     if (failedTeamIds.length === 0) {
@@ -119,8 +126,13 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const allTargetsSelected = targetItems.length > 0
     && targetItems.every((target) => targetIds.includes(target.id))
 
+  const rememberNames = (teams: readonly { id: string; name: string }[]) => {
+    setTargetNames((current) => new Map([...current, ...teams.map((team) => [team.id, team.name] as const)]))
+  }
+
   const toggleTarget = (teamId: string, checked: boolean) => {
     setTargetError(null)
+    if (checked) rememberNames(targetItems.filter((target) => target.id === teamId))
     setTargetIds((current) => checked
       ? [...current.filter((id) => id !== teamId), teamId]
       : current.filter((id) => id !== teamId))
@@ -129,6 +141,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   const toggleAllTargets = () => {
     const shownIds = new Set(targetItems.map((target) => target.id))
     setTargetError(null)
+    if (!allTargetsSelected) rememberNames(targetItems)
     setTargetIds((current) => allTargetsSelected
       ? current.filter((id) => !shownIds.has(id))
       : [...current.filter((id) => !shownIds.has(id)), ...shownIds])

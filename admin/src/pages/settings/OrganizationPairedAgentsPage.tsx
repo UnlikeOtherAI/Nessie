@@ -98,7 +98,7 @@ const OrganizationPairedAgentsBody = () => {
   return (
     <SettingsPanel
       actions={actions}
-      eyebrow="Organization"
+      eyebrow="Organisation"
       footer={
         <PaginationFooter
           canNext={page < totalPages - 1}
