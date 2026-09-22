@@ -22,6 +22,14 @@ export const RunExecuteJobPayloadSchema = z.object({
   // and scheduled runs leave this unset — they are background automation and are
   // subject to budget throttling regardless of who initiated them.
   interactive: z.boolean().optional(),
+  /**
+   * Every message a drained pending batch folded into this run, in arrival
+   * order (the latest is `messageId`). Only the drain sets it. An executor
+   * conversation lease carries into a batched run only when every one of
+   * these is the lease holder's own composer message, so a batch that mixed
+   * in another member's message carries nothing.
+   */
+  batchMessageIds: z.array(z.string().uuid()).min(1).optional(),
   messageId: NonEmptyStringSchema,
   parentPlanId: z.string().uuid().optional(),
   parentPlanStepId: z.string().uuid().optional(),
