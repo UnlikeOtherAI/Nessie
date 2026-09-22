@@ -38,7 +38,7 @@ export const EmojiReactionButton = ({
   }
 
   return (
-    <div className="relative">
+    <div className="relative" data-emoji-picker-open={open}>
       <button
         aria-controls={open ? pickerId : undefined}
         aria-expanded={open}

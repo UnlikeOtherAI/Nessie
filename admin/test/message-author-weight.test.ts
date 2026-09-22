@@ -82,6 +82,23 @@ test('fine-pointer clicks do not pin message actions after hover ends', () => {
   assert.doesNotMatch(styles, /\.admin-msg-row:focus-within \.admin-msg-actions \{/)
 })
 
+test('an open emoji picker keeps its portalled anchor toolbar laid out', () => {
+  const styles = readSource('../src/styles.css')
+  const emojiButton = readSource('../src/components/shared/EmojiReactionButton.tsx')
+
+  assert.match(emojiButton, /data-emoji-picker-open=\{open\}/)
+  assert.match(
+    styles,
+    /\.admin-msg-actions:has\(\[data-emoji-picker-open="true"\]\)\s*\{\s*display: flex;/,
+  )
+
+  const emojiMenu = styles.slice(
+    styles.indexOf('.admin-msg-emoji-menu {'),
+    styles.indexOf('@media (hover: hover) and (pointer: fine)'),
+  )
+  assert.doesNotMatch(emojiMenu, /\b(?:bottom|position|right|z-index):/)
+})
+
 test('knowledge and project comments leave room for the floating toolbar', () => {
   const commentThread = readSource('../src/components/features/knowledge/comments/CommentThread.tsx')
   const styles = readSource('../src/styles.css')

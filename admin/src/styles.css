@@ -4628,15 +4628,16 @@ button.reaction-pill-active:focus-visible {
 
 .admin-msg-row[data-actions-open="true"] .admin-msg-actions,
 .admin-msg-row:focus-visible .admin-msg-actions,
-.admin-msg-actions:focus-within {
+.admin-msg-actions:focus-within,
+/* The picker is portalled outside the message row. Keep its anchor laid out
+   while the pointer moves into that portal; otherwise the hidden trigger's
+   rect becomes 0,0 and the picker jumps to the viewport corner. */
+.admin-msg-actions:has([data-emoji-picker-open="true"]) {
   display: flex;
 }
 
+/* Presentation only: the Popover primitive owns position and layer. */
 .admin-msg-emoji-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  z-index: 60;
   width: min(22rem, calc(100vw - 2rem));
   border: 1px solid var(--sep);
   border-radius: 8px;
