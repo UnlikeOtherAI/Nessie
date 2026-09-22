@@ -9,6 +9,7 @@ import { familyLabel, familyTone, iconForFamily } from '../../../shared/file-ico
 import { AgentDraftBadge } from '../AgentDraftBadge'
 import { isAgentDraft } from '../page-status'
 import { FinderRow } from './FinderRow'
+import { NewFolderRow } from './NewFolderRow'
 import type {
   FinderBackgroundMenuProps,
   FinderRowMenuProps,
@@ -57,13 +58,17 @@ type FinderListViewProps = {
   /** The folder's own menu, off the list's empty background. */
   backgroundProps?: FinderBackgroundMenuProps
   columnActive: boolean
+  createFolderPending: boolean
+  creatingFolder: boolean
   crumbs: FinderBreadcrumbCrumb[]
   emptyLabel: string
   focusedRowId?: string
   onBrowseTo: (pageId: string | null) => void
+  onCancelFolder: () => void
   /** `useFinderMenus().rowProps`, spread on each row. */
   rowProps?: (page: KnowledgePageRecord) => FinderRowMenuProps
   onOpen: (page: KnowledgePageRecord) => void
+  onSubmitFolder: (name: string) => void
   onRowKeyDown?: (event: KeyboardEvent<HTMLElement>, id: string) => void
   onSelect: (page: KnowledgePageRecord, event: MouseEvent<HTMLElement>) => void
   onSelectSort: (sort: FinderSort) => void
@@ -103,11 +108,15 @@ const Breadcrumb = ({
 export const FinderListView = ({
   backgroundProps,
   columnActive,
+  createFolderPending,
+  creatingFolder,
   crumbs,
   emptyLabel,
   focusedRowId,
   onBrowseTo,
+  onCancelFolder,
   onOpen,
+  onSubmitFolder,
   onRowKeyDown,
   onSelect,
   onSelectSort,
@@ -202,7 +211,13 @@ export const FinderListView = ({
           {showKind ? headerCell('kind') : null}
           <span />
         </div>
-        {rows.length === 0 ? (
+        {creatingFolder ? (
+          <NewFolderRow
+            onCancel={onCancelFolder}
+            onSubmit={onSubmitFolder}
+            pending={createFolderPending}
+          />
+        ) : rows.length === 0 ? (
           <EmptyState className="mt-3">{emptyLabel}</EmptyState>
         ) : (
           // Flush: the columns view's list insets itself so a selected pill
@@ -274,7 +289,11 @@ type FinderListHostProps = {
   level: FinderFolderLevel
   onBrowseTo: (pageId: string | null) => void
   onCreateFolder: () => void
+  creatingFolder: boolean
+  createFolderPending: boolean
+  onCancelFolder: () => void
   onOpen: (page: KnowledgePageRecord) => void
+  onSubmitFolder: (name: string) => void
   onSelectSort: (sort: FinderSort) => void
   pageById: (pageId: string) => KnowledgePageRecord | undefined
   pathPages: KnowledgePageRecord[]
@@ -300,8 +319,12 @@ export const FinderListHost = ({
   level,
   onBrowseTo,
   onCreateFolder,
+  creatingFolder,
+  createFolderPending,
+  onCancelFolder,
   onOpen,
   onSelectSort,
+  onSubmitFolder,
   pageById,
   pathPages,
   rootLabel,
@@ -340,13 +363,17 @@ export const FinderListHost = ({
       <FinderListView
         backgroundProps={backgroundProps}
         columnActive
+        createFolderPending={createFolderPending}
+        creatingFolder={creatingFolder}
         crumbs={[
           { id: null, title: rootLabel },
           ...pathPages.map((page) => ({ id: page.id, title: page.title })),
         ]}
         emptyLabel="This folder is empty."
         onBrowseTo={onBrowseTo}
+        onCancelFolder={onCancelFolder}
         onOpen={onOpen}
+        onSubmitFolder={onSubmitFolder}
         onRowKeyDown={onRowKeyDown}
         onSelect={(page, event) => dispatch({
           columnKey: level.key,
