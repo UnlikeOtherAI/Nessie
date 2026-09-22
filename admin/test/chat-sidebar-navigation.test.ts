@@ -15,6 +15,17 @@ test('the direct-messages plus opens the recipient-addressed conversation compos
   assert.doesNotMatch(source, /Invite people/)
 })
 
+test('every sidebar section plus draws the shared icon, never a text glyph', () => {
+  // `.admin-sidebar-nav .admin-sidebar-plus` sets font-size: 0 so only the svg
+  // shows; a text "+" in any section action renders as an empty square.
+  for (const file of ['SidebarDmSection.tsx', 'SidebarChannelsSection.tsx', 'SidebarProjectsSection.tsx']) {
+    const source = readSource(`../src/layouts/admin-shell/${file}`)
+
+    assert.match(source, /<SidebarPlusIcon \/>/, file)
+    assert.doesNotMatch(source, /className="admin-sidebar-plus"[^>]*>\s*\+\s*</, file)
+  }
+})
+
 test('chat navigation does not duplicate the Agents activity section', () => {
   const source = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
 
