@@ -1,0 +1,133 @@
+import { createWriteStream } from 'node:fs'
+import { createInterface } from 'node:readline'
+
+import type { CodingAgentConfig } from './config.js'
+import type { CodingProcessControl } from './process-control.js'
+import type { Projector } from './projection.js'
+import { rotateLogIfLarge, type CodingSessionPaths } from './session-files.js'
+import type { CodingEventBody, CodingProcessIdentity, CodingSessionState } from './types.js'
+
+/**
+ * What both agent drivers share: the context a host gives them, and one
+ * spawned coding-agent process with its stdout read as lines and its stderr
+ * kept on disk (bounded) and in memory (its last lines), where a failure's
+ * categorical reason comes from.
+ */
+
+export type AgentDriverContext = {
+  agent: CodingAgentConfig
+  control: CodingProcessControl
+  env: NodeJS.ProcessEnv
+  folder: string
+  maxBudgetUsd?: number
+  paths: CodingSessionPaths
+  projector: Projector
+  /** Re-reads the host lock immediately before an agent starts; `false` means another host owns the session. */
+  stillOwner: () => Promise<boolean>
+  emit: (body: CodingEventBody) => void
+  update: (patch: Partial<CodingSessionState>) => void
+  state: () => CodingSessionState
+  log: (message: string) => void
+}
+
+export type AgentDriver = {
+  /** The first message starts (or resumes) the agent; later ones follow up. */
+  send: (text: string, uuid: string) => Promise<void>
+  interrupt: () => Promise<void>
+  /** Ends the agent and every process under it; the session is closed. */
+  close: () => Promise<void>
+  /** Ends the agent process only; the session stays resumable. */
+  endIdle: () => Promise<void>
+  running: () => boolean
+  busy: () => boolean
+}
+
+export class AgentStartError extends Error {
+  override readonly name = 'AgentStartError'
+  constructor(readonly reason: string) { super(reason) }
+}
+
+export type AgentProcess = {
+  identity: CodingProcessIdentity
+  write: (text: string) => void
+  endInput: () => void
+  exited: Promise<{ code: number | null }>
+  alive: () => boolean
+  stderrTail: () => string[]
+}
+
+const STDERR_LOG_BYTES = 1024 * 1024
+const STDERR_TAIL_LINES = 40
+
+/**
+ * A categorical reason from the agent's last stderr lines. The line itself
+ * never leaves the host: it can carry an account name or a host path.
+ */
+const NOT_LOGGED_IN = new RegExp(
+  'not logged in|please (run|use) .{0,40}login|invalid api key|authentication (failed|required)|unauthori[sz]ed',
+  'iu',
+)
+
+export const agentFailureReason = (lines: readonly string[]): string => {
+  const text = lines.join('\n')
+  if (NOT_LOGGED_IN.test(text)) return 'agent_not_logged_in'
+  if (/usage limit|quota|rate limit/iu.test(text)) return 'agent_quota_exhausted'
+  return 'agent_exited'
+}
+
+export const startAgentProcess = async (
+  context: Pick<AgentDriverContext, 'control' | 'env' | 'folder' | 'paths' | 'log'>,
+  argv: readonly string[],
+  onLine: (line: string) => void,
+): Promise<AgentProcess> => {
+  await rotateLogIfLarge(context.paths.agentStderr, STDERR_LOG_BYTES)
+  const child = context.control.spawnAgent(argv[0]!, argv.slice(1), { cwd: context.folder, env: context.env })
+  const spawned = await new Promise<boolean>((settle) => {
+    child.once('spawn', () => settle(true))
+    child.once('error', () => settle(false))
+  })
+  if (!spawned || child.pid === undefined) throw new AgentStartError('agent_missing')
+  let done = false
+  // `close` means stdout has been read to the end, so the turn's last line is
+  // parsed first. A descendant still holding the pipe would delay it forever,
+  // so a second after `exit` is enough.
+  const exited = new Promise<{ code: number | null }>((settle) => {
+    child.once('exit', (code) => {
+      done = true
+      setTimeout(() => settle({ code }), 1_000).unref()
+    })
+    child.once('close', (code) => {
+      done = true
+      settle({ code })
+    })
+  })
+  const tail: string[] = []
+  const log = createWriteStream(context.paths.agentStderr, { flags: 'a', mode: 0o600 })
+  let logged = 0
+  log.on('error', () => undefined)
+  child.stderr?.on('data', (chunk: Buffer) => {
+    if (logged < STDERR_LOG_BYTES) {
+      logged += chunk.byteLength
+      log.write(chunk)
+    }
+    for (const line of chunk.toString('utf8').split(/\r?\n/u)) {
+      if (!line.trim()) continue
+      tail.push(line.slice(0, 500))
+      if (tail.length > STDERR_TAIL_LINES) tail.shift()
+    }
+  })
+  void exited.then(() => log.end())
+  child.stdin?.on('error', () => undefined)
+  if (child.stdout) createInterface({ input: child.stdout }).on('line', onLine)
+  const identity = await context.control.identify(child.pid) ?? { pid: child.pid }
+  return {
+    identity,
+    write: (text) => {
+      if (!done && child.stdin?.writable) child.stdin.write(text)
+    },
+    endInput: () => { child.stdin?.end() },
+    exited,
+    alive: () => !done,
+    stderrTail: () => [...tail],
+  }
+}

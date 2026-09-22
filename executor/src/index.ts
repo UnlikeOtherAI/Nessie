@@ -13,6 +13,7 @@ import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-nati
 import { executorApi } from './api-client.js'
 import { signExecutorLocalInferenceConsent } from './local-inference-consent.js'
 import { connectExecutorLocalInference } from './local-inference-runtime.js'
+import { runBuiltinMcpCli } from './builtin-mcp-cli.js'
 import { runLocalInferenceCli } from './local-inference-cli.js'
 import {
   fetchDirectLocalInferenceConsentDisplay,
@@ -154,6 +155,9 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor serve-ollama-search-mcp\n'
+    + '       nessie-executor serve-coding-session-mcp --config <absolute-owner-only-file>\n'
+    + '       nessie-executor coding-session-host --config <absolute-owner-only-file> --session <uuid>\n'
     + '       nessie-executor serve-direct-local-inference --config-stdin\n'
     + '       nessie-executor local-inference-consent-display --config-stdin\n'
     + '       nessie-executor local-inference-confirm --state-dir <owner-only-path> --challenge <uuid> --binding <uuid>\n'
@@ -487,6 +491,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
 }
 
 export const run = async (args: string[]): Promise<void> => {
+  if (await runBuiltinMcpCli(args)) return
   if (await runLocalInferenceCli(args)) return
   if (await runPairingCodeCli(args)) return
   const command = parseCommand(args)

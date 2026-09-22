@@ -67,7 +67,13 @@ export type ExecutorMcpProbeOutcome =
 
 export type ExecutorMcpSessionManager = {
   listTools: (server: string, cursor?: string) => Promise<Record<string, unknown>>
-  callTool: (server: string, tool: string, args?: Record<string, unknown>) => Promise<Record<string, unknown>>
+  /**
+   * `meta` becomes the request's `_meta`. Only the daemon sets it, and only
+   * with the reserved keys a built-in bridge reads; a model never reaches it.
+   */
+  callTool: (
+    server: string, tool: string, args?: Record<string, unknown>, meta?: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>
   probe: (server: string) => Promise<ExecutorMcpProbeOutcome>
   stopAll: () => Promise<void>
 }
@@ -383,11 +389,15 @@ export const createExecutorMcpSessionManager = (
       if ('code' in catalog) return catalog
       return catalogPage(catalog, cursor)
     }),
-    callTool: (server, tool, args) => withSession(server, async (session) => {
+    callTool: (server, tool, args, meta) => withSession(server, async (session) => {
       let result
       try {
         result = await session.client.callTool(
-          { name: tool, ...(args === undefined ? {} : { arguments: args }) },
+          {
+            name: tool,
+            ...(args === undefined ? {} : { arguments: args }),
+            ...(meta === undefined ? {} : { _meta: meta }),
+          },
           undefined,
           { timeout: MCP_CALL_TIMEOUT_MS },
         )

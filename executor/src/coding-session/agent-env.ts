@@ -1,0 +1,210 @@
+import { execFile } from 'node:child_process'
+import { access } from 'node:fs/promises'
+import { join } from 'node:path'
+
+import type { CodingSessionsConfig } from './config.js'
+
+/**
+ * The environment a coding agent runs in.
+ *
+ * The MCP SDK starts the bridge with a minimal, sudo-style environment (six
+ * variables on POSIX, twelve on Windows), and the host inherits exactly that.
+ * An agent needs the person's real session — their PATH, SSH agent socket,
+ * locale, proxy and CA settings — so with `inheritUserSession` the host
+ * rebuilds a login-like environment the way each OS builds one:
+ *
+ * - Windows: the machine then user `Environment` registry keys (user wins,
+ *   `Path` is machine;user), plus `PATHEXT`, `ComSpec`, `windir`, `ProgramData`
+ *   and `TMP` where those are still missing.
+ * - macOS: `launchctl getenv` for `SSH_AUTH_SOCK` and `TMPDIR`, then the login
+ *   shell's `env -0`.
+ * - Linux: `systemctl --user show-environment` (with `XDG_RUNTIME_DIR` and the
+ *   user bus derived from `/run/user/<uid>`), then the login shell's `env -0`.
+ *
+ * Only the variables that couple an agent to a parent Claude Code session are
+ * stripped — an owner's deliberate `CLAUDE_CODE_*` setting survives — plus the
+ * executor's own two markers, which describe the executor rather than the
+ * person. Then `pass` and `set` apply, and auto-memory is off unless `set`
+ * turns it back on, so it cannot become a channel between owners.
+ */
+
+export const PARENT_SESSION_VARIABLES = [
+  'CLAUDECODE',
+  'CLAUDE_CODE_ENTRYPOINT',
+  'CLAUDE_CODE_SSE_PORT',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH',
+] as const
+
+const EXECUTOR_MARKERS = ['NESSIE_EXECUTOR_PACKAGED_CLI', 'NESSIE_CODING_SESSIONS_CONFIG_DIGEST']
+
+const LOGIN_SHELL_MARKER = '__NESSIE_LOGIN_ENVIRONMENT__'
+
+export type CommandOutcome = { code: number | null; missing: boolean; stdout: string }
+
+export type CommandRunner = (
+  file: string, args: string[], options?: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number },
+) => Promise<CommandOutcome>
+
+export const runCommand: CommandRunner = (file, args, options = {}) => new Promise((settle) => {
+  execFile(file, args, {
+    ...(options.env ? { env: options.env } : {}),
+    ...(options.cwd ? { cwd: options.cwd } : {}),
+    timeout: options.timeoutMs ?? 15_000,
+    windowsHide: true,
+    maxBuffer: 4 * 1024 * 1024,
+  }, (error, stdout) => {
+    const failure = error as (NodeJS.ErrnoException & { code?: number | string }) | null
+    settle({
+      code: failure ? typeof failure.code === 'number' ? failure.code : null : 0,
+      missing: failure?.code === 'ENOENT',
+      stdout: String(stdout ?? ''),
+    })
+  })
+})
+
+/** An environment whose names compare the way the OS compares them. */
+const environmentMap = (platform: NodeJS.Platform, from: NodeJS.ProcessEnv = {}) => {
+  const values = new Map<string, { name: string; value: string }>()
+  const key = (name: string): string => (platform === 'win32' ? name.toUpperCase() : name)
+  const map = {
+    get: (name: string): string | undefined => values.get(key(name))?.value,
+    set: (name: string, value: string): void => {
+      const existing = values.get(key(name))
+      values.set(key(name), { name: existing?.name ?? name, value })
+    },
+    delete: (name: string): void => { values.delete(key(name)) },
+    toObject: (): Record<string, string> => Object.fromEntries(
+      [...values.values()].map((entry) => [entry.name, entry.value]),
+    ),
+  }
+  for (const [name, value] of Object.entries(from)) if (value !== undefined) map.set(name, value)
+  return map
+}
+
+export type RegistryValue = { name: string; type: string; value: string }
+
+/** `reg query` prints `    <name>    <type>    <value>` per value, four spaces apart. */
+export const parseRegistryEnvironment = (text: string): RegistryValue[] => text.split(/\r?\n/u).flatMap((line) => {
+  const match = /^ {4}(.+?) {4}(REG_[A-Z_]+)(?: {4}(.*))?$/u.exec(line)
+  return match ? [{ name: match[1]!, type: match[2]!, value: match[3] ?? '' }] : []
+})
+
+/** `env -0` after our marker: NUL-separated `NAME=value`, immune to a noisy shell profile. */
+export const parseLoginEnvironment = (text: string): Record<string, string> => {
+  const start = text.indexOf(`${LOGIN_SHELL_MARKER}\0`)
+  if (start < 0) return {}
+  const entries: Record<string, string> = {}
+  for (const entry of text.slice(start + LOGIN_SHELL_MARKER.length + 1).split('\0')) {
+    const separator = entry.indexOf('=')
+    if (separator > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/u.test(entry.slice(0, separator))) {
+      entries[entry.slice(0, separator)] = entry.slice(separator + 1)
+    }
+  }
+  return entries
+}
+
+/** `systemctl --user show-environment` prints `NAME=value`, C-quoting values as `$'…'` when needed. */
+export const parseSystemdEnvironment = (text: string): Record<string, string> => {
+  const entries: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const separator = line.indexOf('=')
+    if (separator <= 0) continue
+    const name = line.slice(0, separator)
+    let value = line.slice(separator + 1)
+    if (value.startsWith("$'") && value.endsWith("'")) {
+      value = value.slice(2, -1).replace(/\\(n|t|\\|')/gu, (_match, escape: string) => (
+        escape === 'n' ? '\n' : escape === 't' ? '\t' : escape
+      ))
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/u.test(name)) entries[name] = value
+  }
+  return entries
+}
+
+const expandWindows = (value: string, lookup: (name: string) => string | undefined): string => (
+  value.replace(/%([^%]+)%/gu, (match, name: string) => lookup(name) ?? match)
+)
+
+const captureWindows = async (received: NodeJS.ProcessEnv, run: CommandRunner): Promise<Record<string, string>> => {
+  const env = environmentMap('win32', received)
+  const systemRoot = env.get('SystemRoot') ?? 'C:\\Windows'
+  const reg = join(systemRoot, 'System32', 'reg.exe')
+  const machine = parseRegistryEnvironment((await run(reg, [
+    'query', 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+  ])).stdout)
+  const user = parseRegistryEnvironment((await run(reg, ['query', 'HKCU\\Environment'])).stdout)
+  const valueOf = (entry: RegistryValue): string => (entry.type === 'REG_EXPAND_SZ' ? expandWindows(entry.value, env.get) : entry.value)
+  const paths: string[] = []
+  for (const [scope, entries] of [['machine', machine], ['user', user]] as const) {
+    for (const entry of entries) {
+      if (entry.name.toUpperCase() === 'PATH') paths.push(valueOf(entry))
+      // The machine key's USERNAME is SYSTEM; the logon's own value is the right one.
+      else if (!(scope === 'machine' && entry.name.toUpperCase() === 'USERNAME')) env.set(entry.name, valueOf(entry))
+    }
+  }
+  if (paths.some(Boolean)) env.set('Path', paths.filter(Boolean).join(';'))
+  if (!env.get('PATHEXT')) env.set('PATHEXT', '.COM;.EXE;.BAT;.CMD')
+  if (!env.get('ComSpec')) env.set('ComSpec', join(systemRoot, 'System32', 'cmd.exe'))
+  if (!env.get('windir')) env.set('windir', systemRoot)
+  if (!env.get('ProgramData')) env.set('ProgramData', env.get('ALLUSERSPROFILE') ?? `${env.get('SystemDrive') ?? 'C:'}\\ProgramData`)
+  if (!env.get('TMP') && env.get('TEMP')) env.set('TMP', env.get('TEMP')!)
+  return env.toObject()
+}
+
+const loginShell = async (env: Record<string, string>, run: CommandRunner): Promise<Record<string, string>> => {
+  const shell = env.SHELL?.startsWith('/') ? env.SHELL : '/bin/sh'
+  const outcome = await run(shell, ['-lc', `printf '%s\\0' ${LOGIN_SHELL_MARKER}; env -0`], { env, timeoutMs: 10_000 })
+  return parseLoginEnvironment(outcome.stdout)
+}
+
+const capturePosix = async (
+  platform: NodeJS.Platform, received: NodeJS.ProcessEnv, run: CommandRunner,
+): Promise<Record<string, string>> => {
+  let env: Record<string, string> = environmentMap(platform, received).toObject()
+  if (platform === 'darwin') {
+    for (const name of ['SSH_AUTH_SOCK', 'TMPDIR']) {
+      const value = (await run('/bin/launchctl', ['getenv', name])).stdout.trim()
+      if (value) env[name] = value
+    }
+  } else {
+    const uid = process.getuid?.()
+    const runtime = uid === undefined ? undefined : `/run/user/${uid}`
+    if (runtime && await access(runtime).then(() => true, () => false)) {
+      env.XDG_RUNTIME_DIR ??= runtime
+      if (await access(`${runtime}/bus`).then(() => true, () => false)) env.DBUS_SESSION_BUS_ADDRESS ??= `unix:path=${runtime}/bus`
+    }
+    const systemd = await run('systemctl', ['--user', 'show-environment'], { env, timeoutMs: 5_000 })
+    if (systemd.code === 0) env = { ...env, ...parseSystemdEnvironment(systemd.stdout) }
+  }
+  return { ...env, ...await loginShell(env, run) }
+}
+
+export const captureUserSessionEnvironment = (
+  platform: NodeJS.Platform, received: NodeJS.ProcessEnv, run: CommandRunner = runCommand,
+): Promise<Record<string, string>> => (
+  platform === 'win32' ? captureWindows(received, run) : capturePosix(platform, received, run)
+)
+
+export const buildAgentEnvironment = async (input: {
+  config: CodingSessionsConfig['agentEnv']
+  platform?: NodeJS.Platform
+  received?: NodeJS.ProcessEnv
+  run?: CommandRunner
+}): Promise<Record<string, string>> => {
+  const platform = input.platform ?? process.platform
+  const received = input.received ?? process.env
+  const base = input.config.inheritUserSession
+    ? await captureUserSessionEnvironment(platform, received, input.run ?? runCommand)
+    : received
+  const env = environmentMap(platform, base)
+  for (const name of [...PARENT_SESSION_VARIABLES, ...EXECUTOR_MARKERS]) env.delete(name)
+  const receivedMap = environmentMap(platform, received)
+  for (const name of input.config.pass) {
+    const value = receivedMap.get(name)
+    if (value !== undefined) env.set(name, value)
+  }
+  env.set('CLAUDE_CODE_DISABLE_AUTO_MEMORY', '1')
+  for (const [name, value] of Object.entries(input.config.set)) env.set(name, value)
+  return env.toObject()
+}
