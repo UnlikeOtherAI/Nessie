@@ -4,9 +4,10 @@ import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   attributionFromActorContext,
-  CREDITS_EXHAUSTED_USER_MESSAGE,
   completeLedgerAttribution,
+  CREDITS_EXHAUSTED_USER_MESSAGE,
   isCreditsExhaustedError,
+  reasoningTextFromOpenAi,
   recordInferenceUsage,
   runWebSearch,
   WebSearchError,
@@ -85,6 +86,10 @@ export const userMessageForDesignerError = (error: unknown): string =>
 
 type OpenAIMessage = {
   content: string | null
+  // The turn's reasoning, sent back under DeepSeek's field name so a provider
+  // that refuses a tool round without it (DeepSeek) accepts the next request;
+  // the connector strips it for providers that have no such field.
+  reasoning_content?: string
   role: 'assistant' | 'system' | 'tool' | 'user'
   tool_call_id?: string
   tool_calls?: Array<{
@@ -187,6 +192,14 @@ const recordDesignerLedgerUsage = async (
   }
 }
 
+type DesignerToolCall = { argsBuffer: string; id: string; name: string }
+
+type DesignerTurn = {
+  /** The reasoning the model showed, joined, for replay on the next round. */
+  reasoning: string
+  toolCalls: DesignerToolCall[]
+}
+
 /**
  * Stream a single model turn. Returns collected tool calls (if any)
  * so the caller can execute them and continue the loop.
@@ -196,7 +209,7 @@ const streamModelTurn = async (
   messages: OpenAIMessage[],
   modelClient: ModelClient,
   usageContext: DesignerUsageContext,
-): Promise<Array<{ argsBuffer: string; id: string; name: string }>> => {
+): Promise<DesignerTurn> => {
   const startedAt = Date.now()
   const response = await modelClient.fetchCompletion(
     {
@@ -216,16 +229,14 @@ const streamModelTurn = async (
 
   if (!response.body) {
     writeSseEvent(reply, 'error', { message: 'No response body' })
-    return []
+    return { reasoning: '', toolCalls: [] }
   }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  const toolCalls = new Map<
-    number,
-    { argsBuffer: string; id: string; name: string }
-  >()
+  let reasoning = ''
+  const toolCalls = new Map<number, DesignerToolCall>()
 
   try {
     while (true) {
@@ -257,7 +268,7 @@ const streamModelTurn = async (
               })
             }
           }
-          return Array.from(toolCalls.values())
+          return { reasoning, toolCalls: Array.from(toolCalls.values()) }
         }
 
         try {
@@ -265,7 +276,8 @@ const streamModelTurn = async (
             choices?: Array<{
               delta?: {
                 content?: string
-                reasoning_content?: string
+                reasoning_content?: string | null
+                reasoning?: string | null
                 tool_calls?: Array<{
                   function?: { arguments?: string; name?: string }
                   id?: string
@@ -292,10 +304,10 @@ const streamModelTurn = async (
           const delta = chunk.choices?.[0]?.delta
           if (!delta) continue
 
-          if (delta.reasoning_content) {
-            writeSseEvent(reply, 'reasoning.delta', {
-              content: delta.reasoning_content,
-            })
+          const reasoningDelta = reasoningTextFromOpenAi(delta)
+          if (reasoningDelta) {
+            reasoning += reasoningDelta
+            writeSseEvent(reply, 'reasoning.delta', { content: reasoningDelta })
           }
 
           if (delta.content) {
@@ -338,7 +350,7 @@ const streamModelTurn = async (
     reader.releaseLock()
   }
 
-  return Array.from(toolCalls.values())
+  return { reasoning, toolCalls: Array.from(toolCalls.values()) }
 }
 
 export const streamDesignerChat = async (
@@ -406,7 +418,7 @@ export const streamDesignerChat = async (
     // and feed results back for another turn.
     let exhausted = true
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const toolCalls = await streamModelTurn(
+      const { reasoning, toolCalls } = await streamModelTurn(
         reply,
         messages,
         modelClient,
@@ -434,6 +446,7 @@ export const streamDesignerChat = async (
       messages.push({
         role: 'assistant',
         content: null,
+        ...(reasoning ? { reasoning_content: reasoning } : {}),
         tool_calls: assistantToolCalls,
       })
 

@@ -219,9 +219,10 @@ const deepseekAdapter: SubscriptionProviderAdapter = {
   ],
   termsNote:
     'Runs against your own DeepSeek API balance, including topped-up or granted balance, not your organisation’s Ledger credits. Nessie stores the key securely so your agents can use it while you are away.',
+  // The compiled `deepseek` connector owns the wire dialect: thinking on for
+  // the live turn, `reasoning_content` replayed on tool rounds, `max_tokens`.
   transport: {
     baseUrl: 'https://api.deepseek.com/v1',
-    deepseekThinkingMode: 'disabled',
     runtimeProvider: 'deepseek',
   },
   verify: async (bundle) =>

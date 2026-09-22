@@ -31,15 +31,17 @@ import {
   mapToolCallsFromOpenAi,
   mapToolsToOpenAi,
   normalizeFinishReason,
-  resolveOpenAiTemperature,
   type OpenAiChatResponse,
   type OpenAiEmbeddingResponse,
+  reasoningTextFromOpenAi,
+  resolveOpenAiTemperature,
   usageFromOpenAi,
 } from './openai-chat-protocol.js'
+import { applyReasoningDialect, resolveReasoningDialect } from './reasoning-dialect.js'
 
-/** Internal test seam for the pinned personal DeepSeek transport. */
+/** Internal test seam for the pinned direct-DeepSeek transport. */
 export type OpenAiLikeConnectorOptions = {
-  personalDeepSeekSafeFetchOptions?: SafeFetchOptions
+  pinnedFetchOptions?: SafeFetchOptions
 }
 
 export const createOpenAiLikeConnector = (
@@ -66,32 +68,14 @@ export const createOpenAiLikeConnector = (
   // through Ledger — take inline image parts. DeepSeek's chat API is text-only
   // and rejects them, so its turns stay plain strings.
   const supportsVision = provider !== 'deepseek'
-  const isPersonalDeepSeek =
-    provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-
-  // `fetchCompletion` is a raw body escape hatch used by the Designer. Keep
-  // the personal DeepSeek contract at the transport boundary too, so a future
-  // caller cannot re-enable thinking or send OpenAI's incompatible cap field.
-  const normalizePersonalDeepSeekBody = (
-    body: Record<string, unknown>,
-  ): Record<string, unknown> => {
-    if (!isPersonalDeepSeek) return body
-    const maxCompletionTokens = body.max_completion_tokens
-    const maxTokens = body.max_tokens
-    const rest = { ...body }
-    Reflect.deleteProperty(rest, 'max_completion_tokens')
-    Reflect.deleteProperty(rest, 'max_tokens')
-    Reflect.deleteProperty(rest, 'thinking')
-    return {
-      ...rest,
-      ...(typeof maxTokens === 'number'
-        ? { max_tokens: maxTokens }
-        : typeof maxCompletionTokens === 'number'
-          ? { max_tokens: maxCompletionTokens }
-          : {}),
-      thinking: { type: 'disabled' },
-    }
-  }
+  // A DeepSeek key that is not Ledger's is a person's own (the personal
+  // subscription lane) or a direct deployment; either way the egress is a
+  // caller-influenced vendor host and goes through the pinned dispatcher.
+  const pinnedTransport = provider === 'deepseek' && !ledgerRouted
+  // Resolved once from code-owned facts. The dialect decides the thinking
+  // switch, the output-cap field and whether an assistant turn's reasoning is
+  // sent back, for `invoke`, `stream` and the raw `fetchCompletion` alike.
+  const dialect = resolveReasoningDialect({ provider, serviceId: config.serviceId })
 
   const invokeRequest = async (
     body: Record<string, unknown>,
@@ -99,17 +83,17 @@ export const createOpenAiLikeConnector = (
     signal?: AbortSignal,
   ): Promise<Response> => {
     const init: RequestInit = {
-      body: JSON.stringify(normalizePersonalDeepSeekBody(body)),
+      body: JSON.stringify(applyReasoningDialect(dialect, body)),
       headers: { ...requestHeaders, ...headers },
       method: 'POST',
       signal,
     }
-    const response = isPersonalDeepSeek
+    const response = pinnedTransport
       ? await safeFetch(
         new URL('chat/completions', `${baseUrl.replace(/\/+$/, '')}/`),
         init,
         {
-          ...options.personalDeepSeekSafeFetchOptions,
+          ...options.pinnedFetchOptions,
           credentialsPresent: true,
           maxRedirects: 0,
         },
@@ -128,6 +112,31 @@ export const createOpenAiLikeConnector = (
     return response
   }
 
+  const chatBody = (
+    request: ProviderInvocationRequest,
+    model: string,
+    stream: boolean,
+  ): Record<string, unknown> => ({
+    // OpenAI's field; the DeepSeek dialect renames it to the `max_tokens` that
+    // API documents.
+    ...(request.maxOutputTokens === undefined
+      ? {}
+      : { max_completion_tokens: request.maxOutputTokens }),
+    messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
+    model,
+    // Routes requests with the same prefix to the same prompt cache for a
+    // higher hit rate (undefined is dropped by JSON.stringify).
+    prompt_cache_key: request.promptCacheKey,
+    // Dropped from the JSON body when undefined; providers reject unknown
+    // reasoning-effort values, so callers pass an already-clamped value.
+    reasoning_effort: request.reasoningEffort,
+    response_format: request.responseFormat,
+    ...(stream ? { stream: true, stream_options: { include_usage: true } } : {}),
+    temperature: resolveOpenAiTemperature(model, request.temperature),
+    tool_choice: request.toolChoice,
+    tools: mapToolsToOpenAi(request.tools),
+  })
+
   return {
     provider,
 
@@ -141,12 +150,12 @@ export const createOpenAiLikeConnector = (
           },
           method: 'GET',
         }
-        const response = isPersonalDeepSeek
+        const response = pinnedTransport
           ? await safeFetch(
             new URL('/models', `${baseUrl.replace(/\/+$/, '')}/`),
             init,
             {
-              ...options.personalDeepSeekSafeFetchOptions,
+              ...options.pinnedFetchOptions,
               credentialsPresent: true,
               maxRedirects: 0,
             },
@@ -317,6 +326,9 @@ export const createOpenAiLikeConnector = (
       }
     },
 
+    // Raw body escape hatch (the Designer). The dialect is applied inside
+    // `invokeRequest`, so a caller here can neither re-enable thinking on a
+    // silent call nor send a provider a field it rejects.
     async fetchCompletion(
       body: Record<string, unknown>,
       requestHeaders?: Record<string, string>,
@@ -352,38 +364,17 @@ export const createOpenAiLikeConnector = (
       const model = resolveChatModel(request.model)
 
       try {
-        const tools = mapToolsToOpenAi(request.tools)
-        const response = await invokeRequest({
-          ...(request.maxOutputTokens === undefined ? {} : provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-            ? { max_tokens: request.maxOutputTokens }
-            : { max_completion_tokens: request.maxOutputTokens }),
-          messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
-          model,
-          // DeepSeek defaults to thinking mode. Its API requires the returned
-          // reasoning content to be replayed before a later tool-result turn;
-          // the shared OpenAI message contract deliberately does not persist
-          // that private provider field, so use DeepSeek's documented
-          // nonthinking mode for this connector's tool-capable protocol.
-          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-            ? { thinking: { type: 'disabled' } }
-            : {}),
-          // Routes requests with the same prefix to the same prompt cache for a
-          // higher hit rate (undefined is dropped by JSON.stringify).
-          prompt_cache_key: request.promptCacheKey,
-          // Dropped from the JSON body when undefined; providers reject unknown
-          // reasoning-effort values, so callers pass an already-clamped value.
-          reasoning_effort: request.reasoningEffort,
-          response_format: request.responseFormat,
-          temperature: resolveOpenAiTemperature(model, request.temperature),
-          tool_choice: request.toolChoice,
-          tools,
-        }, request.requestHeaders, request.signal)
+        const response = await invokeRequest(
+          chatBody(request, model, false),
+          request.requestHeaders,
+          request.signal,
+        )
 
         const json = (await response.json()) as OpenAiChatResponse
-        const outputText = json.choices?.[0]?.message?.content ?? ''
-        const toolCalls = mapToolCallsFromOpenAi(
-          json.choices?.[0]?.message?.tool_calls,
-        )
+        const message = json.choices?.[0]?.message
+        const outputText = message?.content ?? ''
+        const reasoningText = reasoningTextFromOpenAi(message)
+        const toolCalls = mapToolCallsFromOpenAi(message?.tool_calls)
         const finishReason = normalizeFinishReason(
           json.choices?.[0]?.finish_reason,
         )
@@ -402,6 +393,7 @@ export const createOpenAiLikeConnector = (
             usage: usageFromOpenAi(json.usage),
           }),
           outputText,
+          ...(reasoningText ? { reasoningText } : {}),
           toolCalls,
         }
       } catch (error) {
@@ -429,25 +421,11 @@ export const createOpenAiLikeConnector = (
       const model = resolveChatModel(request.model)
 
       try {
-        const tools = mapToolsToOpenAi(request.tools)
-        const response = await invokeRequest({
-          ...(request.maxOutputTokens === undefined ? {} : provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-            ? { max_tokens: request.maxOutputTokens }
-            : { max_completion_tokens: request.maxOutputTokens }),
-          messages: mapMessagesToOpenAi(request.messages, { vision: supportsVision }),
-          model,
-          ...(provider === 'deepseek' && config.deepseekThinkingMode === 'disabled'
-            ? { thinking: { type: 'disabled' } }
-            : {}),
-          prompt_cache_key: request.promptCacheKey,
-          reasoning_effort: request.reasoningEffort,
-          response_format: request.responseFormat,
-          stream: true,
-          stream_options: { include_usage: true },
-          temperature: resolveOpenAiTemperature(model, request.temperature),
-          tool_choice: request.toolChoice,
-          tools,
-        }, request.requestHeaders, request.signal)
+        const response = await invokeRequest(
+          chatBody(request, model, true),
+          request.requestHeaders,
+          request.signal,
+        )
 
         const stream = collectChatStream(response)
         let next = await stream.next()
@@ -470,6 +448,7 @@ export const createOpenAiLikeConnector = (
             usage: next.value.usage,
           }),
           outputText: next.value.outputText,
+          ...(next.value.reasoningText ? { reasoningText: next.value.reasoningText } : {}),
           toolCalls: next.value.toolCalls,
         }
       } catch (error) {

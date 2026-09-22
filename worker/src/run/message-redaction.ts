@@ -36,8 +36,15 @@ const redactToolCalls = (message: ProviderMessage): ProviderMessage => {
   } as ProviderMessage
 }
 
+const redactReasoning = (message: ProviderMessage): ProviderMessage => {
+  // Reasoning is derived from the same tool output the reply is, so a secret
+  // a tool surfaced can appear there too — and it is replayed to the provider.
+  if (message.role !== 'assistant' || !message.reasoning) return message
+  return { ...message, reasoning: redactDetectedSecrets(message.reasoning) }
+}
+
 export const redactMessageContent = (message: ProviderMessage): ProviderMessage => {
-  const withSafeCalls = redactToolCalls(message)
+  const withSafeCalls = redactReasoning(redactToolCalls(message))
   if (typeof withSafeCalls.content !== 'string') return withSafeCalls
   return {
     ...withSafeCalls,

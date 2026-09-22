@@ -65,10 +65,15 @@ test('an OpenAI-compatible endpoint gets the same image parts', async () => {
 })
 
 test('DeepSeek, whose chat API is text-only, gets plain text and no image', async () => {
-  const body = await captureRequestBody('deepseek')
+  // Ledger-routed: a direct DeepSeek key goes through the pinned dispatcher,
+  // which is exercised with an injected resolver in deepseek-personal-wire.
+  const body = await captureRequestBody('deepseek', {
+    baseUrl: 'https://ledger.unlikeotherai.com/v1/deepseek',
+  })
   assert.equal(userContent(body), 'what is on this image?')
   assert.equal(JSON.stringify(body).includes('AAECAw=='), false)
-  assert.equal(body.thinking, undefined)
+  // A silent (non-streaming) call is the dialect's non-thinking mode.
+  assert.deepEqual(body.thinking, { type: 'disabled' })
 })
 
 test('capability snapshots report vision truthfully per provider', async () => {

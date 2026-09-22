@@ -232,6 +232,7 @@ export const createRunInference = (
         model: mpr.invocations[0]?.model ?? '',
         outputText: mpr.finalAnswer ?? '',
         provider: (mpr.invocations[0]?.provider ?? 'openai') as InferenceResult['provider'],
+        ...(mpr.finalReasoning ? { reasoningText: mpr.finalReasoning } : {}),
         requestId: mpr.requestId,
         toolCalls: mpr.toolCalls,
       }

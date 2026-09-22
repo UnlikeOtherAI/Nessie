@@ -96,6 +96,10 @@ export const ProviderMessageSchema = z.discriminatedUnion('role', [
     role: z.literal('assistant'),
     content: ProviderMessageContentSchema.nullable(),
     toolCalls: z.array(ProviderToolCallSchema).optional(),
+    // Provider reasoning replayed on later turns where the dialect requires it
+    // (DeepSeek's tool rounds). Optional here so a checkpoint written before
+    // the field existed still parses.
+    reasoning: z.string().optional(),
   }),
   z.object({
     role: z.literal('tool'),
@@ -245,6 +249,7 @@ export type ProviderInvocationRequest = z.infer<
 
 export const ProviderInvocationResultSchema = z.object({
   outputText: z.string(),
+  reasoningText: z.string().optional(),
   toolCalls: z.array(ProviderToolCallSchema),
   structuredOutput: z.unknown().optional(),
   finishReason: NormalizedFinishReasonSchema.optional(),

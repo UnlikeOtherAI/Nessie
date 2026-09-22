@@ -70,7 +70,12 @@ export const createCodexConnector = (
       ...(instructions ? { instructions } : {}),
       ...(request.maxOutputTokens ? { max_output_tokens: request.maxOutputTokens } : {}),
       model,
-      ...(request.reasoningEffort ? { reasoning: { effort: request.reasoningEffort } } : {}),
+      // `summary` is what makes the backend stream reasoning text at all: the
+      // Responses API emits `reasoning_summary_text.delta` only when asked,
+      // so without it a Codex agent's thinking bubble stayed empty forever.
+      ...(request.reasoningEffort
+        ? { reasoning: { effort: request.reasoningEffort, summary: 'auto' } }
+        : { reasoning: { summary: 'auto' } }),
       // The backend must not retain this conversation: the transcript is
       // Nessie's, and a stored copy would put a team's content in a
       // person's ChatGPT history where its disclosure rules do not reach.

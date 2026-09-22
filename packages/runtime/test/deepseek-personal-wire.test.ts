@@ -24,9 +24,11 @@ const drain = async (
   return next.value
 }
 
-test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fields', async () => {
+test('a personal DeepSeek tool round trip is pinned, thinks on the live turn and replays its reasoning', async () => {
   const responses = [
     sse([{
+      choices: [{ delta: { reasoning_content: 'Need the forecast first.' } }],
+    }, {
       choices: [{
         delta: {
           tool_calls: [{
@@ -51,11 +53,10 @@ test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fi
     {
       apiKey: 'personal-deepseek-key',
       baseUrl: 'https://api.deepseek.com/v1',
-      deepseekThinkingMode: 'disabled',
       provider: 'deepseek',
     },
     {
-      personalDeepSeekSafeFetchOptions: {
+      pinnedFetchOptions: {
         fetchImpl: async (url, init) => {
           requests.push({
             body: JSON.parse(String(init.body)) as Record<string, unknown>,
@@ -91,12 +92,18 @@ test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fi
     toolCallId: 'call_weather',
     toolName: 'weather',
   }])
+  assert.equal(first.reasoningText, 'Need the forecast first.')
 
   const second = await drain(connector.stream({
     maxOutputTokens: 321,
     messages: [
       { content: 'What is the weather?', role: 'user' },
-      { content: first.outputText, role: 'assistant', toolCalls: first.toolCalls },
+      {
+        content: first.outputText,
+        reasoning: first.reasoningText,
+        role: 'assistant',
+        toolCalls: first.toolCalls,
+      },
       { content: '{"forecast":"sunny"}', role: 'tool', toolCallId: 'call_weather' },
     ],
     model: 'deepseek-flash',
@@ -104,6 +111,7 @@ test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fi
   }))
   assert.equal(second.outputText, 'It is sunny.')
 
+  // A silent raw call: thinking is the dialect's decision, not the caller's.
   await connector.fetchCompletion({
     max_completion_tokens: 99,
     model: 'deepseek-flash',
@@ -115,13 +123,18 @@ test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fi
     assert.equal(request.url, 'https://api.deepseek.com/v1/chat/completions')
     assert.equal(request.redirect, 'manual')
     assert.equal(request.headers.get('authorization'), 'Bearer personal-deepseek-key')
-    assert.deepEqual(request.body.thinking, { type: 'disabled' })
     assert.equal(request.body.max_tokens, request === requests[2] ? 99 : 321)
     assert.equal(request.body.max_completion_tokens, undefined)
   }
+  assert.deepEqual(requests[0]?.body.thinking, { type: 'enabled' })
+  assert.deepEqual(requests[1]?.body.thinking, { type: 'enabled' })
+  assert.deepEqual(requests[2]?.body.thinking, { type: 'disabled' })
+  // DeepSeek answers 400 on a tool round that does not carry every assistant
+  // turn's reasoning_content back, so the replay is what keeps the loop alive.
   const replay = requests[1]?.body.messages as Array<Record<string, unknown>>
   assert.equal(replay[1]?.role, 'assistant')
   assert.equal(replay[1]?.content, '')
+  assert.equal(replay[1]?.reasoning_content, 'Need the forecast first.')
   assert.equal(replay[2]?.role, 'tool')
   assert.equal(replay[2]?.tool_call_id, 'call_weather')
 })
@@ -129,9 +142,9 @@ test('a personal DeepSeek tool round trip is pinned and uses nonthinking wire fi
 test('an unbounded conversational request omits completion caps while an explicit utility cap remains', async () => {
   const requests: Array<Record<string, unknown>> = []
   const connector = createOpenAiLikeConnector('deepseek', {
-    apiKey: 'key', baseUrl: 'https://api.deepseek.com/v1', deepseekThinkingMode: 'disabled', provider: 'deepseek',
+    apiKey: 'key', baseUrl: 'https://api.deepseek.com/v1', provider: 'deepseek',
   }, {
-    personalDeepSeekSafeFetchOptions: {
+    pinnedFetchOptions: {
       fetchImpl: async (_url, init) => {
         requests.push(JSON.parse(String(init.body)) as Record<string, unknown>)
         return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }))

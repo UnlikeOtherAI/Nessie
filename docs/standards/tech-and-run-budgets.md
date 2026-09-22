@@ -18,7 +18,9 @@ summary and points here; **this file is the rule**.
   admin Continue (§5/§6), TaskEvents (§7), per-model context window and real
   compaction (§8), research routing (§9). Facts not restated there:
   - `Agent.effort` maps **only** to provider `reasoning_effort`; it never
-    implies a spend cap. Per-dimension budget = `Agent.runLimits` (Agent
+    implies a spend cap. Whether a turn also carries the provider's own
+    thinking switch is the connector dialect's decision, made per turn
+    ([inference-reasoning.md](inference-reasoning.md)). Per-dimension budget = `Agent.runLimits` (Agent
     Designer "Run limits") `??` the deployment backstop
     (`NESSIE_RUN_BACKSTOP_MAX_{TOKENS,TOOL_CALLS,ITERATIONS,WALLCLOCK_MS,COST_CENTS}`,
     defaults 500k / 2000 / 1000 / 45 min / 2000¢ — a safety envelope, not a

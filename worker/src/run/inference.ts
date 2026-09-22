@@ -214,6 +214,7 @@ const executeSingleMode = async (
     },
     correlationId: input.actorContext.actionContext.correlationId,
     finalAnswer: success.candidate.outputText,
+    ...(success.reasoningText ? { finalReasoning: success.reasoningText } : {}),
     invocations: [success.invocation],
     requestId: input.actorContext.actionContext.requestId,
     status: 'completed',

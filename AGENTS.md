@@ -363,6 +363,14 @@ when one changes, the same turn updates it, not this section.
   labels and never imports a narrower-audience comment.
   Read [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md)
   before writing code here.
+- **Provider reasoning ("thinking").** Every OpenAI-shaped stream is read
+  for both reasoning spellings, the thinking switch is a per-dialect decision
+  made at the transport boundary (DeepSeek `thinking`, DashScope
+  `enable_thinking`, everyone else `reasoning_effort`), thinking is asked for
+  only on a streamed non-JSON turn, and a turn's reasoning rides on its
+  assistant message so DeepSeek's tool rounds get it back.
+  Read [`docs/standards/inference-reasoning.md`](docs/standards/inference-reasoning.md)
+  before writing code here.
 - **Live document streaming.** Streaming taps the model's own tool-call
   arguments; the live lane never touches durable storage, and editing is deltas
   rather than a rewrite.

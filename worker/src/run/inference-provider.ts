@@ -42,8 +42,6 @@ export type ResolvedProviderConfig = {
   }
   /** Adapter-declared transport headers for a subscription-routed call. */
   extraHeaders?: Record<string, string>
-  /** Adapter-declared DeepSeek request mode for a personal subscription run. */
-  deepseekThinkingMode?: 'disabled'
 }
 
 /**
@@ -181,9 +179,6 @@ export const resolveStageProviderConfig = async (
       baseUrl: resolved.baseUrl,
       connectorKind:
         resolved.runtimeProvider === 'openai-compatible' ? 'openai-compatible' : 'compiled',
-      ...(resolved.deepseekThinkingMode
-        ? { deepseekThinkingMode: resolved.deepseekThinkingMode }
-        : {}),
       ...(resolved.extraHeaders ? { extraHeaders: resolved.extraHeaders } : {}),
       model: input.requestedModel,
       providerKey: resolved.runtimeProvider,

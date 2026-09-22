@@ -41,6 +41,8 @@ export { buildPromptCacheKey }
 export type StageExecutionSuccess = {
   candidate: CandidateOutput
   invocation: InvocationRecord
+  /** The turn's visible reasoning, replayed by the loop where the provider needs it. */
+  reasoningText: string
   toolCalls: ProviderToolCall[]
 }
 
@@ -254,9 +256,6 @@ export const executeStage = async (
     const serviceConfig: ModelProviderConfig = {
       apiKey: providerConfig.apiKey,
       baseUrl: providerConfig.baseUrl,
-      ...(providerConfig.deepseekThinkingMode
-        ? { deepseekThinkingMode: providerConfig.deepseekThinkingMode }
-        : {}),
       ...(providerConfig.extraHeaders
         ? { extraHeaders: providerConfig.extraHeaders }
         : {}),
@@ -267,6 +266,7 @@ export const executeStage = async (
     service = createInferenceService(serviceConfig)
 
     let outputText = ''
+    let reasoningText = ''
     let invocation: InvocationRecord | undefined
     let toolCalls: ProviderToolCall[] = []
     let visibleReasoning = false
@@ -320,6 +320,7 @@ export const executeStage = async (
         if (next.value.type === 'reasoning_text.delta') {
           if (next.value.text) {
             visibleReasoning = true
+            reasoningText += next.value.text
           }
           if (next.value.text && input.onVisibleReasoningDelta) {
             await input.onVisibleReasoningDelta(next.value.text)
@@ -343,6 +344,7 @@ export const executeStage = async (
         next = await source.next()
       }
       outputText = next.value.outputText
+      reasoningText = next.value.reasoningText ?? reasoningText
       invocation = next.value.invocations.at(-1)
       toolCalls = next.value.toolCalls
     } else {
@@ -361,6 +363,7 @@ export const executeStage = async (
         toolChoice: input.toolChoice,
       })
       outputText = result.outputText
+      reasoningText = result.reasoningText ?? ''
       invocation = result.invocations.at(-1)
       toolCalls = result.toolCalls
       if (outputText && input.emitBufferedOutput && input.onVisibleTextDelta) {
@@ -412,6 +415,7 @@ export const executeStage = async (
             : undefined,
       },
       invocation: enrichedInvocation,
+      reasoningText,
       toolCalls,
     }
   } catch (error) {

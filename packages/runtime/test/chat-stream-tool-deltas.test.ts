@@ -145,3 +145,25 @@ test('parallel tool calls keep their fragments separate', async () => {
   assert.equal(byIndex.get(1), '{"y":2}')
   assert.equal(result.toolCalls.length, 2)
 })
+
+test('reasoning arrives under either field name and is kept whole on the result', async () => {
+  const { events, result } = await drain(
+    streamResponse([
+      // DeepSeek / DashScope / vLLM spell it reasoning_content …
+      { choices: [{ delta: { reasoning_content: 'First, ' } }] },
+      // … OpenRouter normalises every upstream to `reasoning`.
+      { choices: [{ delta: { reasoning: 'then.' } }] },
+      { choices: [{ delta: { content: 'Answer.' }, finish_reason: 'stop' }] },
+    ]),
+  )
+  assert.deepEqual(
+    events.map((event) => [event.type, 'text' in event ? event.text : '']),
+    [
+      ['reasoning_text.delta', 'First, '],
+      ['reasoning_text.delta', 'then.'],
+      ['output_text.delta', 'Answer.'],
+    ],
+  )
+  assert.equal(result.reasoningText, 'First, then.')
+  assert.equal(result.outputText, 'Answer.')
+})

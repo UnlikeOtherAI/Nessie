@@ -26,12 +26,6 @@ export type ModelProviderConfig = {
    * never become a way to steer a request somewhere else.
    */
   extraHeaders?: Record<string, string>
-  /**
-   * Code-declared only for a personal DeepSeek subscription. This avoids
-   * DeepSeek's default thinking mode, whose reasoning history must otherwise
-   * be replayed before a tool-result round.
-   */
-  deepseekThinkingMode?: 'disabled'
 }
 
 export type ProviderHealthStatus =
@@ -85,7 +79,18 @@ export type ProviderImage = {
 export type ProviderMessage =
   | { role: 'system'; content: string }
   | { role: 'user'; content: string; images?: ProviderImage[] }
-  | { role: 'assistant'; content: string | null; toolCalls?: ProviderToolCall[] }
+  | {
+    role: 'assistant'
+    content: string | null
+    toolCalls?: ProviderToolCall[]
+    /**
+     * The reasoning the provider emitted with this turn, kept so a dialect
+     * that demands it back (DeepSeek answers 400 on a tool round without it)
+     * can replay it. Connectors whose provider has no such field drop it at
+     * the transport boundary; see `reasoning-dialect.ts`.
+     */
+    reasoning?: string
+  }
   | { role: 'tool'; content: string; toolCallId: string }
 
 export type UsageReporting = {
@@ -181,6 +186,8 @@ export type ProviderInvocationResult = {
   finishReason?: NormalizedFinishReason
   invocation: InvocationRecord
   outputText: string
+  /** Visible reasoning the provider returned with this turn, when it did. */
+  reasoningText?: string
   toolCalls: ProviderToolCall[]
 }
 
@@ -303,6 +310,8 @@ export type InferenceResult = {
   model: string
   outputText: string
   provider: ModelProviderName
+  /** See ProviderInvocationResult.reasoningText. */
+  reasoningText?: string
   requestId: string
   toolCalls: ProviderToolCall[]
 }
