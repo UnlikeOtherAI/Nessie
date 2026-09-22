@@ -777,6 +777,9 @@ importers:
 
   packages/executor-manage:
     dependencies:
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../db
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime

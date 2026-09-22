@@ -1,5 +1,5 @@
 import { type Prisma, type PrismaClient } from '@prisma/client'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { ExecutorCapabilityDescriptorSchema, type AuthorizedActionContext } from '@nessie/schemas'
 
 import {
   canManageExecutor,
@@ -10,6 +10,11 @@ import {
   lockExecutorMutation,
   requireManagedExecutor,
 } from './executor-access-mutations.js'
+import {
+  EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
+  endExecutorConversationLeasesInTransaction,
+  executorLeaseAuditActor,
+} from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
 export type ExecutorLifecycleAction = 'pause' | 'resume' | 'drain' | 'revoke'
@@ -151,6 +156,15 @@ export const transitionExecutorLifecycleInTransaction = async (
     where: { executorId: executor.id, status: { in: ['pending', 'active'] } },
     data: { status: 'stopped' },
   })
+  // The same fence ends every conversation lease on the machine: a paused,
+  // draining or revoked executor carries nobody's follow-ups, and resuming
+  // does not bring a lease back — the person launches again.
+  await endExecutorConversationLeasesInTransaction(tx, {
+    actor: executorLeaseAuditActor(actorContext),
+    endedByUserId: actorUserId,
+    reason: input.action === 'revoke' ? 'executor_revoked' : 'executor_paused',
+    where: { executorId: executor.id },
+  })
   return updated
 }
 
@@ -165,7 +179,7 @@ export const reviewExecutorDescriptorInTransaction = async (
   const [revision, latest] = await Promise.all([
     tx.executorCapabilityRevision.findFirst({
       where: { executorId: input.executorId, revision: input.revision },
-      select: { id: true, reviewStatus: true },
+      select: { descriptor: true, id: true, reviewStatus: true },
     }),
     tx.executorCapabilityRevision.findFirst({
       where: { executorId: input.executorId },
@@ -201,4 +215,21 @@ export const reviewExecutorDescriptorInTransaction = async (
     where: { executorId: input.executorId, status: { in: ['pending', 'active'] } },
     data: { status: 'stopped' },
   })
+  // A review that leaves the machine without the local-apps pair — disabling
+  // the live policy, or activating one that no longer names both keys — ends
+  // every lease on it. One that keeps the pair leaves them: their existing
+  // bindings are fenced by the revision check, and the next carry binds the
+  // new revision afresh.
+  const reviewed = ExecutorCapabilityDescriptorSchema.safeParse(revision.descriptor)
+  const keepsLocalApps = input.status === 'active'
+    && reviewed.success
+    && EXECUTOR_LOCAL_APPS_OPERATION_KEYS.every((key) => reviewed.data.operationKeys.includes(key))
+  if (!keepsLocalApps) {
+    await endExecutorConversationLeasesInTransaction(tx, {
+      actor: executorLeaseAuditActor(actorContext),
+      endedByUserId: actorUserId,
+      reason: 'descriptor_narrowed',
+      where: { executorId: input.executorId },
+    })
+  }
 }

@@ -1,6 +1,4 @@
-import {
-  bindExecutorCandidateBundleInTransaction, resolveExecutorAvailabilityCandidates,
-} from '@nessie/executor-manage'
+import { bindPinnedExecutorLocalApps } from '@nessie/executor-manage'
 import { AuthorizedActionContextSchema, ExecutorMcpToolCatalogSchema, TaskSetProcessorSchema } from '@nessie/schemas'
 import { buildExecutorToolset, executorToolName } from '../run/executor-toolset.js'
 import { currentExecutorToken } from '../run/execute/lifecycle.js'
@@ -35,23 +33,16 @@ export const buildTaskSetSearchTools = async (
   })
   const host = binding ? await deps.prisma.localInferenceHost.findUnique({ where: { id: binding.hostId } }) : null
   if (!host?.executorId) throw new TaskSetBlocked('processor_search_setup_required')
-  const existing = await deps.prisma.executorBinding.findMany({ where: { runId: claim.attempt.runId } })
-  if (existing.some((entry) => entry.executorId !== host.executorId)) {
+  // The same pinned binder a conversation lease carries through.
+  const pinned = await bindPinnedExecutorLocalApps(deps.prisma, {
+    actorContext: AuthorizedActionContextSchema.parse(claim.set.launchOrigin),
+    actorUserId: claim.set.ownerUserId, agentId: context.agent.id,
+    executorId: host.executorId, runId: claim.attempt.runId,
+  })
+  if (pinned.kind === 'existing' && pinned.bindings.some((entry) => entry.executorId !== host.executorId)) {
     throw new TaskSetBlocked('processor_search_binding_changed')
   }
-  if (existing.length === 0) {
-    const actor = AuthorizedActionContextSchema.parse(claim.set.launchOrigin)
-    const result = await resolveExecutorAvailabilityCandidates(deps.prisma, actor, {
-      agentId: context.agent.id, executorId: host.executorId, operationKeys: ['mcp.tools', 'mcp.call'],
-      runId: claim.attempt.runId,
-    })
-    const candidate = result.candidates.find((entry) => entry.operationKeys.includes('mcp.tools') && entry.operationKeys.includes('mcp.call'))
-    if (!candidate) throw new TaskSetBlocked('processor_search_setup_required')
-    await deps.prisma.$transaction((tx) => bindExecutorCandidateBundleInTransaction(tx, {
-      actorUserId: claim.set.ownerUserId, candidateHandle: candidate.handle,
-      operationKeys: ['mcp.tools', 'mcp.call'], runId: claim.attempt.runId,
-    }))
-  }
+  if (pinned.kind === 'unavailable') throw new TaskSetBlocked('processor_search_setup_required')
   const agent = await deps.prisma.agent.findUniqueOrThrow({
     where: { id: context.agent.id }, select: { toolPolicy: true },
   })

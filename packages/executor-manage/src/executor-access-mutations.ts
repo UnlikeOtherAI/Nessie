@@ -12,6 +12,11 @@ import {
   requireHumanActor,
   resolveExecutorHumanAccess,
 } from './executor-access.js'
+import {
+  EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
+  endExecutorConversationLeasesInTransaction,
+  executorLeaseAuditActor,
+} from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
 export type ExecutorMutationClient = PrismaClient | Prisma.TransactionClient
@@ -92,6 +97,20 @@ const nextAuthorizationRevision = async (
     data: { status: 'stopped' },
   })
   return executor.authorizationRevision
+}
+
+/** Withdrawn or narrowed access ends the leases it covered, with the fence. */
+const endLeasesForRevokedAccess = async (
+  tx: Prisma.TransactionClient,
+  actorContext: AuthorizedActionContext,
+  where: { executorId: string; agentId?: string; actorUserId?: string },
+): Promise<void> => {
+  await endExecutorConversationLeasesInTransaction(tx, {
+    actor: executorLeaseAuditActor(actorContext),
+    endedByUserId: requireHumanActor(actorContext),
+    reason: 'access_revoked',
+    where,
+  })
 }
 
 /**
@@ -256,6 +275,10 @@ export const removePrivateAssignmentInTransaction = async (
     })
   }
   await tx.executorPrivateAssignment.delete({ where: { id: existing.id } })
+  // Removing a person or an agent from the roster ends the leases it held.
+  await endLeasesForRevokedAccess(tx, actorContext, existing.principalKind === 'agent'
+    ? { executorId: executor.id, agentId: existing.agentId ?? undefined }
+    : { executorId: executor.id, actorUserId: existing.userId ?? undefined })
   return nextAuthorizationRevision(tx, executor.id)
 }
 
@@ -318,6 +341,12 @@ export const setExecutorAgentOperationGrantInTransaction = async (
       updatedByUserId: actorUserId,
     },
   })
+  if (
+    input.state === 'denied'
+    && (EXECUTOR_LOCAL_APPS_OPERATION_KEYS as readonly string[]).includes(operationKey.data)
+  ) {
+    await endLeasesForRevokedAccess(tx, actorContext, { executorId: executor.id, agentId: input.agentId })
+  }
   return authorizationRevision
 }
 
@@ -521,6 +550,9 @@ export const setExecutorAgentWholeSuiteGrantInTransaction = async (
         updatedByUserId: actorUserId,
       },
     })
+  }
+  if (input.state === 'denied') {
+    await endLeasesForRevokedAccess(tx, actorContext, { executorId: executor.id, agentId: input.agentId })
   }
   return authorizationRevision
 }
