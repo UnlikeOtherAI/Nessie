@@ -168,8 +168,10 @@ rather than offered and then denied.
   `agent_create`, and never throws — a failed generation leaves the agent
   faceless rather than failing the creation. It is never *silent* though:
   `agent_create`'s tool output states whether a portrait was drawn and, when it
-  was not, why, because the failure a person actually met was a blank tile
-  nobody mentioned. The prompt writer runs at `reasoningEffort: 'low'` with
+  was not, why (`portrait: none (reason: "…")`), because the failure a person
+  actually met was a blank tile nobody mentioned. The reason is data; the rule
+  that the Designer quotes it word for word lives in its prompt, not in the
+  tool output, where it was once relayed to the person as it stood. The prompt writer runs at `reasoningEffort: 'low'` with
   2 000 output tokens: at 500 a reasoning model spent the whole allowance
   thinking and answered nothing. An empty answer therefore names the
   provider's finish reason (`ModelClient.chatResult`), so "the model returned

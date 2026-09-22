@@ -104,11 +104,50 @@ const card: AgentCardPresenter = {
   waitingFor: ['Ondrej Rafaj'],
 }
 
+// F22: an agent nobody named a place for is proposed living nowhere yet —
+// never in a channel the Designer would make for it. The same standard card;
+// its placement field is the part that matters.
+const UNPLACED_CARD_ID = '77777777-7777-4777-8777-777777777778'
+
+const unplacedCard: AgentCardPresenter = {
+  ...card,
+  blocks: card.blocks.map((block) => {
+    if (block.type === 'fields') {
+      return {
+        ...block,
+        items: [
+          { label: 'Lives in', value: 'nowhere yet — add it to any channel' },
+          { label: 'Who can see it', value: 'Everyone in the KiloMayo team' },
+        ],
+      }
+    }
+    if (block.type === 'text') {
+      return {
+        ...block,
+        markdown:
+          'Owns the Nessie board: turns bug reports into tickets and keeps them moving.\n'
+          + 'Starts coding sessions on your executor and reviews what they changed.\n'
+          + 'Reports progress when somebody asks.',
+      }
+    }
+    return block
+  }),
+  cardId: UNPLACED_CARD_ID,
+  message:
+    'Here is the CTO I would build. It lives nowhere yet, so add it to any '
+    + 'channel you want it in. Press Accept, or tell me what to change.',
+  messageId: '99999999-9999-4999-8999-999999999998',
+  subtitle: 'chief technology officer',
+  title: 'CTO',
+}
+
+const cards = new Map([[CARD_ID, card], [UNPLACED_CARD_ID, unplacedCard]])
+
 const client = {
   delete: async () => ({ ok: true }),
   get: async (path: string) => {
-    if (path === `/api/agent-cards/${CARD_ID}`) return card
-    return null
+    const match = /^\/api\/agent-cards\/([^/]+)$/.exec(path)
+    return (match ? cards.get(match[1] ?? '') : undefined) ?? null
   },
   patch: async () => ({ ok: true }),
   post: async () => ({ cardId: CARD_ID, responseMessageId: 'message-1', status: 'resolved' }),
@@ -122,8 +161,13 @@ createRoot(document.getElementById('root')!).render(
     <ApiClientProvider client={client}>
       <MemoryRouter initialEntries={['/channels/sales']}>
         <div style={{ background: 'var(--bg)', minHeight: '100vh', padding: '24px' }}>
-          <div style={{ maxWidth: '520px' }}>
-            <AgentCardMessage metadata={{ agentCard: { cardId: CARD_ID, schemaVersion: 1 } }} />
+          <div style={{ display: 'grid', gap: '24px', maxWidth: '520px' }}>
+            <div data-testid="placed-proposal">
+              <AgentCardMessage metadata={{ agentCard: { cardId: CARD_ID, schemaVersion: 1 } }} />
+            </div>
+            <div data-testid="unplaced-proposal">
+              <AgentCardMessage metadata={{ agentCard: { cardId: UNPLACED_CARD_ID, schemaVersion: 1 } }} />
+            </div>
           </div>
         </div>
       </MemoryRouter>

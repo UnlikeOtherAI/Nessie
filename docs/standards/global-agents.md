@@ -141,6 +141,33 @@ file is the rule**.
   wider — and the reviewed policy and local MCP report stay the administrator's
   read they already were.
 
+- **A new agent lives where the person puts it, or nowhere yet.** Asked for a
+  CTO, the Designer made a channel for it that nobody had asked for: its
+  prompt said to "find or create" the channels the work happens in, the
+  handoff summary named "the channel it works in", and the proposal card
+  required "the channel it will work in" — so Accept, which builds exactly
+  what the card says, built a room. The persona
+  (`global-agent-blueprints.ts`) and the card section
+  (`proposalCardSection` in `global-agent-catalogue.ts`) now say where an
+  agent lives: the existing channels the person named, or nowhere yet, and
+  the card's "Lives in" field reads exactly "nowhere yet — add it to any
+  channel" when none was named. An agent with no binding is finished, not
+  half-built. `channel_create` stays in the Designer's toolset and
+  `identityToolIds` for a person who asks for a channel; it is never a
+  default step. Pinned by `packages/team-admin/test/agent-designer-blueprint.test.ts`,
+  the catalogue test and the proposal-card fixture suite
+  (`admin/e2e/agent-proposal-card`), which renders both placements.
+- **The Designer hands a person links, and its tools hand it data.**
+  `agent_create` and `agent_bind_channel` answer with markdown links —
+  `[CTO](/agents/<id>)`, `[#sales](/channels/<id>)`, built by
+  `formatAgentMarkdownLink`/`formatChannelMarkdownLink` in
+  `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none (reason:
+  "…")`, never `agentId=`/`channelId=` pairs or an instruction addressed to
+  the model. It relayed both verbatim: the person read UUIDs and "give them
+  this reason word for word". A later call takes the id from the link's last
+  segment; quoting the portrait reason and never showing a raw id are rules
+  in the Designer's own prompt, where instructions belong.
+
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored
   `system` brief — the trigger-kickoff mechanism, never the integration

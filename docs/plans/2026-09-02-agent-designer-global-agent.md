@@ -293,7 +293,7 @@ Reused as-is (via D3 where PA-only):
 | `agent_create` | the create chokepoint (`createAgentRecord`), incl. private agents + home DM. Today the *route* auto-generates an avatar and the PA tool path does not — the generation moves into a shared seam both call, in the same change, so a chat-created agent is not the only faceless one |
 | `agent_bind_channel` | place the new agent (all four route gates) |
 | `agent_trigger_create` | schedules on *designed* agents, with the UOA-identity refusal intact; refuses `systemSlug` targets (D2) |
-| `channel_create` | "it needs its own channel". Inside a global agent's home DM a call that names no `visibility` now lands **private** rather than public — an omitted argument must not publish a room to the organisation; the PA's own default is untouched |
+| `channel_create` | a channel the person **asks for** — never a step in building an agent (*amended 2026-09-23*: a new agent lives in the existing channels the person named, or nowhere yet; see [global-agents.md](../standards/global-agents.md)). Inside a global agent's home DM a call that names no `visibility` now lands **private** rather than public — an omitted argument must not publish a room to the organisation; the PA's own default is untouched |
 | `card_post` | forms and choices (D6) |
 | `web_search`, `web_fetch` | research a service/domain before writing the prompt |
 | `people_search`, `channel_find`, `channel_list` | resolve names the person uses |
@@ -393,7 +393,7 @@ another".
 the tools and apps behind a fold that is also the extension point. It is described
 in `buildGlobalAgentCatalogueBlock` under `writeSurface: 'agent_tools'` rather than
 in the shared persona; see
-[Designer grants and the proposal card](2026-09-16-agent-designer-grants-and-proposal-card.md).
+[Designer grants and the proposal card](2026-09-16-agent-designer-grants-and-proposal-card.md). Its placement field is "Lives in": the channels the person named, or "nowhere yet — add it to any channel" (2026-09-23).
 
 ### D7 — Not editable, by construction
 

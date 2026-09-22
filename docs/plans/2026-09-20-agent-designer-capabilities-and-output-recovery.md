@@ -112,3 +112,21 @@ capacity, rather than a Nessie verbosity allowance. Other main conversational
 requests omit it. Do not invent a static Kimi output limit or disable working
 Kimi conversations because the provider reports context capacity rather than a
 separate output maximum. The ordinary system prompt governs communication.
+
+## Amendment 2026-09-23 — what the Designer hands the person
+
+Found while building a CTO agent through the Designer
+([usability report](../testing/cto-agent-usability-2026-09-22.md), findings 6
+and 9). The rule in both: a tool result is data the Designer relays, so
+nothing in it may be a secret or an instruction addressed to the model.
+
+- **Tool output carries links, not ids (F9).** `agent_create` printed
+  `agentId=<uuid>` and `Its private home is channelId=<uuid>`, plus "Tell them
+  so, and give them this reason word for word" when no portrait was drawn; the
+  Designer's completion message repeated all of it. It now answers
+  `Created agent [CTO](/agents/<id>) (…)`, `Lives in: nowhere yet — add it to
+  any channel` or its private home as `[#name](/channels/<id>)`, and
+  `portrait: none (reason: "…")`; `agent_bind_channel` answers with the same
+  two links. A later call reads the id from the link's last segment. "Quote the
+  portrait reason word for word" and "link what you made, never a raw id" moved
+  into the Designer's persona (`global-agent-blueprints.ts`).

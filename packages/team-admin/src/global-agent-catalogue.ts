@@ -242,6 +242,8 @@ const parametersSection = (avatarLineText: string): string[] => [
   avatarLineText,
   bullet(
     'bindings — which channels an agent works in, one channel at a time. '
+    + 'An agent needs none to exist: with none it lives nowhere yet, and people '
+    + 'add it to a channel later. '
     + 'There is no project-wide or team-wide binding: a project and a team are '
     + 'where a channel lives, so "put it in the Sales project" is a set of '
     + 'channel bindings, and a channel added to that project afterwards will '
@@ -362,8 +364,11 @@ const proposalCardSection = (): string[] => [
     + 'not the machinery.',
   ),
   bullet(
-    'A fields block for where it lives and who can see it — the team, project '
-    + 'and channel it will work in, or that it is private to them.',
+    'A fields block with "Lives in" and "Who can see it". Lives in is the '
+    + 'existing channels the person named, each with its team and project; when '
+    + 'they named none it reads exactly "nowhere yet — add it to any channel", '
+    + 'and it is never a channel you would create for the agent. Who can see it '
+    + 'is the team, or that it is private to them.',
   ),
   bullet(
     'An input block, a select, for the model: a few from the catalogue above '

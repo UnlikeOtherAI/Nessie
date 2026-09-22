@@ -266,18 +266,19 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
     console.warn = originalWarn
   }
 
-  assert.match(result.outputPreview, /Created agent "Researcher"/)
+  assert.match(result.outputPreview, /Created agent \[Researcher\]/)
   assert.equal(created.length, 1)
   assert.equal(created[0]?.['avatarAttachmentId'], undefined)
   // And it SAYS so. A silent seam is what left a person looking at a blank
-  // tile with the agent that built it unable to explain why.
-  assert.match(result.outputPreview, /It has NO portrait/)
-  assert.match(result.outputPreview, /model service is not configured/)
-  // The reason is handed over to be quoted, because the one time this happened
-  // the model paraphrased it into "the picture couldn't be drawn" and the
-  // reason left the building.
-  assert.match(result.outputPreview, /word for word/)
-  assert.match(result.outputPreview, /"The model service is not configured."/)
+  // tile with the agent that built it unable to explain why. The reason is
+  // data here; "quote it word for word" is the Designer prompt's rule, because
+  // written into this output it was relayed to the person as it stood.
+  assert.match(result.outputPreview, /^portrait: none \(reason: "The model service is not configured\."\)$/m)
+  assert.doesNotMatch(result.outputPreview, /word for word|Tell them/)
+  // A person is handed links, not the UUIDs the tool used to print.
+  assert.match(result.outputPreview, new RegExp(`\\[Researcher\\]\\(/agents/${AGENT_ID}\\)`))
+  assert.doesNotMatch(result.outputPreview, /agentId=|channelId=/)
+  assert.match(result.outputPreview, /^Lives in: nowhere yet — add it to any channel\.$/m)
   // And an operator can read it without the chat transcript, exactly as
   // `POST /api/agents` already logs it.
   assert.equal(logged.length, 1)
