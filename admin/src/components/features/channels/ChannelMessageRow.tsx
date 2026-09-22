@@ -1,4 +1,4 @@
-import type { Dispatch, KeyboardEvent, MouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react'
+import type { Dispatch, KeyboardEvent, MouseEvent, ReactNode, SetStateAction } from 'react'
 import type { AgentRecord, PersonalAssistantPresenceParticipant, ThreadMessageRecord } from '../../../lib/api-client'
 import type { AttachmentRecord } from '../../../lib/uploads'
 import { readWatchStatusSummary } from '../../../facades/channels/watch-status'
@@ -63,7 +63,6 @@ interface ChannelMessageRowProps {
   getPresence: (userId: string | null | undefined) => PresenceView | null
   activeActionMessageId: string | null
   setActiveActionMessageId: Dispatch<SetStateAction<string | null>>
-  lastPointerDownAt: MutableRefObject<number>
 }
 
 // One feed row owns focus and author identity. Cards, attachments and reply
@@ -76,7 +75,7 @@ export const ChannelMessageRow = ({
   onSubmitEdit, onCancelEdit, onAddReaction, onConfirmDelete, onOpenThread,
   onOpenAttachment, onSelectAgent, onSelectUser, resolveReactorName,
   resolveThreadParticipant, getPresence, activeActionMessageId,
-  setActiveActionMessageId, lastPointerDownAt,
+  setActiveActionMessageId,
 }: ChannelMessageRowProps) => {
   const watchStatus = readWatchStatusSummary(message.metadata)
   const lookupAgentIdentity = useAgentIdentityLookup()
@@ -143,13 +142,11 @@ export const ChannelMessageRow = ({
       className="admin-msg-row relative py-1"
       data-actions-open={activeActionMessageId === message.id}
       data-message-id={message.id}
-      onClick={() => setActiveActionMessageId((current) => (current === message.id ? null : message.id))}
-      onFocus={() => {
-        if (Date.now() - lastPointerDownAt.current > 500) setActiveActionMessageId(message.id)
-      }}
       onKeyDown={openThreadOnKey}
-      onPointerDown={() => {
-        lastPointerDownAt.current = Date.now()
+      onPointerDown={(event) => {
+        if (event.pointerType !== 'mouse') {
+          setActiveActionMessageId((current) => (current === message.id ? null : message.id))
+        }
       }}
       tabIndex={0}
     >

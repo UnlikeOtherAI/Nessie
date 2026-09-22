@@ -9,6 +9,7 @@ import {
 import { Check, Copy, Pencil, Reply, Smile, Trash2 } from 'lucide-react'
 import type { MessageReaction } from '../../../lib/api-client'
 import { EmojiReactionButton } from '../../shared/EmojiReactionButton'
+import { SharedActionButton, SharedActionToolbar } from '../../shared/ActionToolbar'
 import { ReactionPills, type ResolveReactorName } from './ReactionPills'
 
 type ChannelMessageActionsProps = {
@@ -85,60 +86,55 @@ export const ChannelMessageActions = ({
         onToggle={addReaction}
       />
 
-      <div
-        className="admin-msg-actions"
+      <SharedActionToolbar
         data-testid="message-actions"
         onClick={stopRowToggle}
         onPointerDown={stopRowToggle}
       >
-        <button
+        <SharedActionButton
           aria-label={copied ? 'Message copied' : 'Copy message'}
-          className="admin-msg-action-button"
           onClick={copyMessage}
           title={copied ? 'Copied' : 'Copy message'}
           type="button"
         >
           {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-        </button>
+        </SharedActionButton>
         <EmojiReactionButton
           icon={<Smile aria-hidden="true" />}
           onSelect={addReaction}
           title="Add emoji reaction"
         />
         {onReply ? (
-          <button
+          <SharedActionButton
             aria-label="Reply in thread"
-            className="admin-msg-action-button"
             onClick={onReply}
             title="Reply in thread"
             type="button"
           >
             <Reply aria-hidden="true" />
-          </button>
+          </SharedActionButton>
         ) : null}
         {canEdit ? (
-          <button
+          <SharedActionButton
             aria-label="Edit message"
-            className="admin-msg-action-button"
             onClick={() => onStartEdit(messageId, content)}
             title="Edit message"
             type="button"
           >
             <Pencil aria-hidden="true" />
-          </button>
+          </SharedActionButton>
         ) : null}
         {canDelete ? (
-          <button
+          <SharedActionButton
             aria-label="Delete message"
-            className="admin-msg-action-button"
             onClick={() => onConfirmDelete(messageId)}
             title="Delete message"
             type="button"
           >
             <Trash2 aria-hidden="true" />
-          </button>
+          </SharedActionButton>
         ) : null}
-      </div>
+      </SharedActionToolbar>
     </>
   )
 }

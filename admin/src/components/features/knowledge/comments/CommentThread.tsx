@@ -45,17 +45,19 @@ const CommentRow = ({
   return (
     <div
       aria-label={`Comment by ${author.displayName} — actions`}
-      className="admin-msg-row relative"
+      className="admin-comment-row admin-msg-row relative"
       data-actions-open={open}
-      onClick={() => setOpen((value) => !value)}
       onKeyDown={(event) => {
-        // Keyboard parity with the click toggle, and (via :focus-within) makes
-        // the Reply/Resolve/Edit/Delete/React bar reachable by keyboard/touch.
+        // Keyboard parity with the touch toggle makes the action bar reachable
+        // without turning an ordinary fine-pointer click into sticky state.
         // Only respond when the row itself is focused, never a child control.
         if ((event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget) {
           event.preventDefault()
           setOpen((value) => !value)
         }
+      }}
+      onPointerDown={(event) => {
+        if (event.pointerType !== 'mouse') setOpen((value) => !value)
       }}
       role="group"
       tabIndex={0}
@@ -140,7 +142,7 @@ export const CommentThread = ({
   const [replying, setReplying] = useState(false)
 
   return (
-    <div className="overflow-hidden rounded-md border border-[color:var(--sep)] py-1">
+    <div className="relative overflow-visible rounded-md border border-[color:var(--sep)]">
       {showAnchorQuote && annotation.anchor ? (
         <blockquote className="mx-5 mb-1 border-l-2 border-[color:var(--accent)] pl-2 text-xs italic text-[color:var(--tx2)]">
           “{annotation.anchor.quote}”
@@ -160,7 +162,7 @@ export const CommentThread = ({
         topLevel
       />
       {annotation.replies.length ? (
-        <div className="ml-7 border-l border-[color:var(--sep)]">
+        <div className="admin-comment-replies ml-7 border-l border-[color:var(--sep)]">
           {annotation.replies.map((reply) => (
             <CommentRow
               actions={actions}

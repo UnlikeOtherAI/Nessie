@@ -1,15 +1,8 @@
 import { useMemo } from 'react'
-import {
-  faCheck,
-  faPen,
-  faReply,
-  faRotateLeft,
-  faThumbsUp,
-  faTrashCan,
-} from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { Check, Pencil, Reply, RotateCcw, Smile, ThumbsUp, Trash2 } from 'lucide-react'
 import type { KnowledgeAnnotationReaction } from '../../../../facades/knowledge/comment-hooks'
 import { EmojiReactionButton } from '../../../shared/EmojiReactionButton'
+import { SharedActionButton, SharedActionToolbar } from '../../../shared/ActionToolbar'
 
 const THUMBS_UP = '\u{1F44D}'
 
@@ -76,62 +69,61 @@ export const CommentActions = ({
         </div>
       ) : null}
 
-      <div className="admin-msg-actions" onClick={stop} onPointerDown={stop}>
-        <button
+      <SharedActionToolbar onClick={stop} onPointerDown={stop}>
+        <SharedActionButton
           aria-label="Add thumbs up reaction"
-          className="admin-msg-action-button"
           onClick={() => react(THUMBS_UP)}
           title="Thumbs up"
           type="button"
         >
-          <FontAwesomeIcon icon={faThumbsUp} />
-        </button>
-        <EmojiReactionButton onSelect={react} title="Add reaction" />
+          <ThumbsUp aria-hidden="true" />
+        </SharedActionButton>
+        <EmojiReactionButton
+          icon={<Smile aria-hidden="true" />}
+          onSelect={react}
+          title="Add reaction"
+        />
         {topLevel ? (
-          <button
+          <SharedActionButton
             aria-label="Reply"
-            className="admin-msg-action-button"
             onClick={onReply}
             title="Reply"
             type="button"
           >
-            <FontAwesomeIcon icon={faReply} />
-          </button>
+            <Reply aria-hidden="true" />
+          </SharedActionButton>
         ) : null}
         {topLevel && canResolve ? (
-          <button
+          <SharedActionButton
             aria-label={resolved ? 'Reopen' : 'Resolve'}
-            className="admin-msg-action-button"
             onClick={onResolveToggle}
             title={resolved ? 'Reopen' : 'Resolve'}
             type="button"
           >
-            <FontAwesomeIcon icon={resolved ? faRotateLeft : faCheck} />
-          </button>
+            {resolved ? <RotateCcw aria-hidden="true" /> : <Check aria-hidden="true" />}
+          </SharedActionButton>
         ) : null}
         {canModify ? (
-          <button
+          <SharedActionButton
             aria-label="Edit"
-            className="admin-msg-action-button"
             onClick={onEdit}
             title="Edit"
             type="button"
           >
-            <FontAwesomeIcon icon={faPen} />
-          </button>
+            <Pencil aria-hidden="true" />
+          </SharedActionButton>
         ) : null}
         {canModify ? (
-          <button
+          <SharedActionButton
             aria-label="Delete"
-            className="admin-msg-action-button"
             onClick={onDelete}
             title="Delete"
             type="button"
           >
-            <FontAwesomeIcon icon={faTrashCan} />
-          </button>
+            <Trash2 aria-hidden="true" />
+          </SharedActionButton>
         ) : null}
-      </div>
+      </SharedActionToolbar>
     </>
   )
 }

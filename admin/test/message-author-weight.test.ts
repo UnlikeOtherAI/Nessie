@@ -58,3 +58,35 @@ test('message action toolbar uses the reference Lucide icon set', () => {
     assert.match(actions, new RegExp(`<${icon}(?:\\s|>)`))
   }
 })
+
+test('channel, knowledge, and agent actions reuse one toolbar control', () => {
+  const channelActions = readSource('../src/components/features/channels/ChannelMessageActions.tsx')
+  const commentActions = readSource('../src/components/features/knowledge/comments/CommentActions.tsx')
+  const agentRow = readSource('../src/components/features/agents/AgentListRow.tsx')
+
+  assert.match(channelActions, /<SharedActionToolbar/)
+  assert.match(commentActions, /<SharedActionToolbar/)
+  assert.match(agentRow, /<SharedActionButton/)
+  for (const icon of ['ThumbsUp', 'Smile', 'Reply', 'Check', 'RotateCcw', 'Pencil', 'Trash2']) {
+    assert.match(commentActions, new RegExp(`<${icon}(?:\\s|>)`))
+  }
+})
+
+test('fine-pointer clicks do not pin message actions after hover ends', () => {
+  const messageRow = readSource('../src/components/features/channels/ChannelMessageRow.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.doesNotMatch(messageRow, /onClick=.*setActiveActionMessageId/)
+  assert.match(messageRow, /event\.pointerType !== 'mouse'/)
+  assert.match(styles, /\.admin-msg-row:focus-visible \.admin-msg-actions/)
+  assert.doesNotMatch(styles, /\.admin-msg-row:focus-within \.admin-msg-actions \{/)
+})
+
+test('knowledge and project comments leave room for the floating toolbar', () => {
+  const commentThread = readSource('../src/components/features/knowledge/comments/CommentThread.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.match(commentThread, /relative overflow-visible rounded-md/)
+  assert.match(commentThread, /admin-comment-row admin-msg-row/)
+  assert.match(styles, /\.admin-comment-row \{\s*padding-block: 10px;/)
+})
