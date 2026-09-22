@@ -169,7 +169,11 @@ rather than offered and then denied.
   faceless rather than failing the creation. It is never *silent* though:
   `agent_create`'s tool output states whether a portrait was drawn and, when it
   was not, why, because the failure a person actually met was a blank tile
-  nobody mentioned.
+  nobody mentioned. The prompt writer runs at `reasoningEffort: 'low'` with
+  2 000 output tokens: at 500 a reasoning model spent the whole allowance
+  thinking and answered nothing. An empty answer therefore names the
+  provider's finish reason (`ModelClient.chatResult`), so "the model returned
+  no text (finish reason: length)" is told apart from a refusal or a filter.
 - `agent_avatar_generate` draws a replacement, mirroring
   `POST /api/agents/:agentId/avatar/generate` (accessibility read, then
   `assertAgentEditAuthority`, then the billed call) followed by the confirming

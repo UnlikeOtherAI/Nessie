@@ -34,7 +34,7 @@ const fileService = {
   store: async () => ({ attachment: { id: '00000000-0000-4000-8000-0000000000a5' } }),
 } as never
 
-const modelClient = { chat: async () => 'a portrait prompt' }
+const modelClient = { chatResult: async () => ({ text: 'a portrait prompt' }) }
 
 const imageRequest = async () =>
   new Response(
@@ -121,9 +121,9 @@ test('a remembered style reaches the prompt writer as descriptive data', async (
     imageRequest,
     ledgerIdentity: null,
     modelClient: {
-      chat: async (messages) => {
+      chatResult: async (messages) => {
         seen.push(messages)
-        return 'a portrait prompt'
+        return { text: 'a portrait prompt' }
       },
     },
     style: 'photorealistic, natural light',
@@ -153,9 +153,9 @@ test('with no style the writer keeps its default look', async () => {
     imageRequest,
     ledgerIdentity: null,
     modelClient: {
-      chat: async (messages) => {
+      chatResult: async (messages) => {
         seen.push(messages)
-        return 'a portrait prompt'
+        return { text: 'a portrait prompt' }
       },
     },
   })
@@ -191,5 +191,75 @@ test('the create seam waits less for the picture than a standalone request does'
   assert.match(
     failures[0] instanceof Error ? failures[0].message : '',
     /timed out after 45s on the Ledger OpenAI service image route/,
+  )
+})
+
+// F8: a reasoning model given 500 tokens spent them all thinking, answered
+// nothing, and the person was told only that the prompt "could not be
+// generated". The writer now has room to finish at low effort, and an empty
+// answer says why the model stopped.
+test('the prompt writer gets room to finish, at low effort', async () => {
+  const seen: unknown[] = []
+  await generateAvatarForNewAgent({
+    actorContext,
+    agent,
+    config,
+    fileService,
+    imageRequest,
+    ledgerIdentity: null,
+    modelClient: {
+      chatResult: async (_messages, options) => {
+        seen.push(options)
+        return { finishReason: 'stop', text: 'a portrait prompt' }
+      },
+    },
+  })
+
+  const options = seen[0] as { maxTokens?: number; reasoningEffort?: string }
+  assert.equal(options.maxTokens, 2_000)
+  assert.equal(options.reasoningEffort, 'low')
+})
+
+test('an empty prompt says why the model stopped', async () => {
+  const failures: unknown[] = []
+  let imageCalled = false
+  const generated = await generateAvatarForNewAgent({
+    actorContext,
+    agent,
+    config,
+    fileService,
+    imageRequest: async (...args) => {
+      imageCalled = true
+      return imageRequest(...args)
+    },
+    ledgerIdentity: null,
+    modelClient: { chatResult: async () => ({ finishReason: 'length', text: '  ' }) },
+    onFailure: (error) => failures.push(error),
+  })
+
+  assert.equal(generated, undefined)
+  assert.equal(imageCalled, false, 'no billed render for a prompt that was never written')
+  assert.match(
+    failures[0] instanceof Error ? failures[0].message : '',
+    /avatar prompt could not be generated: the model returned no text \(finish reason: length\)/,
+  )
+})
+
+test('a provider that gives no reason is named as not reporting one', async () => {
+  const failures: unknown[] = []
+  await generateAvatarForNewAgent({
+    actorContext,
+    agent,
+    config,
+    fileService,
+    imageRequest,
+    ledgerIdentity: null,
+    modelClient: { chatResult: async () => ({ text: '' }) },
+    onFailure: (error) => failures.push(error),
+  })
+
+  assert.match(
+    failures[0] instanceof Error ? failures[0].message : '',
+    /\(finish reason: not reported\)/,
   )
 })

@@ -35,7 +35,7 @@ export const ensurePersonalAssistantAvatar = async (input: {
   fileService: Pick<FileService, 'delete' | 'store'>
   generateAvatar?: GenerateAvatar
   ledgerIdentity: LedgerIdentityService | null
-  modelClient: Pick<ModelClient, 'chat'> | null
+  modelClient: Pick<ModelClient, 'chatResult'> | null
   organizationId: string
   prisma: PrismaClient
 }): Promise<void> => {
