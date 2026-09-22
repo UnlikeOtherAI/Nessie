@@ -387,6 +387,7 @@ const AuthenticatedAdminShellLayout = () => {
     showWebTabBar ? 'has-mobile-tabbar' : '',
     showNativePhoneTabBar ? 'has-native-phone-tabbar' : '',
     nativeAndroidApp ? 'has-native-android-shell' : '',
+    nativeIPadApp ? 'has-native-ipad-shell' : '',
   ]
     .filter(Boolean)
     .join(' ');

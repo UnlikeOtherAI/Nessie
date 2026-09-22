@@ -1273,6 +1273,28 @@ body.overlays-focus-mode .project-nav-tile {
   padding-bottom: 0;
 }
 
+/* The installed iPad shell: `main` reaches the window floor instead of
+   stopping at the home indicator. Its padding left a band the width of the
+   inset under every surface, and a detached thread panel — fixed, but inside
+   the navigation screen, which clips — lost its composer's last 20pt to it.
+   The two things that own a page's floor clear the indicator themselves: the
+   channel composer (`--nessie-native-home-clearance`, spent in
+   ChannelComposer) and `PageBody`. A docked keyboard ends the WebView frame
+   above the indicator (mobile/src/lib/keyboard-overlap.ts), so the inset — and
+   with it both clearances — is 0 while it is up. */
+.admin-frame.has-native-ipad-shell {
+  --nessie-native-home-clearance: env(safe-area-inset-bottom, 0px);
+}
+
+.admin-frame.has-native-ipad-shell .admin-shell > main {
+  padding-bottom: 0;
+}
+
+.admin-frame.has-native-ipad-shell .admin-page-body {
+  padding-bottom: calc(1.25rem + var(--nessie-native-home-clearance));
+  scroll-padding-bottom: var(--nessie-native-home-clearance);
+}
+
 /* The chrome columns take the clearance as padding and keep their background
    under the dock, so they read as reaching the floor while their last row
    stays reachable above the pill. */
