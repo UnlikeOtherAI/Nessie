@@ -582,7 +582,12 @@ export const runExecutionAgentLoop = async (
         options?.noTools ? [] : [...input.toolDefs, ...mcpView.descriptors],
         undefined,
       ),
-    toolTimeoutError: input.mcpToolset.timeoutErrorFor,
+    // Executor tools go in call order, on their command TTL plus a margin, and
+    // a timeout is the TTL's own fatal unknown outcome, never a retriable one.
+    dispatchesInOrder: (name) => input.executorToolset.handledNames.has(normalizeToolName(name)),
+    toolTimeoutError: (name) => input.executorToolset.timeoutErrorFor(normalizeToolName(name))
+      ?? input.mcpToolset.timeoutErrorFor(name),
+    toolTimeoutMsFor: (name) => input.executorToolset.timeoutMsFor(normalizeToolName(name)),
     tools: mainToolDefs,
   })
 

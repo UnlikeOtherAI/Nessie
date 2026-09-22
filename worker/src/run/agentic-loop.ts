@@ -470,12 +470,13 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     const batch = await drainGate.expiry(executeToolBatch({
       callbacks,
       circuitBreaker,
+      ...(input.dispatchesInOrder ? { dispatchesInOrder: input.dispatchesInOrder } : {}),
       executeTool: toolRecorder.executeTool,
       ...(toolRecorder.prepareTool ? { prepareTool: toolRecorder.prepareTool } : {}),
       signatureCounts,
       toolCalls,
       toolTimeoutError: input.toolTimeoutError,
-      toolTimeoutMs: budget.toolTimeoutMs,
+      toolTimeoutMsFor: (toolName) => input.toolTimeoutMsFor?.(toolName) ?? budget.toolTimeoutMs,
     }))
     totalToolMs += batch.toolMs
     deliveredToConversation ||= batch.deliveredToConversation

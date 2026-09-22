@@ -265,6 +265,7 @@ const finalTurn = (outputText = 'Done.'): InferenceResult => ({
 type LoopHarness = {
   dispatchedMcp: string[]
   dispatchedExecutor: string[]
+  executorTimeoutLookups: string[]
   fake: FakePrisma
   invocationSink: InvocationRecord[]
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
@@ -300,6 +301,7 @@ const runLoop = async (input: {
   }
   const dispatchedMcp: string[] = []
   const dispatchedExecutor: string[] = []
+  const executorTimeoutLookups: string[] = []
   const mcpEntries = input.mcpTools ?? {}
   const executorEntries = input.executorTools ?? {}
 
@@ -326,6 +328,11 @@ const runLoop = async (input: {
       return executorEntries[name]
     },
     handledNames: new Set(Object.keys(executorEntries)),
+    timeoutErrorFor: () => null,
+    timeoutMsFor: (name: string) => {
+      executorTimeoutLookups.push(name)
+      return undefined
+    },
   } as unknown as ExecutorToolset
 
   const builtinName = input.builtinName ?? 'kb_search'
@@ -425,6 +432,7 @@ const runLoop = async (input: {
   return {
     dispatchedExecutor,
     dispatchedMcp,
+    executorTimeoutLookups,
     fake,
     invocationSink,
     result,
@@ -756,6 +764,20 @@ test('main executor: command run audits only the argv program, never its argumen
     runId: RUN_ID,
     toolCallId: 'call-1',
   })
+})
+
+test('main executor: an executor call is timed by the executor toolset', async () => {
+  // The toolset answers with the command TTL plus a margin; without the
+  // lookup the call would fall back to the ordinary timeout.
+  const harness = await runLoop({
+    executorTools: {
+      'executor_mcp_call': { inputSummary: 'call', output: '{"success":true}', success: true },
+    },
+    toolArgs: { server: 'kelpie', tool: 'navigate' },
+    toolName: 'executor_mcp_call',
+  })
+  assert.deepEqual(harness.dispatchedExecutor, ['executor_mcp_call'])
+  assert.deepEqual(harness.executorTimeoutLookups, ['executor_mcp_call'])
 })
 
 // --- delegated paths: the model calls delegate; the sub-agent then calls the

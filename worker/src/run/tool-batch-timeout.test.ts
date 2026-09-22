@@ -42,7 +42,7 @@ test('a timed-out tool call is aborted, not merely out-raced', async () => {
       stalledProviderCall(observed, signal),
     signatureCounts: new Map(),
     toolCalls: [{ arguments: {}, toolCallId: 'tc-1', toolName: 'gmail_send' }],
-    toolTimeoutMs: 25,
+    toolTimeoutMsFor: () => 25,
   })
 
   // The stalled call learned of the timeout...
@@ -69,7 +69,7 @@ test('a prepared execution is aborted through the same signal', async () => {
     }),
     signatureCounts: new Map(),
     toolCalls: [{ arguments: {}, toolCallId: 'tc-1', toolName: 'calendar_update' }],
-    toolTimeoutMs: 25,
+    toolTimeoutMsFor: () => 25,
   })
 
   assert.ok(observed.signal, 'the prepared execution must receive a signal')
@@ -89,7 +89,7 @@ test('a call that finishes inside its timeout is never aborted', async () => {
     },
     signatureCounts: new Map(),
     toolCalls: [{ arguments: {}, toolCallId: 'tc-1', toolName: 'gmail_search' }],
-    toolTimeoutMs: 5_000,
+    toolTimeoutMsFor: () => 5_000,
   })
 
   assert.equal(batch.results[0]?.success, true)

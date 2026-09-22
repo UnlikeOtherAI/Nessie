@@ -120,15 +120,27 @@ type RunnableToolCall = {
   toolCall: ProviderToolCall
 }
 
+type PreparedToolCall = RunnableToolCall & {
+  execute: (signal?: AbortSignal) => Promise<ExecutedToolResult>
+}
+
 export const executeToolBatch = async (input: {
   callbacks: ToolBatchCallbacks
   circuitBreaker: ToolCircuitBreaker
+  /**
+   * Tools dispatched one after another, in call order, rather than beside the
+   * rest of the batch. Executor commands share their machine's one command
+   * lane, and each one's expiry runs from the moment it is created, so a batch
+   * that dispatched three at once spent its own TTLs queueing behind itself.
+   */
+  dispatchesInOrder?: (toolName: string) => boolean
   executeTool: ExecuteToolFn
   prepareTool?: PrepareToolFn
   signatureCounts: Map<string, number>
   toolCalls: ProviderToolCall[]
   toolTimeoutError?: (toolName: string) => Error | null
-  toolTimeoutMs?: number
+  /** Each tool's own timeout; undefined keeps the batch default. */
+  toolTimeoutMsFor?: (toolName: string) => number | undefined
 }): Promise<{
   deliveredToConversation: boolean
   loopDetected: boolean
@@ -172,7 +184,7 @@ export const executeToolBatch = async (input: {
     runnable.push({ index, toolCall })
   }
 
-  const prepared: Array<RunnableToolCall & { execute: (signal?: AbortSignal) => Promise<ExecutedToolResult> }> = []
+  const prepared: PreparedToolCall[] = []
   for (const call of runnable) {
     let preparation: PreparedToolExecution
     try {
@@ -215,7 +227,8 @@ export const executeToolBatch = async (input: {
     prepared.push({ ...call, execute: preparation.execute })
   }
 
-  const settled = await Promise.allSettled(prepared.map(async ({ execute, toolCall }) => {
+  const runPrepared = async ({ execute, toolCall }: PreparedToolCall): Promise<ExecutedToolResult> => {
+    const timeoutMs = input.toolTimeoutMsFor?.(toolCall.toolName) ?? DEFAULT_TOOL_TIMEOUT_MS
     await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
     const startedAt = new Date()
     // One controller per call: the timeout arm aborts it, so a stalled
@@ -227,7 +240,7 @@ export const executeToolBatch = async (input: {
     try {
       const result = await withTimeout(
         execute(controller.signal),
-        input.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
+        timeoutMs,
         toolCall.toolName,
         () => input.toolTimeoutError?.(toolCall.toolName) ?? null,
         () => controller.abort(),
@@ -287,6 +300,18 @@ export const executeToolBatch = async (input: {
         toolName: toolCall.toolName,
       }
     }
+  }
+
+  // Only a fatal error or a failed callback rejects `runPrepared`, and either
+  // one throws this batch. The in-order calls behind it are then never
+  // dispatched: `then` passes the rejection along without running them, and a
+  // replay dispatches them afresh because nothing ever claimed them.
+  let inOrder: Promise<unknown> = Promise.resolve()
+  const settled = await Promise.allSettled(prepared.map((call) => {
+    if (!input.dispatchesInOrder?.(call.toolCall.toolName)) return runPrepared(call)
+    const queued = inOrder.then(() => runPrepared(call))
+    inOrder = queued
+    return queued
   }))
 
   const fatalRejection = settled.find(

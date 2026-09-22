@@ -11,18 +11,15 @@ import type { ExecutorProfile } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
-import { FatalToolExecutionError } from './tool-execution-errors.js'
+import {
+  executorCommandTtlMs,
+  executorToolTimeoutMs,
+  ExecutorUnknownOutcomeError,
+} from './executor-command-timing.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
 const EXECUTOR_COMMAND_TOPIC = 'executor.command'
-const COMMAND_TTL_MS = 25_000
-// Guest startup includes a bounded initrd build and VM handshake before the
-// browser request itself; the ordinary file-operation timeout is too short.
-const BROWSER_COMMAND_TTL_MS = 3 * 60 * 1_000
-// Command execution is bounded at five minutes locally; keep its delivery
-// lease long enough for that runtime and VM startup, not the session teardown.
-const COMMAND_RUN_TTL_MS = 6 * 60 * 1_000
 
 type ExecutorEntry = {
   bindingId: string
@@ -39,12 +36,10 @@ export type ExecutorToolset = {
   descriptors: ToolSchemaDescriptor[]
   dispatch: (toolName: string, args: Record<string, unknown>, providerToolCallId: string) => Promise<AgenticToolResult>
   handledNames: Set<string>
-}
-
-class ExecutorUnknownOutcomeError extends FatalToolExecutionError {
-  constructor(readonly toolCallRecordId: string) {
-    super('Executor command outcome is unknown.')
-  }
+  /** Fatal and replay-safe for this run's executor tools; null for any other name. */
+  timeoutErrorFor: (toolName: string) => Error | null
+  /** Command TTL plus margin for this run's executor tools; undefined for any other name. */
+  timeoutMsFor: (toolName: string) => number | undefined
 }
 
 /**
@@ -246,7 +241,13 @@ export const buildExecutorToolset = async (
 ): Promise<ExecutorToolset> => {
   const encryptionSecret = input.encryptionSecret
   if (!encryptionSecret) {
-    return { descriptors: [], dispatch: async () => ({ inputSummary: '', output: 'Executor transport is unavailable.', success: false }), handledNames: new Set() }
+    return {
+      descriptors: [],
+      dispatch: async () => ({ inputSummary: '', output: 'Executor transport is unavailable.', success: false }),
+      handledNames: new Set(),
+      timeoutErrorFor: () => null,
+      timeoutMsFor: () => undefined,
+    }
   }
   const [logicalTools, bindings] = await Promise.all([
     ensureExecutorLogicalTools(prisma, input.organizationId),
@@ -467,16 +468,7 @@ export const buildExecutorToolset = async (
           },
           select: { id: true },
         })
-        const expiresAt = new Date(startedAt.getTime() + (
-          entry.operationKey === 'browser.open'
-          || entry.operationKey === 'browser.observe'
-          || entry.operationKey === 'browser.act'
-          || entry.operationKey === 'coding.launch'
-            ? BROWSER_COMMAND_TTL_MS
-            : entry.operationKey === 'command.run'
-              ? COMMAND_RUN_TTL_MS
-            : COMMAND_TTL_MS
-        ))
+        const expiresAt = new Date(startedAt.getTime() + executorCommandTtlMs(entry.operationKey))
         await createExecutorCommand(tx, {
           bindingId: entry.bindingId,
           commandId,
@@ -519,6 +511,11 @@ export const buildExecutorToolset = async (
       }
     },
     handledNames: new Set(entries.map((entry) => entry.toolName)),
+    timeoutErrorFor: (toolName) => (entryByName.has(toolName) ? new ExecutorUnknownOutcomeError() : null),
+    timeoutMsFor: (toolName) => {
+      const entry = entryByName.get(toolName)
+      return entry ? executorToolTimeoutMs(entry.operationKey) : undefined
+    },
   }
 }
 
