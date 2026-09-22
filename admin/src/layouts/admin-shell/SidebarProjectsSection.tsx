@@ -10,6 +10,7 @@ import { useAuthSession } from '../../providers/AuthSessionProvider';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { SidebarPlusIcon } from './SidebarPlusIcon';
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeNode } from '../../components/primitives/SidebarTree';
 import { useSidebarRowMenu } from './useSidebarRowMenu';
 import type {
@@ -21,12 +22,6 @@ import type {
 } from './types';
 
 const COLLAPSED_PROJECT_IDS_COOKIE = 'collapsedProjectIds';
-
-const PlusIcon = () => (
-  <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-  </svg>
-);
 
 const AddChannelIcon = () => (
   <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -202,7 +197,7 @@ export const SidebarProjectsSection = ({
           onClick={onOpenCreateProject}
           type="button"
         >
-          <PlusIcon />
+          <SidebarPlusIcon />
         </button>
       }
       id="sidebar-nav-projects"

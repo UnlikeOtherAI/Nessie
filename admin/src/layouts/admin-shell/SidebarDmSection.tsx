@@ -13,6 +13,7 @@ import { usePresenceLookup } from '../../providers/PresenceProvider';
 import { renderUnreadCount } from './SidebarRow';
 import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { SidebarPlusIcon } from './SidebarPlusIcon';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import type {
   SidebarAgentDm,
@@ -101,7 +102,7 @@ export const SidebarDmSection = ({
           title="Start new chat"
           type="button"
         >
-          +
+          <SidebarPlusIcon />
         </button>
       }
       className="mt-2"

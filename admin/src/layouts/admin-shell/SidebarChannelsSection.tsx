@@ -6,6 +6,7 @@ import { sidebarAriaCurrent } from '../../components/shared/row-a11y';
 import { GroupDmSidebarLabel } from './GroupDmSidebarLabel';
 import { SidebarEmptyNote } from './SidebarEmptyNote';
 import { SidebarMenuSection } from './SidebarMenuSection';
+import { SidebarPlusIcon } from './SidebarPlusIcon';
 import type { CreateChannelTarget } from './types';
 
 type SidebarChannelsSectionProps = {
@@ -18,12 +19,6 @@ type SidebarChannelsSectionProps = {
   starredChannelIds: Set<string>;
   toggleChannelsCollapsed: () => void;
 };
-
-const PlusIcon = () => (
-  <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-  </svg>
-);
 
 export const SidebarChannelsSection = ({
   channelsCollapsed,
@@ -46,7 +41,7 @@ export const SidebarChannelsSection = ({
           onClick={() => onOpenCreateChannel({ scope: 'standalone' })}
           type="button"
         >
-          <PlusIcon />
+          <SidebarPlusIcon />
         </button>
       }
       id="sidebar-nav-channels"
