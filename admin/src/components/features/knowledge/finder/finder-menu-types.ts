@@ -47,7 +47,7 @@ export type UseFinderMenusOptions = {
   onNewFolderIn?: (parentPageId: string | null) => void
   /** Opens the hidden file input for this folder; the input lives with the host. */
   onUploadFiles?: (parentPageId: string | null) => void
-  /** The root column's "New shared folder…" — a dialog, because visibility. */
+  /** The Knowledge root's "New space…" — a dialog, because visibility. */
   onCreateRootFolder?: () => void
   /** Asks a virtual column's query again; it has no other way to be refreshed. */
   onRefresh?: () => void

@@ -141,10 +141,10 @@ lighting. *Rejected:* moving Dashboards to the Admin section (it is a reading
 surface, not administration) and burying it in the toolbar's More menu.
 
 **Space creation** moves to the root: right-click the root's empty background
-→ **New shared folder…**, and the toolbar's New folder, while the root column
-is active, opens the same dialog (today's `CreateSpaceDialog`, retitled). A
-top-level folder needs a visibility choice, which an inline name field cannot
-carry. *Rejected:* a separate "New space" toolbar button (a fourth creation
+→ **New space…**, and the toolbar's New menu offers **Space…** while the
+root column is active. Both open `CreateSpaceDialog`. A space needs a
+visibility choice, which an inline folder-name field cannot carry. *Rejected:*
+a separate "New space" toolbar button (a fourth creation
 control for a word nobody uses).
 
 **The storage meter** moves to the Finder's status bar, the strip under the

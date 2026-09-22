@@ -53,10 +53,9 @@ export const useFinderToolbar = (input: FinderToolbarInput) => {
       ? () => input.onImportSpreadsheet?.(input.activeParentPageId)
       : undefined,
     onCreateFolder: () => {
-      // A root folder needs a visibility choice, which an inline name field
-      // cannot carry, so at the root this is a dialog instead.
+      // The Knowledge root creates a space, which needs a visibility choice
+      // an inline folder-name field cannot carry, so it uses the space dialog.
       if (input.isRootColumn) return input.onCreateRootFolder?.()
-      input.onSelectView('columns')
       setCreatingFolderIn(input.activeKey)
     },
     onOpenSettings: input.onOpenSettings,

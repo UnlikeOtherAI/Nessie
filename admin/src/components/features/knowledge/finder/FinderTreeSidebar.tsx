@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { faClockRotateLeft, faFileLines, faFolder, faHouse, faLayerGroup, faShareNodes } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeRoot } from '@nessie/schemas'
@@ -16,6 +16,10 @@ import { agentDocumentsSpaceDisplayName } from './agent-space-name'
 type FinderTreeSidebarProps = {
   activePageId?: string
   browseTo: (path: string[]) => void
+  createFolderColumnKey: string | null
+  createFolderPending: boolean
+  onCancelFolder: () => void
+  onSubmitFolder: (name: string) => void
   onOpenDocument: (page: KnowledgePageRecord, path: string[]) => void
   onOpenRoot: (row: FinderRootRow) => void
   pagePath: string[]
@@ -29,6 +33,10 @@ type FinderTreeSidebarProps = {
 export const FinderTreeSidebar = ({
   activePageId,
   browseTo,
+  createFolderColumnKey,
+  createFolderPending,
+  onCancelFolder,
+  onSubmitFolder,
   onOpenDocument,
   onOpenRoot,
   pagePath,
@@ -43,6 +51,12 @@ export const FinderTreeSidebar = ({
   const [expandedSpaces, setExpandedSpaces] = useState<Set<string>>(
     () => new Set(selectedSpaceId ? [selectedSpaceId] : []),
   )
+
+  useEffect(() => {
+    if (!selectedSpaceId) return
+    setExpandedSpaces((current) => new Set([...current, selectedSpaceId]))
+  }, [selectedSpaceId])
+
   const rootRow = (row: FinderRootRow, title: string, icon: typeof faHouse, leading?: ReactNode) => (
     <FinderRow
       columnActive={false}
@@ -91,13 +105,18 @@ export const FinderTreeSidebar = ({
             {() => (
               <FinderTreeView
                 activePageId={activePageId}
+                createFolderColumnKey={createFolderColumnKey}
+                createFolderPending={createFolderPending}
+                onCancelFolder={onCancelFolder}
                 onOpenPage={(page, path) => {
                   if (page.kind === 'folder') return browseTo(path)
                   onOpenDocument(page, path)
                 }}
                 pagePath={pagePath}
+                onSubmitFolder={onSubmitFolder}
                 rowsIn={rowsIn}
                 embedded
+                rootColumnKey={`space:${row.space.spaceId}`}
               />
             )}
           </QueryState>

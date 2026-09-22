@@ -6,6 +6,10 @@ import { FinderTreeSidebar } from './FinderTreeSidebar'
 type FinderTreePaneProps = {
   activePageId?: string
   browseTo: (path: string[]) => void
+  createFolderColumnKey: string | null
+  createFolderPending: boolean
+  onCancelFolder: () => void
+  onSubmitFolder: (name: string) => void
   onOpenDocument: (page: KnowledgePageRecord, path: string[]) => void
   onOpenRoot: (row: FinderRootRow) => void
   pagePath: string[]
@@ -19,6 +23,10 @@ type FinderTreePaneProps = {
 export const FinderTreePane = ({
   activePageId,
   browseTo,
+  createFolderColumnKey,
+  createFolderPending,
+  onCancelFolder,
+  onSubmitFolder,
   onOpenDocument,
   onOpenRoot,
   pagePath,
@@ -32,6 +40,10 @@ export const FinderTreePane = ({
     <FinderTreeSidebar
       activePageId={activePageId}
       browseTo={browseTo}
+      createFolderColumnKey={createFolderColumnKey}
+      createFolderPending={createFolderPending}
+      onCancelFolder={onCancelFolder}
+      onSubmitFolder={onSubmitFolder}
       onOpenDocument={onOpenDocument}
       onOpenRoot={onOpenRoot}
       pagePath={pagePath}

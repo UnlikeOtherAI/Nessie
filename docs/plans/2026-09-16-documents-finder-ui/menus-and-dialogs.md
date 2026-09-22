@@ -193,7 +193,7 @@ The row's subtitle in Shared with me reads "{Sharer} · Can view" or
 |---|---|
 | a folder column, `canWrite` | "New folder" `⌘⇧N` · "New document" · "Upload files…" · — · "Get Info" (the folder or root folder itself) · "Sharing…" (§4) · — · "Paste" is absent (no clipboard model) |
 | a folder column, read-only | "Get Info" · "Sharing…" |
-| the root column | "New shared folder…" (opens `CreateSpaceDialog`, title "New shared folder") · — · "Refresh" |
+| the root column | "New space…" (opens `CreateSpaceDialog`, title "Create a space") · — · "Refresh" |
 | a virtual column | "Refresh" only |
 
 "Refresh" invalidates the column's query; it exists because a virtual list
@@ -380,7 +380,7 @@ Inside a folder column: today's `NewFolderRow` at the top of the active
 column; Enter creates (`POST /spaces/:id/pages` with `kind: 'folder'`,
 `parentPageId`), Escape cancels, blur with a name creates. A duplicate name
 is allowed (Finder appends nothing; the server does not enforce uniqueness).
-In the root column: `CreateSpaceDialog` retitled "New shared folder", its
+In the root column: `CreateSpaceDialog` titled "Create a space", its
 visibility `ChoiceGroup` kept, "Create". After creation the new root row is
 selected and opened.
 

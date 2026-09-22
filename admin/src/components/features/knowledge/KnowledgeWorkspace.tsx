@@ -133,8 +133,8 @@ export const KnowledgeWorkspace = ({
           space={selectedSpace}
         />
       ) : null}
-      {/* A top-level folder needs a visibility choice, which an inline name
-          field cannot carry — so the root's New folder is this dialog. */}
+      {/* A new space needs a visibility choice, which an inline folder-name
+          field cannot carry — so the Knowledge root uses this dialog. */}
       <CreateSpaceDialog
         onClose={() => setCreateSpaceOpen(false)}
         onCreate={async (name, memberAgentIds, visibility) => {

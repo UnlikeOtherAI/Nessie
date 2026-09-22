@@ -393,7 +393,7 @@ const backgroundItems = (
   if (column === 'root') {
     return tidy([
       ...(on.newSharedFolder
-        ? [item('new-shared-folder', 'New shared folder…', on.newSharedFolder, {
+        ? [item('new-shared-folder', 'New space…', on.newSharedFolder, {
           icon: faFolderPlus,
         })]
         : []),

@@ -47,3 +47,16 @@ test('Tree keeps the existing query recovery and avoids nested buttons', () => {
   assert.match(channels, /SidebarTreeNode/)
   assert.match(channels, /SidebarTreeChevron/)
 })
+
+test('opening a space makes it the New menu target and Tree creates folders in place', () => {
+  const documents = readSource('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+  const toolbar = readSource('../src/components/features/knowledge/finder/useFinderToolbar.ts')
+  const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+
+  assert.match(documents, /columnKey: `space:\$\{row\.space\.spaceId\}`, type: 'enterColumn'/)
+  assert.doesNotMatch(toolbar, /onSelectView\('columns'\)/)
+  assert.match(tree, /<NewFolderRow/)
+  assert.match(tree, /createFolderColumnKey/)
+  const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
+  assert.match(sidebar, /setExpandedSpaces\(\(current\) => new Set\(\[\.\.\.current, selectedSpaceId\]\)\)/)
+})

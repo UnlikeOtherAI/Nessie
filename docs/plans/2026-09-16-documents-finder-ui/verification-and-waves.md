@@ -37,7 +37,7 @@ otherwise, saying so in the log).
 | F-ROOT-02 | click `P` | `POST /api/knowledge-base/projects/P/documents` fired once; URL is `/knowledge-base/spaces/<id>`; column 1 header reads `P`; a second click on `P` fires no POST | `project-first-open.png` |
 | F-ROOT-03 | click Dashboards | URL `/dashboards`; the Knowledge rail item is `aria-current` | — |
 | F-ROOT-04 | as a user with no projects (second user) open `/knowledge-base` | root has no project rows and no empty-state sentence between the separators | `root-no-projects.png` |
-| F-ROOT-05 | right-click the root's empty area → "New shared folder…" → name `Ops`, visibility Project → Create | a new root row `Ops` with subtitle `P`; `GET /spaces` shows it with `visibility: 'project'` | `new-shared-folder.png` |
+| F-ROOT-05 | right-click the root's empty area → "New space…" → name `Ops`, visibility Project → Create | a new root row `Ops` with subtitle `P`; `GET /spaces` shows it with `visibility: 'project'` | `new-shared-folder.png` |
 | F-COL-01 | My Documents → Contracts | three columns; `?folder=<Contracts id>` in the URL written without a history entry (`history.length` unchanged); reload lands on the same three columns | `columns.png` |
 | F-COL-02 | drag the column-1 resize handle 120 px right | only column 1's width changes; localStorage `nessie.admin.knowledgeColumnWidths` gains `depth:0` on release (not per pointer frame); reload keeps the width; the columns stay aligned with unequal widths | — |
 | F-COL-03 | open `Empty` | the column body reads "No files in this folder." | — |
@@ -61,7 +61,7 @@ otherwise, saying so in the log).
 | F-NEW-01 | in Contracts click the primary "New file" | a `role="menu"` with exactly two items, Document and Upload… | `new-file-menu.png` |
 | F-NEW-02 | Document | the editor stage opens with Contracts preselected as the location; Cancel returns to the column with Contracts still open | — |
 | F-NEW-03 | New folder in Contracts, type `2026`, Enter | `POST /spaces/<id>/pages` body has `kind: 'folder'`, `parentPageId` = Contracts; the new row is a folder and is selected; the API record has `kind: 'folder'` and no `latestVersion` | `new-folder.png` |
-| F-NEW-04 | New folder at the root column | the "New shared folder" dialog opens (F-ROOT-05 covers the rest) | — |
+| F-NEW-04 | New → Space… at the Knowledge root | the "Create a space" dialog opens (F-ROOT-05 covers the rest) | — |
 | F-SORT-01 | Sort → Size | `?sort=size`; folders still first; files ordered by `sizeBytes` ascending with documents after them and the label reads "Sort: Size ↑"; Sort → Descending flips | `sort-size.png` |
 | F-SORT-02 | reload | the sort persists (cookie `knowledgeSort`) and the URL param is absent for the default only | — |
 | F-SORT-03 | open Latest | the Sort action is `aria-disabled` with the tooltip sentence | — |

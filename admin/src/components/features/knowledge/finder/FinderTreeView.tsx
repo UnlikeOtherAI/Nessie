@@ -4,19 +4,30 @@ import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode, SidebarTreePanel } from '../../../primitives/SidebarTree'
 import { FinderRow } from './FinderRow'
+import { NewFolderRow } from './NewFolderRow'
 
 type FinderTreeViewProps = {
   activePageId?: string
+  createFolderColumnKey?: string | null
+  createFolderPending?: boolean
+  onCancelFolder?: () => void
   rowsIn: (parentPageId: string | null) => KnowledgePageRecord[]
   onOpenPage: (page: KnowledgePageRecord, path: string[]) => void
+  onSubmitFolder?: (name: string) => void
   pagePath: string[]
+  rootColumnKey?: string
   embedded?: boolean
 }
 
 export const FinderTreeView = ({
   activePageId,
+  createFolderColumnKey,
+  createFolderPending,
+  onCancelFolder,
   onOpenPage,
+  onSubmitFolder,
   pagePath,
+  rootColumnKey,
   rowsIn,
   embedded = false,
 }: FinderTreeViewProps) => {
@@ -38,6 +49,14 @@ export const FinderTreeView = ({
 
   const renderPages = (pages: KnowledgePageRecord[], parentPath: string[], depth: number): ReactNode => (
     <SidebarTreeChildren className={depth > 0 ? 'sidebar-tree-depth' : ''}>
+      {onCancelFolder && onSubmitFolder
+        && createFolderColumnKey === (parentPath.at(-1) ? `folder:${parentPath.at(-1)}` : rootColumnKey) ? (
+        <NewFolderRow
+          onCancel={onCancelFolder}
+          onSubmit={onSubmitFolder}
+          pending={createFolderPending ?? false}
+        />
+      ) : null}
       {pages.map((page) => {
         const path = [...parentPath, page.id]
         const children = rowsIn(page.id)

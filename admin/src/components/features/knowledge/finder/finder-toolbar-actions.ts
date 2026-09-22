@@ -73,7 +73,7 @@ export type FinderToolbarInput = {
   canWrite: boolean
   /** The active space has something to manage — visibility, members. */
   canManageSpace: boolean
-  /** True at the root column, where New folder means a whole new root folder. */
+  /** True at the Knowledge root, where New creates a space rather than a folder. */
   isRootColumn: boolean
   /** Latest and Shared with me are ordered by time; Sort has nothing to say. */
   isVirtualColumn: boolean
@@ -148,11 +148,10 @@ export const buildFinderToolbarActions = (input: FinderToolbarInput): PageHeader
               ? [{
                   icon: faFolderPlus,
                   id: 'new-folder',
-                  // At the root there is no folder to create a folder *in*:
-                  // the row you would be adding is a whole root folder, which
-                  // needs a visibility choice an inline name field cannot
-                  // carry, so it opens a dialog and says so with an ellipsis.
-                  label: input.isRootColumn ? 'Folder…' : 'Folder',
+                  // At the Knowledge root there is no space to create a folder
+                  // in. The row being added is a space, which needs a visibility
+                  // choice, so its label and dialog say exactly that.
+                  label: input.isRootColumn ? 'Space…' : 'Folder',
                   onSelect: input.onCreateFolder,
                 }]
               : []),

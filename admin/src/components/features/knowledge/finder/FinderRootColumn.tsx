@@ -97,7 +97,7 @@ type FinderRootColumnProps = {
   activeRowId?: string
   columnActive: boolean
   focusedRowId?: string
-  /** "New shared folder…" and Refresh, off the column's empty background. */
+  /** "New space…" and Refresh, off the column's empty background. */
   backgroundProps?: FinderBackgroundMenuProps
   /**
    * A root folder is the far side of a cross-space move or copy, and the root
