@@ -100,20 +100,18 @@ export const recordPrivateConversationMessageRead = (
   }
 }
 
-/**
- * The same rule for a channel *directory* read (`channel_list`, `channel_find`).
- *
- * Not only message bodies are scoped material: a private channel's existence,
- * label and topic are visible to its members alone, and a delegated run
- * resolves them through the acting person's own `ChannelMember` rows
- * (`buildVisibleChannelWhere`). An agent that lists them and then names one in a
- * reply is disclosing them, so the read owes the sink its scopes — the
- * AGENTS.md rule that the obligation sits on the read, not on the reply.
- *
- * Deliberately the same implementation rather than a second mapping beside it:
- * the public-channel skip is identical and is the part most easily got wrong.
+/*
+ * A channel *directory* read — `channel_list`, `channel_find`, the channel
+ * labels `agent_list` names — deliberately feeds nothing. Listing a channel's
+ * name, slug, topic and visibility is not reading what was said in it. Stamping
+ * every non-public channel a list returned put each of the person's DMs into
+ * the run's basis, and the project write gate then refused every ticket write
+ * for the rest of the run, although no word of those rooms had been read. The
+ * trade-off — a private channel's name may appear in a reply its other members
+ * cannot see — is written into `docs/standards/disclosure-boundaries.md`.
+ * What a channel *holds* still stamps: its messages, its attachments, and the
+ * decision policy `channel_list` returns for one `channelId`.
  */
-export const recordChannelDirectoryRead = recordMessageChannelRead
 
 /**
  * Provenance for an agent-directory read (`agent_list`).
@@ -128,9 +126,8 @@ export const recordChannelDirectoryRead = recordMessageChannelRead
  * `listAgentsForUser` hands an organisation OWNER a strictly wider list
  * (unbound agents, and agents bound only into private channels they are not in).
  * Stamping those would compute a basis the requesting owner does not satisfy
- * and withhold the answer from the only reader of their own DM. What *is*
- * expressible about them — the non-public channels their bindings named — is
- * stamped by `recordChannelDirectoryRead` on the same read.
+ * and withhold the answer from the only reader of their own DM. The channels
+ * their bindings name are directory entries, which feed nothing (above).
  */
 export const recordVisibleAgentRead = (
   context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,

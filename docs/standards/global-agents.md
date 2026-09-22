@@ -232,9 +232,18 @@ channel's project (`ticketProjectIdFor` in
 `project_list`, so no refusal it can receive points there — a named project
 elsewhere is refused with "omit projectId", and a requester who cannot open the
 project is told exactly that. Do not "fix" a missing id by having the agent
-call `channel_list`: that read stamps the run's disclosure basis and then
-blocks the project write it was resolving the id for. The Personal Assistant
-works across projects and still names one.
+call `channel_list`: it names a channel's project, never its id. (Listing
+channels does not stamp the run's disclosure basis; reading a channel's content
+does, and that stamp blocks the project write.) The Personal Assistant works
+across projects and still names one.
+
+A run lent any of these tools that writes recalls memory under project-write
+containment: only organisation and same-project material, never a thought fed
+by a private conversation (`requiresProjectWriteRecallContainment`,
+`worker/src/run/execute/memory.ts`). Otherwise a memory of the requester's DM
+put that DM in the run's basis before its first action and the write gate then
+refused every ticket write. The rule and its trade-off are in
+[disclosure-boundaries.md](disclosure-boundaries.md).
 
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 

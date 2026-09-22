@@ -9,9 +9,12 @@ import { recordVisibleAgentRead } from './message-search-basis.js'
 
 /**
  * The delegated reads the Agent Designer uses resolve content as the PERSON —
- * through their own memberships and their own agent entitlement — so each owes
- * the disclosure sink the scopes it read through. These assert the stamps land,
- * because an unfed sink does not fail loudly: an empty basis means unrestricted.
+ * through their own memberships and their own agent entitlement — so each
+ * content read owes the disclosure sink the scopes it read through. These assert
+ * the stamps land where content was read, because an unfed sink does not fail
+ * loudly: an empty basis means unrestricted. A directory listing reads no
+ * channel's content and deliberately stamps nothing: stamping every DM a list
+ * returned shut the project write gate for the rest of the run.
  */
 
 const ORG = '11111111-1111-4111-8111-111111111111'
@@ -60,22 +63,21 @@ const buildContext = () => {
   return { consumedSources, context }
 }
 
-test('channel_list stamps the non-public channels it resolved through membership', async () => {
+test('channel_list names private channels without stamping them', async () => {
   const { consumedSources, context } = buildContext()
-  await runChannelListTool(context, {})
+  const result = await runChannelListTool(context, {})
 
-  assert.deepEqual(consumedSources.list(), [
-    { scopeId: 'channel-private', scopeType: 'channel' },
-  ])
+  assert.match(result.outputPreview ?? '', /Founders/)
+  assert.deepEqual(consumedSources.list(), [])
+  assert.deepEqual(consumedSources.privateConversationSources(), [])
 })
 
-test('channel_find stamps the same way', async () => {
+test('channel_find resolves a private channel without stamping it', async () => {
   const { consumedSources, context } = buildContext()
-  await runChannelFindTool(context, { query: 'founders' })
+  const result = await runChannelFindTool(context, { query: 'founders' })
 
-  assert.deepEqual(consumedSources.list(), [
-    { scopeId: 'channel-private', scopeType: 'channel' },
-  ])
+  assert.match(result.outputPreview ?? '', /channelId=channel-private/)
+  assert.deepEqual(consumedSources.list(), [])
 })
 
 test('a channel-specific policy read includes current enum options and participant principals', async () => {

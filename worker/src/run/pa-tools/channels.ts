@@ -18,7 +18,7 @@ import {
   requireActingUserId,
   resolveActingMember,
 } from './access.js'
-import { recordChannelDirectoryRead } from './message-search-basis.js'
+import { recordMessageChannelRead } from './message-search-basis.js'
 import { requireConsumedSources, resolveToolPostBasis } from './tool-message-basis.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
@@ -64,9 +64,10 @@ export const runChannelListTool = async (
     take,
   })
 
-  // Provenance: the non-public channels among these were reachable only through
-  // the acting person's own memberships.
-  recordChannelDirectoryRead(context, channels)
+  // Listing channels reads no channel's content and feeds nothing
+  // (message-search-basis.ts). One channel's decision policy is content: it is
+  // what that room's members wrote for its agents, so that read stamps.
+  if (input.channelId) recordMessageChannelRead(context, channels.slice(0, 1))
 
   const lines = channels.map((channel, index) =>
     `${index + 1}. ${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`
@@ -136,10 +137,7 @@ export const runChannelFindTool = async (
       || toChannelSlug(channel.team?.project.name ?? '') === scopedTarget.projectSlug,
   )
 
-  // Same obligation as `channel_list`: a match found through the person's own
-  // membership in a non-public channel is scoped material.
-  recordChannelDirectoryRead(context, channels)
-
+  // A directory match, like `channel_list`'s rows, reads no channel's content.
   const lines = channels.map(
     (channel) =>
       `${formatChannelRef(channel)} | channelId=${channel.id} | slug=${getScopedChannelSlug(channel)} | visibility=${channel.visibility}`,
@@ -216,8 +214,9 @@ export const runChannelUpdateTool = async (
     throw new Error('Channel not found or insufficient permissions to manage it.')
   }
 
+  // The result echoes the channel's own directory fields, plus a policy only
+  // when this call wrote it — nothing the run did not already hold.
   const channelRef = toChannelRef(channel)
-  recordChannelDirectoryRead(context, [channel])
   return {
     inputSummary: `channelId=${input.channelId}`,
     outputPreview: [

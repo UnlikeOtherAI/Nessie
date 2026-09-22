@@ -80,6 +80,41 @@ Facts not restated there:
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, and an
   admitted checkpoint — and a checkpoint on resume is a read path too.
+- **A channel directory read is not a content read, and feeds nothing.**
+  `channel_list`, `channel_find`, the channel labels `agent_list` names and
+  the record `channel_update` echoes return a channel's label, slug, project
+  and team names, topic, description and visibility — what the channel is
+  called, not what was said in it. Stamping
+  every non-public channel a list returned put each of the person's DMs into
+  the run's basis, and the project write gate then refused every ticket write
+  for the rest of the run although no word of those rooms had been read. The
+  trade-off, accepted: a private channel's or DM's name can reach a reply that
+  people outside that channel read, when the requester asked for their own
+  channel list in a shared room. What a channel *holds* still stamps: its
+  messages, its attachments' names and bodies, the conversation searches
+  (whose channel matches also carry a thread title), and the decision policy
+  and agent participants `channel_list` returns for one `channelId`.
+- **Recall under a project write is narrower than containment.** Containment
+  admits the destination's team and channel audiences, which a reply may carry
+  but the project write gate (`assertProjectWriteDestination`,
+  `worker/src/run/pa-tools/ticket-context.ts`) refuses, and a thought whose
+  audience passes it can still carry the private conversation it was captured
+  from. So when containment applies **and** the run was offered a
+  project-delegated tool that writes (`holdsProjectWriteTools` in
+  `run-setup.ts`: lent, offered, not `safe`), recall admits only lineage scopes
+  `{organization, project:<channel.projectId>}` —
+  `constrainScopesToProjectWrite` narrows the search, and
+  `isWithinProjectWriteScopes` judges each recalled thought's whole lineage and
+  each recalled history message, so a team, channel or user audience or any
+  private-conversation source is simply not recalled for that run
+  (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). The gate and
+  every other run are unchanged: a run without write tools recalls exactly as
+  before, and a delegate in its own home is not contained at all. The
+  trade-off, accepted: such a run does not remember what the requester said in
+  a private DM, nor its own room's channel memories, even where its reply
+  alone could have carried them. The alternative — letting the gate accept a
+  source when every member of it can read the project — compares sets of
+  people, which this machinery deliberately never does.
 - **Document versions retain their source boundary.** A `KnowledgePageVersion`
   stores its own basis scopes and private-conversation source authors. A reader
   first passes the document home's ordinary entitlement, then must satisfy the

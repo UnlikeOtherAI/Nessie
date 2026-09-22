@@ -108,6 +108,18 @@ export const resolveProjectDelegatedToolIds = (
       .map((tool) => tool.id)
     : [],
 )
+
+/**
+ * Whether the run was offered a lent project tool that writes — the fact
+ * memory recall narrows on (`requiresProjectWriteRecallContainment`).
+ * Structural: a lent, offered id whose definition is not `safe`.
+ */
+export const holdsProjectWriteTools = (
+  projectDelegatedToolIds: ReadonlySet<string>,
+  resolvedToolIds: ReadonlySet<string>,
+): boolean => BUILTIN_TOOL_DEFINITIONS.some(
+  (tool) => !tool.safe && projectDelegatedToolIds.has(tool.id) && resolvedToolIds.has(tool.id),
+)
 export type ResolvedRunToolset = {
   allowedIds: Set<string>
   descriptors: ToolSchemaDescriptor[]
@@ -378,15 +390,20 @@ export const prepareRunExecution = async (
       })
       : null
 
+  // A run lent a project write recalls only what every project reader already
+  // has, so recalled material cannot shut its own ticket writes.
+  const projectWriteRecall = holdsProjectWriteTools(projectDelegatedToolIds, resolvedToolIds)
   const memories = await retrieveRelevantMemories(
     deps,
     context,
     payload,
     input.prompt,
     liveEntitlements,
+    { holdsProjectWriteTools: projectWriteRecall },
   )
   const legacyMemoryContext = buildMemoryContext(memories)
   const history = await retrieveRelevantHistory(deps, context, payload, {
+    holdsProjectWriteTools: projectWriteRecall,
     liveEntitlements,
     prompt: input.prompt,
     tokenBudget: Math.max(

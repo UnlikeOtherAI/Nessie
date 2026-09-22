@@ -6,6 +6,8 @@ import type { ToolSchemaDescriptor } from '@nessie/runtime'
 import {
   applyHandoffToolExclusions,
   applyTodoToolExclusions,
+  holdsProjectWriteTools,
+  resolveProjectDelegatedToolIds,
 } from './run-setup.js'
 
 const descriptor = (toolName: string): ToolSchemaDescriptor => ({
@@ -62,4 +64,21 @@ test('a to-do-disabled agent is not offered either execution builtin', () => {
   assert.deepEqual([...toolset.allowedIds], ['web_search'])
   assert.deepEqual(toolset.descriptors.map((tool) => tool.toolName), ['web_search'])
   assert.deepEqual([...toolset.stubbedIds], [])
+})
+
+// F16: memory recall narrows on whether the run was offered a lent project
+// tool that writes — not on what the policy says, nor on a read-only loan.
+test('only a lent, offered, non-safe project tool counts as a project write', () => {
+  const readOnly = resolveProjectDelegatedToolIds(true, { ticket_list: true, ticket_read: true })
+  assert.equal(holdsProjectWriteTools(readOnly, new Set(readOnly)), false)
+
+  const writes = resolveProjectDelegatedToolIds(true, { ticket_create: true, ticket_list: true })
+  assert.equal(holdsProjectWriteTools(writes, new Set(writes)), true)
+  // Lent but withheld from the offered toolset (a registry that disallows it).
+  assert.equal(holdsProjectWriteTools(writes, new Set(['ticket_list'])), false)
+  // Offered by another route (the Personal Assistant) but never lent.
+  assert.equal(holdsProjectWriteTools(new Set(), new Set(['ticket_create'])), false)
+  // No project delegation at all: nothing is lent whatever the policy grants.
+  const none = resolveProjectDelegatedToolIds(false, { ticket_create: true })
+  assert.equal(holdsProjectWriteTools(none, new Set(['ticket_create'])), false)
 })

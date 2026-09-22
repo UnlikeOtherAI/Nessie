@@ -36,8 +36,8 @@ export const IdSchema = z.string().uuid()
  * A shared agent is lent these tools only in its own project channel, and
  * `projectFor` refuses every other project, so the one id it could pass is
  * already on the run — and `project_list`, the tool that would find it, is the
- * Personal Assistant's. Not `channel_list` either: that read stamps the run's
- * disclosure basis and would then block the very write it was resolving for.
+ * Personal Assistant's. Not `channel_list` either: it names a channel's
+ * project, never its id, so the agent was left guessing a UUID.
  * The Personal Assistant works across projects, so it still names one.
  */
 export const ticketProjectIdFor = (

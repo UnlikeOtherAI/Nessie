@@ -32,7 +32,7 @@ import { fileServiceFor } from '../file-service.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
-import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
+import { recordVisibleAgentRead } from './message-search-basis.js'
 import { formatSection } from './tool-output.js'
 
 /**
@@ -315,11 +315,10 @@ const resolveBoundChannelLabels = async (
       id: { in: [...new Set(channelIds)] },
       organizationId: context.channel.organizationId,
     },
-    select: { id: true, label: true, visibility: true },
+    select: { id: true, label: true },
   })
-  // The bindings were already filtered to channels this person can reach, so a
-  // non-public label here is material they see through their own membership.
-  recordChannelDirectoryRead(context, channels)
+  // A channel's name is a directory entry, not its content, so it feeds nothing
+  // (message-search-basis.ts).
   return new Map(channels.map((channel) => [channel.id, channel.label]))
 }
 
