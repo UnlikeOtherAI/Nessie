@@ -110,6 +110,28 @@ images are never *dangling*, the post-deploy reclaim explicitly removes Nessie
 release images other than the one just deployed — otherwise the shared disk
 grows by a full image per deploy.
 
+### The deploy's SSH connections retry, its remote commands never do
+
+Every `ssh` and the `rsync` in the Deploy job go through
+`scripts/ssh-retry.sh`. It retries only exit 255 — ssh's own code for a
+connection-level failure — with a growing pause, and returns any other code
+at once, so a `redeploy.sh` that ran and failed is never run a second time.
+A secret piped into a remote command is re-piped on every attempt
+(`--stdin-var`), because a piped stdin is consumed by the first one.
+
+The reason is the production host's sshd. On 2026-09-22 a brute-force wave
+kept ten to fifteen unauthenticated connections pending against the default
+`MaxStartups 10:30:100`, so sshd random-early-dropped new connections —
+`kex_exchange_identification: read: Connection reset by peer` — and two
+deploys in a row failed on their second connection with the images already
+built. The host now runs `/etc/ssh/sshd_config.d/10-nessie-startups.conf`
+(`MaxStartups 100:30:300`, `PerSourceMaxStartups 5`, `LoginGraceTime 30`);
+the retry is what keeps a deploy alive when the wave outgrows that too. A
+deploy that still fails this way is re-run with
+`gh workflow run deploy.yml --ref main`, which uses the same exact-SHA gate.
+Do not hold interactive SSH sessions to the host while a deploy is running:
+they compete for the same startup slots.
+
 ### Zero-downtime rollout (health-gated blue-green swap)
 
 `redeploy.sh` does **not** stop-then-start the public-facing services. For
