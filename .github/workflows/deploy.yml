@@ -228,6 +228,50 @@ jobs:
             echo '  ServerAliveInterval 15'
             echo '  ServerAliveCountMax 8'
           } >> ~/.ssh/config
+          # The connection-retry helper every ssh and the rsync below go
+          # through. It lives here, in the workflow, and not in the checkout:
+          # this job checks out the gate's verified SHA, which can be older
+          # than the commit carrying this file, so a helper in `scripts/`
+          # was missing from the tree on 2026-09-22 and failed the deploy.
+          #
+          # It retries only exit 255 — ssh's code for a connection-level
+          # failure (rsync reports the same for its ssh transport) — with a
+          # growing pause, and returns any other code at once, so a redeploy
+          # that ran and failed is never run twice. `--stdin-var NAME`
+          # re-pipes the named variable's value on every attempt, because a
+          # piped stdin is consumed by the first one.
+          cat > "$RUNNER_TEMP/ssh-retry.sh" <<'RETRY'
+          set -u
+          stdin_var=""
+          if [ "${1:-}" = "--stdin-var" ]; then
+            stdin_var="$2"
+            shift 2
+          fi
+          if [ "${1:-}" = "--" ]; then
+            shift
+          fi
+          attempts="${SSH_RETRY_ATTEMPTS:-5}"
+          for attempt in $(seq 1 "$attempts"); do
+            if [ -n "$stdin_var" ]; then
+              printf '%s\n' "${!stdin_var}" | "$@"
+              code=$?
+            else
+              "$@"
+              code=$?
+            fi
+            if [ "$code" -ne 255 ]; then
+              exit "$code"
+            fi
+            if [ "$attempt" -eq "$attempts" ]; then
+              echo "ssh: connection failed on every attempt ($attempts)" >&2
+              exit 255
+            fi
+            delay=$((attempt * 5))
+            echo "ssh: connection failed (exit 255); retrying in ${delay}s (attempt $attempt of $attempts)" >&2
+            sleep "$delay"
+          done
+          RETRY
+          bash -n "$RUNNER_TEMP/ssh-retry.sh"
 
       - name: Sync source to host
         # Mirror the tree with --delete so files REMOVED from the repo don't
@@ -238,7 +282,7 @@ jobs:
         # Infisical environment files are safe. Postgres/MinIO data live in
         # named Docker volumes outside this tree.
         run: |
-          bash scripts/ssh-retry.sh -- rsync -az --delete \
+          bash "$RUNNER_TEMP/ssh-retry.sh" -- rsync -az --delete \
             --exclude '.git' \
             --exclude '**/node_modules' \
             --exclude '**/dist' \
@@ -258,7 +302,7 @@ jobs:
           LEDGER_PROXY_TOKEN: ${{ secrets.LEDGER_PROXY_TOKEN }}
         run: |
           test -n "$LEDGER_PROXY_TOKEN"
-          bash scripts/ssh-retry.sh --stdin-var LEDGER_PROXY_TOKEN -- \
+          bash "$RUNNER_TEMP/ssh-retry.sh" --stdin-var LEDGER_PROXY_TOKEN -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-ledger-app-key.sh'
 
@@ -272,7 +316,7 @@ jobs:
           node infrastructure/compose/validate-uoa-billing-credentials.mjs
           UOA_BILLING_STDIN="$UOA_BILLING_APP_KEY_NESSIE"$'\n'"$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE"
           export UOA_BILLING_STDIN
-          bash scripts/ssh-retry.sh --stdin-var UOA_BILLING_STDIN -- \
+          bash "$RUNNER_TEMP/ssh-retry.sh" --stdin-var UOA_BILLING_STDIN -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-uoa-billing-credentials.sh'
 
@@ -281,7 +325,7 @@ jobs:
           DEEPSIGNAL_MCP_APP_KEY: ${{ secrets.DEEPSIGNAL_MCP_APP_KEY }}
         run: |
           test -n "$DEEPSIGNAL_MCP_APP_KEY"
-          bash scripts/ssh-retry.sh --stdin-var DEEPSIGNAL_MCP_APP_KEY -- \
+          bash "$RUNNER_TEMP/ssh-retry.sh" --stdin-var DEEPSIGNAL_MCP_APP_KEY -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-deepsignal-app-key.sh'
 
@@ -301,9 +345,9 @@ jobs:
           # wave, reset the second connection of two consecutive runs and the
           # deploy failed with the images already built. A redeploy that ran
           # and failed is never re-run.
-          bash scripts/ssh-retry.sh --stdin-var REGISTRY_TOKEN -- \
+          bash "$RUNNER_TEMP/ssh-retry.sh" --stdin-var REGISTRY_TOKEN -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               "docker login ghcr.io -u '$REGISTRY_USER' --password-stdin"
-          bash scripts/ssh-retry.sh -- \
+          bash "$RUNNER_TEMP/ssh-retry.sh" -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               "cd /srv/nessie && NESSIE_IMAGE_REPO='$IMAGE_REPO' NESSIE_IMAGE_TAG='$IMAGE_TAG' bash infrastructure/compose/redeploy.sh"

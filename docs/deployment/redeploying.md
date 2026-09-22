@@ -112,8 +112,10 @@ grows by a full image per deploy.
 
 ### The deploy's SSH connections retry, its remote commands never do
 
-Every `ssh` and the `rsync` in the Deploy job go through
-`scripts/ssh-retry.sh`. It retries only exit 255 — ssh's own code for a
+Every `ssh` and the `rsync` in the Deploy job go through a retry helper the
+job's "Set up SSH" step writes to `$RUNNER_TEMP` — in the workflow file, not
+in the checkout, because the job checks out the gate's verified SHA, which
+can be older than the commit carrying the workflow. It retries only exit 255 — ssh's own code for a
 connection-level failure — with a growing pause, and returns any other code
 at once, so a `redeploy.sh` that ran and failed is never run a second time.
 A secret piped into a remote command is re-piped on every attempt
