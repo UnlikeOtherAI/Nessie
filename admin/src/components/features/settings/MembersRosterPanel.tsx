@@ -34,9 +34,9 @@ type RosterTab = 'active' | 'pending' | 'deactivated' | 'automatic'
 const ROSTER_TAB_VALUES: readonly RosterTab[] = ['active', 'pending', 'deactivated', 'automatic']
 
 const ROSTER_TABS = [
-  { compactLabel: 'Active', label: 'Active users', value: 'active' },
+  { compactLabel: 'Active', label: 'Active members', value: 'active' },
   { compactLabel: 'Pending', label: 'Pending invitations', value: 'pending' },
-  { compactLabel: 'Inactive', label: 'Deactivated users', value: 'deactivated' },
+  { compactLabel: 'Inactive', label: 'Deactivated members', value: 'deactivated' },
 ] as const
 
 const AUTOMATIC_TAB = {
@@ -63,10 +63,16 @@ const invitationSubtitle = (invite: TeamInvitationRecord, scope: MemberRosterSco
 ].filter(Boolean).join(' · ')
 
 const rosterTitle = (tab: Exclude<RosterTab, 'automatic'>) => tab === 'active'
-  ? 'Active users'
-  : tab === 'pending' ? 'Pending invitations' : 'Deactivated users'
+  ? 'Active members'
+  : tab === 'pending' ? 'Pending invitations' : 'Deactivated members'
 
-/** The single Members page used at organization and team scope. */
+const rosterSubtitle = (tab: Exclude<RosterTab, 'automatic'>, scope: MemberRosterScope) => {
+  if (tab === 'active') return scope === 'organization' ? 'People in your organisation.' : 'People in this team.'
+  if (tab === 'pending') return 'People you’ve invited who haven’t joined yet.'
+  return 'People whose access to your organisation is paused.'
+}
+
+/** The single Members page used at organisation and team scope. */
 export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
   const { me, token } = useAuthSession()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -123,12 +129,12 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
     <SettingsPanel
       actions={canInvite ? [{
         id: 'invite-member',
-        label: 'Send invitation',
+        label: 'Invite people',
         onSelect: () => setInviteOpen(true),
         primary: true,
         priority: 1,
       }] : undefined}
-      eyebrow={scope === 'organization' ? 'Organization' : 'Team'}
+      eyebrow={scope === 'organization' ? 'Organisation' : 'Team'}
       title="Members"
     >
       <div className="mx-auto grid w-full max-w-[1040px] gap-8 py-4">
@@ -156,11 +162,7 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
                 {visibleTab ? rosterTitle(visibleTab) : null}
               </h2>
               <p className="mt-1 text-sm text-[color:var(--tx2)]">
-                {tab === 'active'
-                  ? 'People who currently have access.'
-                  : tab === 'pending'
-                    ? 'Invitations waiting to be accepted.'
-                    : 'People whose organization access is paused.'}
+                {visibleTab ? rosterSubtitle(visibleTab, scope) : null}
               </p>
             </div>
             {current?.total !== undefined ? (
@@ -170,13 +172,13 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
             ) : null}
           </div>
           <QueryState
-            errorLabel="Members could not be loaded."
-            loadingLabel="Loading members…"
+            errorLabel={tab === 'pending' ? 'Invitations could not be loaded.' : 'Members could not be loaded.'}
+            loadingLabel={tab === 'pending' ? 'Loading invitations…' : 'Loading members…'}
             query={(current ?? roster).query}
           >
             {() => tab === 'pending' ? (
               invitationsRows.length === 0 ? (
-                <EmptyState title="No pending invitations">No invitations are awaiting a response.</EmptyState>
+                <EmptyState title="No pending invitations">Invitations show up here until they’re accepted.</EmptyState>
               ) : (
                 <ul aria-label="Pending invitations" className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
                   {invitationsRows.map((invite) => {
@@ -196,11 +198,11 @@ export const MembersRosterPanel = ({ scope }: { scope: MemberRosterScope }) => {
               )
             ) : (
               members.length === 0 ? (
-                <EmptyState title={tab === 'active' ? 'No active users' : 'No deactivated users'}>
-                  {tab === 'active' ? 'Invite someone to add the first member.' : 'No members are deactivated.'}
+                <EmptyState title={tab === 'active' ? 'No active members' : 'No deactivated members'}>
+                  {tab === 'active' ? 'Invite someone to add the first member.' : 'Members you deactivate show up here.'}
                 </EmptyState>
               ) : (
-                <ul aria-label={tab === 'active' ? 'Active users' : 'Deactivated users'}
+                <ul aria-label={tab === 'active' ? 'Active members' : 'Deactivated members'}
                   className="divide-y divide-[color:var(--sep)] border-y border-[color:var(--sep)]">
                   {members.map((member) => {
                     const name = memberDisplayName(member.displayName, member.email) ?? 'Unnamed member'

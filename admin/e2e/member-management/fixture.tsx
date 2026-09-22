@@ -13,7 +13,9 @@ import { MembersRosterPanel } from '../../src/components/features/settings/Membe
 import { AlertsBell } from '../../src/layouts/admin-shell/AlertsBell'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import { FocusModeProvider } from '../../src/providers/FocusModeProvider'
+import { ToastProvider } from '../../src/providers/ToastProvider'
 import '../../src/styles.css'
+import '../../src/providers/notifications.css'
 
 const params = new URLSearchParams(location.search)
 const scope = params.get('scope') === 'organization' ? 'organization' : 'team'
@@ -125,8 +127,8 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
   else if (path.endsWith('/invitations') || path.endsWith('/member-invitations')) {
     const email = String(body?.email)
     const teams = { 'team-external': 'Design', 'team-research': 'Research' } as Record<string, string>
-    // The organisation form names its workspaces; the team form invites into
-    // the fixture's one team.
+    // The organisation form names its teams; the team form invites into the
+    // fixture's one team.
     const teamIds = Array.isArray(body?.teamIds) ? body.teamIds as string[] : ['team-external']
     for (const teamId of teamIds) {
       // UOA, not this fixture or Nessie, owns the one-actionable-invitation rule
@@ -158,10 +160,13 @@ document.documentElement.dataset.theme = 'sandstone'
 createRoot(root).render(
   <QueryClientProvider client={queryClient}>
     <AuthSessionProvider><ApiClientProvider client={client}><FocusModeProvider><BrowserRouter>
-      <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
-        <div className="flex justify-end p-3"><AlertsBell /></div>
-        <MembersRosterPanel scope={scope} />
-      </main>
+      {/* The shell's toast surface, which the roster's confirmations go through. */}
+      <ToastProvider>
+        <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
+          <div className="flex justify-end p-3"><AlertsBell /></div>
+          <MembersRosterPanel scope={scope} />
+        </main>
+      </ToastProvider>
     </BrowserRouter></FocusModeProvider></ApiClientProvider></AuthSessionProvider>
   </QueryClientProvider>,
 )

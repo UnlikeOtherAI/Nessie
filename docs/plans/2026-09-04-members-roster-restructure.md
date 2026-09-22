@@ -27,11 +27,11 @@ The three requested tabs are deliberately defined as follows:
 
 `REMOVED` is not labelled Deactivated and is not shown as a fourth tab: it is
 historical team membership, not an inactive person. A manager can add an
-otherwise active removed person back through the team dialog's Existing user
-tab. The removal action therefore returns to the Active tab rather than
+otherwise active removed person back through the team dialog's From your
+organisation tab. The removal action therefore returns to the Active tab rather than
 claiming a result appears in Deactivated.
 
-The page-header primary action is **Send invitation** in UOA-enabled installs.
+The page-header primary action is **Invite people** in UOA-enabled installs.
 Local/no-IdP installs retain their authoritative existing member management
 until a local roster migration is designed; they must not pretend an email
 invitation exists. This change does not replace local identity authority with
@@ -68,18 +68,21 @@ belong inside a people table. The no-IdP surface remains a separate migration.
    team id to UOA for the authoritative revoke. They use the same server
    pagination as member rows; the UI never loads an unbounded history then
    slices it in the browser.
-6. **Send invitation** opens the shared `Dialog` in the header action.
+6. **Invite people** opens the shared `Dialog` in the header action.
    - In organisation scope, the dialog first requires an explicit target-team
      selection from teams the actor may invite into, then collects the email.
      It never silently uses the session's active team.
-   - In team scope, the dialog has two internal `TabBar` panels. **Existing
-     user** is a debounced, server-side name/email autocomplete of eligible
-     active organisation members and directly adds the selected UOA subject to
-     this team. **Invite to workspace** sends the email invitation. The default
-     UOA team role is used until UOA exposes the configured role vocabulary.
+   - In team scope, the dialog has two internal `TabBar` panels. **From your
+     organisation** is a debounced, server-side name/email autocomplete of
+     eligible active organisation members and directly adds the selected UOA
+     subject to this team. **Invite by email** sends the email invitation. An
+     invitation is always for an ordinary member: there is no role choice, and
+     UOA's default team role applies.
    - Success closes the dialog, invalidates the scope's paged query family
-     and selects the tab that honestly contains the result. Validation and
-     upstream refusal remain inline in the dialog.
+     and confirms with a toast naming who and where ("Invitation sent" /
+     "ada@example.com is invited to Design and Support."; "Member added").
+     Resend and Cancel invitation confirm the same way. Validation, upstream
+     refusal and a partial organisation send remain inline in the dialog.
 
 ## Data, authority and authorization
 
@@ -180,7 +183,7 @@ rename one as the other.
    `DataTable` layout, URL tabs and standard footer. Delete the old duplicated
    card sections only after both route doorways render the replacement.
 4. Build the shared invite dialog, including the explicit organisation team
-   picker and the team Existing user / Invite to workspace panels. Reuse the
+   picker and the team From your organisation / Invite by email panels. Reuse the
    navigation dialog shell and primitive controls.
 5. Add per-action visibility, accessible labels, query invalidation and
    mutation handling. Update any affected settings/member documentation with

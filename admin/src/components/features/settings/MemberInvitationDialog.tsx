@@ -19,6 +19,9 @@ import {
   type MemberRosterScope,
 } from '../../../facades/users/member-roster'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
+import { useToasts } from '../../../providers/ToastProvider'
+import { activeTeam } from '../../../lib/teams'
+import { invitationSentToast, joinNames, memberAddedToast } from './member-roster-feedback'
 
 type InviteMode = 'existing' | 'workspace'
 
@@ -31,6 +34,7 @@ type MemberInvitationDialogProps = {
 /** One invite dialog for both roster scopes; only teams can add an existing person. */
 export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitationDialogProps) => {
   const { me, token } = useAuthSession()
+  const { pushToast } = useToasts()
   const [, setSearchParams] = useSearchParams()
   const invite = useInviteMember(scope)
   const addMember = useAddTeamMember()
@@ -81,26 +85,34 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
     event.preventDefault()
     setTargetError(null)
     if (scope === 'organization' && targetIds.length === 0) {
-      setTargetError('Choose at least one workspace for this invitation.')
+      setTargetError('Choose at least one team.')
       return
     }
+    const address = email.trim()
     const result = await inviteForm.submit({
-      email: email.trim(),
+      email: address,
       ...(name.trim() ? { name: name.trim() } : {}),
       ...(scope === 'organization' ? { teamIds: targetIds } : {}),
     })
     if (!result) return
+    const nameOf = (id: string) => targetItems.find((target) => target.id === id)?.name ?? id
     const failedTeamIds = result.failedTeamIds ?? []
+    const invitedNames = targetIds.filter((id) => !failedTeamIds.includes(id)).map(nameOf)
     if (failedTeamIds.length === 0) {
+      const currentTeam = activeTeam(me)?.label
+      pushToast(invitationSentToast(
+        address,
+        scope === 'organization' ? invitedNames : currentTeam ? [currentTeam] : [],
+      ))
       onClose()
       return
     }
-    // UOA accepted some workspaces and refused others. Keep only the refused
-    // ones selected so a retry cannot re-send the invitations that went out.
-    const nameOf = (id: string) => targetItems.find((target) => target.id === id)?.name ?? id
+    // UOA accepted some teams and refused others (the route answers with an
+    // error when it refused all of them). Keep only the refused ones selected
+    // so a retry cannot re-send the invitations that went out.
     setTargetIds(failedTeamIds)
-    setTargetError(`The invitation could not be sent to ${failedTeamIds.map(nameOf).join(', ')}. `
-      + 'The other selected workspaces received it.')
+    setTargetError(`Invited to ${joinNames(invitedNames)}, but not to `
+      + `${joinNames(failedTeamIds.map(nameOf))}. Send again to retry.`)
   }
 
   const targetItems = targets.items
@@ -122,9 +134,11 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
       : [...current.filter((id) => !shownIds.has(id)), ...shownIds])
   }
 
-  const addCandidate = async (uoaSub: string) => {
+  const addCandidate = async (uoaSub: string, candidateName: string) => {
     const result = await addCandidateForm.submit({ uoaSub })
-    if (result) onClose()
+    if (!result) return
+    pushToast(memberAddedToast(candidateName, activeTeam(me)?.label))
+    onClose()
   }
 
   const busy = inviteForm.isPending || addCandidateForm.isPending
@@ -133,13 +147,13 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
   return (
     <Dialog
       description={scope === 'team'
-        ? 'Add an existing organisation member or send a workspace invitation.'
-        : 'Choose the workspaces that will receive the invitation.'}
+        ? 'Add someone from your organisation, or invite someone new by email.'
+        : 'Invite someone by email and choose the teams they’ll join.'}
       dismissDisabled={busy}
       initialFocusRef={scope === 'team' && mode === 'existing' ? undefined : emailRef}
       onClose={onClose}
       open={open}
-      title="Invite member"
+      title="Invite people"
     >
       <div className="space-y-4 p-4">
         {/*
@@ -168,11 +182,11 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
         </p> : null}
         {scope === 'team' ? (
           <TabBar
-            ariaLabel="Invitation method"
+            ariaLabel="How to add someone"
             idPrefix="member-invite"
             items={[
-              { label: 'Existing user', value: 'existing' },
-              { label: 'Invite to workspace', value: 'workspace' },
+              { compactLabel: 'Organisation', label: 'From your organisation', value: 'existing' },
+              { compactLabel: 'By email', label: 'Invite by email', value: 'workspace' },
             ]}
             onChange={selectMode}
             value={mode}
@@ -182,7 +196,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
         {scope === 'team' && mode === 'existing' ? (
           <div className="space-y-3" id="member-invite-tabpanel-existing" role="tabpanel">
             <label className="block text-sm font-medium text-[color:var(--tx)]" htmlFor="member-search">
-              Search organisation members
+              Search your organisation
             </label>
             <Input
               autoComplete="off"
@@ -193,7 +207,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             />
             {debouncedCandidateQuery.trim() ? <QueryState
               className="py-2"
-              emptyLabel="No eligible members found."
+              emptyLabel="No one to add by that name. Try inviting them by email."
               errorLabel="Members could not be searched."
               isEmpty={candidateItems.length === 0}
               loadingLabel="Searching members…"
@@ -201,29 +215,32 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
             >
             {() => (
             <div className="divide-y divide-[color:var(--sep)]">
-              {candidateItems.map((candidate) => (
-                <button
-                  className="flex w-full items-center gap-3 py-3 text-left hover:bg-[color:var(--main-hover)]"
-                  disabled={busy || candidates.data?.data.permissions.addMember !== true}
-                  key={candidate.uoaSub}
-                  onClick={() => void addCandidate(candidate.uoaSub)}
-                  type="button"
-                >
-                  <UserAvatar
-                    avatarUrl={candidate.avatarImageUrl}
-                    displayName={memberDisplayName(candidate.displayName, candidate.email) ?? 'Member'}
-                    size={32}
-                    token={token}
-                    uoaSub={candidate.uoaSub}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium text-[color:var(--tx)]">
-                      {memberDisplayName(candidate.displayName, candidate.email) ?? 'Unnamed member'}
+              {candidateItems.map((candidate) => {
+                const candidateName = memberDisplayName(candidate.displayName, candidate.email)
+                return (
+                  <button
+                    className="flex w-full items-center gap-3 py-3 text-left hover:bg-[color:var(--main-hover)]"
+                    disabled={busy || candidates.data?.data.permissions.addMember !== true}
+                    key={candidate.uoaSub}
+                    onClick={() => void addCandidate(candidate.uoaSub, candidateName ?? 'The new member')}
+                    type="button"
+                  >
+                    <UserAvatar
+                      avatarUrl={candidate.avatarImageUrl}
+                      displayName={candidateName ?? 'Member'}
+                      size={32}
+                      token={token}
+                      uoaSub={candidate.uoaSub}
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-[color:var(--tx)]">
+                        {candidateName ?? 'Unnamed member'}
+                      </span>
+                      {candidate.email ? <span className="block truncate text-sm text-[color:var(--tx3)]">{candidate.email}</span> : null}
                     </span>
-                    {candidate.email ? <span className="block truncate text-sm text-[color:var(--tx3)]">{candidate.email}</span> : null}
-                  </span>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
             )}
             </QueryState> : null}
@@ -235,7 +252,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               <fieldset className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <legend className="text-sm font-medium text-[color:var(--tx)]">
-                    Workspaces
+                    Teams
                     {targetIds.length > 0 ? (
                       <span className="ml-1 font-normal text-[color:var(--tx3)]">({targetIds.length} selected)</span>
                     ) : null}
@@ -251,7 +268,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
                     </button>
                   ) : null}
                 </div>
-                <QueryState className="py-2" emptyLabel="There are no workspaces you can invite people to."
+                <QueryState className="py-2" emptyLabel="There are no teams you can invite people to."
                   errorLabel="Teams could not be loaded." isEmpty={targetItems.length === 0}
                   loadingLabel="Loading teams…" query={targets.query}>
                 {() => <div className="grid max-h-64 gap-1 overflow-y-auto">
@@ -302,7 +319,7 @@ export const MemberInvitationDialog = ({ onClose, open, scope }: MemberInvitatio
               <button className="admin-button admin-button-primary"
                 disabled={busy || (scope === 'organization' && (targets.query.isError
                   || targets.query.data?.data.permissions.createInvitation !== true))}
-                type="submit">Send invitation</button>
+                type="submit">{inviteForm.isPending ? 'Sending…' : 'Send invitation'}</button>
             </FormActions>
           </form>
         )}

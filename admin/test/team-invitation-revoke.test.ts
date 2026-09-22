@@ -7,7 +7,8 @@ import { JSDOM } from 'jsdom'
 import { teamKeys } from '../src/facades/team/keys.js'
 
 /**
- * The Revoke action on a pending team invitation: it exists where an
+ * Cancelling a pending team invitation (the revoke route; the button says
+ * "Cancel invitation", the roster's verb for the same action): it exists where an
  * owner/admin is already standing (Settings → Members → Pending invitations),
  * it calls the revoke route for that invite id, and it re-reads the lists the
  * way the sibling invitation actions do — UOA is the only state there is.
@@ -149,7 +150,7 @@ test('an owner or admin can revoke a sent invitation from the pending list', asy
   const harness = await mount(true)
 
   try {
-    const revoke = harness.buttons('Revoke')
+    const revoke = harness.buttons('Cancel invitation')
     // One sent invitation is revocable; the one still awaiting approval keeps
     // Approve/Deny, which is UOA's verb for an invite that was never sent.
     assert.equal(revoke.length, 1)
@@ -183,7 +184,7 @@ test('a member who cannot manage the team is offered no revoke', async () => {
   const harness = await mount(false)
 
   try {
-    assert.equal(harness.buttons('Revoke').length, 0)
+    assert.equal(harness.buttons('Cancel invitation').length, 0)
     assert.equal(
       harness.calls.some((call) => call.path.includes('/revoke')),
       false,
@@ -209,9 +210,9 @@ test('an unlinked UOA team offers a reconnection instead of a false outage', asy
   try {
     assert.match(
       harness.text(),
-      /can no longer be reached through UnlikeOtherAI/,
+      /lost its connection to UnlikeOtherAI/,
     )
-    assert.doesNotMatch(harness.text(), /directory could not be reached/)
+    assert.doesNotMatch(harness.text(), /couldn’t be loaded right now/)
     assert.equal(harness.buttons('Reconnect team').length, 1)
     // The linked route also owns invitations, so do not leave an owner with a
     // form that can only return the same 404.
@@ -240,7 +241,7 @@ test('a rejected active team offers reconnection from the live roster error', as
   })
 
   try {
-    assert.match(harness.text(), /can no longer be reached through UnlikeOtherAI/)
+    assert.match(harness.text(), /lost its connection to UnlikeOtherAI/)
     assert.equal(harness.buttons('Reconnect team').length, 1)
     assert.equal(harness.buttons('Send invitation').length, 0)
     assert.equal(
@@ -262,7 +263,7 @@ test('a UOA directory outage remains distinct from an unlinked team', async () =
   })
 
   try {
-    assert.match(harness.text(), /directory could not be reached/)
+    assert.match(harness.text(), /couldn’t be loaded right now/)
     assert.equal(harness.buttons('Reconnect team').length, 0)
   } finally {
     await harness.unmount()

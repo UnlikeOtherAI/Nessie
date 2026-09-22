@@ -60,7 +60,7 @@ const MemberRow = ({
     try {
       await updateRole.mutateAsync({ userId: user.id, role })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to update role')
+      setError(caught instanceof Error ? caught.message : 'Couldn’t change their role. Try again.')
     }
   }
 
@@ -69,7 +69,7 @@ const MemberRow = ({
     try {
       await setDeactivated.mutateAsync({ userId: user.id, deactivated: !deactivated })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to update member')
+      setError(caught instanceof Error ? caught.message : 'Couldn’t update this member. Try again.')
     }
   }
 
@@ -216,7 +216,7 @@ export const SettingsMembersPage = () => {
     } catch (error) {
       const { fieldErrors, formError } = toFormErrors(error)
       setAddFieldErrors(fieldErrors)
-      setAddFormError(formError ?? (Object.keys(fieldErrors).length === 0 ? 'Failed to add member.' : undefined))
+      setAddFormError(formError ?? (Object.keys(fieldErrors).length === 0 ? 'Couldn’t add this member. Try again.' : undefined))
     }
   }
 
@@ -224,11 +224,11 @@ export const SettingsMembersPage = () => {
     !createUser.isPending && userEmail.trim().length > 0 && userPassword.length >= 8
 
   return (
-    <SettingsPanel eyebrow="Organization" title="Members">
+    <SettingsPanel eyebrow="Organisation" title="Members">
       <div className="grid gap-4 xl:grid-cols-2">
         <Section title="People">
           <QueryState
-            errorLabel="Could not load members."
+            errorLabel="Members could not be loaded."
             loadingLabel="Loading members…"
             query={usersQuery}
           >

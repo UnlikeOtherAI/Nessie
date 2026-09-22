@@ -72,6 +72,6 @@ test('an invitation with no organisation name still renders its team', () => {
       metadata: { ...invitation.metadata!, orgName: undefined },
     },
   }))
-  assert.match(html, />Bravo Three</)
+  assert.match(html, />You’re invited to Bravo Three</)
   assert.doesNotMatch(html, /·/)
 })

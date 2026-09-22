@@ -41,14 +41,14 @@ type AlertRowProps = {
 const describeAlert = (alert: UserAlertRecord): string => {
   const actor = alert.actorDisplayName ?? 'Someone'
   if (alert.kind === 'team_invitation') {
-    if (!alert.metadata) return 'Team invitation'
+    if (!alert.metadata) return 'You’ve been invited to a team'
     // The organisation is part of the name, not decoration: this row is often
     // the only place a cross-organisation invitation is offered, and "General"
     // on its own does not say which organisation invited you.
     const target = teamInvitationLabel(alert.metadata)
     return alert.metadata.invitedBy
       ? `${alert.metadata.invitedBy} invited you to ${target}`
-      : target
+      : `You’re invited to ${target}`
   }
   if (alert.kind === 'trigger_health') {
     // No actor: nobody did this, a schedule stopped being able to run.
