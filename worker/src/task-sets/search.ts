@@ -2,7 +2,7 @@ import {
   bindExecutorCandidateBundleInTransaction, resolveExecutorAvailabilityCandidates,
 } from '@nessie/executor-manage'
 import { AuthorizedActionContextSchema, ExecutorMcpToolCatalogSchema, TaskSetProcessorSchema } from '@nessie/schemas'
-import { buildExecutorToolset } from '../run/executor-toolset.js'
+import { buildExecutorToolset, executorToolName } from '../run/executor-toolset.js'
 import { currentExecutorToken } from '../run/execute/lifecycle.js'
 import type { ExecutionDependencies, RunContext } from '../run/execute/types.js'
 import { taskSetJournalStep } from './journal.js'
@@ -60,14 +60,14 @@ export const buildTaskSetSearchTools = async (
     encryptionSecret: deps.executorCommandEncryptionSecret,
     organizationId: claim.set.organizationId, runId: claim.attempt.runId,
   })
-  if (!toolset.handledNames.has('executor.mcp.tools') || !toolset.handledNames.has('executor.mcp.call')) {
+  if (!toolset.handledNames.has(executorToolName('mcp.tools')) || !toolset.handledNames.has(executorToolName('mcp.call'))) {
     throw new TaskSetBlocked('processor_search_setup_required')
   }
   const fence = currentExecutorToken(claim.attempt.runId)
   if (!fence) throw new TaskSetBlocked('processor_search_fence_missing')
   const listed = await taskSetJournalStep({
     prisma: deps.prisma, claim, fence, sequence: -1, request: { server: 'ollama-search' }, recoverable: false,
-    execute: () => toolset.dispatch('executor.mcp.tools', { server: 'ollama-search' }, `${claim.attempt.id}:search-catalog`),
+    execute: () => toolset.dispatch(executorToolName('mcp.tools'), { server: 'ollama-search' }, `${claim.attempt.id}:search-catalog`),
   })
   if (!listed.success) throw new TaskSetBlocked('processor_search_setup_required')
   const envelope = JSON.parse(listed.output) as { catalog?: unknown }
@@ -79,7 +79,7 @@ export const buildTaskSetSearchTools = async (
     descriptors: tools.map((tool) => ({ toolName: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema })),
     call: async (name, args, callId) => {
       if (!allowed.includes(name)) throw new TaskSetBlocked('processor_unapproved_tool')
-      const result = await toolset.dispatch('executor.mcp.call', { server: 'ollama-search', tool: name, arguments: args }, callId)
+      const result = await toolset.dispatch(executorToolName('mcp.call'), { server: 'ollama-search', tool: name, arguments: args }, callId)
       if (!result.success) throw new TaskSetBlocked(taskSetSearchFailure(result.output))
       return result.output
     },

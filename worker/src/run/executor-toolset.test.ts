@@ -33,8 +33,8 @@ test('only operations already bound to this run and explicitly granted to its ag
     runId,
   })
 
-  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor.sandbox.stop'])
-  assert.deepEqual([...toolset.handledNames], ['executor.sandbox.stop'])
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor_sandbox_stop'])
+  assert.deepEqual([...toolset.handledNames], ['executor_sandbox_stop'])
 })
 
 test('the bounded backend exposes only an exact session-bound browser bundle and independently gates act', async () => {
@@ -85,10 +85,10 @@ test('the bounded backend exposes only an exact session-bound browser bundle and
   })
 
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
-    'executor.browser.act',
-    'executor.browser.observe',
-    'executor.browser.open',
-    'executor.sandbox.stop',
+    'executor_browser_act',
+    'executor_browser_observe',
+    'executor_browser_open',
+    'executor_sandbox_stop',
   ])
 })
 
@@ -161,7 +161,7 @@ test('browser operations are withheld when their session bundle is incomplete or
     runId,
   })
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
-    'executor.file.read',
+    'executor_file_read',
   ])
 })
 
@@ -284,8 +284,8 @@ test('command operations require their isolated review-and-stop bundle and an ex
     runId,
   })
   assert.deepEqual(denied.descriptors.map((descriptor) => descriptor.toolName), [
-    'executor.sandbox.stop',
-    'executor.workspace.review',
+    'executor_sandbox_stop',
+    'executor_workspace_review',
   ])
   const granted = await buildExecutorToolset(prisma, {
     agentId,
@@ -299,9 +299,9 @@ test('command operations require their isolated review-and-stop bundle and an ex
     runId,
   })
   assert.deepEqual(granted.descriptors.map((descriptor) => descriptor.toolName), [
-    'executor.command.run',
-    'executor.sandbox.stop',
-    'executor.workspace.review',
+    'executor_command_run',
+    'executor_sandbox_stop',
+    'executor_workspace_review',
   ])
 })
 
@@ -342,10 +342,10 @@ test('the bounded backend exposes coding only through its exact session bundle',
   })
 
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
-    'executor.coding.launch',
-    'executor.coding.observe',
-    'executor.sandbox.stop',
-    'executor.workspace.review',
+    'executor_coding_launch',
+    'executor_coding_observe',
+    'executor_sandbox_stop',
+    'executor_workspace_review',
   ])
   assert.deepEqual(toolset.descriptors[0]?.inputSchema, {
     additionalProperties: false,
@@ -393,7 +393,7 @@ test('coding operations are withheld when their session is mixed with another ex
     runId,
   })
 
-  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor.file.read'])
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor_file_read'])
 })
 
 test('an exited coding session keeps review and teardown but cannot relaunch Codex', async () => {
@@ -432,8 +432,8 @@ test('an exited coding session keeps review and teardown but cannot relaunch Cod
   })
 
   assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), [
-    'executor.coding.observe',
-    'executor.sandbox.stop',
-    'executor.workspace.review',
+    'executor_coding_observe',
+    'executor_sandbox_stop',
+    'executor_workspace_review',
   ])
 })

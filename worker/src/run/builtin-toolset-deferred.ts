@@ -127,7 +127,16 @@ export const executeBuiltinToolSpec = (
     ? args['names'].filter((name): name is string => typeof name === 'string')
     : []
   const byName = new Map(allowedDefinitions.map((tool) => [tool.id, tool]))
-  const tools = requestedNames.flatMap((name) => {
+  // `default.ticket_create` is how a namespaced tool protocol (Meta's) spells
+  // `ticket_create`; answer the tool it means rather than calling it unknown.
+  const resolveName = (name: string): string => {
+    if (byName.has(name)) return name
+    const separator = name.indexOf('.')
+    const bare = separator > 0 ? name.slice(separator + 1) : name
+    return byName.has(bare) ? bare : name
+  }
+  const resolvedNames = requestedNames.map(resolveName)
+  const tools = resolvedNames.flatMap((name) => {
     const definition = byName.get(name)
     return definition
       ? [{
@@ -137,7 +146,7 @@ export const executeBuiltinToolSpec = (
       }]
       : []
   })
-  const unknownNames = requestedNames.filter((name) => !byName.has(name))
+  const unknownNames = resolvedNames.filter((name) => !byName.has(name))
 
   return {
     inputSummary: `names=${requestedNames.length}`,

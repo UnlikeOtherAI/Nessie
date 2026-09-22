@@ -47,6 +47,16 @@ class ExecutorUnknownOutcomeError extends FatalToolExecutionError {
   }
 }
 
+/**
+ * The model-facing name of an executor operation. OpenAI-compatible function
+ * names allow `[A-Za-z0-9_-]`, and Meta's API refuses a name with more than
+ * one dot, so the dotted operation key travels with underscores: `mcp.tools`
+ * is offered as `executor_mcp_tools`. Only the wire name changes — the
+ * registry id and the audit action strings keep their dotted spelling.
+ */
+export const executorToolName = (operationKey: string): string =>
+  `executor_${operationKey.split('.').join('_')}`
+
 export const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null => {
   const definition = executorLogicalToolDefinitions().find((tool) => tool.key === operationKey)
   if (!definition) return null
@@ -220,7 +230,7 @@ export const descriptorFor = (operationKey: string): ToolSchemaDescriptor | null
   return {
     description: definition.description,
     inputSchema,
-    toolName: `executor.${operationKey}`,
+    toolName: executorToolName(operationKey),
   }
 }
 

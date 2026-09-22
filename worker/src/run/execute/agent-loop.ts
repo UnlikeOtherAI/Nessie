@@ -12,7 +12,7 @@ import { buildContextPlan } from '../context-window.js'
 import { runContextCompaction } from '../context-compaction.js'
 import { estimateToolSchemaTokens } from '../context-management.js'
 import { runDelegate } from '../delegate.js'
-import type { ExecutorToolset } from '../executor-toolset.js'
+import { executorToolName, type ExecutorToolset } from '../executor-toolset.js'
 import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -313,8 +313,8 @@ export const runExecutionAgentLoop = async (
     }
     if (input.executorToolset.handledNames.has(toolName)) {
       const result = await input.executorToolset.dispatch(toolName, args, toolCallId)
-      if (toolName === 'executor.browser.act' || toolName === 'executor.command.run') {
-        const metadata = toolName === 'executor.browser.act'
+      if (toolName === executorToolName('browser.act') || toolName === executorToolName('command.run')) {
+        const metadata = toolName === executorToolName('browser.act')
           ? {
               action: typeof args.action === 'string' ? args.action : 'unknown',
               ...(typeof args.nodeId === 'number' ? { nodeId: args.nodeId } : {}),
@@ -327,7 +327,7 @@ export const runExecutionAgentLoop = async (
               toolCallId,
             }
         await emitWorkerAuditEvent(deps.prisma, authorization.toolActorContext, {
-          action: toolName === 'executor.browser.act'
+          action: toolName === executorToolName('browser.act')
             ? 'executor.browser.action.dispatched'
             : 'executor.command.run.dispatched',
           metadata,
@@ -340,7 +340,26 @@ export const runExecutionAgentLoop = async (
     }
     return builtinToolExecutor.executeAuthorized(toolName, args, toolCallId, authorization)
   }
-  const executeMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+  // Meta's tool protocol is namespaced and its models call `default.<tool>` for
+  // a tool offered as `<tool>`; OpenAI's legacy shape did the same with
+  // `functions.`. A prefix is dropped only when the remainder names a tool this
+  // run actually offers, so a genuinely unknown name still fails as unknown.
+  const isOfferedToolName = (name: string): boolean =>
+    name === BUILTIN_TOOL_SPEC_NAME
+    || name === 'react'
+    || name === 'delegate'
+    || input.resolvedToolIds.has(name)
+    || mcpExposedNames.has(name)
+    || input.executorToolset.handledNames.has(name)
+  const normalizeToolName = (name: string): string => {
+    if (isOfferedToolName(name)) return name
+    const separator = name.indexOf('.')
+    if (separator <= 0) return name
+    const bare = name.slice(separator + 1)
+    return isOfferedToolName(bare) ? bare : name
+  }
+  const executeMainTool = async (requestedToolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const toolName = normalizeToolName(requestedToolName)
     const authorization = await authorizeMainTool(toolName, args, toolCallId)
     if (authorization.decision === 'deny') {
       return authorization.result
@@ -351,7 +370,8 @@ export const runExecutionAgentLoop = async (
     return executeAuthorizedTool(toolName, authorization.executionArgs ?? args, toolCallId, authorization)
   }
 
-  const executePreparedTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+  const executePreparedTool = async (requestedToolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const toolName = normalizeToolName(requestedToolName)
     // A preflight verified any proof without consuming it. Re-run the gate at
     // dispatch to claim the one-time proof only when this tool will run.
     const authorization = await authorizeMainTool(toolName, args, toolCallId, {
