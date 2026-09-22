@@ -53,6 +53,46 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
+  - **Tool timeouts are per tool.** `executeToolBatch` asks
+    `toolTimeoutMsFor(toolName)`: an executor tool gets its command TTL plus
+    `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` (10 s), every other tool the budget's
+    `toolTimeoutMs` (75 s main, 25 s delegate). An executor timeout raises the
+    same fatal `ExecutorUnknownOutcomeError` as an expired TTL — the run is
+    requeued and its replay reports an unknown outcome — never a retriable
+    "timed out", because the command may still complete on the machine and a
+    retry would repeat its side effect. The command TTLs live in
+    `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
+    `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
+    `executor-timing.ts`, which must stay ≥ the daemon's start (10 s) + call
+    (60 s) timeouts + upload budget (30 s) + lane overhead (20 s); a schemas
+    unit test pins the inequality.
+  - **Executor calls in one batch run in call order**, one after another; the
+    batch's other tools still run in parallel beside them. A fatal executor
+    call stops the ones queued behind it from dispatching (nothing claimed
+    them, so the replay dispatches them). The worker holds
+    `EXECUTOR_COMMAND_SUBSCRIPTION_CONCURRENCY` (4) `executor.command` jobs at
+    once, so one machine's long call cannot delay another machine's command.
+  - **Circuit breaker.** Three consecutive failures of one key disable it for
+    the run (the counts ride the crash checkpoint). The key is the tool name,
+    except `executor_mcp_call`, which is keyed
+    `executor_mcp_call:<server>:<tool>` (`circuitBreakerKey`), so one
+    program's flaky tool never disables the others behind the transport. A
+    result marked `correctable` — a failure the model fixes by changing its
+    call: `EXECUTOR_COMMAND_ARGUMENTS_INVALID`, `EXECUTOR_MCP_RESULT_TOO_LARGE`,
+    `EXECUTOR_MCP_CURSOR_INVALID`, an executor tool name the run does not
+    offer, or an MCP server refusing an unknown tool or arguments that fail its
+    input schema — goes back to the model and neither counts nor clears a
+    count; replays keep the flag.
+  - **Loop detection** (`worker/src/run/tool-loop-detection.ts`) is decided
+    before dispatch. The third identical name+arguments call anywhere in the
+    run is refused and the model told to stop and answer. Observation tools
+    (`OBSERVATION_TOOL_NAMES`, today `executor_mcp_tools`) are exempt from
+    that rule: only consecutive identical calls count, any other call resets
+    the streak, and the fourth in a row is refused with "The result has not
+    changed. Wait with a different call, or tell the person where things
+    stand and end your turn." Counts are checkpointed under `#repeat:` /
+    `#observe:` keys; unprefixed counts from an earlier deploy are dropped on
+    resume.
   - A provider `finish_reason: length` gets one bounded recovery. Partial prose
     uses a no-tools finalisation from completed evidence. Empty reasoning-only
     output retains tools to finish the already authorized work; a truncated tool

@@ -25,6 +25,44 @@ belongs to the server, and validating it here would guarantee drift the first
 time the server ships a field — the daemon validates the envelope, never the
 payload.
 
+## Timing: the command outlives everything that can happen to it
+
+The daemon bounds a session start at `EXECUTOR_MCP_START_TIMEOUT_MS` (10 s) and
+one tool call (or `tools/list` page) at `EXECUTOR_MCP_CALL_TIMEOUT_MS` (60 s).
+The worker stamps each `mcp.tools` / `mcp.call` command with
+`EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): start + call + a 30 s upload budget + 20 s
+for the lane's own hops (queue claim, daemon poll, receipts, journal fsyncs).
+All of these live in one file, `@nessie/schemas` `executor-timing.ts`, which
+both processes import, and a unit test pins the inequality. The TTL was 25 s,
+shorter than a cold start plus a slow navigation, and an expired command is an
+unknown outcome that aborts the run.
+
+The worker's own per-tool timeout for an executor tool sits
+`EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` past the TTL, and when it fires it raises the
+same fatal unknown outcome — never a retriable timeout, because the program may
+still finish the call. Executor calls in one model batch are dispatched one
+after another, since the machine runs one command at a time and each command's
+TTL starts when the worker creates it; the worker runs four `executor.command`
+subscriptions so one machine's slow call never holds up another's. The full
+rule is in [tech-and-run-budgets.md](tech-and-run-budgets.md).
+
+## Failures are counted per program tool
+
+The run's circuit breaker counts `executor_mcp_call` failures under
+`executor_mcp_call:<server>:<tool>`, not under the transport's one name: three
+failures of Kelpie's `wait_for_element` disable that tool, not every program
+the owner named. A failure the model fixes by changing its call is marked
+`correctable` and never counts — the daemon's `EXECUTOR_COMMAND_ARGUMENTS_INVALID`,
+`EXECUTOR_MCP_RESULT_TOO_LARGE` and `EXECUTOR_MCP_CURSOR_INVALID`, and a
+server's own refusal of an unknown tool name or of arguments that fail the
+tool's input schema (an MCP SDK server answers both with `MCP error -32602:` as
+an `isError` result, `worker/src/run/executor-correctable-failures.ts`). A
+server that instead answers them with a JSON-RPC error still counts: the daemon
+reports that only as a refused call.
+
+`executor_mcp_tools` is an observation tool for loop detection: listing the same
+catalog again is allowed until the fourth identical call in a row.
+
 ## Only the name travels
 
 A named server carries a host-local launch spec — argv, working directory,
