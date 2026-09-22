@@ -302,7 +302,7 @@ and the project tab need no separate rules. Order is priority, high first.
 | id | kind | label | icon | priority | primary | shown when |
 |---|---|---|---|---|---|---|
 | `new-file` | menu | "New file" | `faPlus` | 100 | **yes** | the active column is writable (`canWrite` of its space) and not virtual |
-| `new-folder` | button | "New folder" | `faFolderPlus` | 90 | | same; at the root column it opens **New shared folder…** instead |
+| `new-folder` | button | "New folder" | `faFolderPlus` | 90 | | same; at the Knowledge root it is labelled **New space…** and opens the space dialog instead |
 | `sort` | menu | "Sort: {Name}" | `faArrowDownWideShort` | 80 | | always, disabled (`aria-disabled`) in virtual columns with `title="Latest and Shared with me are ordered by time"` |
 | `view` | menu | "View: {Tree}" | `faSitemap` / `faColumns` / `faList` | 70 | | `split` only — on `single` a column *is* a list |
 | `needs-review` | toggle | "Needs review ({n})" | | 60 | | `agentDraftCount > 0 || needsReviewOnly` for the active space (unchanged behaviour) |

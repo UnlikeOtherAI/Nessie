@@ -232,7 +232,7 @@ test('a read-only folder’s background reads out and offers nothing to create',
 })
 
 test('the root creates a whole root folder; a virtual column can only be asked again', () => {
-  assert.deepEqual(labels({ column: 'root', kind: 'background' }), ['New shared folder…', 'Refresh'])
+  assert.deepEqual(labels({ column: 'root', kind: 'background' }), ['New space…', 'Refresh'])
   assert.deepEqual(labels({ column: 'virtual', kind: 'background' }), ['Refresh'])
 })
 

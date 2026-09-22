@@ -67,7 +67,7 @@ export type FinderScope =
 type DocumentsFinderProps = {
   /** The ⚙ action; the dialog it opens belongs to the workspace. */
   canManageSpace: boolean
-  /** The root's "New shared folder…" — a root folder needs a visibility choice. */
+  /** The Knowledge root's "New space…" action and visibility dialog. */
   onCreateRootFolder?: () => void
   onOpenSettings: () => void
   // Uploading is the Finder's own (uploads-and-indexing.md §2).
@@ -244,6 +244,7 @@ export const DocumentsFinder = ({
         return void navigate('/knowledge-base/shared-with-me')
       case 'space':
         knowledge.selectSpace(row.space.spaceId)
+        dispatch({ columnKey: `space:${row.space.spaceId}`, type: 'enterColumn' })
         return void navigate(`/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`)
       case 'product-view':
         knowledge.selectProductView(row.view)
@@ -319,6 +320,8 @@ export const DocumentsFinder = ({
     spaceCanWrite,
     view,
   })
+  const submitFolder = (parentPageId: string | null, name: string) =>
+    void knowledge.createFolder(parentPageId, name).finally(closeNewFolder)
 
   // The agent doorway is the documents column's own header button now, not a
   // toolbar action: "Open" belongs on the column that *is* the agent's
@@ -480,10 +483,7 @@ export const DocumentsFinder = ({
             onCreateFolder={() => openNewFolderIn(level.key)}
             onOpen={(page) => openPageIn(level, page)}
             query={pagesQuery}
-            onSubmitFolder={(name) => {
-              void knowledge.createFolder(level.parentPageId, name)
-                .finally(() => closeNewFolder())
-            }}
+            onSubmitFolder={(name) => submitFolder(level.parentPageId, name)}
             menus={menus}
             onUploadRefused={uploads.notice}
             pageById={pageById}
@@ -548,6 +548,8 @@ export const DocumentsFinder = ({
           <FinderScopeReadState query={pagesQuery} />
         ) : view === 'tree' && !single && !virtualColumnKey ? (
           <FinderTreePane activePageId={knowledge.openPageId} browseTo={browseTo}
+            createFolderColumnKey={creatingFolderIn} createFolderPending={knowledge.createFolderPending}
+            onCancelFolder={closeNewFolder} onSubmitFolder={(name) => submitFolder(activeParentPageId, name)}
             onOpenDocument={(page, path) => openDocument(page, () => knowledge.openPagePath(path))}
             onOpenRoot={openRootRow} pagePath={pagePath} pagesQuery={pagesQuery}
             root={rootQuery.data} rootQuery={rootQuery} rowsIn={rowsIn}

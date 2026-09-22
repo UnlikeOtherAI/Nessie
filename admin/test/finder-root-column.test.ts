@@ -180,7 +180,7 @@ test('exactly one action is primary, and it is the creation', () => {
   assert.deepEqual(actions.filter((action) => action.primary).map((action) => action.id), ['new'])
 })
 
-test('the root column offers a whole root folder, not a folder inside one', () => {
+test('the root column names creation as a space, not a folder', () => {
   const actions = buildFinderToolbarActions({
     agentDraftCount: 0,
     canManageSpace: false,
@@ -199,14 +199,14 @@ test('the root column offers a whole root folder, not a folder inside one', () =
     sort: 'name',
     view: 'columns',
   })
-  // The root has no folder to create anything *in*, so the one New menu
-  // offers exactly one answer there — a whole root folder, which needs a
-  // visibility choice and therefore an ellipsis.
+  // The root has no space to create a folder *in*, so the one New menu
+  // offers exactly one answer there — a space, which needs a visibility
+  // choice and therefore an ellipsis.
   const create = actions.find((action) => action.id === 'new')
   assert.equal(create?.kind, 'menu')
   assert.deepEqual(
     create?.kind === 'menu' ? create.items.map((item) => item.label) : [],
-    ['Folder…'],
+    ['Space…'],
   )
   assert.equal(actions.find((action) => action.id === 'new-file'), undefined)
 })
