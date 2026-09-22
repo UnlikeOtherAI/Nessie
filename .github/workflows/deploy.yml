@@ -238,7 +238,7 @@ jobs:
         # Infisical environment files are safe. Postgres/MinIO data live in
         # named Docker volumes outside this tree.
         run: |
-          rsync -az --delete \
+          bash scripts/ssh-retry.sh -- rsync -az --delete \
             --exclude '.git' \
             --exclude '**/node_modules' \
             --exclude '**/dist' \
@@ -258,7 +258,7 @@ jobs:
           LEDGER_PROXY_TOKEN: ${{ secrets.LEDGER_PROXY_TOKEN }}
         run: |
           test -n "$LEDGER_PROXY_TOKEN"
-          printf '%s\n' "$LEDGER_PROXY_TOKEN" |
+          bash scripts/ssh-retry.sh --stdin-var LEDGER_PROXY_TOKEN -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-ledger-app-key.sh'
 
@@ -270,9 +270,9 @@ jobs:
           test -n "$UOA_BILLING_APP_KEY_NESSIE"
           test -n "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE"
           node infrastructure/compose/validate-uoa-billing-credentials.mjs
-          printf '%s\n%s\n' \
-            "$UOA_BILLING_APP_KEY_NESSIE" \
-            "$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE" |
+          UOA_BILLING_STDIN="$UOA_BILLING_APP_KEY_NESSIE"$'\n'"$UOA_BILLING_ACTOR_PRIVATE_JWK_NESSIE"
+          export UOA_BILLING_STDIN
+          bash scripts/ssh-retry.sh --stdin-var UOA_BILLING_STDIN -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-uoa-billing-credentials.sh'
 
@@ -281,7 +281,7 @@ jobs:
           DEEPSIGNAL_MCP_APP_KEY: ${{ secrets.DEEPSIGNAL_MCP_APP_KEY }}
         run: |
           test -n "$DEEPSIGNAL_MCP_APP_KEY"
-          printf '%s\n' "$DEEPSIGNAL_MCP_APP_KEY" |
+          bash scripts/ssh-retry.sh --stdin-var DEEPSIGNAL_MCP_APP_KEY -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-deepsignal-app-key.sh'
 
@@ -296,8 +296,14 @@ jobs:
           IMAGE_OWNER: ${{ github.repository_owner }}
         run: |
           IMAGE_REPO="ghcr.io/$(echo "$IMAGE_OWNER" | tr '[:upper:]' '[:lower:]')/nessie"
-          printf '%s\n' "$REGISTRY_TOKEN" |
+          # Every ssh here retries a connection-level failure (exit 255) and
+          # nothing else: on 2026-09-22 the host's sshd, under a brute-force
+          # wave, reset the second connection of two consecutive runs and the
+          # deploy failed with the images already built. A redeploy that ran
+          # and failed is never re-run.
+          bash scripts/ssh-retry.sh --stdin-var REGISTRY_TOKEN -- \
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               "docker login ghcr.io -u '$REGISTRY_USER' --password-stdin"
-          ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd /srv/nessie && NESSIE_IMAGE_REPO='$IMAGE_REPO' NESSIE_IMAGE_TAG='$IMAGE_TAG' bash infrastructure/compose/redeploy.sh"
+          bash scripts/ssh-retry.sh -- \
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              "cd /srv/nessie && NESSIE_IMAGE_REPO='$IMAGE_REPO' NESSIE_IMAGE_TAG='$IMAGE_TAG' bash infrastructure/compose/redeploy.sh"
