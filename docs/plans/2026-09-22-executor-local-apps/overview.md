@@ -23,7 +23,7 @@ Through the person's paired executor the agent can:
 It works on Windows, macOS and Linux executors, and it is a conversation: the
 person's own follow-ups keep the same reach until they end it.
 
-## Chapters
+## Table of Contents
 
 | Chapter | Ships as | What it settles |
 |---|---|---|
