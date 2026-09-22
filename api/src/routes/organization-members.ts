@@ -114,7 +114,7 @@ const resolveOrganizationExternalId = async (
       reply,
       404,
       'ORGANIZATION_NOT_LINKED',
-      'This organisation is not linked to an UnlikeOtherAI organisation',
+      "This organisation isn't connected to UnlikeOtherAI.",
     )
     return null
   }
@@ -138,7 +138,7 @@ const requireOrganizationAdministrator = async (
       reply,
       503,
       'UOA_ORGANIZATION_ACCESS_UNAVAILABLE',
-      'UnlikeOtherAI could not confirm organisation administrator access. Try again shortly.',
+      "We couldn't check whether you're an organisation admin. Try again in a moment.",
     )
     return false
   }
@@ -146,7 +146,7 @@ const requireOrganizationAdministrator = async (
     reply,
     403,
     'ORGANIZATION_ADMIN_REQUIRED',
-    'Organisation administrator access is required.',
+    'Only organisation admins can do this.',
   )
   return false
 }

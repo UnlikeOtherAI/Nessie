@@ -520,7 +520,7 @@ test('team access never writes a team UOA did not authorize for the caller', asy
       assert.equal(response.json().error.code, 'ORGANIZATION_MEMBERS_REJECTED')
       assert.equal(
         response.json().error.message,
-        'You no longer have permission to make this change. Refresh the members list to see your current access.',
+        "You don't have permission to do this any more. Refresh the page to see what you can change.",
       )
       assert.equal(calls.length, 2)
       assert.deepEqual(calls.map((call) => call.method), ['GET', 'GET'])

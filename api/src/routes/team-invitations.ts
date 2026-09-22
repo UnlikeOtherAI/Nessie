@@ -19,10 +19,10 @@ const AcceptTeamInvitationBodySchema = z.object({
 }).strict()
 
 const ORG_CONFLICT_MESSAGE =
-  "You already belong to another organisation on this team's domain, so this invitation cannot be accepted. Ask the inviter's organisation owner, or contact support."
+  "You already belong to another organisation here, so you can't join this one. Ask the person who invited you, or contact support."
 
 const NOT_ACCEPTABLE_MESSAGE =
-  'This invitation can no longer be accepted. It may already have been accepted, revoked, or expired.'
+  "This invitation can't be used any more. It may have expired, been cancelled or already been accepted. Ask for a new one."
 
 export const registerTeamInvitationAcceptanceRoute = (
   app: FastifyInstance,
@@ -42,7 +42,7 @@ export const registerTeamInvitationAcceptanceRoute = (
           reply,
           403,
           'UOA_SESSION_REQUIRED',
-          'Sign in with UnlikeOtherAI to accept this team invitation.',
+          'Sign in with UnlikeOtherAI to accept this invitation.',
         )
         return reply
       }
@@ -56,7 +56,7 @@ export const registerTeamInvitationAcceptanceRoute = (
           reply,
           403,
           'UOA_SESSION_REQUIRED',
-          'Your Nessie account is not linked to an UnlikeOtherAI identity.',
+          "Your account isn't linked to UnlikeOtherAI. Sign in with UnlikeOtherAI to accept this invitation.",
         )
         return reply
       }
@@ -100,7 +100,7 @@ export const registerTeamInvitationAcceptanceRoute = (
             reply,
             503,
             'UOA_DIRECTORY_UNAVAILABLE',
-            'The UnlikeOtherAI invitation service is temporarily unavailable.',
+            "Invitations can't be accepted right now. Try again in a few minutes.",
           )
           return reply
         }
