@@ -173,7 +173,11 @@ test('the message composer editable region hints a send key on the soft keyboard
 
 test('the channel composer container reserves space for the keyboard inset', () => {
   const composer = source('../src/components/features/channels/ChannelComposer.tsx')
-  assert.match(composer, /14px \+ var\(--keyboard-inset, 0px\)/)
+  assert.match(composer, /\+ var\(--keyboard-inset, 0px\)/)
+  // The installed iPad shell lets the page reach the window floor, so the
+  // base padding grows to the home indicator's inset there; the property is
+  // unset elsewhere and the base stays 14px (styles.css).
+  assert.match(composer, /max\(14px, var\(--nessie-native-home-clearance, 0px\)\)/)
   // The installed Android shell floats its dock over the page's own floor, so
   // the composer clears that too. It resolves to zero everywhere else — and,
   // while the keyboard is open, on Android as well (styles.css).

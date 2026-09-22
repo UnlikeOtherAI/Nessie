@@ -113,12 +113,15 @@ export const ChannelComposer = ({
     // of sliding under it. The third term is the installed Android shell's
     // floating dock, which overlays the page's own floor; it is zero in every
     // other shell and on the web, and it closes itself as that keyboard opens
-    // (admin/src/styles.css, `--nessie-native-dock-clearance`).
+    // (admin/src/styles.css, `--nessie-native-dock-clearance`). The installed
+    // iPad shell lets the page reach the window floor, so the base padding
+    // grows to the home indicator's inset there when that is larger
+    // (`--nessie-native-home-clearance`); it is unset everywhere else.
     <div
       className="flex-shrink-0 px-5"
       style={{
         paddingBottom:
-          'calc(14px + var(--keyboard-inset, 0px) + var(--nessie-native-dock-clearance, 0px))',
+          'calc(max(14px, var(--nessie-native-home-clearance, 0px)) + var(--keyboard-inset, 0px) + var(--nessie-native-dock-clearance, 0px))',
       }}
     >
       {pendingAgentInvites.length > 0 && (

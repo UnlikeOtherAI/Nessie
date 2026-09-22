@@ -77,6 +77,10 @@ export const MobileAdminWebView = ({
     <WebView
       allowsBackForwardNavigationGestures={NATIVE_BACK_FORWARD_GESTURES}
       domStorageEnabled
+      // WebKit sizes the up/down/done bar over the keyboard for form pages; a
+      // chat composer has no fields to step between, so it is only a band of
+      // lost height on the iPhone and the iPad.
+      hideKeyboardAccessoryView
       injectedJavaScriptBeforeContentLoaded={wrapNativeWebViewScript(nativeShellInfoScript(shellInfo))}
       injectedJavaScript={wrapNativeWebViewScript(`${nativeShellInfoScript(shellInfo)}\n${INJECTED}`)}
       key={webviewKey}
@@ -107,6 +111,16 @@ export const MobileAdminWebView = ({
       // button (nessie:full-refresh).
       pullToRefreshEnabled={false}
       ref={webRef}
+      // The document never scrolls: `body` is `overflow: hidden` at the live
+      // height and every scroller is an element inside it. WKWebView still
+      // gives its own scroll view room as the keyboard rises, measured against
+      // the frame from before the shell ends it at the keyboard's top
+      // (src/lib/keyboard-overlap.ts), so the whole page could be dragged up
+      // off the screen, and WebKit panned it there itself to reveal a focused
+      // field. With scrolling off, react-native-webview also resets any offset
+      // the keyboard forces onto it. Inner scrollers are separate native
+      // views and keep scrolling. iOS only: Android resizes the page instead.
+      scrollEnabled={platform !== 'ios'}
       sharedCookiesEnabled
       source={{ uri: sourceUri }}
       style={{ flex: 1, backgroundColor }}

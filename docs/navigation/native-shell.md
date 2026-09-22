@@ -264,6 +264,27 @@ selected tab) and the incoming-call ring (`warning`); nothing else buzzes.
   immersive call, the frame geometry and the keyboard rule are unit-covered and
   were confirmed on the device by screenshot — a headless browser cannot show
   a system taskbar or a soft keyboard.
+- **iOS: the WebView's own scroll view is off, and the keyboard has no
+  accessory bar.** The document never scrolls — `body` is `overflow: hidden`
+  at the live height and every scroller is an element inside it — so
+  `MobileAdminWebView` sets `scrollEnabled` false on iOS. WKWebView gives its
+  scroll view room as the keyboard rises, measured against the frame from
+  before the shell ends it at the keyboard's top edge (`keyboard-overlap.ts`),
+  so with scrolling on the whole page could be dragged up off the screen by
+  its composer, and a reply thread was panned there on focus. With scrolling
+  off, react-native-webview also resets any offset the keyboard forces.
+  `hideKeyboardAccessoryView` removes WebKit's up/down/done bar on the iPhone
+  and the iPad. Android keeps its scroll view: its page resizes instead.
+- **iPad: the page reaches the window floor.** The shell marks the frame
+  `has-native-ipad-shell`, which zeroes `.admin-shell > main`'s home-indicator
+  padding. That padding left a band under every surface, and a detached
+  thread panel — `position: fixed`, but inside `.phone-navigation-screen`,
+  which clips — lost its composer's last 20pt to it. The floor's two owners
+  clear the indicator themselves through `--nessie-native-home-clearance`
+  (`env(safe-area-inset-bottom)` on that frame, unset elsewhere): the channel
+  composer takes `max(14px, clearance)`, `PageBody` adds it to its padding. A
+  docked keyboard ends the frame above the indicator, so both read 0 while it
+  is up. The web, the iPhone and Android are unchanged.
 - **`theme` and `bg` — the page publishes the chrome palette.**
   `NativeChromeThemeBridge` (`admin/src/bridges/`) renders an empty
   `.native-chrome-palette` element as a direct child of `.admin-frame` and
