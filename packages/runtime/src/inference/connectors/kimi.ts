@@ -15,6 +15,7 @@ import {
 } from './connector-invocations.js'
 import {
   collectAnthropicStream,
+  nativeToolCallsFromContent,
   normalizeAnthropicFinishReason,
   parseKimiToolCalls,
   toAnthropicPayload,
@@ -206,7 +207,9 @@ export const createKimiConnector = (
           .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
           .map((block) => block.text)
           .join('')
-        const { outputText, toolCalls } = parseKimiToolCalls(rawText, request.requestId)
+        const textParsed = parseKimiToolCalls(rawText, request.requestId)
+        const outputText = textParsed.outputText
+        const toolCalls = [...nativeToolCallsFromContent(parsed.content), ...textParsed.toolCalls]
         const baseFinishReason = normalizeAnthropicFinishReason(parsed.stop_reason)
         const finishReason: NormalizedFinishReason | undefined =
           toolCalls.length > 0 ? 'tool-call' : baseFinishReason
@@ -272,10 +275,9 @@ export const createKimiConnector = (
           next = await stream.next()
         }
 
-        const { outputText, toolCalls } = parseKimiToolCalls(
-          next.value.outputText,
-          request.requestId,
-        )
+        const textParsed = parseKimiToolCalls(next.value.outputText, request.requestId)
+        const outputText = textParsed.outputText
+        const toolCalls = [...next.value.toolCalls, ...textParsed.toolCalls]
         const finishReason: NormalizedFinishReason | undefined =
           toolCalls.length > 0 ? 'tool-call' : next.value.finishReason
 
