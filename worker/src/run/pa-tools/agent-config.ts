@@ -319,6 +319,7 @@ const AgentToolCatalogInputSchema = z.object({
 
 const describeCatalogEntry = (entry: AgentToolCatalogEntry): string =>
   `- ${entry.label} | key=${entry.key} | ${entry.allowMode ? 'off by default, set true to enable' : 'on by default, set false to disable'}`
+  + (entry.projectChannelOnly ? ' | works only in the project channels it is bound to' : '')
   + (entry.requiresTodos ? ' | needs to-dos enabled' : '')
   + `\n  ${entry.summary}`
 

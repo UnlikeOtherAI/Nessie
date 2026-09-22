@@ -317,6 +317,7 @@ dbTest('the catalogue lists a live connector and can emit no secret', async () =
         'key',
         'kind',
         'label',
+        'projectChannelOnly',
         'requiresTodos',
         'restriction',
         'summary',

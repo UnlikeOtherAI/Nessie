@@ -211,6 +211,20 @@ but not comment edit/delete or file removal. The full ticket tool list is in
 Personal Assistant"; the comment, file and label invariants are in
 [ticket-activity.md](ticket-activity.md).
 
+A lent tool is one the agent's policy sets `true`
+(`resolveProjectDelegatedToolIds`); an absent key lends nothing. So every
+catalogue that tells an author how to grant a tool treats a
+`projectDelegatedOnly` builtin as allow-mode, off by default, exactly like an
+explicit grant: the Agent Designer page's own catalogue
+(`admin/src/facades/designer/tool-catalog.ts`) and the member-safe projection
+the Designer's prompt and `agent_tool_catalog` render
+(`loadAgentToolCatalog`, which also marks each one `projectChannelOnly`). A
+catalogue that derived the mode from `requiresExplicitGrant` alone told the
+Designer these tools were "on by default", and it built a board-owning agent
+without a single ticket tool. Only `ticket_board_create` is also
+`requiresExplicitGrant`, so it alone stays with the owner grant verbs; the rest
+are ordinary policy keys `agent_create` and `agent_update` accept.
+
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 
 

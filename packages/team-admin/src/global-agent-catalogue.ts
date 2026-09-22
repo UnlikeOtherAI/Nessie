@@ -89,6 +89,7 @@ const describeTool = (entry: AgentToolCatalogEntry): string =>
   bullet(
     `${entry.key} (${entry.label}) — ${entry.summary} `
     + `[${entry.allowMode ? 'off by default; set true' : 'on by default; set false to remove'}`
+    + `${entry.projectChannelOnly ? '; works only in the project channels it is bound to' : ''}`
     + `${entry.requiresTodos ? '; needs todosEnabled' : ''}]`,
   )
 
@@ -232,8 +233,11 @@ const parametersSection = (avatarLineText: string): string[] => [
   ),
   bullet(
     'toolPolicy — a sparse map of tool key to boolean. Built-in tools are ON '
-    + 'unless the policy says false; connector tools and explicit-grant tools '
-    + 'are OFF unless the policy says true.',
+    + 'unless the policy says false; connector tools, explicit-grant tools and '
+    + 'project board tools are OFF unless the policy says true. An agent that '
+    + 'works a project\'s board needs every board tool it will use set true, '
+    + 'and it reaches that board only from the project\'s channels it is bound '
+    + 'to, on a person\'s turn.',
   ),
   avatarLineText,
   bullet(

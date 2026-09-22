@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { loadAgentToolCatalog } from '@nessie/team-admin'
+
+import { PEER_PROJECT_TOOL_IDS, resolveProjectDelegatedToolIds } from '../execute/run-setup.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   runAgentBindChannelTool,
@@ -182,6 +185,55 @@ test('agent_create refuses a tool policy that grants an explicit-grant tool', as
 
   assert.match(message, /Explicit-grant tools are managed only from the owner/)
   assert.equal(createCalls, 0)
+})
+
+// F11 end to end: the catalogue the Designer reads says how to give a board
+// tool, agent_create stores what it was told, and run setup lends exactly
+// that in the agent's project channel. The catalogue once called these "on by
+// default", so a Designer that followed it wrote nothing and built a CTO with
+// no ticket tools at all.
+test('a Designer-built agent that works a board is created holding the board tools', async () => {
+  const created: Array<Record<string, unknown>> = []
+  const context = buildContext('member', {
+    agent: {
+      create: async (input: { data: Record<string, unknown> }) => {
+        created.push(input.data)
+        return {
+          ...buildAgentRow({ channelIds: [], id: AGENT_ID, name: 'CTO', role: 'cto' }),
+          ...input.data,
+        }
+      },
+      findFirst: async () => ({ projectId: null }),
+    },
+    toolRegistryEntry: { findMany: async () => [] },
+  })
+
+  const catalogue = await loadAgentToolCatalog(context.prisma, { organizationId: ORG_ID })
+  const boardTools = catalogue.togglable.filter((entry) => entry.projectChannelOnly)
+  assert.ok(boardTools.some((entry) => entry.key === 'ticket_create'))
+  // Following the catalogue: an allow-mode key is granted by writing `true`,
+  // a deny-mode one by writing nothing.
+  const toolPolicy = Object.fromEntries(
+    boardTools.filter((entry) => entry.allowMode).map((entry) => [entry.key, true]),
+  )
+  assert.equal(Object.keys(toolPolicy).length, boardTools.length)
+
+  const originalWarn = console.warn
+  console.warn = () => undefined
+  try {
+    await runAgentCreateTool(context, { name: 'CTO', role: 'cto', toolPolicy })
+  } finally {
+    console.warn = originalWarn
+  }
+
+  const stored = created[0]?.['toolPolicy'] as Record<string, boolean>
+  const lent = resolveProjectDelegatedToolIds(true, stored)
+  for (const entry of boardTools) {
+    assert.equal(stored[entry.key], true, `${entry.key} is granted`)
+    assert.equal(lent.has(entry.key), PEER_PROJECT_TOOL_IDS.has(entry.key), `${entry.key} is lent`)
+  }
+  assert.ok(lent.has('ticket_create'))
+  assert.equal(resolveProjectDelegatedToolIds(true, {}).size, 0, 'an unwritten grant lends nothing')
 })
 
 test('agent_create runs the shared avatar seam and survives it failing', async () => {
