@@ -20,6 +20,8 @@ export type OllamaChatEvent = {
   inputTokens?: number
   outputTokens?: number
   text?: string
+  /** The model's separate thinking (`message.thinking`), when asked for. */
+  thinking?: string
   toolCalls?: ProviderToolCall[]
 }
 
@@ -60,6 +62,10 @@ const messageForOllama = (message: ProviderMessage): Record<string, unknown> => 
     return {
       content: message.content === null ? '' : contentForOllama(message.content),
       role: message.role,
+      // Ollama's assistant message carries the turn's thinking under the same
+      // name it streams it, so a thinking model keeps its own context across
+      // a tool round.
+      ...(message.reasoning ? { thinking: message.reasoning } : {}),
       ...(message.toolCalls === undefined ? {} : {
         tool_calls: message.toolCalls.map((call) => ({
           function: { arguments: call.arguments, name: call.toolName },
@@ -143,6 +149,12 @@ const parseChatObject = (
   if (content !== undefined && (typeof content !== 'string' || content.length > MAX_CHAT_LINE_BYTES)) {
     throw new OllamaChatError('protocol_error')
   }
+  const thinkingValue = message?.thinking
+  if (thinkingValue !== undefined
+    && (typeof thinkingValue !== 'string' || thinkingValue.length > MAX_CHAT_LINE_BYTES)) {
+    throw new OllamaChatError('protocol_error')
+  }
+  const thinking = typeof thinkingValue === 'string' && thinkingValue.length > 0 ? thinkingValue : undefined
   // Ollama commonly repeats an empty assistant message on its terminal line
   // after the text arrived in earlier chunks. It is valid framing, not a text
   // delta and not a malformed response.
@@ -158,11 +170,13 @@ const parseChatObject = (
       inputTokens: nonNegativeInteger(body.prompt_eval_count),
       outputTokens: nonNegativeInteger(body.eval_count),
       ...(text === undefined ? {} : { text }),
+      ...(thinking === undefined ? {} : { thinking }),
       ...(toolCalls === undefined ? {} : { toolCalls }),
     }
     : {
       done: false,
       ...(text === undefined ? {} : { text }),
+      ...(thinking === undefined ? {} : { thinking }),
       ...(toolCalls === undefined ? {} : { toolCalls }),
     }
 }
@@ -207,6 +221,14 @@ export const streamOllamaChat = async function* (input: {
   fetchImpl?: OllamaFetch
   origin: string
   signal: AbortSignal
+  /**
+   * Ask Ollama for the model's separate thinking. The host loop decides this
+   * from the attempt's request AND the model's advertised `thinking`
+   * capability: Ollama refuses `think: true` on a model without it, and levels
+   * (`low`/`medium`/`high`) are accepted by so few models, with no way to
+   * discover which, that the switch stays boolean.
+   */
+  think: boolean
 }): AsyncGenerator<OllamaChatEvent> {
   const base = assertLoopbackOrigin(input.origin)
   const fetchImpl = input.fetchImpl ?? defaultOllamaFetch
@@ -223,10 +245,11 @@ export const streamOllamaChat = async function* (input: {
           ...(input.attempt.maxOutputTokens === undefined ? {} : { num_predict: input.attempt.maxOutputTokens }),
         },
         stream: true,
-        // Nessie's worker owns reasoning policy and budgets. Asking Ollama for
-        // separate hidden thinking can consume the whole output allowance and
-        // leave no answer text for the conversation.
-        think: false,
+        // Thinking rides its own stream field and is shown in the thought log;
+        // a silent utility call, a `none` effort or a model without the
+        // capability leave it off, so a bounded `num_predict` is never spent
+        // on hidden thinking.
+        think: input.think,
         ...(input.attempt.tools.length === 0 ? {} : { tools: toolDefinitionsForOllama(input.attempt) }),
       }),
       headers: { 'content-type': 'application/json' },

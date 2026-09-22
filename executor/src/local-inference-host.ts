@@ -55,6 +55,7 @@ const knownCapabilities = (model: ObservedOllamaModel): ObservedLocalModel['capa
   if (model.capabilities.includes('completion')) capabilities.add('text')
   if (model.capabilities.includes('tools')) capabilities.add('tools')
   if (model.capabilities.includes('structured_output')) capabilities.add('json_schema')
+  if (model.capabilities.includes('thinking')) capabilities.add('thinking')
   return [...capabilities]
 }
 
@@ -82,14 +83,16 @@ const matchesSelectedModel = (
   && model.manifestDigest === attempt.modelDigest
 )
 
-const outputFramePayload = (text: string): string => JSON.stringify({ type: 'output_text.delta', text })
+type StreamFrameType = 'output_text.delta' | 'reasoning_text.delta'
 
-const splitFrames = (text: string): string[] => {
+const framePayload = (type: StreamFrameType, text: string): string => JSON.stringify({ type, text })
+
+const splitFrames = (type: StreamFrameType, text: string): string[] => {
   const frames: string[] = []
   let current = ''
   for (const codePoint of text) {
     const candidate = current + codePoint
-    if (Buffer.byteLength(outputFramePayload(candidate), 'utf8') <= MAX_FRAME_BYTES) {
+    if (Buffer.byteLength(framePayload(type, candidate), 'utf8') <= MAX_FRAME_BYTES) {
       current = candidate
       continue
     }
@@ -101,7 +104,8 @@ const splitFrames = (text: string): string[] => {
   return frames
 }
 
-const frameData = (text: string): string => Buffer.from(outputFramePayload(text), 'utf8').toString('base64url')
+const frameData = (type: StreamFrameType, text: string): string =>
+  Buffer.from(framePayload(type, text), 'utf8').toString('base64url')
 
 const capabilityFor = (
   attempt: LocalInferenceAttemptRequest,
@@ -343,27 +347,39 @@ export class LocalInferenceHostLoop {
     signal: AbortSignal,
   ): Promise<LocalInferenceResult> {
     let content = ''
+    let reasoning = ''
     let finishReason: LocalInferenceResult['finishReason'] = 'other'
     let inputTokens: number | null = null
     let outputTokens: number | null = null
     let toolCalls: LocalInferenceResult['toolCalls'] = []
+    const submitStream = async (type: StreamFrameType, text: string): Promise<void> => {
+      for (const frameText of splitFrames(type, text)) {
+        const frame = {
+          attemptId: attempt.attemptId,
+          data: frameData(type, frameText),
+          dispatchFence,
+          sequence: this.nextFrameSequence(attempt.attemptId),
+        }
+        await this.dependencies.api.submitFrame({ envelope: this.envelope('frames', frame), frame })
+      }
+    }
     for await (const event of streamOllamaChat({
       attempt, fetchImpl: this.dependencies.fetchImpl, origin: this.dependencies.origin, signal,
+      think: attempt.thinking === true && knownCapabilities(model).includes('thinking'),
     })) {
+      if (event.thinking !== undefined) {
+        if (Buffer.byteLength(reasoning + event.thinking, 'utf8') > MAX_OUTPUT_BYTES) {
+          throw new OllamaChatError('protocol_error')
+        }
+        reasoning += event.thinking
+        await submitStream('reasoning_text.delta', event.thinking)
+      }
       if (event.text !== undefined) {
         if (Buffer.byteLength(content + event.text, 'utf8') > MAX_OUTPUT_BYTES) {
           throw new OllamaChatError('protocol_error')
         }
         content += event.text
-        for (const frameText of splitFrames(event.text)) {
-          const frame = {
-            attemptId: attempt.attemptId,
-            data: frameData(frameText),
-            dispatchFence,
-            sequence: this.nextFrameSequence(attempt.attemptId),
-          }
-          await this.dependencies.api.submitFrame({ envelope: this.envelope('frames', frame), frame })
-        }
+        await submitStream('output_text.delta', event.text)
       }
       if (event.toolCalls !== undefined) toolCalls = event.toolCalls
       if (event.done) {
@@ -377,6 +393,7 @@ export class LocalInferenceHostLoop {
       content: content || null,
       finishReason,
       modelDigest: attempt.modelDigest,
+      reasoning: reasoning || null,
       remoteHost: null,
       remoteModel: null,
       toolCalls,

@@ -18,7 +18,7 @@ export const useCreateAgent = () => {
   return useMutation({
     mutationFn: (input: {
       avatarAttachmentId?: string
-      effort?: 'low' | 'medium' | 'high' | 'xhigh'
+      effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
       /**
        * Which linked personal subscription a `subscription/<key>` model spends.
@@ -56,7 +56,7 @@ export const useUpdateAgent = () => {
   return useMutation({
     mutationFn: (input: {
       agentId: string
-      effort?: 'low' | 'medium' | 'high' | 'xhigh'
+      effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh'
       model?: string
       /** See `useCreateAgent`: which linked account the model spends. */
       modelSubscriptionId?: string | null

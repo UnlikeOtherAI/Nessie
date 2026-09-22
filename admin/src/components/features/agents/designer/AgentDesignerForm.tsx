@@ -55,6 +55,7 @@ type AgentDesignerFormProps = {
 // Reasoning effort maps only to the provider's `reasoning_effort` — how hard
 // the model thinks per turn. Spend ceilings live in the Run limits fieldset.
 const EFFORTS: { hint: string; label: string; value: string }[] = [
+  { value: 'none', label: 'Off', hint: 'no separate thinking where the model can switch it off' },
   { value: 'low', label: 'Low', hint: 'quick, shallow reasoning' },
   { value: 'medium', label: 'Medium', hint: 'balanced — default' },
   { value: 'high', label: 'High', hint: 'thorough multi-step reasoning' },

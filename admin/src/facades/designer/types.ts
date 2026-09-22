@@ -11,7 +11,7 @@ import type { RunLimitsField, RunLimitsFormState } from './run-limits'
  * `facades/designer/*` from importing the hook that happens to produce them.
  */
 
-export type AgentEffortValue = 'low' | 'medium' | 'high' | 'xhigh'
+export type AgentEffortValue = 'none' | 'low' | 'medium' | 'high' | 'xhigh'
 export type AgentVisibilityValue = 'private' | 'team'
 
 export type AgentFormState = {
