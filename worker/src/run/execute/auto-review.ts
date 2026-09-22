@@ -2,6 +2,7 @@ import { BUILTIN_TOOL_DEFINITIONS, type InferenceResult, type InvocationRecord }
 import type { PrismaClient } from '@prisma/client'
 import { z } from 'zod'
 
+import { executorToolName } from '../executor-toolset.js'
 import { truncateToolResult, stableJsonStringify } from '../tool-util.js'
 import type { RunContext } from './types.js'
 
@@ -14,8 +15,8 @@ export const LOCAL_MCP_DIRECTORY_TOOL_NAMES = new Set([
 
 /** The executor operations that can cause an action, rather than observe one. */
 export const EXECUTOR_ACTUATION_TOOL_NAMES = new Set([
-  'executor.browser.act',
-  'executor.command.run',
+  executorToolName('browser.act'),
+  executorToolName('command.run'),
 ])
 
 export type ReviewableToolSurface = 'builtin' | 'mcp' | 'executor'

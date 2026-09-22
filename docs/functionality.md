@@ -276,7 +276,9 @@ Root app layout:
   resume state are server-only and never appear in approval responses.
 - A tool rule with `conditions.reviewMode: 'auto'` runs one `NESSIE_UTILITY_MODEL`
   reviewer after deterministic authorization and before dispatch, only for unsafe
-  builtins, real remote MCP calls, and `executor.browser.act` / `executor.command.run`.
+  builtins, real remote MCP calls, and the executor actuation operations
+  `browser.act` / `command.run` (offered to the model as `executor_browser_act` /
+  `executor_command_run`; the dotted spelling stays the registry id and the audit action).
   A deterministic denial still wins; an allow dispatches, a deny returns
   `auto_review_denied`, and an escalation, timeout, or malformed response enters
   this same human-approval pause. Each reviewer verdict is a `tool.auto_reviewed`

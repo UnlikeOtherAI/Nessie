@@ -591,10 +591,10 @@ test('main MCP: an approval-required allow suspends before dispatch', async () =
 test('auto-review classifies only unsafe builtins, remote MCP calls, and executor actuation', () => {
   const mcpNames = new Set(['mcp_publish', 'mcp_find_tools', 'mcp_load_tools', 'mcp_drop_tools'])
   const executorNames = new Set([
-    'executor.browser.act',
-    'executor.browser.observe',
-    'executor.command.run',
-    'executor.file.read',
+    'executor_browser_act',
+    'executor_browser_observe',
+    'executor_command_run',
+    'executor_file_read',
   ])
 
   for (const builtin of BUILTIN_TOOL_DEFINITIONS) {
@@ -608,10 +608,10 @@ test('auto-review classifies only unsafe builtins, remote MCP calls, and executo
   assert.equal(reviewableToolSurface('mcp_find_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
   assert.equal(reviewableToolSurface('mcp_load_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
   assert.equal(reviewableToolSurface('mcp_drop_tools', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-  assert.equal(reviewableToolSurface('executor.browser.act', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
-  assert.equal(reviewableToolSurface('executor.command.run', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
-  assert.equal(reviewableToolSurface('executor.browser.observe', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
-  assert.equal(reviewableToolSurface('executor.file.read', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+  assert.equal(reviewableToolSurface('executor_browser_act', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
+  assert.equal(reviewableToolSurface('executor_command_run', { executorToolNames: executorNames, mcpToolNames: mcpNames }), 'executor')
+  assert.equal(reviewableToolSurface('executor_browser_observe', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
+  assert.equal(reviewableToolSurface('executor_file_read', { executorToolNames: executorNames, mcpToolNames: mcpNames }), null)
 })
 
 test('auto-review allows a live remote MCP call once and meters one utility invocation', async () => {
@@ -682,13 +682,13 @@ for (const [reviewer, expectedReason] of [
 test('main executor: a policy deny intercepts before dispatch and is audited', async () => {
   const harness = await runLoop({
     executorTools: {
-      'executor.file.read': { inputSummary: 'read', output: 'read', success: true },
+      'executor_file_read': { inputSummary: 'read', output: 'read', success: true },
     },
-    rules: [denyRule('executor.file.read')],
-    toolName: 'executor.file.read',
+    rules: [denyRule('executor_file_read')],
+    toolName: 'executor_file_read',
   })
   assert.deepEqual(harness.dispatchedExecutor, [])
-  const parsed = deniedOutput(harness.result, 'executor.file.read')
+  const parsed = deniedOutput(harness.result, 'executor_file_read')
   assert.equal(parsed['reason'], 'explicit_policy_deny')
   assert.ok(harness.fake.auditLog.createCalls > 0)
 })
@@ -696,19 +696,19 @@ test('main executor: a policy deny intercepts before dispatch and is audited', a
 test('main executor: an approval-required allow suspends before dispatch', async () => {
   const harness = await runLoop({
     executorTools: {
-      'executor.file.read': { inputSummary: 'read', output: 'read', success: true },
+      'executor_file_read': { inputSummary: 'read', output: 'read', success: true },
     },
-    rules: [approvalRule('executor.file.read')],
-    toolName: 'executor.file.read',
+    rules: [approvalRule('executor_file_read')],
+    toolName: 'executor_file_read',
   })
   assert.deepEqual(harness.dispatchedExecutor, [])
-  assert.equal(suspendedApproval(harness.result, 'executor.file.read'), 'approval-1')
+  assert.equal(suspendedApproval(harness.result, 'executor_file_read'), 'approval-1')
 })
 
 test('main executor: browser act writes a bounded audit-chain entry after dispatch', async () => {
   const harness = await runLoop({
     executorTools: {
-      'executor.browser.act': {
+      'executor_browser_act': {
         inputSummary: 'click button',
         output: '{"status":"acted"}',
         success: true,
@@ -716,7 +716,7 @@ test('main executor: browser act writes a bounded audit-chain entry after dispat
       },
     },
     toolArgs: { action: 'click', nodeId: 42, text: 'must not enter the audit chain' },
-    toolName: 'executor.browser.act',
+    toolName: 'executor_browser_act',
   })
 
   assert.ok(harness.dispatchedExecutor.length > 0)
@@ -736,7 +736,7 @@ test('main executor: browser act writes a bounded audit-chain entry after dispat
 test('main executor: command run audits only the argv program, never its arguments', async () => {
   const harness = await runLoop({
     executorTools: {
-      'executor.command.run': {
+      'executor_command_run': {
         inputSummary: 'run command',
         output: '{"exitCode":0}',
         success: true,
@@ -744,7 +744,7 @@ test('main executor: command run audits only the argv program, never its argumen
       },
     },
     toolArgs: { args: ['--token=not-for-audit'], program: 'tool' },
-    toolName: 'executor.command.run',
+    toolName: 'executor_command_run',
   })
 
   const entries = harness.fake.auditLog.entries.filter(
