@@ -405,13 +405,18 @@ export const collectAnthropicStream = async function* (
   const cleanupToken = registerStreamReaderCleanup(reader)
 
   try {
-    while (true) {
+    let ended = false
+    while (!ended) {
       const { done, value } = await reader.read()
       if (done) {
-        break
+        // A stream may end without the blank line that closes its last event;
+        // that event is still the model's, so it is read like every other.
+        buffer += decoder.decode()
+        if (buffer.trim()) buffer += '\n\n'
+        ended = true
+      } else {
+        buffer += decoder.decode(value, { stream: true })
       }
-
-      buffer += decoder.decode(value, { stream: true })
       // Anthropic SSE separates events by blank lines.
       let blankIndex: number
       while ((blankIndex = buffer.indexOf('\n\n')) >= 0) {

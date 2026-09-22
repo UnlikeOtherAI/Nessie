@@ -117,3 +117,16 @@ test('native blocks in a non-streaming body are read the same way', () => {
     [{ arguments: { city: 'Oslo' }, toolCallId: 'toolu_2', toolName: 'weather' }],
   )
 })
+
+test('the last event of a stream that ends without a blank line is not lost', async () => {
+  const body = [
+    'data:{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"<tool_use>{\\"name\\":\\"weather\\",\\"arguments\\":{}}"}}\n\n',
+    // The closing tag arrives in the final event, and the stream closes right
+    // after it with no terminating blank line.
+    'data:{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"</tool_use>"}}',
+  ].join('')
+  const stream = collectAnthropicStream(new Response(body, { headers: { 'content-type': 'text/event-stream' } }))
+  let next = await stream.next()
+  while (!next.done) next = await stream.next()
+  assert.equal(next.value.outputText, '<tool_use>{"name":"weather","arguments":{}}</tool_use>')
+})

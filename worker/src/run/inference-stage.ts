@@ -384,6 +384,10 @@ export const executeStage = async (
       latencyMs: Math.max(invocation.latencyMs, Date.now() - startedAt),
       metadata: {
         ...(invocation.metadata ?? {}),
+        // Why the provider stopped, as it said it: the one fact that tells a
+        // turn the model ended from one the connector cut short, readable off
+        // the ledger row long after the stream is gone.
+        ...(invocation.finishReason ? { finishReason: invocation.finishReason } : {}),
         profileId: input.profileId,
         routeSource: input.routeSource,
         routingMode: input.mode,
