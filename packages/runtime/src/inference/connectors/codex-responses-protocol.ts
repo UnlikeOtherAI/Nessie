@@ -40,7 +40,9 @@ export type CodexRequestBody = {
   tools?: Array<Record<string, unknown>>
   tool_choice?: unknown
   max_output_tokens?: number
-  reasoning?: { effort: string }
+  // `summary` asks the backend to stream reasoning summaries; without it the
+  // Responses API emits no reasoning text at all.
+  reasoning?: { effort?: string; summary?: 'auto' }
 }
 
 /**

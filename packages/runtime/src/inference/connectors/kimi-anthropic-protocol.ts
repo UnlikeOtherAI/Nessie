@@ -303,6 +303,7 @@ export const collectAnthropicStream = async function* (
   const decoder = new TextDecoder()
   let buffer = ''
   let outputText = ''
+  let reasoningText = ''
   let finishReason: NormalizedFinishReason | undefined
   let usage: InvocationUsage = {}
 
@@ -350,6 +351,7 @@ export const collectAnthropicStream = async function* (
             outputText += parsed.delta.text
             yield { type: 'output_text.delta', text: parsed.delta.text }
           } else if (parsed.delta.type === 'thinking_delta') {
+            reasoningText += parsed.delta.thinking
             yield { type: 'reasoning_text.delta', text: parsed.delta.thinking }
           }
           continue
@@ -380,6 +382,7 @@ export const collectAnthropicStream = async function* (
   return {
     finishReason,
     outputText,
+    reasoningText,
     toolCalls: [],
     usage,
   }

@@ -337,3 +337,64 @@ test('an executor read that fails says so rather than claiming there are none', 
   assert.match(systemPromptSent, /could not be read just now/)
   assert.doesNotMatch(systemPromptSent, /Executors you can reach/)
 })
+
+/**
+ * A streamed turn that thinks under OpenRouter's spelling (`delta.reasoning`),
+ * then asks for a form update so the loop takes a second round.
+ */
+const fakeReasoningToolResponse = (reasoning: string): Response => {
+  const frames = [
+    JSON.stringify({ choices: [{ delta: { reasoning } }] }),
+    JSON.stringify({
+      choices: [{ delta: { tool_calls: [{
+        function: { arguments: JSON.stringify({ name: 'Scout' }), name: 'set_name' }, id: 'call_name', index: 0,
+      }] } }],
+    }),
+  ]
+  const encoder = new TextEncoder()
+  let sent = false
+  const reader = {
+    read: async () => {
+      if (sent) return { done: true, value: undefined }
+      sent = true
+      return {
+        done: false,
+        value: encoder.encode(`${frames.map((frame) => `data: ${frame}\n\n`).join('')}data: [DONE]\n\n`),
+      }
+    },
+    releaseLock: () => {},
+  }
+  return { body: { getReader: () => reader } } as unknown as Response
+}
+
+test('the Designer shows reasoning under either spelling and gives it back on the next round', async () => {
+  const bodies: Array<Record<string, unknown>> = []
+  const responses = [fakeReasoningToolResponse('Pick a short, memorable name.'), fakeDoneResponse()]
+  const modelClient = {
+    chatModel: 'test-chat-model',
+    fetchCompletion: async (body: Record<string, unknown>) => {
+      bodies.push(body)
+      return responses.shift() ?? fakeDoneResponse()
+    },
+    usage: { record: () => {} },
+  } as unknown as ModelClient
+  const { chunks, reply } = createFakeReply()
+
+  await streamDesignerChat(
+    reply,
+    { formState: baseFormState, messages: [{ content: 'name it', role: 'user' }] },
+    modelClient,
+    { actorContext, designerModel: 'test-chat-model', ledgerIdentity: null, modelProvider: 'openai', prisma: fakePrisma() },
+    {},
+  )
+
+  assert.ok(
+    chunks.some((chunk) => chunk.includes('event: reasoning.delta') && chunk.includes('Pick a short, memorable name.')),
+    'the reasoning delta reached the browser',
+  )
+  assert.equal(bodies.length, 2)
+  const replayed = (bodies[1]!.messages as Array<Record<string, unknown>>).find((m) => m.role === 'assistant' && m.tool_calls)
+  // On the wire under DeepSeek's name; the connector strips it for dialects
+  // that have no such field, so the Designer never has to know which it is on.
+  assert.equal(replayed?.reasoning_content, 'Pick a short, memorable name.')
+})

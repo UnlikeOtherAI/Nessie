@@ -418,6 +418,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         // Persist before the bounded no-tools turn, so a reclaim cannot replay work.
         messages.push(coverProviderInputComponent(redactMessageContent({
           content: safeOutputText || null,
+          ...(result.reasoningText ? { reasoning: result.reasoningText } : {}),
           role: 'assistant',
         }), 'assistant_output'))
         messages.push(coverProviderInputComponent({
@@ -446,8 +447,12 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
         return finish(null, safeOutputText)
       }
 
+      // The turn's reasoning travels with it: DeepSeek refuses the tool-result
+      // round (HTTP 400) unless every assistant turn's `reasoning_content` is
+      // passed back, and the connector drops it for dialects with no such field.
       messages.push(coverProviderInputComponent(redactMessageContent({
         content: safeOutputText || null,
+        ...(result.reasoningText ? { reasoning: result.reasoningText } : {}),
         role: 'assistant',
         toolCalls: result.toolCalls,
       }), 'assistant_output'))

@@ -8,6 +8,8 @@ import type {
 export type CapturedStreamResult = {
   finishReason?: NormalizedFinishReason
   outputText: string
+  /** Every reasoning delta the stream carried, joined in order. */
+  reasoningText: string
   toolCalls: ProviderToolCall[]
   usage: InvocationUsage
 }

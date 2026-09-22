@@ -126,11 +126,13 @@ Facts not restated there:
   route, while inference is pinned to `https://api.deepseek.com/v1`. The
   default is the canonical `deepseek-flash` (DeepSeek-V4.1-Flash); the older
   `deepseek-v4-flash` spelling is an upstream alias, never the default Nessie
-  advertises. DeepSeek thinking is explicitly disabled because the shared
-  tool-turn history does not carry provider `reasoning_content`; this uses the
-  provider's documented supported nonthinking mode and keeps tool-result
-  rounds valid. It sends the documented `max_tokens` field, not
-  `max_completion_tokens`, to preserve the run's output budget.
+  advertises. The lane runs the compiled `deepseek` connector's one dialect —
+  thinking on for the streamed turn, off for silent utility calls, the
+  documented `max_tokens` field, and every assistant turn's
+  `reasoning_content` replayed so DeepSeek accepts the tool-result round
+  ([inference-reasoning.md](inference-reasoning.md)). What the lane adds is
+  the pinned egress every direct DeepSeek key gets, never a second wire
+  contract.
 - **Generative inference only.** Main turns, delegates, compaction and
   checkpoint notes follow the run's lane. Engagement decisions (made on the
   boot-time model client before a run exists), embeddings and memory, avatar

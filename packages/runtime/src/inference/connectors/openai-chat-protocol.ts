@@ -26,6 +26,9 @@ export type OpenAiChatResponse = {
     finish_reason?: string | null
     message?: {
       content?: string | null
+      // DeepSeek, DashScope and vLLM-style engines; OpenRouter says `reasoning`.
+      reasoning_content?: string | null
+      reasoning?: string | null
       tool_calls?: Array<{
         id: string
         type: 'function'
@@ -51,6 +54,7 @@ type OpenAiStreamChunk = {
     delta?: {
       content?: string | null
       reasoning_content?: string | null
+      reasoning?: string | null
       tool_calls?: Array<{
         index: number
         id?: string
@@ -110,6 +114,17 @@ export const normalizeFinishReason = (
   }
 }
 
+/**
+ * The reasoning a chat/completions message or delta carries, under whichever
+ * of the two field names the provider uses. `reasoning_content` is DeepSeek's
+ * name, adopted by DashScope, vLLM and SGLang; OpenRouter normalises every
+ * upstream to `reasoning`. Production's default route is OpenRouter, so a
+ * reader that knew only the first name showed no thinking at all there.
+ */
+export const reasoningTextFromOpenAi = (
+  part: { reasoning_content?: string | null; reasoning?: string | null } | undefined,
+): string => part?.reasoning_content || part?.reasoning || ''
+
 export const usageFromOpenAi = (
   usage: OpenAiUsage | undefined,
 ): InvocationUsage => {
@@ -160,6 +175,7 @@ export const collectChatStream = async function* (
   let fallbackMessageContent = ''
   let finishReason: NormalizedFinishReason | undefined
   let outputText = ''
+  let reasoningText = ''
   const toolCalls = new Map<number, { args: string; id: string; name: string }>()
   let usage: InvocationUsage = {}
   let yieldedDelta = false
@@ -188,6 +204,7 @@ export const collectChatStream = async function* (
           return {
             finishReason,
             outputText,
+            reasoningText,
             toolCalls: Array.from(toolCalls.entries())
               .sort(([left], [right]) => left - right)
               .map(([, value]) => ({
@@ -212,9 +229,10 @@ export const collectChatStream = async function* (
           }
 
           const deltaText = choice?.delta?.content ?? ''
-          const reasoningText = choice?.delta?.reasoning_content ?? ''
-          if (reasoningText) {
-            yield { type: 'reasoning_text.delta', text: reasoningText }
+          const reasoningDelta = reasoningTextFromOpenAi(choice?.delta)
+          if (reasoningDelta) {
+            reasoningText += reasoningDelta
+            yield { type: 'reasoning_text.delta', text: reasoningDelta }
           }
 
           if (deltaText) {
@@ -280,6 +298,7 @@ export const collectChatStream = async function* (
   return {
     finishReason,
     outputText,
+    reasoningText,
     toolCalls: Array.from(toolCalls.entries())
       .sort(([left], [right]) => left - right)
       .map(([, value]) => ({
@@ -355,6 +374,9 @@ export const mapMessagesToOpenAi = (
     if (message.role === 'assistant') {
       return {
         content: message.content ?? '',
+        // Always on the wire under DeepSeek's name; the dialect layer strips
+        // it for providers that have no such field (OpenAI rejects it).
+        ...(message.reasoning ? { reasoning_content: message.reasoning } : {}),
         role: 'assistant',
         tool_calls: message.toolCalls?.map((toolCall) => ({
           function: {

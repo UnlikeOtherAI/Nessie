@@ -182,6 +182,8 @@ export const MultiProviderResultSchema = z.object({
   correlationId: NonEmptyStringSchema.optional(),
   status: MultiProviderResultStatusSchema,
   finalAnswer: z.string().optional(),
+  /** The answering stage's visible reasoning, for replay on the next turn. */
+  finalReasoning: z.string().optional(),
   structuredOutput: z.unknown().optional(),
   answerOwner: AnswerOwnerSchema.optional(),
   toolCalls: z.array(ProviderToolCallSchema),

@@ -35,6 +35,15 @@ The base URL and credential are unchanged: the configured Ledger base URL has
 its path rewritten to the service id, and the same Ledger app key authenticates
 it. An agent's own model selection still outranks the deployment default.
 
+The service id also selects the connector's reasoning dialect: Ledger's
+`deepseek` service is spoken to in DeepSeek's wire contract and its `alibaba`
+service (Alibaba Cloud Model Studio, DashScope) in DashScope's, while every
+other service takes OpenAI's `reasoning_effort` alone — see
+[docs/standards/inference-reasoning.md](../standards/inference-reasoning.md).
+Ledger renamed that service from `qwen` to `alibaba`; migration
+`20260922080000_rename_qwen_provider_to_alibaba` moves the agents, provider
+rows and budget degrade targets that still named the old id.
+
 ## Embedding model and vector width
 
 Embeddings are routed separately from chat, because they are a separate

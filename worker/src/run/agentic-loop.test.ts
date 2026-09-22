@@ -1073,3 +1073,28 @@ test('the retries an execution spends are carried in its checkpoints', async () 
     'so the next executor starts one retry down rather than at six',
   )
 })
+
+test('a turn\'s reasoning rides on its assistant message so the provider can have it back', async () => {
+  // DeepSeek refuses a tool-result round (HTTP 400) unless every assistant
+  // turn's reasoning_content is replayed; the loop is where that turn is built.
+  let observed: ProviderMessage[] = []
+  let calls = 0
+  await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async () => ({ inputSummary: 'noop', output: 'ran', success: true }),
+    initialMessages: initial,
+    runInference: async (messages) => {
+      calls += 1
+      if (calls === 1) {
+        return { ...toolCallInference('calling the tool'), reasoningText: 'The tool has what I need.' }
+      }
+      observed = messages
+      return { ...toolCallInference('done'), toolCalls: [] }
+    },
+    tools: [],
+  })
+  const assistant = observed.find((message) => message.role === 'assistant')
+  assert.equal(assistant?.role === 'assistant' && assistant.reasoning, 'The tool has what I need.')
+  assert.equal(assistant?.role === 'assistant' && assistant.content, 'calling the tool')
+})

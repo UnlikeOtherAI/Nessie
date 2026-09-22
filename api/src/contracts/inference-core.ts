@@ -146,6 +146,7 @@ export const MultiProviderResultSchema = z.object({
   correlationId: NonEmptyStringSchema.optional(),
   status: z.enum(['completed', 'failed']),
   finalAnswer: z.string().optional(),
+  finalReasoning: z.string().optional(),
   structuredOutput: z.unknown().optional(),
   answerOwner: z
     .object({

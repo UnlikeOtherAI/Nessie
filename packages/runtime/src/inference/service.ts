@@ -61,6 +61,7 @@ const buildInferenceResult = (
     finishReason?: InferenceResult['finishReason']
     invocations: InferenceResult['invocations']
     outputText: string
+    reasoningText?: string
     requestId: string
     toolCalls: InferenceResult['toolCalls']
   },
@@ -71,6 +72,7 @@ const buildInferenceResult = (
   model,
   outputText: result.outputText,
   provider,
+  ...(result.reasoningText ? { reasoningText: result.reasoningText } : {}),
   requestId: result.requestId,
   toolCalls: result.toolCalls,
 })
@@ -112,6 +114,7 @@ export const createInferenceService = (
       finishReason: providerResult.finishReason,
       invocations: [providerResult.invocation],
       outputText: providerResult.outputText,
+      reasoningText: providerResult.reasoningText,
       requestId,
       toolCalls: providerResult.toolCalls,
     })
@@ -153,6 +156,7 @@ export const createInferenceService = (
       finishReason: next.value.finishReason,
       invocations: [next.value.invocation],
       outputText: next.value.outputText,
+      reasoningText: next.value.invocation ? next.value.reasoningText : undefined,
       requestId,
       toolCalls: next.value.toolCalls,
     })
