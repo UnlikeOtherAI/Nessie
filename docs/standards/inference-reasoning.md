@@ -30,7 +30,22 @@ invariant and points here; **this file is the rule**.
 
    `reasoning_effort` is sent on every dialect exactly as `Agent.effort` maps
    it ([tech-and-run-budgets.md](tech-and-run-budgets.md)); DeepSeek
-   documents that it maps `medium` to `high` itself.
+   documents that it maps `medium` to `high` itself. **No provider
+   standardises these levels and none offers an endpoint that lists what a
+   model accepts** — OpenAI takes `low/medium/high` (+`xhigh`, `minimal`,
+   `none` on newer models only), DeepSeek `low/high/max`, DashScope
+   `enable_thinking` plus `thinking_budget` on some families and
+   `reasoning_effort` on others, OpenRouter a `reasoning.effort` it maps per
+   upstream, Ollama a boolean `think` with `low/medium/high` on a handful of
+   models, Anthropic a token budget. Nessie's vocabulary is therefore the
+   standard: `Agent.effort` is `none | low | medium | high | xhigh`, each
+   dialect clamps it to what its provider takes, and the only per-model
+   discovery in the estate is Ollama's `thinking` capability flag from
+   `/api/show`, which decides whether `think` is sent at all.
+   **`none` is the off switch**: DeepSeek gets `thinking.type: disabled`,
+   DashScope `enable_thinking: false`, Ollama `think: false`, Codex no
+   `reasoning` object, and no dialect ever sends the literal `none` as an
+   effort, because OpenAI's older reasoning models reject it.
 3. **Thinking is requested only where a person can see it.** A streamed,
    non-JSON turn feeds the run's thought log, so it runs with thinking on. A
    silent utility call — compaction, checkpoint notes, delegates, JSON
@@ -63,6 +78,22 @@ invariant and points here; **this file is the rule**.
    `reasoning.summary`, so the Codex connector sends `summary: 'auto'`;
    without it a Codex agent's bubble never filled.
 
+## The local lane
+
+A local Ollama agent thinks under the same rule. The worker sets `thinking:
+true` on the sealed attempt for a live, shown turn whose effort is not
+`none`, and leaves it off for silent utility calls; the host sends Ollama
+`think: true` only when the attempt asks **and** the model advertises the
+`thinking` capability, because Ollama refuses the switch on a model without
+it. Thinking streams back as `reasoning_text.delta` frames — the same
+vocabulary as a cloud connector, so the thought log needs no local special
+case — and the receipt carries the joined `reasoning`, which the loop replays
+to Ollama as the assistant message's `thinking` field on a tool round. Both
+fields are optional on the wire so an older host and an older server keep
+reading each other. Ollama's per-model levels are not sent: too few models
+accept them and nothing discovers which, so on this lane effort collapses to
+on or off ([local-ollama-agents.md](local-ollama-agents.md)).
+
 ## What is deliberately not done
 
 - **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking.
@@ -70,9 +101,6 @@ invariant and points here; **this file is the rule**.
   must be replayed with signatures on tool rounds — a separate protocol
   effort. The stream reader already forwards `thinking_delta` if the backend
   sends one.
-- **Local Ollama** sends `think: false` on purpose: the worker owns reasoning
-  policy there, and hidden thinking could consume the whole output allowance
-  ([local-ollama-agents.md](local-ollama-agents.md)).
 - **OpenRouter's `reasoning_details` blocks are not replayed.** Omitting them
   loses reasoning continuity across a tool round on some upstreams; it does
   not fail the request.

@@ -404,8 +404,10 @@ Choose `num_ctx` explicitly: initially 8192, capped by observed model limits
 and the existing input/output admission; expose it only in advanced settings
 when a context failure makes changing it useful. Unknown limits remain unknown;
 a conservative configured cap is labelled as such. `num_predict` receives the
-run's allowed output, `keep_alive` is bounded (five minutes), and unsupported
-reasoning-effort options are omitted without pretending they changed quality.
+run's allowed output, `keep_alive` is bounded (five minutes), and Ollama's
+per-model reasoning levels are omitted without pretending they changed
+quality — `think` is a boolean decided by the attempt and the model's
+advertised `thinking` capability ([the standard](../../standards/inference-reasoning.md)).
 The hardware smoke establishes the tested Ollama minimum; the current import
 client's `0.34.0` floor is not evidence that every older chat API is incompatible.
 Use a capability/version compatibility table, initially tested at 0.34.1.

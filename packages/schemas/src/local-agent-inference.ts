@@ -113,7 +113,9 @@ const LocalSocketSchema = z.union([
 ])
 
 export const ObservedLocalModelSchema = z.object({
-  capabilities: z.array(z.enum(['text', 'tools', 'json_schema'])).max(16),
+  // `thinking` is Ollama's own advertised capability, read from `/api/show`;
+  // it is the only per-model reasoning discovery any provider offers.
+  capabilities: z.array(z.enum(['text', 'tools', 'json_schema', 'thinking'])).max(16),
   manifestDigest: z.string().regex(/^[a-f0-9]{64}$/),
   name: NonEmptyStringSchema.max(200),
   numCtxCap: z.number().int().positive().max(1_000_000).nullable(),
@@ -164,6 +166,12 @@ export const LocalInferenceAttemptRequestSchema = z.object({
   protocolVersion: z.literal(1),
   runId: z.string().uuid(),
   runFence: NonEmptyStringSchema.max(160),
+  // Whether the worker wants the model's separate thinking: true for a live
+  // turn whose thought log can show it, absent/false for silent utility calls
+  // and for an agent whose effort is `none`. A host only honours it for a
+  // model that advertises the `thinking` capability. Optional so an older
+  // host reads the request unchanged.
+  thinking: z.boolean().optional(),
   tools: z.array(ToolSchemaDescriptorSchema).max(128),
 })
 export type LocalInferenceAttemptRequest = z.infer<typeof LocalInferenceAttemptRequestSchema>
@@ -173,6 +181,9 @@ export const LocalInferenceResultSchema = z.object({
   content: z.string().max(512 * 1024).nullable(),
   finishReason: z.enum(['stop', 'length', 'tool-call', 'error', 'other']),
   modelDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  // The model's separate thinking, joined. Optional so a receipt from an
+  // older host still parses; absent when the attempt did not ask for it.
+  reasoning: z.string().max(512 * 1024).nullable().optional(),
   remoteHost: z.string().max(512).nullable(),
   remoteModel: z.string().max(512).nullable(),
   toolCalls: z.array(ProviderToolCallSchema).max(128),

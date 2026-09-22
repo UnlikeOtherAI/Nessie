@@ -49,19 +49,32 @@ export const localInferenceInvocationId = (input: Record<string, unknown>): stri
   return uuidFromDigest(digest({ requestDigest, type: 'invocation' }))
 }
 
-export const localInferenceFrameEvent = (event: unknown): { error?: string; text?: string } => {
+export const localInferenceFrameEvent = (
+  event: unknown,
+): { error?: string; reasoning?: string; text?: string } => {
   const parsed = event !== null && typeof event === 'object' && !Array.isArray(event)
     ? event as Record<string, unknown>
     : null
   const text = parsed?.type === 'output_text.delta' && typeof parsed.text === 'string'
     ? parsed.text
     : undefined
+  // The host's own thinking frames, in the same vocabulary every cloud
+  // connector emits, so the thought log needs no local special case.
+  const reasoning = parsed?.type === 'reasoning_text.delta' && typeof parsed.text === 'string'
+    ? parsed.text
+    : undefined
   const error = parsed?.type === 'response.error' && typeof parsed.message === 'string'
     && parsed.message.length > 0 && parsed.message.length <= 200
     ? parsed.message
     : undefined
-  if (!text && !error) throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
-  return { ...(text ? { text } : {}), ...(error ? { error } : {}) }
+  if (!text && !reasoning && !error) {
+    throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
+  }
+  return {
+    ...(text ? { text } : {}),
+    ...(reasoning ? { reasoning } : {}),
+    ...(error ? { error } : {}),
+  }
 }
 
 const decodeReceipt = (
@@ -84,6 +97,7 @@ const decodeReceipt = (
       },
     }],
     model: binding.modelName, outputText: result.content ?? '', provider: 'openai-compatible',
+    ...(result.reasoning ? { reasoningText: result.reasoning } : {}),
     requestId: invocationId, toolCalls: result.toolCalls,
   }
 }
@@ -133,7 +147,10 @@ export const dispatchLocalInference = async (input: {
   runFence: string
   signal?: AbortSignal
   context: RunContext
+  onReasoningDelta?: (text: string) => Promise<void>
   onTextDelta?: (text: string) => Promise<void>
+  /** Ask the host for the model's separate thinking (a live, shown turn). */
+  thinking: boolean
   tools: ToolSchemaDescriptor[]
 }): Promise<InferenceResult> => {
   // A provider input reaches the delivery store only after every ordered
@@ -174,7 +191,7 @@ export const dispatchLocalInference = async (input: {
     ...(input.maxOutputTokens === undefined ? {} : { maxOutputTokens: input.maxOutputTokens }),
     messages, modelDigest: input.binding.manifestDigest,
     modelName: input.binding.modelName, numCtx: input.binding.numCtx, protocolVersion: 1 as const,
-    runId: input.context.run.id, tools: input.tools,
+    runId: input.context.run.id, ...(input.thinking ? { thinking: true } : {}), tools: input.tools,
   }
   const requestDigest = localInferenceRequestDigest({
     ...requestIdentity, deadlineAt: proposedDeadline.toISOString(), runFence: input.runFence,
@@ -237,13 +254,14 @@ export const dispatchLocalInference = async (input: {
       } catch {
         throw new LocalInferenceDispatchError('The local inference stream frame was invalid.')
       }
-      const { error, text } = localInferenceFrameEvent(event)
+      const { error, reasoning, text } = localInferenceFrameEvent(event)
       const acknowledged = await input.deps.prisma.localInferenceFrame.updateMany({
         where: { acknowledgedAt: null, id: frame.id },
         data: { acknowledgedAt: new Date() },
       })
       if (acknowledged.count !== 1) continue
       if (error) throw new LocalInferenceDispatchError(error)
+      if (reasoning) await input.onReasoningDelta?.(reasoning)
       if (text) await input.onTextDelta?.(text)
     }
   }

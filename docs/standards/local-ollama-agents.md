@@ -58,6 +58,13 @@ The rules below are the standing implementation contract.
 - Local text uses the same disclosure gate, secret redaction and durable final
   message path as hosted inference. Stream frames are ordered and acknowledged;
   the final receipt must not duplicate already streamed text.
+- A model's separate thinking is asked for on a live, shown turn whose agent
+  effort is not `none`, and only from a model that advertises Ollama's
+  `thinking` capability; it streams as `reasoning_text.delta` frames into the
+  run's thought log and rides the receipt as `reasoning`. Silent utility calls
+  never ask, so a bounded `num_predict` is never spent on hidden thinking.
+  Ollama's per-model thinking levels are not used: nothing discovers which
+  models accept them ([inference-reasoning.md](inference-reasoning.md)).
 - Model-returned tool calls are hostile input. They use invocation-scoped IDs
   and enter the ordinary schema, authorization, approval and effect-ledger
   path. The host never receives a tool credential or executes a Nessie tool.

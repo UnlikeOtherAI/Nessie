@@ -43,10 +43,22 @@ export const resolveReasoningDialect = (input: {
   return 'openai'
 }
 
-/** Thinking is asked for only on a turn whose thoughts can be shown. */
+/**
+ * Thinking is asked for only on a turn whose thoughts can be shown, and never
+ * for an agent whose effort is `none` — the one level every dialect reads as
+ * "switch it off" rather than "how much".
+ */
 export const requestWantsVisibleReasoning = (
   body: Record<string, unknown>,
-): boolean => body.stream === true && body.response_format === undefined
+): boolean =>
+  body.stream === true && body.response_format === undefined && body.reasoning_effort !== 'none'
+
+const withoutEffortOff = (body: Record<string, unknown>): Record<string, unknown> => {
+  if (body.reasoning_effort !== 'none') return body
+  const rest = { ...body }
+  Reflect.deleteProperty(rest, 'reasoning_effort')
+  return rest
+}
 
 type WireMessage = Record<string, unknown>
 
@@ -93,15 +105,18 @@ export const applyReasoningDialect = (
   body: Record<string, unknown>,
 ): Record<string, unknown> => {
   const visible = requestWantsVisibleReasoning(body)
+  // `none` is spelled by each dialect's own switch; the literal never travels,
+  // because OpenAI's older reasoning models reject it as an effort value.
+  const base = withoutEffortOff(body)
   if (dialect === 'deepseek') {
-    const rest = withDeepSeekOutputCap(body)
+    const rest = withDeepSeekOutputCap(base)
     Reflect.deleteProperty(rest, 'thinking')
     return { ...rest, thinking: { type: visible ? 'enabled' : 'disabled' } }
   }
   if (dialect === 'dashscope') {
-    return { ...body, enable_thinking: visible }
+    return { ...base, enable_thinking: visible }
   }
-  return body.messages === undefined
-    ? body
-    : { ...body, messages: withoutReplayedReasoning(body.messages) }
+  return base.messages === undefined
+    ? base
+    : { ...base, messages: withoutReplayedReasoning(base.messages) }
 }

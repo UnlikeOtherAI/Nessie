@@ -72,6 +72,7 @@ enum AgentVisibility {
 // `xhigh` is effectively unbounded (governed only by scope Budgets + the
 // loop's repeated-call detection).
 enum AgentEffort {
+  none
   low
   medium
   high

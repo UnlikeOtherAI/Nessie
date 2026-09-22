@@ -56,6 +56,7 @@ test('one omitted coverage token returns unclassified_input before attempt or fr
         { content: 'unclassified reader output', role: 'user' },
       ]),
       runFence: 'run-fence',
+      thinking: false,
       tools: [],
     }),
     (error: unknown) => error instanceof LocalInferenceDispatchError
@@ -72,6 +73,13 @@ test('reclaiming a local call ignores a fresh deadline and worker claim fence', 
   const reclaimed = { ...first, deadlineAt: '2026-09-20T10:06:00.000Z', runFence: 'claim-b' }
   assert.equal(localInferenceRequestDigest(first), localInferenceRequestDigest(reclaimed))
   assert.equal(localInferenceInvocationId(first), localInferenceInvocationId(reclaimed))
+})
+
+test('a host thinking frame is read in the shared reasoning vocabulary', () => {
+  assert.deepEqual(localInferenceFrameEvent({ text: 'Weighing it.', type: 'reasoning_text.delta' }), {
+    reasoning: 'Weighing it.',
+  })
+  assert.deepEqual(localInferenceFrameEvent({ text: 'Answer.', type: 'output_text.delta' }), { text: 'Answer.' })
 })
 
 test('an error frame cannot become an empty successful local answer', () => {

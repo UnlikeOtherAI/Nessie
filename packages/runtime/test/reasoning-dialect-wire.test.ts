@@ -202,3 +202,14 @@ test('a non-streaming reply carries its reasoning under either field name', asyn
   assert.equal(bodies[0]!.max_completion_tokens, undefined)
   assert.equal(value.reasoningText, 'Silent thought.')
 })
+
+test('`none` switches thinking off in every dialect and never travels as an effort', () => {
+  const body = { messages: [], model: 'm', reasoning_effort: 'none', stream: true }
+  assert.deepEqual(applyReasoningDialect('deepseek', body).thinking, { type: 'disabled' })
+  assert.equal(applyReasoningDialect('deepseek', body).reasoning_effort, undefined)
+  assert.equal(applyReasoningDialect('dashscope', body).enable_thinking, false)
+  assert.equal(applyReasoningDialect('dashscope', body).reasoning_effort, undefined)
+  const openai = applyReasoningDialect('openai', body)
+  assert.equal('reasoning_effort' in openai, false)
+  assert.equal('thinking' in openai, false)
+})

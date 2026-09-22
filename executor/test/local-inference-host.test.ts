@@ -400,6 +400,7 @@ test('the chat transport refuses a remote result before yielding an event', asyn
       fetchImpl: ollama([{ done: true, message: {}, model: 'local:latest', remote_host: 'cloud.example' }]),
       origin: 'http://127.0.0.1:11434',
       signal: controller.signal,
+      think: false,
     })) {
       void event
       throw new Error('must not yield')
@@ -407,17 +408,53 @@ test('the chat transport refuses a remote result before yielding an event', asyn
   }, OllamaChatError)
 })
 
-test('the chat transport disables separate Ollama thinking output', async () => {
+test('the chat transport sends Ollama the thinking switch it was given and relays the thinking', async () => {
+  let request: Record<string, unknown> | undefined
+  const fetchImpl: OllamaFetch = async (url, init) => {
+    if (url.endsWith('/api/chat')) request = JSON.parse(String(init.body)) as Record<string, unknown>
+    return ollama([
+      { done: false, message: { content: '', thinking: 'Weighing ' }, model: 'local:latest' },
+      { done: false, message: { content: '', thinking: 'the answer.' }, model: 'local:latest' },
+      { done: true, message: { content: 'answer' }, model: 'local:latest' },
+    ])(url, init)
+  }
+  const thinking: string[] = []
+  const text: string[] = []
+  for await (const event of streamOllamaChat({
+    attempt: { ...attempt(), thinking: true }, fetchImpl, origin: 'http://127.0.0.1:11434',
+    signal: new AbortController().signal, think: true,
+  })) {
+    if (event.thinking !== undefined) thinking.push(event.thinking)
+    if (event.text !== undefined) text.push(event.text)
+  }
+  assert.equal(request?.think, true)
+  assert.deepEqual(thinking, ['Weighing ', 'the answer.'])
+  assert.deepEqual(text, ['answer'])
+
+  for await (const event of streamOllamaChat({
+    attempt: attempt(), fetchImpl, origin: 'http://127.0.0.1:11434', signal: new AbortController().signal, think: false,
+  })) void event
+  assert.equal(request?.think, false)
+})
+
+test('a prior turn\'s reasoning goes back to Ollama as the assistant message\'s thinking', async () => {
   let request: Record<string, unknown> | undefined
   const fetchImpl: OllamaFetch = async (url, init) => {
     if (url.endsWith('/api/chat')) request = JSON.parse(String(init.body)) as Record<string, unknown>
     return ollama([{ done: true, message: { content: 'answer' }, model: 'local:latest' }])(url, init)
   }
   for await (const event of streamOllamaChat({
-    attempt: attempt(), fetchImpl, origin: 'http://127.0.0.1:11434', signal: new AbortController().signal,
+    attempt: {
+      ...attempt(),
+      messages: [
+        { content: 'Say hello', role: 'user' },
+        { content: null, reasoning: 'I should greet.', role: 'assistant', toolCalls: [{ arguments: {}, toolCallId: 'c1', toolName: 'safe_tool' }] },
+        { content: 'ok', role: 'tool', toolCallId: 'c1' },
+      ],
+    }, fetchImpl, origin: 'http://127.0.0.1:11434', signal: new AbortController().signal, think: false,
   })) void event
-
-  assert.equal(request?.think, false)
+  const messages = request?.messages as Array<Record<string, unknown>>
+  assert.equal(messages[1]?.thinking, 'I should greet.')
 })
 
 test('an unbounded main attempt omits Ollama num_predict', async () => {
@@ -430,6 +467,7 @@ test('an unbounded main attempt omits Ollama num_predict', async () => {
   delete unbounded.maxOutputTokens
   for await (const event of streamOllamaChat({
     attempt: unbounded, fetchImpl, origin: 'http://127.0.0.1:11434', signal: new AbortController().signal,
+    think: false,
   })) void event
   assert.equal((request?.options as Record<string, unknown> | undefined)?.num_predict, undefined)
 })
@@ -449,6 +487,7 @@ test('tool ids are scoped to the durable invocation, not an Ollama-local counter
   const calls = await Promise.all([first, second].map(async (request) => {
     for await (const event of streamOllamaChat({
       attempt: request, fetchImpl: ollama(response), origin: 'http://127.0.0.1:11434', signal: new AbortController().signal,
+      think: false,
     })) return event.toolCalls?.[0]?.toolCallId
     return undefined
   }))

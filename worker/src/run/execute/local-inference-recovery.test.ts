@@ -82,7 +82,7 @@ const fixture = () => {
     },
     dispatch: () => dispatchLocalInference({
       binding, context, deps: { atRestEncryptionKeyRing: keyRing, prisma } as unknown as ExecutionDependencies,
-      providerInput, runFence: randomUUID(), tools: [],
+      providerInput, runFence: randomUUID(), thinking: false, tools: [],
     }),
   }
 }

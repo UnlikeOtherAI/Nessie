@@ -122,12 +122,21 @@ export const createRunInference = (
       const result = await dispatchLocalInference({
         binding: options.local.binding, context, deps,
         ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+        // The host's thinking frames feed the same durable thought log as a
+        // cloud provider's reasoning deltas; a silent utility call asks for
+        // none, and so does an agent whose effort is `none`.
+        onReasoningDelta: async (chunk) => {
+          if (!streaming) return
+          await options.thinkingRecorder.appendReasoning(chunk)
+        },
         onTextDelta: async (content) => {
           localTextReceived = true
           await publishSafeLocalText(content)
         },
         providerInput: finalizeProvenancedProviderInput(messages),
-        runFence: options.local.runFence, signal, tools,
+        runFence: options.local.runFence, signal,
+        thinking: streaming && reasoningEffort !== 'none',
+        tools,
       })
       if (!allowEmptySuccess && !result.outputText && result.toolCalls.length === 0) {
         throw new Error('Inference execution produced no final answer')

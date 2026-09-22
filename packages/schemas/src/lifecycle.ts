@@ -26,19 +26,27 @@ export type AgentKind = z.infer<typeof AgentKindSchema>
 export const AgentSurfacePolicySchema = z.enum(['shared', 'dm_only'])
 export type AgentSurfacePolicy = z.infer<typeof AgentSurfacePolicySchema>
 
-// How hard the model thinks per turn — maps ONLY to the provider
-// `reasoning_effort` (modeled on OpenAI Codex's levels; `xhigh` clamps to
-// `high` for OpenAI-compatible providers). Spend/iteration caps are a separate
-// concern: `Agent.runLimits` (explicit, optional) and the deployment backstop.
+// How hard the model thinks per turn — maps ONLY to the provider's reasoning
+// control (modeled on OpenAI Codex's levels; `xhigh` clamps to `high` for
+// OpenAI-compatible providers). `none` switches the model's separate thinking
+// off wherever the provider offers a switch (DeepSeek, DashScope, Ollama) and
+// sends no effort at all elsewhere. No provider standardises these levels and
+// none lists what a model accepts, so each connector dialect maps this one
+// vocabulary onto its own; see docs/standards/inference-reasoning.md.
+// Spend/iteration caps are a separate concern: `Agent.runLimits` (explicit,
+// optional) and the deployment backstop.
 // See docs/plans/2026-08-05-run-budgets-context-and-research-routing.md.
-export const AgentEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
+export const AgentEffortSchema = z.enum(['none', 'low', 'medium', 'high', 'xhigh'])
 export type AgentEffort = z.infer<typeof AgentEffortSchema>
 
 export const DEFAULT_AGENT_EFFORT: AgentEffort = 'medium'
 
-// OpenAI-compatible providers accept only `low | medium | high` for
-// `reasoning_effort` and reject unknown values, so `xhigh` clamps to `high`.
-export type ProviderReasoningEffort = 'low' | 'medium' | 'high'
+// What reaches a connector. OpenAI-compatible providers accept only
+// `low | medium | high` for `reasoning_effort` and reject unknown values, so
+// `xhigh` clamps to `high`; `none` is the explicit off switch each dialect
+// translates (and OpenAI's own endpoint never sees, since older reasoning
+// models reject it).
+export type ProviderReasoningEffort = 'none' | 'low' | 'medium' | 'high'
 
 export const reasoningEffortForAgentEffort = (
   effort: AgentEffort,
