@@ -167,38 +167,42 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
 
   const heartbeat = setInterval(() => {
     void (async () => {
-      if (!await lock.heartbeat().catch(() => true)) {
-        // Another host owns the session now. Stop our agent and leave without writing.
-        superseded = true
-        const identity = state.agentIdentity
-        if (identity) await control.killTree(identity, await control.descendants(identity.pid))
-        process.exit(0)
-      }
-      const now = Date.now()
-      if (driver?.busy() && state.turnStartedAt
-        && now - Date.parse(state.turnStartedAt) > loaded.config.maxTurnMinutes * 60_000) {
-        emit({ kind: 'system', subtype: 'limit', reason: 'max_turn_minutes' })
-        update({ turnStartedAt: undefined })
-        await driver.interrupt()
-      } else if (driver?.running() && !driver.busy()
-        && now - Date.parse(state.updatedAt) > loaded.config.idleMinutes * 60_000) {
-        log('ending the idle agent')
-        await driver.endIdle()
-      }
+      if (await lock.heartbeat().catch(() => true)) return
+      // Another host owns the session now. Stop our agent and leave without writing.
+      superseded = true
+      const identity = state.agentIdentity
+      if (identity) await control.killTree(identity, await control.descendants(identity.pid))
+      process.exit(0)
     })().catch((error: unknown) => log(`heartbeat failed: ${String(error)}`))
   }, HOST_HEARTBEAT_MS)
+
+  // Checked between requests, never beside one, so ending an idle agent cannot race a follow-up.
+  const enforceLimits = async (): Promise<void> => {
+    const now = Date.now()
+    if (driver?.busy() && state.turnStartedAt
+      && now - Date.parse(state.turnStartedAt) > loaded.config.maxTurnMinutes * 60_000) {
+      emit({ kind: 'system', subtype: 'limit', reason: 'max_turn_minutes' })
+      update({ turnStartedAt: undefined })
+      await driver.interrupt()
+    } else if (driver?.running() && !driver.busy()
+      && now - Date.parse(state.updatedAt) > loaded.config.idleMinutes * 60_000) {
+      log('ending the idle agent')
+      await driver.endIdle()
+    }
+  }
 
   try {
     for (;;) {
       const requests = await listRequests(paths)
+      // Everything after a close is still consumed: a send there is reported ignored, not left waiting.
       for (const request of requests) {
         await handle(request)
         await removeRequest(paths, request.id)
-        if (state.status === 'closed') break
       }
       if (state.status === 'closed' || superseded) break
       if (retiring && !driver?.busy()) break
       if (requests.length === 0 && !driver?.running() && !driver?.busy()) break
+      if (requests.length === 0) await enforceLimits()
       await delay(POLL_MS)
     }
     if (retiring && driver?.running()) await driver.endIdle()
