@@ -500,6 +500,8 @@ test('a publish whose rollback fails destroys the pooled client instead of reusi
   const statements: string[] = []
 
   const client = {
+    off: () => undefined,
+    on: () => undefined,
     query: async (text: string) => {
       statements.push(text.trim().split('\n')[0]!.trim())
       if (text.includes('INSERT INTO thread_stream_events')) {
@@ -574,6 +576,8 @@ const readAsPreviousBuild = (notification: Record<string, unknown>): void => {
 const capturingPool = (rows: Record<string, unknown>[]) => {
   const notified: string[] = []
   const client = {
+    off: () => undefined,
+    on: () => undefined,
     query: async (text: string, values?: unknown[]) => {
       if (text.includes('pg_notify')) {
         notified.push(String(values?.[1]))
