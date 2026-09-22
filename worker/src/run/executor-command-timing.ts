@@ -61,3 +61,16 @@ export class ExecutorUnknownOutcomeError extends FatalToolExecutionError {
     super('Executor command outcome is unknown.')
   }
 }
+
+/**
+ * A toolset's two timeout answers, given how it maps its own tool names to
+ * operation keys: undefined (and null) for any name it does not offer.
+ */
+export const executorToolTimeouts = (operationKeyOf: (toolName: string) => string | undefined) => ({
+  timeoutErrorFor: (toolName: string): Error | null =>
+    operationKeyOf(toolName) === undefined ? null : new ExecutorUnknownOutcomeError(),
+  timeoutMsFor: (toolName: string): number | undefined => {
+    const operationKey = operationKeyOf(toolName)
+    return operationKey === undefined ? undefined : executorToolTimeoutMs(operationKey)
+  },
+})

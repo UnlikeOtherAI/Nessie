@@ -88,3 +88,15 @@ test('the toolset times its own tools by their command and answers nothing for o
   assert.equal(isFatalToolExecutionError(error), true)
   assert.equal(toolset.timeoutErrorFor('kb_search'), null)
 })
+
+test('a run with no executor transport times nothing as an executor tool', async () => {
+  const toolset = await buildExecutorToolset({} as PrismaClient, {
+    agentId: '00000000-0000-4000-8000-000000000002',
+    agentToolPolicy: null,
+    encryptionSecret: undefined,
+    organizationId: '00000000-0000-4000-8000-000000000001',
+    runId: '00000000-0000-4000-8000-000000000003',
+  })
+  assert.equal(toolset.timeoutMsFor('executor_mcp_call'), undefined)
+  assert.equal(toolset.timeoutErrorFor('executor_mcp_call'), null)
+})

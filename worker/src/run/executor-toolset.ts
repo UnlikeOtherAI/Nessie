@@ -13,7 +13,7 @@ import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
 import {
   executorCommandTtlMs,
-  executorToolTimeoutMs,
+  executorToolTimeouts,
   ExecutorUnknownOutcomeError,
 } from './executor-command-timing.js'
 import { isCorrectableExecutorFailure } from './executor-correctable-failures.js'
@@ -242,13 +242,7 @@ export const buildExecutorToolset = async (
 ): Promise<ExecutorToolset> => {
   const encryptionSecret = input.encryptionSecret
   if (!encryptionSecret) {
-    return {
-      descriptors: [],
-      dispatch: async () => ({ inputSummary: '', output: 'Executor transport is unavailable.', success: false }),
-      handledNames: new Set(),
-      timeoutErrorFor: () => null,
-      timeoutMsFor: () => undefined,
-    }
+    return { descriptors: [], dispatch: async () => ({ inputSummary: '', output: 'Executor transport is unavailable.', success: false }), handledNames: new Set(), ...executorToolTimeouts(() => undefined) }
   }
   const [logicalTools, bindings] = await Promise.all([
     ensureExecutorLogicalTools(prisma, input.organizationId),
@@ -513,11 +507,7 @@ export const buildExecutorToolset = async (
       }
     },
     handledNames: new Set(entries.map((entry) => entry.toolName)),
-    timeoutErrorFor: (toolName) => (entryByName.has(toolName) ? new ExecutorUnknownOutcomeError() : null),
-    timeoutMsFor: (toolName) => {
-      const entry = entryByName.get(toolName)
-      return entry ? executorToolTimeoutMs(entry.operationKey) : undefined
-    },
+    ...executorToolTimeouts((toolName) => entryByName.get(toolName)?.operationKey),
   }
 }
 
