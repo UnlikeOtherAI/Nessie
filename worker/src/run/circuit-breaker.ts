@@ -1,5 +1,23 @@
 export const CIRCUIT_BREAKER_THRESHOLD = 3
 
+// `executorToolName('mcp.call')`, spelled out so the breaker stays free of the
+// executor toolset's imports; a test pins that the two agree.
+const EXECUTOR_MCP_CALL_TOOL_NAME = 'executor_mcp_call'
+
+/**
+ * What a call's failures are counted under. Every tool is its own key except
+ * the executor's generic `mcp.call` transport, which fronts every tool of every
+ * program the machine's owner named: three failures of one browser tool must
+ * not disable a different program, so its key names the server and the tool.
+ */
+export const circuitBreakerKey = (toolName: string, args: Record<string, unknown>): string => {
+  if (toolName !== EXECUTOR_MCP_CALL_TOOL_NAME) return toolName
+  const { server, tool } = args
+  return typeof server === 'string' && typeof tool === 'string'
+    ? `${toolName}:${server}:${tool}`
+    : toolName
+}
+
 export class ToolCircuitBreaker {
   private _consecutiveErrors = new Map<string, number>()
 

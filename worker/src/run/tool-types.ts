@@ -46,6 +46,12 @@ export type ToolExecutionResult = {
 export type AgenticToolResult = {
   acknowledgeDelivery?: () => void
   connectorUsage?: ToolExecutionUsage
+  /**
+   * A failure the model fixes by changing its call — a malformed argument, a
+   * tool name the server does not have, an answer too large for the lane. It
+   * reaches the model like any failure and never counts toward the breaker.
+   */
+  correctable?: true
   /** See `ToolExecutionResult.deliveredToConversation`. */
   deliveredToConversation?: boolean
   inputSummary: string

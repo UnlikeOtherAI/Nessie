@@ -16,6 +16,7 @@ import {
   executorToolTimeoutMs,
   ExecutorUnknownOutcomeError,
 } from './executor-command-timing.js'
+import { isCorrectableExecutorFailure } from './executor-correctable-failures.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -376,7 +377,7 @@ export const buildExecutorToolset = async (
     dispatch: async (toolName, args, providerToolCallId) => {
       const entry = entryByName.get(toolName)
       if (!entry) {
-        return { inputSummary: summarizeToolInput(args), output: `Unknown executor tool: ${toolName}`, success: false }
+        return { correctable: true, inputSummary: summarizeToolInput(args), output: `Unknown executor tool: ${toolName}`, success: false }
       }
       const startedAt = new Date()
       const commandId = randomUUID()
@@ -507,6 +508,7 @@ export const buildExecutorToolset = async (
             ].join('\n')
           : JSON.stringify(result),
         success: result.success === true,
+        ...(isCorrectableExecutorFailure(result) ? { correctable: true as const } : {}),
         toolCallRecordId: created.toolCallId,
       }
     },

@@ -1,5 +1,5 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
-import { ToolCircuitBreaker } from './circuit-breaker.js'
+import { circuitBreakerKey, ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
 import { summarizeToolInput } from './tool-util.js'
 
@@ -16,6 +16,8 @@ export type AgentCardSuspension = {
 export type ExecutedToolResult = {
   acknowledgeDelivery?: () => void
   connectorUsage?: ConnectorUsage
+  /** See `AgenticToolResult.correctable`: never counted by the circuit breaker. */
+  correctable?: true
   deliveredToConversation?: boolean
   inputSummary: string
   output: string
@@ -170,10 +172,11 @@ export const executeToolBatch = async (input: {
       }
       continue
     }
-    if (input.circuitBreaker.isTripped(toolCall.toolName)) {
+    const breakerKey = circuitBreakerKey(toolCall.toolName, toolCall.arguments)
+    if (input.circuitBreaker.isTripped(breakerKey)) {
       resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
-        output: input.circuitBreaker.trippedErrorMessage(toolCall.toolName),
+        output: input.circuitBreaker.trippedErrorMessage(breakerKey),
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
@@ -229,6 +232,7 @@ export const executeToolBatch = async (input: {
 
   const runPrepared = async ({ execute, toolCall }: PreparedToolCall): Promise<ExecutedToolResult> => {
     const timeoutMs = input.toolTimeoutMsFor?.(toolCall.toolName) ?? DEFAULT_TOOL_TIMEOUT_MS
+    const breakerKey = circuitBreakerKey(toolCall.toolName, toolCall.arguments)
     await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
     const startedAt = new Date()
     // One controller per call: the timeout arm aborts it, so a stalled
@@ -247,11 +251,13 @@ export const executeToolBatch = async (input: {
       )
       const durationMs = Date.now() - startedAt.getTime()
       toolMs += durationMs
+      // A correctable failure says nothing about whether the tool works, so
+      // it neither counts toward the breaker nor clears what is counted.
       if (!result.pendingApproval) {
         if (result.success) {
-          input.circuitBreaker.recordSuccess(toolCall.toolName)
-        } else {
-          input.circuitBreaker.recordError(toolCall.toolName)
+          input.circuitBreaker.recordSuccess(breakerKey)
+        } else if (!result.correctable) {
+          input.circuitBreaker.recordError(breakerKey)
         }
       }
       await input.callbacks.onToolCallEnd(
@@ -271,7 +277,7 @@ export const executeToolBatch = async (input: {
       const output = fatal
         ? 'Tool execution could not be confirmed; retrying safely.'
         : error instanceof Error ? error.message : 'Tool execution failed'
-      input.circuitBreaker.recordError(toolCall.toolName)
+      input.circuitBreaker.recordError(breakerKey)
       const durationMs = Date.now() - startedAt.getTime()
       toolMs += durationMs
       try {

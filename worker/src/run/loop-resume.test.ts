@@ -123,3 +123,32 @@ test('a suspended call is not recorded and does not persist', async () => {
   assert.equal(persists, 0)
   assert.deepEqual(recorder.recorded(), {}, 'an approval the run is still waiting for is not a result')
 })
+
+test('a replayed correctable failure is still correctable, so the breaker counts it the same', async () => {
+  // A re-entered batch replays its recorded results onto the breaker counts it
+  // started with; a replay that dropped the flag would count as a failure what
+  // the first execution did not.
+  let executions = 0
+  const recorder = createToolExecutionRecorder({
+    executeTool: async () => {
+      executions += 1
+      return { correctable: true, inputSummary: 'call', output: 'arguments invalid', success: false }
+    },
+    onRecorded: async () => undefined,
+  })
+  await recorder.executeTool('executor_mcp_call', {}, 'call-1')
+
+  const resumed = createToolExecutionRecorder({
+    executeTool: async () => {
+      executions += 1
+      return { inputSummary: 'call', output: 'must not run', success: true }
+    },
+    onRecorded: async () => undefined,
+    restored: recorder.recorded(),
+  })
+  const replayed = await resumed.executeTool('executor_mcp_call', {}, 'call-1')
+
+  assert.equal(executions, 1)
+  assert.equal(replayed.correctable, true)
+  assert.equal(replayed.success, false)
+})
