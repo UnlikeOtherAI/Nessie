@@ -101,7 +101,8 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
       if (agent === spawned) agent = undefined
       const reason = agentFailureReason(spawned.stderrTail())
       rejectReady(new AgentStartError(reason))
-      if (ending) return
+      // An agent we are stopping, or one whose session is already closed, exited as asked.
+      if (ending || context.state().status === 'closed') return
       context.log(`claude exited with code ${code}`)
       const busy = current.busy()
       context.update({ agentIdentity: undefined })

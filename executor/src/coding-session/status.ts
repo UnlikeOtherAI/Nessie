@@ -71,7 +71,7 @@ const pendingNotice = (
   if (derived.inboxPending > 0 && derived.hostLive) notes.push(`${derived.inboxPending} request(s) not yet picked up.`)
   if (state?.queued) notes.push(`${state.queued} message(s) queued for the next turn.`)
   const denied = state?.lastResult?.permissionDenials.length ?? 0
-  if (denied > 0 && derived.status !== 'working') {
+  if (denied > 0 && (derived.status === 'waiting_for_input' || derived.status === 'interrupted')) {
     notes.push(`The coding agent was denied ${denied} action(s) that need approval; see permissionDenials.`)
   }
   if (rotated) notes.push('Older events were rotated away.')
