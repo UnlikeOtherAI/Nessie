@@ -177,6 +177,19 @@ change is in this branch.
 
 ## Outcome of the ticket loop
 
-See the closing section of the pull request description for the state of
-ticket 1 at the end of the session; findings 3, 4, 7 and 8 are why the loop
-needed API-launched runs and a fully scripted prompt to produce an edit.
+With the fixes in this branch and API-launched `mcp.tools`/`mcp.call` runs
+(findings 3 and 4), the CTO worked the board on branch `cto/driven-fixes`
+through Claude Code's MCP server on the paired machine:
+
+- Ticket 1, first-run setup URL: `163f1f9cd`, `api/src/lib/server-context.ts`
+  plus `api/test/bootstrap-url.test.ts` (2 tests), moved to Done, reported
+  accurately, asked before continuing.
+- Ticket 2, string-typed tool arguments: `2a679bef3`,
+  `worker/src/run/tool-argument-coercion.ts` plus its test (5 tests); the CTO
+  noted the ticket had pointed at the wrong files and found the real boundary.
+- Ticket 3 was launched the same way; tickets 3 and 4 are recorded on the board
+  and in the pull request description with their end-of-session state.
+
+Findings 7 and 8 are why each ticket needed its own launched run and a fully
+scripted, numbered prompt: an open-ended prompt read for 500k tokens and never
+edited, while the scripted ones finished in five to ten minutes.
