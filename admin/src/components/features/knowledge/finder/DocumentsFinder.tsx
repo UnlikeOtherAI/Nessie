@@ -562,17 +562,17 @@ export const DocumentsFinder = ({
               </div>
             ) : null}
             <FinderListHost
-              dispatch={dispatch}
-              level={levels.at(-1) as FinderFolderLevel}
+              creatingFolder={creatingFolderIn === levels.at(-1)?.key}
+              createFolderPending={knowledge.createFolderPending}
+              dispatch={dispatch} level={levels.at(-1) as FinderFolderLevel}
               onBrowseTo={(pageId) => {
                 if (pageId === null) return browseTo([])
                 const at = pagePath.indexOf(pageId)
                 browseTo(at >= 0 ? pagePath.slice(0, at + 1) : [pageId])
               }}
-              onCreateFolder={() => openNewFolderIn(levels.at(-1)?.key ?? null)}
-              onOpen={(page) => openPageIn(levels.at(-1) as FinderFolderLevel, page)}
-              onSelectSort={chooseSort}
-              pageById={pageById}
+              onCreateFolder={() => openNewFolderIn(levels.at(-1)?.key ?? null)} onCancelFolder={closeNewFolder}
+              onOpen={(page) => openPageIn(levels.at(-1) as FinderFolderLevel, page)} onSelectSort={chooseSort}
+              onSubmitFolder={(name) => submitFolder(levels.at(-1)?.parentPageId ?? null, name)} pageById={pageById}
               pathPages={pathPages}
               rootLabel={knowledge.selectedSpace?.name ?? 'Documents'}
               rows={rowsIn(levels.at(-1)?.parentPageId ?? null)}

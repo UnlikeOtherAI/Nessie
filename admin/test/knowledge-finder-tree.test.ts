@@ -60,3 +60,17 @@ test('opening a space makes it the New menu target and Tree creates folders in p
   const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
   assert.match(sidebar, /setExpandedSpaces\(\(current\) => new Set\(\[\.\.\.current, selectedSpaceId\]\)\)/)
 })
+
+test('every folder view renders the shared inline folder row in place', () => {
+  const documents = readSource('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+  const columns = readSource('../src/components/features/knowledge/finder/FinderFolderColumn.tsx')
+  const list = readSource('../src/components/features/knowledge/finder/FinderListView.tsx')
+  const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+
+  assert.match(columns, /<NewFolderRow/)
+  assert.match(list, /<NewFolderRow/)
+  assert.match(tree, /<NewFolderRow/)
+  assert.match(documents, /creatingFolder=\{creatingFolderIn === levels\.at\(-1\)\?\.key\}/)
+  assert.match(documents, /onSubmitFolder=\{\(name\) => submitFolder\(/)
+  assert.match(documents, /levels\.at\(-1\)\?\.parentPageId \?\? null/)
+})
