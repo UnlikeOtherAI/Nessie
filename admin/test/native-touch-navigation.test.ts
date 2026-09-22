@@ -41,6 +41,12 @@ test('every native touch sidebar uses Slack-scale density while desktop remains 
   assert.match(styles, /\.touch-sidebar \.admin-sec-hdr/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item\.sidebar-child/)
+  const phoneStyles = readCssBlock(styles, '@media (max-width: 639px)')
+  const projectChannelOffset = readCssBlock(
+    phoneStyles,
+    '.touch-sidebar .sidebar-project-children > .admin-sb-item.sidebar-child',
+  )
+  assert.match(projectChannelOffset, /transform: translateX\(-7px\);/)
   assert.match(styles, /\.touch-sidebar \.sidebar-project-tile/)
   assert.match(styles, /\.touch-sidebar \.admin-sec-hdr\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)
   assert.match(styles, /\.touch-sidebar \.admin-sb-item\s*\{[\s\S]*?min-height: 38px[\s\S]*?font-size: 14px/)

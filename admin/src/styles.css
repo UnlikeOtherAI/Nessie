@@ -2733,6 +2733,15 @@ html[data-desktop-platform='linux'] #root {
   font-size: 16px;
 }
 
+/* Project channels carry their own nested tree gutter. On a phone that gutter
+   leaves the complete row (including its trailing star) too far in; shift the
+   row as one unit without changing tablet or desktop tree geometry. */
+@media (max-width: 639px) {
+  .touch-sidebar .sidebar-project-children > .admin-sb-item.sidebar-child {
+    transform: translateX(-7px);
+  }
+}
+
 /* The rail still scrolls in a window too short for its buttons, but never
    draws a bar: its spacer sizes the column to the viewport, so sub-pixel
    rounding alone overflowed it by 1px and painted a full-height scrollbar
