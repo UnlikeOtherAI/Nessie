@@ -80,19 +80,22 @@ export const acquireHostLock = async (path: string, runtimeDigest: string): Prom
     startedAt: now,
     heartbeatAt: now,
   }
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    if (await createLock(path, record)) break
+  let created = false
+  for (let attempt = 0; attempt < 3 && !created; attempt += 1) {
+    created = await createLock(path, record)
+    if (created) break
     const existing = await readHostLock(path)
     if (existing && !hostLockIsStale(existing)) return undefined
     if (!existing) {
       // Unreadable: possibly a lock another host created a moment ago and is still writing.
-      const age = await stat(path).then((info) => Date.now() - info.mtimeMs, () => 0)
+      const age = await stat(path).then((info) => Date.now() - info.mtimeMs, () => undefined)
+      if (age === undefined) continue
       if (age < HOST_LOCK_STALE_MS) return undefined
     }
     const aside = `${path}.stale.${randomUUID()}`
     await rename(path, aside).then(() => unlink(aside).catch(() => undefined), () => undefined)
-    if (attempt === 2) return undefined
   }
+  if (!created) return undefined
   const stillOurs = async (): Promise<boolean> => (await readHostLock(path))?.token === record.token
   return {
     record,
