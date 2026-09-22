@@ -1,5 +1,3 @@
-import { readdir } from 'node:fs/promises'
-
 import { codingHostSpawnPending } from './host-spawn.js'
 import {
   encodeEventCursor,
@@ -9,6 +7,7 @@ import {
 } from './session-events.js'
 import { readJson, writeJsonAtomic, type CodingSessionPaths } from './session-files.js'
 import { hostLockIsStale, readHostLock } from './session-lock.js'
+import { listRequests } from './session-requests.js'
 import type { CodingSessionEvent, CodingSessionMeta, CodingSessionState, CodingSessionStatus } from './types.js'
 
 /**
@@ -41,7 +40,7 @@ export const deriveCodingStatus = async (
   const lock = await readHostLock(paths.lock)
   const hostLive = lock !== undefined && !hostLockIsStale(lock)
   const hostStarting = !hostLive && await codingHostSpawnPending(paths)
-  const inboxPending = (await readdir(paths.inbox).catch(() => [] as string[])).filter((name) => name.endsWith('.json')).length
+  const inboxPending = (await listRequests(paths)).length
   const base = { hostLive, hostStarting, inboxPending }
   if (!state) {
     // No host has written anything yet. With nothing asked for and nothing starting, it never will.

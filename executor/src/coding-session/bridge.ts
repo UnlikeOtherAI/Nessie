@@ -253,8 +253,10 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     if (args.cursor !== undefined && !cursor) invalidArguments('cursor must be a nextCursor this tool returned.')
     const state = await readState(paths)
     const derived = await deriveCodingStatus(paths, state)
-    // A lost host with requests still waiting gets a successor, so the next read sees them delivered.
-    if (derived.reason === 'host_lost' && derived.inboxPending > 0 && codingSessionsDigestMatches(loaded)) {
+    // Requests waiting with no host to read them (a host that died, or one that
+    // exited in the instant a request landed) get a host, so the next read sees
+    // them delivered. A host started under a changed config only stops things.
+    if (derived.inboxPending > 0 && !derived.hostLive && !derived.hostStarting) {
       await ensureHost(paths, meta.sessionId)
     }
     return composeCodingStatus({

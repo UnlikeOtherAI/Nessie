@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { unlink } from 'node:fs/promises'
 
 import { AgentStartError, type AgentDriver } from './agent-process.js'
 import { buildAgentEnvironment } from './agent-env.js'
@@ -233,6 +234,8 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
   for (;;) {
     const lock = await acquireHostLock(paths.lock, runtimeDigest)
     if (!lock) return
+    // The host the bridge asked for has arrived; from here on the lock speaks for it.
+    await unlink(paths.spawnMarker).catch(() => undefined)
     let done: boolean
     try {
       done = await serveSession(context, lock)

@@ -175,6 +175,8 @@ export const createClaudeStreamState = (projector: Projector): ClaudeStreamState
   const acceptUser = (event: Record<string, unknown>, signals: ClaudeSignals): void => {
     const message = record(event.message) ? event.message : {}
     if (event.isReplay === true) {
+      // The echo proves the CLI took the message into a turn, lifecycle event or not.
+      if (typeof event.uuid === 'string' && commands.has(event.uuid)) commands.set(event.uuid, 'started')
       const content = message.content
       const text = typeof content === 'string' ? content : Array.isArray(content)
         ? content.map((block: unknown) => (record(block) && typeof block.text === 'string' ? block.text : '')).join('\n')

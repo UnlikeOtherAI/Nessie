@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { link, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { link, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import {
@@ -76,14 +76,22 @@ const validRequest = (value: unknown): value is CodingSessionRequest => {
     && (request.text === undefined || typeof request.text === 'string')
 }
 
+/** A file that cannot be a request is removed once it is old enough not to be a read that failed for a moment. */
+const UNREADABLE_REQUEST_GRACE_MS = 5_000
+
 /** Oldest first; the host acts on them in the order the bridge wrote them. */
 export const listRequests = async (paths: CodingSessionPaths): Promise<CodingSessionRequest[]> => {
   const names = (await readdir(paths.inbox).catch(() => [] as string[])).filter((name) => name.endsWith('.json'))
   const requests: CodingSessionRequest[] = []
   for (const name of names) {
-    const value = await readFile(join(paths.inbox, name), 'utf8').then((text) => JSON.parse(text) as unknown, () => undefined)
-    if (validRequest(value) && `${value.id}.json` === name) requests.push(value)
-    else await unlink(join(paths.inbox, name)).catch(() => undefined)
+    const path = join(paths.inbox, name)
+    const value = await readJson<unknown>(path)
+    if (validRequest(value) && `${value.id}.json` === name) {
+      requests.push(value)
+      continue
+    }
+    const age = await stat(path).then((info) => Date.now() - info.mtimeMs, () => 0)
+    if (age > UNREADABLE_REQUEST_GRACE_MS) await unlink(path).catch(() => undefined)
   }
   return requests.sort((left, right) => left.at.localeCompare(right.at) || left.id.localeCompare(right.id))
 }
@@ -93,7 +101,7 @@ export const removeRequest = async (paths: CodingSessionPaths, id: string): Prom
 }
 
 export const inboxHasRequests = async (paths: CodingSessionPaths): Promise<boolean> => (
-  (await readdir(paths.inbox).catch(() => [] as string[])).some((name) => name.endsWith('.json'))
+  (await listRequests(paths)).length > 0
 )
 
 const validMeta = (value: unknown): value is CodingSessionMeta => {
