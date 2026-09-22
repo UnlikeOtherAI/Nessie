@@ -546,11 +546,12 @@ export const DocumentsFinder = ({
       <div className="flex min-h-0 flex-1">
         {scopeReadFailed ? (
           <FinderScopeReadState query={pagesQuery} />
-        ) : view === 'tree' && !single && !virtualColumnKey && levels.length > 0 ? (
+        ) : view === 'tree' && !single && !virtualColumnKey ? (
           <FinderTreePane activePageId={knowledge.openPageId} browseTo={browseTo}
             onOpenDocument={(page, path) => openDocument(page, () => knowledge.openPagePath(path))}
-            pagePath={pagePath} query={pagesQuery} rootColumn={orgScope ? rootColumn : undefined}
-            rootColumnWidth={orgScope ? widthFor('root') : undefined} rowsIn={rowsIn} />
+            onOpenRoot={openRootRow} pagePath={pagePath} pagesQuery={pagesQuery}
+            root={rootQuery.data} rootQuery={rootQuery} rowsIn={rowsIn}
+            selectedSpaceId={selectedSpaceId} />
         ) : listView ? (
           <>
             {orgScope ? (

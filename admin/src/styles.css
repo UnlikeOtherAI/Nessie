@@ -2259,7 +2259,12 @@ html[data-desktop-platform='linux'] #root {
 .knowledge-sidebar-tree-panel .finder-row {
   min-height: 30px;
   border-radius: 8px;
-  padding-inline: 8px;
+  padding-inline: 10px;
+  font-size: 14px;
+}
+
+.knowledge-sidebar-tree-panel .finder-row .finder-row-title {
+  font-size: 14px;
 }
 
 .knowledge-sidebar-tree-panel .finder-row[data-finder-kind='folder'],
