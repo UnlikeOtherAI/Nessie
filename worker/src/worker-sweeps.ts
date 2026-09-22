@@ -1,4 +1,5 @@
 import { withSweepLock } from '@nessie/db'
+import { expireExecutorConversationLeases } from '@nessie/executor-manage'
 import { expireDeadQueueJobs } from '@nessie/runtime'
 import { DASHBOARD_REFRESH_TOPIC } from '@nessie/dashboard'
 import {
@@ -481,6 +482,17 @@ const messageEmbeddingSweepInterval = setInterval(() => {
   })
 }, 60_000)
 
+// Executor conversation leases past their idle or absolute window. Carry and
+// dispatch already refuse them lazily; this pass records the end, with its
+// audit row, for the leases nobody tried to use again. Bounded and idempotent:
+// each end is conditional on the lease still being open.
+const executorLeaseExpiryInterval = setInterval(() => {
+  void withSweepLock(pool, 'executor-lease-expiry', () => expireExecutorConversationLeases(prisma))
+    .catch((error: unknown) => {
+      console.error('[worker.executor-lease-expiry] failed', error)
+    })
+}, 5 * 60_000)
+
   return {
     stop: () => {
       stopTaskSetSweep()
@@ -505,6 +517,7 @@ const messageEmbeddingSweepInterval = setInterval(() => {
       clearInterval(commsIncrementalSweepInterval)
       clearInterval(registrySyncSweepInterval)
       clearInterval(messageEmbeddingSweepInterval)
+      clearInterval(executorLeaseExpiryInterval)
     },
   }
 }

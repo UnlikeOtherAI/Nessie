@@ -11,6 +11,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import { carryForwardExecutorBindings } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
@@ -325,13 +326,19 @@ export const prepareRunExecution = async (
         secretResolver: deps.mcpSecrets?.resolver,
       },
     ),
-    buildExecutorToolset(deps.prisma, {
-      agentId: context.agent.id,
-      agentToolPolicy: toolPolicy,
-      encryptionSecret: deps.executorCommandEncryptionSecret,
-      organizationId: context.channel.organizationId,
-      runId: context.run.id,
-    }),
+    (async () => {
+      // A person's own follow-up in the conversation they launched local apps
+      // in is bound afresh here, immediately before the toolset reads the
+      // run's bindings. A refusal is an outcome, never a throw.
+      context.executorLease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+      return buildExecutorToolset(deps.prisma, {
+        agentId: context.agent.id,
+        agentToolPolicy: toolPolicy,
+        encryptionSecret: deps.executorCommandEncryptionSecret,
+        organizationId: context.channel.organizationId,
+        runId: context.run.id,
+      })
+    })(),
     (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
       ? loadAgentTodoPromptFacts(deps.prisma, {
           agentId: context.agent.id,
