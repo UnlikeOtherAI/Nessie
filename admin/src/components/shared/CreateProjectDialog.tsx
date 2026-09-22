@@ -1,19 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { useIsOrganizationAdmin } from '../../facades/auth/hooks'
-import { useCreateProject, useTeams } from '../../facades/projects/hooks'
-import type { TeamRecord } from '../../lib/api-client'
+import { useCreateProject } from '../../facades/projects/hooks'
+import { useAuthSession } from '../../providers/AuthSessionProvider'
 import { Dialog } from './Dialog'
-
-/**
- * The teams a person can create a project in — the placement
- * `createProjectForUser` enforces: a team they are a member of, or any team for
- * an organisation owner or admin. Offering the others only invites a refusal.
- */
-export const teamsForProjectCreation = (
-  teams: readonly TeamRecord[],
-  isOrganizationAdmin: boolean,
-): TeamRecord[] =>
-  isOrganizationAdmin ? [...teams] : teams.filter((team) => team.viewerIsMember === true)
 
 type CreateProjectDialogProps = {
   onClose: () => void
@@ -23,11 +11,12 @@ type CreateProjectDialogProps = {
 export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps) => {
   const nameInputRef = useRef<HTMLInputElement>(null)
   const createProject = useCreateProject()
-  const teams = useTeams()
-  const isOrganizationAdmin = useIsOrganizationAdmin()
-  const creatableTeams = teamsForProjectCreation(teams.data ?? [], isOrganizationAdmin)
+  // A project is created in the team the person is working in — the session's
+  // active team — never one picked from a list. Placing it elsewhere is a team
+  // switch first, the same as every other team-scoped action.
+  const { me } = useAuthSession()
+  const teamId = me?.context.teamId ?? null
   const [name, setName] = useState('')
-  const [teamId, setTeamId] = useState('')
   // `public` by default, and the same default the server applies when the field
   // is absent — so a project made by the Agent Designer's `project_create` tool
   // lands in the same place as one made here.
@@ -36,7 +25,6 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
 
   const handleClose = () => {
     setName('')
-    setTeamId('')
     setVisibility('public')
     setFormError(null)
     onClose()
@@ -45,7 +33,7 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const trimmedName = name.trim()
-    if (!trimmedName) return
+    if (!trimmedName || !teamId) return
 
     setFormError(null)
     try {
@@ -87,21 +75,6 @@ export const CreateProjectDialog = ({ onClose, open }: CreateProjectDialogProps)
             value={name}
           />
         </div>
-        <div className="grid gap-1.5">
-          <label className="text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)]" htmlFor="project-team">
-            Team
-          </label>
-          <select className="admin-input" id="project-team" onChange={(event) => setTeamId(event.target.value)} value={teamId}>
-            <option value="">Choose a team</option>
-            {creatableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-          </select>
-          {teams.isSuccess && creatableTeams.length === 0 ? (
-            <div className="text-xs text-[color:var(--tx3)]">
-              You are not a member of any team yet, so there is nowhere to create a project.
-            </div>
-          ) : null}
-        </div>
-
         <div className="grid gap-1.5">
           <label
             className={[

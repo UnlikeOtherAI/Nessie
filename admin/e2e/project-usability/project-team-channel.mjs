@@ -30,11 +30,11 @@ const api = async (path, { body, method = 'GET', token } = {}) => {
   return payload?.data ?? payload
 }
 
-const createProjectThroughSidebar = async ({ name, page, teamId }) => {
+const createProjectThroughSidebar = async ({ name, page }) => {
   await page.getByRole('button', { name: 'Create project' }).click()
   const dialog = page.getByRole('dialog', { name: 'Create a project' })
   await dialog.getByRole('textbox', { name: 'Name' }).fill(name)
-  await dialog.getByLabel('Team').selectOption(teamId)
+  assert.equal(await dialog.getByLabel('Team').count(), 0, 'the dialog places the project in the active team without a picker')
   await dialog.getByRole('button', { name: 'Create project' }).click()
   await dialog.waitFor({ state: 'hidden' })
   await page.locator('#sidebar-nav-projects').getByRole('button', { name, exact: true }).waitFor()
@@ -74,8 +74,8 @@ const main = async () => {
     await page.page.goto(`${ADMIN_URL}/channels/projects/${seed.project.id}`, { waitUntil: 'domcontentloaded' })
     await page.page.locator('#sidebar-nav-projects').waitFor({ timeout: 60_000 })
 
-    await createProjectThroughSidebar({ name: firstProjectName, page: page.page, teamId: team.id })
-    await createProjectThroughSidebar({ name: secondProjectName, page: page.page, teamId: team.id })
+    await createProjectThroughSidebar({ name: firstProjectName, page: page.page })
+    await createProjectThroughSidebar({ name: secondProjectName, page: page.page })
 
     const projects = await api('/api/projects', { token: seed.token })
     const firstProject = projects.find((project) => project.name === firstProjectName)

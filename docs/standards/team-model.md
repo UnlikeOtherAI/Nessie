@@ -87,10 +87,13 @@ teams or user projects, and which fact 3's absolute does not cover: the
 
 Do not say "team" to a person for the thing UOA calls a team. The reason is not
 tidiness: two words for one group of people is how two rows came to carry one
-name. `CreateProjectDialog` asks for a project name and silently creates a
-`"{Name} Team"` beside it, and the team switcher labels rows
+name. `CreateProjectDialog` used to ask for a project name and silently create
+a `"{Name} Team"` beside it, and the team switcher labels rows
 `team.teamName ?? project.projectName` — so whichever row was written first is
-what a person sees, and renaming the other one changes nothing.
+what a person sees, and renaming the other one changes nothing. The dialog now
+creates the project in the session's active team (`me.context.teamId`) and
+offers no team picker: placing a project in another team is a team switch
+first.
 
 **The admin does not fully obey this yet.** Roughly two dozen strings still say
 "team" — the budget scope picker offers "Team" and "Team" as *sibling*
@@ -131,12 +134,12 @@ and two of them have their own causes:
 Two more defects are commonly filed with these and do **not** follow from the
 direction, though inverting it happens to resolve both:
 
-- `CreateProjectDialog` asking for a project name and silently creating a
-  `"{Name} Team"` is caused by there being **no way to create a project inside
-  an existing team** — `createTeamForUser` requires a `projectId`, so the
-  dialog manufactures a team to hold the project. Under the inverted schema it
-  would have to manufacture a team instead. The shape of the creation API
-  is the bug.
+- `CreateProjectDialog` once asked for a project name and silently created a
+  `"{Name} Team"`, because there was **no way to create a project inside an
+  existing team** — `createTeamForUser` required a `projectId`, so the
+  dialog manufactured a team to hold the project. The shape of the creation
+  API was the bug. `POST /api/projects` now takes the existing `teamId` and
+  writes `Project.teamId`; the dialog sends the session's active team.
 - Several teams hanging off one project is a **missing `@unique` on
   `Team.projectId`**, not a direction problem. Adding that constraint would fix
   it while leaving the direction wrong — which is precisely why the fix below is

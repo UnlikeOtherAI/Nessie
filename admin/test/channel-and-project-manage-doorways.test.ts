@@ -4,14 +4,12 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { channelRoomControls } from '../src/components/features/channels/channel-room-controls'
-import { teamsForProjectCreation } from '../src/components/shared/CreateProjectDialog'
-import type { TeamRecord } from '../src/lib/api-client'
 
 /**
  * Doorways to changing a channel or placing a project follow the server's
  * answer, not a guess from the channel's type or the organisation's team list:
- * a gear that opens settings the server refuses, or a team the create call
- * refuses, is a control that only produces an error.
+ * a gear that opens settings the server refuses is a control that only produces
+ * an error.
  */
 
 const source = (path: string): string =>
@@ -51,19 +49,11 @@ test('the header and the settings dialog both read viewerCanManage', () => {
   assert.match(source('components/shared/ChannelSettingsDialog.tsx'), /if \(!channel\.viewerCanManage\) return null/)
 })
 
-const team = (id: string, viewerIsMember?: boolean): TeamRecord => ({
-  callProvider: 'jitsi',
-  createdAt: '2026-09-14T00:00:00.000Z',
-  id,
-  name: `Team ${id}`,
-  projectId: '00000000-0000-4000-8000-000000000001',
-  ...(viewerIsMember === undefined ? {} : { viewerIsMember }),
-}) as TeamRecord
-
-test('a member is offered only the teams they are in; an organisation admin every team', () => {
-  const teams = [team('a', true), team('b', false), team('c')]
-  assert.deepEqual(teamsForProjectCreation(teams, false).map((row) => row.id), ['a'])
-  assert.deepEqual(teamsForProjectCreation(teams, true).map((row) => row.id), ['a', 'b', 'c'])
+test('a project is created in the session’s active team, with no team picker', () => {
+  const create = source('components/shared/CreateProjectDialog.tsx')
+  assert.match(create, /const teamId = me\?\.context\.teamId \?\? null/)
+  assert.doesNotMatch(create, /<select[^>]*id="project-team"/)
+  assert.doesNotMatch(create, /useTeams\(/)
 })
 
 test('the create-project and project-members dialogs render the server’s refusal', () => {
