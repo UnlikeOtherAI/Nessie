@@ -50,6 +50,7 @@ type AnthropicStreamEvent =
       delta:
         | { type: 'text_delta'; text: string }
         | { type: 'thinking_delta'; thinking: string }
+        | { type: 'input_json_delta'; partial_json: string }
     }
   | { type: 'content_block_stop'; index: number }
   | {
@@ -258,38 +259,128 @@ export const toAnthropicPayload = (
   }
 }
 
-const KIMI_TOOL_USE_RE = /<tool_use>\s*(\{[\s\S]*?\})\s*<\/tool_use>/g
+const TOOL_USE_OPEN = '<tool_use>'
+const TOOL_USE_CLOSE = '</tool_use>'
 
+/**
+ * The end of the JSON object that starts at `start` (a `{`), or -1 when the
+ * text ends before its braces balance. String-aware, so a brace inside an
+ * argument value does not end the object early.
+ */
+const balancedObjectEnd = (text: string, start: number): number => {
+  let depth = 0
+  let inString = false
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (char === '\\') index += 1
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') inString = true
+    else if (char === '{') depth += 1
+    else if (char === '}') {
+      depth -= 1
+      if (depth === 0) return index
+    }
+  }
+  return -1
+}
+
+const toolCallFromJson = (
+  json: string,
+  toolCallId: string,
+): ProviderToolCall | undefined => {
+  try {
+    const parsed = JSON.parse(json) as { name?: unknown; arguments?: unknown }
+    if (typeof parsed.name !== 'string' || !parsed.name) return undefined
+    return {
+      arguments: parsed.arguments && typeof parsed.arguments === 'object' && !Array.isArray(parsed.arguments)
+        ? parsed.arguments as Record<string, unknown>
+        : {},
+      toolCallId,
+      toolName: parsed.name,
+    }
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Lift the model's text-form tool calls out of its answer.
+ *
+ * Kimi K2.7 ends a turn right after the block's JSON more often than not —
+ * production's CTO agent delivered a raw
+ * `<tool_use>{"name":"task_set_processors","arguments":{}}` to a person on
+ * 2026-09-22 because the closing tag never arrived and the old regex needed
+ * it. A block is therefore read by its balanced JSON, with the closing tag
+ * optional, and every `<tool_use>` fragment — parsed, malformed or cut off —
+ * is removed from the delivered text: protocol never reaches a person. A cut
+ * block that never balanced is dropped; the loop's empty-output recovery then
+ * asks the model again rather than presenting garbage as an answer.
+ */
 export const parseKimiToolCalls = (
   text: string,
   requestId: string,
 ): { outputText: string; toolCalls: ProviderToolCall[] } => {
   const toolCalls: ProviderToolCall[] = []
-  for (const match of text.matchAll(KIMI_TOOL_USE_RE)) {
-    const jsonPart = match[1]
-    if (!jsonPart) {
+  let outputText = ''
+  let cursor = 0
+  for (;;) {
+    const open = text.indexOf(TOOL_USE_OPEN, cursor)
+    if (open < 0) {
+      outputText += text.slice(cursor)
+      break
+    }
+    outputText += text.slice(cursor, open)
+    const objectStart = text.indexOf('{', open + TOOL_USE_OPEN.length)
+    const between = objectStart < 0 ? '' : text.slice(open + TOOL_USE_OPEN.length, objectStart)
+    if (objectStart < 0 || between.trim() !== '') {
+      // An opening tag with no JSON behind it: drop the tag, keep the rest.
+      cursor = open + TOOL_USE_OPEN.length
       continue
     }
-    try {
-      const parsed = JSON.parse(jsonPart) as {
-        name?: string
-        arguments?: Record<string, unknown>
-      }
-      if (parsed.name && typeof parsed.name === 'string') {
-        toolCalls.push({
-          arguments: parsed.arguments && typeof parsed.arguments === 'object'
-            ? parsed.arguments
-            : {},
-          toolCallId: `kimi_${requestId}_${toolCalls.length}`,
-          toolName: parsed.name,
-        })
-      }
-    } catch {
-      // Drop malformed tool_use blocks; the model can retry.
+    const objectEnd = balancedObjectEnd(text, objectStart)
+    if (objectEnd < 0) {
+      // Cut off mid-JSON: nothing to call, nothing to show.
+      break
+    }
+    const call = toolCallFromJson(
+      text.slice(objectStart, objectEnd + 1),
+      `kimi_${requestId}_${toolCalls.length}`,
+    )
+    if (call) toolCalls.push(call)
+    cursor = objectEnd + 1
+    const closeAt = text.indexOf(TOOL_USE_CLOSE, cursor)
+    if (closeAt >= 0 && text.slice(cursor, closeAt).trim() === '') {
+      cursor = closeAt + TOOL_USE_CLOSE.length
     }
   }
-  const outputText = text.replace(KIMI_TOOL_USE_RE, '').trim()
-  return { outputText, toolCalls }
+  return { outputText: outputText.trim(), toolCalls }
+}
+
+/**
+ * Native Anthropic-style `tool_use` blocks, should the backend ever answer
+ * with them instead of (or beside) the text protocol. Honoured, never
+ * requested: the request still carries no `tools`.
+ */
+export const nativeToolCallsFromContent = (
+  content: AnthropicContentBlock[] | undefined,
+): ProviderToolCall[] => {
+  const toolCalls: ProviderToolCall[] = []
+  for (const block of content ?? []) {
+    if (block.type !== 'tool_use') continue
+    const raw = block as { id?: unknown; input?: unknown; name?: unknown }
+    if (typeof raw.name !== 'string' || !raw.name || typeof raw.id !== 'string' || !raw.id) continue
+    toolCalls.push({
+      arguments: raw.input && typeof raw.input === 'object' && !Array.isArray(raw.input)
+        ? raw.input as Record<string, unknown>
+        : {},
+      toolCallId: raw.id,
+      toolName: raw.name,
+    })
+  }
+  return toolCalls
 }
 
 export const collectAnthropicStream = async function* (
@@ -306,6 +397,10 @@ export const collectAnthropicStream = async function* (
   let reasoningText = ''
   let finishReason: NormalizedFinishReason | undefined
   let usage: InvocationUsage = {}
+  // Native tool_use blocks, keyed by content-block index; arguments arrive as
+  // input_json_delta fragments and are parsed once the block stops.
+  const pendingNativeCalls = new Map<number, { id: string; json: string; name: string }>()
+  const toolCalls: ProviderToolCall[] = []
 
   const cleanupToken = registerStreamReaderCleanup(reader)
 
@@ -346,6 +441,13 @@ export const collectAnthropicStream = async function* (
           usage = usageFromAnthropic(parsed.message.usage)
           continue
         }
+        if (parsed.type === 'content_block_start') {
+          const [native] = nativeToolCallsFromContent([parsed.content_block])
+          if (native) {
+            pendingNativeCalls.set(parsed.index, { id: native.toolCallId, json: '', name: native.toolName })
+          }
+          continue
+        }
         if (parsed.type === 'content_block_delta') {
           if (parsed.delta.type === 'text_delta') {
             outputText += parsed.delta.text
@@ -353,6 +455,27 @@ export const collectAnthropicStream = async function* (
           } else if (parsed.delta.type === 'thinking_delta') {
             reasoningText += parsed.delta.thinking
             yield { type: 'reasoning_text.delta', text: parsed.delta.thinking }
+          } else if (parsed.delta.type === 'input_json_delta') {
+            const pending = pendingNativeCalls.get(parsed.index)
+            if (pending) pending.json += parsed.delta.partial_json
+          }
+          continue
+        }
+        if (parsed.type === 'content_block_stop') {
+          const pending = pendingNativeCalls.get(parsed.index)
+          if (pending) {
+            pendingNativeCalls.delete(parsed.index)
+            let args: Record<string, unknown> = {}
+            try {
+              const parsedArgs = pending.json.trim() ? JSON.parse(pending.json) as unknown : {}
+              if (parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)) {
+                args = parsedArgs as Record<string, unknown>
+              }
+            } catch {
+              // Unparseable native arguments: an empty call is still a call the
+              // loop can refuse or retry; silent loss is the failure to avoid.
+            }
+            toolCalls.push({ arguments: args, toolCallId: pending.id, toolName: pending.name })
           }
           continue
         }
@@ -383,7 +506,7 @@ export const collectAnthropicStream = async function* (
     finishReason,
     outputText,
     reasoningText,
-    toolCalls: [],
+    toolCalls,
     usage,
   }
 }

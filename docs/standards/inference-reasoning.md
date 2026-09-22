@@ -96,11 +96,17 @@ on or off ([local-ollama-agents.md](local-ollama-agents.md)).
 
 ## What is deliberately not done
 
-- **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking.
-  Its tool calls are parsed out of text, and Anthropic-style thinking blocks
-  must be replayed with signatures on tool rounds — a separate protocol
-  effort. The stream reader already forwards `thinking_delta` if the backend
-  sends one.
+- **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking;
+  its backend sends `thinking_delta` on its own and the stream reader forwards
+  it. Its tool calls are a text protocol (`<tool_use>{…}</tool_use>` rendered
+  into the system prompt), and Kimi K2.7 frequently ends the turn right after
+  the block's JSON, before the closing tag — production delivered a raw block
+  to a person on 2026-09-22 because the parser demanded the tag. A block is
+  now read by its balanced JSON with the tag optional, every `<tool_use>`
+  fragment is stripped from the delivered text, and a native `tool_use`
+  content block is honoured if the backend ever answers with one. Replaying
+  Kimi's thinking blocks on tool rounds (the "Preserved Thinking" its docs
+  say K2.7-code requires) needs a key to test against and is still open.
 - **OpenRouter's `reasoning_details` blocks are not replayed.** Omitting them
   loses reasoning continuity across a tool round on some upstreams; it does
   not fail the request.
