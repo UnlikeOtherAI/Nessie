@@ -1,0 +1,166 @@
+import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
+import { readdir, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { test } from 'node:test'
+
+import { createCodingHarness, OWNER_A, OWNER_B } from './coding-session-harness.js'
+
+/**
+ * Who may reach a session, and what a replayed command does. The owner key and
+ * the command id arrive in reserved `_meta` the model cannot set, so these are
+ * structural properties of the bridge, proved over the real subprocess.
+ */
+
+test('two owners never see or reach each other\'s sessions', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness()
+  try {
+    const started = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'owner A task' })
+    const sessionId = started.body.sessionId as string
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
+    const listed = await harness.call('session_list', {}, { owner: OWNER_B })
+    assert.deepEqual(listed.body.sessions, [])
+    for (const [tool, args] of [
+      ['session_status', { sessionId }],
+      ['session_send', { sessionId, message: 'hijack' }],
+      ['session_interrupt', { sessionId }],
+      ['session_review', { sessionId }],
+      ['session_close', { sessionId }],
+    ] as const) {
+      const answer = await harness.call(tool, args, { owner: OWNER_B })
+      assert.equal(answer.ok, false, tool)
+      assert.equal(answer.code, 'coding_session_not_found', tool)
+      assert.equal(answer.body.message, 'No such session.')
+    }
+    const mine = await harness.call('session_status', { sessionId })
+    assert.equal(mine.body.status, 'waiting_for_input')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('a call without an owner is refused, and close-all belongs to the daemon alone', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness()
+  try {
+    for (const tool of ['session_list', 'session_start']) {
+      const answer = await harness.call(tool, tool === 'session_start'
+        ? { agent: 'claude', root: 'work', prompt: 'x' }
+        : {}, { owner: '' })
+      assert.equal(answer.code, 'coding_session_owner_missing', tool)
+    }
+    const a = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'A' })
+    const b = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'B' }, { owner: OWNER_B })
+    const refused = await harness.call('session_close_all', { reason: 'lease_ended' })
+    assert.equal(refused.code, 'coding_session_daemon_only')
+    const closed = await harness.call('session_close_all', { ownerKey: OWNER_A, reason: 'lease_ended' }, { daemon: true, owner: '' })
+    assert.equal(closed.body.closing, 1)
+    await harness.waitForStatus(a.body.sessionId as string, (body) => body.status === 'closed')
+    const other = await harness.waitForStatus(
+      b.body.sessionId as string, (body) => body.status === 'waiting_for_input', OWNER_B,
+    )
+    assert.equal(other.status, 'waiting_for_input')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('a replayed command id returns the first outcome and does nothing else', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness()
+  try {
+    const command = randomUUID()
+    const args = { agent: 'claude', root: 'work', prompt: 'only once' }
+    const first = await harness.call('session_start', args, { command })
+    const again = await harness.call('session_start', args, { command })
+    assert.equal(again.body.sessionId, first.body.sessionId)
+    assert.equal(again.body.replayed, true)
+    const sessionId = first.body.sessionId as string
+    assert.equal((await harness.call('session_list', {})).body.sessions instanceof Array, true)
+    assert.equal(((await harness.call('session_list', {})).body.sessions as unknown[]).length, 1)
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
+    const send = randomUUID()
+    await harness.call('session_send', { sessionId, message: 'follow up once' }, { command: send })
+    const replay = await harness.call('session_send', { sessionId, message: 'follow up once' }, { command: send })
+    assert.equal(replay.body.replayed, true)
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input' && body.turn === 2)
+    const events = await harness.call('session_status', { sessionId, detail: 'events', cursor: '0.0.0' })
+    const echoed = (events.body.events as { kind: string; text?: string }[])
+      .filter((event) => event.kind === 'user' && event.text === 'follow up once')
+    assert.equal(echoed.length, 1)
+    const stolen = await harness.call('session_send', { sessionId, message: 'x' }, { command: send, owner: OWNER_B })
+    assert.equal(stolen.code, 'coding_session_not_found')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('each owner gets the configured number of live sessions', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness({ codingSessions: { maxLiveSessionsPerOwner: 1 } })
+  try {
+    const first = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'one' })
+    assert.equal(first.ok, true)
+    const second = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'two' })
+    assert.equal(second.code, 'coding_session_quota_exceeded')
+    const otherOwner = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'three' }, { owner: OWNER_B })
+    assert.equal(otherOwner.ok, true)
+    await harness.call('session_close', { sessionId: first.body.sessionId })
+    await harness.waitForStatus(first.body.sessionId as string, (body) => body.status === 'closed')
+    assert.equal((await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'four' })).ok, true)
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('a configuration that differs from its reviewed digest starts no host', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness({ bridgeEnv: { NESSIE_CODING_SESSIONS_CONFIG_DIGEST: `sha256:${'0'.repeat(64)}` } })
+  try {
+    const answer = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'x' })
+    assert.equal(answer.code, 'coding_session_config_changed')
+    assert.deepEqual(await readdir(join(harness.stateDir, 'sessions')), [])
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('the agent inherits a login-like environment without the parent session\'s coupling', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness({
+    bridgeEnv: { CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'sdk-ts', CLAUDE_CODE_GIT_BASH_PATH: 'kept-by-pass' },
+    agentEnv: { inheritUserSession: true, pass: ['CLAUDE_CODE_GIT_BASH_PATH'] },
+    reviewedDigest: true,
+  })
+  try {
+    const started = await harness.call('session_start', { agent: 'claude', root: 'work', prompt: '#env report' })
+    await harness.waitForStatus(started.body.sessionId as string, (body) => body.status === 'waiting_for_input')
+    const dump = (await readdir(harness.recordDir)).find((name) => name.startsWith('env-'))!
+    const env = JSON.parse(await readFile(join(harness.recordDir, dump), 'utf8')) as Record<string, string>
+    const get = (name: string): string | undefined => Object.entries(env)
+      .find(([key]) => (process.platform === 'win32' ? key.toUpperCase() === name.toUpperCase() : key === name))?.[1]
+    assert.equal(get('CLAUDECODE'), undefined)
+    assert.equal(get('CLAUDE_CODE_ENTRYPOINT'), undefined)
+    assert.equal(get('CLAUDE_CODE_DISABLE_AUTO_MEMORY'), '1')
+    assert.equal(get('CLAUDE_CODE_GIT_BASH_PATH'), 'kept-by-pass')
+    assert.equal(get('SCRIPTED_SET'), 'from-config')
+    assert.equal(get('NESSIE_EXECUTOR_PACKAGED_CLI'), undefined)
+    // The reviewed digest matched (the session ran) and describes the executor, not the person.
+    assert.equal(get('NESSIE_CODING_SESSIONS_CONFIG_DIGEST'), undefined)
+    if (process.platform === 'win32') {
+      // None of these is in the MCP SDK's minimal environment; the registry and the logon supply them.
+      for (const name of ['PATHEXT', 'ComSpec', 'windir', 'ProgramData', 'TMP']) assert.ok(get(name), name)
+    } else {
+      assert.ok(get('HOME'))
+      assert.ok(get('SHELL') ?? get('LOGNAME'))
+    }
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('a root that overlaps the coding-sessions state stops the bridge from starting', { timeout: 60_000 }, async () => {
+  const harness = await createCodingHarness({ rootsInsideState: true })
+  try {
+    const answer = await harness.call('session_list', {})
+    assert.equal(answer.ok, false)
+    assert.equal(answer.code, 'EXECUTOR_MCP_UNAVAILABLE')
+  } finally {
+    await harness.cleanup()
+  }
+})
