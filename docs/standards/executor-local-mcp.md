@@ -25,6 +25,24 @@ belongs to the server, and validating it here would guarantee drift the first
 time the server ships a field — the daemon validates the envelope, never the
 payload.
 
+### Reserved `_meta` is for the built-in bridges alone
+
+The model reaches `arguments` and nothing else. A built-in bridge that must
+know *who* is calling reads reserved keys from the request's `_meta` instead,
+which only the daemon sets and only on calls to that bridge:
+
+| Key | Carries | Used for |
+| --- | --- | --- |
+| `nessie/owner` | the owner key the daemon derives from the command's stamped owner | isolating one owner's coding sessions from another's |
+| `nessie/command` | the executor command id | making a replayed or retried call a no-op that returns the first outcome |
+| `nessie/daemon-control` | `true` on the daemon's own teardown calls | `session_close_all`, refused without it |
+
+The coding-sessions bridge refuses every session tool when `nessie/owner` is
+absent, so it cannot be driven by a plain `mcp.call` that carries none.
+`createExecutorMcpSessionManager`'s `callTool` takes the `_meta` as its fourth
+argument; the daemon's dispatch does not stamp it yet (see
+[host-coding-sessions.md](../executor-protocol/host-coding-sessions.md)).
+
 ## Only the name travels
 
 A named server carries a host-local launch spec — argv, working directory,
@@ -136,6 +154,19 @@ provider quota. Missing/rejected credentials, quota exhaustion and unavailabilit
 are separate failures, and none selects Ledger or another search provider.
 Search is not intrinsic to a bare Ollama model. A direct Desktop binding without
 an approved executor MCP binding cannot claim these tools are available.
+
+## Coding sessions
+
+`serve-coding-session-mcp --config <abs>` is the executor's second built-in
+bridge: it runs Claude Code or Codex on the host as long-lived sessions that
+an agent instructs, follows, interrupts, reviews and closes. It holds no state
+in memory — each session belongs to a detached `coding-session-host` — so the
+idle close and the probes above cannot take a coding turn with them. Its
+output is projected and path-rewritten before it leaves the host, and its
+failures are named codes, never the underlying error. The whole contract is in
+[host-coding-sessions.md](../executor-protocol/host-coding-sessions.md).
+
+Both built-in servers are dispatched by `executor/src/builtin-mcp-cli.ts`.
 
 ## Verifying
 

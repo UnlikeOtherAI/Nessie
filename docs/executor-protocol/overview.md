@@ -12,6 +12,7 @@ this document.
 
 - [Protocol and threat model](#1-scope-and-non-goals)
 - [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
+- [Host coding sessions: the `coding-sessions` bridge](host-coding-sessions.md)
 
 ## 1. Scope and non-goals
 
