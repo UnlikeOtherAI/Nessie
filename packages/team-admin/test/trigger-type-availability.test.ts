@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
-import { AGENT_TRIGGER_INPUT_TYPES, AgentTriggerTypeSchema } from '@nessie/schemas'
+import { AGENT_TRIGGER_INPUT_TYPES, AgentTriggerTypeSchema, describeAgentTriggerTypes } from '@nessie/schemas'
 
 import { createAgentTrigger } from '../src/trigger-create.js'
 import {
@@ -116,4 +116,21 @@ test('no trigger-creating tool offers a type its surface refuses', () => {
     [...WORKFLOW_TRIGGER_TYPES].sort(),
     'workflow_trigger_create offers exactly the workflow types',
   )
+  assert.ok(offeredTypes('agent_trigger_create').includes('ticket_changed'))
+  assert.ok(!offeredTypes('agent_trigger_create').includes('document_changed'))
+  assert.ok(!offeredTypes('workflow_trigger_create').includes('ticket_changed'))
+})
+
+test('both agent trigger tools describe their config from the typed union, not by hand', () => {
+  const configOf = (id: string): string => {
+    const definition = BUILTIN_TOOL_DEFINITIONS.find((candidate) => candidate.id === id)
+    const config = definition?.parameters.properties?.['config'] as { description?: string } | undefined
+    assert.ok(config?.description, `${id} describes its config`)
+    return config.description
+  }
+  for (const id of ['agent_trigger_create', 'agent_trigger_update']) {
+    const description = configOf(id)
+    for (const line of describeAgentTriggerTypes()) assert.ok(description.includes(line), `${id}: ${line}`)
+    assert.doesNotMatch(description, /document_changed/)
+  }
 })
