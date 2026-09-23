@@ -118,7 +118,11 @@ test('owner and command id reach the built-in bridge as reserved _meta, and no o
       { args: { server: 'coding-sessions', tool: 'echo' }, owner: { agentId }, runId },
       { args: { server: 'coding-sessions', tool: 'echo' }, runId, _meta: { 'nessie/daemon-control': true } },
     ]) {
-      assert.deepEqual(await run('command-d', payload), { code: 'EXECUTOR_COMMAND_ARGUMENTS_INVALID', success: false })
+      // The refusal names the field (mcp-dispatch.ts), and nothing reaches a server.
+      const refused = await run('command-d', payload)
+      assert.equal(refused.code, 'EXECUTOR_COMMAND_ARGUMENTS_INVALID')
+      assert.equal(refused.success, false)
+      assert.ok(Array.isArray(refused.fields) && refused.fields.length > 0, JSON.stringify(refused))
     }
   } finally {
     await mcpSessions.stopAll()

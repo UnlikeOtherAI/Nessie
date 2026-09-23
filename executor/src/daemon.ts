@@ -372,7 +372,7 @@ export const executeExecutorCommand = async (
     return executeExecutorMcpCommand(command.operationKey, command.payload.args, dependencies.mcpSessions, {
       codingBridge: dependencies.codingBridge,
       commandId: command.commandId,
-      owner: command.payload.owner,
+      payload: command.payload,
     })
   }
   // Other declared-only operations remain unavailable.
