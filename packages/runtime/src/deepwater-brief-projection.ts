@@ -37,8 +37,12 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * - the Ledger research id attaches once (`attachScopeStart`), from whichever
  *   read arrives first, and never moves a row out of `running` or a terminal
  *   state;
- * - the brief projection only advances (the two registers);
- * - non-terminal Ledger statuses are authoritative; `cancelled` is written
+ * - the brief projection only advances (the two registers), and so does the
+ *   status: a read never moves a run back (`running` to `drafting`), because
+ *   a read issued before a launch can be applied after its ticket. The one
+ *   real way back, Ledger reverting a launch Water refused, is known only to
+ *   the launch job, which moves the run back itself (`revertDeepWaterLaunch`);
+ * - non-terminal Ledger statuses move the run forward; `cancelled` is written
  *   directly; a finished research (`complete`, `failed`, `timed_out`) is
  *   reported back as `ledgerTerminal` and written only by the delivery claim,
  *   so `completed` and `delivered_at` always land in one transaction;
@@ -124,7 +128,22 @@ type StatusStep = {
   ledgerTerminal: DeepWaterLedgerTerminal | null
 }
 
-/** What a Ledger status does to a live run's product status (contract §2.4). */
+/**
+ * The order a live run's status moves in. `running` and `needs_setup` share a
+ * rank: an operator's `needs_setup` and its recovery are both forward.
+ */
+const STATUS_RANK: Record<ProductIntegrationRunStatus, number> = {
+  queued: 0,
+  drafting: 1,
+  running: 2,
+  needs_setup: 2,
+  cancelled: 3,
+  completed: 3,
+  failed: 3,
+  warning: 3,
+}
+
+/** What a Ledger status does to a live run's product status (contract §2.4); never backwards. */
 const statusStepForLedger = (
   current: ProductIntegrationRunStatus,
   ledger: LedgerResearchStatus,
@@ -133,20 +152,24 @@ const statusStepForLedger = (
   if (ledger === 'complete' || ledger === 'failed' || ledger === 'timed_out') {
     return { status: current, ledgerTerminal: { status: ledger, errorCode } }
   }
-  return { status: productRunStatusForLedger(ledger), ledgerTerminal: null }
+  const next = productRunStatusForLedger(ledger)
+  return { status: STATUS_RANK[next] < STATUS_RANK[current] ? current : next, ledgerTerminal: null }
 }
 
-/** A launch is done once the research left drafting; a cancel once it is cancelled. */
+/**
+ * An in-flight action ends with the brief or the research: once either is
+ * cancelled or finished, nothing is left for it to do. A launch is otherwise
+ * finished only by its own ticket (or `revertDeepWaterLaunch`): a read that
+ * sees the research `running` cannot tell whether the launch call has
+ * returned.
+ */
 const pendingActionFinishedByStatus = (
   state: DeepWaterScopeState,
   status: ProductIntegrationRunStatus,
-): boolean => {
-  const action = state.pendingAction
-  if (!isPendingActionInFlight(action)) return false
-  if (action.kind === 'launch') return status !== 'drafting' && status !== 'queued'
-  if (action.kind === 'cancel') return status === 'cancelled'
-  return false
-}
+  ledgerTerminal: DeepWaterLedgerTerminal | null,
+): boolean =>
+  isPendingActionInFlight(state.pendingAction)
+  && (status === 'cancelled' || ledgerTerminal !== null)
 
 const assertBoundTo = (run: DeepWaterBriefRun, researchId: string): void => {
   if (run.externalRunId !== null && run.externalRunId !== researchId) {
@@ -211,9 +234,6 @@ const writeProjection = async (
   }
   if (launched) {
     data.launchedAt = run.launchedAt ?? now
-  } else if (write.status === 'drafting' && run.launchedAt !== null) {
-    // Ledger reverted a launch that Water refused (amendments L3).
-    data.launchedAt = null
   }
   if (write.status === 'cancelled' && statusChanged) {
     data.completedAt = now
@@ -268,7 +288,7 @@ export const applyDeepWaterScopeResult = async (
   // A revived row starts again from `queued`: its reap is undone by the attach.
   const from = isRevivable(run) ? 'queued' : run.status
   const step = statusStepForLedger(from, result.status, result.errorCode)
-  const finishedByStatus = pendingActionFinishedByStatus(application.state, step.status)
+  const finishedByStatus = pendingActionFinishedByStatus(application.state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...application.state, pendingAction: null } : application.state
 
   const written = await writeProjection(tx, {
@@ -306,7 +326,7 @@ export const applyDeepWaterStatusRead = async (
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
 
   const step = statusStepForLedger(run.status, input.status.status, input.status.errorCode)
-  const finishedByStatus = pendingActionFinishedByStatus(state, step.status)
+  const finishedByStatus = pendingActionFinishedByStatus(state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...state, pendingAction: null } : state
   const written = await writeProjection(tx, {
     run,
@@ -351,7 +371,7 @@ export const applyDeepWaterLaunchTicket = async (
   const acked = isPendingActionInFlight(action)
     && action.kind === 'launch'
     && (input.ackActionId === undefined || input.ackActionId === null || action.actionId === input.ackActionId)
-  const finished = acked || pendingActionFinishedByStatus(state, step.status)
+  const finished = acked || pendingActionFinishedByStatus(state, step.status, step.ledgerTerminal)
   const nextState = finished ? { ...state, pendingAction: null } : state
   const written = await writeProjection(tx, {
     run,

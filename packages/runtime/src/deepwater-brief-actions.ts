@@ -11,7 +11,7 @@ import {
   type DeepWaterPendingActionKind,
 } from '@nessie/schemas'
 
-import { isPendingActionInFlight } from './deepwater-brief-registers.js'
+import { deepWaterWatchDelayMs, isPendingActionInFlight } from './deepwater-brief-registers.js'
 import {
   deepWaterBriefJson,
   lockDeepWaterBriefRun,
@@ -58,9 +58,12 @@ export const enqueueDeepWaterBriefAction = async (
 
 export type DeepWaterPersonActionStart =
   | { kind: 'started'; run: DeepWaterBriefRun }
-  /** The same actionId is already in flight: a replayed request. */
+  /**
+   * This actionId was accepted before — it is in flight, finished, or settled
+   * with an error — so the request is a replay and nothing is re-armed.
+   */
   | { kind: 'replay'; run: DeepWaterBriefRun }
-  /** Another action is in flight. */
+  /** Another action is in flight (or the brief is still opening and cannot be cancelled yet). */
   | { kind: 'busy'; run: DeepWaterBriefRun }
   | { kind: 'not_found' }
 
@@ -70,9 +73,18 @@ export type DeepWaterPersonActionStart =
  * the brief still drafting, the revision it was edited against) are decided
  * on the same state the action is recorded on; it throws to refuse.
  *
+ * Each actionId is carried out once (contract §1): its queue job key outlives
+ * the job, so a request whose key is already there is a replay whether that
+ * action is still in flight, finished, or failed — it is never recorded as in
+ * flight again with no job to finish it.
+ *
  * A cancel is accepted while another action is in flight: stopping a brief
  * must never wait on the planner. It replaces that action, whose own late ack
- * then finds nothing to settle.
+ * then finds nothing to settle. The one exception is the opening
+ * `scope_start` before Ledger acknowledged it: until then there is no research
+ * id to cancel, and the brief may be opening in Ledger at that moment, so a
+ * cancel accepted then would leave a paid planner turn with nothing to stop
+ * it. The cancel is refused as busy for those few seconds.
  */
 export const beginDeepWaterPersonAction = async (
   tx: DeepWaterBriefDb,
@@ -89,12 +101,17 @@ export const beginDeepWaterPersonAction = async (
     throw new Error(`DeepWater run ${run.id} is a legacy launcher run, not a research brief`)
   }
   const current = run.scopeState.pendingAction
+  if (current !== null && current.actionId === job.actionId) return { kind: 'replay', run }
   if (isPendingActionInFlight(current)) {
-    if (current.actionId === job.actionId) return { kind: 'replay', run }
     if (job.action.kind !== 'cancel') return { kind: 'busy', run }
+    if (current.kind === 'scope_start' && run.externalRunId === null) return { kind: 'busy', run }
   }
   input.precondition?.(run)
 
+  if (!await enqueueDeepWaterBriefAction(tx, job)) {
+    // The key is already queued or done: this action ran before and settled.
+    return { kind: 'replay', run }
+  }
   const state = DeepWaterScopeStateSchema.parse({
     ...run.scopeState,
     pendingAction: {
@@ -112,7 +129,6 @@ export const beginDeepWaterPersonAction = async (
       reconcileAfter: new Date(now.getTime() + DEEP_WATER_ACTIVE_WATCH_DELAY_MS),
     },
   })
-  await enqueueDeepWaterBriefAction(tx, job)
   return { kind: 'started', run: { ...run, scopeState: state } }
 }
 
@@ -143,6 +159,57 @@ export const settleDeepWaterPersonAction = async (
   await tx.productIntegrationRun.update({
     where: { id: run.id },
     data: { scopeJson: deepWaterBriefJson(DeepWaterScopeStateSchema.parse({ ...run.scopeState, pendingAction })) },
+  })
+  return true
+}
+
+/**
+ * Ledger refused a launch after it had already moved the research to
+ * `starting` — an inline Water 409 whose code starts with `scope-` (amendments
+ * L3) — so the research is back to `drafting` in Ledger. A watch read may have
+ * seen `starting` (reported as `running`) meanwhile and moved the run on, and
+ * no later read can tell that revert from a stale read: the projection only
+ * advances. So only the launch job that got the refusal moves the run back,
+ * clearing `launched_at` and settling its action with `errorCode`, and only
+ * while that launch is the action in flight.
+ */
+export const revertDeepWaterLaunch = async (
+  tx: DeepWaterBriefDb,
+  input: {
+    organizationId: string
+    runId: string
+    actionId: string
+    errorCode: DeepWaterPendingActionErrorCode
+  },
+): Promise<boolean> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  const scopeState = locked?.run.scopeState
+  if (!locked || !scopeState) return false
+  const { run, now } = locked
+  const action = scopeState.pendingAction
+  if (
+    !isPendingActionInFlight(action)
+    || action.kind !== 'launch'
+    || action.actionId !== input.actionId
+    || (run.status !== 'drafting' && run.status !== 'running')
+  ) {
+    return false
+  }
+
+  const state = DeepWaterScopeStateSchema.parse({
+    ...scopeState,
+    pendingAction: { ...action, error: { code: input.errorCode, at: now.toISOString() } },
+  })
+  const delayMs = deepWaterWatchDelayMs({ status: 'drafting', state, msSinceLastChange: 0 })
+  await tx.productIntegrationRun.update({
+    where: { id: run.id },
+    data: {
+      status: 'drafting',
+      launchedAt: null,
+      scopeJson: deepWaterBriefJson(state),
+      ledgerObservedAt: now,
+      reconcileAfter: new Date(now.getTime() + delayMs),
+    },
   })
   return true
 }

@@ -239,6 +239,46 @@ withFixture('one person action is in flight at a time, enqueued with it; a cance
   assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction?.actionId, cancel)
 })
 
+withFixture('an action id is carried out once: a replay after it settled re-arms nothing', async (fixture) => {
+  const { run } = await insertBrief(fixture, personOrigin())
+  const actor = { userId: fixture.ids.requester, role: 'requester' as const, identity: fixture.identity }
+  const begin = (actionId: string, action: { kind: 'reply'; message: string } | { kind: 'cancel' }) =>
+    fixture.prisma.$transaction((tx) => beginDeepWaterPersonAction(tx, {
+      job: { organizationId: fixture.ids.organization, runId: run.id, actionId, actor, action },
+    }))
+  const settle = (actionId: string, errorCode: 'rejected' | null) =>
+    fixture.prisma.$transaction((tx) => settleDeepWaterPersonAction(tx, {
+      organizationId: fixture.ids.organization, runId: run.id, actionId, errorCode,
+    }))
+  const jobCount = async (actionId: string) => Number((await fixture.pool.query(
+    `SELECT count(*)::int AS n FROM queue_jobs WHERE idempotency_key = $1`,
+    [`deep-water-brief-action:${run.id}:${actionId}`],
+  )).rows[0].n)
+
+  // The opening action is still unacknowledged: there is nothing to cancel yet.
+  const opening = (await read(fixture, run.id))?.scopeState?.pendingAction?.actionId
+  assert.ok(opening)
+  assert.equal((await begin(randomUUID(), { kind: 'cancel' })).kind, 'busy')
+  assert.equal(await settle(opening, null), true)
+
+  // A reply that succeeded (cleared), replayed.
+  const done = randomUUID()
+  assert.equal((await begin(done, { kind: 'reply', message: 'Focus on the UK' })).kind, 'started')
+  assert.equal(await settle(done, null), true)
+  assert.equal((await begin(done, { kind: 'reply', message: 'Focus on the UK' })).kind, 'replay')
+  assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction, null, 'nothing is re-armed')
+  assert.equal(await jobCount(done), 1)
+
+  // A reply that failed synchronously (kept with its error), replayed.
+  const failed = randomUUID()
+  assert.equal((await begin(failed, { kind: 'reply', message: 'And Ireland' })).kind, 'started')
+  assert.equal(await settle(failed, 'rejected'), true)
+  assert.equal((await begin(failed, { kind: 'reply', message: 'And Ireland' })).kind, 'replay')
+  const kept = (await read(fixture, run.id))?.scopeState?.pendingAction
+  assert.deepEqual({ id: kept?.actionId, code: kept?.error?.code }, { id: failed, code: 'rejected' })
+  assert.equal(await jobCount(failed), 1)
+})
+
 withFixture('only an unstarted brief is failed without a research, and the origin destination loads live', async (fixture) => {
   const { run } = await insertBrief(fixture)
   const fail = () => fixture.prisma.$transaction((tx) => failUnstartedDeepWaterBrief(tx, {

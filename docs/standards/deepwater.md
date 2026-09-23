@@ -284,10 +284,23 @@ worker and card are built on them.
 - **The projection only advances.** Ledger reads apply under the row lock
   (`applyDeepWaterScopeResult`, `applyDeepWaterStatusRead`,
   `applyDeepWaterLaunchTicket`). The brief content moves only on a strictly
-  greater revision, the planner turn only on a greater `(seq, status rank)`, and
-  a person's in-flight action is cleared only by its own turn or outcome.
+  greater revision, the planner turn only on a greater `(seq, status rank)`,
+  and the status only forward (`queued` → `drafting` → `running`): a read
+  issued before a launch can land after its ticket, so a read never moves a
+  run back. Ledger reverting a launch Water refused (an inline 409 `scope-*`)
+  is known only to the launch job, which moves the run back itself with
+  `revertDeepWaterLaunch` while its launch is the action in flight.
   `cancelled` is written directly; a finished research is written only by the
   delivery claim.
+- **A person's action happens once.** `beginDeepWaterPersonAction` records
+  the action in flight and enqueues it in one transaction, keyed by its
+  `actionId`; a request whose key is already queued or done is a replay
+  whatever that action's outcome, and is never re-armed. One action is in
+  flight per brief and is cleared only by its own turn or outcome, with two
+  exceptions: a cancel replaces any in-flight action except the opening
+  `scope_start` before Ledger acknowledged it (there is no research id to
+  cancel yet, so the cancel is refused as busy for those seconds), and a
+  cancelled or finished brief ends whatever action was in flight.
 - **Delivery happens once.** `claimDeepWaterDelivery` writes the terminal
   status with `delivered_at` in one conditional statement; the reply or wake is
   written in the same transaction. A block (`blockDeepWaterDelivery`) is set
