@@ -90,9 +90,21 @@ shaped afterwards, on the agent loop's authorized-tool path only
   `isError` result leads with "The program reported an error:".
 - `structuredContent` only when there is no text, as compact JSON of at most
   4 000 characters.
-- Each image as `[image N: image/png, 131 KB]` (PR 4 attaches them); a
-  `resource_link` as `[resource: <name>]`, never its URI, which names a path
-  on the person's disk.
+- Each image the daemon kept (below) as `[image N: screenshot, 131 KB]`,
+  sized from the reference's `byteLength` and numbered among the images the
+  model is shown. `execute/executor-tool-execution.ts` resolves the result's
+  references to the command's attachments first
+  (`executor-result-images.ts`: the command found through its `ToolCall` in
+  this run, the digest, type and size matched), and the result carries them
+  on as `imageRefs`; the loop then shows the pictures in one turn after the
+  batch, read from `FileService` only when each provider input is built
+  ([file-storage.md](file-storage.md) → "A tool's images reach the model by
+  reference"). A reference with no attachment behind it reads
+  `[image unavailable: Nessie does not hold it for this call]`, an image the
+  daemon did not keep its own `[image unavailable: <reason>]` text, and bytes
+  a program sent inline `[image: image/png, 2 KB, not shown]`; none of those
+  takes a number. A `resource_link` reads `[resource: <name>]`, never its
+  URI, which names a path on the person's disk.
 - The whole capped at 12 000 characters, with "[… N more characters not shown —
   ask the program for a narrower result]".
 - Framed by its own banner — "Output of the program `<server>` on the person's
@@ -130,11 +142,130 @@ is the launch conversation's". `buildExecutorToolset` takes the scope as a
 required `hostOutput`, so a caller has to decide: Task Set search passes
 `null` and says why.
 
+## Images leave the result on the machine
+
+A result's images never ride its receipt. Before the daemon measures an
+`mcp.call` result, `mcp-images.ts` decodes every `image` content item with
+base64 `data` and keeps it only when its declared type is PNG, JPEG, WebP or
+GIF **and its magic bytes agree** (`sniffExecutorImageMimeType`,
+`@nessie/schemas` `executor-attachments.ts`, which the control plane checks
+with too). At most 6 distinct images per result, 4 MiB each, 8 MiB together;
+an image repeated in several items is kept once. A kept image becomes
+`{type: 'image', mimeType, attachmentDigest: 'sha256:<hex>', byteLength}`. One
+over a limit, of another type or whose bytes disagree becomes the text
+`[image unavailable: <reason>]`, and the reason is always ours.
+
+The same base64 anywhere else in the result — as a substring of any string,
+which covers a text item holding JSON and `structuredContent` — becomes
+`[image: attachment sha256:…]`, or the placeholder of an image not kept.
+Kelpie sends every screenshot three times (its text JSON, the image item,
+`structuredContent`); this collapses them into one attachment without
+touching Kelpie, and the real 55 KB example.com answer shrinks to a few
+hundred bytes. A copy shorter than 64 characters is left alone: no real image
+is that small, and program text can contain one by chance.
+
+The bytes become the command's sidecars,
+`<runtimeDir>/attachments/<commandId>/<sha256 hex>.bin`, written and fsynced
+inside the call — so before `command-recovery.ts` journals the
+`result_pending` entry that references them. A call with nowhere to keep
+them, or a write that fails, withdraws each image to its placeholder: a result
+never names bytes nobody holds.
+
+Before the receipt, `command-attachments.ts` uploads each referenced image on
+its own request, signed under the `attachment` domain
+([command-attachments.md](../executor-protocol/command-attachments.md)).
+`EXECUTOR_MCP_UPLOAD_BUDGET_MS` (50 s), the part of the command's expiry kept
+for them, is one result's six images and 8 MiB on a 2 Mbit/s uplink plus
+Nessie's own work on each. One upload's deadline is not a share of it: it is
+the ordinary 15 s request deadline plus the bytes' transfer on that uplink,
+because the server's work behind an image's answer — digest, lock, metadata
+stripping, thumbnail, storage write, quota — is at least an ordinary
+request's. A transfer-only deadline (2.7 s for a typical screenshot) timed a
+busy server out on an image it went on to keep. Each answered upload is
+journaled as delivered, so a pass that fails part-way resumes after it; a
+restart between an upload and that journal entry uploads again, and Nessie
+takes the same command and digest as the same attachment.
+
+Nessie keeps each image as a `FileService` file of its command, owned by the
+run's organisation and accounted to the person whose launch the command runs
+under ([file-storage.md](file-storage.md)). It checks the type, the digest and
+the caps again, takes images only for an `mcp.call`, allows 60 signed upload attempts a minute per executor (repeats included), and refuses a result
+whose reference names an image it did not keep for that command
+([command-attachments.md](../executor-protocol/command-attachments.md) → "On
+the control plane").
+
+**A refused upload is terminal, never retried.** A 4xx withdraws that image —
+its reference and its markers become
+`[image unavailable: Nessie refused it (<message>)]` — the rewritten result is
+journaled, and the receipt carries it with its digest computed afresh. A
+sidecar that is missing or no longer matches its digest is withdrawn the same
+way. Three 4xx answers are not a refusal of the image and are retried with
+the receipt behind them: a fenced or stale connection (409
+`EXECUTOR_CONNECTION_FENCED`, `EXECUTOR_HEARTBEAT_STALE`), 408 and 429. A
+timeout, a 5xx or a lost connection is retried on the next poll too, as
+`ExecutorAttachmentDeliveryDeferred` — which, unlike any other failed poll,
+does not stop the machine's browser, command and coding sessions: it says
+nothing about them, and one slow answer from Nessie used to end them all. A
+fenced or stale connection throws as itself and stops them as before.
+
+**Delivery ends with the command.** The journal holds the machine's only
+command lane, so retrying for good would queue every later command, for every
+person and run, behind one slow uplink or one lasting storage fault — across
+restarts, because the journal replays. Once the command's `expiresAt` has
+passed, each image not yet delivered gets one more attempt, and a failure
+that is not a refusal then withdraws it as
+`[image unavailable: it could not be delivered before its command expired]`
+and the receipt goes out. Nessie still takes a late result, so a daemon that
+restarts after the expiry still delivers what it can on that attempt.
+
+An acknowledged receipt removes its command's sidecars, after the journal is
+cleared. The daemon's start removes every sidecar folder but the one the
+journal still names, before its first poll, and removes nothing when the
+journal cannot be read.
+
+## People see a call's screenshots where they read the call
+
+The images are not a model-only input. A person sees them in two places, one
+component (`admin/src/components/shared/ToolScreenshots.tsx`) in both:
+
+- **The thought-process dialog** (`ThoughtProcessDialog`, the doorway from a
+  thinking bubble): thumbnails under the tool line of the call that took them.
+  A line is written as its call starts, before the call has a `ToolCall`, so
+  the worker's thought recorder names that `ToolCall` on the line once the
+  call ends (`run_thinking_chunks.tool_call_id`, paired by the provider's call
+  id; a call id two calls in flight share links neither). The full thought log
+  (`GET /api/threads/:threadId/runs/:runId/thinking`) carries each named
+  line's refs; a live line never does, so the dialog always reads the full
+  log, and reads it again each time another line is known to have returned —
+  something followed it, or the run stopped streaming.
+- **The agent page's tool execution log** (`ToolExecutionLog` on the Activity
+  tab, the home): the same thumbnails on the call's card, from
+  `ToolCallEntry.attachments` (`/api/agents/:agentId/activity` and
+  `/api/agents/:agentId/runs/:runId/tools`).
+
+Both carry refs, never bytes — `{attachmentId, mimeType, byteLength,
+filename, hasThumbnail}` (`ToolCallAttachmentSchema`), joined ToolCall →
+ExecutorCommand → Attachment by `api/src/services/tool-call-attachments.ts` —
+only for a command whose result was accepted (result intake has by then freed
+every image the result does not name, so a person sees what the model was
+given and nothing a command uploaded before it expired without a result) —
+and list a ref only for a viewer the attachment routes would serve it to: the
+executor-command arm's own run-level question (`canReadRunExecutorImages`),
+asked once per run. A reader who may see the call but not its image (the
+run's trigger carries a basis they cannot read) sees the call with no
+thumbnail rather than one that answers 404. The bytes come from the ordinary
+routes — `/api/attachments/:id/thumbnail` where the ref has a thumbnail, else
+the original — and a press opens the original in the shared attachment
+viewer; over the dialog that viewer is the sanctioned `blocking` nesting, so
+Back and Escape close it before the dialog
+([overlays.md](../navigation/overlays.md)).
+
 ## A result the lane cannot carry is stated, never retried
 
 The daemon measures an `mcp.call` result as the exact document it returns —
-`code` and `success` included — against the 64 KiB terminal-result budget,
-and refuses one over it as `EXECUTOR_MCP_RESULT_TOO_LARGE` with its size
+`code` and `success` included, its images already out of it — against the
+64 KiB terminal-result budget, and refuses one over it as
+`EXECUTOR_MCP_RESULT_TOO_LARGE` with its size
 (`mcp-session-manager.ts`). An `isError` result measured before its code was
 added once passed that check and was then refused by the control plane.
 
@@ -161,7 +292,7 @@ case for one command — a cold start plus one call deadline — as
 `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
 
 The worker stamps each `mcp.tools` / `mcp.call` command with
-`EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): that worst case + a 30 s upload budget +
+`EXECUTOR_MCP_COMMAND_TTL_MS` (140 s): that worst case + a 50 s upload budget +
 20 s for the lane's own hops (queue claim, daemon poll, receipts, journal
 fsyncs). The numbers live in one file, `@nessie/schemas` `executor-timing.ts`,
 which both processes import; `executor/test/mcp-timing.test.ts` pins the
@@ -432,6 +563,7 @@ pnpm --filter @nessie/executor run test:mcp
 pnpm --filter @nessie/worker run test:unit
 pnpm --filter @nessie/admin test:e2e:executor-local-mcp
 pnpm --filter @nessie/admin test:e2e:executor-run-launcher
+pnpm --filter @nessie/admin test:e2e:tool-screenshots
 ```
 
 `test:e2e:executor-run-launcher` is a pure fixture suite
@@ -440,7 +572,15 @@ API client: the eight options in order, the local-apps description, the
 availability request and the launch payload carrying exactly the pair, and the
 explanation when no machine offers it. Browser Suites runs it beside the other
 executor suites; `test:e2e:executor-local-mcp` runs in the project-usability
-lifecycle.
+lifecycle. `test:e2e:tool-screenshots` (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`,
+in the same executor step) is a pure fixture over the real thought-process
+dialog and the real agent page Activity tab, with the image Kelpie really
+returned: no thumbnail while the call runs and both once the next thought
+shows it returned, the thumbnail route or the original as each ref says, the
+original in the viewer — over the dialog in the blocking layer, Escape closing
+only the viewer — at 1280 and 390 px. Who gets which refs is the API's job:
+`api/test/tool-call-screenshots.test.ts` runs both reads and the thought log on
+a real database, including the reader who sees the call but not its image.
 
 The executor suite drives a **real MCP server subprocess**
 (`executor/test/fixtures/scripted-mcp-server.mjs`), because the JSON-RPC
@@ -450,6 +590,36 @@ prove. It runs with `--test-force-exit` for one pinned upstream reason: on
 leaves the parent's stdin referenced, so a process that probes a server which is
 not installed never exits. A test asserts that leak, and starts failing when the
 SDK fixes it — that is the signal to drop the flag.
+
+Image extraction runs against Kelpie's own answer: the screenshot result the
+real Kelpie sent from a Windows browser is saved verbatim as
+`executor/test/fixtures/kelpie-screenshot-result.json`, and
+`mcp-images.test.ts` proves its three copies collapse into one attachment,
+alongside the caps and the magic-byte check; the scripted server's `kelpie`
+mode answers with the same file through a real session.
+`command-attachments.test.ts` drives the journal on a real disk: the sidecar
+exists when the `result_pending` entry is saved, a restart between upload and
+receipt uploads again, a refusal is withdrawn and never re-sent, a transient
+failure is, and the start sweep keeps only the journal's command. The control
+plane's half runs on a real database:
+`packages/executor-manage/test/executor-command-attachments.test.ts` covers
+the states, the digest and magic checks, the caps (racing uploads included),
+the rate, the attachment and usage rows and the result intake;
+`api/test/executor-command-attachments.test.ts` covers the route's body limit
+and statuses and who may read a screenshot, with and without a disclosure
+basis; and `api/test/executor-command-attachment-daemon.test.ts` puts the
+daemon's own extraction, upload client, delivery loop and receipt signing in
+front of those routes over real HTTP, with the saved Kelpie answer — kept,
+refused into its placeholder, and asked to wait.
+`worker/test/db/executor-tool-images.test.ts` takes that kept screenshot the
+rest of the way on a real database and `FileService`: resolved to its
+attachment for this run and for no other, written into a real crash
+checkpoint as a reference with no bytes, and read back into the prompt from
+storage. The worker's unit suites pin the loader's rules
+(`message-attachments-tool-images.test.ts`), the loop and its checkpoint round
+trip (`tool-images-loop.test.ts`), a vision and a non-vision connector through
+the real inference stage (`inference-tool-images.test.ts`), and the one retry
+without images (`execute/tool-image-inference.test.ts`).
 
 Kelpie detection runs `describe` as a real process too, against a stand-in
 CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact

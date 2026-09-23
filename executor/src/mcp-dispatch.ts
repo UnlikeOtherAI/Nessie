@@ -5,6 +5,7 @@ import {
 } from '@nessie/schemas'
 
 import type { CodingSessionsDaemon } from './coding-sessions-daemon.js'
+import type { ExecutorMcpImageSink } from './mcp-images.js'
 import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
 
 // A refusal is part of a terminal result, which the control plane caps; the
@@ -60,6 +61,9 @@ const invalidArguments = (
  * build that cannot front a local server says so rather than failing at the
  * first call. The policy check itself is the session manager's, and it happens
  * before any process starts.
+ *
+ * `images` is where an `mcp.call`'s images are kept — the daemon writes them
+ * as the command's sidecars (`command-attachments.ts`).
  */
 export const executeExecutorMcpCommand = async (
   operationKey: 'mcp.tools' | 'mcp.call',
@@ -74,6 +78,7 @@ export const executeExecutorMcpCommand = async (
      */
     payload: unknown
   },
+  images?: ExecutorMcpImageSink,
 ): Promise<Record<string, unknown>> => {
   if (!sessions) return { code: 'EXECUTOR_MCP_UNAVAILABLE', success: false }
   if (operationKey === 'mcp.tools') {
@@ -94,5 +99,5 @@ export const executeExecutorMcpCommand = async (
     commandId: bridge.commandId,
     ...(owner ? { owner } : {}),
   })
-  return sessions.callTool(parsed.data.server, parsed.data.tool, parsed.data.arguments, meta)
+  return sessions.callTool(parsed.data.server, parsed.data.tool, parsed.data.arguments, meta, images)
 }

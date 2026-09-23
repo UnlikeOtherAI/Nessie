@@ -12,8 +12,19 @@ export const REASONING_FLUSH_MS = 250
 export type ThinkingRecorder = {
   /** Buffer a visible-reasoning delta; flushed on size or age. */
   appendReasoning: (delta: string) => Promise<void>
-  /** Flush pending reasoning, then record one tool line immediately. */
-  appendToolLine: (toolName: string, inputSummary: string) => Promise<void>
+  /**
+   * Flush pending reasoning, then record one tool line immediately. `callId`
+   * is the provider's id for the call, under which `linkToolCall` finds the
+   * line again once the call has ended.
+   */
+  appendToolLine: (toolName: string, inputSummary: string, callId?: string) => Promise<void>
+  /**
+   * Name the `ToolCall` the call recorded as `callId` became on its tool line
+   * (`run_thinking_chunks.tool_call_id`), which is how the thought log finds
+   * a call's screenshots. A call whose line was never written, or whose id
+   * two calls in flight shared, links nothing.
+   */
+  linkToolCall: (callId: string, toolCallId: string) => Promise<void>
   /** Final flush. Idempotent, and safe to call from a `finally`. */
   close: () => Promise<void>
 }
@@ -53,6 +64,9 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
   // Serializes flushes so chunk ids stay in emission order even when a tool line
   // interleaves with a timer-driven reasoning flush.
   let queue: Promise<void> = Promise.resolve()
+  // The tool line of each call in flight, by the provider's call id; null
+  // once two calls in flight claimed the same id, so neither is guessed at.
+  const toolLines = new Map<string, bigint | null>()
 
   const clearBufferTimer = (): void => {
     if (bufferTimer) {
@@ -61,14 +75,14 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
     }
   }
 
-  const write = async (kind: RunThinkingChunkKind, content: string): Promise<void> => {
+  const write = async (kind: RunThinkingChunkKind, content: string): Promise<bigint | null> => {
     try {
       const chunk = await input.prisma.runThinkingChunk.create({
         data: { content, kind, runId: input.runId },
         select: { id: true },
       })
       if (input.isRestricted?.()) {
-        return
+        return chunk.id
       }
       await input.realtimeTransport.publishSse(
         input.threadId,
@@ -80,8 +94,10 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
           runId: parseRunId(input.runId),
         },
       )
+      return chunk.id
     } catch (error) {
       console.warn('[worker] thinking recorder failed to record chunk', input.runId, error)
+      return null
     }
   }
 
@@ -120,13 +136,30 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
       }
       scheduleFlush()
     },
-    appendToolLine: async (toolName, inputSummary) => {
+    appendToolLine: async (toolName, inputSummary, callId) => {
       if (closed) return
       const line = inputSummary ? `${toolName}: ${inputSummary}` : toolName
       await enqueue(async () => {
         // Reasoning that led to this call belongs before it in the log.
         await flushReasoning()
-        await write('tool', line)
+        const chunkId = await write('tool', line)
+        if (callId === undefined) return
+        toolLines.set(callId, toolLines.has(callId) ? null : chunkId)
+      })
+    },
+    linkToolCall: async (callId, toolCallId) => {
+      await enqueue(async () => {
+        const chunkId = toolLines.get(callId)
+        toolLines.delete(callId)
+        if (chunkId === undefined || chunkId === null) return
+        try {
+          await input.prisma.runThinkingChunk.updateMany({
+            where: { id: chunkId, runId: input.runId },
+            data: { toolCallId },
+          })
+        } catch (error) {
+          console.warn('[worker] thinking recorder failed to link a tool line', input.runId, error)
+        }
       })
     },
     close: async () => {

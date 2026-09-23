@@ -137,6 +137,14 @@ Facts not restated there:
   - Task Set processor search binds its own `ollama-search` and is no launch
     in a conversation; it passes no scope, and its results travel under the
     set's classified disclosure.
+  - A program's images are files of their executor command
+    ([file-storage.md](file-storage.md)) and are served to a person only as
+    the run is: `canAccessAttachment` asks the run's conversation through the
+    disclosure-readable thread predicate, then `canUserReadRunDerivedRecord`,
+    and nothing else — not the uploader, not an organisation admin. A surface
+    that lists them (the thought log's tool lines, `ToolCallEntry.attachments`)
+    asks the same run-level question first (`canReadRunExecutorImages`), so a
+    reader who may see the call but not the image is shown no ref at all.
 
   `worker/test/db/executor-host-output-disclosure.test.ts` pins the three
   board outcomes and the sales walkthrough's refusal of a protected planning

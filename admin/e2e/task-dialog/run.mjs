@@ -169,6 +169,41 @@ const assertRemovedRow = async (attachments, { byName, id = REMOVED_ID, reason }
   return row
 }
 
+/** The z-index an overlay's scrim computes: the scrim is its panel's parent. */
+const scrimLayer = (panel) => panel.evaluate((node) => getComputedStyle(node.parentElement).zIndex)
+
+/**
+ * The full-size viewer opened from inside the ticket dialog is the sanctioned
+ * `blocking` nesting (docs/navigation/overlays.md §7): it paints above the
+ * dialog and owns Back, so Back closes the viewer and leaves the ticket open.
+ * As a second `modal` it tied with the dialog on layer and Back priority, and
+ * the registry's stable sort gave Back to the first registered — the dialog —
+ * closing the ticket beneath a viewer left open over nothing.
+ */
+const assertViewerOwnsBack = async (page, opener, { label, screenshot }) => {
+  const dialog = page.getByRole('dialog', { name: 'Task details' })
+  await opener.click()
+  const viewer = page.getByTestId('attachment-viewer')
+  await viewer.waitFor()
+  assert.equal(await scrimLayer(viewer), '80', `${label}: the viewer's scrim is on the blocking layer`)
+  assert.equal(await scrimLayer(dialog), '70', `${label}: the ticket dialog stays on the modal layer beneath`)
+  assert.equal(
+    await page.evaluate(() => window.taskDialogBack.active()),
+    'overlay:attachment-viewer',
+    `${label}: Back belongs to the viewer while it is open`,
+  )
+  if (screenshot) {
+    await settled(page)
+    await page.screenshot({ path: shot(screenshot) })
+  }
+  assert.equal(await page.evaluate(() => window.taskDialogBack.press()), 'overlay:attachment-viewer')
+  await viewer.waitFor({ state: 'detached' })
+  assert.ok(await dialog.isVisible(), `${label}: Back closed the viewer and left the ticket dialog open`)
+  const owner = await page.evaluate(() => window.taskDialogBack.active())
+  assert.ok(owner?.startsWith('overlay:') && owner !== 'overlay:attachment-viewer',
+    `${label}: the ticket dialog owns Back again (${owner})`)
+}
+
 const assertDetails = async (page) => {
   const dialog = page.getByRole('dialog', { name: 'Task details' })
   await dialog.waitFor()
@@ -448,6 +483,22 @@ try {
     await page.close()
   }
 
+  // 14 — The full-size viewer over the ticket: from the Attachments list and
+  // from a comment's files, it owns Back and the ticket stays open under it.
+  {
+    const page = await open(desktop, 'scenario=viewer-back')
+    const dialog = page.getByRole('dialog', { name: 'Task details' })
+    await dialog.getByTestId('task-attachments').locator('li[data-attachment-id]').first().waitFor()
+    await assertViewerOwnsBack(page, dialog.getByTestId('task-attachments').locator(`li[data-attachment-id="${IMAGE_ID}"] button`).first(), {
+      label: 'attachments list',
+      screenshot: '14-viewer-over-ticket.png',
+    })
+    const commentFile = dialog.getByRole('button', { name: 'View render-trace.png' })
+    await commentFile.scrollIntoViewIfNeeded()
+    await assertViewerOwnsBack(page, commentFile, { label: "a comment's file" })
+    await page.close()
+  }
+
   // 10 — Board → Settings → Labels: rename in progress, the colour popover open.
   {
     const page = await open(desktop, 'scenario=settings')
@@ -532,6 +583,15 @@ try {
     assert.ok(popover.height <= 812 * 0.4 + 60, 'and stays within 40vh plus its footer')
     await settled(page)
     await page.screenshot({ path: shot('09-phone-labels-open.png') })
+    await page.close()
+  }
+  // 15 — On a phone the header Back is the doorway most people press.
+  {
+    const page = await open(phone, 'scenario=viewer-back')
+    const dialog = page.getByRole('dialog', { name: 'Task details' })
+    const row = dialog.getByTestId('task-attachments').locator(`li[data-attachment-id="${IMAGE_ID}"] button`).first()
+    await row.scrollIntoViewIfNeeded()
+    await assertViewerOwnsBack(page, row, { label: 'phone header Back', screenshot: '15-phone-viewer-over-ticket.png' })
     await page.close()
   }
   await phone.close()

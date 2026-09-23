@@ -132,6 +132,41 @@ test('a result over the budget is refused rather than truncated', async () => {
   }
 })
 
+test('a real Kelpie screenshot leaves the result as one kept image before it is measured', async () => {
+  const sessions = managerFor([serverNamed('kelpie', 'kelpie')])
+  try {
+    const kept: Array<{ bytes: number; digest: string; mimeType: string }> = []
+    const keep = async (images: readonly { bytes: Buffer; digest: string; mimeType: string }[]) => {
+      for (const image of images) {
+        kept.push({ bytes: image.bytes.length, digest: image.digest, mimeType: image.mimeType })
+      }
+    }
+    const result = await sessions.callTool('kelpie', 'kelpie_screenshot', {}, undefined, keep) as {
+      content: Array<Record<string, unknown>>
+      structuredContent: Record<string, unknown>
+      success: boolean
+    }
+    const digest = 'sha256:aac8eca7b74f38470cd961da4b11897e2296ca4b583865dde161ab387027e7a5'
+    // Three base64 copies in, one image kept.
+    assert.deepEqual(kept, [{ bytes: 13_715, digest, mimeType: 'image/png' }])
+    assert.equal(result.success, true)
+    assert.deepEqual(result.content[1], { attachmentDigest: digest, byteLength: 13_715, mimeType: 'image/png', type: 'image' })
+    assert.equal(result.structuredContent.image, `[image: attachment ${digest}]`)
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) < 1_024)
+
+    // A page as large as Hacker News's was three copies over the whole budget.
+    const large = await sessions.callTool('kelpie', 'kelpie_screenshot_large', {}, undefined, keep)
+    assert.equal(large.success, true, 'no longer EXECUTOR_MCP_RESULT_TOO_LARGE')
+    assert.equal(kept.at(-1)?.bytes, 200_000)
+
+    // With nowhere to keep it, the image is withdrawn rather than referenced.
+    const unkept = await sessions.callTool('kelpie', 'kelpie_screenshot') as { content: Array<Record<string, unknown>> }
+    assert.deepEqual(unkept.content[1], { text: '[image unavailable: this machine has nowhere to keep images]', type: 'text' })
+  } finally {
+    await sessions.stopAll()
+  }
+})
+
 test('an isError result is measured as returned, code and success included', async () => {
   // The failure document is 35 bytes longer than the same result marked as a
   // success. Measured before its code was added, a failure near the budget

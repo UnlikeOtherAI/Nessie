@@ -232,7 +232,6 @@ export const useMarkThreadRead = () => {
 export const useRunThinkingLog = (
   threadId: string | undefined,
   runId: string | null,
-  enabled: boolean,
 ) => {
   const apiClient = useApiClient()
 
@@ -240,7 +239,7 @@ export const useRunThinkingLog = (
     placeholderData: keepPreviousData,
     queryKey: threadKeys.runThinking(threadId, runId),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/runs/${runId}/thinking`),
-    enabled: enabled && Boolean(threadId) && Boolean(runId),
+    enabled: Boolean(threadId) && Boolean(runId),
   })
 }
 

@@ -1,6 +1,9 @@
 import type { PrismaClient } from '@prisma/client'
-import { isAdminRole } from '@nessie/schemas'
+import { isAdminRole, type UoaSessionIdentity } from '@nessie/schemas'
 import { isAgentVisibleToUser, isTaskAccessibleToUser } from '@nessie/team-admin'
+
+import { buildDisclosureReadableThreadWhere } from './agent-read-primitives.js'
+import { canUserReadRunDerivedRecord } from './run-derived-read.js'
 
 type AttachmentAccessRow = {
   id: string
@@ -9,6 +12,7 @@ type AttachmentAccessRow = {
   knowledgePageId: string | null
   emailMessageId: string | null
   taskId: string | null
+  executorCommandId: string | null
   uploaderId: string | null
 }
 
@@ -107,6 +111,81 @@ export const canAccessEmailAttachment = async (
   )
 }
 
+/**
+ * An image a local program returned in an executor command is that program's
+ * output, and host program output is the launch conversation's
+ * (docs/standards/disclosure-boundaries.md): it is readable by exactly whoever
+ * may read the command's run. That is two questions, both asked:
+ *
+ * - the run's conversation, read the way every disclosure-bearing agent read
+ *   reads it — a DM or system room by its participants only, a deleted
+ *   channel by nobody, and no owner-wide shortcut into a private room;
+ * - the run's own provenance (`canUserReadRunDerivedRecord`): its trigger's
+ *   basis and the basis the run consumed, so a screenshot taken while the run
+ *   held a private source is withheld exactly as the reply built on it is.
+ *
+ * The uploader — the person the command ran for — gets no shortcut: they are
+ * admitted by the same two questions, which their own launch always answers.
+ */
+export const canAccessExecutorCommandAttachment = async (
+  prisma: PrismaClient,
+  input: ExecutorImageReader & { executorCommandId: string },
+): Promise<boolean> => {
+  const command = await prisma.executorCommand.findUnique({
+    where: { id: input.executorCommandId },
+    select: { toolCall: { select: { runId: true } } },
+  })
+  if (!command) return false
+  return canReadRunExecutorImages(prisma, { ...input, runId: command.toolCall.runId })
+}
+
+type ExecutorImageReader = {
+  organizationId: string
+  uoaIdentity: UoaSessionIdentity | undefined
+  userId: string
+}
+
+/**
+ * The run-level half of the arm above: may this person read the images of
+ * this run's executor commands. A surface that lists a run's screenshots asks
+ * exactly this, once per run, so it never names a picture the attachment
+ * routes would then refuse (`tool-call-attachments.ts`).
+ */
+export const canReadRunExecutorImages = async (
+  prisma: PrismaClient,
+  input: ExecutorImageReader & { runId: string },
+): Promise<boolean> => {
+  const inConversation = await prisma.run.findFirst({
+    where: {
+      id: input.runId,
+      thread: buildDisclosureReadableThreadWhere({
+        organizationId: input.organizationId,
+        userId: input.userId,
+      }),
+    },
+    select: { id: true },
+  })
+  if (!inConversation) return false
+  return canUserReadRunDerivedRecord(prisma, {
+    organizationId: input.organizationId,
+    runId: input.runId,
+    uoaIdentity: input.uoaIdentity,
+    userId: input.userId,
+  })
+}
+
+/**
+ * Whether an attachment may be linked somewhere new — a logo, an avatar, a
+ * feedback item. Every such surface serves the file on its own authority,
+ * and the organisation logo does so to anyone at all through
+ * `/api/brand/logo`. An executor command's image is readable only by whoever
+ * may read its run, so it is never re-linked: a new link would publish a
+ * private room's screenshot past that. Each link path asks this beside
+ * `canAccessAttachment`, which only answers whether the caller may read it.
+ */
+export const isRelinkableAttachment = (attachment: { executorCommandId?: string | null }): boolean =>
+  !attachment.executorCommandId
+
 const isOrganizationAdmin = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string },
@@ -126,9 +205,22 @@ export const canAccessAttachment = async (
     userId: string
     /** From the verified request when the caller has it; otherwise read from the membership. */
     isOrganizationAdmin?: boolean
+    /** The request's UOA assertion, for the disclosure checks; absent without an IdP. */
+    uoaIdentity?: UoaSessionIdentity
   },
 ): Promise<boolean> => {
   if (attachment.organizationId !== input.organizationId) return false
+  // Before every other arm, and answering alone: an executor command's image
+  // is never re-linked, and its uploader must not read it past the run's own
+  // disclosure.
+  if (attachment.executorCommandId) {
+    return canAccessExecutorCommandAttachment(prisma, {
+      executorCommandId: attachment.executorCommandId,
+      organizationId: input.organizationId,
+      uoaIdentity: input.uoaIdentity,
+      userId: input.userId,
+    })
+  }
   if (attachment.messageId) {
     return canAccessMessageAttachment(prisma, {
       messageId: attachment.messageId,

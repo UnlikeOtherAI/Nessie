@@ -17,6 +17,9 @@ export type ProviderInputSourceAdapter =
   | 'memory'
   | 'prompt_system'
   | 'secret_redaction'
+  // The turn after a tool batch that carries the images its results named
+  // (`tool-images.ts`): tool output on a user turn, never the person.
+  | 'tool_images'
   | 'tool_result'
   | 'wind_down'
 
@@ -93,6 +96,19 @@ export const deriveProviderInputComponent = <Message extends ProviderMessage>(
 ): Message => coverageFor(source)
   ? coverProviderInputComponent(message, adapter)
   : message
+
+/**
+ * The same, for a transformation that only takes images off a covered turn
+ * (the prompt's image budget, a model that cannot see them): the turn keeps
+ * the adapter it was admitted under.
+ */
+export const retainProviderInputComponent = <Message extends ProviderMessage>(
+  source: ProviderMessage,
+  message: Message,
+): Message => {
+  const coverage = coverageFor(source)
+  return coverage ? coverProviderInputComponent(message, coverage.adapter) : message
+}
 
 /** Cover a generated utility prompt at its single construction boundary. */
 export const coverGeneratedUtilityInput = (

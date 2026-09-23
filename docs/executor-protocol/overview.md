@@ -14,6 +14,7 @@ this document.
 - [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
 - [Conversation leases](conversation-leases.md) — how a person's own follow-ups keep local apps
 - [Host coding sessions: the `coding-sessions` bridge](host-coding-sessions.md)
+- [Command attachments](command-attachments.md) — the images a result references, uploaded before its receipt
 
 ## 1. Scope and non-goals
 
@@ -433,7 +434,9 @@ A terminal result the server refuses as `EXECUTOR_COMMAND_RESULT_INVALID`
 would be refused on every retry and hold the machine's only command lane, so
 the daemon journals the small terminal failure `EXECUTOR_RESULT_REFUSED` in
 its place and sends that, with its own digest; a lost response replays the
-replacement, never the refused result.
+replacement, never the refused result. Images a terminal result references are
+kept beside the journal and uploaded before its receipt, under their own signed
+`attachment` domain ([command-attachments.md](command-attachments.md)).
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored

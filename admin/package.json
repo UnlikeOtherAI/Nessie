@@ -48,6 +48,7 @@
     "test:e2e:tabbar-full": "node e2e/tabbar-full/run.mjs",
     "test:e2e:task-sets": "node e2e/task-sets/run.mjs",
     "test:e2e:task-dialog": "node e2e/task-dialog/run.mjs",
+    "test:e2e:tool-screenshots": "node e2e/tool-screenshots/run.mjs",
     "verify:spreadsheet-lazy": "node e2e/spreadsheet-shell/lazy-chunk.mjs",
     "test": "node --test --experimental-test-isolation=none --import tsx \"test/**/*.test.ts\" \"test/**/*.test.tsx\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",

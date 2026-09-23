@@ -10,6 +10,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { registerOrganizationRoutes } from '../src/routes/organizations.js'
+import { isRelinkableAttachment } from '../src/services/attachments.js'
 
 /**
  * `GET /api/brand/logo` paints the unauthenticated sign-in screen, so it is
@@ -44,9 +45,14 @@ type Membership = {
 const makeApp = (
   organizations: OrganizationRow[],
   membership: Membership = { role: 'admin', deactivatedAt: null },
+  attachments: Array<Record<string, unknown> & { id: string }> = [],
 ) => {
   const updates: Array<Record<string, unknown>> = []
   const prisma = {
+    attachment: {
+      findUnique: async ({ where }: { where: { id: string } }) =>
+        attachments.find((attachment) => attachment.id === where.id) ?? null,
+    },
     organization: {
       count: async () => {
         throw new Error('brand logo must not be decided by counting organisations')
@@ -169,6 +175,32 @@ test('an organisation admin cannot designate their own organisation through the 
   assert.equal(response.statusCode, 200)
   assert.equal(updates.length, 1)
   assert.equal('instanceBrand' in (updates[0] ?? {}), false)
+})
+
+test('a local program\'s screenshot cannot become the logo the sign-in screen serves to anyone', async () => {
+  const screenshotId = '00000000-0000-4000-8000-0000000000c5'
+  const { app, updates } = makeApp([organizationRow({ instanceBrand: true })], undefined, [{
+    executorCommandId: '00000000-0000-4000-8000-0000000000c6',
+    id: screenshotId,
+    kind: 'image',
+    organizationId,
+    uploaderId: userId,
+  }])
+  const response = await app.inject({
+    method: 'PATCH',
+    url: '/api/organizations/current',
+    payload: { logoAttachmentId: screenshotId },
+  })
+  assert.equal(response.statusCode, 400)
+  assert.equal(response.json().error.code, 'INVALID_ATTACHMENT')
+  assert.equal(updates.length, 0)
+})
+
+test('every re-link path asks the same question of an executor command\'s image', () => {
+  // The logo above, the user, agent and project avatars and feedback all ask
+  // this beside canAccessAttachment, which only answers who may read a file.
+  assert.equal(isRelinkableAttachment({ executorCommandId: '00000000-0000-4000-8000-0000000000c6' }), false)
+  assert.equal(isRelinkableAttachment({ executorCommandId: null }), true)
 })
 
 test('the migration backfills the single-organisation instance and nothing else', () => {
