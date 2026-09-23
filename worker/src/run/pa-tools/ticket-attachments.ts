@@ -12,6 +12,7 @@ import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import { resolveTicketMember } from './ticket-member.js'
 import {
   assertProjectWriteDestination,
   IdSchema,
@@ -74,7 +75,7 @@ export const runTicketAttachmentListTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const { ticketId } = TicketInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, ticketId)
   const listed = await listTaskAttachments(context.prisma, ticketActorFor(context, member), { taskId: ticket.id })
   if ('error' in listed) return refuse(listed, REFUSALS)

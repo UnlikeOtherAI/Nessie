@@ -11,6 +11,7 @@ import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import { resolveTicketMember } from './ticket-member.js'
 import {
   assertProjectWriteDestination,
   IdSchema,
@@ -60,7 +61,7 @@ export const runTicketLabelsReadTool = async (
 ): Promise<ToolExecutionResult> => {
   const { projectId: named, boardId } = ReadInput.parse(input)
   const projectId = ticketProjectIdFor(context, named)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   await projectFor(context, member, projectId)
   if (boardId) {
     const board = await boardFor(context, projectId, boardId)

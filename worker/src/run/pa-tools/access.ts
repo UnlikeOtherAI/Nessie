@@ -4,7 +4,7 @@ import {
   type ScopeResolutionMode,
 } from '@nessie/memory'
 import type { SpaceViewerPrincipal } from '@nessie/knowledge'
-import { isAdminRole, type AuthorizedActionContext } from '@nessie/schemas'
+import { isAdminRole, TICKET_WORK_PURPOSE, type AuthorizedActionContext } from '@nessie/schemas'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
@@ -68,7 +68,12 @@ export const requireActingUserId = (
 ): string => {
   const userId = resolveEffectiveUserId(context)
   if (!userId) {
-    throw new Error('This tool requires a user actor context.')
+    // Ticket work acts as the agent and never reconstructs a person
+    // (docs/standards/ticket-work.md), so say that rather than a code.
+    throw new Error(context.actorContext.actionContext.purpose === TICKET_WORK_PURPOSE
+      ? 'This tool acts for a person, and ticket work has none behind it: you act as yourself. '
+        + 'Ask the people on the ticket in a comment instead.'
+      : 'This tool requires a user actor context.')
   }
   return userId
 }

@@ -547,7 +547,12 @@ const runJobUnderFence = async (
       onReacted: () => {
         reacted = true
       },
-      budget: resolveEffectiveRunBudget(context.agent.runLimits),
+      // A `ticket.work` run is clamped to the platform's ceiling (run-budget.ts).
+      budget: resolveEffectiveRunBudget(
+        context.agent.runLimits,
+        process.env,
+        payload.actorContext.actionContext.purpose,
+      ),
       // Resolved once per run against the model this run will actually use
       // (the budget gate's degrade override wins over the agent's own).
       cacheReadWeight: await resolveCacheReadWeight(deps.prisma, {

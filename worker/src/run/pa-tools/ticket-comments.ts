@@ -12,7 +12,8 @@ import { TASK_COMMENT_MAX_CHARS, type TaskCommentAuthor, type TaskCommentRecord 
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveActingMember, resolveEffectiveUserId, type ActingMember } from './access.js'
+import { resolveActingMember, resolveEffectiveUserId } from './access.js'
+import { agentTaskActorFor, resolveTicketMember, type TicketMember } from './ticket-member.js'
 import {
   assertProjectWriteDestination,
   IdSchema,
@@ -49,11 +50,15 @@ export const ticketEventAuthorFor = (
   origin: { kind: 'agent', agentId: context.agentId, runId: context.run.id },
 })
 
-/** The actor the shared ticket functions take, for this run. */
+/**
+ * The actor the shared ticket functions take, for this run: the person behind
+ * it, or — on a `ticket.work` run, which has none — the agent itself.
+ */
 export const ticketActorFor = (
   context: BuiltinToolRuntimeContext,
-  member: ActingMember,
+  member: TicketMember,
 ): TaskActor => {
+  if (member.userId === null) return agentTaskActorFor(context, member)
   const { unattended, origin } = ticketEventAuthorFor(context)
   return {
     organizationId: member.organizationId,
@@ -131,7 +136,7 @@ export const runTicketCommentListTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ListInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, args.ticketId)
   const listed = await listTaskComments(context.prisma, ticketActorFor(context, member), {
     taskId: ticket.id,
@@ -160,7 +165,7 @@ export const runTicketCommentAddTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = AddInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, args.ticketId)
   await assertProjectWriteDestination(context, {
     organizationId: member.organizationId,

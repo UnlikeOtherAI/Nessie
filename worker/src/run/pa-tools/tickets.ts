@@ -12,12 +12,12 @@ import {
   transitionProjectTask,
   updateProjectTask,
 } from '@nessie/team-admin'
-import { canUserReadRunDerivedRecord } from '@nessie/runtime'
 import { TaskLabelIdsSchema } from '@nessie/schemas'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import { resolveTicketMember } from './ticket-member.js'
 import {
   runTicketAttachmentAddTool,
   runTicketAttachmentListTool,
@@ -33,6 +33,7 @@ import {
 import { runTicketLabelCreateTool, runTicketLabelsReadTool } from './ticket-labels.js'
 import {
   assertProjectWriteDestination,
+  canTicketMemberReadRunDerived,
   IdSchema,
   PrioritySchema,
   TicketStatusSchema,
@@ -90,19 +91,14 @@ export const runTicketListTool = async (
 ): Promise<ToolExecutionResult> => {
   const parsed = ListInput.parse(input)
   const args = { ...parsed, projectId: ticketProjectIdFor(context, parsed.projectId) }
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   await projectFor(context, member, args.projectId)
   const tickets = await listProjectTasks(context.prisma, member.organizationId, {
     projectId: args.projectId,
     status: args.status,
   })
   const readableTickets = await Promise.all(tickets.map(async (ticket) => ({
-    readable: await canUserReadRunDerivedRecord(context.prisma, {
-      organizationId: member.organizationId,
-      runId: ticket.runId ?? null,
-      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
-      userId: member.userId,
-    }),
+    readable: await canTicketMemberReadRunDerived(context, member, ticket.runId ?? null),
     ticket,
   })))
   recordProjectRead(context, member, args.projectId)
@@ -122,7 +118,7 @@ export const runTicketReadTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const { ticketId } = ReadInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, ticketId)
   recordProjectRead(context, member, ticket.projectId!)
   const link = ticket.externalLink
@@ -156,7 +152,7 @@ export const runTicketBoardReadTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const projectId = ticketProjectIdFor(context, BoardInput.parse(input).projectId)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   await projectFor(context, member, projectId)
   const boards = await listBoards(context.prisma, {
     id: projectId,
@@ -268,7 +264,7 @@ export const runTicketUpdateTool = async (
   if (Object.keys(fields).length === 0) {
     throw new Error('Provide at least one ticket field to update.')
   }
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, ticketId)
   await assertProjectWriteDestination(context, {
     organizationId: member.organizationId,
@@ -287,7 +283,7 @@ export const runTicketUpdateTool = async (
         ? {
             embedding: {
               model: context.modelClient.embeddingModel,
-              ...(member.actorContext.actionContext.uoaIdentity
+              ...(member.userId && member.actorContext.actionContext.uoaIdentity
                 ? {
                     origin: {
                       userId: member.userId,
@@ -402,7 +398,7 @@ export const runTicketMoveTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = MoveInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   await projectTicketFor(context, member, args.ticketId)
   const moved = await moveProjectTaskToColumn(
     context.prisma,
@@ -440,7 +436,7 @@ export const runTicketTransitionTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = TransitionInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   await projectTicketFor(context, member, args.ticketId)
   const changed = await transitionProjectTask(context.prisma, {
     taskId: args.ticketId,
