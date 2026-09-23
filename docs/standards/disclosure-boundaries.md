@@ -78,8 +78,13 @@ Facts not restated there:
   on every streamed delta. Tool-posted messages resolve the bindings of their
   own target channel instead.
 - Sink writers today: the transcript window (transitive), memory recall, every
-  knowledge-base read, the conversation searches, attachment reads, and an
-  admitted checkpoint — and a checkpoint on resume is a read path too.
+  knowledge-base read, the conversation searches, attachment reads, an
+  admitted checkpoint — and a checkpoint on resume is a read path too — and
+  every DeepWater read of a research this team opened (`research_scope_get`,
+  `research_scope_reply`, `research_status`, `research_report`), which first
+  requires that its requester still reaches everything the research was built
+  from and then adds that whole basis and its private-conversation authors
+  ([deepwater.md](deepwater.md) → "Agents and briefs").
 - **Document versions retain their source boundary.** A `KnowledgePageVersion`
   stores its own basis scopes and private-conversation source authors. A reader
   first passes the document home's ordinary entitlement, then must satisfy the

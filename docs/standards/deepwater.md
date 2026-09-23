@@ -119,8 +119,12 @@ file is the rule**.
   deployment cannot be downgraded. This applies to model/embedding inference and
   its model catalogue only; DeepWater, `web_search`, and billing keep their own
   product-bound credentials and identity requirements unchanged.
-  DeepWater `research_start` must reuse the provider's stable `tool_call_id` on
-  logical retries. The projected tools and `deep_water_run_update` are flagged
+  Every DeepWater call reuses one stable `tool_call_id` across logical
+  retries — the provider's id for an agent's call, `brief:<runId>:<actionId>`
+  for a person's action — because Ledger keys each scope tool's idempotency on
+  it, so a retry finds the brief or turn it opened instead of paying for
+  another. An agent's `research_scope_start` claims its product run before the
+  call leaves (see "Agents and briefs" below). The projected tools and `deep_water_run_update` are flagged
   `requiresExplicitGrant`, so an agent sees them ONLY when its `toolPolicy`
   explicitly allows them (`=== true`) **and** the team-scoped instance reaches
   the run; grants never bypass tenancy, and absent/inherited denies. Owners use
@@ -129,16 +133,19 @@ file is the rule**.
   take the team-transition lock, re-read their projection generation, then take
   the agent lock. Its minimal target list
   includes the Personal Assistant without exposing PA bindings/activity through
-  `/api/agents`. The DeepWater launcher and
-  `/api/integrations/products/deep-water/agent-access` manage/read the
-  manifest's MCP projections plus `deep_water_run_update` as one exact bundle
-  whose size is derived from the manifest, never hard-coded. Launch stays
-  disabled and the API rejects before run creation until the PA holds the whole
-  bundle;
+  `/api/agents`. `/api/integrations/products/deep-water/agent-access`
+  manages/reads the manifest's MCP projections plus `deep_water_run_update` as
+  one exact bundle whose size is derived from the manifest, never hard-coded;
   the updater counts only while its registry row is enabled and active, matching
-  worker exposure, so a disabled builtin cannot authorize metered work;
-  the final enablement/instance/policy reads and run insert are linearized under
-  the team lock then agent-policy lock. Owners can also grant/revoke the bundle
+  worker exposure, so a disabled builtin cannot authorize metered work, and a
+  grant's final enablement/instance/policy reads are linearized under the team
+  lock then agent-policy lock. Whether a person can start research is the
+  `research` readiness on the `deep-water` entry of
+  `GET /api/integrations/products` (`ready`, `team_off`, `contract_outdated`,
+  `account_not_linked`, `unavailable`): the team switch, an active connector on
+  the brief contract, Nessie's Ledger configuration, and the viewer's linked UOA
+  identity for this team. The Personal Assistant's grants are **not** an input
+  — a person's brief never goes through an agent. Owners can also grant/revoke the bundle
   for shared agents. Generic agent create/PUT cannot write explicit-grant keys
   or DeepWater provenance markers; a locked PUT preserves them from the current
   row; clones and spawned subtask children strip them, PA bootstrap config
@@ -164,9 +171,54 @@ file is the rule**.
   transaction-scoped advisory lock; connector rows and the product toggle
   mutate in the same transaction and roll back together on failure. Disable
   returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, drafting, running, or
-  `needs_setup` research run still references the connector; cancel or recover
-  the run, or let it reach a terminal state, before retrying disable.
-  The worker enables handoff enforcement only from server-authored message
+  `needs_setup` research run still references the connector. Every refusal an
+  open research causes — a disable, a contract upgrade, a grant revocation —
+  names that run in the 409's `details` by id, status, origin and requester
+  only (never its topic), so a team owner or admin can cancel it from
+  DeepWater's app page (`POST …/research-runs/:runId/cancel`) and try again.
+  Even a
+  null external id remains a conservative blocker because Ledger dispatch may
+  be in flight; an owner cancels a launcher run Ledger never received locally,
+  one with a research id through Ledger, and one whose start may still be in
+  flight not at all until its handoff resolves it. Disable
+  targets only the instance linked from the first-party public product, so
+  private same-name catalogs are untouched. `deep_water_run_update` is not
+  PA-only and takes tenancy strictly from the run context (same team + thread;
+  Knowledge page validated against the org). It never accepts a cost, price,
+  charge, tariff, or currency: Ledger's DeepWater REST/MCP status, report, and
+  list contracts expose no commercial amount, and UOA is the sole commercial
+  authority.
+  Each DeepWater connector call writes an operational connector usage event
+  against the run's immutable `requestedByUserId`; it has no cost fields and
+  is excluded from every local
+  cost aggregate. The exclusion is `metadata.metering = 'operational_only'`,
+  stamped by `recordConnectorUsage`'s zod contract in
+  `packages/runtime/src/connector-usage.ts`, and it is the only predicate the
+  cost report (`api/src/services/token-ledger.ts`,
+  `BILLABLE_CONNECTOR_COST`) reads. Migration
+  `20260720234500_retire_deepwater_local_cost_mirror` erases historical local
+  amounts, converts only their existence into a cost-free server-only dispatch
+  recovery marker, drops the obsolete Product-run cost columns, and installs a
+  database trigger rejecting future DeepWater connector-event cost writes.
+  Product run APIs and UI expose no DeepWater cost; customer totals
+  come only from UOA's statement.
+  Re-enable preserves richer probed schemas only
+  when tool names exactly match the current Ledger contract, upgrades an older
+  Ledger contract in place (see "Contracts move in place" above), and replaces
+  legacy direct-provider projections, which must be explicitly re-granted.
+
+## Legacy launcher handoff — launcher runs only, retired in phase E
+
+These rules govern only launcher runs: DeepWater product runs from before
+research briefs (`uoa_identity IS NULL`), started through the retired research
+launcher and handed to the Personal Assistant. New research never takes this
+path — the launcher route is gone and every research starts as a brief — but a
+handoff already in flight keeps its guard until phase E retires the guard, the
+launcher builders and `deep_water_run_update`. The guard wraps only a turn
+whose trigger carries `integrationLaunch`; the run binder wraps every other
+DeepWater call, so the two never see the same call.
+
+- The worker enables handoff enforcement only from server-authored message
   metadata `integrationLaunch.{productSlug,runId}` for `deep-water`; ordinary
   messages remain unguarded. The durable run lookup requires that exact run id,
   message, organization, team, and thread, and a missing/mismatched row fails
@@ -212,52 +264,23 @@ file is the rule**.
   unblocked by the timeout race. Fatal
   tool calls still emit their paired sanitized end event, and every started
   same-batch tool wrapper settles before the queue attempt is released.
-  Completion also fails fatally if the model omits the required start. Ordinary
-  DeepWater calls are unchanged.
+  Completion also fails fatally if the model omits the required start. Every
+  other DeepWater call belongs to the run binder.
   PA message, run attachment, PA run/task, and direct `run.execute` enqueue
   commit atomically; product handoffs bypass chat engagement decisions while
   ordinary chat keeps its existing orchestration path. Duplicate enqueue
   conflicts roll back the duplicate unit, and realtime publication is
   post-commit/non-fatal.
-  Even a
-  null external id remains a conservative blocker because Ledger dispatch may
-  be in flight; the error links an attached chat where PA can call
-  `research_cancel`, while unattached interrupted work requires explicit
-  recovery. Disable
-  targets only the instance linked from the first-party public product, so
-  private same-name catalogs are untouched. `deep_water_run_update` is not
-  PA-only and takes tenancy strictly from the run context (same team + thread;
-  Knowledge page validated against the org). It never accepts a cost, price,
-  charge, tariff, or currency: Ledger's DeepWater REST/MCP status, report, and
-  list contracts expose no commercial amount, and UOA is the sole commercial
-  authority.
-  The external report URL is persisted only from Ledger's authenticated
+- The external report URL is persisted only from Ledger's authenticated
   `research_start` structured response after its origin and exact job path are
   validated; source count is persisted only from the authenticated
   `research_report` references array. Both carry server-only provenance markers
   before they are exposed, and agent-authored run updates cannot set, replace,
   or mark either value as trusted. Source persistence atomically repairs an
-  already-created exact per-run connector usage event, making same-batch
-  report/update order irrelevant. That event records operational calls and
-  authenticated source units against the launch run's immutable
-  `requestedByUserId`; it has no cost fields and is excluded from every local
-  cost aggregate. The exclusion is `metadata.metering = 'operational_only'`,
-  stamped by `recordConnectorUsage`'s zod contract in
-  `packages/runtime/src/connector-usage.ts`, and it is the only predicate the
-  cost report (`api/src/services/token-ledger.ts`,
-  `BILLABLE_CONNECTOR_COST`) reads. Migration
-  `20260720234500_retire_deepwater_local_cost_mirror` erases historical local
-  amounts, converts only their existence into a cost-free server-only dispatch
-  recovery marker, drops the obsolete Product-run cost columns, and installs a
-  database trigger rejecting future DeepWater connector-event cost writes.
-  Product run APIs and UI expose no DeepWater cost; customer totals
-  come only from UOA's statement.
-  The locked write also enforces a terminal start ticket's exact Product status
+  already-created exact per-run connector usage event (recording the
+  authenticated source units), making same-batch report/update order
+  irrelevant. The locked write also enforces a terminal start ticket's exact Product status
   mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
-  Re-enable preserves richer probed schemas only
-  when tool names exactly match the current Ledger contract, upgrades an older
-  Ledger contract in place (see "Contracts move in place" above), and replaces
-  legacy direct-provider projections, which must be explicitly re-granted.
 
 ## Research briefs — the product-run binding
 
@@ -348,21 +371,101 @@ worker and card are built on them.
   one predicate for lists, detail, the card and artifacts: the origin thread's
   live chain for anyone in it, the full source basis for the requester's
   portable reach, and a person's brief stays private until it is launched.
-- **The legacy run list.** `GET /api/integrations/products/:productSlug/research-runs`
-  (`listDeepWaterResearchRuns`, rendered by Knowledge › Research's
-  `DeepWaterResearchView` → `DeepWaterRunHistory`) reads the whole team with no
-  viewer predicate, so it returns launcher rows only (`uoa_identity IS NULL`).
-  A brief row there would show a colleague's unlaunched brief — its topic
-  included, from their Personal Assistant or a private channel — to the whole
-  team. **Hand-over:** the brief API's list (`GET
-  /api/integrations/products/deep-water/research-runs?cursor&limit`, `{items:
-  ResearchRunView[], meta}`, every row through `isDeepWaterRunVisible`) takes
-  the same path, so the change that adds it deletes the legacy handler,
-  `listDeepWaterResearchRuns` and its bare-array response in the same commit,
-  and moves `DeepWaterResearchView` and its hook to the paginated
-  `ResearchRunView` shape. Any launcher row the new list still shows goes
-  through the same view mapper and predicate; there is never a window with two
-  handlers on one path, or with brief rows on the unfiltered list.
+- **One research list.** `GET /api/integrations/products/deep-water/research-runs?cursor&limit`
+  answers `{items: ResearchRunView[], meta}`, newest first, every row — brief
+  or launcher — through `isDeepWaterRunVisible` and the one view mapper. It
+  replaced the team-wide launcher list at the same path in the same change
+  (that list had no viewer predicate, so a brief row there would have shown a
+  colleague's unlaunched brief, its topic included, to the whole team); there
+  is never a second handler on the path or an unfiltered list of briefs.
+
+## Research briefs — a person's actions and an agent's calls
+
+Both ways into a brief end in the same Ledger calls over the run's own team
+connector, and the same projection applies every answer.
+
+- **The brief API** (`api/src/routes/integrations/research-run*.ts`, under
+  `/api/integrations/products/deep-water/research-runs`): the list, one
+  research, its brief, and the person's actions — open (`POST`), reply
+  (`/messages`), Start (`/start`), `/cancel` and `/deliver`. The API holds no
+  DeepWater identity path (contract D10): each action is checked under the
+  run's row lock, recorded as the action in flight and enqueued as one
+  `deep_water.brief.action` job (`/deliver`: `deep_water.run.deliver`) in the
+  same transaction, which also brings the watch's next read to 5 s, and is
+  answered 202. The job carries the acting person's live UOA identity from the
+  request. A reply is judged against the revision Nessie last saw
+  (`DEEP_WATER_BRIEF_REVISION_CONFLICT` with `currentRevision`); Start counts
+  the pillars it carries, so hand-written pillars launch even after the planner
+  failed (`DEEP_WATER_BRIEF_INCOMPLETE` only when neither has one). Words sent
+  to DeepWater are refused with `SECRET_INTERCEPTED` before anything is stored,
+  as the composer refuses them. A person may open a brief only from a
+  conversation they can post in (`origin {kind:'thread'}`) or their Personal
+  Assistant's (`{kind:'personal'}`, resolved on the server).
+- **The worker carries a person's action out**
+  (`worker/src/control/deepwater-brief-action.ts`): one Ledger call per action
+  — `research_scope_start`, `_reply`, `_launch` or `research_cancel` — signed as
+  that person with the identity the job carries and the `deep-water.brief`
+  system component, tool-call id `brief:<runId>:<actionId>`. The answer goes
+  through the shared projection with the action's own id; a successful action
+  renews the requester's captured identity and lifts a changed-sign-in block
+  (`refreshDeepWaterRunIdentity`). Ledger's refusal ends the action with the
+  dialog's code (`busy`, `revision_conflict`, `not_ready`, `brief_limit`,
+  `message_limit`, `budget_exceeded`, `forbidden`, `not_drafting`, `rejected`);
+  a refused opening fails the brief (it never existed); a `scope_*` refusal of a
+  launch moves the run back to drafting (`revertDeepWaterLaunch`), because only
+  this job knows Ledger reverted it. A Nessie identity failure ends it as
+  `identity_required`, never as ambiguity. An unreachable Ledger (transport
+  failure, timeout, 5xx, 408, 429, `upstream_unavailable`) is retried with the
+  same tool-call id — which Ledger replays rather than repeats — for 30 minutes
+  from when the person acted, then the action ends as `unavailable`. An answer
+  outside Ledger's contract is deterministic and is never retried. An action a
+  read, a cancel or the stale-action settle already ended is not sent.
+- **An owner's cancel is the owner's own.** A team owner or admin may cancel
+  any open research in their team, whoever asked and whether or not they may
+  read it (a non-reader is answered `{id, status}` only); the job signs as the
+  owner with the owner's live identity and the `deep-water.owner-cancel`
+  component, which Ledger checks against the owner's UOA team role — never as
+  the requester. The Nessie audit (`integration.research.cancelled`) names the
+  owner as the actor and the run by id.
+- **Agents and briefs — the run binder** (`worker/src/run/deepwater-run-binder*.ts`)
+  wraps every DeepWater call outside a launcher handoff turn.
+  `research_scope_start` claims its run with `claimAgentOriginRun` before the
+  call leaves — the team transition lock, then the agent's policy lock and a
+  re-read of its `research_scope_start` grant — with the person it acts for as
+  requester (none means `LEDGER_UOA_IDENTITY_REQUIRED`, and nothing is written)
+  and the calling run's consumed sources. Ledger's answer attaches the research
+  and posts the agent's research card; a definitive refusal fails the run; a
+  throw, a transient failure or an answer outside the contract leaves it
+  `queued` for the watch to replay, and the agent is told the brief may have
+  started and not to call `research_scope_start` again. After a start or a
+  reply the agent is told the planner is working and that it will be woken
+  there. Every other call naming a research resolves that research's run in
+  the same organisation and team and must act for its requester
+  (`DEEP_WATER_RESEARCH_NOT_FOUND` otherwise, before Ledger); changing a
+  research the team never opened is refused, reading one feeds the person's
+  own scope. Reads (`research_scope_get`, `_reply`, `research_status`,
+  `research_report`) first require that the requester still reaches everything
+  the research was built from (`DEEP_WATER_SOURCE_ACCESS`), then feed that
+  basis into the reading run; a reply or an editing launch unions the run's
+  whole sink into the research first. An agent never publishes
+  (`DEEP_WATER_PUBLISH_REQUIRES_PERSON`). Every answer goes through the shared
+  projection and renews the captured identity.
+- **A shared agent can use DeepWater only in a run with no private-conversation
+  lineage.** The private-conversation write gate applies to every DeepWater
+  tool, reads included, with no DeepWater exemption: exporting other people's
+  private words is theirs to decide. That rules out a DM with a shared agent, a
+  private channel and a group DM; the Personal Assistant is unaffected. The gate
+  runs before the toolset dispatches, so a refused `research_scope_start`
+  writes no run, and the routing prompt tells the agent not to retry but to
+  point the person at the Research button in that chat — the person's own
+  brief is the authorised path.
+- **The routing prompt** (`worker/src/run/execute/research-routing.ts`) names
+  only the DeepWater tools the run was given: agree a brief first, the planner
+  answers by waking the agent (never poll or wait), read with
+  `include_transcript` only when the whole conversation is needed, ask the
+  person with a waiting card only for what only they can answer, launch at the
+  current revision, never start the same research twice. A team still on the
+  launcher contract keeps the launcher routing until its owner updates.
 
 ## Research briefs — the watch, delivery and wakes
 

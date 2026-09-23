@@ -462,7 +462,9 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **DeepWater — default OFF, explicit per-agent grant, always via Ledger.**
   Enabling DeepWater provisions a team-scoped tool-projecting instance routed
-  through Ledger; the handoff, grant bundle and ambiguity rules are exacting.
+  through Ledger; every research is agreed as a brief with DeepWater's planner
+  first and comes back to the conversation it came from, and the brief, grant
+  bundle and legacy handoff rules are exacting.
   Read [`docs/standards/deepwater.md`](docs/standards/deepwater.md)
   before writing code here.
 - **Customer billing stays in UOA.** Tariffs, statements, credits, top-ups,
