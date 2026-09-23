@@ -57,6 +57,10 @@ names no program offers neither tool (`worker/src/run/executor-tool-descriptors.
 `executor_mcp_tools {server, tool?}` answers without `tool` a compact list —
 each tool's name and first sentence, so Kelpie's 94 pinned tools fit in a few
 KB — and with `tool` that one tool's full description and input schema. The
+list keeps to the 12 000-character cap below: a catalog too long for it
+describes what fits in 10 000, names the rest in what is left ("More tools,
+by name only: …"), and counts the names that still do not fit ("…and N more
+not named here — ask for one by its exact name"). The
 daemon operation is unchanged and still paged: the worker walks the pages
 once per program per run, keeps the whole catalog for the rest of the run
 (`executor-mcp-catalog.ts`), and answers every later listing from that copy.
