@@ -87,7 +87,11 @@ export type DeepWaterProjectionOutcome =
       /** The planner turn this read settled, for the per-turn wake claim (N4). */
       newlySettledTurn: DeepWaterTurnRegister | null
       pendingActionCleared: boolean
-      /** The run became `running` with this read: a person-origin card may be owed. */
+      /**
+       * The run was launched with this read — it moved into `running` or
+       * `needs_setup` — so `launched_at` is set and a person-origin card may
+       * be owed.
+       */
       launched: boolean
       /** Ledger reports a finished research: the caller runs delivery (N3). */
       ledgerTerminal: DeepWaterLedgerTerminal | null
@@ -144,6 +148,14 @@ const STATUS_RANK: Record<ProductIntegrationRunStatus, number> = {
   failed: 3,
   warning: 3,
 }
+
+/**
+ * The live statuses only a launched research reaches: Ledger reports
+ * `needs_setup` only for a launched job (from `starting` or `running`), so a
+ * brief that moves straight from `drafting` to `needs_setup` was launched too,
+ * and its card and room are owed exactly as for `running`.
+ */
+const LAUNCHED_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set(['running', 'needs_setup'])
 
 /**
  * What a Ledger status does to a live run's product status (contract §2.4);
@@ -234,7 +246,10 @@ const writeProjection = async (
     state: write.state,
     msSinceLastChange: now.getTime() - observedAt.getTime(),
   })
-  const launched = write.status === 'running' && run.status !== 'running'
+  // The move into a launched status is the launch, whichever one Ledger
+  // reported; moving between them (an operator's `needs_setup` and its
+  // recovery) is not a second launch.
+  const launched = LAUNCHED_STATUSES.has(write.status) && !LAUNCHED_STATUSES.has(run.status)
 
   const data: Prisma.ProductIntegrationRunUpdateInput = {
     scopeJson: deepWaterBriefJson(DeepWaterScopeStateSchema.parse(write.state)),

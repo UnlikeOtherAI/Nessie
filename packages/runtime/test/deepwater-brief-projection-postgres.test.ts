@@ -253,6 +253,55 @@ withFixture('status reads write cancelled directly and hand a finished research 
   assert.equal(failedRead.applied && failedRead.run.title, 'Heat pumps')
 })
 
+withFixture('a brief first seen in needs_setup was launched, and finishing from there is still its launch', async (fixture) => {
+  const statusRead = (runId: string, rs: string, status: 'running' | 'complete') =>
+    fixture.prisma.$transaction((tx) => applyDeepWaterStatusRead(tx, {
+      organizationId: fixture.ids.organization,
+      runId,
+      status: {
+        id: rs, status, phase: null, sourcesFound: null, etaMinutes: null,
+        title: null, errorCode: null, brief: null, publicUrl: null,
+      },
+    }))
+
+  // Ledger sets needs_setup only on a launched job, from starting or running.
+  const { run } = await insertBrief(fixture)
+  const rs = researchId()
+  await apply(fixture, run.id, scopeResult(rs, { turn: turn({ status: 'complete' }) }))
+  const setup = await apply(fixture, run.id, scopeResult(rs, { status: 'needs_setup', turn: turn({ status: 'complete' }) }))
+  assert.equal(setup.applied && setup.run.status, 'needs_setup')
+  assert.equal(setup.applied && setup.launched, true)
+  const launchedAt = setup.applied ? setup.run.launchedAt : null
+  assert.ok(launchedAt)
+
+  // Its recovery is not a second launch, and keeps the first launch time.
+  const recovered = await statusRead(run.id, rs, 'running')
+  assert.equal(recovered.applied && recovered.run.status, 'running')
+  assert.equal(recovered.applied && recovered.launched, false)
+  assert.deepEqual(recovered.applied && recovered.run.launchedAt, launchedAt)
+
+  // One that finishes straight from needs_setup is handed to delivery as launched.
+  const { run: stuck } = await insertBrief(fixture)
+  const rsStuck = researchId()
+  await apply(fixture, stuck.id, scopeResult(rsStuck, { turn: turn({ status: 'complete' }) }))
+  await apply(fixture, stuck.id, scopeResult(rsStuck, { status: 'needs_setup', turn: turn({ status: 'complete' }) }))
+  const finished = await statusRead(stuck.id, rsStuck, 'complete')
+  assert.equal(finished.applied && finished.run.status, 'needs_setup')
+  assert.ok(finished.applied && finished.run.launchedAt)
+  assert.deepEqual(finished.applied && finished.ledgerTerminal, { status: 'complete', errorCode: null })
+
+  // A launch ticket naming needs_setup is a launch too.
+  const { run: ticketed } = await insertBrief(fixture)
+  const rsTicketed = researchId()
+  await apply(fixture, ticketed.id, scopeResult(rsTicketed, { turn: turn({ status: 'complete' }) }))
+  const ticket = await fixture.prisma.$transaction((tx) => applyDeepWaterLaunchTicket(tx, {
+    organizationId: fixture.ids.organization, runId: ticketed.id, ticket: { id: rsTicketed, status: 'needs_setup' },
+  }))
+  assert.equal(ticket.applied && ticket.run.status, 'needs_setup')
+  assert.equal(ticket.applied && ticket.launched, true)
+  assert.ok(ticket.applied && ticket.run.launchedAt)
+})
+
 const setPendingAction = (fixture: BriefFixture, runId: string, kind: 'launch' | 'cancel', actionId: string) =>
   fixture.pool.query(
     `UPDATE product_integration_runs

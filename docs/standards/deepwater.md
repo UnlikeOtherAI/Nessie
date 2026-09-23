@@ -416,7 +416,11 @@ the only way results come back.
   `running` (setting `launched_at`) before its result is delivered, even when
   the watch never saw it run (a launch acknowledgement lost, or a research
   that finished between two reads), so a person's card is posted and the room
-  is shown the research before the result lands under that card. A bare
+  is shown the research before the result lands under that card. A move into
+  `needs_setup` is a launch as well — Ledger reports it only for a launched
+  research — so it sets `launched_at` and posts the card the same way, and a
+  research that finishes from there is delivered under it; moving between
+  `running` and `needs_setup` afterwards is not a second launch. A bare
   `failed` on a brief is never taken as a launch: it can be a refusal before
   one.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
@@ -428,7 +432,8 @@ the only way results come back.
   `conflict` still means Ledger holds a live brief for that call, so it is
   logged as the broken invariant it is and the run is held for the reap
   (`holdDeepWaterScopeStartReplay`: its next read falls due as its confirm
-  window closes, so it is never replayed again), never failed as refused. The attach posts the agent's research card
+  window closes, so it is never replayed again), never failed as refused. The
+  attach posts the agent's research card
   (`ensureDeepWaterResearchCard`, once per run under the row lock). A person's
   lost opening is retried by its own brief-action job, never replayed by the
   watch.
@@ -465,7 +470,8 @@ the only way results come back.
   watch never undoes what was done to a page), and then, in the claim's
   transaction, posts the person's result reply under the card with an alert
   keyed `deep-water-result:<runId>`, or wakes the agent that asked. A failed
-  research is delivered the same way with a notice or a `failed` wake. An expired or unreadable report is a final block;
+  research is delivered the same way with a notice or a `failed` wake. An
+  expired or unreadable report is a final block;
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
   `metadata.deepWaterNotice {schemaVersion, runId, kind}` — the result reply

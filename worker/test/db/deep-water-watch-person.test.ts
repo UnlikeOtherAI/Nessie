@@ -326,6 +326,34 @@ withFixture('a brief refused before launch never counts as launched, whatever it
   assert.equal(notice?.rootMessageId, told.cardMessageId)
 })
 
+withFixture('a brief first seen in needs_setup was launched: the room is shown it and its result lands under the card', async (fixture) => {
+  const brief = await fixture.insert('person')
+  const rs = researchId()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
+  })
+  // Ledger reports needs_setup only for a launched job; the watch never saw it start.
+  fixture.ledger.answer('research_scope_get', { ...wireScope({ id: rs, revision: 2 }), status: 'needs_setup', title: 'Heat pumps' })
+  await watch(fixture, brief.id)
+  const setup = await fixture.read(brief.id)
+  assert.equal(setup.status, 'needs_setup')
+  assert.ok(setup.launchedAt, 'needs_setup is only ever a launched research')
+  assert.ok(setup.cardMessageId, 'the room is shown the research')
+
+  // It finishes without ever being seen running.
+  fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })
+  fixture.ledger.answer('research_report', report)
+  await watch(fixture, brief.id)
+  const delivered = await fixture.read(brief.id)
+  assert.equal(delivered.status, 'completed')
+  const [result, ...others] = await noticesAnywhere(fixture, brief.id)
+  assert.equal(others.length, 0)
+  assert.equal(result?.kind, 'result')
+  assert.equal(result?.threadId, fixture.ids.thread, 'in the origin thread, not the requester\'s own conversation')
+  assert.equal(result?.rootMessageId, delivered.cardMessageId, 'the result lands under the card')
+})
+
 withFixture('a read that fails while Ledger restarts is tried again within 30 s; a refusal waits', async (fixture) => {
   const { run } = await launched(fixture)
   // What the watch claim does to this run alone (a global claim here could take
