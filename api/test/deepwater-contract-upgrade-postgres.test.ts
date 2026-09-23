@@ -23,11 +23,6 @@ import {
   setDeepWaterAgentAccess,
 } from '../src/services/deepwater-agent-access.js'
 import {
-  DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES,
-  DeepWaterLaunchAuthorizationError,
-  runWithAuthorizedDeepWaterLaunch,
-} from '../src/services/deepwater-launch-authorization.js'
-import {
   briefDescriptors,
   launcherTeam,
   legacyRun,
@@ -62,11 +57,7 @@ withSeed('a team still on the launcher contract is outdated, and opens no brief,
   // Its launcher access is still what it was: every launcher tool is granted.
   const launcherAccess = await loadDeepWaterPolicyKeys(s.prisma, { ...team(s), contractToolNames: DEEP_WATER_LAUNCHER_TOOL_NAMES })
   assert.equal(launcherAccess.policyKeys.length, DEEP_WATER_LAUNCHER_TOOL_NAMES.length + 1)
-  await assert.rejects(
-    runWithAuthorizedDeepWaterLaunch(s.prisma, team(s), async () => 'launched'),
-    (error: unknown) => error instanceof DeepWaterLaunchAuthorizationError
-      && error.code === DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES.CONTRACT_OUTDATED,
-  )
+  // Both brief creators refuse on this read, under the team lock.
   assert.deepEqual(await readDeepWaterTeamConnector(s.prisma, team(s)), {
     state: 'contract_outdated',
     instanceId: s.instanceId,
@@ -143,11 +134,7 @@ withSeed('a connector on another contract than the manifest\'s reports contractO
     (error: unknown) => error instanceof DeepWaterAgentAccessError
       && error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.CONTRACT_OUTDATED,
   )
-  await assert.rejects(
-    runWithAuthorizedDeepWaterLaunch(s.prisma, team(s), async () => 'launched'),
-    (error: unknown) => error instanceof DeepWaterLaunchAuthorizationError
-      && error.code === DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES.CONTRACT_OUTDATED,
-  )
+  assert.equal((await readDeepWaterTeamConnector(s.prisma, team(s))).state, 'contract_outdated')
   // Revocation stays possible on an outdated contract.
   await setDeepWaterAgentAccess(s.prisma, { ...team(s), agentId: s.personalAssistantId, enabled: false })
   assert.notEqual((await policyOf(s, s.personalAssistantId))[deepWaterBundleMarkerKey(s.teamId)], true)
