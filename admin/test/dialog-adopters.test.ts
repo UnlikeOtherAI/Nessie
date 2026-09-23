@@ -45,9 +45,9 @@ const ADOPTERS: Adopter[] = [
   { mode: 'overlay', path: 'components/features/channels/ThoughtProcessDialog.tsx' },
   { mode: 'dialog', path: 'components/features/executors/ExecutorRunLauncherDialog.tsx' },
   { mode: 'overlay', path: 'components/features/billing/UoaBillingCancellationDialog.tsx' },
-  // Was an `overlay` carve-out for its own `max-w-3xl` panel family; it now
-  // wears the shell's `size="xl"` rather than a geometry of its own.
-  { mode: 'dialog', path: 'components/features/integrations/DeepWaterResearchLauncherDialog.tsx' },
+  // The DeepWater research brief: the conversation beside the pillars and
+  // settings wants the shell's widest geometry, `size="xl"`, not one of its own.
+  { mode: 'dialog', path: 'components/features/deep-water/ResearchBriefDialog.tsx' },
   // Was an `overlay` carve-out for a 680px panel the shell did not ship; it
   // now wears `size="lg"` (640px) rather than keep a geometry of its own.
   { mode: 'dialog', path: 'components/features/triggers/TriggerEditorDialog.tsx' },

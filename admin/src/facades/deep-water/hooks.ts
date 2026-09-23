@@ -6,6 +6,7 @@ import {
   DeepWaterResearchRunViewSchema,
   type DeepWaterBriefView,
   type DeepWaterResearchReadiness,
+  type DeepWaterResearchRunList,
   type DeepWaterResearchRunView,
   type IntegratedProductResponse,
 } from '@nessie/schemas'
@@ -78,11 +79,20 @@ export const useResearchBrief = (runId: string | null) => {
   })
 }
 
-/** Knowledge › Research: every research this viewer may see, newest first, paged. */
+const listItems = (list: DeepWaterResearchRunList) => list.items
+const listMeta = (list: DeepWaterResearchRunList) => list.meta
+
+/**
+ * Knowledge › Research: every research this viewer may see, newest first,
+ * paged. The list's data is `{items, meta}` (nessie.md §7.1), so its cursors
+ * are read from inside it.
+ */
 export const useResearchRunList = () => {
   const scope = useDeepWaterViewerScope()
-  return usePagedList<DeepWaterResearchRunView>({
+  return usePagedList<DeepWaterResearchRunView, DeepWaterResearchRunList>({
     enabled: scope !== null,
+    items: listItems,
+    meta: listMeta,
     path: RESEARCH_RUNS_PATH,
     queryKey: scope ? deepWaterKeys.list(scope) : deepWaterKeys.lists,
   })

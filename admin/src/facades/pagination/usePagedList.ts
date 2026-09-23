@@ -40,6 +40,12 @@ type UsePagedListOptions<TData, TItem> = {
   /** Extract rows from an otherwise paged response. Arrays need no extractor. */
   items?: (data: TData) => TItem[]
   /**
+   * Read the cursors from inside `data`, for a list whose contract carries
+   * `{items, meta}` as its data (the DeepWater research list) rather than
+   * `meta` beside it. Absent, `meta` is read from the envelope.
+   */
+  meta?: (data: TData) => PaginationMeta
+  /**
    * Skips the fetch entirely, mirroring `useQuery`'s own option. An
    * owner-gated page renders its refusal without asking the server a question
    * it is going to decline.
@@ -101,6 +107,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
   enabled = true,
   items: selectItems,
   limit: configuredLimit = DEFAULT_PAGE_LIMIT,
+  meta: selectMeta,
   params = {},
   paramPrefix = '',
   scope,
@@ -134,7 +141,9 @@ export const usePagedList = <TItem, TData = TItem[]>({
     queryKey: paginationKeys.page(queryKey, paramsKey, cursor, direction, limit),
   })
 
-  const meta = query.data?.meta
+  const meta = query.data
+    ? selectMeta ? selectMeta(query.data.data) : query.data.meta
+    : undefined
   const items = useMemo(
     () => (query.data ? selectItems?.(query.data.data) ?? (query.data.data as unknown as TItem[]) : []),
     [query.data, selectItems],

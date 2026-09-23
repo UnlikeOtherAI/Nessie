@@ -42,6 +42,25 @@ export const researchName = (run: Pick<DeepWaterResearchRunView, 'title' | 'topi
   run.title?.trim() || run.topic.trim() || 'DeepWater research'
 
 /**
+ * The one line a drafting research carries under its name: who is agreeing the
+ * brief. Null once it is launched — the outcome says where it stands then.
+ */
+export const researchStatusLine = (
+  run: Pick<DeepWaterResearchRunView, 'origin' | 'requestedByUserId' | 'status'>,
+  meUserId: string | null,
+): string | null => {
+  if (run.status !== 'drafting') return null
+  if (run.origin.kind === 'agent') return 'An agent is agreeing the brief with DeepWater.'
+  return run.requestedByUserId === meUserId
+    ? 'You’re agreeing the brief with DeepWater.'
+    : 'The brief is being agreed with DeepWater.'
+}
+
+/** "Continue the brief" for the requester still agreeing it; "View brief" for everyone else. */
+export const briefDoorwayLabel = (run: Pick<DeepWaterResearchRunView, 'status' | 'viewer'>): string =>
+  run.status === 'drafting' && run.viewer.canEdit ? 'Continue the brief' : 'View brief'
+
+/**
  * "full report" only when DeepWater wrote the full report; a summary is always
  * called a summary, and an unknown kind is the neutral "report" (amendments N10).
  */

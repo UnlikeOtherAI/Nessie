@@ -67,6 +67,16 @@ const KNOWLEDGE_INTENT: SurfaceIntent = {
 }
 
 /**
+ * A product's Documents view reads the knowledge intents plus `?research=`,
+ * the DeepWater brief Knowledge › Research shows over itself — linkable state,
+ * not an instruction, so a reload lands on the same brief.
+ */
+const KNOWLEDGE_VIEW_INTENT: SurfaceIntent = {
+  consume: KNOWLEDGE_INTENT.consume,
+  state: [...KNOWLEDGE_INTENT.state ?? [], 'research'],
+}
+
+/**
  * The project tab host consumes the knowledge intents its Docs section reads,
  * plus the source-picker doorway in its Settings section. `create` belongs to
  * the boards directory, whose dialog is its own owning surface.
@@ -207,6 +217,8 @@ export const SURFACES: Surface[] = [
     depth: 2,
     fillsViewport: true,
     identityOf: (match) => `channel:${match[1]}`,
+    // A research brief opened from this conversation shows over it.
+    intent: { state: ['research'] },
     keyScope: () => 'channel',
     parentOf: (match) => ({
       label: 'Back to conversation',
@@ -399,7 +411,7 @@ export const SURFACES: Surface[] = [
     depth: 1,
     identityOf: (match) => `view:${match[1]}`,
     keyScope: (identity) => identity,
-    intent: KNOWLEDGE_INTENT,
+    intent: KNOWLEDGE_VIEW_INTENT,
     parentOf: toKnowledge,
     pattern: /^\/knowledge-base\/views\/([^/]+)$/,
     root: KNOWLEDGE_ROOT,

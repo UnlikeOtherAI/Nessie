@@ -12,7 +12,7 @@ export type PillSize = 'md' | 'sm'
 /**
  * `auto` sizes to its content, which is what a chip beside a heading wants.
  * `control` pins 24px so a column of chips in a list lines up with the rows
- * beside it — `DeepWaterRunHistory` hand-rolled its own chip for exactly this
+ * beside it — the retired DeepWater run history hand-rolled its own chip for this
  * and said so, and every status column in a `DataTable` needs it too.
  */
 export type PillHeight = 'auto' | 'control'
@@ -58,7 +58,7 @@ type PillProps = {
  * the dark themes (`--accent: #047857`, `#0e7490`, `#64748b`) it is too close to
  * its own 16%-alpha wash to read. Fourteen accent chips shipped
  * on `--thinking` (every `StatusPill tone="accent"`, plus the hand-written
- * `--accent-soft`/`--thinking` pairs in `DeepWaterRunHistory`, `signal-format`,
+ * `--accent-soft`/`--thinking` pairs in the retired DeepWater run history, `signal-format`,
  * `MessageUiCards`, `MemberAgentRow`, and `app-trust`). Four shipped on
  * `--accent` instead and stay unconverted, because one tone cannot emit both:
  * `ToolBadge` (whose `mcp-remote` chip is the second accent colour in its own
