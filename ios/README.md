@@ -89,10 +89,11 @@ explicit run capabilities.
 | --- | --- |
 | Research list, search and filters | `GET /v1/admin/runs` |
 | Projects toolbar, project selection and creation | `/v1/admin/projects` |
+| Updates toolbar, recently finished research | `GET /v1/admin/runs` |
 | New research toolbar, native setup form | `POST /v1/admin/research` |
 | Refine question, assistant conversation | `/v1/admin/stream-ticket`, `/v1/admin/chat` |
 | Selected research, report, sources and activity | `/v1/admin/runs/:id`, `/events`, `/v1/research/:id/sources` |
-| Research actions and follow-up | Existing run mutation and extension routes |
+| Research actions, follow-up and report generation | Existing run mutation, extension, generate-summary and generate-full-report routes |
 | Account, team switcher | `/v1/auth/workspaces`, `/v1/auth/workspace` |
 | Account, people and invitations | `/v1/admin/workspace/members`, `/invitations` |
 | Account, plan and credits | Existing billing statement, credits and hosted action routes |
@@ -107,7 +108,8 @@ the person to accept; no keyword matching interprets user intent.
 ## Verification
 
 `DeepWaterTests` covers callback validation, wire contracts, identity-bound
-launch records, missing capability refusals and multilingual assistant events.
+launch records, workspace invalidation, full-report refresh, Markdown structure,
+missing capability refusals and multilingual assistant events.
 `DeepWaterUITests` exercises native research reading, sources, creation,
 uncertain-launch recovery, projects, empty/offline states, people, credits, sign-out and
 orientation. Screenshots are retained as `.xcresult` attachments.
