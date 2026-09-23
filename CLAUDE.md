@@ -176,6 +176,17 @@ sentence changes only if the invariant itself did.
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
   [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
+- **DeepWater research coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:research-brief`. A pure fixture suite
+  (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
+  card, Knowledge › Research and `/apps/deep-water` hero; CI runs it after the
+  overlay-layer one. The runner plays the server through `window.__research`
+  (the planner answering, a launch landing, a revision conflict) and pins the
+  whole person brief, the artifact actions and their clipboard fallback, an
+  agent's read-only brief, the not-ready doorways and the owner's cancel of a
+  research that blocks turning DeepWater off. The rules are in
+  [`docs/standards/deepwater.md`](docs/standards/deepwater.md) → "Research
+  briefs — the admin".
 - **Overlay layer coverage:** run
   `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
   over the real navigation stack, in the same lifecycle after the task-dialog
