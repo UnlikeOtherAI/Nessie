@@ -8,6 +8,7 @@ import type { DeepWaterBriefInput } from '@nessie/schemas'
 import {
   DeepWaterAgentGrantMissingError,
   DeepWaterBriefNotReadyError,
+  DeepWaterBriefOriginNotFoundError,
   claimAgentOriginRun,
   createPersonDeepWaterBrief,
 } from '../src/deepwater-brief-creation.js'
@@ -114,8 +115,6 @@ const common = (s: Seed) => ({
   threadId: s.ids.thread,
   identity: { subject: 'uoa|r', organizationId: 'uoa-org', teamId: 'uoa-team', tokenVersion: 1 },
   input,
-  sourceScopes: [],
-  disclosureSources: [],
 })
 
 const setEnabled = (s: Seed, enabled: boolean) => s.prisma.productTeamEnablement.updateMany({
@@ -156,6 +155,8 @@ withSeed('a team on the launcher tool contract, or with no active connector, is 
 withSeed('an agent claims a brief only while its policy grants opening one, idempotently per tool call', async (s) => {
   const claim = (toolCallId: string) => claimAgentOriginRun(s.prisma, {
     ...common(s), agentId: s.ids.agent, originRunId: s.ids.run, toolCallId, principalUserId: s.ids.requester,
+    sourceScopes: [{ scopeType: 'project', scopeId: s.ids.project }],
+    disclosureSources: [],
   })
   await assert.rejects(claim('call_1'), DeepWaterAgentGrantMissingError)
 
@@ -169,7 +170,27 @@ withSeed('an agent claims a brief only while its policy grants opening one, idem
   assert.equal(claimed.run.originKind, 'agent')
   assert.equal(claimed.run.originToolCallId, 'call_1')
   assert.equal(claimed.run.principalUserId, s.ids.requester)
+  assert.deepEqual(claimed.run.sourceScopes, [{ scopeType: 'project', scopeId: s.ids.project }])
   assert.equal((await claim('call_1')).run.id, claimed.run.id)
+})
+
+withSeed('a person brief carries its room\'s sources when the room is not public, and none when it is', async (s) => {
+  const publicBrief = await createPersonDeepWaterBrief(s.prisma, { ...common(s), actionId: randomUUID() })
+  assert.deepEqual(publicBrief.run.sourceScopes, [])
+  assert.deepEqual(publicBrief.run.disclosureSources, [])
+
+  await s.prisma.channel.update({ where: { id: s.ids.channel }, data: { visibility: 'private' } })
+  const privateBrief = await createPersonDeepWaterBrief(s.prisma, { ...common(s), actionId: randomUUID() })
+  assert.deepEqual(privateBrief.run.sourceScopes, [{ scopeType: 'channel', scopeId: s.ids.channel }])
+  assert.deepEqual(privateBrief.run.disclosureSources, [
+    { sourceChannelId: s.ids.channel, sourceAuthorUserId: s.ids.requester },
+  ])
+
+  // A thread outside the room it was named with is not an origin.
+  await assert.rejects(
+    createPersonDeepWaterBrief(s.prisma, { ...common(s), threadId: randomUUID(), actionId: randomUUID() }),
+    DeepWaterBriefOriginNotFoundError,
+  )
 })
 
 withSeed('creation waits for a disable holding the team lock, then sees the team off', async (s) => {

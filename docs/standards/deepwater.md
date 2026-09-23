@@ -272,6 +272,15 @@ worker and card are built on them.
   `uoa_identity` and `scope_json` together, and launcher rows and other
   products write neither; the `product_integration_runs_brief_binding_shape`
   CHECK makes `uoa_identity IS NULL` the exact legacy marker.
+- **Sources only grow.** `source_scopes` and `disclosure_sources` record what
+  the research was built from, never destination-subtracted. A person's brief
+  starts with its room's channel scope and their own lineage when the room is
+  not public (a private or protected channel, or their Personal Assistant DM),
+  read by `createPersonDeepWaterBrief` from the origin thread itself
+  (`deepWaterPersonOriginSources`); an agent's claim starts with its run's
+  consumed sources. Every content-bearing agent call unions its run's sink in
+  with `unionDeepWaterRunSources` under the row lock, which never removes or
+  reorders an entry.
 - **Stable UOA ids only.** `uoa_identity` is `{subject, organizationId, teamId,
   tokenVersion}` — never an email or a name. `refreshDeepWaterRunIdentity`
   renews it from a live action by the same subject, organisation and team, never

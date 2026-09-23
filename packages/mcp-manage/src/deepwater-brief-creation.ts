@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
+  deepWaterPersonOriginSources,
   enqueueDeepWaterBriefAction,
   findDeepWaterBriefRunByOrigin,
   insertDeepWaterBriefRun,
@@ -50,6 +51,16 @@ export class DeepWaterAgentGrantMissingError extends Error {
   }
 }
 
+/** The brief's origin thread is gone, or not in this organisation's channel. */
+export class DeepWaterBriefOriginNotFoundError extends Error {
+  override readonly name = 'DeepWaterBriefOriginNotFoundError'
+  readonly code = 'THREAD_NOT_FOUND'
+
+  constructor(readonly threadId: string) {
+    super(`DeepWater brief origin thread ${threadId} was not found`)
+  }
+}
+
 const SCOPE_START_TOOL_NAME = 'research_scope_start'
 
 type BriefRunCommon = {
@@ -61,8 +72,6 @@ type BriefRunCommon = {
   /** The requester's live UOA identity, captured for every later read and wake. */
   identity: DeepWaterRequesterIdentity
   input: DeepWaterBriefInput
-  sourceScopes: DeepWaterSourceScope[]
-  disclosureSources: DeepWaterDisclosureSource[]
 }
 
 const requireReadyConnector = async (
@@ -72,6 +81,29 @@ const requireReadyConnector = async (
   const connector = await readDeepWaterTeamConnector(tx, input)
   if (connector.state !== 'ready') throw new DeepWaterBriefNotReadyError(connector.state)
   return connector.instanceId
+}
+
+/**
+ * The sources a person's brief starts with, read from its origin room in the
+ * creating transaction (N6): the room's scope and the person's lineage when
+ * the room is not public, nothing when it is. Decided here, never by a caller.
+ */
+const personOriginSources = async (tx: Prisma.TransactionClient, input: BriefRunCommon) => {
+  const thread = await tx.thread.findFirst({
+    where: {
+      id: input.threadId,
+      channelId: input.channelId,
+      channel: { organizationId: input.organizationId, deletedAt: null },
+    },
+    select: { channel: { select: { visibility: true, systemChannelType: true } } },
+  })
+  if (!thread) throw new DeepWaterBriefOriginNotFoundError(input.threadId)
+  return deepWaterPersonOriginSources({
+    channelId: input.channelId,
+    channelVisibility: thread.channel.visibility,
+    systemChannelType: thread.channel.systemChannelType,
+    requesterUserId: input.requestedByUserId,
+  })
 }
 
 /**
@@ -94,7 +126,8 @@ export const createPersonDeepWaterBrief = (
     if (existing) return { run: existing, created: false }
 
     const connectorId = await requireReadyConnector(tx, input)
-    const inserted = await insertDeepWaterBriefRun(tx, { ...input, connectorId, origin })
+    const sources = await personOriginSources(tx, input)
+    const inserted = await insertDeepWaterBriefRun(tx, { ...input, ...sources, connectorId, origin })
     if (inserted.created) {
       await enqueueDeepWaterBriefAction(tx, {
         organizationId: input.organizationId,
@@ -122,6 +155,12 @@ export const claimAgentOriginRun = (
     originRunId: string
     toolCallId: string
     principalUserId: string | null
+    /**
+     * The calling run's consumed sources at dispatch (N6):
+     * `consumedSources.list()` and `consumedSources.privateConversationSources()`.
+     */
+    sourceScopes: DeepWaterSourceScope[]
+    disclosureSources: DeepWaterDisclosureSource[]
   },
 ): Promise<DeepWaterBriefRunInsertResult> =>
   runWithDeepWaterTransitionLock(prisma, input, async (tx) => {
