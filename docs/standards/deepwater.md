@@ -398,7 +398,13 @@ worker and card are built on them.
   portable reach, and a person's brief stays private until it is launched.
 - **One research list.** `GET /api/integrations/products/deep-water/research-runs?cursor&limit`
   answers `{items: ResearchRunView[], meta}`, newest first, every row — brief
-  or launcher — through `isDeepWaterRunVisible` and the one view mapper. It
+  or launcher — through `isDeepWaterRunVisible` and the one view mapper.
+  `listVisibleDeepWaterRuns` reads at most 500 rows per request (five batches
+  of 100, each filtered in three queries), so a viewer who may see few of a
+  large team's runs never makes one request read them all: when the bound
+  comes before the page fills, the page is short — even empty — with
+  `hasMore: true` and a cursor after the last row read, and only a page with
+  `hasMore: false` is the last. It
   replaced the team-wide launcher list at the same path in the same change
   (that list had no viewer predicate, so a brief row there would have shown a
   colleague's unlaunched brief, its topic included, to the whole team); there
