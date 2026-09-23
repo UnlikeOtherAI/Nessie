@@ -27,7 +27,7 @@ The fixture supplies API responses and does not claim server authorization
 coverage. The executor-management API tests own latest-revision selection and
 caller entitlement.
 
-The Browser Suites workflow enables four isolated executor preview entries in
+The Browser Suites workflow enables five isolated executor preview entries in
 its Navigation Transitions job:
 
 | Fixture | Build flag |
@@ -36,6 +36,20 @@ its Navigation Transitions job:
 | Agent access | `NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE=1` |
 | Machine detail | `NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE=1` |
 | Attention badges | `NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE=1` |
+| Conversation leases | `NESSIE_EXECUTOR_LEASE_E2E_FIXTURE=1` |
+
+`pnpm --filter @nessie/admin test:e2e:executor-lease` renders the real
+composer, with the lease chip the launcher hook hands it, and the machine
+detail page's Activity tab, over runner-supplied API answers. It pins that the
+holder sees "Minis · local apps · until HH:MM · End" beside Run on executor
+only once the composer opens (its at-rest height is the member's), that
+another member asking about the same thread sees nothing, that End posts for
+that lease and the chip goes, that a phone folds the chip into a dot and the
+launcher dialog carries the lease and its End, and that the machine's
+*Local apps in use* list names agent, conversation, person and last use — or
+says it may not — with End on screen at phone width. Screenshots go to
+`e2e/screenshots/executor-lease/`. Who gets which answer is the API's job and
+is covered by `api/test/executor-lease-routes.test.ts`.
 
 Each flag adds its `admin/e2e/executor-<name>/index.html` as a Vite build input
 and participates in Turbo's admin-build cache key. Ordinary release builds
