@@ -56,6 +56,9 @@ test('every trigger type lands in exactly one group', () => {
     'webhook',
     'event',
     'interval',
+    // Not creatable yet, but a row of one must never fall out of the list.
+    'ticket_changed',
+    'document_changed',
   ]
   const groups = groupTriggers(types.map((type) => trigger(type, type)))
   const placed = groups.flatMap((group) => group.triggers.map((entry) => entry.id))

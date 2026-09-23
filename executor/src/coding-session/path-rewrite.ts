@@ -25,7 +25,9 @@ import { ACCOUNT_PLACEHOLDER, SECRET_PLACEHOLDER } from './projection.js'
  * therefore never break a path apart before its rule has seen it whole.
  * `rewritePaths` is the path rules alone, for a value that is not prose — an
  * identifier other code parses, a pull request's URL — which a name that
- * happens to spell it would otherwise break.
+ * happens to spell it would otherwise break. `rewriteBranch` rewrites a name
+ * in every segment, for a git branch (`feature/ondre/fix`), which is a name and
+ * never a relative path the model has to resolve.
  */
 
 export const HOST_PATH_PLACEHOLDER = '<host path>'
@@ -42,6 +44,8 @@ export type PathRewriter = {
   rewrite: (text: string) => string
   /** Paths only. */
   rewritePaths: (text: string) => string
+  /** Paths, then the names wherever they stand, whole segments included: for a branch. */
+  rewriteBranch: (text: string) => string
 }
 
 const SEP = '[\\\\/]+'
@@ -120,10 +124,12 @@ export const createPathRewriter = (
   for (const source of generic) {
     rules.push({ pattern: new RegExp(source, caseFolding(platform) ? 'gi' : 'g'), replace: () => HOST_PATH_PLACEHOLDER })
   }
-  const names = createIdentityRewrite(identity, [
+  const kept = [
     HOST_PATH_PLACEHOLDER, ACCOUNT_PLACEHOLDER, SECRET_PLACEHOLDER,
     ...roots.flatMap((root) => (root.name === undefined ? [] : [`<${root.name}>`])),
-  ])
+  ]
+  const names = createIdentityRewrite(identity, kept)
+  const branchNames = createIdentityRewrite(identity, kept, { everySegment: true })
   const rewritePaths = (text: string): string => {
     let current = text
     for (const rule of rules) {
@@ -134,5 +140,6 @@ export const createPathRewriter = (
   return {
     rewrite: (text) => (names ? names(rewritePaths(text)) : rewritePaths(text)),
     rewritePaths,
+    rewriteBranch: (text) => (branchNames ? branchNames(rewritePaths(text)) : rewritePaths(text)),
   }
 }

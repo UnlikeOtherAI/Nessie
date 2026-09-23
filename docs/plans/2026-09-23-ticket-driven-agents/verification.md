@@ -18,9 +18,13 @@ Scope:
   until T1.
 - Tables with CHECKs and partial unique indexes: `agent_ticket_work`,
   `executor_standing_policies`, `executor_standing_policy_executors` and
-  `agent_reminders`, plus the trigger scope columns.
+  `agent_reminders`, plus the trigger scope columns. This includes one binding
+  policy and one outstanding card per trigger.
 - Queue payload schemas for `trigger.ticket.dispatch`, `ticket-work.session`,
-  `ticket-work.sweep` and `trigger.document.dispatch`.
+  `ticket-work.sweep` (also the pool dispatcher) and
+  `trigger.document.dispatch`.
+- Workflow installations gated by a permanent `WORKFLOW_TRIGGER_TYPES`
+  allowlist, so releasing a type for agents never opens it for workflows.
 - The TaskEvent origin shape.
 - `docs/standards/ticket-work.md` and its `AGENTS.md` routing sentence.
 - The `agent-triggers` browser fixture scaffold. Its three edits (vite input,
@@ -29,7 +33,9 @@ Scope:
 The migration's timestamp sorts after every migration on 3b's branch, so
 the two can land in either order.
 
-Tests: migration up/down on the upgrade path; CHECK and partial-index
+Tests: the migration applies on the upgrade path (CI's Upgrade Path job; the
+repo has no down migrations, and this one is additive); the vocabularies
+against the latest SQL and the migrated database; CHECK and partial-index
 behaviour.
 
 ### T1: ticket triggers
@@ -37,10 +43,17 @@ behaviour.
 Tests (DB):
 
 - Origin stamping per route (session, token, MCP, agent, source).
-- A pickup fires only on a session move by a board editor. An agent move, a
-  token move and an agent's create each start nothing.
-- Follow kinds each wake. An event authored by an agent or a source does not.
-- Re-entry is a follow and never a second pickup.
+- A pickup fires only on a session move or create by a board editor. An
+  agent move, a token move, an agent's create, a token's create and a
+  board-source create each start nothing.
+- Follow kinds each wake. An event authored by an agent does not. A source
+  event wakes only with `follow.includeSourceEvents`, and never picks up.
+- Re-entry is a follow and never a second pickup. A token or agent move back
+  into a pickup column leaves a parked record parked.
+- `assignOnPickup` assigns the agent in the move transaction on an unassigned
+  ticket. It keeps an existing assignee, and a non-qualifying move keeps
+  today's assign-the-mover behaviour.
+- A second enabled pickup trigger on the same column is refused.
 - `endOn` teardown runs inside the move transaction, including when the
   agent itself made the move.
 - A `ticket.work` run acts as the agent, and ticket writes are recorded as
@@ -74,16 +87,18 @@ Browser: the Finder doorway and the row badge.
 
 Tests: range refusal and coercion; replacement within a ticket; the caps
 outside tickets; refusal in system channels; a reminder wake is `ticket.work`
-and cancelled with the record; the quiet wake fires only when nothing else is
-scheduled; the sweep recovers a lost queued job. Browser: the chip's reminder
+and cancelled with the record; the quiet wake fires only for an `active`
+record with nothing else scheduled and no open question; `awaitsAnswer`
+pauses quiet wakes and the hours clock until a person event, which wakes the
+record; the sweep recovers a lost queued job. Browser: the chip's reminder
 row with Cancel.
 
 ### T4: machine access (needs 3b on `main`)
 
 It starts with the two pieces that change 3b's code: the coding-session
 owner `contextId` (key derivation in `packages/schemas` and in the executor
-daemon, on every OS) and the close reasons `ticket_left_flow`,
-`policy_ended` and `work_limit`.
+daemon, on every OS) and the five close reasons in
+[machine-access.md](machine-access.md#server-side-closes).
 
 Tests (DB):
 
@@ -117,7 +132,12 @@ Tests:
   failed, and on a missing session. A missing field infers nothing.
 - Dedupe with `lastObservedTurn`.
 - Dequeue across policies follows priority, then age, and re-checks the
-  ticket, the mover and the policy.
+  ticket, the mover and the policy. Parking and re-confirmation each enqueue
+  the dispatcher.
+- A suspended policy moves its active records to `waiting_machine` and frees
+  their machines. Re-confirming resumes them with a `dequeued` wake.
+- `waitingMachineHours` un-pins a record and re-queues it on another pool
+  machine.
 - Waiting-machine and back-online.
 
 ### T6: project operator

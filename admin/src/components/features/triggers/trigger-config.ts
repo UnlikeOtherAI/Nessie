@@ -198,6 +198,8 @@ export const getFormTriggerTypeLabel = (input: {
   }
   if (input.type === 'interval') return 'Repeating interval'
   if (input.type === 'webhook') return 'Webhook'
+  if (input.type === 'ticket_changed') return 'Ticket change'
+  if (input.type === 'document_changed') return 'Document change'
   return 'System event'
 }
 
@@ -332,6 +334,12 @@ export const buildSubmitPayload = (
         enabled: form.enabled,
       },
     }
+  }
+
+  // Ticket and document triggers have no editor fields yet. Falling through to
+  // the event branch would overwrite their configuration with an event list.
+  if (form.triggerType === 'ticket_changed' || form.triggerType === 'document_changed') {
+    return { error: 'This trigger type cannot be edited here yet.' }
   }
 
   const events = form.eventNames

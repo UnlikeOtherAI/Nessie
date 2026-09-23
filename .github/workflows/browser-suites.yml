@@ -61,6 +61,7 @@ jobs:
       NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE: '1'
       NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE: '1'
       NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE: '1'
+      NESSIE_AGENT_TRIGGERS_E2E_FIXTURE: '1'
       NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE: '1'
       NESSIE_CHANNEL_DECISIONS_E2E_FIXTURE: '1'
       NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE: '1'
@@ -295,6 +296,15 @@ jobs:
         with:
           name: project-usability-screenshots
           path: e2e/screenshots/project-usability
+          if-no-files-found: warn
+
+      # The Triggers editor proofs, from the same project-usability lifecycle.
+      - name: Upload agent triggers screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-triggers-screenshots
+          path: e2e/screenshots/agent-triggers
           if-no-files-found: warn
 
       - name: Upload mailbox onboarding screenshots

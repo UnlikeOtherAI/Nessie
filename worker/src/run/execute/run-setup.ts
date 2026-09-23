@@ -12,7 +12,7 @@ import {
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
 import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
-import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
+import { APPROVAL_ACTIONS, TICKET_WORK_PURPOSE, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { launchConversationScope } from '../executor-host-output.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
@@ -78,6 +78,12 @@ export const PEER_PROJECT_TOOL_IDS: ReadonlySet<string> = new Set([
  * Whether a run may be lent project tools at all, before the binding is
  * checked: a shared agent, in a project's channel, on a turn a real person
  * started (or a bounded durable peer request carried).
+ *
+ * A `ticket.work` run is decided by its own arm, first, so it can never be
+ * admitted through the person-started arms below: it acts as the agent with
+ * no person behind it, whatever its actor context says. Until its ticket tools
+ * and agent task actor ship, that arm admits nothing
+ * (docs/standards/ticket-work.md → "A `ticket.work` run acts as the agent").
  */
 export const isProjectDelegatedRun = (run: {
   agentKind: string
@@ -85,11 +91,13 @@ export const isProjectDelegatedRun = (run: {
   actorType: string
   interactive: boolean
   purpose?: string | null
-}): boolean =>
-  run.agentKind === 'shared'
-  && run.channelProjectId !== null
-  && run.actorType === 'user'
-  && (run.interactive || run.purpose === 'agent.peer_delegation' || run.purpose === 'channel.policy')
+}): boolean => {
+  if (run.purpose === TICKET_WORK_PURPOSE) return false
+  return run.agentKind === 'shared'
+    && run.channelProjectId !== null
+    && run.actorType === 'user'
+    && (run.interactive || run.purpose === 'agent.peer_delegation' || run.purpose === 'channel.policy')
+}
 
 /**
  * The project tools admitted for this run: none unless the run is a real

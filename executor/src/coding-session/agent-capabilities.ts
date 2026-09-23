@@ -24,7 +24,13 @@ import type { CodingAgentName } from './types.js'
  * it is the `exec` and `exec resume` subcommands (each help's `Usage:` line
  * must name it), `-C` and `--json` on `exec`, `--json` on `exec resume`, which
  * parses it there, `-m` with a model, and the owner's `args`. A configured
- * `permissionMode` must be one of the choices `--permission-mode` lists.
+ * `permissionMode` must be one of the choices `--permission-mode` lists, and
+ * a help that lists none refuses it too: commander prints `(choices: …)`
+ * exactly when the CLI checks the value itself, so without one a mode it
+ * lacks would be ignored rather than refused. A list this parser cannot read
+ * (commander quotes each choice) leaves the mode unchecked, said so in the
+ * host log, rather than refused as unsupported by a CLI that may well offer
+ * it — that CLI still checks the mode against its list.
  *
  * An argv is read the way the CLI reads it: each letter of a combined short
  * group is a flag (`-dv` needs `-d` and `-v`), and the token after a flag
@@ -46,7 +52,7 @@ export type HelpDigest = {
   flags: string[]
   /** The flags whose option line takes a required value (`<value>`). */
   values: string[]
-  /** Commander's `(choices: …)`, per flag. */
+  /** Commander's `(choices: …)`, per flag: empty for a list this parser could not read, absent for none. */
   choices: Record<string, string[]>
 }
 
@@ -54,7 +60,8 @@ export type HelpDigest = {
 export type AgentCapabilities = Record<string, HelpDigest>
 
 export type CapabilityCheck =
-  | { ok: true }
+  /** `unverified` names what the help could not show either way, for the host's own log. */
+  | { ok: true; unverified?: string[] }
   | { ok: false; reason: 'agent_outdated' | 'agent_help_unreadable' | 'permission_mode_unsupported'; missing: string[] }
 
 const HELP_TIMEOUT_MS = 15_000
@@ -96,6 +103,7 @@ export const parseHelpText = (text: string): HelpDigest => {
     const listed = /\(choices:\s*([^)]*)\)/u.exec(block.replace(/\s+/gu, ' '))?.[1]
     if (!listed) return
     const quoted = listed.split(/,\s*(?:default|preset):/u)[0]!
+    // A list written some other way is kept as an empty one: there is a list, and nothing is known of what it holds.
     const offered = [...quoted.matchAll(/"([^"]{1,64})"/gu)].map((match) => match[1]!)
     for (const name of names) choices[name] = offered.slice(0, 32)
   })
@@ -182,9 +190,14 @@ export const checkAgentCapabilities = (input: {
   if (missing.size > 0) return { ok: false, reason: 'agent_outdated', missing: [...missing] }
   if (unreadable.size > 0) return { ok: false, reason: 'agent_help_unreadable', missing: [...unreadable] }
   const mode = input.agent === 'claude' ? input.config.permissionMode : undefined
-  if (mode !== undefined && !(input.capabilities['']?.choices['--permission-mode'] ?? []).includes(mode)) {
+  if (mode === undefined) return { ok: true }
+  const listed = input.capabilities['']?.choices['--permission-mode']
+  // No list at all: the CLI does not check the value, and would ignore a mode it lacks rather than refuse it.
+  if (listed === undefined || listed.length > 0 && !listed.includes(mode)) {
     return { ok: false, reason: 'permission_mode_unsupported', missing: [`--permission-mode ${mode}`] }
   }
+  // A list that could not be read proves nothing about the mode; the CLI still refuses one its list lacks.
+  if (listed.length === 0) return { ok: true, unverified: [`--permission-mode ${mode}`] }
   return { ok: true }
 }
 

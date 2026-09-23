@@ -285,14 +285,17 @@ file is the rule**.
   delivery, under its owner and `task-set:<id>` correlation),
   `mailbox.delivery` (any other agent mail, including plan and workflow step
   mail, whose follow-up is also linked to its step through the pending row's
-  `mailboxMessageId`) and `global_agent.brief`. Each such row becomes a
-  follow-up run of its own, in arrival order, and ordinary rows before it
-  drain as their usual batch. The purpose is already in the pending row's
-  stored actor context, so no column marks it. A new kickoff of this kind — a
-  delivery, a wake, a brief — adds its purpose to that set in the same
-  change. `worker/test/db/task-set-delivery-drain.test.ts`,
-  `worker/test/db/agent-handoff-drain.test.ts` and
-  `worker/test/db/mailbox-step-delivery-drain.test.ts`.
+  `mailboxMessageId`), `global_agent.brief` and `ticket.work`
+  (`TICKET_WORK_PURPOSE`: a ticket's work-record wake, which acts as the agent
+  with no effective user, so a person's message is never consumed by it).
+  Each such row becomes a follow-up run of its own, in arrival order, and
+  ordinary rows before it drain as their usual batch. The purpose is already
+  in the pending row's stored actor context, so no column marks it. A new
+  kickoff of this kind — a delivery, a wake, a brief — adds its purpose to
+  that set in the same change. `worker/test/db/task-set-delivery-drain.test.ts`,
+  `worker/test/db/agent-handoff-drain.test.ts`,
+  `worker/test/db/mailbox-step-delivery-drain.test.ts` and
+  `packages/db/test/thread-serialization-ticket-work.test.ts`.
 
 - **Every path that starts a run in a single-member delegated system DM stamps that member as `effectiveUserId`, or the run silently loses its identity tools.** The gate above requires `effectiveUserId === actorId`, and an unstamped run does not fail: it resolves no requester, the tools are absent from the model's function set, and the agent truthfully reports it cannot create anything. The stamp lived inline in `thread-message-create.ts` and was missing from the agent-card press, so a *typed* message worked while a button press did not — in the one agent whose whole style is card-driven. `isDelegatedSystemDmChannelType` and `withDelegatedSystemDmIdentity` are now ONE definition in `@nessie/schemas` (the predicate had existed twice, once per process, each copy warning that the other must not drift), and `enqueueOrchestrateDecide` (`packages/db/src/queue.ts`, shared by the API and the worker's `send_message` tool, both of which wake the same `orchestrate.decide` topic) resolves the destination channel itself and applies it, so every human-turn wake path is correct without its author knowing this rule exists; a caller-supplied `systemChannelType` is exactly the argument a new path forgets. `enqueueRunExecution` gets no such chokepoint — its callers build actor contexts from six provenances and a blanket stamp would guess whose identity is in play — so each call site is classified `stamps`/`inherits`/`unattended` in `api/test/delegated-system-dm-enqueue-sites.test.ts`, which fails until a new one records a verdict. A resumed run is the case worth naming: a `wait: true` card parks its run and the press resumes from the *parked* run's actor context, so `run-resume-core.ts` re-asserts the destination's rule rather than trusting what it inherited. `docs/global-agents.md`.
 

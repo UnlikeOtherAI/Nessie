@@ -16,7 +16,9 @@ import type { CodingSessionState } from './types.js'
  * is installed. Every string in the answer has been through the rewriter,
  * branch names and the keys of `pullRequests` included (a branch is often
  * named after its author, and the bridge's last pass rewrites values, not
- * keys); `gh` is still asked about each branch by its real name. A pull
+ * keys) — in every segment, since `feature/ondre/fix` is a name and not a
+ * folder the model resolves; `gh` is still asked about each branch by its
+ * real name. A pull
  * request's URL gets the path rules only: its owner is the repository's
  * (`github.com/ondre/app`), which is often spelled like the OS user, and the
  * link is the one thing in the review a person follows.
@@ -125,6 +127,7 @@ export const reviewCodingSession = async (input: {
   const deadline = Date.now() + REVIEW_BUDGET_MS
   const git = gitRunner(run, deadline, env)
   const rewrite = (text: string): string => input.rewriter.rewrite(text)
+  const branchName = (text: string): string => input.rewriter.rewriteBranch(text)
   const lines = (text: string | undefined, max: number): string[] | undefined => text === undefined
     ? undefined
     : text.split(/\r?\n/u).filter((line) => line.trim()).slice(0, max).map((line) => rewrite(line).slice(0, 200))
@@ -154,7 +157,7 @@ export const reviewCodingSession = async (input: {
     if (worktree.branch) worktreeBranches.push(worktree.branch)
     worktrees.push({
       path: rewrite(path),
-      ...(worktree.branch ? { branch: rewrite(worktree.branch) } : {}),
+      ...(worktree.branch ? { branch: branchName(worktree.branch) } : {}),
       ...(ahead?.trim() ? { commitsSinceStart: Number(ahead.trim()) } : {}),
       ...porcelainCounts(counts),
     })
@@ -166,10 +169,10 @@ export const reviewCodingSession = async (input: {
   for (const name of branches.slice(0, 5)) {
     const found = await pullRequest(run, name, input.folder, deadline, input.rewriter, env)
     if (found?.unavailable) break
-    if (found) pullRequests[rewrite(name)] = found
+    if (found) pullRequests[branchName(name)] = found
   }
   return {
-    branch: branch?.trim() ? rewrite(branch.trim()) : null,
+    branch: branch?.trim() ? branchName(branch.trim()) : null,
     baseCommit: base ?? null,
     commitsSinceStart: lines(commits, COMMIT_LINES) ?? [],
     diffStat: lines(diffStat, DIFF_STAT_LINES) ?? [],

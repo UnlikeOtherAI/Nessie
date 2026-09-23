@@ -28,6 +28,10 @@ Every pool machine must be **private**, and its **pairing owner** must be the
 author. The author must be a live member of the project who can edit the
 board. These are the coding-sessions rule, unchanged.
 
+Per trigger, at most one policy is `live` or `suspended` and at most one is
+`preparing`, each a partial unique index. A confirm ends the policy it
+replaces in its own transaction, and a new prepare ends the card it replaces.
+
 ## The host profile
 
 A session started under a policy runs as the author, with the author's files,
@@ -41,9 +45,11 @@ card shows and every start checks:
   without asking."*
 - **Roots.** `allowedRootNames` is pinned. A `coding_session_start` with any
   other root is refused on the server.
-- **Budget.** `maxBudgetUsd` per turn is required. T4 adds `maxBudgetUsd`
-  and `maxLiveSessionsPerOwner` to the signed codingSessions facts, so the
-  server can check both.
+- **Budget.** `maxBudgetUsd` per turn is required, and must not exceed the
+  trigger's `ticketUsd`. It bounds a runaway turn, while `ticketUsd` is the
+  coarser backstop checked at wakes, intake and the sweep. T4 adds
+  `maxBudgetUsd` and `maxLiveSessionsPerOwner` to the signed codingSessions
+  facts, so the server can check both.
 - **Merge ability.** The card reads the pinned descriptor's `allowedTools`.
   It says whether `Bash(git push:*)`, `Bash(gh pr create:*)`,
   `Bash(gh pr checks:*)` and `Bash(gh pr merge:*)` are allowed. When they are
@@ -55,7 +61,8 @@ card shows and every start checks:
 At confirmation the policy stores `triggerDigest`, a digest of the trigger's
 security-relevant fields:
 
-- agent, board, pickup columns, follow kinds and `endOn`;
+- agent, board, pickup columns, follow kinds, `follow.includeSourceEvents`
+  and `endOn`;
 - `assignOnPickup`, target channel and every instructions section;
 - the limits.
 
@@ -70,8 +77,14 @@ The pool rows store each machine's `codingSessions` config digest and
   `agent_trigger_update` answers the same way.
 - **A descriptor review that changes a pinned digest** suspends it
   (`descriptor_changed`).
-- **A suspended policy binds nothing.** Pickups still run, unbound, with
-  `stateReason: machine_access_suspended` on the chip.
+- **A suspended policy binds nothing.** Its `active` records move to
+  `waiting_machine` in the suspending transaction
+  ([ticket-work.md](ticket-work.md#teardown-is-the-platforms)). A new pickup
+  while access is suspended or not yet set up still gets one short, unbound
+  pickup wake, so the agent can read the ticket and comment. The record then
+  waits in `waiting_machine` with `stateReason: machine_access_suspended`
+  (or `machine_access_not_set_up`), and the chip says so. Confirming or
+  re-confirming moves those records to `queued` and enqueues the dispatcher.
 
 ## Prepare and confirm
 
@@ -183,9 +196,17 @@ Sessions are closed by the server, never through the model.
     `costUsd` and `activeMs`;
   - the policy ending or being suspended, through any fence;
   - the trigger being deleted, disabled or changed.
-- T4 adds the close reasons `ticket_left_flow`, `policy_ended` and
-  `work_limit` to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and to its CHECK.
-  It records them in `host-coding-sessions.md`.
+- T4 adds five close reasons to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and
+  to its CHECK, and records them in `host-coding-sessions.md`:
+
+  | Event | Close reason |
+  |---|---|
+  | The ticket enters an `endOn` column | `ticket_left_flow` |
+  | The trigger is disabled, deleted, or edited in a pinned field | `trigger_changed` |
+  | The policy is suspended (trigger or descriptor digest changed) | `policy_suspended` |
+  | The policy ends (End, any fence, the author gone) | `policy_ended` |
+  | The record hits a limit | `work_limit` |
+
 - A test ends a policy mid-turn and sees `codingSessionClose` on the next
   heartbeat.
 
@@ -199,8 +220,9 @@ The policy ends in the same transaction as each of these, reusing the
 - the author is removed from the project, or loses board-edit rights;
 - `uoa-roles` deactivation;
 - the agent is unbound from the target channel;
+- the target channel is archived, made non-public or leaves the project;
 - the project, board or pickup column is archived;
-- the trigger is deleted.
+- the trigger is disabled or deleted.
 
 UOA has no removal feed, so two more checks cover the author leaving the
 organisation. Binding re-checks UOA live (above). `ticket-work.sweep` ends

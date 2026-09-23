@@ -196,6 +196,17 @@ sentence changes only if the invariant itself did.
   route pushed over an open stage owns Back rather than the stage beneath it.
   The rule is in
   [`docs/navigation/overlays.md`](docs/navigation/overlays.md).
+- **Agent triggers coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:agent-triggers`. A pure fixture suite
+  (`NESSIE_AGENT_TRIGGERS_E2E_FIXTURE`) that drives the real
+  `TriggerEditorDialog` and `TriggerTypePicker` over a stubbed client; CI runs
+  it in the project-usability lifecycle after the overlay-layer suite. Today it
+  pins the unreleased trigger types: the picker offers exactly manual,
+  schedule, interval, webhook and event, the dialog's markup names neither
+  `ticket_changed` nor `document_changed`, and a create posts the type picked,
+  at 1280 and 390 px. The PR that releases `ticket_changed` extends it over
+  each configuration state. The rules are in
+  [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the

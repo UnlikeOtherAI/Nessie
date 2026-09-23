@@ -74,6 +74,7 @@ const validRequest = (value: unknown): value is CodingSessionRequest => {
   return typeof request.id === 'string' && typeof request.at === 'string'
     && ['start', 'send', 'interrupt', 'close', 'retire'].includes(request.kind as string)
     && (request.text === undefined || typeof request.text === 'string')
+    && (request.reason === undefined || typeof request.reason === 'string')
 }
 
 /** A file that cannot be a request is removed once it is old enough not to be a read that failed for a moment. */
