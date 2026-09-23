@@ -213,5 +213,7 @@ export const seedAttachmentWorld = async (
   return {
     agentId, bindingId: binding.id, channelId: channel.id, cleanup, colleagueId, createCommand, executorId,
     fileService, holderId, organizationId, outsiderId, prisma, runId: run.id, signedPoll, threadId: thread.id, upload,
+    /** The machine key as the daemon keeps it (PKCS#8 DER, base64url), for its own signing code. */
+    machinePrivateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url'),
   }
 }

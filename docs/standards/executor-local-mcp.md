@@ -465,7 +465,10 @@ the states, the digest and magic checks, the caps (racing uploads included),
 the rate, the attachment and usage rows and the result intake;
 `api/test/executor-command-attachments.test.ts` covers the route's body limit
 and statuses and who may read a screenshot, with and without a disclosure
-basis.
+basis; and `api/test/executor-command-attachment-daemon.test.ts` puts the
+daemon's own extraction, upload client, delivery loop and receipt signing in
+front of those routes over real HTTP, with the saved Kelpie answer — kept,
+refused into its placeholder, and asked to wait.
 
 Kelpie detection runs `describe` as a real process too, against a stand-in
 CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact
