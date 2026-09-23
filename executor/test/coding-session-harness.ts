@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -87,6 +87,29 @@ export const alive = (pid: number): boolean => {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
+}
+
+/** A live process's command line, or '' — how cleanup tells its own leftovers from a reused pid. */
+const commandLineOf = (pid: number): string => {
+  try {
+    if (process.platform === 'win32') {
+      return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: 'utf8', windowsHide: true })
+    }
+    if (process.platform === 'linux') return readFileSync(`/proc/${pid}/cmdline`, 'utf8').replaceAll('\0', ' ')
+    return execFileSync('/bin/ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' })
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Kills a leftover only while its command line still names what the test
+ * started: Windows hands a dead pid to a new process within seconds, and a
+ * cleanup that trusted the pid alone could kill anything on the machine.
+ */
+const killIfStill = (pid: number, marker: string): void => {
+  if (alive(pid) && commandLineOf(pid).includes(marker)) process.kill(pid, 'SIGKILL')
 }
 
 export const waitUntil = async <T>(probe: () => Promise<T | undefined>, timeoutMs = 30_000, what = 'condition'): Promise<T> => {
@@ -189,10 +212,12 @@ export const createCodingHarness = async (options: {
         return names.every((name) => !existsSync(join(sessions, name, 'host.lock'))) ? true : undefined
       }, 20_000, 'every host to exit').catch(() => undefined)
       await manager.stopAll()
-      for (const entry of await agents()) if (typeof entry.pid === 'number' && alive(entry.pid)) process.kill(entry.pid, 'SIGKILL')
+      const pids = new Set((await agents()).flatMap((entry) => (typeof entry.pid === 'number' ? [entry.pid] : [])))
+      for (const pid of pids) killIfStill(pid, 'scripted-coding-agent')
       for (const name of await readdir(recordDir).catch(() => [] as string[])) {
         const match = /^grandchild-(\d+)\.pid$/u.exec(name)
-        if (match && alive(Number(match[1]))) process.kill(Number(match[1]), 'SIGKILL')
+        // The fixture's grandchild is `node -e "setTimeout(() => {}, 600000)"`.
+        if (match) killIfStill(Number(match[1]), '600000')
       }
       await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
     },
