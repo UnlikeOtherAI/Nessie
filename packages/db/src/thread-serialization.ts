@@ -334,6 +334,10 @@ export const drainPendingThreadMessages = async (
       }),
       agentId: parseAgentId(input.agentId),
       ...(latest.principalUserId ? { principalUserId: latest.principalUserId } : {}),
+      // Every message folded in, not only the latest: an executor
+      // conversation lease carries into this run only when all of them are
+      // its holder's own (`carryForwardExecutorBindings`).
+      batchMessageIds: pendingBatch.map((pending) => pending.messageId),
       interactive: latest.interactive,
       ...(latest.promptOverride ? { promptOverride: latest.promptOverride } : {}),
       messageId: scheduledKickoff?.id ?? latest.messageId,

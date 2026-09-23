@@ -311,6 +311,37 @@ Root app layout:
   once in the standalone section and once in each project; the channel creation
   surface selects the scope explicitly.
 
+### 2.0f Executor conversation leases
+
+- Launching **local apps** (`mcp.tools` + `mcp.call`) from the composer's
+  **Run on executor** opens a conversation lease for the launching person,
+  agent and conversation. While it is live, that person's own later messages
+  there — replies in the launch's reply thread, or the same agent conversation
+  — bind each new run to the same executor afresh, with every check re-run.
+  Another member's message; a Continue, Restart, card answer or approval
+  pressed by someone else; a drained batch holding anyone else's message or a
+  post from elsewhere in the room; and relayed, workflow, email, integration
+  or trigger posts never carry it. No other executor bundle carries at all.
+- A lease lasts two hours idle and twelve at most. It ends when the holder or a
+  machine administrator presses End, when the executor is paused, drained or
+  revoked (a machine that pairs again revokes its previous executor), when the
+  agent's access to the pair is withdrawn, when a review drops either key,
+  when the person launches again, or when it runs out. Each end is audited as
+  `executor.lease.ended` with its reason, beside `executor.lease.created`,
+  `executor.run.carried` and — for a live lease that did not carry —
+  `executor.run.carry_refused`.
+- The holder sees their lease as a chip ("Minis · local apps · until 21:40 ·
+  End") in the composer whose messages carry it: beside Run on executor in a
+  conversation with the agent, and in the launch's reply thread in a room.
+  Nobody else in the room sees that it exists. The executor page's Activity
+  tab lists the machine's live leases, with End, for the people who manage it.
+- The agent is told its reach each turn in one system fact outside the cache
+  anchor: the servers it can use, or that it has no machine tools and why, or
+  how a person starts them. It names the machine only in the person's own DM.
+  Every agent's base prompt also says to report only what its tool calls
+  returned. The contract is
+  [docs/executor-protocol/conversation-leases.md](executor-protocol/conversation-leases.md).
+
 ### 2.1 Server bootstrap (`src/index.ts`)
 
 > **REMOVED — legacy `src/` only.** The legacy server described in sections 2–6 is being deleted. The live stack is `api/` (port 5454) + `worker/` + `admin/` (port 5455), launched by the `nessie` CLI. Sections 2–6 are retained as a historical record.

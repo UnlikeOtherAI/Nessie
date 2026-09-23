@@ -14,6 +14,7 @@ import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { FormError } from '../../shared/FormActions'
 import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
+import { ExecutorLeaseLauncherNotice } from './ExecutorLeaseIndicator'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]
@@ -191,6 +192,7 @@ export const ExecutorRunLauncherDialog = ({
       title="Run on an executor"
     >
       <div className="grid gap-4">
+        {threadId ? <ExecutorLeaseLauncherNotice agents={agents} threadId={threadId} /> : null}
         <label className="grid gap-1 text-sm">
           <span className="font-semibold text-[var(--tx2)]">Agent</span>
           <select

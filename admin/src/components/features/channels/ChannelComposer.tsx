@@ -1,4 +1,4 @@
-import { useState, useRef, type FocusEvent, type FormEvent, type RefObject } from 'react'
+import { useState, useRef, type FocusEvent, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { CHAT_MESSAGE_MAX_CHARS } from '@nessie/schemas'
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -48,6 +48,11 @@ interface ChannelComposerProps {
   mentionInvite: MentionInviteController
   onOpenDeepWaterResearch?: () => void
   onOpenExecutorRun?: () => void
+  /**
+   * The holder's live executor lease, drawn beside Run on executor. In the
+   * toolbar, so it can never add a line to the composer at rest.
+   */
+  executorLeaseIndicator?: ReactNode
 }
 
 export const ChannelComposer = ({
@@ -76,6 +81,7 @@ export const ChannelComposer = ({
   mentionInvite,
   onOpenDeepWaterResearch,
   onOpenExecutorRun,
+  executorLeaseIndicator,
 }: ChannelComposerProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocusWithin, setIsFocusWithin] = useState(false)
@@ -237,7 +243,7 @@ export const ChannelComposer = ({
             {onOpenExecutorRun ? (
               <button
                 aria-label="Run on executor"
-                className={toolbarButtonClass}
+                className={`${toolbarButtonClass} admin-compose-executor`}
                 onClick={onOpenExecutorRun}
                 title="Run on executor"
                 type="button"
@@ -254,6 +260,7 @@ export const ChannelComposer = ({
                 </svg>
               </button>
             ) : null}
+            {executorLeaseIndicator}
             <ComposerEmojiButton onSelect={onInsertEmoji} />
             <button
               aria-label="Attach files"

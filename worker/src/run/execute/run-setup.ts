@@ -11,6 +11,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
@@ -34,6 +35,7 @@ import {
 } from './history-recall.js'
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
+import { loadExecutorReachFacts } from './executor-reach-facts.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
@@ -299,13 +301,39 @@ export const prepareRunExecution = async (
         secretResolver: deps.mcpSecrets?.resolver,
       },
     ),
-    buildExecutorToolset(deps.prisma, {
-      agentId: context.agent.id,
-      agentToolPolicy: toolPolicy,
-      encryptionSecret: deps.executorCommandEncryptionSecret,
-      organizationId: context.channel.organizationId,
-      runId: context.run.id,
-    }),
+    (async () => {
+      // A person's own follow-up in the conversation they launched local apps
+      // in is bound afresh here, immediately before the toolset reads the
+      // run's bindings. A refusal is an outcome, never a throw — and the carry
+      // runs for every agent's every turn, so an unexpected failure in it (a
+      // lost connection) must not sink an ordinary one either: the run goes on
+      // with whatever bindings it already has, and no reach facts are told.
+      const lease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+        .catch((error: unknown) => {
+          console.warn('[worker] executor lease carry failed for run', context.run.id, error)
+          return undefined
+        })
+      context.executorLease = lease
+      if (lease?.kind === 'carried') {
+        // The carry moved the idle window the holder's composer shows. Only
+        // the holder's own job carries, so the job's actor is the recipient.
+        await publishExecutorLeaseChanges(deps.realtimeTransport, [{
+          actorUserId: payload.actorContext.actor.actorId,
+          id: lease.lease.id,
+          organizationId: context.channel.organizationId,
+          threadId: payload.threadId,
+        }]).catch((error: unknown) => {
+          console.warn('[worker] could not publish the executor lease notice for run', context.run.id, error)
+        })
+      }
+      return buildExecutorToolset(deps.prisma, {
+        agentId: context.agent.id,
+        agentToolPolicy: toolPolicy,
+        encryptionSecret: deps.executorCommandEncryptionSecret,
+        organizationId: context.channel.organizationId,
+        runId: context.run.id,
+      })
+    })(),
     (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
       ? loadAgentTodoPromptFacts(deps.prisma, {
           agentId: context.agent.id,
@@ -313,6 +341,18 @@ export const prepareRunExecution = async (
         })
       : Promise.resolve(null),
   ])
+  // Read from the toolset the model actually holds, so "bound" is never said
+  // of an operation the toolset dropped. A DeepWater handoff turn keeps its
+  // server-authored prompt byte-identical, as it does for the checkpoint.
+  const executorReach = input.isHandoffTurn ? null : await loadExecutorReachFacts(deps.prisma, {
+    agentId: context.agent.id,
+    channelId: context.channel.id,
+    lease: context.executorLease,
+    organizationId: context.channel.organizationId,
+    personUserId: payload.actorContext.actor.actorType === 'user' ? payload.actorContext.actor.actorId : null,
+    runId: context.run.id,
+    toolNames: executorToolset.handledNames,
+  })
 
   const effectiveUserId =
     payload.actorContext.actionContext.effectiveUserId
@@ -452,6 +492,7 @@ export const prepareRunExecution = async (
       approvalInstruction,
       emailConversation: emailContext?.block ?? null,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
+      executorReach,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
         hasResearchTools: mcpToolset.hasManagedResearchTools,

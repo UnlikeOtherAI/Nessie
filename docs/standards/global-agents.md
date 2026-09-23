@@ -125,6 +125,23 @@ file is the rule**.
   agent may do is issue that pick, because one confirmation per operation key
   is how an ordinary "let the researcher use my Mac" became a dozen reviews.
   `docs/global-agents.md`.
+- **A grant is standing; reach is per run, and only a person opens it.** The
+  whole suite lets an agent *use* an executor, never bind one. Executor tools
+  reach a run only after a person binds that exact run: by launching it from
+  the composer's **Run on executor**, or — for the local-apps pair only — by a
+  later message of their own in the same conversation while their
+  conversation lease is live. "That person started this run" is structural:
+  the job's actor is the holder and nobody else, a continuation's press (the
+  job's `resumedByUserId` — a card answer or an approval resumes as the parked
+  run's actor, whoever pressed) is the holder's too, the run passes the
+  interactive predicate above, and the trigger and every message of a drained
+  batch carry the person-composer marker; the full definition is in
+  [conversation-leases.md](../executor-protocol/conversation-leases.md). No
+  agent binds itself, the PA and the Designer included, and a handoff, peer
+  delegation or subtask never carries a lease, because a lease and its
+  bindings pin one agent. The run is told its reach in one system fact outside
+  the cache anchor — the servers it can use this turn, or that it has none and
+  why — which names the machine only in the person's own DM.
 - **Executor management is gated on the delegation predicate, not on the
   Personal Assistant's kind.** `worker/src/run/pa-tools/executors.ts` keyed its
   gate on `agentKind === 'personal_assistant'` AND the PA's own

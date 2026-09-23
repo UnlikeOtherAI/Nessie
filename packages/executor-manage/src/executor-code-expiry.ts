@@ -19,6 +19,7 @@ export const expireExecutorCodePairings = async (
       })
       if (!pairing?.executor || pairing.confirmedAt || pairing.rejectedAt
         || pairing.expiresAt > now || pairing.executor.status !== 'pending_pairing') return
+      // Still `pending_pairing`: never connected, so it holds no lease to announce.
       await revokePairingExecutor(tx, pairing.executor.id)
       await audit(tx, {
         action: 'executor.pairing.expired', executorId: pairing.executor.id,

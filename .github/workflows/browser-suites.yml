@@ -71,6 +71,7 @@ jobs:
       NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_LEASE_E2E_FIXTURE: '1'
       NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE: '1'
       NESSIE_TASK_SETS_E2E_FIXTURE: '1'
 
@@ -226,6 +227,7 @@ jobs:
           pnpm --filter @nessie/admin test:e2e:executor-agents
           pnpm --filter @nessie/admin test:e2e:executor-detail
           pnpm --filter @nessie/admin test:e2e:executor-attention
+          pnpm --filter @nessie/admin test:e2e:executor-lease
 
       - name: Upload executor screenshots
         if: always() && steps.scope.outputs.code == '1'

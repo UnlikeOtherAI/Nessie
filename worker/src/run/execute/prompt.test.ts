@@ -498,3 +498,51 @@ test('the shared main prompt guides proportionate completion without a token rul
   assert.match(system, /clear, proportionate detail/)
   assert.doesNotMatch(system, /output-token cap/)
 })
+
+test('every agent is told to report only what its tool calls returned, once', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
+  const rule = 'Report only what your tool calls returned. Never say you started, ran or finished something you did not.'
+  assert.equal(system.split(rule).length - 1, 1)
+})
+
+test('machine-reach facts ride behind the clock and never touch the anchor or its key', () => {
+  const now = new Date('2026-09-23T19:12:00.000Z')
+  const conversation: StoredConversationMessage[] = [
+    { content: 'open the site again', role: 'user', authorAgentId: null, authorAgentName: null },
+  ]
+  const bare = buildModelPrompt(conversation, makeContext('Aria'), 'open the site again', null, { now })
+  const variants = [
+    {
+      executorLabel: null,
+      kind: 'bound' as const,
+      leaseExpiresAt: new Date('2026-09-23T21:40:00.000Z'),
+      servers: ['kelpie'],
+    },
+    { kind: 'refused' as const, reason: 'actor_not_holder' as const },
+    { kind: 'unbound' as const },
+  ]
+  for (const executorReach of variants) {
+    const messages = buildModelPrompt(conversation, makeContext('Aria'), 'open the site again', null, {
+      executorReach,
+      now,
+    })
+    assert.deepEqual(messages[0], bare[0], executorReach.kind)
+    assert.equal(buildPromptCacheKey('m', messages, undefined), buildPromptCacheKey('m', bare, undefined))
+    assert.doesNotMatch(systemContent(messages), /machine tools|executor_mcp_tools/)
+
+    const timeIndex = messages.findIndex((message) =>
+      (message.content ?? '').startsWith('Current date and time:'))
+    const factsIndex = messages.findIndex((message) =>
+      /machine tools this turn|programs on the person's machine/.test(message.content ?? ''))
+    const conversationIndex = messages.findIndex((message) => message.content === 'open the site again')
+    assert.equal(messages[factsIndex]?.role, 'system', executorReach.kind)
+    assert.equal(factsIndex, timeIndex + 1, 'the facts come straight after the clock')
+    assert.ok(factsIndex < conversationIndex, 'and before the conversation window')
+  }
+  assert.equal(
+    buildModelPrompt(conversation, makeContext('Aria'), 'open the site again', null, { executorReach: null, now })
+      .length,
+    bare.length,
+    'no facts, no message',
+  )
+})

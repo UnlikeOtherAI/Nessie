@@ -336,6 +336,8 @@ export const respondToAgentCard = async (
             organizationId: prepared.card.organizationId,
             queueKeyPrefix: "run:card",
             resumeActorContext: resumeState.data.actorContext,
+            // The respondent, who need not be whoever the parked run acted as.
+            resumedByUserId: userId,
             runId: prepared.card.waitRunId,
             suspendedStatus: "waiting_input",
             triggerMessageId: resumeState.data.messageId,

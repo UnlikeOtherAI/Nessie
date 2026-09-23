@@ -21,6 +21,31 @@ export {
   type ExecutorBindingRecord,
 } from './executor-binding.js'
 export {
+  EXECUTOR_LEASE_ABSOLUTE_MS,
+  EXECUTOR_LEASE_IDLE_MS,
+  EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
+  createExecutorConversationLeaseInTransaction,
+  endExecutorConversationLease,
+  endExecutorConversationLeasesInTransaction,
+  executorLeaseExpiresAt,
+  expireExecutorConversationLeases,
+  isExecutorLeaseLive,
+  isExecutorLocalAppsBundle,
+  type ExecutorLeaseEndReason,
+  type ExecutorLeaseRef,
+} from './executor-conversation-lease.js'
+export { publishExecutorLeaseChanges } from './executor-lease-realtime.js'
+export {
+  carryForwardExecutorBindings,
+  type ExecutorLeaseCarryOutcome,
+  type ExecutorLeaseRefusalReason,
+  type ExecutorLeaseSummary,
+} from './executor-lease-carry.js'
+export {
+  bindPinnedExecutorLocalApps,
+  type PinnedLocalAppsBinding,
+} from './executor-local-apps-binding.js'
+export {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   pollExecutorCommand,

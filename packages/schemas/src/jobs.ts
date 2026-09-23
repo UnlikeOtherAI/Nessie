@@ -22,6 +22,23 @@ export const RunExecuteJobPayloadSchema = z.object({
   // and scheduled runs leave this unset — they are background automation and are
   // subject to budget throttling regardless of who initiated them.
   interactive: z.boolean().optional(),
+  /**
+   * Every message a drained pending batch folded into this run, in arrival
+   * order (the latest is `messageId`). Only the drain sets it. An executor
+   * conversation lease carries into a batched run only when every one of
+   * these is the lease holder's own composer message, so a batch that mixed
+   * in another member's message carries nothing.
+   */
+  batchMessageIds: z.array(z.string().uuid()).min(1).optional(),
+  /**
+   * The person whose own press brought a stopped run back: Continue, a card
+   * answer, or an approval. Only `resumeSuspendedRun` sets it, from the
+   * server-side press, and it is set on every continuation that press makes.
+   * A card or approval resume acts as the parked run's own actor, so this is
+   * the one field that says who pressed: an executor conversation lease
+   * carries into a continuation only when it names the lease holder.
+   */
+  resumedByUserId: z.string().uuid().optional(),
   messageId: NonEmptyStringSchema,
   parentPlanId: z.string().uuid().optional(),
   parentPlanStepId: z.string().uuid().optional(),

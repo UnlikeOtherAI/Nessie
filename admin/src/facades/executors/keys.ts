@@ -12,6 +12,11 @@ export const executorKeys = {
   accessChange: (accessChangeId?: string) =>
     ['executors', 'access-change', accessChangeId ?? 'none'] as const,
   agents: (executorId: string) => ['executors', executorId, 'agents'] as const,
+  /** The viewer's own conversation leases in one thread (the composer indicator). */
+  conversationLeases: (threadId?: string) =>
+    ['executors', 'conversation-leases', threadId ?? 'none'] as const,
+  /** Every live lease on one machine, for its administrators. */
+  machineLeases: (executorId: string) => ['executors', executorId, 'leases'] as const,
   agentCandidates: (executorId: string) => ['executors', executorId, 'agent-candidates'] as const,
   myWorkspaceReviews: ['executors', 'workspace-reviews', 'mine'] as const,
   pairingOptions: ['executors', 'pairing-options'] as const,

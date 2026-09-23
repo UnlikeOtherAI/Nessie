@@ -3317,19 +3317,26 @@ html[data-desktop-platform='linux'] #root {
    bottom line itself never moving. */
 .admin-compose {
   --compose-line: 42px;
+  /* What the microphone and Send pair covers at the right of the bottom line:
+     the collapsed editor keeps its text out of it, and so does the toolbar. */
+  --compose-send-clearance: 96px;
   position: relative;
   border: 1px solid var(--sep);
   border-radius: 8px;
   background: var(--main-hover);
 }
 
+/* The toolbar is a size container so what it carries can depend on the room
+   it actually has — the composer is a narrow thread panel on a desktop and a
+   wide column on a tablet — rather than on the window's width. */
 .admin-compose-bar {
+  container: compose-bar / inline-size;
   display: flex;
   align-items: center;
   height: var(--compose-line);
   overflow: hidden;
   border-top: 1px solid var(--border-strong);
-  padding: 0 12px;
+  padding: 0 var(--compose-send-clearance) 0 12px;
   transition:
     height 160ms ease,
     border-top-width 160ms ease,
@@ -3536,8 +3543,80 @@ html[data-desktop-platform='linux'] #root {
 .admin-compose[data-expanded='false'] .mention-editor {
   min-height: var(--compose-line);
   max-height: var(--compose-line);
-  padding: calc((var(--compose-line) - 1.25rem) / 2) 96px
+  padding: calc((var(--compose-line) - 1.25rem) / 2) var(--compose-send-clearance)
     calc((var(--compose-line) - 1.25rem) / 2) 16px;
+}
+
+/* A person's live executor lease, beside Run on executor
+   (ExecutorLeaseIndicator.tsx). It lives in the toolbar, so the composer at
+   rest never grows a line for it. Its label gives way first; the glyphs
+   beside it never shrink. Below the width the chip needs, it folds into a dot
+   on Run on executor, and the launcher dialog carries the lease and its End. */
+.admin-compose-actions {
+  min-width: 0;
+}
+
+.admin-compose-actions > :not(.admin-compose-lease) {
+  flex-shrink: 0;
+}
+
+.admin-compose-lease {
+  display: none;
+  min-width: 0;
+  max-width: 22rem;
+}
+
+.admin-compose-lease-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-compose-lease-end {
+  flex-shrink: 0;
+  border-radius: 4px;
+  font-weight: 600;
+  text-underline-offset: 2px;
+}
+
+.admin-compose-lease-end:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.admin-compose-lease-end:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@container compose-bar (min-width: 26rem) {
+  .admin-compose-lease {
+    display: inline-flex;
+  }
+}
+
+/* A toolbar without Run on executor — a reply panel's, where a room's launch
+   carries — has two glyphs fewer and no dot to fold into, so its chip stays
+   at every width and only its label gives way. */
+.admin-compose-actions:not(:has(.admin-compose-executor)) .admin-compose-lease {
+  display: inline-flex;
+}
+
+@container compose-bar (max-width: 25.99rem) {
+  .admin-compose-actions:has(.admin-compose-lease) .admin-compose-executor {
+    position: relative;
+  }
+
+  .admin-compose-actions:has(.admin-compose-lease) .admin-compose-executor::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
 }
 
 .mention-editor-code {
