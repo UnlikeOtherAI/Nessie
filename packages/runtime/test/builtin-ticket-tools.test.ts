@@ -48,7 +48,13 @@ test('a lendable project tool never requires a projectId and says what omitting 
       required?: string[]
     }
     assert.equal(parameters.required?.includes('projectId') ?? false, false, `${tool.id} requires projectId`)
-    assert.match(parameters.properties.projectId.description, /Omit it in a project channel/)
+    const description = parameters.properties.projectId.description
+    assert.match(description, /An agent working in its own project channel omits it/)
+    // Omitting it is promised only where the handler honours it: the PA is
+    // never defaulted, so it is told to name the project — and project_list is
+    // addressed to it by name, never offered to an agent that does not hold it.
+    assert.match(description, /The Personal Assistant always names it, from project_list/)
+    assert.doesNotMatch(description, /otherwise resolve it with project_list/)
   }
   const list = lendable.find((tool) => tool.id === 'ticket_list')
   assert.doesNotMatch(list?.description ?? '', /project_list/)

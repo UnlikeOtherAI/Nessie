@@ -3,8 +3,11 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 const UUID = { type: 'string', description: 'The UUID returned by a resolving tool.' } as const
 // Optional on every tool a shared agent can be lent: it is lent them only in
 // its own project channel, where the project is already known, and it holds no
-// project_list to resolve one with.
-const PROJECT_ID = { type: 'string', description: 'The project’s UUID. Omit it in a project channel to use that channel’s project; otherwise resolve it with project_list.' } as const
+// project_list to resolve one with. One definition serves both callers, so the
+// description says which one may omit it: the Personal Assistant works across
+// projects and is never defaulted (`ticketProjectIdFor`), not even in a
+// project channel it has joined.
+const PROJECT_ID = { type: 'string', description: 'The project’s UUID. An agent working in its own project channel omits it and gets that channel’s project. The Personal Assistant always names it, from project_list.' } as const
 const LABEL_IDS = { type: 'array', items: { type: 'string' }, description: 'The ticket’s whole label set, as label UUIDs of the ticket’s board from ticket_labels_read; an empty list clears it.' } as const
 const MARKDOWN = 'Ticket descriptions (detail) and comments are Markdown. To show an image inline, upload it with attachment_upload, attach it with ticket_attachment_add, and write ![alt](/api/attachments/<attachmentId>).'
 
