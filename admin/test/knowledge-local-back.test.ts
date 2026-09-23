@@ -19,7 +19,7 @@ test('each knowledge screen is a nested stage with its pinned id and priority', 
   // `ColumnBrowserViewport`, whose columns are already `column:<k>` stages on
   // `single`, so a folder is a layer without this file owning one.
   const stages = [
-    ['knowledge:document', 'knowledgeDocument', "depth > 0 ? 'Back to parent page' : 'Back to space'"],
+    ['knowledge:document', 'knowledgeDocument', 'label={documentBackLabel}'],
     ['knowledge:history', 'knowledgeHistory', 'Back from version history'],
     ['knowledge:editor', 'knowledgeEditor', 'Back from page editor'],
   ] as const
@@ -54,7 +54,7 @@ test('the team registers no Back owner of its own — the stages do', () => {
 
 test('every stage unwinds exactly one level, deepest first', () => {
   const actions = [
-    'onBack={() => popTo(depth)}',
+    'onBack={closeDocument}',
     'onBack={closeHistory}',
     'onBack={closeEditor}',
   ]
@@ -64,6 +64,21 @@ test('every stage unwinds exactly one level, deepest first', () => {
     assert.ok(at > cursor, `unwind order broken at ${action}`)
     cursor = at
   }
+})
+
+test('a document inside a folder returns to that folder browser, not folder detail', () => {
+  // A path ending in [folder, document] is the browser state while the
+  // document stage is open. Back removes only the document, so the Finder can
+  // render the same folder column and its retained selection.
+  assert.match(
+    team,
+    /const parentPage = depth > 0 \? pathPages\[depth - 1\] : undefined/,
+  )
+  assert.match(team, /const closeDocument = parentPage\?\.kind === 'folder'/)
+  assert.match(team, /browseTo\(pagePath\.slice\(0, -1\)\)/)
+  assert.match(team, /popTo\(depth\)/)
+  assert.match(team, /const documentBackLabel = parentPage\?\.kind === 'folder'/)
+  assert.match(team, /label=\{documentBackLabel\}/)
 })
 
 test('the editor refuses the edge swipe while it is open', () => {

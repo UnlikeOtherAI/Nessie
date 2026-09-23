@@ -226,10 +226,14 @@ deepest pane, exactly the desktop columns, full-width document, history and
 editor of before. Pinned by `knowledge-local-back.test.ts` and the
 three-layer unwind case in `nested-stage-viewport.test.ts`.
 
+When a document's immediate parent is a folder, its Back removes only the
+document from the drill path and restores that folder browser (including its
+columns context); a document whose immediate parent is another page still
+returns to that parent page's detail.
+
 **`AgentDetailPage` is built.** It registers no local Back: `/agents/:id` is a
 real depth-2 route whose parent is Agents, so the shared route Back returns
 there. Its old `columnBase` registration outranked every Knowledge stage
 inside the agent's Documents tab, so Back left the agent instead of unwinding
 the open document. Wider layouts keep the page's own Back button beside the
 title.
-
