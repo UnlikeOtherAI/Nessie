@@ -10,6 +10,12 @@ import {
 import type { ApiResponseDataSchema } from '@nessie/client-core'
 import { paginationKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
+import {
+  firstPageParams,
+  pagedListParamNames,
+  trailBackwardParams,
+  trailForwardParams,
+} from './cursor-trail'
 
 /**
  * One way to read a paged list, for every list in the admin.
@@ -38,6 +44,14 @@ type PagedResponse<T> = {
 }
 
 type UsePagedListOptions<TData, TItem> = {
+  /**
+   * How Previous finds the page before this one. `server` (the default) asks
+   * the server backwards from its `prevCursor`. `trail` is for a list the
+   * server can only page forwards — one it filters row by row for the viewer,
+   * which returns no `prevCursor` — and keeps the cursors already walked
+   * through in the URL instead (`cursor-trail.ts`).
+   */
+  backward?: 'server' | 'trail'
   /** Extract rows from an otherwise paged response. Arrays need no extractor. */
   items?: (data: TData) => TItem[]
   /**
@@ -111,6 +125,7 @@ const buildSearch = (
 }
 
 export const usePagedList = <TItem, TData = TItem[]>({
+  backward = 'server',
   enabled = true,
   items: selectItems,
   limit: configuredLimit = DEFAULT_PAGE_LIMIT,
@@ -125,18 +140,17 @@ export const usePagedList = <TItem, TData = TItem[]>({
   const api = useApiClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const cursorKey = `${paramPrefix}cursor`
-  const pageKey = `${paramPrefix}page`
-  const directionKey = `${paramPrefix}direction`
+  const paramNames = useMemo(() => pagedListParamNames(paramPrefix), [paramPrefix])
+  const { cursor: cursorKey, direction: directionKey, page: pageKey, scope: scopeKey } = paramNames
   const limitKey = `${paramPrefix}limit`
-  const scopeKey = `${paramPrefix}scope`
   const scopeMatches = !scope || searchParams.get(scopeKey) === scope
   const cursor = scopeMatches ? searchParams.get(cursorKey) ?? undefined : undefined
   // An absent parameter is `Number(null)`, i.e. 0, which is finite: reading it
   // as a saved size silently replaced every caller's configured limit with 25.
   const savedLimit = searchParams.get(limitKey)
   const limit = resolvePageSize(savedLimit === null ? configuredLimit : Number(savedLimit))
-  const direction = scopeMatches && searchParams.get(directionKey) === 'backward' ? 'backward' : 'forward'
+  const trailed = backward === 'trail'
+  const direction = !trailed && scopeMatches && searchParams.get(directionKey) === 'backward' ? 'backward' : 'forward'
   const page = scopeMatches ? Number(searchParams.get(pageKey) ?? '0') || 0 : 0
 
   // Serialised so the query key and the reset check both compare by value; two
@@ -172,17 +186,23 @@ export const usePagedList = <TItem, TData = TItem[]>({
       // asks for ±1; anything else is a caller bug and is ignored rather than
       // silently landing on the wrong page.
       const forward = next > page
-      if (!forward && isStalePage && next === page - 1) {
+      if (trailed) {
+        const nextCursor = meta?.nextCursor
+        if (Math.abs(next - page) !== 1 || (forward && !nextCursor)) return
         setSearchParams(
           (current) => {
-            const updated = new URLSearchParams(current)
-            updated.delete(cursorKey)
-            updated.delete(directionKey)
-            updated.delete(pageKey)
-            return updated
+            // A cursor from another record's list starts a walk of its own.
+            const base = scope && current.get(scopeKey) !== scope ? firstPageParams(current, paramNames) : current
+            return forward && nextCursor
+              ? trailForwardParams(base, paramNames, { cursor: nextCursor, page: next, scope })
+              : trailBackwardParams(base, paramNames, page)
           },
           { replace: false },
         )
+        return
+      }
+      if (!forward && isStalePage && next === page - 1) {
+        setSearchParams((current) => firstPageParams(current, paramNames), { replace: false })
         return
       }
       const target = forward ? meta?.nextCursor : meta?.prevCursor
@@ -206,11 +226,13 @@ export const usePagedList = <TItem, TData = TItem[]>({
       meta?.nextCursor,
       meta?.prevCursor,
       isStalePage,
+      paramNames,
       page,
       pageKey,
       setSearchParams,
       scope,
       scopeKey,
+      trailed,
     ],
   )
 
@@ -224,15 +246,12 @@ export const usePagedList = <TItem, TData = TItem[]>({
           const updated = new URLSearchParams(current)
           updated.set(limitKey, String(next))
           if (scope) updated.set(scopeKey, scope)
-          updated.delete(cursorKey)
-          updated.delete(directionKey)
-          updated.delete(pageKey)
-          return updated
+          return firstPageParams(updated, paramNames)
         },
         { replace: false },
       )
     },
-    [cursorKey, directionKey, limit, limitKey, pageKey, scope, scopeKey, setSearchParams],
+    [paramNames, limit, limitKey, scope, scopeKey, setSearchParams],
   )
 
   const total = meta?.total
@@ -246,7 +265,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
 
   return {
     canNext: Boolean(meta?.hasMore),
-    canPrevious: Boolean(meta?.prevCursor) || isStalePage,
+    canPrevious: trailed ? page > 0 : Boolean(meta?.prevCursor) || isStalePage,
     items,
     label: buildPageLabel(meta ?? {}, page * limit, items.length),
     meta,
@@ -274,10 +293,7 @@ export const usePagedListReset = (paramPrefix = ''): (() => void) => {
   return useCallback(() => {
     setSearchParams(
       (current) => {
-        const updated = new URLSearchParams(current)
-        updated.delete(`${paramPrefix}cursor`)
-        updated.delete(`${paramPrefix}direction`)
-        updated.delete(`${paramPrefix}page`)
+        const updated = firstPageParams(current, pagedListParamNames(paramPrefix))
         updated.delete(`${paramPrefix}limit`)
         updated.delete(`${paramPrefix}scope`)
         return updated

@@ -88,11 +88,14 @@ const listMeta = (list: DeepWaterResearchRunList) => list.meta
  * Knowledge › Research: every research this viewer may see, newest first,
  * paged. The list's data is `{items, meta}` (nessie.md §7.1), so its cursors
  * are read from inside it, and every page is read through its schema: a body
- * of any other shape is the list's error, never rows.
+ * of any other shape is the list's error, never rows. The server keeps only
+ * the rows this viewer may see, so it pages forwards only (`prevCursor` is
+ * always null); Previous walks back along the cursors kept in the address.
  */
 export const useResearchRunList = () => {
   const scope = useDeepWaterViewerScope()
   return usePagedList<DeepWaterResearchRunView, DeepWaterResearchRunList>({
+    backward: 'trail',
     enabled: scope !== null,
     items: listItems,
     meta: listMeta,

@@ -23,7 +23,7 @@ import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
 import {
   CHANNEL, DM_CHANNEL, DM_THREAD, JANA, ME, PA_AGENT, REPORT_MARKDOWN, RUN, TEAM, THREAD,
-  agentBrief, answeredBrief, createdBrief, draftBrief, listedRuns,
+  agentBrief, answeredBrief, createdBrief, draftBrief, listedRuns, olderLauncherRuns,
 } from './fixture-data'
 
 /**
@@ -40,7 +40,8 @@ import {
  * viewer's role (the runner's `/api/auth/me` answers with it) and so the
  * verdict's cancel standing; `?brief=` picks the
  * person's brief (`drafting`, `opening-failed` — the planner could not answer
- * the question that opened it — or `sign-in`).
+ * the question that opened it — or `sign-in`); `?many=1` adds enough older
+ * research for a second page of Knowledge › Research at ten a page.
  */
 
 const params = new URLSearchParams(location.search)
@@ -48,6 +49,7 @@ const readiness = (params.get('readiness') ?? 'ready') as DeepWaterResearchReadi
 const owner = params.get('owner') === '1'
 const admin = params.get('admin') === '1'
 const briefVariant = params.get('brief') ?? 'drafting'
+const many = params.get('many') === '1'
 try {
   window.localStorage.clear()
   window.localStorage.setItem('nessie.admin.token', 'research-brief-fixture')
@@ -77,7 +79,9 @@ const personBrief = (): DeepWaterBriefView => {
 }
 
 const briefs = new Map<string, DeepWaterBriefView>([[RUN.draft, personBrief()], [RUN.agentDraft, agentBrief()]])
-const runs = new Map<string, DeepWaterResearchRunView>(listedRuns().map((entry) => [entry.id, entry]))
+const runs = new Map<string, DeepWaterResearchRunView>(
+  [...listedRuns(), ...(many ? olderLauncherRuns(8) : [])].map((entry) => [entry.id, entry]),
+)
 const store = { conflictNext: false, teamEnabled: readiness !== 'team_off' }
 const calls: { body?: unknown; method: string; path: string }[] = []
 
@@ -201,10 +205,20 @@ const patch = async (path: string, body?: Record<string, unknown>): Promise<unkn
 const client = {
   delete: async () => null,
   get,
+  // Forward only, as the brief API pages: a cursor names the last row of the page before.
   getPage: async (path: string) => {
     calls.push({ method: 'GET', path })
+    const query = new URL(path, location.origin).searchParams
+    const limit = Number(query.get('limit') ?? '25')
     const own = [...briefs.values()].filter((brief) => brief.status !== 'cancelled').map(toRun)
-    return { data: { items: [...own, ...runs.values()], meta: { hasMore: false, nextCursor: null, prevCursor: null } } }
+    const all = [...own, ...runs.values()]
+    const after = query.get('cursor')
+    const start = after ? all.findIndex((entry) => entry.id === after) + 1 : 0
+    const items = all.slice(start, start + limit)
+    const hasMore = start + limit < all.length
+    return {
+      data: { items, meta: { hasMore, nextCursor: hasMore ? items.at(-1)?.id ?? null : null, prevCursor: null } },
+    }
   },
   patch,
   post,

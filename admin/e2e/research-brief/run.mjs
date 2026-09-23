@@ -13,6 +13,7 @@ import {
   walkFailedReply,
   walkNewBrief,
   walkReplyThreadBrief,
+  walkResearchPages,
   walkStartAgain,
 } from './steps.mjs'
 
@@ -32,8 +33,9 @@ import {
  * again, the failed opening turn, the sign-in state, every artifact action
  * including the clipboard fallback, the not-ready doorways for a member, an
  * admin (who is offered no team control) and an owner, and the owner's cancel
- * of the research that blocks turning DeepWater off. Every state is
- * screenshotted under e2e/screenshots/research-brief/.
+ * of the research that blocks turning DeepWater off, and Knowledge ›
+ * Research walked to its second page and back. Every state is screenshotted
+ * under e2e/screenshots/research-brief/.
  */
 
 const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/research-brief')
@@ -293,6 +295,11 @@ try {
     window.__research.calls.find((call) => call.method === 'POST' && call.path === path), RUNS)
   assert.deepEqual(created.body.origin, { kind: 'personal' })
   await knowledge.close()
+
+  // 18b — a second page of Knowledge › Research, and back.
+  const pages = await open(desktop, 'many=1&at=/knowledge-base/views/deep-water-research?limit=10')
+  await walkResearchPages(pages)
+  await pages.close()
 
   // 19 — the brief on a phone.
   const phone = await browser.newContext({ viewport: { height: 844, width: 390 } })

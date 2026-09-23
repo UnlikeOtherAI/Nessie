@@ -228,3 +228,22 @@ export const walkFailedReply = async (page, snap) => {
   await dialog.getByTestId('research-brief-replying').waitFor()
   assert.equal(await box.inputValue(), '', 'the resent words leave the box again')
 }
+
+/** Knowledge › Research pages forwards on the server, and Previous walks back along the address. */
+export const walkResearchPages = async (page) => {
+  const list = page.getByTestId('research-list')
+  const rows = list.locator('[data-research-run]')
+  await rows.first().waitFor()
+  assert.equal(await rows.count(), 10)
+  const firstId = await rows.first().getAttribute('data-research-run')
+  assert.equal(await page.getByRole('button', { name: 'Previous page' }).isDisabled(), true)
+  await page.getByRole('button', { name: 'Next page' }).click()
+  // The second page holds the rest: the oldest research, and none of the first page.
+  await list.getByText('Older research 8', { exact: true }).waitFor()
+  assert.equal(await list.locator(`[data-research-run="${firstId}"]`).count(), 0)
+  assert.ok(await rows.count() < 10)
+  await page.getByRole('button', { name: 'Previous page' }).click()
+  await page.waitForFunction(() => document.querySelectorAll('[data-research-run]').length === 10)
+  assert.equal(await rows.first().getAttribute('data-research-run'), firstId, 'back on the first page')
+  assert.equal(await page.getByRole('button', { name: 'Previous page' }).isDisabled(), true)
+}

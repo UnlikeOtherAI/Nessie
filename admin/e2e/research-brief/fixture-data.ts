@@ -128,6 +128,24 @@ export const listedRuns = (): DeepWaterResearchRunView[] => [
   }),
 ]
 
+/**
+ * Older research from the launcher, enough to fill a second page of
+ * Knowledge › Research at ten a page (`?many=1`).
+ */
+export const olderLauncherRuns = (count: number): DeepWaterResearchRunView[] =>
+  Array.from({ length: count }, (_, index) => run({
+    ...finished,
+    artifacts: null,
+    createdAt: new Date(Date.UTC(2026, 7, 20 - index, 9)).toISOString(),
+    id: `50000000-0000-4000-8000-0000000001${String(index).padStart(2, '0')}`,
+    report: null,
+    reportKind: 'full',
+    settings: null,
+    sourceCount: 12,
+    title: `Older research ${index + 1}`,
+    topic: `Older question ${index + 1}`,
+  }))
+
 const DRAFT_MESSAGES: DeepWaterBriefView['messages'] = [
   {
     author: { kind: 'person', userId: ME },

@@ -533,6 +533,13 @@ question.
   same function behind the API's `Content-Disposition`. Where the browser will
   not copy, the markdown is shown selected for a manual copy, and a copy is
   never claimed that did not happen. A summary is called a summary everywhere.
+- **Knowledge › Research pages forwards only on the server.** The brief API
+  keeps only the rows the viewer may see, so it returns no `prevCursor`;
+  `useResearchRunList` pages with `usePagedList`'s `backward: 'trail'`, which
+  keeps the cursors already walked through in the address (`trail`,
+  `cursor-trail.ts`), so Previous, Back and a reload land on the same page.
+  Once the list honours `direction=backward` and returns a `prevCursor`, the
+  trail goes and the list pages like every other.
 - **Nothing polls.** `useDeepWaterRunEvents`, mounted once in
   `AdminShellLayout`, turns each content-free `integration.run.updated` into an
   invalidation of that run's reads for every viewer scope and of every research
