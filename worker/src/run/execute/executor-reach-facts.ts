@@ -11,20 +11,48 @@
 // cache anchor.
 
 import type { PrismaClient } from '@prisma/client'
-import { EXECUTOR_LOCAL_APPS_OPERATION_KEYS } from '@nessie/executor-manage'
-import { ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
+import { EXECUTOR_LOCAL_APPS_OPERATION_KEYS, executorCodingSessionOwnerKey } from '@nessie/executor-manage'
+import {
+  EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
+  ExecutorCapabilityDescriptorSchema,
+  ExecutorLocalMcpReportSchema,
+} from '@nessie/schemas'
 
+import { CODING_AGENT_LABELS, CODING_SESSION_TOOL_NAME_SET } from '../coding-session-tools.js'
 import { executorToolName } from '../executor-toolset.js'
 import type { ExecutorLeaseCarryOutcome, ExecutorLeaseRefusalReason } from './types.js'
 
+/** The first-class coding-session tools, when the toolset holds them. */
+export type ExecutorCodingSessionsReach = {
+  /** The coding agents the reviewed facts offer, as a person knows them. */
+  agents: string[]
+  roots: string[]
+  /**
+   * The open sessions this agent holds there for this person, as the machine
+   * last reported them; null when its report did not list sessions at all.
+   */
+  sessions: Array<{ sessionId: string; status: string; title: string }> | null
+}
+
 export type ExecutorReachFacts =
   /**
-   * The local-apps pair is in this run's toolset. `servers` is what the bound
-   * revision's reviewed policy names (null when that descriptor no longer
-   * parses). `executorLabel` is set only in a DM nobody but the person reads;
-   * `leaseExpiresAt` only while a live lease covers the run.
+   * The local-apps pair is in this run's toolset, or the coding-session
+   * tools on top of it are. `servers` is what the bound revision's reviewed
+   * policy lets the pair reach (null when that descriptor no longer parses) —
+   * every named program but the coding bridge while its own tools are
+   * offered. `pair: false` says the pair itself is not held, which happens
+   * when the bridge is the only program named. `executorLabel` is set only in
+   * a DM nobody but the person reads; `leaseExpiresAt` only while a live
+   * lease covers the run.
    */
-  | { kind: 'bound'; executorLabel: string | null; leaseExpiresAt: Date | null; servers: string[] | null }
+  | {
+    codingSessions?: ExecutorCodingSessionsReach
+    executorLabel: string | null
+    kind: 'bound'
+    leaseExpiresAt: Date | null
+    pair?: false
+    servers: string[] | null
+  }
   /** A lease covers this conversation and did not reach this run. */
   | { kind: 'refused'; reason: ExecutorLeaseRefusalReason }
   /** The agent is granted local apps, and nothing in this conversation binds them. */
@@ -54,25 +82,52 @@ const REFUSAL_LINES: Record<ExecutorLeaseRefusalReason, string> = {
 
 const formatUtcMinute = (at: Date): string => `${at.toISOString().slice(0, 16).replace('T', ' ')} UTC`
 
+const SESSIONS_LISTED = 5
+const SESSION_TITLE_MAXIMUM = 80
+
+const oneLine = (value: string, max: number): string => {
+  const flat = value.replace(/\s+/g, ' ').trim()
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`
+}
+
+const codingSentences = (coding: ExecutorCodingSessionsReach, machine: string): string => {
+  const reach = `You can have a coding agent on ${machine} (${coding.agents.join(', ')}, in the folders `
+    + `${coding.roots.join(', ')}) do coding work through the \`coding_session_*\` tools: you brief it, follow it, `
+    + 'and review what it changed; you never write the code yourself.'
+  if (coding.sessions === null) return reach
+  if (coding.sessions.length === 0) return `${reach} You hold no open coding sessions there.`
+  const listed = coding.sessions.slice(0, SESSIONS_LISTED)
+    .map((session) => `${session.sessionId} ${JSON.stringify(oneLine(session.title, SESSION_TITLE_MAXIMUM))} (${session.status})`)
+  const more = coding.sessions.length > SESSIONS_LISTED ? `, and ${coding.sessions.length - SESSIONS_LISTED} more` : ''
+  return `${reach} Coding sessions you hold there, as the machine last reported them: ${listed.join('; ')}${more}.`
+}
+
 /** The prompt block for these facts, or null when there is nothing to say. */
 export const buildExecutorReachBlock = (facts: ExecutorReachFacts | null): string | null => {
   if (!facts) return null
   switch (facts.kind) {
     case 'bound': {
-      const machine = facts.executorLabel
-        ? `the person's machine, ${JSON.stringify(facts.executorLabel)},`
+      const named = facts.executorLabel
+        ? `the person's machine, ${JSON.stringify(facts.executorLabel)}`
         : 'the person\'s machine'
+      const machine = facts.executorLabel ? `${named},` : named
       const servers = facts.servers === null
         ? ''
         : facts.servers.length > 0
           ? ` (servers: ${facts.servers.join(', ')})`
           : ' (its reviewed policy names no server)'
       const tools = LOCAL_APPS_TOOL_NAMES.map((name) => `\`${name}\``).join(' / ')
-      const reach = `This turn you can use programs on ${machine} through ${tools}${servers}.`
-      return facts.leaseExpiresAt
-        ? `${reach} The person who started this session can keep using it in this conversation until `
-          + `${formatUtcMinute(facts.leaseExpiresAt)} or until they end it.`
-        : reach
+      const sentences = [
+        ...(facts.pair === false ? [] : [`This turn you can use programs on ${machine} through ${tools}${servers}.`]),
+        ...(facts.codingSessions
+          ? [codingSentences(facts.codingSessions, facts.pair === false ? named : 'that machine')]
+          : []),
+        ...(facts.leaseExpiresAt
+          ? [`The person who started this session can keep using it in this conversation until `
+            + `${formatUtcMinute(facts.leaseExpiresAt)} or until they end it.`]
+          : []),
+      ]
+      return sentences.join(' ')
     }
     case 'refused':
       return `${NO_MACHINE_TOOLS} ${REFUSAL_LINES[facts.reason]}`
@@ -125,11 +180,42 @@ const holdsLocalAppsGrant = async (
   return [...keysByExecutor.values()].some((keys) => keys.size === EXECUTOR_LOCAL_APPS_OPERATION_KEYS.length)
 }
 
+type ReachBinding = {
+  capabilityRevision: { descriptor: unknown }
+  executor: { label: string; localMcp?: unknown; pairingOwnerUserId?: string }
+  executorId?: string
+}
+
+/**
+ * The coding sessions this agent holds on the machine for its pairing owner —
+ * the one person the tools are offered to, so the one whose owner key the
+ * bridge filed them under — from the local-MCP report its last heartbeat
+ * carried. A lease is per conversation and a session per owner, so these are
+ * the person's sessions with this agent on that machine, wherever they began.
+ */
+const reportedOwnSessions = (
+  binding: ReachBinding,
+  agentId: string,
+): ExecutorCodingSessionsReach['sessions'] => {
+  const { executor, executorId } = binding
+  if (!executorId || !executor.pairingOwnerUserId) return null
+  const report = ExecutorLocalMcpReportSchema.safeParse(executor.localMcp)
+  const listed = report.success
+    ? report.data.find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)?.codingSessions
+    : undefined
+  if (!listed) return null
+  const ownerKey = executorCodingSessionOwnerKey(executorId, { actorUserId: executor.pairingOwnerUserId, agentId })
+  return listed
+    .filter((session) => session.ownerKey === ownerKey && session.status !== 'closed')
+    .map((session) => ({ sessionId: session.sessionId, status: session.status, title: session.title }))
+}
+
 /**
  * Derive the facts once the executor toolset is built. `toolNames` is that
  * toolset's `handledNames`: "bound" is said only when the model really holds
- * both tools, because the toolset can still drop a bound operation (the
- * agent's tool policy, a missing transport key).
+ * both tools of the pair, or the coding-session tools, because the toolset
+ * can still drop a bound operation (the agent's tool policy, a missing
+ * transport key, the coding rule).
  */
 export const loadExecutorReachFacts = async (
   prisma: PrismaClient,
@@ -150,20 +236,38 @@ export const loadExecutorReachFacts = async (
   const leaseSummary = lease.kind === 'no_lease' ? null : lease.lease
   // Bound under a lease that has since ended or run out: dispatch fences these.
   if (leaseSummary && !leaseSummary.live) return { kind: 'refused', reason: 'lease_ended' }
-  if (LOCAL_APPS_TOOL_NAMES.every((name) => input.toolNames.has(name))) {
+  const pair = LOCAL_APPS_TOOL_NAMES.every((name) => input.toolNames.has(name))
+  const coding = [...CODING_SESSION_TOOL_NAME_SET].every((name) => input.toolNames.has(name))
+  if (pair || coding) {
     const [binding, ownDm] = await Promise.all([
       prisma.executorBinding.findFirst({
         where: { runId: input.runId, operationKey: EXECUTOR_LOCAL_APPS_OPERATION_KEYS[0] },
-        select: { capabilityRevision: { select: { descriptor: true } }, executor: { select: { label: true } } },
+        select: {
+          capabilityRevision: { select: { descriptor: true } },
+          executor: { select: { label: true, localMcp: true, pairingOwnerUserId: true } },
+          executorId: true,
+        },
       }),
       isPersonsOwnDm(prisma, input.channelId, input.personUserId),
     ])
     const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(binding?.capabilityRevision.descriptor)
+    const facts = descriptor.success ? descriptor.data.codingSessions : undefined
+    const codingSessions: ExecutorCodingSessionsReach | undefined = coding && facts && binding
+      ? {
+          agents: facts.agents.map((agent) => CODING_AGENT_LABELS[agent]),
+          roots: facts.rootNames,
+          sessions: reportedOwnSessions(binding, input.agentId),
+        }
+      : undefined
+    const servers = descriptor.success ? descriptor.data.mcpServers ?? [] : null
     return {
+      ...(codingSessions ? { codingSessions } : {}),
       executorLabel: ownDm && binding ? labelFor(binding.executor.label) : null,
       kind: 'bound',
       leaseExpiresAt: leaseSummary?.expiresAt ?? null,
-      servers: descriptor.success ? descriptor.data.mcpServers ?? [] : null,
+      ...(pair ? {} : { pair: false as const }),
+      // The pair reaches every named program but the bridge while the bridge's own tools are offered.
+      servers: servers && codingSessions ? servers.filter((server) => server !== facts?.serverName) : servers,
     }
   }
   // Carried or launched under a live lease, yet the toolset exposed no pair.

@@ -218,7 +218,20 @@ its server-authored prompt stays byte-identical. The fact is one of:
   coding-sessions). The person who started this session can keep using it in
   this conversation until 2026-09-23 21:40 UTC or until they end it." The
   servers are the ones the bound revision's reviewed policy names; the second
-  sentence appears only under a live lease.
+  sentence appears only under a live lease. When the toolset also holds the
+  first-class coding tools ([host-coding-sessions.md](host-coding-sessions.md)
+  → "The agent's tools"), the servers leave out the bridge, which the pair no
+  longer reaches, and a sentence names the tools: "You can have a coding agent
+  on that machine (Claude Code, in the folders nessie) do coding work through
+  the `coding_session_*` tools: you brief it, follow it, and review what it
+  changed; you never write the code yourself." It goes on to list the open
+  sessions this agent holds there for the person — id, title and status, at
+  most five, from the local-MCP report the machine's last heartbeat carried
+  and filtered by their owner key — or says they hold none; a report that
+  listed no sessions at all adds nothing. Sessions belong to an owner, not to
+  a lease, so these are the person's sessions with this agent on that
+  machine, wherever they began. A machine that names only the bridge is told
+  as the coding sentence alone.
 - **A lease exists and did not carry.** "You have no machine tools this turn."
   and one line for the refusal reason — for example "Machine tools only come
   with messages from the person who started the session", "The session ended",

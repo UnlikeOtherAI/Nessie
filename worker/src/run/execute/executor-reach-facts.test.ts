@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
+import { executorCodingSessionOwnerKey } from '@nessie/executor-manage'
 import { ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
+
+import { CODING_SESSION_TOOL_NAME_SET } from '../coding-session-tools.js'
 
 import {
   buildExecutorReachBlock,
@@ -21,9 +24,15 @@ const runId = '00000000-0000-4000-8000-000000000007'
 const expiresAt = new Date('2026-09-23T21:40:00.000Z')
 const LOCAL_APPS = new Set(['executor_mcp_call', 'executor_mcp_tools'])
 
+const codingFacts = {
+  agents: ['claude'], allowedToolCount: 3, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
+  permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie', 'site'], serverName: 'coding-sessions',
+}
+
 // Parsed, so a fixture that drifts from the signed grammar fails here rather
 // than silently exercising the unreadable-descriptor branch.
-const descriptor = (mcpServers?: string[]) => ExecutorCapabilityDescriptorSchema.parse({
+const descriptor = (mcpServers?: string[], codingSessions?: unknown) => ExecutorCapabilityDescriptorSchema.parse({
+  ...(codingSessions ? { codingSessions } : {}),
   localPolicyDigest: `sha256:${'a'.repeat(64)}`,
   limits: { maxCommandRuntimeSeconds: 60, maxResultBytes: 65_536, maxSessions: 1 },
   operationKeys: ['mcp.tools', 'mcp.call'],
@@ -41,6 +50,8 @@ type Stub = {
   descriptor?: unknown
   grants?: { executorId: string; operationKey: string }[]
   label?: string
+  /** The machine's last local-MCP report and its pairing owner, for the coding facts. */
+  localMcp?: unknown
 }
 
 const stubPrisma = (stub: Stub = {}) => {
@@ -63,7 +74,8 @@ const stubPrisma = (stub: Stub = {}) => {
         calls.push('binding')
         return {
           capabilityRevision: { descriptor: stub.descriptor ?? descriptor(['kelpie', 'coding-sessions']) },
-          executor: { label: stub.label ?? 'Minis' },
+          executor: { label: stub.label ?? 'Minis', localMcp: stub.localMcp ?? null, pairingOwnerUserId: holderId },
+          executorId,
         }
       },
     },
@@ -235,4 +247,76 @@ test('another bundle bound, or setup never having run, says nothing about local 
   assert.deepEqual(calls, [])
   const nothing: ExecutorReachFacts | null = null
   assert.equal(buildExecutorReachBlock(nothing), null)
+})
+
+const CODING = new Set([...LOCAL_APPS, ...CODING_SESSION_TOOL_NAME_SET])
+const ownerKey = executorCodingSessionOwnerKey(executorId, { actorUserId: holderId, agentId })
+const report = (sessions: unknown[]) => [{
+  available: true, codingSessions: sessions, observedAt: '2026-09-23T20:00:00.000Z', server: 'coding-sessions',
+}]
+const reported = (sessionId: string, status: string, title: string, key = ownerKey) => ({
+  agent: 'claude', ownerKey: key, root: 'nessie', sessionId, status, title, updatedAt: '2026-09-23T19:59:00.000Z',
+})
+
+test('with the coding tools, the facts name them and the pair reaches every program but the bridge', async () => {
+  const { prisma } = stubPrisma({ descriptor: descriptor(['kelpie', 'coding-sessions'], codingFacts) })
+  const facts = await load(prisma, carried, CODING)
+  assert.ok(facts?.kind === 'bound')
+  assert.deepEqual(facts.servers, ['kelpie'])
+  assert.deepEqual(facts.codingSessions, { agents: ['Claude Code'], roots: ['nessie', 'site'], sessions: null })
+  const block = buildExecutorReachBlock(facts) ?? ''
+  assert.match(block, /through `executor_mcp_tools` \/ `executor_mcp_call` \(servers: kelpie\)\. /)
+  assert.ok(block.includes(
+    'You can have a coding agent on that machine (Claude Code, in the folders nessie, site) do coding work through '
+      + 'the `coding_session_*` tools: you brief it, follow it, and review what it changed; you never write the code '
+      + 'yourself.',
+  ), block)
+  assert.match(block, /until 2026-09-23 21:40 UTC or until they end it\.$/)
+})
+
+test('the person’s open sessions there are listed by id, title and status — nobody else’s, and none closed', async () => {
+  const mine = '00000000-0000-4000-8000-0000000000c1'
+  const { prisma } = stubPrisma({
+    descriptor: descriptor(['kelpie', 'coding-sessions'], codingFacts),
+    localMcp: report([
+      reported(mine, 'working', 'Fix the pricing page\nand open a PR'),
+      reported('00000000-0000-4000-8000-0000000000c2', 'waiting_for_input', 'Someone else', `sha256:${'f'.repeat(64)}`),
+      reported('00000000-0000-4000-8000-0000000000c3', 'closed', 'Done long ago'),
+    ]),
+  })
+  const facts = await load(prisma, carried, CODING)
+  assert.ok(facts?.kind === 'bound')
+  assert.deepEqual(facts.codingSessions?.sessions, [{ sessionId: mine, status: 'working', title: 'Fix the pricing page\nand open a PR' }])
+  assert.ok((buildExecutorReachBlock(facts) ?? '').includes(
+    `Coding sessions you hold there, as the machine last reported them: ${mine} "Fix the pricing page and open a PR" (working).`,
+  ))
+
+  // A report that lists sessions, none of them the person's, says so.
+  const { prisma: none } = stubPrisma({
+    descriptor: descriptor(['coding-sessions'], codingFacts), localMcp: report([]),
+  })
+  assert.match(buildExecutorReachBlock(await load(none, carried, CODING)) ?? '', /You hold no open coding sessions there\./)
+})
+
+test('a machine that names only the bridge is told as coding tools alone', async () => {
+  const { prisma } = stubPrisma({
+    channel: { members: [], type: 'dm' }, descriptor: descriptor(['coding-sessions'], codingFacts),
+  })
+  const facts = await load(prisma, carried, new Set(CODING_SESSION_TOOL_NAME_SET))
+  assert.ok(facts?.kind === 'bound')
+  assert.equal(facts.pair, false)
+  const block = buildExecutorReachBlock(facts) ?? ''
+  assert.doesNotMatch(block, /executor_mcp/)
+  assert.ok(block.startsWith(
+    'You can have a coding agent on the person\'s machine, "Minis" (Claude Code, in the folders nessie, site)',
+  ), block)
+})
+
+test('without the coding tools the facts say nothing of coding, even when the machine offers the bridge', async () => {
+  const { prisma } = stubPrisma({ descriptor: descriptor(['kelpie', 'coding-sessions'], codingFacts) })
+  const facts = await load(prisma, carried)
+  assert.ok(facts?.kind === 'bound')
+  assert.equal(facts.codingSessions, undefined)
+  assert.deepEqual(facts.servers, ['kelpie', 'coding-sessions'])
+  assert.doesNotMatch(buildExecutorReachBlock(facts) ?? '', /coding agent/)
 })
