@@ -427,7 +427,9 @@ the only way results come back.
   it, so a brief moves to `running` only on proof — a launch ticket, or Water's
   own brief state `launched` (`statusStepForLedger`). Otherwise a person's card
   would be posted in the room, and their brief opened to it, for a launch that
-  is then undone.
+  is then undone. Until the proof comes the brief is read at a running
+  research's pace (30 s), so a launch whose acknowledgement was lost is seen
+  as soon as Water's brief can be read.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind and provider tool-call id — which Ledger answers with the one
   brief it keyed to that call, or opens now. Ledger fingerprints the arguments

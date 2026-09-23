@@ -384,6 +384,12 @@ withFixture('a bare running is no launch, and only the launch job\'s own refusal
   const { run: proved } = await insertBrief(fixture)
   const rsProved = researchId()
   await apply(fixture, proved.id, scopeResult(rsProved, { turn: turn({ status: 'complete' }) }))
+  // Before Water's brief can be read, Ledger's word alone launches nothing, but
+  // the run is read again at a running research's pace until the proof comes.
+  const unproven = await apply(fixture, proved.id, scopeResult(rsProved, { status: 'running', turn: turn({ status: 'complete' }) }))
+  assert.equal(unproven.applied && unproven.run.status, 'drafting')
+  const nextRead = unproven.applied ? unproven.run.reconcileAfter.getTime() - Date.now() : 0
+  assert.ok(nextRead > 20_000 && nextRead <= 30_000, `read again within 30 s (${nextRead} ms)`)
   const launchedByWater = await apply(fixture, proved.id, scopeResult(rsProved, {
     status: 'running',
     brief: scopeBrief('launched'),

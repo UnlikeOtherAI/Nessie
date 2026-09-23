@@ -138,6 +138,12 @@ const originTurnAuthor = (run: DeepWaterBriefRun): DeepWaterTurnAuthor | null =>
 type StatusStep = {
   status: ProductIntegrationRunStatus
   ledgerTerminal: DeepWaterLedgerTerminal | null
+  /**
+   * Ledger shows the research running but the read carries no proof of
+   * launch yet: the run keeps its status and is read at a running research's
+   * pace, so the proof (or the revert) is seen within seconds.
+   */
+  awaitingProof: boolean
 }
 
 /**
@@ -193,16 +199,16 @@ const statusStepForLedger = (
     const status = (launched || ledger === 'complete') && STATUS_RANK[current] < STATUS_RANK.running
       ? 'running'
       : current
-    return { status, ledgerTerminal: { status: ledger, errorCode } }
+    return { status, ledgerTerminal: { status: ledger, errorCode }, awaitingProof: false }
   }
   const next = productRunStatusForLedger(ledger)
-  if (STATUS_RANK[next] < STATUS_RANK[current]) return { status: current, ledgerTerminal: null }
+  if (STATUS_RANK[next] < STATUS_RANK[current]) return { status: current, ledgerTerminal: null, awaitingProof: false }
   // Moving between `running` and `needs_setup` is not a launch; moving into
   // `running` from a brief is, and needs its proof.
   if (next === 'running' && !launched && !LAUNCHED_STATUSES.has(current)) {
-    return { status: current, ledgerTerminal: null }
+    return { status: current, ledgerTerminal: null, awaitingProof: true }
   }
-  return { status: next, ledgerTerminal: null }
+  return { status: next, ledgerTerminal: null, awaitingProof: false }
 }
 
 /**
@@ -248,6 +254,8 @@ type ProjectionWrite = {
   attachResearchId: string | null
   state: DeepWaterScopeState
   status: ProductIntegrationRunStatus
+  /** Read at a running research's pace while Ledger shows one without proof (`StatusStep`). */
+  awaitingProof: boolean
   title: string | null
   contentChanged: boolean
 }
@@ -263,7 +271,7 @@ const writeProjection = async (
   const changed = write.contentChanged || statusChanged || titleChanged || write.attachResearchId !== null
   const observedAt = changed ? now : run.ledgerObservedAt
   const delayMs = deepWaterWatchDelayMs({
-    status: write.status,
+    status: write.awaitingProof ? 'running' : write.status,
     state: write.state,
     msSinceLastChange: now.getTime() - observedAt.getTime(),
   })
@@ -353,6 +361,7 @@ export const applyDeepWaterScopeResult = async (
     attachResearchId: attaching ? result.id : null,
     state: nextState,
     status: step.status,
+    awaitingProof: step.awaitingProof,
     title: result.title ?? run.title,
     contentChanged: application.changed || finishedByStatus,
   })
@@ -390,6 +399,7 @@ export const applyDeepWaterStatusRead = async (
     attachResearchId: null,
     state: nextState,
     status: step.status,
+    awaitingProof: step.awaitingProof,
     title: input.status.title ?? run.title,
     contentChanged: finishedByStatus,
   })
@@ -436,6 +446,7 @@ export const applyDeepWaterLaunchTicket = async (
     attachResearchId: null,
     state: nextState,
     status: step.status,
+    awaitingProof: step.awaitingProof,
     title: run.title,
     contentChanged: finished,
   })
