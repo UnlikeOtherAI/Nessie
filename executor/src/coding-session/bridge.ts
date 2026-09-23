@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { ExecutorCodingSessionCloseSchema } from '@nessie/schemas'
+
 import {
   argumentsFor,
   CodingBridgeError,
@@ -80,8 +82,11 @@ export type CodingBridge = {
 
 const OWNER_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/u
 
-/** The control plane's grammar for a close reason (`lease_ended`, `access_revoked`, `daemon_shutdown`, …). */
-const CLOSE_REASON_PATTERN = /^[a-z][a-z0-9_]{0,63}$/u
+/**
+ * The control plane's own grammar for a close reason (`lease_ended`, `access_revoked`, `daemon_shutdown`, …),
+ * the one its close instructions are checked against, so the two cannot drift apart.
+ */
+const CloseReasonSchema = ExecutorCodingSessionCloseSchema.shape.reason
 
 /** What a changed, unreviewed configuration still allows: stopping things, and the daemon's report. */
 const ALLOWED_UNREVIEWED = new Set(['session_close', 'session_interrupt', 'session_close_all', 'session_list_all'])
@@ -338,7 +343,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     const only = args.sessionId === undefined ? undefined : sessionIdArgument(args.sessionId)
     // It becomes the closed session's own reason, which everything that reads one takes for a category.
     const reason = requiredText(args.reason, 'reason', 64)
-    if (!CLOSE_REASON_PATTERN.test(reason)) invalidArguments('reason must be a categorical reason such as lease_ended.')
+    if (!CloseReasonSchema.safeParse(reason).success) invalidArguments('reason must be a categorical reason such as lease_ended.')
     // Side by side: every host start may take a moment, and many sessions must not add up past the call's budget.
     const closed = await Promise.all((await listSessionMetas(stateDir)).map(async (session) => {
       if (args.ownerKey !== undefined && session.ownerKey !== args.ownerKey) return 0

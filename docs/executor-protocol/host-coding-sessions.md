@@ -417,8 +417,8 @@ values in the order they were written, not in the order they need each
 other). A value that names itself (`PSModulePath=%PSModulePath%;…`) reads
 what came before its key; a cycle ends within one round per value, and no
 value grows past the 32,767 characters Windows allows a variable. `Path` is
-machine;user, each half
-expanded once its key is merged. On macOS, `launchctl getenv` and the login shell's `env -0`; on Linux,
+machine;user, each half expanded once its key is merged. On macOS,
+`launchctl getenv` and the login shell's `env -0`; on Linux,
 `systemctl --user show-environment` and the login shell. It strips only
 `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_MESSAGING_SOCKET`,
@@ -666,7 +666,10 @@ Sessions outlive runs and daemon restarts, so the daemon ends them itself
 (`executor/src/coding-sessions-daemon.ts`), always through the bridge's
 daemon-only `session_close_all {ownerKey?, sessionId?, reason}`. The reason
 is a category in the control plane's grammar (`^[a-z][a-z0-9_]{0,63}$`; free
-text is refused) and becomes each closed session's own `reason`, in
+text is refused), checked by the control plane's own schema
+(`ExecutorCodingSessionCloseSchema`'s `reason`) so the bridge never refuses a
+reason the heartbeat's close instruction allows, and becomes each closed
+session's own `reason`, in
 `session_status`, `session_list` and the `status` event that records the
 close, so a close forced by a lease's end or a revocation reads differently
 on the machine from one the owner asked for, which carries none:
