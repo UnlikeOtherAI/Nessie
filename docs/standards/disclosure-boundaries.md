@@ -77,6 +77,14 @@ Facts not restated there:
   loaded once into the run context so `runReplyIsRestricted` stays synchronous
   on every streamed delta. Tool-posted messages resolve the bindings of their
   own target channel instead.
+- **Being in the destination is not access to everything an agent knows.** An
+  `AgentBinding` says the agent may participate in that channel; it does not
+  publish the agent's private conversations, documents or other source scopes
+  to the channel's readers. A public-channel reply derived from a private DM is
+  therefore still restricted even when the agent is visibly in the channel.
+  The shareable placeholder describes that exact fact — its sources are not
+  available to everyone who can read the channel — rather than claiming that
+  the agent or the readers are missing from the channel roster.
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, and an
   admitted checkpoint — and a checkpoint on resume is a read path too.

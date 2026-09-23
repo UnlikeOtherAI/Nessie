@@ -93,6 +93,12 @@ export const reattemptTriggerDelivery = async (
   }
 
   await queueTriggerRun(prisma, {
+    ...(
+      input.source === 'scheduler'
+      && (trigger.type === 'scheduled' || trigger.type === 'interval')
+        ? { admissionPolicy: 'scheduled_fail_closed' as const }
+        : {}
+    ),
     dedupeKey: input.dedupeKey,
     payload: input.payload,
     retry,

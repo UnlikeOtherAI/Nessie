@@ -141,6 +141,14 @@ export const TriggerDetailPage = () => {
     })
   }
 
+  const resume = () => {
+    setActionError(null)
+    resumeTrigger.mutate(trigger.id, {
+      onError: (error) =>
+        setActionError(error instanceof Error ? error.message : 'Failed to resume this schedule.'),
+    })
+  }
+
   const actions: PageHeaderAction[] = [
     {
       icon: faTrash,
@@ -155,19 +163,21 @@ export const TriggerDetailPage = () => {
       onSelect: () => setEditorOpen(true),
       priority: 40,
     },
-    trigger.status === 'paused'
-      ? {
+    ...(trigger.status === 'paused' || trigger.status === 'error'
+      ? [{
         id: 'resume-trigger',
         label: 'Resume',
-        onSelect: () => resumeTrigger.mutate(trigger.id),
+        onSelect: resume,
         priority: 60,
-      }
-      : {
+      } satisfies PageHeaderAction]
+      : trigger.status === 'active'
+        ? [{
         id: 'pause-trigger',
         label: 'Pause',
         onSelect: () => pauseTrigger.mutate(trigger.id),
         priority: 60,
-      },
+        } satisfies PageHeaderAction]
+        : []),
     ...(trigger.status === 'needs_reauthorization'
       ? [{
         id: 'reauthorize-trigger',
@@ -176,13 +186,13 @@ export const TriggerDetailPage = () => {
         priority: 80,
       } satisfies PageHeaderAction]
       : []),
-    {
+    ...(trigger.status === 'active' ? [{
       id: 'fire-trigger',
       label: fireTrigger.isPending ? 'Firing…' : 'Run now',
       onSelect: fire,
       primary: true,
       priority: 100,
-    },
+    } satisfies PageHeaderAction] : []),
   ]
 
   return (

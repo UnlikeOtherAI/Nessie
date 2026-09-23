@@ -340,6 +340,10 @@ const main = async () => {
 
     const sourceCard = sourcePage.page.locator(`#msg-${forwarded.id}`)
     await sourceCard.getByRole('button', { name: 'Share this reply' }).waitFor({ timeout: 60_000 })
+    await sourceCard.getByText(
+      'This reply used sources that aren’t available to everyone who can read this channel.',
+      { exact: true },
+    ).waitFor({ timeout: 60_000 })
     assert.equal(
       await sourceCard.getByRole('button', { name: 'Always allow here' }).count(),
       0,

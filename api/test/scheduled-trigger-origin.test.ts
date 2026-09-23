@@ -150,7 +150,10 @@ const createHarness = (
     thread: {
       findUnique: async () => ({
         channel: {
+          deletedAt: null,
           organizationId: ORGANIZATION_ID,
+          systemChannelType: null,
+          type: 'standard',
           visibility: 'private',
         },
         channelId: CHANNEL_ID,

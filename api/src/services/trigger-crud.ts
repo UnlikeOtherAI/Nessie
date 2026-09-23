@@ -1,5 +1,11 @@
 import type { PrismaClient } from '@prisma/client'
 import {
+  extractTriggerEffectiveUserId,
+  extractTriggerLaunchOrigin,
+  isJsonRecord,
+} from '@nessie/runtime'
+import {
+  acquireAgentTodoAgentLock,
   buildAgentVisibilityWhere,
   createAgentTrigger,
   createWorkflowTrigger,
@@ -7,6 +13,7 @@ import {
   getAgentTrigger,
   listAgentTriggers,
   updateAgentTrigger,
+  validateTodoTemplateTriggerConfig,
   type AgentTriggerScope,
   agentTriggerScopeWhere,
 } from '@nessie/team-admin'
@@ -151,39 +158,199 @@ export { createWorkflowTrigger }
 export const pauseAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
-): Promise<AgentTriggerRecord | null> =>
-  updateAgentTrigger(prisma, scope, {
-    enabled: false,
-    status: 'paused',
+): Promise<AgentTriggerRecord | null> => {
+  const paused = await prisma.$transaction(async (tx) => {
+    // Keep a health diagnosis if it races this click. A read followed by the
+    // shared update helper could read `active`, then overwrite a worker's
+    // freshly-written `error` with `paused`, losing the only repair reason.
+    // These conditional writes make whichever statement observes the health
+    // state preserve it while still disabling the schedule.
+    await tx.agentTrigger.updateMany({
+      where: {
+        ...agentTriggerScopeWhere(scope),
+        status: { notIn: ['error', 'needs_reauthorization'] },
+      },
+      data: { enabled: false, status: 'paused' },
+    })
+    await tx.agentTrigger.updateMany({
+      where: {
+        ...agentTriggerScopeWhere(scope),
+        status: { in: ['error', 'needs_reauthorization'] },
+      },
+      data: { enabled: false },
+    })
+    return tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
   })
+  return paused ? mapTriggerRecord(paused, TRIGGER_ADMIN_AUDIENCE) : null
+}
+
+export class TriggerResumeError extends Error {
+  readonly code = 'TRIGGER_RESUME_BLOCKED'
+
+  constructor(message: string) {
+    super(message)
+    this.name = 'TriggerResumeError'
+  }
+}
+
+const assertTriggerCanResume = async (
+  prisma: PrismaClient,
+  input: {
+    agent: {
+      agentKind: 'personal_assistant' | 'shared'
+      id: string
+      organizationId: string | null
+    } | null
+    config: unknown
+    healthReason: string | null
+    organizationId: string
+    targetChannelId: string | null
+    targetThreadId: string | null
+    type: AgentTriggerType
+  },
+): Promise<void> => {
+  if (!input.agent || !input.targetChannelId || !input.targetThreadId) {
+    throw new TriggerResumeError('Restore this schedule\'s agent and target before resuming it.')
+  }
+  const thread = await prisma.thread.findFirst({
+    where: {
+      id: input.targetThreadId,
+      channelId: input.targetChannelId,
+      channel: { deletedAt: null, organizationId: input.organizationId },
+    },
+    select: { id: true },
+  })
+  if (!thread) {
+    throw new TriggerResumeError('Restore this schedule\'s target channel before resuming it.')
+  }
+  if (input.agent.agentKind !== 'personal_assistant') {
+    const binding = await prisma.agentBinding.findFirst({
+      where: { agentId: input.agent.id, channelId: input.targetChannelId },
+      select: { id: true },
+    })
+    if (!binding) {
+      throw new TriggerResumeError('Add the agent back to the target channel before resuming.')
+    }
+  }
+
+  const config = isJsonRecord(input.config) ? input.config : null
+  const hasSavedUser = config !== null && Object.hasOwn(config, 'createdByUserId')
+  const hasLaunchOrigin = config !== null && Object.hasOwn(config, 'launchOrigin')
+  const userId = extractTriggerEffectiveUserId(config)
+  const origin = extractTriggerLaunchOrigin(config)
+  if (!userId || !origin) {
+    const schedulerRequiresOrigin =
+      SCHEDULER_TRIGGER_TYPES.includes(input.type)
+      && config?.['createdViaTool'] !== true
+    if (
+      hasSavedUser
+      || hasLaunchOrigin
+      || schedulerRequiresOrigin
+      || input.healthReason === 'channel_access_lost'
+    ) {
+      throw new TriggerResumeError(
+        'Repair this schedule\'s saved launch identity before resuming it.',
+      )
+    }
+    return
+  }
+  if (
+    origin.userId !== userId
+    || origin.organizationId !== input.organizationId
+    || (
+      input.agent.organizationId !== null
+      && origin.organizationId !== input.agent.organizationId
+    )
+  ) {
+    throw new TriggerResumeError('Repair this schedule\'s saved launch identity before resuming it.')
+  }
+
+  const [channelMember, organizationMember, team] = await Promise.all([
+    prisma.channelMember.findFirst({
+      where: { channelId: input.targetChannelId, userId },
+      select: { id: true },
+    }),
+    prisma.organizationMember.findFirst({
+      where: {
+        deactivatedAt: null,
+        organizationId: input.organizationId,
+        userId,
+      },
+      select: { id: true },
+    }),
+    origin.teamId
+      ? prisma.team.findFirst({
+          where: {
+            id: origin.teamId,
+            ...(origin.projectId ? { projectId: origin.projectId } : {}),
+            members: { some: { userId } },
+            project: { organizationId: input.organizationId },
+          },
+          select: { id: true },
+        })
+      : Promise.resolve({ id: 'no-team-required' }),
+  ])
+  if (!organizationMember) {
+    throw new TriggerResumeError('Restore the person\'s organization access before resuming.')
+  }
+  if (!team) {
+    throw new TriggerResumeError('Restore the person\'s team access before resuming.')
+  }
+  if (!channelMember) {
+    throw new TriggerResumeError('Add the person back to the target channel before resuming.')
+  }
+}
 
 /**
- * Resume a paused trigger.
+ * Resume a paused or repaired trigger from a fresh cadence.
  *
- * A schedule can be paused two ways: by a person, which leaves `next_run_at`
- * intact, or by reaching its `config.until`, which cleared it. Flipping status
- * alone would revive the second kind as `active` with no next run — enabled to
- * look at, silently dead forever — so a scheduler-type trigger with no armed
- * next run is re-armed here. If its end is still in the past there is nothing
- * to arm and it stays paused, which is the honest answer: extend the end first.
+ * Error recovery first proves that the target, agent and saved human are live
+ * again. Scheduler types always re-arm from now, then activation, health reset,
+ * stale retry suppression and pending-run cancellation commit together. If an
+ * ended schedule has no future occurrence it remains stopped until edited.
  */
 export const resumeAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
-    select: { config: true, id: true, nextRunAt: true, type: true },
+    select: {
+      agent: { select: { agentKind: true, id: true, organizationId: true } },
+      config: true,
+      enabled: true,
+      healthReason: true,
+      healthRevision: true,
+      id: true,
+      status: true,
+      targetChannelId: true,
+      targetThreadId: true,
+      type: true,
+    },
     where: agentTriggerScopeWhere(scope),
   })
   if (!existing) return null
   const triggerId = existing.id
 
-  const needsRearm =
-    existing.nextRunAt === null
-    && SCHEDULER_TRIGGER_TYPES.includes(existing.type as AgentTriggerType)
+  const needsRearm = SCHEDULER_TRIGGER_TYPES.includes(existing.type as AgentTriggerType)
+  if (existing.status === 'error' || needsRearm) {
+    await assertTriggerCanResume(prisma, {
+      agent: existing.agent,
+      config: existing.config,
+      healthReason: existing.healthReason,
+      organizationId: scope.organizationId,
+      targetChannelId: existing.targetChannelId,
+      targetThreadId: existing.targetThreadId,
+      type: existing.type as AgentTriggerType,
+    })
+  }
+
+  // Every scheduler resume starts from now. Keeping a stale occurrence makes a
+  // repaired schedule replay missed intervals immediately and lets an old
+  // failed delivery race the newly-active row.
+  const configRecord = isJsonRecord(existing.config) ? existing.config : {}
   const rearmed = needsRearm
     ? normalizeNextRunAt({
-        config: (existing.config ?? {}) as Record<string, unknown>,
+        config: configRecord,
         type: existing.type as AgentTriggerType,
       })
     : undefined
@@ -195,21 +362,53 @@ export const resumeAgentTrigger = async (
     )
   }
 
-  // Clear the stale verdict. Health records why the machine last refused to
-  // run this schedule; resuming is the operator asserting they want it running
-  // again, so carrying the old reason forward would leave the page explaining a
-  // failure that is no longer current. The next fire re-derives it — and if the
-  // cause is still there, that counts as a fresh transition and alerts again.
-  await prisma.agentTrigger.update({
-    data: { healthDetail: null, healthReason: null },
-    where: { id: triggerId },
-  })
+  const updated = await prisma.$transaction(async (tx) => {
+    if (existing.agent && Object.hasOwn(configRecord, 'todoTemplateId')) {
+      await acquireAgentTodoAgentLock(tx, existing.agent.id)
+      if (!await validateTodoTemplateTriggerConfig(tx, existing.agent.id, configRecord)) {
+        throw new TriggerResumeError(
+          'Restore or replace this schedule\'s to-do template before resuming.',
+        )
+      }
+    }
+    const claimed = await tx.agentTrigger.updateMany({
+      data: {
+        enabled: true,
+        healthDetail: null,
+        healthReason: null,
+        ...(needsRearm ? { nextRunAt: rearmed } : {}),
+        schedulerClaimedAt: null,
+        schedulerClaimId: null,
+        status: 'active',
+      },
+      where: {
+        id: triggerId,
+        enabled: existing.enabled,
+        healthRevision: existing.healthRevision,
+        status: existing.status,
+      },
+    })
+    if (claimed.count === 0) return null
 
-  return updateAgentTrigger(prisma, scope, {
-    enabled: true,
-    status: 'active',
-    ...(rearmed ? { nextRunAt: rearmed.toISOString() } : {}),
+    // The repair starts a new cadence. Old retries and trigger kickoffs must
+    // not wake after the operator has explicitly resumed from a fresh point.
+    await tx.agentTriggerDelivery.updateMany({
+      where: { triggerId, status: 'failed' },
+      data: { nextRetryAt: null },
+    })
+    await tx.task.updateMany({
+      where: { run: { triggerId, status: 'pending' } },
+      data: { status: 'cancelled' },
+    })
+    await tx.run.updateMany({
+      where: { triggerId, status: 'pending' },
+      data: { finishedAt: new Date(), status: 'cancelled' },
+    })
+    await tx.runThreadPendingMessage.deleteMany({ where: { triggerId } })
+
+    return tx.agentTrigger.findUniqueOrThrow({ where: { id: triggerId } })
   })
+  return updated ? mapTriggerRecord(updated, TRIGGER_ADMIN_AUDIENCE) : null
 }
 
 export const listAgentTriggerDeliveries = async (
