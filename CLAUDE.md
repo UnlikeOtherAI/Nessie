@@ -207,6 +207,20 @@ sentence changes only if the invariant itself did.
   rules are in
   [`docs/standards/deepwater.md`](docs/standards/deepwater.md) → "Research
   briefs — the admin".
+- **DeepWater research real-stack coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:research-brief-real`.
+  The same components against the real API, embedded worker and database:
+  the composer's Research button in a channel, a reply thread, a person drawer
+  and a Threads inbox card, a research card opening its brief through
+  `?research=`, a person's own brief read from the brief API, a refused reply
+  saying why, Ledger's launch reaching the open dialog and the room live, and
+  Knowledge › Research. Ledger cannot be doubled on the wire (the pinned egress
+  refuses loopback, and brief readiness needs a UOA signer), so its answers are
+  played through the watch's own projection and realtime announcer
+  (`real-stack-ledger.mjs`), and opening a new brief from a composer stays the
+  fixture suite's. It starts and stops its own API and admin and never adopts a
+  running pair; the on-request Browser Suites workflow runs it after the
+  spreadsheets suite.
 - **Overlay layer coverage:** run
   `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
   over the real navigation stack, in the same lifecycle after the task-dialog

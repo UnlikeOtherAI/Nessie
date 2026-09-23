@@ -275,6 +275,16 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: node admin/e2e/spreadsheets/ci.mjs
 
+      # DeepWater research on the real stack: the composer, reply-thread,
+      # person-drawer and Threads inbox doorways, the research card, a person's
+      # brief and Knowledge › Research against the real brief API. Ledger's
+      # answers are played through the watch's own projection, because the
+      # pinned egress refuses a loopback Ledger. It starts and stops its own API
+      # and admin, so it runs once the spreadsheets suite has freed the ports.
+      - name: Run DeepWater research real-stack walk
+        if: steps.scope.outputs.code == '1'
+        run: pnpm --filter @nessie/admin test:e2e:research-brief-real
+
       - name: Upload transition frames
         if: always() && steps.scope.outputs.code == '1'
         uses: actions/upload-artifact@v4
@@ -362,6 +372,14 @@ jobs:
         with:
           name: local-ollama-agents-screenshots
           path: e2e/screenshots/local-ollama-agents
+          if-no-files-found: warn
+
+      - name: Upload DeepWater research real-stack screenshots
+        if: always() && steps.scope.outputs.code == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-brief-real-screenshots
+          path: e2e/screenshots/research-brief-real
           if-no-files-found: warn
 
       - name: Upload spreadsheets screenshots

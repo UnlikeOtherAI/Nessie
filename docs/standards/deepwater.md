@@ -926,4 +926,9 @@ the screen it goes to that conversation, which opens the brief itself.
   `AdminShellLayout`, turns each content-free `integration.run.updated` into an
   invalidation of that run's reads for every viewer scope and of every research
   list; a `realtime.gap` refetches everything. Browser coverage:
-  `pnpm --filter @nessie/admin test:e2e:research-brief`.
+  `pnpm --filter @nessie/admin test:e2e:research-brief` walks every state over
+  a stubbed client; `test:e2e:research-brief-real` walks the same doorways
+  against the real API, worker and database, with Ledger's answers applied
+  through the watch's own projection and announcer, because the pinned egress
+  cannot reach a loopback Ledger or UOA. It cannot open a new brief: readiness
+  stops at `unavailable` without a Ledger key and UOA signer.
