@@ -462,7 +462,10 @@ routes, and none of it names a machine.
   row of a wakeable agent into a paused, disabled, follow-only trigger
   ("Board watcher: <board>", no start-work columns and no instructions until
   a person adds them), naming each row in a NOTICE line
-  ([board watchers §11](../plans/2026-09-06-board-watchers.md)).
+  ([board watchers §11](../plans/2026-09-06-board-watchers.md)). On a
+  mirrored project both the editor and the agent tools' answer
+  (`describeMirroredSources`) say that a move on the connected board never
+  starts work, and what its own changes can still do.
 
 ## The machine owner's authority is read only by the standing-policy binder (from T4)
 

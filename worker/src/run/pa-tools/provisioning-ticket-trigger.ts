@@ -5,6 +5,28 @@ import type { ActingMember } from './access.js'
 import { recordProjectRead } from './ticket-context.js'
 import { formatBoardMarkdownLink } from './tool-output.js'
 
+const PROVIDER_NAMES: Record<string, string> = { github: 'GitHub', jira: 'Jira', linear: 'Linear', trello: 'Trello' }
+
+/**
+ * A mirrored project's line: a ticket moved on the connected board never
+ * starts work here (docs/plans/2026-09-23-ticket-driven-agents/triggers.md →
+ * "Board watchers"), so a trigger set up on such a board says so, and says
+ * what the connected board's own changes can still do. Null when nothing is
+ * mirrored.
+ */
+export const describeMirroredSources = (
+  sources: readonly { name: string; provider: string }[],
+  includeSourceEvents: boolean,
+): string | null => {
+  if (sources.length === 0) return null
+  const named = sources.map((source) => `${PROVIDER_NAMES[source.provider] ?? source.provider} "${source.name}"`)
+  return `This project mirrors ${named.join(', ')}: a ticket moved there never starts work; only a person `
+    + 'moving it on this board does. '
+    + (includeSourceEvents
+      ? 'Its own changes wake live work, and reach the agent marked untrusted.'
+      : 'Its own changes wake nothing unless the trigger includes source events.')
+}
+
 /**
  * What a `ticket_changed` trigger resolved to, said back after
  * `agent_trigger_create` or `agent_trigger_update`: the board as a link, and
@@ -37,6 +59,14 @@ export const describeTicketTriggerScope = async (
   })
   if (!board) return []
   recordProjectRead(context, member, board.projectId)
+  const mirrored = describeMirroredSources(
+    await context.prisma.boardSource.findMany({
+      where: { organizationId: member.organizationId, projectId: board.projectId },
+      orderBy: { name: 'asc' },
+      select: { name: true, provider: true },
+    }),
+    config.follow.includeSourceEvents,
+  )
   const column = (candidate: { category: string; id: string; name: string }) =>
     `${candidate.name} (${candidate.category}, columnId=${candidate.id})`
   const pickup = board.columns.filter((candidate) => config.pickup?.columnIds.includes(candidate.id))
@@ -51,5 +81,6 @@ export const describeTicketTriggerScope = async (
     `Ends the work in ${ends.length > 0 ? ends.map(column).join(', ') : 'no column on this board'}`,
     `Wakes the agent on: ${config.follow.kinds.join(', ')}`
     + (config.follow.includeSourceEvents ? ' (the connected board\'s own changes too)' : ''),
+    ...(mirrored ? [mirrored] : []),
   ]
 }
