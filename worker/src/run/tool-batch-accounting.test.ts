@@ -101,3 +101,75 @@ test('a thrown error still counts under the per-tool key', async () => {
   assert.equal(batch.results[0]?.success, false)
   assert.deepEqual(breaker.snapshot(), { 'executor_mcp_call:kelpie:screenshot': 1 })
 })
+
+// A Meta or legacy OpenAI model calls `default.<tool>` / `functions.<tool>`;
+// the loop drops the prefix for dispatch, and the counts must follow it.
+const withoutPrefix = (toolName: string): string => toolName.replace(/^(default|functions)\./, '')
+
+test('a prefixed call is counted under the program tool it reaches', async () => {
+  const breaker = new ToolCircuitBreaker()
+  const prefixed = (server: string, tool: string): ProviderToolCall => {
+    const call = mcpCall(server, tool)
+    return { ...call, toolName: `default.${call.toolName}` }
+  }
+  const runPrefixed = async (toolCall: ProviderToolCall, result: ExecutedToolResult) => {
+    let dispatched = false
+    await executeToolBatch({
+      callbacks: noopCallbacks,
+      circuitBreaker: breaker,
+      executeTool: async () => {
+        dispatched = true
+        return result
+      },
+      normalizeToolName: withoutPrefix,
+      signatureCounts: new Map(),
+      toolCalls: [toolCall],
+    })
+    return dispatched
+  }
+  for (let attempt = 0; attempt < 3; attempt += 1) await runPrefixed(prefixed('kelpie', 'wait_for_element'), failure)
+  assert.equal(breaker.isTripped('executor_mcp_call:kelpie:wait_for_element'), true)
+  assert.equal(await runPrefixed(prefixed('kelpie', 'wait_for_element'), failure), false)
+  assert.equal(
+    await runPrefixed(prefixed('coding-sessions', 'start'), { ...failure, success: true }),
+    true,
+    'one flaky tool no longer disables every program',
+  )
+})
+
+test('three failed listings of one program leave the others listable', async () => {
+  const breaker = new ToolCircuitBreaker()
+  const listing = (server: string): ProviderToolCall => {
+    callNumber += 1
+    return { arguments: { server }, toolCallId: `call-${callNumber}`, toolName: 'executor_mcp_tools' }
+  }
+  const unavailable: ExecutedToolResult = { inputSummary: 'list', output: 'EXECUTOR_MCP_UNAVAILABLE', success: false }
+  // Each in its own batch with fresh loop counts: this is about the breaker.
+  for (let attempt = 0; attempt < 3; attempt += 1) await runOne(breaker, listing('kelpie'), unavailable)
+  assert.equal((await runOne(breaker, listing('kelpie'), unavailable)).dispatched, false)
+  const other = await runOne(breaker, listing('ollama-search'), { ...unavailable, success: true })
+  assert.equal(other.dispatched, true)
+})
+
+test('a prefixed listing gets the observation loop rule, not the cumulative one', async () => {
+  const counts = new Map<string, number>()
+  const refused: boolean[] = []
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let dispatched = false
+    await executeToolBatch({
+      callbacks: noopCallbacks,
+      circuitBreaker: new ToolCircuitBreaker(),
+      executeTool: async () => {
+        dispatched = true
+        return { inputSummary: 'list', output: 'tools', success: true }
+      },
+      normalizeToolName: withoutPrefix,
+      signatureCounts: counts,
+      toolCalls: [{ arguments: { server: 'kelpie' }, toolCallId: `list-${attempt}`, toolName: 'default.executor_mcp_tools' }],
+    })
+    refused.push(!dispatched)
+  }
+  // The cumulative rule would refuse the third; an observation is refused on
+  // the fourth in a row.
+  assert.deepEqual(refused, [false, false, false, true])
+})

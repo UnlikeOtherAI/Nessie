@@ -1201,3 +1201,30 @@ test('a resumed run ignores loop counts checkpointed under the old rule', async 
   assert.equal(saved.length, 1)
   assert.equal(saved.some((key) => key.startsWith('kb_search:')), false, 'the old key is not carried forward')
 })
+
+test('a Stop pressed during a batch of executor calls sends none of the rest', async () => {
+  const dispatched: string[] = []
+  let stopped = false
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    checkCancelled: async () => stopped,
+    dispatchesInOrder: (name) => name.startsWith('executor_'),
+    executeTool: async (_name, _args, toolCallId) => {
+      dispatched.push(toolCallId)
+      stopped = true
+      return { inputSummary: 'call', output: 'done on the machine', success: true }
+    },
+    initialMessages: initial,
+    runInference: async () => ({
+      ...toolCallInference(''),
+      toolCalls: [1, 2, 3].map((n) => ({ arguments: { n }, toolCallId: `exec-${n}`, toolName: 'executor_mcp_call' })),
+    }),
+    tools: [],
+  })
+  // The loop's own probe after the batch ends the run; the batch's probe is
+  // what kept the second and third calls, each worth a full command TTL,
+  // from being sent first.
+  assert.deepEqual(dispatched, ['exec-1'])
+  assert.equal(result.cancelled, true)
+})

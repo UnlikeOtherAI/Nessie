@@ -470,8 +470,11 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       circuitBreaker,
       ...(input.dispatchesInOrder ? { dispatchesInOrder: input.dispatchesInOrder } : {}),
       executeTool: toolRecorder.executeTool,
+      ...(input.normalizeToolName ? { normalizeToolName: input.normalizeToolName } : {}),
       ...(toolRecorder.prepareTool ? { prepareTool: toolRecorder.prepareTool } : {}),
       signatureCounts,
+      // The same cooperative probe, between the batch's in-order calls too.
+      ...(input.checkCancelled ? { stopRequested: cancellationRequested } : {}),
       toolCalls,
       toolTimeoutError: input.toolTimeoutError,
       toolTimeoutMsFor: (toolName) => input.toolTimeoutMsFor?.(toolName) ?? budget.toolTimeoutMs,

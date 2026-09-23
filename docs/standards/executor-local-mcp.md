@@ -154,13 +154,17 @@ same fatal unknown outcome — never a retriable timeout, because the program ma
 still finish the call. A listing is a catalog walk of up to sixteen `mcp.tools`
 pages, one command each, so `executor_mcp_tools` is timed as sixteen commands
 rather than one: a second page queued behind another run's call on the same
-machine used to outlast one command's backstop and abort the run. Executor calls in one model batch are dispatched one
-after another, since the machine runs one command at a time and each command's
-TTL starts when the worker creates it; the worker runs four `executor.command`
-subscriptions so one machine's slow call never holds up another's. A person's
-**Stop** (on the thinking bubble or the agent page) is read only after the
-batch settles, so it waits behind these calls, and a call already sent still
-runs to its end on the machine; the control reads "Stopping…" until then.
+machine used to outlast one command's backstop and abort the run.
+
+Executor calls in one model batch are dispatched one after another, since the
+machine runs one command at a time and each command's TTL starts when the
+worker creates it; the worker runs four `executor.command` subscriptions so one
+machine's slow call never holds up another's. A person's **Stop** (on the
+thinking bubble or the agent page) is read before each of those calls is sent,
+and every call still waiting answers "Not run: the person stopped this run"
+instead. A call already sent runs to its end on the machine, so the control
+reads "Stopping…" for at most that one call — its TTL plus margin, 130 s for
+`mcp.call` — rather than for every call queued behind it.
 The full rule is in
 [tech-and-run-budgets.md](tech-and-run-budgets.md).
 
@@ -169,7 +173,10 @@ The full rule is in
 The run's circuit breaker counts `executor_mcp_call` failures under
 `executor_mcp_call:<server>:<tool>`, not under the transport's one name: three
 failures of Kelpie's `wait_for_element` disable that tool, not every program
-the owner named. A failure the model fixes by changing its call is marked
+the owner named. A listing counts under `executor_mcp_tools:<server>`, so
+Kelpie not running does not stop the run listing another program. The key
+is built from the offered name after a provider's namespace prefix
+(`default.`, `functions.`) is dropped, as it is for dispatch. A failure the model fixes by changing its call is marked
 `correctable` and never counts — the daemon's `EXECUTOR_COMMAND_ARGUMENTS_INVALID`,
 `EXECUTOR_MCP_RESULT_TOO_LARGE` and `EXECUTOR_MCP_CURSOR_INVALID`, and a
 server's own refusal of an unknown tool name or of arguments that fail the

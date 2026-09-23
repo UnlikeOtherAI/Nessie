@@ -1,21 +1,33 @@
 export const CIRCUIT_BREAKER_THRESHOLD = 3
 
-// `executorToolName('mcp.call')`, spelled out so the breaker stays free of the
-// executor toolset's imports; a test pins that the two agree.
+// `executorToolName('mcp.call')` and `executorToolName('mcp.tools')`, spelled
+// out so the breaker stays free of the executor toolset's imports; a test pins
+// that they agree.
 const EXECUTOR_MCP_CALL_TOOL_NAME = 'executor_mcp_call'
+const EXECUTOR_MCP_TOOLS_TOOL_NAME = 'executor_mcp_tools'
 
 /**
  * What a call's failures are counted under. Every tool is its own key except
- * the executor's generic `mcp.call` transport, which fronts every tool of every
- * program the machine's owner named: three failures of one browser tool must
- * not disable a different program, so its key names the server and the tool.
+ * the executor's two generic `mcp.*` transports, which front every program the
+ * machine's owner named: three failures of one browser tool must not disable a
+ * different program, so a call's key names the server and the tool, and a
+ * listing's names the server — Kelpie not running must not stop the run
+ * listing ollama-search.
+ *
+ * `toolName` is the name the run offers, after any provider namespace prefix
+ * (`default.`, `functions.`) has been dropped; the batch normalises it first.
  */
 export const circuitBreakerKey = (toolName: string, args: Record<string, unknown>): string => {
-  if (toolName !== EXECUTOR_MCP_CALL_TOOL_NAME) return toolName
   const { server, tool } = args
-  return typeof server === 'string' && typeof tool === 'string'
-    ? `${toolName}:${server}:${tool}`
-    : toolName
+  if (toolName === EXECUTOR_MCP_CALL_TOOL_NAME) {
+    return typeof server === 'string' && typeof tool === 'string'
+      ? `${toolName}:${server}:${tool}`
+      : toolName
+  }
+  if (toolName === EXECUTOR_MCP_TOOLS_TOOL_NAME) {
+    return typeof server === 'string' ? `${toolName}:${server}` : toolName
+  }
+  return toolName
 }
 
 export class ToolCircuitBreaker {

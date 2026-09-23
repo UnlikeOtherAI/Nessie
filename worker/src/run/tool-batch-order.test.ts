@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { ExecutorUnknownOutcomeError } from './executor-command-timing.js'
-import { executeToolBatch, type ExecutedToolResult } from './tool-batch.js'
+import { executeToolBatch, STOPPED_BEFORE_DISPATCH_OUTPUT, type ExecutedToolResult } from './tool-batch.js'
 import { FatalToolExecutionError } from './tool-execution-errors.js'
 
 /**
@@ -147,4 +147,55 @@ test('an executor tool timeout is the fatal unknown outcome, never a retriable t
     ExecutorUnknownOutcomeError,
   )
   assert.deepEqual(ended, [{ output: 'Tool execution could not be confirmed; retrying safely.', success: false }])
+})
+
+test('a Stop requested while executor calls wait turns the unsent ones into stopped answers', async () => {
+  const sent: string[] = []
+  let stop = false
+  const batch = await executeToolBatch({
+    callbacks: noopCallbacks,
+    circuitBreaker: new ToolCircuitBreaker(),
+    dispatchesInOrder: isExecutorTool,
+    executeTool: async (toolName, _args, toolCallId) => {
+      sent.push(toolCallId)
+      // The person presses Stop while the first call is on the machine.
+      if (toolCallId === 'exec-1') stop = true
+      return ok(`${toolName} ${toolCallId}`)
+    },
+    signatureCounts: new Map(),
+    stopRequested: async () => stop,
+    toolCalls: [
+      { arguments: { n: 1 }, toolCallId: 'exec-1', toolName: 'executor_mcp_call' },
+      { arguments: { q: 'x' }, toolCallId: 'search', toolName: 'kb_search' },
+      { arguments: { n: 2 }, toolCallId: 'exec-2', toolName: 'executor_mcp_call' },
+      { arguments: { n: 3 }, toolCallId: 'exec-3', toolName: 'executor_mcp_call' },
+    ],
+    toolTimeoutMsFor: () => 5_000,
+  })
+  assert.deepEqual(sent.sort(), ['exec-1', 'search'], 'nothing is sent after the Stop')
+  assert.deepEqual(batch.results.map((result) => [result.toolCallId, result.success]), [
+    ['exec-1', true],
+    ['search', true],
+    ['exec-2', false],
+    ['exec-3', false],
+  ])
+  assert.equal(batch.results[2]?.output, STOPPED_BEFORE_DISPATCH_OUTPUT)
+})
+
+test('a Stop probe that cannot read the flag sends the call as before', async () => {
+  const sent: string[] = []
+  await executeToolBatch({
+    callbacks: noopCallbacks,
+    circuitBreaker: new ToolCircuitBreaker(),
+    dispatchesInOrder: isExecutorTool,
+    executeTool: async (toolName, _args, toolCallId) => {
+      sent.push(toolCallId)
+      return ok(toolName)
+    },
+    signatureCounts: new Map(),
+    stopRequested: async () => { throw new Error('database unavailable') },
+    toolCalls: [{ arguments: {}, toolCallId: 'exec-1', toolName: 'executor_mcp_call' }],
+    toolTimeoutMsFor: () => 5_000,
+  })
+  assert.deepEqual(sent, ['exec-1'])
 })

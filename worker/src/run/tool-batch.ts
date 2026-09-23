@@ -84,6 +84,9 @@ export type PrepareToolFn = (
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
 
+/** What an in-order call answers when the person stopped the run before it was sent. */
+export const STOPPED_BEFORE_DISPATCH_OUTPUT = 'Not run: the person stopped this run before this call was sent.'
+
 const withTimeout = async <T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -134,9 +137,22 @@ export const executeToolBatch = async (input: {
    */
   dispatchesInOrder?: (toolName: string) => boolean
   executeTool: ExecuteToolFn
+  /**
+   * The name a call is counted under by the circuit breaker and the loop
+   * detector: the offered tool, with any provider namespace prefix
+   * (`default.`, `functions.`) dropped, as the loop resolves it for dispatch.
+   */
+  normalizeToolName?: (toolName: string) => string
   prepareTool?: PrepareToolFn
   /** The run's loop-detection counts (`tool-loop-detection.ts`), mutated in call order. */
   signatureCounts: Map<string, number>
+  /**
+   * Asked before each in-order call is sent. A batch of executor calls runs
+   * one after another, each allowed its command TTL, and the loop reads a
+   * person's Stop only after the batch; without this a Stop behind five calls
+   * waited out all five. A call already sent still runs to its end.
+   */
+  stopRequested?: () => Promise<boolean>
   toolCalls: ProviderToolCall[]
   /** The error a timed-out call answers with; given the provider's call id. */
   toolTimeoutError?: (toolName: string, toolCallId: string) => Error | null
@@ -155,9 +171,11 @@ export const executeToolBatch = async (input: {
   let toolMs = 0
   const resultSlots: Array<ExecutedToolResult | undefined> = []
   const runnable: RunnableToolCall[] = []
+  const countedName = (toolCall: ProviderToolCall): string =>
+    input.normalizeToolName?.(toolCall.toolName) ?? toolCall.toolName
 
   for (const [index, toolCall] of input.toolCalls.entries()) {
-    const loop = countToolCall(input.signatureCounts, toolCall.toolName, toolCall.arguments)
+    const loop = countToolCall(input.signatureCounts, countedName(toolCall), toolCall.arguments)
     if (loop) {
       loopNudge = strongerNudge(loopNudge, loop)
       resultSlots[index] = {
@@ -169,7 +187,7 @@ export const executeToolBatch = async (input: {
       }
       continue
     }
-    const breakerKey = circuitBreakerKey(toolCall.toolName, toolCall.arguments)
+    const breakerKey = circuitBreakerKey(countedName(toolCall), toolCall.arguments)
     if (input.circuitBreaker.isTripped(breakerKey)) {
       resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
@@ -229,7 +247,7 @@ export const executeToolBatch = async (input: {
 
   const runPrepared = async ({ execute, toolCall }: PreparedToolCall): Promise<ExecutedToolResult> => {
     const timeoutMs = input.toolTimeoutMsFor?.(toolCall.toolName) ?? DEFAULT_TOOL_TIMEOUT_MS
-    const breakerKey = circuitBreakerKey(toolCall.toolName, toolCall.arguments)
+    const breakerKey = circuitBreakerKey(countedName(toolCall), toolCall.arguments)
     await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
     const startedAt = new Date()
     // One controller per call: the timeout arm aborts it, so a stalled
@@ -309,10 +327,24 @@ export const executeToolBatch = async (input: {
   // one throws this batch. The in-order calls behind it are then never
   // dispatched: `then` passes the rejection along without running them, and a
   // replay dispatches them afresh because nothing ever claimed them.
+  //
+  // A Stop requested while they wait turns each unsent one into a stopped
+  // answer; a probe that cannot read the flag is no Stop.
+  const stoppedBeforeDispatch = ({ toolCall }: PreparedToolCall): ExecutedToolResult => ({
+    inputSummary: summarizeToolInput(toolCall.arguments),
+    output: STOPPED_BEFORE_DISPATCH_OUTPUT,
+    success: false,
+    toolCallId: toolCall.toolCallId,
+    toolName: toolCall.toolName,
+  })
   let inOrder: Promise<unknown> = Promise.resolve()
   const settled = await Promise.allSettled(prepared.map((call) => {
     if (!input.dispatchesInOrder?.(call.toolCall.toolName)) return runPrepared(call)
-    const queued = inOrder.then(() => runPrepared(call))
+    const queued = inOrder.then(async () => (
+      await input.stopRequested?.().catch(() => false)
+        ? stoppedBeforeDispatch(call)
+        : runPrepared(call)
+    ))
     inOrder = queued
     return queued
   }))

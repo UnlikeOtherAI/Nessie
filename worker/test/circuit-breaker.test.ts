@@ -84,9 +84,20 @@ describe('circuitBreakerKey', () => {
     )
   })
 
+  test('keys an executor listing by its server', () => {
+    // Kelpie not running must not stop the run listing another program.
+    assert.strictEqual(circuitBreakerKey('executor_mcp_tools', { server: 'kelpie' }), 'executor_mcp_tools:kelpie')
+    assert.strictEqual(
+      circuitBreakerKey('executor_mcp_tools', { server: 'kelpie', tool: 'navigate' }),
+      'executor_mcp_tools:kelpie',
+      'one program is one listing, whichever tool is asked about',
+    )
+    assert.strictEqual(circuitBreakerKey('executor_mcp_tools', {}), 'executor_mcp_tools')
+    assert.strictEqual(executorToolName('mcp.tools'), 'executor_mcp_tools')
+  })
+
   test('every other tool keeps its own name, whatever its arguments', () => {
     assert.strictEqual(circuitBreakerKey('bash', { server: 'kelpie', tool: 'x' }), 'bash')
-    assert.strictEqual(circuitBreakerKey('executor_mcp_tools', { server: 'kelpie' }), 'executor_mcp_tools')
   })
 
   test('an mcp call without a readable server and tool falls back to the tool name', () => {

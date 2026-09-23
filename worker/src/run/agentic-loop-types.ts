@@ -63,6 +63,8 @@ export type AgenticLoopInput = {
   /** Tools a batch dispatches one after another; see `executeToolBatch`. */
   dispatchesInOrder?: (toolName: string) => boolean
   executeTool: ExecuteToolFn
+  /** The offered name a call is counted under; see `executeToolBatch`. */
+  normalizeToolName?: (toolName: string) => string
   prepareTool?: PrepareToolFn
   initialMessages: ProviderMessage[]
   invocationSink?: InvocationRecord[]

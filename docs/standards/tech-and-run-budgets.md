@@ -90,8 +90,12 @@ summary and points here; **this file is the rule**.
   - **Circuit breaker.** Three consecutive failures of one key disable it for
     the run (the counts ride the crash checkpoint). The key is the tool name,
     except `executor_mcp_call`, which is keyed
-    `executor_mcp_call:<server>:<tool>` (`circuitBreakerKey`), so one
-    program's flaky tool never disables the others behind the transport. A
+    `executor_mcp_call:<server>:<tool>`, and `executor_mcp_tools`, keyed
+    `executor_mcp_tools:<server>` (`circuitBreakerKey`), so one program's
+    flaky tool never disables the others behind the transport. The breaker and
+    the loop detector count a call under the offered name, with a provider's
+    `default.` / `functions.` prefix dropped (`normalizeToolName`), so a
+    prefixed call is keyed and ruled like the bare one. A
     result marked `correctable` — a failure the model fixes by changing its
     call: `EXECUTOR_COMMAND_ARGUMENTS_INVALID`, `EXECUTOR_MCP_RESULT_TOO_LARGE`,
     `EXECUTOR_MCP_CURSOR_INVALID`, an executor tool name the run does not
@@ -280,9 +284,12 @@ summary and points here; **this file is the rule**.
   `waiting_input` — so a suspended run's Stop is the agent header's; a
   suspended run names no active tool. The
   press holds "Stopping…" until that surface drops the run, because the flag
-  is read only between iterations and after a tool batch settles — and a
-  batch's executor calls run one after another, each allowed its command TTL
-  plus margin (130 s for `mcp.call`). Stop never adds a line to the composer.
+  is read between iterations, after a tool batch settles, and before each of
+  a batch's in-order executor calls is sent (`stopRequested` in
+  `executeToolBatch`; an unsent one answers "Not run: the person stopped this
+  run…"). A call already sent runs to its end, so the wait is at most one
+  executor call's TTL plus margin (130 s for `mcp.call`) or a model or other
+  tool's own timeout. Stop never adds a line to the composer.
   `pnpm --filter @nessie/admin test:e2e:run-stop` pins the button, the pending
   state and the request. The standalone Agents → Activity page and its
   `RunLifecyclePanel` were removed,
