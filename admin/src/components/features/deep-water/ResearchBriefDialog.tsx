@@ -50,7 +50,9 @@ export const ResearchBriefDialog = ({
         <span className="text-[color:var(--tx3)]">{brief.topic}</span>
       ) : null}
     </span>
-  ) : runId ? undefined : 'Agree what to research with DeepWater’s research planner, then start it.'
+  ) : runId || readiness.state !== 'ready'
+    ? undefined
+    : 'Agree what to research with DeepWater’s research planner, then start it.'
 
   const body = () => {
     if (!runId) {
