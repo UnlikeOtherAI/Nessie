@@ -368,7 +368,8 @@ worker and card are built on them.
   (`deepwater-local-cancel.ts`) cancels an unnamed `queued` brief locally,
   under its row lock, once nothing can still open it: not while a person's
   opening job is queued or running, an agent's origin run is `pending` or
-  `running`, or a watch replay of the agent's start is queued or running —
+  `running`, or a watch replay of the agent's start — a watch job's, or a
+  DeepWater event job's, which makes the same read — is queued or running —
   any of those could open a paid brief no row points at, so the cancel is
   refused as `DEEP_WATER_BRIEF_BUSY` meanwhile. The cancel records its
   `actionId` on the run (`result_json.cancelActionId`), so a retried request

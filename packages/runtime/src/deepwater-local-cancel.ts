@@ -1,5 +1,9 @@
 import { Prisma } from '@prisma/client'
-import { DEEP_WATER_RUN_WATCH_TOPIC, DeepWaterScopeStateSchema } from '@nessie/schemas'
+import {
+  DEEP_WATER_RESEARCH_EVENT_TOPIC,
+  DEEP_WATER_RUN_WATCH_TOPIC,
+  DeepWaterScopeStateSchema,
+} from '@nessie/schemas'
 
 import {
   DEEP_WATER_ACTION_RETRY_WINDOW_MS,
@@ -99,8 +103,10 @@ const mayStillOpen = async (tx: DeepWaterBriefDb, run: DeepWaterBriefRun): Promi
     return action !== null && await isDeepWaterActionJobLive(tx, run.id, action.actionId)
   }
   // An agent's brief opens from the agent's own run, and after that only from
-  // a watch replay of the same call; each job re-reads the run before it
-  // replays, so one enqueued or running now is the only replay left to fear.
+  // a watch replay of the same call — made by a watch job, or by a DeepWater
+  // event's job, which makes the watch's own read; each re-reads the run
+  // before it replays, so one enqueued or running now is the only replay left
+  // to fear.
   const rows = await tx.$queryRaw<Array<{ dispatching: boolean; replaying: boolean }>>(Prisma.sql`
     SELECT
       EXISTS (
@@ -109,7 +115,7 @@ const mayStillOpen = async (tx: DeepWaterBriefDb, run: DeepWaterBriefRun): Promi
       ) AS "dispatching",
       EXISTS (
         SELECT 1 FROM "queue_jobs"
-        WHERE "topic" = ${DEEP_WATER_RUN_WATCH_TOPIC}
+        WHERE "topic" IN (${DEEP_WATER_RUN_WATCH_TOPIC}, ${DEEP_WATER_RESEARCH_EVENT_TOPIC})
           AND "status" IN ('pending', 'processing')
           AND "payload" ->> 'runId' = ${run.id}
       ) AS "replaying"

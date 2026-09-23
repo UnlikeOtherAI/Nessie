@@ -86,7 +86,7 @@ withFixture('an opening whose job died is not in flight, so the brief can be can
   assert.equal(await cancel(fixture, run.id), 'cancelled')
 })
 
-withFixture('an agent\'s brief waits for its run and any watch replay before it is cancelled here', async (fixture) => {
+withFixture('an agent\'s brief waits for its run and any watch or event replay before it is cancelled here', async (fixture) => {
   const { run } = await insertBrief(fixture, agentOrigin(fixture))
   await fixture.pool.query(`UPDATE runs SET status = 'running' WHERE id = $1`, [fixture.ids.originRun])
   assert.equal(await cancel(fixture, run.id), 'opening', 'the agent\'s run may be sending the start')
@@ -97,6 +97,12 @@ withFixture('an agent\'s brief waits for its run and any watch replay before it 
   assert.equal(await cancel(fixture, run.id), 'opening', 'a watch replay may be sending the start')
 
   await fixture.pool.query(`UPDATE queue_jobs SET status = 'done' WHERE idempotency_key = $1`, [replay])
+  // A DeepWater event for the brief makes the watch's own read, which replays the start too.
+  const event = `deep-water-event:evt_${randomUUID().replaceAll('-', '')}`
+  await job(fixture, { topic: 'deep_water.research.event', key: event, runId: run.id, status: 'pending' })
+  assert.equal(await cancel(fixture, run.id), 'opening', 'an event\'s read may be sending the start')
+
+  await fixture.pool.query(`UPDATE queue_jobs SET status = 'done' WHERE idempotency_key = $1`, [event])
   assert.equal(await cancel(fixture, run.id), 'cancelled')
   assert.equal((await read(fixture, run.id)).status, 'cancelled')
 })
