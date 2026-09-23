@@ -19,6 +19,10 @@ import {
   ExecutorLocalMcpReportSchema,
   ExecutorMcpServerNamesSchema,
 } from './executor-mcp.js'
+import {
+  ExecutorCodingSessionCloseListSchema,
+  ExecutorCodingSessionsFactsSchema,
+} from './executor-coding-sessions.js'
 import { CHAT_MESSAGE_MAX_CHARS } from './messaging.js'
 import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 
@@ -639,6 +643,11 @@ export const ExecutorCapabilityDescriptorSchema = z
     // revision a person reviews. Only the names travel; how the daemon starts
     // each server stays on the host. Absent means this executor fronts none.
     mcpServers: ExecutorMcpServerNamesSchema.optional(),
+    // What the built-in coding-sessions bridge may do — agents, permission
+    // modes, pre-allowed tool count, root names and the digest of its host-local
+    // configuration — so offering it, or widening it, is a revision a person
+    // reviews. Absent means this executor does not offer the bridge.
+    codingSessions: ExecutorCodingSessionsFactsSchema.optional(),
     localPolicyDigest: Sha256DigestSchema,
     limits: z
       .object({
@@ -731,6 +740,17 @@ export const ExecutorDaemonConnectionResponseSchema = z.object({
   status: ExecutorStatusSchema,
 }).strict()
 export type ExecutorDaemonConnectionResponse = z.infer<typeof ExecutorDaemonConnectionResponseSchema>
+
+/**
+ * The heartbeat answers with the connection, and with the coding sessions the
+ * daemon must close: a lease that ended, access revoked, an executor paused, a
+ * person's Close. The daemon reads `codingSessionClose` on its own, so a
+ * field it does not know yet never fails its heartbeat.
+ */
+export const ExecutorDaemonHeartbeatResponseSchema = ExecutorDaemonConnectionResponseSchema.extend({
+  codingSessionClose: ExecutorCodingSessionCloseListSchema.optional(),
+}).strict()
+export type ExecutorDaemonHeartbeatResponse = z.infer<typeof ExecutorDaemonHeartbeatResponseSchema>
 
 export const ExecutorDaemonDescriptorResponseSchema = z.object({
   reviewStatus: z.enum(['pending_review', 'active', 'disabled']),

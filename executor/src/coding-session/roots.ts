@@ -39,18 +39,26 @@ export class CodingRootError extends Error {
   }
 }
 
-const folded = (path: string): string => (
-  process.platform === 'win32' || process.platform === 'darwin' ? resolve(path).toLowerCase() : resolve(path)
+const folded = (path: string, platform: NodeJS.Platform): string => (
+  platform === 'win32' || platform === 'darwin' ? resolve(path).toLowerCase() : resolve(path)
 )
 
-const overlapping = (left: string, right: string): boolean => {
-  const a = folded(left)
-  const b = folded(right)
+/**
+ * Whether either path contains the other, compared the way the host's
+ * filesystem compares names: case-insensitively on Windows and macOS.
+ */
+export const codingPathsOverlap = (
+  left: string, right: string, platform: NodeJS.Platform = process.platform,
+): boolean => {
+  const a = folded(left, platform)
+  const b = folded(right, platform)
   return isInsideDirectory(a, b) || isInsideDirectory(b, a)
 }
 
+const overlapping = (left: string, right: string): boolean => codingPathsOverlap(left, right)
+
 /** The canonical spelling of a path that may not exist yet: its nearest existing ancestor, realpathed. */
-const canonicalOrDeclared = async (path: string): Promise<string> => {
+export const canonicalOrDeclared = async (path: string): Promise<string> => {
   const resolved = resolve(path)
   const real = await realpath(resolved).catch(() => undefined)
   if (real) return real
