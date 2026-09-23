@@ -408,10 +408,14 @@ The MCP SDK gives the bridge a minimal environment, so with
 `inheritUserSession` the host rebuilds a login-like one: the machine and user
 `Environment` registry keys on Windows (read through PowerShell as UTF-8 —
 `reg query` writes a redirected answer in the console's OEM code page, which
-garbles a profile such as `C:\Users\Ondřej` and every path under it);
-`launchctl getenv` and the login
-shell's `env -0` on macOS; `systemctl --user show-environment` and the login
-shell on Linux. It strips only `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
+garbles a profile such as `C:\Users\Ondřej` and every path under it), taking
+only `REG_SZ` and `REG_EXPAND_SZ` values as a logon does: machine then user,
+each key's plain values first, then its expandable ones against that map,
+never against another of its own key (a key lists values in the order they
+were written); `Path` is machine;user, each half expanded once its key is
+merged. On macOS, `launchctl getenv` and the login shell's `env -0`; on Linux,
+`systemctl --user show-environment` and the login shell. It strips only
+`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_MESSAGING_SOCKET`,
 `CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH` and the executor's own markers
 (`NESSIE_EXECUTOR_PACKAGED_CLI`, `NESSIE_CODING_SESSIONS_CONFIG_DIGEST`,
