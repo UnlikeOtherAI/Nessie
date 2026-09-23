@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import {
   ColumnEnteredTaskEventPayloadSchema,
   CreatedTaskEventPayloadSchema,
@@ -10,9 +10,7 @@ import {
   TicketTriggerDeliveryPayloadSchema,
   TicketWorkStatusSchema,
   type ColumnCategory,
-  type TicketTriggerDeliveryPayload,
   type TicketTriggerEventType,
-  type TicketTriggerSkipReason,
   type TriggerTicketDispatchJobPayload,
 } from '@nessie/schemas'
 import { canMemberEditProjectBoards, resolveTaskHomeBoard } from '@nessie/team-admin'
@@ -20,17 +18,19 @@ import { canMemberEditProjectBoards, resolveTaskHomeBoard } from '@nessie/team-a
 import {
   decideTicketTrigger,
   type TicketEventFacts,
-  type TicketTriggerDecision,
   type TicketWorkFacts,
 } from './ticket-trigger-decision.js'
+import { createTicketWorkSeam } from './ticket-work.js'
+import type { TicketWorkSeam, TicketWorkTrigger } from './ticket-work-seam.js'
 import {
-  notImplementedTicketWorkSeam,
-  type TicketWorkSeam,
-  type TicketWorkSeamOutcome,
-  type TicketWorkTrigger,
-} from './ticket-work-seam.js'
+  settleTicketDelivery,
+  type DeliveryBase,
+  type SeamAct,
+  type SettledDecision,
+} from './ticket-trigger-settle.js'
+import { dispatchTicketThreadMessage } from './ticket-thread-message-dispatch.js'
 import { recordTriggerHealthFailure } from './trigger-health.js'
-import { recordTriggerRunFailure, upsertDelivery, type RetryContext } from './trigger-run.js'
+import type { RetryContext } from './trigger-run.js'
 
 /**
  * `trigger.ticket.dispatch`: one `TaskEvent`, decided for every
@@ -148,114 +148,32 @@ const readWork = async (
   return ended ? { id: ended.id, status: TicketWorkStatusSchema.parse(ended.status), live: false } : null
 }
 
-type SettledDecision = Exclude<TicketTriggerDecision, { kind: 'ignore' }>
+/** What the delivery says about this event, whatever was decided. */
+const deliveryBase = (event: LoadedEvent): DeliveryBase => ({
+  taskEventId: event.id,
+  taskId: event.task.id,
+  eventType: event.eventType,
+  originKind: event.facts.origin.kind,
+})
 
-const payloadFor = (
-  event: LoadedEvent,
-  decision: SettledDecision,
-): TicketTriggerDeliveryPayload => {
-  const base = {
-    taskEventId: event.id,
-    taskId: event.task.id,
-    eventType: event.eventType,
-    originKind: event.facts.origin.kind,
-  }
-  if (decision.kind === 'skip') return { ...base, outcome: 'skipped', skipReason: decision.reason }
-  return {
-    ...base,
-    outcome: decision.kind,
-    wakeReason: decision.wakeReason,
-    ...('workId' in decision ? { workId: decision.workId } : {}),
-    ...(decision.kind === 'follow' && decision.untrusted ? { untrusted: true } : {}),
-  }
-}
-
-const markSkipped = (
-  tx: Prisma.TransactionClient,
-  deliveryId: string,
-  payload: TicketTriggerDeliveryPayload,
-  reason: TicketTriggerSkipReason,
-) =>
-  tx.agentTriggerDelivery.update({
-    where: { id: deliveryId },
-    // The reason is on the row an operator reads, as a webhook skip's is.
-    data: { status: 'skipped', errorMessage: reason, nextRetryAt: null, payload },
-  })
-
-const isUniqueViolation = (error: unknown): boolean =>
-  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-
-/**
- * One decision as exactly one delivery row: skipped with its reason, or
- * delivered beside what the work seam did, in one transaction. A throw rolls
- * both back and leaves a failed, retryable row instead.
- */
-const settle = async (
+/** One decision on one event as one delivery row, deduped per trigger and event. */
+const settle = (
   prisma: PrismaClient,
   input: {
     triggerId: string
     event: LoadedEvent
     decision: SettledDecision
-    /** The seam call for a start or a wake; absent for a skip. */
-    act?: (tx: Prisma.TransactionClient, deliveryId: string) => Promise<TicketWorkSeamOutcome>
+    act?: SeamAct
     retry?: RetryContext
   },
-): Promise<void> => {
-  const { decision, event, triggerId } = input
-  const dedupeKey = `ticket:${triggerId}:${event.id}`
-  if (!input.retry) {
-    // At-least-once: a replayed job finds its row and does nothing twice.
-    const existing = await prisma.agentTriggerDelivery.findFirst({
-      where: { triggerId, dedupeKey },
-      select: { id: true },
-    })
-    if (existing) return
-  }
-  const payload = payloadFor(event, decision)
-  try {
-    await prisma.$transaction(async (tx) => {
-      const delivery = await upsertDelivery(tx, {
-        dedupeKey,
-        payload,
-        retry: input.retry,
-        source: decision.source,
-        triggerId,
-      })
-      if (decision.kind === 'skip') {
-        await markSkipped(tx, delivery.id, payload, decision.reason)
-        return
-      }
-      if (!input.act) throw new Error('A start or a wake is settled with its work-seam call.')
-      const outcome = await input.act(tx, delivery.id)
-      if (outcome.outcome === 'refused') {
-        const refused = payloadFor(event, { kind: 'skip', source: decision.source, reason: outcome.reason })
-        await markSkipped(tx, delivery.id, refused, outcome.reason)
-        return
-      }
-      await tx.agentTriggerDelivery.update({
-        where: { id: delivery.id },
-        data: {
-          status: 'delivered',
-          deliveredAt: new Date(),
-          errorMessage: null,
-          payload: { ...payload, workId: outcome.workId },
-        },
-      })
-      await tx.agentTrigger.update({ where: { id: triggerId }, data: { lastFiredAt: new Date() } })
-    })
-  } catch (error) {
-    // Another worker settled the same event for this trigger first.
-    if (!input.retry && isUniqueViolation(error)) return
-    await recordTriggerRunFailure(prisma, {
-      dedupeKey,
-      error,
-      payload,
-      retry: input.retry,
-      source: decision.source,
-      triggerId,
-    })
-  }
-}
+): Promise<void> => settleTicketDelivery(prisma, {
+  triggerId: input.triggerId,
+  dedupeKey: `ticket:${input.triggerId}:${input.event.id}`,
+  base: deliveryBase(input.event),
+  decision: input.decision,
+  ...(input.act ? { act: input.act } : {}),
+  ...(input.retry ? { retry: input.retry } : {}),
+})
 
 /** The work seam's call for a start, a re-entry, a follow or an end. */
 const seamCall = (
@@ -263,7 +181,7 @@ const seamCall = (
   decision: SettledDecision,
   trigger: TicketWorkTrigger,
   event: LoadedEvent,
-): ((tx: Prisma.TransactionClient, deliveryId: string) => Promise<TicketWorkSeamOutcome>) | undefined => {
+): SeamAct | undefined => {
   if (decision.kind === 'skip') return undefined
   const common = { trigger, task: event.task, event }
   if (decision.kind === 'pickup') {
@@ -278,6 +196,7 @@ const seamCall = (
       reason: decision.wakeReason,
       untrusted: decision.kind === 'follow' && decision.untrusted,
       machineLess: decision.kind === 'end',
+      resumes: decision.kind === 'reentry',
       deliveryId,
     })
 }
@@ -336,7 +255,7 @@ export const dispatchTicketEvent = async (
     })
   const facts: TicketEventFacts = { ...event.facts, authorCanEditBoard }
   const columnsByBoard = new Map<string, { id: string; category: ColumnCategory }[]>()
-  const seam = options.seam ?? notImplementedTicketWorkSeam
+  const seam = options.seam ?? createTicketWorkSeam(prisma)
   const retry = options.retry ? { retry: options.retry } : {}
 
   for (const row of triggers) {
@@ -405,16 +324,23 @@ export const reattemptTicketTriggerDelivery = async (
     })
     return
   }
+  const retry = {
+    reuseDeliveryId: input.reuseDeliveryId,
+    retryCount: input.retryCount,
+    triggerId: input.triggerId,
+  }
+  // A person's message in the work thread is decided by its own door.
+  if (parsed.data.messageId) {
+    await dispatchTicketThreadMessage(
+      prisma,
+      { organizationId: input.organizationId, messageId: parsed.data.messageId },
+      { ...options, retry },
+    )
+    return
+  }
   await dispatchTicketEvent(
     prisma,
-    { organizationId: input.organizationId, taskEventId: parsed.data.taskEventId },
-    {
-      ...options,
-      retry: {
-        reuseDeliveryId: input.reuseDeliveryId,
-        retryCount: input.retryCount,
-        triggerId: input.triggerId,
-      },
-    },
+    { organizationId: input.organizationId, taskEventId: parsed.data.taskEventId! },
+    { ...options, retry },
   )
 }

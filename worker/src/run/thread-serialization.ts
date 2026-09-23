@@ -8,6 +8,7 @@ export {
   drainPendingThreadMessages,
   drainPendingThreadMessagesBestEffort,
   isThreadRunSlotBusy,
+  lockThreadRunSlot,
   sweepPendingThreadMessages,
   type ThreadRunClaimOutcome,
 } from '@nessie/db'

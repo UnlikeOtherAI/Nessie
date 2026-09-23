@@ -18,7 +18,7 @@ import {
 } from '@nessie/team-admin'
 
 import { reattemptTriggerDelivery } from '../../src/control/trigger-retry-dispatch.js'
-import { dispatchTicketEvent, reattemptTicketTriggerDelivery } from '../../src/control/ticket-trigger-dispatch.js'
+import { dispatchTicketEvent } from '../../src/control/ticket-trigger-dispatch.js'
 import type { TicketWorkSeam } from '../../src/control/ticket-work-seam.js'
 import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
 import { runTicketCreateTool, runTicketMoveTool } from '../../src/run/pa-tools/tickets.js'
@@ -148,9 +148,13 @@ const seed = async (
     cleanup: async () => {
       await prisma.organization.deleteMany({ where: { id: organization.id } })
       await prisma.user.deleteMany({ where: { id: { in: [editor!.id, outsider!.id] } } })
-      // The dispatch jobs this seed's events enqueued carry no key to cascade on.
+      // The dispatch jobs this seed's events enqueued, and the runs the real
+      // work seam started, carry no key to cascade on.
       await prisma.queueJob.deleteMany({
         where: { topic: TRIGGER_TICKET_DISPATCH_TOPIC, payload: { path: ['organizationId'], equals: organization.id } },
+      })
+      await prisma.queueJob.deleteMany({
+        where: { topic: 'run.execute', payload: { path: ['actorContext', 'tenant', 'organizationId'], equals: organization.id } },
       })
     },
   }
@@ -482,7 +486,7 @@ runDatabaseTest('entering an end column sends one machine-less wake; the agent\'
   assert.equal(calls.length, 1)
 })
 
-runDatabaseTest('an unbuilt work seam is a failed delivery, and a retry settles it', async (t) => {
+runDatabaseTest('a seam that throws is a failed delivery, and the retry poller starts the work on the same row', async (t) => {
   const prisma = new PrismaClient()
   const s = await seed(prisma)
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
@@ -490,14 +494,20 @@ runDatabaseTest('an unbuilt work seam is a failed delivery, and a retry settles 
   await move(prisma, s, task.id, s.columns.inProgress, SESSION)
   const entered = await latestEvent(prisma, task.id, 'column_entered')
 
-  // The worker's default seam: recorded, never silently dropped, never thrown.
-  await dispatchTicketEvent(prisma, { organizationId: s.organizationId, taskEventId: entered.id })
+  // A start that throws is recorded, never silently dropped.
+  const failing: TicketWorkSeam = {
+    startTicketWork: async () => { throw new Error('the work record could not be written') },
+    wakeTicketWork: async () => { throw new Error('unreachable') },
+  }
+  await dispatchTicketEvent(prisma, { organizationId: s.organizationId, taskEventId: entered.id }, { seam: failing })
   const failed = await deliveryFor(prisma, s.triggerId, entered.id)
   assert.equal(failed?.status, 'failed')
-  assert.match(failed?.errorMessage ?? '', /startTicketWork is not implemented yet/)
+  assert.match(failed?.errorMessage ?? '', /could not be written/)
   assert.ok(failed?.nextRetryAt, 'a failed start is retried')
+  assert.equal(await prisma.agentTicketWork.count({ where: { triggerId: s.triggerId } }), 0)
 
-  // The retry poller's arm decides the stored event again on the same row.
+  // The retry poller's arm decides the stored event again on the same row,
+  // with the worker's own seam: the work starts.
   const trigger = await prisma.agentTrigger.findUniqueOrThrow({ where: { id: s.triggerId } })
   await reattemptTriggerDelivery(prisma, {
     dedupeKey: failed!.dedupeKey ?? undefined,
@@ -508,24 +518,10 @@ runDatabaseTest('an unbuilt work seam is a failed delivery, and a retry settles 
     triggerId: trigger.id,
     type: trigger.type,
   })
-  // Still the unbuilt seam in the poller's wiring, so it fails again, in place.
-  const retried = await deliveryFor(prisma, s.triggerId, entered.id)
-  assert.equal(retried?.id, failed?.id)
-  assert.equal(retried?.status, 'failed')
-  assert.equal(retried?.retryCount, (failed?.retryCount ?? 0) + 1)
-
-  // Once the seam can start work, the same row is delivered.
-  const { calls, seam } = recordingSeam()
-  await reattemptTicketTriggerDelivery(prisma, {
-    organizationId: s.organizationId,
-    payload: retried!.payload,
-    retryCount: retried!.retryCount,
-    reuseDeliveryId: retried!.id,
-    triggerId: trigger.id,
-  }, { seam })
   const settled = await deliveryFor(prisma, s.triggerId, entered.id)
   assert.equal(settled?.id, failed?.id)
   assert.equal(settled?.status, 'delivered')
-  assert.equal(calls.length, 1)
-  assert.equal(calls[0]?.op, 'start')
+  const work = await prisma.agentTicketWork.findFirstOrThrow({ where: { triggerId: s.triggerId, taskId: task.id } })
+  assert.equal(work.status, 'active')
+  assert.equal((settled?.payload as { workId?: string }).workId, work.id)
 })

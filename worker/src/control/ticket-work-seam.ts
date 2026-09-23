@@ -14,7 +14,8 @@ import type {
  * thread, the `ticket.work` run acting as the agent — lives behind this seam
  * (docs/plans/2026-09-23-ticket-driven-agents/ticket-work.md). Both calls run
  * inside the dispatcher's transaction, beside the delivery row, so a delivery
- * never claims a start or a wake that did not commit.
+ * never claims a start or a wake that did not commit. The worker wires
+ * `createTicketWorkSeam` (`ticket-work.ts`); a test may pass a recorder.
  *
  * A call that cannot act for a reason a person should see returns `refused`
  * with a reason from the dispatcher's closed vocabulary, and the delivery is
@@ -30,9 +31,12 @@ export type TicketWorkTrigger = {
 }
 
 export type TicketWorkEvent = {
+  /** The `TaskEvent`'s id, or the message's for a thread message. */
   id: string
   eventType: string
   createdAt: Date
+  /** A person's message in the work thread rather than a `TaskEvent`. */
+  kind?: 'thread_message'
 }
 
 export type TicketWorkStartInput = {
@@ -60,6 +64,11 @@ export type TicketWorkWakeInput = {
    * the wake is only for the agent to comment, and binds no machine.
    */
   machineLess: boolean
+  /**
+   * A person moved the ticket back into a start-work column: a parked record
+   * resumes. Any other wake leaves the record's status as it is.
+   */
+  resumes: boolean
   deliveryId: string
 }
 
@@ -76,29 +85,4 @@ export type TicketWorkSeam = {
     tx: Prisma.TransactionClient,
     input: TicketWorkWakeInput,
   ) => Promise<TicketWorkSeamOutcome>
-}
-
-/** Thrown by the placeholder below; the dispatcher records it as a failed delivery. */
-export class TicketWorkNotImplementedError extends Error {
-  constructor(operation: 'startTicketWork' | 'wakeTicketWork') {
-    super(`${operation} is not implemented yet: ticket work records and ticket.work runs are not built.`)
-    this.name = 'TicketWorkNotImplementedError'
-  }
-}
-
-/**
- * The seam as the worker wires it until the work record, its thread and the
- * `ticket.work` run land (the next part of T1). It is unreachable in
- * production meanwhile — `ticket_changed` is still in
- * `UNRELEASED_TRIGGER_TYPES`, so no trigger exists to dispatch to — and if a
- * row were ever inserted behind the refusal, each decision would be recorded
- * as a failed delivery naming this, never silently dropped.
- */
-export const notImplementedTicketWorkSeam: TicketWorkSeam = {
-  startTicketWork: async () => {
-    throw new TicketWorkNotImplementedError('startTicketWork')
-  },
-  wakeTicketWork: async () => {
-    throw new TicketWorkNotImplementedError('wakeTicketWork')
-  },
 }
