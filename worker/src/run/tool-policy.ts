@@ -187,12 +187,20 @@ export const resolveAgentTools = (
   options: ToolAuthorizationOptions & {
     inlineToolLimit?: number
     isPersonalAssistantPresence?: boolean
+    /**
+     * Tools this run withholds whatever the policy says — to-dos on an agent
+     * that has them off, `delegate` on a DeepWater launch turn. Removed before
+     * the deferred view is built, so a withheld tool can neither spend the
+     * promotion budget nor count as a stub that keeps `tool_spec` offered.
+     */
+    withheldToolIds?: ReadonlySet<string>
   } = {},
 ): ResolvedToolSet => {
   const allowedIds = new Set<string>()
   for (const tool of allToolDefinitions) {
     if (
-      !(options.isPersonalAssistantPresence && isWithheldFromPersonalAssistantPresence(tool))
+      !options.withheldToolIds?.has(tool.id)
+      && !(options.isPersonalAssistantPresence && isWithheldFromPersonalAssistantPresence(tool))
       &&
       // The same resolved answer the per-call gate uses, so an identity tool
       // the run may not exercise is OMITTED from the model's schema array

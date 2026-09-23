@@ -1,69 +1,74 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { ToolSchemaDescriptor } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS, TODO_TOOL_DEFINITIONS } from '@nessie/runtime'
 
+import { BUILTIN_STUB_INPUT_SCHEMA, BUILTIN_TOOL_SPEC_NAME } from '../builtin-toolset-deferred.js'
+import { resolveAgentTools } from '../tool-policy.js'
 import {
-  applyHandoffToolExclusions,
-  applyTodoToolExclusions,
   holdsProjectWriteTools,
   resolveProjectDelegatedToolIds,
+  resolveWithheldRunToolIds,
 } from './run-setup.js'
 
-const descriptor = (toolName: string): ToolSchemaDescriptor => ({
-  toolName,
-  description: `${toolName} description`,
-  inputSchema: { type: 'object', properties: {} },
+const TODO_IDS = TODO_TOOL_DEFINITIONS.map((tool) => tool.id)
+
+test('an ordinary turn of a to-do agent withholds nothing', () => {
+  assert.deepEqual([...resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true })], [])
 })
 
-const resolved = () => ({
-  allowedIds: new Set(['delegate', 'web_search', 'mcp_research_start']),
-  descriptors: [
-    descriptor('delegate'),
-    descriptor('web_search'),
-    descriptor('mcp_research_start'),
-  ],
-  stubbedIds: new Set(['mcp_research_start']),
-  toolSpecEnabled: true,
-})
-
-test('an ordinary turn keeps delegate in the advertised toolset', () => {
-  const toolset = applyHandoffToolExclusions(resolved(), false)
-
-  assert.ok(toolset.allowedIds.has('delegate'))
-  assert.ok(toolset.descriptors.some((tool) => tool.toolName === 'delegate'))
-})
-
-test('a DeepWater launch turn is never shown delegate', () => {
-  const toolset = applyHandoffToolExclusions(resolved(), true)
-
-  assert.ok(!toolset.allowedIds.has('delegate'))
-  assert.ok(!toolset.descriptors.some((tool) => tool.toolName === 'delegate'))
-  // Everything else the run resolved is untouched.
+test('a DeepWater launch turn withholds delegate, and a to-do-disabled agent its to-do builtins', () => {
   assert.deepEqual(
-    toolset.descriptors.map((tool) => tool.toolName),
-    ['web_search', 'mcp_research_start'],
+    [...resolveWithheldRunToolIds({ isHandoffTurn: true, todosEnabled: true })],
+    ['delegate'],
   )
-  assert.deepEqual([...toolset.allowedIds].sort(), ['mcp_research_start', 'web_search'])
-  assert.deepEqual([...toolset.stubbedIds], ['mcp_research_start'])
-  assert.equal(toolset.toolSpecEnabled, true)
+  assert.deepEqual(
+    [...resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: false })].sort(),
+    [...TODO_IDS].sort(),
+  )
 })
 
-test('a to-do-disabled agent is not offered either execution builtin', () => {
-  const toolset = applyTodoToolExclusions({
-    allowedIds: new Set(['todo_start', 'todo_step_update', 'web_search']),
-    descriptors: [
-      descriptor('todo_start'),
-      descriptor('todo_step_update'),
-      descriptor('web_search'),
-    ],
-    stubbedIds: new Set(['todo_start']),
-    toolSpecEnabled: true,
-  }, false)
+const resolve = (withheldToolIds: ReadonlySet<string>, policy: Record<string, boolean>) =>
+  resolveAgentTools(
+    new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id)),
+    BUILTIN_TOOL_DEFINITIONS,
+    policy,
+    null,
+    'shared',
+    { inlineToolLimit: 20, withheldToolIds },
+  )
 
-  assert.deepEqual([...toolset.allowedIds], ['web_search'])
-  assert.deepEqual(toolset.descriptors.map((tool) => tool.toolName), ['web_search'])
-  assert.deepEqual([...toolset.stubbedIds], [])
+// F15 edge: the exclusions used to run on the finished view. A withheld tool
+// the policy granted `true` had already been promoted — spending the schema
+// budget a real grant then lost — and the view's `tool_spec` decision was
+// never taken again.
+test('a withheld tool is gone before the deferred view is built', () => {
+  const withheld = resolveWithheldRunToolIds({ isHandoffTurn: true, todosEnabled: false })
+  const policy = Object.fromEntries(['delegate', ...TODO_IDS, 'send_message'].map((id) => [id, true]))
+  const resolved = resolve(withheld, policy)
+
+  for (const id of withheld) {
+    assert.equal(resolved.allowedIds.has(id), false, `${id} is not allowed`)
+    assert.equal(resolved.stubbedIds.has(id), false, `${id} is not a stub`)
+    assert.equal(resolved.descriptors.some((tool) => tool.toolName === id), false, `${id} has no descriptor`)
+  }
+  // The grant beside them still arrives in full.
+  const sendMessage = resolved.descriptors.find((tool) => tool.toolName === 'send_message')
+  assert.ok(sendMessage)
+  assert.notEqual(sendMessage.inputSchema, BUILTIN_STUB_INPUT_SCHEMA)
+  // `tool_spec` is offered exactly while a stub remains to look up.
+  assert.equal(resolved.toolSpecEnabled, resolved.stubbedIds.size > 0)
+  assert.equal(
+    resolved.descriptors.some((tool) => tool.toolName === BUILTIN_TOOL_SPEC_NAME),
+    resolved.toolSpecEnabled,
+  )
+})
+
+test('nothing withheld leaves delegate and the to-do builtins where the policy put them', () => {
+  const resolved = resolve(new Set(), Object.fromEntries(['delegate', ...TODO_IDS].map((id) => [id, true])))
+  for (const id of ['delegate', ...TODO_IDS]) {
+    assert.ok(resolved.allowedIds.has(id), `${id} is allowed`)
+  }
 })
 
 // F16: memory recall narrows on whether the run was offered a lent project

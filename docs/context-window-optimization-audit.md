@@ -231,7 +231,11 @@ to the original fully-inline form.
 > stub. Measured on the current registry: a CTO-style agent granted every lent
 > board tool adds about 6.9 KB (18 tools) over the fixed-set view, and the
 > Agent Designer in its home DM about 15.8 KB (33 tools). `tool_spec` is
-> offered only while something is still a stub.
+> offered only while something is still a stub. Tools a run withholds whatever
+> its policy says — the to-do builtins on an agent with to-dos off, `delegate`
+> on a DeepWater launch turn (`resolveWithheldRunToolIds`) — are removed before
+> the view is built, so they neither spend the promotion budget nor count as a
+> stub that keeps `tool_spec` offered.
 
 Executor descriptors are also code-unit sorted by tool name so database row
 order cannot vary the complete model-facing tool array.
