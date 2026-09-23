@@ -50,6 +50,8 @@ const prisma = getPrismaClient({
  * passes locally and fails with ERR_MODULE_NOT_FOUND under `pnpm test`.
  */
 export { queueTriggerRun } from './control/trigger-run.js'
+export { handleDeepWaterResearchEvent } from './control/deepwater-research-event.js'
+export type { DeepWaterWatchDeps } from './control/deepwater-watch.js'
 export {
   resolveDelegatedRequesterUserId,
   resolveIdentityDelegatedToolIds,
