@@ -465,7 +465,13 @@ connector, and the same projection applies every answer.
   call leaves — the team transition lock, then the agent's policy lock and a
   re-read of its `research_scope_start` grant — with the person it acts for as
   requester (none means `LEDGER_UOA_IDENTITY_REQUIRED`, and nothing is written)
-  and the calling run's consumed sources. Ledger's answer attaches the research
+  and the calling run's consumed sources. The call leaves as
+  `deepWaterScopeStartLedgerArgs(run.input)` (`@nessie/schemas`) — the brief as
+  stored, trimmed and with blank background and empty settings dropped — never
+  as the agent wrote it, and a retried call sends the brief its first call
+  stored: Ledger fingerprints a scope start and answers a replay that differs
+  with `conflict`, so the opening call, a person's retried opening and the
+  watch's replay are byte-identical. Ledger's answer attaches the research
   and posts the agent's research card; a definitive refusal fails the run; a
   throw, a transient failure, an answer outside the contract or an answer
   Nessie could not record leaves it `queued` for the watch to replay, and the

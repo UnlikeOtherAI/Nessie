@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import { cancelUnopenedDeepWaterBrief } from '@nessie/runtime'
-import { LedgerScopeResultSchema } from '@nessie/schemas'
+import { LedgerScopeResultSchema, deepWaterScopeStartLedgerArgs } from '@nessie/schemas'
 
+import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
 import { withBinderFixture } from './deep-water-run-binder-fixture.js'
 import { researchId, wireScope } from './deep-water-watch-fixture.js'
 
@@ -12,8 +13,9 @@ import { researchId, wireScope } from './deep-water-watch-fixture.js'
  * An agent's `research_scope_start` once it has left for Ledger (Water plan
  * amendments N1.5): whatever happens to its answer here, the agent is told the
  * brief may have started and must not start it again — the run stays queued
- * and the watch's replay of the same call attaches it. A brief cancelled
- * before DeepWater named it is never sent again.
+ * and the watch's replay of the same call attaches it. The call leaves built
+ * from what the brief stored, exactly as the watch replays it. A brief
+ * cancelled before DeepWater named it is never sent again.
  */
 
 const scopeArgs = { topic: 'Heat pumps in older houses', settings: { depth: 'light' } }
@@ -61,4 +63,51 @@ withBinderFixture('a brief cancelled before DeepWater named it is never sent aga
   assert.match(retried.result.output, /^DEEP_WATER_BRIEF_CANCELLED/)
   assert.equal(fixture.sent.length, sent, 'nothing reaches Ledger')
   assert.equal((await fixture.read(run.id)).status, 'cancelled')
+})
+
+withBinderFixture('the opening call and the watch\'s replay of it send the same bytes, built from the stored brief', async (fixture) => {
+  // Ledger fingerprints a scope start by its normalised arguments and answers a
+  // replay that differs with `conflict`. The agent's own arguments normalise
+  // differently from what they say: a padded topic, a blank background and an
+  // empty settings object are all dropped or trimmed when the brief is stored.
+  fixture.answer(new Error('socket hang up'))
+  const padded = { topic: '  Heat pumps in older houses  ', context: '  \n  ', settings: {} }
+  const bound = await fixture.binder.dispatch('research_scope_start', 'call_padded', padded, fixture.send)
+  assert.equal(bound.transportInvoked, true)
+
+  const [claimed] = await agentRuns(fixture)
+  assert.ok(claimed)
+  const stored = (await fixture.read(claimed.id)).input
+  assert.ok(stored)
+  assert.deepEqual(
+    { topic: stored.topic, context: stored.context, pillars: stored.pillars, settings: stored.settings },
+    { topic: 'Heat pumps in older houses', context: null, pillars: null, settings: null },
+  )
+  const [opening] = fixture.sent
+  assert.deepEqual(opening?.args, { topic: 'Heat pumps in older houses' })
+  assert.deepEqual(opening?.args, deepWaterScopeStartLedgerArgs(stored))
+
+  // Its answer was lost, so the watch replays the very same call.
+  fixture.ledger.answer('research_scope_start', wireScope({
+    id: researchId(),
+    turn: { id: randomUUID(), seq: 1, status: 'pending', author_kind: 'agent' },
+  }))
+  await watchDeepWaterRun(fixture.deps, await fixture.read(claimed.id))
+  const [replay] = fixture.ledger.calls
+  assert.equal(replay?.toolName, 'research_scope_start')
+  assert.equal(replay?.toolCallId, 'call_padded')
+  assert.equal(JSON.stringify(replay?.args), JSON.stringify(opening?.args))
+  assert.equal((await fixture.read(claimed.id)).status, 'drafting')
+})
+
+withBinderFixture('a retried call sends the arguments the brief was first stored with', async (fixture) => {
+  fixture.answer(new Error('socket hang up'))
+  await fixture.binder.dispatch('research_scope_start', 'call_retried', scopeArgs, fixture.send)
+  // The same provider call id again, with arguments the agent reworded: the
+  // brief it claimed is the one sent, so Ledger sees one request.
+  await fixture.binder.dispatch('research_scope_start', 'call_retried', { topic: 'Something else entirely' }, fixture.send)
+  assert.equal(fixture.sent.length, 2)
+  assert.deepEqual(fixture.sent[1]?.args, fixture.sent[0]?.args)
+  assert.deepEqual(fixture.sent[0]?.args, { topic: 'Heat pumps in older houses', settings: { depth: 'light' } })
+  assert.equal((await agentRuns(fixture)).length, 1)
 })

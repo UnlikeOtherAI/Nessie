@@ -14,6 +14,7 @@ import {
   DeepWaterScopeStartToolArgsSchema,
   LedgerScopeResultSchema,
   LedgerToolErrorSchema,
+  deepWaterScopeStartLedgerArgs,
   type DeepWaterRequesterIdentity,
 } from '@nessie/schemas'
 
@@ -161,9 +162,15 @@ export const dispatchDeepWaterScopeStart = async (
       + 'Do not start it again unless the person asks for it.')
   }
 
+  // Ledger fingerprints a scope start by its normalised arguments and answers
+  // a replay whose arguments differ with `conflict`, so the call leaves exactly
+  // as the watch replays it: built from the stored input, never as the agent
+  // wrote it (a padded topic, blank background or empty settings would differ).
+  const input = claimed.run.input
+  if (!input) throw new Error(`DeepWater agent brief ${claimed.run.id} was claimed without its input`)
   let result
   try {
-    result = await send(toolCallId, args)
+    result = await send(toolCallId, deepWaterScopeStartLedgerArgs(input))
   } catch (error) {
     if (isFatalToolExecutionError(error)) throw error
     // The row stays queued: the watch replays this very call and attaches

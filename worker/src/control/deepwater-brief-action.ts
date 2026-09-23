@@ -19,6 +19,7 @@ import {
   LedgerResearchStatusDtoSchema,
   LedgerResearchTicketSchema,
   LedgerScopeResultSchema,
+  deepWaterScopeStartLedgerArgs,
   toLedgerBriefSettings,
   type DeepWaterBriefActionJobPayload,
   type DeepWaterPendingActionErrorCode,
@@ -70,17 +71,9 @@ const ledgerCall = (
   action: DeepWaterBriefActionJobPayload['action'],
 ): { toolName: string; args: Record<string, unknown> } | null => {
   if (action.kind === 'scope_start') {
-    const input = run.input
-    if (!input) return null
-    return {
-      toolName: 'research_scope_start',
-      args: {
-        topic: input.topic,
-        ...(input.context ? { context: input.context } : {}),
-        ...(input.pillars ? { pillars: input.pillars } : {}),
-        ...(input.settings ? { settings: toLedgerBriefSettings(input.settings) } : {}),
-      },
-    }
+    // The one builder of an opening call, so a retry with the same tool-call id
+    // always matches the fingerprint Ledger keyed the brief to.
+    return run.input ? { toolName: 'research_scope_start', args: deepWaterScopeStartLedgerArgs(run.input) } : null
   }
   const id = run.externalRunId
   if (!id) return null
