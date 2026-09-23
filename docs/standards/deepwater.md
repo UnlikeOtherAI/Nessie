@@ -413,11 +413,18 @@ the only way results come back.
   `failed` on a brief is never taken as a launch: it can be a refusal before
   one.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
-  agent, kind, provider tool-call id and stored arguments — which Ledger answers
-  with the one brief it keyed to that call, or opens now. The attach posts the
-  agent's research card (`ensureDeepWaterResearchCard`, once per run under the
-  row lock). A person's lost opening is retried by its own brief-action job,
-  never replayed by the watch.
+  agent, kind and provider tool-call id — which Ledger answers with the one
+  brief it keyed to that call, or opens now. Ledger fingerprints the arguments
+  and answers a replay that differs with `conflict`, so the opening call and
+  every replay send exactly `deepWaterScopeStartLedgerArgs(run.input)`
+  (`@nessie/schemas`), never the arguments as the caller wrote them; a
+  `conflict` still means Ledger holds a live brief for that call, so it is
+  logged as the broken invariant it is and the run is held for the reap
+  (`holdDeepWaterScopeStartReplay`: its next read falls due as its confirm
+  window closes, so it is never replayed again), never failed as refused. The attach posts the agent's research card
+  (`ensureDeepWaterResearchCard`, once per run under the row lock). A person's
+  lost opening is retried by its own brief-action job, never replayed by the
+  watch.
 - **Stale actions.** An in-flight action whose job is no longer queued or
   running ends by what Ledger shows (`settleStaleDeepWaterAction`): a launch
   whose research is running is finished, one whose planner turn is still open

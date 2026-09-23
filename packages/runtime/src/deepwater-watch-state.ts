@@ -139,6 +139,26 @@ export const retryDeepWaterWatchSoon = async (
   return true
 }
 
+/**
+ * Stop replaying an agent's lost scope start that Ledger answered with
+ * `conflict` (it holds a brief for that call under other arguments): the same
+ * call can only get the same answer, so the run waits for the reap instead of
+ * repeating it. Only the claim that issued the read may do this, and only
+ * while the run is still unattached. True when it held the run.
+ */
+export const holdDeepWaterScopeStartReplay = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string; reconcileSeq: number },
+): Promise<boolean> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  if (!locked || locked.run.reconcileSeq !== input.reconcileSeq || locked.run.externalRunId !== null) return false
+  // The unattached claim admits a row only inside its confirm window, so a
+  // next read due when the window closes is never claimed: the reap ends it.
+  const windowCloses = new Date(locked.run.createdAt.getTime() + DEEP_WATER_START_CONFIRM_WINDOW_HOURS * 3_600_000)
+  await tx.productIntegrationRun.update({ where: { id: locked.run.id }, data: { reconcileAfter: windowCloses } })
+  return true
+}
+
 /** Briefs Ledger never confirmed within the window, oldest first (N5a). */
 export const findUnconfirmedDeepWaterBriefs = async (
   db: DeepWaterBriefDb,

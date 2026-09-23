@@ -8,6 +8,7 @@ import {
   DeepWaterBriefSettingsSchema,
   DeepWaterBriefSettingsSeedSchema,
   DeepWaterBriefTopicSchema,
+  toLedgerBriefSettings,
 } from './deep-water-brief-vocabulary.js'
 import {
   DeepWaterAuthorKindSchema,
@@ -77,6 +78,26 @@ export const DeepWaterBriefInputSchema = z
   })
   .strict()
 export type DeepWaterBriefInput = z.infer<typeof DeepWaterBriefInputSchema>
+
+/**
+ * The `research_scope_start` arguments a brief's stored input stands for — the
+ * one builder for a brief's opening call and for every replay of it.
+ *
+ * Ledger answers a repeated tool-call id with the brief it keyed to that call
+ * only when the arguments normalise to the same request (it fingerprints the
+ * trimmed topic and context, the pillars and the parsed settings), and answers
+ * `conflict` otherwise. A replay built any other way than the call it repeats
+ * could therefore be refused while Ledger keeps the brief it opened, so the
+ * opening call is built here too, never sent as the caller wrote it.
+ */
+export const deepWaterScopeStartLedgerArgs = (
+  input: Pick<DeepWaterBriefInput, 'topic' | 'context' | 'pillars' | 'settings'>,
+): Record<string, unknown> => ({
+  topic: input.topic,
+  ...(input.context ? { context: input.context } : {}),
+  ...(input.pillars ? { pillars: input.pillars } : {}),
+  ...(input.settings ? { settings: toLedgerBriefSettings(input.settings) } : {}),
+})
 
 export const DeepWaterBriefComplexitySchema = z.enum(['low', 'medium', 'high', 'very_high'])
 

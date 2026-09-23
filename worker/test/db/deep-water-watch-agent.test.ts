@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import { DeepWaterDeliveryMessageMetadataSchema, type RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  DeepWaterDeliveryMessageMetadataSchema,
+  deepWaterScopeStartLedgerArgs,
+  type RunExecuteJobPayload,
+} from '@nessie/schemas'
 
 import { renewDeepWaterIdentity } from '../../src/control/deepwater-delivery.js'
 import { reapUnconfirmedDeepWaterBriefs } from '../../src/control/deepwater-worker.js'
@@ -63,6 +67,51 @@ withFixture('a lost scope start is replayed as the agent\'s own call, attached, 
   fixture.ledger.answer('research_scope_get', wireScope({ id: rs, turn: opening }))
   await watch(fixture, run.id)
   assert.equal(await fixture.prisma.message.count({ where: { threadId: fixture.ids.thread, role: 'assistant' } }), 1)
+})
+
+withFixture('a replay repeats the opening call\'s own arguments, built by the one builder', async (fixture) => {
+  // Ledger fingerprints a scope start and answers a replay whose arguments
+  // normalise differently with `conflict`; the opening call and every replay
+  // are built from the stored input by `deepWaterScopeStartLedgerArgs`.
+  const run = await fixture.insert('agent', { toolCallId: 'call_scope_start_args' })
+  const input = {
+    schemaVersion: 1,
+    topic: 'Heat pumps in older houses',
+    context: 'Solid brick, no cavity.',
+    pillars: ['Costs', 'Noise'],
+    settings: { depth: 'deep', chapterDepth: 'detailed', languages: ['cs', 'en'], outputLanguage: 'en' },
+    originRootMessageId: null,
+  } as const
+  await fixture.prisma.productIntegrationRun.update({ where: { id: run.id }, data: { input } })
+  fixture.ledger.answer('research_scope_start', wireScope({ id: researchId() }))
+  await watch(fixture, run.id)
+
+  const [call] = fixture.ledger.calls
+  assert.deepEqual(call?.args, deepWaterScopeStartLedgerArgs(input))
+  assert.deepEqual(call?.args, {
+    topic: 'Heat pumps in older houses',
+    context: 'Solid brick, no cavity.',
+    pillars: ['Costs', 'Noise'],
+    settings: { depth: 'deep', chapter_depth: 'detailed', languages: ['cs', 'en'], output_language: 'en' },
+  })
+})
+
+withFixture('a replay Ledger answers with conflict is not a refusal: its live brief is never failed', async (fixture) => {
+  const run = await fixture.insert('agent')
+  fixture.ledger.answer('research_scope_start', {
+    error: 'conflict',
+    error_description: 'research_scope_start was already used with different input',
+    status_code: 409,
+  }, false)
+  await watch(fixture, run.id)
+
+  const kept = await fixture.read(run.id)
+  assert.equal(kept.status, 'queued', 'left for the reap, never reported as refused')
+  assert.equal(kept.failureCode, null)
+  assert.deepEqual(await kickoffs(fixture), [], 'the agent is not told a brief Ledger holds was refused')
+  // The same call would only get the same answer: the next read is due when
+  // the confirm window closes, which the unattached claim never admits.
+  assert.equal(kept.reconcileAfter.getTime(), kept.createdAt.getTime() + 24 * 3_600_000)
 })
 
 withFixture('a settled planner turn wakes its agent once, under the card, as the person it asked for', async (fixture) => {

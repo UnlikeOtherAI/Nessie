@@ -4,6 +4,7 @@ import {
   applyDeepWaterStatusRead,
   blockDeepWaterDelivery,
   failUnstartedDeepWaterBrief,
+  holdDeepWaterScopeStartReplay,
   readDeepWaterBriefRun,
   retryDeepWaterWatchSoon,
   settleStaleDeepWaterAction,
@@ -14,7 +15,7 @@ import {
   LedgerResearchStatusDtoSchema,
   LedgerScopeResultSchema,
   deepWaterBriefActionJobKey,
-  toLedgerBriefSettings,
+  deepWaterScopeStartLedgerArgs,
   type DeepWaterRunWatchJobPayload,
 } from '@nessie/schemas'
 
@@ -271,9 +272,16 @@ const readResearch = async (
 /**
  * An agent's `research_scope_start` whose result never came back: replay it
  * as that same call (the agent's Run, agent and provider tool-call id, and the
- * arguments it sent), which Ledger answers with the one brief it keyed to the
- * call — or opens it now, which is what the agent asked for. A definitive
- * refusal ends the brief and tells the agent.
+ * arguments built from the stored input exactly as the opening call was,
+ * `deepWaterScopeStartLedgerArgs`), which Ledger answers with the one brief it
+ * keyed to the call — or opens it now, which is what the agent asked for. A
+ * definitive refusal ends the brief and tells the agent.
+ *
+ * `conflict` is not a refusal: it says Ledger already opened a brief for this
+ * call, under other arguments. Failing the run would strand that live brief
+ * with nobody watching it, and replaying it again would get the same answer,
+ * so the run is held for the reap and the broken invariant is logged as the
+ * error it is.
  */
 const replayAgentScopeStart = async (
   deps: DeepWaterWatchDeps,
@@ -291,20 +299,26 @@ const replayAgentScopeStart = async (
   if (!agentId || !agent || !run.input || !run.originToolCallId) {
     return log(run, 'origin agent or call is gone; the reap will end it')
   }
-  const input = run.input
   const read = await callDeepWaterLedgerTool(deps, {
     organizationId: run.organizationId,
     connectorId,
     attribution: deepWaterAgentOriginAttribution(run, { agentKind: agent.agentKind, identity }),
     toolCallId: run.originToolCallId,
     toolName: 'research_scope_start',
-    args: {
-      topic: input.topic,
-      ...(input.context ? { context: input.context } : {}),
-      ...(input.pillars ? { pillars: input.pillars } : {}),
-      ...(input.settings ? { settings: toLedgerBriefSettings(input.settings) } : {}),
-    },
+    args: deepWaterScopeStartLedgerArgs(run.input),
   })
+  if (read.outcome === 'refused' && read.error.code === 'conflict') {
+    await deps.prisma.$transaction((tx) => holdDeepWaterScopeStartReplay(tx, {
+      organizationId: run.organizationId,
+      runId: run.id,
+      reconcileSeq: run.reconcileSeq,
+    }))
+    console.error(
+      `[deep-water] watch ${run.id}: Ledger holds a brief for this scope start under other arguments; `
+      + 'it cannot be attached, so the run is held for the reap and never replayed again',
+    )
+    return
+  }
   if (read.outcome === 'refused' && !isTransientLedgerRefusal(read.error)) {
     const topic = deepWaterTopicPreview(run)
     const failureCode = read.error.code.replace(/[^a-z_]/g, '_').slice(0, 64) || 'start_rejected'
