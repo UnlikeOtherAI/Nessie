@@ -4,7 +4,7 @@ import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
 import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
-import { AgentTriggerTypeSchema } from '@nessie/schemas'
+import { AGENT_TRIGGER_INPUT_TYPES, AgentTriggerTypeSchema } from '@nessie/schemas'
 
 import { createAgentTrigger } from '../src/trigger-create.js'
 import {
@@ -17,12 +17,13 @@ import {
 import { createWorkflowTrigger } from '../src/workflow-trigger-create.js'
 
 /**
- * `ticket_changed` and `document_changed` are in the enum before anything may
- * create one (Rule zero: nothing half-exposed). These pin the refusal at the
- * service floor, where no surface can route around it, and that no tool
- * definition a model reads offers either type. Workflows are gated by their
- * own permanent allowlist, so releasing a type for agents never opens it for a
- * workflow installation.
+ * `document_changed` is in the enum before anything may create one (Rule
+ * zero: nothing half-exposed); `ticket_changed` is released with its typed
+ * config (T1). These pin the refusal at the service floor, where no surface
+ * can route around it, that the released types are exactly the typed config
+ * union's, and that no tool definition a model reads offers an unreleased
+ * type. Workflows are gated by their own permanent allowlist, so releasing a
+ * type for agents never opens it for a workflow installation.
  */
 
 /** The two types that wake an agent's ticket or document work. */
@@ -35,9 +36,12 @@ const untouchable = new Proxy({}, {
   },
 }) as PrismaClient
 
-test('the unreleased types are exactly the two new ones, and the rest stay released', () => {
-  assert.deepEqual([...UNRELEASED_TRIGGER_TYPES], ['ticket_changed', 'document_changed'])
-  assert.deepEqual([...RELEASED_TRIGGER_TYPES], ['manual', 'scheduled', 'webhook', 'event', 'interval'])
+test('only document_changed is unreleased, and the released types are the typed config union\'s', () => {
+  assert.deepEqual([...UNRELEASED_TRIGGER_TYPES], ['document_changed'])
+  assert.deepEqual(
+    [...RELEASED_TRIGGER_TYPES],
+    ['manual', 'scheduled', 'webhook', 'event', 'interval', 'ticket_changed'],
+  )
   for (const type of AgentTriggerTypeSchema.options) {
     assert.equal(
       RELEASED_TRIGGER_TYPES.includes(type) !== UNRELEASED_TRIGGER_TYPES.includes(type),
@@ -45,13 +49,15 @@ test('the unreleased types are exactly the two new ones, and the rest stay relea
       `${type} is either released or not, never both`,
     )
   }
+  // Releasing a type and giving it an arm are one change.
+  assert.deepEqual([...RELEASED_TRIGGER_TYPES].sort(), [...AGENT_TRIGGER_INPUT_TYPES].sort())
 })
 
 test('the refusal names the type and what can be created instead', () => {
   for (const type of UNRELEASED_TRIGGER_TYPES) {
     assert.equal(
       unreleasedTriggerTypeRefusal(type),
-      `${type} triggers cannot be created yet. Use one of: manual, scheduled, webhook, event, interval.`,
+      `${type} triggers cannot be created yet. Use one of: manual, scheduled, webhook, event, interval, ticket_changed.`,
     )
   }
   for (const type of RELEASED_TRIGGER_TYPES) {

@@ -67,7 +67,7 @@ const redactTriggerConfig = (value: unknown): Record<string, unknown> => {
   // their credential epoch — internal identity metadata that no client reads and
   // that has no business in an API response. Callers cannot write these keys
   // (`stripServerOwnedTriggerConfig`); this is the matching read-side rule.
-  for (const key of ['createdByUserId', 'createdViaTool', 'launchOrigin']) {
+  for (const key of ['authorUserId', 'createdByUserId', 'createdViaTool', 'launchOrigin']) {
     delete config[key]
   }
 

@@ -13,11 +13,11 @@ import {
 import { registerTriggerRoutes } from '../src/routes/triggers.js'
 import { registerWorkflowInstallationRoutes } from '../src/routes/workflows/installations.js'
 
-// `ticket_changed` and `document_changed` parse as trigger types but are not
-// released for agents, and a workflow can never use them: both create routes
-// answer with their own refusal sentence, before any identity capture, lookup
-// or write, so an integration hears what to use instead rather than the
-// generic "configuration is invalid".
+// `document_changed` parses as a trigger type but is not released for agents,
+// and a workflow can never use it or `ticket_changed` (released for agents in
+// T1): each create route answers with its own refusal sentence, before any
+// identity capture, lookup or write, so an integration hears what to use
+// instead rather than the generic "configuration is invalid".
 
 const AGENT_ID = '30000000-0000-4000-8000-000000000001'
 const INSTALLATION_ID = '30000000-0000-4000-8000-000000000002'
@@ -53,21 +53,29 @@ const buildApp = () => {
   return app
 }
 
-test('both trigger create routes refuse each unreleased type with their sentence', async () => {
+test('both trigger create routes refuse each type they cannot create with their sentence', async () => {
   const app = buildApp()
+  assert.deepEqual([...UNRELEASED_TRIGGER_TYPES], ['document_changed'])
   try {
-    for (const type of UNRELEASED_TRIGGER_TYPES) {
-      for (const [url, payload, refusal] of [
-        [`/api/agents/${AGENT_ID}/triggers`, { targetChannelId: CHANNEL_ID, type }, unreleasedTriggerTypeRefusal(type)],
-        [`/api/workflow-installations/${INSTALLATION_ID}/triggers`, { type }, workflowTriggerTypeRefusal(type)],
-      ] as const) {
-        assert.ok(refusal, `${url} has a refusal for ${type}`)
-        const response = await app.inject({ method: 'POST', payload, url })
-        assert.equal(response.statusCode, 400, `${url} ${type}`)
-        const body = response.json() as { error: { code: string; message: string } }
-        assert.equal(body.error.code, 'TRIGGER_TYPE_UNAVAILABLE')
-        assert.equal(body.error.message, refusal)
-      }
+    const cases = [
+      ...UNRELEASED_TRIGGER_TYPES.map((type) => ({
+        payload: { targetChannelId: CHANNEL_ID, type },
+        refusal: unreleasedTriggerTypeRefusal(type),
+        url: `/api/agents/${AGENT_ID}/triggers`,
+      })),
+      ...(['ticket_changed', 'document_changed'] as const).map((type) => ({
+        payload: { type },
+        refusal: workflowTriggerTypeRefusal(type),
+        url: `/api/workflow-installations/${INSTALLATION_ID}/triggers`,
+      })),
+    ]
+    for (const { payload, refusal, url } of cases) {
+      assert.ok(refusal, `${url} has a refusal for ${payload.type}`)
+      const response = await app.inject({ method: 'POST', payload, url })
+      assert.equal(response.statusCode, 400, `${url} ${payload.type}`)
+      const body = response.json() as { error: { code: string; message: string } }
+      assert.equal(body.error.code, 'TRIGGER_TYPE_UNAVAILABLE')
+      assert.equal(body.error.message, refusal)
     }
   } finally {
     await app.close()

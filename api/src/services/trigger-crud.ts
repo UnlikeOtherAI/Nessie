@@ -12,6 +12,7 @@ import {
   deleteAgentTrigger,
   getAgentTrigger,
   listAgentTriggers,
+  ticketTriggerPickupConflict,
   updateAgentTrigger,
   validateTodoTemplateTriggerConfig,
   type AgentTriggerScope,
@@ -321,6 +322,7 @@ export const resumeAgentTrigger = async (
       healthReason: true,
       healthRevision: true,
       id: true,
+      scopeBoardId: true,
       status: true,
       targetChannelId: true,
       targetThreadId: true,
@@ -363,6 +365,15 @@ export const resumeAgentTrigger = async (
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Switching a ticket trigger back on is when the one-pickup-per-column
+    // rule can newly bite: another trigger may have claimed its column while
+    // it was off. Checked under the board's lock, like a create or an edit.
+    if (existing.type === 'ticket_changed') {
+      const conflict = await ticketTriggerPickupConflict(tx, existing)
+      if (conflict) {
+        throw new TriggerResumeError(`${conflict[0]!.toUpperCase()}${conflict.slice(1)}.`)
+      }
+    }
     if (existing.agent && Object.hasOwn(configRecord, 'todoTemplateId')) {
       await acquireAgentTodoAgentLock(tx, existing.agent.id)
       if (!await validateTodoTemplateTriggerConfig(tx, existing.agent.id, configRecord)) {

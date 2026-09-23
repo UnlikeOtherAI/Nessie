@@ -74,3 +74,19 @@ test('a malformed identity fails the whole origin closed, never partially truste
     /missing or malformed/,
   )
 })
+
+// Every trigger records who set it up as `authorUserId`. That is authorship
+// only (docs/standards/ticket-work.md): the one identity a fire acts as is a
+// schedule's `createdByUserId` with its `launchOrigin`, so an author on any
+// other trigger reconstructs nobody.
+test('a trigger\'s author grants its fires nothing', () => {
+  for (const triggerType of ['manual', 'webhook', 'event', 'ticket_changed'] as const) {
+    const origin = resolveTriggerExecutionOrigin({
+      agent,
+      channelOrganizationId: ORG,
+      config: { authorUserId: USER },
+      triggerType,
+    })
+    assert.equal(origin.userId, null, triggerType)
+  }
+})

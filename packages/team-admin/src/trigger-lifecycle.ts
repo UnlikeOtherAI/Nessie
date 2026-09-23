@@ -1,7 +1,8 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
 import type { AgentTriggerRecord, AgentTriggerStatus } from '@nessie/schemas'
-import { mergeTriggerConfigPreservingIdentity } from './trigger-config-identity.js'
+import { mergeTriggerConfigPreservingIdentity, stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { resolveTicketChangedTrigger, ticketChangedConfigAsInput } from './trigger-ticket-config.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
 import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
@@ -35,25 +36,84 @@ export const getAgentTrigger = async (
   return trigger ? mapTriggerRecord(trigger) : null
 }
 
+type AgentTriggerUpdateInput = {
+  config?: Record<string, unknown>
+  description?: string | null
+  enabled?: boolean
+  name?: string | null
+  nextRunAt?: string | null
+  status?: AgentTriggerStatus
+  targetChannelId?: string | null
+  targetThreadId?: string | null
+}
+
+/**
+ * A `ticket_changed` edit. A config patch names only the keys it changes: the
+ * stored config is read back in the input's words (`ticketChangedConfigAsInput`),
+ * the patch laid over it, and the whole resolved and checked again, exactly as
+ * a create is — including when the edit only switches the trigger on, which is
+ * when the one-pickup-per-column rule can newly bite. A refusal throws
+ * `TriggerConfigRefusalError`; a name or description edit resolves nothing.
+ */
+const updateTicketChangedTrigger = async (
+  prisma: PrismaClient,
+  existing: { agentId: string | null; config: unknown; enabled: boolean; id: string; targetChannelId: string | null },
+  input: AgentTriggerUpdateInput,
+): Promise<AgentTriggerRecord | null> => {
+  const agentId = existing.agentId
+  if (!agentId) return null
+  const status = input.status ?? (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
+  const enabled = status === 'paused' ? false : input.enabled
+  const reresolve = enabled === true || input.config !== undefined || input.nextRunAt !== undefined
+    || input.targetChannelId !== undefined || input.targetThreadId !== undefined
+  const trigger = await prisma.$transaction(async (tx) => {
+    const agent = await tx.agent.findUnique({
+      where: { id: agentId },
+      select: { id: true, name: true, organizationId: true },
+    })
+    if (!agent?.organizationId) return null
+    let resolvedData: Prisma.AgentTriggerUncheckedUpdateInput = {}
+    if (reresolve) {
+      const resolved = await resolveTicketChangedTrigger(tx, {
+        agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
+        config: { ...ticketChangedConfigAsInput(existing.config), ...stripServerOwnedTriggerConfig(input.config) },
+        enabled: enabled ?? existing.enabled,
+        excludeTriggerId: existing.id,
+        nextRunAt: input.nextRunAt,
+        targetChannelId: input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId,
+        targetThreadId: input.targetThreadId,
+      })
+      const target = await resolveExecutionTarget(tx, agent.id, { targetChannelId: resolved.targetChannelId })
+      if (!target) return null
+      resolvedData = {
+        config: mergeTriggerConfigPreservingIdentity(existing.config, resolved.config) as Prisma.InputJsonValue,
+        scopeBoardId: resolved.scopeBoardId,
+        scopeProjectId: resolved.scopeProjectId,
+        targetChannelId: target.channelId,
+        targetThreadId: target.threadId,
+      }
+    }
+    return tx.agentTrigger.update({
+      where: { id: existing.id },
+      data: { description: input.description, enabled, name: input.name, status, ...resolvedData },
+    })
+  })
+  return trigger ? mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE) : null
+}
+
 export const updateAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
-  input: {
-    config?: Record<string, unknown>
-    description?: string | null
-    enabled?: boolean
-    name?: string | null
-    nextRunAt?: string | null
-    status?: AgentTriggerStatus
-    targetChannelId?: string | null
-    targetThreadId?: string | null
-  },
+  input: AgentTriggerUpdateInput,
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     where: agentTriggerScopeWhere(scope),
-    select: { agentId: true, config: true, id: true, targetChannelId: true, targetThreadId: true, type: true },
+    select: {
+      agentId: true, config: true, enabled: true, id: true, targetChannelId: true, targetThreadId: true, type: true,
+    },
   })
   if (!existing) return null
+  if (existing.type === 'ticket_changed') return updateTicketChangedTrigger(prisma, existing, input)
   const agentId = existing.agentId
   const targetChanged = input.targetChannelId !== undefined || input.targetThreadId !== undefined
   const target = agentId
