@@ -1,6 +1,5 @@
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import {
-  PersonalAssistantConfigSummarySchema,
   isAdminActor,
   isDelegatedSystemDmChannelType,
   parseAgentId,
@@ -32,6 +31,7 @@ import {
   createDashboardMembership,
   resolveDashboardActor,
 } from '@nessie/dashboard'
+import { buildPersonalAssistantConfigSummary } from './personal-assistant-config-summary.js'
 
 /**
  * Request-scoped authorization + visibility helpers. These all close over the
@@ -59,31 +59,6 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
           },
           { kind: 'channel', channelId: parseChannelId(input.channelId) },
         ]
-
-  const buildPersonalAssistantConfigSummary = (agent: {
-    id: string
-    model: string | null
-    provider: string | null
-    systemPrompt: string | null
-    toolPolicy: unknown
-    updatedAt: Date
-  }) =>
-    PersonalAssistantConfigSummarySchema.parse({
-      agentId: parseAgentId(agent.id),
-      model: agent.model ?? undefined,
-      provider: agent.provider ?? undefined,
-      systemPromptPreview: agent.systemPrompt?.slice(0, 200) ?? undefined,
-      toolIds:
-        agent.toolPolicy
-        && typeof agent.toolPolicy === 'object'
-        && !Array.isArray(agent.toolPolicy)
-          ? Object.entries(agent.toolPolicy as Record<string, unknown>)
-              .filter(([, enabled]) => enabled === true)
-              .map(([toolId]) => toolId)
-              .sort()
-          : [],
-      updatedAt: agent.updatedAt.toISOString(),
-    })
 
   const loadPersonalAssistantState = async (
     actorContext: AuthorizedActionContext & {
