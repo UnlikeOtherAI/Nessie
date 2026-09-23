@@ -1,6 +1,11 @@
-import { executorMcpServerNameIsLegal, type ExecutorMcpTool } from '@nessie/schemas'
+import {
+  executorImageUnavailableText,
+  executorMcpServerNameIsLegal,
+  type ExecutorMcpTool,
+} from '@nessie/schemas'
 
 import type { ExecutorMcpCatalogAnswer } from './executor-mcp-catalog.js'
+import { toolImageLabel, type ToolImageRef } from './tool-images.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -11,7 +16,8 @@ import type { AgenticToolResult } from './tools.js'
  * document itself (`task-sets/search.ts`), so shaping happens here instead, on
  * the agent loop's authorized-tool path only. A local program's answer is read
  * the way a person would read it — its text verbatim, its images and links as
- * placeholders — rather than as a JSON envelope the model has to unpick, and
+ * placeholders, the images it kept shown in the turn after the batch
+ * (`tool-images.ts`) — rather than as a JSON envelope the model has to unpick, and
  * it is framed as the machine's output, which the sandbox banner is not: that
  * one promises an isolated browser.
  */
@@ -79,8 +85,8 @@ const capProgramOutput = (body: string): string => {
   return `${body.slice(0, cut)}\n[… ${body.length - cut} more characters not shown — ask the program for a narrower result]`
 }
 
-// An image the daemon kept arrives as a reference with its `byteLength` and no
-// data (executor/src/mcp-images.ts); anything else is sized from its base64.
+// Sized from base64 when a program sent the bytes inline; a reference the
+// daemon left carries its own `byteLength`.
 const itemSize = (item: Record<string, unknown>, data: unknown): string | null => {
   let bytes: number
   if (typeof item.byteLength === 'number' && Number.isFinite(item.byteLength)) bytes = item.byteLength
@@ -89,10 +95,37 @@ const itemSize = (item: Record<string, unknown>, data: unknown): string | null =
   return `${Math.max(1, Math.round(bytes / 1_024))} KB`
 }
 
-const binaryLabel = (kind: string, item: Record<string, unknown>, data: unknown): string => {
+const binaryLabel = (kind: string, item: Record<string, unknown>, data: unknown, note = ''): string => {
   const size = itemSize(item, data)
   const mimeType = oneLine(item.mimeType, 100) || 'unknown type'
-  return `[${kind}: ${mimeType}${size ? `, ${size}` : ''}]`
+  return `[${kind}: ${mimeType}${size ? `, ${size}` : ''}${note}]`
+}
+
+/**
+ * The attachments the images of one result were kept as, by the digest its
+ * references name (`executor-result-images.ts`). Empty when none were found.
+ */
+export type ExecutorResultImages = ReadonlyMap<string, ToolImageRef>
+
+// An image the daemon kept arrives as a reference with no data
+// (executor/src/mcp-images.ts) and is shown to the model when Nessie holds
+// its attachment: numbered, so the images turn after the batch can name it the
+// same way. Bytes a program sent inline, or a reference with no attachment
+// behind it, are named but never shown, and take no number.
+const imageLine = (
+  item: Record<string, unknown>,
+  images: ExecutorResultImages | undefined,
+  shown: ToolImageRef[],
+): string => {
+  const digest = typeof item.attachmentDigest === 'string' ? item.attachmentDigest : null
+  const ref = digest ? images?.get(digest) : undefined
+  if (ref) {
+    shown.push(ref)
+    return toolImageLabel(shown.length, ref.byteLength)
+  }
+  return digest
+    ? executorImageUnavailableText('Nessie does not hold it for this call')
+    : binaryLabel('image', item, item.data, ', not shown')
 }
 
 /** A daemon refusal carries no program output: its code and message are ours. */
@@ -109,15 +142,26 @@ const describeRefusal = (document: Record<string, unknown>): string => {
   return `The call did not complete (${code}).${message}${hint}`
 }
 
-export const presentExecutorMcpCallResult = (serverArgument: unknown, document: Record<string, unknown>): string => {
+/**
+ * An `mcp.call` answer as the model reads it, and the images of it the model
+ * is shown: `images` holds the attachments its references were kept as.
+ */
+export const shapeExecutorMcpCallResult = (
+  serverArgument: unknown,
+  document: Record<string, unknown>,
+  images?: ExecutorResultImages,
+): { imageRefs: ToolImageRef[]; output: string } => {
+  const imageRefs: ToolImageRef[] = []
   if (!Array.isArray(document.content)) {
-    return document.success === true
-      ? frameProgramOutput(serverLabel(serverArgument), '(The program returned no content.)')
-      : describeRefusal(document)
+    return {
+      imageRefs,
+      output: document.success === true
+        ? frameProgramOutput(serverLabel(serverArgument), '(The program returned no content.)')
+        : describeRefusal(document),
+    }
   }
   const server = serverLabel(serverArgument)
   const parts: string[] = []
-  let images = 0
   let hasText = false
   for (const entry of document.content as unknown[]) {
     const item = isRecord(entry) ? entry : {}
@@ -125,8 +169,7 @@ export const presentExecutorMcpCallResult = (serverArgument: unknown, document: 
       hasText = true
       parts.push(item.text)
     } else if (item.type === 'image') {
-      images += 1
-      parts.push(binaryLabel(`image ${images}`, item, item.data))
+      parts.push(imageLine(item, images, imageRefs))
     } else if (item.type === 'audio') {
       parts.push(binaryLabel('audio', item, item.data))
     } else if (item.type === 'resource_link') {
@@ -149,8 +192,17 @@ export const presentExecutorMcpCallResult = (serverArgument: unknown, document: 
       : `[structured result of ${json.length} characters not shown — ask the program for a narrower result]`)
   }
   const body = capProgramOutput(parts.length > 0 ? parts.join('\n\n') : '(The program returned no content.)')
-  return frameProgramOutput(server, body, document.isError === true ? 'The program reported an error:' : undefined)
+  return {
+    imageRefs,
+    output: frameProgramOutput(server, body, document.isError === true ? 'The program reported an error:' : undefined),
+  }
 }
+
+export const presentExecutorMcpCallResult = (
+  serverArgument: unknown,
+  document: Record<string, unknown>,
+  images?: ExecutorResultImages,
+): string => shapeExecutorMcpCallResult(serverArgument, document, images).output
 
 const firstSentence = (description: string | undefined): string => {
   const flat = oneLine(description, 4_096)
@@ -236,12 +288,14 @@ export const presentExecutorMcpCatalogAnswer = (
 /**
  * Every other executor result on its way to the model. Only a terminal result
  * document is reshaped; the toolset's own plain-text answers (an unavailable
- * session, an unknown tool) pass through as they are.
+ * session, an unknown tool) pass through as they are. An `mcp.call` result
+ * also carries, as `imageRefs`, the images of it the model is shown.
  */
 export const presentExecutorResultForModel = (
   operationKey: string | undefined,
   args: Record<string, unknown>,
   result: AgenticToolResult,
+  images?: ExecutorResultImages,
 ): AgenticToolResult => {
   const document = parseDocument(result.output)
   if (!document) return result
@@ -249,7 +303,8 @@ export const presentExecutorResultForModel = (
     return { ...result, output: [FRAME_OPEN, SANDBOX_BANNER, result.output, FRAME_CLOSE].join('\n') }
   }
   if (operationKey === 'mcp.call') {
-    return { ...result, output: presentExecutorMcpCallResult(args.server, document) }
+    const { imageRefs, output } = shapeExecutorMcpCallResult(args.server, document, images)
+    return { ...result, output, ...(imageRefs.length > 0 ? { imageRefs } : {}) }
   }
   return result
 }

@@ -109,13 +109,27 @@ test('a real screenshot answer reads as text and placeholders, never as base64 o
     // The daemon took the bytes out and left a reference to them.
     assert.match(raw.output, /"attachmentDigest":"sha256:[0-9a-f]{64}"/)
     assert.deepEqual(keptImages, [3_000])
-    const lines = presented.output.split('\n')
+    // With no attachment behind the reference the model is told so.
+    assert.ok(presented.output.split('\n').includes('[image unavailable: Nessie does not hold it for this call]'))
+    assert.equal(presented.imageRefs, undefined)
+    // Where the upload was kept, the reference resolves to its attachment.
+    const reference = (JSON.parse(raw.output) as { content: Array<Record<string, unknown>> }).content
+      .find((item) => item.type === 'image')!
+    const kept = { attachmentId: '2a6f1c3e-8b4d-4e7a-9c1f-3d5b7e9a1c2e', byteLength: 3_000, mimeType: 'image/png' }
+    const shown = presentExecutorResultForModel(
+      'mcp.call',
+      { server: 'kelpie', tool: 'screenshot' },
+      raw,
+      new Map([[reference.attachmentDigest as string, kept]]),
+    )
+    const lines = shown.output.split('\n')
     assert.equal(lines[0], 'BEGIN UNTRUSTED EXTERNAL DATA')
     assert.match(lines[1]!, /^Output of the program `kelpie` on the person's machine\./)
     assert.ok(lines.includes('Captured the page.'))
-    assert.ok(lines.includes('[image 1: image/png, 3 KB]'))
+    assert.ok(lines.includes('[image 1: screenshot, 3 KB]'))
+    assert.deepEqual(shown.imageRefs, [kept])
     assert.ok(lines.includes('[resource: page.png]'))
-    assert.doesNotMatch(presented.output, /BwcHBwcH|file:\/\/|private/)
+    assert.doesNotMatch(shown.output, /BwcHBwcH|file:\/\/|private/)
   } finally {
     await sessions.stopAll()
   }
