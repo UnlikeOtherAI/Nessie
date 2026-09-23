@@ -160,11 +160,12 @@ export type DeepWaterReadinessRead = Pick<
  * server's one verdict on the deep-water products entry (nessie.md §7.1),
  * read through its schema. No entry, or an entry the server sent without a
  * verdict (it gives none outside a team), is `unavailable`: research cannot
- * start here. A products read that failed, or a verdict that does not match
- * the contract (an admin and API deployed at different versions), is
- * `isError` — never presented as DeepWater being off or unreachable, and
- * never guessed from the enablement and connector fields. Pure, so every
- * case is tested without a query.
+ * start here. A products read that failed with nothing read before it, or a
+ * verdict that does not match the contract (an admin and API deployed at
+ * different versions), is `isError` — never presented as DeepWater being off
+ * or unreachable, and never guessed from the enablement and connector fields.
+ * A later read that failed keeps the verdict the last one read, as the query
+ * keeps its data. Pure, so every case is tested without a query.
  */
 export const readDeepWaterReadiness = (products: {
   data: IntegratedProductResponse[] | undefined
@@ -176,7 +177,7 @@ export const readDeepWaterReadiness = (products: {
   const verdict = sent === undefined ? null : DeepWaterResearchReadinessSchema.safeParse(sent)
   const issues = verdict !== null && !verdict.success ? verdict.error.issues : null
   const read = verdict?.success ? verdict.data : null
-  const isError = products.isError || issues !== null
+  const isError = (products.isError && products.data === undefined) || issues !== null
   return {
     isError,
     isLoading: products.isPending,

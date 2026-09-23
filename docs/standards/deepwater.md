@@ -564,8 +564,9 @@ the screen it goes to that conversation, which opens the brief itself.
   the products list's `research` readiness, read through
   `DeepWaterResearchReadinessSchema` (`readDeepWaterReadiness`); the admin never
   re-derives it. No deep-water entry, or one sent without a verdict (the API
-  gives none outside a team), is `unavailable`. A products read that failed, or
-  a verdict outside the contract (an admin and API deployed at different
+  gives none outside a team), is `unavailable`. A products read that failed
+  before any verdict was read (a later failed read keeps the last one), or a
+  verdict outside the contract (an admin and API deployed at different
   versions), is logged once and said as "DeepWater's status couldn't be
   loaded" with Try again (`ResearchReadinessUnread`) — on the hero, behind the
   composer's button (whose label then claims no reason) — never as DeepWater

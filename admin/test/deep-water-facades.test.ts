@@ -194,6 +194,11 @@ test('the readiness verdict is read through its schema, and a verdict that canno
   // A failed products read is not DeepWater being off: nothing is claimed about the team.
   const failed = readDeepWaterReadiness({ data: undefined, isError: true, isPending: false })
   assert.deepEqual([failed.state, failed.isError, failed.isLoading, failed.product], [null, true, false, null])
+  // A later read that failed keeps the verdict the last one read.
+  const stale = readDeepWaterReadiness({
+    data: [entry({ state: 'ready', viewerCanChangeTeam: false })], isError: true, isPending: false,
+  })
+  assert.deepEqual([stale.state, stale.isError], ['ready', false])
   const loading = readDeepWaterReadiness({ data: undefined, isError: false, isPending: true })
   assert.deepEqual([loading.state, loading.isError, loading.isLoading], [null, false, true])
 })
