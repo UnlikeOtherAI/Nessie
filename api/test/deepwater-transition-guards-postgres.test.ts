@@ -56,7 +56,12 @@ withSeed('a disable waits for a brief being agreed and for a launched agent rese
     error instanceof LedgerDeepWaterActiveRunsError
     && error.run.id === drafting.id
     && error.run.originKind === 'person'
-    && error.run.requestedByUserId === s.userId)
+    && error.run.requestedByUserId === s.userId
+    // The 409 names the run for the app page's Cancel, and never its topic.
+    && JSON.stringify(error.details) === JSON.stringify({
+      id: drafting.id, status: 'drafting', originKind: 'person', requestedByUserId: s.userId,
+    })
+    && !error.message.includes('/channels/'))
   await s.prisma.productIntegrationRun.update({ where: { id: drafting.id }, data: { status: 'cancelled' } })
 
   const running = await briefRun(s, { originKind: 'agent', originAgentId: s.sharedAgentId, status: 'running' })

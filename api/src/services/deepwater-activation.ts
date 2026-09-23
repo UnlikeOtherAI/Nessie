@@ -110,7 +110,7 @@ export class LedgerDeepWaterEnablementPersistenceError extends Error {
  * contract upgrade that removes a tool a launcher run may still dispatch. It
  * names the run by id, status, origin and requester only — never its topic —
  * and the remedy is DeepWater's own app page, where a team owner or admin can
- * cancel it (Water plan amendments N8.5); `details` carries the run for that
+ * cancel it (Water plan amendments N8.5); `details` names the run for that
  * Cancel action.
  */
 export class LedgerDeepWaterActiveRunsError extends Error {
@@ -136,15 +136,16 @@ export class LedgerDeepWaterActiveRunsError extends Error {
     this.name = 'LedgerDeepWaterActiveRunsError'
   }
 
-  /** The open run a Cancel action names: never its topic. */
-  get details(): { run: { id: string; status: string; originKind: string; requestedByUserId: string | null } } {
+  /**
+   * The open run a Cancel action names — never its topic — the shape the
+   * admin reads as `DeepWaterActiveRunConflict`.
+   */
+  get details(): { id: string; status: string; originKind: string; requestedByUserId: string | null } {
     return {
-      run: {
-        id: this.run.id,
-        status: this.run.status,
-        originKind: this.run.originKind,
-        requestedByUserId: this.run.requestedByUserId,
-      },
+      id: this.run.id,
+      status: this.run.status,
+      originKind: this.run.originKind,
+      requestedByUserId: this.run.requestedByUserId,
     }
   }
 }
