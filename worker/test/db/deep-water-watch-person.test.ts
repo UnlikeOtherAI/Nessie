@@ -50,6 +50,18 @@ const notices = async (fixture: WatchFixture, runId: string) =>
         : []
     })
 
+/** Notices about a run, wherever they landed. */
+const noticesAnywhere = async (fixture: WatchFixture, runId: string) =>
+  (await fixture.prisma.message.findMany({
+    where: { threadId: { in: [fixture.ids.thread, fixture.ids.assistantThread] } },
+    orderBy: { createdAt: 'asc' },
+  })).flatMap((message) => {
+    const notice = DeepWaterNoticeMessageMetadataSchema.safeParse(message.metadata)
+    return notice.success && notice.data.deepWaterNotice.runId === runId
+      ? [{ ...message, kind: notice.data.deepWaterNotice.kind }]
+      : []
+  })
+
 const report = {
   report_markdown: '# Heat pumps\n\nThey work.',
   references: [],
@@ -206,14 +218,16 @@ withFixture('a failed research and a brief never confirmed are each told once', 
   await reapUnconfirmedDeepWaterBriefs(fixture.deps, 500)
   await reapUnconfirmedDeepWaterBriefs(fixture.deps, 500)
   assert.equal((await fixture.read(unconfirmed.id)).failureCode, 'start_unconfirmed')
-  assert.deepEqual((await notices(fixture, unconfirmed.id)).map((notice) => notice.kind), ['start_unconfirmed'])
+  // Never launched, so never the room's: told in their own conversation.
+  const reaped = await noticesAnywhere(fixture, unconfirmed.id)
+  assert.deepEqual(reaped.map((notice) => [notice.kind, notice.threadId]), [['start_unconfirmed', fixture.ids.assistantThread]])
 })
 
 const basisOf = async (fixture: WatchFixture, messageId: string) =>
   (await fixture.prisma.messageBasisScope.findMany({ where: { messageId }, select: { scopeType: true, scopeId: true } }))
     .map((scope) => `${scope.scopeType}:${scope.scopeId}`)
 
-withFixture('a person\'s brief the room never saw is told to them alone; a launched one to the room', async (fixture) => {
+withFixture('a person\'s brief the room never saw is told to them alone, in their own conversation', async (fixture) => {
   // Refused by DeepWater while it was still being agreed: the room never saw it.
   const refused = await fixture.insert('person')
   const rs = researchId()
@@ -223,29 +237,32 @@ withFixture('a person\'s brief the room never saw is told to them alone; a launc
   })
   fixture.ledger.answer('research_scope_get', { ...wireScope({ id: rs }), status: 'failed', error_code: 'scope_rejected' })
   await watch(fixture, refused.id)
-  const [told] = await notices(fixture, refused.id)
+  const [told, ...more] = await noticesAnywhere(fixture, refused.id)
+  assert.equal(more.length, 0)
   assert.equal(told?.kind, 'failed')
+  assert.equal(told?.threadId, fixture.ids.assistantThread, 'told where only they read')
+  assert.equal(told?.rootMessageId, null)
   assert.equal((await fixture.read(refused.id)).cardMessageId, null)
-  assert.deepEqual(await basisOf(fixture, told?.id ?? ''), [`user:${fixture.ids.requester}`])
-  // Announced without its words, and the push says only that something is ready.
-  const announced = fixture.realtime.published.find((event) =>
-    event.event === 'message.new' && (event.data as { messageId: string }).messageId === told?.id)
-  assert.equal((announced?.data as { content?: unknown; restricted?: boolean } | undefined)?.restricted, true)
-  assert.doesNotMatch(JSON.stringify(announced?.data ?? {}), /Heat pumps/)
+  assert.equal((await fixture.read(refused.id)).launchedAt, null)
+  // The room has nothing: no placeholder, no reply count, no alert.
+  assert.equal(await fixture.prisma.message.count({ where: { threadId: fixture.ids.thread } }), 0)
+  const alerts = await fixture.prisma.userAlert.findMany({ where: { messageId: told?.id } })
+  assert.deepEqual(alerts.map((alert) => [alert.userId, alert.channelId]), [[fixture.ids.requester, fixture.ids.assistantChannel]])
   const [push] = await fixture.prisma.queueJob.findMany({
     where: { topic: 'push.dispatch', payload: { path: ['messageId'], equals: told?.id ?? '' } },
   })
-  assert.equal(PushDispatchJobPayloadSchema.parse(push?.payload).contentVisibility, 'generic')
-  // Their own alert still rings.
-  const alerts = await fixture.prisma.userAlert.findMany({ where: { messageId: told?.id } })
-  assert.deepEqual(alerts.map((alert) => alert.userId), [fixture.ids.requester])
+  assert.equal(PushDispatchJobPayloadSchema.parse(push?.payload).channelId, fixture.ids.assistantChannel)
+  const announced = fixture.realtime.published.find((event) =>
+    event.event === 'message.new' && (event.data as { messageId: string }).messageId === told?.id)
+  assert.ok(announced?.scopes.every((scope) => scope.kind !== 'channel' || scope.channelId === fixture.ids.assistantChannel))
 
   // Launched: its card already put the topic in the room, so its notice is the room's.
   const { run: launchedRun, rs: launchedRs } = await launched(fixture)
   fixture.ledger.answer('research_status', { id: launchedRs, status: 'failed', title: null, error_code: 'upstream_failed' })
   await watch(fixture, launchedRun.id)
-  const [roomNotice] = await notices(fixture, launchedRun.id)
+  const [roomNotice] = await noticesAnywhere(fixture, launchedRun.id)
   assert.equal(roomNotice?.kind, 'failed')
+  assert.equal(roomNotice?.threadId, fixture.ids.thread)
   assert.deepEqual(await basisOf(fixture, roomNotice?.id ?? ''), [])
 })
 

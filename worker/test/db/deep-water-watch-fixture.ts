@@ -12,6 +12,7 @@ import {
   type LedgerIdentityService,
 } from '@nessie/runtime'
 import type { LedgerScopeResult, WsScope } from '@nessie/schemas'
+import { personalAssistantDmKey } from '@nessie/team-admin'
 
 import type { DeepWaterWatchDeps } from '../../src/control/deepwater-watch.js'
 import type { dispatchTool } from '../../src/run/tool-dispatch.js'
@@ -45,7 +46,11 @@ export type WatchFixture = {
   deps: DeepWaterWatchDeps
   ledger: ScriptedLedger
   realtime: RecordedRealtime
-  ids: Record<'organization' | 'project' | 'team' | 'channel' | 'thread' | 'requester' | 'agent' | 'originRun' | 'connector', string>
+  ids: Record<
+    | 'organization' | 'project' | 'team' | 'channel' | 'thread' | 'requester' | 'agent' | 'originRun' | 'connector'
+    | 'assistantChannel' | 'assistantThread',
+    string
+  >
   identity: { subject: string; organizationId: string; teamId: string; tokenVersion: number }
   /** `true` loses the requester's link; an error is thrown as the signer's own. */
   failIdentity: (failure: boolean | LedgerIdentityError) => void
@@ -76,6 +81,22 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     },
   })
   const thread = await prisma.thread.create({ data: { channelId: channel.id } })
+  // The requester's own Personal Assistant conversation, as sign-in bootstraps it.
+  const assistantChannel = await prisma.channel.create({
+    data: {
+      dmKey: personalAssistantDmKey({ organizationId: organization.id, userId: requester.id }),
+      label: 'Personal Assistant',
+      members: { create: [{ userId: requester.id }] },
+      organizationId: organization.id,
+      projectId: project.id,
+      slug: `pa-${suffix}`,
+      systemChannelType: 'personal_assistant',
+      teamId: team.id,
+      type: 'dm',
+      visibility: 'private',
+    },
+  })
+  const assistantThread = await prisma.thread.create({ data: { channelId: assistantChannel.id, title: 'General' } })
   const agent = await prisma.agent.create({
     data: { name: 'Analyst', organizationId: organization.id, projectId: project.id, teamId: team.id, role: 'assistant' },
   })
@@ -197,6 +218,8 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     agent: agent.id,
     originRun: originRun.id,
     connector: connector.id,
+    assistantChannel: assistantChannel.id,
+    assistantThread: assistantThread.id,
   }
   const read = async (runId: string): Promise<DeepWaterBriefRun> => {
     const run = await readDeepWaterBriefRun(prisma, { organizationId: organization.id, runId })
@@ -249,6 +272,7 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     read,
     cleanup: async () => {
       await deleteThreadQueueJobs(prisma, thread.id)
+      await deleteThreadQueueJobs(prisma, assistantThread.id)
       await prisma.$executeRawUnsafe(`DELETE FROM queue_jobs WHERE payload->>'organizationId' = $1`, organization.id)
       await prisma.runThreadPendingMessage.deleteMany({ where: { threadId: thread.id } })
       await prisma.organization.deleteMany({ where: { id: organization.id } })

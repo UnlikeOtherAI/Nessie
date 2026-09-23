@@ -446,13 +446,17 @@ the only way results come back.
   research is delivered the same way with a notice or a `failed` wake. An expired or unreadable report is a final block;
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
-  `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks
-  with nothing posted, since there is nowhere to post it. A notice about a
-  person's brief the room was never shown — no card yet, because DeepWater
-  never confirmed it or refused it before launch — also carries the
-  requester's own `user` scope, so it reaches them in the conversation they
-  asked from while everyone else sees the withheld placeholder, never the
-  topic of a brief they may not see.
+  `metadata.deepWaterNotice {schemaVersion, runId, kind}` — the result reply
+  too (`kind: 'result'`), which is how a client finds the research, and so its
+  artifact actions, from the reply. A delivery whose conversation is gone
+  blocks with nothing posted, since there is nowhere to post it. A notice about
+  a person's brief that was never launched (`isDeepWaterPersonBriefUnlaunched`,
+  the fact the viewer predicate uses: DeepWater never confirmed it, refused it,
+  or it failed before launch) goes to the requester's own Personal Assistant
+  conversation, at the top level, unless the brief came from there: the room
+  was never shown it, and even a withheld placeholder there would tell everyone
+  else that a private brief exists. A person's brief that ended without a
+  launch stays theirs alone in every read, whatever its status.
 - **Artifacts.** A delivered research's `report.md` (the exact markdown Ledger
   returned) and `sources.csv` are retained run output. They are stored with no
   uploader, message or publication, so the generic attachment route refuses
