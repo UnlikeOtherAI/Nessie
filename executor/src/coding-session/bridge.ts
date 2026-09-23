@@ -277,21 +277,31 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     }
   }
 
-  /** The daemon's teardown: close every session, or one owner's, wherever the daemon already stops work. */
+  const daemonOnly = (meta: CodingBridgeCallMeta): void => {
+    if (!meta.daemonControl) {
+      throw new CodingBridgeError('coding_session_daemon_only', 'Only the executor daemon may close or report every session.')
+    }
+  }
+
+  /**
+   * The daemon's teardown: close every session, one owner's, or one of theirs,
+   * wherever the daemon already stops work and whenever the control plane says so.
+   */
   const closeAll = async (
     value: unknown, meta: CodingBridgeCallMeta, commandId: string,
   ): Promise<Record<string, unknown>> => {
-    if (!meta.daemonControl) {
-      throw new CodingBridgeError('coding_session_daemon_only', 'Only the executor daemon may close every session.')
-    }
-    const args = argumentsFor(value, ['ownerKey', 'reason'])
+    daemonOnly(meta)
+    const args = argumentsFor(value, ['ownerKey', 'sessionId', 'reason'])
     if (args.ownerKey !== undefined && (typeof args.ownerKey !== 'string' || !OWNER_KEY_PATTERN.test(args.ownerKey))) {
       invalidArguments('ownerKey must be an owner key.')
     }
+    if (args.sessionId !== undefined && args.ownerKey === undefined) invalidArguments('sessionId needs its ownerKey.')
+    const only = args.sessionId === undefined ? undefined : sessionIdArgument(args.sessionId)
     requiredText(args.reason, 'reason', 200)
     let closing = 0
     for (const session of await listSessionMetas(stateDir)) {
       if (args.ownerKey !== undefined && session.ownerKey !== args.ownerKey) continue
+      if (only !== undefined && session.sessionId !== only) continue
       const paths = codingSessionPaths(stateDir, session.sessionId)
       const derived = await deriveCodingStatus(paths, await readState(paths))
       if (derived.status === 'closed') continue
@@ -302,12 +312,37 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     return { closing }
   }
 
+  /**
+   * What the daemon reports on its heartbeat: every session not yet closed,
+   * newest first, by title, status, agent, root and owner — nothing any of
+   * them said or did.
+   */
+  const listAll = async (value: unknown, meta: CodingBridgeCallMeta): Promise<Record<string, unknown>> => {
+    daemonOnly(meta)
+    argumentsFor(value, [])
+    const sessions = []
+    for (const session of await listSessionMetas(stateDir)) {
+      const paths = codingSessionPaths(stateDir, session.sessionId)
+      const state = await readState(paths)
+      const derived = await deriveCodingStatus(paths, state)
+      if (derived.status === 'closed') continue
+      sessions.push({
+        sessionId: session.sessionId, ownerKey: session.ownerKey, title: session.title, status: derived.status,
+        ...(derived.reason ? { reason: derived.reason } : {}),
+        agent: session.agent, root: session.rootName, updatedAt: state?.updatedAt ?? session.createdAt,
+      })
+    }
+    sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    return { sessions: sessions.slice(0, 32) }
+  }
+
   return {
     rewrite: rootSet.rewriter.rewrite,
     call: async (tool, args, meta) => {
       try {
         const commandId = commandIdOf(meta)
         if (tool === 'session_close_all') return await closeAll(args, meta, commandId)
+        if (tool === 'session_list_all') return await listAll(args, meta)
         const ownerKey = owner(meta)
         if (tool === 'session_list') {
           argumentsFor(args, [])

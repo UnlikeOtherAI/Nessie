@@ -171,7 +171,10 @@ therefore cannot extend its last-seen time. Sixty seconds is also the sole
 server-side liveness threshold: once the last authenticated daemon activity is
 older, an online executor is durably marked offline before it can be listed,
 selected, or dispatched. This channel reports availability only: it cannot
-lease or execute a command. Every HTTP control request has a 15-second client
+lease or execute a command. The one instruction its response may carry is
+`codingSessionClose`, which asks the daemon to close named owners' host coding
+sessions ([host-coding-sessions.md](host-coding-sessions.md)); it stops work
+and never starts any. Every HTTP control request has a 15-second client
 deadline and is cancelled during daemon shutdown. A heartbeat still in flight
 suppresses the next interval, so network delay cannot accumulate overlapping
 liveness or reconnect requests.

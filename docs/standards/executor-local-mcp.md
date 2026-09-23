@@ -33,15 +33,26 @@ which only the daemon sets and only on calls to that bridge:
 
 | Key | Carries | Used for |
 | --- | --- | --- |
-| `nessie/owner` | the owner key the daemon derives from the command's stamped owner | isolating one owner's coding sessions from another's |
+| `nessie/owner` | `sha256:` + hex SHA-256 of executor id, agent id and actor user id joined by `\|` | isolating one owner's coding sessions from another's |
 | `nessie/command` | the executor command id | making a replayed or retried call a no-op that returns the first outcome |
-| `nessie/daemon-control` | `true` on the daemon's own teardown calls | `session_close_all`, refused without it |
+| `nessie/daemon-control` | `true` on the daemon's own teardown and report calls | `session_close_all` and `session_list_all`, refused without it |
 
-The coding-sessions bridge refuses every session tool when `nessie/owner` is
-absent, so it cannot be driven by a plain `mcp.call` that carries none.
-`createExecutorMcpSessionManager`'s `callTool` takes the `_meta` as its fourth
-argument; the daemon's dispatch does not stamp it yet (see
-[host-coding-sessions.md](../executor-protocol/host-coding-sessions.md)).
+The owner comes from the `mcp.call` **payload**, not from the model:
+`ExecutorMcpCallPayloadSchema` is `{args, runId, owner?}`, strict, and the
+worker stamps `owner: {agentId, actorUserId}` from the binding's candidate
+beside `runId`, so the argument digest covers it and an `owner` inside
+`args` is refused as malformed. `executorCodingSessionOwnerKeyInput` in
+`@nessie/schemas` is the one spelling of the hashed text, which the control
+plane uses too when it names an owner in `codingSessionClose`.
+
+`executeExecutorMcpCommand` asks `CodingSessionsDaemon.callMeta`
+(`executor/src/coding-sessions-daemon.ts`) for the `_meta`, and gets one only
+for the executor's own bridge: the server named `coding-sessions` whose argv
+is `… serve-coding-session-mcp --config <path>`, pinned to the digest the
+descriptor's `codingSessions` facts state. Every other server — including a
+hand-edited entry under that name — gets no `_meta` at all, and `arguments`
+still pass through untouched. The coding-sessions bridge refuses every session
+tool when `nessie/owner` is absent.
 
 ## Only the name travels
 
@@ -165,6 +176,22 @@ idle close and the probes above cannot take a coding turn with them. Its
 output is projected and path-rewritten before it leaves the host, and its
 failures are named codes, never the underlying error. The whole contract is in
 [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md).
+
+It is the one named server that is not a program somebody named, and three
+rules follow from that:
+
+- **The executor generates its entry.** `configure` takes a `codingSessions`
+  object and writes the server itself; a hand-named server called
+  `coding-sessions` is refused.
+- **Its power facts travel, unlike any other launch spec.** The descriptor's
+  `codingSessions` states the agents, their permission modes, the number of
+  pre-allowed tools, the root names and the configuration's digest, inside
+  `localPolicyDigest`. Paths and programs still stay on the host.
+- **Its report carries its open sessions.** The local-MCP status for
+  `coding-sessions` may carry `codingSessions`: each open session's id,
+  owner key, title, status, agent, root name and `updatedAt` — never what it
+  said or did. Absent means the bridge was not asked; only that server may
+  carry the field.
 
 Both built-in servers are dispatched by `executor/src/builtin-mcp-cli.ts`.
 

@@ -13,16 +13,18 @@ their Claude or ChatGPT subscription.
 
 ## What exists today, and what does not yet
 
-This chapter describes the executor side, which is built and tested. The
-pieces that make it reachable from a run are not yet in place: the executor
-does not yet generate the `coding-sessions` entry in its named MCP servers or
-put the power facts in the signed descriptor, the daemon does not yet stamp
-the reserved `_meta` keys below, and the control plane's rule — private
-executor, pairing owner only, `EXECUTOR_CODING_SESSIONS_OWNER_ONLY` — and the
-first-class agent tools are not written. Until the daemon stamps an owner,
-every session tool refuses, so the bridge cannot be driven through a plain
-`mcp.call`. The trust-table row for this bridge lands with the control-plane
-rule.
+This chapter describes the executor side, which is built and tested: the
+bridge and its hosts, containment per supervisor, the configuration the
+executor generates the `coding-sessions` server from, the power facts in the
+signed descriptor, the reserved `_meta` the daemon stamps, and the daemon's
+teardown. What makes it reachable from a run is the control plane's, and is
+not written yet: the worker stamping `owner` on the `mcp.call` payload, the
+rule that refuses anyone but a private executor's pairing owner
+(`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), the first-class agent tools, the API
+producing `codingSessionClose`, and the review and admin rendering of the
+facts and sessions below. Until the worker stamps an owner every session tool
+refuses, so the bridge cannot be driven through a plain `mcp.call`. The
+trust-table row for this bridge lands with the control-plane rule.
 
 ## Two processes: a stateless bridge and one host per session
 
@@ -92,20 +94,60 @@ The bridge reads three reserved `_meta` keys the model cannot reach
 `nessie/daemon-control`. A call without an owner is refused.
 `session_list` shows only the caller's sessions, every other tool answers "No
 such session" for somebody else's, the live-session quota is per owner, and
-`session_close_all` needs the daemon-control marker. Claude's auto-memory is
-off by default so it cannot carry anything between owners.
+`session_close_all` and `session_list_all` need the daemon-control marker.
+Claude's auto-memory is off by default so it cannot carry anything between
+owners.
+
+The owner is stamped by the worker, never taken from the model: the `mcp.call`
+payload is `{args, runId, owner?}` (`ExecutorMcpCallPayloadSchema`, strict),
+with `owner: {agentId, actorUserId}` beside `runId` and under the argument
+digest. For calls to the executor's own bridge only, the daemon derives
+`_meta['nessie/owner'] = sha256:` + hex SHA-256 of
+`executorCodingSessionOwnerKeyInput(executorId, owner)` — the three ids
+joined by a vertical bar — and sets `_meta['nessie/command']` to the command
+id. "Its own bridge" is structural: the server named `coding-sessions` whose
+argv ends `serve-coding-session-mcp --config <path>` and whose environment
+pins the digest the descriptor states. No other server receives any `_meta`,
+and the model's `arguments` are passed on untouched either way.
 
 ## The reviewed configuration
 
-The `--config` file holds one closed `codingSessions` object: `roots`, `agents`
-(`claude`: `command`, `args`, `permissionMode`, `allowedTools`,
-`disallowedTools`, `model`; `codex`: `command`, `args`, `model`), `agentEnv`
-(`inheritUserSession`, `pass`, `set`), `maxLiveSessionsPerOwner` (3),
-`idleMinutes` (30), `maxTurnMinutes` (45) and `maxBudgetUsd`. Unknown keys are
-refused. `codingSessionsConfigDigest` hashes the normalised form, defaults
-included; when `NESSIE_CODING_SESSIONS_CONFIG_DIGEST` is set and differs, the
-bridge refuses `session_start` and `session_send`, and a host starts or resumes
-no agent — it still carries out interrupts and closes, which only stop things.
+The owner configures the bridge through
+`configure --configuration-input-stdin`, whose JSON gains a `codingSessions`
+object (`null` withdraws the bridge, absent keeps it). That object is closed:
+`roots`, `agents` (`claude`: `command`, `args`, `permissionMode`,
+`allowedTools`, `disallowedTools`, `model`; `codex`: `command`, `args`,
+`model`), `agentEnv` (`inheritUserSession`, `pass`, `set`),
+`maxLiveSessionsPerOwner` (3), `idleMinutes` (30), `maxTurnMinutes` (45),
+`maxBudgetUsd` and `closeOnDaemonShutdown` (false). Unknown keys are refused.
+
+The executor then:
+
+- writes it owner-only to `<state dir>/coding-sessions.json`, as given — the
+  bridge's own state lives beside it in `<state dir>/coding-sessions/`;
+- refuses a root that overlaps a workspace folder, the executor state
+  directory, the bridge state directory or the config file, comparing
+  canonical paths and folding case on Windows and macOS, and a root that does
+  not exist;
+- generates the `coding-sessions` server itself — `[execPath, …execArgv,
+  entry, 'serve-coding-session-mcp', '--config', <path>]` with
+  `NESSIE_CODING_SESSIONS_CONFIG_DIGEST` and, when packaged,
+  `NESSIE_EXECUTOR_PACKAGED_CLI=1` — and refuses a hand-named server of that
+  name;
+- refuses the bridge unless `mcp.tools` and `mcp.call` are enabled;
+- adds `codingSessions` to the signed descriptor, inside `localPolicyDigest`:
+  `{serverName, agents, permissionMode, allowedToolCount, rootNames,
+  configDigest}`. Claude's mode is its `permissionMode` (`default` when
+  unset); Codex's is the stance its reviewed `args` take
+  (`bypassApprovalsAndSandbox`, `fullAuto`, `sandbox:<mode>` or `default`).
+
+`codingSessionsConfigDigest` hashes the normalised form, defaults included, so
+`configDigest` covers even what no fact names. When the file on disk hashes to
+anything else, the bridge refuses `session_start` and `session_send`, and a
+host starts or resumes no agent — it still carries out interrupts and closes,
+which only stop things. A state file whose facts and generated entry disagree
+is malformed and refuses to load. `describe` shows the facts and the config
+file's path.
 
 ## The agents
 
@@ -198,6 +240,37 @@ Every kill checks the recorded pid and start time, so a reused pid is never
 signalled, and a new host stops a lost host's still-running agent before it
 resumes the session.
 
+### Teardown reaches the machine
+
+Sessions outlive runs and daemon restarts, so the daemon ends them itself
+(`executor/src/coding-sessions-daemon.ts`), always through the bridge's
+daemon-only `session_close_all {ownerKey?, sessionId?, reason}`:
+
+- **Wherever it already stops its other sessions** — a failed command poll or
+  heartbeat, which is also how a fence reaches it — every session on the
+  machine closes (`command_poll_failed`, `heartbeat_failed`). The daemon keeps
+  the owner keys it has dispatched for; sessions from an earlier daemon life
+  may exist, so the first such teardown after start closes everything, and
+  after one has succeeded a teardown with no owner dispatched since is skipped
+  rather than starting a bridge to close nothing.
+- **On the heartbeat's instruction.** The heartbeat response
+  (`ExecutorDaemonHeartbeatResponseSchema`) may carry
+  `codingSessionClose: [{ownerKey, sessionId?, reason}]`, sent when a lease
+  ends, access is revoked, the executor is paused or a person presses Close.
+  The daemon validates the list itself, so a field it does not know never
+  fails a heartbeat, and closes each owner's sessions (or the one named)
+  beside the heartbeat rather than in it.
+- **At shutdown**, only when the reviewed configuration sets
+  `closeOnDaemonShutdown` — or when the file no longer matches its review,
+  which cannot be trusted to have opted out. The call gets five seconds and
+  runs before the MCP session stops.
+
+The same daemon-only `session_list_all` feeds the local-MCP report: for
+`coding-sessions` its status carries `codingSessions`, each open session's
+`sessionId`, `ownerKey`, `title`, `status` (with a categorical `reason`),
+`agent`, `root` and `updatedAt`, newest first and at most 32 — never a prompt,
+a transcript or a path. Absent means the bridge was not asked.
+
 ## What the bridge reports
 
 Events are projected per kind with fixed caps — assistant 2 000 characters,
@@ -219,10 +292,20 @@ installed, and the last test command with its exit code.
 
 ```bash
 pnpm --filter @nessie/executor run test:mcp
+cargo test --manifest-path executor/native/Cargo.toml
 ```
 
 `scripted-coding-agent.mjs` speaks both protocols as the real CLIs printed
 them, and the subprocess suites drive a real bridge through the daemon's own
-MCP session manager; they run on Windows and Linux alike. The live cycle —
-start, follow-up, a denied `git push`, review and close against a logged-in
-Claude Code, and a Codex turn — needs real subscriptions and is not automated.
+MCP session manager; they run on Windows and Linux alike. On Linux with a
+reachable user manager those hosts run in their own `systemd-run --user`
+units, so the same suites cover that start. The Job Object is proved twice:
+`executor/native/tests/job_run.rs` drives the built helper (exit code, stdio,
+an orphaned grandchild dying with the job, the job dying with its parent), and
+`coding-session-containment.test.ts` kills an agent's orphaning tree through
+the helper whenever `executor/native/target` holds a build. The configuration
+round trip through a real state file is skipped on Windows, where saving
+executor state needs the packaged helper. The live cycle — start, follow-up, a
+denied `git push`, review and close against a logged-in Claude Code, and a
+Codex turn — needs real subscriptions and is not automated, and neither is a
+`systemctl --user restart` of the executor unit around a live session.

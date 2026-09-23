@@ -5,6 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { createCodingBridge, type CodingBridgeCallMeta } from './bridge.js'
 import { codingBridgeTools, CodingBridgeError } from './bridge-tools.js'
 import { loadCodingSessionsConfig } from './config.js'
+import { CODING_SESSION_COMMAND_META, CODING_SESSION_DAEMON_CONTROL_META, CODING_SESSION_OWNER_META } from './meta-keys.js'
 
 /**
  * `nessie-executor serve-coding-session-mcp --config <abs path>`: the
@@ -18,9 +19,7 @@ import { loadCodingSessionsConfig } from './config.js'
  * carry. Every answer is rewritten once more on its way out, string by string,
  * so no host path survives even in text the bridge itself composed.
  */
-export const CODING_SESSION_OWNER_META = 'nessie/owner'
-export const CODING_SESSION_COMMAND_META = 'nessie/command'
-export const CODING_SESSION_DAEMON_CONTROL_META = 'nessie/daemon-control'
+export { CODING_SESSION_COMMAND_META, CODING_SESSION_DAEMON_CONTROL_META, CODING_SESSION_OWNER_META }
 
 export const codingBridgeCallMeta = (meta: unknown): CodingBridgeCallMeta => {
   const fields = meta && typeof meta === 'object' ? meta as Record<string, unknown> : {}

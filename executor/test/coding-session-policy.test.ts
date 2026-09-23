@@ -45,7 +45,10 @@ type Scratch = { dir: string; stateDir: string; root: string; folder: string }
 const scratch = async (): Promise<Scratch> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'nessie-coding-policy-')))
   const scratchDirs = { dir, stateDir: join(dir, 'state'), root: join(dir, 'projects', 'nessie'), folder: join(dir, 'docs') }
-  for (const path of [scratchDirs.stateDir, scratchDirs.root, scratchDirs.folder]) await mkdir(path, { recursive: true })
+  // The state directory is owner-only, as the executor requires of its own.
+  for (const path of [scratchDirs.stateDir, scratchDirs.root, scratchDirs.folder]) {
+    await mkdir(path, { recursive: true, mode: 0o700 })
+  }
   return scratchDirs
 }
 
@@ -154,7 +157,9 @@ test('absent keeps the reviewed bridge, null withdraws it, and a kept root is ch
     })
     await configured.persist(['mcp.tools', 'mcp.call'])
     const current = { facts: configured.facts!, servers: configured.servers }
-    const kept = await planCodingSessions({ current, mcpServers: configured.servers, stateDir: s.stateDir, workspaceFolders: [] })
+    const kept = await planCodingSessions({
+      current, mcpServers: configured.servers, stateDir: s.stateDir, workspaceFolders: [],
+    })
     assert.deepEqual(kept.facts, configured.facts)
     assert.deepEqual(kept.servers, configured.servers, 'the generated entry round-trips unchanged')
     const withdrawn = await planCodingSessions({
@@ -196,7 +201,8 @@ test('the facts are part of the signed descriptor and of its policy digest', asy
       requested: request(s.root), runtime, current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
     })
     const wider = await planCodingSessions({
-      requested: request(s.root, { maxBudgetUsd: 500 }), runtime, current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
+      requested: request(s.root, { maxBudgetUsd: 500 }), runtime,
+      current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
     })
     const key = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url')
     const policy = (facts: typeof plan.facts) => ({
@@ -220,7 +226,8 @@ test('the facts are part of the signed descriptor and of its policy digest', asy
 
 test('the configuration input carries codingSessions as an object, or null to withdraw it', () => {
   const base = { operationKeys: ['mcp.tools', 'mcp.call'], workspaceFolders: [{ name: 'docs', path: '/docs' }] }
-  assert.deepEqual(parseConfigurationInput(JSON.stringify({ ...base, codingSessions: { roots: [] } })).codingSessions, { roots: [] })
+  const configured = parseConfigurationInput(JSON.stringify({ ...base, codingSessions: { roots: [] } }))
+  assert.deepEqual(configured.codingSessions, { roots: [] })
   assert.equal(parseConfigurationInput(JSON.stringify({ ...base, codingSessions: null })).codingSessions, null)
   assert.equal('codingSessions' in parseConfigurationInput(JSON.stringify(base)), false)
   for (const bad of [[], 'claude', 3]) {
@@ -260,7 +267,10 @@ test('configure saves the bridge, the state loads it back, and describe states i
     assert.deepEqual(described.policy.codingSessions, updated.descriptor.codingSessions)
     assert.equal(described.reach.codingSessionsConfig, configPath)
     const persisted = JSON.parse(await readFile(join(s.stateDir, 'executor-state.json'), 'utf8')) as ExecutorLocalState
-    assert.equal(persisted.mcpServers?.[0]?.env?.[CODING_SESSIONS_CONFIG_DIGEST_ENV], updated.descriptor.codingSessions?.configDigest)
+    assert.equal(
+      persisted.mcpServers?.[0]?.env?.[CODING_SESSIONS_CONFIG_DIGEST_ENV],
+      updated.descriptor.codingSessions?.configDigest,
+    )
   } finally {
     await rm(s.dir, { recursive: true, force: true })
   }

@@ -5,8 +5,9 @@ import { CODING_SESSION_ID_PATTERN } from './types.js'
  * The bridge's tool catalogue. The worker (not this server) owns the
  * descriptions a model is shown for its first-class coding tools; these are
  * for a person reading `mcp.tools`, and the input schemas are real so scalar
- * coercion works. `session_close_all` is deliberately not listed: it is the
- * daemon's own teardown call, refused without its reserved `_meta` marker.
+ * coercion works. `session_close_all` and `session_list_all` are deliberately
+ * not listed: they are the daemon's own teardown and heartbeat-report calls,
+ * refused without its reserved `_meta` marker.
  */
 
 const sessionIdSchema = { type: 'string' as const, pattern: CODING_SESSION_ID_PATTERN.source }

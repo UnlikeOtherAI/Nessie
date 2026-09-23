@@ -41,6 +41,12 @@ export type CodingSessionsConfig = {
   idleMinutes: number
   maxTurnMinutes: number
   maxBudgetUsd?: number
+  /**
+   * Whether the daemon closes every session when it shuts down. Off by
+   * default: a session is meant to outlive a daemon restart, and the daemon
+   * still closes them all whenever it loses its connection or is fenced.
+   */
+  closeOnDaemonShutdown: boolean
 }
 
 export type LoadedCodingSessionsConfig = {
@@ -168,7 +174,11 @@ export const normalizeCodingSessionsConfig = (input: unknown): CodingSessionsCon
   if (!record(value)) return refuse('The configuration needs a codingSessions object.')
   onlyKeys(value, [
     'roots', 'agents', 'agentEnv', 'maxLiveSessionsPerOwner', 'idleMinutes', 'maxTurnMinutes', 'maxBudgetUsd',
+    'closeOnDaemonShutdown',
   ], 'codingSessions')
+  if (value.closeOnDaemonShutdown !== undefined && typeof value.closeOnDaemonShutdown !== 'boolean') {
+    refuse('codingSessions.closeOnDaemonShutdown must be true or false.')
+  }
   if (!record(value.agents)) return refuse('codingSessions.agents names at least one coding agent.')
   onlyKeys(value.agents, CODING_AGENT_NAMES, 'codingSessions.agents')
   const agents: CodingSessionsConfig['agents'] = {}
@@ -187,6 +197,7 @@ export const normalizeCodingSessionsConfig = (input: unknown): CodingSessionsCon
     idleMinutes: boundedNumber(value.idleMinutes, 'codingSessions.idleMinutes', 30, { min: 0, max: 1_440 })!,
     maxTurnMinutes: boundedNumber(value.maxTurnMinutes, 'codingSessions.maxTurnMinutes', 45, { min: 0, max: 1_440 })!,
     ...(maxBudgetUsd === undefined ? {} : { maxBudgetUsd }),
+    closeOnDaemonShutdown: value.closeOnDaemonShutdown === true,
   }
 }
 
