@@ -18,8 +18,8 @@ import { bindPinnedExecutorLocalApps } from './executor-local-apps-binding.js'
  */
 export type ExecutorLeaseRefusalReason =
   /** The job's actor is not the lease holder, is a channel-policy authorizer,
-   * or carries another person as its effective user (Continue or Restart
-   * pressed by someone else lands here). */
+   * or carries another person as its effective user; or someone else pressed
+   * the Continue, Restart, card answer or approval that brought the run back. */
   | 'actor_not_holder'
   /** Not a live human turn. */
   | 'not_interactive'
@@ -69,9 +69,14 @@ type CarryMessage = {
   id: string
   metadata: unknown
   role: string
+  rootMessageId: string | null
   threadId: string
   userId: string | null
 }
+
+const MESSAGE_SELECT = {
+  deletedAt: true, id: true, metadata: true, role: true, rootMessageId: true, threadId: true, userId: true,
+} as const
 
 const LEASE_SELECT = {
   absoluteExpiresAt: true, actorUserId: true, agentId: true, endedAt: true, executorId: true,
@@ -123,10 +128,63 @@ const alreadyBound = async (
 class LeaseEndedDuringCarry extends Error {}
 
 /**
+ * A refusal of a live lease leaves a durable row, so whoever asks why a
+ * follow-up lost machine tools, or whether someone else tried to reach a
+ * holder's lease, has something to read. A lease that has ended is recorded
+ * once, by its end, not again by every later turn in its conversation. The
+ * row names the lease, never the machine's label, and writing it can never
+ * fail the run it describes.
+ */
+const recordRefusal = async (
+  prisma: PrismaClient,
+  input: {
+    job: RunExecuteJobPayload
+    lease: LeaseRow
+    now: Date
+    reason: ExecutorLeaseRefusalReason
+    runId: string
+    triggerMessageId: string
+  },
+): Promise<void> => {
+  const { job, lease } = input
+  if (input.reason === 'lease_ended' || !isExecutorLeaseLive(lease, input.now)) return
+  try {
+    await prisma.$transaction((tx) => writeExecutorLeaseAudit(tx, {
+      action: 'executor.run.carry_refused',
+      actor: {
+        actorId: job.actorContext.actor.actorId,
+        actorType: job.actorContext.actor.actorType,
+        requestId: job.actorContext.actionContext.requestId,
+      },
+      metadata: {
+        agentId: lease.agentId,
+        executorId: lease.executorId,
+        holderUserId: lease.actorUserId,
+        leaseId: lease.id,
+        reason: input.reason,
+        // A card or approval resume acts as the parked run's actor; the press
+        // behind it may be someone else's, and that is who tried.
+        resumedByUserId: job.resumedByUserId ?? null,
+        runId: input.runId,
+        triggerMessageId: input.triggerMessageId,
+      },
+      organizationId: lease.organizationId,
+      outcome: 'denied',
+      reason: input.reason,
+      resourceId: input.runId,
+      resourceType: 'executor_run',
+    }))
+  } catch (error) {
+    console.warn('[executor-lease] could not record the carry refusal for run', input.runId, error)
+  }
+}
+
+/**
  * Bind a follow-up run to the executor its conversation's lease names, when —
  * and only when — every structural condition of the conversation-lease plan
  * holds (docs/plans/2026-09-22-executor-local-apps/conversation-lease.md §2).
- * Otherwise nothing is bound and the reason is returned. Called once by run
+ * Otherwise nothing is bound and the reason is returned (and, while the lease
+ * is live, written to the audit chain as `executor.run.carry_refused`). Called once by run
  * setup, immediately before the executor toolset is built. A refusal is never
  * thrown: every `ExecutorError` the re-resolution or binding raises becomes
  * `executor_unavailable`.
@@ -145,11 +203,7 @@ export const carryForwardExecutorBindings = async (
       restartOfRunId: true,
       thread: { select: { agentId: true, channelId: true } },
       threadId: true,
-      triggerMessage: {
-        select: {
-          deletedAt: true, id: true, metadata: true, role: true, rootMessageId: true, threadId: true, userId: true,
-        },
-      },
+      triggerMessage: { select: MESSAGE_SELECT },
       _count: { select: { executorBindings: true } },
     },
   })
@@ -177,30 +231,36 @@ export const carryForwardExecutorBindings = async (
     ?? leases.find((entry) => entry.actorUserId === actorId)
     ?? leases[0]
   if (!lease) return { kind: 'no_lease' }
-  const refused = (reason: ExecutorLeaseRefusalReason): ExecutorLeaseCarryOutcome => ({
-    kind: 'refused', leaseId: lease.id, reason,
-  })
+  const refused = async (reason: ExecutorLeaseRefusalReason): Promise<ExecutorLeaseCarryOutcome> => {
+    await recordRefusal(prisma, { job, lease, now, reason, runId, triggerMessageId: trigger.id })
+    return { kind: 'refused', leaseId: lease.id, reason }
+  }
 
-  // 2 and 6. For Continue, Restart and approval resume the job's actor is the
-  // person who pressed, so another member's press stops here.
+  // 2. Continue and Restart already act as the person who pressed.
   if (!actsAsHolder(job, lease)) return refused('actor_not_holder')
   // 3.
   if (job.interactive !== true) return refused('not_interactive')
+  // 6. A card answer or an approval resumes as the parked run's own actor,
+  // whoever pressed it, so a continuation also needs the press to be the
+  // holder's. Every continuation a press makes names its presser
+  // (`resumeSuspendedRun`); one that names nobody is nobody's press.
+  if (run.continuationOfRunId !== null && job.resumedByUserId !== lease.actorUserId) {
+    return refused('actor_not_holder')
+  }
   // 4. The replayed trigger of a Continue or Restart is checked the same way.
   if (job.messageId !== trigger.id || !isHoldersOwnMessage(trigger, lease, run.threadId)) {
     return refused('trigger_not_person')
   }
-  // 5. Every message a drained batch folded in, not only its latest.
+  // 5. Every message a drained batch folded in, not only its latest — and each
+  // in this conversation, since a drain batches the whole container thread.
   if (job.batchMessageIds) {
     const ids = [...new Set(job.batchMessageIds)]
-    const batch = await prisma.message.findMany({
-      where: { id: { in: ids } },
-      select: { deletedAt: true, id: true, metadata: true, role: true, threadId: true, userId: true },
-    })
+    const batch = await prisma.message.findMany({ where: { id: { in: ids } }, select: MESSAGE_SELECT })
     if (
       batch.length !== ids.length
       || !ids.includes(trigger.id)
-      || batch.some((message) => !isHoldersOwnMessage(message, lease, run.threadId))
+      || batch.some((message) => !isHoldersOwnMessage(message, lease, run.threadId)
+        || (!inAgentConversation && (message.rootMessageId ?? message.id) !== lease.rootMessageId))
     ) {
       return refused('batch_not_person')
     }

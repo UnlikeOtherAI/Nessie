@@ -29,6 +29,7 @@ export type ExecutorLeaseEndReason =
   | 'person'
   | 'access_revoked'
   | 'executor_paused'
+  | 'executor_drained'
   | 'executor_revoked'
   | 'descriptor_narrowed'
   | 'expired'
@@ -37,7 +38,7 @@ export type ExecutorLeaseEndReason =
 /** Who a lease transition is recorded as in the audit chain. */
 export type ExecutorLeaseAuditActor = {
   actorId: string
-  actorType: 'user' | 'system'
+  actorType: 'user' | 'agent' | 'service' | 'system'
   requestId: string
 }
 
@@ -93,10 +94,13 @@ export const lockExecutorForLease = async (tx: Prisma.TransactionClient, executo
 export const writeExecutorLeaseAudit = (
   tx: Prisma.TransactionClient,
   input: {
-    action: 'executor.lease.created' | 'executor.run.carried' | 'executor.lease.ended'
+    action: 'executor.lease.created' | 'executor.run.carried' | 'executor.run.carry_refused' | 'executor.lease.ended'
     actor: ExecutorLeaseAuditActor
     metadata: Record<string, unknown>
     organizationId: string
+    /** A refused carry is `denied`, with its refusal reason; everything else succeeded. */
+    outcome?: 'success' | 'denied'
+    reason?: string
     resourceId: string
     resourceType: 'executor_conversation_lease' | 'executor_run'
   },
@@ -106,7 +110,8 @@ export const writeExecutorLeaseAudit = (
   actorType: input.actor.actorType,
   metadata: input.metadata as Prisma.InputJsonValue,
   organizationId: input.organizationId,
-  outcome: 'success',
+  outcome: input.outcome ?? 'success',
+  reason: input.reason ?? null,
   requestId: input.actor.requestId,
   resourceId: input.resourceId,
   resourceType: input.resourceType,

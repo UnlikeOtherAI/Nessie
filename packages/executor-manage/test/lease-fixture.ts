@@ -203,6 +203,8 @@ export const jobFor = (
     batchMessageIds?: string[]
     interactive?: boolean
     messageId: string
+    /** Who pressed the Continue, card or approval behind a continuation. */
+    resumedByUserId?: string
     runId: string
   },
 ): RunExecuteJobPayload => RunExecuteJobPayloadSchema.parse({
@@ -211,6 +213,7 @@ export const jobFor = (
   ...(input.batchMessageIds ? { batchMessageIds: input.batchMessageIds } : {}),
   interactive: input.interactive ?? true,
   messageId: input.messageId,
+  ...(input.resumedByUserId ? { resumedByUserId: input.resumedByUserId } : {}),
   runId: input.runId,
   taskId: randomUUID(),
   threadId: world.threadId,

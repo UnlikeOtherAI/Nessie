@@ -134,10 +134,37 @@ dbTest('another member’s reply, Continue or Restart carries nothing and says w
       assert.deepEqual(await bindingsOf(world, run.id), [])
     }
 
+    // A card answer or an approval resumes as the parked run's own actor — the
+    // holder here — so only the press says who brought it back: another
+    // member's, or nobody's, carries nothing.
+    for (const resumedByUserId of [world.memberId, undefined]) {
+      const resumed = await createRun(world, { continuationOfRunId: original.id, triggerMessageId: holderReply.id })
+      assert.deepEqual(await carryForwardExecutorBindings(world.prisma, {
+        job: jobFor(world, { messageId: holderReply.id, resumedByUserId, runId: resumed.id }), runId: resumed.id,
+      }), { kind: 'refused', leaseId: launch.lease.id, reason: 'actor_not_holder' })
+      assert.deepEqual(await bindingsOf(world, resumed.id), [])
+    }
+
+    // Every refusal of the live lease is on the record, naming who tried and
+    // why, and never the machine.
+    const refusals = await auditRows(world, 'executor.run.carry_refused')
+    assert.equal(refusals.length, 5)
+    assert.deepEqual(refusals.map((row) => row.actorId), [
+      world.memberId, world.memberId, world.memberId, world.holderId, world.holderId,
+    ])
+    for (const row of refusals) {
+      assert.equal(row.outcome, 'denied')
+      assert.equal(row.reason, 'actor_not_holder')
+      assert.equal((row.metadata as Record<string, unknown>).leaseId, launch.lease.id)
+      assert.equal((row.metadata as Record<string, unknown>).holderUserId, world.holderId)
+      assert.equal(JSON.stringify(row.metadata).includes('Minis'), false, 'the machine’s label is never recorded')
+    }
+
     // The holder pressing Continue is their own follow-up and carries.
     const own = await createRun(world, { continuationOfRunId: original.id, triggerMessageId: holderReply.id })
     const outcome = await carryForwardExecutorBindings(world.prisma, {
-      job: jobFor(world, { messageId: holderReply.id, runId: own.id }), runId: own.id,
+      job: jobFor(world, { messageId: holderReply.id, resumedByUserId: world.holderId, runId: own.id }),
+      runId: own.id,
     })
     assert.equal(outcome.kind, 'carried')
     const [audit] = await auditRows(world, 'executor.run.carried')
@@ -173,14 +200,43 @@ dbTest('a drained batch carries only when every message in it is the holder’s 
     }), { kind: 'refused', leaseId: launch.lease.id, reason: 'batch_not_person' })
     assert.deepEqual(await bindingsOf(world, mixed.id), [])
 
+    // A drain batches the agent's whole container thread, across reply roots:
+    // the holder's own top-level post elsewhere in the room rides in no carried
+    // run, even beside their reply in the launch thread.
+    const elsewhere = await postMessage(world, {})
+    const inThread = await postMessage(world, { rootMessageId: launch.message.id })
+    const spread = await createRun(world, { triggerMessageId: inThread.id })
+    assert.deepEqual(await carryForwardExecutorBindings(world.prisma, {
+      job: jobFor(world, { batchMessageIds: [elsewhere.id, inThread.id], messageId: inThread.id, runId: spread.id }),
+      runId: spread.id,
+    }), { kind: 'refused', leaseId: launch.lease.id, reason: 'batch_not_person' })
+    assert.deepEqual(await bindingsOf(world, spread.id), [])
+
+    // The launch message itself is in its own conversation.
     const alsoMine = await postMessage(world, { rootMessageId: launch.message.id })
     const clean = await createRun(world, { triggerMessageId: alsoMine.id })
     const outcome = await carryForwardExecutorBindings(world.prisma, {
-      job: jobFor(world, { batchMessageIds: [mine.id, alsoMine.id], messageId: alsoMine.id, runId: clean.id }),
+      job: jobFor(world, {
+        batchMessageIds: [launch.message.id, mine.id, alsoMine.id], messageId: alsoMine.id, runId: clean.id,
+      }),
       runId: clean.id,
     })
     assert.equal(outcome.kind, 'carried')
   })
+})
+
+dbTest('inside a conversation with the agent, a batch from anywhere in the thread carries', async () => {
+  await withWorld(async (world) => {
+    await launchLocalApps(world)
+    const first = await postMessage(world, {})
+    const second = await postMessage(world, {})
+    const run = await createRun(world, { triggerMessageId: second.id })
+    const outcome = await carryForwardExecutorBindings(world.prisma, {
+      job: jobFor(world, { batchMessageIds: [first.id, second.id], messageId: second.id, runId: run.id }),
+      runId: run.id,
+    })
+    assert.equal(outcome.kind, 'carried')
+  }, { agentConversation: true })
 })
 
 dbTest('a relayed post, a workflow send and a trigger fire authored as the holder carry nothing', async () => {
