@@ -53,7 +53,9 @@ const publishedPage = async (
     kind: input.kind,
     parentPageId: input.parentPageId ?? null,
   })
-  await provider.publishPage({ organizationId: seeded.organizationId, pageId: page.id })
+  if (input.kind !== 'folder') {
+    await provider.publishPage({ organizationId: seeded.organizationId, pageId: page.id })
+  }
   return page.id
 }
 
