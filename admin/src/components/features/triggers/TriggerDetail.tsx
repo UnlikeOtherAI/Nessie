@@ -54,7 +54,8 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
       <KeyValueList
         items={[
           { label: 'Target', value: formatTriggerTarget(trigger, registry) },
-          { label: 'Schedule', value: getScheduleSummary(trigger) },
+          // A ticket trigger's facts below say when it acts, column by column.
+          ...(trigger.type === 'ticket_changed' ? [] : [{ label: 'Schedule', value: getScheduleSummary(trigger) }]),
           ...(trigger.status === 'active'
             && (trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval')
             ? [

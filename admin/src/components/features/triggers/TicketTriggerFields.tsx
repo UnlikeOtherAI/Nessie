@@ -135,7 +135,12 @@ export const TicketTriggerFields = ({ errors, form, projectId, setForm }: Ticket
             return (
               <Checkbox
                 checked={ticket.pickupColumnIds.includes(column.id)}
-                description={ends ? 'Ends the work, so it cannot start it' : CATEGORY_LABEL[column.category]}
+                description={ends
+                  ? 'Ends the work, so it cannot start it'
+                  // The category, when the name does not already say it.
+                  : column.name.trim().toLowerCase() === CATEGORY_LABEL[column.category].toLowerCase()
+                    ? undefined
+                    : CATEGORY_LABEL[column.category]}
                 disabled={ends && !ticket.pickupColumnIds.includes(column.id)}
                 key={column.id}
                 label={column.name}

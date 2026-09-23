@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
+import { faChevronDown, faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate } from 'react-router-dom'
 import type { AgentConversationRecord } from '@nessie/schemas'
@@ -206,11 +206,7 @@ export const AgentConversationList = ({
             onClick={() => setTicketsOpen(!showTickets)}
             type="button"
           >
-            <FontAwesomeIcon
-              aria-hidden
-              className={`h-2.5 w-2.5 transition-transform ${showTickets ? 'rotate-90' : ''}`}
-              icon={faChevronRight}
-            />
+            <FontAwesomeIcon aria-hidden className="h-2.5 w-2.5" icon={showTickets ? faChevronDown : faChevronRight} />
             <span className="flex-1">Tickets</span>
             <span className="font-normal normal-case tracking-normal">{ticketRows.length}</span>
           </button>

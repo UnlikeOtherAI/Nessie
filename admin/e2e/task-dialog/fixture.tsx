@@ -29,7 +29,9 @@ import '../../src/styles.css'
  * scenario is chosen with `?scenario=`: `details` (a Linear-mirrored ticket,
  * read & write, with every kind of comment and file, one of them removed),
  * `mirrored-readonly`, `viewer` (`viewerCanEdit: false`), `create`, `settings`
- * (Board → Settings → Labels) and `card`. Bytes (`/api/attachments/…`,
+ * (Board → Settings → Labels) and `card`. `&work=` gives the ticket an agent's
+ * work (`ticketWorkFor`): the chip in the dialog and the dot on the card, in
+ * each state T1 can reach. Bytes (`/api/attachments/…`,
  * `/api/uploads`) and the session (`/api/auth/me`) are answered by the
  * runner's `page.route`, because they leave through `fetch`/XHR, not the
  * ApiClient.
@@ -281,6 +283,44 @@ if (scenario === 'viewer-back') {
   }
 }
 
+// An agent's work on the ticket, as `GET /api/tasks/:id/work` answers it, in
+// each state T1 reaches: working, parked in review, stopped at its wake limit,
+// done, one whose thread the reader may not open, and a move that started
+// nothing (docs/standards/ticket-work.md → "What the project sees").
+const WORK_STATE = params.get('work')
+const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
+const workRecord = (extra: Record<string, unknown>) => ({
+  agent: { id: AGENT, name: 'Perf agent' }, endedAt: null, id: '70000000-0000-4000-8000-000000000010',
+  lastWakeAt: minutesAgo(4), lastWakeReason: 'ticket_commented', startedAt: minutesAgo(52),
+  startedByName: 'Ondřej Rafaj', stateReason: null, status: 'active',
+  thread: { channelId: '70000000-0000-4000-8000-000000000011', id: '70000000-0000-4000-8000-000000000012' },
+  triggerId: '70000000-0000-4000-8000-000000000013', wakeCount: 3, wakeLimit: 30, ...extra,
+})
+const ticketWorkFor = (state: string | null) => {
+  switch (state) {
+    case 'active': return { lastSkip: null, records: [workRecord({})] }
+    case 'nolink': return { lastSkip: null, records: [workRecord({ thread: null })] }
+    case 'parked': return { lastSkip: null, records: [workRecord({ lastWakeReason: 'ticket_moved', status: 'parked' })] }
+    case 'stopped': return { lastSkip: null, records: [workRecord({
+      endedAt: minutesAgo(1), lastWakeReason: 'thread_message', stateReason: 'limit_wakes', status: 'failed', wakeCount: 30,
+    })] }
+    case 'done': return { lastSkip: null, records: [workRecord({
+      endedAt: minutesAgo(2), lastWakeReason: 'ticket_moved', stateReason: 'left_flow', status: 'done',
+    })] }
+    case 'skipped': return {
+      lastSkip: { agentName: 'Perf agent', at: minutesAgo(1), reason: 'agent_origin', triggerId: '70000000-0000-4000-8000-000000000013' },
+      records: [],
+    }
+    default: return { lastSkip: null, records: [] }
+  }
+}
+const cardWork = WORK_STATE && WORK_STATE !== 'skipped'
+  ? (() => {
+      const record = ticketWorkFor(WORK_STATE).records[0]!
+      return { agentId: AGENT, agentName: 'Perf agent', stateReason: record.stateReason, status: record.status, taskId: TASK }
+    })()
+  : null
+
 const calls: { body?: unknown; method: string; path: string }[] = []
 Object.assign(window, { taskDialogCalls: calls })
 
@@ -331,6 +371,7 @@ const get = async (path: string) => {
     ]
   }
   if (route === `/api/tasks/${TASK}/checklist`) return { steps: [] }
+  if (route === `/api/tasks/${TASK}/work`) return ticketWorkFor(WORK_STATE)
   return []
 }
 
@@ -462,7 +503,13 @@ const Scenario = () => {
       <div className="p-6" style={{ width: 320 }}>
         <DndContext>
           <SortableContext items={[TASK]}>
-            <KanbanCard onOpen={() => {}} projectName="Checkout" showProject={false} task={cardTask} />
+            <KanbanCard
+              onOpen={() => {}}
+              projectName="Checkout"
+              showProject={false}
+              task={cardTask}
+              work={cardWork as never}
+            />
           </SortableContext>
         </DndContext>
       </div>

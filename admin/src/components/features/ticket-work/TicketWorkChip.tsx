@@ -42,7 +42,9 @@ const WorkRow = ({ record }: { record: TicketWorkChipRecord }) => {
         />
       </span>
       <div className="grid min-w-0 flex-1 gap-0.5">
-        <div className="break-words text-sm font-semibold text-[color:var(--tx)]">{ticketWorkHeadline(record)}</div>
+        <div className="break-words text-sm font-semibold text-[color:var(--tx)]" data-testid="ticket-work-headline">
+          {ticketWorkHeadline(record)}
+        </div>
         {record.startedByName ? (
           <div className="text-xs text-[color:var(--tx3)]">Started by {record.startedByName}</div>
         ) : null}
@@ -69,17 +71,19 @@ const WorkRow = ({ record }: { record: TicketWorkChipRecord }) => {
 
 export const TicketWorkChip = ({ taskId }: { taskId: string }) => {
   const { data } = useTaskTicketWork(taskId)
-  if (!data || (data.records.length === 0 && !data.lastSkip)) return null
+  const records = data?.records ?? []
+  const lastSkip = data?.lastSkip ?? null
+  if (records.length === 0 && !lastSkip) return null
   return (
     <section aria-label="Agent work on this ticket" className="grid gap-2">
-      {data.records.map((record) => <WorkRow key={record.id} record={record} />)}
-      {data.lastSkip ? (
+      {records.map((record) => <WorkRow key={record.id} record={record} />)}
+      {lastSkip ? (
         <p
           className="rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx2)]"
           data-testid="ticket-work-skip"
         >
-          <span className="font-semibold text-[color:var(--tx)]">{data.lastSkip.agentName}:</span>{' '}
-          {ticketSkipSentence(data.lastSkip.reason)}
+          <span className="font-semibold text-[color:var(--tx)]">{lastSkip.agentName}:</span>{' '}
+          {ticketSkipSentence(lastSkip.reason)}
         </p>
       ) : null}
     </section>

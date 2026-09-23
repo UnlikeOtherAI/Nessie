@@ -2,7 +2,8 @@
 //   DATABASE_URL=postgresql://… pnpm --filter @nessie/admin test:e2e:agent-conversations
 //
 // Many isolated conversations with one agent, proved against the real stack:
-// the API with its embedded worker on 5454, the admin on 5455, and a scripted
+// the API with its embedded worker on 5454, the admin on 5455 (or the pair
+// NAV_E2E_API_PORT / NAV_E2E_ADMIN_PORT names, beside a dev loop), and a scripted
 // OpenAI-compatible endpoint standing in for inference. What it claims is
 // structural — that two conversations with the same agent run at once, that
 // neither model request ever saw the other's turns, that a reader who is not
@@ -15,6 +16,8 @@ import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
+// The servers this suite starts are on these, so the pages must be too.
+import { ADMIN_URL, API_URL } from '../navigation/lib/config.mjs'
 import {
   assertFreshServersAvailable,
   startAdmin,
@@ -29,6 +32,7 @@ import {
   BETA_QUESTION,
   RENAMED_TITLE,
   seedFixture,
+  seedTicketThreads,
   tokenFor,
   waitForRun,
 } from './fixture.mjs'
@@ -36,8 +40,6 @@ import { startMockModelServer } from './mock-server.mjs'
 import { exercisePhoneColumn } from './phone-column.mjs'
 import { openGallery, shot } from './viewports.mjs'
 
-const ADMIN_URL = 'http://127.0.0.1:5455'
-const API_URL = 'http://127.0.0.1:5454'
 const SCREENSHOTS = resolve(
   import.meta.dirname, '..', '..', '..', 'e2e', 'screenshots', 'agent-conversations',
 )
@@ -406,6 +408,7 @@ const main = async () => {
   let gallery = null
   let outsiderContext = null
   let outsiderPage = null
+  let visitorId = null
   try {
     // A conversation suite must never adopt another worktree's dev servers:
     // it would drive different source and leave this fixture unverified.
@@ -1014,11 +1017,82 @@ const main = async () => {
     assert.equal(outsiderStripRow.title, STRIP_QUESTION, 'under the name its first message gave it')
     assert.equal(outsiderStripRow.startedByUserId, fixture.owner.id, 'and says who opened it')
 
+    // ---- tickets-fold -----------------------------------------------------
+    // A ticket's work threads are the agent's conversations too, and twenty of
+    // them would bury the ones people started: they fold under Tickets on the
+    // agent's list, closed until asked for or until one is on screen
+    // (docs/standards/ticket-work.md → "The work thread"). Seeded now, not with
+    // the fixture, so every count asserted above is the one it always was.
+    const { ensureTicketWorkThread, ticketWorkThreadTitle } =
+      await import('../../../packages/team-admin/src/ticket-work-thread.ts')
+    const { writeTicketWorkThreadRow } = await import('../../../worker/src/control/ticket-work-run.ts')
+    const ticketSeed = await seedTicketThreads(pipeline.prisma, fixture, {
+      ensureTicketWorkThread, ticketWorkThreadTitle, writeTicketWorkThreadRow,
+    })
+    visitorId = ticketSeed.visitor.id
+    const ticketTitles = ticketSeed.tickets.map((ticket) => ticket.title)
+    await gallery.capture('tickets-fold', async (page, viewport) => {
+      await goto(page, room)
+      await composer(page).waitFor({ timeout: 60_000 })
+      await openConversationsColumn(page, viewport, fixture.agent.name)
+      const fold = conversationsPanel(page).last().getByTestId('agent-conversation-tickets')
+      const toggle = fold.getByRole('button', { name: /Tickets/ })
+      await toggle.waitFor({ timeout: 30_000 })
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false', `the fold arrives closed (${viewport})`)
+      assert.match((await toggle.innerText()).replace(/\s+/g, ' '), /Tickets 2/i, `it counts its tickets (${viewport})`)
+      const listed = await rowTitles(page)
+      for (const title of ticketTitles) {
+        assert.ok(!listed.some((row) => row.includes(title)),
+          `${title} is folded, not listed among the conversations (${viewport})`)
+      }
+      await toggle.click()
+      await page.waitForFunction((count) => document.querySelectorAll(
+        '[data-testid="agent-conversation-tickets"] [data-testid="agent-conversation-row"]',
+      ).length === count, ticketTitles.length, { timeout: 30_000 })
+      const folded = await fold.locator('[data-testid="agent-conversation-row"]').allInnerTexts()
+      for (const title of ticketTitles) {
+        assert.ok(folded.some((row) => row.includes(title)), `${title} opens under Tickets (${viewport}): ${folded}`)
+      }
+    })
+
+    // A board editor's work thread: its wake rows, and the composer.
+    const ticketThread = `/channels/${fixture.publicRoom.id}/threads/${ticketSeed.tickets[0].threadId}`
+    await goto(desktop, ticketThread)
+    await composer(desktop).waitFor({ timeout: 60_000 })
+    const wakeRows = desktop.locator('[data-testid="ticket-work-event-row"]:visible')
+    await wakeRows.first().waitFor({ timeout: 30_000 })
+    const wakeTexts = (await wakeRows.allInnerTexts()).map((text) => text.replace(/\s+/g, ' '))
+    assert.equal(wakeTexts.length, 2, `the thread shows its two wake rows: ${wakeTexts}`)
+    assert.match(wakeTexts[0], /^Woken: work started — .+ moved the ticket into a start-work column/)
+    assert.match(wakeTexts[1], /^Woken: .+ commented/)
+    assert.equal(await desktop.locator('[data-testid="work-thread-read-only"]').count(), 0,
+      'a board editor writes in the work thread')
+    await desktop.screenshot({ path: resolve(SCREENSHOTS, 'tickets-fold', 'desktop-thread.png') })
+
+    // Someone in the room who cannot edit the board reads it, and is pointed at the ticket.
+    const visitorContext = await openViewportContext(browser, {
+      name: 'desktop', token: tokenFor(issueSessionToken, ticketSeed.visitor, fixture.scope),
+    })
+    try {
+      const visitorPage = (await visitorContext.newPage()).page
+      await goto(visitorPage, ticketThread)
+      const readOnly = visitorPage.locator('[data-testid="work-thread-read-only"]:visible')
+      await readOnly.waitFor({ timeout: 60_000 })
+      assert.match(await readOnly.innerText(), /Comment on the ticket to give the agent more information\./)
+      assert.equal(await visitorPage.locator('form.admin-compose:visible').count(), 0, 'and has no composer there')
+      assert.equal(await visitorPage.locator('[data-testid="ticket-work-event-row"]:visible').count(), 2,
+        'the wake rows are the room’s to read')
+      await visitorPage.screenshot({ path: resolve(SCREENSHOTS, 'tickets-fold', 'visitor-read-only.png') })
+    } finally {
+      await visitorContext.close().catch(() => {})
+    }
+
     console.log(
       '[agent-conversations e2e] PASS: rail → two isolated conversations, named by their'
       + ' first message → one empty conversation at a time → rename → concurrent runs'
       + ' → scoped visibility → live card → phone column → agent page'
-      + ' → an ordinary room’s own doorway → the agent strip',
+      + ' → an ordinary room’s own doorway → the agent strip → the Tickets fold and the work'
+      + ' thread’s posting rule',
     )
   } catch (error) {
     await saveFailureEvidence({
@@ -1035,7 +1109,7 @@ const main = async () => {
     if (adminServer) await stopProcess(adminServer)
     if (apiServer) await stopProcess(apiServer)
     await pipeline.prisma.user.deleteMany({
-      where: { id: { in: [fixture.outsider.id] } },
+      where: { id: { in: [fixture.outsider.id, ...(visitorId ? [visitorId] : [])] } },
     }).catch(() => {})
     await cleanupScope(pipeline.prisma, pipeline.pool, fixture.scope, runIds).catch(() => {})
     await pipeline.stop().catch(() => {})

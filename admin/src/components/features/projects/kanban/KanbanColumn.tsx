@@ -47,7 +47,9 @@ export const KanbanColumn = ({
       className="flex min-h-0 min-w-[300px] flex-1 flex-col"
       data-kanban-column={columnId}
     >
-      <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
+      {/* As tall as a header action (44px), so a column with a menu and one
+          without start their tracks on the same line. */}
+      <div className="mb-2 flex min-h-11 shrink-0 items-center gap-2 px-1">
         <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
         <span className="truncate text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx2)]">
           {label}
