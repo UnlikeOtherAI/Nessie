@@ -2,8 +2,10 @@ import { Prisma } from "@prisma/client";
 import { adoptPersonalBrowserAccessGrant, CONTROL_CLAIM_TTL_MS, releaseSessionControl, type CloudBrowserConnectionProbeDeps } from "@nessie/browser-cloud";
 import type { CredentialStore } from "@nessie/dashboard";
 import { enqueueOrchestrateDecide } from "@nessie/db";
+import { issueExecutorAccessChangeConfirmationToken } from "@nessie/executor-manage";
 import { createPgSecretStore } from "@nessie/mcp-manage";
 import {
+  type AgentCardRespondResult,
   type AuthorizedActionContext,
   AgentCardSpecSchema,
   detectSecrets,
@@ -173,6 +175,34 @@ const prepareResponse = async (
   }
 };
 
+/**
+ * The review an executor review card opens, minted for the presser inside the
+ * press's transaction. The card holds only the change's id; the token exists
+ * from here on in the presser's response alone. A change that is no longer
+ * this person's to review refuses the press, so the card stays open rather
+ * than resolving into a review that cannot confirm.
+ */
+const issueExecutorReview = async (
+  tx: Prisma.TransactionClient,
+  card: LoadedAgentCard,
+  userId: string,
+): Promise<AgentCardRespondResult["executorReview"]> => {
+  if (!card.executorAccessChangeId) return undefined;
+  const confirmationToken = await issueExecutorAccessChangeConfirmationToken(tx, {
+    accessChangeId: card.executorAccessChangeId,
+    actorUserId: userId,
+    organizationId: card.organizationId,
+  });
+  if (!confirmationToken) {
+    throw new AgentCardResponseError(
+      409,
+      "EXECUTOR_ACCESS_CHANGE_STALE",
+      "This change is no longer waiting for your review. Ask for it again.",
+    );
+  }
+  return { accessChangeId: card.executorAccessChangeId, confirmationToken };
+};
+
 export const respondToAgentCard = async (
   deps: ResponseDeps,
   input: {
@@ -183,11 +213,7 @@ export const respondToAgentCard = async (
     secrets?: Record<string, string>;
     values?: Record<string, unknown>;
   },
-): Promise<{
-  cardId: string;
-  responseMessageId: string;
-  status: "resolved";
-}> => {
+): Promise<AgentCardRespondResult> => {
   const userId = input.actorContext.actor.actorId;
   const prepared = await prepareResponse(deps, {
     actionKey: input.actionKey,
@@ -198,6 +224,7 @@ export const respondToAgentCard = async (
     values: input.values ?? {},
   });
   let outcome: {
+    executorReview: AgentCardRespondResult["executorReview"];
     responseMessageId: string;
     responseRestricted: boolean;
     rootMessageId: string;
@@ -221,6 +248,7 @@ export const respondToAgentCard = async (
         },
       });
       if (claimed.count !== 1) throw new ResumeRollback("run_not_waiting");
+      const executorReview = await issueExecutorReview(tx, prepared.card, userId);
       const temporaryLogin = readTemporaryBrowserLogin(prepared.card.browserLogin);
       if (temporaryLogin) {
         // A temporary-login card cannot resume a run until its exact private
@@ -346,6 +374,7 @@ export const respondToAgentCard = async (
             where: { id: prepared.card.id },
           });
           return {
+            executorReview,
             replyMetadata,
             responseMessageId: message.id,
             responseRestricted: prepared.card.message.basisScopes.length > 0,
@@ -354,19 +383,25 @@ export const respondToAgentCard = async (
           };
         }
       }
-      await enqueueOrchestrateDecide(
-        tx,
-        buildCardOrchestrationPayload({
-          actorContext: input.actorContext,
-          agent: prepared.card.agent,
-          channelId: prepared.card.channelId,
-          content: prepared.content,
-          messageId: message.id,
-          threadId: prepared.card.threadId,
-        }),
-        `orchestrate:card:${prepared.card.id}`,
-      );
+      // A review card's press is not an answer to its agent: it opens a review
+      // only this person can finish, so there is nothing for the agent to say
+      // and waking it would only have it repeat "confirm it there".
+      if (!executorReview) {
+        await enqueueOrchestrateDecide(
+          tx,
+          buildCardOrchestrationPayload({
+            actorContext: input.actorContext,
+            agent: prepared.card.agent,
+            channelId: prepared.card.channelId,
+            content: prepared.content,
+            messageId: message.id,
+            threadId: prepared.card.threadId,
+          }),
+          `orchestrate:card:${prepared.card.id}`,
+        );
+      }
       return {
+        executorReview,
         replyMetadata,
         responseMessageId: message.id,
         responseRestricted: prepared.card.message.basisScopes.length > 0,
@@ -410,6 +445,7 @@ export const respondToAgentCard = async (
   });
   return {
     cardId: prepared.card.id,
+    ...(outcome.executorReview ? { executorReview: outcome.executorReview } : {}),
     responseMessageId: outcome.responseMessageId,
     status: "resolved",
   };

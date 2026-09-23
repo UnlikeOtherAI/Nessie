@@ -65,3 +65,28 @@ export const AgentCardRespondBodySchema = z
   })
   .strict()
 export type AgentCardRespondBody = z.infer<typeof AgentCardRespondBodySchema>
+
+/**
+ * What a committed press answers, to the presser alone.
+ *
+ * `executorReview` is present only for a system-authored executor review card:
+ * the confirmation token minted for this presser at the press, so the review
+ * it opens can confirm. It lives in this response and in the presser's memory
+ * — never in the card row, the message, realtime, an address or a model's
+ * context.
+ */
+export const AgentCardRespondResultSchema = z
+  .object({
+    cardId: z.string().uuid(),
+    responseMessageId: z.string().uuid(),
+    status: z.literal('resolved'),
+    executorReview: z
+      .object({
+        accessChangeId: z.string().uuid(),
+        confirmationToken: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+export type AgentCardRespondResult = z.infer<typeof AgentCardRespondResultSchema>

@@ -21,16 +21,18 @@ import { useExecutorAccess } from '../../../facades/executors/hooks'
 /**
  * The two one-time confirmations, as modals.
  *
- * Both are reached two ways — prepared on the executor's own detail screen, or
- * opened from a Personal Assistant link that names the change in the query and
- * carries its token in the fragment — so both live in components the list page
- * and the detail page can each mount. The token is never put in the address
- * these components control: it arrives as a prop and stays in memory.
+ * They are reached from more than one place — prepared on the executor's own
+ * detail screen, opened from a link that names the change in the query and
+ * carries its token in the fragment, and (for an access change) opened in chat
+ * by the confirmation card an assistant posts, whose press mints the token for
+ * the person pressing it — so both live in components any of those can mount.
+ * The token is never put in the address these components control: it arrives
+ * as a prop and stays in memory.
  */
 
 const MISSING_ACCESS_TOKEN =
-  'The confirmation token is missing. Recreate the change from this page or reopen the '
-  + 'Personal Assistant review link.'
+  'The confirmation token is missing. Recreate the change from this page, or ask the '
+  + 'assistant to prepare it again.'
 
 const MISSING_PROMOTION_TOKEN =
   'The confirmation token is missing. Prepare the promotion again from your reviewed drafts.'

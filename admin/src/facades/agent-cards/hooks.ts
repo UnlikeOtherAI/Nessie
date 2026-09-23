@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { AgentCardPresenter } from '@nessie/schemas'
+import type { AgentCardPresenter, AgentCardRespondResult } from '@nessie/schemas'
 
 import { threadKeys } from '../threads/keys'
 import { agentCardKeys } from './keys'
@@ -38,7 +38,7 @@ export const useRespondToAgentCard = () => {
 
   return useMutation({
     mutationFn: (input: RespondToAgentCardInput) =>
-      apiClient.post<{ cardId: string; responseMessageId: string; status: string }>(
+      apiClient.post<AgentCardRespondResult>(
         `/api/agent-cards/${input.cardId}/respond`,
         {
           actionKey: input.actionKey,

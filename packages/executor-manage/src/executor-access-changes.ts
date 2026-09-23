@@ -296,6 +296,39 @@ export const getExecutorAccessChangeForUser = async (
   }
 }
 
+/**
+ * A fresh confirmation token for a pending access change, minted for the one
+ * person who prepared it.
+ *
+ * The token is a secret no model may see — the secret scanner rightly redacts
+ * it from tool output, which left the chat's review link dead. A change
+ * prepared from a conversation therefore posts a review card that stores only
+ * the change's id, and pressing that card mints the token here, inside the
+ * press's own transaction, for the presser alone. The stored hash is replaced,
+ * so a token minted earlier (at prepare time, and shown to nobody) stops
+ * working. Confirming is untouched: it still needs this token, the same actor,
+ * an unexpired pending change and fresh verification where the change needs
+ * it. Null when there is nothing this person may be handed a token for.
+ */
+export const issueExecutorAccessChangeConfirmationToken = async (
+  tx: Prisma.TransactionClient,
+  input: { accessChangeId: string; actorUserId: string; organizationId: string },
+): Promise<string | null> => {
+  const confirmationToken = randomBytes(32).toString('base64url')
+  const issued = await tx.executorContinuation.updateMany({
+    where: {
+      actorUserId: input.actorUserId,
+      executor: { organizationId: input.organizationId },
+      expiresAt: { gt: new Date() },
+      id: input.accessChangeId,
+      status: 'pending',
+      subject: 'access_change',
+    },
+    data: { confirmationTokenHash: hashExecutorContinuationValue(confirmationToken) },
+  })
+  return issued.count === 1 ? confirmationToken : null
+}
+
 export const confirmExecutorAccessChange = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,

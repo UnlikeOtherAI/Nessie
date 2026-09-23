@@ -233,7 +233,8 @@ and explicitly confirm the review. Activating a revision requires fresh human
 verification. Neither an agent nor the Personal Assistant can activate a
 proposal, and no direct descriptor-review endpoint bypasses this confirmation
 path. The Personal Assistant can inspect the same signature-free proposal
-summary for a manager and prepare a review link, but it cannot submit the
+summary for a manager and prepare the review — a confirmation card in the
+conversation whose press opens it for that person — but it cannot submit the
 confirmation on the person's behalf.
 
 The local file boundary is deliberately **one canonical workspace root**, not

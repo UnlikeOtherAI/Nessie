@@ -266,9 +266,9 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     // The machines an agent can be given work on. Reading them is what makes
     // "which of my executors should it use" answerable at all; the grant is
     // whole-suite and still ends in the person's own confirmation with fresh
-    // verification on the Executors page. No `identityDelegatedOnly` on any of
-    // the three: that flag removes the Personal Assistant's arm, and the PA
-    // keeps its executor tools.
+    // verification, in the review its confirmation card opens. No
+    // `identityDelegatedOnly` on any of the three: that flag removes the
+    // Personal Assistant's arm, and the PA keeps its executor tools.
     executor_agent_grant_prepare: true,
     executor_inspect: true,
     executor_list: true,

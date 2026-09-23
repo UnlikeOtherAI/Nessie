@@ -130,3 +130,18 @@ nothing in it may be a secret or an instruction addressed to the model.
   two links. A later call reads the id from the link's last segment. "Quote the
   portrait reason word for word" and "link what you made, never a raw id" moved
   into the Designer's persona (`global-agent-blueprints.ts`).
+- **An executor grant is confirmed from a card, not a link (F6).**
+  `executor_agent_grant_prepare` answered with
+  `/agents/executors?accessChange=<id>#confirmationToken=<token>`. The secret
+  scanner redacts every tool result before the model reads it, rightly, so the
+  link the Designer posted carried `PkbZ••••` and the review it opened said the
+  token was missing. The prepare tools now post a system-authored confirmation
+  card in the requester's own DM that stores only the access-change id and
+  answers only that person; pressing Review mints the token server-side, inside
+  the press, for that same person, and opens the existing review dialog with
+  it. The model is told only that a confirmation card was posted. The
+  access-change rules are unchanged — same actor, the token, fresh verification
+  for an allow — and nothing in section 1's grant model moves: a person still
+  confirms every executor grant. Mechanics:
+  [agent cards](../standards/agent-cards.md) → "An executor review card holds
+  an id".

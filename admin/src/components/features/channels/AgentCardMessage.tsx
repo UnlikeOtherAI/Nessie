@@ -1,4 +1,9 @@
-import { AgentCardMessageMetadataSchema, BROWSER_VIEWPORT_PRESETS, type AgentCardPresenter } from '@nessie/schemas'
+import {
+  AgentCardMessageMetadataSchema,
+  BROWSER_VIEWPORT_PRESETS,
+  type AgentCardPresenter,
+  type AgentCardRespondResult,
+} from '@nessie/schemas'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -10,6 +15,7 @@ import {
 } from '../../../facades/browser-cloud/hooks'
 import { FormError } from '../../shared/FormActions'
 import { AppIcon } from '../apps/AppIcon'
+import { ExecutorAccessChangeDialog } from '../executors/ExecutorReviewDialogs'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentCardBlocks, AgentCardProse, type AgentCardFieldValue } from './AgentCardBlocks'
 import { ChatCardShell } from './ChatCardShell'
@@ -89,6 +95,12 @@ export const AgentCardMessage = ({
   // Secrets live only here, are never seeded from the server, and are dropped
   // the moment the press succeeds.
   const [secrets, setSecrets] = useState<Record<string, string>>({})
+  // An executor review card's press answers with a confirmation token minted
+  // for this person. It opens the one review dialog the Executors page uses,
+  // right here, and lives only in this state: never an address, never the
+  // query cache, gone when the review closes.
+  const [executorReview, setExecutorReview] =
+    useState<NonNullable<AgentCardRespondResult['executorReview']> | null>(null)
 
   if (!cardId) return null
   const card = query.data
@@ -120,9 +132,10 @@ export const AgentCardMessage = ({
         onError: (error) => {
           setSubmissionError(error.message)
         },
-        onSuccess: () => {
+        onSuccess: (result) => {
           setSecrets({})
           setSubmissionError(null)
+          if (result.executorReview) setExecutorReview(result.executorReview)
           if (href) {
             navigate(destinationWithCard(href, card.cardId), {
               state: { agentCardFormValues: effectiveValues, agentCardId: card.cardId },
@@ -290,6 +303,19 @@ export const AgentCardMessage = ({
           </span>
         )}
       </footer>
+      {executorReview ? (
+        // The dialog portals out of the card, but React still bubbles its
+        // clicks through here, and the whole card is a click target for the
+        // thread.
+        <div onClick={(event) => event.stopPropagation()}>
+          <ExecutorAccessChangeDialog
+            accessChangeId={executorReview.accessChangeId}
+            confirmationToken={executorReview.confirmationToken}
+            onClose={() => setExecutorReview(null)}
+            open
+          />
+        </div>
+      ) : null}
     </ChatCardShell>
   )
 }

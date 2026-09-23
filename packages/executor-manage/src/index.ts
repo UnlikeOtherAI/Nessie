@@ -110,6 +110,7 @@ export {
 export {
   confirmExecutorAccessChange,
   getExecutorAccessChangeForUser,
+  issueExecutorAccessChangeConfirmationToken,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   requiresFreshExecutorVerification,

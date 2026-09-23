@@ -168,6 +168,32 @@ this standard, not an exception to it.
   answers 200 whenever the transaction committed, and `useRespondToAgentCard`
   refreshes the card and its thread when the press settles, success or not, so
   a pressed card never looks un-pressed.
+- **An executor review card holds an id, and its press mints the token.** A
+  prepared executor access change (`executor_agent_grant_prepare` and every
+  other `executor_*` prepare tool, `worker/src/run/pa-tools/executors.ts`) used
+  to come back as a review link with `#confirmationToken=` in the fragment. The
+  token is a secret no model may see, the secret scanner redacted it from the
+  tool output, and the link the Designer posted opened a review that could not
+  confirm. The tool now posts a system-authored card — server-written copy,
+  one `review` action, `respondentUserIds` the preparer alone, expiring with
+  the change — through the same `postAgentCard` door `card_post` uses
+  (`worker/src/run/pa-tools/agent-card-post.ts`), and the row stores only
+  `AgentCard.executorAccessChangeId`. Its press mints a fresh token inside the
+  press transaction (`issueExecutorAccessChangeConfirmationToken`,
+  `@nessie/executor-manage`) for the continuation's own actor while it is
+  pending and unexpired, replacing the stored hash so the prepare-time token —
+  never shown to anyone — is dead. The token travels once, in the presser's
+  own press response (`AgentCardRespondResult.executorReview`), and the
+  renderer opens the existing `ExecutorAccessChangeDialog` in place with it
+  held in component state: never the row, the message, realtime, an address or
+  a model's context. Confirming is untouched — same actor, the token, fresh
+  verification where the change needs it. A change that is no longer this
+  person's to review refuses the press with `409 EXECUTOR_ACCESS_CHANGE_STALE`
+  and leaves the card open. The press is still a message, but it does not wake
+  the agent: it opens a review only the person can finish. Pinned by
+  `api/test/agent-card-executor-review.test.ts`,
+  `worker/test/db/executor-review-card.test.ts` and the executor-agents
+  fixture suite.
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the

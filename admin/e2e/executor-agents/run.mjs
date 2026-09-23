@@ -15,12 +15,44 @@ const makeAgent = (number, name) => ({
   assigned: number !== 2, allowedOperationKeys: number === 1 ? [] : ['file.read', 'command.run'],
 })
 
+// The confirmation card an assistant posts in chat after preparing a change.
+// It holds only the change's id; the press is what mints a token, for the
+// presser, and the card opens the same review dialog with it (F6).
+const reviewCardId = '55555555-5555-4555-8555-555555555555'
+const cardMintedToken = `card-${'c'.repeat(38)}`
+const reviewCard = (pressed) => ({
+  action: pressed ? 'none' : 'respond',
+  actions: [{ key: 'review', label: 'Review', style: 'primary', submits: true }],
+  agentId: uuid(900),
+  agentName: 'Agent Designer',
+  blocks: [{
+    markdown: 'Review opens exactly what changes. Nothing is applied until you confirm it there, '
+      + 'with your password. This expires in 10 minutes.',
+    type: 'text',
+  }],
+  browserLogin: null,
+  cardId: reviewCardId,
+  expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  messageId: uuid(901),
+  resolution: pressed ? {
+    actionKey: 'review', actionLabel: 'Review', at: new Date().toISOString(), byName: 'Ondrej Rafaj',
+    byUserId: uuid(902), secrets: {}, values: {},
+  } : null,
+  service: null,
+  status: pressed ? 'resolved' : 'open',
+  subtitle: 'Give an agent access to this executor',
+  threadId: uuid(903),
+  title: 'Confirm an executor change',
+  waitingFor: pressed ? [] : ['Ondrej Rafaj'],
+})
+
 const fixtureApi = () => {
   const roster = Array.from({ length: 26 }, (_, index) => makeAgent(index + 1, `Agent ${String(index + 1).padStart(2, '0')}`))
   const candidates = Array.from({ length: 26 }, (_, index) => makeAgent(index + 101, `Candidate ${String(index + 1).padStart(2, '0')}`))
   candidates[2].name = 'Personal Assistant'
   const prepared = new Map()
   const requests = []
+  let cardPressed = false
   let failure = null
   let verification = 'password'
   let hiddenIdentity = null
@@ -51,6 +83,30 @@ const fixtureApi = () => {
       if (failure === url.pathname) {
         failure = null
         return send({ error: { code: 'TEMPORARY', message: 'Please try again.' } }, 503)
+      }
+      if (url.pathname === `/api/agent-cards/${reviewCardId}`) return send({ data: reviewCard(cardPressed) })
+      if (url.pathname === `/api/agent-cards/${reviewCardId}/respond`) {
+        assert.deepEqual(body, { actionKey: 'review', secrets: {}, values: {} },
+          'a review press carries no value and no secret — the card has no inputs')
+        assert.equal(cardPressed, false, 'the card is claimed once')
+        cardPressed = true
+        // The server's side of the press: a pending change this person
+        // prepared from chat, and a token minted for them at this moment.
+        const accessChangeId = uuid(2000)
+        prepared.set(accessChangeId, {
+          change: { kind: 'agent_executor_grant', agentId: uuid(102), state: 'allowed' },
+          receipt: {
+            accessChangeId, confirmationToken: cardMintedToken, executorId,
+            expiresAt: new Date(Date.now() + 600_000).toISOString(), requiresFreshVerification: true,
+          },
+          verificationMethod: 'password',
+        })
+        return send({ data: {
+          cardId: reviewCardId,
+          executorReview: { accessChangeId, confirmationToken: cardMintedToken },
+          responseMessageId: uuid(904),
+          status: 'resolved',
+        } })
       }
       if (url.pathname === `/api/executors/${executorId}/agents`) return send(paginate(roster, url))
       if (url.pathname === `/api/executors/${executorId}/agent-candidates`) return send(paginate(candidates, url))
@@ -278,9 +334,34 @@ const evaluate = async (browser, viewport) => {
     assert.equal(api.roster.length, 26)
     assert.equal(api.requests.filter((entry) => entry.path === '/api/users').length, 0,
       'Agent changes must not query the people directory')
+
+    // F6: a change prepared in chat is confirmed from the card the assistant
+    // posted. The card never held a token; its Review press is answered with
+    // one minted for the presser, and the same review dialog confirms with it.
+    const card = page.getByRole('region', { name: 'Chat confirmation card' }).getByTestId('agent-card')
+    await card.scrollIntoViewIfNeeded()
+    await visible(card.getByText('Confirm an executor change', { exact: true }))
+    await visible(card.getByText('Give an agent access to this executor', { exact: true }))
+    assert.match(await card.innerText(), /Nothing is applied until you confirm it there, with your password/)
+    await page.screenshot({ path: resolve(screenshots, `review-card-${viewport.width}.png`), fullPage: true })
+    await card.getByRole('button', { name: 'Review', exact: true }).click()
+    await visible(review)
+    await visible(review.getByText('Candidate 02 will be able to use this machine’s approved permissions.'))
+    assert.equal(await review.getByText('The confirmation token is missing', { exact: false }).count(), 0)
+    assert.equal(page.url().includes(cardMintedToken), false, 'the minted token never enters the address')
+    await page.screenshot({ path: resolve(screenshots, `review-card-dialog-${viewport.width}.png`), fullPage: true })
+    await review.getByLabel('Confirm with current password').fill('fixture-proof')
+    await review.getByRole('button', { name: 'Allow access', exact: true }).click()
+    await absent(review)
+    // The stub asserted the confirm carried the press's token; the grant landed.
+    const confirmCall = api.requests.find((entry) => entry.path === `/api/executor-access-changes/${uuid(2000)}/confirm`)
+    assert.equal(confirmCall?.body.confirmationToken, cardMintedToken)
+    assert.ok(api.roster.some((agent) => agent.agentId === uuid(102)), 'confirming from chat grants the agent')
+    await visible(card.getByText(/^Review by Ondrej Rafaj/))
+    assert.equal(await card.getByRole('button', { name: 'Review', exact: true }).count(), 0)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
     assert.deepEqual(errors, [])
-    console.log(`Executor agents ${viewport.width}px: pagination, search, add, reject, confirm, remove and retry passed`)
+    console.log(`Executor agents ${viewport.width}px: pagination, search, add, reject, confirm, remove, retry and the chat confirmation card passed`)
   } catch (error) {
     await page.screenshot({ path: resolve(screenshots, `failure-${viewport.width}.png`), fullPage: true })
     console.error({ errors, browserMessages, body: (await page.locator('body').innerText()).slice(0, 3000) })

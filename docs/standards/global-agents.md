@@ -139,7 +139,10 @@ file is the rule**.
   one. A run with no loaded conversation fails closed. What the Designer reads
   through it is `listVisibleExecutors`' own entitlement — the person's, never
   wider — and the reviewed policy and local MCP report stay the administrator's
-  read they already were.
+  read they already were. What it prepares is confirmed from a confirmation
+  card in that same DM, never from a link: the card holds only the change's id
+  and its press mints the token for the person pressing it
+  ([agent-cards.md](agent-cards.md) → "An executor review card holds an id").
 
 - **A new agent lives where the person puts it, or nowhere yet.** Asked for a
   CTO, the Designer made a channel for it that nobody had asked for: its

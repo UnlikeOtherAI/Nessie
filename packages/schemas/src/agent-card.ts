@@ -17,10 +17,12 @@ export { AgentCardServiceSchema, type AgentCardService } from './agent-card-serv
 export {
   AgentCardMessageMetadataSchema,
   AgentCardRespondBodySchema,
+  AgentCardRespondResultSchema,
   AgentCardResponseMetadataSchema,
   isAgentCardResponseMessage,
   type AgentCardMessageMetadata,
   type AgentCardRespondBody,
+  type AgentCardRespondResult,
   type AgentCardResponseMetadata,
 } from './agent-card-message-schema.js'
 
