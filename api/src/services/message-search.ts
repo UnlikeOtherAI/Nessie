@@ -1,9 +1,17 @@
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
+import { toVectorLiteral } from '@nessie/retrieval'
 import { buildPrefixTsQuery } from '@nessie/runtime'
-import { parseAgentId, parseChannelId, parseThreadId } from '@nessie/schemas'
+import {
+  EMBEDDING_DIMENSIONS,
+  parseAgentId,
+  parseChannelId,
+  parseThreadId,
+} from '@nessie/schemas'
 
-import type { MessageSearchResult } from '../contracts/messaging.js'/**
+import type { MessageSearchResult } from '../contracts/messaging.js'
+
+/**
  * Full-text search across the channels a caller can see.
  *
  * A separate read from the thread feed rather than a mode of it: it spans
@@ -49,6 +57,10 @@ export const searchMessages = async (
     before?: string
     after?: string
     limit?: number
+    /** Semantic is hybrid: vector and full-text ranks are fused. */
+    mode?: 'fulltext' | 'semantic'
+    embeddingModel?: string | null
+    queryEmbedding?: number[] | null
   },
 ): Promise<MessageSearchResult[]> => {
   const limit = Math.min(input.limit ?? 25, 100)
@@ -84,13 +96,12 @@ export const searchMessages = async (
     return []
   }
 
-  const conditions: Prisma.Sql[] = [
+  const eligibility: Prisma.Sql[] = [
     Prisma.sql`m."deleted_at" IS NULL`,
     Prisma.sql`m."role" <> 'system'`,
     Prisma.sql`t."channel_id" IN (${Prisma.join(
       channelIds.map((id) => Prisma.sql`${id}::uuid`),
     )})`,
-    Prisma.sql`to_tsvector('english', m."content") @@ to_tsquery('english', ${prefixQuery})`,
     // Fail closed on disclosure. Search returns content snippets scoped by
     // channel membership alone, and unlike the thread list it has nowhere to
     // render a withheld placeholder — so anything carrying a basis is excluded
@@ -102,41 +113,93 @@ export const searchMessages = async (
     )`,
   ]
   if (input.senderId) {
-    conditions.push(
+    eligibility.push(
       Prisma.sql`(m."user_id" = ${input.senderId}::uuid OR m."agent_id" = ${input.senderId}::uuid)`,
     )
   }
   if (input.before) {
     const beforeDate = new Date(input.before)
     if (!Number.isNaN(beforeDate.getTime())) {
-      conditions.push(Prisma.sql`m."created_at" < ${beforeDate}`)
+      eligibility.push(Prisma.sql`m."created_at" < ${beforeDate}`)
     }
   }
   if (input.after) {
     const afterDate = new Date(input.after)
     if (!Number.isNaN(afterDate.getTime())) {
-      conditions.push(Prisma.sql`m."created_at" > ${afterDate}`)
+      eligibility.push(Prisma.sql`m."created_at" > ${afterDate}`)
     }
   }
 
+  const vector = input.mode === 'semantic'
+    ? toVectorLiteral(input.queryEmbedding ?? null)
+    : null
+  const candidateLimit = Math.min(limit * 4, 400)
+
   const rows = await prisma.$queryRaw<MessageSearchRow[]>(Prisma.sql`
+    WITH eligible AS (
+      SELECT
+        m."id",
+        m."thread_id",
+        c."id" AS channel_id,
+        c."label" AS channel_label,
+        m."content",
+        m."created_at",
+        m."agent_id",
+        m."user_id",
+        COALESCE(u."display_name", a."name") AS author_name,
+        to_tsvector('english', m."content") AS search_document
+      FROM "messages" m
+      JOIN "threads" t ON t."id" = m."thread_id"
+      JOIN "channels" c ON c."id" = t."channel_id"
+      LEFT JOIN "users" u ON u."id" = m."user_id"
+      LEFT JOIN "agents" a ON a."id" = m."agent_id"
+      WHERE ${Prisma.join(eligibility, ' AND ')}
+    ), lexical AS (
+      SELECT e."id", row_number() OVER (
+        ORDER BY ts_rank_cd(e.search_document, query) DESC, e."created_at" DESC, e."id"
+      ) AS rank
+      FROM eligible e, to_tsquery('english', ${prefixQuery}) query
+      WHERE e.search_document @@ query
+      ORDER BY ts_rank_cd(e.search_document, query) DESC, e."created_at" DESC, e."id"
+      LIMIT ${candidateLimit}
+    ), semantic AS (
+      SELECT e."id", row_number() OVER (
+        ORDER BY me."embedding" <=> ${vector}::vector, e."created_at" DESC, e."id"
+      ) AS rank
+      FROM eligible e
+      JOIN "message_embeddings" me ON me."message_id" = e."id"
+      WHERE ${vector}::vector IS NOT NULL
+        AND me."status" = 'indexed'
+        AND me."embedding" IS NOT NULL
+        AND me."embedding_model" = ${input.embeddingModel ?? null}
+        AND me."dims" = ${EMBEDDING_DIMENSIONS}
+        AND 1 - (me."embedding" <=> ${vector}::vector) >= 0.3
+      ORDER BY me."embedding" <=> ${vector}::vector, e."created_at" DESC, e."id"
+      LIMIT ${candidateLimit}
+    ), ranked AS (
+      SELECT
+        COALESCE(lexical."id", semantic."id") AS id,
+        lexical.rank AS lexical_rank,
+        semantic.rank AS semantic_rank
+      FROM lexical FULL OUTER JOIN semantic ON semantic."id" = lexical."id"
+    )
     SELECT
-      m."id",
-      m."thread_id",
-      c."id" AS channel_id,
-      c."label" AS channel_label,
-      m."content",
-      m."created_at",
-      m."agent_id",
-      m."user_id",
-      COALESCE(u."display_name", a."name") AS author_name
-    FROM "messages" m
-    JOIN "threads" t ON t."id" = m."thread_id"
-    JOIN "channels" c ON c."id" = t."channel_id"
-    LEFT JOIN "users" u ON u."id" = m."user_id"
-    LEFT JOIN "agents" a ON a."id" = m."agent_id"
-    WHERE ${Prisma.join(conditions, ' AND ')}
-    ORDER BY m."created_at" DESC
+      e."id",
+      e."thread_id",
+      e.channel_id,
+      e.channel_label,
+      e."content",
+      e."created_at",
+      e."agent_id",
+      e."user_id",
+      e.author_name
+    FROM ranked r
+    JOIN eligible e ON e."id" = r.id
+    ORDER BY
+      (COALESCE(1.0 / (60 + r.lexical_rank), 0)
+        + COALESCE(1.0 / (60 + r.semantic_rank), 0)) DESC,
+      e."created_at" DESC,
+      e."id"
     LIMIT ${limit}
   `)
 

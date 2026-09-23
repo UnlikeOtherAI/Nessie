@@ -203,8 +203,9 @@ test('the card press announces through the API scope rule, not a hand-built pair
   // — `publishMessageReply` runs the announcement through
   // `buildChannelRealtimeScopes`, which drops it. See
   // `agent-card-realtime-scope.test.ts` for the behavioural proof.
+  // The press announces from its post-commit module.
   const source = readFileSync(
-    new URL('../src/services/agent-card-response.ts', import.meta.url),
+    new URL('../src/services/agent-card-response-announce.ts', import.meta.url),
     'utf8',
   )
   assert.match(source, /publishMessageReply/)

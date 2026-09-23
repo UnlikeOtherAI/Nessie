@@ -1240,6 +1240,28 @@ type ControlCommandDefinition = {
   - requirements doc: [knowledge-base-requirements.md](./knowledge-base-requirements.md),
   - one-file tool family definition patterns: [agent-tool-capabilities](./agent-tool-capabilities/02-checkbox-ui-api.md).
 
+### Global search (implemented 2026-09-23)
+
+- The top-bar control is a grouped, keyboard-operable autocomplete and `/search`
+  is its full result surface. Both use the same presentation map, ordering, exact
+  deep links, per-section markers, and literal match highlighting. The current
+  corpus is channels, projects, tickets, messages, knowledge pages and extracted
+  document uploads, people, agents, apps, and agent memory.
+- `Full text` is the deterministic mode. `Semantic` is hybrid rather than
+  vector-only: messages, tickets, knowledge, and memory fuse lexical and vector
+  ranks, while structural records such as channels, projects, people, agents,
+  and apps retain literal matching. If embedding inference is unavailable, the
+  lexical arm still answers.
+- Search reach is computed from the caller's entitlement, never an ambient
+  project/team claim. Message snippets fail closed when a disclosure basis is
+  present; ticket candidates pass their run-derived disclosure predicate before
+  a title is returned; knowledge and memory keep their existing ACL filters.
+  Protected projects and standard channels may return only their limited
+  discovery card. Direct messages and system rooms are participant-only.
+- Queries are debounced and require two characters. Autocomplete returns at
+  most four results per section, preserves partial results when one backend
+  fails, and never renders results for an older in-flight query.
+
 ## 13.4a) Remote worker execution CLI requirement
 
 - Add a first-class `RemoteWorker` concept for customer-owned execution clients on macOS, Windows, and Linux.

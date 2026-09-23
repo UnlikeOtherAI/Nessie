@@ -22,6 +22,7 @@ import {
 } from './executor-continuation-security.js'
 import { listLiveExecutorLeaseRefs, type ExecutorLeaseRef } from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { closeExecutorReviewCards } from './executor-review-cards.js'
 import { setExecutorAgentAccessInTransaction } from './executor-agent-access.js'
 import {
   reviewExecutorDescriptorInTransaction,
@@ -382,6 +383,12 @@ export const confirmExecutorAccessChange = async (
     if (claimed.count !== 1) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
     }
+    // Whichever door confirmed it, the chat card that opened its review is done.
+    await closeExecutorReviewCards(tx, {
+      actorUserId: continuation.actorUserId,
+      continuationId: continuation.id,
+      outcome: 'confirmed',
+    })
     // Whichever of the grant, roster, lifecycle or review paths the change
     // takes may end conversation leases with its fence. The executor lock is
     // held throughout, so the live set before and after differs by exactly
@@ -441,5 +448,10 @@ export const rejectExecutorAccessChange = async (
   if (rejected.count !== 1) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
   }
+  await closeExecutorReviewCards(tx, {
+    actorUserId: continuation.actorUserId,
+    continuationId: continuation.id,
+    outcome: 'rejected',
+  })
   return { executorId: continuation.executorId }
 })

@@ -50,13 +50,43 @@ test('the Channels sidebar adopts the compact guided tree geometry', () => {
   assert.match(projects, /className="sidebar-project-children"/)
   assert.match(
     styles,
-    /\.admin-sidebar-nav \.sidebar-project-children\s*\{[\s\S]*?border-left: 1px solid var\(--sep\);/,
+    /\.admin-sidebar-nav \.admin-sidebar-scroll\s*\{[\s\S]*?padding: 14px 16px 14px 4px;/,
   )
+  const projectChildrenStart = styles.indexOf('.admin-sidebar-nav .sidebar-project-children {')
+  const projectChildrenRule = styles.slice(
+    projectChildrenStart,
+    styles.indexOf('}', projectChildrenStart),
+  )
+  assert.notEqual(projectChildrenStart, -1)
+  assert.match(projectChildrenRule, /margin-left: 21px;/)
+  assert.match(projectChildrenRule, /padding-left: 6px;/)
+  assert.match(projectChildrenRule, /border-left: 1px solid var\(--sep\);/)
   assert.match(
     styles,
     /\.admin-sidebar-nav \.admin-sb-item\.sidebar-threads\s*\{[\s\S]*?min-height: 32px;[\s\S]*?padding: 0 10px;/,
   )
   assert.match(styles, /\.admin-sidebar-nav \.sidebar-project-tile\s*\{[\s\S]*?padding: 0 6px 0 18px;/)
+})
+
+test('focus mode transitions every menu background through one palette owner', () => {
+  const styles = readSource('../src/styles.css')
+  const transitionStart = styles.indexOf('/* The value changes happen on the palette scopes')
+  const transitionEnd = styles.indexOf('/* Nessie\'s navy navigation.', transitionStart)
+
+  assert.notEqual(transitionStart, -1)
+  assert.notEqual(transitionEnd, -1)
+  const transitionRule = styles.slice(transitionStart, transitionEnd)
+  assert.match(
+    transitionRule,
+    /\.admin-frame \.phone-navigation-screen aside\[class~='bg-\[color:var\(--sb\)\]'\]/,
+  )
+  assert.match(
+    transitionRule,
+    /\.admin-overlay-root aside\[class~='bg-\[color:var\(--sb\)\]'\]/,
+  )
+  assert.match(transitionRule, /--sb 300ms var\(--easing-standard\)/)
+  assert.doesNotMatch(transitionRule, /background-color 300ms/)
+  assert.doesNotMatch(transitionRule, /\.sidebar-tree-panel/)
 })
 
 test('Channels and Knowledge reuse the sidebar tree presentation primitives', () => {

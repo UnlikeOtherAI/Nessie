@@ -1,8 +1,11 @@
 import {
   constrainScopesToDestination,
+  constrainScopesToProjectWrite,
+  isWithinProjectWriteScopes,
   loadThoughtDisclosureLineage,
   resolveAccessibleScopes,
   searchAndLogThoughtsInScopes,
+  type ScopeRef,
   type ScopeResolutionMode,
   type SearchResult,
   type ThoughtDisclosureLineage,
@@ -108,6 +111,36 @@ export const admitRememberedThoughtLineage = async (
 }
 
 /**
+ * Every scope a recalled thought brings into the run: its audience, and each
+ * private conversation it was captured from, which the sink records as that
+ * conversation's channel scope.
+ */
+export const thoughtLineageScopes = (lineage: ThoughtDisclosureLineage): ScopeRef[] => [
+  ...(lineage.audienceId && lineage.audienceType
+    ? [{ scopeId: lineage.audienceId, scopeType: lineage.audienceType }]
+    : []),
+  ...lineage.sources.map((source) => ({ scopeId: source.sourceChannelId, scopeType: 'channel' })),
+]
+
+/**
+ * A contained run that holds project-delegated write tools recalls only what
+ * every project reader already has (`constrainScopesToProjectWrite`).
+ *
+ * The project write gate refuses a run holding any channel, team or user
+ * source, so a memory the requester's private DM fed — admitted because its
+ * audience is the organisation — used to shut every ticket write for the rest
+ * of the run, silently. Narrowing recall for exactly these runs keeps the gate
+ * as it is: the run simply does not remember that material. A run without
+ * write tools, and a delegate in its own home, recall as they always did.
+ */
+export const requiresProjectWriteRecallContainment = (
+  facts: DelegatedRunFacts,
+  holdsProjectWriteTools: boolean,
+  containmentEnabled = isContainmentEnabled(),
+): boolean =>
+  holdsProjectWriteTools && requiresMemoryDestinationContainment(facts, containmentEnabled)
+
+/**
  * A thought that vanished after search has no durable provenance to admit.
  * Exclude it before it reaches model context rather than treating the missing
  * row as an unrestricted memory.
@@ -130,6 +163,8 @@ export const retrieveRelevantMemories = async (
   payload: RunExecuteJobPayload,
   prompt: string,
   liveEntitlements?: LiveEntitlements,
+  /** Whether the run was lent a project-delegated tool that writes. */
+  options: { holdsProjectWriteTools?: boolean } = {},
 ): Promise<SearchResult[]> => {
   const effectiveUserId =
     payload.actorContext.actionContext.effectiveUserId
@@ -192,14 +227,20 @@ export const retrieveRelevantMemories = async (
     // A delegate in its own home is exempt: it acts as that person, in a DM
     // whose only human is that person, and their private memories are the point.
     // See docs/plans/2026-08-11-disclosure-boundaries-build.md.
-    const scopes =
-      requiresMemoryDestinationContainment(delegationFacts)
-        ? constrainScopesToDestination(reachableScopes, {
-          channelId: context.channel.id,
-          organizationId: context.channel.organizationId,
-          projectId: context.channel.projectId,
-          teamId: context.channel.teamId,
-        })
+    const destination = {
+      channelId: context.channel.id,
+      organizationId: context.channel.organizationId,
+      projectId: context.channel.projectId,
+      teamId: context.channel.teamId,
+    }
+    const projectWrite = requiresProjectWriteRecallContainment(
+      delegationFacts,
+      options.holdsProjectWriteTools === true,
+    )
+    const scopes = projectWrite
+      ? constrainScopesToProjectWrite(reachableScopes, destination)
+      : requiresMemoryDestinationContainment(delegationFacts)
+        ? constrainScopesToDestination(reachableScopes, destination)
         : reachableScopes
 
     if (scopes.audienceTypes.length === 0) {
@@ -243,10 +284,17 @@ export const retrieveRelevantMemories = async (
     // later materialises is computed from this sink, so a memory that reached
     // the model is provenance even if the model never quotes it.
     if (retained.length > 0) {
-      const lineages = await loadThoughtDisclosureLineage(
+      const loaded = await loadThoughtDisclosureLineage(
         deps.searchConfig.pool,
         retained.map((result) => result.id),
       )
+      // The search already narrowed the audience; a thought captured from a
+      // private conversation still carries that conversation, so a
+      // project-write run judges the whole lineage before admitting it.
+      const lineages = projectWrite
+        ? loaded.filter((lineage) =>
+          isWithinProjectWriteScopes(thoughtLineageScopes(lineage), destination))
+        : loaded
       const retainedWithLineage = retainThoughtsWithLineage(retained, lineages)
       const returnedThoughtIds = new Set(retainedWithLineage.map((result) => result.id))
       await admitRememberedThoughtLineage(

@@ -160,6 +160,10 @@ export type RunContext = {
   executorLease?: ExecutorLeaseCarryOutcome
   run: {
     id: string
+    /** Durable trigger identity for last-moment scheduled-run admission. */
+    triggerId?: string | null
+    /** Delivery to mark failed when queued authority is revoked before start. */
+    triggerDeliveryId?: string | null
     // Present only for a shared-channel PA presence. This is carried from the
     // durable Run row to every message/reaction write chokepoint.
     principalUserId?: string | null

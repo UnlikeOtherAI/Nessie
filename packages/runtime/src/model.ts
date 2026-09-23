@@ -9,6 +9,7 @@ import { createInferenceService } from './inference/service.js'
 import type {
   InferenceService,
   ModelProviderConfig,
+  NormalizedFinishReason,
   ProviderMessage,
 } from './inference/types.js'
 import type { LedgerAttribution, LedgerInvocation } from './ledger.js'
@@ -47,6 +48,17 @@ export type ModelOptions = {
   usage?: LedgerAttribution
 }
 
+/**
+ * A chat answer and why it ended. The text alone cannot tell an empty answer
+ * from a reasoning model that spent its whole budget thinking (`length`), a
+ * content filter, or a provider that ended without saying — and each of those
+ * is a different fix for whoever reads the error.
+ */
+export type ModelChatResult = {
+  finishReason?: NormalizedFinishReason
+  text: string
+}
+
 // No `model` here on purpose. Which model produces embeddings is a deployment
 // decision, not a per-call one: every vector in a pgvector column has to come
 // from the same model or cosine distance across them is meaningless. Callers
@@ -81,6 +93,8 @@ export type CreateModelClientOptions = {
 
 export interface ModelClient {
   chat(messages: ModelMessage[], options?: ModelOptions): Promise<string>
+  /** `chat`, with the provider's finish reason beside the text. */
+  chatResult(messages: ModelMessage[], options?: ModelOptions): Promise<ModelChatResult>
   chatJson<T = unknown>(messages: ModelMessage[], options?: ModelOptions): Promise<T>
   embed(text: string, options?: EmbedOptions): Promise<number[]>
   embedMany(texts: string[], options?: EmbedOptions): Promise<number[][]>
@@ -216,7 +230,7 @@ export const createModelClient = (
       ? buildPromptCacheKey(model ?? config.modelName ?? '', providerMessages, undefined)
       : undefined
 
-  const chat: ModelClient['chat'] = async (messages, options) => {
+  const chatResult: ModelClient['chatResult'] = async (messages, options) => {
     const attribution = resolveAttribution(options?.usage)
     const headers = await resolveHeaders(attribution, requestHeaders)
     const providerMessages = toProviderMessages(messages)
@@ -238,8 +252,14 @@ export const createModelClient = (
     }
     await ledger(result.invocations, attribution)
 
-    return result.outputText
+    return {
+      text: result.outputText,
+      ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+    }
   }
+
+  const chat: ModelClient['chat'] = async (messages, options) =>
+    (await chatResult(messages, options)).text
 
   const chatJson = async <T = unknown>(
     messages: ModelMessage[],
@@ -330,6 +350,7 @@ export const createModelClient = (
   return {
     chat,
     chatJson,
+    chatResult,
     close: () => {
       inferenceService.close()
       if (embeddingService !== inferenceService) {

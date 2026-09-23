@@ -301,6 +301,10 @@ export type MessageSearchResult = z.infer<typeof MessageSearchResultSchema>
 
 export const MessageSearchQuerySchema = z.object({
   query: z.string().min(1),
+  // Omitted keeps the channel-local search contract lexical. Global search
+  // names its mode explicitly so changing the UI preference cannot silently
+  // turn a deterministic lookup into a billed embedding request.
+  mode: z.enum(['fulltext', 'semantic']).optional(),
   channelId: ChannelIdSchema.optional(),
   senderId: z.string().uuid().optional(),
   before: z.string().min(1).optional(),

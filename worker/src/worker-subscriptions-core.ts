@@ -28,6 +28,8 @@ import {
   KnowledgeExtractJobPayloadSchema,
   MESSAGE_EMBED_TOPIC,
   MessageEmbedJobPayloadSchema,
+  TASK_EMBED_TOPIC,
+  TaskEmbedJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RUN_COMPLETION_FOLLOWUP_TOPIC,
@@ -56,6 +58,7 @@ import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { executeKnowledgeTransferJob } from './control/knowledge-transfer.js'
 import { executeMessageEmbedJob } from './control/message-embed.js'
+import { executeTaskEmbedJob } from './control/task-embed.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
 import { handleTriggerHealthAlert } from './control/trigger-health-dispatch.js'
@@ -517,6 +520,14 @@ subscribe(
   async (job) => {
     const payload = MessageEmbedJobPayloadSchema.parse(job.payload)
     await executeMessageEmbedJob({ ledgerSigningConfigured, modelClient, prisma }, payload)
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  TASK_EMBED_TOPIC,
+  async (job) => {
+    const payload = TaskEmbedJobPayloadSchema.parse(job.payload)
+    await executeTaskEmbedJob({ ledgerSigningConfigured, modelClient, prisma }, payload)
   },
   { signal: abortSignal },
 )

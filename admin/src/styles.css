@@ -437,13 +437,16 @@ a {
   color: var(--tx);
 }
 
-/* The value changes happen on the four palette owners. Descendants inherit the
-   in-flight colours, which keeps every route and component in sync through one
-   300ms transition rather than giving each screen a separate animation. */
+/* The value changes happen on the palette scopes. Descendants inherit the
+   in-flight colours, which keeps every route and component on one curve. A
+   phone-root or portalled menu is itself a palette scope, so include its aside
+   directly; otherwise removing the Nessie chrome scope makes it snap. */
 .admin-frame > .admin-topbar,
 .admin-frame > .admin-shell,
 .admin-frame > .admin-shell > aside,
-.admin-frame > .admin-shell > .resizable-sidebar {
+.admin-frame > .admin-shell > .resizable-sidebar,
+.admin-frame .phone-navigation-screen aside[class~='bg-[color:var(--sb)]'],
+.admin-overlay-root aside[class~='bg-[color:var(--sb)]'] {
   transition:
     --rail 300ms var(--easing-standard),
     --sb 300ms var(--easing-standard),
@@ -2225,7 +2228,8 @@ html[data-desktop-platform='linux'] #root {
    sidebar study. Keep this scoped to the Channels surface: Projects and Admin
    have their own information density and continue to use the shared defaults. */
 .admin-sidebar-nav .admin-sidebar-scroll {
-  padding: 14px 10px;
+  /* Keep the tree's usable width while moving the complete menu 6px left. */
+  padding: 14px 16px 14px 4px;
 }
 
 /* One structural shell is shared by the Channels tree and the Knowledge Tree
@@ -2355,8 +2359,8 @@ html[data-desktop-platform='linux'] #root {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-left: 41px;
-  padding-left: 12px;
+  margin-left: 21px;
+  padding-left: 6px;
   border-left: 1px solid var(--sep);
 }
 
@@ -2722,6 +2726,12 @@ html[data-desktop-platform='linux'] #root {
   padding-left: 44px;
 }
 
+.touch-sidebar .sidebar-project-children > .admin-sb-item.sidebar-child {
+  /* The project tree already owns its gutter. Do not stack the generic touch
+     child indent on top of it at phone or tablet sizes. */
+  padding-left: 8px;
+}
+
 .touch-sidebar .sidebar-project-tile {
   font-weight: 600;
 }
@@ -2738,9 +2748,8 @@ html[data-desktop-platform='linux'] #root {
   font-size: 16px;
 }
 
-/* Project channels carry their own nested tree gutter. On a phone that gutter
-   leaves the complete row (including its trailing star) too far in; shift the
-   row as one unit without changing tablet or desktop tree geometry. */
+/* Keep one small nesting step on tablet and desktop. On a phone, align the
+   channel content with the shared-channel list to preserve the narrow lane. */
 @media (max-width: 639px) {
   .touch-sidebar .sidebar-project-children > .admin-sb-item.sidebar-child {
     transform: translateX(-7px);

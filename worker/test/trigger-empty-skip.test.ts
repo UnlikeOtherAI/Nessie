@@ -17,6 +17,10 @@ const CHANNEL_ID = '20000000-0000-4000-8000-000000000003'
 const THREAD_ID = '20000000-0000-4000-8000-000000000004'
 const CLAIM_ID = '20000000-0000-4000-8000-000000000005'
 const DELIVERY_ID = '20000000-0000-4000-8000-000000000006'
+const ORGANIZATION_ID = '20000000-0000-4000-8000-000000000007'
+const MESSAGE_ID = '20000000-0000-4000-8000-000000000008'
+const RUN_ID = '20000000-0000-4000-8000-000000000009'
+const TASK_ID = '20000000-0000-4000-8000-00000000000a'
 const NEXT_RUN_AT = new Date('2026-07-23T09:00:00.000Z')
 
 // --- pure decision helpers ---------------------------------------------------
@@ -157,23 +161,64 @@ test('recordEmptyFireSkip rethrows non-conflict errors', async () => {
 // --- scheduler sweep: skip vs run wiring -------------------------------------
 
 type SweepCalls = {
+  failedDeliveries: Array<Record<string, unknown>>
   finalizeCalls: number
+  healthReasons: string[]
   messageCounts: number
+  runEnqueues: number
   skippedDeliveries: Array<Record<string, unknown>>
   threadLookups: number
 }
 
 const makeSweepPrisma = (opts: {
+  agentBound?: boolean
   config: Record<string, unknown>
   createdAt?: Date
   lastFiredAt?: Date | null
   messageCount: number
 }): { calls: SweepCalls; prisma: PrismaClient } => {
   const calls: SweepCalls = {
+    failedDeliveries: [],
     finalizeCalls: 0,
+    healthReasons: [],
     messageCounts: 0,
+    runEnqueues: 0,
     skippedDeliveries: [],
     threadLookups: 0,
+  }
+  let existingDelivery: { id: string; status: string } | null = null
+
+  const tx = {
+    agentTriggerDelivery: {
+      create: async () => ({ id: DELIVERY_ID }),
+      update: async () => ({}),
+    },
+    agentTrigger: { update: async () => ({}) },
+    message: { create: async () => ({ id: MESSAGE_ID }) },
+    run: {
+      create: async () => ({ id: RUN_ID }),
+      findFirst: async () => null,
+    },
+    runThreadPendingMessage: {
+      create: async () => ({}),
+      findFirst: async () => null,
+    },
+    task: { create: async () => ({ id: TASK_ID }) },
+    $queryRaw: async (query: { values?: unknown[] }) => {
+      const healthReason = query.values?.find((value) =>
+        value === 'agent_channel_access_lost' || value === 'channel_access_lost')
+      if (typeof healthReason === 'string') calls.healthReasons.push(healthReason)
+      return [{ healthRevision: 1 }]
+    },
+    $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
+      if (query.strings?.some((sql) => sql.includes('pg_advisory_xact_lock'))) return 0
+      const encoded = query.values?.find(
+        (value): value is string =>
+          typeof value === 'string' && value.includes('"actorContext"'),
+      )
+      if (encoded) calls.runEnqueues += 1
+      return 1
+    },
   }
 
   const prisma = {
@@ -194,8 +239,8 @@ const makeSweepPrisma = (opts: {
       findMany: async () => [
         {
           agent: {
-            agentKind: 'personal_assistant',
-            organizationId: null,
+            agentKind: 'shared',
+            organizationId: ORGANIZATION_ID,
             projectId: null,
             teamId: null,
           },
@@ -213,22 +258,39 @@ const makeSweepPrisma = (opts: {
         return opts.messageCount
       },
     },
+    agentBinding: {
+      findFirst: async () => opts.agentBound === false ? null : { id: 'binding' },
+    },
     agentTriggerDelivery: {
-      // queueTriggerRun's dedupe lookup — no existing delivery.
-      findFirst: async () => null,
+      findFirst: async () => existingDelivery,
       create: async (args: { data: Record<string, unknown> }) => {
-        calls.skippedDeliveries.push(args.data)
+        const status = String(args.data['status'])
+        existingDelivery = { id: DELIVERY_ID, status }
+        if (status === 'skipped') calls.skippedDeliveries.push(args.data)
+        if (status === 'failed') calls.failedDeliveries.push(args.data)
         return { id: DELIVERY_ID }
       },
+      updateMany: async () => ({ count: 1 }),
     },
-    // queueTriggerRun returns early once the thread lookup fails, so a run is
-    // never created — this is our "the sweep chose to run" signal.
     thread: {
       findUnique: async () => {
         calls.threadLookups += 1
-        return null
+        return {
+          channelId: CHANNEL_ID,
+          channel: {
+            deletedAt: null,
+            organizationId: ORGANIZATION_ID,
+            systemChannelType: null,
+            type: 'standard',
+            visibility: 'public',
+          },
+        }
       },
     },
+    organizationMember: { findFirst: async () => null },
+    team: { findFirst: async () => null },
+    channelMember: { findFirst: async () => null },
+    $transaction: async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
     $executeRaw: async () => {
       calls.finalizeCalls += 1
       return 1
@@ -240,7 +302,7 @@ const makeSweepPrisma = (opts: {
 
 test('empty opted-in schedule records a skip and never attempts a run', async () => {
   const { calls, prisma } = makeSweepPrisma({
-    config: { cron: '0 9 * * *', skipWhenEmpty: true },
+    config: { createdViaTool: true, cron: '0 9 * * *', skipWhenEmpty: true },
     messageCount: 0,
   })
 
@@ -250,14 +312,15 @@ test('empty opted-in schedule records a skip and never attempts a run', async ()
   assert.equal(calls.skippedDeliveries.length, 1)
   assert.equal(calls.skippedDeliveries[0]?.['status'], 'skipped')
   assert.equal(calls.skippedDeliveries[0]?.['source'], 'scheduler')
-  assert.equal(calls.threadLookups, 0)
+  // Admission is deliberately checked before the empty-work optimisation.
+  assert.equal(calls.threadLookups, 1)
   // The schedule still advances so the next fire is scheduled.
   assert.equal(calls.finalizeCalls, 1)
 })
 
 test('opted-in schedule with pending work runs instead of skipping', async () => {
   const { calls, prisma } = makeSweepPrisma({
-    config: { cron: '0 9 * * *', skipWhenEmpty: true },
+    config: { createdViaTool: true, cron: '0 9 * * *', skipWhenEmpty: true },
     messageCount: 3,
   })
 
@@ -265,12 +328,13 @@ test('opted-in schedule with pending work runs instead of skipping', async () =>
 
   assert.equal(calls.messageCounts, 1)
   assert.equal(calls.skippedDeliveries.length, 0)
-  assert.equal(calls.threadLookups, 1)
+  assert.equal(calls.threadLookups, 2)
+  assert.equal(calls.runEnqueues, 1)
 })
 
 test('schedule without skipWhenEmpty always runs and never counts work', async () => {
   const { calls, prisma } = makeSweepPrisma({
-    config: { cron: '0 9 * * *' },
+    config: { createdViaTool: true, cron: '0 9 * * *' },
     messageCount: 0,
   })
 
@@ -278,5 +342,24 @@ test('schedule without skipWhenEmpty always runs and never counts work', async (
 
   assert.equal(calls.messageCounts, 0)
   assert.equal(calls.skippedDeliveries.length, 0)
-  assert.equal(calls.threadLookups, 1)
+  assert.equal(calls.threadLookups, 2)
+  assert.equal(calls.runEnqueues, 1)
+})
+
+test('a quiet schedule still stops when its agent left the channel', async () => {
+  const { calls, prisma } = makeSweepPrisma({
+    agentBound: false,
+    config: { createdViaTool: true, cron: '0 9 * * *', skipWhenEmpty: true },
+    messageCount: 0,
+  })
+
+  await sweepDueScheduledTriggers(prisma, { limit: 10 })
+
+  assert.equal(calls.messageCounts, 0, 'authority must be checked before emptiness')
+  assert.equal(calls.skippedDeliveries.length, 0)
+  assert.equal(calls.failedDeliveries.length, 1)
+  assert.equal(calls.failedDeliveries[0]?.['nextRetryAt'], null)
+  assert.deepEqual(calls.healthReasons, ['agent_channel_access_lost'])
+  assert.equal(calls.runEnqueues, 0)
+  assert.equal(calls.finalizeCalls, 1, 'the failed delivery owns and settles its occurrence')
 })

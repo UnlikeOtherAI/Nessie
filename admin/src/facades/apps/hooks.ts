@@ -89,12 +89,13 @@ export type AppCataloguePage = {
  * server for the same reason it always did — Postgres owns the weighted ranking
  * and the typo fallback, and the client filters nothing and re-sorts nothing.
  */
-export const useApps = (filters: AppListFilters = {}) => {
+export const useApps = (filters: AppListFilters = {}, enabled = true) => {
   const apiClient = useApiClient()
   const applied = normalise(filters)
   const search = buildSearch(applied)
 
   return useQuery<AppCataloguePage>({
+    enabled,
     // Searching re-fetches on every debounced keystroke. Without this the shelf
     // blanks to the pending state between queries, which reads as "no results"
     // for a moment on every letter. `applied` is what keeps the copy honest

@@ -296,10 +296,9 @@ of a project either: any member may remove any member, themselves included.
   `getChannelIfMember`, `buildAccessibleChannelWhere` (thread and agent
   conversation reads), `listChannelsForUser` even with `includeArchived`,
   `joinPublicChannel`, and the member-change routes.
-- **Known gap:** full-text message search (`api/src/services/message-search.ts`)
-  scopes channels by visibility and membership only, so a deleted channel's
-  messages remain searchable by the people who could read them until that
-  reader filters `deletedAt` too.
+- Message search (`api/src/services/message-search.ts`) filters both channel and
+  message tombstones before either the full-text or semantic ranking arm sees a
+  candidate.
 - **There is no restore yet.** Nothing unsets `deletedAt`; a restore surface is
   planned and has all the data it needs.
 
@@ -316,7 +315,7 @@ Any active organisation member may read `GET /api/projects/directory`
 projects". It lists live projects, shaped by role:
 
 - A **protected** project the viewer is not in is **absent** for them. It is
-  discoverable by direct URL (and, when the search endpoint ships, by search)
+  discoverable by direct URL and by an explicit `/api/projects/search` query
   rather than listed — "not in the browse listing" is the rule, not
   "invisible".
 - For a project they are not in, **only its name, description, visibility and

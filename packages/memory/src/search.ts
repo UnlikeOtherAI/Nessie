@@ -13,6 +13,12 @@ type Queryable = Pick<Pool, 'query'>
 
 export type SearchThoughtsInput = {
   query: string
+  /**
+   * A caller may supply the already-resolved query vector so several search
+   * providers can share one inference. `null` deliberately means inference was
+   * unavailable; hybrid retrieval still runs its lexical arm.
+   */
+  queryEmbedding?: number[] | null
   organizationId: string
   userId: string
   outputAudienceType: ThoughtAudienceType
@@ -214,8 +220,8 @@ export const searchThoughts = async (
 ): Promise<SearchThoughtsOutput> => {
   const mode = input.mode ?? 'hybrid'
 
-  let queryEmbedding: number[] | null = null
-  if (mode !== 'lexical') {
+  let queryEmbedding = input.queryEmbedding ?? null
+  if (mode !== 'lexical' && input.queryEmbedding === undefined) {
     try {
       queryEmbedding = await getEmbedding(input.query, config.modelClient, {
         organizationId: input.organizationId,

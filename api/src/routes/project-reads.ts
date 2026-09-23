@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import {
   listProjectDirectory,
   listProjectsForUser,
@@ -14,7 +15,7 @@ import {
 } from '@nessie/schemas'
 
 import { ProjectRecordSchema } from '../contracts/team.js'
-import { createApiResponse, sendApiError } from '../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
 
 const toProjectRecord = mapProjectRecord
@@ -33,6 +34,11 @@ const toProjectRecord = mapProjectRecord
  */
 export const registerProjectReadRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const { prisma, requireActorContext } = deps
+
+  const projectSearchQuery = z.object({
+    query: z.string().trim().min(2).max(200),
+    limit: z.coerce.number().int().positive().max(50).optional(),
+  })
 
   app.get('/api/projects', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -63,6 +69,31 @@ export const registerProjectReadRoutes = (app: FastifyInstance, deps: RouteDeps)
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
     })
+    return createApiResponse(ProjectDirectoryEntrySchema.array().parse(entries))
+  })
+
+  // Explicit lookup is wider than browsing by exactly one fact: a protected
+  // project's limited card can match its name/description. It still carries no
+  // board, task, count, source or settings data for a non-member.
+  app.get('/api/projects/search', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    const query = parseInput(projectSearchQuery, request.query ?? {}, reply)
+    if (!query) return reply
+
+    const entries = await listProjectDirectory(
+      prisma,
+      {
+        isOrganizationAdmin: isAdminActor(actorContext),
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      },
+      {
+        includeProtectedMatches: true,
+        limit: query.limit ?? 20,
+        query: query.query,
+      },
+    )
     return createApiResponse(ProjectDirectoryEntrySchema.array().parse(entries))
   })
 

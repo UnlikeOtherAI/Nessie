@@ -323,14 +323,79 @@ export type DestinationScopeChain = {
 export const constrainScopesToDestination = (
   scopes: AccessibleScopes,
   destination: DestinationScopeChain,
-): AccessibleScopes => {
-  const implied = new Set<string>([
+): AccessibleScopes => ({
+  ...keepAudiences(scopes, new Set<string>([
     `organization:${destination.organizationId}`,
     `project:${destination.projectId}`,
     `team:${destination.teamId}`,
     `channel:${destination.channelId}`,
-  ])
+  ])),
+  // Past-conversation search narrows to the destination channel for the same
+  // reason: another channel's history is not implied by this room.
+  channelIds: scopes.channelIds.filter((id) => id === destination.channelId),
+})
 
+/**
+ * The scopes a project write implies: its organisation and the project itself.
+ *
+ * A ticket, checklist, label or board is readable by every project reader, so
+ * the write gate (`assertProjectWriteDestination`,
+ * `worker/src/run/pa-tools/ticket-context.ts`) refuses a run holding any
+ * consumed source outside these two — a team or channel audience included,
+ * the destination's own channel among them.
+ */
+const projectWriteScopeKeys = (
+  destination: Pick<DestinationScopeChain, 'organizationId' | 'projectId'>,
+): Set<string> => new Set([
+  `organization:${destination.organizationId}`,
+  `project:${destination.projectId}`,
+])
+
+/**
+ * Project-write containment: the narrower floor for a contained run that also
+ * holds project-delegated write tools.
+ *
+ * Destination containment admits the room's team and channel audiences, which
+ * is right for a reply — everyone in the room already has them — and wrong for
+ * a run that can write tickets, because the project write gate refuses every
+ * one of them. Recalling such a memory silently shut every ticket write for the
+ * rest of the run. So a run that can write into its project recalls only what
+ * every project reader already has, and the gate itself is unchanged. The
+ * trade-off is in `docs/standards/disclosure-boundaries.md`.
+ *
+ * A subset of `constrainScopesToDestination` by construction.
+ */
+export const constrainScopesToProjectWrite = (
+  scopes: AccessibleScopes,
+  destination: DestinationScopeChain,
+): AccessibleScopes => {
+  const contained = constrainScopesToDestination(scopes, destination)
+  return {
+    ...keepAudiences(contained, projectWriteScopeKeys(destination)),
+    channelIds: contained.channelIds,
+  }
+}
+
+/**
+ * Whether every scope of one recalled item is one a project write implies.
+ *
+ * The recall-side twin of `constrainScopesToProjectWrite`: a thought's audience
+ * can pass the search while a private conversation it was captured from would
+ * still enter the run as a channel scope, so the item's whole lineage is judged.
+ * Structural only, like the rest of this file.
+ */
+export const isWithinProjectWriteScopes = (
+  scopes: readonly ScopeRef[],
+  destination: Pick<DestinationScopeChain, 'organizationId' | 'projectId'>,
+): boolean => {
+  const implied = projectWriteScopeKeys(destination)
+  return scopes.every((scope) => implied.has(`${scope.scopeType}:${scope.scopeId}`))
+}
+
+const keepAudiences = (
+  scopes: AccessibleScopes,
+  implied: ReadonlySet<string>,
+): Pick<AccessibleScopes, 'audienceIds' | 'audienceTypes'> => {
   const audienceTypes: string[] = []
   const audienceIds: string[] = []
   for (let index = 0; index < scopes.audienceTypes.length; index += 1) {
@@ -344,14 +409,7 @@ export const constrainScopesToDestination = (
       audienceIds.push(audienceId)
     }
   }
-
-  return {
-    audienceTypes,
-    audienceIds,
-    // Past-conversation search narrows to the destination channel for the same
-    // reason: another channel's history is not implied by this room.
-    channelIds: scopes.channelIds.filter((id) => id === destination.channelId),
-  }
+  return { audienceTypes, audienceIds }
 }
 
 /**

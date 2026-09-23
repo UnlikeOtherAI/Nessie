@@ -8,6 +8,8 @@ import {
   admitRememberedThoughtLineage,
   retainThoughtsWithLineage,
   requiresMemoryDestinationContainment,
+  requiresProjectWriteRecallContainment,
+  thoughtLineageScopes,
 } from './memory.js'
 
 const ORG = '11111111-1111-4111-8111-111111111111'
@@ -133,4 +135,46 @@ test('a recalled thought without complete durable lineage is excluded from model
   }])
 
   assert.deepEqual(retained, [{ id: 'retained' }])
+})
+
+// F16: a contained run lent a project write recalls under the narrower
+// project-write floor; every other run keeps the recall it had.
+const projectChannelRun = {
+  agentKind: 'shared' as const,
+  dmKey: null,
+  organizationId: ORG,
+  systemChannelType: null,
+  systemSlug: null,
+}
+
+test('project-write recall containment needs both containment and a lent write', () => {
+  assert.equal(requiresProjectWriteRecallContainment(projectChannelRun, true, true), true)
+  assert.equal(requiresProjectWriteRecallContainment(projectChannelRun, false, true), false)
+  // Containment switched off by deployment: nothing narrows, as before.
+  assert.equal(requiresProjectWriteRecallContainment(projectChannelRun, true, false), false)
+  // A delegate in its own home is not contained, so its recall is untouched.
+  assert.equal(requiresProjectWriteRecallContainment({
+    ...projectChannelRun,
+    dmKey: globalAgentHomeDmKey({ organizationId: ORG, slug: AGENT_DESIGNER_SLUG, userId: USER }),
+    systemChannelType: 'system_agent',
+    systemSlug: AGENT_DESIGNER_SLUG,
+  }, true, true), false)
+})
+
+test('a thought\'s lineage scopes are its audience plus every private conversation it came from', () => {
+  assert.deepEqual(thoughtLineageScopes({
+    audienceId: ORG,
+    audienceType: 'organization',
+    sources: [{ sourceAuthorUserId: USER, sourceChannelId: 'dm-1' }],
+    thoughtId: 'thought-1',
+  }), [
+    { scopeId: ORG, scopeType: 'organization' },
+    { scopeId: 'dm-1', scopeType: 'channel' },
+  ])
+  assert.deepEqual(thoughtLineageScopes({
+    audienceId: null,
+    audienceType: null,
+    sources: [],
+    thoughtId: 'legacy',
+  }), [])
 })

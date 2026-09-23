@@ -93,6 +93,7 @@ export const AssignTaskBodySchema = z.object({
 /** A human's global ticket lookup. Access is decided at the route, not by a UI scope. */
 export const SearchTasksQuerySchema = z.object({
   query: z.string().trim().min(2).max(200),
+  mode: z.enum(['fulltext', 'semantic']).optional(),
 }).merge(PaginationParamsSchema)
 
 export const TransitionTaskBodySchema = z.object({

@@ -8,6 +8,7 @@ import {
   pauseAgentTrigger,
   reauthorizeAgentTrigger,
   resumeAgentTrigger,
+  TriggerResumeError,
 } from '../services/triggers.js'
 import type { RouteDeps } from './types.js'
 
@@ -161,7 +162,16 @@ export const registerTriggerLifecycleRoutes = (
       return reply
     }
 
-    const updated = await resumeAgentTrigger(prisma, scope)
+    let updated
+    try {
+      updated = await resumeAgentTrigger(prisma, scope)
+    } catch (error) {
+      if (error instanceof TriggerResumeError) {
+        sendApiError(reply, 409, error.code, error.message)
+        return reply
+      }
+      throw error
+    }
     if (!updated) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
