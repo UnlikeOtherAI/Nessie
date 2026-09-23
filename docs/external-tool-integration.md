@@ -694,8 +694,10 @@ deliberately no direct-provider fallback.
   so none can shadow the product-bound app API key.
 - **Research retries preserve provider idempotency.** Each DeepWater dispatch
   forwards the model provider's stable `tool_call_id` in the signed context.
-  `research_start` rejects a missing ID, and retrying the same logical tool call
-  reuses the same value instead of generating a new research job.
+  Every DeepWater call rejects a missing ID — the run binder for the brief
+  tools, the launcher handoff for `research_start` — and retrying the same
+  logical tool call reuses the same value, so a retried `research_scope_start`
+  claims the same brief and Ledger replays it instead of opening a second one.
 - **All Nessie inference uses the same Ledger chokepoint.** In hosted
   production, `NESSIE_MODEL_BASE_URL` is
   `https://ledger.unlikeotherai.com/v1/openai` and
