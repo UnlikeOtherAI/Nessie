@@ -38,7 +38,7 @@ const dependencies = (prisma: PrismaClient) => ({
     store: async () => ({ attachment: { id: 'unused' } }),
   } as never,
   ledgerIdentity: null,
-  modelClient: { chat: async () => 'unused' },
+  modelClient: { chatResult: async () => ({ text: 'unused' }) },
   organizationId: actorContext.tenant.organizationId,
   prisma,
 })

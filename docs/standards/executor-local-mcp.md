@@ -25,6 +25,26 @@ belongs to the server, and validating it here would guarantee drift the first
 time the server ships a field — the daemon validates the envelope, never the
 payload.
 
+## The pair is the one bundle that carries across runs
+
+A person's local-apps launch opens a **conversation lease**. While it is live,
+that person's own later messages in the same conversation bind each new run to
+the same executor's pair again — afresh, through the launch's own binder, with
+every check re-run. Nothing else carries it: not another member's message, not
+a Continue, Restart, card answer or approval pressed by someone else, not a
+relayed, workflow or trigger post. It lasts two hours idle and twelve at most,
+and ends when the person or a machine administrator presses End, the executor
+is paused, drained or revoked (pairing the machine again included), the
+agent's access to the pair is withdrawn, or a review drops either key. The
+browser, coding and command bundles never carry, because each holds a session
+no second run may inherit.
+
+The run is told what it can reach in one system fact. It names the servers the
+bound revision's reviewed policy names — the only machine fact the model is
+given — and names the machine itself only in a DM nobody but that person reads.
+The structural definition, every ending and the exact fact lines are in
+[conversation-leases.md](../executor-protocol/conversation-leases.md).
+
 ## Only the name travels
 
 A named server carries a host-local launch spec — argv, working directory,

@@ -73,7 +73,7 @@ import { buildScopes } from './scopes.js'
 import { createRunRecorders } from './run-recorders.js'
 import { handleRunFailurePath } from './run-failure-path.js'
 import { handleRunLoopOutcome } from './run-outcome.js'
-import type { ExecutionDependencies, RunPlanContext } from './types.js'
+import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import { loadGlobalAgentCatalogueBlock } from './global-agent-catalogue.js'
 import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
@@ -87,6 +87,22 @@ import {
   assertPersonalAssistantPresenceRunPlacement,
   PersonalAssistantPresencePlacementError,
 } from './personal-assistant-presence-placement.js'
+import { revalidateScheduledTriggerRunAdmission } from './scheduled-trigger-admission.js'
+
+const cancelRunBeforeExecution = async (
+  deps: ExecutionDependencies,
+  context: RunContext,
+): Promise<void> => {
+  await updateRunStatus(deps.prisma, context.run.id, 'cancelled', deps.realtimeTransport)
+  await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
+  await publishRunUpdated(deps.realtimeTransport, context, 'cancelled')
+  await publishTaskUpdated(
+    deps.realtimeTransport,
+    buildScopes(context),
+    context.task.id,
+    'cancelled',
+  )
+}
 
 /**
  * The whole job runs as the execution that may come to hold this run: the claim
@@ -152,15 +168,7 @@ const runJobUnderFence = async (
   // Quiet cancellation, like the presence guard below and for the same reason:
   // posting a failure notice would be the deleted agent speaking.
   if (context.agent.deletedAt) {
-    await updateRunStatus(deps.prisma, context.run.id, 'cancelled', deps.realtimeTransport)
-    await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
-    await publishRunUpdated(deps.realtimeTransport, context, 'cancelled')
-    await publishTaskUpdated(
-      deps.realtimeTransport,
-      buildScopes(context),
-      context.task.id,
-      'cancelled',
-    )
+    await cancelRunBeforeExecution(deps, context)
     return
   }
   // A queued PA presence run must not act after its owner leaves the room or
@@ -170,20 +178,12 @@ const runJobUnderFence = async (
     await assertPersonalAssistantPresenceRunPlacement(deps.prisma, context)
   } catch (error) {
     if (!(error instanceof PersonalAssistantPresencePlacementError)) throw error
-    await updateRunStatus(
-      deps.prisma,
-      context.run.id,
-      'cancelled',
-      deps.realtimeTransport,
-    )
-    await updateTaskStatus(deps.prisma, context.task.id, 'cancelled')
-    await publishRunUpdated(deps.realtimeTransport, context, 'cancelled')
-    await publishTaskUpdated(
-      deps.realtimeTransport,
-      buildScopes(context),
-      context.task.id,
-      'cancelled',
-    )
+    await cancelRunBeforeExecution(deps, context)
+    return
+  }
+
+  if (await revalidateScheduledTriggerRunAdmission(deps.prisma, context) === 'cancelled') {
+    await cancelRunBeforeExecution(deps, context)
     return
   }
 

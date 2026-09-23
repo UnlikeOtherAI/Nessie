@@ -81,9 +81,11 @@ const seedFailedDeliveries = async (
 
 const cleanup = async (prisma: PrismaClient, seed: Seed): Promise<void> => {
   await prisma.$executeRawUnsafe(
-    'DELETE FROM queue_jobs WHERE payload->>\'threadId\' IN '
+    'DELETE FROM queue_jobs WHERE payload->>\'triggerId\' = $2::text OR '
+    + 'payload->>\'threadId\' IN '
     + '(SELECT id::text FROM threads WHERE channel_id = $1::uuid)',
     seed.channelId,
+    seed.triggerId,
   )
   await prisma.organization.delete({ where: { id: seed.organizationId } })
 }
@@ -165,13 +167,13 @@ const failFirstDispatchBeforeDeliveryRecord = (prisma: PrismaClient): PrismaClie
       if (property === 'agentTriggerDelivery') {
         return new Proxy(target.agentTriggerDelivery, {
           get(delegate, delegateProperty) {
-            if (delegateProperty === 'upsert') {
+            if (delegateProperty === 'create') {
               return async (...args: unknown[]) => {
                 if (shouldFailRecord) {
                   shouldFailRecord = false
                   throw new Error('transient delivery ledger failure')
                 }
-                return delegate.upsert(args[0] as never)
+                return delegate.create(args[0] as never)
               }
             }
             const value = Reflect.get(delegate, delegateProperty, delegate)

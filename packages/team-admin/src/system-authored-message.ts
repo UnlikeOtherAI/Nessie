@@ -35,6 +35,23 @@ export type SystemAuthoredMessageInput = {
   userId?: string | null
 }
 
+/**
+ * A server-authored row is never a person's composer send, whoever it is
+ * written for, so `metadata.authorship` (`PERSON_MESSAGE_AUTHORSHIP`) is
+ * dropped from whatever metadata a caller relays — mirrored external text or
+ * a card press cannot pass as the person having typed it.
+ */
+const withoutPersonAuthorship = (
+  metadata: Prisma.InputJsonValue | undefined,
+): Prisma.InputJsonValue | undefined => {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || !('authorship' in metadata)) {
+    return metadata
+  }
+  return Object.fromEntries(
+    Object.entries(metadata).filter(([key]) => key !== 'authorship'),
+  ) as Prisma.InputJsonValue
+}
+
 const writeSystemAuthoredRow = (
   tx: Prisma.TransactionClient,
   input: SystemAuthoredMessageInput & { rootMessageId?: string },
@@ -46,7 +63,7 @@ const writeSystemAuthoredRow = (
       threadId: input.threadId,
       ...(input.agentId ? { agentId: input.agentId } : {}),
       ...(input.createdAt ? { createdAt: input.createdAt } : {}),
-      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      ...(input.metadata === undefined ? {} : { metadata: withoutPersonAuthorship(input.metadata) }),
       ...(input.onBehalfOfUserId ? { onBehalfOfUserId: input.onBehalfOfUserId } : {}),
       ...(input.rootMessageId ? { rootMessageId: input.rootMessageId } : {}),
       ...(input.userId ? { userId: input.userId } : {}),

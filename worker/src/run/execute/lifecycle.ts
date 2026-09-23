@@ -487,6 +487,8 @@ export const loadRunContext = async (
     consumedSources,
     run: {
       id: run.id,
+      triggerId: run.triggerId,
+      triggerDeliveryId: run.triggerDeliveryId,
       principalUserId: run.principalUserId,
       threadId: run.thread.id,
       createdAt: run.createdAt,

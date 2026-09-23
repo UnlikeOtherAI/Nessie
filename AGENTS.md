@@ -204,6 +204,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - **Admin** (`admin/`, default port 5455) — full product interface for operators and knowledge workers
 - **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not. Signing policy and build recipes: [docs/standards/build-and-release.md](docs/standards/build-and-release.md).
 - **Web** (`web/`) — public landing page only
+- **DeepWater iOS** (`ios/`) — standalone SwiftUI research client for iPhone, iPad and Mac Catalyst; build, OAuth hosting and native tests: [docs/deepwater-ios.md](docs/deepwater-ios.md).
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
 
@@ -389,7 +390,9 @@ when one changes, the same turn updates it, not this section.
   out of every message; availability rides the heartbeat rather than the signed
   descriptor, because installing the software must cost no revision; and absent
   never means empty, at any layer — a policy that names nothing permits nothing,
-  and a Kelpie that could not look has not found nothing.
+  and a Kelpie that could not look has not found nothing. The pair is the one
+  bundle that carries across runs, and only into the launching person's own
+  follow-ups under a conversation lease, each bound afresh.
   Read [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md)
   before writing code here.
 - **Local Ollama agents are owner-host-only and never fall back to cloud.**

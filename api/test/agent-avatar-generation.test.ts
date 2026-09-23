@@ -56,9 +56,9 @@ test('generates a gpt-image-2 avatar through Ledger and stores it as an attachme
       }),
     },
     modelClient: {
-      chat: async (messages) => {
+      chatResult: async (messages) => {
         promptMessages = messages
-        return 'A cheerful illustrated release coordinator in a clean cartoon headshot.'
+        return { text: 'A cheerful illustrated release coordinator in a clean cartoon headshot.' }
       },
     },
   })
@@ -121,7 +121,7 @@ test('routes image generation through the Ledger Purpose API when one is configu
       }), { status: 200 })
     },
     ledgerIdentity: null,
-    modelClient: { chat: async () => 'A cheerful illustrated release coordinator.' },
+    modelClient: { chatResult: async () => ({ text: 'A cheerful illustrated release coordinator.' }) },
   })
 
   // The direct /v1/openai/images/generations service route is replaced by the
@@ -140,9 +140,9 @@ test('refuses to generate an avatar when the configured model endpoint is not Le
       fileService: { store: async () => ({ attachment: { id: 'unused' } }) } as never,
       ledgerIdentity: null,
       modelClient: {
-        chat: async () => {
+        chatResult: async () => {
           promptCalled = true
-          return 'should not run'
+          return { text: 'should not run' }
         },
       },
     }),
@@ -186,7 +186,7 @@ const failingGeneration = (input: {
     ledgerIdentity: {
       requestHeaders: async () => ({ 'X-UOA-Delegation': 'signed-uoa-delegation' }),
     },
-    modelClient: { chat: async () => 'A portrait prompt.' },
+    modelClient: { chatResult: async () => ({ text: 'A portrait prompt.' }) },
   })
 
 test('an HTTP refusal carries the route, the code and Ledger\'s own words', async () => {
@@ -278,7 +278,7 @@ test('the prompt call and the image call are distinguishable in the error text',
     imageRequest: async () => new Response('{}', { status: 200 }),
     ledgerIdentity: null,
     modelClient: {
-      chat: async () => {
+      chatResult: async () => {
         throw new Error('model gateway unavailable')
       },
     },

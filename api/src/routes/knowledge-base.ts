@@ -26,7 +26,7 @@ import {
   sendRevisionConflict,
 } from '../lib/if-match.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { getQueryEmbedding } from '../services/knowledge-query-embedding.js'
+import { getQueryEmbedding } from '../services/search-query-embedding.js'
 import {
   actorAuthorType,
   attachPageEnvelope,

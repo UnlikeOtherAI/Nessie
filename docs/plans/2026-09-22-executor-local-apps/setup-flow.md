@@ -35,8 +35,12 @@ write tools, memory recall is limited to lineage scopes `{organization,
 project:<channel.projectId>}`; channel, user and private-conversation sources
 are not admitted for that run. Every other run and the write gate are
 unchanged. `channel_list`'s stamping of DMs it merely lists is fixed
-separately: listing a channel's name is not reading its content. The
-trade-off (such a run does not remember private-DM context) is written into
+separately: listing a DM's name is not reading its content. The exemption is
+the DM's label alone — a private or protected team channel a directory read
+names still stamps, as does a DM row that prints its topic, and
+`channel_update` echoes a topic or description only when it wrote it. Both
+trade-offs (such a run does not remember private-DM context; a DM's label can
+reach a shared-room reply) are written into
 [disclosure-boundaries.md](../../standards/disclosure-boundaries.md).
 
 ## F22 — A new agent gets no channel of its own
@@ -45,7 +49,11 @@ The Designer's prompt and proposal card change from "the channel it will work
 in" to "where it lives: the existing channels the person named, or nowhere
 yet — people add it to any channel". `channel_create` stays available for when
 a person asks for a channel, never as a default step. The card renders "Lives
-in: nowhere yet — add it to any channel" when nothing was named. Pinned in the
+in: nowhere yet — add it to any channel" when nothing was named. One
+exception, because of F11: board tools are lent only in a channel of the
+board's own project, so an agent whose work is a project's board lives in at
+least one existing channel of that project — the Designer asks which, or says
+its board tools do nothing until someone adds it to one. Pinned in the
 proposal-card fixture suite and the Designer blueprint test.
 
 ## F6 — The Designer's executor-grant link must work
@@ -56,13 +64,19 @@ structural **confirmation card** in the requester's DM — system-authored,
 storing only the access-change id; pressing it opens the existing review with
 the token resolved server-side for that same person. The model's tool result
 says "I've put a confirmation card in your DM." No change to the access-change
-rules themselves.
+rules themselves. The card is pressed, not answered: each press mints a fresh
+token for its preparer, and the card stays open until the change is
+confirmed, rejected or expires, so a review closed early or lost to a reload
+is opened again rather than prepared again. The workspace promotion prepare
+tool had the same token in its output and posts the same card.
 
 ## F15 — Granted tools arrive with their schemas
 
 Tools an agent's policy grants explicitly (`true`) and the run's
 project-delegated tools join the deferred toolset's hot set, so the agent does
-not spend a dozen `tool_spec` round trips before its first real action.
+not spend a dozen `tool_spec` round trips before its first real action. Tools
+the run withholds (to-dos off, `delegate` on a DeepWater launch turn) are
+removed before that view is built, so they never spend its budget.
 
 ## F2 — A card press that committed is a success
 
@@ -77,12 +91,19 @@ The avatar prompt call gets a token budget a reasoning model can finish in
 (2 000) and `reasoningEffort: 'low'`; an empty answer reports the finish
 reason.
 
-## F9 — The Designer does not leak ids or instructions meant for itself
+## F9 — The Designer's voice: no ids or instructions meant for itself
+
+This is the "voice" the overview's chapter table names — the Designer's
+replies, against the agent-voice standard — not voice calling, which this PR
+does not touch.
 
 `agent_create`'s output renders a channel link (`[#name](/channels/<id>)`) and
 `portrait: none (reason: …)` instead of raw `agentId=`/`channelId=` UUIDs, and
 the "quote the reason word for word" rule moves from the tool's data into the
-Designer's prompt.
+Designer's prompt. The prompt and `agent_create`'s description both say where
+the id a later call needs is — the link's last path segment — and
+`agent_avatar_generate`'s "Say so." becomes data the prompt tells the
+Designer how to relay.
 
 ## Documents
 

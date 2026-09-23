@@ -16,6 +16,7 @@ import { desktopKnowledgeCrossNavigation } from './desktop-knowledge-cross-navig
 import { desktopDashboardLiveWorkspace } from './desktop-dashboard-live-workspace.mjs'
 import { desktopWorkflowFailureAlert } from './desktop-workflow-failure-alert.mjs'
 import { desktopTriggerHealthAlert } from './desktop-trigger-health-alert.mjs'
+import { desktopTriggerMembershipError } from './desktop-trigger-membership-error.mjs'
 
 export const CASES = [
   phonePush,
@@ -38,4 +39,5 @@ export const CASES = [
   desktopDashboardLiveWorkspace,
   desktopWorkflowFailureAlert,
   desktopTriggerHealthAlert,
+  desktopTriggerMembershipError,
 ]

@@ -52,6 +52,8 @@ export {
 } from './search.js'
 export {
   constrainScopesToDestination,
+  constrainScopesToProjectWrite,
+  isWithinProjectWriteScopes,
   loadThoughtAudiences,
   resolveAccessibleScopes,
   scopeForVisibility,

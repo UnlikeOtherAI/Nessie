@@ -47,6 +47,7 @@ import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorDaemonRoutes } from './executor-daemon-routes.js'
+import { notifyExecutorLeaseChanges, registerExecutorLeaseRoutes } from './executor-leases.js'
 import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
 import { registerExecutorManagementReadRoutes } from './executor-management-reads.js'
 import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
@@ -61,6 +62,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   registerExecutorPairingCodeRoutes(app, deps)
   registerExecutorManagementReadRoutes(app, deps)
   registerExecutorWorkspacePromotionRoutes(app, deps)
+  registerExecutorLeaseRoutes(app, deps)
   const {
     buildChannelRealtimeScopes,
     config,
@@ -215,6 +217,9 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         resourceId: launched.runId,
         resourceType: 'executor_run',
       })
+      // The launcher's own composer shows the lease it just opened (and drops
+      // any it replaced) without waiting for a refetch.
+      if (launched.lease) await notifyExecutorLeaseChanges(deps, request.log, [launched.lease])
       return reply.code(201).send(createApiResponse(ExecutorRunLaunchSchema.parse({
         bindings: launched.bindings,
         messageId: launched.message.id,
@@ -411,7 +416,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
-      return createApiResponse(result)
+      // A pause, revoke, narrowed grant or review may have ended leases; each
+      // holder hears about their own, and nobody else learns who held one.
+      await notifyExecutorLeaseChanges(deps, request.log, result.endedLeases)
+      return createApiResponse({ authorizationRevision: result.authorizationRevision, executorId: result.executorId })
     } catch (error) {
       if (error instanceof AgentToolPolicyError) {
         sendApiError(reply, 409, error.code, error.message)

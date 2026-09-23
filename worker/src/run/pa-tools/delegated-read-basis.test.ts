@@ -9,9 +9,13 @@ import { recordVisibleAgentRead } from './message-search-basis.js'
 
 /**
  * The delegated reads the Agent Designer uses resolve content as the PERSON —
- * through their own memberships and their own agent entitlement — so each owes
- * the disclosure sink the scopes it read through. These assert the stamps land,
- * because an unfed sink does not fail loudly: an empty basis means unrestricted.
+ * through their own memberships and their own agent entitlement — so each
+ * content read owes the disclosure sink the scopes it read through. These assert
+ * the stamps land where content was read, because an unfed sink does not fail
+ * loudly: an empty basis means unrestricted. A private room's name is its
+ * members' alone, so a directory read stamps it; a DM named by its label alone
+ * deliberately does not — stamping every DM a list returned shut the project
+ * write gate for the rest of the run.
  */
 
 const ORG = '11111111-1111-4111-8111-111111111111'
@@ -25,6 +29,7 @@ const CHANNELS = [
     slug: 'general',
     team: { name: 'Core', project: { name: 'Acme' } },
     topic: null,
+    type: 'standard',
     visibility: 'public',
   },
   {
@@ -34,6 +39,28 @@ const CHANNELS = [
     slug: 'founders',
     team: { name: 'Core', project: { name: 'Acme' } },
     topic: null,
+    type: 'standard',
+    visibility: 'private',
+  },
+  {
+    archivedAt: null,
+    id: 'dm-assistant',
+    label: 'Agent Designer',
+    slug: null,
+    team: { name: 'Core', project: { name: 'Acme' } },
+    topic: null,
+    type: 'dm',
+    visibility: 'private',
+  },
+  {
+    archivedAt: null,
+    id: 'dm-with-topic',
+    label: 'Founders DM',
+    slug: null,
+    team: { name: 'Core', project: { name: 'Acme' } },
+    // Free text its members wrote: printing it is a content read.
+    topic: 'Acquisition talks',
+    type: 'dm',
     visibility: 'private',
   },
 ]
@@ -60,19 +87,27 @@ const buildContext = () => {
   return { consumedSources, context }
 }
 
-test('channel_list stamps the non-public channels it resolved through membership', async () => {
+test('channel_list stamps the private rooms it lists, and a DM only when it prints its topic', async () => {
   const { consumedSources, context } = buildContext()
-  await runChannelListTool(context, {})
+  const result = await runChannelListTool(context, {})
 
+  assert.match(result.outputPreview ?? '', /Founders/)
+  assert.match(result.outputPreview ?? '', /Agent Designer/)
+  assert.match(result.outputPreview ?? '', /topic="Acquisition talks"/)
   assert.deepEqual(consumedSources.list(), [
     { scopeId: 'channel-private', scopeType: 'channel' },
+    { scopeId: 'dm-with-topic', scopeType: 'channel' },
   ])
+  assert.deepEqual(consumedSources.privateConversationSources(), [])
 })
 
-test('channel_find stamps the same way', async () => {
+test('channel_find stamps a private room it resolves, never a DM it names', async () => {
   const { consumedSources, context } = buildContext()
-  await runChannelFindTool(context, { query: 'founders' })
+  const result = await runChannelFindTool(context, { query: 'founders' })
 
+  assert.match(result.outputPreview ?? '', /channelId=channel-private/)
+  // The finder prints no topic, so even that DM is a name alone here.
+  assert.doesNotMatch(result.outputPreview ?? '', /Acquisition talks/)
   assert.deepEqual(consumedSources.list(), [
     { scopeId: 'channel-private', scopeType: 'channel' },
   ])

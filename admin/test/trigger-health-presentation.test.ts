@@ -34,9 +34,17 @@ test('each reason names its own remedy rather than one generic failure', () => {
     healthReason: 'member_inactive',
     healthDetail: undefined,
   })
+  const agent = getTriggerHealthMessage({
+    healthReason: 'agent_channel_access_lost',
+    healthDetail: undefined,
+  })
   assert.match(String(channel), /target channel/)
+  assert.match(String(channel), /Add them back, then resume/)
+  assert.match(String(agent), /agent is no longer in its target channel/)
+  assert.match(String(agent), /Add the agent back, then resume/)
   assert.match(String(member), /no longer an active member/)
   assert.notEqual(channel, member)
+  assert.notEqual(channel, agent)
 })
 
 test('an unrecognized reason falls back to the detail, then to a plain sentence', () => {

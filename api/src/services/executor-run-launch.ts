@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
-import { bindExecutorCandidateBundleInTransaction } from '@nessie/executor-manage'
+import {
+  bindExecutorCandidateBundleInTransaction,
+  createExecutorConversationLeaseInTransaction,
+  isExecutorLocalAppsBundle,
+  type ExecutorLeaseRef,
+} from '@nessie/executor-manage'
 import { enqueueRunExecution, isThreadRunSlotBusy } from '@nessie/db'
 import {
   parseAgentId,
@@ -31,6 +36,8 @@ export type ExecutorRunLaunchResult =
       runId: string
     }>
     channelId: string
+    /** The conversation lease a local-apps launch opened, for its holder's notice. */
+    lease: ExecutorLeaseRef | null
     message: ReturnType<typeof mapMessageRecord>
     runId: string
     taskId: string
@@ -114,6 +121,29 @@ export const launchExecutorRun = async (
       operationKeys: input.operationKeys,
       runId: run.id,
     })
+    // Local apps, and only local apps, open a conversation lease: the person's
+    // own later messages in this conversation may carry the pair forward.
+    // Created here so the launch, its bindings and the lease commit together.
+    let lease: ExecutorLeaseRef | null = null
+    if (isExecutorLocalAppsBundle(input.operationKeys)) {
+      const executorId = bindings[0]?.executorId
+      if (!executorId) throw new Error('Local-apps launch must bind one executor.')
+      const created = await createExecutorConversationLeaseInTransaction(tx, {
+        actorContext,
+        agentId: agent.id,
+        bindingIds: bindings.map((binding) => binding.bindingId),
+        executorId,
+        launchRunId: run.id,
+        rootMessageId: message.id,
+        threadId: thread.id,
+      })
+      lease = {
+        actorUserId: actorContext.actor.actorId,
+        id: created.id,
+        organizationId: actorContext.tenant.organizationId,
+        threadId: thread.id,
+      }
+    }
     const isBrowserRun = input.operationKeys.includes('browser.open')
     const isCodingRun = input.operationKeys.includes('coding.launch')
     const isCommandRun = input.operationKeys.includes('command.run')
@@ -174,6 +204,7 @@ export const launchExecutorRun = async (
       })),
       channelId: thread.channel.id,
       kind: 'launched' as const,
+      lease,
       message: mapMessageRecord(message, 0),
       runId: run.id,
       taskId: task.id,

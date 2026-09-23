@@ -283,6 +283,9 @@ importers:
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../packages/retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
@@ -777,6 +780,9 @@ importers:
 
   packages/executor-manage:
     dependencies:
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../db
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -1091,6 +1097,9 @@ importers:
       '@nessie/model-subscriptions':
         specifier: workspace:*
         version: link:../model-subscriptions
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime

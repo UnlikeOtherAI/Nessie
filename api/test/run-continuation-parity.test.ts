@@ -228,6 +228,8 @@ runDatabaseTest(
         projectId: seed.projectId,
         reason: 'Tool message_send requires approval.',
         requesterId: seed.agentId,
+        // What resolving writes: the approver, whom the resume stamps as its presser.
+        resolverId: seed.userId,
         resumeState: {
           actorContext: actorFor(seed),
           args: {},

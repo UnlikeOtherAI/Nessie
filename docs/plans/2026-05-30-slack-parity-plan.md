@@ -65,13 +65,14 @@ Highest daily-use value; sits on existing infra.
 - Add `senderId` + date-range filters to `listThreadMessages` first (the quick-win
   half — unblocks `from:`/jump-to-date even before FTS lands).
 - Admin: search bar in channel header → results list with jump-to-message.
-- **Implemented 2026-06-12:** message search is predictive full-text search:
+- **Implemented 2026-06-12; expanded 2026-09-23:** message search is predictive full-text search:
   every sanitized token is sent to Postgres `to_tsquery` with a `:*` suffix, so
-  partial terms such as `tick` match `ticket`. Global search now has a persisted
-  Text/Semantic mode. Text mode searches channels, people, projects, messages,
-  and knowledge pages; Semantic mode is scoped to `/api/thoughts/search`
-  memory results because chat messages and knowledge pages do not yet have
-  embeddings.
+  partial terms such as `tick` match `ticket`. Global search has persisted Full
+  text/Semantic modes over channels, projects, tickets, messages, knowledge and
+  extracted documents, people, agents, apps, and memory. Semantic mode is
+  hybrid: messages and tickets use hash-fenced asynchronous projections,
+  knowledge and memory use their existing embeddings, and lexical results stay
+  in the fused ranking when an embedding is absent or unavailable.
 
 ### 1d. Message permalinks  *(S, low priority)*
 - Deterministic route `/c/:channelId/t/:threadId/m/:messageId`; "Copy link" action.
@@ -204,9 +205,9 @@ larger phases.
 - **Global top bar (implemented 2026-06-12)**: Slack-style chrome above the rail
   and content (`admin/src/layouts/admin-shell/TopBar.tsx`) — back/forward history,
   a recent-channels menu, a centered **command-palette search** (inline grouped
-  results across channels/people/projects/messages/knowledge, reusing
+  results across channels/projects/tickets/messages/knowledge/people/agents/apps/memory, reusing
   `useGlobalSearch`; `⌘K`/`Ctrl-K` to focus), a persisted Text/Semantic mode
-  toggle for memory search, notifications, and a help shortcut. The desktop rail
+  toggle, highlighted matches, notifications, and a help shortcut. The desktop rail
   owns the canonical account avatar/menu; rail-free mobile shells reuse that
   exact control in their headers instead of showing a second workspace badge.
   The bar is shared across web and the Tauri desktop app, where it doubles as
@@ -242,10 +243,10 @@ larger phases.
 ## Phase 9 — Agent-native differentiators (beat Slack, not just match)
 - Agent-generated **link unfurls**: agent fetches URL → posts live context summary
   (richer than static OpenGraph).
-- Surface **semantic/hybrid memory search** as first-class search (partially
-  implemented in the global search Semantic mode via `/api/thoughts/search`).
-  Message semantic search remains deferred until a message embedding pipeline
-  exists.
+- **Semantic/hybrid global search implemented 2026-09-23:** memory, knowledge,
+  messages, and project tickets contribute vector-ranked matches without
+  removing deterministic lexical matches; all other global-search sections use
+  literal matching in both modes.
 - **Auto meeting notes**: agent transcribes a provider call → posts action items to thread.
 - **Agents-as-routers**: wire `MessageReaction` / `message.created` into event
   triggers so an agent watches a channel and routes/summarizes/escalates.

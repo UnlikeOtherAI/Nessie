@@ -214,6 +214,8 @@ export type WsEventMap = {
   'dashboard.updated': { dashboardId: string; revision: number }
   /** Content-free: a ticket's comments, attachments or labels changed. */
   'task.activity': { taskId: TaskId; projectId: string }
+  /** Content-free, and on the holder's user scope only: see the schema. */
+  'executor.lease.changed': { leaseId: string; threadId: ThreadId }
 }
 
 export const AgentStatusEventSchema = z.object({
@@ -470,6 +472,19 @@ export const TaskActivityEventSchema = z.object({
 })
 export type TaskActivityEvent = z.infer<typeof TaskActivityEventSchema>
 
+/**
+ * One of the recipient's own executor conversation leases was opened, used,
+ * or ended. Published only on the holder's `user` scope — never a channel —
+ * because a lease names a machine the rest of the room may not know about;
+ * and ids only, so the client's refetch of `GET /api/executor-leases` stays
+ * the one place the lease is read.
+ */
+export const ExecutorLeaseChangedEventSchema = z.object({
+  leaseId: z.string().uuid(),
+  threadId: ThreadIdSchema,
+})
+export type ExecutorLeaseChangedEvent = z.infer<typeof ExecutorLeaseChangedEventSchema>
+
 export const WsEventNameSchema = z.enum([
   'agent.status',
   'agent.tool.start',
@@ -499,6 +514,7 @@ export const WsEventNameSchema = z.enum([
   'dashboard.updated',
   'board.updated',
   'task.activity',
+  'executor.lease.changed',
 ])
 
 export const WsScopeSchema = z.union([
@@ -753,6 +769,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('task.activity'),
     data: TaskActivityEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('executor.lease.changed'),
+    data: ExecutorLeaseChangedEventSchema,
     ts: TimestampSchema,
   }),
 ])

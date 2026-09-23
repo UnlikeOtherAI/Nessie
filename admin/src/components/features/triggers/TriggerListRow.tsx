@@ -7,6 +7,7 @@ import {
   formatRelativeTime,
   formatTriggerTarget,
   getScheduleSummary,
+  getTriggerHealthMessage,
   getTriggerTone,
   getTriggerTypeLabel,
   type TriggerRegistryMaps,
@@ -23,7 +24,11 @@ type TriggerListRowProps = {
 // of trigger it is, when it next fires, and a far-right chevron. The whole row
 // opens trigger detail, which owns running, pausing, editing and deleting it.
 export const TriggerListRow = ({ onOpen, registry, trigger }: TriggerListRowProps) => {
-  const nextRun = trigger.enabled ? formatRelativeTime(trigger.nextRunAt) : undefined
+  const nextRun = trigger.status === 'active' ? formatRelativeTime(trigger.nextRunAt) : undefined
+  const healthMessage =
+    trigger.status === 'error' || trigger.status === 'needs_reauthorization'
+      ? getTriggerHealthMessage(trigger)
+      : null
 
   return (
     <tr
@@ -50,6 +55,11 @@ export const TriggerListRow = ({ onOpen, registry, trigger }: TriggerListRowProp
         <div className="truncate text-xs text-[color:var(--tx3)]">
           {getScheduleSummary(trigger)} · {formatTriggerTarget(trigger, registry)}
         </div>
+        {healthMessage ? (
+          <div className="truncate text-xs text-[color:var(--danger-text)]">
+            {healthMessage}
+          </div>
+        ) : null}
       </td>
       <td className="w-40 px-3 py-2.5 align-middle">
         <Pill height="control" tone={getTriggerTone(trigger.status)} uppercase={false}>

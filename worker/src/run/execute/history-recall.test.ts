@@ -237,3 +237,40 @@ test("a room's own thread still recalls the whole channel", async () => {
   assert.ok(candidateCall, 'the candidate search ran')
   assert.equal(candidateCall[10], null, 'a room must not be narrowed to one thread')
 })
+
+// F16: recalled history is recalled memory. A run lent a project write takes
+// no passage whose lineage the project write gate would then refuse, and still
+// takes the ones every project reader already has.
+test('a run lent a project write recalls no private-room history', async () => {
+  const sink = createConsumedSourceSink()
+  const result = await retrieveRelevantHistory(historyDeps() as never, context(sink) as never, payload, {
+    holdsProjectWriteTools: true,
+    prompt: 'Čau, je deploy po migraci hotový?',
+    tokenBudget: 1_000,
+    viewer: agentViewer,
+  })
+
+  assert.equal(result.context, null)
+  assert.deepEqual(result.messageIds, [])
+  assert.deepEqual(sink.list(), [])
+  assert.deepEqual(sink.privateConversationSources(), [])
+})
+
+test('a run lent a project write still recalls public, unrestricted history', async () => {
+  const sink = createConsumedSourceSink()
+  const publicMessage = { ...message(), thread: { channel: { id: CHANNEL_ID, visibility: 'public' } } }
+  const result = await retrieveRelevantHistory(
+    historyDeps(publicMessage) as never,
+    context(sink) as never,
+    payload,
+    {
+      holdsProjectWriteTools: true,
+      prompt: 'Čau, je deploy po migraci hotový?',
+      tokenBudget: 1_000,
+      viewer: agentViewer,
+    },
+  )
+
+  assert.deepEqual(result.messageIds, [MESSAGE_ID])
+  assert.deepEqual(sink.list(), [])
+})

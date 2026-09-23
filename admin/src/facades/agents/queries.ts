@@ -35,7 +35,7 @@ export type PausedPrivateAgentCount = { count: number }
  * under its own key so it never overwrites the default list the rest of the app
  * reads.
  */
-export const useAgents = (options?: { scope?: AgentListScope }) => {
+export const useAgents = (options?: { enabled?: boolean; scope?: AgentListScope }) => {
   const apiClient = useApiClient()
   const scope = options?.scope ?? 'visible'
 
@@ -46,6 +46,7 @@ export const useAgents = (options?: { scope?: AgentListScope }) => {
         scope === 'all' ? '/api/agents?scope=all' : '/api/agents',
         AgentRecordSchema.array(),
       ),
+    enabled: options?.enabled ?? true,
   })
 }
 
