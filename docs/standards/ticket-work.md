@@ -318,7 +318,10 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   run — never through `requireActingUserId`. The run's conversation is only
   the agent's own replies and people's stamped messages
   (`ticketWorkConversationWhere`), and everything it writes carries the
-  ticket's project basis.
+  ticket's project basis. It reads as its agent, widened by that one project
+  (`ticketWorkDisclosureViewer`): the agent's own scopes are its bindings and
+  hierarchy, which do not name the project, and without it every earlier
+  reply of its own would come back withheld.
 - **(from T1) The run signs with the ledger as event triggers do, with no
   user identity.** A deployment that refuses unsigned agent runs sets the
   record's `stateReason` to `identity_unverifiable`, which the chip shows,

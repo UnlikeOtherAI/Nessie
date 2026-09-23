@@ -47,6 +47,7 @@ import {
   loadTicketWorkRunFacts,
   TICKET_WORK_PERSON_TOOL_IDS,
   TICKET_WORK_PROJECT_TOOL_IDS,
+  ticketWorkDisclosureViewer,
 } from './ticket-work-setup.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -413,12 +414,12 @@ export const prepareRunExecution = async (
       userId: effectiveUserId,
     })
     : undefined
-  const viewer = await resolveDisclosureViewer(
+  const viewer = ticketWorkDisclosureViewer(await resolveDisclosureViewer(
     deps.prisma,
     payload,
     context.channel.organizationId,
     liveEntitlements,
-  )
+  ), ticketWork)
   const conversation = await loadConversation(deps.prisma, {
     consumedSources: context.consumedSources,
     files: fileServiceFor(deps.prisma),

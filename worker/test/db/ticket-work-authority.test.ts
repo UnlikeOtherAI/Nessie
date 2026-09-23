@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 
 import { PrismaClient } from '@prisma/client'
+import type { DisclosureViewer } from '@nessie/runtime'
 
 import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
 import { loadConversation } from '../../src/run/execute/prompt.js'
+import { ticketWorkDisclosureViewer } from '../../src/run/execute/ticket-work-setup.js'
 import {
   runTicketBoardReadTool,
   runTicketListTool,
@@ -167,4 +169,39 @@ runDatabaseTest('a ticket.work run\'s conversation is only the agent\'s own repl
   // The kickoffs and wake rows are system rows: in neither window.
   assert.ok((await prisma.message.count({ where: { threadId: work.threadId, role: 'system' } })) >= 2)
   assert.ok(!admitted.some((message) => message.content.includes('## Why you were woken')))
+})
+
+runDatabaseTest('a ticket.work run re-reads its own replies, which carry its ticket\'s project basis', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const { work } = await startWork(prisma, s)
+  const reply = await prisma.message.create({
+    data: { threadId: work.threadId, agentId: s.agentId, role: 'assistant', content: 'The redirect loses the path.' },
+  })
+  await prisma.messageBasisScope.create({
+    data: { messageId: reply.id, organizationId: s.organizationId, scopeType: 'project', scopeId: s.projectId },
+  })
+  // The agent's own scopes: its binding and its organisation, not the project.
+  const agentViewer: DisclosureViewer = {
+    kind: 'agent',
+    agentId: s.agentId,
+    scopes: [
+      { scopeId: s.channelId, scopeType: 'channel' },
+      { scopeId: s.organizationId, scopeType: 'organization' },
+      { scopeId: s.agentId, scopeType: 'agent' },
+    ],
+  }
+  const window = (viewer: DisclosureViewer) => loadConversation(prisma, {
+    consumedSources: createConsumedSourceSink(),
+    organizationId: s.organizationId,
+    threadId: work.threadId,
+    ticketWorkAgentId: s.agentId,
+    viewer,
+  })
+  assert.notEqual((await window(agentViewer))[0]?.content, reply.content, 'withheld from the bare agent')
+  const facts = { workId: work.id, projectId: s.projectId, taskId: work.taskId }
+  assert.equal((await window(ticketWorkDisclosureViewer(agentViewer, facts)))[0]?.content, reply.content)
+  // Any other run reads as it always did.
+  assert.deepEqual(ticketWorkDisclosureViewer(agentViewer, null), agentViewer)
 })
