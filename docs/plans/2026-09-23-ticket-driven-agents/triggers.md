@@ -41,21 +41,37 @@ the way `project-task-attention.ts` already enqueues. The topic is
 
 ### Who starts work
 
-A **pickup** fires only for a `column_entered` event whose origin is `session`
-and whose author can edit the board when the event is written. It also fires
-for a `created` event with a start-work column. Agent, token, source and
-system moves never start work. The ticket shows *"Moved by an agent, so work
-did not start. A person who can edit the board can start it."* Tests pin
-three cases, each starting nothing: an agent's `ticket_move` into the column,
-an API-token move, and an agent's `ticket_create` straight into the column.
+This is **the origin rule**. Every pickup, re-entry and follow in
+[Dispatch](#dispatch) applies it.
 
-A **follow** wake follows the same rule. It fires for events authored by a
-person (origin `session`) who can edit the board and, only when the trigger
-sets `follow.includeSourceEvents` (see [Board watchers](#board-watchers)), for
-source-origin events. An event from an agent, a token, an external provider or
-a source the trigger did not opt in never wakes the work, and a source event
-never picks it up. The agent still sees that event when it reads the ticket,
-labelled as untrusted (see
+A **pickup** fires only for a `column_entered` event whose origin is `session`
+and whose author can edit the board when the event is written. A `created`
+event in a start-work column counts under the same rule: origin `session`,
+and a creator who is a live board editor. Agent, token, source and system
+moves and creates never start work. The ticket shows *"Moved by an agent, so
+work did not start. A person who can edit the board can start it."* Tests pin
+five cases, each starting nothing:
+
+- an agent's `ticket_move` into the column;
+- an API-token move;
+- an agent's `ticket_create` straight into the column;
+- an API-token create into the column;
+- a board-source create into the column.
+
+A **follow** wake follows the same rule. It fires only for events authored by
+a person (origin `session`) who can edit the board. The people who can steer
+work are exactly the people who can start it. An event from an agent, a
+token or an external provider never wakes the work.
+
+A board-source event is the one opt-in exception: `follow.includeSourceEvents`
+(default `false`) lets a source event of a followed kind wake a live record.
+It can never pick up or resume work, and its text reaches the agent labelled
+as untrusted. The option is part of the pinned trigger digest
+([machine-access.md](machine-access.md#what-is-pinned)). T1 tests both the
+default and the opted-in case.
+
+Whatever its origin, the agent still sees an event when it reads the ticket,
+labelled as untrusted where it has to be (see
 [ticket-work.md](ticket-work.md#what-every-wake-says)).
 
 ## `ticket_changed`
@@ -80,10 +96,11 @@ not hand-written in `builtin-agent-tools.ts`. The shape:
     kinds: Array<'comment' | 'description' | 'moved' | 'thread_message' | 'document'
                | 'priority' | 'labels' | 'assignee'>,
     // default: comment, description, moved, thread_message, document
-    includeSourceEvents?: boolean, // default false; see Board watchers
+    includeSourceEvents: boolean,  // default false; see "Who starts work"
   },
   endOn: Array<{ category: 'todo' | 'done' } | { id }>,   // default: every todo- and done-category column
   quietWakeMinutes: number | null, // default 30; see ticket-work.md
+  waitingMachineHours: number,     // default 24; see ticket-work.md
   limits: { wakesPerTicket, ticketHours, ticketUsd, startsPerDay, dailyUsd },
   instructions: {
     general: string,
@@ -105,6 +122,20 @@ not hand-written in `builtin-agent-tools.ts`. The shape:
 - **Target channel.** It must be readable by the whole project audience, so
   that every ticket reader can open the work thread. The editor and the tool
   refusal both say why.
+- **One pickup trigger per column.** At most one enabled `ticket_changed`
+  trigger may pick up from a given column, so that two agents never start on
+  the same ticket. Creating, enabling or editing a second one is refused with
+  the other trigger named.
+- **`assignOnPickup`** is applied in the **move transaction**, not later in
+  dispatch. When an unassigned ticket enters a pickup column of an enabled
+  trigger with `assignOnPickup`, and the move itself qualifies as a pickup
+  (origin `session`, a board editor), the trigger's agent is assigned
+  *instead of* the mover. That replaces the existing assign-the-mover rule in
+  `project-task-move.ts` for that move only. A ticket that already has an
+  assignee, person or agent, is never reassigned. The `assigned` event has
+  origin `system` and wakes nothing. T1 tests the unassigned case, the
+  already-assigned case and a non-qualifying move, which keeps today's
+  behaviour.
 - **Authorship.** The trigger records `createdByUserId` for every type, as it
   already does for schedules. That is authorship only, and it grants no
   authority (see [ticket-work.md](ticket-work.md#authority-of-a-ticketwork-run)).
@@ -125,9 +156,12 @@ that board and decides, per trigger:
 - **Pickup**: the event enters a pickup column from outside the pickup set,
   the origin rule holds, and the trigger has no live or parked work record for
   the ticket. The result is a new work record.
-- **Re-entry**: the event enters a pickup column and a work record is live or
-  parked. The result is a follow wake with reason `ticket_moved` on the same
-  record and thread, never a second pickup.
+- **Re-entry**: the event enters a pickup column, a work record is live or
+  parked, and the origin rule holds. The result is a follow wake with reason
+  `ticket_moved` on the same record and thread, never a second pickup. A
+  re-entry that fails the origin rule leaves the record as it is and writes a
+  skip with its reason. T1 tests that a token or agent move back into a
+  pickup column does not wake a parked record.
 - **Follow**: the event kind is in `follow.kinds`, a work record is live, and
   the origin rule holds. The result is a follow wake.
 - **End**: the event enters an `endOn` column. Teardown is platform-owned and
@@ -188,11 +222,19 @@ For "editing a tech document of the project wakes the agent" (T2).
   version ids and numbers, how many versions were coalesced, author kinds and
   body size. The kickoff names the page by title only when every reader of the
   target channel can read the page; otherwise it names it by id.
-- **Where it lands.** A page with `taskId`, or one linked from a live work
-  record, is routed to **that ticket's work thread** as a follow wake with
-  reason `document_changed`. That is how a spec edit reaches the coding agent
-  mid-work. Any other page gets one thread per page, created and titled like a
-  ticket thread, never the channel's General thread.
+- **Where it lands**, in this order:
+  1. The page's ticket (its `taskId`, or a live work record that links the
+     page) has a live work record **for this trigger's agent**. The change goes
+     to that record's work thread as a follow wake with reason
+     `document_changed`. That is how a spec edit reaches the coding agent
+     mid-work. Only that agent's record is woken, even when several
+     `ticket_changed` triggers cover the board.
+  2. Otherwise the change goes to one thread per page, created and titled like
+     a ticket thread, never the channel's General thread. A ticket that was
+     never picked up, or whose work ended, lands here, and the kickoff names
+     the ticket.
+
+  T2 tests both cases, plus a board with two ticket triggers.
 - **`kb_page_diff(pageId, fromVersionId, toVersionId)`**: a new tool in
   `worker/src/run/pa-tools/knowledge-diff.ts`, with `kb_page_read`'s gates. It
   records both versions in the consumed-source sink and returns hunks of at

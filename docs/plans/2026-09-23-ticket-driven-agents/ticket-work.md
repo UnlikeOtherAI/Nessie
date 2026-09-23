@@ -19,7 +19,7 @@ the state; it is never asked to manage it.
 | `queuePosition?`, `enqueuedAt?` | The queue is ordered by ticket priority, then `enqueuedAt` |
 | `sessionIds[]`, `lastObservedTurn` (JSON per session) | Written by the worker in the same step as `coding_session_start` returns |
 | `pullRequestUrl?`, `lastPrState?`, `lastChecks?`, `prSeenAt?` | See [Done means merged](machine-access.md#done-means-merged) |
-| `wakeCount`, `activeMs`, `costUsd`, `lastWakeAt`, `lastWakeReason` | Limits and the chip. `activeMs` (a `BIGINT`) pauses while the record is `waiting_machine` or waiting on a person |
+| `wakeCount`, `activeMs`, `costUsd`, `lastWakeAt`, `lastWakeReason` | Limits and the chip. `activeMs` (a `BIGINT`) pauses while the record is `queued` or `waiting_machine`, and while an open question waits for a person (see [Quiet wake](#quiet-wake-and-the-sweep-t3)) |
 | `startedAt`, `endedAt`, `endedReason`, `endedBy` | |
 
 There is at most one live record (`queued`, `active`, `parked` or
@@ -140,11 +140,27 @@ itself moves a ticket to Done, the loop guard would suppress its own wake.
   the record's reminders, frees the machine and enqueues the pool dispatcher.
   The agent then gets one machine-less `ticket_moved` wake, only to comment.
 - **Entering a review-category column** that is not in `endOn` sets the
-  record to `parked`. The sessions stay and the machine slot is freed.
-  Re-entering a pickup column resumes the record. If its machine is now
-  busy, the record queues ahead of new tickets for that machine.
-- **Disabling or deleting the trigger** ends every live record with reason
-  `trigger_disabled`, the same way.
+  record to `parked`. The sessions stay and the machine slot is freed, and
+  the same transaction enqueues the pool dispatcher so a queued ticket can
+  take the slot. Re-entering a pickup column (under the origin rule) resumes
+  the record. If its machine is now busy, the record queues ahead of new
+  tickets for that machine.
+- **Disabling or deleting the trigger** ends every live record with
+  `stateReason: trigger_disabled`, the same way. Its sessions get close
+  requests with reason `trigger_changed`.
+- **Machine access suspended** (any `suspendedReason`) moves every `active`
+  record of that policy to `waiting_machine`, with `stateReason:
+  machine_access_suspended`, in the suspending transaction. That frees the
+  machine slot, pauses the hours clock and stops quiet wakes. Its sessions get
+  close requests with reason `policy_suspended`. When the author re-confirms,
+  the confirming transaction moves those records back to `queued` and
+  enqueues the dispatcher, which resumes them with a `dequeued` wake. `queued`
+  and `waiting_machine` records keep their state and only wait.
+- **Machine access ended** cancels every live record of that policy with
+  `stateReason: machine_access_ended`, in the ending transaction. Their
+  sessions get close requests with reason `policy_ended`. The ticket activity
+  says *"Machine access ended. Set it up again, then move the ticket out of
+  and back into In progress to restart."*
 - **A limit** is enforced by the platform, never the model. The record goes
   to `failed` with the limit's reason, and its sessions get close requests
   (reason `work_limit`). The ticket activity shows *"Stopped: 30 wakes used.
@@ -184,9 +200,19 @@ CI finishes without an event. A weak model may forget to set a reminder.
 The ticket would then sit in In progress forever.
 
 - **`quietWakeMinutes`** (a trigger option, default 30, shown in the editor):
-  when a live record has no working session, no pending reminder and no wake
-  for that long, the platform sends a `quiet` wake with the detail *"nothing
-  else is scheduled."* It counts against the wake budget.
+  when an `active` record has no working session, no pending reminder, no
+  open question and no wake for that long, the platform sends a `quiet` wake
+  with the detail *"nothing else is scheduled."* It counts against the wake
+  budget. Records that are `queued`, `parked` or `waiting_machine` never get
+  quiet wakes.
+- **An open question** is structural, never guessed from text. The ticket
+  comment tool gains `awaitsAnswer: boolean`, which stamps the comment's
+  metadata. While the latest agent comment on a live record awaits an answer
+  and no person event has come since, quiet wakes stop and the hours clock is
+  paused. The next person event, whether a comment, a thread message or a
+  move, ends the wait and wakes the record as a follow. The facts say: *"Set
+  awaitsAnswer when your comment asks the people on the ticket something;
+  you will be woken when one of them answers."*
 - **`ticket-work.sweep`** is one periodic job. It fires quiet wakes, ends
   records over their limits, dequeues when a machine is free, re-checks
   policies (see [machine-access.md](machine-access.md#fences)), and recovers a
@@ -239,8 +265,17 @@ not to one policy.
   machines busy with NES-140 and NES-141; you will be woken when one frees."*
   The agent's own `onQueued` instructions decide what it comments. No machine
   is named to the project audience (see below).
-- **Dequeue** (T5) fires when a record ends, a session closes, a machine comes
-  online, or the sweep runs. The dispatcher picks, across every policy whose
+- **Dequeue** (T5) fires when:
+  - a record ends, parks or moves to `waiting_machine`;
+  - a session closes;
+  - a machine comes online;
+  - machine access is re-confirmed;
+  - the sweep runs.
+
+  Every such transaction enqueues `ticket-work.sweep` with a short
+  idempotency window, so the dispatcher is one idempotent job. The periodic
+  sweep, every 60 s, is only the backstop. The dispatcher picks, across every
+  policy whose
   pool includes the free machine, the highest-priority, oldest queued record.
   At dequeue it re-checks everything:
   - the ticket is still in a pickup column;
@@ -255,6 +290,14 @@ not to one policy.
   offline since 14:32; work resumes when it reconnects."* The next online
   heartbeat enqueues a `machine_back_online` wake. The hours clock is paused
   meanwhile.
+- **A machine that stays offline.** After `waitingMachineHours` (a trigger
+  option, default 24), the sweep un-pins the record and returns it to
+  `queued`, so another pool machine can take it. The ticket activity says so.
+  The dead machine's sessions keep their close requests, which run when it
+  reconnects. The new session's brief has to say what was already done; the
+  state block carries the pull request, if there is one. With a one-machine
+  pool the record simply stays queued, and the chip shows *"waiting for a
+  machine"*.
 
 ## What the project sees
 
@@ -291,7 +334,7 @@ These are defaults, editable in the trigger editor within platform ceilings:
 | Limit | Default | Counted by |
 |---|---|---|
 | `wakesPerTicket` | 30 | Every model run for the record, including queued, quiet and reminder wakes |
-| `ticketHours` | 4 | `activeMs`; paused while `waiting_machine`, or while the last agent comment asked a question and no wake followed |
-| `ticketUsd` | 20 | Coding cost deltas from every status read and review the worker makes, plus the Nessie run cost |
+| `ticketHours` | 4 | `activeMs`; paused while `queued` or `waiting_machine`, and while an open question (`awaitsAnswer`) waits for a person |
+| `ticketUsd` | 20 | Coding cost deltas from every status read and review the worker makes, plus the Nessie run cost. Checked at every wake, in the heartbeat intake and in the sweep. A turn already running is bounded by the host profile's required per-turn `maxBudgetUsd`, so a ticket can overshoot `ticketUsd` by at most one turn's budget. The card refuses a `maxBudgetUsd` above `ticketUsd` |
 | `startsPerDay` | 20 | Pickups per trigger per day |
 | `dailyUsd` | 60 | Per policy per day |
