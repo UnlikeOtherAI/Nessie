@@ -44,13 +44,30 @@ export const KB_SEARCH_TOOL_DEFINITION: BuiltinToolDefinition = {
 export const KB_PAGE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_page_read',
   category: 'knowledge',
-  summary: 'Read the full text of one knowledge-base page.',
+  summary: 'Read one exact knowledge-page version, with bounded continuation.',
   label: 'KB Page Read',
-  description: "Read a knowledge page's full text content.",
+  description:
+    "Read a knowledge page's text. The result pins a versionId and returns a "
+    + 'nextOffset when more text remains; pass both back to continue without mixing revisions.',
   parameters: {
     type: 'object',
     properties: {
       pageId: { type: 'string', description: 'Knowledge-base page id' },
+      versionId: {
+        type: 'string',
+        description: 'Exact version to continue reading; omit on the first call',
+      },
+      offset: {
+        type: 'integer',
+        description: 'Character offset within the exact version (default 0)',
+        minimum: 0,
+      },
+      limit: {
+        type: 'integer',
+        description: 'Maximum characters to return (1-20000, default 12000)',
+        minimum: 1,
+        maximum: 20000,
+      },
     },
     required: ['pageId'],
   },

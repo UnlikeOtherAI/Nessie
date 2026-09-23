@@ -3,15 +3,6 @@ import { randomUUID } from 'node:crypto'
 export const seedDesignerFixture = async (prisma, seedScope) => {
   const scope = await seedScope(prisma, 'designer-capabilities')
   const sessionId = randomUUID()
-  await prisma.organizationMember.create({
-    data: { organizationId: scope.organizationId, userId: scope.userId, role: 'owner' },
-  })
-  await prisma.projectMember.create({
-    data: { projectId: scope.projectId, userId: scope.userId, role: 'owner' },
-  })
-  await prisma.teamMember.create({
-    data: { teamId: scope.teamId, userId: scope.userId, role: 'owner' },
-  })
   await prisma.authSession.create({ data: { id: sessionId, userId: scope.userId } })
   await prisma.refreshToken.create({
     data: {

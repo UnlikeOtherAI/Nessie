@@ -12,6 +12,8 @@ this document.
 
 - [Protocol and threat model](#1-scope-and-non-goals)
 - [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
+- [Conversation leases](conversation-leases.md) — how a person's own follow-ups keep local apps
+- [Host coding sessions: the `coding-sessions` bridge](host-coding-sessions.md)
 
 ## 1. Scope and non-goals
 
@@ -34,7 +36,17 @@ arbitrary local-network proxy.
 | Agent, including Personal Assistant | Invoke an already available operation; prepare a proposed access change for its requesting user. | Administer access, approve itself, select a free-form executor, alter local policy, or apply a prepared change. |
 | Nessie control plane | Resolve availability, bind a run, lease commands, retain redacted audit facts, and send policy narrowing. | Dial a machine, widen local policy, access host credentials, or treat terminal text as an authorization/outcome. |
 | Executor daemon | Enforce local policy, pair outward, run the VM/gateway, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host team/credentials directly, or send raw local data to audit. |
-| Guest VM / coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
+| Guest VM / guest coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
+
+The last row is the guest `coding.*` lane. The owner-named host-local coding
+bridge (`coding-sessions`) is not a guest principal: a coding agent it runs
+acts with the host OS user's full authority — their files, their git and SSH
+credentials, their Claude or ChatGPT login — takes follow-ups through a prompt
+channel, and writes host files directly rather than by promotion. Its own
+contract, and why it exists at all, are in
+[host-coding-sessions.md](host-coding-sessions.md); its row in this table
+lands with the control-plane rule that offers it only on a private executor
+to that executor's pairing owner.
 
 A descriptor signed by an executor key proves that paired key made the claim;
 it does not prove the host is uncompromised. That limitation is deliberate and
@@ -170,7 +182,10 @@ therefore cannot extend its last-seen time. Sixty seconds is also the sole
 server-side liveness threshold: once the last authenticated daemon activity is
 older, an online executor is durably marked offline before it can be listed,
 selected, or dispatched. This channel reports availability only: it cannot
-lease or execute a command. Every HTTP control request has a 15-second client
+lease or execute a command. The one instruction its response may carry is
+`codingSessionClose`, which asks the daemon to close named owners' host coding
+sessions ([host-coding-sessions.md](host-coding-sessions.md)); it stops work
+and never starts any. Every HTTP control request has a 15-second client
 deadline and is cancelled during daemon shutdown. A heartbeat still in flight
 suppresses the next interval, so network delay cannot accumulate overlapping
 liveness or reconnect requests.
@@ -233,7 +248,8 @@ and explicitly confirm the review. Activating a revision requires fresh human
 verification. Neither an agent nor the Personal Assistant can activate a
 proposal, and no direct descriptor-review endpoint bypasses this confirmation
 path. The Personal Assistant can inspect the same signature-free proposal
-summary for a manager and prepare a review link, but it cannot submit the
+summary for a manager and prepare the review — a confirmation card in the
+conversation whose press opens it for that person — but it cannot submit the
 confirmation on the person's behalf.
 
 The local file boundary is deliberately **one canonical workspace root**, not
@@ -413,6 +429,11 @@ accepted, started, or terminal transition; it never polls past pending local
 recovery. If the process died after local execution began but before its result
 was durable, the replacement daemon returns
 `EXECUTOR_COMMAND_UNKNOWN_OUTCOME` and does not run the side effect again.
+A terminal result the server refuses as `EXECUTOR_COMMAND_RESULT_INVALID`
+would be refused on every retry and hold the machine's only command lane, so
+the daemon journals the small terminal failure `EXECUTOR_RESULT_REFUSED` in
+its place and sends that, with its own digest; a lost response replays the
+replacement, never the refused result.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored
@@ -455,7 +476,11 @@ promotion primitive remains unavailable until the separate user-confirmation
 and server-command flow can bind it to the exact review.
 
 Before the worker adds an executor logical schema to a model request, a human
-must bind one opaque candidate to the exact run. The user-facing launch endpoint
+must bind one opaque candidate to the exact run — either by launching it, or,
+for the local-apps pair only, by a later message of their own in the same
+conversation while their lease is live, under the structural definition in
+[conversation-leases.md](conversation-leases.md). Each such run is bound afresh
+and every check runs again. The user-facing launch endpoint
 `POST /api/threads/:threadId/executor-runs` creates the human message, pending
 run, task, bindings, and `run.execute` job in one transaction for one selected
 bound channel agent. It accepts an agent id, one opaque candidate handle,
@@ -463,8 +488,9 @@ content, and a small exact operation bundle—but never an executor id. Every
 operation is independently rechecked and bound before the candidate is
 consumed, so a failed member rolls back the complete bundle. The older
 `POST /api/runs/:runId/executor-bind` route is limited to binding one
-already-created non-browser run operation. Both paths use the same fenced binding helper
-and the schema carries no executor id; dispatch only sees that binding.
+already-created non-browser run operation. Both paths, and a lease's carry, use the same
+fenced binding helper; the schema carries no executor id (a carry takes its machine from
+the lease row, never from a request), and dispatch only sees that binding.
 The worker creates the regular `ToolCall` before command dispatch and completes
 that same row when the terminal receipt returns. It also creates the existing
 `executor.command` queue job; its worker subscription holds the ordinary queue
@@ -795,8 +821,10 @@ The companion derives that state solely from the fixed tmux dead-pane fields;
 it never captures a terminal pane. An exited session moves to `attention`, where
 the agent may use the bundle's `team.review` operation; `sandbox.stop`, a
 timeout, daemon fencing, VM exit, or revocation stops the guest and erases the
-transient login material. There is no remote terminal attach, prompt channel,
-or terminal-control API.
+transient login material. The guest lane has no remote terminal attach,
+prompt channel, or terminal-control API; the host-local coding bridge, a
+separate owner-named server, does have a prompt channel
+([host-coding-sessions.md](host-coding-sessions.md)).
 
 Its optional `--team-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM
@@ -928,7 +956,7 @@ EXECUTOR_BINDING_FENCED          EXECUTOR_COMMAND_REPLAY
 EXECUTOR_COMMAND_UNKNOWN_OUTCOME EXECUTOR_APPROVAL_STALE
 EXECUTOR_CANDIDATE_INVALID       EXECUTOR_PROMOTION_CONFLICT
 EXECUTOR_PROMOTION_UNSAFE_PATH   EXECUTOR_EGRESS_DENIED
-EXECUTOR_CREDENTIAL_REVOKED
+EXECUTOR_CREDENTIAL_REVOKED      EXECUTOR_RESULT_REFUSED
 EXECUTOR_VM_GUEST_HANDSHAKE_FAILED
 ```
 

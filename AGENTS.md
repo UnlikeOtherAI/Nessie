@@ -389,7 +389,9 @@ when one changes, the same turn updates it, not this section.
   out of every message; availability rides the heartbeat rather than the signed
   descriptor, because installing the software must cost no revision; and absent
   never means empty, at any layer — a policy that names nothing permits nothing,
-  and a Kelpie that could not look has not found nothing.
+  and a Kelpie that could not look has not found nothing. The pair is the one
+  bundle that carries across runs, and only into the launching person's own
+  follow-ups under a conversation lease, each bound afresh.
   Read [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md)
   before writing code here.
 - **Local Ollama agents are owner-host-only and never fall back to cloud.**
@@ -528,13 +530,11 @@ separate inference and per-run active-testing approvals.
 Read [`docs/standards/deeptest-native-adapter.md`](docs/standards/deeptest-native-adapter.md)
 before changing this boundary.
 
-## Agent documents — one shared home provisioner
+## Agent documents — required core, one shared home
 
-Knowledge-space provisioning lives in `@nessie/knowledge`
-(`packages/knowledge/src/provisioning.ts`); at run setup a non-system agent
-with an assembled KB write tool lazily gets its private `<Agent> — Documents`
-home, and the system prompt injects that home id so the model never invents a
-`spaceId`.
+Every ordinary agent has canonical `AGENTS.md` and `personality.md` versions
+in its one `@nessie/knowledge` home; run admission pins and authorizes them,
+while the remaining files stay available through the ordinary read tools.
 Read [`docs/standards/agent-documents.md`](docs/standards/agent-documents.md)
 before writing code here.
 

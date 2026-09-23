@@ -10,6 +10,10 @@ import {
   encryptExecutorCommandJson,
   executorCommandDigest,
 } from './executor-command-codec.js'
+import {
+  isExecutorLeaseLive,
+  touchExecutorConversationLeaseForBinding,
+} from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 import { resolveExecutorAvailability } from './availability.js'
@@ -87,6 +91,7 @@ export const assertExecutorCommandBindingCurrent = async (
       candidateHandleDigest: true,
       capabilityRevisionId: true,
       executorId: true,
+      leaseId: true,
       operationKey: true,
       runId: true,
       sessionId: true,
@@ -100,6 +105,22 @@ export const assertExecutorCommandBindingCurrent = async (
     )
   }
   binding = lockedBinding
+  // A binding made under a conversation lease lives only as long as the lease:
+  // ended by a person or a fencing transition, or past either window, it is
+  // fenced like a revoked grant. Read under the executor lock every lease
+  // transition takes.
+  if (lockedBinding.leaseId) {
+    const lease = await tx.executorConversationLease.findUnique({
+      where: { id: lockedBinding.leaseId },
+      select: { absoluteExpiresAt: true, endedAt: true, executorId: true, idleExpiresAt: true },
+    })
+    if (!lease || lease.executorId !== binding.executorId || !isExecutorLeaseLive(lease, options.now ?? new Date())) {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.BINDING_FENCED,
+        'The conversation lease for this executor binding has ended.',
+      )
+    }
+  }
   await expireStaleExecutorHeartbeats(
     tx,
     { executorId: binding.executorId },
@@ -335,11 +356,15 @@ export const assertExecutorCommandBindingCurrent = async (
  * The worker creates the queue job and ToolCall in its own transaction, then
  * persists this protocol record. Queue JSON contains only `commandId`; raw
  * operation arguments live exclusively in this encrypted column.
+ *
+ * This is the one record of a dispatch, so it is also where a conversation
+ * lease's idle window moves: every command under a live lease counts as use.
  */
 export const createExecutorCommand = async (
-  prisma: Pick<PrismaClient, 'executorCommand'>,
+  prisma: Pick<PrismaClient, 'executorCommand' | 'executorConversationLease'>,
   input: ExecutorCommandCreateInput,
 ): Promise<void> => {
+  await touchExecutorConversationLeaseForBinding(prisma, input.bindingId)
   await prisma.executorCommand.create({
     data: {
       argumentDigest: executorCommandDigest(input.payload),

@@ -85,9 +85,6 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
       })),
     }),
     prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: MemberRole.owner, userId: agentOwner.id },
-    }),
-    prisma.organizationMember.create({
       data: { organizationId: scope.organizationId, role: MemberRole.member, userId: sourceAuthor.id },
     }),
     prisma.organizationMember.create({
@@ -95,14 +92,12 @@ export const seedFixture = async (pipeline, seedScope, groupId) => {
     }),
     prisma.projectMember.createMany({
       data: [
-        { projectId: scope.projectId, role: MemberRole.member, userId: agentOwner.id },
         { projectId: scope.projectId, role: MemberRole.member, userId: sourceAuthor.id },
         { projectId: scope.projectId, role: MemberRole.member, userId: audience.id },
       ],
     }),
     prisma.teamMember.createMany({
       data: [
-        { teamId: scope.teamId, role: MemberRole.member, userId: agentOwner.id },
         { teamId: scope.teamId, role: MemberRole.member, userId: sourceAuthor.id },
         { teamId: scope.teamId, role: MemberRole.member, userId: audience.id },
       ],

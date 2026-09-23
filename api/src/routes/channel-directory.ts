@@ -1,12 +1,17 @@
 import type { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import {
   ChannelDirectoryEntrySchema,
   ProjectDirectoryMemberSchema,
   isAdminActor,
 } from '@nessie/schemas'
 
-import { createApiResponse, sendApiError } from '../lib/api.js'
-import { readChannelForViewer, readChannelRoster } from '../services/channel-directory.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import {
+  readChannelForViewer,
+  readChannelRoster,
+  searchChannelsForViewer,
+} from '../services/channel-directory.js'
 import type { RouteDeps } from './types.js'
 
 /**
@@ -29,6 +34,28 @@ export const registerChannelDirectoryRoutes = (app: FastifyInstance, deps: Route
   const { prisma, requireActorContext, requireUserActor } = deps
 
   const CHANNEL_NOT_FOUND = 'Channel not found'
+
+  app.get('/api/channels/search', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+    const query = parseInput(z.object({
+      query: z.string().trim().min(2).max(200),
+      limit: z.coerce.number().int().positive().max(50).optional(),
+    }), request.query ?? {}, reply)
+    if (!query) return reply
+
+    const entries = await searchChannelsForViewer(
+      prisma,
+      {
+        isOrganizationAdmin: isAdminActor(actorContext),
+        organizationId: actorContext.tenant.organizationId,
+        userId: actorContext.actor.actorId,
+      },
+      query,
+    )
+    return createApiResponse(ChannelDirectoryEntrySchema.array().parse(entries))
+  })
 
   app.get('/api/channels/:channelId', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

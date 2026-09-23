@@ -50,6 +50,10 @@ one transaction. `POST /api/runs/:runId/executor-bind` remains the narrow
 internal/continuation binding seam for an already-created non-browser single
 operation. Browser work is available only through its human-directed exact
 bundle.
+One later addition binds without a new launch: for the local-apps pair only,
+the launching person's own later messages in the same conversation bind each
+new run afresh while their conversation lease is live
+([conversation-leases.md](../executor-protocol/conversation-leases.md)).
 Neither endpoint accepts an executor id; the model receives only the bound,
 explicitly granted logical operations and never a selection parameter. Command creation
 reserves the normal `ToolCall`, creates an existing `executor.command` queue

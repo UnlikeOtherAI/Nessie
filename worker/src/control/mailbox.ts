@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { Prisma } from '@prisma/client'
+import { mailboxDeliveryRunSource, recordMailboxDeliveryRun } from '@nessie/db'
 import { type PgRealtimeTransport } from '@nessie/runtime'
 import {
   parseAgentId,
@@ -12,8 +13,6 @@ import {
 import type { WsScope } from '@nessie/schemas'
 import { ensureDefaultThread } from './channels.js'
 import { buildMailboxActorContext } from './mailbox-actor-context.js'
-import { markDelegationStepQueued } from '../run/plans.js'
-import { markWorkflowStepRunQueued } from '../run/workflows.js'
 import { enqueueRunExecution } from '../queue.js'
 import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 import {
@@ -316,9 +315,11 @@ export const dispatchNextMailboxMessage = async (
     })
 
     // Same per-(agent, thread) claim as chat replies and trigger fires: with
-    // a run already in flight the delivery pends for the batched follow-up
-    // instead of spawning a concurrent run. The mailbox message is still
-    // marked delivered — the pending marker IS the durable delivery.
+    // a run already in flight the delivery pends instead of spawning a
+    // concurrent run, and later drains alone as its own follow-up. The mailbox
+    // message is still marked delivered — the pending marker IS the durable
+    // delivery, and it keeps the mailbox id so that follow-up is linked to the
+    // plan or workflow step exactly as the run below would be.
     const claim = await claimThreadRunOrPend(tx, {
       agentId: message.toAgentId,
       threadId: targetThreadId,
@@ -327,6 +328,7 @@ export const dispatchNextMailboxMessage = async (
         channelId: thread.channelId,
         // Agent-to-agent mail is automation, never a live human turn.
         interactive: false,
+        mailboxMessageId: message.id,
         messageId: promptMessage.id,
       },
     })
@@ -388,10 +390,7 @@ export const dispatchNextMailboxMessage = async (
           }),
           agentId: parseAgentId(message.toAgentId),
           messageId: promptMessage.id,
-          parentPlanId: message.planId ?? undefined,
-          parentPlanStepId: message.planStepId ?? undefined,
-          parentWorkflowRunId: message.workflowRunId ?? undefined,
-          parentWorkflowStepRunId: message.workflowStepRunId ?? undefined,
+          ...mailboxDeliveryRunSource(message),
           promptOverride: message.body,
           runId: parseRunId(run.id),
           taskId: parseTaskId(task.id),
@@ -409,27 +408,15 @@ export const dispatchNextMailboxMessage = async (
       },
     })
 
-    // Plan/workflow queue-markers reference the child run, so they only apply
-    // when this delivery claimed the slot and created one.
+    // The plan or workflow step this mail was sent for learns its run here
+    // when the delivery claimed the slot, and in the drain when it pended.
     if (run && task) {
-      await markDelegationStepQueued(tx, {
-        artifacts: {
-          childRunId: run.id,
-          mailboxMessageId: message.id,
-          targetAgentId: message.toAgentId,
-        },
-        planId: message.planId,
-        planStepId: message.planStepId,
-      })
-      await markWorkflowStepRunQueued(tx, {
-        output: {
-          childRunId: run.id,
-          mailboxMessageId: message.id,
-          targetAgentId: message.toAgentId,
-          taskId: task.id,
-        },
-        workflowRunId: message.workflowRunId,
-        workflowStepRunId: message.workflowStepRunId,
+      await recordMailboxDeliveryRun(tx, {
+        agentId: message.toAgentId,
+        mailboxMessageId: message.id,
+        runId: run.id,
+        step: message,
+        taskId: task.id,
       })
     }
 

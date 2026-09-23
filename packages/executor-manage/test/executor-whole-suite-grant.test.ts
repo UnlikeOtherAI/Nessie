@@ -55,6 +55,10 @@ const transactionFake = (input: {
   const upserts: Upsert[] = []
   let bumps = 0
   const tx = {
+    // A deny also ends the agent's conversation leases on this executor,
+    // under the executor lock; this fake holds none.
+    $executeRaw: async () => 1,
+    executorConversationLease: { findMany: async () => [] },
     executor: {
       findFirst: async () => ({
         authorizationRevision: 4,

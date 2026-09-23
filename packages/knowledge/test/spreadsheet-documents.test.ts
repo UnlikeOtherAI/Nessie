@@ -130,12 +130,11 @@ dbTest('a saved spreadsheet reports the indexing state its chunks actually have'
 
     const saved = states.get(savedId)
     assert.ok(saved, 'a saved spreadsheet has a state')
-    // The chunks exist and are waiting on their embeddings. What matters is
-    // that it is neither of the two answers the sibling arms would have given:
-    // `fileState` would call the `.xlsx` rendition unsupported, and
-    // `documentState` would call a page nothing ever publishes a draft.
-    assert.equal(saved.state, 'pending', JSON.stringify(saved))
-    assert.equal(saved.state === 'pending' ? saved.stage : null, 'embed')
+    // This fixture has no embedding queue hook. The saved sheet has chunks,
+    // but nothing is working on them, so it must offer retry instead of
+    // showing an endless spinner. The sibling arms would incorrectly call
+    // its `.xlsx` rendition unsupported or its never-published page a draft.
+    assert.deepEqual(saved, { state: 'failed', stage: 'embed' })
     const chunks = await seed.prisma.knowledgePageChunk.count({ where: { pageId: savedId } })
     assert.ok(chunks > 0, 'the save wrote the chunks the state is reporting on')
   } finally {

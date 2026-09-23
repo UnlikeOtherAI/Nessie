@@ -51,9 +51,10 @@ const wholeSuiteRule = (
       + 'policy offers')
   + ', minus workspace.promote, which only a person can issue. There is no way '
   + 'to grant a subset, and no agent is ever granted an executor without the '
-  + 'person confirming it in Executors with fresh verification — '
+  + 'person confirming it with fresh verification — '
   + (writeSurface === 'agent_tools'
-    ? 'not itself, and not another agent.'
+    ? 'from the confirmation card the prepare posts in this conversation, whose '
+      + 'Review opens the exact change; not itself, and not another agent.'
     : 'that confirmation happens on the Executors page, not here.'),
 ]
 

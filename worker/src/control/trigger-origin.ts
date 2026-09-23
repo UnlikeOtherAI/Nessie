@@ -37,6 +37,8 @@ export type TriggerLaunchOriginReason =
   | 'team_unreachable'
   /** The saved user can no longer read the target channel. */
   | 'channel_access_lost'
+  /** The target disappeared or the shared agent is no longer bound into it. */
+  | 'agent_channel_access_lost'
   /** The stored launch origin is missing, malformed, or self-inconsistent. */
   | 'launch_origin_invalid'
 
@@ -58,17 +60,17 @@ export class TriggerLaunchOriginError extends Error {
   readonly detail: string
 
   constructor(reason: TriggerLaunchOriginReason, detail: string) {
+    const recovery = REAUTHORIZABLE_REASONS.has(reason)
+      ? 'Sign in and reauthorize this schedule to resume it.'
+      : reason === 'agent_channel_access_lost'
+        ? 'Add the agent back to the channel, then resume this schedule.'
+        : reason === 'channel_access_lost'
+          ? 'Add the person back to the channel, then resume this schedule.'
+          : reason === 'member_inactive' || reason === 'team_unreachable'
+            ? 'Restore the person\'s access, then resume this schedule.'
+            : 'Repair the saved launch configuration before resuming this schedule.'
     super(
-      `Scheduled task cannot run because ${detail}. `
-      + (REAUTHORIZABLE_REASONS.has(reason)
-        // Reauthorizing is a button now, so the message names it instead of
-        // telling people to recreate the schedule — which they could not do
-        // anyway, since a trigger with delivery history refuses deletion.
-        ? 'Sign in and reauthorize this schedule to resume it.'
-        // The other reasons have no stored identity to refresh, or need the
-        // team itself changed, so recreating really is the remedy.
-        : 'Sign in again if needed, then recreate the schedule so it captures '
-          + 'your current authenticated team and UnlikeOtherAI identity.'),
+      `Scheduled task cannot run because ${detail}. ${recovery}`,
     )
     this.name = 'TriggerLaunchOriginError'
     this.reason = reason

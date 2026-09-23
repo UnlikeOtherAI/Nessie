@@ -176,6 +176,11 @@ editor, a dashboard's add-widget panel. It is **one component**,
   when it is the top layer and `swipeable` (the default). A same-route
   re-render refreshes the route beneath it (`refreshPhoneNavigationRoute`)
   and never touches the stages.
+- **Its Back doorway belongs to that visible layer.** A staged Knowledge pane
+  receives the action from `ScreenBarLayer`: the iOS phone publishes it into
+  the native bar, while web and Android render it in the pane header. The
+  retained route header underneath the stage is deliberately off-screen and
+  is never the person's way out.
 - **The page keeps rendering it.** The content goes through a portal into
   the layer's container, so context, state and providers never leave the
   page; only the DOM moves. Keep the stage mounted and toggle `active` — an
@@ -209,6 +214,12 @@ rather than a `transition-transform duration-300` utility. `ExecutorsPage`'s `Ex
 full screen, today's fixed-width side panel unchanged on `split`.
 
 **Knowledge is built.** `KnowledgeWorkspace` registers no Back of its own;
+on `single`, `/knowledge-base` renders only the Finder's root picker while its
+addressable destination routes render the selected space or virtual listing as
+column 0. The pathname owns that split even while the selection state updates,
+so the root instance never pushes the destination as a hidden stage underneath
+the real route. Wider layouts still compose the root and detail columns side by
+side.
 its four inner screens are stages — `knowledge:folder` (11, a folder browsed
 beyond the space root), `knowledge:document` (12, the open document or file),
 `knowledge:history` (13) and `knowledge:editor` (14, `swipeable={false}` for
@@ -230,6 +241,16 @@ When a document's immediate parent is a folder, its Back removes only the
 document from the drill path and restores that folder browser (including its
 columns context); a document whose immediate parent is another page still
 returns to that parent page's detail.
+
+The Knowledge root has one **Agents** directory row. It opens
+`/knowledge-base/agents`, whose next column lists readable agent homes; an
+agent opens `/knowledge-base/agents/:agentId` and only then the shared space
+browser. The route ancestry is therefore Knowledge → Agents → agent → page,
+not a flat root crowded with one synthetic row per agent. Cold links, prewarm,
+Tree and column views all preserve that same ancestry.
+On `single`, each route owns its base Finder column and only a folder or
+document opened beneath that route becomes a nested stage; retained route
+instances must suspend their local Back owners while covered by a newer route.
 
 **`AgentDetailPage` is built.** It registers no local Back: `/agents/:id` is a
 real depth-2 route whose parent is Agents, so the shared route Back returns

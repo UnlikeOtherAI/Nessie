@@ -89,9 +89,11 @@ test('the editor refuses the edge swipe while it is open', () => {
   assert.equal((team.match(/swipeable=\{false\}/g) ?? []).length, 1)
 })
 
-test('inner knowledge surfaces keep titles/actions but suppress their own Back in the stack', () => {
+test('inner knowledge surfaces render or publish the stage Back from one action', () => {
   // Every onBack the team hands to an inner pane is gated on the stack
-  // hosting the stage; there the shared doorway renders the stage's own Back.
+  // hosting the stage. `KnowledgePane` then takes the stage's shared Back:
+  // native iOS publishes it into the native bar, while web/Android paint it
+  // in the pane header instead of relying on the retained route off-screen.
   const handoffs = team.match(/onBack=\{stacked \? undefined :/g) ?? []
   assert.ok(handoffs.length >= 2, `expected pane handoffs stack-gated, found ${handoffs.length}`)
   const documentPane = readSource('../src/components/features/knowledge/KnowledgeDocumentPane.tsx')
@@ -99,6 +101,7 @@ test('inner knowledge surfaces keep titles/actions but suppress their own Back i
 
   const pane = readSource('../src/components/features/knowledge/KnowledgePane.tsx')
   assert.match(pane, /onBack\?: \(\) => void/)
+  assert.match(pane, /leading=\{isStage \? <PhoneNavigationButton \/> : undefined\}/)
 
   for (const path of [
     '../src/components/features/knowledge/PagePreview.tsx',

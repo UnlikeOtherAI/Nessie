@@ -30,6 +30,15 @@ const IMAGE_GENERATION_TIMEOUT_MS = 120_000
  * nobody left to tell. It gives up early and says why instead.
  */
 export const IN_TOOL_IMAGE_TIMEOUT_MS = 45_000
+/**
+ * The prompt writer's budget. A one-paragraph image prompt needs a few hundred
+ * tokens of text, but a reasoning model spends from the same allowance before
+ * it writes any: at 500 one used all of it thinking, answered nothing, and the
+ * person was told only that "the avatar prompt could not be generated". Low
+ * effort plus room to finish is the fix; the finish reason in the error is how
+ * the next one is diagnosed.
+ */
+const AVATAR_PROMPT_MAX_TOKENS = 2_000
 const MAX_GENERATED_IMAGE_BYTES = 25 * 1024 * 1024
 /** Ledger's own failure text, kept short enough to sit in one log line. */
 const MAX_FAILURE_EXCERPT_CHARS = 400
@@ -309,7 +318,7 @@ export const generateAgentAvatar = async (input: {
   // Free-text guidance the person typed for this generation.
   instructions?: string
   ledgerIdentity: LedgerIdentityService | null
-  modelClient: Pick<ModelClient, 'chat'>
+  modelClient: Pick<ModelClient, 'chatResult'>
   /**
    * The look this person's portraits are drawn in ("cartoon", "photoreal"),
    * resolved from the settings cascade rather than typed each time. Distinct
@@ -327,23 +336,32 @@ export const generateAgentAvatar = async (input: {
     systemComponent: 'agent-avatar-prompt',
   })
 
-  let prompt: string
+  let answer: Awaited<ReturnType<ModelClient['chatResult']>>
   try {
-    prompt = (await input.modelClient.chat(
+    answer = await input.modelClient.chatResult(
       avatarPromptMessages(
         input.agent,
         avatarBackgroundColor,
         input.instructions,
         input.style,
       ),
-      { maxTokens: 500, temperature: 0.4, usage: promptUsage },
-    )).trim()
+      {
+        maxTokens: AVATAR_PROMPT_MAX_TOKENS,
+        reasoningEffort: 'low',
+        temperature: 0.4,
+        usage: promptUsage,
+      },
+    )
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'unknown error'
     throw new AgentAvatarGenerationError(`The avatar prompt could not be generated: ${detail}`)
   }
+  const prompt = answer.text.trim()
   if (!prompt) {
-    throw new AgentAvatarGenerationError('The avatar prompt could not be generated.')
+    throw new AgentAvatarGenerationError(
+      'The avatar prompt could not be generated: the model returned no text '
+      + `(finish reason: ${answer.finishReason ?? 'not reported'}).`,
+    )
   }
 
   const imageUsage = completeLedgerAttribution(
@@ -405,7 +423,7 @@ export const generateAvatarForNewAgent = async (input: {
   fileService: Pick<FileService, 'store'> | null | undefined
   imageRequest?: ImageRequest
   ledgerIdentity: LedgerIdentityService | null
-  modelClient: Pick<ModelClient, 'chat'> | null | undefined
+  modelClient: Pick<ModelClient, 'chatResult'> | null | undefined
   onFailure?: (error: unknown) => void
   /** This person's remembered portrait style, when they have chosen one. */
   style?: string | null

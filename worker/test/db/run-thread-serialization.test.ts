@@ -303,6 +303,13 @@ runDatabaseTest('5 rapid messages spawn at most 2 runs; the batch preserves orde
     0,
   )
   assert.equal(await queueJobCount(prisma, `run:batch:${followUp.id}`), 1)
+  // The job names every message it folded in, in arrival order — what lets an
+  // executor conversation lease refuse a batch that mixed in someone else's.
+  const [batchJob] = await prisma.$queryRaw<{ payload: RunExecuteJobPayload }[]>`
+    SELECT payload FROM queue_jobs WHERE idempotency_key = ${`run:batch:${followUp.id}`}
+  `
+  assert.deepEqual(batchJob?.payload.batchMessageIds, pendedMessages.map((message) => message.id))
+  assert.equal(batchJob?.payload.messageId, followUp.triggerMessageId)
 
   // A drained batch is not re-delivered.
   assert.equal(

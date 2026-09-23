@@ -5,6 +5,10 @@ import {
   type ExecutorPairingStartRequest,
 } from '@nessie/schemas'
 import { canonicalExecutorJson, canonicalExecutorPayload } from './executor-canonical-json.js'
+import {
+  endExecutorConversationLeasesInTransaction,
+  type ExecutorLeaseRef,
+} from './executor-conversation-lease.js'
 import { ExecutorError, EXECUTOR_ERROR_CODES } from './executor-errors.js'
 
 export const pairingDigest = (value: string): string =>
@@ -54,7 +58,15 @@ export const pairingCodeVerifier = (secret: string, code: string): string =>
 export const lockPairing = async (tx: Prisma.TransactionClient, id: string): Promise<void> => {
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`executor-pairing:${id}`}, 0))`)
 }
-export const revokePairingExecutor = async (tx: Prisma.TransactionClient, executorId: string): Promise<void> => {
+/**
+ * A pairing closed on the machine, a code that expired, or a machine that
+ * paired again: the executor row is revoked with the same fence as a
+ * management revoke, and so are its conversation leases. Returns the leases it
+ * ended, for their holders' change notices once the caller has committed.
+ */
+export const revokePairingExecutor = async (
+  tx: Prisma.TransactionClient, executorId: string,
+): Promise<ExecutorLeaseRef[]> => {
   await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`executor:${executorId}`}, 0))`)
   await tx.executor.update({ where: { id: executorId }, data: {
     status: 'revoked', statusDetail: 'Pairing was closed on this machine.',
@@ -63,4 +75,13 @@ export const revokePairingExecutor = async (tx: Prisma.TransactionClient, execut
   await tx.executorSession.updateMany({
     where: { executorId, status: { in: ['pending', 'active'] } }, data: { status: 'stopped' },
   })
+  return endExecutorConversationLeasesInTransaction(tx, {
+    actor: { actorId: 'executor-pairing', actorType: 'system', requestId: `executor-pairing:${executorId}` },
+    endedByUserId: null,
+    reason: 'executor_revoked',
+    where: { executorId },
+  })
 }
+
+/** Told, after its transaction commits, of the leases a pairing change ended. */
+export type ExecutorPairingLeaseNotice = (leases: ExecutorLeaseRef[]) => Promise<void>

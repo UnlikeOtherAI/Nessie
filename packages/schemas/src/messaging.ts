@@ -29,6 +29,24 @@ export const MessageRoleSchema = z.enum(['user', 'assistant', 'system'])
 export type MessageRole = z.infer<typeof MessageRoleSchema>
 
 /**
+ * `metadata.authorship` on a message a signed-in person typed into a client's
+ * composer and sent themselves. It is an allowlist marker, not an exclusion
+ * list: only `createThreadMessage` writes it, and only when its caller is a
+ * composer route. A relayed post (`delegatedByAgentId`), a workflow send,
+ * inbound mail, an integration, a trigger fire, a card press, a voice
+ * hand-off and every server-authored row never carry it, and the server
+ * strips a copy that arrives any other way. An executor conversation lease
+ * carries only on messages that hold it.
+ */
+export const PERSON_MESSAGE_AUTHORSHIP = 'person' as const
+
+export const isPersonAuthoredMessageMetadata = (metadata: unknown): boolean =>
+  typeof metadata === 'object'
+  && metadata !== null
+  && !Array.isArray(metadata)
+  && (metadata as Record<string, unknown>).authorship === PERSON_MESSAGE_AUTHORSHIP
+
+/**
  * The identity selected by an agent @mention in a composer.
  *
  * Ordinary agents are addressed by `agentId`. A Personal Assistant presence

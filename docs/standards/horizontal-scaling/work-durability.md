@@ -291,6 +291,14 @@ matches no row. Beside it:
   model remembered from `mcp_find_tools` is still claimed. That property is
   pinned by its own test in `mcp-toolset-deferred.test.ts`; the ledger does not
   assume it.
+- **The claim decision asks with the name dispatch resolves.** A provider's
+  namespace prefix (`default.`, `functions.`) is dropped by the scope's
+  `normalizeToolName` — the loop's own — before either half of the question is
+  asked. Asked with the raw name, `default.executor_mcp_call` matched neither
+  `EFFECTFUL_BUILTIN_TOOL_IDS` nor the live view, so once the loop let it run
+  it would have been dispatched as `executor_mcp_call` with no claim behind it
+  (`default.send_message` likewise). The row keeps the raw name, which is what
+  a resumed run's pending call carries, so the id guard compares like with like.
 - **Both `agents` tools are claimed, and it took giving up `safe: true` to get
   there** (plan row 3.6). `delegate` first, `spawn_subtask` beside it: the same
   wrong flag on the same category, so a fix for one alone would have left the

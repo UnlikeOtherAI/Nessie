@@ -327,6 +327,10 @@ export const KnowledgeRootSchema = z.object({
     projectName: NonEmptyStringSchema,
     space: KnowledgeRootSpaceSchema,
   })),
+  // Agent homes stay available to Move/Copy and the dedicated Agents
+  // directory, but never render as one row per agent on the root menu.
+  agentHomes: z.array(KnowledgeRootSpaceSchema),
+  agentHomesTruncated: z.boolean(),
   // Readable spaces that are neither personal nor projectDocuments.
   shared: z.array(KnowledgeRootSpaceSchema),
   sharedTruncated: z.boolean(), // the status bar says so

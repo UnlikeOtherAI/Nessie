@@ -1,6 +1,8 @@
 import {
+  EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
   EXECUTOR_KELPIE_MCP_SERVER_NAME,
   ExecutorLocalMcpReportSchema,
+  type ExecutorCodingSessionSummary,
   type ExecutorLocalMcpReport,
   type ExecutorLocalMcpStatus,
 } from '@nessie/schemas'
@@ -29,9 +31,16 @@ export type LocalMcpReporter = {
   stop: () => void
 }
 
+/** The built-in coding-sessions bridge's open sessions; see `CodingSessionsDaemon.report`. */
+export type CodingSessionsReport = () => Promise<ExecutorCodingSessionSummary[] | undefined>
+
+type DescribeKelpie = typeof describeKelpie
+
 const statusForServer = async (
   spec: ExecutorLocalMcpServer,
   sessions: ExecutorMcpSessionManager,
+  codingSessions: CodingSessionsReport | undefined,
+  describe: DescribeKelpie,
 ): Promise<ExecutorLocalMcpStatus> => {
   const observedAt = new Date().toISOString()
   const probe = await sessions.probe(spec.name)
@@ -46,12 +55,27 @@ const statusForServer = async (
     toolCount: probe.toolCount,
     ...(probe.serverVersion === undefined ? {} : { serverVersion: probe.serverVersion }),
   }
+  if (spec.name === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME && codingSessions) {
+    // Titles, statuses and owners only — never a transcript. A bridge that
+    // could not answer leaves the field absent, which reads "not asked".
+    const open = await codingSessions().catch(() => undefined)
+    return open === undefined ? base : { ...base, codingSessions: open }
+  }
   if (spec.name !== EXECUTOR_KELPIE_MCP_SERVER_NAME) return base
   // Only Kelpie is enumerated, because only Kelpie states a contract for what
   // is on the network. A Kelpie too old to answer `describe` leaves the field
   // absent, which the wire contract reads as "not probed for instances" —
   // never as "no instances".
-  const description = await describeKelpie(spec)
+  //
+  // A describe that throws — a program that cannot even be spawned — is this
+  // server's problem alone: the sweep reports every server together, so one
+  // uncaught throw here used to cost every other server its report.
+  let description: Awaited<ReturnType<DescribeKelpie>>
+  try {
+    description = await describe(spec)
+  } catch {
+    description = undefined
+  }
   if (!description) return base
   return {
     ...base,
@@ -63,8 +87,14 @@ const statusForServer = async (
 export const createLocalMcpReporter = (
   servers: readonly ExecutorLocalMcpServer[],
   sessions: ExecutorMcpSessionManager,
-  options: { intervalMs?: number; now?: () => number } = {},
+  options: {
+    codingSessions?: CodingSessionsReport
+    describe?: DescribeKelpie
+    intervalMs?: number
+    now?: () => number
+  } = {},
 ): LocalMcpReporter => {
+  const describe = options.describe ?? describeKelpie
   let last: ExecutorLocalMcpReport | undefined
   let timer: NodeJS.Timeout | undefined
   let inFlight: Promise<ExecutorLocalMcpReport> | undefined
@@ -73,7 +103,7 @@ export const createLocalMcpReporter = (
     // Servers are probed in parallel: one Kelpie taking its full discovery
     // timeout must not delay the answer about an unrelated server.
     const statuses = await Promise.all(
-      servers.map(async (spec) => statusForServer(spec, sessions)),
+      servers.map(async (spec) => statusForServer(spec, sessions, options.codingSessions, describe)),
     )
     const report = ExecutorLocalMcpReportSchema.parse(statuses)
     last = report

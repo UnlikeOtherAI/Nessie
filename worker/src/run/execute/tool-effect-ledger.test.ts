@@ -122,7 +122,11 @@ const ledgerOver = (
 ) =>
   createToolEffectLedger(
     prisma,
-    { isExternalDispatch: (toolName) => externalNames.has(toolName), runId: RUN_ID },
+    {
+      isExternalDispatch: (toolName) => externalNames.has(toolName),
+      normalizeToolName: (toolName) => toolName,
+      runId: RUN_ID,
+    },
     { executeTool },
   )
 
@@ -300,6 +304,7 @@ test('the claim scope follows the live tool view: a name the run exposes mid-dis
         executorToolset: { handledNames: new Set<string>() },
         mcpView: { handledNames },
       }),
+      normalizeToolName: (toolName) => toolName,
       runId: RUN_ID,
     },
     { executeTool: async (toolName) => ok(toolName, `${toolName}: done`) },
@@ -353,6 +358,43 @@ test('the predicate over a real deferred MCP view claims every connector tool, l
   await view.dispatch('mcp_drop_tools', { names: ['mcp_create_page'] }, 'drop-1')
   assert.equal(isExternal('mcp_create_page'), true, 'and still claimed after the run drops the schema again')
   assert.equal(isExternal('kb_search'), false, 'a name the view never handles is not an external dispatch')
+})
+
+test('a call under a provider namespace prefix is claimed as the tool it dispatches to', async () => {
+  const store = createEffectStore()
+  const dispatched: string[] = []
+  // The agent loop's own rule, reduced: a prefix is dropped when the remainder
+  // is offered. Both claim arms are asked with the result, not the raw name.
+  const offered = new Set(['executor_mcp_call', 'kb_search', 'send_message'])
+  const ledger = createToolEffectLedger(
+    store.prisma,
+    {
+      isExternalDispatch: externalDispatchPredicate({
+        executorToolset: { handledNames: new Set(['executor_mcp_call']) },
+        mcpView: { handledNames: new Set<string>() },
+      }),
+      normalizeToolName: (toolName) => {
+        const bare = toolName.slice(toolName.indexOf('.') + 1)
+        return offered.has(bare) ? bare : toolName
+      },
+      runId: RUN_ID,
+    },
+    {
+      executeTool: async (toolName) => {
+        dispatched.push(toolName)
+        return ok(toolName, `${toolName}: done`)
+      },
+    },
+  )
+
+  await ledger.executeTool('default.executor_mcp_call', { server: 'kelpie', tool: 'navigate' }, 'call-external')
+  await ledger.executeTool('functions.send_message', { content: 'hi' }, 'call-builtin')
+  await ledger.executeTool('default.kb_search', { query: 'q' }, 'call-read')
+
+  assert.deepEqual(dispatched, ['default.executor_mcp_call', 'functions.send_message', 'default.kb_search'])
+  assert.equal(store.row(RUN_ID, 'call-external')?.state, TOOL_EFFECT_STATES.completed, 'the executor dispatch is claimed')
+  assert.equal(store.row(RUN_ID, 'call-builtin')?.state, TOOL_EFFECT_STATES.completed, 'the effectful builtin is claimed')
+  assert.equal(store.row(RUN_ID, 'call-read'), null, 'a read-only builtin stays unclaimed under a prefix too')
 })
 
 // A sub-agent's digest is model prose, not a status line: one assistant turn
@@ -505,6 +547,10 @@ const createSubtaskWorld = () => {
         return row
       },
     },
+    runCoreDocumentSnapshot: {
+      createMany: async () => ({ count: 0 }),
+      findMany: async () => [],
+    },
     task: {
       create: async () => {
         const row = { id: randomUUID() }
@@ -623,4 +669,20 @@ test('a resumed run answers a completed `spawn_subtask` from its row — no seco
     TOOL_EFFECT_STATES.completed,
     '`spawn_subtask` is claimed like any other tool whose effects outlive the run',
   )
+})
+
+test('a replayed correctable failure keeps its flag, so the breaker counts it the same', async () => {
+  const store = createEffectStore()
+  let executions = 0
+  const ledger = ledgerOver(store.prisma, new Set(['executor_mcp_call']), async (toolName) => {
+    executions += 1
+    return { ...reportedFailure(toolName, 'arguments invalid'), correctable: true }
+  })
+
+  await ledger.executeTool('executor_mcp_call', {}, 'call-1')
+  const replayed = await ledger.executeTool('executor_mcp_call', {}, 'call-1')
+
+  assert.equal(executions, 1, 'the claimed call is answered from its row, not run again')
+  assert.equal(store.row(RUN_ID, 'call-1')?.state, TOOL_EFFECT_STATES.failed)
+  assert.equal(replayed.correctable, true)
 })

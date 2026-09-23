@@ -52,7 +52,8 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
         items={[
           { label: 'Target', value: formatTriggerTarget(trigger, registry) },
           { label: 'Schedule', value: getScheduleSummary(trigger) },
-          ...(trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval'
+          ...(trigger.status === 'active'
+            && (trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval')
             ? [
                 {
                   label: 'Next run',
@@ -96,7 +97,7 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
         <SectionLabel>Recent deliveries</SectionLabel>
         {history.length === 0 ? (
           <EmptyState className="mt-3">
-            No deliveries yet. Use “Run now” to test this trigger.
+            No deliveries yet.
           </EmptyState>
         ) : (
           <RowList className="mt-3" label="Recent deliveries">

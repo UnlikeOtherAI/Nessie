@@ -40,6 +40,7 @@ export const resumeRunFromApproval = async (
           continuationToken: true,
           id: true,
           organizationId: true,
+          resolverId: true,
           resumeState: true,
           runId: true,
         },
@@ -76,6 +77,8 @@ export const resumeRunFromApproval = async (
         organizationId: approval.organizationId,
         queueKeyPrefix: 'run:approval',
         resumeActorContext: resumeState.data.actorContext,
+        // Who approved, who need not be whoever the parked run acted as.
+        resumedByUserId: approval.resolverId,
         runId: approval.runId,
         suspendedStatus: 'waiting_approval',
         triggerMessageId: resumeState.data.messageId,

@@ -18,7 +18,9 @@ type PageFixtureOverrides = Partial<{
   title: string
   sensitivityTier: 'normal' | 'sensitive' | 'restricted'
   privateToAgentId: string | null
-  body: string
+  attachmentId: string | null
+  body: string | null
+  publishedVersionId: string | null
   taskId: string | null
 }>
 
@@ -39,9 +41,9 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
       id: 'version-1',
       pageId: overrides.id ?? 'page-1',
       versionNumber: 1,
-      body: overrides.body ?? '<p>Hello world</p>',
+      body: overrides.body === undefined ? '<p>Hello world</p>' : overrides.body,
       bodyRef: null,
-      attachmentId: null,
+      attachmentId: overrides.attachmentId ?? null,
       authorType: 'user',
       authorId: 'user-1',
       changeComment: null,
@@ -51,7 +53,7 @@ const buildPageRow = (overrides: PageFixtureOverrides = {}) => ({
     },
   ],
   publishedVersion: null,
-  publishedVersionId: null,
+  publishedVersionId: overrides.publishedVersionId ?? null,
   organizationId: 'org-1',
   projectId: 'project-1',
   teamId: null,
@@ -106,6 +108,7 @@ type FakePrismaOptions = {
   agentBindings?: Array<{ channelId: string; channel: { teamId: string; projectId: string } }>
   agentSpaceMemberships?: Array<{ spaceId: string }>
   parentAgentId?: string | null
+  attachment?: { filename: string; mime: string; organizationId: string } | null
   onListSpaces?: (args: { where: Record<string, unknown> }) => void
   onQueryRaw?: (query: { sql: string }) => void
 }
@@ -141,8 +144,11 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
       findMany: async () => (options.page ? [options.page] : []),
     },
     knowledgePageVersion: {
+      findFirst: async (args: { where: { id: string } }) =>
+        options.page?.versions.find((version) => version.id === args.where.id) ?? null,
       findMany: async () => options.page?.versions ?? [],
     },
+    attachment: { findUnique: async () => options.attachment ?? null },
     knowledgeSpace: {
       count: async () => (options.space ? 1 : 0),
       findFirst: async () => options.space ?? null,
@@ -262,6 +268,56 @@ test('kb_page_read returns the page body when the agent is allowed to read it', 
 
   assert.match(result.outputPreview, /Title: Runbook/)
   assert.match(result.outputPreview, /Restart the service, then check logs\./)
+  assert.match(result.outputPreview, /versionId=version-1 versionNumber=1/)
+})
+
+test('kb_page_read pins an exact version and continues by character offset', async () => {
+  const page = buildPageRow({ body: '<p>new revision</p>', publishedVersionId: 'version-2' })
+  page.versions = [
+    {
+      ...page.versions[0]!,
+      body: '<p>older stable text</p>',
+      id: 'version-1',
+      versionNumber: 1,
+    },
+    {
+      ...page.versions[0]!,
+      body: '<p>new revision</p>',
+      id: 'version-2',
+      versionNumber: 2,
+    },
+  ]
+  const space = buildSpaceRow({ visibility: 'organization' })
+  const prisma = buildFakePrisma({
+    page,
+    space,
+    agentBindings: [{ channelId: 'channel-1', channel: { teamId: 'team-1', projectId: 'project-1' } }],
+  })
+  const result = await runKbPageReadTool(makeContext(prisma), {
+    limit: 6,
+    offset: 6,
+    pageId: 'page-1',
+    versionId: 'version-1',
+  })
+
+  assert.match(result.outputPreview, /versionId=version-1 versionNumber=1/)
+  assert.match(result.outputPreview, /characters=6-12 of 17 nextOffset=12/)
+  assert.match(result.outputPreview, /stable/)
+  assert.doesNotMatch(result.outputPreview, /new revision/)
+})
+
+test('kb_page_read explains when a stored file has no readable extraction', async () => {
+  const page = buildPageRow({ attachmentId: 'attachment-pdf', body: null })
+  const prisma = buildFakePrisma({
+    attachment: { filename: 'brief.pdf', mime: 'application/pdf', organizationId: 'org-1' },
+    page,
+    space: buildSpaceRow({ visibility: 'organization' }),
+    agentBindings: [{ channelId: 'channel-1', channel: { teamId: 'team-1', projectId: 'project-1' } }],
+  })
+  const result = await runKbPageReadTool(makeContext(prisma), { pageId: 'page-1' })
+
+  assert.match(result.outputPreview, /No extracted text is available for brief\.pdf/)
+  assert.match(result.outputPreview, /file-specific tool|text-readable version/)
 })
 
 test('kb_page_read lets a subtask child read its parent agent\'s space only', async () => {

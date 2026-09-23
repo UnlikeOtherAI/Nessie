@@ -45,6 +45,7 @@ so the suite survived the step-2 rewrite unchanged. Every frame also asserts
 | `tablet-split-push` / `desktop-split-push` | 768×1024 / 1280×800 | Agents → the designer pushes inside the detail column: the designer travels 100 % → 0 of the column, the list 0 → -28 %, the pinned sidebar never moves |
 | `phone-cold-start` | 390×844 | a cold link to a conversation seeds the channel list beneath it; header Back slides the conversation away over that list (0 → 100 %, -28 % → 0) |
 | `phone-intent-strip` | 390×844 | `#trigger-<id>` and `?messageId=` are consumed and stripped with a replace: the address settles on the screen, the linkable `?tab=` stays, and browser Back lands on the stripped address |
+| `phone-knowledge-navigation` | 390×844 | a Knowledge root row opens its route listing promptly without hiding it under a duplicate column stage; document Back, space Back and a second trip restore live, clickable screens |
 | `desktop-chat-history` | 1280×800 | a real 50-row message window; reaching the top sends the opaque `before` cursor, prepends older rows, and keeps the first existing row at the same viewport offset |
 
 Each transition case navigates once per saved frame, deliberately: the stack

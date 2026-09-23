@@ -13,7 +13,9 @@ import { serveBrowserCookieImportNativeHost } from './browser-cookie-import-nati
 import { executorApi } from './api-client.js'
 import { signExecutorLocalInferenceConsent } from './local-inference-consent.js'
 import { connectExecutorLocalInference } from './local-inference-runtime.js'
+import { runBuiltinMcpCli } from './builtin-mcp-cli.js'
 import { runLocalInferenceCli } from './local-inference-cli.js'
+import { readConfigurationInput, type ExecutorConfigurationInput } from './configuration-input.js'
 import {
   fetchDirectLocalInferenceConsentDisplay,
   readDirectLocalInferenceConsentRequest,
@@ -154,6 +156,9 @@ const usage = (): never => {
     + '--kernel <absolute-owner-only-file> --vm-helper <absolute-owner-only-file> '
     + '--runtime-bundle <absolute-owner-only-directory>\n'
     + '       nessie-executor connect|heartbeat|serve --state-dir <owner-only-path>\n'
+    + '       nessie-executor serve-ollama-search-mcp\n'
+    + '       nessie-executor serve-coding-session-mcp --config <absolute-owner-only-file>\n'
+    + '       nessie-executor coding-session-host --config <absolute-owner-only-file> --session <uuid>\n'
     + '       nessie-executor serve-direct-local-inference --config-stdin\n'
     + '       nessie-executor local-inference-consent-display --config-stdin\n'
     + '       nessie-executor local-inference-confirm --state-dir <owner-only-path> --challenge <uuid> --binding <uuid>\n'
@@ -235,62 +240,6 @@ const readPairingInput = async (): Promise<{
   return {
     challenge: (parsed as { challenge: string }).challenge,
     workspaceFolders: workspaceFoldersFromInput(parsed, 'Pairing input on standard input'),
-  }
-}
-
-const readConfigurationInput = async (): Promise<{
-  commandAllowlist?: string[]
-  mcpServers?: ExecutorLocalMcpServer[]
-  operationKeys: string[]
-  workspaceFolders: ExecutorWorkspaceFolder[]
-}> => {
-  const chunks: Buffer[] = []
-  let byteLength = 0
-  for await (const chunk of process.stdin) {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    byteLength += bytes.byteLength
-    if (byteLength > 12_288) throw new Error('Local policy input is too large.')
-    chunks.push(bytes)
-  }
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-  } catch {
-    throw new Error('Local policy input on standard input is malformed.')
-  }
-  const allowlist = (parsed as { commandAllowlist?: unknown }).commandAllowlist
-  const servers = (parsed as { mcpServers?: unknown }).mcpServers
-  if (
-    !parsed
-    || typeof parsed !== 'object'
-    || Array.isArray(parsed)
-    || !Array.isArray((parsed as { operationKeys?: unknown }).operationKeys)
-    || !(parsed as { operationKeys: unknown[] }).operationKeys.every((key) => typeof key === 'string')
-    // Absent keeps the permitted programs the policy already names; present it
-    // must be a list of names, and `[]` is the instruction to clear them.
-    || (allowlist !== undefined && (
-      !Array.isArray(allowlist) || !allowlist.every((program) => typeof program === 'string')
-    ))
-    // Same reading as the allowlist: absent keeps the named servers, `[]`
-    // removes them all. The shape is checked only far enough to hand it to
-    // `assertExecutorLocalMcpServers`, which owns every real rule.
-    || (servers !== undefined && (
-      !Array.isArray(servers) || !servers.every((server) => (
-        Boolean(server)
-        && typeof server === 'object'
-        && !Array.isArray(server)
-        && typeof (server as { name?: unknown }).name === 'string'
-        && Array.isArray((server as { command?: unknown }).command)
-      ))
-    ))
-  ) {
-    throw new Error('Local policy input on standard input is malformed.')
-  }
-  return {
-    ...(allowlist === undefined ? {} : { commandAllowlist: allowlist as string[] }),
-    ...(servers === undefined ? {} : { mcpServers: servers as ExecutorLocalMcpServer[] }),
-    operationKeys: (parsed as { operationKeys: string[] }).operationKeys,
-    workspaceFolders: workspaceFoldersFromInput(parsed, 'Local policy input on standard input'),
   }
 }
 
@@ -487,6 +436,7 @@ export const parseCommand = (args: string[]): ParsedCommand => {
 }
 
 export const run = async (args: string[]): Promise<void> => {
+  if (await runBuiltinMcpCli(args)) return
   if (await runLocalInferenceCli(args)) return
   if (await runPairingCodeCli(args)) return
   const command = parseCommand(args)
@@ -577,7 +527,7 @@ export const run = async (args: string[]): Promise<void> => {
   }
   const state = await loadExecutorState(command.stateDir)
   if (command.kind === 'configure') {
-    const input = command.configurationInputFromStandardInput
+    const input: Partial<ExecutorConfigurationInput> = command.configurationInputFromStandardInput
       ? await readConfigurationInput()
       : {
         commandAllowlist: command.commandAllowlist,
@@ -588,12 +538,13 @@ export const run = async (args: string[]): Promise<void> => {
     const updated = await configureExecutorLocalPolicy(
       command.stateDir,
       state,
-      input.operationKeys,
+      input.operationKeys!,
       command.nativeHelperPath,
       undefined,
       input.workspaceFolders,
       input.commandAllowlist,
       input.mcpServers,
+      'codingSessions' in input ? { requested: input.codingSessions } : {},
     )
     process.stdout.write(
       `Local policy proposal saved as revision ${updated.descriptor.revision}. `

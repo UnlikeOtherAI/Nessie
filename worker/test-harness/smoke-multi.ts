@@ -204,6 +204,7 @@ const main = async (): Promise<void> => {
   const agent = await prisma.agent.create({
     data: {
       model: 'mock-model', name: `multi-smoke-agent-${suffix}`, organizationId, provider: 'openai',
+      ownerUserId: ownerId, projectId: general.projectId, teamId: general.teamId,
       systemPrompt: 'You are a deterministic smoke-test assistant. Keep answers short.',
     },
   })

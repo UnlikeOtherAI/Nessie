@@ -43,6 +43,11 @@ for it. Four pieces, plus one cache underneath them all.
   switching projects clears the preceding role list until the destination
   project's entitlement read resolves, so a prior project's role can never
   briefly reveal board or sprint administration controls.
+  A single read opts out in place instead, with `placeholderData: undefined`
+  and its reason beside it: an approval's private email, a machine's consent,
+  and an executor conversation lease (`admin/src/facades/executors/leases.ts`),
+  which reaches one conversation — a previous room's lease beside this
+  composer would claim a reach the room lacks, and its End would act from here.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its

@@ -521,15 +521,19 @@ ordinary tool policy; revisit with tables' identical open question).
 Each phase ships with its surface and doc updates in the same turn;
 migrations additive only.
 
-**Build status (2026-08-31):** the implementation keeps the provisioning helpers in
+**Build status (updated 2026-09-23):** the implementation keeps the provisioning helpers in
 `@nessie/knowledge`, leaving the API service as a thin re-export for its
-unchanged callers. Run setup provisions a non-system agent's home only after
-its assembled toolset includes a KB write tool; the advisory-locked ensure
-keeps concurrent setup to one private, agent-owned home. Spawned children use
-their parent's home, and the Personal Assistant remains in the person's My
-Docs. The prompt injects the resolved home id/title only when all four tools
-it names (`kb_list`, `kb_search`, `kb_document_compose`,
-`kb_document_edit`) are present.
+unchanged callers. Creation, clone, a human opening Documents, the Knowledge
+root repair and run admission all use the advisory-locked ensure, which keeps
+one private agent-owned home and a complete `AGENTS.md` / `personality.md`
+pair. A projectless legacy agent uses the organisation's invisible
+shared-channel root as the Knowledge storage envelope rather than borrowing
+the viewer's ambient project; its live agent audience remains the authority.
+Spawned children use their parent's home and inherit the parent's exact
+run snapshot; the Personal Assistant remains in the person's My Docs. The
+prompt injects the resolved home id/title when the default read trio
+(`kb_list`, `kb_search`, `kb_page_read`) is present, and advertises compose/edit
+only when those write tools are actually resolved.
 
 1. **The owned space + access + safety (implemented).** `ownerAgentId` migration + CHECK;
    `ensureAgentDocsSpace` + lazy provision; the read arm in TS and SQL

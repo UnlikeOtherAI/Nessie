@@ -484,9 +484,10 @@ At most **one in-flight run per (agent, thread)**. Without this, N rapid message
 1. **Claim or pend.** Every run-creation path — the `orchestrate.decide` reply path (channel engagement and PA DMs alike), scheduled/trigger fires (`queueTriggerRun`), API-side trigger dispatch (`dispatchAgentTrigger`: webhook intake and manual fire), and agent-to-agent mailbox delivery — opens its run-creation transaction with a transaction-scoped advisory lock keyed on `(agentId, threadId)`. If an active run (`pending` / `running` / `waiting_approval`) already holds the slot, no run is created: the message is recorded as a durable `RunThreadPendingMessage` row (base actor context, channel, interactive flag, optional trigger linkage) and the transaction commits. `waiting_approval` deliberately holds the slot for the whole suspension: the run resumes after the approval, so new messages pend rather than interleave, and an abandoned approval keeps pendings waiting until it is resolved or expires (expiry is issue #208's scope).
 2. **Redelivery dedupe.** The queue is at-least-once: a job that committed (run created or pending marker recorded) can be redelivered before its ack. Inside the claim, a delivery whose exact `(agentId, triggerMessageId)` run already exists — in **any** status — or whose pending marker already exists is a duplicate and no-ops (no pend, no run). Without this, a redelivered decide job would see its own run still active, pend the same message again, and double-reply.
 3. **Batched follow-up.** Every terminal path of the in-flight run — completion, cooperative cancel, final failure, and the budget-gate block — drains the slot under the same advisory lock: all pending rows become **one** follow-up run whose prompt is the *latest* pending message, enqueued as `run:batch:{runId}` and consumed in thread-arrival order (`message.createdAt`, `seq` tiebreak). Cancelling the in-flight run therefore still delivers the batch. Pended `user`/`assistant` messages are ordinary thread history the follow-up loads; **`system`-role kickoffs (PA scheduled triggers) are excluded from model context, so repeated system kickoffs coalesce to the latest — intended**, since each is a self-contained "check for work" directive. When the latest pending row came from a trigger fire, its `triggerId`/`triggerDeliveryId` is carried onto the follow-up run.
+   **Hidden kickoffs with their own payload drain alone.** A row whose actor-context purpose is in `DRAINS_ALONE_PURPOSES` — every agent mailbox delivery (`mailbox.delivery`, `agent.peer_delegation`, `task_set.delivery`) and every global-agent brief (`global_agent.brief`) — is never folded into a batch, because its hidden body *is* its prompt and a batch runs only under its latest row. Ordinary rows before it drain as their usual batch; the row itself becomes its own follow-up, under its own actor context and reply placement, and the next terminal drain continues in arrival order. A mailbox delivery's row also keeps `mailboxMessageId`, and its follow-up is linked to the plan or workflow step the mail was sent for exactly as a direct mailbox claim is (`packages/db/src/mailbox-delivery-run.ts`): the payload carries `parentPlanStepId`/`parentWorkflowStepRunId`, so the run's completion finishes the step and continues the workflow, and the step records `childRunId`. A step whose plan or workflow was cancelled while the delivery waited is left closed.
 4. **No lost messages across restart.** The pending row is the durable marker. A worker sweep (`pendingBatchSweepInterval`, 10s) re-polls for (agent, thread) pairs with pending rows but no in-flight run and drains them — covering a crash between the terminal update and the drain, and an API-side cancel of a queued (never-executed) run.
 
-DeepWater/product-handoff runs keep their own stricter invariants and never touch this module; subtask, workflow, and external-agent runs are likewise outside the claim. Restart (`POST /api/runs/:id/restart`) probes the same slot and **rejects with 409 `RUN_THREAD_BUSY`** when another run is in flight — an explicit human restart into a busy thread gets a clear error, not a silent queue. Workflow-installation triggers fire a `WorkflowRun`, not an agent run, and are unaffected.
+DeepWater/product-handoff runs keep their own stricter invariants and never touch this module; subtask and external-agent runs are likewise outside the claim, and so is a workflow's own step execution — but a workflow `agent_task` step reaches its agent as mailbox mail, which takes the claim like any other delivery. Restart (`POST /api/runs/:id/restart`) probes the same slot and **rejects with 409 `RUN_THREAD_BUSY`** when another run is in flight — an explicit human restart into a busy thread gets a clear error, not a silent queue. Workflow-installation triggers fire a `WorkflowRun`, not an agent run, and are unaffected.
 
 ### Task Orchestrator
 
@@ -1666,13 +1667,42 @@ Scheduler loop (runs every 15 seconds):
   │     └── Write agent_trigger_deliveries entry (status: run_created)
   │
   └── 3. On failure:
-        ├── Write agent_trigger_deliveries entry (status: failed, error: ...)
-        ├── Update agent_triggers.last_error
-        └── Do NOT disable — transient failures should not stop the schedule
-            (after 10 consecutive failures, set enabled = false and alert)
+        ├── Transient dispatch failure → record retryable delivery + backoff
+        └── Authority/target failure → record terminal failed delivery,
+            disable it, set status = error/needs_reauthorization, and alert once
 ```
 
 **Concurrency guard:** The scheduler skips agents that already have a running or queued run. This prevents pile-up if a scheduled agent takes longer than its interval. The skipped activation is logged with `status: skipped`.
+
+**Live channel admission for unattended schedules:** A timer does not retain
+authority merely because it was valid when created. At every scheduled or
+interval fire, Nessie verifies the target thread and channel, the shared
+agent's live `AgentBinding`, and — for a user-owned schedule — the saved
+person's live `ChannelMember`, organization membership and team membership.
+The explicit human roster check applies to public as well as private channels:
+ordinary public browsing remains open, but an unattended schedule is durable
+delegated authority and stops when the person is removed from the channel.
+Personal Assistants are exempt only from the shared-agent binding row; their
+owner must still be present.
+
+Admission runs before `skipWhenEmpty`, again immediately before dispatch, and
+once more when a queued or pended run actually starts. Removing either the
+agent or the saved person therefore cannot hide behind a quiet thread or a run
+that waited behind another one. A classified failure writes a terminal failed
+delivery with no retry timestamp, moves the trigger to non-runnable `error`
+(or `needs_reauthorization` for an identity-only repair), and exposes the
+reason and remedy on the trigger list, detail and agent panels. The current
+occurrence still owns and settles its cadence, while `last_fired_at` remains
+unchanged; the transition sets `enabled = false` as well as `status != active`,
+so every later claim is prevented explicitly. An already delivered or skipped
+occurrence is never rewritten during replay.
+
+After the roster or target is repaired, **Resume** validates it again, re-arms
+timer cadence from now, clears the old health state atomically, suppresses the
+failed occurrence's retries, and cancels stale pending work. It refuses with a
+visible conflict while either principal is still absent. This diagnosed stop
+keeps its error status and explanation rather than pretending to be a plain
+manual pause; both forms of stop set `enabled = false`.
 
 **Empty-fire skip (`config.skipWhenEmpty`):** Scheduled/interval agent triggers burn tokens even when there is provably nothing to do — a daily-digest or "follow up on this thread" schedule that fires into a thread nobody touched still spins up a full run. A trigger can opt into skipping those no-op fires by setting `"skipWhenEmpty": true` in its `config`. It is strictly opt-in: without the flag the trigger always runs, so a schedule whose real work source is *not* its target thread (e.g. "check my email hourly" via a connector) is never skipped on a guess.
 

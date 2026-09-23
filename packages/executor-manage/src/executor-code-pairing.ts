@@ -10,7 +10,9 @@ import { ExecutorError, EXECUTOR_ERROR_CODES } from './executor-errors.js'
 import {
   assertPairingProof, assertPairingTimestamp, lockPairing, pairingCode, pairingCodeVerifier,
   pairingDigest, pairingRequestDigest, pairingStartPayload, pairingUnavailable, revokePairingExecutor,
+  type ExecutorPairingLeaseNotice,
 } from './executor-code-proof.js'
+import type { ExecutorLeaseRef } from './executor-conversation-lease.js'
 
 export type PairingAudit = (tx: Prisma.TransactionClient, event: {
   action: 'executor.pairing.claimed' | 'executor.pairing.confirmed' | 'executor.pairing.rejected'
@@ -20,6 +22,7 @@ export type PairingAudit = (tx: Prisma.TransactionClient, event: {
 
 export const startExecutorCodePairing = async (
   prisma: PrismaClient, secret: string, input: ExecutorPairingStartRequest, audit: PairingAudit, now = new Date(),
+  onLeasesEnded?: ExecutorPairingLeaseNotice,
 ): Promise<ExecutorPairingStartResponse> => {
   const parsed = ExecutorPairingStartRequestSchema.parse(input)
   assertPairingTimestamp(parsed.timestamp, now)
@@ -30,7 +33,10 @@ export const startExecutorCodePairing = async (
   )
   const fingerprint = pairingDigest(parsed.machinePublicKey)
   const requestDigest = pairingRequestDigest(parsed)
-  return prisma.$transaction(async (tx) => {
+  // A machine pairing again revokes its previous executor row, and with it the
+  // leases on it; their holders hear once the new pairing has committed.
+  let endedLeases: ExecutorLeaseRef[] = []
+  const started = await prisma.$transaction(async (tx): Promise<ExecutorPairingStartResponse> => {
     await lockPairing(tx, parsed.requestId)
     const existing = await tx.executorPairingCode.findUnique({ where: { id: parsed.requestId } })
     if (existing) {
@@ -66,7 +72,7 @@ export const startExecutorCodePairing = async (
       assertPairingProof(
         previous.machinePublicKey, 'nessie.executor.pairing.replace.v1', payload, parsed.replacementSignature,
       )
-      await revokePairingExecutor(tx, previous.id)
+      endedLeases = await revokePairingExecutor(tx, previous.id)
       await audit(tx, {
         action: 'executor.pairing.replaced', executorId: previous.id,
         organizationId: previous.organizationId, userId: previous.pairingOwnerUserId,
@@ -82,6 +88,8 @@ export const startExecutorCodePairing = async (
       pairingId: parsed.requestId, code, fingerprint, expiresAt: expiresAt.toISOString(), pollIntervalSeconds: 3,
     }
   })
+  if (endedLeases.length > 0) await onLeasesEnded?.(endedLeases)
+  return started
 }
 
 export const previewExecutorCodePairing = async (

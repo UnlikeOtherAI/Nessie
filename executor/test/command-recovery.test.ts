@@ -162,7 +162,153 @@ test('client-recovery: server timeout before execution resolves as unknown outco
   })
 })
 
-const withStateDirectory = async (body: (stateDir: string) => Promise<void>): Promise<void> => {
+/**
+ * The control plane's result check, as `recordExecutorCommandReceiptInTransaction`
+ * applies it: a terminal result over its cap is refused as
+ * `EXECUTOR_COMMAND_RESULT_INVALID`, and a refused receipt changes nothing.
+ */
+const refusingApi = (options: {
+  loseResponseTo?: 'replacement'
+  maxResultBytes: number
+  refuseEverything?: boolean
+}): {
+  accepted: () => Record<string, unknown> | undefined
+  sent: Record<string, unknown>[]
+  transport: ExecutorCommandRecoveryTransport
+} => {
+  let state: ServerState = 'leased'
+  let delivered = false
+  let accepted: Record<string, unknown> | undefined
+  let lost = false
+  const sent: Record<string, unknown>[] = []
+  return {
+    accepted: () => accepted,
+    sent,
+    transport: {
+      poll: async () => {
+        if (delivered) return null
+        delivered = true
+        return command
+      },
+      receipt: async (receipt) => {
+        if (receipt.state !== 'result_acknowledged') {
+          state = receipt.state
+          return
+        }
+        const result = receipt.result ?? {}
+        sent.push(result)
+        if (options.refuseEverything
+          || Buffer.byteLength(JSON.stringify(result)) > options.maxResultBytes) {
+          throw new ExecutorApiError('Executor result is invalid or exceeds its configured limit.', {
+            code: 'EXECUTOR_COMMAND_RESULT_INVALID',
+            status: 400,
+          })
+        }
+        if (state === 'result_acknowledged') return
+        assert.equal(state, 'started')
+        state = 'result_acknowledged'
+        accepted = result
+        if (options.loseResponseTo === 'replacement' && !lost) {
+          lost = true
+          throw new Error('response lost after the replacement')
+        }
+      },
+    },
+  }
+}
+
+test('client-recovery: a result the control plane refuses is replaced by a small terminal failure', async () => {
+  const journal = memoryStore()
+  const saved: ExecutorCommandRecovery[] = []
+  const store: ExecutorCommandRecoveryStore = {
+    ...journal.store,
+    save: async (next) => {
+      saved.push(structuredClone(next))
+      await journal.store.save(next)
+    },
+  }
+  const api = refusingApi({ maxResultBytes: 1_024 })
+  const refused: string[] = []
+  let executions = 0
+  await recoverOrPollExecutorCommand({
+    execute: async () => {
+      executions += 1
+      return { output: 'x'.repeat(2_048), success: true }
+    },
+    onResultRefused: (refusedCommand) => { refused.push(refusedCommand.commandId) },
+    store,
+    transport: api.transport,
+  })
+
+  assert.equal(executions, 1, 'the command is never run again')
+  assert.equal(api.sent.length, 2, 'the refused receipt is sent once, never retried')
+  assert.deepEqual(api.accepted(), { code: 'EXECUTOR_RESULT_REFUSED', success: false })
+  assert.deepEqual(refused, [command.commandId])
+  // Journaled before it was sent, so a lost response replays the replacement.
+  assert.deepEqual(saved.at(-1), {
+    command,
+    phase: 'result_pending',
+    result: { code: 'EXECUTOR_RESULT_REFUSED', success: false },
+    version: 1,
+  })
+  assert.equal(journal.read(), null, 'the lane is free for the next command')
+})
+
+test('client-recovery: a lost response to the replacement replays the replacement, not the refused result', async () => {
+  const journal = memoryStore()
+  const api = refusingApi({ loseResponseTo: 'replacement', maxResultBytes: 1_024 })
+  const run = () => recoverOrPollExecutorCommand({
+    execute: async () => ({ output: 'x'.repeat(2_048), success: true }),
+    store: journal.store,
+    transport: api.transport,
+  })
+
+  await assert.rejects(run(), /response lost after the replacement/)
+  assert.deepEqual(journal.read()?.result, { code: 'EXECUTOR_RESULT_REFUSED', success: false })
+  await run()
+
+  assert.equal(api.sent.length, 3)
+  assert.deepEqual(api.sent.slice(1), [
+    { code: 'EXECUTOR_RESULT_REFUSED', success: false },
+    { code: 'EXECUTOR_RESULT_REFUSED', success: false },
+  ])
+  assert.equal(journal.read(), null)
+})
+
+test('client-recovery: a refused replacement is not replaced again', async () => {
+  const journal = memoryStore()
+  const api = refusingApi({ maxResultBytes: 1_024, refuseEverything: true })
+  await assert.rejects(recoverOrPollExecutorCommand({
+    execute: async () => ({ success: true }),
+    store: journal.store,
+    transport: api.transport,
+  }), { code: 'EXECUTOR_COMMAND_RESULT_INVALID' })
+
+  assert.equal(api.sent.length, 2, 'one replacement, then the refusal surfaces')
+  assert.deepEqual(journal.read()?.result, { code: 'EXECUTOR_RESULT_REFUSED', success: false })
+})
+
+test('client-recovery: any other receipt failure retries the same result', async () => {
+  const journal = memoryStore({
+    command,
+    phase: 'result_pending',
+    result: { exitCode: 0, output: 'done', success: true },
+    version: 1,
+  })
+  const server = fakeTransport({ dropAfter: 'result_acknowledged', initialState: 'started' })
+  const run = () => recoverOrPollExecutorCommand({
+    execute: async () => ({ success: true }),
+    store: journal.store,
+    transport: server.transport,
+  })
+
+  await assert.rejects(run(), /response lost after result_acknowledged/)
+  assert.deepEqual(journal.read()?.result, { exitCode: 0, output: 'done', success: true })
+  await run()
+  assert.deepEqual(server.result(), { exitCode: 0, output: 'done', success: true })
+})
+
+const withStateDirectory =async (body: (stateDir: string) => Promise<void>): Promise<void> => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-command-recovery-'))
   try {
     await body(directory)

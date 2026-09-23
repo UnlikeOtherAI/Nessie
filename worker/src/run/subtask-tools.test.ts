@@ -27,6 +27,8 @@ test('a spawned child keeps B\'s private canary out of public task and plan meta
   let stampedSources: unknown
   let taskPurpose: string | undefined
   let delegation: { payload: unknown; title: string } | undefined
+  let childCoreSnapshots: unknown
+  let childRunCore: { coreDocumentCount?: number; coreDocumentsAdmittedAt?: Date } | undefined
   const consumedSources = createConsumedSourceSink()
   consumedSources.add({ scopeId: 'private-channel', scopeType: 'channel' })
   consumedSources.addPrivateConversationSource({
@@ -67,10 +69,25 @@ test('a spawned child keeps B\'s private canary out of public task and plan meta
       },
     },
     run: {
-      create: async ({ data }: { data: { triggerMessageId?: string } }) => {
+      create: async ({ data }: { data: {
+        coreDocumentCount?: number
+        coreDocumentsAdmittedAt?: Date
+        triggerMessageId?: string
+      } }) => {
         runTriggerMessageId = data.triggerMessageId
+        childRunCore = data
         return { id: childRunId, threadId }
       },
+    },
+    runCoreDocumentSnapshot: {
+      createMany: async ({ data }: { data: unknown }) => {
+        childCoreSnapshots = data
+        return { count: 2 }
+      },
+      findMany: async () => [
+        { role: 'identity', versionId: 'version-identity' },
+        { role: 'working_rules', versionId: 'version-style' },
+      ],
     },
     task: {
       create: async ({ data }: { data: { purpose: string } }) => {
@@ -141,6 +158,12 @@ test('a spawned child keeps B\'s private canary out of public task and plan meta
     threadId,
   })
   assert.equal(runTriggerMessageId, taskPromptId)
+  assert.equal(childRunCore?.coreDocumentCount, 2)
+  assert.ok(childRunCore?.coreDocumentsAdmittedAt instanceof Date)
+  assert.deepEqual(childCoreSnapshots, [
+    { role: 'identity', runId: childRunId, versionId: 'version-identity' },
+    { role: 'working_rules', runId: childRunId, versionId: 'version-style' },
+  ])
   assert.deepEqual(stampedBasis, [{
     messageId: taskPromptId,
     organizationId,

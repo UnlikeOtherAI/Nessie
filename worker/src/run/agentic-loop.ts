@@ -37,6 +37,7 @@ import {
 } from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
 import { truncateToolResult } from './tool-util.js'
+import { restoreLoopCounts } from './tool-loop-detection.js'
 import {
   executeToolBatch,
   type ExecutedToolResult,
@@ -82,9 +83,8 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   })
   const allInvocations: InvocationRecord[] = input.invocationSink ?? []
   if (resume) allInvocations.push(...resume.invocations)
-  const signatureCounts = new Map<string, number>(
-    Object.entries(resume?.signatureCounts ?? {}),
-  )
+  // Counts checkpointed under the old loop rule are dropped here.
+  const signatureCounts = restoreLoopCounts(resume?.signatureCounts)
   const drainGate: DrainGate = createDrainGate(input.drainSignal)
   const retryBudget = createRetryBudget(6)
   retryBudget.remaining = Math.max(0, retryBudget.total - (resume?.retriesUsed ?? 0))
@@ -133,9 +133,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   // live as it runs, so a snapshot taken part-way through must carry the counts
   // the batch began with or a re-entry would count the same calls twice.
   let inFlightToolCalls: ProviderToolCall[] | null = null
-  let boundarySignatureCounts: Record<string, number> = {
-    ...(resume?.signatureCounts ?? {}),
-  }
+  let boundarySignatureCounts: Record<string, number> = Object.fromEntries(signatureCounts)
   let boundaryToolFailureCounts: Record<string, number> = {
     ...(resume?.toolFailureCounts ?? {}),
   }
@@ -470,12 +468,16 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     const batch = await drainGate.expiry(executeToolBatch({
       callbacks,
       circuitBreaker,
+      ...(input.dispatchesInOrder ? { dispatchesInOrder: input.dispatchesInOrder } : {}),
       executeTool: toolRecorder.executeTool,
+      ...(input.normalizeToolName ? { normalizeToolName: input.normalizeToolName } : {}),
       ...(toolRecorder.prepareTool ? { prepareTool: toolRecorder.prepareTool } : {}),
       signatureCounts,
+      // The same cooperative probe, between the batch's in-order calls too.
+      ...(input.checkCancelled ? { stopRequested: cancellationRequested } : {}),
       toolCalls,
       toolTimeoutError: input.toolTimeoutError,
-      toolTimeoutMs: budget.toolTimeoutMs,
+      toolTimeoutMsFor: (toolName) => input.toolTimeoutMsFor?.(toolName) ?? budget.toolTimeoutMs,
     }))
     totalToolMs += batch.toolMs
     deliveredToConversation ||= batch.deliveredToConversation
@@ -509,9 +511,9 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     // snapshot resumes at the next iteration rather than re-entering this one.
     markDispatchBoundary(null)
 
-    if (batch.loopDetected) {
+    if (batch.loopNudge) {
       messages.push(coverProviderInputComponent({
-        content: 'You are repeating the same tool call. Stop and produce a final answer with the information you already have.',
+        content: batch.loopNudge,
         role: 'user',
       }, 'loop_instruction'))
     }

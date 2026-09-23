@@ -11,10 +11,11 @@ import {
   type ReplyRootMetadata,
 } from '@nessie/runtime'
 import { claimMessageEmbeddingInTransaction } from '@nessie/db'
-import type {
-  AgentMention,
-  AuthorizedActionContext,
-  MessageEmbedOrigin,
+import {
+  PERSON_MESSAGE_AUTHORSHIP,
+  type AgentMention,
+  type AuthorizedActionContext,
+  type MessageEmbedOrigin,
 } from '@nessie/schemas'
 import {
   buildAgentVisibilityWhere,
@@ -204,6 +205,14 @@ export const createThreadMessage = async (
     rootMessageId?: string
     alsoSendToChannel?: boolean
     agentMentions?: AgentMention[]
+    /**
+     * Set only by a route whose request is a signed-in person's composer send
+     * (`POST /api/threads/:threadId/messages` and a conversation's opening
+     * line). Stamped as `metadata.authorship`, the allowlist marker an
+     * executor conversation lease carries on; a voice hand-off is written by
+     * the voice model's tool call and leaves it unset.
+     */
+    authorship?: typeof PERSON_MESSAGE_AUTHORSHIP
     clientMessageId?: string
     embedding?: MessageEmbeddingRequest
   },
@@ -377,7 +386,10 @@ export const createThreadMessage = async (
     agentIds: mentionedAgentIds,
     ...(agentMentions.length > 0 ? { agentMentions } : {}),
   }
-  const messageMetadata = { mentions: mergedMentions } as Prisma.InputJsonValue
+  // Built here from server-resolved facts only; no client metadata reaches a
+  // row, so `authorship` cannot arrive from a request body.
+  const authorship = input.authorship === PERSON_MESSAGE_AUTHORSHIP ? { authorship: input.authorship } : {}
+  const messageMetadata = { mentions: mergedMentions, ...authorship } as Prisma.InputJsonValue
 
   let message: MessageWithReactions
   let alertedUserIds: string[] = []
@@ -436,6 +448,7 @@ export const createThreadMessage = async (
             metadata: {
               mentions: mergedMentions,
               replyBroadcast: { rootMessageId },
+              ...authorship,
             } as Prisma.InputJsonValue,
           },
           include: messageInclude,

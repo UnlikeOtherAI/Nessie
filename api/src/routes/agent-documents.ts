@@ -1,14 +1,14 @@
 import type { FastifyInstance } from 'fastify'
 import {
+  agentCoreTokenBudget,
   canReadSpace,
   ensureAgentDocsSpace,
   readCanonicalAgentCore,
-  loadSpaceViewer,
+  resolveAgentDocumentProjectId,
   type KnowledgeProvider,
 } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { AgentDocumentsResponseSchema } from '@nessie/schemas'
-import { resolveLiveEntitlements } from '@nessie/runtime'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
 import type { RouteDeps } from './types.js'
@@ -29,7 +29,7 @@ export const registerAgentDocumentRoutes = (
   deps: AgentDocumentRouteDeps,
 ): void => {
   const { prisma, requireActorContext, isAgentAccessibleToActor } = deps
-  const { provider, buildViewer } = createKnowledgeAccess(deps)
+  const { provider, buildViewer, canReadVersion } = createKnowledgeAccess(deps)
 
   app.get('/api/agents/:agentId/docs', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -43,11 +43,32 @@ export const registerAgentDocumentRoutes = (
 
     const agent = await prisma.agent.findFirst({
       where: { id: agentId, organizationId: actorContext.tenant.organizationId },
-      select: { id: true, name: true, projectId: true, systemManaged: true },
+      select: {
+        id: true,
+        name: true,
+        projectId: true,
+        speakingStyle: true,
+        systemManaged: true,
+        systemPrompt: true,
+      },
     })
-    if (!agent || agent.systemManaged || !agent.projectId) {
+    if (!agent) {
       return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))
     }
+    if (agent.systemManaged) {
+      return createApiResponse(AgentDocumentsResponseSchema.parse({
+        projectedCoreDocuments: [
+          { filename: 'AGENTS.md', markdown: agent.systemPrompt ?? '', role: 'identity' },
+          { filename: 'personality.md', markdown: agent.speakingStyle ?? '', role: 'working_rules' },
+        ],
+        space: null,
+      }))
+    }
+    const documentProjectId = await resolveAgentDocumentProjectId(prisma, {
+      agentId: agent.id,
+      organizationId: actorContext.tenant.organizationId,
+      preferredProjectId: agent.projectId,
+    })
     // Documents are a human doorway, not a side-effect of whether an agent has
     // a complete tool configuration. Opening the tab provisions the existing
     // home and attempts the one-time legacy core migration.
@@ -55,16 +76,15 @@ export const registerAgentDocumentRoutes = (
       agentId: agent.id,
       agentName: agent.name,
       organizationId: actorContext.tenant.organizationId,
-      projectId: agent.projectId,
+      projectId: documentProjectId,
     })
     // Establish the request's durable inference origin before the provider
     // transaction queues its derived Markdown projection for indexing.
-    await buildViewer(actorContext)
-    const core = await migrateLegacyAgentCoreDocuments(prisma, provider, deps.fileService, {
+    const viewer = await buildViewer(actorContext)
+    await migrateLegacyAgentCoreDocuments(prisma, provider, deps.fileService, {
       agentId: agent.id,
       attribution: attributionFromActorContext(actorContext),
       organizationId: actorContext.tenant.organizationId,
-      projectId: agent.projectId,
       userId: actorContext.actor.actorId,
     })
     const reference = await prisma.knowledgeSpace.findUnique({
@@ -75,26 +95,7 @@ export const registerAgentDocumentRoutes = (
     // Agent visibility and document readability are separate entitlements.
     // Resolve the canonical knowledge read verdict so the tab can explain an
     // unreadable home instead of mounting a team whose requests all 403.
-    const actorType = actorContext.actor.actorType
-    const principal = actorType === 'user' || actorType === 'agent'
-      ? { actorId: actorContext.actor.actorId, actorType }
-      : { actorId: actorContext.actor.actorId, actorType: 'service' as const }
-    const liveEntitlements = actorType === 'user'
-      ? await resolveLiveEntitlements(prisma, {
-          organizationId: actorContext.tenant.organizationId,
-          userId: actorContext.actor.actorId,
-          uoaIdentity: actorContext.actionContext.uoaIdentity,
-        })
-      : undefined
-    const [space, viewer] = await Promise.all([
-      provider.getSpace(actorContext.tenant.organizationId, reference.id),
-      loadSpaceViewer(
-        prisma,
-        actorContext.tenant.organizationId,
-        principal,
-        liveEntitlements ? { liveEntitlements, effectiveUserId: actorContext.actor.actorId } : {},
-      ),
-    ])
+    const space = await provider.getSpace(actorContext.tenant.organizationId, reference.id)
     if (!space) {
       return createApiResponse(AgentDocumentsResponseSchema.parse({ space: null }))
     }
@@ -104,14 +105,44 @@ export const registerAgentDocumentRoutes = (
       }))
     }
 
-    const canonicalCore = await readCanonicalAgentCore(prisma, deps.fileService, {
-      agentId: agent.id,
-      organizationId: actorContext.tenant.organizationId,
-    })
+    const versionReadDenied = new Error('Agent core version read denied')
+    let canonicalCore: Awaited<ReturnType<typeof readCanonicalAgentCore>> = null
+    try {
+      canonicalCore = await readCanonicalAgentCore(prisma, deps.fileService, {
+        agentId: agent.id,
+        authorize: async (document) => {
+          if (document.spaceId !== reference.id
+            || !canReadSpace(space, viewer)
+            || !canReadVersion(viewer, document)) {
+            throw versionReadDenied
+          }
+        },
+        organizationId: actorContext.tenant.organizationId,
+      })
+    } catch (error) {
+      if (error !== versionReadDenied) throw error
+    }
 
     return createApiResponse(AgentDocumentsResponseSchema.parse({
-      core,
-      ...(canonicalCore ? { coreDocuments: canonicalCore.documents } : {}),
+      ...(canonicalCore
+        ? {
+            core: canonicalCore.estimatedTokens > agentCoreTokenBudget()
+              ? {
+                  estimatedTokens: canonicalCore.estimatedTokens,
+                  state: 'oversized' as const,
+                  tokenBudget: agentCoreTokenBudget(),
+                }
+              : { estimatedTokens: canonicalCore.estimatedTokens, state: 'active' as const },
+          }
+        : {}),
+      ...(canonicalCore
+        ? {
+            coreDocuments: canonicalCore.documents.map((document) => ({
+              ...document,
+              filename: document.role === 'identity' ? 'AGENTS.md' : 'personality.md',
+            })),
+          }
+        : {}),
       space: {
         ...reference,
         canRead: true,

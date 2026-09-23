@@ -122,6 +122,8 @@ export const continueRun = async (
         // run's enqueue key (`run:<messageId>:<agentId>`), which would be a no-op.
         queueKeyPrefix: 'run:continue',
         resumeActorContext: replay.actorContext,
+        // The presser, even where configured policy work keeps its authorizer.
+        resumedByUserId: actorContext.actor.actorType === 'user' ? actorContext.actor.actorId : null,
         runId: run.id,
         // Already terminal: a Continue press is only offered on a stopped run,
         // so there is no parked status to claim.

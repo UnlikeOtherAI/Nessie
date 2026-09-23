@@ -261,8 +261,11 @@ export const TRIGGER_HEALTH_COPY: Record<string, string> = {
     'The team this schedule runs in is no longer reachable for that person, so '
     + 'it has stopped running.',
   channel_access_lost:
-    'The person this schedule runs as can no longer reach its target channel, so '
-    + 'it has stopped running.',
+    'The person this schedule runs as is no longer in its target channel. Add '
+    + 'them back, then resume this schedule.',
+  agent_channel_access_lost:
+    'The agent is no longer in its target channel. Add the agent back, then '
+    + 'resume this schedule.',
   launch_origin_invalid:
     'This schedule\'s saved launch identity is missing or inconsistent, so it '
     + 'has stopped running.',

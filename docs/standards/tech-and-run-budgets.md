@@ -53,6 +53,68 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
+    A local program's answer through `executor_mcp_call` is shaped before that
+    chokepoint and capped at 12,000 chars with a "narrower result" hint, its
+    images and links reduced to placeholders
+    (`worker/src/run/executor-result-presentation.ts`,
+    [executor-local-mcp.md](executor-local-mcp.md)).
+  - **Tool timeouts are per tool.** `executeToolBatch` asks
+    `toolTimeoutMsFor(toolName)`: an executor tool gets its command TTL plus
+    `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` (10 s), every other tool the budget's
+    `toolTimeoutMs` (75 s main, 25 s delegate). An executor timeout raises the
+    same fatal `ExecutorUnknownOutcomeError` as an expired TTL — the run is
+    requeued and its replay reports an unknown outcome — never a retriable
+    "timed out", because the command may still complete on the machine and a
+    retry would repeat its side effect. `executor_mcp_tools` is the one
+    executor tool that is several commands: the agent loop answers it with a
+    catalog walk of up to
+    `EXECUTOR_MCP_CATALOG_MAX_PAGES` (16) `mcp.tools` pages in sequence, each
+    its own command on its own TTL and each waiting its own turn in the
+    machine's lane, so its timeout is sixteen commands' worth; one command's
+    worth fired before a second page's TTL did. The toolset chooses each
+    command's ToolCall id before creating it, so the backstop's unknown outcome
+    names that row and the batch ends it instead of opening a second one; a
+    walk that throws also ends its first page's row, which its answer would
+    have ended. The command TTLs live in
+    `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
+    `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
+    `executor-timing.ts`, which must stay ≥ the daemon's worst case for one
+    command (a 10 s start + one 60 s call deadline, which also bounds a whole
+    `tools/list` walk; the reporter's probe yields to commands) + upload
+    budget (30 s) + lane overhead (20 s); `executor/test/mcp-timing.test.ts`
+    pins it against the session manager's
+    `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
+  - **Executor calls in one batch run in call order**, one after another; the
+    batch's other tools still run in parallel beside them. A fatal executor
+    call stops the ones queued behind it from dispatching (nothing claimed
+    them, so the replay dispatches them). The worker holds
+    `EXECUTOR_COMMAND_SUBSCRIPTION_CONCURRENCY` (4) `executor.command` jobs at
+    once, so one machine's long call cannot delay another machine's command.
+  - **Circuit breaker.** Three consecutive failures of one key disable it for
+    the run (the counts ride the crash checkpoint). The key is the tool name,
+    except `executor_mcp_call`, which is keyed
+    `executor_mcp_call:<server>:<tool>`, and `executor_mcp_tools`, keyed
+    `executor_mcp_tools:<server>` (`circuitBreakerKey`), so one program's
+    flaky tool never disables the others behind the transport. The breaker and
+    the loop detector count a call under the offered name, with a provider's
+    `default.` / `functions.` prefix dropped (`normalizeToolName`), so a
+    prefixed call is keyed and ruled like the bare one. A
+    result marked `correctable` — a failure the model fixes by changing its
+    call: `EXECUTOR_COMMAND_ARGUMENTS_INVALID`, `EXECUTOR_MCP_RESULT_TOO_LARGE`,
+    `EXECUTOR_MCP_CURSOR_INVALID`, an executor tool name the run does not
+    offer, or an MCP server refusing an unknown tool or arguments that fail its
+    input schema — goes back to the model and neither counts nor clears a
+    count; replays keep the flag.
+  - **Loop detection** (`worker/src/run/tool-loop-detection.ts`) is decided
+    before dispatch. The third identical name+arguments call anywhere in the
+    run is refused and the model told to stop and answer. Observation tools
+    (`OBSERVATION_TOOL_NAMES`, today `executor_mcp_tools`) are exempt from
+    that rule: only consecutive identical calls count, any other call resets
+    the streak, and the fourth in a row is refused with "The result has not
+    changed. Wait with a different call, or tell the person where things
+    stand and end your turn." Counts are checkpointed under `#repeat:` /
+    `#observe:` keys; unprefixed counts from an earlier deploy are dropped on
+    resume.
   - A provider `finish_reason: length` gets one bounded recovery. Partial prose
     uses a no-tools finalisation from completed evidence. Empty reasoning-only
     output retains tools to finish the already authorized work; a truncated tool
@@ -67,6 +129,12 @@ summary and points here; **this file is the rule**.
     `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a hot set inline and
     serve the rest through the non-mutating `tool_spec` meta tool
     ([docs/context-window-optimization-audit.md](../context-window-optimization-audit.md)).
+    The hot set is the fixed list plus what this agent was deliberately given
+    — the project tools the run was lent, then every tool its policy sets
+    `true` — capped at `BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS` (24,000
+    characters of full descriptors, about 6k tokens) in that priority order;
+    past the cap a grant stays a stub. Promotion never widens authorization:
+    only an allowed tool can be promoted.
   - Every run records a wall-clock-only stage breakdown at its terminal state
     (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
     runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,
@@ -212,10 +280,28 @@ summary and points here; **this file is the rule**.
   `research_cancel`; the
   handoff invariants are never touched. `Run.triggerMessageId` (populated by the
   chat orchestrator + integration handoffs) backs both the guard and the replay.
-  Admin cancel is surfaced on the live document-stream dialog
-  (`useCancelRun`) and Continue on budget-stop notices
-  (`admin/src/components/features/channels/RunStopContinue.tsx`, `useContinueRun`);
-  the standalone Agents → Activity page and its `RunLifecyclePanel` were removed,
+  Admin cancel is surfaced where a person watches a run — a **Stop** icon on
+  every thinking bubble and beside the agent page's status pill
+  (`admin/src/components/shared/RunStopButton.tsx`, `useCancelRun`) — and on
+  the live document-stream dialog; Continue on budget-stop notices
+  (`admin/src/components/features/channels/RunStopContinue.tsx`, `useContinueRun`).
+  Stop is drawn only while its surface already knows the run is live: a bubble
+  exists from `stream.start` to `stream.done` (a `running` run; suspension and
+  cancel both publish the `done`), and the agent status read (and the
+  realtime snapshot) names a `currentRunId` for a run the viewer may read in
+  any live status — `pending`, `running`, `waiting_approval`,
+  `waiting_input` — so a suspended run's Stop is the agent header's; a
+  suspended run names no active tool. The
+  press holds "Stopping…" until that surface drops the run, because the flag
+  is read between iterations, after a tool batch settles, and before each of
+  a batch's in-order executor calls is sent (`stopRequested` in
+  `executeToolBatch`; an unsent one answers "Not run: the person stopped this
+  run…"). A call already sent runs to its end, so the wait is at most one
+  executor call's TTL plus margin (130 s for `mcp.call`) or a model or other
+  tool's own timeout. Stop never adds a line to the composer.
+  `pnpm --filter @nessie/admin test:e2e:run-stop` pins the button, the pending
+  state and the request. The standalone Agents → Activity page and its
+  `RunLifecyclePanel` were removed,
   so the org-wide active-run list and the restart control have no admin surface
   (the `GET /api/runs/active` and `POST /api/runs/:id/restart` endpoints remain,
   API-only).

@@ -17,6 +17,7 @@ import {
   projectFor,
   recordProjectRead,
   result,
+  ticketProjectIdFor,
 } from './ticket-context.js'
 
 /**
@@ -36,7 +37,8 @@ const labelLine = (label: TaskLabelRecord): string =>
   + `${label.source ? ` owned by ${label.source.provider}` : ''}`
   + `${label.taskCount !== undefined ? ` tickets=${label.taskCount}` : ''}`
 
-const ReadInput = z.object({ projectId: IdSchema, boardId: IdSchema.optional() })
+// An absent projectId is this channel's project (`ticketProjectIdFor`).
+const ReadInput = z.object({ projectId: IdSchema.optional(), boardId: IdSchema.optional() })
 
 /** The named board of the project, or its default; refused in words when it is not the project's. */
 const boardFor = async (
@@ -56,7 +58,8 @@ export const runTicketLabelsReadTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const { projectId, boardId } = ReadInput.parse(input)
+  const { projectId: named, boardId } = ReadInput.parse(input)
+  const projectId = ticketProjectIdFor(context, named)
   const member = await resolveActingMember(context)
   await projectFor(context, member, projectId)
   if (boardId) {
@@ -95,7 +98,7 @@ export const runTicketLabelsReadTool = async (
 }
 
 const CreateInput = z.object({
-  projectId: IdSchema,
+  projectId: IdSchema.optional(),
   boardId: IdSchema.optional(),
   name: z.string().trim().min(1).max(TASK_LABEL_NAME_MAX_CHARS),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color must be #rrggbb').optional(),
@@ -105,7 +108,8 @@ export const runTicketLabelCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = CreateInput.parse(input)
+  const parsed = CreateInput.parse(input)
+  const args = { ...parsed, projectId: ticketProjectIdFor(context, parsed.projectId) }
   const member = await resolveActingMember(context)
   await projectFor(context, member, args.projectId)
   await assertProjectWriteDestination(context, {

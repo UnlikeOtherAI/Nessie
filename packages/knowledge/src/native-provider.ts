@@ -16,6 +16,7 @@ import {
   type NativeKnowledgeProviderOptions,
 } from './native-version-writer.js'
 import { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
+import { coreDocumentFilename } from './agent-core-contract.js'
 import {
   archiveSpace,
   createSpace,
@@ -80,6 +81,14 @@ const archivePage = async (
   organizationId: string,
   pageId: string,
 ) => {
+  const core = await prisma.agentCoreDocument.findUnique({
+    where: { pageId }, select: { role: true },
+  })
+  if (core) {
+    throw new KnowledgeConflictError(
+      `Required agent instructions cannot be archived; edit ${coreDocumentFilename(core.role)} instead`,
+    )
+  }
   await prisma.knowledgePage.updateMany({
     where: { id: pageId, organizationId, deletedAt: null },
     data: { status: 'archived' },
@@ -128,6 +137,11 @@ const movePage = async (
   prisma.$transaction(async (tx) => {
     const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
+    if (page.coreDocumentFor) {
+      throw new KnowledgeConflictError(
+        `Required agent instructions must remain at the top level as ${coreDocumentFilename(page.coreDocumentFor.role)}`,
+      )
+    }
     // Serialize moves per space so cycle checks and the revision CAS observe
     // one stable tree while this transaction changes the parent relationship.
     await lockKnowledgeTreeMoves(tx, page.spaceId)

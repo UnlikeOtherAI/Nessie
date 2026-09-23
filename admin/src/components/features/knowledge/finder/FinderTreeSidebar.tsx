@@ -1,17 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { faClockRotateLeft, faFileLines, faFolder, faHouse, faLayerGroup, faShareNodes } from '@fortawesome/free-solid-svg-icons'
+import { faClockRotateLeft, faFolder, faHouse, faLayerGroup, faRobot, faShareNodes } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgeRoot } from '@nessie/schemas'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreePanel, SidebarTreeSectionHeader } from '../../../primitives/SidebarTree'
 import { useAuthSession } from '../../../../providers/AuthSessionProvider'
-import { AgentAvatar } from '../../../shared/AgentAvatar'
 import { QueryState } from '../../../shared/QueryState'
 import { ProjectAvatar } from '../../../primitives/ProjectAvatar'
 import { FinderRow } from './FinderRow'
 import { FinderTreeView } from './FinderTreeView'
 import type { FinderRootRow } from './FinderRootColumn'
-import { agentDocumentsSpaceDisplayName } from './agent-space-name'
 
 type FinderTreeSidebarProps = {
   activePageId?: string
@@ -90,8 +88,7 @@ export const FinderTreeSidebar = ({
         {rootRow(row, title, icon, (
           <SidebarTreeLeading>
             <SidebarTreeChevron expanded={expanded} />
-            {row.role === 'project' ? <ProjectAvatar size={20} token={token} /> : row.role === 'agent' && row.space.ownerAgentId
-              ? <AgentAvatar agentId={row.space.ownerAgentId} size={20} token={token} />
+            {row.role === 'project' ? <ProjectAvatar size={20} token={token} />
               : <FontAwesomeIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" fixedWidth icon={icon} />}
           </SidebarTreeLeading>
         ))}
@@ -127,8 +124,7 @@ export const FinderTreeSidebar = ({
 
   const personal = root ? { id: root.myDocuments.spaceId, kind: 'space' as const, role: 'personal' as const, space: root.myDocuments } : null
   const projects = root?.projects ?? []
-  const agents = (root?.shared ?? []).filter((space) => space.ownerAgentId !== null)
-  const spaces = (root?.shared ?? []).filter((space) => space.ownerAgentId === null)
+  const spaces = root?.shared ?? []
 
   return (
     <SidebarTreePanel className="knowledge-sidebar-tree-panel">
@@ -166,20 +162,7 @@ export const FinderTreeSidebar = ({
               </SidebarTreeChildren>
             </div>
             <div className="mt-3">
-              <SidebarTreeSectionHeader
-                collapsed={Boolean(collapsed.agents)}
-                controls="finder-agents"
-                onToggle={() => setCollapsed((current) => ({ ...current, agents: !current.agents }))}
-              >
-                Agents
-              </SidebarTreeSectionHeader>
-              <SidebarTreeChildren id="finder-agents" className={collapsed.agents ? 'hidden' : ''}>
-                {agents.map((space) => spaceRow(
-                  { id: space.spaceId, kind: 'space', role: 'agent', space },
-                  agentDocumentsSpaceDisplayName(space.name),
-                  faFileLines,
-                ))}
-              </SidebarTreeChildren>
+              {rootRow({ id: 'virtual:agents', kind: 'agents' }, 'Agents', faRobot)}
             </div>
             <div className="mt-3">
               <SidebarTreeSectionHeader

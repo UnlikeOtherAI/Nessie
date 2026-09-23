@@ -111,7 +111,7 @@ export const buildKnowledgeRoot = async (
   if (!myDocsSpace) throw new Error('My Documents space could not be loaded after provisioning')
 
   const accessible = input.accessibleProjectIds
-  const [projects, sharedPage, sharedWithMeCount] = await Promise.all([
+  const [projects, agentPage, sharedPage, sharedWithMeCount] = await Promise.all([
     accessible !== 'all' && accessible.length === 0 ? [] : prisma.project.findMany({
       where: {
         organizationId: input.organizationId,
@@ -128,6 +128,14 @@ export const buildKnowledgeRoot = async (
     // viewer's own is already above, and nobody else's is readable at space
     // level (a share reaches the page, not the folder).
     provider.listSpaces({
+      agentOwnedOnly: true,
+      includePersonal: true,
+      organizationId: input.organizationId,
+      limit: ROOT_SHARED_SPACE_CAP,
+      viewer,
+    }),
+    provider.listSpaces({
+      excludeAgentOwned: true,
       organizationId: input.organizationId,
       limit: ROOT_SHARED_SPACE_CAP,
       viewer,
@@ -187,10 +195,12 @@ export const buildKnowledgeRoot = async (
     })
     .sort((left, right) => left.projectName.localeCompare(right.projectName))
 
-  // The third group by definition: readable, not personal, not a project's
-  // Documents folder. Ad-hoc spaces and agent homes both land here; the
-  // column splits the agent homes (ownerAgentId !== null) into their own
-  // labelled section.
+  const agentHomes = agentPage.data
+    .sort(byName)
+    .map((space) => toRootSpace(space, projectNames.get(space.projectId) ?? null))
+
+  // The third group by definition: readable, not personal, not agent-owned,
+  // and not a project's Documents folder.
   const shared = sharedPage.data
     .filter((space) => space.id !== myDocsSpace.id)
     .filter((space) => !isFlagged(space.metadata, 'personal'))
@@ -199,7 +209,9 @@ export const buildKnowledgeRoot = async (
     .map((space) => toRootSpace(space, projectNames.get(space.projectId) ?? null))
 
   const sharedProjectIds = Array.from(new Set(
-    shared.filter((space) => space.projectName === null).map((space) => space.projectId),
+    [...agentHomes, ...shared]
+      .filter((space) => space.projectName === null)
+      .map((space) => space.projectId),
   ))
   if (sharedProjectIds.length > 0) {
     // A shared folder's subtitle names the project it is filed under, which may
@@ -209,7 +221,7 @@ export const buildKnowledgeRoot = async (
       select: { id: true, name: true },
     })
     const extraNames = new Map(extra.map((project) => [project.id, project.name]))
-    for (const space of shared) {
+    for (const space of [...agentHomes, ...shared]) {
       if (space.projectName === null) space.projectName = extraNames.get(space.projectId) ?? null
     }
   }
@@ -217,6 +229,8 @@ export const buildKnowledgeRoot = async (
   return {
     myDocumentsCreated: myDocs.created,
     root: {
+      agentHomes,
+      agentHomesTruncated: agentPage.meta.hasMore,
       myDocuments: toRootSpace(myDocsSpace, projectNames.get(myDocsSpace.projectId) ?? null),
       projects: projectRows,
       shared,
