@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useState } from 'react'
 import { newResearchActionId } from '../../../facades/deep-water/mutations'
 
 /**
@@ -10,20 +10,30 @@ import { newResearchActionId } from '../../../facades/deep-water/mutations'
  * intent and gets a fresh key, and so does anything after an outcome the
  * server did decide (a success, or a refusal).
  */
-export const useIntentActionId = () => {
-  const held = useRef<{ id: string; signature: string } | null>(null)
-  return useMemo(() => ({
-    /** The key for this body: the held one when retrying the same body. */
-    take: (body: unknown): string => {
+export type IntentActionIds = {
+  /** The key for this body: the held one when retrying the same body. */
+  take: (body: unknown) => string
+  /** Keep the key only when the next attempt at this body would be a retry. */
+  settle: (retrySameAction: boolean) => void
+}
+
+/** Pure, so the rule is tested without React; `mint` makes a fresh key. */
+export const createIntentActionIds = (mint: () => string): IntentActionIds => {
+  let held: { id: string; signature: string } | null = null
+  return {
+    settle: (retrySameAction) => {
+      if (!retrySameAction) held = null
+    },
+    take: (body) => {
       const signature = JSON.stringify(body)
-      if (held.current?.signature !== signature) {
-        held.current = { id: newResearchActionId(), signature }
-      }
-      return held.current.id
+      if (held?.signature !== signature) held = { id: mint(), signature }
+      return held.id
     },
-    /** Keep the key only when the next attempt at this body would be a retry. */
-    settle: (retrySameAction: boolean): void => {
-      if (!retrySameAction) held.current = null
-    },
-  }), [])
+  }
+}
+
+/** The keys for one control's intents, kept for as long as it is mounted. */
+export const useIntentActionId = (): IntentActionIds => {
+  const [ids] = useState(() => createIntentActionIds(newResearchActionId))
+  return ids
 }
