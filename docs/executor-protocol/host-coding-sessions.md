@@ -542,16 +542,23 @@ own start time, and each is checked again right before its own signal — never
 `taskkill /T`, which walks parent ids as they are at that moment. On Windows
 that check and the kill share one handle, so not even the moment between
 them can hand the pid on, and the whole kill is one PowerShell: the table,
-then the root, then each member. An identity without a start time is
-unknown and is never signalled. A start time that
-cannot be read while the process is alive — PowerShell or `ps` timing out
-under load — is read again; an agent whose start time still cannot be read is
-stopped through the host's own handle at once and its start fails with
-`containment_failed`, because nothing could later tell it from a reused pid.
-macOS start times are read in UTC and the C locale, so a laptop that changes
-time zone still recognises its agent. On POSIX a tree gets SIGTERM and two
-seconds before SIGKILL, so a `git` caught mid-commit can remove its
-`index.lock`. What the next host needs, the agent's identity and its
+then the root, then each member, then a closing line; one ended before that
+line (out of its ten seconds under load) has not done the kill, so the guard's
+ready-held kill is followed by a cold one. An identity without a start time is
+unknown and is never signalled. A start time that cannot be read while the
+process is alive — PowerShell or `ps` timing out under load — is read again;
+an agent whose start time still cannot be read is stopped through the host's
+own handle at once and its start fails with `containment_failed`, because
+nothing could later tell it from a reused pid. macOS start times are read in
+UTC and the C locale, so a laptop that changes time zone still recognises its
+agent. On POSIX a tree gets SIGTERM and two seconds before SIGKILL, so a `git`
+caught mid-commit can remove its `index.lock`. A failed table read then (`ps`
+timing out on a loaded Mac) is not an empty table, which would end the grace
+early and let a `setsid` grandchild that ignores SIGTERM go without its
+SIGKILL: the grace goes on by the last good table, each read in it capped at
+what is left, and a fresh read with the full ten seconds follows a failed last
+one; if that fails too, nothing more is signalled. What the next host needs,
+the agent's identity and its
 confirmed session id, skips the 500 ms debounce, and a session id the agent
 never confirmed is dropped: Claude refuses `--session-id` for an id it already
 holds, so the next agent starts afresh rather than failing on every send. The
@@ -914,7 +921,8 @@ Object is proved twice:
 `executor/native/tests/job_run.rs` drives the built helper (exit code, stdio,
 an orphaned grandchild dying with the job, the job dying with its parent), and
 `coding-session-containment.test.ts` kills an agent's orphaning tree through
-the helper whenever `executor/native/target` holds a build.
+the helper whenever `executor/native/target` holds a build; it also fails
+chosen `ps` reads under the macOS kill and checks the Windows kill's last line.
 `coding-session-guard.test.ts` runs the real agent guard: the agent's own
 identity, environment, output and exit code through it, its refusal when the
 agent cannot start, which hosts use it, and a host killed with -9

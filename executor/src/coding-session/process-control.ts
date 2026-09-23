@@ -92,13 +92,23 @@ const TERM_GRACE_MS = 2_000
 type ProcessRow = { ppid: number; pgid?: number; started?: string }
 type ProcessTable = Map<number, ProcessRow>
 
-const run = (file: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> => new Promise((settle) => {
+/** What `file` printed, and whether it failed: timed out, was killed or exited non-zero. */
+const run = (
+  file: string, args: string[], env?: NodeJS.ProcessEnv, timeoutMs = TOOL_TIMEOUT_MS,
+): Promise<{ stdout: string; failed: boolean }> => new Promise((settle) => {
   execFile(file, args, {
-    timeout: TOOL_TIMEOUT_MS, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...(env ? { env } : {}),
+    timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, ...(env ? { env } : {}),
   }, (error, stdout) => {
-    settle(error && !stdout ? '' : String(stdout))
+    settle({ stdout: String(stdout), failed: error !== null })
   })
 })
+
+/**
+ * How `ps` runs where there is no `/proc` (macOS): what it printed, or
+ * `undefined` when it failed. `/bin/ps`, in the C locale and UTC, unless a
+ * test stands in its own.
+ */
+export type PsRunner = (args: string[], timeoutMs: number) => Promise<string | undefined>
 
 const delay = (ms: number): Promise<void> => new Promise((settle) => { setTimeout(settle, ms) })
 
@@ -203,24 +213,34 @@ const system32 = (file: string): string => join(process.env.SystemRoot ?? proces
 const powershellPath = (): string => system32(join('WindowsPowerShell', 'v1.0', 'powershell.exe'))
 const POWERSHELL_ARGS = ['-NoProfile', '-NonInteractive', '-Command']
 
-const powershell = (script: string): Promise<string> => run(powershellPath(), [...POWERSHELL_ARGS, script])
+const powershell = async (script: string): Promise<string> => (
+  (await run(powershellPath(), [...POWERSHELL_ARGS, script])).stdout
+)
 
 type PowerShellExchange = {
-  /** Whether `reply` ran: false for a script that failed, printed no `.` line, or was never cued. */
+  /**
+   * Whether the script handled all of `reply`'s answer, which it says with
+   * its closing `.` line: false for a script that failed, printed no `.`
+   * line, was never cued, or was ended partway through the lines it was sent
+   * — by its budget, say, while a kill slowed by load was still going on.
+   */
   done: Promise<boolean>
   /** Lets a `cued` script go on past the line it waits for. */
   cue: () => void
 }
 
+const DOT_LINE = /(?:^|\n)\.\r?\n/u
+
 /**
- * Runs a PowerShell `script` that prints up to a `.` line and then reads
- * lines until its input ends: `reply` answers what it printed before that
- * line. A `cued` script first reads one line of its own and does nothing
- * until `cue` sends it, so PowerShell's start is paid before the answer is
- * needed; one whose input ends first (this process exited) exits unused. Each
- * half gets the tool budget of its own once it is under way.
+ * Runs a PowerShell `script` that prints up to a `.` line, then reads lines
+ * until its input ends and prints a closing `.` line once it has handled
+ * them all: `reply` answers what it printed before the first. A `cued`
+ * script first reads one line of its own and does nothing until `cue` sends
+ * it, so PowerShell's start is paid before the answer is needed; one whose
+ * input ends first (this process exited) exits unused. Each half gets the
+ * tool budget of its own once it is under way.
  */
-const powershellExchange = (
+export const powershellExchange = (
   script: string, reply: (printed: string) => string[], cued = false,
 ): PowerShellExchange => {
   const child = spawn(powershellPath(), [...POWERSHELL_ARGS, script], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true })
@@ -232,24 +252,29 @@ const powershellExchange = (
   if (!cued) budget()
   let printed = ''
   let answered = false
-  let replied = false
+  /** What it printed after the first `.` line; unset until it printed one. */
+  let after: string | undefined
+  let closed = false
   child.stdin.on('error', () => undefined)
   child.stdout.setEncoding('utf8')
   child.stdout.on('data', (chunk: string) => {
-    if (answered) return
+    if (answered) {
+      if (after !== undefined && !closed) closed = DOT_LINE.test(after += chunk)
+      return
+    }
     printed += chunk
-    const end = /(?:^|\n)\.\r?\n/u.exec(printed)
+    const end = DOT_LINE.exec(printed)
     if (!end && printed.length <= 8 * 1024 * 1024) return
     answered = true
     budget()
     const lines = end ? reply(printed.slice(0, end.index)) : []
-    replied = end !== null
+    if (end) after = printed.slice(end.index + end[0].length)
     child.stdin.end(lines.map((line) => `${line}\n`).join(''))
   })
   const done = new Promise<boolean>((settle) => {
     const finish = (): void => {
       clearTimeout(timer)
-      settle(replied)
+      settle(closed)
     }
     child.once('error', finish)
     child.once('close', finish)
@@ -292,8 +317,9 @@ const WINDOWS_TABLE = [
 
 /**
  * A whole Windows kill in one PowerShell: it prints the table and a `.` line,
- * then reads back `<pid> <startedAt>` lines, in order, and kills each process
- * through a handle it holds while it compares that process's start time. So
+ * then reads back `<pid> <startedAt>` lines, in order, kills each process
+ * through a handle it holds while it compares that process's start time, and
+ * prints a closing `.` line once its input has ended. So
  * nothing is killed on a table that has gone stale, not even in the moment
  * between the check and the kill — Windows never hands on the pid of a
  * process somebody still holds a handle to — and a kill costs one PowerShell
@@ -301,12 +327,13 @@ const WINDOWS_TABLE = [
  * the five seconds a dead host's agent has. A process that refuses the handle
  * is checked and killed by pid at once, as `taskkill /F` would.
  */
-const WINDOWS_KILL = [
+export const WINDOWS_KILL = [
   WINDOWS_TABLE,
   "; '.'; [Console]::Out.Flush()",
   '; while ($null -ne ($line = [Console]::In.ReadLine())) { $target, $started = $line.Split(" ")',
   '; try { $p = Get-Process -Id ([int]$target) -ErrorAction Stop; try { $null = $p.Handle } catch {}',
   '; if ($p.StartTime.ToFileTimeUtc() -eq [long]$started) { $p.Kill() } } catch {} }',
+  "; '.'",
 ].join(' ')
 
 /**
@@ -387,7 +414,7 @@ const windowsControl = (jobHelper: string | undefined, refusal: string | undefin
       const reply = (printed: string): string[] => targets(parseWindowsTable(printed), identity, [])
       const standing = powershellExchange(WINDOWS_KILL_ON_CUE, reply, true)
       let fired: Promise<void> | undefined
-      // A standby that died before its cue, or read no table, killed nothing: a cold kill does it.
+      // A standby that died before its cue, read no table or was ended before its list was done: a cold kill does it.
       return () => fired ??= (async () => {
         standing.cue()
         if (!await standing.done) await killTree(identity)
@@ -420,12 +447,22 @@ const procStat = (text: string): { ppid: number; pgid: number; started?: string 
   return { ppid: Number(fields[1]), pgid: Number(fields[2]), ...(/^\d+$/u.test(fields[19] ?? '') ? { started: fields[19] } : {}) }
 }
 
-const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingProcessControl => {
+const systemPs: PsRunner = async (args, timeoutMs) => {
+  const { stdout, failed } = await run('/bin/ps', args, PS_ENVIRONMENT, timeoutMs)
+  return failed ? undefined : stdout
+}
+
+const posixControl = (platform: NodeJS.Platform, termGraceMs: number, ps: PsRunner): CodingProcessControl => {
   const startedAt = async (pid: number): Promise<string | undefined> => {
     if (platform === 'linux') return procStat(await readFile(`/proc/${pid}/stat`, 'utf8').catch(() => ''))?.started
-    return parsePsStartTime(await run('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], PS_ENVIRONMENT))
+    return parsePsStartTime(await ps(['-o', 'lstart=', '-p', String(pid)], TOOL_TIMEOUT_MS) ?? '')
   }
-  const table = async (): Promise<ProcessTable> => {
+  /**
+   * Every process, or `undefined` when the table could not be read — a `ps`
+   * that timed out under load, say. That is no reading at all, never an empty
+   * table: read as one, it would say the whole tree had exited.
+   */
+  const table = async (timeoutMs = TOOL_TIMEOUT_MS): Promise<ProcessTable | undefined> => {
     const rows: ProcessTable = new Map()
     if (platform === 'linux') {
       const names = (await readdir('/proc').catch(() => [] as string[])).filter((name) => /^\d+$/u.test(name))
@@ -433,15 +470,37 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingPro
         const stat = procStat(await readFile(`/proc/${name}/stat`, 'utf8').catch(() => ''))
         if (stat) rows.set(Number(name), stat)
       }))
-      return rows
+      return rows.size > 0 ? rows : undefined
     }
-    for (const line of (await run('/bin/ps', ['-A', '-o', 'pid=,ppid=,pgid=,lstart='], PS_ENVIRONMENT)).split('\n')) {
+    for (const line of (await ps(['-A', '-o', 'pid=,ppid=,pgid=,lstart='], timeoutMs) ?? '').split('\n')) {
       const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/u.exec(line)
       if (!match) continue
       const started = parsePsStartTime(match[4]!)
       rows.set(Number(match[1]), { ppid: Number(match[2]), pgid: Number(match[3]), ...(started ? { started } : {}) })
     }
-    return rows
+    return rows.size > 0 ? rows : undefined
+  }
+  /**
+   * The table a SIGKILL goes by, once `gone` finds nothing of the tree left
+   * in it or the grace is over. Each read inside the grace gets only what is
+   * left of it, and one that fails leaves the wait going by the last table
+   * read. A SIGKILL is checked against a fresh table, so a grace that ended on
+   * a failed read gets one more with the whole tool budget, which bounds the
+   * overrun to that one read; `undefined` when it fails too, and then nothing
+   * can be checked, so nothing more is signalled.
+   */
+  const afterGrace = async (
+    before: ProcessTable, gone: (table: ProcessTable) => boolean,
+  ): Promise<ProcessTable | undefined> => {
+    const deadline = Date.now() + termGraceMs
+    let last = before
+    let read: ProcessTable | undefined
+    do {
+      await delay(100)
+      read = await table(Math.max(deadline - Date.now(), 100))
+      last = read ?? last
+    } while (Date.now() < deadline && !gone(last))
+    return read ?? table()
   }
   const send = (pid: number, signal: NodeJS.Signals): void => {
     try {
@@ -468,13 +527,11 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingPro
       return rootIsOurs || pending.length > 0
     }
     if (!signal(before, 'SIGTERM')) return
-    const deadline = Date.now() + termGraceMs
-    let current = before
-    do {
-      await delay(100)
-      current = await table()
-    } while (Date.now() < deadline && (isStill(current, identity) || stillThere(members, current).length > 0))
-    signal(current, 'SIGKILL')
+    const gone = (current: ProcessTable): boolean => (
+      !isStill(current, identity) && stillThere(members, current).length === 0
+    )
+    const after = await afterGrace(before, gone)
+    if (after) signal(after, 'SIGKILL')
   }
   return {
     // Its own process group, so the group can be killed without the host.
@@ -485,17 +542,20 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingPro
       const started = await startTimeOfLive(pid, startedAt)
       return started === undefined ? undefined : { pid, startedAt: started }
     },
-    descendants: async (identity) => treeOf(identity, await table(), true),
-    killTree: async (identity, snapshot = []) => killFrom(await table(), identity, snapshot),
+    descendants: async (identity) => treeOf(identity, await table() ?? new Map(), true),
+    killTree: async (identity, snapshot = []) => {
+      const before = await table()
+      if (before) await killFrom(before, identity, snapshot)
+    },
     killChildTree: async (child) => {
       const before = await table()
-      const root = ownChild(child, before)
-      if (root) await killFrom(before, root, [])
+      const root = before ? ownChild(child, before) : undefined
+      if (before && root) await killFrom(before, root, [])
       return root !== undefined
     },
     killExitedGroup: async (leader) => {
       const before = await table()
-      if (!recorded(leader) || before.has(leader.pid)) return false
+      if (!before || !recorded(leader) || before.has(leader.pid)) return false
       const members = new Map<number, string>()
       for (const [pid, row] of before) {
         if (row.pgid === leader.pid && notEarlier(row.started, leader.startedAt)) members.set(pid, row.started)
@@ -507,13 +567,8 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingPro
         return pending.length > 0
       }
       if (!signal(before, 'SIGTERM')) return false
-      const deadline = Date.now() + termGraceMs
-      let current = before
-      do {
-        await delay(100)
-        current = await table()
-      } while (Date.now() < deadline && stillThere(members, current).length > 0)
-      signal(current, 'SIGKILL')
+      const after = await afterGrace(before, (current) => stillThere(members, current).length === 0)
+      if (after) signal(after, 'SIGKILL')
       return true
     },
   }
@@ -524,18 +579,19 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingPro
  * helper refuses to start agents at all: without the Job Object nothing
  * contains a grandchild that outlives its parent, and the development
  * fallback is only for development. `termGraceMs` is how long a POSIX tree
- * has between SIGTERM and SIGKILL.
+ * has between SIGTERM and SIGKILL, and `ps` is how the table is read where
+ * there is no `/proc`.
  */
 export const createCodingProcessControl = (
   platform: NodeJS.Platform = process.platform,
-  options: { jobHelper?: string; packaged?: boolean; termGraceMs?: number } = {
+  options: { jobHelper?: string; packaged?: boolean; termGraceMs?: number; ps?: PsRunner } = {
     jobHelper: platform === 'win32' ? packagedJobHelper() : undefined,
     packaged: process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1',
   },
 ): CodingProcessControl => (
   platform === 'win32'
     ? windowsControl(options.jobHelper, options.packaged && !options.jobHelper ? 'containment_failed' : undefined)
-    : posixControl(platform, options.termGraceMs ?? TERM_GRACE_MS)
+    : posixControl(platform, options.termGraceMs ?? TERM_GRACE_MS, options.ps ?? systemPs)
 )
 
 export const codingProcessIsAlive = alive

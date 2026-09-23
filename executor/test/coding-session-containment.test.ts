@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -16,7 +17,13 @@ import {
   stopOwnUserUnit,
   systemdRunArguments,
 } from '../src/coding-session/host-unit.js'
-import { createCodingProcessControl, parsePsStartTime } from '../src/coding-session/process-control.js'
+import {
+  createCodingProcessControl,
+  parsePsStartTime,
+  powershellExchange,
+  WINDOWS_KILL,
+  type PsRunner,
+} from '../src/coding-session/process-control.js'
 import { runCodingSelfCheck, runsAsWindowsServiceAccount } from '../src/coding-session/self-check.js'
 import { codingSessionPaths } from '../src/coding-session/session-files.js'
 
@@ -189,6 +196,138 @@ test('a recorded pid that now names somebody else is never signalled, nor is any
   }
 })
 
+/**
+ * `ps` as the macOS control runs it, answered by this machine's own `/bin/ps`,
+ * with the table reads `fail` names failing the way a `ps` that timed out
+ * does, and the budget each table read was given.
+ */
+const standInPs = () => {
+  let tableReads = 0
+  const failing = new Set<number>()
+  const budgets: number[] = []
+  const ps: PsRunner = async (args, timeoutMs) => {
+    if (args[0] === '-A') {
+      tableReads += 1
+      budgets.push(timeoutMs)
+      if (failing.has(tableReads)) return undefined
+    }
+    return new Promise((settle) => {
+      execFile('/bin/ps', args, { env: { LC_ALL: 'C', TZ: 'UTC', PATH: '/usr/bin:/bin' }, timeout: timeoutMs }, (error, stdout) => {
+        settle(error ? undefined : stdout)
+      })
+    })
+  }
+  return {
+    ps,
+    /** The budgets of the table reads from here on. */
+    mark: () => budgets.length,
+    budgets: (from: number) => budgets.slice(from),
+    /** Fails the table reads `offsets` after the next one, which is offset 0. */
+    fail: (...offsets: number[]) => { for (const offset of offsets) failing.add(tableReads + 1 + offset) },
+  }
+}
+
+const posixWithPs = process.platform === 'win32' ? 'POSIX only' : !existsSync('/bin/ps') ? 'needs /bin/ps' : false
+
+const firstLine = (child: ChildProcess): Promise<string> => new Promise((settle) => {
+  createInterface({ input: child.stdout! }).once('line', (line) => settle(line.trim()))
+})
+
+/**
+ * An agent whose child is in a session of its own and ignores SIGTERM: the
+ * group's SIGKILL misses it, so only a SIGKILL of its own pid ends it. The
+ * pid is printed once the child is listening.
+ */
+const STUBBORN_OUTSIDER = `
+const { spawn } = require('node:child_process')
+const outsider = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000)"], {
+  detached: true, stdio: ['ignore', 'pipe', 'ignore'],
+})
+outsider.stdout.once('data', () => { console.log(outsider.pid); outsider.stdout.destroy() })
+setInterval(() => {}, 1000)
+`
+
+test('POSIX: a table read that fails in the grace neither ends it early nor spares a member outside the group', {
+  skip: posixWithPs, timeout: 60_000,
+}, async () => {
+  const stand = standInPs()
+  const control = createCodingProcessControl('darwin', { termGraceMs: 1_000, ps: stand.ps })
+  const agent = control.spawnAgent(process.execPath, ['-e', STUBBORN_OUTSIDER], { cwd: tmpdir(), env: process.env })
+  const outsider = Number(await firstLine(agent))
+  const everyone = [agent.pid!, outsider]
+  try {
+    const identity = await control.identify(agent.pid!)
+    assert.ok(identity?.startedAt)
+    const tree = await control.descendants(identity)
+    assert.ok(tree.some((entry) => entry.pid === outsider), 'the outsider is in the tree by its parent')
+    // The read before the SIGTERM answers; the first one in the grace does not.
+    const mark = stand.mark()
+    stand.fail(1)
+    await control.killTree(identity, tree)
+    const deadline = Date.now() + 5_000
+    while (everyone.some(alive) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
+    assert.deepEqual(everyone.map(alive), [false, false], 'the outsider got its SIGKILL')
+    const [before, ...grace] = stand.budgets(mark)
+    assert.equal(before, 10_000)
+    assert.ok(grace.length > 0 && grace.every((budget) => budget <= 1_000), `each read in the grace had only what was left of it: ${grace}`)
+  } finally {
+    for (const pid of everyone) if (alive(pid)) process.kill(pid, 'SIGKILL')
+  }
+})
+
+test('POSIX: with no table at all after the grace, nothing unchecked is signalled', { skip: posixWithPs, timeout: 60_000 }, async () => {
+  const stand = standInPs()
+  const control = createCodingProcessControl('darwin', { termGraceMs: 1_000, ps: stand.ps })
+  const agent = control.spawnAgent(process.execPath, ['-e', STUBBORN_OUTSIDER], { cwd: tmpdir(), env: process.env })
+  const outsider = Number(await firstLine(agent))
+  try {
+    const identity = await control.identify(agent.pid!)
+    assert.ok(identity?.startedAt)
+    const mark = stand.mark()
+    // Every read after the one before the SIGTERM fails, the fresh one the SIGKILL needs as well.
+    stand.fail(...Array.from({ length: 200 }, (_, index) => index + 1))
+    await control.killTree(identity)
+    const budgets = stand.budgets(mark)
+    assert.equal(budgets.at(-1), 10_000, 'a grace that ended on a failed read has one more, with the whole budget')
+    await new Promise((settle) => { setTimeout(settle, 500) })
+    assert.equal(alive(agent.pid!), false, 'the agent died of its SIGTERM')
+    assert.equal(alive(outsider), true, 'a pid no table could check is never sent a SIGKILL')
+  } finally {
+    for (const pid of [agent.pid!, outsider]) if (alive(pid)) process.kill(pid, 'SIGKILL')
+  }
+})
+
+/** A group leader whose child stays in its group and ignores SIGTERM; it exits on its first line of input. */
+const LEADER_LEAVING_A_MEMBER = `
+const { spawn } = require('node:child_process')
+const member = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); console.log('ready'); setInterval(() => {}, 1000)"], {
+  stdio: ['ignore', 'pipe', 'ignore'],
+})
+member.stdout.once('data', () => { console.log(member.pid); member.stdout.destroy() })
+process.stdin.once('data', () => process.exit(0))
+`
+
+test('POSIX: an exited leader\'s group is not taken for gone on a failed read', { skip: posixWithPs, timeout: 60_000 }, async () => {
+  const stand = standInPs()
+  const control = createCodingProcessControl('darwin', { termGraceMs: 1_000, ps: stand.ps })
+  const leader = control.spawnAgent(process.execPath, ['-e', LEADER_LEAVING_A_MEMBER], { cwd: tmpdir(), env: process.env })
+  const member = Number(await firstLine(leader))
+  try {
+    const identity = await control.identify(leader.pid!)
+    assert.ok(identity?.startedAt)
+    const exited = new Promise((settle) => { leader.once('exit', settle) })
+    leader.stdin!.write('go\n')
+    await exited
+    stand.fail(1)
+    assert.equal(await control.killExitedGroup!(identity), true)
+    const deadline = Date.now() + 5_000
+    while (alive(member) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
+    assert.equal(alive(member), false, 'the member got its SIGKILL')
+  } finally {
+    if (alive(member)) process.kill(member, 'SIGKILL')
+  }
+})
+
 test('macOS start times read the same in any time zone', () => {
   assert.equal(parsePsStartTime('Tue Sep 23 10:00:00 2026'), String(Date.UTC(2026, 8, 23, 10) / 1_000))
   assert.equal(parsePsStartTime('Thu Oct  1 09:05:07 2026'), String(Date.UTC(2026, 9, 1, 9, 5, 7) / 1_000))
@@ -226,6 +365,31 @@ const alive = (pid: number): boolean => {
     return false
   }
 }
+
+test('Windows: a kill\'s PowerShell has done the kill only once it says it handled every line it was sent', {
+  skip: process.platform !== 'win32' ? 'Windows only' : false,
+  timeout: 90_000,
+}, async () => {
+  const target = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore', windowsHide: true })
+  try {
+    const control = createCodingProcessControl('win32', {})
+    const identity = await control.identify(target.pid!)
+    assert.ok(identity?.startedAt)
+    const kill = powershellExchange(WINDOWS_KILL, () => [`${identity.pid} ${identity.startedAt}`])
+    assert.equal(await kill.done, true, 'the kill itself says so')
+    const deadline = Date.now() + 10_000
+    while (alive(target.pid!) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
+    assert.equal(alive(target.pid!), false)
+    assert.equal(await powershellExchange(WINDOWS_KILL, () => []).done, true, 'and so it does with nothing to kill')
+    // Stand-ins that print their table and read the first of the two lines sent back, then stop.
+    const answered = "'.'; [Console]::Out.Flush(); $null = [Console]::In.ReadLine()"
+    const stopped = (rest: string): Promise<boolean> => powershellExchange(`${answered}; ${rest}`, () => ['1 1', '2 2']).done
+    assert.equal(await stopped('Start-Sleep -Seconds 60'), false, 'ended by its budget partway through the list, as a slow kill under load is')
+    assert.equal(await stopped('exit 0'), false, 'gone partway through, even with a clean exit code')
+  } finally {
+    target.kill()
+  }
+})
 
 test('Windows: killing the agent through its Job Object takes the orphaned grandchild too', {
   skip: process.platform !== 'win32' ? 'Windows only' : !builtHelper ? 'build executor/native first' : false,
