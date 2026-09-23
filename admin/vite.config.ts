@@ -48,6 +48,7 @@ export default defineConfig(({ command, mode }) => {
   const includeExecutorRunLauncherFixture =
     env.NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE === '1'
   const includeRunStopFixture = env.NESSIE_RUN_STOP_E2E_FIXTURE === '1'
+  const includeExecutorLeaseFixture = env.NESSIE_EXECUTOR_LEASE_E2E_FIXTURE === '1'
   const includeLocalOllamaAgentsFixture = env.NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
@@ -80,6 +81,7 @@ export default defineConfig(({ command, mode }) => {
     || includeExecutorAttentionFixture
     || includeExecutorRunLauncherFixture
     || includeRunStopFixture
+    || includeExecutorLeaseFixture
     || includeLocalOllamaAgentsFixture ? {
     build: {
       rollupOptions: {
@@ -132,6 +134,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeRunStopFixture ? {
             runStop: resolve(__dirname, 'e2e/run-stop/index.html'),
+          } : {}),
+          ...(includeExecutorLeaseFixture ? {
+            executorLease: resolve(__dirname, 'e2e/executor-lease/index.html'),
           } : {}),
           ...(includeLocalOllamaAgentsFixture ? {
             localOllamaAgents: resolve(__dirname, 'e2e/local-ollama-agents/index.html'),

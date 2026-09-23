@@ -8,6 +8,7 @@ import { QueryState } from '../../shared/QueryState'
 import { ExecutorAgentsPanel } from './ExecutorAgentsPanel'
 import { ExecutorPermissionsPanel } from './ExecutorPermissionsPanel'
 import { ExecutorActivityPanel } from './ExecutorActivityPanel'
+import { ExecutorLeasesPanel } from './ExecutorLeasesPanel'
 
 export const EXECUTOR_TAB_VALUES = ['agents', 'permissions', 'activity'] as const
 export type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
@@ -51,7 +52,15 @@ export const ExecutorDetailPanels = ({
           <>
             {tab === 'agents' ? <ExecutorAgentsPanel executorId={executor.id} scopeKind={executor.scope.kind} onPrepared={onPrepared} token={token} /> : null}
             {tab === 'permissions' ? <ExecutorPermissionsPanel access={access} onPrepared={onPrepared} /> : null}
-            {tab === 'activity' ? <ExecutorActivityPanel sessions={access.sessions ?? []} /> : null}
+            {tab === 'activity' ? (
+              <div className="grid gap-6">
+                <ExecutorLeasesPanel executorId={executor.id} />
+                <section aria-labelledby="executor-sessions-heading" className="grid gap-3">
+                  <h2 className="text-sm font-semibold text-[color:var(--tx)]" id="executor-sessions-heading">Recent sessions</h2>
+                  <ExecutorActivityPanel sessions={access.sessions ?? []} />
+                </section>
+              </div>
+            ) : null}
           </>
         ) : <p className="text-sm text-[color:var(--tx2)]">Only this machine’s administrators can manage its agents and permissions.</p> : null}
       </QueryState>

@@ -52,6 +52,8 @@ test('command payload and terminal result are encrypted at rest and receipt tran
         return state
       },
     },
+    // A binding outside any conversation lease: the dispatch touch matches nothing.
+    executorConversationLease: { updateMany: async () => ({ count: 0 }) },
     executorBinding: {
       findUnique: async () => ({
         authorizationRevision: 3,

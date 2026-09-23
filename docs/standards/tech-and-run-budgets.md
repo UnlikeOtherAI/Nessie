@@ -129,6 +129,12 @@ summary and points here; **this file is the rule**.
     `NESSIE_BUILTIN_INLINE_TOOL_LIMIT` (default 20) keep a hot set inline and
     serve the rest through the non-mutating `tool_spec` meta tool
     ([docs/context-window-optimization-audit.md](../context-window-optimization-audit.md)).
+    The hot set is the fixed list plus what this agent was deliberately given
+    — the project tools the run was lent, then every tool its policy sets
+    `true` — capped at `BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS` (24,000
+    characters of full descriptors, about 6k tokens) in that priority order;
+    past the cap a grant stays a stub. Promotion never widens authorization:
+    only an allowed tool can be promoted.
   - Every run records a wall-clock-only stage breakdown at its terminal state
     (completion **and** failure) as a `run.timing` `TaskEvent` — `{ outcome,
     runId, queueWaitMs, totalMs, inferenceMs, inferenceCount, toolMs,

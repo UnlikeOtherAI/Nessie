@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { loadAgentToolCatalog } from '@nessie/team-admin'
+
+import { PEER_PROJECT_TOOL_IDS, resolveProjectDelegatedToolIds } from '../execute/run-setup.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
   runAgentBindChannelTool,
@@ -159,6 +162,11 @@ test('channel_create makes the acting user the owner of a channel in the run tea
   })
   assert.match(result.outputPreview, /channelId=4f7d1c00-0e64-4d10-a517-0d0b69c1d009/)
   assert.match(result.outputPreview, /Nessie \/ Core/)
+  // A link the Designer can hand over as it is, beside the id the next call takes.
+  assert.match(
+    result.outputPreview,
+    /\[#[^\]]+\]\(\/channels\/4f7d1c00-0e64-4d10-a517-0d0b69c1d009\)/,
+  )
 })
 
 test('agent_create refuses a tool policy that grants an explicit-grant tool', async () => {
@@ -182,6 +190,55 @@ test('agent_create refuses a tool policy that grants an explicit-grant tool', as
 
   assert.match(message, /Explicit-grant tools are managed only from the owner/)
   assert.equal(createCalls, 0)
+})
+
+// F11 end to end: the catalogue the Designer reads says how to give a board
+// tool, agent_create stores what it was told, and run setup lends exactly
+// that in the agent's project channel. The catalogue once called these "on by
+// default", so a Designer that followed it wrote nothing and built a CTO with
+// no ticket tools at all.
+test('a Designer-built agent that works a board is created holding the board tools', async () => {
+  const created: Array<Record<string, unknown>> = []
+  const context = buildContext('member', {
+    agent: {
+      create: async (input: { data: Record<string, unknown> }) => {
+        created.push(input.data)
+        return {
+          ...buildAgentRow({ channelIds: [], id: AGENT_ID, name: 'CTO', role: 'cto' }),
+          ...input.data,
+        }
+      },
+      findFirst: async () => ({ projectId: null }),
+    },
+    toolRegistryEntry: { findMany: async () => [] },
+  })
+
+  const catalogue = await loadAgentToolCatalog(context.prisma, { organizationId: ORG_ID })
+  const boardTools = catalogue.togglable.filter((entry) => entry.projectChannelOnly)
+  assert.ok(boardTools.some((entry) => entry.key === 'ticket_create'))
+  // Following the catalogue: an allow-mode key is granted by writing `true`,
+  // a deny-mode one by writing nothing.
+  const toolPolicy = Object.fromEntries(
+    boardTools.filter((entry) => entry.allowMode).map((entry) => [entry.key, true]),
+  )
+  assert.equal(Object.keys(toolPolicy).length, boardTools.length)
+
+  const originalWarn = console.warn
+  console.warn = () => undefined
+  try {
+    await runAgentCreateTool(context, { name: 'CTO', role: 'cto', toolPolicy })
+  } finally {
+    console.warn = originalWarn
+  }
+
+  const stored = created[0]?.['toolPolicy'] as Record<string, boolean>
+  const lent = resolveProjectDelegatedToolIds(true, stored)
+  for (const entry of boardTools) {
+    assert.equal(stored[entry.key], true, `${entry.key} is granted`)
+    assert.equal(lent.has(entry.key), PEER_PROJECT_TOOL_IDS.has(entry.key), `${entry.key} is lent`)
+  }
+  assert.ok(lent.has('ticket_create'))
+  assert.equal(resolveProjectDelegatedToolIds(true, {}).size, 0, 'an unwritten grant lends nothing')
 })
 
 test('agent_create runs the shared avatar seam and survives it failing', async () => {
@@ -214,18 +271,19 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
     console.warn = originalWarn
   }
 
-  assert.match(result.outputPreview, /Created agent "Researcher"/)
+  assert.match(result.outputPreview, /Created agent \[Researcher\]/)
   assert.equal(created.length, 1)
   assert.equal(created[0]?.['avatarAttachmentId'], undefined)
   // And it SAYS so. A silent seam is what left a person looking at a blank
-  // tile with the agent that built it unable to explain why.
-  assert.match(result.outputPreview, /It has NO portrait/)
-  assert.match(result.outputPreview, /model service is not configured/)
-  // The reason is handed over to be quoted, because the one time this happened
-  // the model paraphrased it into "the picture couldn't be drawn" and the
-  // reason left the building.
-  assert.match(result.outputPreview, /word for word/)
-  assert.match(result.outputPreview, /"The model service is not configured."/)
+  // tile with the agent that built it unable to explain why. The reason is
+  // data here; "quote it word for word" is the Designer prompt's rule, because
+  // written into this output it was relayed to the person as it stood.
+  assert.match(result.outputPreview, /^portrait: none \(reason: "The model service is not configured\."\)$/m)
+  assert.doesNotMatch(result.outputPreview, /word for word|Tell them/)
+  // A person is handed links, not the UUIDs the tool used to print.
+  assert.match(result.outputPreview, new RegExp(`\\[Researcher\\]\\(/agents/${AGENT_ID}\\)`))
+  assert.doesNotMatch(result.outputPreview, /agentId=|channelId=/)
+  assert.match(result.outputPreview, /^Lives in: nowhere yet — add it to any channel\.$/m)
   // And an operator can read it without the chat transcript, exactly as
   // `POST /api/agents` already logs it.
   assert.equal(logged.length, 1)

@@ -8,6 +8,7 @@ import {
   parseTaskId,
   parseThreadId,
   parseUserId,
+  UserIdSchema,
   withActionContext,
   withDelegatedSystemDmIdentity,
   type AuthorizedActionContext,
@@ -78,6 +79,15 @@ export const resumeSuspendedRun = async (
     organizationId: string
     /** The enqueue-time actor context captured when the run suspended. */
     resumeActorContext: AuthorizedActionContext
+    /**
+     * The person whose press this is — the Continue presser, the card's
+     * respondent, the approval's resolver — or null when none is known.
+     * Required, so a new caller has to say. For a card or an approval it is
+     * not `resumeActorContext`'s actor: that is whoever the parked run acted
+     * as, and an executor conversation lease must not carry into a run
+     * somebody else brought back (`resumedByUserId` on the job).
+     */
+    resumedByUserId: string | null
     /**
      * The parked run, and the status it must still be in — or `null` when the
      * run already reached a terminal state (the Continue press), in which case
@@ -225,6 +235,7 @@ export const resumeSuspendedRun = async (
     ),
     ...(input.actorContextExtra ?? {}),
   })
+  const pressedBy = UserIdSchema.safeParse(input.resumedByUserId)
   const queued = await enqueueRunExecution(
     tx,
     {
@@ -234,6 +245,9 @@ export const resumeSuspendedRun = async (
       interactive: actorContext.actionContext.purpose === 'channel.policy' ? false : input.interactive,
       messageId: message.id,
       ...(run.promptOverride ? { promptOverride: run.promptOverride } : {}),
+      // A resolver id that is not a uuid (a service actor) leaves it unset
+      // rather than failing the resume; unset never carries a lease.
+      ...(pressedBy.success ? { resumedByUserId: pressedBy.data } : {}),
       runId: parseRunId(continuation.id),
       taskId: parseTaskId(task.id),
       threadId: parseThreadId(run.threadId),

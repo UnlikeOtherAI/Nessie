@@ -112,3 +112,44 @@ capacity, rather than a Nessie verbosity allowance. Other main conversational
 requests omit it. Do not invent a static Kimi output limit or disable working
 Kimi conversations because the provider reports context capacity rather than a
 separate output maximum. The ordinary system prompt governs communication.
+
+## Amendment 2026-09-23 — what the Designer hands the person
+
+Found while building a CTO agent through the Designer
+([usability report](../testing/cto-agent-usability-2026-09-22.md), findings 6
+and 9). The rule in both: a tool result is data the Designer relays, so
+nothing in it may be a secret or an instruction addressed to the model.
+
+- **Tool output carries links, not ids (F9).** `agent_create` printed
+  `agentId=<uuid>` and `Its private home is channelId=<uuid>`, plus "Tell them
+  so, and give them this reason word for word" when no portrait was drawn; the
+  Designer's completion message repeated all of it. It now answers
+  `Created agent [CTO](/agents/<id>) (…)`, `Lives in: nowhere yet — add it to
+  any channel` or its private home as `[#name](/channels/<id>)`, and
+  `portrait: none (reason: "…")`; `agent_bind_channel` answers with the same
+  two links, and `channel_create` adds the new room's link beside its ids. A
+  later call reads the id from the link's last segment, and the Designer's
+  persona and `agent_create`'s description both say so. "Quote the portrait
+  reason word for word", "report a pinned portrait style" and "link what you
+  made, never a raw id" moved into the Designer's persona
+  (`global-agent-blueprints.ts`); `agent_avatar_generate`'s "Say so." became
+  the data line `style: pinned at the <scope> level; …`.
+- **An executor grant is confirmed from a card, not a link (F6).**
+  `executor_agent_grant_prepare` answered with
+  `/agents/executors?accessChange=<id>#confirmationToken=<token>`. The secret
+  scanner redacts every tool result before the model reads it, rightly, so the
+  link the Designer posted carried `PkbZ••••` and the review it opened said the
+  token was missing. The prepare tools now post a system-authored confirmation
+  card in the requester's own DM that stores only the access-change id and
+  answers only that person; every press of Review mints a fresh token
+  server-side for that same person and opens the existing review dialog with
+  it. The card is pressed, not answered: it stays open while the change is
+  pending, so a review closed early or lost to a reload is opened again, and
+  it closes when the change is confirmed, rejected or expires. The workspace
+  promotion prepare tool had the same token in its output and posts the same
+  card. The model is told only that a confirmation card was posted. The
+  access-change rules are unchanged — same actor, the token, fresh verification
+  for an allow — and nothing in section 1's grant model moves: a person still
+  confirms every executor grant. Mechanics:
+  [agent cards](../standards/agent-cards.md) → "An executor review card holds
+  an id".

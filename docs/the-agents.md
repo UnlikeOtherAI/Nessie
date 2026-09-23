@@ -1666,13 +1666,42 @@ Scheduler loop (runs every 15 seconds):
   │     └── Write agent_trigger_deliveries entry (status: run_created)
   │
   └── 3. On failure:
-        ├── Write agent_trigger_deliveries entry (status: failed, error: ...)
-        ├── Update agent_triggers.last_error
-        └── Do NOT disable — transient failures should not stop the schedule
-            (after 10 consecutive failures, set enabled = false and alert)
+        ├── Transient dispatch failure → record retryable delivery + backoff
+        └── Authority/target failure → record terminal failed delivery,
+            disable it, set status = error/needs_reauthorization, and alert once
 ```
 
 **Concurrency guard:** The scheduler skips agents that already have a running or queued run. This prevents pile-up if a scheduled agent takes longer than its interval. The skipped activation is logged with `status: skipped`.
+
+**Live channel admission for unattended schedules:** A timer does not retain
+authority merely because it was valid when created. At every scheduled or
+interval fire, Nessie verifies the target thread and channel, the shared
+agent's live `AgentBinding`, and — for a user-owned schedule — the saved
+person's live `ChannelMember`, organization membership and team membership.
+The explicit human roster check applies to public as well as private channels:
+ordinary public browsing remains open, but an unattended schedule is durable
+delegated authority and stops when the person is removed from the channel.
+Personal Assistants are exempt only from the shared-agent binding row; their
+owner must still be present.
+
+Admission runs before `skipWhenEmpty`, again immediately before dispatch, and
+once more when a queued or pended run actually starts. Removing either the
+agent or the saved person therefore cannot hide behind a quiet thread or a run
+that waited behind another one. A classified failure writes a terminal failed
+delivery with no retry timestamp, moves the trigger to non-runnable `error`
+(or `needs_reauthorization` for an identity-only repair), and exposes the
+reason and remedy on the trigger list, detail and agent panels. The current
+occurrence still owns and settles its cadence, while `last_fired_at` remains
+unchanged; the transition sets `enabled = false` as well as `status != active`,
+so every later claim is prevented explicitly. An already delivered or skipped
+occurrence is never rewritten during replay.
+
+After the roster or target is repaired, **Resume** validates it again, re-arms
+timer cadence from now, clears the old health state atomically, suppresses the
+failed occurrence's retries, and cancels stale pending work. It refuses with a
+visible conflict while either principal is still absent. This diagnosed stop
+keeps its error status and explanation rather than pretending to be a plain
+manual pause; both forms of stop set `enabled = false`.
 
 **Empty-fire skip (`config.skipWhenEmpty`):** Scheduled/interval agent triggers burn tokens even when there is provably nothing to do — a daily-digest or "follow up on this thread" schedule that fires into a thread nobody touched still spins up a full run. A trigger can opt into skipping those no-op fires by setting `"skipWhenEmpty": true` in its `config`. It is strictly opt-in: without the flag the trigger always runs, so a schedule whose real work source is *not* its target thread (e.g. "check my email hourly" via a connector) is never skipped on a guess.
 

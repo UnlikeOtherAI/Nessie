@@ -31,6 +31,18 @@ export const BUILTIN_HOT_TOOL_IDS = [
 
 const BUILTIN_HOT_TOOL_ID_SET = new Set<string>(BUILTIN_HOT_TOOL_IDS)
 
+/**
+ * The most full-descriptor characters a run's own grants may add to the hot
+ * set (about 6k tokens). The fixed set above is chosen for every agent; a tool
+ * an agent was deliberately given — its policy's explicit `true`s and the
+ * project tools this run was lent — is chosen for this one, and arriving as a
+ * stub cost a `tool_spec` round trip per tool before the first real action.
+ * Promotion stops at this budget, so a policy that grants dozens of tools
+ * cannot turn the deferred view back into the fully inline one. Measured with
+ * the same `JSON.stringify` of a full descriptor the provider receives.
+ */
+export const BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS = 24_000
+
 export const BUILTIN_STUB_INPUT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: true,
@@ -84,6 +96,39 @@ export const resolveBuiltinInlineToolLimit = (
     : DEFAULT_BUILTIN_INLINE_TOOL_LIMIT
 }
 
+export type BuiltinToolsetPromotion = {
+  /**
+   * Tools this run should see in full, highest priority first. Ids outside
+   * `definitions` are ignored, so only an allowed tool can be promoted.
+   */
+  promotedIds?: readonly string[]
+  promotedSchemaBudgetChars?: number
+}
+
+/**
+ * The run's own grants that fit the promotion budget, in priority order. A
+ * tool too large for what is left stays a stub and a smaller one after it may
+ * still fit; the walk is deterministic, so the array stays byte-stable.
+ */
+const promotedWithinBudget = (
+  definitions: BuiltinToolDefinition[],
+  promotion: BuiltinToolsetPromotion,
+): Set<string> => {
+  const byId = new Map(definitions.map((tool) => [tool.id, tool]))
+  const budget = promotion.promotedSchemaBudgetChars ?? BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS
+  const promoted = new Set<string>()
+  let spent = 0
+  for (const id of promotion.promotedIds ?? []) {
+    const tool = byId.get(id)
+    if (!tool || BUILTIN_HOT_TOOL_ID_SET.has(id) || promoted.has(id)) continue
+    const cost = JSON.stringify(fullDescriptor(tool)).length
+    if (spent + cost > budget) continue
+    spent += cost
+    promoted.add(id)
+  }
+  return promoted
+}
+
 /**
  * Build the immutable builtin view once per run. Unlike deferred MCP tools,
  * `tool_spec` returns schemas as tool output and never mutates this array, so
@@ -93,6 +138,7 @@ export const resolveBuiltinInlineToolLimit = (
 export const buildBuiltinToolsetView = (
   definitions: BuiltinToolDefinition[],
   inlineToolLimit = resolveBuiltinInlineToolLimit(),
+  promotion: BuiltinToolsetPromotion = {},
 ): BuiltinToolsetView => {
   if (definitions.length <= inlineToolLimit) {
     return {
@@ -102,20 +148,23 @@ export const buildBuiltinToolsetView = (
     }
   }
 
+  const promoted = promotedWithinBudget(definitions, promotion)
   const stubbedIds = new Set(
     definitions
-      .filter((tool) => !BUILTIN_HOT_TOOL_ID_SET.has(tool.id))
+      .filter((tool) => !BUILTIN_HOT_TOOL_ID_SET.has(tool.id) && !promoted.has(tool.id))
       .map((tool) => tool.id),
   )
+  // Nothing left to look up means nothing to offer the lookup for.
+  const toolSpecEnabled = stubbedIds.size > 0
   return {
     descriptors: [
       ...definitions.map((tool) =>
         stubbedIds.has(tool.id) ? stubDescriptor(tool) : fullDescriptor(tool),
       ),
-      TOOL_SPEC_DESCRIPTOR,
+      ...(toolSpecEnabled ? [TOOL_SPEC_DESCRIPTOR] : []),
     ],
     stubbedIds,
-    toolSpecEnabled: true,
+    toolSpecEnabled,
   }
 }
 

@@ -15,6 +15,7 @@
     "test:e2e:executor-attention": "node e2e/executor-attention/run.mjs",
     "test:e2e:executor-detail": "node e2e/executor-detail/run.mjs",
     "test:e2e:executor-run-launcher": "node e2e/executor-run-launcher/run.mjs",
+    "test:e2e:executor-lease": "node e2e/executor-lease/run.mjs",
     "test:e2e:connected-mail": "node e2e/connected-mail/run.mjs",
     "test:e2e:browser-cloud": "node e2e/browser-cloud/run.mjs",
     "test:e2e:app-connect-scope": "node e2e/app-connect-scope/run.mjs",

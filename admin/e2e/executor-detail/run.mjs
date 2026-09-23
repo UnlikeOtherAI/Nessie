@@ -38,6 +38,7 @@ try {
       if (path === '/api/executors') return respond([executor])
       if (path.endsWith('/access')) return respond(access)
       if (path === `/api/executors/${executorId}/agents`) return route.fulfill({ json: { data: [], meta: { total: 0, hasMore: false, prevCursor: null, nextCursor: null } } })
+      if (path === `/api/executors/${executorId}/leases`) return respond([])
       if (path === '/api/users') return respond([{ id: userId, displayName: 'Alex' }])
       if (path === '/api/agents') return respond([])
       if (path === '/api/local-inference/hosts') return respond({ hosts: [{

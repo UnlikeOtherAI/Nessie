@@ -15,6 +15,7 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { executorPairingNames, pairingAuthorityForActor } from '../services/executor-pairing-identity.js'
 import { executorPairingAudit as audit } from '../services/executor-pairing-audit.js'
 import { canonicalizeIpIdentity } from '../services/rate-limit-identity.js'
+import { notifyExecutorLeaseChanges } from './executor-leases.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import type { RouteDeps } from './types.js'
 
@@ -88,8 +89,13 @@ export const registerExecutorPairingCodeRoutes = (app: FastifyInstance, deps: Ro
     const body = parseInput(ExecutorPairingStartRequestSchema, request.body, reply)
     if (!body) return reply
     try {
+      // Pairing again revokes the machine's previous executor row, which ends
+      // its conversation leases; their holders are told after the commit.
       return createApiResponse(ExecutorPairingStartResponseSchema.parse(
-        await startExecutorCodePairing(prisma, deps.authSecret, body, audit),
+        await startExecutorCodePairing(
+          prisma, deps.authSecret, body, audit, undefined,
+          (leases) => notifyExecutorLeaseChanges(deps, request.log, leases),
+        ),
       ))
     } catch (error) { return fail(reply, error) }
   })

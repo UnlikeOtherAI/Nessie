@@ -1,0 +1,81 @@
+name: DeepWater Native
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.swiftlint.yml'
+      - '.github/workflows/deepwater-ios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.swiftlint.yml'
+      - '.github/workflows/deepwater-ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deepwater-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: DeepWater ${{ matrix.device }}
+    runs-on: macos-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: brew install xcodegen swiftlint
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate --spec project.yml
+      - name: Select simulator
+        env:
+          DEVICE_FAMILY: ${{ matrix.device }}
+        run: |
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/simulators.json"
+          python3 - <<'PY'
+          import json, os
+          with open(os.environ['RUNNER_TEMP'] + '/simulators.json') as handle:
+              runtimes = json.load(handle)['devices']
+          candidates = [device for runtime, devices in runtimes.items() if 'iOS' in runtime
+                        for device in devices if device['name'].startswith(os.environ['DEVICE_FAMILY'])]
+          if not candidates:
+              raise SystemExit('No matching iOS simulator is installed')
+          with open(os.environ['GITHUB_ENV'], 'a') as handle:
+              handle.write('SIMULATOR_ID=' + candidates[0]['udid'] + '\n')
+          PY
+      - name: Boot simulator
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+      - name: Run native tests
+        working-directory: ios
+        run: |
+          xcodebuild -project DeepWater.xcodeproj -scheme DeepWater \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath build -resultBundlePath build/results.xcresult \
+            -parallel-testing-enabled NO test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deepwater-${{ matrix.device }}-results
+          path: ios/build/results.xcresult
+  catalyst:
+    name: DeepWater Mac Catalyst
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: brew install xcodegen swiftlint
+      - name: Compile release for Mac
+        working-directory: ios
+        run: |
+          xcodegen generate --spec project.yml
+          xcodebuild -project DeepWater.xcodeproj -scheme DeepWater -configuration Release \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+            -derivedDataPath build/catalyst CODE_SIGNING_ALLOWED=NO build
