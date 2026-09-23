@@ -25,6 +25,16 @@ import {
 // to fit inside the command before it expires into an unknown outcome.
 const MCP_SESSION_START_TIMEOUT_MS = EXECUTOR_MCP_START_TIMEOUT_MS
 const MCP_CALL_TIMEOUT_MS = EXECUTOR_MCP_CALL_TIMEOUT_MS
+
+/**
+ * The longest this manager spends on one `mcp.tools` or `mcp.call` command:
+ * a cold start, then one call deadline — a tool call, or the server's whole
+ * tools/list walk, which shares a single deadline. A background probe steps
+ * back behind a waiting command rather than add its own catalog read (up to
+ * `MCP_PROBE_MAX_YIELDS` times). The worker's command expiry must cover this
+ * plus uploads and the lane's hops; a test pins that it does.
+ */
+export const EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS = MCP_SESSION_START_TIMEOUT_MS + MCP_CALL_TIMEOUT_MS
 // Sessions outlive single commands so a run's burst of tool calls reuses one
 // process, but a bridge that keeps a server alive forever after one call
 // leaks it; a minute of quiet retires the process.
@@ -40,6 +50,11 @@ const MCP_START_FAILURE_COOLDOWN_MS = 60_000
 // truncated, because truncated base64 decodes as a corrupt image that looks
 // like a server bug instead of a stated limit.
 const MCP_RESULT_MAX_BYTES = 65_536
+// How many times one probe steps back for a command before it waits its turn.
+const MCP_PROBE_MAX_YIELDS = 10
+
+// A probe that stepped back for a command, and will queue again behind it.
+const PROBE_YIELDED = Symbol('probe yielded')
 
 export type ExecutorMcpFailure = {
   code: string
@@ -82,9 +97,13 @@ type SessionCatalog = {
 type ActiveSession = {
   catalog?: SessionCatalog
   client: Client
+  /** Commands waiting in `queue` that have not started yet. */
+  commandsWaiting: number
   dead: boolean
   idleTimer?: NodeJS.Timeout
   pending: number
+  /** Aborts the probe's tools/list in flight, when one is. */
+  probeInFlight?: AbortController
   queue: Promise<void>
 }
 
@@ -147,12 +166,15 @@ export const createExecutorMcpSessionManager = (
   servers: readonly ExecutorLocalMcpServer[],
   limits: { maxResultBytes: number },
   options: {
+    /** One tool call's deadline, and the whole catalog walk's; tests shorten it. */
+    callTimeoutMs?: number
     idleTimeoutMs?: number
     log?: (message: string, cause: unknown) => void
     startCooldownMs?: number
     startTimeoutMs?: number
   } = {},
 ): ExecutorMcpSessionManager => {
+  const callTimeoutMs = options.callTimeoutMs ?? MCP_CALL_TIMEOUT_MS
   const idleTimeoutMs = options.idleTimeoutMs ?? MCP_SESSION_IDLE_TIMEOUT_MS
   const startCooldownMs = options.startCooldownMs ?? MCP_START_FAILURE_COOLDOWN_MS
   const startTimeoutMs = options.startTimeoutMs ?? MCP_SESSION_START_TIMEOUT_MS
@@ -227,6 +249,7 @@ export const createExecutorMcpSessionManager = (
     }
     const session: ActiveSession = {
       client,
+      commandsWaiting: 0,
       dead: false,
       pending: 0,
       queue: Promise.resolve(),
@@ -259,10 +282,16 @@ export const createExecutorMcpSessionManager = (
    * Runs `work` as the one in-flight request on the server's session. The
    * policy check happens here — before any process starts — so no path to a
    * session can reach a server the reviewed policy did not name.
+   *
+   * A command's work cancels a probe's tools/list in flight on the same
+   * session, so the probe steps back behind it (`probe`). A command's expiry
+   * budgets a cold start and its own call, nothing for the reporter's
+   * background probe, which once held the queue for a whole tools/list.
    */
   const withSession = async <T>(
     server: string,
     work: (session: ActiveSession) => Promise<T>,
+    options: { probe?: boolean } = {},
   ): Promise<T | ExecutorMcpFailure> => {
     let spec: ExecutorLocalMcpServer
     try {
@@ -281,7 +310,15 @@ export const createExecutorMcpSessionManager = (
     const active = session
     clearTimeout(active.idleTimer)
     active.pending += 1
-    const run = active.queue.then(() => work(active))
+    const command = options.probe !== true
+    if (command) {
+      active.commandsWaiting += 1
+      active.probeInFlight?.abort()
+    }
+    const run = active.queue.then(() => {
+      if (command) active.commandsWaiting -= 1
+      return work(active)
+    })
     active.queue = run.then(() => undefined, () => undefined)
     try {
       return await run
@@ -294,20 +331,31 @@ export const createExecutorMcpSessionManager = (
   const loadCatalog = async (
     session: ActiveSession,
     server: string,
-  ): Promise<SessionCatalog | ExecutorMcpFailure> => {
+    yieldTo?: AbortSignal,
+  ): Promise<SessionCatalog | ExecutorMcpFailure | typeof PROBE_YIELDED> => {
     if (session.catalog) return session.catalog
     const tools: ExecutorMcpTool[] = []
     let cursor: string | undefined
     // The daemon walks the server's own pagination so the digest below covers
     // the whole catalog and stays identical across the pages it then serves.
+    // The walk has one deadline, not one per page: the command's expiry holds
+    // one call's worth of time for it (`@nessie/schemas` executor-timing.ts),
+    // and a server that split its catalog into many slow pages used to spend
+    // a call timeout on each and outlive the command.
+    const deadline = Date.now() + callTimeoutMs
     do {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) {
+        return unavailable(`The MCP server "${server}" did not finish tools/list in time.`)
+      }
       let page
       try {
         page = await session.client.listTools(
           cursor === undefined ? undefined : { cursor },
-          { timeout: MCP_CALL_TIMEOUT_MS },
+          { timeout: remaining, ...(yieldTo === undefined ? {} : { signal: yieldTo }) },
         )
       } catch (error) {
+        if (yieldTo?.aborted) return PROBE_YIELDED
         log(`local MCP server "${server}" refused tools/list`, error)
         return unavailable(`The MCP server "${server}" did not answer tools/list.`)
       }
@@ -382,6 +430,8 @@ export const createExecutorMcpSessionManager = (
   return {
     listTools: (server, cursor) => withSession(server, async (session) => {
       const catalog = await loadCatalog(session, server)
+      // Unreachable: only a probe passes the signal that yields.
+      if (catalog === PROBE_YIELDED) return failure('EXECUTOR_MCP_UNAVAILABLE', 'The catalog read was interrupted.')
       if ('code' in catalog) return catalog
       return catalogPage(catalog, cursor)
     }),
@@ -391,7 +441,7 @@ export const createExecutorMcpSessionManager = (
         result = await session.client.callTool(
           { name: tool, ...(args === undefined ? {} : { arguments: args }) },
           undefined,
-          { timeout: MCP_CALL_TIMEOUT_MS },
+          { timeout: callTimeoutMs },
         )
       } catch (error) {
         if (session.dead) {
@@ -423,7 +473,24 @@ export const createExecutorMcpSessionManager = (
       return document
     }),
     probe: async (server) => {
-      const outcome = await withSession(server, async (session) => loadCatalog(session, server))
+      // A probe goes behind every command that is waiting or arrives while it
+      // reads the catalog, a bounded number of times; a catalog already read
+      // answers at once and never needs to.
+      let outcome: SessionCatalog | ExecutorMcpFailure | typeof PROBE_YIELDED = PROBE_YIELDED
+      for (let attempt = 0; outcome === PROBE_YIELDED; attempt += 1) {
+        const mayYield = attempt < MCP_PROBE_MAX_YIELDS
+        outcome = await withSession(server, async (session) => {
+          if (session.catalog) return session.catalog
+          if (mayYield && session.commandsWaiting > 0) return PROBE_YIELDED
+          const controller = new AbortController()
+          session.probeInFlight = controller
+          try {
+            return await loadCatalog(session, server, mayYield ? controller.signal : undefined)
+          } finally {
+            session.probeInFlight = undefined
+          }
+        }, { probe: true })
+      }
       if ('code' in outcome) {
         if (outcome.code === 'EXECUTOR_MCP_DENIED') return { available: false, reason: 'not_probed' as const }
         // A start failure already decided why; only a server that started and

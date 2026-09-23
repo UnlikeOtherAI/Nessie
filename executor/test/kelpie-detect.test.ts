@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -285,6 +285,48 @@ test('a kelpie.cmd shim is described on Windows', {
     const description = await describeKelpie({ command: [shim, '--browser', 'probe', 'mcp'], name: 'kelpie' })
     assert.deepEqual(description?.devices.map((device) => [device.id, device.name]), [['local:127.0.0.1:8420', 'probe']])
   } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+const HANGING_KELPIE = fileURLToPath(new URL('./fixtures/hanging-kelpie-cli.mjs', import.meta.url))
+
+const isRunning = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+test('a describe stopped through a kelpie.cmd shim leaves no Kelpie process behind', {
+  skip: process.platform === 'win32'
+    ? false
+    : 'Only a .cmd shim puts cmd.exe between the daemon and Kelpie.',
+}, async () => {
+  // Killing the shim's cmd.exe alone left the Kelpie under it running, one
+  // more orphan with every report sweep.
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-hang-'))
+  const pidFile = join(directory, 'kelpie.pid')
+  let kelpiePid: number | undefined
+  try {
+    const shim = join(directory, 'kelpie.cmd')
+    await writeFile(shim, `@"${process.execPath}" "${HANGING_KELPIE}" %*\r\n`)
+    const description = await describeKelpie(
+      { command: [shim, 'mcp'], env: { NESSIE_TEST_PID_FILE: pidFile }, name: 'kelpie' },
+      { timeoutMs: 1_500 },
+    )
+    assert.equal(description, undefined)
+    kelpiePid = Number.parseInt(await readFile(pidFile, 'utf8'), 10)
+    assert.ok(Number.isSafeInteger(kelpiePid), 'the hanging Kelpie started under the shim')
+    const deadline = Date.now() + 10_000
+    while (isRunning(kelpiePid) && Date.now() < deadline) {
+      await new Promise((resolve) => { setTimeout(resolve, 100) })
+    }
+    assert.equal(isRunning(kelpiePid), false, 'the Kelpie under the shim was stopped with it')
+  } finally {
+    if (kelpiePid !== undefined && isRunning(kelpiePid)) process.kill(kelpiePid)
     await rm(directory, { force: true, recursive: true })
   }
 })

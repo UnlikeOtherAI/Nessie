@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 
 import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js'
 import spawn from 'cross-spawn'
@@ -57,6 +57,24 @@ export const kelpieDescribeCommand = (command: readonly string[]): string[] | un
 }
 
 /**
+ * Stops describe and everything it started. On Windows a `.cmd` shim runs as
+ * `cmd.exe /d /s /c …`, so killing the child ends only cmd.exe and leaves the
+ * Kelpie process under it holding its stdout pipe and its mDNS scan — one
+ * more orphan every report sweep. `taskkill /T` ends the whole tree, and a
+ * failure to run it still ends the child. Elsewhere cross-spawn runs the
+ * named program itself, so the child is the whole of it.
+ */
+const stopProcessTree = (child: ChildProcess): void => {
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, (error) => {
+      if (error) child.kill()
+    })
+    return
+  }
+  child.kill()
+}
+
+/**
  * Started exactly as the MCP session starts the same server: through
  * cross-spawn, which is how the SDK's stdio transport resolves a program, so a
  * `kelpie.cmd` shim runs on Windows (plain `execFile` refuses it with EINVAL),
@@ -79,7 +97,8 @@ const runKelpieDescribe = async (
     if (settled) return
     settled = true
     clearTimeout(timer)
-    if (!result.ok) child?.kill()
+    // A describe that already exited has nothing left to stop.
+    if (!result.ok && child && child.exitCode === null && child.signalCode === null) stopProcessTree(child)
     resolve(result)
   }
   try {

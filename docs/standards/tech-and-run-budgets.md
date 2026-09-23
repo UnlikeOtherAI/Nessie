@@ -78,9 +78,12 @@ summary and points here; **this file is the rule**.
     have ended. The command TTLs live in
     `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
     `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
-    `executor-timing.ts`, which must stay ≥ the daemon's start (10 s) + call
-    (60 s) timeouts + upload budget (30 s) + lane overhead (20 s); a schemas
-    unit test pins the inequality.
+    `executor-timing.ts`, which must stay ≥ the daemon's worst case for one
+    command (a 10 s start + one 60 s call deadline, which also bounds a whole
+    `tools/list` walk; the reporter's probe yields to commands) + upload
+    budget (30 s) + lane overhead (20 s); `executor/test/mcp-timing.test.ts`
+    pins it against the session manager's
+    `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
   - **Executor calls in one batch run in call order**, one after another; the
     batch's other tools still run in parallel beside them. A fatal executor
     call stops the ones queued behind it from dispatching (nothing claimed

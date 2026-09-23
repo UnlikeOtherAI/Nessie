@@ -15,6 +15,8 @@
  *                   resource link, structured-only content and an isError
  *   ollama-search - the `ollama-search` bridge's own catalog and answer
  *                   shapes, without its network account
+ *   slow-pages    - its own tools/list paginated one tool a page, each page
+ *                   answered after NESSIE_TEST_MCP_PAGE_DELAY_MS (200 ms)
  */
 import { createInterface } from 'node:readline'
 
@@ -163,6 +165,19 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     return
   }
   if (request.method === 'notifications/initialized') return
+  if (request.method === 'tools/list' && mode === 'slow-pages') {
+    const offset = Number.parseInt(request.params?.cursor ?? '0', 10)
+    const delay = Number.parseInt(process.env.NESSIE_TEST_MCP_PAGE_DELAY_MS ?? '200', 10)
+    setTimeout(() => send({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        tools: tools.slice(offset, offset + 1),
+        ...(offset + 1 < tools.length ? { nextCursor: String(offset + 1) } : {}),
+      },
+    }), delay)
+    return
+  }
   if (request.method === 'tools/list') {
     send({ jsonrpc: '2.0', id: request.id, result: { tools } })
     return

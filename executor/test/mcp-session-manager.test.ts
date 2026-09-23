@@ -174,6 +174,76 @@ test('a catalog larger than one result pages, and the digest is stable across pa
   }
 })
 
+test('a server’s own slow catalog pages share one deadline, never one each', async () => {
+  // Each page answers inside the call timeout, the two together do not. With
+  // a timeout per page the walk succeeded after both, and a cold mcp.tools
+  // could outlive its command's expiry by as many timeouts as the server had
+  // pages.
+  const slow: ExecutorLocalMcpServer = {
+    command: [process.execPath, SCRIPT],
+    env: { NESSIE_TEST_MCP_MODE: 'slow-pages', NESSIE_TEST_MCP_PAGE_DELAY_MS: '500' },
+    name: 'scripted',
+  }
+  const cut = createExecutorMcpSessionManager([slow], { maxResultBytes: 65_536 }, {
+    callTimeoutMs: 800,
+    log: () => undefined,
+    startTimeoutMs: 15_000,
+  })
+  try {
+    const result = await cut.listTools('scripted') as { code?: string; success: boolean }
+    assert.equal(result.success, false)
+    assert.equal(result.code, 'EXECUTOR_MCP_UNAVAILABLE')
+  } finally {
+    await cut.stopAll()
+  }
+
+  // The same server inside a deadline that fits both pages lists them all.
+  const roomy = createExecutorMcpSessionManager([slow], { maxResultBytes: 65_536 }, {
+    callTimeoutMs: 5_000,
+    log: () => undefined,
+    startTimeoutMs: 15_000,
+  })
+  try {
+    const result = await roomy.listTools('scripted') as { catalog: { tools: { name: string }[] }; success: boolean }
+    assert.equal(result.success, true)
+    assert.deepEqual(result.catalog.tools.map((tool) => tool.name), ['echo', 'boom'])
+  } finally {
+    await roomy.stopAll()
+  }
+})
+
+test('a command does not wait behind a background probe’s catalog read', async () => {
+  // The reporter probes every server on its own cadence. A command's expiry
+  // budgets a cold start and its own call, so a probe that held the session
+  // queue through a slow tools/list left the command that much less time.
+  const slow: ExecutorLocalMcpServer = {
+    command: [process.execPath, SCRIPT],
+    env: { NESSIE_TEST_MCP_MODE: 'slow-pages', NESSIE_TEST_MCP_PAGE_DELAY_MS: '1500' },
+    name: 'scripted',
+  }
+  const sessions = createExecutorMcpSessionManager([slow], { maxResultBytes: 65_536 }, {
+    log: () => undefined,
+    startTimeoutMs: 15_000,
+  })
+  try {
+    // A call starts the session and reads no catalog, so the probe must.
+    assert.equal((await sessions.callTool('scripted', 'echo', { value: 'warm' })).success, true)
+    const probing = sessions.probe('scripted')
+    await new Promise((resolve) => { setTimeout(resolve, 300) })
+    const started = Date.now()
+    const called = await sessions.callTool('scripted', 'echo', { value: 'now' })
+    const waited = Date.now() - started
+    assert.equal(called.success, true)
+    assert.ok(waited < 1_200, `the call went ahead of the probe's two 1.5 s pages, waited ${waited} ms`)
+    // The probe queued again behind it and still reports the whole catalog.
+    const probed = await probing
+    assert.equal(probed.available, true)
+    assert.equal(probed.available && probed.toolCount, 2)
+  } finally {
+    await sessions.stopAll()
+  }
+})
+
 test('probe distinguishes a missing program from one that dies on start', async () => {
   const missing = managerFor([{ command: ['/nonexistent/kelpie', 'mcp'], name: 'kelpie' }])
   const dying = managerFor([serverNamed('kelpie', 'never-start')])
