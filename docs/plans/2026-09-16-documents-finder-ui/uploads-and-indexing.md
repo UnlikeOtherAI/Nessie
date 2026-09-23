@@ -149,6 +149,12 @@ to compile rather than rendering nothing):
 | `not_indexed/empty` | `faMagnifyingGlassMinus` `--tx3` | "Not indexed — no text found" | a scanned PDF, an empty document |
 | `failed/extract`, `failed/embed` | `faTriangleExclamation` `--warning` | "Indexing failed" + Retry (menu "Retry indexing", Get Info button) | `POST /reindex` |
 
+For an unembedded chunk, `pending/embed` requires a `knowledge.embed` job in
+`pending` or `processing`. A missing, `done`, `dead` or `deleted` job cannot
+make that chunk searchable; it reports `failed/embed` with Retry. A completed
+job may leave chunks unembedded when it could not make an authorized provider
+call. Listing the folder never starts an embedding job.
+
 The glyph's `title` carries the sentence; `aria-label` on the glyph reads
 the same. A row is never blocked by its indexing state — a pending file
 opens, downloads and shares like any other.
@@ -175,11 +181,11 @@ pay for that. Polling is bounded to the exact time something is pending.
 
 "Indexed, and embeddings are done" in the owner's words maps to `indexed`:
 the current version's chunks all carry an embedding. The two pending stages
-are the two jobs. Everything under `not_indexed` is a file or document that
+are the two jobs while they are active. Everything under `not_indexed` is a file or document that
 the pipeline will never index as it is, and the sentence says why and, where
 there is one, what would change it (publish the draft; upload text instead
-of an image). A `failed` state is reachable only after the queue job
-exhausted `max_attempts`; "Retry indexing" enqueues a fresh job under a new
+of an image). A `failed` state also covers an unembedded version whose job is
+missing or finished without embeddings; "Retry indexing" enqueues a fresh job under a new
 idempotency suffix so the exhausted one does not swallow it.
 
 ## 5. Markdown on the way in

@@ -3,11 +3,16 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { Prisma, PrismaClient } from '@prisma/client'
-import { KNOWLEDGE_EXTRACT_MAX_ATTACHMENT_BYTES, KNOWLEDGE_EXTRACT_TOPIC } from '@nessie/schemas'
+import {
+  KNOWLEDGE_EMBED_TOPIC,
+  KNOWLEDGE_EXTRACT_MAX_ATTACHMENT_BYTES,
+  KNOWLEDGE_EXTRACT_TOPIC,
+} from '@nessie/schemas'
 
 import { createNativeKnowledgeProvider } from '../src/native-provider.js'
 import {
   indexingStatesFor,
+  knowledgeEmbedJobKeyPrefix,
   knowledgeExtractJobKey,
 } from '../src/native-indexing-status.js'
 
@@ -162,13 +167,39 @@ dbTest('indexing status tells the truth about every kind of row', async (t) => {
   assert.deepEqual(states.get(hugeFile.id), { state: 'not_indexed', reason: 'too_large' })
   assert.deepEqual(states.get(queuedFile.id), { state: 'pending', stage: 'extract' })
   assert.deepEqual(states.get(deadFile.id), { state: 'failed', stage: 'extract' })
-  // Publishing chunks the version; the embeddings are a separate job, so the
-  // honest state between the two is "preparing search".
-  assert.deepEqual(states.get(published.id), { state: 'pending', stage: 'embed' })
+  // This provider has no queue hook. Chunks without a job cannot become
+  // searchable, so the Finder must offer retry rather than spin forever.
+  assert.deepEqual(states.get(published.id), { state: 'failed', stage: 'embed' })
 
   const publishedVersionId = published.publishedVersionId
     ?? published.latestVersion?.id
     ?? ''
+  const embedJobKey = `${knowledgeEmbedJobKeyPrefix(published.id, publishedVersionId)}${suffix}`
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO queue_jobs (topic, payload, status, idempotency_key, attempt, max_attempts)
+    VALUES (${KNOWLEDGE_EMBED_TOPIC}, ${'{}'}::jsonb, 'pending', ${embedJobKey}, 0, 3)
+  `)
+  const queued = await indexingStatesFor(prisma, [{
+    id: published.id,
+    kind: published.kind,
+    status: 'published',
+    publishedVersionId: published.publishedVersionId,
+  }])
+  assert.deepEqual(queued.get(published.id), { state: 'pending', stage: 'embed' })
+
+  // A job can finish without writing vectors. That is an incomplete outcome,
+  // not progress; the user can retry it from the row.
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE queue_jobs SET status = 'done' WHERE idempotency_key = ${embedJobKey}
+  `)
+  const incomplete = await indexingStatesFor(prisma, [{
+    id: published.id,
+    kind: published.kind,
+    status: 'published',
+    publishedVersionId: published.publishedVersionId,
+  }])
+  assert.deepEqual(incomplete.get(published.id), { state: 'failed', stage: 'embed' })
+
   await prisma.$executeRaw(Prisma.sql`
     UPDATE knowledge_page_chunks
        SET embedding = ${zeroVector}::vector, embedding_model = 'test-model', dims = 1024

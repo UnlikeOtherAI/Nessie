@@ -590,9 +590,9 @@ listing, never per row):
    else fall through to 4 with the latest version.
 4. Chunks for the version: none → (a file whose extract job completed but
    wrote no chunks, i.e. empty text) `not_indexed/empty`; some with
-   `embedding IS NULL` → look up `knowledge.embed` job by
-   `knowledgeEmbeddingJobKey(pageId, versionId, model)`: `failed` →
-   `failed/embed`, else `pending/embed`; all embedded → `indexed`.
+   `embedding IS NULL` → look up the latest `knowledge.embed` job for this
+   page and version: `pending|processing` → `pending/embed`; missing or
+   finished without embeddings → `failed/embed`; all embedded → `indexed`.
 
 The derivation is an exhaustive `switch` over `KnowledgePageKind`; a kind
 added later (a spreadsheet, say) fails to compile until its branch is
