@@ -789,7 +789,7 @@
     },
     {
       "name": "research_report",
-      "description": "Fetch the citation-grounded report for a completed research job owned by this Ledger proxy token. report_kind=summary means the full report could not be written and this is the research summary.",
+      "description": "Fetch the citation-grounded report for a completed research job owned by this Ledger proxy token. report_kind says which report this is: full, or the research summary. A run that asked for the full report (the default, and every research brief) gets the summary only when its full report could not be written, and full_report_error_code then says why when DeepWater gave a reason; a summary-tier or on-demand run's report is its summary.",
       "inputSchema": {
         "type": "object",
         "properties": {

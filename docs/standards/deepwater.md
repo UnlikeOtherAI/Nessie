@@ -25,7 +25,14 @@ file is the rule**.
   vocabulary, and a contract test deep-equals the manifest's input schemas
   against `deep-water.ledger-contract.json` — Ledger's own
   `docs/contracts/deepwater-mcp-tools.json`, copied byte-for-byte and never
-  edited here. Ledger serves these tools from its brief release, which must
+  edited here; the test pins its SHA-256 to the Ledger commit it was copied
+  from, so its descriptions and annotations are Ledger's too, and a refresh is
+  a deliberate re-copy plus a new pin. The manifest's own descriptions are
+  Nessie's and deliberately differ: Ledger tells its clients to read the
+  planner's reply with `research_scope_get`, while a Nessie agent is woken in
+  its thread. `MANAGED_DEEP_WATER_TOOL_NAMES` (the names whose `mcp_<name>`
+  DeepWater owns) is derived from the manifest plus `research_start` until the
+  launcher retires. Ledger serves these tools from its brief release, which must
   be live before this manifest reaches production. A team still on the
   launcher contract (manifest 0.2: `research_start`, `research_status`,
   `research_report`, `research_list`, `research_cancel`) is
