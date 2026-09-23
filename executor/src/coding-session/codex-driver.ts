@@ -138,13 +138,14 @@ export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
       await runTurn(text)
     },
     interrupt: (reason) => killTurn(reason),
-    close: async () => {
+    close: async (reason) => {
       closing = true
       queue.length = 0
-      await killTurn()
+      // The turn's end is what records the close, so it carries the reason.
+      await killTurn(reason)
       const leftover = context.state().agentIdentity
       if (leftover) await context.control.killTree(leftover)
-      context.update({ status: 'closed', reason: undefined, queued: 0, agentIdentity: undefined, turnStartedAt: undefined })
+      context.update({ status: 'closed', reason, queued: 0, agentIdentity: undefined, turnStartedAt: undefined })
     },
     // Nothing outlives a turn here, so ending the agent is ending its turn; the thread stays resumable.
     endIdle: () => killTurn(),

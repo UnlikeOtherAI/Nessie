@@ -302,6 +302,74 @@ test('a host gone before its guard reported still takes the agent\'s whole tree 
   }
 })
 
+/**
+ * An agent with a child in its own process group and one in a session of its
+ * own, which writes all three pids to `GUARD_TEST_PIDS` once both are started.
+ */
+const TWO_CHILD_AGENT = `
+const { spawn } = require('node:child_process')
+const member = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore', windowsHide: true })
+const outsider = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { detached: true, stdio: 'ignore', windowsHide: true })
+outsider.unref()
+require('node:fs').writeFileSync(process.env.GUARD_TEST_PIDS, [process.pid, member.pid, outsider.pid].join(' '))
+setTimeout(() => {}, 600000)
+`
+
+const UNIDENTIFIED_GUARD = fileURLToPath(new URL('./fixtures/agent-guard-unidentified.ts', import.meta.url))
+
+/** `TWO_CHILD_AGENT` through a guard that cannot read its start time: the guard's exit, stderr and the pids. */
+const unidentifiedAgent = async (dir: string, noTable: boolean) => {
+  const file = join(dir, 'pids')
+  const control = guardedProcessControl(createCodingProcessControl(process.platform, {}), {
+    ...guardLaunch,
+    argv: [process.execPath, '--import', 'tsx', UNIDENTIFIED_GUARD],
+    env: { ...process.env, GUARD_TEST_PIDS: file, GUARD_TEST_NO_TABLE: noTable ? '1' : '0' },
+  })
+  const guard = control.spawnAgent(process.execPath, ['-e', TWO_CHILD_AGENT], {
+    cwd: tmpdir(), env: { ...process.env, GUARD_TEST_PIDS: file },
+  })
+  const err = lines(guard.stderr!)
+  guard.stdout!.resume()
+  const exited = exitOf(guard)
+  assert.equal(await control.identifySpawned!(guard), undefined, 'nothing is reported for an agent with no start time')
+  const [agent, member, outsider] = (await readFile(file, 'utf8')).split(' ').map(Number) as [number, number, number]
+  return { exit: await exited, err, agent, member, outsider }
+}
+
+test('an agent whose start time cannot be read is stopped with its whole tree, not by its pid alone', { timeout: 90_000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'nessie-guard-unidentified-'))
+  const pids: number[] = []
+  try {
+    const run = await unidentifiedAgent(dir, false)
+    pids.push(run.agent, run.member, run.outsider)
+    assert.deepEqual(run.exit, { code: 125, signal: null })
+    assert.equal(agentFailureReason(run.err), 'containment_failed')
+    // Its tree by one table read, as a dead host's agent's is: the group it leads, and a child outside it.
+    await gone(pids, 'the agent, its group and the child in a session of its own')
+  } finally {
+    await cleanUp(pids)
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+
+test('POSIX: with no table for its tree either, an unidentified agent\'s group still goes with it', {
+  skip: process.platform === 'win32' ? 'POSIX only: Windows has no process group' : false, timeout: 90_000,
+}, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'nessie-guard-no-table-'))
+  const pids: number[] = []
+  try {
+    const run = await unidentifiedAgent(dir, true)
+    pids.push(run.agent, run.member, run.outsider)
+    assert.deepEqual(run.exit, { code: 125, signal: null })
+    await gone([run.agent, run.member], 'the agent and the child in its group')
+    // With no table, nothing identifies a process outside the group the guard started, so nothing signals it.
+    assert.equal(alive(run.outsider), true, 'the child in a session of its own is not signalled unchecked')
+  } finally {
+    await cleanUp(pids)
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+
 test('a guard that never reports is told to stop, then killed, and the start is not left waiting', { timeout: 60_000 }, async () => {
   // Stand-ins for a guard stuck before it reports: one that still hears its pipe close, one that does not.
   const stuck = (onDisconnect: string): AgentGuardLaunch => ({

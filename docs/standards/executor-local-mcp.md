@@ -161,8 +161,12 @@ which covers a text item holding JSON and `structuredContent` — becomes
 Kelpie sends every screenshot three times (its text JSON, the image item,
 `structuredContent`); this collapses them into one attachment without
 touching Kelpie, and the real 55 KB example.com answer shrinks to a few
-hundred bytes. A copy shorter than 64 characters is left alone: no real image
-is that small, and program text can contain one by chance.
+hundred bytes. A copy is found however another encoder spelled it, too:
+line-wrapped (MIME's 76 columns, PEM's 64, `\n` or `\r\n`) or inside JSON
+text with its `/`, and the line breaks it was wrapped at, escaped (`\/`,
+`\n`); the whole spelling, breaks and escapes included, becomes the marker.
+A copy shorter than 64 characters is left alone: no real image is that small,
+and program text can contain one by chance.
 
 The bytes become the command's sidecars,
 `<runtimeDir>/attachments/<commandId>/<sha256 hex>.bin`, written and fsynced

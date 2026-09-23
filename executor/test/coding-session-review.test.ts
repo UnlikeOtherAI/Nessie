@@ -78,16 +78,17 @@ test('branch names and pull-request keys read <user>, while gh is asked by the r
         return { code: 0, missing: false, stdout: JSON.stringify({ url: 'https://github.com/acme/app/pull/7', state: 'OPEN', statusCheckRollup: [] }) }
       }
       const stdout = joined.includes('--abbrev-ref') ? 'ondre/fix\n'
-        : joined.includes('worktree list') ? `worktree ${worktree}\nHEAD ${'b'.repeat(40)}\nbranch refs/heads/ondre/wip\n\n`
+        : joined.includes('worktree list') ? `worktree ${worktree}\nHEAD ${'b'.repeat(40)}\nbranch refs/heads/feature/ondre/wip\n\n`
           : joined.includes('log --oneline') ? 'abc1234 ondre fixed the build on Minis\n' : ''
       return { code: 0, missing: false, stdout }
     },
   })
   assert.equal(review.branch, '<user>/fix')
   assert.deepEqual(review.commitsSinceStart, ['abc1234 <user> fixed the build on <host>'])
-  assert.equal((review.worktreesCreatedSinceStart as { branch: string }[])[0]?.branch, '<user>/wip')
-  assert.deepEqual(Object.keys(review.pullRequests as object), ['<user>/fix', '<user>/wip'])
-  assert.deepEqual(asked, ['ondre/fix', 'ondre/wip'])
+  // A name in the middle of a branch is no folder of a relative path: it is rewritten too.
+  assert.equal((review.worktreesCreatedSinceStart as { branch: string }[])[0]?.branch, 'feature/<user>/wip')
+  assert.deepEqual(Object.keys(review.pullRequests as object), ['<user>/fix', 'feature/<user>/wip'])
+  assert.deepEqual(asked, ['ondre/fix', 'feature/ondre/wip'])
   assert.equal(JSON.stringify(review).toLowerCase().includes('ondre'), false)
 })
 
