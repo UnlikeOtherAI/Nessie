@@ -505,6 +505,10 @@ const createSubtaskWorld = () => {
         return row
       },
     },
+    runCoreDocumentSnapshot: {
+      createMany: async () => ({ count: 0 }),
+      findMany: async () => [],
+    },
     task: {
       create: async () => {
         const row = { id: randomUUID() }

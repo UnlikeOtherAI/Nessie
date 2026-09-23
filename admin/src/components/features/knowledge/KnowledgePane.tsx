@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useNativeBarHeader } from '../../../navigation/useNativeBarHeader'
 import { useScreenBarLayer } from '../../../navigation/ScreenBarLayer'
+import { PhoneNavigationButton } from '../../../navigation/PhoneNavigationButton'
 import { toScreenBarActions } from '../../shared/screen-bar-actions'
 import {
   ResponsivePageHeader,
@@ -53,7 +54,13 @@ export const KnowledgePane = ({ actions, below, children, onBack, title }: Knowl
         // and from iPad, where the header is hidden and there is no other
         // doorway to them.
         ? (below ? <div className="min-w-0 px-[var(--page-gutter)] py-2">{below}</div> : null)
-        : <ResponsivePageHeader actions={actions} below={below} onBack={onBack} title={title} />}
+        : <ResponsivePageHeader
+            actions={actions}
+            below={below}
+            leading={isStage ? <PhoneNavigationButton /> : undefined}
+            onBack={onBack}
+            title={title}
+          />}
       <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
     </div>
   )

@@ -78,7 +78,12 @@ export const dispatchKbTool = (
       )
     case 'kb_page_read':
       return wrapTool(inputSummary, () =>
-        runKbPageReadTool(context, { pageId: String(args.pageId ?? '') }),
+        runKbPageReadTool(context, {
+          pageId: String(args.pageId ?? ''),
+          versionId: typeof args.versionId === 'string' ? args.versionId : undefined,
+          offset: args.offset,
+          limit: args.limit,
+        }),
       )
     case 'kb_list':
       return wrapTool(inputSummary, () =>

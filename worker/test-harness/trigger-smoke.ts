@@ -64,12 +64,6 @@ const main = async (): Promise<void> => {
   try {
     await assertGlobalQueuesQuiet(pipeline.prisma)
 
-    await pipeline.prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'owner', userId: scope.userId },
-    })
-    await pipeline.prisma.teamMember.create({
-      data: { teamId: scope.teamId, userId: scope.userId },
-    })
     await pipeline.prisma.agentBinding.create({
       data: { agentId: scope.agentId, channelId: scope.channelId },
     })

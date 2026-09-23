@@ -331,6 +331,14 @@ export const router = createBrowserRouter([
         element: lazyElement(KnowledgeBasePage, 'list'),
       },
       {
+        path: '/knowledge-base/agents',
+        element: lazyElement(KnowledgeBasePage, 'list'),
+      },
+      {
+        path: '/knowledge-base/agents/:agentId',
+        element: lazyElement(KnowledgeBasePage, 'list'),
+      },
+      {
         path: '/knowledge-base/spaces/:spaceId',
         element: lazyElement(KnowledgeBasePage, 'list'),
       },

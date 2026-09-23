@@ -72,6 +72,7 @@ export const runSpawnSubtaskTool = async (
       name: true,
       ownerUserId: true,
       provider: true,
+      speakingStyle: true,
       systemPrompt: true,
       toolPolicy: true,
       visibility: true,
@@ -110,6 +111,7 @@ export const runSpawnSubtaskTool = async (
         provider: parentAgent.provider,
         role,
         surfacePolicy: 'shared',
+        speakingStyle: parentAgent.speakingStyle,
         systemManaged: false,
         systemPrompt: buildSubtaskSystemPrompt({
           parentName: parentAgent.name,
@@ -154,6 +156,13 @@ export const runSpawnSubtaskTool = async (
       })
       : null
 
+    // Copy the exact immutable source versions the parent run is using now.
+    // Looking at the parent's current published files here would let an edit
+    // between parent admission and child spawn silently change the delegation.
+    const parentCoreSnapshots = await tx.runCoreDocumentSnapshot.findMany({
+      where: { runId: context.run.id },
+      select: { role: true, versionId: true },
+    })
     const run = await tx.run.create({
       data: {
         agentId: childAgent.id,
@@ -161,12 +170,23 @@ export const runSpawnSubtaskTool = async (
         // detail. Carry it into the shared child so the reduced toolset remains
         // in force while it acts as the owner's delegate in this room.
         principalUserId: context.run.principalUserId ?? null,
+        coreDocumentCount: parentCoreSnapshots.length,
+        coreDocumentsAdmittedAt: new Date(),
         status: 'pending',
         threadId: context.run.threadId,
         triggerMessageId: taskPrompt.id,
       },
       select: { id: true, threadId: true },
     })
+    if (parentCoreSnapshots.length > 0) {
+      await tx.runCoreDocumentSnapshot.createMany({
+        data: parentCoreSnapshots.map((snapshot) => ({
+          role: snapshot.role,
+          runId: run.id,
+          versionId: snapshot.versionId,
+        })),
+      })
+    }
 
     const childTask = await tx.task.create({
       data: {

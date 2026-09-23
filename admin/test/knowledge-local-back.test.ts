@@ -84,6 +84,7 @@ test('inner knowledge surfaces keep titles/actions but suppress their own Back i
 
   const pane = readSource('../src/components/features/knowledge/KnowledgePane.tsx')
   assert.match(pane, /onBack\?: \(\) => void/)
+  assert.match(pane, /leading=\{isStage \? <PhoneNavigationButton \/> : undefined\}/)
 
   for (const path of [
     '../src/components/features/knowledge/PagePreview.tsx',

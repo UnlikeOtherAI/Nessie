@@ -217,8 +217,12 @@ export type KnowledgePageCursorPage<T> = {
 }
 
 export type ListSpacesInput = {
+  /** Internal Finder split: agent homes have their own directory. */
+  agentOwnedOnly?: boolean
   cursor?: string
   direction?: 'forward' | 'backward'
+  /** Internal Finder split: ordinary shared folders must not be crowded out by agent homes. */
+  excludeAgentOwned?: boolean
   // Personal spaces have their own stable doorway (My Docs) and are omitted
   // from general/project navigation unless a picker explicitly asks for them.
   includePersonal?: boolean
@@ -413,12 +417,15 @@ export type PublishPageInput = {
 
 export type AgentCoreMigrationDraft = {
   attachmentId: string
+  basisScopes?: KnowledgePageVersionBasisScope[]
+  disclosureSources?: KnowledgePageVersionDisclosureSource[]
   role: 'identity' | 'working_rules'
 }
 
 export type AgentCoreMigrationInput = {
   agentId: string
   authorId: string
+  authorType: KnowledgeAuthorType
   drafts: AgentCoreMigrationDraft[]
   organizationId: string
   projectId: string
@@ -433,6 +440,8 @@ export type AgentCoreMigrationResult =
 /** A staged canonical Markdown file and the published version it replaces. */
 export type AgentCoreDocumentUpdateDraft = {
   attachmentId: string
+  basisScopes?: KnowledgePageVersionBasisScope[]
+  disclosureSources?: KnowledgePageVersionDisclosureSource[]
   expectedPublishedVersionId?: string
   role: 'identity' | 'working_rules'
 }
@@ -445,6 +454,7 @@ export type AgentCoreDocumentUpdateDraft = {
 export type AgentCoreDocumentUpdateInput = {
   agentId: string
   authorId: string
+  authorType: KnowledgeAuthorType
   drafts: AgentCoreDocumentUpdateDraft[]
   organizationId: string
   projectId: string

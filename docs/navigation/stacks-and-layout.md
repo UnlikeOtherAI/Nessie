@@ -226,10 +226,19 @@ deepest pane, exactly the desktop columns, full-width document, history and
 editor of before. Pinned by `knowledge-local-back.test.ts` and the
 three-layer unwind case in `nested-stage-viewport.test.ts`.
 
+The Knowledge root has one **Agents** directory row. It opens
+`/knowledge-base/agents`, whose next column lists readable agent homes; an
+agent opens `/knowledge-base/agents/:agentId` and only then the shared space
+browser. The route ancestry is therefore Knowledge → Agents → agent → page,
+not a flat root crowded with one synthetic row per agent. Cold links, prewarm,
+Tree and column views all preserve that same ancestry.
+On `single`, each route owns its base Finder column and only a folder or
+document opened beneath that route becomes a nested stage; retained route
+instances must suspend their local Back owners while covered by a newer route.
+
 **`AgentDetailPage` is built.** It registers no local Back: `/agents/:id` is a
 real depth-2 route whose parent is Agents, so the shared route Back returns
 there. Its old `columnBase` registration outranked every Knowledge stage
 inside the agent's Documents tab, so Back left the agent instead of unwinding
 the open document. Wider layouts keep the page's own Back button beside the
 title.
-

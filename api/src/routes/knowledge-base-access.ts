@@ -11,6 +11,7 @@ import {
   loadSpaceViewer,
   viewerHoldsPageShare,
   type KnowledgePageRecord,
+  type KnowledgePageVersionRecord,
   type KnowledgeProvider,
   type KnowledgeSpaceRecord,
   type SpaceViewer,
@@ -258,13 +259,13 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
     viewer.disclosureViewer ?? null
 
   const canReadVersionWithViewer = (
-    version: NonNullable<KnowledgePageRecord['latestVersion']>,
+    version: Pick<KnowledgePageVersionRecord, 'basisScopes' | 'disclosureSources'>,
     disclosureViewer: DisclosureViewer | null,
   ): boolean => disclosureViewer === null || canReadKnowledgePageVersion(version, disclosureViewer)
 
   const canReadVersion = (
     viewer: SpaceViewer,
-    version: NonNullable<KnowledgePageRecord['latestVersion']>,
+    version: Pick<KnowledgePageVersionRecord, 'basisScopes' | 'disclosureSources'>,
   ): boolean => canReadVersionWithViewer(version, disclosureViewerFor(viewer))
 
   const canReadPageVersionsWithViewer = async (

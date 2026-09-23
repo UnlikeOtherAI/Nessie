@@ -237,6 +237,8 @@ test('the root payload becomes one flat list of destinations', () => {
     writeRestricted: false,
   })
   const found = destinationsFromRoot({
+    agentHomes: [{ ...space('s-agent', 'Ada — Documents'), ownerAgentId: 'agent-1' }],
+    agentHomesTruncated: false,
     myDocuments: space('s-mine', 'My Documents'),
     projects: [
       { projectId: 'p1', projectName: 'P', space: space('s-p', 'P') },
@@ -248,7 +250,13 @@ test('the root payload becomes one flat list of destinations', () => {
   })
   assert.deepEqual(
     found.map((entry) => [entry.spaceId, entry.role]),
-    [['s-mine', 'personal'], ['s-p', 'project'], ['s-q', 'project'], ['s-mkt', 'shared']],
+    [
+      ['s-mine', 'personal'],
+      ['s-p', 'project'],
+      ['s-q', 'project'],
+      ['s-agent', 'shared'],
+      ['s-mkt', 'shared'],
+    ],
   )
   // Every project carries its Documents space — the root read provisions it —
   // so every project is a destination.

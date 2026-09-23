@@ -8,18 +8,31 @@ import {
   type LedgerAttribution,
 } from '@nessie/runtime'
 
-import { ensureAgentDocsSpace } from './provisioning.js'
+import {
+  ensureAgentDocsSpace,
+  resolveAgentDocumentProjectId,
+} from './provisioning.js'
 import { loadActiveAgentCoreDocuments, type ActiveCoreDocument } from './agent-core-documents.js'
+import { CORE_DOCUMENT_ROLES, coreDocumentFilename } from './agent-core-contract.js'
 import type { KnowledgeProvider } from './types.js'
+import type {
+  KnowledgeAuthorType,
+  KnowledgePageVersionBasisScope,
+  KnowledgePageVersionDisclosureSource,
+} from './types.js'
 
 const DEFAULT_CORE_TOKEN_BUDGET = 2_000
 
 const estimatedTokens = (text: string): number => Math.ceil(text.length / 4)
 
-const tokenBudget = (): number => {
+export const agentCoreTokenBudget = (): number => {
   const value = Number.parseInt(process.env.NESSIE_AGENT_CORE_TOKEN_BUDGET ?? '', 10)
   return Number.isSafeInteger(value) && value > 0 ? value : DEFAULT_CORE_TOKEN_BUDGET
 }
+
+export const estimateAgentCoreTokens = (
+  documents: readonly { markdown: string }[],
+): number => documents.reduce((total, document) => total + estimatedTokens(document.markdown), 0)
 
 const deleteStaged = async (
   files: FileService,
@@ -39,18 +52,18 @@ const stage = async (
     role: 'identity' | 'working_rules'
     spaceId: string
     text: string
-    userId: string
+    uploaderId: string | null
   },
 ): Promise<string> => {
   const body = Object.assign(Readable.from([Buffer.from(input.text, 'utf8')]), { truncated: false })
   const stored = await files.store({
     attribution: input.attribution,
     body,
-    filename: input.role === 'identity' ? 'Identity.md' : 'Working style.md',
+    filename: coreDocumentFilename(input.role),
     mime: 'text/markdown; charset=utf-8',
     organizationId: input.organizationId,
     scope: { projectId: input.projectId, spaceId: input.spaceId },
-    uploaderId: input.userId,
+    uploaderId: input.uploaderId,
   })
   if (!body.truncated) return stored.attachment.id
   await deleteStaged(files, [stored.attachment.id], input.organizationId, input.attribution)
@@ -62,8 +75,10 @@ const readCore = async (
   files: FileService,
   agentId: string,
   organizationId: string,
+  authorize?: Parameters<typeof loadActiveAgentCoreDocuments>[1]['authorize'],
 ): Promise<ActiveCoreDocument[]> => loadActiveAgentCoreDocuments(prisma, {
   agentId,
+  authorize,
   organizationId,
   readMarkdownAttachment: async (attachmentId, tenantId) => {
     const opened = await files.openStream(attachmentId, tenantId)
@@ -78,12 +93,37 @@ export type CanonicalAgentCore = {
   systemPrompt: string
 }
 
+export type EnsureCanonicalAgentCoreInput = {
+  agentId: string
+  attribution: LedgerAttribution
+  authorId: string
+  authorType: KnowledgeAuthorType
+  organizationId: string
+  /**
+   * Repair the durable files without opening their contents in this helper.
+   * Run admission uses this so its live authorization and provenance callback
+   * remains the only doorway through which instruction bytes are read.
+   */
+  provisionOnly?: boolean
+  sourceDisclosure?: Partial<Record<
+    'identity' | 'working_rules',
+    {
+      basisScopes?: KnowledgePageVersionBasisScope[]
+      disclosureSources?: KnowledgePageVersionDisclosureSource[]
+    }
+  >>
+  uploaderId: string | null
+}
+
 const toCanonical = (documents: ActiveCoreDocument[]): CanonicalAgentCore => {
   const identity = documents.find((document) => document.role === 'identity')?.markdown ?? ''
   const workingRules = documents.find((document) => document.role === 'working_rules')?.markdown ?? ''
   return {
     documents,
-    estimatedTokens: estimatedTokens(identity) + estimatedTokens(workingRules),
+    estimatedTokens: estimateAgentCoreTokens([
+      { markdown: identity },
+      { markdown: workingRules },
+    ]),
     speakingStyle: workingRules,
     systemPrompt: identity,
   }
@@ -96,13 +136,156 @@ const toCanonical = (documents: ActiveCoreDocument[]): CanonicalAgentCore => {
 export const readCanonicalAgentCore = async (
   prisma: PrismaClient,
   files: FileService,
-  input: { agentId: string; organizationId: string },
+  input: {
+    agentId: string
+    authorize?: Parameters<typeof loadActiveAgentCoreDocuments>[1]['authorize']
+    organizationId: string
+  },
 ): Promise<CanonicalAgentCore | null> => {
   const marker = await prisma.agentCoreDocumentMigration.findUnique({
     where: { agentId: input.agentId }, select: { id: true },
   })
   if (!marker) return null
-  return toCanonical(await readCore(prisma, files, input.agentId, input.organizationId))
+  return toCanonical(await readCore(
+    prisma,
+    files,
+    input.agentId,
+    input.organizationId,
+    input.authorize,
+  ))
+}
+
+/**
+ * Idempotently crosses an ordinary agent onto its two canonical Markdown
+ * instruction files. This is used by every creation/read/run doorway, so a
+ * process failure can leave at most staged bytes: the next doorway repairs a
+ * marker-zero cutover or retries an unmarked migration under the provider's
+ * advisory lock.
+ */
+export const ensureCanonicalAgentCore = async (
+  prisma: PrismaClient,
+  provider: KnowledgeProvider,
+  files: FileService,
+  input: EnsureCanonicalAgentCoreInput,
+): Promise<CanonicalAgentCore | null> => {
+  if (!provider.migrateAgentCoreDocuments || !provider.updateAgentCoreDocuments) {
+    throw new Error('The active knowledge provider cannot provision agent core documents')
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const agent = await prisma.agent.findFirst({
+      where: { id: input.agentId, organizationId: input.organizationId },
+      select: {
+        id: true,
+        name: true,
+        projectId: true,
+        speakingStyle: true,
+        systemManaged: true,
+        systemPrompt: true,
+      },
+    })
+    if (!agent) throw new Error('Agent is unavailable for core document provisioning')
+    if (agent.systemManaged) return null
+
+    const marker = await prisma.agentCoreDocumentMigration.findUnique({
+      where: { agentId: agent.id }, select: { documentCount: true },
+    })
+    if (marker?.documentCount === CORE_DOCUMENT_ROLES.length) {
+      if (input.provisionOnly) return null
+      const existing = await readCanonicalAgentCore(prisma, files, {
+        agentId: agent.id, organizationId: input.organizationId,
+      })
+      if (!existing) throw new Error('Agent core migration marker has no canonical documents')
+      return existing
+    }
+
+    const projectId = await resolveAgentDocumentProjectId(prisma, {
+      agentId: agent.id,
+      organizationId: input.organizationId,
+      preferredProjectId: agent.projectId,
+    })
+
+    const home = await ensureAgentDocsSpace(prisma, {
+      agentId: agent.id,
+      agentName: agent.name,
+      organizationId: input.organizationId,
+      projectId,
+    })
+    const staged: Array<{
+      attachmentId: string
+      basisScopes?: KnowledgePageVersionBasisScope[]
+      disclosureSources?: KnowledgePageVersionDisclosureSource[]
+      role: 'identity' | 'working_rules'
+    }> = []
+    try {
+      for (const role of CORE_DOCUMENT_ROLES) {
+        staged.push({
+          attachmentId: await stage(files, {
+            attribution: input.attribution,
+            organizationId: input.organizationId,
+            projectId,
+            role,
+            spaceId: home.spaceId,
+            text: role === 'identity' ? agent.systemPrompt ?? '' : agent.speakingStyle ?? '',
+            uploaderId: input.uploaderId,
+          }),
+          ...input.sourceDisclosure?.[role],
+          role,
+        })
+      }
+      const result = marker
+        ? await provider.updateAgentCoreDocuments({
+            agentId: agent.id,
+            authorId: input.authorId,
+            authorType: input.authorType,
+            drafts: staged,
+            organizationId: input.organizationId,
+            projectId,
+            spaceId: home.spaceId,
+          })
+        : await provider.migrateAgentCoreDocuments({
+            agentId: agent.id,
+            authorId: input.authorId,
+            authorType: input.authorType,
+            drafts: staged,
+            organizationId: input.organizationId,
+            projectId,
+            spaceId: home.spaceId,
+          })
+      if (result.kind === 'already_migrated') {
+        await deleteStaged(
+          files,
+          staged.map((draft) => draft.attachmentId),
+          input.organizationId,
+          input.attribution,
+        )
+      } else if (result.kind === 'stale') {
+        await deleteStaged(
+          files,
+          staged.map((draft) => draft.attachmentId),
+          input.organizationId,
+          input.attribution,
+        )
+        continue
+      }
+    } catch (error) {
+      await deleteStaged(
+        files,
+        staged.map((draft) => draft.attachmentId),
+        input.organizationId,
+        input.attribution,
+      )
+      throw error
+    }
+    if (input.provisionOnly) return null
+    const core = await readCanonicalAgentCore(prisma, files, {
+      agentId: agent.id, organizationId: input.organizationId,
+    })
+    if (!core || core.documents.length !== CORE_DOCUMENT_ROLES.length) {
+      throw new Error('Agent core document provisioning did not complete')
+    }
+    return core
+  }
+  throw new Error('Agent instructions changed while documents were being prepared; retry the operation')
 }
 
 /**
@@ -120,7 +303,6 @@ export const writeCanonicalAgentCore = async (
     agentId: string
     attribution: LedgerAttribution
     organizationId: string
-    projectId: string
     speakingStyle?: string | null
     systemPrompt?: string
     userId: string
@@ -144,12 +326,17 @@ export const writeCanonicalAgentCore = async (
       visibility: true,
     },
   })
-  if (!agent || !agent.projectId || agent.projectId !== input.projectId) {
+  if (!agent) {
     throw new Error('Agent is unavailable for core document editing')
   }
   await assertAgentFieldAuthority(prisma, input.actor, agent, {})
+  const projectId = await resolveAgentDocumentProjectId(prisma, {
+    agentId: agent.id,
+    organizationId: input.organizationId,
+    preferredProjectId: agent.projectId,
+  })
   const home = await ensureAgentDocsSpace(prisma, {
-    agentId: agent.id, agentName: agent.name, organizationId: input.organizationId, projectId: input.projectId,
+    agentId: agent.id, agentName: agent.name, organizationId: input.organizationId, projectId,
   })
   let existing = await readCanonicalAgentCore(prisma, files, {
     agentId: input.agentId, organizationId: input.organizationId,
@@ -158,31 +345,29 @@ export const writeCanonicalAgentCore = async (
     if (!provider.migrateAgentCoreDocuments) {
       throw new Error('The active knowledge provider cannot atomically migrate agent core documents')
     }
-    const legacyEstimate = estimatedTokens(agent.systemPrompt ?? '') + estimatedTokens(agent.speakingStyle ?? '')
-    if (legacyEstimate > tokenBudget()) {
-      throw new Error(`Core instructions estimate ${legacyEstimate} tokens, above the ${tokenBudget()} token limit`)
-    }
     const migrationDrafts: { attachmentId: string; role: 'identity' | 'working_rules' }[] = []
     try {
-      if (agent.systemPrompt || agent.speakingStyle) {
-        for (const role of ['identity', 'working_rules'] as const) {
-          migrationDrafts.push({
-            attachmentId: await stage(files, {
-              ...input,
-              role,
-              spaceId: home.spaceId,
-              text: role === 'identity' ? agent.systemPrompt ?? '' : agent.speakingStyle ?? '',
-            }),
+      for (const role of CORE_DOCUMENT_ROLES) {
+        migrationDrafts.push({
+          attachmentId: await stage(files, {
+            attribution: input.attribution,
+            organizationId: input.organizationId,
+            projectId,
             role,
-          })
-        }
+            spaceId: home.spaceId,
+            text: role === 'identity' ? agent.systemPrompt ?? '' : agent.speakingStyle ?? '',
+            uploaderId: input.userId,
+          }),
+          role,
+        })
       }
       const migrated = await provider.migrateAgentCoreDocuments({
         agentId: input.agentId,
         authorId: input.userId,
+        authorType: 'user',
         drafts: migrationDrafts,
         organizationId: input.organizationId,
-        projectId: input.projectId,
+        projectId,
         spaceId: home.spaceId,
       })
       if (migrated.kind === 'stale') throw new Error('Agent instructions changed while the core was being migrated')
@@ -212,8 +397,10 @@ export const writeCanonicalAgentCore = async (
   const systemPrompt = input.systemPrompt === undefined ? existing.systemPrompt : input.systemPrompt
   const speakingStyle = input.speakingStyle === undefined ? existing.speakingStyle : input.speakingStyle ?? ''
   const estimate = estimatedTokens(systemPrompt) + estimatedTokens(speakingStyle)
-  if (estimate > tokenBudget()) {
-    throw new Error(`Core instructions estimate ${estimate} tokens, above the ${tokenBudget()} token limit`)
+  if (estimate > agentCoreTokenBudget()) {
+    throw new Error(
+      `Core instructions estimate ${estimate} tokens, above the ${agentCoreTokenBudget()} token limit`,
+    )
   }
   const byRole = new Map(existing.documents.map((document) => [document.role, document]))
   const roles: ('identity' | 'working_rules')[] = existing.documents.length === 0
@@ -227,14 +414,22 @@ export const writeCanonicalAgentCore = async (
     for (const role of roles) {
       const text = role === 'identity' ? systemPrompt : speakingStyle
       drafts.push({
-        attachmentId: await stage(files, { ...input, role, spaceId: home.spaceId, text }),
+        attachmentId: await stage(files, {
+          attribution: input.attribution,
+          organizationId: input.organizationId,
+          projectId,
+          role,
+          spaceId: home.spaceId,
+          text,
+          uploaderId: input.userId,
+        }),
         ...(byRole.get(role) ? { expectedPublishedVersionId: byRole.get(role)!.versionId } : {}),
         role,
       })
     }
     const result = await provider.updateAgentCoreDocuments({
-      agentId: input.agentId, authorId: input.userId, drafts, organizationId: input.organizationId,
-      projectId: input.projectId, spaceId: home.spaceId,
+      agentId: input.agentId, authorId: input.userId, authorType: 'user', drafts, organizationId: input.organizationId,
+      projectId, spaceId: home.spaceId,
     })
     if (result.kind === 'stale') throw new Error('Agent instructions changed while you were editing; reload and retry')
   } catch (error) {

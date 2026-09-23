@@ -1,5 +1,8 @@
 import type { PrismaClient } from '@prisma/client'
-import { ensureAgentDocsSpace } from '@nessie/knowledge'
+import {
+  ensureAgentDocsSpace,
+  resolveAgentDocumentProjectId,
+} from '@nessie/knowledge'
 
 // Holding any of these means the agent can put content into the knowledge
 // base, which is what earns it a documents home to put it in. `sheet_create`
@@ -17,8 +20,7 @@ const KB_WRITE_TOOL_IDS = new Set([
 const DOCUMENTS_PROMPT_TOOL_IDS = [
   'kb_list',
   'kb_search',
-  'kb_document_compose',
-  'kb_document_edit',
+  'kb_page_read',
 ]
 
 /**
@@ -45,6 +47,7 @@ export type AgentDocumentsHome = {
 
 export type AgentDocumentsPromptFacts = AgentDocumentsHome & {
   hasDocumentTools: boolean
+  hasDocumentWriteTools?: boolean
   /** Whether the assembled toolset can work in spreadsheets. */
   hasSpreadsheetTools?: boolean
 }
@@ -60,9 +63,10 @@ export const hasDocumentsPromptTools = (toolIds: ReadonlySet<string>): boolean =
   || hasSpreadsheetPromptTools(toolIds)
 
 /**
- * Resolve a documents home only for an agent whose assembled toolset can write
- * KB content. ensureAgentDocsSpace owns the indexed lookup and the locked
- * create race, so setup does not race a separate unprotected read.
+ * Resolve the one documents home advertised to an agent whose assembled
+ * toolset can inspect or create its files. ensureAgentDocsSpace owns the
+ * indexed lookup and locked create race, so setup never races an unprotected
+ * read.
  */
 export const resolveAgentDocumentsHome = async (
   prisma: PrismaClient,
@@ -70,10 +74,15 @@ export const resolveAgentDocumentsHome = async (
     agentId: string
     agentName: string
     organizationId: string
-    projectId: string
+    projectId?: string | null
   },
 ): Promise<AgentDocumentsHome> => {
-  const { spaceId } = await ensureAgentDocsSpace(prisma, input)
+  const projectId = await resolveAgentDocumentProjectId(prisma, {
+    agentId: input.agentId,
+    organizationId: input.organizationId,
+    preferredProjectId: input.projectId,
+  })
+  const { spaceId } = await ensureAgentDocsSpace(prisma, { ...input, projectId })
   return { spaceId, title: `${input.agentName} — Documents` }
 }
 
@@ -84,9 +93,15 @@ export const buildAgentDocumentsBlock = (
   if (!facts.hasDocumentTools) return null
   return [
     'Your documents:',
-    `- Home space: \`${facts.spaceId}\` (${facts.title}). Review it with \`kb_list\` / \`kb_search\`; `
-      + 'use `kb_document_compose` to write a new document and `kb_document_edit` to revise one. '
+    `- Home space: \`${facts.spaceId}\` (${facts.title}). Find files with \`kb_list\` / \`kb_search\` `
+      + 'and read them with `kb_page_read`; continue long files with the returned versionId and nextOffset. '
       + 'Use this injected id; never guess a space id.',
+    ...(facts.hasDocumentWriteTools
+      ? [
+        '- Write new documents with `kb_document_compose` and revise Markdown files with '
+          + '`kb_document_edit`. Keep AGENTS.md and personality.md in place; they are always loaded into new runs.',
+      ]
+      : []),
     ...(facts.hasSpreadsheetTools
       ? [
         '- Spreadsheets: create one with `sheet_create` in the same home. Describe, then '

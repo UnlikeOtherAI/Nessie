@@ -87,9 +87,6 @@ const main = async (): Promise<void> => {
         },
       },
     })
-    await pipeline.prisma.organizationMember.create({
-      data: { organizationId: scope.organizationId, role: 'owner', userId: scope.userId },
-    })
     const connection = await createMailboxConnection(pipeline.prisma, {
       address: 'agent@nessie.test', actor: { role: 'owner', userId: scope.userId },
       imapHost: MAIL_HOST, imapPort: 13993, imapSecurity: 'tls', label: 'E2E personal mailbox',

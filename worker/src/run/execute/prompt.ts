@@ -53,15 +53,25 @@ export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
 const coreInstructionBlock = (context: RunContext): string => {
   const coreDocuments = context.coreDocuments ?? []
   if (coreDocuments.length === 0) {
+    const systemPrompt = context.agent.systemPrompt?.trim() ?? ''
+    const speakingStyle = buildSpeakingStyleBlock(context.agent.speakingStyle) ?? ''
     return [
-      context.agent.systemPrompt?.trim() ?? '',
-      buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
+      systemPrompt ? `AGENTS.md:\n${systemPrompt}` : '',
+      speakingStyle ? `personality.md:\n${speakingStyle}` : '',
     ].filter(Boolean).join('\n\n')
   }
-  return coreDocuments.map((document) => {
-    const label = document.role === 'identity' ? 'Identity' : 'Working rules'
-    return `${label}:\n${document.markdown}`
-  }).join('\n\n')
+  const documentInstructions = coreDocuments.map((document) => {
+    const filename = document.role === 'identity' ? 'AGENTS.md' : 'personality.md'
+    return `${filename}:\n${document.markdown}`
+  })
+  return [
+    // A delegated child keeps its immutable server-authored assignment beside
+    // the exact parent core snapshot inherited at spawn. Ordinary migrated
+    // agents have null legacy columns, while code-owned built-ins use this
+    // same fallback as their read-only AGENTS.md projection.
+    context.agent.parentAgentId ? context.agent.systemPrompt?.trim() ?? '' : '',
+    ...documentInstructions,
+  ].filter(Boolean).join('\n\n')
 }
 
 // A turn's text as the model sees it: what was written, plus the inventory of
@@ -177,7 +187,6 @@ export const buildModelPrompt = (
       'earlier replies appear with no prefix. Never attribute another agent\'s',
       'message to yourself, and do not add a name prefix to your own reply.',
     ].join(' '),
-    coreInstructionBlock(context),
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
     // Said outright because the failure it answers was a claim, not a call: an
@@ -248,6 +257,7 @@ export const buildModelPrompt = (
       ].join(' '),
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
+    coreInstructionBlock(context),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
     options.mailbox ? buildMailboxRoutingBlock(options.mailbox) ?? '' : '',
     options.handoff ? buildHandoffRoutingBlock(options.handoff) ?? '' : '',

@@ -12,6 +12,7 @@ import {
 } from './markdown-projection.js'
 import { KnowledgePageRevisionConflictError } from './types.js'
 import { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
+import { coreDocumentFilename } from './agent-core-contract.js'
 import type {
   AddFileVersionInput,
   CreatePageInput,
@@ -286,6 +287,10 @@ export const getMutablePage = async (
       revision: true,
       kind: true,
       taskId: true,
+      title: true,
+      parentPageId: true,
+      documentRole: true,
+      coreDocumentFor: { select: { role: true } },
     },
   })
   if (!page) return null
@@ -335,6 +340,9 @@ export const restoreVersion = async (
   withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
     const page = await getMutablePage(tx, input.organizationId, input.pageId)
     if (!page) return null
+    if (page.coreDocumentFor && input.authorType !== 'user') {
+      throw new KnowledgeConflictError('Only an authorized person may restore required agent instructions')
+    }
     const version = await tx.knowledgePageVersion.findFirst({
       where: { id: input.versionId, pageId: input.pageId },
       include: versionInclude,
@@ -385,6 +393,23 @@ export const addFileVersion = async (
     return prisma.$transaction(async (tx) => {
       const page = await getMutablePage(tx, input.organizationId, input.pageId)
       if (!page) return null
+      if (page.coreDocumentFor) {
+        if (input.authorType !== 'user') {
+          throw new KnowledgeConflictError('Only an authorized person may edit required agent instructions')
+        }
+        if (!projection) {
+          throw new KnowledgeConflictError('Required agent instructions must remain Markdown files')
+        }
+        const attachment = await tx.attachment.findUnique({
+          where: { id: input.attachmentId },
+          select: { filename: true },
+        })
+        if (attachment?.filename !== coreDocumentFilename(page.coreDocumentFor.role)) {
+          throw new KnowledgeConflictError(
+            `Required agent instructions must keep the filename ${coreDocumentFilename(page.coreDocumentFor.role)}`,
+          )
+        }
+      }
       // A spreadsheet's body is a projection of the engine's workbook, which
       // the stored xlsx cannot reproduce here, and its identity is that
       // projection's hash rather than a hash of the bytes. Every other kind
@@ -437,6 +462,18 @@ export const updatePage = async (
   withVersionNumberRetry(() => prisma.$transaction(async (tx) => {
     const existing = await getMutablePage(tx, input.organizationId, pageId)
     if (!existing) return null
+    if (existing.coreDocumentFor) {
+      if (input.authorType !== 'user') {
+        throw new KnowledgeConflictError('Only an authorized person may edit required agent instructions')
+      }
+      const filename = coreDocumentFilename(existing.coreDocumentFor.role)
+      if (input.title !== undefined && input.title !== filename) {
+        throw new KnowledgeConflictError(`Required agent instructions must keep the filename ${filename}`)
+      }
+      if (input.visibility !== undefined || input.sensitivityTier !== undefined) {
+        throw new KnowledgeConflictError('Required agent instructions inherit the document home access scope')
+      }
+    }
     if (existing.kind === 'file' && (input.body !== undefined || input.bodyRef !== undefined)) {
       throw new KnowledgeConflictError('File versions must be created from their attachment bytes')
     }

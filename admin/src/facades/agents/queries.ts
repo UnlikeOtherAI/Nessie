@@ -186,13 +186,18 @@ export const useAgentChildren = (agentId?: string) => {
   })
 }
 
+export const fetchAgentDocuments = (
+  apiClient: ApiClient,
+  agentId: string,
+): Promise<AgentDocumentsResponse> => apiClient.get(`/api/agents/${agentId}/docs`)
+
 export const useAgentDocuments = (agentId?: string) => {
   const apiClient = useApiClient()
 
   return useQuery<AgentDocumentsResponse>({
     placeholderData: keepPreviousData,
     queryKey: agentKeys.documents(agentId),
-    queryFn: () => apiClient.get(`/api/agents/${agentId}/docs`),
+    queryFn: () => fetchAgentDocuments(apiClient, agentId as string),
     enabled: Boolean(agentId),
   })
 }

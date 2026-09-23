@@ -36,10 +36,10 @@ test('agent detail mounts documents through the shared knowledge team seam', () 
   assert.match(projectDocs, /scope=\{\{ kind: 'project', projectId \}\}/)
 })
 
-test('agent documents show the honest empty state and no-secrets warning', () => {
+test('agent documents show the honest unavailable state and no-secrets warning', () => {
   const documents = readSource('../src/components/features/agents/AgentDocumentsTab.tsx')
 
-  assert.match(documents, /has no document space yet/)
+  assert.match(documents, /required document home is unavailable/)
   assert.doesNotMatch(documents, /ensure|createSpace|provision/i)
   assert.match(
     documents,
@@ -141,4 +141,43 @@ test('the agent Documents tab renders the honest unreadable state', () => {
 
   assert.match(markup, /You can see this agent, but you don’t have access to its documents\./)
   assert.doesNotMatch(markup, /Loading documents/)
+})
+
+test('a system-managed agent exposes its two code-owned files as read-only projections', () => {
+  const agentId = '00000000-0000-4000-8000-000000000005'
+  const queryClient = new QueryClient()
+  queryClient.setQueryData(agentKeys.documents(agentId), {
+    projectedCoreDocuments: [
+      { filename: 'AGENTS.md', markdown: 'Protect the platform boundary.', role: 'identity' },
+      { filename: 'personality.md', markdown: 'Calm, direct, and precise.', role: 'working_rules' },
+    ],
+    space: null,
+  })
+  const unavailable = async () => { throw new Error('unexpected API call') }
+  const apiClient = {
+    delete: unavailable,
+    get: unavailable,
+    patch: unavailable,
+    post: unavailable,
+    put: unavailable,
+  } as ApiClient
+  const markup = renderToStaticMarkup(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(
+        ApiClientProvider,
+        { client: apiClient },
+        createElement(AgentDocumentsTab, {
+          agent: { id: agentId, name: 'Librarian', systemManaged: true } as AgentRecord,
+        }),
+      ),
+    ),
+  )
+
+  assert.match(markup, /code-owned and read-only/)
+  assert.match(markup, /AGENTS\.md/)
+  assert.match(markup, /Protect the platform boundary\./)
+  assert.match(markup, /personality\.md/)
+  assert.match(markup, /Calm, direct, and precise\./)
 })

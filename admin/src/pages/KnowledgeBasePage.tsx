@@ -3,6 +3,8 @@ import { useLocation, useParams } from 'react-router-dom'
 import { useKnowledge } from '../components/features/knowledge/KnowledgeProvider'
 import { useKnowledgePageDeepLink } from '../components/features/knowledge/useKnowledgePageDeepLink'
 import { KnowledgeWorkspace } from '../components/features/knowledge/KnowledgeWorkspace'
+import { useAgentDocuments } from '../facades/agents/hooks'
+import { useOverlayLayerCovered } from '../navigation/overlay-layer'
 
 /**
  * The Knowledge section's one page. Every route under `/knowledge-base` lands
@@ -16,7 +18,9 @@ import { KnowledgeWorkspace } from '../components/features/knowledge/KnowledgeWo
  */
 export const KnowledgeBasePage = () => {
   const { pathname } = useLocation()
-  const { productView, spaceId } = useParams<{
+  const routeCovered = useOverlayLayerCovered()
+  const { agentId, productView, spaceId } = useParams<{
+    agentId?: string
     productView?: string
     spaceId?: string
   }>()
@@ -24,10 +28,12 @@ export const KnowledgeBasePage = () => {
     activeProductView,
     selectedRoot,
     selectedSpaceId,
+    selectAgentSpace,
     selectProductView,
     selectSpace,
     selectVirtual,
   } = useKnowledge()
+  const agentDocuments = useAgentDocuments(agentId)
 
   // Deep link from elsewhere (an approval's "Open page" link, a search result,
   // a DeepWater research run's native Knowledge document) — shared with the
@@ -38,21 +44,37 @@ export const KnowledgeBasePage = () => {
   // outgoing screen. Sync them back into the shared browser, so a cold deep
   // link opens the same content.
   useEffect(() => {
+    if (routeCovered) return
     if (spaceId && selectedSpaceId !== spaceId) selectSpace(spaceId)
-  }, [selectedSpaceId, selectSpace, spaceId])
+  }, [routeCovered, selectedSpaceId, selectSpace, spaceId])
 
   useEffect(() => {
+    if (routeCovered) return
+    const home = agentDocuments.data?.space
+    if (!agentId || !home?.canRead) return
+    if (selectedRoot?.kind !== 'agent-space'
+      || selectedRoot.agentId !== agentId
+      || selectedRoot.spaceId !== home.id) {
+      selectAgentSpace(agentId, home.id)
+    }
+  }, [agentDocuments.data?.space, agentId, routeCovered, selectAgentSpace, selectedRoot])
+
+  useEffect(() => {
+    if (routeCovered) return
     if (productView && activeProductView !== productView) selectProductView(productView)
-  }, [activeProductView, productView, selectProductView])
+  }, [activeProductView, productView, routeCovered, selectProductView])
 
   useEffect(() => {
+    if (routeCovered) return
     const wanted = pathname.endsWith('/latest')
       ? 'latest'
       : pathname.endsWith('/shared-with-me')
         ? 'shared-with-me'
-        : null
+        : pathname.endsWith('/agents')
+          ? 'agents'
+          : null
     if (wanted && selectedRoot?.kind !== wanted) selectVirtual(wanted)
-  }, [pathname, selectedRoot, selectVirtual])
+  }, [pathname, routeCovered, selectedRoot, selectVirtual])
 
   return (
     <div className="flex h-full flex-col">

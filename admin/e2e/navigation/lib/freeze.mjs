@@ -103,7 +103,21 @@ export const waitForStackSettled = (page, timeoutMs = 15_000) => page.waitForFun
   () => {
     const viewport = document.querySelector('[data-phone-navigation-viewport]')
     if (!viewport) return false
-    if (!viewport.querySelector('[data-phone-navigation-layer="current"]')) return false
+    const current = viewport.querySelector('[data-phone-navigation-layer="current"]')
+    if (!current) return false
+    if (viewport.querySelector(
+      '[data-phone-navigation-layer="incoming"], [data-phone-navigation-layer="outgoing"]',
+    )) return false
+    // A route click updates `location` before the stack's layout effect starts
+    // its push. During that preparation window the old layer is still named
+    // `current` and no Animation exists yet; accepting it made callers act on
+    // the retained screen underneath the destination. A nested stage has no
+    // pathname of its own, so its structural key is the other settled shape.
+    const route = current.getAttribute('data-phone-navigation-route') ?? ''
+    const currentPathname = current.getAttribute('data-phone-navigation-pathname')
+    if (!route.startsWith('stage:') && currentPathname !== window.location.pathname) {
+      return false
+    }
     // A lazily loaded route shows its Skeleton fallback while the chunk is in
     // flight; the layer has landed but the screen has not (router.tsx
     // `routeLoading`). Settled means the screen itself is on the layer.

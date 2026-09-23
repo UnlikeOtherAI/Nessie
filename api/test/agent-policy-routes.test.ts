@@ -170,9 +170,15 @@ const makeApp = (
     agentCoreDocumentMigration: { findUnique: async () => null },
     channelMember: { findMany: async () => [] },
     knowledgeSpace: {
-      findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000040' }),
+      findFirst: async () => ({
+        id: '00000000-0000-4000-8000-000000000040',
+        projectId,
+      }),
     },
     knowledgeSpaceMember: { findMany: async () => [] },
+    project: {
+      findFirst: async () => ({ id: projectId }),
+    },
     projectMember: { findMany: async () => [{ projectId }] },
     teamMember: { findMany: async () => [] },
     // Agent creation now stamps the acting user as the agent's steward, which
@@ -244,11 +250,19 @@ const makeApp = (
       _context: AuthorizedActionContext,
       id: string,
     ) => agents.get(id)?.organizationId === organizationId,
-    // These agents carry no legacy instructions, so preparing a documents home
-    // stages no files and the provider records the empty core migration.
+    // Core provisioning stages both required Markdown files even when their
+    // initial contents are empty.
+    fileService: {
+      delete: async () => true,
+      store: async (input: { filename: string }) => ({
+        attachment: { id: `attachment-${input.filename}` },
+        bytesWritten: 0,
+      }),
+    },
     knowledgeProvider: {
       getSpace: async () => null,
       migrateAgentCoreDocuments: async () => ({ kind: 'migrated', pageIds: [] }),
+      updateAgentCoreDocuments: async () => ({ kind: 'updated', pageIds: [] }),
     },
     prisma,
     requireActorContext: () => actorContext,
