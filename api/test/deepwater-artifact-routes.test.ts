@@ -121,6 +121,11 @@ type RunShape = {
   delivered: boolean
   status?: 'drafting' | 'running' | 'completed' | 'failed'
   report?: Buffer | null
+  /**
+   * Whether the watch saw the brief launched (`launched_at`). Defaults to
+   * every shape but a drafting one: a person's brief stays theirs until then.
+   */
+  launched?: boolean
 }
 
 const seedRun = async (s: Seed, shape: RunShape) => {
@@ -158,11 +163,14 @@ const seedRun = async (s: Seed, shape: RunShape) => {
     mime: 'text/csv',
     body: Buffer.from(SOURCES),
   })
+  const status = shape.status ?? (shape.delivered ? 'completed' : 'running')
+  const launched = shape.launched ?? status !== 'drafting'
   await s.prisma.productIntegrationRun.update({
     where: { id: run.id },
     data: {
       externalRunId: `rs_${randomUUID().replaceAll('-', '')}`,
-      status: shape.status ?? (shape.delivered ? 'completed' : 'running'),
+      status,
+      launchedAt: launched ? new Date() : null,
       reportFileId: report.id,
       sourcesFileId: sources.id,
       reportKind: 'full',
@@ -299,6 +307,31 @@ dbTest('nothing is offered before delivery, and a missing research looks the sam
   const foreign = await app.inject({ method: 'GET', url: path(running, 'report.md') })
   assert.equal(foreign.statusCode, 404)
   assert.equal(foreign.json().error.code, 'DEEP_WATER_RESEARCH_NOT_FOUND')
+})
+
+dbTest('a person\'s brief that was never launched stays theirs, whatever became of it', async (t) => {
+  const s = await seed()
+  let viewer = s.memberId
+  const app = await buildApp(s, () => actorFor(s, viewer))
+  t.after(async () => { await app.close(); await s.cleanup() })
+
+  // Delivered or failed without the watch ever seeing a launch: the room was
+  // never shown the research, so a colleague finds nothing, not even a hint.
+  for (const [label, shape] of [
+    ['delivered', { channelThread: 'public', delivered: true, launched: false }],
+    ['failed', { channelThread: 'public', delivered: true, status: 'failed', launched: false }],
+  ] satisfies Array<[string, RunShape]>) {
+    viewer = s.memberId
+    const runId = await seedRun(s, shape)
+    for (const artifact of ['report.md', 'sources.csv', 'report']) {
+      const hidden = await app.inject({ method: 'GET', url: path(runId, artifact) })
+      assert.equal(hidden.statusCode, 404, `${label} ${artifact}`)
+      assert.equal(hidden.json().error.code, 'DEEP_WATER_RESEARCH_NOT_FOUND', `${label} ${artifact}`)
+    }
+    viewer = s.requesterId
+    const own = await app.inject({ method: 'GET', url: path(runId, 'report.md') })
+    assert.equal(own.statusCode, 200, `${label}: the requester still has their own research`)
+  }
 })
 
 dbTest('lost bytes are a storage fault, and a report past the proxy budget is downloaded, not copied', async (t) => {
