@@ -259,35 +259,71 @@ const ProgressSchema = z.object({
   sources_found: z.number().int().nonnegative().optional(),
 })
 
-/** `research_status`, `GET /v1/research/:id` and `research_list` rows. */
-export const LedgerResearchStatusDtoSchema = z
-  .object({
-    id: LedgerResearchIdSchema,
-    status: LedgerResearchStatusSchema,
-    progress: ProgressSchema.optional(),
-    eta_minutes: z.number().nonnegative().optional(),
-    title: nullableString,
-    error_code: nullableErrorCode,
-    brief: z
-      .object({
-        revision: z.number().int().nonnegative().nullable(),
-        turn_pending: z.boolean(),
-      })
-      .optional(),
-    public_url: nullablePublicUrl,
-  })
-  .transform((dto) => ({
-    id: dto.id,
-    status: dto.status,
-    phase: dto.progress?.phase ?? null,
-    sourcesFound: dto.progress?.sources_found ?? null,
-    etaMinutes: dto.eta_minutes ?? null,
-    title: dto.title,
-    errorCode: dto.error_code,
-    brief: dto.brief ? { revision: dto.brief.revision, turnPending: dto.brief.turn_pending } : null,
-    publicUrl: dto.public_url,
-  }))
+const LedgerResearchStatusDtoObject = z.object({
+  id: LedgerResearchIdSchema,
+  status: LedgerResearchStatusSchema,
+  progress: ProgressSchema.optional(),
+  eta_minutes: z.number().nonnegative().optional(),
+  title: nullableString,
+  error_code: nullableErrorCode,
+  brief: z
+    .object({
+      revision: z.number().int().nonnegative().nullable(),
+      turn_pending: z.boolean(),
+    })
+    .optional(),
+  public_url: nullablePublicUrl,
+})
+
+const toStatusDto = (dto: z.output<typeof LedgerResearchStatusDtoObject>) => ({
+  id: dto.id,
+  status: dto.status,
+  phase: dto.progress?.phase ?? null,
+  sourcesFound: dto.progress?.sources_found ?? null,
+  etaMinutes: dto.eta_minutes ?? null,
+  title: dto.title,
+  errorCode: dto.error_code,
+  brief: dto.brief ? { revision: dto.brief.revision, turnPending: dto.brief.turn_pending } : null,
+  publicUrl: dto.public_url,
+})
+
+/** `research_status` and `GET /v1/research/:id`. */
+export const LedgerResearchStatusDtoSchema = LedgerResearchStatusDtoObject.transform(toStatusDto)
 export type LedgerResearchStatusDto = z.output<typeof LedgerResearchStatusDtoSchema>
+
+/**
+ * One `research_list` row: the status DTO plus what the list adds. `scoped`
+ * says the research began as a brief; a Ledger from before briefs sends none,
+ * and none of its research did.
+ */
+export const LedgerResearchListRowSchema = LedgerResearchStatusDtoObject
+  .extend({
+    query: z.string(),
+    depth: z.string(),
+    started_at: z.string().min(1),
+    completed_at: nullableString,
+    has_report: z.boolean(),
+    scoped: z.boolean().optional().default(false),
+  })
+  .transform((row) => ({
+    ...toStatusDto(row),
+    query: row.query,
+    depth: row.depth,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    hasReport: row.has_report,
+    scoped: row.scoped,
+  }))
+export type LedgerResearchListRow = z.output<typeof LedgerResearchListRowSchema>
+
+/** `research_list`: the caller's research, newest first. */
+export const LedgerResearchListSchema = z
+  .object({
+    jobs: z.array(LedgerResearchListRowSchema),
+    limit: z.number().int().positive(),
+  })
+  .transform((list) => ({ jobs: list.jobs, limit: list.limit }))
+export type LedgerResearchList = z.output<typeof LedgerResearchListSchema>
 
 export const LedgerResearchReferenceSchema = z
   .object({

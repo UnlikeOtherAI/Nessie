@@ -247,7 +247,9 @@ test('DeepWaterResearchRunRecordSchema accepts durable Deep Water run projection
   assert.equal(parsed.status, 'completed')
   assert.equal(parsed.productSlug, 'deep-water')
   assert.equal(parsed.depth, 'deep')
-  assert.equal(parsed.reportUrl, 'https://deepwater.example/reports/research-123')
+  // Ledger's report link opens only for Ledger's authenticated callers, so the
+  // public record never carries one.
+  assert.equal('reportUrl' in parsed, false)
   assert.equal(parsed.sourceCount, 18)
 })
 

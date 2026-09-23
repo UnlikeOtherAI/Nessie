@@ -141,16 +141,6 @@ export const DeepWaterRunHistory = ({
                     Open chat
                   </Link>
                 ) : null}
-                {run.reportUrl ? (
-                  <a
-                    className="admin-button admin-button-secondary admin-button-compact h-8"
-                    href={run.reportUrl}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Open original report
-                  </a>
-                ) : null}
               </div>
               {run.statusDetail ? (
                 <div className="mt-2 text-xs leading-5 text-[color:var(--tx2)]">

@@ -112,10 +112,6 @@ export const mapDeepWaterRunRow = (row: DeepWaterRunRow): DeepWaterResearchRunRe
     outputTier: pickString(input.outputTier, ['summary', 'full'] as const, 'full'),
     productSlug: DEEP_WATER_PRODUCT_SLUG,
     queryPreview: row.query_preview,
-    reportUrl:
-      result.reportUrlSource === TRUSTED_DEEP_WATER_REPORT_URL_SOURCE
-        ? pickNullableString(result.reportUrl)
-        : null,
     requestedAt: toIsoString(row.requested_at),
     requestedByUserId: row.requested_by_user_id,
     searchQuality: pickString(input.searchQuality, ['standard', 'premium'] as const, 'standard'),

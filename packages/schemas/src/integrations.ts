@@ -138,7 +138,9 @@ export const DeepWaterResearchRunRecordSchema = z.object({
   outputTier: z.enum(['summary', 'full']),
   productSlug: z.literal('deep-water'),
   queryPreview: z.string(),
-  reportUrl: z.string().url().nullable(),
+  // No report URL: Ledger's report endpoint answers only its authenticated
+  // callers, so a link to it could never open for a person. The report is
+  // read through Nessie (the Knowledge page, and the run's artifacts).
   requestedAt: TimestampSchema,
   requestedByUserId: z.string().uuid().nullable(),
   searchQuality: z.enum(['standard', 'premium']),
