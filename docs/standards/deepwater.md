@@ -322,8 +322,8 @@ worker and card are built on them.
   before anything else — the busy check and the route's own checks (the
   revision, still drafting) — because a retry whose response was lost finds
   the brief already moved on by its own action, and refusing it would make the
-  client resend under a new id and pay for a second planner turn. One action is in
-  flight per brief and is cleared only by its own turn or outcome, with two
+  client resend under a new id and pay for a second planner turn. One action
+  is in flight per brief and is cleared only by its own turn or outcome, with two
   exceptions: a cancel replaces any in-flight action except the opening
   `scope_start` before Ledger acknowledged it (there is no research id to
   cancel yet, so the cancel is refused as busy for those seconds), and a
@@ -432,8 +432,8 @@ the only way results come back.
   that same page back with `restoreDeepWaterReportPage` before delivering; the
   watch never undoes what was done to a page), and then, in the claim's
   transaction, posts the person's result reply under the card with an alert
-  keyed `deep-water-result:<runId>`, or wakes the agent that asked. A failed research is delivered the same way with a
-  notice or a `failed` wake. An expired or unreadable report is a final block;
+  keyed `deep-water-result:<runId>`, or wakes the agent that asked. A failed
+  research is delivered the same way with a notice or a `failed` wake. An expired or unreadable report is a final block;
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
   `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks

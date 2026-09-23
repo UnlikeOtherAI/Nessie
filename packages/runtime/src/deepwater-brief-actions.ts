@@ -125,8 +125,9 @@ export const beginDeepWaterPersonAction = async (
   input.precondition?.(run)
 
   if (!await enqueueDeepWaterBriefAction(tx, job)) {
-    // Every acceptance takes the row lock first, so a key that appeared since
-    // the read above is a broken invariant, not a replay to wave through.
+    // An action is accepted only under this row's lock, or in the transaction
+    // that creates the row (the opening `scope_start`), so a key that appeared
+    // since the read above is a broken invariant, not a replay to wave through.
     throw new Error(`DeepWater action ${job.actionId} on run ${run.id} was accepted outside the run's lock`)
   }
   const state = DeepWaterScopeStateSchema.parse({
