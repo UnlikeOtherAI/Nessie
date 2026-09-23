@@ -19,10 +19,11 @@ import { createProjector } from '../src/coding-session/projection.js'
  * interrupt, background task, `--permission-prompts none`).
  */
 
-const projector = createProjector(createPathRewriter([
+const windowsProjector = () => createProjector(createPathRewriter([
   { name: 'nessie', paths: ['C:\\Users\\ondre\\Projects\\Nessie'] },
   { name: undefined, paths: ['C:\\Users\\ondre'] },
 ], 'win32'))
+const projector = windowsProjector()
 const line = (value: unknown): string => JSON.stringify(value)
 const lifecycle = (uuid: string, state: string) => line({ type: 'command_lifecycle', command_uuid: uuid, state, uuid: 'x', session_id: 's' })
 const result = (extra: Record<string, unknown> = {}) => line({
@@ -62,14 +63,28 @@ test('stdin lines carry our uuid, and control requests are named ours', () => {
   assert.equal(JSON.parse(claudeDenyLine('r-2', false)).response.subtype, 'error')
 })
 
-test('init keeps only model and permission mode; the initialize account is never read', () => {
-  const state = createClaudeStreamState(projector)
+test('init keeps only model and permission mode; the initialize account only ever becomes a redaction', () => {
+  const state = createClaudeStreamState(windowsProjector())
   const ready = state.accept(line({
     type: 'control_response',
-    response: { subtype: 'success', request_id: 'nessie-initialize', response: { account: { email: 'person@example.com' }, pid: 4 } },
+    response: {
+      subtype: 'success', request_id: 'nessie-initialize',
+      response: { account: { email: 'person@example.com', organization: 'Person Example Org', subscriptionType: 'max' }, pid: 4 },
+    },
   }))
   assert.equal(ready.ready, true)
   assert.deepEqual(ready.events, [])
+  // The model knows who is logged in and repeats it; claude 2.1.280 typed it into `git config` live.
+  assert.deepEqual(state.accept(line({
+    type: 'assistant',
+    message: { content: [
+      { type: 'text', text: 'Committing as Person@Example.com for Person Example Org on the max plan.' },
+      { type: 'tool_use', id: 't-1', name: 'Bash', input: { command: 'git config user.email "person@example.com"' } },
+    ] },
+  })).events, [
+    { kind: 'assistant', text: 'Committing as <account> for <account> on the max plan.' },
+    { kind: 'tool', name: 'Bash', summary: 'git config user.email "<account>"' },
+  ])
   const init = line({
     type: 'system', subtype: 'init', cwd: 'C:\\Users\\ondre\\Projects\\Nessie', session_id: 's-1', model: 'claude-opus',
     permissionMode: 'acceptEdits', mcp_servers: [{ name: 'claude.ai Docs' }], memory_paths: { auto: 'C:\\Users\\ondre\\.claude' },

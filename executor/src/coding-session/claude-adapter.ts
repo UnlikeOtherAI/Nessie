@@ -243,8 +243,13 @@ export const createClaudeStreamState = (projector: Projector): ClaudeStreamState
           if (response.request_id === INITIALIZE_ID) {
             if (response.subtype === 'success') signals.ready = true
             else signals.initializeFailed = true
+            // The answer itself is dropped. Its account's e-mail and organisation
+            // are read for one thing: to become redactions, because the model
+            // knows who is logged in and repeats it (see projection.ts).
+            const answer = record(response.response) ? response.response : {}
+            const account = record(answer.account) ? answer.account : {}
+            projector.redact([account.email, account.organization])
           }
-          // The initialize answer's `account` is never read: the whole response is dropped.
           if (response.request_id === INTERRUPT_ID) signals.interruptAcknowledged = true
           if (response.request_id === END_ID) signals.endAcknowledged = true
           break

@@ -8,7 +8,13 @@ import type { CodingPermissionDenial } from './types.js'
  * through the path rewriter, and nothing else survives: init's `cwd`,
  * `memory_paths` and `mcp_servers`, rate-limit state, sockets and the
  * initialize `account` are never read into a projected event at all.
+ *
+ * The model itself knows who is logged in, though, and repeats it: a live
+ * Claude Code turn typed the account's e-mail into a `git config` command.
+ * So the account's own e-mail and organisation are redactions, held in this
+ * process's memory only, and every later string spells them `<account>`.
  */
+export const ACCOUNT_PLACEHOLDER = '<account>'
 export const CODING_EVENT_LIMITS = {
   assistant: 2_000,
   user: 2_000,
@@ -27,7 +33,13 @@ export type Projector = {
   toolInput: (tool: string, input: unknown) => string
   toolResult: (content: unknown, isError: boolean) => string
   denials: (value: unknown) => CodingPermissionDenial[]
+  /** Values every later string spells `<account>`; anything but a string of four or more characters is ignored. */
+  redact: (values: readonly unknown[]) => void
 }
+
+const MIN_REDACTION_LENGTH = 4
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 
 const clip = (value: string, max: number): string => (
   value.length <= max ? value : `${value.slice(0, Math.max(0, max - 1))}…`
@@ -74,13 +86,27 @@ const resultText = (content: unknown): string => {
 }
 
 export const createProjector = (rewriter: PathRewriter): Projector => {
+  let redactions: RegExp | undefined
+  const scrub = (value: string): string => rewriter.rewrite(
+    redactions ? value.replace(redactions, ACCOUNT_PLACEHOLDER) : value,
+  )
   const text = (value: unknown, max: number): string => (
-    typeof value === 'string' ? clip(rewriter.rewrite(value).trim(), max) : ''
+    typeof value === 'string' ? clip(scrub(value).trim(), max) : ''
   )
   const line = (value: unknown, max: number): string => (
-    typeof value === 'string' ? clip(rewriter.rewrite(value).replace(/\s+/gu, ' ').trim(), max) : ''
+    typeof value === 'string' ? clip(scrub(value).replace(/\s+/gu, ' ').trim(), max) : ''
   )
+  const redacted = new Set<string>()
   return {
+    redact: (values) => {
+      for (const value of values) {
+        if (typeof value === 'string' && value.trim().length >= MIN_REDACTION_LENGTH) redacted.add(value.trim())
+      }
+      if (redacted.size === 0) return
+      // Longest first, so an organisation named after the e-mail is redacted whole.
+      const alternatives = [...redacted].sort((left, right) => right.length - left.length).map(escapeRegExp)
+      redactions = new RegExp(alternatives.join('|'), 'giu')
+    },
     text,
     line,
     toolInput: (tool, input) => line(toolSubject(tool, input), CODING_EVENT_LIMITS.tool),

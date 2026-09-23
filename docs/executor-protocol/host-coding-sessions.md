@@ -159,7 +159,9 @@ One process per live host:
 [--permission-mode] [--allowedTools …] [--disallowedTools …] [--model]
 [--max-budget-usd] [args] --append-system-prompt <text>`.
 
-- Ready is the `initialize` control response; its `account` is never read.
+- Ready is the `initialize` control response. The answer is dropped; its
+  account's e-mail and organisation become redactions in the host's memory
+  (see "What the bridge reports") and are never written anywhere.
 - A follow-up is a stdin user line carrying our uuid. It folds into a running
   turn at the next tool boundary, and messages and results do not map one to
   one, so a turn ends only when a result has arrived, no message of ours is
@@ -284,6 +286,14 @@ are never read into one. Every absolute path under a root becomes
 `<root>/relative` and every other absolute path `<host path>`, in all its
 spellings (slashes, case, `\\?\`, `/c/…`, JSON-escaped), and each answer is
 rewritten once more, string by string, on its way out.
+
+The model itself knows who is logged in and repeats it: in the live Windows
+run, Claude Code met a repository with no git identity and typed the account's
+e-mail into `git config --global user.email`. So the e-mail and organisation
+from the initialize answer are redactions for the rest of that host's life,
+and every projected string spells them `<account>`. Codex reports no account,
+so its sessions have none. `session_review` runs in the bridge, which never
+sees the account; its commit subjects are the agent's own words.
 
 `session_status` never waits and answers at most 8 KB, `status`,
 `nextCursor` and `pendingNotice` first. `session_review` runs read-only git in

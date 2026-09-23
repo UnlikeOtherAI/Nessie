@@ -67,6 +67,18 @@ test('each event kind keeps its allowlisted fields at their caps, rewritten', ()
   ]), [{ tool: 'Bash', summary: 'rm -rf <nessie>' }])
 })
 
+test('an account redaction covers every later string, and only real values become one', () => {
+  const projector = createProjector(windows)
+  projector.redact([undefined, 42, 'ab', '   '])
+  assert.equal(projector.line('ab 42 stays', 100), 'ab 42 stays')
+  projector.redact(['owner@example.com', "owner@example.com's Organization"])
+  assert.equal(
+    projector.text("OWNER@example.com's Organization, owner@example.com, C:\\Users\\ondre\\x", 200),
+    `<account>, <account>, ${HOST_PATH_PLACEHOLDER}`,
+  )
+  assert.equal(projector.toolInput('Bash', { command: 'git config user.email owner@example.com' }), 'git config user.email <account>')
+})
+
 test('a test command is recognised by the program it runs, with its exit code from the tool result', () => {
   for (const command of ['pnpm test', 'pnpm --filter @nessie/executor test', 'npm run test:unit', 'npx vitest run',
     'cargo test -p x', 'go test ./...', 'node --test test/a.test.ts', 'cd x && pytest -q']) {
