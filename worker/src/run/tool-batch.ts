@@ -33,8 +33,10 @@ export type ExecutedToolResult = {
   toolName?: string
 }
 
+// Both callbacks end with the provider's id for the call, which is what pairs
+// one call's start with its end while other calls of the batch run beside it.
 export type ToolBatchCallbacks = {
-  onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
+  onToolCallStart: (toolName: string, args: Record<string, unknown>, toolCallId: string) => Promise<void>
   onToolCallEnd: (
     toolName: string,
     args: Record<string, unknown>,
@@ -43,8 +45,9 @@ export type ToolBatchCallbacks = {
     success: boolean,
     inputSummary: string,
     startedAt: Date,
-    connectorUsage?: ConnectorUsage,
-    toolCallRecordId?: string,
+    connectorUsage: ConnectorUsage | undefined,
+    toolCallRecordId: string | undefined,
+    toolCallId: string,
   ) => Promise<void>
 }
 
@@ -251,7 +254,7 @@ export const executeToolBatch = async (input: {
   const runPrepared = async ({ execute, toolCall }: PreparedToolCall): Promise<ExecutedToolResult> => {
     const timeoutMs = input.toolTimeoutMsFor?.(toolCall.toolName) ?? DEFAULT_TOOL_TIMEOUT_MS
     const breakerKey = circuitBreakerKey(countedName(toolCall), toolCall.arguments)
-    await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
+    await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments, toolCall.toolCallId)
     const startedAt = new Date()
     // One controller per call: the timeout arm aborts it, so a stalled
     // execution is cancelled rather than merely out-raced. A bare
@@ -288,6 +291,7 @@ export const executeToolBatch = async (input: {
         startedAt,
         result.connectorUsage,
         result.toolCallRecordId,
+        toolCall.toolCallId,
       )
       return { ...result, toolCallId: toolCall.toolCallId, toolName: toolCall.toolName }
     } catch (error) {
@@ -311,6 +315,7 @@ export const executeToolBatch = async (input: {
           error instanceof Error && typeof (error as Error & { toolCallRecordId?: unknown }).toolCallRecordId === 'string'
             ? (error as Error & { toolCallRecordId: string }).toolCallRecordId
             : undefined,
+          toolCall.toolCallId,
         )
       } catch (callbackError) {
         if (!fatal) throw callbackError

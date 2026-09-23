@@ -467,10 +467,10 @@ export const runExecutionAgentLoop = async (
           event: 'agent.iteration',
         })
       },
-      onToolCallStart: async (toolName, _args) => {
+      onToolCallStart: async (toolName, _args, providerCallId) => {
         const startedAt = new Date()
         // Tool activity is part of the thought process, not a separate feed.
-        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
+        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args), providerCallId)
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
@@ -509,12 +509,13 @@ export const runExecutionAgentLoop = async (
         startedAt,
         connectorUsage,
         toolCallRecordId,
+        providerCallId,
       ) => {
         // A read tool may have just added source provenance to the live sink.
         // Tool summaries and previews are durable, so record that provenance
         // before making either one observable through the activity APIs.
         await persistCurrentRunBasis(deps.prisma, context)
-        await recordToolEnd(deps, context, payload.actorContext, {
+        const recordedId = await recordToolEnd(deps, context, payload.actorContext, {
           argumentsValue,
           durationMs,
           inputSummary,
@@ -525,6 +526,9 @@ export const runExecutionAgentLoop = async (
           connectorUsage,
           toolCallRecordId,
         })
+        // The thought log's line for this call names its ToolCall, which is
+        // how the thought-process dialog finds the call's screenshots.
+        await input.thinkingRecorder.linkToolCall(providerCallId, recordedId)
         await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,

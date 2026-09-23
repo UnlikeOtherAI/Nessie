@@ -4053,12 +4053,16 @@ model RunDocumentChunk {
 }
 
 model RunThinkingChunk {
-  id        BigInt               @id @default(autoincrement())
-  runId     String               @map("run_id") @db.Uuid
-  kind      RunThinkingChunkKind
-  content   String
-  createdAt DateTime             @default(now()) @map("created_at")
-  run       Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id         BigInt               @id @default(autoincrement())
+  runId      String               @map("run_id") @db.Uuid
+  kind       RunThinkingChunkKind
+  content    String
+  /// App-enforced pointer, like `Attachment.messageId`: the `ToolCall` a
+  /// `tool` line became, set once that call ends. The thought log reads a
+  /// call's screenshots through it (ToolCall → ExecutorCommand → Attachment).
+  toolCallId String?              @map("tool_call_id") @db.Uuid
+  createdAt  DateTime             @default(now()) @map("created_at")
+  run        Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, id])
   @@map("run_thinking_chunks")

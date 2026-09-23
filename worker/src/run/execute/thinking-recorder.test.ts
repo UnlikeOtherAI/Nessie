@@ -15,10 +15,12 @@ const THREAD_ID = '00000000-0000-0000-0000-0000000000e1'
 
 type Written = { content: string; kind: string }
 type Published = { event: string; data: Record<string, unknown> }
+type Linked = { chunkId: bigint; runId: string; toolCallId: string }
 
 const makeHarness = (options: { failWrites?: boolean } = {}) => {
   const written: Written[] = []
   const published: Published[] = []
+  const linked: Linked[] = []
   let nextId = 1n
 
   const prisma = {
@@ -31,6 +33,10 @@ const makeHarness = (options: { failWrites?: boolean } = {}) => {
         const id = nextId
         nextId += 1n
         return { id }
+      },
+      updateMany: async (args: { data: { toolCallId: string }; where: { id: bigint; runId: string } }) => {
+        linked.push({ chunkId: args.where.id, runId: args.where.runId, toolCallId: args.data.toolCallId })
+        return { count: 1 }
       },
     },
   } as unknown as PrismaClient
@@ -48,7 +54,7 @@ const makeHarness = (options: { failWrites?: boolean } = {}) => {
     runId: RUN_ID,
     threadId: THREAD_ID,
   })
-  return { published, recorder, written }
+  return { linked, published, recorder, written }
 }
 
 test('small reasoning deltas coalesce until close', async () => {
@@ -154,4 +160,39 @@ test('recorder failures are swallowed — thinking capture never fails a run', a
 
   assert.equal(written.length, 0)
   assert.equal(published.length, 0, 'a failed durable write publishes nothing')
+})
+
+test('a tool line names the ToolCall it became, by the provider call id, once the call ends', async () => {
+  const { linked, recorder } = makeHarness()
+
+  // Two calls of one batch in flight at once, ending in the other order.
+  await recorder.appendToolLine('kelpie_screenshot', '', 'call_a')
+  await recorder.appendToolLine('web_search', 'query=release notes', 'call_b')
+  await recorder.linkToolCall('call_b', 'tool-call-b')
+  await recorder.linkToolCall('call_a', 'tool-call-a')
+  // A call whose line was never written links nothing, nor does a second end.
+  await recorder.linkToolCall('call_c', 'tool-call-c')
+  await recorder.linkToolCall('call_a', 'tool-call-a')
+
+  assert.deepEqual(linked, [
+    { chunkId: 2n, runId: RUN_ID, toolCallId: 'tool-call-b' },
+    { chunkId: 1n, runId: RUN_ID, toolCallId: 'tool-call-a' },
+  ])
+})
+
+test('a provider call id two calls in flight share links neither line', async () => {
+  const { linked, recorder, written } = makeHarness()
+
+  await recorder.appendToolLine('kelpie_screenshot', '', 'call_0')
+  await recorder.appendToolLine('kelpie_navigate', 'url=https://example.com', 'call_0')
+  await recorder.linkToolCall('call_0', 'tool-call-1')
+  await recorder.linkToolCall('call_0', 'tool-call-2')
+
+  assert.equal(written.length, 2, 'both lines are still recorded')
+  assert.deepEqual(linked, [], 'neither line is guessed at')
+
+  // Once both have ended, the id is free for the next iteration's call.
+  await recorder.appendToolLine('kelpie_screenshot', '', 'call_0')
+  await recorder.linkToolCall('call_0', 'tool-call-3')
+  assert.deepEqual(linked, [{ chunkId: 3n, runId: RUN_ID, toolCallId: 'tool-call-3' }])
 })
