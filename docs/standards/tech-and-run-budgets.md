@@ -158,7 +158,9 @@ summary and points here; **this file is the rule**.
       refused; its streak counts only the waits that saw nothing move, and
       the third such wait in a row gets "The coding agent is still working;
       that is normal. Wait again, or tell the person where things stand and
-      end your turn." after the batch instead of a refusal.
+      end your turn." after the batch instead of a refusal. The streak is
+      the session's, like the refusal below: a wait written differently on
+      the same session continues it.
     - **Needs the model** — the turn ended, or the session was interrupted,
       failed or closed. (A turn that ended with background tasks still
       running counts as watching: a task finishing starts a turn of its
@@ -178,7 +180,8 @@ summary and points here; **this file is the rule**.
 
     Counts are checkpointed under `#repeat:` / `#observe:` keys, and the two
     wait markers under `#settled:` / `#ended:`; unprefixed counts from an
-    earlier deploy are dropped on resume.
+    earlier deploy are dropped on resume, and a wait's key written by its
+    whole arguments object comes back under the session it names.
   - A provider `finish_reason: length` gets one bounded recovery. Partial prose
     uses a no-tools finalisation from completed evidence. Empty reasoning-only
     output retains tools to finish the already authorized work; a truncated tool

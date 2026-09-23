@@ -1,5 +1,3 @@
-import { coerceToolArgumentsToSchema } from './tool-argument-coercion.js'
-
 /**
  * Loop detection, decided before dispatch.
  *
@@ -131,24 +129,67 @@ const WAIT_AFTER_TURN_ENDED: LoopVerdict = {
     + 'at once. End your turn now with one line of status.',
 }
 
-const streakKeyOf = (toolName: string, args: Record<string, unknown>): string =>
-  `${OBSERVE_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
-// The session, not the arguments' text: execution parses a double-encoded
-// object and leaves a key the tool does not define behind, so an extra key, a
-// reordering or a respaced JSON string is still the same wait on the machine.
-const settledKeyOf = (toolName: string, args: Record<string, unknown>): string => {
-  const { sessionId } = coerceToolArgumentsToSchema(undefined, args)
-  return `${SETTLED_KEY_PREFIX}${toolName}:${JSON.stringify(sessionId ?? null)}`
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+// The session a wait names, read as execution reads it: the whole arguments
+// object may arrive as a JSON string (`coerceToolArgumentsToSchema`), and a key
+// the tool does not define is left behind. Parsed here rather than imported, so
+// this module stays free of the builtin tool catalog that parser loads.
+const sessionOf = (args: unknown): unknown => {
+  let value = args
+  if (typeof value === 'string' && value.trim().startsWith('{')) {
+    try {
+      value = JSON.parse(value.trim())
+    } catch {
+      return undefined
+    }
+  }
+  return isRecord(value) ? value.sessionId : undefined
 }
+
+// A wait's keys name the session, not the arguments' text: an extra key, a
+// reordering or a double-encoded object is still the same wait on the machine,
+// so neither a settled wait nor a stall streak starts over for one.
+const watchKeyOf = (prefix: string, toolName: string, args: unknown): string =>
+  `${prefix}${toolName}:${JSON.stringify(sessionOf(args) ?? null)}`
+
+const streakKeyOf = (toolName: string, args: Record<string, unknown>): string => (
+  WATCH_TOOL_NAMES.has(toolName)
+    ? watchKeyOf(OBSERVE_KEY_PREFIX, toolName, args)
+    : `${OBSERVE_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
+)
+const settledKeyOf = (toolName: string, args: Record<string, unknown>): string =>
+  watchKeyOf(SETTLED_KEY_PREFIX, toolName, args)
 const endedKeyOf = (toolName: string): string => `${ENDED_KEY_PREFIX}${toolName}`
 
 const RESTORED_KEY_PREFIXES = [REPEAT_KEY_PREFIX, OBSERVE_KEY_PREFIX, SETTLED_KEY_PREFIX, ENDED_KEY_PREFIX]
 
-/** The counts a resumed run may keep, without those written under the old rule. */
+// A wait's key checkpointed when it still named the whole arguments object,
+// `#settled:coding_session_wait:{"sessionId":"a"}`, under the session it names.
+const restoredKeyOf = (key: string): string => {
+  const prefix = [SETTLED_KEY_PREFIX, OBSERVE_KEY_PREFIX].find((candidate) => key.startsWith(candidate))
+  if (!prefix) return key
+  const rest = key.slice(prefix.length)
+  const toolName = rest.slice(0, rest.indexOf(':'))
+  if (!WATCH_TOOL_NAMES.has(toolName)) return key
+  try {
+    const written: unknown = JSON.parse(rest.slice(toolName.length + 1))
+    return isRecord(written) ? watchKeyOf(prefix, toolName, written) : key
+  } catch {
+    return key
+  }
+}
+
+/**
+ * The counts a resumed run may keep, without those written under the old
+ * rule. A wait's keys written by the whole arguments object are carried over
+ * by the session they name, so a wait settled before the resume stays settled.
+ */
 export const restoreLoopCounts = (saved: Record<string, number> | undefined): Map<string, number> =>
-  new Map(Object.entries(saved ?? {}).filter(([key]) => (
-    RESTORED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
-  )))
+  new Map(Object.entries(saved ?? {})
+    .filter(([key]) => RESTORED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)))
+    .map(([key, count]) => [restoredKeyOf(key), count]))
 
 /**
  * Count one call, in the order the model made it, and say whether it must be
