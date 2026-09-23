@@ -19,12 +19,20 @@ import { encodeGuestFrame } from './firecracker-fake.js'
 const VM_ID = '1d2b3c4a-5e6f-4a7b-8c9d-0e1f2a3b4c5d'
 const TOKEN = 'a'.repeat(43)
 
-const prefix = async (): Promise<string> => join(await mkdtemp(join(tmpdir(), 'nessie-hv-pipe-')), 'pipe')
+/**
+ * A pipe prefix of the kind a session gets: a `\\.\pipe\…` name on Windows,
+ * the only thing `net` listens on there, and a socket path in a fresh
+ * directory elsewhere.
+ */
+const prefix = async (): Promise<string> => (process.platform === 'win32'
+  ? `\\\\.\\pipe\\nessie-hv-test-${randomUUID()}`
+  : join(await mkdtemp(join(tmpdir(), 'nessie-hv-pipe-')), 'pipe'))
 
 /**
  * `net` treats `\\.\pipe\…` as a named pipe on Windows and an ordinary
  * filesystem socket elsewhere, so the transport is path-agnostic by
- * construction and the very code that runs on Windows is exercised here.
+ * construction and the very code that runs on Windows is exercised here —
+ * over real named pipes when the suite runs on Windows.
  */
 test('a guest channel listens on <prefix>-<port>, the shape Firecracker uses for its sockets', async () => {
   const root = await prefix()
@@ -32,11 +40,14 @@ test('a guest channel listens on <prefix>-<port>, the shape Firecracker uses for
   try {
     assert.equal(listener.socketPath, `${root}-${GUEST_CONTROL_PORT}`)
     assert.equal(listener.socketPath, hyperVPipePath(root, GUEST_CONTROL_PORT))
-    const info = await stat(listener.socketPath)
-    assert.ok(info.isSocket())
-    // Owner-only where the platform has mode bits at all; on Windows the pipe
-    // carries the daemon account's own DACL instead.
-    assert.equal(info.mode & 0o077, 0)
+    // Owner-only where the platform has mode bits at all. A named pipe has no
+    // file to stat: it carries the daemon account's own DACL, and the listen
+    // above resolving is what proves it exists.
+    if (process.platform !== 'win32') {
+      const info = await stat(listener.socketPath)
+      assert.ok(info.isSocket())
+      assert.equal(info.mode & 0o077, 0)
+    }
   } finally {
     await listener.close()
   }
