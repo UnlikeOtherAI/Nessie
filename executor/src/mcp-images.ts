@@ -99,9 +99,10 @@ const referenceTo = (image: ExecutorMcpImage): ExecutorImageReference => ({
 /**
  * A stretch of base64 as another encoder may have spelled it: wrapped at line
  * ends (MIME, PEM), or inside JSON text with its `/`, and the line breaks it
- * was wrapped at, escaped.
+ * was wrapped at, escaped. It may open with a `\/` (a JPEG's opens `/9j/`),
+ * or the escape's backslash would be left standing before the marker.
  */
-const SPELLED_RUN = /[A-Za-z0-9+/=](?:[A-Za-z0-9+/=\r\n]|\\[/nr])*/g
+const SPELLED_RUN = /(?:[A-Za-z0-9+/=]|\\\/)(?:[A-Za-z0-9+/=\r\n]|\\[/nr])*/g
 const SPELLING = /\r|\n|\\[nr]/g
 
 /** Where each character of `run`'s plain spelling stands in `run`: a `\/` at its backslash. */

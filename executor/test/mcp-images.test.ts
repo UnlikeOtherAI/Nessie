@@ -156,6 +156,18 @@ test('a copy another encoder line-wrapped or escaped becomes the marker too', ()
   assert.equal(flattened.includes(data.slice(0, 64)), false, 'no spelling of the base64 is left anywhere')
 })
 
+test('an escaped copy whose base64 opens with a slash leaves nothing of that escape behind', () => {
+  // Every JPEG's base64 opens `/9j/`, so its JSON-escaped copy opens with `\/`.
+  const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(3_000, 0xff)])
+  const data = bytes.toString('base64')
+  assert.equal(data.startsWith('/9j/'), true)
+  const { result } = extractExecutorMcpImages({
+    content: [{ text: `{"image":"${data.replaceAll('/', '\\/')}"}`, type: 'text' }, imageItem(bytes, 'image/jpeg')],
+  })
+  // A backslash left before the marker would be `\[`, which is no JSON escape at all.
+  assert.deepEqual(JSON.parse(contentOf(result)[0]!.text as string), { image: `[image: attachment ${digestOf(bytes)}]` })
+})
+
 test('a copy shorter than any real image is left alone', () => {
   // 24 bytes of GIF: base64 short enough to occur in ordinary text by chance.
   const tiny = Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(18, 1)])
