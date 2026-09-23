@@ -60,7 +60,8 @@ const lane = (mode = 'local-apps', maxResultBytes = 65_536) => {
     const shaped = shapeExecutorToolArguments('mcp.call', mcpCall, args, catalogs.inputSchemaOf)
     const raw = {
       inputSummary: '',
-      ...executorDispatchResult(await executeExecutorMcpCommand('mcp.call', shaped, sessions, async (images) => {
+      // No built-in bridge is being called, so there is no reserved `_meta`.
+      ...executorDispatchResult(await executeExecutorMcpCommand('mcp.call', shaped, sessions, undefined, async (images) => {
         keptImages.push(...images.map((image) => image.bytes.length))
       })),
     }
