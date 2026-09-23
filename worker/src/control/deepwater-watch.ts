@@ -60,6 +60,12 @@ const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutc
     console.error(`[deep-water] watch ${run.id}: ${outcome.reason}`)
     return
   }
+  if (outcome.outcome === 'connector_missing') {
+    // The team's connector is paused or gone while the run is open; the read
+    // waits for it rather than guessing another route to Ledger.
+    console.warn(`[deep-water] watch ${run.id}: the team's DeepWater connector is not active`)
+    return
+  }
   log(run, `read deferred (${outcome.outcome})`)
 }
 

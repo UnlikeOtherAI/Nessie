@@ -163,7 +163,11 @@ export const deliverDeepWaterResearch = async (
     timeoutMs: DEEP_WATER_REPORT_TIMEOUT_MS,
   })
   if (read.outcome === 'identity') return block(deps, run, 'requester_identity_changed')
-  if (read.outcome === 'unavailable' || read.outcome === 'connector_missing') return 'retry'
+  if (read.outcome === 'connector_missing') {
+    console.warn(`[deep-water] delivery of ${run.id} waits: the team's DeepWater connector is not active`)
+    return 'retry'
+  }
+  if (read.outcome === 'unavailable') return 'retry'
   if (read.outcome === 'malformed') return block(deps, run, 'report_malformed')
   if (read.outcome === 'refused') {
     if (read.error.statusCode === 410 || read.error.code === 'expired') return block(deps, run, 'report_expired')
