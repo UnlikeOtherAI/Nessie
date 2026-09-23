@@ -49,7 +49,8 @@ test('a DeepWater wake that fails tells the thread; an ordinary unattended fire 
       $queryRaw: async () => [{ reply_count: 1, last_reply_at: new Date(), reply_participant_ids: [] }],
       $transaction: async (work: (tx: typeof transaction) => Promise<unknown>) => work(transaction),
       agent: { update: async () => undefined },
-      message: { create },
+      // No DeepWater kickoff behind this trigger: nothing for DeepWater to tell.
+      message: { create, findUnique: async () => null },
       run: { update: async () => undefined },
       task: { update: async () => undefined },
       taskEvent: { create: async () => undefined },
@@ -83,7 +84,11 @@ test('a DeepWater wake that fails tells the thread; an ordinary unattended fire 
     replyRootMessageId: ID.card,
     task: { id: ID.task },
   } satisfies RunContext
-  const fail = (purpose: string | undefined, runId: string) => handleRunExecutionFailure(
+  const fail = (
+    purpose: string | undefined,
+    runId: string,
+    error: Error = new Error('Missing API key for provider kimi'),
+  ) => handleRunExecutionFailure(
     deps,
     {
       actorContext: { actionContext: purpose ? { purpose } : {} } as never,
@@ -94,7 +99,7 @@ test('a DeepWater wake that fails tells the thread; an ordinary unattended fire 
       threadId: ID.thread as never,
     },
     context,
-    { error: new Error('Missing API key for provider kimi'), planContext: null, streamStarted: false },
+    { error, planContext: null, streamStarted: false },
   )
 
   await fail('deep_water.delivery', ID.run)
@@ -104,4 +109,11 @@ test('a DeepWater wake that fails tells the thread; an ordinary unattended fire 
 
   await fail(undefined, '00000000-0000-4000-8000-000000000112')
   assert.equal(messages.length, 1, 'an ordinary unattended fire stays quiet')
+
+  // A wake that could not sign as its requester, where DeepWater owes no
+  // notice of its own (not a terminal wake), still tells them what to do.
+  const refused = Object.assign(new Error('UOA delegation exchange failed'), { requesterIdentityRefused: true as const })
+  await fail('deep_water.delivery', '00000000-0000-4000-8000-000000000113', refused)
+  assert.equal(messages.length, 2)
+  assert.match(messages[1]?.content ?? '', /your sign-in has changed\. Sign in again/)
 })

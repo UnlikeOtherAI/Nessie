@@ -136,6 +136,23 @@ export const wakeUnreachableNotice = (input: { topic: string; finished: boolean;
     : `The agent working on your DeepWater research brief ${quoted(input.topic)} couldn't be told `
       + 'what the research planner said. Ask it to carry on, or open a new brief yourself.'
 
+/**
+ * The agent was woken with the research's end but could not act for the
+ * person, because their sign-in changed (amendments-fable F4): they are told
+ * what the agent would have told them, with the report's link when there is
+ * one, and what to do.
+ */
+export const wakeIdentityChangedNotice = (input:
+  | { topic: string; finished: true; link: string }
+  | { topic: string; finished: false; failureCode: string | null }): string =>
+  input.finished
+    ? `Your DeepWater research ${quoted(input.topic)} has finished, but the agent that asked for it `
+      + 'couldn\'t carry on because your sign-in has changed. The report is in Documents: '
+      + `[open it](${input.link}). Sign in again before you ask the agent about it.`
+    : `Your DeepWater research ${quoted(input.topic)} didn't finish: `
+      + `${deepWaterFailureMessage(input.failureCode)}. The agent that asked for it couldn't tell you `
+      + 'because your sign-in has changed. Sign in again, then start it again when you\'re ready.'
+
 export const wakeCapNotice = (topic: string): string =>
   `The agent working on your DeepWater research brief ${quoted(topic)} has gone back and forth with `
   + 'the research planner many times without starting the research. Ask it to start or stop the brief.'

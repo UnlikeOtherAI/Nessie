@@ -8,7 +8,11 @@ import {
   type UoaDelegatedIdentitySettings,
   type UoaProductIdentity,
 } from './uoa-delegated-identity.js'
-import { UoaDelegatedIdentityError, type UoaExchangeFailure } from './uoa-delegation-exchange.js'
+import {
+  UoaDelegatedIdentityError,
+  classifyUoaExchangeFailure,
+  type UoaExchangeFailure,
+} from './uoa-delegation-exchange.js'
 
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 const DEFAULT_LEDGER_AUDIENCE = 'https://ledger.unlikeotherai.com'
@@ -51,6 +55,30 @@ export class LedgerIdentityError extends Error {
     super(message)
     this.name = 'LedgerIdentityError'
   }
+}
+
+/**
+ * Set on an error that wraps a requester identity refusal whose own class did
+ * not survive the wrap (an inference stage failure keeps only a message).
+ */
+export type RequesterIdentityRefusalMarker = { requesterIdentityRefused?: true }
+
+/**
+ * The person a Ledger call acts for can no longer be signed as (Water plan
+ * amendments-fable F4): they have no linked identity, or UOA refuses to
+ * delegate the captured one — a moved sign-in epoch, a lost organisation or
+ * team. Only they can fix it, by signing in again; retrying never will. An
+ * outage at UOA or a deployment fault is not this.
+ */
+export const isRequesterIdentityRefusal = (error: unknown): boolean => {
+  if (error instanceof LedgerIdentityError) {
+    if (error.code === 'LEDGER_UOA_IDENTITY_REQUIRED') return true
+    return error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED'
+      && classifyUoaExchangeFailure(error.exchangeFailure) === 'identity'
+  }
+  return typeof error === 'object'
+    && error !== null
+    && (error as RequesterIdentityRefusalMarker).requesterIdentityRefused === true
 }
 
 const envValue = (env: NodeJS.ProcessEnv, name: string): string | null => {

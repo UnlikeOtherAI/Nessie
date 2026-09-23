@@ -5,6 +5,7 @@ import {
   buildPromptCacheKey,
   isLedgerEndpoint,
   createInferenceService,
+  isRequesterIdentityRefusal,
   providerFailureDetails,
   type ModelProviderConfig,
   type ProviderMessage,
@@ -65,6 +66,8 @@ type StageExecutionFailure = Error & {
   creditRefusal?: 'ledger'
   invocation?: InvocationRecord
   providerCode?: string
+  /** The requester could not be signed as (`isRequesterIdentityRefusal`). */
+  requesterIdentityRefused?: true
   stageId?: string
   statusCode?: number
 }
@@ -84,6 +87,7 @@ const createStageFailure = (
       providerCode?: string
       statusCode?: number
     }
+    requesterIdentityRefused?: boolean
     stageId?: string
   },
 ): StageExecutionFailure => {
@@ -91,6 +95,7 @@ const createStageFailure = (
   error.creditRefusal = input?.providerFailure?.creditRefusal
   error.invocation = input?.invocation
   error.providerCode = input?.providerFailure?.providerCode
+  if (input?.requesterIdentityRefused) error.requesterIdentityRefused = true
   error.stageId = input?.stageId
   error.statusCode = input?.providerFailure?.statusCode
   return error
@@ -470,6 +475,8 @@ export const executeStage = async (
     throw createStageFailure(toErrorMessage(error), {
       invocation,
       providerFailure: providerFailureDetails(error),
+      // Signing the call as the requester failed on them, not on the model.
+      requesterIdentityRefused: isRequesterIdentityRefusal(error),
       stageId: input.stage.id,
     })
   } finally {

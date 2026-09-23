@@ -464,7 +464,17 @@ the only way results come back.
   the origin channel (the Personal Assistant is placed by presence, which its
   run re-checks), and in a non-public channel the requester must still be a
   member. A wake that cannot reach anyone (thread or agent gone, agent unbound,
-  requester inactive or out of the room) becomes a notice to the person.
+  requester inactive or out of the room) becomes a notice to the person. So
+  does a terminal wake (`completed`, `failed`) whose run fails because it
+  cannot sign as the requester any more (`isRequesterIdentityRefusal`: no
+  linked identity, or UOA refusing the person): delivery counted the wake when
+  it was claimed or pended, so the run's failure handler posts DeepWater's
+  notice under the card instead of the agent's reply — with the Knowledge link
+  for a finished research — once, as the run's result message
+  (`tellRequesterDeepWaterWakeFailed`). Any run that fails this way is failed,
+  never retried or answered with an apology, and tells its person to sign in
+  again. A planner-turn wake is left to the brief's own watch read, which
+  blocks on the same identity and tells them.
 - **Delivery** (`deliverDeepWaterResearch`) reads `research_report` once per
   attempt (`delivery:<runId>:report`), stores the exact `report.md` and an RFC
   4180 `sources.csv` through `FileService` (`recordDeepWaterArtifactFile` keeps
@@ -484,7 +494,11 @@ the only way results come back.
   retryable blocks. Every notice names its remedy and carries
   `metadata.deepWaterNotice {schemaVersion, runId, kind}` — the result reply
   too (`kind: 'result'`), which is how a client finds the research, and so its
-  artifact actions, from the reply. A delivery whose conversation is gone
+  artifact actions, from the reply. The result reply carries no
+  `metadata.documentRef` (the plan's §7.5 named one): that pointer is a
+  document-stream session's (`DocumentRefMetadataSchema` requires its
+  `sessionId`), which a research never has, so the Knowledge link lives in the
+  reply's words and in the run's own view, reached through `deepWaterNotice`. A delivery whose conversation is gone
   blocks with nothing posted, since there is nowhere to post it. A notice about
   a person's brief that was never launched (`isDeepWaterPersonBriefUnlaunched`,
   the fact the viewer predicate uses: DeepWater never confirmed it, refused it,

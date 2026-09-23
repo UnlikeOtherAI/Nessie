@@ -49,8 +49,9 @@ export type DeepWaterWatchClaim = { runId: string; organizationId: string; recon
  * transaction: attached briefs and researches still open, and agent-origin
  * briefs whose `research_scope_start` result was lost (no research id yet),
  * which the watch replays with the agent's own stable tool-call id until the
- * reap gives them up. A blocked run waits for its requester's Retry. Each job is keyed by the claim's sequence and runs once;
- * the next claim is the retry.
+ * reap gives them up. A blocked run waits for its requester's Retry. Each
+ * job is keyed by the claim's sequence and runs once; the next claim is the
+ * retry.
  */
 export const claimDueDeepWaterWatchRuns = async (
   tx: DeepWaterBriefDb,

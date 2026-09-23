@@ -8,6 +8,7 @@ import {
   LedgerIdentityError,
   classifyUoaExchangeFailure,
   completeLedgerAttribution,
+  isRequesterIdentityRefusal,
   type DeepWaterBriefRun,
   type LedgerAttribution,
   type LedgerIdentityService,
@@ -169,16 +170,19 @@ export const callDeepWaterLedgerTool = async (
   try {
     signed = await addDeepWaterIdentityHeaders(transport, deps.ledgerIdentity, input.attribution, input.toolCallId)
   } catch (error) {
-    if (error instanceof LedgerIdentityError && error.code === 'LEDGER_UOA_IDENTITY_REQUIRED') {
-      return { outcome: 'identity', reason: error.message }
-    }
     // A failed exchange is only as retryable as UOA says: a refusal of this
-    // person is identity drift, an outage passes, and anything else is a
-    // deployment fault that repeating would only repeat.
-    if (error instanceof LedgerIdentityError && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED') {
-      const failure = classifyUoaExchangeFailure(error.exchangeFailure)
-      if (failure === 'identity') return { outcome: 'identity', reason: error.message }
-      if (failure === 'transient') return { outcome: 'unavailable', reason: error.message }
+    // person (or no linked identity at all) is identity drift, an outage
+    // passes, and anything else is a deployment fault that repeating would
+    // only repeat.
+    if (isRequesterIdentityRefusal(error)) {
+      return { outcome: 'identity', reason: error instanceof Error ? error.message : 'identity refused' }
+    }
+    if (
+      error instanceof LedgerIdentityError
+      && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED'
+      && classifyUoaExchangeFailure(error.exchangeFailure) === 'transient'
+    ) {
+      return { outcome: 'unavailable', reason: error.message }
     }
     throw error
   }
