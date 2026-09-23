@@ -288,14 +288,18 @@ test('a failed poll or heartbeat closes no coding session unless the failure is 
   assert.deepEqual(calls.map((call) => call.args), [{ reason: 'connection_lost' }])
 
   const revoked = recording()
-  await createCodingSessionsDaemon({ executorId, facts, servers: [bridgeSpec()], sessions: revoked.sessions, log: () => undefined })
-    .connectionFailed('heartbeat_failed', new ExecutorApiError('Executor is unavailable.', { code: 'EXECUTOR_NOT_FOUND', status: 404 }))
+  const unknown = new ExecutorApiError('Executor is unavailable.', { code: 'EXECUTOR_NOT_FOUND', status: 404 })
+  await createCodingSessionsDaemon({
+    executorId, facts, servers: [bridgeSpec()], sessions: revoked.sessions, log: () => undefined,
+  }).connectionFailed('heartbeat_failed', unknown)
   assert.deepEqual(revoked.calls.map((call) => call.args), [{ reason: 'heartbeat_failed' }], 'a revoked executor closes at once')
 })
 
 test('a close the bridge could not carry out is tried again on the next heartbeat until it lands', async () => {
   const { calls, sessions, fail, recover } = recording()
-  const daemon = createCodingSessionsDaemon({ executorId, facts, servers: [bridgeSpec()], sessions, log: () => undefined })
+  const daemon = createCodingSessionsDaemon({
+    executorId, facts, servers: [bridgeSpec()], sessions, log: () => undefined,
+  })
   const ownerKey = codingSessionOwnerKey(executorId, { agentId, actorUserId })
   fail()
   await daemon.close([{ ownerKey, reason: 'lease_ended' }])
