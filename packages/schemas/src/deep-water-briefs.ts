@@ -189,6 +189,23 @@ export const DeepWaterResearchReadinessSchema = z
   .strict()
 export type DeepWaterResearchReadiness = z.infer<typeof DeepWaterResearchReadinessSchema>
 
+/**
+ * The `details` of a 409 that refuses a team transition while a research is
+ * still open — `LEDGER_DEEPWATER_ACTIVE_RUNS` on turning DeepWater off or
+ * updating it, and the agent-revocation refusal (amendments N8.5). It names
+ * the run by id, status, origin and requester only, never its topic, so an
+ * owner can cancel it from the `/apps/deep-water` hero without reading it.
+ * Not strict: the refusal may name more about the run (its chat), which a
+ * reader of these four fields has no use for.
+ */
+export const DeepWaterActiveRunConflictSchema = z.object({
+  id: uuid,
+  status: z.string().min(1),
+  originKind: DeepWaterOriginKindSchema,
+  requestedByUserId: uuid.nullable(),
+})
+export type DeepWaterActiveRunConflict = z.infer<typeof DeepWaterActiveRunConflictSchema>
+
 // ── Requests ────────────────────────────────────────────────────────────────
 
 /** `personal` resolves on the server to the requester's Personal Assistant DM. */
