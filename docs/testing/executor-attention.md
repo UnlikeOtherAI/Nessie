@@ -71,6 +71,13 @@ same thumbnails on the call's card and none on the others, at 1280 px and at
 `e2e/screenshots/tool-screenshots/` and join the executor upload. Which refs a
 viewer is given is `api/test/tool-call-screenshots.test.ts`'s job.
 
+No live run has yet taken a Kelpie screenshot of a real site through a real
+executor and had the production model describe it. That is step 7 of the
+local-apps live acceptance run
+([verification.md](../plans/2026-09-22-executor-local-apps/verification.md)),
+which runs once every chapter has merged; until it has, a screenshot reaching
+the model is proved only in parts, by fixture and scripted-inference suites.
+
 Each flag adds its `admin/e2e/executor-<name>/index.html` as a Vite build input
 and participates in Turbo's admin-build cache key. Ordinary release builds
 leave these flags unset and omit the fixture entries. To verify the CI path
