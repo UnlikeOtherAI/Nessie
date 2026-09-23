@@ -9,6 +9,7 @@ import {
   type MentionInputHandle,
 } from '../../shared/MentionInput'
 import type { PendingAgentInvite } from '../../../facades/messages/hooks'
+import type { ResearchComposerButton } from '../deep-water/useResearchComposerButton'
 import type { SecretRecord } from '../../../facades/secrets/hooks'
 import { toolbarButtonClass } from './channel-presentation'
 import { ComposerAttachments } from './ComposerAttachments'
@@ -46,7 +47,8 @@ interface ChannelComposerProps {
   onDismissSecretCapture: () => void
   // Required so no composer can hold a draft for a question it never shows.
   mentionInvite: MentionInviteController
-  onOpenDeepWaterResearch?: () => void
+  /** DeepWater research: always shown where a brief can open, with its reason. */
+  researchButton?: ResearchComposerButton
   onOpenExecutorRun?: () => void
   /**
    * The holder's live executor lease, drawn beside Run on executor. In the
@@ -79,7 +81,7 @@ export const ChannelComposer = ({
   onConfirmSecretCapture,
   onDismissSecretCapture,
   mentionInvite,
-  onOpenDeepWaterResearch,
+  researchButton,
   onOpenExecutorRun,
   executorLeaseIndicator,
 }: ChannelComposerProps) => {
@@ -220,12 +222,13 @@ export const ChannelComposer = ({
             >
               #
             </button>
-            {onOpenDeepWaterResearch ? (
+            {researchButton ? (
               <button
-                aria-label="Start Deep Water research"
+                aria-label={researchButton.title}
                 className={toolbarButtonClass}
-                onClick={onOpenDeepWaterResearch}
-                title="Start Deep Water research"
+                data-testid="composer-research-button"
+                onClick={researchButton.onOpen}
+                title={researchButton.title}
                 type="button"
               >
                 <svg

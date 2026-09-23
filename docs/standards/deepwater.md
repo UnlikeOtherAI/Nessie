@@ -409,6 +409,9 @@ worker and card are built on them.
   (that list had no viewer predicate, so a brief row there would have shown a
   colleague's unlaunched brief, its topic included, to the whole team); there
   is never a second handler on the path or an unfiltered list of briefs.
+  Knowledge › Research's `DeepWaterResearchView` reads it
+  (`useResearchRunList`, see "Research briefs — the admin"); the admin's
+  launcher-era `DeepWaterRunHistory` is gone.
 
 ## Research briefs — a person's actions and an agent's calls
 
@@ -575,7 +578,8 @@ the only way results come back.
   loop. Only a person's own brief is blocked quietly, because its dialog says
   "Sign in again"; everyone else is told once, as an `identity_changed` notice:
   an agent's brief that the agent can't carry on (they cannot edit it, and the
-  agent is never woken while the watch is stopped), and a launched research
+  agent is never woken while the watch is stopped; the brief they open from
+  there says the same and offers the same Retry), and a launched research
   that DeepWater can't check on it — never that it finished, nor that it is
   waiting to be saved.
 - **Identity drift and UOA's rollout gate.** UOA answers 403 for Nessie's own
@@ -752,3 +756,174 @@ the only way results come back.
   changed) — the agent is not woken, since it could act only with the sign-in
   UOA refused. `delivered_at` stays unset either way, so a confirmation that
   does arrive later still attaches.
+
+## Research briefs — the admin
+
+A person reaches DeepWater research from wherever they stand, and every doorway
+opens the same surfaces (`admin/src/components/features/deep-water/`, facades in
+`admin/src/facades/deep-water/`). The launcher form, its mode selector and
+custom controls, and the chat card that opened it are gone; an older chat
+card's `open_deep_water_research_launcher` action opens a new brief with its
+question, coming back where that card sits — its conversation, read from the
+message feed it is in (`feed-conversation.ts`, so a drawer or a Threads inbox
+card names its own), its thread and its reply thread. With no brief host on
+the screen it goes to that conversation, which opens the brief itself.
+
+- **One brief dialog, one host per screen.** `ResearchBriefDialog` is the only
+  surface for agreeing, starting and following a research: the question and
+  background open a brief; then the conversation with DeepWater's planner (who
+  wrote each turn from Nessie's own `turnAuthors`, "replying" with the elapsed
+  time, a failed turn with Send again, one-tap suggested answers that name the
+  question they answer), editable pillars, the seven settings under their UK
+  English labels with a lock on the person's own choices ("Let DeepWater
+  choose" hands one back), the planner's assessment with its suggested depth,
+  the person-only "Publish on research.deepwater.live" switch (off by default)
+  and Start, pinned to the foot of the dialog. `ResearchBriefHost` mounts it on
+  a conversation (origin: that thread), on the Threads inbox (no origin of its
+  own: each card's composer names its reply thread) and on Knowledge › Research
+  (origin: the person's Personal Assistant conversation) and owns
+  `?research=<runId>`, which is declared linkable state on the conversation and
+  reply-thread routes, the Threads inbox and the Knowledge views
+  (`deep-water-research-navigation.test.ts` pins those declarations, the host
+  on each route and the Research button on each composer); a question a
+  doorway hands over travels in router state, never in the address, and the
+  host drops it with a replacing redirect once taken, so Back and Forward land
+  on the conversation, never on a half-filled form. A doorway
+  over another conversation than the screen's names that conversation
+  (`NewBriefPlace`, `research-brief-origin.ts`), and "Start again" restarts a
+  research where it was asked, reply thread included. A research started from
+  the launcher, before briefs, has no brief (`GET …/:runId/brief` answers 404
+  while `GET …/:runId` still answers the viewer), so the dialog shows where it
+  stands and what it produced — status, outcome, artifacts and its Documents
+  page — rather than calling the viewer's own research unavailable. A
+  research's "the result will come back to this conversation" is said only
+  over the conversation it was asked in (its card, or its brief over that
+  thread); Knowledge › Research, the Threads inbox and a brief over another
+  conversation say "the conversation it was asked in" (`researchShownIn`).
+- **Edits are local until they ride on an action** (contract D4,
+  amendments-fable F8). A setting is sent only when it differs from what
+  DeepWater holds, because every key sent is a lock; pillars ride as a whole
+  cleaned list. A sent action's edits stay on screen until the brief moves past
+  the revision they were sent against. When the brief moves on under unsent
+  edits — the planner answered, or a reply or Start was refused as a revision
+  conflict and the brief was fetched again — the edits are kept on top and the
+  dialog says what DeepWater changed. The browser that sent an action holds it
+  in that brief's stored draft until the brief says how it ended: a refusal
+  lays its edits back under anything changed since and returns its words only
+  to an empty reply box; a reply the planner could not answer returns its words
+  to the box, and they are what Send again sends. Another browser, or a
+  cleared draft, has nothing to put back. Every action carries an `actionId`
+  that is reused only to retry the same body after a lost answer
+  (`createIntentActionIds`). Where the body lives in a stored draft — a new
+  brief's question and background, a reply and its edits, Start's edits — the
+  key it was last sent with is stored in that draft before the request leaves
+  and kept until the server has decided it (`useStoredIntentActionId`), so
+  pressing the button again after closing the dialog or reloading replays the
+  request instead of opening, and paying for, a second brief or planner turn.
+  A lost answer never reads as a request that did not arrive: "Nessie didn't
+  answer". Research drafts are keyed by the viewer
+  (`draft:research-brief-new:<user>:<organisation>:<place>`,
+  `draft:research-brief:<user>:<runId>`), so a second person on the same
+  browser never sees another's unsent question.
+- **Who may do what is the server's.** The dialog reads `viewer` from the view:
+  an agent's brief is read-only for people, and its requester may only discard
+  it; a finished research offers Retry import only where `canRetryDelivery`
+  says so. A blocked delivery's remedy ("Retry import puts it back", "Sign in
+  again, then choose Retry") is said only to the requester; everyone else who
+  can see the research reads what happened and that the person who asked can
+  retry (`blockedReasonCopy`). A drafting brief whose sign-in no longer
+  resolves shows its requester "Sign in again to continue this brief" (F4) —
+  on an agent's brief too, where the agent can't carry on until they do — with
+  Retry where `canRetryDelivery` says so.
+- **A cancel is a state of its own.** `POST …/cancel` answers 202 once the
+  cancel is recorded for the worker; the research stays open, with
+  `pendingAction.kind === 'cancel'`, until DeepWater has stopped it. From the
+  moment Discard or Cancel is pressed until then, the dialog says "Discarding
+  this brief…" or "Stopping this research…" and offers neither the cancel again
+  nor Start, and the brief is not edited (its unsent edits stay in the draft).
+  The cancel mutation settles only once the run has been read again, so the
+  cancel never reappears in between. A cancel that did not go through —
+  DeepWater refused it, or could not be asked — comes back as the view's
+  `cancelFailure` while the research is open: its words are said to whoever may
+  cancel (`viewer.canCancel`), beside Cancel — at the brief's foot while it is
+  being agreed, in the research's outcome once it has started (card, Knowledge
+  row, dialog) — and Cancel is offered again; the brief conversation does not
+  repeat a cancel's error. A refusal reads by the action refused
+  (`briefActionFailure(error, action, viewerIsOwner)`): `DEEP_WATER_BRIEF_BUSY`
+  on a cancel means the brief is still being opened, never that the planner is
+  answering, and `DEEP_WATER_NOT_READY` names the readiness remedy for the
+  viewer's role and refetches the products list, so a dialog holding a stale
+  "ready" verdict gives way to `ResearchReadinessScreen`.
+- **Every composer's Research button is always there** — the conversation's; a
+  reply thread's and a Threads inbox card's, whose brief carries the thread's
+  `rootMessageId` so the research card and its result land under that root; and
+  the agent and person drawers', whose brief comes back to the conversation that
+  drawer posts to. When the viewer cannot
+  start research it says why in its label and opens `ResearchReadinessScreen`
+  instead of a brief: a team owner is sent to `/apps/deep-water` to turn
+  DeepWater on or update it, anyone else — admins included — is told to ask a
+  team owner, and an unlinked sign-in is asked to sign in again. The verdict is
+  the products list's `research` readiness, read through
+  `DeepWaterResearchReadinessSchema` (`readDeepWaterReadiness`); the admin never
+  re-derives it. No deep-water entry, or one sent without a verdict (the API
+  gives none outside a team), is `unavailable`. A products read that failed
+  before any verdict was read (a later failed read keeps the last one), or a
+  verdict outside the contract (an admin and API deployed at different
+  versions), is logged once and said as "DeepWater's status couldn't be
+  loaded" with Try again (`ResearchReadinessUnread`) — on the hero, behind the
+  composer's button (whose label then claims no reason) — never as DeepWater
+  being off or unreachable; `readinessCopy` throws on a state it has no words
+  for rather than render an undefined title.
+- **The owner's controls live on the `/apps/deep-water` hero**
+  (`DeepWaterTeamControls`): turn DeepWater on, off (confirmed) or update it to
+  the brief tools — a team that needs updating is on, so its owner is offered
+  both Update and Turn off (`deepWaterTeamControls`). They, and the readiness
+  screen's way to them, are offered on the session's owner role alone
+  (`viewerIsOwner`), because `PATCH
+  …/team-enablement` accepts only owners; the verdict's `viewerCanChangeTeam`
+  is owners and admins, the cancel standing (amendments N8.5), and gates
+  nothing but Cancel. A refusal because a research is still open
+  (`LEDGER_DEEPWATER_ACTIVE_RUNS`, whose `details` name the run by id, status,
+  origin and requester — `DeepWaterActiveRunConflictSchema`) shows that research
+  by who started it and where it stands, never its question, with "Cancel this
+  research" as the owner's own cancel. An accepted cancel leaves the block in
+  place saying the cancel is requested and to try again once the research has
+  stopped, with no second Cancel while it is on its way — also when trying the
+  change again meanwhile is refused by the same research
+  (`openResearchStanding`). An owner who may read the research watches its
+  view there (refreshed by the realtime update): they see it stop, and a
+  cancel that did not go through (`cancelFailure`) comes back with its reason
+  and "Cancel again", however often the change has been tried since. One who
+  may not read it (its read answers 404) learns only from trying the change
+  again: refused by the same research after their cancel was accepted, they are
+  told the cancel may not have gone through and offered "Cancel again" — a
+  newer cancel replaces the one before, never doubles it. A verdict the admin
+  could not read offers no change at all, only Try again.
+- **Artifacts are one component.** `ResearchArtifactActions` — Download report
+  (or summary) `.md`, Download sources `.csv`, Copy markdown, and "Open on
+  research.deepwater.live" only when the view carries `publicUrl` — is used by
+  the research card, the actions beside a result reply
+  (`metadata.deepWaterNotice`) and Knowledge › Research rows. Downloads and
+  copy read the stored artifacts through the run's viewer check, never the
+  Knowledge page; the file name comes from `deepWaterArtifactFileName`, the
+  same function behind the API's `Content-Disposition`. Where the browser will
+  not copy, the markdown is shown selected for a manual copy, and a copy is
+  never claimed that did not happen. A summary is called a summary everywhere.
+- **Knowledge › Research pages forwards only on the server.** The brief API
+  keeps only the rows the viewer may see, so it returns no `prevCursor`;
+  `useResearchRunList` pages with `usePagedList`'s `backward: 'trail'`, which
+  keeps the cursors already walked through in the address (`trail`,
+  `cursor-trail.ts`), so Previous, Back and a reload land on the same page.
+  The API reads a bounded number of rows per request, so a page can be short —
+  even empty — while `hasMore` is true: "No research yet" is only a first page
+  with nothing further (`researchListPage`); an empty page with more keeps its
+  pager and says older research may be further back, and a trail list's
+  footer counts the rows on its page ("7 on this page", `trailPageLabel`)
+  rather than a range its short pages would make wrong. Once the list honours
+  `direction=backward` and returns a `prevCursor`, the trail goes and the list
+  pages like every other.
+- **Nothing polls.** `useDeepWaterRunEvents`, mounted once in
+  `AdminShellLayout`, turns each content-free `integration.run.updated` into an
+  invalidation of that run's reads for every viewer scope and of every research
+  list; a `realtime.gap` refetches everything. Browser coverage:
+  `pnpm --filter @nessie/admin test:e2e:research-brief`.

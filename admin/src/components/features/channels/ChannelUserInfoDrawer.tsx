@@ -21,6 +21,7 @@ import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 import { useStickToBottom } from '../../../hooks/useStickToBottom'
+import { useResearchComposerButton } from '../deep-water/useResearchComposerButton'
 
 type ChannelUserInfoDrawerProps = {
   agents: AgentRecord[]
@@ -167,6 +168,13 @@ export const ChannelUserInfoDrawer = ({
     pageCount: messageHistory.pageCount,
   })
 
+  // Research started from this DM comes back to it, not to the room behind the drawer.
+  const researchButton = useResearchComposerButton(message, {
+    origin: dmChannel?.defaultThreadId
+      ? { channelId: dmChannel.id, kind: 'thread', threadId: dmChannel.defaultThreadId }
+      : null,
+  })
+
   if (!user) {
     return null
   }
@@ -240,6 +248,7 @@ export const ChannelUserInfoDrawer = ({
               ) : null}
               {dmChannel ? (
                 <ChannelMessageFeed
+                  channelId={dmChannel.id}
                   agentById={agentMap}
                   agentMap={agentMap}
                   editingContent={editingContent}
@@ -301,6 +310,7 @@ export const ChannelUserInfoDrawer = ({
               inviteErrors={inviteErrors}
               onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
               onDismissPendingAgent={dismissPendingAgent}
+              researchButton={researchButton}
               secretCapture={secretCapture}
             />
           ) : null}

@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
  * three-tone union was the stated reason five surfaces hand-rolled a banner
  * rather than use this component — `ConnectProgress`'s `needs_secret` step,
  * `ReviewPanel`'s accent strip, `PersonalAssistantSurface`'s config banner,
- * `DeepWaterResearchLauncher`'s warning box, and the autosave "Saved" line the
+ * the retired DeepWater launcher's warning box, and the autosave "Saved" line the
  * content system now owes every silently-saving control. `--info-*` is already
  * declared by every theme; `neutral` reuses the overlay/`--tx2` pair that a
  * quiet inline note ships with everywhere else.

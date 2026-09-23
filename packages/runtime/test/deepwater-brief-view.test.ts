@@ -252,3 +252,20 @@ test('transcript authors come from Nessie\'s own turn record, never from the wir
     message: 'The brief changed while you were editing it. Check the latest version, then try again.',
   })
 })
+
+test('a cancel that did not go through says so while the research is open, and only then', () => {
+  const refused = action({ kind: 'cancel', error: { code: 'unavailable', at: SINCE } })
+  const running = toDeepWaterResearchRunView(run({ status: 'running', scopeState: state({ pendingAction: refused }) }), context)
+  assert.deepEqual(running.cancelFailure, {
+    code: 'unavailable',
+    message: 'DeepWater couldn\'t be reached, so this research wasn\'t cancelled. Try again in a few minutes.',
+  })
+  // A cancel still in flight, another action's error, and a research that has ended carry none.
+  const inFlight = action({ kind: 'cancel' })
+  assert.equal(toDeepWaterResearchRunView(run({ scopeState: state({ pendingAction: inFlight }) }), context).cancelFailure, null)
+  const replyRefused = action({ error: { code: 'busy', at: SINCE } })
+  assert.equal(toDeepWaterResearchRunView(run({ scopeState: state({ pendingAction: replyRefused }) }), context).cancelFailure, null)
+  const ended = run({ status: 'cancelled', scopeState: state({ pendingAction: refused }) })
+  assert.equal(toDeepWaterResearchRunView(ended, context).cancelFailure, null)
+  assert.doesNotMatch(running.cancelFailure?.message ?? '', /ledger|mcp|_/i)
+})

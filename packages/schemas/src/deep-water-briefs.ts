@@ -210,10 +210,35 @@ export type DeepWaterResearchReadinessState = z.infer<typeof DeepWaterResearchRe
 export const DeepWaterResearchReadinessSchema = z
   .object({
     state: DeepWaterResearchReadinessStateSchema,
+    /**
+     * The viewer is a team owner or admin: the standing that may cancel any
+     * open research in the team (amendments N8.5). It is the cancel standing
+     * only. Turning DeepWater on or off, or updating it, is owner-only —
+     * exactly what `PATCH …/team-enablement` accepts — so a client gates those
+     * on the session's owner role, never on this field, and offers an admin
+     * no control the route would refuse.
+     */
     viewerCanChangeTeam: z.boolean(),
   })
   .strict()
 export type DeepWaterResearchReadiness = z.infer<typeof DeepWaterResearchReadinessSchema>
+
+/**
+ * The `details` of a 409 that refuses a team transition while a research is
+ * still open — `LEDGER_DEEPWATER_ACTIVE_RUNS` on turning DeepWater off or
+ * updating it, and the agent-revocation refusal (amendments N8.5). It names
+ * the run by id, status, origin and requester only, never its topic, so an
+ * owner can cancel it from the `/apps/deep-water` hero without reading it.
+ * Not strict: the refusal may name more about the run (its chat), which a
+ * reader of these four fields has no use for.
+ */
+export const DeepWaterActiveRunConflictSchema = z.object({
+  id: uuid,
+  status: z.string().min(1),
+  originKind: DeepWaterOriginKindSchema,
+  requestedByUserId: uuid.nullable(),
+})
+export type DeepWaterActiveRunConflict = z.infer<typeof DeepWaterActiveRunConflictSchema>
 
 // ── Requests ────────────────────────────────────────────────────────────────
 

@@ -4,20 +4,24 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { isAgentCardResponseMessage } from '@nessie/schemas'
+import { isAgentCardResponseMessage, isResearchRunRefMessage } from '@nessie/schemas'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const readSource = (relative: string) => readFileSync(resolve(here, relative), 'utf8')
 
-test('the message row hides edit on a card press but keeps delete', () => {
+test('the message row hides edit on a card press and a research card but keeps delete', () => {
   const source = readSource('../src/components/features/channels/ChannelMessageRow.tsx')
 
-  // One predicate, shared with the server that refuses the edit — never a
-  // second hand-rolled metadata check that could disagree with it.
-  assert.match(source, /import \{ isAgentCardResponseMessage \} from '@nessie\/schemas'/)
+  // One predicate each, shared with the server that refuses the edit — never
+  // a second hand-rolled metadata check that could disagree with it.
   assert.match(
     source,
-    /canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage\(message\.metadata\)/,
+    /import \{ isAgentCardResponseMessage, isResearchRunRefMessage \} from '@nessie\/schemas'/,
+  )
+  assert.match(source, /canEditOwnMessage = canManageOwnMessage\s+&& !isAgentCardResponseMessage\(message\.metadata\)/)
+  assert.match(
+    source,
+    /!isAgentCardResponseMessage\(message\.metadata\)\s+&& !isResearchRunRefMessage\(message\.metadata\)/,
   )
   assert.match(source, /canEdit=\{canEditOwnMessage\}/)
   assert.match(source, /canDelete=\{canManageOwnMessage\}/)
@@ -44,4 +48,16 @@ test('the shared predicate answers the row the same way it answers the service',
     true,
   )
   assert.equal(isAgentCardResponseMessage({ mentions: [] }), false)
+})
+
+test('a research card is the server\'s pointer, never the person\'s words to edit', () => {
+  // `MESSAGE_IMMUTABLE_RESEARCH_CARD` on the server; no pencil in the row.
+  assert.equal(
+    isResearchRunRefMessage({
+      researchRunRef: { runId: '11111111-1111-4111-8111-111111111111', schemaVersion: 1 },
+    }),
+    true,
+  )
+  assert.equal(isResearchRunRefMessage({ researchRunRef: { runId: 'not-a-uuid', schemaVersion: 1 } }), false)
+  assert.equal(isResearchRunRefMessage({ mentions: [] }), false)
 })
