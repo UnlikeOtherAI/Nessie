@@ -13,7 +13,7 @@
     "start": "tsx src/index.ts",
     "smoke:local-ollama": "tsx scripts/local-ollama-smoke.ts",
     "test": "node --test --test-force-exit --import tsx test/**/*.test.ts",
-    "test:mcp": "node --test --test-force-exit --import tsx test/mcp-session-manager.test.ts test/kelpie-detect.test.ts test/local-mcp-report.test.ts test/ollama-search-mcp.test.ts test/coding-session-config.test.ts test/coding-session-projection.test.ts test/coding-session-claude.test.ts test/coding-session-codex.test.ts test/coding-session-env.test.ts test/coding-session-store.test.ts test/coding-session-review.test.ts test/coding-session-bridge.test.ts test/coding-session-owners.test.ts test/coding-session-limits.test.ts",
+    "test:mcp": "node --test --test-force-exit --import tsx test/mcp-session-manager.test.ts test/kelpie-detect.test.ts test/local-mcp-report.test.ts test/ollama-search-mcp.test.ts test/coding-session-config.test.ts test/coding-session-projection.test.ts test/coding-session-claude.test.ts test/coding-session-codex.test.ts test/coding-session-env.test.ts test/coding-session-store.test.ts test/coding-session-review.test.ts test/coding-session-bridge.test.ts test/coding-session-owners.test.ts test/coding-session-limits.test.ts test/coding-session-containment.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

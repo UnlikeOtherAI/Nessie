@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs'
 import { open, readFile, unlink } from 'node:fs/promises'
 import { basename } from 'node:path'
 
+import { reachableUserManager, startHostInUserUnit, type UnitRunner, type UserManager } from './host-unit.js'
 import { createJsonExclusive, readJson, rotateLogIfLarge, type CodingSessionPaths } from './session-files.js'
 import { hostLockIsStale, readHostLock } from './session-lock.js'
 import { writeRequest } from './session-requests.js'
@@ -14,10 +15,11 @@ import { CODING_SESSION_PROTOCOL_VERSION } from './types.js'
  *
  * The host is this same executor entry run as `coding-session-host`, with the
  * bridge's exec arguments and environment (so a development loader and the
- * packaged-CLI marker both survive), detached and with its output in the
- * session's bounded `host.log`. It outlives the bridge: the daemon's idle
- * close, the reporter's probe and a daemon restart all kill the bridge, and
- * none of them may take a coding turn with it.
+ * packaged-CLI marker both survive), with its output in the session's bounded
+ * `host.log`, in a systemd user unit of its own on Linux and detached
+ * everywhere else. It outlives the bridge: the daemon's idle close, the
+ * reporter's probe and a daemon restart all kill the bridge, and none of them
+ * may take a coding turn with it.
  */
 
 const ENTRY_NAMES = ['index.js', 'index.ts', 'nessie-executor.cjs']
@@ -46,18 +48,43 @@ export const executorRuntimeDigest = (entry: string): Promise<string> => {
   return digest
 }
 
+export type HostSpawnOptions = {
+  userManager?: () => UserManager | undefined
+  runUnit?: UnitRunner
+}
+
+/**
+ * On Linux with a reachable user manager the host gets a systemd user unit of
+ * its own (see `host-unit.ts`); everywhere else, and whenever that start is
+ * refused, it is a detached process — its own session on POSIX, and on
+ * Windows a process whose agent the native helper's Job Object contains.
+ */
 export const spawnCodingSessionHost = async (input: {
   configPath: string
   entry: string
   paths: CodingSessionPaths
   sessionId: string
-}): Promise<void> => {
+}, options: HostSpawnOptions = {}): Promise<'unit' | 'detached'> => {
   await rotateLogIfLarge(input.paths.hostLog, HOST_LOG_BYTES)
   const log = await open(input.paths.hostLog, 'a', 0o600)
+  const argv = [
+    process.execPath, ...process.execArgv,
+    input.entry, 'coding-session-host', '--config', input.configPath, '--session', input.sessionId,
+  ]
+  const manager = (options.userManager ?? reachableUserManager)()
+  if (manager) {
+    await log.close()
+    const started = await startHostInUserUnit({
+      argv, hostLog: input.paths.hostLog, sessionId: input.sessionId, manager,
+      ...(options.runUnit ? { run: options.runUnit } : {}),
+    })
+    if (started) return 'unit'
+    return spawnCodingSessionHost(input, { ...options, userManager: () => undefined })
+  }
   try {
-    const child = spawn(process.execPath, [
-      ...process.execArgv, input.entry, 'coding-session-host', '--config', input.configPath, '--session', input.sessionId,
-    ], { detached: true, env: process.env, stdio: ['ignore', log.fd, log.fd], windowsHide: true })
+    const child = spawn(argv[0]!, argv.slice(1), {
+      detached: true, env: process.env, stdio: ['ignore', log.fd, log.fd], windowsHide: true,
+    })
     await new Promise<void>((settle, fail) => {
       child.once('spawn', () => settle())
       child.once('error', fail)
@@ -66,6 +93,7 @@ export const spawnCodingSessionHost = async (input: {
   } finally {
     await log.close()
   }
+  return 'detached'
 }
 
 type SpawnMarker = { at: number }

@@ -1,19 +1,26 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { lstatSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { packagedNativeHelperPath } from '../state-security.js'
 import type { CodingProcessIdentity } from './types.js'
 
 /**
  * How a session host starts, recognises and kills a coding agent's process
- * tree, behind one interface so each OS's containment can grow on its own.
+ * tree, behind one interface so each OS's containment is its own.
  *
- * This is the basic form: POSIX puts the agent in its own process group and
- * sweeps descendants from a `ps` snapshot taken before signalling, which also
- * catches a grandchild that called `setsid`; Windows kills with
- * `taskkill /T /F` by its absolute System32 path. The Windows Job Object and
- * the Linux `systemd-run --user` unit replace the weak parts here without
- * changing this interface.
+ * POSIX puts the agent in its own process group and sweeps descendants from a
+ * `ps` snapshot taken before signalling, which also catches a grandchild that
+ * called `setsid`; on Linux the host itself runs in a `systemd-run --user`
+ * unit when a user manager is reachable (see `host-spawn.ts`), whose cgroup
+ * catches whatever escapes both. On Windows a packaged runtime starts the
+ * agent through the native helper's `job-run`, which holds it in a Job Object
+ * with kill-on-close: the helper's pid is the recorded identity, and killing
+ * the helper — or the host dying, which the helper watches — kills everything
+ * in the job, including a grandchild whose parent already exited. A
+ * development run has no verified helper, and falls back to `taskkill /T /F`
+ * by its absolute System32 path, which misses exactly that grandchild.
  *
  * Every kill checks the recorded identity (pid plus process start time) first,
  * so a pid the OS has since handed to somebody else is never signalled.
@@ -70,7 +77,23 @@ const walk = (root: number, rows: { pid: number; ppid: number; started?: number 
   return found
 }
 
-const windowsControl = (): CodingProcessControl => {
+/**
+ * The native helper beside the packaged Node runtime, when this process is the
+ * installed package — the same helper, found the same way, that secures the
+ * executor's state. A development run has none and gets `undefined`.
+ */
+export const packagedJobHelper = (environment: NodeJS.ProcessEnv = process.env): string | undefined => {
+  if (environment.NESSIE_EXECUTOR_PACKAGED_CLI !== '1') return undefined
+  const path = packagedNativeHelperPath()
+  try {
+    const entry = lstatSync(path)
+    return entry.isFile() && !entry.isSymbolicLink() ? path : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const windowsControl = (jobHelper: string | undefined): CodingProcessControl => {
   const startedAt = async (pid: number): Promise<string | undefined> => {
     const answer = (await powershell(
       `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.StartTime.ToFileTimeUtc() }`,
@@ -79,9 +102,13 @@ const windowsControl = (): CodingProcessControl => {
   }
   const taskkill = (pid: number): Promise<string> => run(system32('taskkill.exe'), ['/PID', String(pid), '/T', '/F'])
   return {
-    spawnAgent: (command, args, options) => spawn(command, args, {
-      cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: false,
-    }),
+    // Through the helper the program is resolved and started by `CreateProcessW`
+    // inside the job; the host still holds the same three pipes.
+    spawnAgent: (command, args, options) => spawn(
+      jobHelper ?? command,
+      jobHelper ? ['job-run', '--', command, ...args] : args,
+      { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: false },
+    ),
     identify: async (pid) => {
       const started = await startedAt(pid)
       return started === undefined ? undefined : { pid, startedAt: started }
@@ -156,8 +183,11 @@ const posixControl = (platform: NodeJS.Platform): CodingProcessControl => {
   }
 }
 
-export const createCodingProcessControl = (platform: NodeJS.Platform = process.platform): CodingProcessControl => (
-  platform === 'win32' ? windowsControl() : posixControl(platform)
+export const createCodingProcessControl = (
+  platform: NodeJS.Platform = process.platform,
+  options: { jobHelper?: string } = { jobHelper: platform === 'win32' ? packagedJobHelper() : undefined },
+): CodingProcessControl => (
+  platform === 'win32' ? windowsControl(options.jobHelper) : posixControl(platform)
 )
 
 export const codingProcessIsAlive = alive

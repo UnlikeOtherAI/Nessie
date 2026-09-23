@@ -160,16 +160,43 @@ when `gh` is installed; a failure makes the session `failed` with
 `agent_missing`, `agent_not_logged_in`, `git_missing`, `gh_not_authenticated`,
 or `unsupported_supervisor` (the Windows service's virtual account).
 
-## Containment, as built so far
+## Containment and teardown, per supervisor
 
-Process control is one interface. On POSIX the agent is its own process group,
-and a kill sweeps the group plus every descendant from a `ps` snapshot taken
-before signalling, which catches a grandchild that called `setsid`. On Windows
-a kill is `taskkill /T /F` by its absolute System32 path, with the descendant
-table read first. Every kill checks the recorded pid and start time, so a
-reused pid is never signalled, and a new host stops a lost host's agent before
-it resumes. The Windows Job Object, the Linux `systemd-run --user` unit, the
-daemon's teardown hooks and the heartbeat's `codingSessionClose` come next.
+| Host | How the session host runs | Survives a daemon restart | How the tree dies |
+| --- | --- | --- | --- |
+| Windows, desktop companion or hand-run daemon | detached; a packaged runtime starts the agent through the native helper's `job-run`, which holds it in a Job Object with `KILL_ON_JOB_CLOSE` | yes | the helper exits with the agent, and ends the job at once when the host dies; closing or killing the helper kills everything in the job. A development run has no verified helper and uses `taskkill /T /F` by its absolute System32 path |
+| Windows service (virtual account) | refused: the session fails with `unsupported_supervisor` | — | — |
+| macOS | detached, its own session | yes | group kill, then a sweep of every descendant in a `ps -A -o pid=,ppid=,pgid=` snapshot taken before signalling |
+| Linux with a reachable user manager | `systemd-run --user --collect --unit nessie-coding-<sessionId> -p KillMode=control-group -p TimeoutStopSec=10` | yes, and it can never block the executor unit's stop | the unit's cgroup dies with the host; a closing host stops its own unit |
+| Linux without one | detached (`setsid`) | no | as macOS |
+
+`job-run -- <program> [args…]` starts the program suspended, assigns it to
+the job and only then resumes it, so nothing the agent runs is ever outside
+the job — including a grandchild whose parent already exited, which
+`taskkill /T` cannot find. stdin, stdout and stderr pass straight through
+and the helper exits with the program's code; its own refusal goes to stderr
+with exit code 125 (`EXECUTOR_JOB_SPAWN_FAILED` reads as `agent_missing`,
+`EXECUTOR_JOB_CONTAINMENT_FAILED` and `EXECUTOR_JOB_PARENT_GONE` as
+`containment_failed`). The recorded agent identity is then the helper's.
+
+The Windows service refusal reads the token, not only the marker:
+`NESSIE_EXECUTOR_SUPERVISOR=service`, or a SID from `whoami /user` (by its
+System32 path) that is LocalSystem, LocalService, NetworkService or a virtual
+service account (`S-1-5-80-…`). None of them has a Claude login or a user
+profile.
+
+The Linux unit gets the bridge's environment through `--setenv` (a transient
+unit starts from the manager's environment, not its caller's), its output in
+the session's `host.log`, and `NESSIE_CODING_SESSION_UNIT` naming itself.
+`XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, which the MCP SDK strips,
+are derived from `/run/user/<uid>`. When `systemd-run` refuses — no manager,
+an older systemd without `StandardOutput=append:`, a unit of that name still
+loaded — the host starts detached instead, and the lock still decides which
+host serves the session.
+
+Every kill checks the recorded pid and start time, so a reused pid is never
+signalled, and a new host stops a lost host's still-running agent before it
+resumes the session.
 
 ## What the bridge reports
 

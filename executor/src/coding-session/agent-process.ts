@@ -70,6 +70,9 @@ const NOT_LOGGED_IN = new RegExp(
 
 export const agentFailureReason = (lines: readonly string[]): string => {
   const text = lines.join('\n')
+  // The Windows job helper's own refusal: it ran nothing, so nothing ran uncontained.
+  if (text.includes('"code":"EXECUTOR_JOB_SPAWN_FAILED"')) return 'agent_missing'
+  if (/"code":"EXECUTOR_(JOB_CONTAINMENT_FAILED|JOB_PARENT_GONE)"/u.test(text)) return 'containment_failed'
   if (NOT_LOGGED_IN.test(text)) return 'agent_not_logged_in'
   if (/usage limit|quota|rate limit/iu.test(text)) return 'agent_quota_exhausted'
   return 'agent_exited'

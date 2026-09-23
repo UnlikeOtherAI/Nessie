@@ -7,6 +7,7 @@ import { createClaudeDriver } from './claude-driver.js'
 import { createCodexDriver } from './codex-driver.js'
 import { codingSessionsDigestMatches, loadCodingSessionsConfig, type LoadedCodingSessionsConfig } from './config.js'
 import { executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
+import { stopOwnUserUnit } from './host-unit.js'
 import { createCodingProcessControl, type CodingProcessControl } from './process-control.js'
 import { createProjector, type Projector } from './projection.js'
 import { gitStartSnapshot } from './review.js'
@@ -246,6 +247,9 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
     } finally {
       await lock.release()
     }
-    if (done || !await inboxHasRequests(paths)) return
+    if (!done && await inboxHasRequests(paths)) continue
+    // A closed session's unit is stopped, so nothing its agent started outlives it.
+    if ((await readJson<CodingSessionState>(paths.state))?.status === 'closed') await stopOwnUserUnit()
+    return
   }
 }
