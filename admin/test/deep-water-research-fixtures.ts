@@ -22,6 +22,7 @@ export const THREAD = '40000000-0000-4000-8000-000000000002'
 export const researchRun = (overrides: Partial<DeepWaterResearchRunView> = {}): DeepWaterResearchRunView =>
   DeepWaterResearchRunViewSchema.parse({
     artifacts: null,
+    cancelFailure: null,
     completedAt: null,
     createdAt: '2026-09-23T09:00:00.000Z',
     delivery: { blockedReason: null, state: 'pending' },

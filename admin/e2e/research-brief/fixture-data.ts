@@ -45,6 +45,7 @@ const ownDraftViewer = { canCancel: true, canEdit: true, canRetryDelivery: false
 export const run = (overrides: Partial<DeepWaterResearchRunView>): DeepWaterResearchRunView =>
   DeepWaterResearchRunViewSchema.parse({
     artifacts: null,
+    cancelFailure: null,
     completedAt: null,
     createdAt: at(0),
     delivery: { blockedReason: null, state: 'pending' },
