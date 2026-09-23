@@ -59,6 +59,14 @@ export const TaskSetReceiverSchema = z.object({
   agentId: uuid, channelId: uuid, instructions: z.string().trim().min(1).max(32000),
 }).strict()
 
+/**
+ * The action purpose a receiver delivery runs under. A delivery that reaches a
+ * busy receiver pends, and this purpose is what makes it drain alone
+ * (`packages/db/src/thread-serialization.ts`), keeping its hidden kickoff, its
+ * owner's identity and its `task-set:<id>` correlation in a run of its own.
+ */
+export const TASK_SET_DELIVERY_PURPOSE = 'task_set.delivery'
+
 export const TaskSetDisclosureSchema = z.object({
   classified: z.literal(true),
   basisScopes: z.array(z.object({ scopeType: z.string().min(1), scopeId: z.string().min(1) })),

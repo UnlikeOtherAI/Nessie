@@ -9,6 +9,7 @@ import {
   parseTeamId,
   parseThreadId,
   parseUserId,
+  TASK_SET_DELIVERY_PURPOSE,
   UoaSessionIdentitySchema,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
@@ -55,7 +56,7 @@ export const buildMailboxActorContext = (input: {
       ...(carriesRequester
         ? {
             effectiveUserId: parseUserId(input.actorId),
-            purpose: isTaskSetDelivery ? 'task_set.delivery' : 'agent.peer_delegation',
+            purpose: isTaskSetDelivery ? TASK_SET_DELIVERY_PURPOSE : 'agent.peer_delegation',
             correlationId: isTaskSetDelivery ? `task-set:${input.taskSetId}` : String(input.peerDelegationDepth),
             ...(uoaIdentity ? { uoaIdentity } : {}),
           }
