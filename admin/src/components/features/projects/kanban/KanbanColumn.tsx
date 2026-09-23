@@ -9,6 +9,8 @@ type KanbanColumnProps = {
   count: number
   children: ReactNode
   headerAction?: ReactNode
+  /** A read-only line under the header — "Moving here starts work: CTO" — for everyone. */
+  headerBadge?: ReactNode
   // Ordered task ids in this column — the SortableContext items for reordering.
   itemIds: string[]
   /** One-line tickets sit closer together than full cards. */
@@ -28,6 +30,7 @@ export const KanbanColumn = ({
   count,
   children,
   headerAction,
+  headerBadge,
   itemIds,
   dense = false,
   droppable = true,
@@ -50,8 +53,9 @@ export const KanbanColumn = ({
           {label}
         </span>
         <span className="text-xs text-[color:var(--tx3)]">{count}</span>
-        {headerAction ? <div className="ml-auto">{headerAction}</div> : null}
+        {headerAction ? <div className="ml-auto flex items-center gap-1">{headerAction}</div> : null}
       </div>
+      {headerBadge ? <div className="shrink-0 px-1">{headerBadge}</div> : null}
       <div
         ref={setNodeRef}
         className={[

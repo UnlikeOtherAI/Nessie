@@ -3,7 +3,9 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { faComment, faGripVertical, faPaperclip, faSignal } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { TicketWorkCardRecord } from '@nessie/schemas'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
+import { TicketWorkCardDot } from '../../ticket-work/TicketWorkCardDot'
 import { Pill } from '../../../primitives/Pill'
 import { ExternalKeyPill } from './ExternalKeyPill'
 import { RemotePersonPill } from './RemotePersonPill'
@@ -23,6 +25,8 @@ type KanbanCardProps = {
   pulse?: boolean
   onPulseEnd?: () => void
   view?: BoardView
+  /** An agent's live (or limit-stopped) work on this ticket, as the board read says it. */
+  work?: TicketWorkCardRecord | null
 }
 
 const MAX_EXCERPT_CHARS = 180
@@ -52,7 +56,8 @@ export const KanbanCardContent = ({
   showProject,
   projectName,
   archived,
-}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName'> & { archived?: boolean }) => {
+  work,
+}: Pick<KanbanCardProps, 'task' | 'showProject' | 'projectName' | 'work'> & { archived?: boolean }) => {
   const excerpt = buildCardExcerpt(task.title ? task.purpose : null)
     ?? buildCardExcerpt(task.detail)
   const { data: fieldDefinitions = [] } = useTaskFields(task.projectId ?? undefined)
@@ -133,6 +138,7 @@ export const KanbanCardContent = ({
             {task.attachmentCount}
           </span>
         ) : null}
+        {work ? <TicketWorkCardDot work={work} /> : null}
         {task.dueDate || archived ? (
           <span className="ml-auto flex items-center gap-1.5">
             {task.dueDate ? (
@@ -155,7 +161,7 @@ export const KanbanCardContent = ({
 
 // The `lines` view: the title and the priority signal, nothing else. The full
 // title stays reachable as a tooltip because one line truncates it.
-export const KanbanLineContent = ({ task }: Pick<KanbanCardProps, 'task'>) => {
+export const KanbanLineContent = ({ task, work }: Pick<KanbanCardProps, 'task' | 'work'>) => {
   const title = task.title ?? task.purpose ?? 'Untitled task'
   return (
     <>
@@ -170,6 +176,7 @@ export const KanbanLineContent = ({ task }: Pick<KanbanCardProps, 'task'>) => {
       >
         {title}
       </span>
+      {work ? <TicketWorkCardDot work={work} /> : null}
     </>
   )
 }
@@ -187,6 +194,7 @@ export const KanbanCard = ({
   pulse = false,
   onPulseEnd,
   view = 'cards',
+  work,
 }: KanbanCardProps) => {
   const {
     attributes,
@@ -263,9 +271,9 @@ export const KanbanCard = ({
         <FontAwesomeIcon icon={faGripVertical} />
       </button>
       {view === 'lines' ? (
-        <KanbanLineContent task={task} />
+        <KanbanLineContent task={task} work={work} />
       ) : (
-        <KanbanCardContent projectName={projectName} showProject={showProject} task={task} />
+        <KanbanCardContent projectName={projectName} showProject={showProject} task={task} work={work} />
       )}
     </div>
   )

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../../components/features/projects/kanban/KanbanBoard'
 import { ALL_ASSIGNEES } from '../../components/features/projects/kanban/board-assignee-filter'
@@ -9,6 +9,8 @@ import { useProjects } from '../../facades/projects/hooks'
 import { useMoveTask } from '../../facades/tasks/hooks'
 import { useClearProjectAttention } from '../../facades/alerts/clear-project-attention'
 import { EmptyState } from '../../components/shared/EmptyState'
+import { BoardStartWorkDialog } from '../../components/features/ticket-work/BoardStartWorkDialog'
+import { useBoardTicketWork } from '../../facades/ticket-work/hooks'
 import { useBoardChrome } from './useBoardChrome'
 
 type ProjectBoardTabProps = {
@@ -25,6 +27,9 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
   const { setAssignee, showArchived, tasks, tasksQuery, view, visibleTasks } = chrome
   const { data: projects = [] } = useProjects()
   const moveTask = useMoveTask()
+  // Agents' ticket work on this board: badges, card dots and the column menu.
+  const { data: ticketWork } = useBoardTicketWork(projectId, board?.id)
+  const [startWorkColumn, setStartWorkColumn] = useState<BoardColumnView | null>(null)
   useClearProjectAttention(projectId, 'task_assigned', tasksQuery.isSuccess)
 
   const isScrum = board?.style === 'scrum'
@@ -122,15 +127,25 @@ export const ProjectBoardTab = ({ board, onOpenTask, projectId }: ProjectBoardTa
             key={board.id}
             onMoveTask={handleMove}
             onOpenTask={onOpenTask}
+            onStartWork={setStartWorkColumn}
             projectId={projectId}
             projectNameById={projectNameById}
             showArchived={showArchived}
             showProject={false}
             tasks={visibleTasks}
+            ticketWork={ticketWork}
             view={view}
           />
         )}
       </div>
+      {startWorkColumn ? (
+        <BoardStartWorkDialog
+          boardId={board.id}
+          column={startWorkColumn}
+          onClose={() => setStartWorkColumn(null)}
+          projectId={projectId}
+        />
+      ) : null}
     </div>
   )
 }

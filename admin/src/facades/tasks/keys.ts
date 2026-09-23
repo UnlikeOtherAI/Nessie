@@ -32,4 +32,13 @@ export const taskKeys = {
   // with one invalidate, rather than needing the board ids to hand.
   forBoard: (projectId?: string, boardId?: string) =>
     ['tasks', projectId ?? 'all', 'board', boardId ?? 'none'] as const,
+  // What the project sees of agents' ticket work (docs/standards/ticket-work.md
+  // → "What the project sees"). Under the root, so every task mutation and
+  // `task.updated` nudge refreshes them too; both are objects, never arrays, so
+  // the board's optimistic sweep over ['tasks'] skips them. A trigger write
+  // refreshes every board's badges through `boardWorkAll`.
+  work: (taskId?: string) => ['tasks', 'work', taskId ?? 'none'] as const,
+  boardWorkAll: ['tasks', 'board-work'] as const,
+  boardWork: (projectId?: string, boardId?: string) =>
+    ['tasks', 'board-work', projectId ?? 'none', boardId ?? 'none'] as const,
 }

@@ -131,8 +131,19 @@ test('the conversation surface renders the composer behind canPost', () => {
   const surface = source('pages/channels/ChannelConversationSurface.tsx')
   // The render condition itself, not merely a mention of the field: the
   // composer must be inside a `canPost` branch rather than beside one.
-  assert.match(surface, /visibleActiveTab === 'messages' && roomControls\.canPost \? \(\s*<ChannelComposer/)
+  // A ticket's work thread takes it away from a member who cannot edit the
+  // ticket's board, too (docs/standards/ticket-work.md → "The work thread").
+  assert.match(
+    surface,
+    /visibleActiveTab === 'messages' && roomControls\.canPost && !workThreadReadOnly \? \(\s*<ChannelComposer/,
+  )
   // …and the refusal is drawn in its place, so a person is told why rather
   // than shown a room with no way to type in it.
-  assert.match(surface, /visibleActiveTab === 'messages' && !roomControls\.canPost/)
+  assert.match(
+    surface,
+    /<ChannelPostRefusal postRefusal=\{roomControls\.postRefusal\} workThreadReadOnly=\{workThreadReadOnly\} \/>/,
+  )
+  const refusal = source('components/features/channels/ChannelPostRefusal.tsx')
+  assert.match(refusal, /if \(postRefusal\)/)
+  assert.match(refusal, /workThreadReadOnly \? <WorkThreadReadOnlyNotice/)
 })

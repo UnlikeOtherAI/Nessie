@@ -42,6 +42,7 @@ import { TaskPriorityField } from './TaskPriorityField'
 import { TaskChecklistTab } from './TaskChecklistTab'
 import { fromDateInputValue, toDateInputValue } from './task-meta'
 import { TabBar } from '../../../primitives/TabBar'
+import { TicketWorkChip } from '../../ticket-work/TicketWorkChip'
 
 // One unsent task, kept whole: partial field state is what a person loses when
 // a dialog is dismissed, so it is what the draft has to hold.
@@ -425,6 +426,9 @@ export const TaskDialog = ({
         </div>
 
         <div className="task-dialog-meta">
+          {/* What an agent's work on this ticket is doing, for everyone who reads it. */}
+          {isEdit && task ? <TicketWorkChip taskId={task.id} /> : null}
+
           <TaskPriorityField onChange={(value) => patchDraft({ priority: value })} value={priority} />
 
           <div className="grid gap-1.5">

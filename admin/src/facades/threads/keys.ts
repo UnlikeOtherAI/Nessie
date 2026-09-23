@@ -27,4 +27,7 @@ export const threadKeys = {
     ['threads', threadId, 'replies', rootMessageId] as const,
   runThinking: (threadId: string | undefined, runId: string | null) =>
     ['threads', threadId, 'runs', runId, 'thinking'] as const,
+  // Whether the thread is a ticket's work thread, and whether the viewer may
+  // write in it (docs/standards/ticket-work.md → "The work thread").
+  ticketWork: (threadId?: string) => ['threads', threadId, 'ticket-work'] as const,
 }

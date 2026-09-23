@@ -1,3 +1,6 @@
+import { useState } from 'react'
+import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useNavigate } from 'react-router-dom'
 import type { AgentConversationRecord } from '@nessie/schemas'
 
@@ -58,6 +61,11 @@ type AgentConversationListProps = {
  * Rows are buttons rather than links because the row is a switch between
  * conversations rather than a document to open in a new tab; the destination
  * is one function (`conversationPath`) so nothing hand-builds it.
+ *
+ * A ticket's work threads fold under **Tickets**, after the agent's other
+ * conversations (docs/standards/ticket-work.md → "The work thread"): an agent
+ * that works twenty tickets would otherwise bury the conversations people
+ * started with it. The fold opens by itself when the one on screen is in it.
  */
 export const AgentConversationList = ({
   activeChannelId = null,
@@ -73,6 +81,7 @@ export const AgentConversationList = ({
     ...(refetchInterval === undefined ? {} : { refetchInterval }),
   })
   const conversations = query.data
+  const [ticketsOpen, setTicketsOpen] = useState<boolean | null>(null)
 
   if (query.isPending) {
     return <Skeleton className="p-3" count={3} variant="list" />
@@ -105,83 +114,113 @@ export const AgentConversationList = ({
     )
   }
 
+  const renderRow = (conversation: AgentConversationRecord) => {
+    const current = conversation.id === activeThreadId
+    // The press that asked for this row's blink, or null: it is the key
+    // suffix as much as the flag, so pressing twice plays it twice.
+    const blink = flash && flash.conversationId === conversation.id ? flash.press : null
+    const running = conversation.activeRun !== null
+    const elsewhere =
+      activeChannelId !== null && conversation.channel.id !== activeChannelId
+    const age = formatConversationTime(conversation.lastActivityAt)
+    const to = conversationPath(conversation)
+    return (
+      <div
+        key={blink === null ? conversation.id : `${conversation.id}:${blink}`}
+        role="listitem"
+      >
+        <button
+          aria-current={current ? 'true' : undefined}
+          className={[
+            'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
+            'border-b border-[color:var(--sep)]',
+            current
+              ? 'bg-[color:var(--main-hover)]'
+              : 'hover:bg-[color:var(--main-hover)] focus-visible:bg-[color:var(--main-hover)]',
+            blink === null ? '' : 'admin-attention-pulse',
+          ].filter(Boolean).join(' ')}
+          data-testid="agent-conversation-row"
+          onClick={() => {
+            void navigate(to)
+            onSelect?.(conversation)
+          }}
+          type="button"
+          {...prewarmRowHandlers(prewarm, to)}
+        >
+          {/*
+            The reserved gutter: a run dot, an unread count, or nothing,
+            so every title in the list starts at the same x. It is as wide
+            as the widest of the three rather than as wide as the dot —
+            a badge that grew the slot would undo the alignment the slot
+            exists for.
+          */}
+          <span className="flex w-6 flex-shrink-0 justify-center pt-1.5">
+            {running ? (
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 rounded-full bg-[color:var(--success)]"
+              />
+            ) : (
+              <UnreadBadge value={conversation.unreadCount} />
+            )}
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-semibold text-[color:var(--tx)]">
+              {conversation.title}
+            </span>
+            <span className="truncate text-xs text-[color:var(--tx2)]">
+              {conversationBodyLine(conversation, 'No messages yet')}
+            </span>
+          </span>
+          <span className="flex flex-shrink-0 flex-col items-end gap-1 pt-0.5">
+            {age ? (
+              <span className="text-[11px] text-[color:var(--tx3)]">{age}</span>
+            ) : null}
+            {elsewhere ? (
+              <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
+                {conversationRoomLabel(conversation.channel)}
+              </Pill>
+            ) : null}
+          </span>
+          {running ? <span className="sr-only">Running now</span> : null}
+        </button>
+      </div>
+    )
+  }
+
+  // Ticket work threads fold under Tickets; everything else lists as before.
+  const ticketRows = conversations.filter((conversation) => conversation.ticket)
+  const otherRows = conversations.filter((conversation) => !conversation.ticket)
+  const showTickets = ticketsOpen ?? ticketRows.some((conversation) => conversation.id === activeThreadId)
+
   return (
     <div className="flex flex-col">
       <div className="flex flex-col" role="list">
-        {conversations.map((conversation) => {
-          const current = conversation.id === activeThreadId
-          // The press that asked for this row's blink, or null: it is the key
-          // suffix as much as the flag, so pressing twice plays it twice.
-          const blink = flash && flash.conversationId === conversation.id ? flash.press : null
-          const running = conversation.activeRun !== null
-          const elsewhere =
-            activeChannelId !== null && conversation.channel.id !== activeChannelId
-          const age = formatConversationTime(conversation.lastActivityAt)
-          const to = conversationPath(conversation)
-          return (
-            <div
-              key={blink === null ? conversation.id : `${conversation.id}:${blink}`}
-              role="listitem"
-            >
-              <button
-                aria-current={current ? 'true' : undefined}
-                className={[
-                  'flex w-full items-start gap-2 px-3 py-2 text-left transition-colors',
-                  'border-b border-[color:var(--sep)]',
-                  current
-                    ? 'bg-[color:var(--main-hover)]'
-                    : 'hover:bg-[color:var(--main-hover)] focus-visible:bg-[color:var(--main-hover)]',
-                  blink === null ? '' : 'admin-attention-pulse',
-                ].filter(Boolean).join(' ')}
-                data-testid="agent-conversation-row"
-                onClick={() => {
-                  void navigate(to)
-                  onSelect?.(conversation)
-                }}
-                type="button"
-                {...prewarmRowHandlers(prewarm, to)}
-              >
-                {/*
-                  The reserved gutter: a run dot, an unread count, or nothing,
-                  so every title in the list starts at the same x. It is as wide
-                  as the widest of the three rather than as wide as the dot —
-                  a badge that grew the slot would undo the alignment the slot
-                  exists for.
-                */}
-                <span className="flex w-6 flex-shrink-0 justify-center pt-1.5">
-                  {running ? (
-                    <span
-                      aria-hidden="true"
-                      className="h-2 w-2 rounded-full bg-[color:var(--success)]"
-                    />
-                  ) : (
-                    <UnreadBadge value={conversation.unreadCount} />
-                  )}
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-semibold text-[color:var(--tx)]">
-                    {conversation.title}
-                  </span>
-                  <span className="truncate text-xs text-[color:var(--tx2)]">
-                    {conversationBodyLine(conversation, 'No messages yet')}
-                  </span>
-                </span>
-                <span className="flex flex-shrink-0 flex-col items-end gap-1 pt-0.5">
-                  {age ? (
-                    <span className="text-[11px] text-[color:var(--tx3)]">{age}</span>
-                  ) : null}
-                  {elsewhere ? (
-                    <Pill radius="chip" size="sm" tone="muted" uppercase={false}>
-                      {conversationRoomLabel(conversation.channel)}
-                    </Pill>
-                  ) : null}
-                </span>
-                {running ? <span className="sr-only">Running now</span> : null}
-              </button>
-            </div>
-          )
-        })}
+        {otherRows.map(renderRow)}
       </div>
+      {ticketRows.length > 0 ? (
+        <div className="flex flex-col" data-testid="agent-conversation-tickets">
+          <button
+            aria-expanded={showTickets}
+            className="flex min-h-11 w-full items-center gap-2 border-b border-[color:var(--sep)] px-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:bg-[color:var(--main-hover)]"
+            onClick={() => setTicketsOpen(!showTickets)}
+            type="button"
+          >
+            <FontAwesomeIcon
+              aria-hidden
+              className={`h-2.5 w-2.5 transition-transform ${showTickets ? 'rotate-90' : ''}`}
+              icon={faChevronRight}
+            />
+            <span className="flex-1">Tickets</span>
+            <span className="font-normal normal-case tracking-normal">{ticketRows.length}</span>
+          </button>
+          {showTickets ? (
+            <div className="flex flex-col" role="list">
+              {ticketRows.map(renderRow)}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {query.hasNextPage ? (
         <div className="p-3">
           <button

@@ -17,6 +17,7 @@ import type {
   WorkflowTemplateRecord,
 } from '../../../lib/api-client'
 import type { PillTone } from '../../primitives/Pill'
+import { TicketChangedStoredConfigSchema } from '@nessie/schemas'
 
 /**
  * Single source for trigger display logic: labels, tones, icons, schedule
@@ -150,6 +151,19 @@ export const getTriggerTypeLabel = (trigger: AgentTriggerRecord): string => {
 }
 
 /**
+ * A ticket trigger in one line, from its stored (resolved) config: how many
+ * columns start work, or that it starts none. Column names need the board, so
+ * the detail page names them; a list row counts them.
+ */
+export const getTicketTriggerSummary = (config: unknown): string => {
+  const parsed = TicketChangedStoredConfigSchema.safeParse(config)
+  if (!parsed.success) return 'Configuration needs attention'
+  const columns = parsed.data.pickup?.columnIds.length ?? 0
+  if (columns === 0) return 'Follows work on its board; starts none'
+  return `Starts work when a ticket enters ${columns === 1 ? 'a start-work column' : `one of ${columns} start-work columns`}`
+}
+
+/**
  * Compact single-line description of when the trigger fires, for list rows.
  */
 export const getScheduleSummary = (trigger: AgentTriggerRecord): string => {
@@ -157,7 +171,7 @@ export const getScheduleSummary = (trigger: AgentTriggerRecord): string => {
 
   if (trigger.type === 'manual') return 'Fires only when started manually'
   if (trigger.type === 'webhook') return 'Fires on incoming webhook calls'
-  if (trigger.type === 'ticket_changed') return 'Fires when a ticket on its board changes'
+  if (trigger.type === 'ticket_changed') return getTicketTriggerSummary(trigger.config)
   if (trigger.type === 'document_changed') return 'Fires when a watched document changes'
 
   if (trigger.type === 'event') {

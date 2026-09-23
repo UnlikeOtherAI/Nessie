@@ -23,6 +23,7 @@ const TYPE_OPTIONS: Array<{ label: string; value: TriggerTypeFilter }> = [
   { label: 'Interval', value: 'interval' },
   { label: 'Webhook', value: 'webhook' },
   { label: 'Event', value: 'event' },
+  { label: 'Ticket change', value: 'ticket_changed' },
 ]
 
 /**
