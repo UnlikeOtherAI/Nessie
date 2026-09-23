@@ -218,6 +218,8 @@ this standard, not an exception to it.
     re-reads the card. Confirming itself is untouched — same actor, the token,
     fresh verification where the change needs it. Pinned by
     `api/test/agent-card-executor-review.test.ts`,
+    `api/test/executor-workspace-promotion-confirm.test.ts` (a promotion
+    confirmed through its route, with fresh verification),
     `worker/test/db/executor-review-card.test.ts` and the executor-agents
     fixture suite, which closes the review and presses again.
 - **Every card goes through one door.** `postAgentCard`
