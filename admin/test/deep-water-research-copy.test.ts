@@ -25,7 +25,11 @@ import {
   SETTING_LABEL,
   sourcesLabel,
 } from '../src/components/features/deep-water/research-presentation.js'
-import { createIntentActionIds } from '../src/components/features/deep-water/useIntentActionId.js'
+import {
+  createIntentActionIds,
+  reviveHeldActionId,
+  type HeldActionId,
+} from '../src/components/features/deep-water/intent-action-ids.js'
 
 /**
  * What a person reads about a DeepWater research, and what the dialog does
@@ -136,6 +140,35 @@ test('a retry of the same intent reuses its key; a new intent or a decided outco
   assert.notEqual(ids.take({ message: 'hello again' }), second, 'after a decided outcome the same words are new')
 })
 
+test('a key kept in a stored draft comes back with the body, so a resend after a reload is a replay', () => {
+  let stored: HeldActionId | null = null
+  const writes: (HeldActionId | null)[] = []
+  const draftStore = {
+    get: () => stored,
+    set: (held: HeldActionId | null) => {
+      stored = held
+      writes.push(held)
+    },
+  }
+  let minted = 0
+  const before = createIntentActionIds(() => `key-${++minted}`, draftStore)
+  const first = before.take({ topic: 'Heat pumps' })
+  assert.equal(writes.length, 1, 'the key is stored as it is taken, before the request leaves')
+  before.settle(true)
+  // The dialog closed or the page reloaded: a new mount reads the stored key.
+  const after = createIntentActionIds(() => `key-${++minted}`, draftStore)
+  assert.equal(after.take({ topic: 'Heat pumps' }), first, 'the same body resent after a reload reuses its key')
+  assert.equal(writes.length, 1, 'reusing a key writes nothing')
+  after.settle(false)
+  assert.equal(stored, null, 'a decided outcome forgets the key in the draft too')
+  assert.notEqual(after.take({ topic: 'Heat pumps' }), first)
+  // Storage is untrusted input.
+  assert.deepEqual(reviveHeldActionId({ actionId: 'k', signature: '{}', extra: 1 }), { actionId: 'k', signature: '{}' })
+  assert.equal(reviveHeldActionId({ actionId: '', signature: '{}' }), null)
+  assert.equal(reviveHeldActionId({ actionId: 'k' }), null)
+  assert.equal(reviveHeldActionId(['k', '{}']), null)
+})
+
 const apiError = (code: string, status: number, details?: unknown) =>
   new ApiClientError('refused', code, status, details)
 
@@ -151,6 +184,9 @@ test('a synchronous refusal of a brief action reads as its remedy', () => {
   )
   const lost = briefActionFailure(new TypeError('fetch failed'), 'reply')
   assert.equal(lost.retrySameAction, true, 'a lost request is retried under the same key')
+  // It may still have arrived and been recorded: nothing says it did not.
+  assert.doesNotMatch(lost.message, /didn’t reach|never|wasn’t sent/i)
+  assert.match(lost.message, /^Nessie didn’t answer\./)
   assert.equal(briefActionFailure(apiError('INTERNAL', 503), 'start').retrySameAction, true)
   assert.equal(briefActionFailure(apiError('SOMETHING_ELSE', 400), 'start').retrySameAction, false)
   // Accepted, but the answer broke the contract: never "check your connection"; a
@@ -166,6 +202,10 @@ test('a synchronous refusal of a brief action reads as its remedy', () => {
   assert.equal(unreadableNew.retrySameAction, true)
   assert.doesNotMatch(unreadableNew.message, /where it stands/i)
   assert.match(unreadableNew.message, /Plan with DeepWater again/)
+  const lostNew = newBriefFailure(new TypeError('fetch failed'))
+  assert.equal(lostNew.retrySameAction, true)
+  assert.match(lostNew.message, /press Plan with DeepWater again — if your brief was already opened, that same/)
+  assert.doesNotMatch(lostNew.message, /didn’t reach/)
   assert.deepEqual(newBriefFailure(apiError('INTERNAL', 503)), briefActionFailure(apiError('INTERNAL', 503), 'create'))
 })
 
@@ -233,6 +273,8 @@ test('an open research that blocks a change is named by who and where, never its
   const unnamed = teamChangeFailure(apiError('LEDGER_DEEPWATER_ACTIVE_RUNS', 409))
   assert.equal(unnamed.kind, 'message')
   assert.equal(teamChangeFailure(apiError('LEDGER_DEEPWATER_MCP_URL_UNSET', 503)).kind, 'message')
+  const lost = teamChangeFailure(new TypeError('fetch failed'))
+  assert.deepEqual(lost, { kind: 'message', message: 'Nessie didn’t answer. Check your connection, then try again.' })
   for (const copy of [unnamed, teamChangeFailure(apiError('X', 503))]) {
     assert.doesNotMatch(copy.kind === 'message' ? copy.message : '', FORBIDDEN)
   }

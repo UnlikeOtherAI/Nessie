@@ -195,11 +195,40 @@ test('Send again\'s words last only while the failure stands', () => {
 })
 
 test('the stored draft is revived field by field and never trusted', () => {
-  const stored = draftAfterSend(draft({ message: WORDS }), reply({ edits: { pillars: ['A'] } }))
+  const stored = draftAfterSend(
+    draft({ held: { reply: null, start: { actionId: OTHER_ACTION, signature: '{"revision":2}' } }, message: WORDS }),
+    reply({ edits: { pillars: ['A'] } }),
+  )
   assert.deepEqual(reviveBriefDraft(JSON.parse(JSON.stringify(stored))), stored)
-  const tampered = reviveBriefDraft({ message: 7, sent: { actionId: ACTION, kind: 'delete' }, unanswered: ['x'] })
+  const tampered = reviveBriefDraft({
+    held: { reply: { actionId: 4, signature: 'x' }, start: 'key' },
+    message: 7,
+    sent: { actionId: ACTION, kind: 'delete' },
+    unanswered: ['x'],
+  })
   assert.deepEqual(tampered, EMPTY_BRIEF_DRAFT)
   assert.equal(reviveBriefDraft('nope'), null)
+})
+
+test('a key held for a reply or Start whose answer was lost stays in the draft through every change', () => {
+  // The reply's answer was lost: its words stay in the box, and its key beside
+  // them, so sending them again after a reload is answered as a replay.
+  const held = { reply: { actionId: ACTION, signature: `{"message":"${WORDS}"}` }, start: null }
+  const lost = draft({ held, message: WORDS })
+  assert.equal(isBriefDraftEmpty(lost), false)
+  assert.equal(isBriefDraftEmpty(draft({ held })), false, 'a held key alone is stored')
+  assert.equal(isBriefDraftEmpty(draft()), true)
+  // Nothing an action's ending does drops a key another action still holds.
+  const other = { reply: null, start: { actionId: OTHER_ACTION, signature: '{"revision":2}' } }
+  const sent = draftAfterSend(draft({ held: other, message: WORDS }), reply())
+  assert.deepEqual(sent.held, other)
+  const failed = walk(sent, [progress(replying()), progress(plannerFailed)])
+  assert.equal(failed.unanswered, WORDS)
+  assert.deepEqual(failed.held, other)
+  const refused = walk(sent, [progress({
+    pendingAction: { actionId: ACTION, error: { code: 'busy', message: 'Busy.' }, kind: 'reply', since: SINCE },
+  })])
+  assert.deepEqual(refused.held, other)
 })
 
 test('a brief comes back to the screen\'s conversation, its reply thread, or the place a doorway names', () => {

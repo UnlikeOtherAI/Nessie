@@ -507,7 +507,17 @@ the screen it goes to that conversation, which opens the brief itself.
   to the box, and they are what Send again sends. Another browser, or a
   cleared draft, has nothing to put back. Every action carries an `actionId`
   that is reused only to retry the same body after a lost answer
-  (`createIntentActionIds`).
+  (`createIntentActionIds`). Where the body lives in a stored draft — a new
+  brief's question and background, a reply and its edits, Start's edits — the
+  key it was last sent with is stored in that draft before the request leaves
+  and kept until the server has decided it (`useStoredIntentActionId`), so
+  pressing the button again after closing the dialog or reloading replays the
+  request instead of opening, and paying for, a second brief or planner turn.
+  A lost answer never reads as a request that did not arrive: "Nessie didn't
+  answer". Research drafts are keyed by the viewer
+  (`draft:research-brief-new:<user>:<organisation>:<place>`,
+  `draft:research-brief:<user>:<runId>`), so a second person on the same
+  browser never sees another's unsent question.
 - **Who may do what is the server's.** The dialog reads `viewer` from the view:
   an agent's brief is read-only for people, and its requester may only discard
   it; a finished research offers Retry import only where `canRetryDelivery`

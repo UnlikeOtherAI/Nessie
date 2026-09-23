@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DeepWaterBriefView } from '@nessie/schemas'
+import { useDeepWaterViewerScope } from '../../../facades/deep-water/hooks'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import {
   NO_EDITS,
@@ -16,14 +17,18 @@ import {
   sendAgainMessage,
   settleSentAction,
   type BriefDraft,
+  type HeldBriefActionIds,
   type SentBriefAction,
 } from './brief-sent-action'
+import type { HeldActionId } from './intent-action-ids'
+import { useStoredIntentActionId } from './useIntentActionId'
 
 /**
  * The person's unsent work on one brief — the reply they are typing, their
- * edits to the pillars and settings, and the action they last sent — kept
- * through `useDraft` (`draft:research-brief:<runId>`), so closing the dialog
- * or reloading loses nothing (docs/navigation content-and-drafts §15).
+ * edits to the pillars and settings, the action they last sent, and the keys
+ * a reply and Start were last sent with — kept through `useDraft`
+ * (`draft:research-brief:<user>:<runId>`, the viewer's own), so closing the
+ * dialog or reloading loses nothing (docs/navigation content-and-drafts §15).
  *
  * Two things only this hook knows (amendments-fable F8):
  * - **Rebase.** When the brief moves on underneath unsent edits (the planner
@@ -41,11 +46,23 @@ import {
 type BriefBase = Pick<DeepWaterBriefView, 'lockedSettings' | 'pillars' | 'revision' | 'settings'>
 
 export const useBriefDraft = (brief: DeepWaterBriefView) => {
-  const { draft, setDraft } = useDraft<BriefDraft>(draftKey('research-brief', brief.id), {
-    initial: EMPTY_BRIEF_DRAFT,
-    isEmpty: isBriefDraftEmpty,
-    revive: reviveBriefDraft,
-  })
+  const scope = useDeepWaterViewerScope()
+  const { draft, flush, setDraft } = useDraft<BriefDraft>(
+    draftKey('research-brief', scope ? `${scope.userId}:${brief.id}` : null),
+    {
+      initial: EMPTY_BRIEF_DRAFT,
+      isEmpty: isBriefDraftEmpty,
+      revive: reviveBriefDraft,
+    },
+  )
+  // A key is stored at once, not on the draft's debounce: it must be kept
+  // before the request that carries it leaves.
+  const holdKey = (kind: keyof HeldBriefActionIds) => (held: HeldActionId | null) => {
+    setDraft((current) => ({ ...current, held: { ...current.held, [kind]: held } }))
+    void flush()
+  }
+  const replyIds = useStoredIntentActionId(draft.held.reply, holdKey('reply'))
+  const startIds = useStoredIntentActionId(draft.held.start, holdKey('start'))
   const [base, setBase] = useState<BriefBase>(brief)
   const [changed, setChanged] = useState<string[]>([])
   const sent = draft.sent
@@ -105,9 +122,13 @@ export const useBriefDraft = (brief: DeepWaterBriefView) => {
      */
     inFlightEdits: sent && sent.revision === brief.revision ? sent.edits : NO_EDITS,
     markSent,
+    /** The keys for a reply, kept with the draft until the server has decided the reply they carried. */
+    replyIds,
     /** What Send again sends after the planner could not answer, or null when nothing is known. */
     sendAgain: sendAgainMessage(draft.unanswered, brief),
     setEdits,
     setMessage,
+    /** The keys for Start, kept the same way. */
+    startIds,
   }
 }

@@ -1,5 +1,6 @@
 import type { DeepWaterBriefView, DeepWaterResearchRunView } from '@nessie/schemas'
 import { NO_EDITS, hasLocalEdits, layerEdits, reviveBriefEdits, subtractEdits, type BriefEdits } from './brief-edits'
+import { reviveHeldActionId, type HeldActionId } from './intent-action-ids'
 
 /**
  * What a person's brief draft remembers about the action they last sent, and
@@ -20,7 +21,10 @@ import { NO_EDITS, hasLocalEdits, layerEdits, reviveBriefEdits, subtractEdits, t
  * - **Anything else** (answered, launched, closed): it is simply forgotten.
  *
  * The record lives in the stored draft, so closing the dialog or reloading
- * while the planner works loses none of it.
+ * while the planner works loses none of it. So do the keys a reply and Start
+ * were last sent with while their answer is unknown (`held`): the words and
+ * edits of a request whose answer was lost stay in the draft, and sending them
+ * again after a reload must reuse that key (`useStoredIntentActionId`).
  */
 
 export type SentBriefAction = {
@@ -37,18 +41,27 @@ export type SentBriefAction = {
   seen: boolean
 }
 
+/** The key each kind of action was last sent with, until the server has decided it. */
+export type HeldBriefActionIds = { reply: HeldActionId | null; start: HeldActionId | null }
+
 export type BriefDraft = {
   edits: BriefEdits
+  held: HeldBriefActionIds
   message: string
   sent: SentBriefAction | null
   /** The words of the reply DeepWater's planner could not answer: what Send again sends. */
   unanswered: string | null
 }
 
-export const EMPTY_BRIEF_DRAFT: BriefDraft = { edits: NO_EDITS, message: '', sent: null, unanswered: null }
+export const NO_HELD_ACTION_IDS: HeldBriefActionIds = { reply: null, start: null }
+
+export const EMPTY_BRIEF_DRAFT: BriefDraft = {
+  edits: NO_EDITS, held: NO_HELD_ACTION_IDS, message: '', sent: null, unanswered: null,
+}
 
 export const isBriefDraftEmpty = (draft: BriefDraft): boolean =>
   draft.message.trim() === '' && !hasLocalEdits(draft.edits) && draft.sent === null && draft.unanswered === null
+  && draft.held.reply === null && draft.held.start === null
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -62,11 +75,17 @@ const reviveSent = (stored: unknown): SentBriefAction | null => {
   return { actionId, edits: reviveBriefEdits(stored.edits), kind, message, revision, seen, typed }
 }
 
+const reviveHeld = (stored: unknown): HeldBriefActionIds =>
+  isRecord(stored)
+    ? { reply: reviveHeldActionId(stored.reply), start: reviveHeldActionId(stored.start) }
+    : NO_HELD_ACTION_IDS
+
 /** Storage is untrusted input: keep only the known fields, in their known shapes. */
 export const reviveBriefDraft = (stored: unknown): BriefDraft | null => {
   if (!isRecord(stored)) return null
   return {
     edits: reviveBriefEdits(stored.edits),
+    held: reviveHeld(stored.held),
     message: typeof stored.message === 'string' ? stored.message : '',
     sent: reviveSent(stored.sent),
     unanswered: typeof stored.unanswered === 'string' ? stored.unanswered : null,
@@ -96,6 +115,7 @@ export const answerShowsInFlight = (
  */
 export const draftAfterSend = (draft: BriefDraft, sent: SentBriefAction): BriefDraft => ({
   edits: subtractEdits(draft.edits, sent.edits),
+  held: draft.held,
   message: sent.typed && draft.message.trim() === sent.message ? '' : draft.message,
   sent,
   // A new reply is a new attempt; Start does not answer the planner.
@@ -138,6 +158,7 @@ export const settleSentAction = (draft: BriefDraft, brief: BriefProgress): Brief
     const editsApplied = brief.revision !== sent.revision
     return {
       edits: editsApplied ? draft.edits : layerEdits(sent.edits, draft.edits),
+      held: draft.held,
       message: backInTheBox(draft, sent),
       sent: null,
       unanswered: sent.message,

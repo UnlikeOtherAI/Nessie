@@ -70,7 +70,7 @@ const OPEN_RESEARCH_WITHOUT_RUN = 'A research is still open for this team. It ha
  */
 export const teamChangeFailure = (error: unknown): TeamChangeFailure => {
   if (!(error instanceof ApiClientError)) {
-    return { kind: 'message', message: 'That didn’t reach Nessie. Check your connection, then try again.' }
+    return { kind: 'message', message: 'Nessie didn’t answer. Check your connection, then try again.' }
   }
   if (error.code === 'LEDGER_DEEPWATER_ACTIVE_RUNS') {
     const run = DeepWaterActiveRunConflictSchema.safeParse(error.details)

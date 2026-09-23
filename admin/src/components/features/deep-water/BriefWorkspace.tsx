@@ -59,8 +59,6 @@ export const BriefWorkspace = ({
   const reply = useReplyToResearchBrief(brief.id)
   const start = useStartResearchBrief(brief.id)
   const cancel = useCancelResearchRun()
-  const replyId = useIntentActionId()
-  const startId = useIntentActionId()
   const cancelId = useIntentActionId()
   const {
     changed,
@@ -68,9 +66,11 @@ export const BriefWorkspace = ({
     draft,
     inFlightEdits,
     markSent,
+    replyIds: replyId,
     sendAgain,
     setEdits,
     setMessage,
+    startIds: startId,
   } = useBriefDraft(brief)
   const [publish, setPublish] = useState(false)
   const [replyError, setReplyError] = useState<string | null>(null)

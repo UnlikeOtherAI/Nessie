@@ -35,6 +35,13 @@ const readinessReason = (details: unknown): string | null => {
 }
 
 /**
+ * No answer came back — the connection dropped, or the request timed out. The
+ * request may still have reached Nessie and been recorded, so this never
+ * says it did not; trying again reuses its key, so it is never done twice.
+ */
+const NO_ANSWER = 'Nessie didn’t answer. Check your connection, then try again.'
+
+/**
  * `DEEP_WATER_BRIEF_BUSY` means something different for each action: a reply
  * or Start waits for DeepWater to finish with the last change to the brief,
  * while a cancel waits for DeepWater to finish opening the brief — before
@@ -50,11 +57,7 @@ const BUSY_COPY: Record<BriefAction, string> = {
 
 export const briefActionFailure = (error: unknown, action: BriefAction): BriefActionFailure => {
   if (!(error instanceof ApiClientError)) {
-    return {
-      message: 'That didn’t reach Nessie. Check your connection, then try again.',
-      refetch: false,
-      retrySameAction: true,
-    }
+    return { message: NO_ANSWER, refetch: false, retrySameAction: true }
   }
   const refuse = (message: string, refetch = false): BriefActionFailure => ({
     message,
@@ -104,14 +107,22 @@ export const briefActionFailure = (error: unknown, action: BriefAction): BriefAc
 }
 
 /**
- * The new-brief form's reading of a failure. An answer that could not be read
- * may have opened a brief the form has nothing of yet, so it is not told
- * "here is where it stands": pressing the button again reuses the key, and the
- * same brief answers.
+ * The new-brief form's reading of a failure. A lost answer, or one that could
+ * not be read, may have opened a brief the form has nothing of yet, so it is
+ * not told "here is where it stands": pressing the button again reuses the key
+ * — kept in the form's draft, so closing the dialog or reloading keeps it too —
+ * and the same brief answers.
  */
 export const newBriefFailure = (error: unknown): BriefActionFailure => {
   const read = briefActionFailure(error, 'create')
-  if (!(error instanceof ApiClientError) || error.code !== 'INVALID_RESPONSE') return read
+  if (!(error instanceof ApiClientError)) {
+    return {
+      ...read,
+      message: 'Nessie didn’t answer. Check your connection, then press Plan with DeepWater again — if your '
+        + 'brief was already opened, that same brief opens.',
+    }
+  }
+  if (error.code !== 'INVALID_RESPONSE') return read
   return {
     message: 'Nessie opened the brief, but its answer couldn’t be read. Press Plan with DeepWater again to open it.',
     refetch: false,
