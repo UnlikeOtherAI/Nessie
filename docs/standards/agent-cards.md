@@ -203,7 +203,17 @@ this standard, not an exception to it.
     or cancelled), the card sweep expires it with the change, and a press that
     finds the change already over closes the card to match and answers
     `409 EXECUTOR_ACCESS_CHANGE_STALE`, so a stale card never keeps a live
-    button. A press by anyone else while the change is pending refuses with the
+    button. `closeExecutorReviewCards` returns the cards it closed; once that
+    commits, the confirm and reject routes of both kinds of change, and the
+    press, publish `card.updated` with each card's new status to its room
+    (`announceClosedExecutorReviewCards`, logged and never thrown). Nothing
+    published it before, so the preparer's other devices kept a live Review
+    button, and the rest of the room an open card, until they reloaded. The
+    sweep's expiry still publishes nothing, for any card. A press finds a
+    change over when the card and its change, which expire at the same
+    instant, lapse between the press's two reads of the clock, or when a
+    confirm elsewhere commits while the press waits on the change's row. A
+    press by anyone else while the change is pending refuses with the
     same code and leaves the card and the token alone. Closing the dialog
     re-reads the card. Confirming itself is untouched — same actor, the token,
     fresh verification where the change needs it. Pinned by

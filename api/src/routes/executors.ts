@@ -44,6 +44,7 @@ import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { publishMessageNew } from '../services/message-delivery.js'
 import { applyExecutorAgentPolicyChange } from '../services/executor-agent-access-policy.js'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
+import { announceClosedExecutorReviewCards } from '../services/agent-card-executor-review.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorCodingSessionRoutes } from './executor-coding-sessions.js'
@@ -253,6 +254,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
+      await announceClosedExecutorReviewCards(deps, result.closedReviewCards)
       return createApiResponse({ rejected: true })
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
@@ -418,6 +420,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
+      await announceClosedExecutorReviewCards(deps, result.closedReviewCards)
       // A pause, revoke, narrowed grant or review may have ended leases; each
       // holder hears about their own, and nobody else learns who held one.
       await notifyExecutorLeaseChanges(deps, request.log, result.endedLeases)

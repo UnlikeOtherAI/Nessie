@@ -22,7 +22,7 @@ import {
 } from './executor-continuation-security.js'
 import { listLiveExecutorLeaseRefs, type ExecutorLeaseRef } from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
-import { closeExecutorReviewCards } from './executor-review-cards.js'
+import { closeExecutorReviewCards, type ClosedExecutorReviewCard } from './executor-review-cards.js'
 import { setExecutorAgentAccessInTransaction } from './executor-agent-access.js'
 import {
   reviewExecutorDescriptorInTransaction,
@@ -309,7 +309,12 @@ export const confirmExecutorAccessChange = async (
   applyPolicy?: (
     tx: Prisma.TransactionClient, input: { executorId: string; change: ExecutorAccessChange },
   ) => Promise<void>,
-): Promise<{ authorizationRevision: number; endedLeases: ExecutorLeaseRef[]; executorId: string }> =>
+): Promise<{
+  authorizationRevision: number
+  closedReviewCards: ClosedExecutorReviewCard[]
+  endedLeases: ExecutorLeaseRef[]
+  executorId: string
+}> =>
   prisma.$transaction(async (tx) => {
     const continuation = await tx.executorContinuation.findUnique({
       where: { id: input.accessChangeId },
@@ -384,7 +389,7 @@ export const confirmExecutorAccessChange = async (
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
     }
     // Whichever door confirmed it, the chat card that opened its review is done.
-    await closeExecutorReviewCards(tx, {
+    const closedReviewCards = await closeExecutorReviewCards(tx, {
       actorUserId: continuation.actorUserId,
       continuationId: continuation.id,
       outcome: 'confirmed',
@@ -408,6 +413,7 @@ export const confirmExecutorAccessChange = async (
     )
     return {
       authorizationRevision,
+      closedReviewCards,
       endedLeases: liveLeases.filter((lease) => !stillLive.has(lease.id)),
       executorId: executor.id,
     }
@@ -417,7 +423,7 @@ export const rejectExecutorAccessChange = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: { accessChangeId: string; confirmationToken: string },
-): Promise<{ executorId: string }> => prisma.$transaction(async (tx) => {
+): Promise<{ closedReviewCards: ClosedExecutorReviewCard[]; executorId: string }> => prisma.$transaction(async (tx) => {
   const continuation = await tx.executorContinuation.findUnique({
     where: { id: input.accessChangeId },
     select: {
@@ -448,10 +454,10 @@ export const rejectExecutorAccessChange = async (
   if (rejected.count !== 1) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
   }
-  await closeExecutorReviewCards(tx, {
+  const closedReviewCards = await closeExecutorReviewCards(tx, {
     actorUserId: continuation.actorUserId,
     continuationId: continuation.id,
     outcome: 'rejected',
   })
-  return { executorId: continuation.executorId }
+  return { closedReviewCards, executorId: continuation.executorId }
 })
