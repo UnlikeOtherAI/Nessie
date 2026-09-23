@@ -164,7 +164,6 @@ export const KnowledgeWorkspace = ({
       bodyQuery={fullPageQuery}
       breadcrumbPages={breadcrumbPages}
       canWrite={canWrite}
-      depth={depth}
       fullPage={fullPage}
       onBack={stacked ? undefined : closeDocument}
       page={current}

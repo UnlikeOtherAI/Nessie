@@ -21,8 +21,9 @@ test('the page editor is a borderless writing canvas with descriptive placeholde
   assert.doesNotMatch(richText, /kb-editor[^\n]*rounded[^\n]*border/)
 })
 
-test('new pages can choose an existing document as their parent', () => {
-  assert.match(editor, /aria-label="Parent page"/)
+test('new pages can choose only an existing folder as their parent', () => {
+  assert.match(editor, /aria-label="Folder"/)
+  assert.match(editor, /page\.kind === 'folder'/)
   assert.match(editor, /parentOptions\(pages\)/)
   assert.match(editor, /parentPageId: mode === 'create' \? draftParentPageId : undefined/)
   assert.match(workspace, /pages=\{pages\}/)
@@ -31,10 +32,8 @@ test('new pages can choose an existing document as their parent', () => {
   assert.match(workspace, /spaceName=\{selectedSpace\?\.name \?\? 'Documents'\}/)
 })
 
-test('an open document exposes the New page doorway in its header and child section', () => {
-  assert.match(preview, /id: 'new-sub-page'/)
-  assert.match(preview, /label: 'New page'/)
-  assert.ok((preview.match(/onCreateChild/g) ?? []).length >= 4)
+test('an open document is a leaf without creation or child-page UI', () => {
+  assert.doesNotMatch(preview, /new-sub-page|Sub-pages|No sub-pages|onCreateChild|subPages/)
 })
 
 test('published pages use a three-dot actions menu instead of redundant publication UI', () => {

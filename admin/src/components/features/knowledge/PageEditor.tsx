@@ -38,9 +38,9 @@ type PageEditorProps = {
 type ParentOption = { depth: number; page: KnowledgePageRecord }
 
 const parentOptions = (pages: KnowledgePageRecord[]): ParentOption[] => {
-  const documents = pages.filter((page) => page.kind === 'document')
+  const folders = pages.filter((page) => page.kind === 'folder')
   const children = new Map<string | null, KnowledgePageRecord[]>()
-  for (const page of documents) {
+  for (const page of folders) {
     const key = page.parentPageId ?? null
     children.set(key, [...(children.get(key) ?? []), page])
   }
@@ -59,9 +59,9 @@ const parentOptions = (pages: KnowledgePageRecord[]): ParentOption[] => {
     }
   }
   append(null, 0)
-  // Corrupt or partially loaded ancestry must not make a valid page disappear
+  // Corrupt or partially loaded ancestry must not make a valid folder disappear
   // from the location picker.
-  for (const page of documents) {
+  for (const page of folders) {
     if (!visited.has(page.id)) result.push({ depth: 0, page })
   }
   return result
@@ -199,7 +199,7 @@ export const PageEditor = ({
                 <span>Location</span>
                 <span aria-hidden="true">/</span>
                 <select
-                  aria-label="Parent page"
+                  aria-label="Folder"
                   className="min-w-0 max-w-full bg-transparent font-medium text-[color:var(--tx2)] outline-none focus:text-[color:var(--tx)]"
                   onChange={(event) => patchDraft({ parentPageId: event.target.value || null })}
                   value={draftParentPageId ?? ''}

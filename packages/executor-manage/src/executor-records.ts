@@ -347,6 +347,7 @@ export const listVisibleExecutors = async (
   const rows = await prisma.executor.findMany({
     where: {
       organizationId,
+      removedAt: null,
       OR: [
         { scopeKind: 'organization' },
         ...(visibleSharedScope ? [{ scopeKind: 'project' as const }] : []),
@@ -372,7 +373,7 @@ export const getExecutorForUser = async (
   const userId = requireHumanActor(actorContext)
   if (!userId) return null
   const executor = await prisma.executor.findFirst({
-    where: { id: executorId, organizationId: actorContext.tenant.organizationId },
+    where: { id: executorId, organizationId: actorContext.tenant.organizationId, removedAt: null },
   })
   if (!executor) return null
   const access = await resolveExecutorHumanAccess(

@@ -1027,7 +1027,8 @@ export type ExecutorDaemonCommandReceiptRequest = z.infer<
   typeof ExecutorDaemonCommandReceiptRequestSchema
 >
 
-export const ExecutorLifecycleActionSchema = z.enum(['pause', 'resume', 'drain', 'revoke'])
+/** `remove` is `revoke` plus hiding the executor from people-facing reads. */
+export const ExecutorLifecycleActionSchema = z.enum(['pause', 'resume', 'drain', 'revoke', 'remove'])
 export type ExecutorLifecycleAction = z.infer<typeof ExecutorLifecycleActionSchema>
 
 export const ExecutorPrivateAssignmentPrincipalSchema = z.discriminatedUnion(

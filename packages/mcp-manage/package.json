@@ -12,7 +12,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src test --max-warnings 0",
-    "pretest": "pnpm --filter @nessie/schemas build && pnpm --filter @nessie/mcp-client build && pnpm --filter @nessie/runtime build",
     "test": "node --test --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

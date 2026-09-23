@@ -12,7 +12,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src test --max-warnings 0",
-    "pretest": "pnpm --filter @nessie/retrieval build && pnpm --filter @nessie/spreadsheet build",
     "test": "node --test --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

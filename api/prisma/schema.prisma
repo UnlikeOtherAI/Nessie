@@ -5616,6 +5616,11 @@ model Executor {
   nextBindingFence       BigInt                          @default(0) @map("next_binding_fence")
   lastSeenAt             DateTime?                       @map("last_seen_at")
   statusDetail           String?                         @map("status_detail")
+  /// Set when a person deletes the executor. A removed executor is always
+  /// revoked too, so every revoked-status guard still refuses it; the row
+  /// stays because run bindings, leases and audit history point at it, and
+  /// only the people-facing reads hide it.
+  removedAt              DateTime?                       @map("removed_at")
   createdAt              DateTime                        @default(now()) @map("created_at")
   updatedAt              DateTime                        @updatedAt @map("updated_at")
   organization           Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)

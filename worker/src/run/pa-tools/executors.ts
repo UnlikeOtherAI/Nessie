@@ -100,6 +100,7 @@ const reviewCardSubtitle = (change: ExecutorAccessChange): string => {
         pause: 'Pause this executor',
         resume: 'Resume this executor',
         revoke: 'Disconnect this executor',
+        remove: 'Delete this executor',
       }[change.action]
     case 'descriptor_review':
       return change.status === 'active'

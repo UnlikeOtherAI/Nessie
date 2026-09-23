@@ -38,12 +38,18 @@ from applying, and a failed confirmation rolls its claim back with its writes.
 Failure to grant rolls the new private assignment back. Removing one agent
 does not remove another agent's grants on the same machine.
 
-Fresh verification is still required for allowing access and for private
-roster changes, including removal. The access-change GET response adds
-`verificationMethod: "password" | "unavailable"`, derived from the same factor
-availability as the existing confirmation guard. It lets the review explain
-when verification cannot be completed; it does not introduce an SSO proof or
-weaken the confirmation requirement.
+Fresh verification is still required for allowing access, for activating a
+capability revision and for private roster changes, including removal. The
+lifecycle changes never require it: `revoke` and `remove` only take access
+away and must stay reachable by a manager whose sign-in has no fresh factor.
+`remove` is `revoke` plus `removedAt`, after which the list, detail, access
+and change-preparation reads treat the executor as absent.
+
+The access-change GET response adds `verificationMethod: "password" |
+"unavailable"`, derived from the same factor availability as the existing
+confirmation guard. It lets the review explain when verification cannot be
+completed; it does not introduce an SSO proof or weaken the confirmation
+requirement.
 
 `GET /api/executors/attention` returns `{total, executors}`, with one
 `{executorId, policyRevision}` per manageable machine whose absolute latest

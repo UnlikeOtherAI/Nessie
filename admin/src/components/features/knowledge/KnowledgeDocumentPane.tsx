@@ -27,9 +27,6 @@ type KnowledgeDocumentPaneProps = {
   bodyQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   breadcrumbPages: KnowledgePageRecord[]
   canWrite: boolean
-  // The open page's position in the browse path — what "Back to parent page"
-  // pops to, and where a drilled child is appended.
-  depth: number
   // The on-demand full body, once it has arrived.
   fullPage?: KnowledgePageRecord
   onBack?: () => void
@@ -44,7 +41,6 @@ export const KnowledgeDocumentPane = ({
   bodyQuery,
   breadcrumbPages,
   canWrite,
-  depth,
   fullPage,
   onBack,
   page,
@@ -55,9 +51,6 @@ export const KnowledgeDocumentPane = ({
     archivePage,
     archivePending,
     browseTo,
-    childrenOf,
-    drillTo,
-    openCreate,
     openEdit,
     openHistory,
     openPagePath,
@@ -127,8 +120,6 @@ export const KnowledgeDocumentPane = ({
           onBack={onBack}
           onArchive={() => archivePage(page.id)}
           onBrowseRoot={() => browseTo([])}
-          onCreateChild={() => openCreate(page.id)}
-          onDrill={(childPageId) => drillTo(depth, childPageId)}
           onEdit={() => openEdit(page)}
           onOpenHistory={() => openHistory(page.id)}
           onOpenBreadcrumb={(pageId) => {
@@ -139,7 +130,6 @@ export const KnowledgeDocumentPane = ({
           onToggleAttachments={() => setAttachmentsOpen(true)}
           page={fullPage ?? page}
           publishPending={publishPending}
-          subPages={childrenOf(page.id)}
           spaceName={spaceName}
         />
       )}

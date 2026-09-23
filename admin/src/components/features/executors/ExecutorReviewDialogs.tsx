@@ -47,6 +47,8 @@ type ExecutorAccessChangeDialogProps = {
    */
   descriptorRevisions?: readonly ExecutorDescriptorRevisionView[]
   onClose: () => void
+  /** Told the exact change once it has been applied, before the dialog closes. */
+  onConfirmed?: (change: Record<string, unknown>) => void
   open: boolean
 }
 
@@ -55,6 +57,7 @@ export const ExecutorAccessChangeDialog = ({
   confirmationToken,
   descriptorRevisions,
   onClose,
+  onConfirmed,
   open,
 }: ExecutorAccessChangeDialogProps) => {
   const changeQuery = useExecutorAccessChange(open ? accessChangeId : undefined)
@@ -99,6 +102,7 @@ export const ExecutorAccessChangeDialog = ({
         confirmationToken,
         ...(change.requiresFreshVerification ? { currentPassword } : {}),
       })
+      onConfirmed?.(change.change)
       close()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to confirm access change.')

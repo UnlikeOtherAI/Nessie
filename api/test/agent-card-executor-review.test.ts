@@ -317,7 +317,9 @@ runDatabaseTest('every press hands the presser a fresh token, and only the newes
 
 runDatabaseTest('a change that needs fresh verification still needs it', async (t) => {
   await withSeed(t, async (prisma, s) => {
-    const { cardId } = await prepareWithCard(prisma, s, { action: 'revoke', kind: 'lifecycle' })
+    const { cardId } = await prepareWithCard(prisma, s, {
+      action: 'set', assignment: { principalKind: 'user', role: 'use', userId: s.otherUserId }, kind: 'private_assignment',
+    })
     const review = await reviewFrom(prisma, s, cardId)
 
     await assert.rejects(
@@ -328,8 +330,10 @@ runDatabaseTest('a change that needs fresh verification still needs it', async (
       }),
       /Fresh verification is required/,
     )
-    const executor = await prisma.executor.findUniqueOrThrow({ where: { id: s.executorId } })
-    assert.equal(executor.status, 'online', 'nothing was applied without the proof')
+    const granted = await prisma.executorPrivateAssignment.count({
+      where: { executorId: s.executorId, userId: s.otherUserId },
+    })
+    assert.equal(granted, 0, 'nothing was applied without the proof')
     const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
     assert.equal(card.status, 'open', 'a refused confirm leaves the card to press again')
   })
