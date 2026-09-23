@@ -27,11 +27,14 @@ export {
   createExecutorConversationLeaseInTransaction,
   endExecutorConversationLease,
   endExecutorConversationLeasesInTransaction,
+  executorLeaseExpiresAt,
   expireExecutorConversationLeases,
   isExecutorLeaseLive,
   isExecutorLocalAppsBundle,
   type ExecutorLeaseEndReason,
+  type ExecutorLeaseRef,
 } from './executor-conversation-lease.js'
+export { publishExecutorLeaseChanges } from './executor-lease-realtime.js'
 export {
   carryForwardExecutorBindings,
   type ExecutorLeaseCarryOutcome,

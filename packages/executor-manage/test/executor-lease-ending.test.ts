@@ -134,7 +134,13 @@ dbTest('End pressed by the holder ends it; an executor admin may too; another me
     assert.equal((await leaseRow(world, launch.lease.id)).endedAt, null)
     assert.deepEqual(
       await endExecutorConversationLease(world.prisma, world.holderContext, { leaseId: launch.lease.id }),
-      { ended: true, leaseId: launch.lease.id },
+      {
+        ended: true,
+        lease: {
+          actorUserId: world.holderId, id: launch.lease.id, organizationId: world.organizationId,
+          threadId: world.threadId,
+        },
+      },
     )
     await assertEnded(world, launch.lease.id, { endedByUserId: world.holderId, reason: 'person' })
     await assertFenced(world, binding.id)

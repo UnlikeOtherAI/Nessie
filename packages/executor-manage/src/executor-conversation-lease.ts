@@ -41,6 +41,16 @@ export type ExecutorLeaseAuditActor = {
   requestId: string
 }
 
+/**
+ * Whose lease it is and where: everything a change notice to its holder is
+ * addressed by (`publishExecutorLeaseChanges`), and nothing about the machine.
+ */
+export type ExecutorLeaseRef = { actorUserId: string; id: string; organizationId: string; threadId: string }
+
+export const EXECUTOR_LEASE_REF_SELECT = {
+  actorUserId: true, id: true, organizationId: true, threadId: true,
+} as const satisfies Prisma.ExecutorConversationLeaseSelect
+
 type LeaseExpiry = { absoluteExpiresAt: Date; endedAt: Date | null; idleExpiresAt: Date }
 
 export const isExecutorLocalAppsBundle = (operationKeys: readonly string[]): boolean =>
@@ -108,7 +118,8 @@ export const writeExecutorLeaseAudit = (
  * fence commit or roll back together. A lease that had already run out is
  * recorded as `expired`, not as whatever transition happened to find it.
  * The caller holds (or this takes) the executor lock of every lease matched;
- * filters are always scoped to one executor.
+ * filters are always scoped to one executor. Returns the leases this call
+ * ended, for their holders' change notices once the caller has committed.
  */
 export const endExecutorConversationLeasesInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -119,7 +130,7 @@ export const endExecutorConversationLeasesInTransaction = async (
     reason: ExecutorLeaseEndReason
     where: Prisma.ExecutorConversationLeaseWhereInput & { executorId: string }
   },
-): Promise<string[]> => {
+): Promise<ExecutorLeaseRef[]> => {
   const now = input.now ?? new Date()
   await lockExecutorForLease(tx, input.where.executorId)
   const live = await tx.executorConversationLease.findMany({
@@ -129,6 +140,7 @@ export const endExecutorConversationLeasesInTransaction = async (
       id: true, idleExpiresAt: true, organizationId: true, threadId: true,
     },
   })
+  const endedLeases: ExecutorLeaseRef[] = []
   for (const lease of live) {
     const expired = executorLeasePastExpiry(lease, now)
     const reason = expired ? 'expired' : input.reason
@@ -138,6 +150,9 @@ export const endExecutorConversationLeasesInTransaction = async (
       data: { endedAt: now, endedByUserId, endedReason: reason },
     })
     if (ended.count !== 1) continue
+    endedLeases.push({
+      actorUserId: lease.actorUserId, id: lease.id, organizationId: lease.organizationId, threadId: lease.threadId,
+    })
     await writeExecutorLeaseAudit(tx, {
       action: 'executor.lease.ended',
       actor: expired ? expiryAuditActor(lease.id) : input.actor,
@@ -155,7 +170,7 @@ export const endExecutorConversationLeasesInTransaction = async (
       resourceType: 'executor_conversation_lease',
     })
   }
-  return live.map((lease) => lease.id)
+  return endedLeases
 }
 
 /**
@@ -259,23 +274,23 @@ export const createExecutorConversationLeaseInTransaction = async (
 /**
  * End pressed on a lease: by the person who holds it, or by anyone who may
  * manage its executor. Everybody else gets "not found", so a lease id never
- * confirms that a lease — or a private executor — exists.
+ * confirms that a lease — or a private executor — exists. Pressing End on a
+ * lease that has already ended is not an error: `ended` is then false.
  */
 export const endExecutorConversationLease = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: { leaseId: string },
   now = new Date(),
-): Promise<{ ended: boolean; leaseId: string }> => prisma.$transaction(async (tx) => {
+): Promise<{ ended: boolean; lease: ExecutorLeaseRef }> => prisma.$transaction(async (tx) => {
   const actorUserId = requireHumanActor(actorContext)
   const lease = actorUserId
     ? await tx.executorConversationLease.findFirst({
         where: { id: input.leaseId, organizationId: actorContext.tenant.organizationId },
         select: {
-          actorUserId: true,
+          ...EXECUTOR_LEASE_REF_SELECT,
           executor: { select: { id: true, projectId: true, scopeKind: true } },
           executorId: true,
-          id: true,
         },
       })
     : null
@@ -297,7 +312,27 @@ export const endExecutorConversationLease = async (
     reason: 'person',
     where: { executorId: lease.executorId, id: lease.id },
   })
-  return { ended: ended.length === 1, leaseId: lease.id }
+  return {
+    ended: ended.length === 1,
+    lease: {
+      actorUserId: lease.actorUserId, id: lease.id, organizationId: lease.organizationId, threadId: lease.threadId,
+    },
+  }
+})
+
+/**
+ * The live leases on one executor, under the caller's executor lock. A
+ * transition that ends leases somewhere below it — an access change reaching
+ * the grant, roster, lifecycle or review code — reads this before and after,
+ * and the difference is exactly what it ended: nothing else can end a lease
+ * on that executor while the lock is held.
+ */
+export const listLiveExecutorLeaseRefs = (
+  tx: Prisma.TransactionClient,
+  executorId: string,
+): Promise<ExecutorLeaseRef[]> => tx.executorConversationLease.findMany({
+  where: { executorId, endedAt: null },
+  select: EXECUTOR_LEASE_REF_SELECT,
 })
 
 /** Record the expiry of one lease that a lazy check found past its window. */
@@ -305,34 +340,33 @@ export const expireExecutorConversationLease = async (
   prisma: PrismaClient,
   lease: { executorId: string; id: string },
   now = new Date(),
-): Promise<void> => {
-  await prisma.$transaction(async (tx) => {
-    await lockExecutorForLease(tx, lease.executorId)
-    const current = await tx.executorConversationLease.findUnique({
-      where: { id: lease.id },
-      select: { absoluteExpiresAt: true, endedAt: true, idleExpiresAt: true },
-    })
-    if (!current || current.endedAt || !executorLeasePastExpiry(current, now)) return
-    await endExecutorConversationLeasesInTransaction(tx, {
-      actor: expiryAuditActor(lease.id),
-      endedByUserId: null,
-      now,
-      reason: 'expired',
-      where: { executorId: lease.executorId, id: lease.id },
-    })
+): Promise<ExecutorLeaseRef[]> => prisma.$transaction(async (tx) => {
+  await lockExecutorForLease(tx, lease.executorId)
+  const current = await tx.executorConversationLease.findUnique({
+    where: { id: lease.id },
+    select: { absoluteExpiresAt: true, endedAt: true, idleExpiresAt: true },
   })
-}
+  if (!current || current.endedAt || !executorLeasePastExpiry(current, now)) return []
+  return endExecutorConversationLeasesInTransaction(tx, {
+    actor: expiryAuditActor(lease.id),
+    endedByUserId: null,
+    now,
+    reason: 'expired',
+    where: { executorId: lease.executorId, id: lease.id },
+  })
+})
 
 /**
  * The maintenance sweep's half of expiry. Carry and dispatch already refuse a
  * lease past either window; this records the end (and its audit row) for the
- * leases nobody tried to use again. Bounded per pass.
+ * leases nobody tried to use again, and returns them for their holders'
+ * change notices. Bounded per pass.
  */
 export const expireExecutorConversationLeases = async (
   prisma: PrismaClient,
   now = new Date(),
   limit = 100,
-): Promise<number> => {
+): Promise<ExecutorLeaseRef[]> => {
   const expired = await prisma.executorConversationLease.findMany({
     where: {
       endedAt: null,
@@ -342,10 +376,11 @@ export const expireExecutorConversationLeases = async (
     select: { executorId: true, id: true },
     take: limit,
   })
+  const ended: ExecutorLeaseRef[] = []
   for (const lease of expired) {
-    await expireExecutorConversationLease(prisma, lease, now)
+    ended.push(...await expireExecutorConversationLease(prisma, lease, now))
   }
-  return expired.length
+  return ended
 }
 
 /**
