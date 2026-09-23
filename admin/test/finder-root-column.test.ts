@@ -7,6 +7,7 @@ import { finderRootGroups } from '../src/components/features/knowledge/finder/Fi
 import { agentDocumentsSpaceDisplayName } from '../src/components/features/knowledge/finder/agent-space-name'
 import { buildFinderToolbarActions } from '../src/components/features/knowledge/finder/finder-toolbar-actions'
 import {
+  finderRouteColumns,
   migrateStoredFinderView,
 } from '../src/components/features/knowledge/finder/finder-view'
 
@@ -42,6 +43,29 @@ const root = (overrides: Partial<KnowledgeRoot> = {}): KnowledgeRoot => ({
   sharedTruncated: false,
   sharedWithMeCount: 0,
   ...overrides,
+})
+
+test('phone Knowledge routes never stack the root picker over their detail column', () => {
+  assert.deepEqual(
+    finderRouteColumns({ orgScope: true, pathname: '/knowledge-base', single: true }),
+    { detail: false, root: true },
+  )
+  assert.deepEqual(
+    finderRouteColumns({
+      orgScope: true,
+      pathname: '/knowledge-base/spaces/space-a',
+      single: true,
+    }),
+    { detail: true, root: false },
+  )
+  assert.deepEqual(
+    finderRouteColumns({ orgScope: true, pathname: '/knowledge-base', single: false }),
+    { detail: true, root: true },
+  )
+  assert.deepEqual(
+    finderRouteColumns({ orgScope: false, pathname: '/projects/project-a', single: true }),
+    { detail: true, root: false },
+  )
 })
 
 test('the first group is continuous: virtual folders, My Documents and projects, no hairline', () => {

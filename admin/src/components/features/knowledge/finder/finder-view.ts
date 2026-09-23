@@ -195,6 +195,33 @@ export const finderBarTitle = ({
   return deepestFolderTitle ?? spaceName ?? 'Documents'
 }
 
+/**
+ * Which half of the org Finder belongs in this route layer.
+ *
+ * On a phone the Knowledge root and a selected destination are different
+ * route screens. Rendering the root column and the selected space together
+ * makes `ColumnBrowserViewport` push the space as a nested stage before the
+ * route push runs; the route then covers that stage with another copy of the
+ * root, so the URL and header move while the documents stay hidden underneath.
+ * Wider layouts deliberately keep both columns side by side. Project and
+ * agent document browsers have no org root column, so their detail is always
+ * the first column.
+ */
+export const finderRouteColumns = ({
+  orgScope,
+  pathname,
+  single,
+}: {
+  orgScope: boolean
+  pathname: string
+  single: boolean
+}): { detail: boolean; root: boolean } => {
+  if (!orgScope) return { detail: true, root: false }
+  if (!single) return { detail: true, root: true }
+  const root = pathname === '/knowledge-base' || pathname === '/knowledge-base/'
+  return { detail: !root, root }
+}
+
 
 // ── Column widths ───────────────────────────────────────────────────────────
 //

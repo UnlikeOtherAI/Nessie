@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import {
   useKnowledgeRoot,
@@ -35,6 +35,7 @@ import {
 } from './finder-sort'
 import {
   finderBarTitle,
+  finderRouteColumns,
   FINDER_VIEWS,
   FINDER_VIEW_COOKIE,
   migrateStoredFinderView,
@@ -81,11 +82,13 @@ export const DocumentsFinder = ({
   scope,
 }: DocumentsFinderProps) => {
   const knowledge = useKnowledge()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
   const single = useNavigationLayout() === 'single'
   const [searchParams, setSearchParams] = useSearchParams()
 
   const orgScope = scope.kind === 'org'
+  const routeColumns = finderRouteColumns({ orgScope, pathname, single })
   const rootQuery = useKnowledgeRoot(orgScope)
   const virtualKind = knowledge.selectedRoot?.kind === 'latest'
     ? 'latest'
@@ -237,20 +240,16 @@ export const DocumentsFinder = ({
     dispatch({ columnKey: 'root', id: row.id, modifier: 'none', order: [], type: 'click' })
     switch (row.kind) {
       case 'latest':
-        knowledge.selectVirtual('latest')
         return void navigate('/knowledge-base/latest')
       case 'shared-with-me':
-        knowledge.selectVirtual('shared-with-me')
         return void navigate('/knowledge-base/shared-with-me')
       case 'space':
-        knowledge.selectSpace(row.space.spaceId)
         dispatch({ columnKey: `space:${row.space.spaceId}`, type: 'enterColumn' })
         return void navigate(`/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`)
       case 'product-view':
-        knowledge.selectProductView(row.view)
         return void navigate(`/knowledge-base/views/${encodeURIComponent(row.view)}`)
     }
-  }, [knowledge, navigate])
+  }, [navigate])
 
   // Where an opened document goes: the pane beside the browser, or — on the
   // desktop shell — a window of its own. A folder never reaches it.
@@ -421,8 +420,8 @@ export const DocumentsFinder = ({
   )
 
   const columns = [
-    ...(orgScope ? [rootColumn] : []),
-    ...(virtualColumnKey
+    ...(routeColumns.root ? [rootColumn] : []),
+    ...(routeColumns.detail && virtualColumnKey
       ? [(
         <FinderVirtualPane
           columnKey={virtualColumnKey}
@@ -445,7 +444,7 @@ export const DocumentsFinder = ({
           selection={selection}
         />
       )]
-      : levels.map((level, index) => (
+      : routeColumns.detail ? levels.map((level, index) => (
         <ColumnBrowserColumn
           actions={(() => {
             // Column 0 outside org scope carries the whole toolbar on
@@ -496,15 +495,15 @@ export const DocumentsFinder = ({
             spaceId={selectedSpaceId ?? ''}
           />
         </ColumnBrowserColumn>
-      ))),
+      )) : []),
   ]
 
   // The viewport's per-column widths, in the same order as `columns` above.
   const columnSlots: FinderColumnSlot[] = [
-    ...(orgScope ? ['root' as const] : []),
-    ...(virtualColumnKey
+    ...(routeColumns.root ? ['root' as const] : []),
+    ...(routeColumns.detail && virtualColumnKey
       ? ['virtual' as const]
-      : levels.map((_, index) => `depth:${index}` as const)),
+      : routeColumns.detail ? levels.map((_, index) => `depth:${index}` as const) : []),
   ]
 
   const statusBar = (<FinderStatusStrip

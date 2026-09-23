@@ -7,6 +7,7 @@ import { desktopSelect, tabletSelect } from './wide-select.mjs'
 import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
 import { phoneColdStart } from './phone-cold-start.mjs'
 import { phoneIntentStrip } from './phone-intent-strip.mjs'
+import { phoneKnowledgeNavigation } from './phone-knowledge-navigation.mjs'
 import { desktopChatHistory } from './desktop-chat-history.mjs'
 import { desktopBrowserPushTenant } from './desktop-browser-push-tenant.mjs'
 import { desktopAgentMessageHistory } from './desktop-agent-message-history.mjs'
@@ -28,6 +29,7 @@ export const CASES = [
   desktopSplitPush,
   phoneColdStart,
   phoneIntentStrip,
+  phoneKnowledgeNavigation,
   desktopChatHistory,
   desktopBrowserPushTenant,
   desktopAgentMessageHistory,
