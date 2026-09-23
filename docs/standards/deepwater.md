@@ -481,8 +481,12 @@ the screen it goes to that conversation, which opens the brief itself.
   own: each card's composer names its reply thread) and on Knowledge › Research
   (origin: the person's Personal Assistant conversation) and owns
   `?research=<runId>`, which is declared linkable state on the conversation and
-  reply-thread routes, the Threads inbox and the Knowledge views; a question a
-  doorway hands over travels in router state, never in the address. A doorway
+  reply-thread routes, the Threads inbox and the Knowledge views
+  (`deep-water-research-navigation.test.ts` pins those declarations, the host
+  on each route and the Research button on each composer); a question a
+  doorway hands over travels in router state, never in the address, and the
+  host drops it with a replacing redirect once taken, so Back and Forward land
+  on the conversation, never on a half-filled form. A doorway
   over another conversation than the screen's names that conversation
   (`NewBriefPlace`, `research-brief-origin.ts`), and "Start again" restarts a
   research where it was asked, reply thread included. A research started from

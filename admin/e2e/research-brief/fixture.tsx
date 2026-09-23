@@ -1,15 +1,9 @@
-import { ApiClientError, ApiClientProvider, type ApiClient } from '@nessie/client-core'
+import { ApiClientProvider } from '@nessie/client-core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import {
-  DeepWaterResearchRunViewSchema,
-  type AppDetailRecord,
-  type DeepWaterBriefView,
-  type DeepWaterResearchReadinessState,
-  type DeepWaterResearchRunView,
-} from '@nessie/schemas'
+import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import type { AppDetailRecord } from '@nessie/schemas'
 
 import { AppDetailHero } from '../../src/components/features/apps/AppDetailHero'
 import { FeedConversationContext } from '../../src/components/features/channels/feed-conversation'
@@ -19,52 +13,33 @@ import { ResearchNoticeActions, ResearchRunCard } from '../../src/components/fea
 import type { NewBriefPlace } from '../../src/components/features/deep-water/research-brief-origin'
 import { useResearchComposerButton } from '../../src/components/features/deep-water/useResearchComposerButton'
 import { DeepWaterResearchView } from '../../src/components/features/knowledge/DeepWaterResearchView'
-import { invalidateResearchRun } from '../../src/facades/deep-water/events'
+import { useTrackLocationKey } from '../../src/navigation/redirect'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
-import {
-  CHANNEL, DM_CHANNEL, DM_THREAD, JANA, ME, PA_AGENT, REPORT_MARKDOWN, RUN, TEAM, THREAD,
-  agentBrief, answeredBrief, createdBrief, draftBrief, listedRuns, olderLauncherRuns,
-} from './fixture-data'
+import { CHANNEL, DM_CHANNEL, DM_THREAD, RUN, THREAD } from './fixture-data'
+import { createFixtureServer } from './fixture-server'
 
 /**
  * DeepWater research in the admin, over a stubbed API (Water plan nessie.md
  * §7.7, §7.9). The real brief dialog, research card, notice actions,
  * Knowledge › Research view and `/apps/deep-water` hero render; only the
- * transport is fake. The runner drives the server's side through
- * `window.__research` — the planner answering, the launch landing, a revision
- * conflict — and each change reaches the screen the way a realtime
- * `integration.run.updated` does, through `invalidateResearchRun`.
+ * transport is fake (`fixture-server.ts`, which also reads the query switches
+ * that shape the server's answers). The runner drives the server's side
+ * through `window.__research`.
  *
- * `?at=` is the address the memory router starts at; `?readiness=` sets the
- * server's verdict on the products list, and `?owner=1` or `?admin=1` the
- * viewer's role (the runner's `/api/auth/me` answers with it) and so the
- * verdict's cancel standing; `?brief=` picks the
- * person's brief (`drafting`, `opening-failed` — the planner could not answer
- * the question that opened it — or `sign-in`); `?agent=sign-in` blocks the
- * agent's brief on its requester's changed sign-in; `?create=` makes opening a
- * brief lose its first answer (`lost-once`, after the brief was opened) or be
- * refused because DeepWater was turned off meanwhile (`not-ready`); `?many=1`
- * adds enough older research for a second page of Knowledge › Research at ten
- * a page.
- *
- * Opening a brief is idempotent by its `actionId`, as the API is: the same key
- * again answers with the brief it already opened.
- *
- * A cancel is answered as the API answers it: accepted (202) with the research
- * still open and the cancel in flight; the runner settles it later
- * (`cancelSettles`), as DeepWater stopping the research does.
+ * `?at=` is the address the memory router starts at. The routes are the
+ * admin's own addresses for the screens a brief opens over — a conversation,
+ * one of its threads, a reply thread, the Threads inbox and Knowledge ›
+ * Research — plus `/elsewhere`, a screen with no brief host, whose older card
+ * hands its question to the conversation in router state. The router's
+ * location is readable, and history walkable, through `window.__research`
+ * (`location`, `go`), and the shell's location-key tracking runs as it does in
+ * the app, so a redirect that drops a handed-over question behaves as it does
+ * there.
  */
 
 const params = new URLSearchParams(location.search)
-const readiness = (params.get('readiness') ?? 'ready') as DeepWaterResearchReadinessState
-const owner = params.get('owner') === '1'
-const admin = params.get('admin') === '1'
-const briefVariant = params.get('brief') ?? 'drafting'
-const agentVariant = params.get('agent')
-const createVariant = params.get('create')
-const many = params.get('many') === '1'
 try {
   window.localStorage.clear()
   window.localStorage.setItem('nessie.admin.token', 'research-brief-fixture')
@@ -72,254 +47,10 @@ try {
   // Without storage there is no session; the runner's first wait fails loudly.
 }
 
-const toRun = (brief: DeepWaterBriefView): DeepWaterResearchRunView =>
-  DeepWaterResearchRunViewSchema.strip().parse(brief)
-
-/** Nessie's words for a planner turn that stalled (`deepWaterPlannerFailureMessage`). */
-const PLANNER_STALLED = 'DeepWater’s research planner stopped responding before it answered.'
-const failedTurn = { actionId: null, message: PLANNER_STALLED, retryable: true, status: 'failed' } as const
-
-const personBrief = (): DeepWaterBriefView => {
-  if (briefVariant === 'opening-failed') {
-    // No turn has been answered: the transcript is empty and the brief is as it was opened.
-    return draftBrief({
-      analysis: null, lockedSettings: [], messages: [], openQuestions: [], pillarCount: 0, pillars: [],
-      plannerTurn: failedTurn, revision: 0,
-    })
-  }
-  if (briefVariant === 'sign-in') {
-    return draftBrief({ delivery: { blockedReason: 'requester_identity_changed', state: 'blocked' } })
-  }
-  return draftBrief()
-}
-
-const agentsBrief = (): DeepWaterBriefView => {
-  const brief = agentBrief()
-  return agentVariant === 'sign-in'
-    ? { ...brief, delivery: { blockedReason: 'requester_identity_changed', state: 'blocked' },
-      viewer: { ...brief.viewer, canRetryDelivery: true } }
-    : brief
-}
-
-const briefs = new Map<string, DeepWaterBriefView>([[RUN.draft, personBrief()], [RUN.agentDraft, agentsBrief()]])
-const runs = new Map<string, DeepWaterResearchRunView>(
-  [...listedRuns(), ...(many ? olderLauncherRuns(8) : [])].map((entry) => [entry.id, entry]),
-)
-const store = { conflictNext: false, createLost: createVariant === 'lost-once', teamEnabled: readiness !== 'team_off',
-  upgraded: false }
-/** The brief each opening key opened: the same key again is answered with it. */
-const opened = new Map<string, DeepWaterBriefView>()
-const calls: { body?: unknown; method: string; path: string }[] = []
-
-const runView = (id: string): DeepWaterResearchRunView | null => {
-  const brief = briefs.get(id)
-  return brief ? toRun(brief) : runs.get(id) ?? null
-}
-const notFound = () => new ApiClientError('Not found', 'DEEP_WATER_RESEARCH_NOT_FOUND', 404)
-
-const product = () => ({
-  capabilities: [], category: 'research', id: '90000000-0000-4000-8000-000000000001', name: 'DeepWater',
-  // Turned on (or updated) here, a team is ready; otherwise the verdict the run asked for.
-  research: {
-    state: !store.teamEnabled ? 'team_off' : readiness === 'team_off' || store.upgraded ? 'ready' : readiness,
-    // The cancel standing: owners and admins (amendments N8.5).
-    viewerCanChangeTeam: owner || admin,
-  },
-  slug: 'deep-water', summary: 'Deep research, agreed first.',
-  teamEnablement: { enabled: store.teamEnabled, teamId: TEAM },
-})
-
-const RUNS = '/api/integrations/products/deep-water/research-runs'
-
-const get = async (path: string): Promise<unknown> => {
-  calls.push({ method: 'GET', path })
-  const route = new URL(path, location.origin).pathname
-  if (route === '/api/integrations/products') return [product()]
-  if (route === '/api/users') {
-    return [{ displayName: 'Ondřej Rafaj', id: ME }, { displayName: 'Jana Nováková', id: JANA }]
-  }
-  if (route === '/api/agents') return [{ id: PA_AGENT, name: 'Personal Assistant', status: 'idle' }]
-  if (route === '/api/personal-assistant') return null
-  const match = new RegExp(`^${RUNS}/([^/]+)(/brief|/artifacts/report)?$`).exec(route)
-  if (match) {
-    const [, id = '', tail] = match
-    if (tail === '/brief') {
-      const brief = briefs.get(id) ?? null
-      if (brief) return brief
-      throw notFound()
-    }
-    const view = runView(id)
-    if (!view) throw notFound()
-    if (tail === '/artifacts/report') return { markdown: REPORT_MARKDOWN, reportKind: view.reportKind, truncated: false }
-    return view
-  }
-  return []
-}
-
-const updateBrief = (id: string, update: (brief: DeepWaterBriefView) => DeepWaterBriefView): DeepWaterBriefView => {
-  const brief = briefs.get(id)
-  if (!brief) throw notFound()
-  const next = update(brief)
-  briefs.set(id, next)
-  return next
-}
-
-const conflict = (id: string) => {
-  store.conflictNext = false
-  // DeepWater's planner moved the brief on while the person was editing.
-  const moved = updateBrief(id, (brief) => ({
-    ...brief, revision: (brief.revision ?? 0) + 1, settings: { ...brief.settings!, depth: 'heavy' },
-  }))
-  return new ApiClientError('The brief changed', 'DEEP_WATER_BRIEF_REVISION_CONFLICT', 409,
-    { currentRevision: moved.revision })
-}
-
-const post = async (path: string, body?: Record<string, unknown>): Promise<unknown> => {
-  calls.push({ body, method: 'POST', path })
-  const route = new URL(path, location.origin).pathname
-  if (route === RUNS) {
-    const key = String(body?.actionId)
-    const replay = opened.get(key)
-    if (replay) return briefs.get(replay.id) ?? replay
-    if (createVariant === 'not-ready') {
-      // DeepWater was turned off for the team after the products list was read.
-      store.teamEnabled = false
-      throw new ApiClientError('DeepWater is off', 'DEEP_WATER_NOT_READY', 409, { reason: 'team_off' })
-    }
-    const created = createdBrief(String(body?.topic))
-    briefs.set(created.id, created)
-    opened.set(key, created)
-    if (store.createLost) {
-      // Opened, but the answer never came back.
-      store.createLost = false
-      throw new TypeError('Failed to fetch')
-    }
-    return created
-  }
-  const match = new RegExp(`^${RUNS}/([^/]+)/(messages|start|cancel|deliver)$`).exec(route)
-  const [, id = '', action] = match ?? []
-  const since = new Date().toISOString()
-  const actionId = String(body?.actionId)
-  if (action === 'messages') {
-    if (store.conflictNext) throw conflict(id)
-    return updateBrief(id, (brief) => ({
-      ...brief,
-      pendingAction: { actionId, error: null, kind: 'reply', since },
-      plannerTurn: { actionId, since, status: 'replying' },
-      viewer: { ...brief.viewer, canEdit: false, canStart: false },
-    }))
-  }
-  if (action === 'start') {
-    if (store.conflictNext) throw conflict(id)
-    return toRun(updateBrief(id, (brief) => ({
-      ...brief, pendingAction: { actionId, error: null, kind: 'launch', since }, status: 'starting',
-    })))
-  }
-  if (action === 'cancel') {
-    // Accepted: the research stays open, with the cancel in flight, until DeepWater stops it.
-    const brief = briefs.get(id)
-    if (brief) {
-      return toRun(updateBrief(id, (entry) => ({
-        ...entry,
-        pendingAction: { actionId, error: null, kind: 'cancel', since },
-        viewer: { ...entry.viewer, canEdit: false, canStart: false },
-      })))
-    }
-    const view = runs.get(id)
-    if (!view) throw notFound()
-    return view
-  }
-  if (action === 'deliver') {
-    return toRun(updateBrief(id, (brief) => ({ ...brief, delivery: { blockedReason: null, state: 'pending' } })))
-  }
-  return { ok: true }
-}
-
-const patch = async (path: string, body?: Record<string, unknown>): Promise<unknown> => {
-  calls.push({ body, method: 'PATCH', path })
-  // Turning DeepWater off would strand the agent's running research.
-  if (body?.enabled === false && runs.get(RUN.running)?.status === 'running') {
-    throw new ApiClientError('Deep Water run is still running', 'LEDGER_DEEPWATER_ACTIVE_RUNS', 409, {
-      channelId: CHANNEL, id: RUN.running, originKind: 'agent', requestedByUserId: ME, status: 'running',
-    })
-  }
-  store.teamEnabled = body?.enabled === true
-  // Turning it on installs the current research tools, which is how a team is updated.
-  if (store.teamEnabled) store.upgraded = true
-  return product()
-}
-
-const client = {
-  delete: async () => null,
-  get,
-  // Forward only, as the brief API pages: a cursor names the last row of the page before.
-  getPage: async (path: string) => {
-    calls.push({ method: 'GET', path })
-    const query = new URL(path, location.origin).searchParams
-    const limit = Number(query.get('limit') ?? '25')
-    const own = [...briefs.values()].filter((brief) => brief.status !== 'cancelled').map(toRun)
-    const all = [...own, ...runs.values()]
-    const after = query.get('cursor')
-    const start = after ? all.findIndex((entry) => entry.id === after) + 1 : 0
-    const items = all.slice(start, start + limit)
-    const hasMore = start + limit < all.length
-    return {
-      data: { items, meta: { hasMore, nextCursor: hasMore ? items.at(-1)?.id ?? null : null, prevCursor: null } },
-    }
-  },
-  patch,
-  post,
-  put: async () => null,
-} as unknown as ApiClient
-
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-
-/** The server's side, driven by the runner; each change reaches the screen as the realtime event does. */
-Object.assign(window, {
-  __research: {
-    calls,
-    /** How many briefs opening a brief has opened: a replayed key opens none. */
-    openedBriefs: () => opened.size,
-    /** DeepWater stops a research whose cancel was accepted. */
-    cancelSettles: (id: string) => {
-      if (briefs.has(id)) {
-        updateBrief(id, (brief) => ({ ...brief, pendingAction: null, status: 'cancelled',
-          viewer: { ...brief.viewer, canCancel: false, canEdit: false, canStart: false } }))
-      } else {
-        const view = runs.get(id)
-        if (view) runs.set(id, { ...view, status: 'cancelled', viewer: { ...view.viewer, canCancel: false } })
-      }
-      invalidateResearchRun(queryClient, id)
-    },
-    conflictNext: () => {
-      store.conflictNext = true
-    },
-    launched: (id: string) => {
-      updateBrief(id, (brief) => ({ ...brief, pendingAction: null, startedAt: new Date().toISOString(),
-        status: 'running', viewer: { ...brief.viewer, canEdit: false, canStart: false } }))
-      invalidateResearchRun(queryClient, id)
-    },
-    /** DeepWater's planner stalls on the person's last reply: no transcript row, the action cleared. */
-    plannerFails: (id: string) => {
-      updateBrief(id, (brief) => ({
-        ...brief,
-        pendingAction: null,
-        plannerTurn: failedTurn,
-        viewer: { ...brief.viewer, canEdit: true, canStart: true },
-      }))
-      invalidateResearchRun(queryClient, id)
-    },
-    plannerAnswers: (id: string) => {
-      const reply = calls.filter((call) => call.method === 'POST' && call.path.endsWith(`${id}/messages`)).at(-1)
-      const body = (reply?.body ?? {}) as { message?: string; pillars?: string[]; settings?: object }
-      updateBrief(id, (brief) => ({
-        ...answeredBrief(brief, String(body.message), { pillars: body.pillars, settings: body.settings }),
-        viewer: { ...brief.viewer, canEdit: true, canStart: true },
-      }))
-      invalidateResearchRun(queryClient, id)
-    },
-  },
-})
+const { client, runner } = createFixtureServer(queryClient)
+const research: Record<string, unknown> = { ...runner }
+Object.assign(window, { __research: research })
 
 const COMPOSER_TEXT = 'Could we look into heat pumps for the Leeds office before winter?'
 
@@ -381,36 +112,80 @@ const OLDER_CARD = {
   }],
 }
 
-const Thread = () => (
-  <ResearchBriefHost origin={{ channelId: CHANNEL, kind: 'thread', threadId: THREAD }}>
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6" data-testid="research-thread">
-      {CARDS.map((id) => (
-        <div data-card={id} key={id}>
-          <ResearchRunCard metadata={{ researchRunRef: { runId: id, schemaVersion: 1 } }} />
-        </div>
-      ))}
-      <div data-notice={RUN.done}>
-        <p className="text-sm text-[color:var(--tx)]">
-          @Ondřej Rafaj Your research “Heat pumps in Victorian terraced houses” has finished. The full report is
-          in Documents.
-        </p>
-        <ResearchNoticeActions metadata={{ deepWaterNotice: { kind: 'result', runId: RUN.done, schemaVersion: 1 } }} />
+const OlderCard = () => (
+  <FeedConversationContext.Provider value={{ channelId: DM_CHANNEL }}>
+    <div data-testid="older-card">
+      <MessageUiCards metadata={OLDER_CARD} place={{ rootMessageId: OLD_CARD_ROOT, threadId: DM_THREAD }} />
+    </div>
+  </FeedConversationContext.Provider>
+)
+
+/**
+ * A conversation, as `ChannelsPage` hosts it: `/channels/:channelId` is the
+ * room's own thread, and a thread or reply-thread address names its thread.
+ */
+const Thread = () => {
+  const { channelId, threadId } = useParams()
+  const origin = channelId && threadId
+    ? { channelId, kind: 'thread' as const, threadId }
+    : { channelId: CHANNEL, kind: 'thread' as const, threadId: THREAD }
+  return (
+    <ResearchBriefHost origin={origin}>
+      <ThreadBody />
+    </ResearchBriefHost>
+  )
+}
+
+const ThreadBody = () => (
+  <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6" data-testid="research-thread">
+    {CARDS.map((id) => (
+      <div data-card={id} key={id}>
+        <ResearchRunCard metadata={{ researchRunRef: { runId: id, schemaVersion: 1 } }} />
       </div>
-      <ComposerStrip testId="composer-research-button" />
-      <ComposerStrip
-        place={{ rootMessageId: REPLY_ROOT }}
-        testId="reply-research-button"
-        text="Compare the three quotes we got"
-      />
-      <ComposerStrip place={ELSEWHERE} testId="elsewhere-research-button" text="What do tenants pay to heat a flat?" />
-      <FeedConversationContext.Provider value={{ channelId: DM_CHANNEL }}>
-        <div data-testid="older-card">
-          <MessageUiCards metadata={OLDER_CARD} place={{ rootMessageId: OLD_CARD_ROOT, threadId: DM_THREAD }} />
-        </div>
-      </FeedConversationContext.Provider>
+    ))}
+    <div data-notice={RUN.done}>
+      <p className="text-sm text-[color:var(--tx)]">
+        @Ondřej Rafaj Your research “Heat pumps in Victorian terraced houses” has finished. The full report is
+        in Documents.
+      </p>
+      <ResearchNoticeActions metadata={{ deepWaterNotice: { kind: 'result', runId: RUN.done, schemaVersion: 1 } }} />
+    </div>
+    <ComposerStrip testId="composer-research-button" />
+    <ComposerStrip
+      place={{ rootMessageId: REPLY_ROOT }}
+      testId="reply-research-button"
+      text="Compare the three quotes we got"
+    />
+    <ComposerStrip place={ELSEWHERE} testId="elsewhere-research-button" text="What do tenants pay to heat a flat?" />
+    <OlderCard />
+  </div>
+)
+
+/** The Threads inbox, as `ThreadsPage` hosts it: no conversation of its own; a card's composer names its thread. */
+const Inbox = () => (
+  <ResearchBriefHost origin={null}>
+    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6" data-testid="research-inbox">
+      <ComposerStrip place={ELSEWHERE} testId="inbox-research-button" text="What do tenants pay to heat a flat?" />
     </div>
   </ResearchBriefHost>
 )
+
+/** A screen with no brief host: an older card here sends its question to its own conversation. */
+const Elsewhere = () => (
+  <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6" data-testid="research-elsewhere">
+    <OlderCard />
+  </div>
+)
+
+/** The router's location and history, for the runner; and the shell's key tracking a redirect relies on. */
+const LocationProbe = () => {
+  useTrackLocationKey()
+  const current = useLocation()
+  const navigate = useNavigate()
+  research.location = () => ({ pathname: current.pathname, search: current.search, state: current.state })
+  research.go = (delta: number) => void navigate(delta)
+  return null
+}
 
 const deepWaterApp = {
   agentsWithAccess: [], aliases: [], appSource: 'first_party', authMethod: 'none',
@@ -438,8 +213,13 @@ createRoot(document.getElementById('root')!).render(
         <AgentIdentityProvider>
           <MemoryRouter initialEntries={[params.get('at') ?? `/channels/${CHANNEL}`]}>
             <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
+              <LocationProbe />
               <Routes>
                 <Route element={<Thread />} path="/channels/:channelId" />
+                <Route element={<Thread />} path="/channels/:channelId/threads/:threadId" />
+                <Route element={<Thread />} path="/channels/:channelId/threads/:threadId/replies/:rootMessageId" />
+                <Route element={<Inbox />} path="/threads" />
+                <Route element={<Elsewhere />} path="/elsewhere" />
                 <Route element={<DeepWaterResearchView />} path="/knowledge-base/views/deep-water-research" />
                 <Route element={<Hero />} path="/apps/deep-water" />
               </Routes>

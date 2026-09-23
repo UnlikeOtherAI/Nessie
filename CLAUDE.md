@@ -184,10 +184,16 @@ sentence changes only if the invariant itself did.
   (the planner answering, a launch landing, a revision conflict) and pins the
   whole person brief, the artifact actions and their clipboard fallback, an
   older card's action, an agent's read-only brief and its discard (accepted,
-  then settled by `cancelSettles`), the not-ready doorways, the owner's cancel
-  of a research that blocks turning DeepWater off (requested, still refusing,
-  then stopped), and Knowledge › Research with a research from before briefs
-  and a second page walked back. The rules are in
+  then settled by `cancelSettles`), the not-ready doorways and a verdict the
+  admin cannot read, the owner's cancel of a research that blocks turning
+  DeepWater off (requested, still refusing, then stopped; refused by DeepWater
+  through `cancelRefused` and offered again; unseen by an owner who may not
+  read it), Knowledge › Research with a research from before briefs, a second
+  page walked back and an empty first page with more to come, and the admin's
+  own addresses — a brief on a reply thread's and the Threads inbox's address,
+  and a question handed from a screen with no brief host (`/elsewhere`) that
+  Back and Forward never reopen. The server stub is `fixture-server.ts`. The
+  rules are in
   [`docs/standards/deepwater.md`](docs/standards/deepwater.md) → "Research
   briefs — the admin".
 - **Overlay layer coverage:** run

@@ -20,6 +20,15 @@ import {
   walkStartAgain,
 } from './steps.mjs'
 import { walkAgentBriefSignIn, walkLostNewBrief, walkNotReadyNewBrief, walkOutdatedTeam } from './steps-recovery.mjs'
+import { walkHeroCancelRefused, walkHeroCancelUnseen, walkReadinessUnread } from './steps-hero.mjs'
+import {
+  INBOX_BRIEF,
+  REPLY_THREAD_BRIEF,
+  walkEmptyFirstPage,
+  walkHandedQuestion,
+  walkInbox,
+  walkReplyThreadAddress,
+} from './steps-routes.mjs'
 
 /**
  * DeepWater research in the admin, rendered (Water plan nessie.md §7.7, §7.9;
@@ -40,10 +49,16 @@ import { walkAgentBriefSignIn, walkLostNewBrief, walkNotReadyNewBrief, walkOutda
  * requester), a new brief whose answer was lost resent under its key, every
  * artifact action including the clipboard fallback, the not-ready doorways for
  * a member, an admin (who is offered no team control) and an owner, a new
- * brief refused as not ready, an owner updating a team that needs it, the
- * owner's cancel of the research that blocks turning DeepWater off (requested,
- * still refusing, then stopped), and Knowledge › Research with a research from
- * before briefs and a second page.
+ * brief refused as not ready, an owner updating a team that needs it, a
+ * readiness verdict the admin could not read, the owner's cancel of the
+ * research that blocks turning DeepWater off (requested, still refusing, then
+ * stopped; accepted and then refused by DeepWater, offered again; and unseen
+ * by an owner who may not read the research), Knowledge › Research with a
+ * research from before briefs, a second page and a first page the server's
+ * bounded read answered empty with more to come, and the admin's own
+ * addresses: a brief on a reply thread's and the Threads inbox's address, and
+ * a question handed from a screen with no brief host, dropped from history
+ * once taken.
  * Every state is screenshotted under e2e/screenshots/research-brief/.
  */
 
@@ -289,6 +304,13 @@ try {
   await walkOutdatedTeam(outdated, snap)
   await outdated.close()
 
+  // 14c — a verdict the admin cannot read: said as that, on the hero and behind the composer's button.
+  const unreadHero = await open(desktop, 'readiness=unreadable&owner=1&at=/apps/deep-water')
+  const unreadThread = await open(desktop, 'readiness=unreadable')
+  await walkReadinessUnread(unreadHero, unreadThread, snap)
+  await unreadHero.close()
+  await unreadThread.close()
+
   // 15–17 — turning it off is refused by an open research, which the owner cancels here.
   const hero = await open(desktop, 'owner=1&at=/apps/deep-water')
   const heroControls = hero.getByTestId('deep-water-team-controls')
@@ -321,6 +343,13 @@ try {
   await heroControls.getByRole('button', { name: 'Turn on DeepWater' }).waitFor()
   await snap(hero, '17-hero-turned-off.png')
   await hero.close()
+  // 16c — accepted, then refused by DeepWater: said, and Cancel offered again; 16d — an owner who can't read it.
+  const refusedCancel = await open(desktop, 'owner=1&at=/apps/deep-water')
+  await walkHeroCancelRefused(refusedCancel, snap)
+  await refusedCancel.close()
+  const unseenCancel = await open(desktop, 'owner=1&block=hidden&at=/apps/deep-water')
+  await walkHeroCancelUnseen(unseenCancel, snap)
+  await unseenCancel.close()
 
   // 18 — Knowledge › Research: the viewer's research, and a new brief to their Personal Assistant.
   const knowledge = await open(desktop, 'at=/knowledge-base/views/deep-water-research')
@@ -350,6 +379,21 @@ try {
   const pages = await open(desktop, 'many=1&at=/knowledge-base/views/deep-water-research?limit=10')
   await walkResearchPages(pages)
   await pages.close()
+  // 18d — the first page came back empty with more further back: not "No research yet".
+  const sparse = await open(desktop, 'many=1&sparse=1&at=/knowledge-base/views/deep-water-research?limit=10')
+  await walkEmptyFirstPage(sparse, snap)
+  await sparse.close()
+
+  // 20–22 — the admin's own addresses: a reply thread's, the Threads inbox's, and a question handed over.
+  const replyAddress = await open(desktop, REPLY_THREAD_BRIEF)
+  await walkReplyThreadAddress(replyAddress)
+  await replyAddress.close()
+  const inbox = await open(desktop, INBOX_BRIEF)
+  await walkInbox(inbox)
+  await inbox.close()
+  const handed = await open(desktop, 'at=/elsewhere')
+  await walkHandedQuestion(handed, snap)
+  await handed.close()
 
   // 19 — the brief on a phone.
   const phone = await browser.newContext({ viewport: { height: 844, width: 390 } })
