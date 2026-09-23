@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import type { DeepWaterBriefInput } from '@nessie/schemas'
+import { acquireAgentToolPolicyLock } from '@nessie/team-admin'
 
 import {
   DeepWaterAgentGrantMissingError,
@@ -12,6 +13,8 @@ import {
   claimAgentOriginRun,
   createPersonDeepWaterBrief,
 } from '../src/deepwater-brief-creation.js'
+import { DEEP_WATER_AGENT_ACCESS_ERROR_CODES, DeepWaterAgentAccessError } from '../src/deepwater-agent-access.js'
+import { setDeepWaterAgentAccess } from '../src/deepwater-bundle-grants.js'
 import { deepWaterBriefTools } from '../src/integration-plugin-manifests/deep-water-brief-tools.js'
 import { projectMcpToolDescriptors } from '../src/mcp-tool-registry-projection.js'
 import { runWithDeepWaterTransitionLock } from '../src/deepwater-transition-lock.js'
@@ -211,4 +214,67 @@ withSeed('creation waits for a disable holding the team lock, then sees the team
   release()
   await disable
   await assert.rejects(creation, notReady('team_off'))
+})
+
+/**
+ * Hold the agent's policy lock, so whichever of a claim and a revocation takes
+ * the team lock first is parked at the policy lock, holding the team lock,
+ * while the other queues behind it; releasing lets the first finish.
+ */
+const holdPolicyLock = (s: Seed) => {
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const holding = s.prisma.$transaction(async (tx) => {
+    await acquireAgentToolPolicyLock(tx, s.ids.agent)
+    await held
+  })
+  return { release: async () => { release(); await holding } }
+}
+
+const pause = () => new Promise((resolve) => setTimeout(resolve, 150))
+
+const agentClaim = (s: Seed, toolCallId: string) => claimAgentOriginRun(s.prisma, {
+  ...common(s), agentId: s.ids.agent, originRunId: s.ids.run, toolCallId, principalUserId: s.ids.requester,
+  sourceScopes: [], disclosureSources: [],
+})
+
+const agentAccess = (s: Seed, enabled: boolean) => setDeepWaterAgentAccess(s.prisma, {
+  agentId: s.ids.agent, enabled, organizationId: s.ids.organization, teamId: s.ids.team,
+})
+
+withSeed('a claim that queues behind a revocation of the agent\'s bundle sees no grant, and writes nothing', async (s) => {
+  await agentAccess(s, true)
+  const lock = holdPolicyLock(s)
+  await pause()
+  // The revocation takes the team lock and waits at the agent's policy lock…
+  const revocation = agentAccess(s, false)
+  await pause()
+  // …so the claim waits for the team lock behind it.
+  const claim = agentClaim(s, 'call_race_revoke')
+  await pause()
+  await lock.release()
+  await revocation
+  await assert.rejects(claim, DeepWaterAgentGrantMissingError)
+  assert.equal(await s.prisma.productIntegrationRun.count({ where: { organizationId: s.ids.organization } }), 0)
+})
+
+withSeed('a revocation that queues behind a claim finds the agent\'s new brief and is refused', async (s) => {
+  await agentAccess(s, true)
+  const lock = holdPolicyLock(s)
+  await pause()
+  // The claim takes the team lock and waits at the agent's policy lock…
+  const claim = agentClaim(s, 'call_race_claim')
+  await pause()
+  // …so the revocation waits for the team lock behind it.
+  const revocation = agentAccess(s, false)
+  await pause()
+  await lock.release()
+  const claimed = await claim
+  assert.equal(claimed.created, true)
+  await assert.rejects(revocation, (error: unknown) =>
+    error instanceof DeepWaterAgentAccessError
+    && error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS
+    && (error.details as { id?: string } | undefined)?.id === claimed.run.id)
+  // The grant is still there: the brief can carry on.
+  assert.equal((await agentClaim(s, 'call_race_claim')).run.id, claimed.run.id)
 })
