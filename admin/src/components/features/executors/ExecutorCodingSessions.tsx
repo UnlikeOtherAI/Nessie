@@ -84,7 +84,7 @@ const SessionRow = ({ canClose, closing, onClose, pending, session }: SessionRow
 )
 
 const CodingSessionList = ({ executorId }: { executorId: string }) => {
-  const query = useExecutorCodingSessions(executorId, true)
+  const query = useExecutorCodingSessions(executorId)
   const close = useCloseExecutorCodingSession(executorId)
   const [error, setError] = useState<string | null>(null)
   const closeSession = (session: ExecutorCodingSessionRecord) => {

@@ -29,7 +29,7 @@ export const executorCodingSessionsRecheckDelay = (
   ? EXECUTOR_CODING_SESSION_CLOSING_RECHECK_MS
   : false
 
-export const useExecutorCodingSessions = (executorId: string, enabled: boolean) => {
+export const useExecutorCodingSessions = (executorId: string) => {
   const apiClient = useApiClient()
   return useQuery({
     // One machine's sessions are never listed, or closed, from another's page.
@@ -39,7 +39,6 @@ export const useExecutorCodingSessions = (executorId: string, enabled: boolean) 
       `/api/executors/${executorId}/coding-sessions`,
       ExecutorCodingSessionListResponseSchema,
     ),
-    enabled,
     refetchInterval: (query) => executorCodingSessionsRecheckDelay(query.state.data),
   })
 }
