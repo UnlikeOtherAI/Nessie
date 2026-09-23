@@ -431,13 +431,14 @@ that acts as the machine's own user, and these rules follow from that:
 - **The model drives it through tools of its own, not the pair.** A run the
   rule allows is offered `coding_session_list`, `_start`, `_wait`, `_send`,
   `_interrupt`, `_review` and `_close`, each an `mcp.call` to one bridge tool
-  through the same dispatch, and `executor_mcp_tools` / `executor_mcp_call`
-  stop naming the bridge; asked for through them anyway, it is refused as
-  correctable before any command exists. The wait is the worker's: short
+  through the same dispatch. `executor_mcp_tools` / `executor_mcp_call` never
+  name the bridge, for any run; asked for through them anyway, it is refused
+  as correctable before any command exists. The wait is the worker's: short
   status reads every 5 s for up to 10 minutes, nothing held on the lane
   between them, returning early when the session needs the agent, the person
-  writes or the run's own time enters its wind-down. Coding output has its own banner ("Output from the coding
-  agent you supervise…"). The contract is in
+  writes or the run's own time enters its wind-down. Coding output has its
+  own banner ("Output from the coding agent you supervise…"). The contract is
+  in
   [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
   "The agent's tools".
 - **What ends a person's authority closes their sessions.** A lease's end, an

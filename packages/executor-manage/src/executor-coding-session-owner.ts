@@ -12,10 +12,11 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
  * Who may drive the executor's built-in coding-sessions bridge
  * (docs/executor-protocol/host-coding-sessions.md). A coding agent it runs
  * acts with the host OS user's full authority — their files, their git and
- * SSH credentials, their Claude or ChatGPT login — so an `mcp.call` to it is
- * allowed only on a **private** executor and only for a binding made for that
- * executor's **pairing owner**. Anyone else entitled to a shared executor
- * would otherwise drive its owner's subscription and disk.
+ * SSH credentials, their Claude or ChatGPT login — so an `mcp.call` to it,
+ * and an `mcp.tools` listing of it, is allowed only on a **private** executor
+ * and only for a binding made for that executor's **pairing owner**. Anyone
+ * else entitled to a shared executor would otherwise drive its owner's
+ * subscription and disk.
  *
  * The rule is checked where every command is created and again where the
  * daemon collects it, from the binding's own provenance: the consumed
@@ -85,22 +86,26 @@ export type ExecutorMcpCallAuthority = {
 
 /**
  * Refuses an `mcp.call` to the bridge the rule does not allow — whatever the
- * revision says, the reserved name is always the bridge's — and any payload
- * whose `owner` is not exactly the binding's: present for the reviewed
- * bridge, absent for every other server.
+ * revision says, the reserved name is always the bridge's — and an
+ * `mcp.tools` listing of it too, which would start the bridge and read its
+ * catalog; and any payload whose `owner` is not exactly the binding's:
+ * present for a call to the reviewed bridge, absent for every other call and
+ * for every listing.
  */
 export const assertExecutorMcpCallAllowed = (
   authority: ExecutorMcpCallAuthority,
   payload: Record<string, unknown>,
 ): void => {
-  if (authority.operationKey !== 'mcp.call') return
+  if (authority.operationKey !== 'mcp.call' && authority.operationKey !== 'mcp.tools') return
   const server = isRecord(payload.args) && typeof payload.args.server === 'string' ? payload.args.server : null
   const bridge = server !== null
     && (server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME || server === authority.codingSessionsServer)
   if (bridge && !executorCodingSessionsAllowed(authority.executor, authority.owner.actorUserId)) {
     throw ownerOnlyRefusal(authority.executor)
   }
-  const expected = server !== null && server === authority.codingSessionsServer ? authority.owner : undefined
+  const expected = authority.operationKey === 'mcp.call' && server !== null && server === authority.codingSessionsServer
+    ? authority.owner
+    : undefined
   if (!sameOwner(payload.owner, expected)) {
     throw new ExecutorError(
       EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID,
@@ -126,7 +131,7 @@ export const assertExecutorMcpCallPayload = async (
       operationKey: true,
     },
   })
-  if (binding?.operationKey !== 'mcp.call') return
+  if (!binding || (binding.operationKey !== 'mcp.call' && binding.operationKey !== 'mcp.tools')) return
   const candidate = await prisma.executorAvailabilityCandidate.findUnique({
     where: { handleDigest: binding.candidateHandleDigest },
     select: { actorUserId: true, agentId: true },

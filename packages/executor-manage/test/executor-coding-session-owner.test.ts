@@ -39,10 +39,10 @@ const withWorld = async (options: LeaseWorldOptions, run: (world: LeaseWorld) =>
   }
 }
 
-/** The holder's launch, and the binding its `mcp.call`s are made on. */
-const launchedCall = async (world: LeaseWorld) => {
+/** The holder's launch, and the binding its `mcp.call`s (or its `mcp.tools` listings) are made on. */
+const launchedCall = async (world: LeaseWorld, operationKey: 'mcp.call' | 'mcp.tools' = 'mcp.call') => {
   const launch = await launchLocalApps(world)
-  const binding = launch.bindings.find((entry) => entry.operationKey === 'mcp.call')
+  const binding = launch.bindings.find((entry) => entry.operationKey === operationKey)
   assert.ok(binding)
   return { bindingId: binding.bindingId, runId: launch.run.id }
 }
@@ -134,6 +134,30 @@ for (const [label, options, message] of [
     })
   })
 }
+
+dbTest('listing the bridge’s catalog meets the same rule, and a listing never carries an owner', async () => {
+  const listing = { args: { server: 'coding-sessions' } }
+  await withWorld({ pairingOwner: 'admin', scope: 'private' }, async (world) => {
+    const { bindingId, runId } = await launchedCall(world, 'mcp.tools')
+    await assert.rejects(
+      createCommand(world, { bindingId, payload: { ...listing, runId }, runId }),
+      refusedWith('EXECUTOR_CODING_SESSIONS_OWNER_ONLY', /someone else/),
+      'listing it would start the owner’s bridge for someone else',
+    )
+    // Every other program's catalog stays readable.
+    await createCommand(world, { bindingId, payload: { args: { server: 'kelpie' }, runId }, runId })
+  })
+  await withWorld({ pairingOwner: 'holder', scope: 'private' }, async (world) => {
+    const { bindingId, runId } = await launchedCall(world, 'mcp.tools')
+    await createCommand(world, { bindingId, payload: { ...listing, runId }, runId })
+    await assert.rejects(
+      createCommand(world, {
+        bindingId, payload: { ...listing, owner: { actorUserId: world.holderId, agentId: world.agentId }, runId }, runId,
+      }),
+      refusedWith('EXECUTOR_COMMAND_PAYLOAD_INVALID'),
+    )
+  })
+})
 
 dbTest('a command made while the rule held is refused as the daemon collects it once it no longer does', async () => {
   await withWorld({ pairingOwner: 'holder', scope: 'private' }, async (world) => {

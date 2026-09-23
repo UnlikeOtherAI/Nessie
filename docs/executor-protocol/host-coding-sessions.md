@@ -51,12 +51,14 @@ A run whose `mcp.call` binding is to a revision with the bridge's facts, whose
 agent's policy allows that call, and whose binding the rule above allows — a
 private executor, launched by its pairing owner — is offered seven tools of
 its own (`worker/src/run/coding-session-tools.ts`,
-`executor-coding-sessions.ts`), and the generic pair stops naming the bridge:
-`executor_mcp_tools` and `executor_mcp_call` offer every other program the
-revision names, and a call to the bridge through them anyway is refused as
-correctable, before any command exists, with a pointer to the tools. A run the
-rule does not allow is offered none, and its generic call to the bridge meets
-the API's refusal as before.
+`executor-coding-sessions.ts`). The generic pair never names the bridge — the
+reserved name, or the one the revision's facts give — whether or not the run
+is offered the tools: `executor_mcp_tools` and `executor_mcp_call` offer every
+other program the revision names, and a call to the bridge through them
+anyway is refused as correctable, before any command exists, with a pointer
+to the tools, or, for a run the rule does not allow (which is offered none),
+with the reason it cannot drive coding sessions. The API refuses such a call
+as well, an `mcp.tools` listing of the bridge included.
 
 | Tool | Bridge tool | What it is for |
 | --- | --- | --- |
@@ -128,7 +130,9 @@ detection"). While it waits, the thought-process bubble shows one line for it,
 rewritten in place under the same chunk id — "Claude Code: working — 14 steps
 (Bash 7, Edit 3)" — from the status, the counts and the tool names only, never
 the coding agent's own words. The run's machine-reach fact names the tools and
-lists the sessions the person holds there as the machine last reported them
+lists the sessions the person holds there as the machine last reported them —
+their titles only in the person's own DM, where the listing stamps the run's
+disclosure basis as a coding tool's answer does
 ([conversation-leases.md](conversation-leases.md) → §5).
 
 ## Two processes: a stateless bridge and one host per session

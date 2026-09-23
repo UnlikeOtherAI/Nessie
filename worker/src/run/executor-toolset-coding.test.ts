@@ -109,9 +109,19 @@ test('no coding tools for anyone but the pairing owner, on a shared machine, or 
     const offered = await toolset(variant).built
     assert.equal(offered.codingSessions, null, JSON.stringify(variant))
     assert.ok(![...offered.handledNames].some((name) => CODING_SESSION_TOOL_NAME_SET.has(name)))
-    // The generic pair still names the bridge, and the API's rule answers a call to it.
-    assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_call'), ['coding-sessions', 'kelpie'])
+    // Nor does the generic pair name the bridge: the API would refuse every call to it.
+    assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_call'), ['kelpie'])
+    assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_tools'), ['kelpie'])
   }
+  // Asked for anyway, it is refused as correctable before any command exists, and told why.
+  const { built, transactions } = toolset({ actorUserId: '00000000-0000-4000-8000-000000000009' })
+  const offered = await built
+  const viaCall = await offered.dispatch('executor_mcp_call', { server: 'coding-sessions', tool: 'session_list' }, 'p1')
+  assert.equal(viaCall.correctable, true)
+  assert.match(viaCall.output, /^The coding-sessions bridge is not reachable from this run: coding sessions act as/)
+  const viaCatalog = await offered.mcpCatalog('coding-sessions', 'p2')
+  assert.ok('failure' in viaCatalog && viaCatalog.failure.correctable === true)
+  assert.equal(transactions.length, 0)
 })
 
 test('a machine that names only the bridge offers the coding tools and no generic pair', async () => {

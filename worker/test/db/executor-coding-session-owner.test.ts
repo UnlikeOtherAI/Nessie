@@ -176,9 +176,10 @@ runDatabaseTest('the bridge gets the binding’s owner, other programs none, and
     assert.equal((delivered.at(-1) as { owner?: unknown }).owner, undefined)
 
     // Once the machine is somebody else's, the rule refuses the bridge before
-    // any command exists, in words the model can pass on: through the tools
-    // this run was offered, and through the generic pair of a run built now,
-    // which is offered none. Kelpie is still reached.
+    // any command exists, in words the model can pass on: the API, through
+    // the tools this run was offered; and a run built now is offered none,
+    // and its generic pair neither names the bridge nor sends a call to it.
+    // Kelpie is still reached.
     await prisma.executor.update({ where: { id: executorId }, data: { pairingOwnerUserId: otherUserId } })
     const commandsBefore = await commands()
     const ownerOnly = /^The call did not complete \(EXECUTOR_CODING_SESSIONS_OWNER_ONLY\)\. Coding sessions on this machine act as the person who paired it/
@@ -197,8 +198,8 @@ runDatabaseTest('the bridge gets the binding’s owner, other programs none, and
     )
     const refusedGeneric = await executeRebuilt('executor_mcp_call', { server: 'coding-sessions', tool: 'echo' }, 'provider-call-6', actor)
     assert.equal(refusedGeneric.success, false)
-    assert.equal(refusedGeneric.correctable, undefined)
-    assert.match(refusedGeneric.output, ownerOnly)
+    assert.equal(refusedGeneric.correctable, true, 'a program this run is not offered')
+    assert.match(refusedGeneric.output, /^The coding-sessions bridge is not reachable from this run/)
     assert.equal(await commands(), commandsBefore)
     const stillKelpie = await executeRebuilt('executor_mcp_call', { server: 'kelpie', tool: 'echo' }, 'provider-call-7', actor)
     assert.equal(stillKelpie.success, true, stillKelpie.output)

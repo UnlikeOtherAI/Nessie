@@ -2,7 +2,7 @@ import {
   ensureExecutorLogicalTools,
   reviewedCodingSessionsServer,
 } from '@nessie/executor-manage'
-import { ExecutorMcpServerNamesSchema } from '@nessie/schemas'
+import { EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME, ExecutorMcpServerNamesSchema } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
@@ -33,6 +33,8 @@ import type { AgenticToolResult } from './tools.js'
 export { descriptorFor, EXECUTOR_COMMAND_TOPIC, executorDispatchResult, executorToolName }
 
 type ExecutorEntry = ExecutorCommandTarget & {
+  /** The bridge's names on the bound revision, which the generic pair never reaches. */
+  codingBridgeNames: ReadonlySet<string>
   descriptor: ToolSchemaDescriptor
   mcpServers: readonly string[]
   toolName: string
@@ -47,6 +49,17 @@ const reviewedMcpServers = (descriptor: unknown): readonly string[] => {
     (descriptor as { mcpServers?: unknown } | null | undefined)?.mcpServers,
   )
   return named.success ? named.data : []
+}
+
+/**
+ * The coding bridge's names on a revision: the reserved one, and the one its
+ * reviewed facts give. The generic pair names neither, whether or not this
+ * run is offered the coding tools: with them the model reaches the bridge
+ * through them alone, and without them the API refuses every call to it.
+ */
+const codingBridgeNames = (descriptor: unknown): ReadonlySet<string> => {
+  const reviewed = reviewedCodingSessionsServer(descriptor)
+  return new Set([EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME, ...(reviewed === null ? [] : [reviewed])])
 }
 
 export type ExecutorToolset = {
@@ -125,9 +138,6 @@ export const buildExecutorToolset = async (
     bindings,
     mcpCallToolId !== undefined && input.agentToolPolicy?.[mcpCallToolId] === true,
   )
-  // With the first-class tools offered, the generic pair names every program
-  // but the bridge, which the model reaches through them alone.
-  const codingServer = codingOffer?.facts.serverName ?? null
   const codingOperationKeys = new Set(['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'])
   const browserBindings = bindings.filter((binding) => (
     binding.operationKey === 'browser.open'
@@ -224,12 +234,14 @@ export const buildExecutorToolset = async (
       && binding.session.status === 'attention'
       && binding.operationKey === 'coding.launch') return []
     const registryId = logicalTools.get(binding.operationKey as never)
+    const bridgeNames = codingBridgeNames(binding.capabilityRevision?.descriptor)
     const mcpServers = reviewedMcpServers(binding.capabilityRevision?.descriptor)
-      .filter((server) => server !== codingServer)
+      .filter((server) => !bridgeNames.has(server))
     const descriptor = descriptorFor(binding.operationKey, { mcpServers })
     if (!registryId || input.agentToolPolicy?.[registryId] !== true || !descriptor) return []
     return [{
       bindingId: binding.id,
+      codingBridgeNames: bridgeNames,
       codingSessionsServer: reviewedCodingSessionsServer(binding.capabilityRevision?.descriptor),
       descriptor,
       mcpServers,
@@ -289,15 +301,20 @@ export const buildExecutorToolset = async (
       ...codingWaitRunChecks(prisma, { agentId: input.agentId, runId: input.runId }),
     })
     : null
-  // The bridge is not a program the generic pair reaches while its own tools
-  // are offered: asked for anyway, the model is pointed at them.
+  // The bridge is not a program the generic pair reaches. Asked for anyway,
+  // the model is pointed at its own tools, or told why it has none.
   const bridgeViaGenericPair = (args: Record<string, unknown>): AgenticToolResult => ({
     correctable: true,
     inputSummary: summarizeToolInput(args),
-    output: 'This run reaches the coding-sessions bridge through the coding_session_* tools, not through '
-      + 'executor_mcp_tools or executor_mcp_call.',
+    output: codingSessions
+      ? 'This run reaches the coding-sessions bridge through the coding_session_* tools, not through '
+        + 'executor_mcp_tools or executor_mcp_call.'
+      : 'The coding-sessions bridge is not reachable from this run: coding sessions act as the machine\'s owner, '
+        + 'so only a run that person starts on their own private machine can drive them.',
     success: false,
   })
+  const reachesBridge = (entry: ExecutorEntry | undefined, server: unknown): boolean =>
+    entry !== undefined && typeof server === 'string' && entry.codingBridgeNames.has(server)
 
   const dispatch: ExecutorToolset['dispatch'] = async (toolName, modelArgs, providerToolCallId) => {
     if (codingSessions && isCodingSessionToolName(toolName)) {
@@ -313,7 +330,7 @@ export const buildExecutorToolset = async (
       modelArgs,
       catalogs.inputSchemaOf,
     )
-    if (codingServer !== null && args.server === codingServer && HOST_OUTPUT_OPERATION_KEYS.has(entry.operationKey)) {
+    if (HOST_OUTPUT_OPERATION_KEYS.has(entry.operationKey) && reachesBridge(entry, args.server)) {
       return bridgeViaGenericPair(args)
     }
     const outcome = await dispatchCommand(entry, toolName, args, providerToolCallId)
@@ -334,7 +351,7 @@ export const buildExecutorToolset = async (
       ...entries.map((entry) => entry.toolName),
       ...(codingSessions?.descriptors ?? []).map((descriptor) => descriptor.toolName),
     ]),
-    mcpCatalog: async (server, providerToolCallId) => (codingServer !== null && server === codingServer
+    mcpCatalog: async (server, providerToolCallId) => (reachesBridge(entryByName.get(executorToolName('mcp.tools')), server)
       ? { failure: bridgeViaGenericPair({ server }) }
       : catalogs.load(server, providerToolCallId)),
     timeoutErrorFor: timeouts.timeoutErrorFor,
