@@ -114,9 +114,8 @@ summary and points here; **this file is the rule**.
 
   **One primary per header.** Two filled buttons name no decision, so where a
   creation and a commit meet, the commit wins and the creation drops to
-  secondary — the Knowledge reader fills Publish while a page is a draft and
-  New page only once it is not; Knowledge's space header fills New page and
-  leaves New folder and Upload file beside it; a dashboard being arranged
+  secondary — Knowledge's folder surface fills New page and leaves New folder
+  and Upload file beside it; a dashboard being arranged
   fills Done, not Add widget. Re-reading a screen (Refresh) and closing a
   panel are never primary. A label never draws its own mark — "+ Add widget"
   is `icon: faPlus` and the label `Add widget`. Every hover and focus rule is

@@ -342,9 +342,8 @@ export const nextTransferPosition = async (
 /**
  * Is this a parent a transfer may land on?
  *
- * The same rule `movePage` applies inside one space: a live, unarchived folder
- * or document in the destination. A file node is a blob, and a page filed under
- * one could never be reached again.
+ * The same rule `movePage` applies inside one space: only a live, unarchived
+ * folder can contain another folder or document.
  */
 export const isValidTransferParent = async (
   tx: Prisma.TransactionClient,
@@ -357,7 +356,7 @@ export const isValidTransferParent = async (
       spaceId: input.spaceId,
       deletedAt: null,
       status: { not: 'archived' },
-      kind: { in: ['folder', 'document'] },
+      kind: 'folder',
     },
     select: { id: true },
   })

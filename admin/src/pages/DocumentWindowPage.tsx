@@ -30,10 +30,8 @@ const DocumentWindowView = ({ pageId }: { pageId: string }) => {
     openPageId,
     openPagePath,
     pageById,
-    pagePath,
     pagesLoadFailed,
     pagesLoading,
-    popTo,
     refetchPages,
     selectedSpace,
     selectedSpaceId,
@@ -48,10 +46,6 @@ const DocumentWindowView = ({ pageId }: { pageId: string }) => {
   }, [openPagePath, pageId])
 
   const current = openPageId ? pageById(openPageId) : undefined
-  const pathPages = pagePath
-    .map((id) => pageById(id))
-    .filter((page): page is NonNullable<typeof page> => Boolean(page))
-  const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
 
   // The space-pages list omits page bodies; the body is fetched for the one
   // page this window exists to show. A file node has no body to fetch.
@@ -106,12 +100,7 @@ const DocumentWindowView = ({ pageId }: { pageId: string }) => {
               bodyQuery={fullPageQuery}
               breadcrumbPages={knowledgePageAncestors(current, pageById)}
               canWrite={selectedSpace?.canWrite ?? false}
-              depth={depth}
               fullPage={fullPage}
-              // Nothing to go back *to* in a window holding one document —
-              // until a child is drilled into from it, which is a step this
-              // window took and must be able to unwind.
-              onBack={depth > 0 ? () => popTo(depth) : undefined}
               page={current}
               selectedSpaceId={selectedSpaceId}
               spaceName={selectedSpace?.name ?? 'Documents'}
