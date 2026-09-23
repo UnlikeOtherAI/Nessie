@@ -7,7 +7,11 @@ import {
   type DeepWaterResearchRunView,
 } from '@nessie/schemas'
 
-import { invalidateResearchRun } from '../../src/facades/deep-water/events'
+import {
+  INTEGRATION_RUN_UPDATED_EVENT,
+  invalidateResearchRun,
+  researchRunIdFromFrame,
+} from '../../src/facades/deep-water/events'
 import {
   CHANNEL, JANA, ME, PA_AGENT, REPORT_MARKDOWN, RUN, TEAM,
   agentBrief, answeredBrief, createdBrief, draftBrief, listedRuns, olderLauncherRuns,
@@ -16,8 +20,12 @@ import {
 /**
  * The server side of the research-brief fixture: a stubbed ApiClient that
  * answers as the brief API does, and the hooks the runner drives it with
- * (`window.__research`). Each change reaches the screen the way a realtime
- * `integration.run.updated` does, through `invalidateResearchRun`.
+ * (`window.__research`). Each change reaches the screen as a realtime
+ * `integration.run.updated` frame, read by the shell's own frame reader
+ * (`researchRunIdFromFrame`) and handled by `invalidateResearchRun`, exactly
+ * as `useDeepWaterRunEvents` handles one off the event stream. DeepWater's
+ * progress pushes arrive the same way (`progresses`), and nothing polls: the
+ * runner counts the requests between two frames (`calls`).
  *
  * `?readiness=` sets the server's verdict on the products list (`unreadable`
  * sends one outside the contract), and `?owner=1` or `?admin=1` the viewer's
@@ -85,6 +93,21 @@ const RUNS = '/api/integrations/products/deep-water/research-runs'
 const BOUND_CURSOR = 'read-bound-1'
 
 export const createFixtureServer = (queryClient: QueryClient) => {
+  /** One `integration.run.updated`, framed as the realtime hub sends it and read as the shell reads it. */
+  const announce = (id: string) => {
+    const frame = {
+      data: JSON.stringify({
+        data: { productSlug: 'deep-water', runId: id },
+        event: INTEGRATION_RUN_UPDATED_EVENT,
+        ts: new Date().toISOString(),
+        type: 'event',
+      }),
+      event: INTEGRATION_RUN_UPDATED_EVENT,
+    }
+    const runId = researchRunIdFromFrame(frame)
+    if (runId) invalidateResearchRun(queryClient, runId)
+  }
+
   const briefs = new Map<string, DeepWaterBriefView>([[RUN.draft, personBrief()], [RUN.agentDraft, agentsBrief()]])
   const runs = new Map<string, DeepWaterResearchRunView>(
     [...listedRuns(), ...(many ? olderLauncherRuns(8) : [])].map((entry) => [entry.id, entry]),
@@ -284,21 +307,28 @@ export const createFixtureServer = (queryClient: QueryClient) => {
         const view = runs.get(id)
         if (view) runs.set(id, { ...view, status: 'cancelled', viewer: { ...view.viewer, canCancel: false } })
       }
-      invalidateResearchRun(queryClient, id)
+      announce(id)
     },
     /** DeepWater could not be asked to stop a research whose cancel was accepted: it stays open, and says why. */
     cancelRefused: (id: string) => {
       const view = runs.get(id)
       if (view) runs.set(id, { ...view, cancelFailure: { code: 'unavailable', message: CANCEL_UNREACHED } })
-      invalidateResearchRun(queryClient, id)
+      announce(id)
     },
     conflictNext: () => {
       store.conflictNext = true
     },
+    /** DeepWater pushes where a running research stands; the run is announced as the worker announces it. */
+    progresses: (id: string, progress: DeepWaterResearchRunView['progress']) => {
+      const view = runs.get(id)
+      if (view) runs.set(id, { ...view, progress })
+      else updateBrief(id, (brief) => ({ ...brief, progress }))
+      announce(id)
+    },
     launched: (id: string) => {
       updateBrief(id, (brief) => ({ ...brief, pendingAction: null, startedAt: new Date().toISOString(),
         status: 'running', viewer: { ...brief.viewer, canEdit: false, canStart: false } }))
-      invalidateResearchRun(queryClient, id)
+      announce(id)
     },
     /** DeepWater's planner stalls on the person's last reply: no transcript row, the action cleared. */
     plannerFails: (id: string) => {
@@ -308,7 +338,7 @@ export const createFixtureServer = (queryClient: QueryClient) => {
         plannerTurn: failedTurn,
         viewer: { ...brief.viewer, canEdit: true, canStart: true },
       }))
-      invalidateResearchRun(queryClient, id)
+      announce(id)
     },
     plannerAnswers: (id: string) => {
       const reply = calls.filter((call) => call.method === 'POST' && call.path.endsWith(`${id}/messages`)).at(-1)
@@ -317,7 +347,7 @@ export const createFixtureServer = (queryClient: QueryClient) => {
         ...answeredBrief(brief, String(body.message), { pillars: body.pillars, settings: body.settings }),
         viewer: { ...brief.viewer, canEdit: true, canStart: true },
       }))
-      invalidateResearchRun(queryClient, id)
+      announce(id)
     },
   }
 

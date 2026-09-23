@@ -19,6 +19,7 @@ import {
   downloadReportLabel,
   formatElapsed,
   openQuestionReply,
+  progressHeadline,
   READINESS_UNREAD_COPY,
   readinessCopy,
   reportNoun,
@@ -28,6 +29,7 @@ import {
   researchStatusLine,
   retryDeliveryLabel,
   SETTING_LABEL,
+  sourcesFoundLabel,
   sourcesLabel,
 } from '../src/components/features/deep-water/research-presentation.js'
 import {
@@ -163,6 +165,20 @@ test('the replying clock reads as seconds, then minutes, then hours', () => {
   assert.equal(formatElapsed(12_400), '12s')
   assert.equal(formatElapsed(65_000), '1:05')
   assert.equal(formatElapsed(3_723_000), '1:02:03')
+})
+
+test('a research\'s phase reads as a numbered step in plain words, never DeepWater\'s own names', () => {
+  assert.equal(progressHeadline('scoping'), 'Step 1 of 5: Planning')
+  assert.equal(progressHeadline('gathering'), 'Step 2 of 5: Reading sources')
+  assert.equal(progressHeadline('synthesising'), 'Step 3 of 5: Summarising')
+  assert.equal(progressHeadline('verifying'), 'Step 4 of 5: Checking')
+  assert.equal(progressHeadline('writing_report'), 'Step 5 of 5: Writing the report')
+  for (const phase of ['scoping', 'gathering', 'synthesising', 'verifying', 'writing_report'] as const) {
+    assert.doesNotMatch(progressHeadline(phase), /_|synthesis|ledger|water/i)
+  }
+  assert.equal(sourcesFoundLabel(null), null)
+  assert.equal(sourcesFoundLabel(1), '1 source found')
+  assert.equal(sourcesFoundLabel(23), '23 sources found')
 })
 
 test('a one-tap answer names the question it answers', () => {

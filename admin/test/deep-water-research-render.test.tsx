@@ -216,6 +216,45 @@ test('a running research says where its result comes back, by where it is shown'
     ['DeepWater is researching. The result will come back to the conversation it was asked in.'])
 })
 
+test('a running research streams where it stands: its phase, the bar, the sources and the time so far', () => {
+  const progress = {
+    at: '2026-09-23T09:30:00.000Z',
+    note: 'Finished chapter 3 of 8',
+    percent: 38,
+    phase: 'writing_report' as const,
+    sourcesFound: 31,
+  }
+  const outcome = (run: ReturnType<typeof researchRun>, actionsOnly = false) =>
+    render(createElement(ResearchRunOutcome, { actionsOnly, meUserId: REQUESTER, onStartAgain: null, run,
+      shownIn: 'its_conversation' }))
+  const running = researchRun({ progress, startedAt: new Date(Date.now() - 65_000).toISOString(), status: 'running' })
+  const doc = outcome(running)
+  const shown = doc.querySelector('[data-testid="research-progress"]')
+  assert.equal(shown?.getAttribute('data-phase'), 'writing_report')
+  const lines = texts(doc, '[data-testid="research-progress"] p')
+  assert.deepEqual(lines.slice(0, 2), ['Step 5 of 5: Writing the report', 'Finished chapter 3 of 8'])
+  assert.match(lines[2] ?? '', /^31 sources found · Running for 1:0[56]$/)
+  const bar = doc.querySelector('[role="progressbar"]')
+  assert.equal(bar?.getAttribute('aria-valuenow'), '38')
+  assert.equal(bar?.getAttribute('aria-label'), '38% of this step done')
+
+  // A step DeepWater cannot count has no bar; a launch still landing shows the same block.
+  const uncounted = outcome(researchRun({ progress: { ...progress, percent: null, phase: 'verifying' }, status: 'starting' }))
+  assert.equal(uncounted.querySelector('[role="progressbar"]'), null)
+  assert.equal(texts(uncounted, '[data-testid="research-progress"] p')[0], 'Step 4 of 5: Checking')
+
+  // Before DeepWater has said anything: only the time so far, and nothing at all without a start time.
+  assert.match(texts(outcome(researchRun({ startedAt: running.startedAt, status: 'running' })),
+    '[data-testid="research-progress"] p').join(), /^Running for 1:0[56]$/)
+  assert.equal(outcome(researchRun({ status: 'running' })).querySelector('[data-testid="research-progress"]'), null)
+
+  // A blocked delivery says what it waits for instead, and a notice's actions never repeat it.
+  const blocked = researchRun({ delivery: { blockedReason: 'ledger_unavailable', state: 'blocked' }, progress,
+    status: 'running' })
+  assert.equal(outcome(blocked).querySelector('[data-testid="research-progress"]'), null)
+  assert.equal(outcome(running, true).querySelector('[data-testid="research-progress"]'), null)
+})
+
 const startBar = (brief = researchBrief(), overrides: Record<string, unknown> = {}) =>
   render(createElement(BriefStartBar, {
     blockedReason: null,

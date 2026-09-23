@@ -55,6 +55,7 @@ export const run = (overrides: Partial<DeepWaterResearchRunView>): DeepWaterRese
       agentId: null, cardMessageId: null, channelId: CHANNEL, kind: 'person', rootMessageId: null, threadId: THREAD,
     },
     pillarCount: 3,
+    progress: null,
     publicUrl: null,
     report: null,
     reportKind: null,
