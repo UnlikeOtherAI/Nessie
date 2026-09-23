@@ -3,6 +3,7 @@ import { parseAgentId, parseRunId, type UoaSessionIdentity } from '@nessie/schem
 
 import type { RunThinkingEntry, RunThinkingLog, ThreadThinking } from '../contracts/messaging.js'
 import { canUserReadRunBasis } from './run-disclosure.js'
+import { loadToolCallAttachments, type ToolCallAttachmentViewer } from './tool-call-attachments.js'
 
 // The full log is capped so a very long run cannot return an unbounded payload;
 // the bootstrap tail only needs enough to fill the bubble's ticker plus a bit of
@@ -18,6 +19,7 @@ type ChunkRow = {
   kind: 'reasoning' | 'tool'
   content: string
   createdAt: Date
+  toolCallId: string | null
 }
 
 // BigInt ids never survive JSON.stringify — always serialize as decimal strings
@@ -35,15 +37,15 @@ const loadTail = async (
   prisma: PrismaClient,
   runId: string,
   limit: number,
-): Promise<{ entries: RunThinkingEntry[]; truncated: boolean }> => {
+): Promise<{ rows: ChunkRow[]; truncated: boolean }> => {
   const rows = await prisma.runThinkingChunk.findMany({
     where: { runId },
     orderBy: { id: 'desc' },
     take: limit + 1,
-    select: { id: true, kind: true, content: true, createdAt: true },
+    select: { id: true, kind: true, content: true, createdAt: true, toolCallId: true },
   })
   return {
-    entries: rows.slice(0, limit).reverse().map(toEntry),
+    rows: rows.slice(0, limit).reverse(),
     truncated: rows.length > limit,
   }
 }
@@ -53,10 +55,14 @@ const loadTail = async (
  * dialog. Returns null when the run does not belong to the thread the caller
  * was authorized against, so the route can answer 404 without leaking that the
  * run exists elsewhere.
+ *
+ * A tool line carries the screenshots of the call it became (its
+ * `toolCallId`, set when the call ended), listed for this viewer exactly as the
+ * agent page's tool log lists them (`tool-call-attachments.ts`).
  */
 export const loadRunThinkingLog = async (
   prisma: PrismaClient,
-  input: { runId: string; threadId: string },
+  input: { runId: string; threadId: string; viewer: ToolCallAttachmentViewer },
 ): Promise<RunThinkingLog | null> => {
   const run = await prisma.run.findFirst({
     where: { id: input.runId, threadId: input.threadId },
@@ -64,7 +70,16 @@ export const loadRunThinkingLog = async (
   })
   if (!run) return null
 
-  const { entries, truncated } = await loadTail(prisma, run.id, RUN_THINKING_LOG_LIMIT)
+  const { rows, truncated } = await loadTail(prisma, run.id, RUN_THINKING_LOG_LIMIT)
+  const attachments = await loadToolCallAttachments(
+    prisma,
+    rows.flatMap((row) => (row.kind === 'tool' && row.toolCallId ? [{ id: row.toolCallId, runId: run.id }] : [])),
+    input.viewer,
+  )
+  const entries = rows.map((row) => {
+    const images = row.toolCallId ? attachments.get(row.toolCallId) : undefined
+    return images?.length ? { ...toEntry(row), attachments: images } : toEntry(row)
+  })
   return {
     run: {
       id: parseRunId(run.id),
@@ -117,13 +132,13 @@ export const loadThreadThinking = async (
     runs.map((run, index) =>
       readable[index]
         ? loadTail(prisma, run.id, THREAD_THINKING_TAIL_LIMIT)
-        : Promise.resolve({ entries: [], truncated: false }),
+        : Promise.resolve({ rows: [], truncated: false }),
     ),
   )
 
   return {
     runs: runs.map((run, index) => {
-      const tail = entries[index]?.entries ?? []
+      const tail = (entries[index]?.rows ?? []).map(toEntry)
       return {
         runId: parseRunId(run.id),
         agentId: parseAgentId(run.agentId),

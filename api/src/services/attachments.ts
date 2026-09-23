@@ -129,22 +129,35 @@ export const canAccessEmailAttachment = async (
  */
 export const canAccessExecutorCommandAttachment = async (
   prisma: PrismaClient,
-  input: {
-    executorCommandId: string
-    organizationId: string
-    uoaIdentity: UoaSessionIdentity | undefined
-    userId: string
-  },
+  input: ExecutorImageReader & { executorCommandId: string },
 ): Promise<boolean> => {
   const command = await prisma.executorCommand.findUnique({
     where: { id: input.executorCommandId },
     select: { toolCall: { select: { runId: true } } },
   })
   if (!command) return false
-  const runId = command.toolCall.runId
+  return canReadRunExecutorImages(prisma, { ...input, runId: command.toolCall.runId })
+}
+
+type ExecutorImageReader = {
+  organizationId: string
+  uoaIdentity: UoaSessionIdentity | undefined
+  userId: string
+}
+
+/**
+ * The run-level half of the arm above: may this person read the images of
+ * this run's executor commands. A surface that lists a run's screenshots asks
+ * exactly this, once per run, so it never names a picture the attachment
+ * routes would then refuse (`tool-call-attachments.ts`).
+ */
+export const canReadRunExecutorImages = async (
+  prisma: PrismaClient,
+  input: ExecutorImageReader & { runId: string },
+): Promise<boolean> => {
   const inConversation = await prisma.run.findFirst({
     where: {
-      id: runId,
+      id: input.runId,
       thread: buildDisclosureReadableThreadWhere({
         organizationId: input.organizationId,
         userId: input.userId,
@@ -155,7 +168,7 @@ export const canAccessExecutorCommandAttachment = async (
   if (!inConversation) return false
   return canUserReadRunDerivedRecord(prisma, {
     organizationId: input.organizationId,
-    runId,
+    runId: input.runId,
     uoaIdentity: input.uoaIdentity,
     userId: input.userId,
   })

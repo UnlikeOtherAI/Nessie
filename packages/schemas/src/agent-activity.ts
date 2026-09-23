@@ -5,7 +5,27 @@ import { AgentStatusSchema, RunStatusSchema } from './lifecycle.js'
 import { MessageRoleSchema } from './messaging.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
+/**
+ * One image a tool call returned, as a person reads the call: the attachment
+ * that holds it, never its bytes. Today these are an executor command's images
+ * — a local program's screenshots, kept through `FileService`
+ * (docs/standards/file-storage.md) — served by the ordinary attachment routes
+ * to whoever `canAccessAttachment` admits, and listed only for such a viewer.
+ * `byteLength` is the image as the program returned it; `hasThumbnail` says
+ * whether the thumbnail route has a preview yet, else a surface paints the
+ * original.
+ */
+export const ToolCallAttachmentSchema = z.object({
+  attachmentId: z.string().uuid(),
+  byteLength: z.number().int().positive(),
+  filename: NonEmptyStringSchema,
+  hasThumbnail: z.boolean(),
+  mimeType: NonEmptyStringSchema,
+})
+export type ToolCallAttachment = z.infer<typeof ToolCallAttachmentSchema>
+
 export const ToolCallEntrySchema = z.object({
+  id: z.string().uuid(),
   toolName: NonEmptyStringSchema,
   runId: RunIdSchema,
   startedAt: TimestampSchema,
@@ -14,6 +34,7 @@ export const ToolCallEntrySchema = z.object({
   success: z.boolean().optional(),
   inputSummary: z.string(),
   outputPreview: z.string().optional(),
+  attachments: z.array(ToolCallAttachmentSchema),
 })
 export type ToolCallEntry = z.infer<typeof ToolCallEntrySchema>
 
