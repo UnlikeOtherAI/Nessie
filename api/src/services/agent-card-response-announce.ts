@@ -72,12 +72,20 @@ export const announceAgentCardResponse = async (
     resourceId: card.id,
     resourceType: "agent_card",
   });
-  const scopes = deps.buildChannelRealtimeScopes({
-    channelId: card.channelId,
-    organizationId: card.organizationId,
-    systemChannelType: card.channel.systemChannelType,
-    visibility: card.channel.visibility,
+  // A guarded step like the publishes it feeds: scopes that cannot be built
+  // skip every publish (the audit and the thought cleanup still run) rather
+  // than failing a press that already committed.
+  let scopes: ReturnType<AnnounceDeps["buildChannelRealtimeScopes"]> | null = null;
+  await afterCommit("realtime scopes", card.id, async () => {
+    scopes = deps.buildChannelRealtimeScopes({
+      channelId: card.channelId,
+      organizationId: card.organizationId,
+      systemChannelType: card.channel.systemChannelType,
+      visibility: card.channel.visibility,
+    });
   });
+  const publish = (step: string, action: (built: NonNullable<typeof scopes>) => Promise<unknown>) =>
+    afterCommit(step, card.id, () => (scopes ? action(scopes) : Promise.resolve()));
   for (const [key, value] of Object.entries(input.secretOutcomes)) {
     const stored = value as {
       kind?: string;
@@ -109,8 +117,8 @@ export const announceAgentCardResponse = async (
       resourceId: redactedMessageId,
       resourceType: "message",
     });
-    await afterCommit("message.updated publish", card.id, () =>
-      deps.realtimeHub.publishWs(scopes, {
+    await publish("message.updated publish", (built) =>
+      deps.realtimeHub.publishWs(built, {
         data: {
           editedAt: new Date().toISOString(),
           messageId: redactedMessageId,
@@ -119,8 +127,8 @@ export const announceAgentCardResponse = async (
         event: "message.updated",
       }));
   }
-  await afterCommit("card.updated publish", card.id, () =>
-    deps.realtimeHub.publishWs(scopes, {
+  await publish("card.updated publish", (built) =>
+    deps.realtimeHub.publishWs(built, {
       data: {
         cardId: card.id,
         messageId: card.messageId,

@@ -88,6 +88,7 @@ const press = async (
   prisma: PrismaClient,
   seed: Seed,
   publishWs: (scopes: WsScope[], input: { event: string }) => Promise<unknown>,
+  buildChannelRealtimeScopes = createRequestHelpers(prisma).buildChannelRealtimeScopes,
 ) => {
   const actorContext = {
     actionContext: { requestId: `card-commit-${randomUUID()}` },
@@ -96,7 +97,7 @@ const press = async (
   } as unknown as AuthorizedActionContext
   const app = Fastify()
   registerAgentCardRoutes(app, {
-    buildChannelRealtimeScopes: createRequestHelpers(prisma).buildChannelRealtimeScopes,
+    buildChannelRealtimeScopes,
     dashboardCredentials: {},
     mcpSecretStore: {},
     messageMemoryCaptureConfig: null,
@@ -167,5 +168,33 @@ runDatabaseTest('a card announced as failed is still claimed exactly once', asyn
     assert.equal(await prisma.message.count({
       where: { metadata: { path: ['agentCardResponse', 'cardId'], equals: seed.cardId } },
     }), 1)
+  })
+})
+
+// The scopes the publishes go to are built after commit too, so building them
+// is a guarded step like the publishes: a throw there skipped nothing durable
+// and must not answer 500 either.
+runDatabaseTest('a press whose realtime scopes cannot be built still answers 200', async (t) => {
+  await withSeed(t, async (prisma, seed) => {
+    const published: string[] = []
+    const response = await press(
+      prisma,
+      seed,
+      async (_scopes, input) => {
+        published.push(input.event)
+      },
+      () => {
+        throw new Error('channel scope lookup failed')
+      },
+    )
+
+    assert.equal(response.statusCode, 200, response.body)
+    const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: seed.cardId } })
+    assert.equal(card.status, 'resolved')
+    assert.equal(await prisma.auditLog.count({
+      where: { action: 'agent_card.responded', organizationId: seed.organizationId, resourceId: seed.cardId },
+    }), 1)
+    // Nothing reached a scope that could not be built.
+    assert.deepEqual(published, [])
   })
 })
