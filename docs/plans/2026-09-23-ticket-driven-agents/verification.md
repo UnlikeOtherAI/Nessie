@@ -7,7 +7,7 @@ screenshotted headless against the worktree's own admin port.
 
 ## PR scope and tests
 
-### T0: contracts (needs 3b on `main`)
+### T0: contracts
 
 Scope:
 
@@ -19,9 +19,6 @@ Scope:
 - Tables with CHECKs and partial unique indexes: `agent_ticket_work`,
   `executor_standing_policies`, `executor_standing_policy_executors` and
   `agent_reminders`, plus the trigger scope columns.
-- Close reasons `ticket_left_flow`, `policy_ended` and `work_limit`.
-- The coding-session owner `contextId`, in the key derivation in
-  `packages/schemas` and in the executor daemon, on every OS.
 - Queue payload schemas for `trigger.ticket.dispatch`, `ticket-work.session`,
   `ticket-work.sweep` and `trigger.document.dispatch`.
 - The TaskEvent origin shape.
@@ -29,10 +26,11 @@ Scope:
 - The `agent-triggers` browser fixture scaffold. Its three edits (vite input,
   the browser-suites env, the turbo build env) land once, here.
 
+The migration's timestamp sorts after every migration on 3b's branch, so
+the two can land in either order.
+
 Tests: migration up/down on the upgrade path; CHECK and partial-index
-behaviour; owner-key vectors with and without context, the same on Windows,
-macOS and Linux; a lease-end close that leaves a context-owned session
-untouched.
+behaviour.
 
 ### T1: ticket triggers
 
@@ -80,10 +78,17 @@ and cancelled with the record; the quiet wake fires only when nothing else is
 scheduled; the sweep recovers a lost queued job. Browser: the chip's reminder
 row with Cancel.
 
-### T4: machine access
+### T4: machine access (needs 3b on `main`)
+
+It starts with the two pieces that change 3b's code: the coding-session
+owner `contextId` (key derivation in `packages/schemas` and in the executor
+daemon, on every OS) and the close reasons `ticket_left_flow`,
+`policy_ended` and `work_limit`.
 
 Tests (DB):
 
+- Owner-key vectors with and without context, the same on Windows, macOS
+  and Linux. A lease-end close leaves a context-owned session untouched.
 - Prepare is refused outside the author's own DM and for a non-author.
 - The composite card applies assignment, grant, tool enablement and the
   policy atomically under one re-proof.

@@ -146,7 +146,7 @@ run could then list, read and send into those sessions. A lease ending would
 close every ticket session on the machine, and the quota of 3 would be
 shared.
 
-- **Owner context (T0, every OS):** the owner gains `contextId`. It is
+- **Owner context (T4, every OS):** the owner gains `contextId`. It is
   `ticket:<policyId>:<taskId>` for ticket work, and absent for launches and
   leases. `executorCodingSessionOwnerKeyInput` and the daemon's `_meta`
   derivation both hash it. A lease-end close then cannot reach ticket
@@ -183,7 +183,7 @@ Sessions are closed by the server, never through the model.
     `costUsd` and `activeMs`;
   - the policy ending or being suspended, through any fence;
   - the trigger being deleted, disabled or changed.
-- T0 adds the close reasons `ticket_left_flow`, `policy_ended` and
+- T4 adds the close reasons `ticket_left_flow`, `policy_ended` and
   `work_limit` to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and to its CHECK.
   It records them in `host-coding-sessions.md`.
 - A test ends a policy mid-turn and sees `codingSessionClose` on the next

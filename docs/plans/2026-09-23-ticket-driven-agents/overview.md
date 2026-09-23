@@ -64,11 +64,11 @@ it is talking to.
 | PR | Needs | Ships |
 |---|---|---|
 | 3b (open) | — | Coding-session control, already in review |
-| **T0 contracts** | 3b | Enum values, the `ticket.work` purpose, every new table with its CHECKs, the coding-session owner *context*, new close reasons, queue payload schemas, the TaskEvent provenance shape, the standard `docs/standards/ticket-work.md`, and one `agent-triggers` browser fixture scaffold |
+| **T0 contracts** | — | Enum values, the `ticket.work` purpose, every new table with its CHECKs, queue payload schemas, the TaskEvent provenance shape, the standard `docs/standards/ticket-work.md`, and one `agent-triggers` browser fixture scaffold. It touches nothing 3b changes, so it does not wait for 3b |
 | **T1 ticket triggers** | T0 | Ticket events and provenance, `ticket_changed`, the work record and thread, `ticket.work` runs acting as the agent, follow wakes, platform teardown, the ticket chip and card badge, wake rows, the Triggers editor, Designer support, and watcher clean-up. There are no machines yet: the agent triages, comments and moves tickets |
 | **T2 document trigger** | T1 | `document_changed`, the version hook, the shared line diff, `kb_page_diff`, routing a ticket's documents to its thread, and the Finder doorway |
 | **T3 reminders** | T1 | `check_back_in`, the quiet-wake safety net and the `ticket-work.sweep` job |
-| **T4 machine access** | T1 | Standing policy, host profile, digests, the composite card, pool assignment at dispatch, binding, isolation, closes, fences, audit, ticket-mode coding tools, pull-request tracking, limits and cost, the executor page and trigger Machine access section, and the invariant amendments |
+| **T4 machine access** | T1, 3b | The coding-session owner *context* and the new close reasons, then the standing policy, host profile, digests, the composite card, pool assignment at dispatch, binding, isolation, closes, fences, audit, ticket-mode coding tools, pull-request tracking, limits and cost, the executor page and trigger Machine access section, and the invariant amendments |
 | **T5 session wakes and dequeue** | T4 | Turn numbers in the session report, the heartbeat intake wake, dequeue across policies, the waiting-machine and back-online states |
 | **T6 project operator** | T1 | The explicit-grant project-operator capability, workflow tools moved behind it, and the CTO setting up new projects and flows for its live requester |
 
@@ -85,7 +85,7 @@ Each amendment ships in the PR named, in the file named. The text is in
 | Only a person binds an executor to a run: gains the standing-policy clause | `docs/executor-protocol/overview.md` "Binding" | T4 |
 | "Nothing a system, workflow or agent posts" carries a lease | `docs/executor-protocol/conversation-leases.md` | T4 (states that the standing policy is a separate path, not a lease) |
 | Host output is the launch conversation's, and a person's consent | `docs/standards/disclosure-boundaries.md` | T4 |
-| The coding-session owner is the launch or lease actor | `docs/executor-protocol/host-coding-sessions.md`, the local-apps coding-sessions chapter | T0 (owner context), T4 (policy owner) |
+| The coding-session owner is the launch or lease actor | `docs/executor-protocol/host-coding-sessions.md`, the local-apps coding-sessions chapter | T4 |
 | Unattended runs never reconstruct a requester; the two-lock rule | `docs/standards/global-agents.md` | T1 (agent ticket actor), T4 |
 | A schedule is not a person asking | `worker/src/run/send-authorization.ts` comment and its standard | T3 |
 | Ticket events and actor provenance | `docs/standards/ticket-activity.md` | T1 |
