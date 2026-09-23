@@ -40,8 +40,12 @@ export const updateProjectTask = async (
     taskId: string
     organizationId: string
     fields: ProjectTaskUpdateFields
-    /** `TaskEvent.by` for the history rows this write adds, and the uploader whose files link. */
-    actorId?: string
+    /**
+     * `TaskEvent.by` for the history rows this write adds, and the uploader
+     * whose files link. Absent or null for an agent with no person behind it,
+     * which names itself with `agentId` and `unattended` and links no uploads.
+     */
+    actorId?: string | null
     /** Semantic projection claimed while the originating session still exists. */
     embedding?: { model: string; origin?: TaskEmbedOrigin }
     /** Set when an agent edits the ticket; see `TaskActor`. */
@@ -164,8 +168,8 @@ export const updateProjectTask = async (
       await tx.task.update({ where: { id: existing.id }, data })
     }
     if (patch) await applyFieldValuesPatch(tx, existing.id, patch)
-    const by = input.actorId
-      ? taskEventBy({ ...input, userId: input.actorId })
+    const by = input.actorId || (input.unattended && input.agentId)
+      ? taskEventBy({ ...input, userId: input.actorId ?? null })
       : null
     const origin = input.origin ?? SYSTEM_TASK_EVENT_ORIGIN
     const scope = { organizationId: existing.organizationId, projectId: existing.projectId }

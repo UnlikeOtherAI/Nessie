@@ -374,7 +374,8 @@ export const transitionProjectTask = async (
     taskId: string
     organizationId: string
     status: TaskStatus
-    actorId: string
+    /** Null for an agent with no person behind it; see `moveProjectTaskToColumn`. */
+    actorId: string | null
     /** Set when an agent changes the status; see `TaskActor`. */
     agentId?: string | null
     unattended?: boolean

@@ -28,7 +28,7 @@ export type InboundTaskState = {
   detail: string | null
 }
 
-type EventTransaction = Parameters<typeof recordTaskEvent>[0]
+type EventTransaction = Parameters<typeof recordColumnEntered>[0]
   & Pick<Prisma.TransactionClient, 'board' | 'taskBoardPlacement'>
 
 export const recordInboundItemEvents = async (

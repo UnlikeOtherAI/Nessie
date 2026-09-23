@@ -10,6 +10,7 @@ import {
   createAgentTrigger,
   createWorkflowTrigger,
   deleteAgentTrigger,
+  endTicketWorkForTrigger,
   getAgentTrigger,
   listAgentTriggers,
   ticketTriggerPickupConflict,
@@ -180,7 +181,11 @@ export const pauseAgentTrigger = async (
       },
       data: { enabled: false },
     })
-    return tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
+    const trigger = await tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
+    // A paused ticket trigger ends the work it holds in the same write
+    // (docs/standards/ticket-work.md); every other type holds none.
+    if (trigger?.type === 'ticket_changed') await endTicketWorkForTrigger(tx, { triggerId: trigger.id })
+    return trigger
   })
   return paused ? mapTriggerRecord(paused, TRIGGER_ADMIN_AUDIENCE) : null
 }

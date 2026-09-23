@@ -6,6 +6,7 @@ import { resolveTicketChangedTrigger, ticketChangedConfigAsInput } from './trigg
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
 import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
+import { endTicketWorkForTrigger } from './ticket-work-records.js'
 
 export type AgentTriggerScope = { organizationId: string; triggerId: string }
 /** Every trigger is tenant-scoped through its agent (including bound global
@@ -93,10 +94,13 @@ const updateTicketChangedTrigger = async (
         targetThreadId: target.threadId,
       }
     }
-    return tx.agentTrigger.update({
+    const updated = await tx.agentTrigger.update({
       where: { id: existing.id },
       data: { description: input.description, enabled, name: input.name, status, ...resolvedData },
     })
+    // Switching it off ends the work it holds, in this same write.
+    if (enabled === false) await endTicketWorkForTrigger(tx, { triggerId: existing.id })
+    return updated
   })
   return trigger ? mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE) : null
 }
@@ -153,5 +157,12 @@ export const updateAgentTrigger = async (
 
 export const deleteAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope): Promise<boolean> => {
   if (await prisma.agentTriggerDelivery.count({ where: { triggerId: scope.triggerId } })) return false
-  return (await prisma.agentTrigger.deleteMany({ where: agentTriggerScopeWhere(scope) })).count > 0
+  return prisma.$transaction(async (tx) => {
+    const trigger = await tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope), select: { id: true } })
+    if (!trigger) return false
+    // A ticket trigger's work records outlive it (`triggerId` is SetNull), so
+    // they end first, while they still know which trigger held them.
+    await endTicketWorkForTrigger(tx, { triggerId: trigger.id })
+    return (await tx.agentTrigger.deleteMany({ where: { id: trigger.id } })).count > 0
+  })
 }

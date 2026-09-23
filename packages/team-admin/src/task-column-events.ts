@@ -3,6 +3,7 @@ import type { TaskEventOrigin } from '@nessie/schemas'
 
 import { resolveProjectTaskDetailPlacement } from './board-placement.js'
 import { recordTaskEvent, type TaskEventScope, type TaskEventWriter } from './task-event-dispatch.js'
+import { applyTicketWorkColumnEntry, type TicketWorkTeardownWriter } from './ticket-work-teardown.js'
 
 type PlacementReader = Pick<Prisma.TransactionClient, 'board' | 'taskBoardPlacement'>
 
@@ -28,9 +29,13 @@ export const resolveHomeColumnId = async (
  * including between two columns of the same category, which changes no
  * status and so writes no `status_changed`. A reorder within one column, or a
  * change that leaves the ticket in no column, writes nothing.
+ *
+ * It is also where the ticket's live work learns where the ticket went: the
+ * same transaction ends or parks it (`applyTicketWorkColumnEntry`), whoever
+ * moved it, so every door that moves a ticket tears its work down alike.
  */
 export const recordColumnEntered = async (
-  tx: TaskEventWriter,
+  tx: TaskEventWriter & TicketWorkTeardownWriter,
   input: {
     taskId: string
     scope: TaskEventScope
@@ -40,7 +45,7 @@ export const recordColumnEntered = async (
   },
 ): Promise<{ id: string } | null> => {
   if (!input.toColumnId || input.fromColumnId === input.toColumnId) return null
-  return recordTaskEvent(tx, {
+  const event = await recordTaskEvent(tx, {
     taskId: input.taskId,
     eventType: 'column_entered',
     payload: {
@@ -50,4 +55,10 @@ export const recordColumnEntered = async (
     },
     scope: input.scope,
   })
+  await applyTicketWorkColumnEntry(tx, {
+    taskId: input.taskId,
+    toColumnId: input.toColumnId,
+    ...(input.authorship.by ? { by: input.authorship.by } : {}),
+  })
+  return event
 }

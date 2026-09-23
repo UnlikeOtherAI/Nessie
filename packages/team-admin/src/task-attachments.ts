@@ -110,20 +110,22 @@ export const collectInlineAttachmentIds = async (
  * Point the actor's own still-unlinked uploads at a task (and a comment).
  * Ids the actor did not upload, or that are already linked anywhere, are
  * skipped — as the message composer's link does — and the ids that actually
- * linked are returned, because what was asked for is not authoritative.
+ * linked are returned, because what was asked for is not authoritative. An
+ * actor with no person behind it (`AgentTaskActor`) has no uploads of its own,
+ * so it links nothing.
  */
 export const linkUploadsToTask = async (
   tx: Prisma.TransactionClient,
   input: {
     organizationId: string
-    uploaderUserId: string
+    uploaderUserId: string | null
     taskId: string
     commentId?: string | null
     attachmentIds: readonly string[]
   },
 ): Promise<string[]> => {
   const ids = input.attachmentIds.filter(isUuid)
-  if (ids.length === 0) return []
+  if (ids.length === 0 || input.uploaderUserId === null) return []
   const eligible: Prisma.AttachmentWhereInput = {
     id: { in: ids },
     organizationId: input.organizationId,
