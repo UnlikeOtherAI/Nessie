@@ -136,6 +136,29 @@ withActionFixture('a launcher run is cancelled through Ledger, recorded once Led
   assert.deepEqual([audit?.outcome, (audit?.metadata as { via?: string } | null)?.via], ['success', 'launcher_ledger'])
 })
 
+withActionFixture('a launcher cancel that has its answer, or that a newer one replaced, is not sent again', async (fixture) => {
+  const { run, rs, job } = await launcherCancel(fixture)
+  fixture.ledger.answer('research_cancel', { error: 'forbidden', status_code: 403 }, false)
+  await fixture.perform(job)
+  // Redelivered after its answer was recorded: nothing is sent, nothing audited twice.
+  await fixture.perform(job)
+  assert.equal(fixture.ledger.calls.length, 1)
+  assert.equal((await cancelAudits(fixture)).length, 1)
+
+  // The owner tries again; the first job, redelivered once more, stays quiet.
+  const again = randomUUID()
+  assert.equal(await fixture.prisma.$transaction((tx) => beginLegacyDeepWaterCancel(tx, {
+    organizationId: fixture.ids.organization, runId: run.id, actionId: again,
+  })), 'ledger')
+  assert.equal(viewOf(await fixture.read(run.id)).cancelFailure, null, 'a new cancel is on its way')
+  await fixture.perform(job)
+  assert.equal(fixture.ledger.calls.length, 1)
+  fixture.ledger.answer('research_cancel', { id: rs, status: 'cancelled', title: null, error_code: 'cancelled_by_owner' })
+  await fixture.perform({ ...job, actionId: again })
+  assert.equal((await fixture.read(run.id)).status, 'cancelled')
+  assert.deepEqual((await cancelAudits(fixture)).map((row) => row.outcome), ['denied', 'success'])
+})
+
 withActionFixture('a launcher cancel Ledger refuses leaves the run open, says why on it, and is audited as denied', async (fixture) => {
   const { run, job } = await launcherCancel(fixture)
   fixture.ledger.answer('research_cancel', { error: 'forbidden', status_code: 403 }, false)

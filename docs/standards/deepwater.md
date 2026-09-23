@@ -476,7 +476,10 @@ connector, and the same projection applies every answer.
   `cancelFailure` (the code in the brief dialog's vocabulary and plain words):
   a brief's from its cancel action's error, a launcher run's from its
   `result_json.ledgerCancel` register, which accepting a newer cancel resets to
-  `requested` and a late answer to an older one never overwrites. Every cancel
+  `requested` and a late answer to an older one never overwrites; a launcher
+  cancel's job sends only while its cancel is that register's `requested`
+  entry (`isLauncherCancelInFlight`), so a redelivered or superseded job sends
+  and audits nothing. Every cancel
   is answered once per `actionId`: a retried request whose answer was lost gets
   200 with the run as it now is.
 - **Agents and briefs — the run binder** (`worker/src/run/deepwater-run-binder*.ts`)

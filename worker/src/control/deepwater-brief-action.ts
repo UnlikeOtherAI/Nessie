@@ -6,6 +6,7 @@ import {
   applyDeepWaterScopeResult,
   applyDeepWaterStatusRead,
   failUnstartedDeepWaterBrief,
+  isLauncherCancelInFlight,
   isPendingActionInFlight,
   readDeepWaterBriefRun,
   refreshDeepWaterRunIdentity,
@@ -289,9 +290,11 @@ export const runDeepWaterBriefAction = async (
   if (legacy && payload.action.kind !== 'cancel') {
     throw new Error(`DeepWater launcher run ${run.id} cannot take a ${payload.action.kind} brief action`)
   }
+  if (legacy && !isLauncherCancelInFlight(run, payload.actionId)) {
+    // It ended, already has its answer, or a newer cancel speaks for it now.
+    return log(run, payload, 'no longer the launcher cancel in flight')
+  }
   const target = { organizationId: run.organizationId, runId: run.id, actionId: payload.actionId }
-  // The window runs from when the action was accepted — never from the queue
-  // row's `enqueued_at`, which every retry moves forward.
   const audited = isAuditedDeepWaterCancel(run, payload)
   /** End an action Ledger never answered, with what the run and the audit say. */
   const endUnanswered = async (errorCode: 'unavailable' | 'rejected', outcome: DeepWaterCancelOutcome) => {
@@ -299,6 +302,8 @@ export const runDeepWaterBriefAction = async (
     await settle(deps, run, target, errorCode)
     if (audited) await auditDeepWaterCancelOutcome(deps, run, payload, outcome)
   }
+  // The window runs from when the action was accepted — never from the queue
+  // row's `enqueued_at`, which every retry moves forward.
   if (Date.now() - Date.parse(payload.acceptedAt) >= DEEP_WATER_ACTION_RETRY_WINDOW_MS) {
     console.warn(`[deep-water] brief action ${payload.actionId} on run ${run.id} gave up: Ledger stayed unreachable`)
     return endUnanswered('unavailable', DEEP_WATER_CANCEL_GAVE_UP)

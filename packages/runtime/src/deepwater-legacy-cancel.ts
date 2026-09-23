@@ -5,6 +5,7 @@ import type { DeepWaterPendingActionErrorCode } from '@nessie/schemas'
 import {
   DeepWaterLauncherLedgerCancelSchema,
   type DeepWaterBriefDb,
+  type DeepWaterBriefRun,
   type DeepWaterLauncherLedgerCancel,
 } from './deepwater-brief-run-record.js'
 import { recordDeepWaterLocalCancel, wasDeepWaterCancelAccepted } from './deepwater-local-cancel.js'
@@ -108,6 +109,22 @@ export const beginLegacyDeepWaterCancel = async (
   if (route !== 'local') return route
   await recordDeepWaterLocalCancel(tx, { runId: input.runId, actionId: input.actionId })
   return 'local'
+}
+
+/**
+ * Is this the launcher run's cancel still waiting for Ledger's answer? Not
+ * once the run has ended, the cancel has its answer, or a newer cancel was
+ * accepted — a redelivered or superseded job then sends and records nothing.
+ */
+export const isLauncherCancelInFlight = (
+  run: Pick<DeepWaterBriefRun, 'status' | 'launcher'>,
+  actionId: string,
+): boolean => {
+  const latest = run.launcher?.ledgerCancel ?? null
+  return (OPEN_STATUSES as readonly string[]).includes(run.status)
+    && latest !== null
+    && latest.actionId === actionId
+    && latest.state === 'requested'
 }
 
 /**
