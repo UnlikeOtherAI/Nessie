@@ -113,6 +113,19 @@ test('appendThinkingEntry ignores a chunk that is already present', () => {
   assert.equal(appendThinkingEntry(appended, reasoning('11', 'second')), appended)
 })
 
+test('appendThinkingEntry rewrites a tool line that arrives again with new content, where it stands', () => {
+  const tool = (id: string, content: string) => ({ content, id, kind: 'tool' as const })
+  const entries = [tool('10', 'coding_session_wait: sessionId=a'), reasoning('11', 'thinking')]
+  const rewritten = appendThinkingEntry(entries, tool('10', 'coding_session_wait: Claude Code: working — 14 steps'))
+  assert.deepEqual(rewritten.map((entry) => entry.content), [
+    'coding_session_wait: Claude Code: working — 14 steps',
+    'thinking',
+  ])
+  // The same content again changes nothing, and a reasoning chunk is never rewritten.
+  assert.equal(appendThinkingEntry(rewritten, tool('10', 'coding_session_wait: Claude Code: working — 14 steps')), rewritten)
+  assert.equal(appendThinkingEntry(rewritten, reasoning('11', 'other')), rewritten)
+})
+
 test('mergeThinkingEntries dedupes by chunk id and restores durable order', () => {
   // The live tail arrived first; the fetched history fills in the older prefix.
   const merged = mergeThinkingEntries(

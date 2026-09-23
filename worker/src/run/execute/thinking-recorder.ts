@@ -16,6 +16,12 @@ export type ThinkingRecorder = {
   appendToolLine: (toolName: string, inputSummary: string) => Promise<void>
   /** Final flush. Idempotent, and safe to call from a `finally`. */
   close: () => Promise<void>
+  /**
+   * Rewrite this tool's latest line in place — the same chunk, durable row and
+   * live event id — so a call that watches something for minutes shows where
+   * it stands rather than a line per look. Nothing when the tool has no line.
+   */
+  replaceToolLine: (toolName: string, text: string) => Promise<void>
 }
 
 type RecorderInput = {
@@ -53,6 +59,8 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
   // Serializes flushes so chunk ids stay in emission order even when a tool line
   // interleaves with a timer-driven reasoning flush.
   let queue: Promise<void> = Promise.resolve()
+  // Each tool's latest line, so a watching call can rewrite its own.
+  const toolLines = new Map<string, bigint>()
 
   const clearBufferTimer = (): void => {
     if (bufferTimer) {
@@ -61,25 +69,30 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
     }
   }
 
-  const write = async (kind: RunThinkingChunkKind, content: string): Promise<void> => {
+  const publish = async (kind: RunThinkingChunkKind, chunkId: bigint, content: string): Promise<void> => {
+    if (input.isRestricted?.()) {
+      return
+    }
+    await input.realtimeTransport.publishSse(
+      input.threadId,
+      kind === 'tool' ? 'stream.thinking.tool' : 'stream.reasoning',
+      {
+        // BigInt is not JSON-serializable — always hand the wire a string.
+        chunkId: chunkId.toString(),
+        content,
+        runId: parseRunId(input.runId),
+      },
+    )
+  }
+
+  const write = async (kind: RunThinkingChunkKind, content: string, toolName?: string): Promise<void> => {
     try {
       const chunk = await input.prisma.runThinkingChunk.create({
         data: { content, kind, runId: input.runId },
         select: { id: true },
       })
-      if (input.isRestricted?.()) {
-        return
-      }
-      await input.realtimeTransport.publishSse(
-        input.threadId,
-        kind === 'tool' ? 'stream.thinking.tool' : 'stream.reasoning',
-        {
-          // BigInt is not JSON-serializable — always hand the wire a string.
-          chunkId: chunk.id.toString(),
-          content,
-          runId: parseRunId(input.runId),
-        },
-      )
+      if (toolName !== undefined) toolLines.set(toolName, chunk.id)
+      await publish(kind, chunk.id, content)
     } catch (error) {
       console.warn('[worker] thinking recorder failed to record chunk', input.runId, error)
     }
@@ -126,7 +139,7 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
       await enqueue(async () => {
         // Reasoning that led to this call belongs before it in the log.
         await flushReasoning()
-        await write('tool', line)
+        await write('tool', line, toolName)
       })
     },
     close: async () => {
@@ -134,6 +147,22 @@ export const createThinkingRecorder = (input: RecorderInput): ThinkingRecorder =
       closed = true
       clearBufferTimer()
       await enqueue(flushReasoning)
+    },
+    replaceToolLine: async (toolName, text) => {
+      if (closed) return
+      const content = text ? `${toolName}: ${text}` : toolName
+      await enqueue(async () => {
+        const chunkId = toolLines.get(toolName)
+        if (chunkId === undefined) return
+        try {
+          await input.prisma.runThinkingChunk.update({
+            data: { content }, select: { id: true }, where: { id: chunkId },
+          })
+          await publish('tool', chunkId, content)
+        } catch (error) {
+          console.warn('[worker] thinking recorder failed to rewrite a tool line', input.runId, error)
+        }
+      })
     },
   }
 }

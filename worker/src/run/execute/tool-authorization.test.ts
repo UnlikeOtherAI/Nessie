@@ -419,6 +419,7 @@ const runLoop = async (input: {
         appendReasoning: async () => undefined,
         appendToolLine: async () => undefined,
         close: async () => undefined,
+        replaceToolLine: async () => undefined,
       },
       toolDefs: [
         {

@@ -32,6 +32,11 @@ const makeHarness = (options: { failWrites?: boolean } = {}) => {
         nextId += 1n
         return { id }
       },
+      update: async (args: { data: { content: string }; where: { id: bigint } }) => {
+        const index = Number(args.where.id) - 1
+        written[index] = { ...written[index]!, content: args.data.content }
+        return { id: args.where.id }
+      },
     },
   } as unknown as PrismaClient
 
@@ -154,4 +159,30 @@ test('recorder failures are swallowed — thinking capture never fails a run', a
 
   assert.equal(written.length, 0)
   assert.equal(published.length, 0, 'a failed durable write publishes nothing')
+})
+
+test('a watching call rewrites its own tool line in place, under the same chunk id', async () => {
+  const { published, recorder, written } = makeHarness()
+
+  await recorder.appendToolLine('coding_session_wait', 'sessionId=a')
+  await recorder.appendToolLine('kb_search', 'q=pricing')
+  await recorder.replaceToolLine('coding_session_wait', 'Claude Code: working — 3 steps (Bash 2, Edit 1)')
+  await recorder.replaceToolLine('coding_session_wait', 'Claude Code: working — 14 steps (Bash 7, Edit 3)')
+
+  assert.deepEqual(written, [
+    { content: 'coding_session_wait: Claude Code: working — 14 steps (Bash 7, Edit 3)', kind: 'tool' },
+    { content: 'kb_search: q=pricing', kind: 'tool' },
+  ], 'one row for the wait, however often it looks; the other tool’s line is untouched')
+  assert.deepEqual(published.map((call) => [call.event, call.data.chunkId]), [
+    ['stream.thinking.tool', '1'],
+    ['stream.thinking.tool', '2'],
+    ['stream.thinking.tool', '1'],
+    ['stream.thinking.tool', '1'],
+  ])
+  assert.equal(published.at(-1)?.data.content, 'coding_session_wait: Claude Code: working — 14 steps (Bash 7, Edit 3)')
+
+  // A tool that never had a line gets none.
+  await recorder.replaceToolLine('coding_session_list', 'anything')
+  assert.equal(written.length, 2)
+  assert.equal(published.length, 4)
 })
