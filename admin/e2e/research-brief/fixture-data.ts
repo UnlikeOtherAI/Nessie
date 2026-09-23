@@ -30,6 +30,7 @@ export const RUN = {
   failed: '50000000-0000-4000-8000-000000000005',
   hidden: '50000000-0000-4000-8000-000000000009',
   created: '50000000-0000-4000-8000-000000000010',
+  launcher: '50000000-0000-4000-8000-000000000007',
   running: '50000000-0000-4000-8000-000000000006',
   summary: '50000000-0000-4000-8000-000000000004',
 } as const
@@ -125,6 +126,17 @@ export const listedRuns = (): DeepWaterResearchRunView[] => [
     status: 'failed',
     topic: 'Noise from air-source heat pumps in terraces',
     viewer: noViewer,
+  }),
+  // Started from the launcher, before research briefs: it has no brief.
+  run({
+    ...finished,
+    createdAt: at(5),
+    id: RUN.launcher,
+    reportKind: 'full',
+    settings: null,
+    sourceCount: 31,
+    title: 'Heat pump running costs in flats',
+    topic: 'What does a heat pump cost to run in a flat?',
   }),
 ]
 

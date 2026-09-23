@@ -11,6 +11,7 @@ import {
   walkBriefElsewhere,
   walkBriefToStart,
   walkFailedReply,
+  walkLauncherResearch,
   walkNewBrief,
   walkOlderCard,
   walkReplyThreadBrief,
@@ -34,10 +35,10 @@ import {
  * brief, a reply the planner could not answer coming back and being sent
  * again, the failed opening turn, the sign-in state, every artifact action
  * including the clipboard fallback, the not-ready doorways for a member, an
- * admin (who is offered no team control) and an owner, and the owner's cancel
- * of the research that blocks turning DeepWater off, and Knowledge ›
- * Research walked to its second page and back. Every state is screenshotted
- * under e2e/screenshots/research-brief/.
+ * admin (who is offered no team control) and an owner, the owner's cancel of
+ * the research that blocks turning DeepWater off, and Knowledge › Research
+ * with a research from before briefs and a second page.
+ * Every state is screenshotted under e2e/screenshots/research-brief/.
  */
 
 const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/research-brief')
@@ -288,7 +289,7 @@ try {
   const knowledge = await open(desktop, 'at=/knowledge-base/views/deep-water-research')
   const list = knowledge.getByTestId('research-list')
   await list.getByText('Heat pumps in Victorian terraced houses', { exact: true }).waitFor()
-  assert.equal(await list.locator('[data-research-run]').count(), 6)
+  assert.equal(await list.locator('[data-research-run]').count(), 7)
   await list.getByText('Research summary (the full report could not be written).').waitFor()
   // Knowledge › Research is no conversation: "this conversation" would name the wrong place.
   await list.locator('[data-research-run="50000000-0000-4000-8000-000000000006"]')
@@ -304,7 +305,11 @@ try {
   assert.deepEqual(created.body.origin, { kind: 'personal' })
   await knowledge.close()
 
-  // 18b — a second page of Knowledge › Research, and back.
+  // 18b — a research from before briefs opens where it stands; 18c — a second page, and back.
+  const launcher = await open(desktop, 'at=/knowledge-base/views/deep-water-research')
+  await walkLauncherResearch(launcher)
+  await snap(launcher, '18b-knowledge-launcher-research.png')
+  await launcher.close()
   const pages = await open(desktop, 'many=1&at=/knowledge-base/views/deep-water-research?limit=10')
   await walkResearchPages(pages)
   await pages.close()

@@ -14,6 +14,7 @@ const RUN = {
   draft: '50000000-0000-4000-8000-000000000001',
   failed: '50000000-0000-4000-8000-000000000005',
   hidden: '50000000-0000-4000-8000-000000000009',
+  launcher: '50000000-0000-4000-8000-000000000007',
   running: '50000000-0000-4000-8000-000000000006',
   summary: '50000000-0000-4000-8000-000000000004',
 }
@@ -268,4 +269,16 @@ export const walkResearchPages = async (page) => {
   await page.waitForFunction(() => document.querySelectorAll('[data-research-run]').length === 10)
   assert.equal(await rows.first().getAttribute('data-research-run'), firstId, 'back on the first page')
   assert.equal(await page.getByRole('button', { name: 'Previous page' }).isDisabled(), true)
+}
+
+/** A research from the launcher has no brief: its row still opens where it stands. */
+export const walkLauncherResearch = async (page) => {
+  const row = page.locator(`[data-research-run="${RUN.launcher}"]`)
+  await row.getByRole('button', { name: 'View brief' }).click()
+  const dialog = page.getByTestId('research-brief-dialog')
+  await dialog.getByTestId('research-without-brief')
+    .getByText('This research was started before research briefs', { exact: false }).waitFor()
+  await dialog.getByText('Finished with 31 sources.').waitFor()
+  await dialog.getByRole('link', { name: 'Open the full report in Documents' }).waitFor()
+  assert.equal(await dialog.getByTestId('research-brief-not-found').count(), 0, 'its own research is not "unavailable"')
 }

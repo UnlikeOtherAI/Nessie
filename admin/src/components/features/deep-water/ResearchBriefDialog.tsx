@@ -1,18 +1,20 @@
-import type { DeepWaterBriefOriginRequest } from '@nessie/schemas'
+import type { DeepWaterBriefOriginRequest, DeepWaterResearchRunView } from '@nessie/schemas'
 import {
   isResearchNotFound,
   useDeepWaterReadiness,
   useResearchBrief,
+  useResearchRun,
 } from '../../../facades/deep-water/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'
 import { Dialog } from '../../shared/Dialog'
 import { BriefWorkspace } from './BriefWorkspace'
-import { researchShownIn, type StartAgain } from './research-brief-origin'
+import { researchShownIn, type ResearchShownIn, type StartAgain } from './research-brief-origin'
 import { STATUS_LABEL, STATUS_TONE, researchName } from './research-presentation'
 import { ResearchBriefNewForm } from './ResearchBriefNewForm'
 import { ResearchReadinessScreen } from './ResearchReadinessScreen'
+import { ResearchRunOutcome } from './ResearchRunOutcome'
 
 /**
  * The Research brief dialog — the one surface for agreeing, starting and
@@ -21,6 +23,11 @@ import { ResearchReadinessScreen } from './ResearchReadinessScreen'
  * person and DeepWater's planner agree the pillars and settings before
  * anything is paid for. With no run yet it is gated on readiness, and shows
  * why research cannot start here instead of hiding the doorway.
+ *
+ * A research started from the launcher, before briefs, has no brief: its
+ * brief read answers 404 while the research itself is still the viewer's to
+ * read, so the dialog shows where that research stands instead of telling
+ * its own requester it is not theirs to see.
  */
 
 export const ResearchBriefDialog = ({
@@ -46,19 +53,32 @@ export const ResearchBriefDialog = ({
   const readiness = useDeepWaterReadiness()
   const briefQuery = useResearchBrief(runId)
   const brief = briefQuery.data && briefQuery.data.id === runId ? briefQuery.data : null
-  const shownIn = brief ? researchShownIn(screenOrigin, brief) : 'elsewhere'
+  const noBrief = briefQuery.isError && isResearchNotFound(briefQuery.error)
+  const runQuery = useResearchRun(noBrief ? runId : null)
+  const runWithoutBrief = noBrief && runQuery.data && runQuery.data.id === runId ? runQuery.data : null
+  const shown = brief ?? runWithoutBrief
+  const shownIn = shown ? researchShownIn(screenOrigin, shown) : 'elsewhere'
 
-  const title = runId ? (brief ? researchName(brief) : 'Research') : 'New research'
-  const description = brief ? (
+  const title = runId ? (shown ? researchName(shown) : 'Research') : 'New research'
+  const description = shown ? (
     <span className="flex flex-wrap items-center gap-2">
-      <Pill size="sm" tone={STATUS_TONE[brief.status]} uppercase={false}>{STATUS_LABEL[brief.status]}</Pill>
-      {brief.title && brief.title.trim() !== brief.topic.trim() ? (
-        <span className="text-[color:var(--tx3)]">{brief.topic}</span>
+      <Pill size="sm" tone={STATUS_TONE[shown.status]} uppercase={false}>{STATUS_LABEL[shown.status]}</Pill>
+      {shown.title && shown.title.trim() !== shown.topic.trim() ? (
+        <span className="text-[color:var(--tx3)]">{shown.topic}</span>
       ) : null}
     </span>
   ) : runId || readiness.state !== 'ready'
     ? undefined
     : 'Agree what to research with DeepWater’s research planner, then start it.'
+
+  const failedToLoad = (retry: () => void) => (
+    <div className="flex flex-col items-start gap-2">
+      <p className="text-sm text-[color:var(--danger-text)]" role="alert">This research couldn’t be loaded.</p>
+      <button className="admin-button admin-button-secondary admin-button-compact" onClick={retry} type="button">
+        Try again
+      </button>
+    </div>
+  )
 
   const body = () => {
     if (!runId) {
@@ -84,23 +104,23 @@ export const ResearchBriefDialog = ({
     if (brief && me) {
       return <BriefWorkspace brief={brief} meUserId={me.user.id} onStartAgain={onStartAgain} shownIn={shownIn} />
     }
-    if (briefQuery.isError) {
-      return isResearchNotFound(briefQuery.error) ? (
+    if (runWithoutBrief) {
+      return (
+        <ResearchWithoutBrief
+          meUserId={me?.user.id ?? null}
+          onStartAgain={onStartAgain}
+          run={runWithoutBrief}
+          shownIn={shownIn}
+        />
+      )
+    }
+    if (briefQuery.isError && !noBrief) return failedToLoad(() => void briefQuery.refetch())
+    if (noBrief && runQuery.isError) {
+      return isResearchNotFound(runQuery.error) ? (
         <p className="text-sm text-[color:var(--tx2)]" data-testid="research-brief-not-found">
           This research isn’t available to you. It may belong to a conversation you can’t see.
         </p>
-      ) : (
-        <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-[color:var(--danger-text)]" role="alert">This research couldn’t be loaded.</p>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={() => void briefQuery.refetch()}
-            type="button"
-          >
-            Try again
-          </button>
-        </div>
-      )
+      ) : failedToLoad(() => void runQuery.refetch())
     }
     return <Skeleton variant="detail" />
   }
@@ -111,3 +131,18 @@ export const ResearchBriefDialog = ({
     </Dialog>
   )
 }
+
+/** A research from before briefs: where it stands and what it produced, with nothing to agree. */
+const ResearchWithoutBrief = ({ meUserId, onStartAgain, run, shownIn }: {
+  meUserId: string | null
+  onStartAgain: StartAgain
+  run: DeepWaterResearchRunView
+  shownIn: ResearchShownIn
+}) => (
+  <div className="flex flex-col gap-3" data-testid="research-without-brief">
+    <p className="text-sm text-[color:var(--tx2)]">
+      This research was started before research briefs, so it has no brief to show.
+    </p>
+    <ResearchRunOutcome meUserId={meUserId} onStartAgain={onStartAgain} run={run} shownIn={shownIn} />
+  </div>
+)
