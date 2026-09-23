@@ -18,8 +18,10 @@ import { threadKeys } from '../threads/keys'
  * thread's own; none needs the owner-only Triggers routes.
  *
  * Work moves in the worker, after the move that started it has already
- * answered, and nothing announces it yet — so the chip and the board re-read
- * while there is live work to watch, and stop when there is none.
+ * answered, and nothing announces it yet — so an open chip re-reads while its
+ * work is live, and a board re-reads while anything on it can start or is
+ * doing work. An idle ticket or board asks nothing more: a move from the
+ * dialog closes it, and the next open reads fresh.
  */
 
 export type { BoardTicketWorkRecord, TaskTicketWorkRecord, TicketWorkThreadGate }
@@ -49,9 +51,10 @@ export const useBoardTicketWork = (projectId?: string, boardId?: string) => {
     queryKey: taskKeys.boardWork(projectId, boardId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/boards/${boardId}/ticket-work`),
     enabled: Boolean(projectId && boardId),
-    // A board nothing starts work from has nothing to watch.
+    // A board nothing starts work from, and no work is live on, has nothing to watch.
     refetchInterval: (query) =>
-      (query.state.data?.pickups.length ?? 0) > 0 || (query.state.data?.cards.length ?? 0) > 0
+      (query.state.data?.pickups.length ?? 0) > 0
+      || (query.state.data?.cards ?? []).some((card) => LIVE.has(card.status))
         ? BOARD_TICKET_WORK_POLL_MS
         : false,
   })
