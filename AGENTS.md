@@ -476,11 +476,14 @@ when one changes, the same turn updates it, not this section.
   Enabling DeepWater provisions a team-scoped tool-projecting instance routed
   through Ledger; every research is agreed as a brief with DeepWater's planner
   first and comes back to the conversation it came from, and the brief, grant
-  bundle and legacy handoff rules are exacting. Ledger relays nothing back: the
-  worker's `deep-water-watch` reads each open brief and research as its
-  requester and delivers a finished one exactly once, under its research card
-  with an explicit-recipient alert to the person who asked, or as one run that
-  wakes the agent that asked. Its `report.md` and `sources.csv` are served only
+  bundle and legacy handoff rules are exacting. Ledger relays nothing back:
+  DeepWater pushes progress, settled turns and outcomes straight to a signed
+  receiver, and each turn or outcome only triggers the read the worker's
+  `deep-water-watch` backstop makes as the requester, which delivers a finished
+  research exactly once, under its research card with an explicit-recipient
+  alert to the person who asked, or as one run that wakes the agent that
+  asked; progress streams to the card and never wakes anyone. Its `report.md`
+  and `sources.csv` are served only
   behind the run's viewer predicate, and a person's brief is theirs alone until
   it is launched.
   Read [`docs/standards/deepwater.md`](docs/standards/deepwater.md)

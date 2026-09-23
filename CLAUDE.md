@@ -192,8 +192,11 @@ sentence changes only if the invariant itself did.
   (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
   card, Knowledge › Research and `/apps/deep-water` hero; CI runs it after the
   agent-triggers one. The runner plays the server through `window.__research`
-  (the planner answering, a launch landing, a revision conflict) and pins the
-  whole person brief, the artifact actions and their clipboard fallback, an
+  (the planner answering, a launch landing, a revision conflict, DeepWater's
+  progress pushes as `integration.run.updated` frames) and pins the whole
+  person brief, a running card streaming each push with no request between
+  two, the dialog leaving "replying" as its turn lands, the artifact actions
+  and their clipboard fallback, an
   older card's action, an agent's read-only brief and its discard (accepted,
   then settled by `cancelSettles`), the not-ready doorways and a verdict the
   admin cannot read, the owner's cancel of a research that blocks turning

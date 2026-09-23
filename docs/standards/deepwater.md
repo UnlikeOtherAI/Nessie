@@ -539,9 +539,11 @@ connector, and the same projection applies every answer.
 
 ## Research briefs — the watch, delivery and wakes
 
-Nothing pushes from Ledger to Nessie. The worker watches every open brief and
-research through Ledger (`worker/src/control/deepwater-*.ts`), and that watch is
-the only way results come back.
+Ledger pushes nothing to Nessie. DeepWater (Water) pushes each research's
+progress, settled planner turns and outcome straight to Nessie (see "Research
+events from DeepWater" below), and the worker watches every open brief and
+research through Ledger (`worker/src/control/deepwater-*.ts`) as the backstop.
+Both end in the same reads, so results come back with the push switched off.
 
 - **The watch.** `deep-water-watch` runs every 5 s under `withSweepLock` and
   claims due runs with `claimDueDeepWaterWatchRuns` (`FOR UPDATE SKIP LOCKED`,
@@ -551,7 +553,12 @@ the only way results come back.
   `deep_water.run.watch` job keyed by that sequence (`maxAttempts: 1`: the next
   claim is the retry). An applied read sets the next read: 5 s while a planner
   turn or a person's action is in flight, 30 s while the research runs, then
-  half the time since the last change, between 10 minutes and 6 hours.
+  half the time since the last change, between 10 minutes and 6 hours. While
+  the run has received a DeepWater event in the last 2 minutes
+  (`last_event_at`), the watch is the backstop and reads it at most every 60 s
+  (`deepWaterWatchDelayMs`); a quiet run keeps its longer backoff, and a failed
+  read's quick retry below ignores the events, because the one that prompted
+  the read may be the last DeepWater sends.
 - **Reads are cost-free control-plane calls** through the run's own connector
   (`callDeepWaterLedgerTool`, shared with the run toolset through
   `deepwater-ledger-transport.ts`), signed as the requester with the captured
@@ -582,30 +589,18 @@ the only way results come back.
   there says the same and offers the same Retry), and a launched research
   that DeepWater can't check on it — never that it finished, nor that it is
   waiting to be saved.
-- **Identity drift and UOA's rollout gate.** UOA answers 403 for Nessie's own
-  delegation setup too (a missing or disabled mapping, an inactive client
-  domain, a resource or scope the mapping does not allow), and its production
-  body names a code only when the code is on its public list
-  (`PRODUCTION_PUBLIC_ERROR_CODES`), so a bare 403 is never taken as the
-  person's doing. `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` is not on that list yet
-  (UnlikeOtherAuthenticator main 2e7fb24; the bodies are pinned in
-  `packages/runtime/test/uoa-token-exchange-production-bodies.ts`), so **today
-  a person UOA refuses fails the read as a fault**: the job's failure is
-  logged, the claim's backoff grows to 6 hours, the run is not blocked, nobody
-  is told, and Retry is not offered (it needs a block). No live action renews a
-  launched or finished research. Such a run is caught only once Nessie can see
-  the change itself — the requester signs in to Nessie again (an ordinary
-  sign-in records the new epoch on their DeepWater link; an account-recovery
-  sign-in refreshes only the Nessie link) or loses the link or team — when its
-  next read blocks it and tells them as above. A requester who never signs in again, or who
-  loses an organisation, team or domain role only at UOA, strands the run: a
-  finished research is never delivered and nobody is told. **Rollout gate:**
-  UOA must list `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` as a public production code
-  and give its configuration refusal (an active team with organisation
-  features off under a team policy other than `all_active_memberships`) a code
-  of its own, which stays a Nessie fault; until both ship, identity drift is
-  this known limitation (`docs/known-limitations.md` L25), and flipping the
-  pinned fixture is how the change is taken up.
+- **Identity drift.** UOA answers 403 for Nessie's own delegation setup too
+  (a missing or disabled mapping, an inactive client domain, a resource or
+  scope the mapping does not allow, a team context the product requires or
+  does not support), and those codes stay off its public production list, so
+  their body is a bare 403 — a fault, never the person's doing. Every refusal
+  about the person's own state (a moved sign-in epoch, an unknown user, a lost
+  domain role, an organisation or team no longer theirs) answers the public
+  `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` (UnlikeOtherAuthenticator #52; the bodies
+  are pinned in `packages/runtime/test/uoa-token-exchange-production-bodies.ts`),
+  which blocks the run and tells them as above. No live action renews a
+  launched or finished research, so there only their Retry — which needs that
+  block — renews the identity.
 - **A launch is seen before its result.** A research Ledger shows was launched
   — `complete`, or a brief whose state is `launched` — moves the run to
   `running` (setting `launched_at`) before its result is delivered, even when
@@ -756,6 +751,57 @@ the only way results come back.
   changed) — the agent is not woken, since it could act only with the sign-in
   UOA refused. `delivered_at` stays unset either way, so a confirmation that
   does arrive later still attaches.
+
+## Research events from DeepWater
+
+DeepWater pushes the status of research Nessie asked for straight to Nessie
+(Water plan amendments-streaming S1, S2); Ledger connects and meters that work
+and relays none of it. The contract is DeepWater's
+`deepwater.research-event.v1`, mirrored member for member and as strictly by
+`DeepWaterResearchEventSchema` (`@nessie/schemas`); DeepWater's published
+examples and HMAC test vector are Nessie's fixture
+(`api/test/fixtures/deepwater-research-event.v1.examples.json`).
+
+- **The receiver**, `POST /api/integrations/deep-water/events`
+  (`deep-water-events.ts`), is public and never changes a run. In order
+  (`authenticateDeepWaterEvent`): 503 `DEEP_WATER_EVENTS_UNCONFIGURED` without
+  `DEEPWATER_EVENTS_SECRET` (at least 32 characters; DeepWater holds it as
+  `NESSIE_EVENTS_SIGNING_SECRET`); 401 `DEEP_WATER_EVENT_SIGNATURE_INVALID`
+  unless `x-deepwater-signature` is `sha256=` and the HMAC-SHA256 of the exact
+  raw body, compared in constant time; 400 `DEEP_WATER_EVENT_MALFORMED` for a
+  body outside the contract or an `x-deepwater-event-id` that does not name
+  it; 401 `DEEP_WATER_EVENT_STALE` for a `sent_at` over ten minutes from now,
+  either way. The run is resolved inside the event's
+  `nessie.organization_id` (`resolveDeepWaterEventRun`): the run bound to
+  `research.ledger_research_id`, else an agent's brief whose research id never
+  came back, by the Run, provider tool-call id and agent that opened it. It
+  queues `deep_water.research.event` keyed `deep-water-event:<event_id>` and
+  answers `202 {accepted: true}`, or `200 {accepted: false, reason}` —
+  `run_not_found`, or `legacy_run` for a launcher run, which its handoff owns —
+  so DeepWater completes the delivery. These bodies are DeepWater's contract,
+  not the `{data}` envelope. DeepWater retries 401, 408, 429, 5xx and network
+  failures for up to seven days and drops any other 4xx.
+- **The handler** (`deepwater-research-event.ts`; one attempt, the watch is
+  the retry). `research.progress` is stored as `scope_json.progress`
+  (`{phase, note, percent, sourcesFound, at}`) only when DeepWater observed it
+  later than the stored snapshot, on a run bound to that research and still
+  open (`applyDeepWaterProgress`, under the row lock); it marks
+  `ledger_observed_at` and announces `integration.run.updated`, and never
+  wakes, posts or alerts. A settled turn or an outcome is a trigger, never an
+  authority: `claimDeepWaterEventRead` claims a read now, exactly as the sweep
+  would (so a watch job for an older claim stands down) and only for a run the
+  watch reads, and the handler makes the watch's own read
+  (`runDeepWaterWatch`). The attach, both registers, delivery and the wakes
+  are the watch's, from Ledger's answer: an agent is woken only for a settled
+  turn it wrote and for its research's outcome, and a person gets the result
+  reply with its mention and push alert — each once, however often DeepWater
+  resends the event (its start-up sweep can). The brief dialog's "replying"
+  ends with that read.
+- **Every event sets `last_event_at`**, which puts the watch on its 60 s
+  backstop cadence for two minutes (see "The watch" above).
+- **The view.** `ResearchRunView.progress` is the stored snapshot while the
+  research is starting or running with its delivery not blocked, else null
+  (`toDeepWaterResearchRunView`); the admin streams it (below).
 
 ## Research briefs — the admin
 
@@ -922,12 +968,22 @@ the screen it goes to that conversation, which opens the brief itself.
   rather than a range its short pages would make wrong. Once the list honours
   `direction=backward` and returns a `prevCursor`, the trail goes and the list
   pages like every other.
+- **A running research streams.** `ResearchProgress`, drawn by
+  `ResearchRunOutcome` and so on the card, a Knowledge › Research row and the
+  brief dialog alike, shows DeepWater's progress while a research starts or
+  runs: the phase as a numbered step in plain words ("Step 2 of 5: Reading
+  sources" — Planning, Reading sources, Summarising, Checking, Writing the
+  report), DeepWater's own words for the step, a bar when the step is
+  countable, the sources found and the time so far. Its clock is a display
+  tick; everything else moves only when the run is announced.
 - **Nothing polls.** `useDeepWaterRunEvents`, mounted once in
   `AdminShellLayout`, turns each content-free `integration.run.updated` into an
   invalidation of that run's reads for every viewer scope and of every research
   list; a `realtime.gap` refetches everything. Browser coverage:
   `pnpm --filter @nessie/admin test:e2e:research-brief` walks every state over
-  a stubbed client; `test:e2e:research-brief-real` walks the same doorways
+  a stubbed client — including a running card moving with each progress frame
+  and the dialog leaving "replying" as its turn lands, with no request between
+  two frames; `test:e2e:research-brief-real` walks the same doorways
   against the real API, worker and database, with Ledger's answers applied
   through the watch's own projection and announcer, because the pinned egress
   cannot reach a loopback Ledger or UOA. It cannot open a new brief: readiness
