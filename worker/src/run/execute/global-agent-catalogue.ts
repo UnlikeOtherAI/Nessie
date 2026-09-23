@@ -102,6 +102,12 @@ export const loadGlobalAgentCatalogueBlock = async (
     avatarStyle,
     catalogue,
     executors,
+    // A restricted verb this run resolved is one of its OWN, and the block
+    // must say so: the restricted list's "Personal Assistant only" label is
+    // about what a designed agent may hold, and reading it as "not usable
+    // here" had the Designer refuse executor grants it was holding the verbs
+    // for (docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md).
+    heldToolIds: input.resolvedToolIds,
     models,
     writeSurface: IDENTITY_WRITE_TOOL_IDS.some((toolId) =>
       input.resolvedToolIds.has(toolId))

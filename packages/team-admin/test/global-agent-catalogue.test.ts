@@ -482,3 +482,50 @@ test('DeepWater is described as an ordinary grant, not a bundle nobody may split
   assert.match(rendered, /gives one of its tools to any agent/)
   assert.doesNotMatch(rendered, /cannot be granted one projection at a time/)
 })
+
+// A restricted entry keyed to a verb this face itself resolved. The label
+// "Personal Assistant only" is a true answer about what a designed agent may
+// hold — and a false one about what THIS run can do, which is how the Designer
+// came to refuse executor grants while holding the verb (2026-09-23).
+const executorGrantEntry = {
+  allowMode: false,
+  defaultEnabled: true,
+  group: 'Executors',
+  key: 'executor_agent_grant_prepare',
+  kind: 'builtin',
+  label: 'Prepare Executor Agent Grant',
+  restriction: 'personal_assistant_only',
+  summary: 'Prepare a whole-suite executor grant for an agent.',
+} as const
+
+/** The rendered slice under one section header, up to its closing blank line. */
+const sectionOf = (rendered: string, header: RegExp): string => {
+  const lines = rendered.split('\n')
+  const start = lines.findIndex((line) => header.test(line))
+  assert.notEqual(start, -1, `section ${header} is rendered`)
+  const end = lines.indexOf('', start)
+  return lines.slice(start, end === -1 ? undefined : end).join('\n')
+}
+
+test('a restricted verb this face resolved is its own, never somebody else\'s', () => {
+  const rendered = block({
+    catalogue: catalogue({ restricted: [catalogue().restricted[0]!, executorGrantEntry] }),
+    heldToolIds: new Set(['executor_agent_grant_prepare']),
+  })
+  const heldSection = sectionOf(rendered, /Verbs you hold in this conversation/)
+  assert.match(heldSection, /executor_agent_grant_prepare \(Prepare Executor Agent Grant\)/)
+  // The not-yours section keeps the entries the face does not hold, and only those.
+  const notYours = sectionOf(rendered, /not yours to grant/)
+  assert.match(notYours, /agent_create/)
+  assert.doesNotMatch(notYours, /executor_agent_grant_prepare/)
+  // Nothing anywhere calls the held verb Personal Assistant only.
+  assert.doesNotMatch(rendered, /executor_agent_grant_prepare — Personal Assistant only/)
+})
+
+test('a face that resolved no restricted verb keeps the plain restriction labels', () => {
+  const rendered = block({
+    catalogue: catalogue({ restricted: [catalogue().restricted[0]!, executorGrantEntry] }),
+  })
+  assert.match(rendered, /executor_agent_grant_prepare — Personal Assistant only/)
+  assert.doesNotMatch(rendered, /Verbs you hold in this conversation/)
+})
