@@ -114,7 +114,7 @@ test('a start is the bridge’s session_start: task becomes prompt, and the agen
   assert.doesNotMatch(result.output, /Output of the program/)
 })
 
-test('a blank path, title or agent is left out of a start rather than sent to be refused', async () => {
+test('a blank path or title is left out of a start and a blank agent gets the default, rather than sent to be refused', async () => {
   const { sent, sessions } = harness(() => answer({ sessionId: SESSION, status: 'starting' }, 'row-1'))
   await sessions.execute(CODING_SESSION_TOOL_NAMES.start, { path: ' ', root: 'nessie', task: 'Fix it.', title: '' }, 'call-1')
   assert.deepEqual((sent[0]!.args as { arguments: unknown }).arguments, { agent: 'claude', prompt: 'Fix it.', root: 'nessie' })
