@@ -205,7 +205,7 @@ const uploadWasRefused = (error: unknown): error is ExecutorApiError => (
 const MAX_REASON_LENGTH = 200
 
 const refusalReason = (error: ExecutorApiError): string => {
-  const message = error.message.replace(/s+/g, ' ').trim()
+  const message = error.message.replace(/\s+/g, ' ').trim()
   const bounded = message.length <= MAX_REASON_LENGTH ? message : `${message.slice(0, MAX_REASON_LENGTH - 1)}…`
   return `Nessie refused it (${bounded})`
 }
