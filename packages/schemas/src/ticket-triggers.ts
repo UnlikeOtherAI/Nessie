@@ -206,6 +206,11 @@ export const TicketTriggerSkipReasonSchema = z.enum([
   // A failed delivery, retried, whose event no longer starts or wakes
   // anything (the work ended, or the ticket moved on).
   'no_longer_applies',
+  // The platform's limits (`limits` on the trigger). A wake past
+  // `wakesPerTicket` stops the work instead of running; a pickup past
+  // `startsPerDay` records the work as stopped without running.
+  'limit_wakes',
+  'limit_starts',
 ])
 export type TicketTriggerSkipReason = z.infer<typeof TicketTriggerSkipReasonSchema>
 
@@ -224,14 +229,24 @@ export const TICKET_TRIGGER_SKIP_SENTENCES = {
   priority_while_queued: 'The ticket is queued: its new priority re-sorts the queue and wakes nothing.',
   config_invalid: 'This trigger\'s configuration names no board or no longer parses, so it matches nothing.',
   no_longer_applies: 'By the time this was retried, it no longer started or woke any work.',
+  limit_wakes: 'This ticket\'s work used all the wakes its trigger allows, so it stopped. '
+    + 'Move the ticket out of and back into a start-work column to continue.',
+  limit_starts: 'This trigger already started work on as many tickets today as it allows, so this one did not start. '
+    + 'Move the ticket out of and back into a start-work column to try again later.',
 } as const satisfies Record<TicketTriggerSkipReason, string>
 
-/** `agent_trigger_deliveries.payload` of a ticket dispatch. Ids and vocabulary only. */
+/**
+ * `agent_trigger_deliveries.payload` of a ticket dispatch. Ids and vocabulary
+ * only. A `TaskEvent` names its event by `taskEventId`; a person's message in
+ * the work thread is not a `TaskEvent`, so it names its message by
+ * `messageId` with the event type `thread_message`. Exactly one of the two.
+ */
 export const TicketTriggerDeliveryPayloadSchema = z
   .object({
-    taskEventId: uuid,
+    taskEventId: uuid.optional(),
+    messageId: uuid.optional(),
     taskId: uuid,
-    eventType: z.enum(TICKET_TRIGGER_EVENT_TYPES),
+    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message']),
     originKind: z.enum(['session', 'token', 'agent', 'source', 'system']),
     outcome: TicketTriggerDispatchOutcomeSchema,
     skipReason: TicketTriggerSkipReasonSchema.optional(),
@@ -247,6 +262,17 @@ export const TicketTriggerDeliveryPayloadSchema = z
         code: z.ZodIssueCode.custom,
         path: ['skipReason'],
         message: 'A skipped delivery says why, and only a skipped one does.',
+      })
+    }
+    const fromMessage = payload.eventType === 'thread_message'
+    if (
+      (payload.taskEventId === undefined) !== fromMessage
+      || (payload.messageId === undefined) === fromMessage
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [fromMessage ? 'messageId' : 'taskEventId'],
+        message: 'A thread message names its messageId; every other event its taskEventId.',
       })
     }
   })

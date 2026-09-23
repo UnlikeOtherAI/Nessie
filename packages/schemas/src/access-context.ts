@@ -66,6 +66,11 @@ export const ActionContextSchema = z.object({
   /// it, and it is what `ApprovalRequest.agentAccessCredentialId` is set from.
   agentCredentialId: NonEmptyStringSchema.optional(),
   uoaIdentity: UoaSessionIdentitySchema.optional(),
+  /// The work record a `ticket.work` run serves (docs/standards/ticket-work.md).
+  /// Set only by the platform when it wakes the record, and read by run setup
+  /// to admit the ticket tools and by the wake that folds a second event into
+  /// a still-pending kickoff for the same record.
+  ticketWorkId: z.string().uuid().optional(),
 })
 export type ActionContext = z.infer<typeof ActionContextSchema>
 

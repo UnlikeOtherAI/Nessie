@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { TaskPrioritySchema } from './task-records.js'
+import { TicketWorkStateReasonSchema, TicketWorkStatusSchema } from './ticket-work.js'
 
 /**
  * `TaskEvent` payload contracts for ticket-driven agents
@@ -146,3 +147,39 @@ export const PriorityChangedTaskEventPayloadSchema = z
     }
   })
 export type PriorityChangedTaskEventPayload = z.infer<typeof PriorityChangedTaskEventPayloadSchema>
+
+/**
+ * The ticket-activity rows a work record writes, so the ticket says what its
+ * agent's work did and why (docs/standards/ticket-work.md → "What the project
+ * sees"). They are history only: none is a type a ticket trigger acts on, so
+ * none is dispatched. `work_started` and `work_ended` are written from T1;
+ * `work_queued`, `work_paused` and `work_resumed` belong to the machine queue
+ * and are named here so every reader already knows them.
+ */
+export const TICKET_WORK_ACTIVITY_EVENT_TYPES = [
+  'work_started',
+  'work_queued',
+  'work_paused',
+  'work_resumed',
+  'work_ended',
+] as const
+export type TicketWorkActivityEventType = (typeof TICKET_WORK_ACTIVITY_EVENT_TYPES)[number]
+
+/**
+ * A work row is the platform's, whoever caused it, so its origin is `system`;
+ * `by` names who caused it where someone did — the person whose move started
+ * or ended the work, `agent:<id>` for the agent's own move — and is absent
+ * when the platform acted on its own (a limit, a disabled trigger).
+ */
+export const TicketWorkActivityPayloadSchema = z
+  .object({
+    by: z.string().min(1).optional(),
+    origin: z.object({ kind: z.literal('system') }).strict(),
+    workId: uuid,
+    triggerId: uuid.nullable(),
+    agentId: uuid,
+    status: TicketWorkStatusSchema,
+    reason: TicketWorkStateReasonSchema.nullable(),
+  })
+  .strict()
+export type TicketWorkActivityPayload = z.infer<typeof TicketWorkActivityPayloadSchema>

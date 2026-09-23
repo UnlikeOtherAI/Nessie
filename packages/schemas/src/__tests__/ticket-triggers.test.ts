@@ -68,3 +68,23 @@ test('a delivery says why exactly when it was skipped', () => {
     false,
   )
 })
+
+test('a thread message names its message, every other event its TaskEvent, never both', () => {
+  const MESSAGE = '4fa05a6e-7182-4394-8ea5-b6c7de8f9012'
+  const woken = { taskId: TASK, originKind: 'session', outcome: 'follow', wakeReason: 'thread_message' }
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'thread_message', messageId: MESSAGE }).success,
+    true,
+  )
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'thread_message' }).success, false)
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({
+      ...woken, eventType: 'thread_message', messageId: MESSAGE, taskEventId: EVENT,
+    }).success,
+    false,
+  )
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'comment_added', messageId: MESSAGE }).success,
+    false,
+  )
+})
