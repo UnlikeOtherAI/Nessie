@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 /**
- * The closed vocabularies of ticket work, standing machine access and agent
- * reminders (docs/plans/2026-09-23-ticket-driven-agents).
+ * The run purpose and the closed vocabularies of ticket work, standing machine
+ * access and agent reminders (docs/plans/2026-09-23-ticket-driven-agents).
  *
  * Each list is also a CHECK constraint in
  * `api/prisma/migrations/20260923220000_ticket_work_contracts`, and
@@ -10,6 +10,16 @@ import { z } from 'zod'
  * when the two disagree. Adding a value is therefore two edits in one change:
  * the list here, and a migration that drops and re-adds the CHECK.
  */
+
+/**
+ * The action purpose of every run a ticket's work record wakes. Such a run
+ * acts as the agent with no effective user, and its kickoff is a hidden
+ * `system` message rebuilt from the work record. A kickoff that pends behind a
+ * busy thread therefore drains alone (`packages/db/src/thread-serialization.ts`):
+ * folded into a batch it would lose its wake facts, and a person's message in
+ * the same batch would be consumed under the agent's authority.
+ */
+export const TICKET_WORK_PURPOSE = 'ticket.work'
 
 /**
  * Where one ticket's work stands. `queued`, `active`, `parked` and

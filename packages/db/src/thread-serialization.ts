@@ -10,6 +10,7 @@ import {
   parseThreadId,
   RunExecuteJobPayloadSchema,
   TASK_SET_DELIVERY_PURPOSE,
+  TICKET_WORK_PURPOSE,
   withActionContext,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
@@ -30,9 +31,9 @@ import { enqueueRunExecution } from './queue.js'
 // including the budget-gate block), the terminal path batches ordinary pending
 // rows in arrival order. Rows whose purpose is in `DRAINS_ALONE_PURPOSES` —
 // mailbox deliveries (peer-delegated briefs, task-set deliveries, plan and
-// workflow step mail) and global-agent briefs — drain one at a time, each as
-// its own follow-up run under its own actor context, principal and reply
-// root. No message is lost across a worker crash: the row is the pending
+// workflow step mail), global-agent briefs and ticket-work wakes — drain one
+// at a time, each as its own follow-up run under its own actor context,
+// principal and reply root. No message is lost across a worker crash: the row is the pending
 // marker, and the periodic `sweepPendingThreadMessages` re-poll enqueues the
 // follow-up for any pair whose run disappeared without draining (crash between
 // terminal update and drain, or an API-side queued cancel that never reached
@@ -69,7 +70,11 @@ import { enqueueRunExecution } from './queue.js'
 //   chat") keeps the brief the person was handed over with, rather than losing
 //   it behind their next message in the same DM;
 // - any other mailbox delivery — a plan or workflow step's mail, or mail sent
-//   through `POST /api/mailbox` — keeps its body, which is its whole prompt.
+//   through `POST /api/mailbox` — keeps its body, which is its whole prompt;
+// - a ticket-work wake (`ticket.work`) keeps the facts rebuilt from its work
+//   record, and runs as the agent with no effective user, so a person's
+//   message is never consumed by a run that acts as the agent and may hold a
+//   machine binding.
 // Each drains alone, with its durable hidden message as the prompt. A mailbox
 // delivery's row also keeps `mailboxMessageId`, and its follow-up run is
 // linked to the plan or workflow step the mail was sent for exactly as a
@@ -84,6 +89,7 @@ const DRAINS_ALONE_PURPOSES: ReadonlySet<string> = new Set([
   TASK_SET_DELIVERY_PURPOSE,
   MAILBOX_DELIVERY_PURPOSE,
   GLOBAL_AGENT_BRIEF_PURPOSE,
+  TICKET_WORK_PURPOSE,
 ])
 
 // Statuses that count as "a run is in flight for this (agent, thread)".
