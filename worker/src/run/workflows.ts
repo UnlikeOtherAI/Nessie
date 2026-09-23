@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { WORKFLOW_STEP_SUSPEND_DEADLINE_MS } from '@nessie/db'
 
 type WorkflowStepDefinition = {
   id: string
@@ -338,7 +339,9 @@ export const markWorkflowRunStarted = async (
 // either condition; a lease-only sweep would never reclaim the likeliest hangs.
 export const WORKFLOW_STEP_LEASE_MS = 120_000
 export const WORKFLOW_STEP_LEASE_HEARTBEAT_MS = 30_000
-export const WORKFLOW_STEP_SUSPEND_DEADLINE_MS = 24 * 60 * 60 * 1000
+// The suspend deadline is owned by `@nessie/db` beside the mailbox delivery
+// marker, which can start a still-pending step.
+export { WORKFLOW_STEP_SUSPEND_DEADLINE_MS }
 
 const normalizeTimeoutMs = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null
