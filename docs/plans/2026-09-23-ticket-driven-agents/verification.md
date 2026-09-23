@@ -91,8 +91,8 @@ row with Cancel.
 
 It starts with the two pieces that change 3b's code: the coding-session
 owner `contextId` (key derivation in `packages/schemas` and in the executor
-daemon, on every OS) and the close reasons `ticket_left_flow`,
-`policy_ended` and `work_limit`.
+daemon, on every OS) and the five close reasons in
+[machine-access.md](machine-access.md#server-side-closes).
 
 Tests (DB):
 
