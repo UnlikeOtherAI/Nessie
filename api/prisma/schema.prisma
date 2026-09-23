@@ -1641,6 +1641,11 @@ model ProductIntegrationRun {
   ledgerObservedAt      DateTime  @default(now()) @map("ledger_observed_at")
   reconcileAfter        DateTime  @default(dbgenerated("(CURRENT_TIMESTAMP + '00:10:00'::interval)")) @map("reconcile_after")
   reconcileSeq          Int       @default(0) @map("reconcile_seq")
+  /// When the agreed brief was launched; `requestedAt` is when it was opened.
+  launchedAt            DateTime? @map("launched_at")
+  reportTruncated       Boolean   @default(false) @map("report_truncated")
+  /// Only ever `https://research.deepwater.live/…`, for a person's public launch.
+  publicUrl             String?   @map("public_url")
 
   organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   team            Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
