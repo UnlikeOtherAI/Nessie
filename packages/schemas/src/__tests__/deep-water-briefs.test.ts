@@ -281,7 +281,27 @@ test('the empty scope state is what both insert paths write', () => {
     turn: null,
     turnAuthors: {},
     pendingAction: null,
+    progress: null,
   })
+})
+
+test('a stored scope state carries DeepWater\'s latest progress, and one written before the push has none', () => {
+  const before = { brief: null, turn: null, turnAuthors: {}, pendingAction: null }
+  assert.equal(DeepWaterScopeStateSchema.parse(before).progress, null)
+  const progress = {
+    phase: 'writing_report', note: 'Finished chapter 3 of 8', percent: 38, sourcesFound: 31,
+    at: '2026-09-23T10:16:00.000Z',
+  }
+  assert.deepEqual(DeepWaterScopeStateSchema.parse({ ...before, progress }).progress, progress)
+  for (const wrong of [
+    { ...progress, phase: 'thinking' },
+    { ...progress, percent: 101 },
+    { ...progress, sourcesFound: -1 },
+    { ...progress, at: 'yesterday' },
+    { ...progress, sources_found: 31 },
+  ]) {
+    assert.equal(DeepWaterScopeStateSchema.safeParse({ ...before, progress: wrong }).success, false, JSON.stringify(wrong))
+  }
 })
 
 test('message pointers are strict and carry ids only', () => {
