@@ -88,7 +88,7 @@ export const phoneKnowledgeNavigation = {
     // The document is a nested stage inside its destination route. Its visible
     // header owns the first doorway; after that stage closes, the destination
     // route owns the second one.
-    const documentBackLabel = `Back from ${destination.page.title}`
+    const documentBackLabel = 'Back to space'
     const documentBack = await currentBack(page, documentBackLabel)
     checks.equal(
       'document stage uses its own Back doorway',

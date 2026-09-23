@@ -86,6 +86,7 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
   await runFor('/projects/proj-1/boards', queryClient, apiClient)
   await runFor('/projects/proj-1/boards/board-1/settings?tab=watchers', queryClient, apiClient)
   await runFor('/agents/agent-1', queryClient, apiClient)
+  await runFor('/knowledge-base/agents/agent-docs-1', queryClient, apiClient)
   await runFor('/projects/proj-1/dashboards/dash-1', queryClient, apiClient)
   await runFor('/knowledge-base/spaces/space-1', queryClient, apiClient)
   await runFor('/apps/linear', queryClient, apiClient)
@@ -94,6 +95,7 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
     'GET /api/threads/thread-9/messages',
     'GET /api/projects/proj-1/boards',
     'GET /api/agents/agent-1/status',
+    'GET /api/agents/agent-docs-1/docs',
     'GET /api/dashboards/dash-1',
     'GET /api/knowledge-base/spaces/space-1',
     'GET /api/knowledge-base/spaces/space-1/pages',
@@ -106,6 +108,7 @@ test('the registry maps each destination to its screen\'s own keys and fetchers'
     threadKeys.messages('thread-9'),
     projectKeys.boards('proj-1'),
     agentKeys.status('agent-1'),
+    agentKeys.documents('agent-docs-1'),
     dashboardKeys.detail('dash-1'),
     knowledgeKeys.space('space-1'),
     knowledgeKeys.pages('space-1'),
@@ -221,5 +224,5 @@ test('navigating rows prewarm before the click', () => {
 })
 
 test('the registry is a small closed set, not a growing switch', () => {
-  assert.equal(PREWARM_REGISTRY.length, 8)
+  assert.equal(PREWARM_REGISTRY.length, 9)
 })

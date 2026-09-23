@@ -1186,6 +1186,8 @@ model User {
   executorSessionControlLeases          ExecutorSession[]                      @relation("ExecutorSessionControlLease")
   executorContinuations                 ExecutorContinuation[]                 @relation("ExecutorContinuationActor")
   executorAvailabilityCandidates        ExecutorAvailabilityCandidate[]        @relation("ExecutorAvailabilityCandidateActor")
+  executorConversationLeases            ExecutorConversationLease[]            @relation("ExecutorConversationLeaseActor")
+  endedExecutorConversationLeases       ExecutorConversationLease[]            @relation("ExecutorConversationLeaseEndedBy")
   createdAgentTodoTemplates             AgentTodoTemplate[]                    @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                     AgentTodo[]                            @relation("AgentTodoCreatedBy")
   createdTaskChecklists                 TaskChecklist[]                        @relation("TaskChecklistCreatedBy")
@@ -1461,6 +1463,7 @@ model Organization {
   commsOAuthStates                 CommsOAuthState[]
   commsEvents                      CommsEvent[]
   executors                        Executor[]
+  executorConversationLeases       ExecutorConversationLease[]
   agentTodoTemplates               AgentTodoTemplate[]
   agentTodos                       AgentTodo[]
   demonstrations                   Demonstration[]
@@ -2598,6 +2601,7 @@ model Thread {
   agentAppConnectionRequests AgentAppConnectionRequest[]
   emailConversation          EmailConversation?
   agentHandoffRequests       AgentHandoffRequest[]
+  executorConversationLeases ExecutorConversationLease[]
 
   agentCards AgentCard[]
 
@@ -3023,6 +3027,7 @@ model Message {
   embedding                   MessageEmbedding?
   pushSurfacePresences        UserPushSurfacePresence[]      @relation("PushSurfaceReplyRoot")
   conversationReadStates      MessageConversationReadState[] @relation("MessageConversationReadRoot")
+  executorConversationLeases  ExecutorConversationLease[]    @relation("ExecutorConversationLeaseRoot")
 
   @@unique([threadId, clientMessageId], map: "messages_thread_id_client_message_id_key")
   @@index([threadId, createdAt(sort: Desc), id(sort: Desc)], map: "messages_thread_id_created_at_id_keyset_idx")
@@ -3359,6 +3364,7 @@ model Agent {
   executorPrivateAssignments     ExecutorPrivateAssignment[]     @relation("ExecutorPrivateAssignmentAgent")
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
+  executorConversationLeases     ExecutorConversationLease[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
   coreDocuments                  AgentCoreDocument[]
@@ -3638,6 +3644,7 @@ model Run {
   basisScopes                         RunBasisScope[]
   executorSessions                    ExecutorSession[]
   executorBindings                    ExecutorBinding[]
+  executorConversationLeases          ExecutorConversationLease[]     @relation("ExecutorConversationLeaseLaunch")
   proposedAgentTodoTemplates          AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
   activeAgentTodos                    AgentTodo[]                     @relation("AgentTodoActiveRun")
   demonstrationSteps                  DemonstrationStep[]
@@ -3723,6 +3730,14 @@ model AgentCard {
   /// human-only session, so a person who signs in and presses Done is
   /// recorded even if the resumed run then fails.
   browserLogin      Json?           @map("browser_login")
+  /// The prepared executor access change a system-authored review card opens.
+  /// Only the id: the confirmation token is minted for the presser when the
+  /// card is pressed and never stored, so neither the model nor the message
+  /// ever holds one.
+  executorAccessChangeId String?      @map("executor_access_change_id") @db.Uuid
+  /// The prepared workspace promotion a system-authored review card opens —
+  /// the same rule: only the id, and the token is minted at the press.
+  executorWorkspacePromotionId String? @map("executor_workspace_promotion_id") @db.Uuid
   resumedByRunId    String?         @unique @map("resumed_by_run_id") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at")
   updatedAt         DateTime        @updatedAt @map("updated_at")
@@ -3737,10 +3752,14 @@ model AgentCard {
   waitRun         Run?         @relation("AgentCardWaitRun", fields: [waitRunId], references: [id], onDelete: SetNull)
   resumedByRun    Run?         @relation("AgentCardResumedByRun", fields: [resumedByRunId], references: [id], onDelete: SetNull)
   resolvedBy      User?        @relation("AgentCardResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  executorAccessChange ExecutorContinuation? @relation("AgentCardExecutorAccessChange", fields: [executorAccessChangeId], references: [id], onDelete: SetNull)
+  executorWorkspacePromotion ExecutorContinuation? @relation("AgentCardExecutorWorkspacePromotion", fields: [executorWorkspacePromotionId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, expiresAt])
   @@index([threadId, status])
   @@index([agentId, status])
+  @@index([executorAccessChangeId])
+  @@index([executorWorkspacePromotionId])
   @@map("agent_cards")
 }
 
@@ -5173,6 +5192,7 @@ model Task {
   labels                  TaskLabelLink[]
   comments                TaskComment[]
   externalAssets          TaskExternalAsset[]
+  embedding               TaskEmbedding?
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -5184,6 +5204,27 @@ model Task {
   @@index([ownerUserId, status])
   @@index([runId])
   @@map("tasks")
+}
+
+/// Semantic projection of the ticket's title, purpose and detail. Canonical
+/// ticket text remains on Task; this row is replaced whenever that text hash
+/// or the configured embedding model changes.
+model TaskEmbedding {
+  id             String                 @id @default(uuid()) @db.Uuid
+  taskId         String                 @unique @map("task_id") @db.Uuid
+  contentHash    String                 @map("content_hash")
+  embedding      Unsupported("vector")?
+  embeddingModel String?                @map("embedding_model")
+  dims           Int?
+  status         String                 @default("pending")
+  lastError      String?                @map("last_error")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  task           Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([embeddingModel, dims])
+  @@index([status])
+  @@map("task_embeddings")
 }
 
 /// A task-owned snapshot of an agent-authored reusable checklist. Its source
@@ -5337,6 +5378,7 @@ model Executor {
   continuations          ExecutorContinuation[]
   daemonChallenges       ExecutorDaemonChallenge[]
   availabilityCandidates ExecutorAvailabilityCandidate[]
+  conversationLeases     ExecutorConversationLease[]
   browserCookieImports   BrowserCookieImport[]
 
   @@unique([organizationId, id])
@@ -5476,18 +5518,77 @@ model ExecutorBinding {
   authorizationRevision Int                        @map("authorization_revision")
   fence                 BigInt                     @map("fence")
   candidateHandleDigest String                     @map("candidate_handle_digest")
+  /// The conversation lease this binding was made under: the launch's own
+  /// local-apps bindings and every run carried forward from it. Dispatch treats
+  /// a binding whose lease has ended or expired as fenced. NoAction, not
+  /// SetNull: a lease row must never vanish under a binding that still names
+  /// it, or the binding would dispatch as though no lease had ever bounded it.
+  leaseId               String?                    @map("lease_id") @db.Uuid
   createdAt             DateTime                   @default(now()) @map("created_at")
   executor              Executor                   @relation(fields: [executorId], references: [id], onDelete: Restrict)
   capabilityRevision    ExecutorCapabilityRevision @relation(fields: [capabilityRevisionId], references: [id], onDelete: Restrict)
   run                   Run                        @relation(fields: [runId], references: [id], onDelete: Cascade)
   session               ExecutorSession?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  lease                 ExecutorConversationLease? @relation(fields: [leaseId], references: [id], onDelete: NoAction)
   toolCalls             ToolCall[]
   commands              ExecutorCommand[]
   continuations         ExecutorContinuation[]
 
   @@unique([runId, operationKey])
   @@index([executorId, createdAt])
+  @@index([leaseId])
   @@map("executor_bindings")
+}
+
+/// A person's own follow-ups in the conversation they launched local apps in
+/// keep the executor's local-apps pair (`mcp.tools` + `mcp.call`), and nothing
+/// and nobody else does. The row is not a binding: every carried run is bound
+/// afresh against a newly resolved candidate, so every check runs again; the
+/// lease only says which later runs may be
+/// (docs/plans/2026-09-22-executor-local-apps/conversation-lease.md).
+///
+/// Enforced in the migration, because Prisma cannot express them: the
+/// operation-key set is exactly the pair, `ended_reason` is the closed
+/// vocabulary below and is set exactly when `ended_at` is, and the partial
+/// unique index `executor_conversation_leases_one_live` allows a single live
+/// lease per (thread, root message, agent, person).
+model ExecutorConversationLease {
+  id                String            @id @default(uuid()) @db.Uuid
+  organizationId    String            @map("organization_id") @db.Uuid
+  executorId        String            @map("executor_id") @db.Uuid
+  agentId           String            @map("agent_id") @db.Uuid
+  /// The launching person, and the only person whose messages carry it.
+  actorUserId       String            @map("actor_user_id") @db.Uuid
+  threadId          String            @map("thread_id") @db.Uuid
+  /// The launch message: the conversation root the lease covers.
+  rootMessageId     String            @map("root_message_id") @db.Uuid
+  launchRunId       String            @map("launch_run_id") @db.Uuid
+  operationKeys     String[]          @map("operation_keys")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  lastUsedAt        DateTime          @map("last_used_at")
+  /// `last_used_at` + 2 h, moved on every carry and every executor command.
+  idleExpiresAt     DateTime          @map("idle_expires_at")
+  /// `created_at` + 12 h; never moves. Relaunching creates a new lease.
+  absoluteExpiresAt DateTime          @map("absolute_expires_at")
+  endedAt           DateTime?         @map("ended_at")
+  /// person | access_revoked | executor_paused | executor_drained |
+  /// executor_revoked | descriptor_narrowed | expired | replaced
+  endedReason       String?           @map("ended_reason")
+  endedByUserId     String?           @map("ended_by_user_id") @db.Uuid
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  executor          Executor          @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  agent             Agent             @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  actorUser         User              @relation("ExecutorConversationLeaseActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  endedBy           User?             @relation("ExecutorConversationLeaseEndedBy", fields: [endedByUserId], references: [id], onDelete: SetNull)
+  thread            Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  rootMessage       Message           @relation("ExecutorConversationLeaseRoot", fields: [rootMessageId], references: [id], onDelete: Cascade)
+  launchRun         Run               @relation("ExecutorConversationLeaseLaunch", fields: [launchRunId], references: [id], onDelete: Cascade)
+  bindings          ExecutorBinding[]
+
+  @@index([threadId, agentId, actorUserId])
+  @@index([executorId, endedAt])
+  @@index([actorUserId, endedAt])
+  @@map("executor_conversation_leases")
 }
 
 /// An opaque, short-lived choice made by the server's availability resolver.
@@ -5562,6 +5663,8 @@ model ExecutorContinuation {
   executor                Executor                    @relation(fields: [executorId], references: [id], onDelete: Cascade)
   binding                 ExecutorBinding?            @relation(fields: [bindingId], references: [id], onDelete: SetNull)
   actor                   User                        @relation("ExecutorContinuationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  reviewCards             AgentCard[]                 @relation("AgentCardExecutorAccessChange")
+  promotionReviewCards    AgentCard[]                 @relation("AgentCardExecutorWorkspacePromotion")
 
   @@index([executorId, status, expiresAt])
   @@index([actorUserId, status])

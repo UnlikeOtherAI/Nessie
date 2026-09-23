@@ -1,18 +1,18 @@
-// Pure helpers for highlighting matched query terms inside a knowledge-base
-// passage. Kept dependency-free (no React) so it can be unit tested in
-// isolation from the rendering layer.
+// Pure helpers for highlighting matched query terms inside any search result.
+// Kept dependency-free (no React) so it can be unit tested in isolation from
+// the rendering layer.
 
 export interface PassageSegment {
   text: string
   matched: boolean
 }
 
-const MIN_TERM_LENGTH = 3
+const MIN_TERM_LENGTH = 2
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-// Query words shorter than MIN_TERM_LENGTH are dropped — short words (like
-// "the", "a", "of") would otherwise highlight nearly every passage.
+// Search starts at two characters, so a valid autocomplete query must also be
+// highlightable. Single-character words would mark nearly every result.
 const extractTerms = (query: string): string[] => {
   const seen = new Set<string>()
   for (const rawTerm of query.split(/\s+/)) {

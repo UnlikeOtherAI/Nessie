@@ -1,13 +1,7 @@
 import { LocalInferenceCoordinator } from './local-inference-coordinator.js'
-import { serveOllamaSearchMcp } from './ollama-search-mcp.js'
 
 /** Host-local controls; they contain neither pairing credentials nor model data. */
 export const runLocalInferenceCli = async (args: string[]): Promise<boolean> => {
-  if (args[0] === 'serve-ollama-search-mcp') {
-    if (args.length !== 1) throw new Error('Usage: nessie-executor serve-ollama-search-mcp')
-    await serveOllamaSearchMcp()
-    return true
-  }
   if (args[0] !== 'local-inference') return false
   const action = args[1]
   if (!['status', 'pause', 'resume', 'confirm-stopped'].includes(action ?? '')

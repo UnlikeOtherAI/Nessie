@@ -168,8 +168,14 @@ rather than offered and then denied.
   `agent_create`, and never throws — a failed generation leaves the agent
   faceless rather than failing the creation. It is never *silent* though:
   `agent_create`'s tool output states whether a portrait was drawn and, when it
-  was not, why, because the failure a person actually met was a blank tile
-  nobody mentioned.
+  was not, why (`portrait: none (reason: "…")`), because the failure a person
+  actually met was a blank tile nobody mentioned. The reason is data; the rule
+  that the Designer quotes it word for word lives in its prompt, not in the
+  tool output, where it was once relayed to the person as it stood. The prompt writer runs at `reasoningEffort: 'low'` with
+  2 000 output tokens: at 500 a reasoning model spent the whole allowance
+  thinking and answered nothing. An empty answer therefore names the
+  provider's finish reason (`ModelClient.chatResult`), so "the model returned
+  no text (finish reason: length)" is told apart from a refusal or a filter.
 - `agent_avatar_generate` draws a replacement, mirroring
   `POST /api/agents/:agentId/avatar/generate` (accessibility read, then
   `assertAgentEditAuthority`, then the billed call) followed by the confirming
@@ -268,6 +274,21 @@ confirmation (`ExecutorGrantedSuite`) that names the agent and lists every
 operation it is about to be able to run. The stored change is
 `{"kind":"agent_executor_grant","agentId":"…","state":"allowed"}` — a bare kind
 string and a uuid — so this is the one kind whose JSON tells a person nothing.
+
+**Confirming from chat.** A change the Designer (or the Personal Assistant)
+prepares is confirmed from a card it posts in the person's own DM, not from a
+link. The link carried the confirmation token in its fragment; the secret
+scanner redacted the token from the tool output, so the review it opened could
+not confirm and the person had to redo the grant on the machine's Agents tab.
+The card stores only the change's id and answers only its preparer; every
+press of Review mints a fresh token for that person and opens the same
+confirmation dialog in place, where an allow still asks for their password.
+The card stays open while the change is pending — closing the review early,
+reloading or switching device only means pressing again — and closes when the
+change is confirmed, rejected or expires. A workspace promotion prepared in
+chat is confirmed through the same card. The mechanics are in
+[agent cards](standards/agent-cards.md) → "An executor review card holds an
+id".
 
 ### What the catalogue states, and what it withholds
 
@@ -500,8 +521,11 @@ reaches a global agent's home DM, and every property that makes it safe is a
 property of the delivery: a hidden `system` message (never a `role: 'user'` row
 written under the person's id, the integration-handoff mistake),
 `claimThreadRunOrPend` so a busy DM pends instead of double-running the agent,
-`replyPlacement: 'channel'` because a reply threaded under an invisible root
-would never appear, and an idempotency key on the enqueue. It takes the two
+the brief's own action purpose `global_agent.brief` so that pended brief later
+drains alone as its own run (batched, it would be lost behind the person's next
+message: only a batch's latest row drives the run, and a hidden `system` row is
+never history), `replyPlacement: 'channel'` because a reply threaded under an
+invisible root would never appear, and an idempotency key on the enqueue. It takes the two
 queue functions as parameters, exactly as `startAgentTodoRun` does: this package
 is loaded from its build output by processes that resolve `@nessie/db`
 differently.

@@ -40,6 +40,19 @@ export const formatChannelRef = (channel: ChannelScopeSource): string =>
 // correctly (see MessageMarkdown's plain <a> renderer).
 export const buildChannelLink = (channelId: string): string => `/channels/${channelId}`
 
+// A name inside markdown link text: a bracket would end the text early.
+const markdownLinkText = (text: string): string =>
+  text.replace(/[[\]\\]/g, (character) => `\\${character}`)
+
+// What a tool that just placed something says about where it is: a link a
+// model can hand to a person as it is. A bare `channelId=<uuid>` was copied
+// into the reply verbatim, so the person read a UUID where a room should be.
+export const formatChannelMarkdownLink = (channel: { id: string; label: string }): string =>
+  `[#${markdownLinkText(channel.label)}](${buildChannelLink(channel.id)})`
+
+export const formatAgentMarkdownLink = (agent: { id: string; name: string }): string =>
+  `[${markdownLinkText(agent.name)}](/agents/${agent.id})`
+
 // A reply-thread deep link is always anchored to the ROOT of its thread
 // (`Message.rootMessageId ?? Message.id` — the same resolution the worker
 // uses to place a run's own reply, `resolveReplyRootMessageId`), never to an

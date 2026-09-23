@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
+import { Readable } from 'node:stream'
 import test from 'node:test'
 
 import type { PrismaClient } from '@prisma/client'
@@ -15,6 +17,11 @@ const userId = '00000000-0000-4000-8000-000000000004'
 const sharedChannelUserId = '00000000-0000-4000-8000-000000000007'
 const agentId = '00000000-0000-4000-8000-000000000005'
 const spaceId = '00000000-0000-4000-8000-000000000006'
+const identityPageId = '00000000-0000-4000-8000-000000000008'
+const stylePageId = '00000000-0000-4000-8000-000000000009'
+const identityVersionId = '00000000-0000-4000-8000-000000000010'
+const styleVersionId = '00000000-0000-4000-8000-000000000011'
+const emptyHash = createHash('sha256').update('').digest('hex')
 
 const privateVisibleAgentWhere = (viewerId: string) => ({
   organizationId,
@@ -94,8 +101,62 @@ const space = {
 // active core with no estimated tokens.
 const readableHome = {
   core: { estimatedTokens: 0, state: 'active' },
+  coreDocuments: [
+    {
+      filename: 'AGENTS.md',
+      markdown: '',
+      pageId: identityPageId,
+      role: 'identity',
+      versionId: identityVersionId,
+      versionNumber: 1,
+    },
+    {
+      filename: 'personality.md',
+      markdown: '',
+      pageId: stylePageId,
+      role: 'working_rules',
+      versionId: styleVersionId,
+      versionNumber: 1,
+    },
+  ],
   space: { canRead: true, id: spaceId, name: 'Researcher — Documents' },
 }
+
+const coreRow = (
+  role: 'identity' | 'working_rules',
+  pageId: string,
+  versionId: string,
+) => ({
+  page: {
+    deletedAt: null,
+    documentRole: role,
+    id: pageId,
+    kind: 'file',
+    parentPageId: null,
+    projectId,
+    publishedVersion: {
+      attachmentId: `attachment-${role}`,
+      basisScopes: [],
+      disclosureSources: [],
+      id: versionId,
+      sourceContentHash: emptyHash,
+      versionNumber: 1,
+    },
+    sensitivityTier: 'normal',
+    space: {
+      deletedAt: null,
+      id: spaceId,
+      organizationId,
+      ownerAgentId: agentId,
+      projectId,
+      sensitivityTier: 'normal',
+      visibility: 'private',
+    },
+    title: role === 'identity' ? 'AGENTS.md' : 'personality.md',
+    visibility: 'private',
+  },
+  role,
+})
 
 const makeApp = (input: {
   accessible: boolean
@@ -104,6 +165,7 @@ const makeApp = (input: {
   expectedVisibleAgentWhere?: unknown
   hasSpace: boolean
   readable?: boolean
+  systemManaged?: boolean
   visibleAgent?: boolean
 }) => {
   let lookupCount = 0
@@ -117,9 +179,9 @@ const makeApp = (input: {
         id: agentId,
         name: 'Researcher',
         projectId: input.agentProjectId === undefined ? projectId : input.agentProjectId,
-        speakingStyle: null,
-        systemManaged: false,
-        systemPrompt: null,
+        speakingStyle: input.systemManaged ? 'Measured and helpful.' : null,
+        systemManaged: input.systemManaged ?? false,
+        systemPrompt: input.systemManaged ? 'Help people find the right knowledge.' : null,
       }),
       // Route accessibility and the live audience of an agent-owned space are
       // deliberately separate: an owner can reach an unbound agent's detail
@@ -132,7 +194,15 @@ const makeApp = (input: {
       },
     },
     agentBinding: { findMany: async () => [] },
-    agentCoreDocumentMigration: { findUnique: async () => null },
+    agentCoreDocument: {
+      findMany: async () => [
+        coreRow('identity', identityPageId, identityVersionId),
+        coreRow('working_rules', stylePageId, styleVersionId),
+      ],
+    },
+    agentCoreDocumentMigration: {
+      findUnique: async () => ({ documentCount: 2, id: 'migration-1' }),
+    },
     channelMember: { findMany: async () => [] },
     knowledgeSpace: {
       create: async () => {
@@ -155,6 +225,7 @@ const makeApp = (input: {
     // The viewer resolves the person's live local membership first.
     organization: { findUnique: async () => ({ externalOrgId: null }) },
     organizationMember: { findFirst: async () => ({ id: 'member-1', role: 'member' }) },
+    project: { findFirst: async () => ({ id: projectId }) },
     projectMember: {
       findMany: async () => [{ projectId }],
     },
@@ -169,9 +240,13 @@ const makeApp = (input: {
         : space
     },
     migrateAgentCoreDocuments: async () => ({ kind: 'migrated' as const, pageIds: [] }),
+    updateAgentCoreDocuments: async () => ({ kind: 'updated' as const, pageIds: [] }),
   } as unknown as KnowledgeProvider
   const app = Fastify({ logger: false })
   registerAgentDocumentRoutes(app, {
+    fileService: {
+      openStream: async () => ({ stream: Readable.from(['']) }),
+    },
     isAgentAccessibleToActor: async () => input.accessible,
     knowledgeProvider,
     prisma,
@@ -189,6 +264,37 @@ test('GET agent docs returns the readable agent home reference without recomputi
     const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
     assert.equal(response.statusCode, 200)
     assert.deepEqual(response.json().data, readableHome)
+  } finally {
+    await app.close()
+  }
+})
+
+test('GET system agent docs returns the immutable two-file projection without a home', async () => {
+  const { app, createCount, lookupCount } = makeApp({
+    accessible: true,
+    hasSpace: false,
+    systemManaged: true,
+  })
+  try {
+    const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(response.json().data, {
+      projectedCoreDocuments: [
+        {
+          filename: 'AGENTS.md',
+          markdown: 'Help people find the right knowledge.',
+          role: 'identity',
+        },
+        {
+          filename: 'personality.md',
+          markdown: 'Measured and helpful.',
+          role: 'working_rules',
+        },
+      ],
+      space: null,
+    })
+    assert.equal(createCount(), 0)
+    assert.equal(lookupCount(), 0)
   } finally {
     await app.close()
   }
@@ -261,8 +367,8 @@ test('GET agent docs hides an inaccessible agent as not found', async () => {
   }
 })
 
-test('GET agent docs returns an empty state without provisioning for an agent with no document project', async () => {
-  const { app, createCount, lookupCount } = makeApp({
+test('GET agent docs provisions required files for a legacy agent with no project field', async () => {
+  const { app, createCount } = makeApp({
     accessible: true,
     agentProjectId: null,
     hasSpace: false,
@@ -270,9 +376,8 @@ test('GET agent docs returns an empty state without provisioning for an agent wi
   try {
     const response = await app.inject({ method: 'GET', url: `/api/agents/${agentId}/docs` })
     assert.equal(response.statusCode, 200)
-    assert.deepEqual(response.json().data, { space: null })
-    assert.equal(lookupCount(), 0)
-    assert.equal(createCount(), 0)
+    assert.deepEqual(response.json().data, readableHome)
+    assert.equal(createCount(), 1)
   } finally {
     await app.close()
   }

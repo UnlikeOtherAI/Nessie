@@ -1,0 +1,224 @@
+import { createHash, randomUUID } from 'node:crypto'
+
+import {
+  EXECUTOR_CODING_SESSION_REPORT_MAXIMUM,
+  ExecutorCodingSessionCloseListSchema,
+  executorCodingSessionOwnerKeyInput,
+  ExecutorCodingSessionSummarySchema,
+  type ExecutorCodingSessionClose,
+  type ExecutorCodingSessionsFacts,
+  type ExecutorCodingSessionSummary,
+  type ExecutorMcpCallOwner,
+} from '@nessie/schemas'
+
+import { loadCodingSessionsConfig } from './coding-session/config.js'
+import {
+  CODING_SESSION_COMMAND_META,
+  CODING_SESSION_DAEMON_CONTROL_META,
+  CODING_SESSION_OWNER_META,
+} from './coding-session/meta-keys.js'
+import {
+  codingSessionsPolicyOf,
+  codingSessionsServerConfigPath,
+  isBuiltinCodingSessionsServer,
+} from './coding-sessions-policy.js'
+import { SUPERVISOR_ENVIRONMENT_VARIABLE } from './host-platform.js'
+import type { ExecutorLocalMcpServer } from './mcp-servers.js'
+import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
+
+/**
+ * The daemon's half of coding-sessions.md §3 and §5: who each bridge call is
+ * for, and how sessions end when the daemon's authority does.
+ *
+ * Owners. The worker stamps an `mcp.call` payload with `owner: {agentId,
+ * actorUserId}`. For calls to the executor's own coding-sessions bridge — and
+ * no other server, ever — the daemon turns it into `_meta['nessie/owner'] =
+ * sha256(executorId|agentId|actorUserId)` and adds `_meta['nessie/command']`,
+ * the command id that makes a replay a no-op. The model's `arguments` are
+ * passed on untouched.
+ *
+ * Teardown. Coding sessions are built to outlive a bridge, a daemon restart
+ * and a dropped connection, so a failed poll or heartbeat alone closes
+ * nothing: a network blip or an API deploy must not end every 45-minute turn
+ * on the machine for good. Sessions close through the bridge's daemon-only
+ * `session_close_all` when the daemon's authority has provably ended — the API
+ * answers that the executor is unknown or revoked, or refuses its proof — or
+ * once no heartbeat has succeeded for `DISCONNECT_CLOSE_MS`, and at shutdown
+ * when the reviewed configuration opts in. The daemon keeps the owner keys it
+ * has dispatched for; sessions from an earlier daemon life may exist too, so
+ * the first teardown after start closes everything, and once one has
+ * succeeded a teardown with no owner dispatched since is skipped rather than
+ * starting a bridge process to close nothing.
+ *
+ * The heartbeat response's `codingSessionClose` closes named owners' sessions
+ * (or one of them). An instruction the bridge could not carry out — a bridge
+ * in start-failure backoff, a call that timed out — is kept and tried again
+ * on every later heartbeat until it lands, so a revoked lease or a person's
+ * Close is never silently dropped. The daemon-only `session_list_all` feeds
+ * the local-MCP report.
+ */
+
+export const codingSessionOwnerKey = (executorId: string, owner: ExecutorMcpCallOwner): string => (
+  `sha256:${createHash('sha256').update(executorCodingSessionOwnerKeyInput(executorId, owner)).digest('hex')}`
+)
+
+/**
+ * The named servers as this daemon starts them. The built-in bridge also gets
+ * the daemon's supervisor marker, which the MCP SDK's minimal environment
+ * would otherwise drop, so a host under the Windows service is refused by the
+ * marker as well as by its token. No other server's environment changes.
+ */
+export const withDaemonSupervisor = (
+  servers: readonly ExecutorLocalMcpServer[], environment: NodeJS.ProcessEnv = process.env,
+): ExecutorLocalMcpServer[] => {
+  const supervisor = environment[SUPERVISOR_ENVIRONMENT_VARIABLE]
+  return servers.map((server) => (supervisor && isBuiltinCodingSessionsServer(server)
+    ? { ...server, env: { ...server.env, [SUPERVISOR_ENVIRONMENT_VARIABLE]: supervisor } }
+    : server))
+}
+
+/** How long the daemon may go without a successful heartbeat before it closes every coding session. */
+export const DISCONNECT_CLOSE_MS = 10 * 60_000
+
+/** API answers that end this daemon's authority for good: the executor is gone, or its key no longer proves it. */
+const DEFINITIVE_FAILURES = new Set(['EXECUTOR_NOT_FOUND', 'EXECUTOR_DAEMON_PROOF_INVALID'])
+
+const PENDING_CLOSE_MAXIMUM = 64
+
+export type CodingSessionsDaemon = {
+  /** The reserved `_meta` for one call: defined only for the built-in bridge. */
+  callMeta: (
+    server: string, input: { commandId: string; owner?: ExecutorMcpCallOwner },
+  ) => Record<string, unknown> | undefined
+  /** Every session on this machine, as the daemon's authority ends. */
+  closeAll: (reason: string) => Promise<void>
+  /** A failed poll, heartbeat or claim: closes only when the failure is definitive or has lasted. */
+  connectionFailed: (reason: string, error: unknown) => Promise<void>
+  /** A heartbeat the API accepted. */
+  connectionHealthy: () => void
+  /**
+   * The control plane's instructions from a heartbeat response, plus any an
+   * earlier heartbeat could not carry out; anything malformed is ignored.
+   */
+  close: (instructions: unknown) => Promise<void>
+  /** At shutdown, when the reviewed configuration opts in. */
+  shutdown: () => Promise<void>
+  /** The open sessions for the local-MCP report, or undefined when the bridge could not say. */
+  report: () => Promise<ExecutorCodingSessionSummary[] | undefined>
+}
+
+type TextResult = { content?: { text?: unknown }[]; success?: unknown }
+
+const answerOf = (result: Record<string, unknown>): Record<string, unknown> | undefined => {
+  const text = (result as TextResult).content?.[0]?.text
+  if (result.success !== true || typeof text !== 'string') return undefined
+  try {
+    const parsed = JSON.parse(text) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const createCodingSessionsDaemon = (input: {
+  executorId: string
+  facts: ExecutorCodingSessionsFacts | undefined
+  servers: readonly ExecutorLocalMcpServer[]
+  sessions: ExecutorMcpSessionManager
+  log?: (message: string) => void
+  now?: () => number
+}): CodingSessionsDaemon => {
+  const bridge = codingSessionsPolicyOf(input.facts, input.servers)?.server
+  const log = input.log ?? ((message: string) => { console.error(`[nessie-executor] ${message}`) })
+  const owners = new Set<string>()
+  let earlierSessionsMayExist = bridge !== undefined
+  let queue: Promise<unknown> = Promise.resolve()
+  const now = input.now ?? Date.now
+  let failingSince: number | undefined
+  const pending = new Map<string, ExecutorCodingSessionClose>()
+
+  // Serialised, so a poll failure and a heartbeat failure in the same second
+  // do not both find the registry non-empty and close everything twice.
+  const serially = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = queue.then(work, work)
+    queue = run.catch(() => undefined)
+    return run
+  }
+
+  const daemonCall = async (
+    tool: string, args: Record<string, unknown>,
+  ): Promise<Record<string, unknown> | undefined> => {
+    if (!bridge) return undefined
+    const result = await input.sessions.callTool(bridge.name, tool, args, {
+      [CODING_SESSION_DAEMON_CONTROL_META]: true,
+      [CODING_SESSION_COMMAND_META]: `daemon-${randomUUID()}`,
+    })
+    const answer = answerOf(result)
+    if (!answer) log(`the coding-sessions bridge did not complete ${tool}`)
+    return answer
+  }
+
+  const closeAll = (reason: string): Promise<void> => serially(async () => {
+    if (!bridge || (!earlierSessionsMayExist && owners.size === 0)) return
+    const dispatched = [...owners]
+    if (await daemonCall('session_close_all', { reason })) {
+      earlierSessionsMayExist = false
+      for (const owner of dispatched) owners.delete(owner)
+    }
+  })
+
+  return {
+    callMeta: (server, call) => {
+      if (!bridge || server !== bridge.name) return undefined
+      const ownerKey = call.owner ? codingSessionOwnerKey(input.executorId, call.owner) : undefined
+      if (ownerKey) owners.add(ownerKey)
+      return {
+        [CODING_SESSION_COMMAND_META]: call.commandId,
+        ...(ownerKey ? { [CODING_SESSION_OWNER_META]: ownerKey } : {}),
+      }
+    },
+    closeAll,
+    connectionFailed: async (reason, error) => {
+      const code = (error as { code?: unknown } | undefined)?.code
+      failingSince ??= now()
+      if (typeof code === 'string' && DEFINITIVE_FAILURES.has(code)) {
+        await closeAll(reason)
+      } else if (now() - failingSince >= DISCONNECT_CLOSE_MS) {
+        await closeAll('connection_lost')
+      }
+    },
+    connectionHealthy: () => { failingSince = undefined },
+    close: (instructions) => serially(async () => {
+      if (!bridge) return
+      const parsed = ExecutorCodingSessionCloseListSchema.safeParse(instructions)
+      for (const entry of parsed.success ? parsed.data as ExecutorCodingSessionClose[] : []) {
+        if (pending.size < PENDING_CLOSE_MAXIMUM) pending.set(`${entry.ownerKey}|${entry.sessionId ?? ''}`, entry)
+      }
+      for (const [key, entry] of pending) {
+        const closed = await daemonCall('session_close_all', {
+          ownerKey: entry.ownerKey, reason: entry.reason, ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+        })
+        if (!closed) continue
+        pending.delete(key)
+        if (!entry.sessionId) owners.delete(entry.ownerKey)
+      }
+    }),
+    shutdown: async () => {
+      if (!bridge) return
+      const configPath = codingSessionsServerConfigPath(bridge)
+      const loaded = configPath ? await loadCodingSessionsConfig(configPath).catch(() => undefined) : undefined
+      // A configuration that no longer matches its review cannot be trusted to
+      // have opted out, so it is read as having opted in.
+      const optedIn = loaded?.digest !== input.facts?.configDigest || loaded?.config.closeOnDaemonShutdown === true
+      if (optedIn) await serially(async () => { await daemonCall('session_close_all', { reason: 'daemon_shutdown' }) })
+    },
+    report: async () => {
+      const answer = await serially(() => daemonCall('session_list_all', {}))
+      if (!answer || !Array.isArray(answer.sessions)) return undefined
+      return answer.sessions.flatMap((entry) => {
+        const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
+        return parsed.success ? [parsed.data] : []
+      }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
+    },
+  }
+}

@@ -1,3 +1,6 @@
+import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
+
+import { codingSessionsPolicyOf, codingSessionsServerConfigPath } from './coding-sessions-policy.js'
 import type { ExecutorLocalState } from './state-store.js'
 
 /**
@@ -33,6 +36,11 @@ export type ExecutorDescription = {
      * executor fronts none and refuses `mcp.tools` and `mcp.call` outright.
      */
     mcpServers: string[]
+    /**
+     * What the built-in coding-sessions bridge may do, exactly as the signed
+     * descriptor states it. Absent when this executor does not offer it.
+     */
+    codingSessions?: ExecutorCodingSessionsFacts
   }
   reach: {
     /** HTTPS origins the guest browser may open; empty until one is configured. */
@@ -54,6 +62,8 @@ export type ExecutorDescription = {
      * and the person reading it is the person who approved the program.
      */
     mcpServers: Array<{ command: string[]; cwd?: string; name: string }>
+    /** The coding-sessions bridge's host-local configuration file, when it is offered. */
+    codingSessionsConfig?: string
   }
   sandbox: {
     browserConfigured: boolean
@@ -62,35 +72,41 @@ export type ExecutorDescription = {
   }
 }
 
-export const describeExecutor = (state: ExecutorLocalState): ExecutorDescription => ({
-  apiBaseUrl: state.apiBaseUrl,
-  executorId: state.executorId,
-  policy: {
-    limits: { ...state.descriptor.limits },
-    operations: [...state.descriptor.operationKeys],
-    permittedPrograms: [...(state.descriptor.commandAllowlist ?? [])],
-    profiles: [...state.descriptor.profiles],
-    revision: state.descriptor.revision,
-    workspaceFolders: [...(state.descriptor.workspaceFolders ?? [])],
-    mcpServers: [...(state.descriptor.mcpServers ?? [])],
-  },
-  reach: {
-    allowedOrigins: [...(state.browserSandbox?.allowedOrigins ?? [])],
-    folders: [...state.workspaceFolders]
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .map((folder) => ({ name: folder.name, path: folder.path })),
-    guestSessions: state.workspaceFolders.length === 1 ? 'available' : 'refused_multiple_folders',
-    mcpServers: [...(state.mcpServers ?? [])]
-      .sort((left, right) => left.name.localeCompare(right.name))
-      .map((server) => ({
-        command: [...server.command],
-        name: server.name,
-        ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
-      })),
-  },
-  sandbox: {
-    browserConfigured: Boolean(state.browserSandbox),
-    codingConfigured: Boolean(state.codexSandbox),
-    promotionHelperConfigured: Boolean(state.nativeHelperPath),
-  },
-})
+export const describeExecutor = (state: ExecutorLocalState): ExecutorDescription => {
+  const bridge = codingSessionsPolicyOf(state.descriptor.codingSessions, state.mcpServers)
+  const bridgeConfig = bridge ? codingSessionsServerConfigPath(bridge.server) : undefined
+  return {
+    apiBaseUrl: state.apiBaseUrl,
+    executorId: state.executorId,
+    policy: {
+      limits: { ...state.descriptor.limits },
+      operations: [...state.descriptor.operationKeys],
+      permittedPrograms: [...(state.descriptor.commandAllowlist ?? [])],
+      profiles: [...state.descriptor.profiles],
+      revision: state.descriptor.revision,
+      workspaceFolders: [...(state.descriptor.workspaceFolders ?? [])],
+      mcpServers: [...(state.descriptor.mcpServers ?? [])],
+      ...(bridge ? { codingSessions: bridge.facts } : {}),
+    },
+    reach: {
+      allowedOrigins: [...(state.browserSandbox?.allowedOrigins ?? [])],
+      folders: [...state.workspaceFolders]
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((folder) => ({ name: folder.name, path: folder.path })),
+      guestSessions: state.workspaceFolders.length === 1 ? 'available' : 'refused_multiple_folders',
+      mcpServers: [...(state.mcpServers ?? [])]
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((server) => ({
+          command: [...server.command],
+          name: server.name,
+          ...(server.cwd === undefined ? {} : { cwd: server.cwd }),
+        })),
+      ...(bridgeConfig ? { codingSessionsConfig: bridgeConfig } : {}),
+    },
+    sandbox: {
+      browserConfigured: Boolean(state.browserSandbox),
+      codingConfigured: Boolean(state.codexSandbox),
+      promotionHelperConfigured: Boolean(state.nativeHelperPath),
+    },
+  }
+}

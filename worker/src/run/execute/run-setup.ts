@@ -11,8 +11,10 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
+import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
+import { launchConversationScope } from '../executor-host-output.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
@@ -23,6 +25,7 @@ import {
 } from '../delegated-identity.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
+  admitRunCheckpoint,
   buildCheckpointInjection,
   loadRunCheckpointForRun,
   type LoadedRunCheckpoint,
@@ -34,11 +37,11 @@ import {
 } from './history-recall.js'
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
+import { loadExecutorReachFacts } from './executor-reach-facts.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
-import { admitPrivateConversationLineage } from './private-conversation-lineage.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -108,63 +111,39 @@ export const resolveProjectDelegatedToolIds = (
       .map((tool) => tool.id)
     : [],
 )
-export type ResolvedRunToolset = {
-  allowedIds: Set<string>
-  descriptors: ToolSchemaDescriptor[]
-  stubbedIds: Set<string>
-  toolSpecEnabled: boolean
-}
 
 /**
- * `delegate` is an ordinary builtin for agent runs, but a DeepWater launch turn
- * blocks it outright (the handoff guard refuses the call so result delivery
- * cannot hide inside a sub-agent). Withhold the schema on that turn too, so the
- * model is never shown a tool it cannot call.
+ * Whether the run was offered a lent project tool that writes — the fact
+ * memory recall narrows on (`requiresProjectWriteRecallContainment`).
+ * Structural: a lent, offered id whose definition is not `safe`.
  */
-export const applyHandoffToolExclusions = (
-  resolved: ResolvedRunToolset,
-  isHandoffTurn: boolean,
-): ResolvedRunToolset => {
-  if (!isHandoffTurn) {
-    return resolved
-  }
-  return {
-    allowedIds: new Set(
-      [...resolved.allowedIds].filter((toolId) => toolId !== DELEGATE_TOOL_ID),
-    ),
-    descriptors: resolved.descriptors.filter(
-      (descriptor) => descriptor.toolName !== DELEGATE_TOOL_ID,
-    ),
-    stubbedIds: new Set(
-      [...resolved.stubbedIds].filter((toolId) => toolId !== DELEGATE_TOOL_ID),
-    ),
-    toolSpecEnabled: resolved.toolSpecEnabled,
-  }
-}
+export const holdsProjectWriteTools = (
+  projectDelegatedToolIds: ReadonlySet<string>,
+  resolvedToolIds: ReadonlySet<string>,
+): boolean => BUILTIN_TOOL_DEFINITIONS.some(
+  (tool) => !tool.safe && projectDelegatedToolIds.has(tool.id) && resolvedToolIds.has(tool.id),
+)
 
 /**
- * To-dos are an owner-configured agent capability, not a registry grant. Keep
- * their descriptors, resolved ids, and deferred-schema ids together so a
- * disabled agent is never offered a tool it cannot call.
+ * Tools this run withholds whatever its policy grants, so the model is never
+ * shown a tool it cannot call: `delegate` on a DeepWater launch turn (the
+ * handoff guard refuses the call, so result delivery cannot hide inside a
+ * sub-agent), and the to-do builtins on an agent whose owner has to-dos off (an
+ * owner-configured capability, not a registry grant).
+ *
+ * Handed to `resolveAgentTools` rather than filtered out of its result: the
+ * deferred view promotes an agent's explicit grants up to a budget and offers
+ * `tool_spec` only while something is a stub, so a tool removed after the view
+ * was built had already spent that budget — pushing a real grant back to a
+ * stub — and could leave `tool_spec` offered with nothing to look up.
  */
-export const applyTodoToolExclusions = (
-  resolved: ResolvedRunToolset,
-  todosEnabled: boolean,
-): ResolvedRunToolset => {
-  if (todosEnabled) return resolved
-  return {
-    allowedIds: new Set(
-      [...resolved.allowedIds].filter((toolId) => !TODO_TOOL_IDS.has(toolId)),
-    ),
-    descriptors: resolved.descriptors.filter(
-      (descriptor) => !TODO_TOOL_IDS.has(descriptor.toolName),
-    ),
-    stubbedIds: new Set(
-      [...resolved.stubbedIds].filter((toolId) => !TODO_TOOL_IDS.has(toolId)),
-    ),
-    toolSpecEnabled: resolved.toolSpecEnabled,
-  }
-}
+export const resolveWithheldRunToolIds = (input: {
+  isHandoffTurn: boolean
+  todosEnabled: boolean
+}): ReadonlySet<string> => new Set([
+  ...(input.isHandoffTurn ? [DELEGATE_TOOL_ID] : []),
+  ...(input.todosEnabled ? [] : TODO_TOOL_IDS),
+])
 
 export type RunExecutionSetup = {
   allowedToolIds: Set<string>
@@ -208,9 +187,10 @@ export const prepareRunExecution = async (
     select: {
       toolPolicy: true,
       parentAgentId: true,
+      projectId: true,
       todosEnabled: true,
       systemManaged: true,
-      parentAgent: { select: { id: true, name: true, systemManaged: true } },
+      parentAgent: { select: { id: true, name: true, projectId: true, systemManaged: true } },
     },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
@@ -253,31 +233,29 @@ export const prepareRunExecution = async (
     allowedIds: resolvedToolIds,
     stubbedIds: stubbedBuiltinToolIds,
     toolSpecEnabled,
-  } = applyHandoffToolExclusions(
-    applyTodoToolExclusions(
-      resolveAgentTools(
-      allowedToolIds,
-      BUILTIN_TOOL_DEFINITIONS,
-      toolPolicy,
-      context.agent.parentAgentId,
-      context.agent.agentKind,
-      {
-        // Structural loop bound for `agent_handoff` (D8): a global agent's row
-        // carries a slug, and the tool is omitted from its schema array rather
-        // than offered and denied.
-        agentSystemSlug: context.agent.systemSlug ?? null,
-        identityToolIds,
-        projectDelegatedToolIds,
-        isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
-          agentKind: context.agent.agentKind,
-          principalUserId: context.run.principalUserId,
-          systemChannelType: context.channel.systemChannelType,
-        }),
-      },
-      ),
-      agentRecord?.todosEnabled ?? false,
-    ),
-    input.isHandoffTurn,
+  } = resolveAgentTools(
+    allowedToolIds,
+    BUILTIN_TOOL_DEFINITIONS,
+    toolPolicy,
+    context.agent.parentAgentId,
+    context.agent.agentKind,
+    {
+      // Structural loop bound for `agent_handoff` (D8): a global agent's row
+      // carries a slug, and the tool is omitted from its schema array rather
+      // than offered and denied.
+      agentSystemSlug: context.agent.systemSlug ?? null,
+      identityToolIds,
+      projectDelegatedToolIds,
+      isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
+        agentKind: context.agent.agentKind,
+        principalUserId: context.run.principalUserId,
+        systemChannelType: context.channel.systemChannelType,
+      }),
+      withheldToolIds: resolveWithheldRunToolIds({
+        isHandoffTurn: input.isHandoffTurn,
+        todosEnabled: agentRecord?.todosEnabled ?? false,
+      }),
+    },
   )
 
   // A spawned child shares its parent's documents home. The PA is
@@ -286,14 +264,16 @@ export const prepareRunExecution = async (
   const documentsAgent = agentRecord?.parentAgent ?? {
     id: context.agent.id,
     name: context.agent.name,
+    projectId: agentRecord?.projectId ?? null,
     systemManaged: agentRecord?.systemManaged ?? false,
   }
-  const documentsHome = hasKbWriteTools(resolvedToolIds) && !documentsAgent.systemManaged
+  const documentsHome = hasDocumentsPromptTools(resolvedToolIds)
+    && !documentsAgent.systemManaged
     ? await resolveAgentDocumentsHome(deps.prisma, {
       agentId: documentsAgent.id,
       agentName: documentsAgent.name,
       organizationId: context.channel.organizationId,
-      projectId: context.channel.projectId,
+      projectId: documentsAgent.projectId,
     })
     : null
 
@@ -325,13 +305,46 @@ export const prepareRunExecution = async (
         secretResolver: deps.mcpSecrets?.resolver,
       },
     ),
-    buildExecutorToolset(deps.prisma, {
-      agentId: context.agent.id,
-      agentToolPolicy: toolPolicy,
-      encryptionSecret: deps.executorCommandEncryptionSecret,
-      organizationId: context.channel.organizationId,
-      runId: context.run.id,
-    }),
+    (async () => {
+      // A person's own follow-up in the conversation they launched local apps
+      // in is bound afresh here, immediately before the toolset reads the
+      // run's bindings. A refusal is an outcome, never a throw — and the carry
+      // runs for every agent's every turn, so an unexpected failure in it (a
+      // lost connection) must not sink an ordinary one either: the run goes on
+      // with whatever bindings it already has, and no reach facts are told.
+      const lease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+        .catch((error: unknown) => {
+          console.warn('[worker] executor lease carry failed for run', context.run.id, error)
+          return undefined
+        })
+      context.executorLease = lease
+      if (lease?.kind === 'carried') {
+        // The carry moved the idle window the holder's composer shows. Only
+        // the holder's own job carries, so the job's actor is the recipient.
+        await publishExecutorLeaseChanges(deps.realtimeTransport, [{
+          actorUserId: payload.actorContext.actor.actorId,
+          id: lease.lease.id,
+          organizationId: context.channel.organizationId,
+          threadId: payload.threadId,
+        }]).catch((error: unknown) => {
+          console.warn('[worker] could not publish the executor lease notice for run', context.run.id, error)
+        })
+      }
+      return buildExecutorToolset(deps.prisma, {
+        agentId: context.agent.id,
+        agentToolPolicy: toolPolicy,
+        encryptionSecret: deps.executorCommandEncryptionSecret,
+        // A person launched local apps in this run's own conversation: the
+        // launch itself, or a lease carried from it, which only ever carries
+        // within the conversation the launch opened.
+        hostOutput: {
+          launchScope: launchConversationScope(context.channel.id),
+          sink: context.consumedSources,
+        },
+        organizationId: context.channel.organizationId,
+        runId: context.run.id,
+      })
+    })(),
     (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
       ? loadAgentTodoPromptFacts(deps.prisma, {
           agentId: context.agent.id,
@@ -339,6 +352,18 @@ export const prepareRunExecution = async (
         })
       : Promise.resolve(null),
   ])
+  // Read from the toolset the model actually holds, so "bound" is never said
+  // of an operation the toolset dropped. A DeepWater handoff turn keeps its
+  // server-authored prompt byte-identical, as it does for the checkpoint.
+  const executorReach = input.isHandoffTurn ? null : await loadExecutorReachFacts(deps.prisma, {
+    agentId: context.agent.id,
+    channelId: context.channel.id,
+    lease: context.executorLease,
+    organizationId: context.channel.organizationId,
+    personUserId: payload.actorContext.actor.actorType === 'user' ? payload.actorContext.actor.actorId : null,
+    runId: context.run.id,
+    toolNames: executorToolset.handledNames,
+  })
 
   const effectiveUserId =
     payload.actorContext.actionContext.effectiveUserId
@@ -378,15 +403,20 @@ export const prepareRunExecution = async (
       })
       : null
 
+  // A run lent a project write recalls only what every project reader already
+  // has, so recalled material cannot shut its own ticket writes.
+  const projectWriteRecall = holdsProjectWriteTools(projectDelegatedToolIds, resolvedToolIds)
   const memories = await retrieveRelevantMemories(
     deps,
     context,
     payload,
     input.prompt,
     liveEntitlements,
+    { holdsProjectWriteTools: projectWriteRecall },
   )
   const legacyMemoryContext = buildMemoryContext(memories)
   const history = await retrieveRelevantHistory(deps, context, payload, {
+    holdsProjectWriteTools: projectWriteRecall,
     liveEntitlements,
     prompt: input.prompt,
     tokenBudget: Math.max(
@@ -434,8 +464,10 @@ export const prepareRunExecution = async (
     && !viewerSatisfiesBasis(loadedCheckpoint.basisScopes, viewer)
     ? null
     : loadedCheckpoint
+  // Its note may also quote local program output, which its basis cannot say
+  // (`loadCheckpointHostOutputScopes`); admitting it re-stamps that too.
   if (checkpoint) {
-    await admitPrivateConversationLineage(deps.prisma, context.consumedSources, checkpoint)
+    await admitRunCheckpoint(deps.prisma, context.consumedSources, checkpoint)
   }
 
   // Tool names are structural registry ids, not model-provided prose. The
@@ -473,6 +505,7 @@ export const prepareRunExecution = async (
       approvalInstruction,
       emailConversation: emailContext?.block ?? null,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
+      executorReach,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
         hasResearchTools: mcpToolset.hasManagedResearchTools,
@@ -502,6 +535,7 @@ export const prepareRunExecution = async (
         ? {
           ...documentsHome,
           hasDocumentTools: hasDocumentsPromptTools(resolvedToolIds),
+          hasDocumentWriteTools: hasKbWriteTools(resolvedToolIds),
           hasSpreadsheetTools: hasSpreadsheetPromptTools(resolvedToolIds),
         }
         : undefined,

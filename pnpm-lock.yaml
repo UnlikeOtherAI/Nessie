@@ -283,6 +283,9 @@ importers:
       '@nessie/push':
         specifier: workspace:*
         version: link:../packages/push
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../packages/retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../packages/runtime
@@ -378,6 +381,9 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
     devDependencies:
       '@types/node':
         specifier: ^20.19.24
@@ -777,6 +783,9 @@ importers:
 
   packages/executor-manage:
     dependencies:
+      '@nessie/db':
+        specifier: workspace:*
+        version: link:../db
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -1091,6 +1100,9 @@ importers:
       '@nessie/model-subscriptions':
         specifier: workspace:*
         version: link:../model-subscriptions
+      '@nessie/retrieval':
+        specifier: workspace:*
+        version: link:../retrieval
       '@nessie/runtime':
         specifier: workspace:*
         version: link:../runtime

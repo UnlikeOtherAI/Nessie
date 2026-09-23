@@ -23,7 +23,8 @@ import { truncate } from './tool-output.js'
 
 const MAX_KB_SEARCH_LIMIT = 8
 const DEFAULT_KB_SEARCH_LIMIT = 5
-const PAGE_BODY_CHAR_CAP = 20_000
+const DEFAULT_PAGE_READ_CHARS = 12_000
+const MAX_PAGE_READ_CHARS = 20_000
 const MAX_LIST_SPACES = 50
 
 export type KnowledgeAccessViewers = {
@@ -193,7 +194,7 @@ type PageReadDependencies = { files?: Parameters<typeof readMarkdownAttachmentCo
 
 export const runKbPageReadTool = async (
   context: BuiltinToolRuntimeContext,
-  input: { pageId: string },
+  input: { pageId: string; versionId?: string; offset?: unknown; limit?: unknown },
   dependencies: PageReadDependencies = {},
 ): Promise<ToolExecutionResult> => {
   const pageId = input.pageId.trim()
@@ -239,16 +240,46 @@ export const runKbPageReadTool = async (
     }
   }
 
-  if (!(await canReadPageVersions(context, page, disclosureViewer))) {
+  const selectedVersionId = input.versionId?.trim()
+    || page.publishedVersionId
+    || page.latestVersion?.id
+  const version = selectedVersionId
+    ? await context.prisma.knowledgePageVersion.findFirst({
+        where: {
+          id: selectedVersionId,
+          pageId: page.id,
+          page: { deletedAt: null, organizationId },
+        },
+        select: {
+          attachmentId: true,
+          basisScopes: { select: { scopeId: true, scopeType: true } },
+          body: true,
+          disclosureSources: {
+            select: { sourceAuthorUserId: true, sourceChannelId: true },
+          },
+          id: true,
+          versionNumber: true,
+        },
+      })
+    : null
+  if (!version) {
+    return {
+      inputSummary: `pageId=${pageId}`,
+      outputPreview: selectedVersionId
+        ? `Knowledge page version not found: ${selectedVersionId}`
+        : 'This page has no readable version yet.',
+      toolName: 'kb_page_read',
+    }
+  }
+  if (!canReadKnowledgePageVersion(version, disclosureViewer)) {
     return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
   }
 
-  // Past every gate: the agent is about to read this page's body, so the space
-  // it lives in is provenance for whatever the run says next.
+  // Past every gate: stamp this exact source before any bytes or extracted
+  // text enter the model. Older versions are neither authorized nor recorded.
   recordKnowledgeSpaceRead(context, [space])
-  recordPageVersionRead(context, page)
+  recordKnowledgeVersionRead(context, version)
 
-  const version = page.publishedVersion ?? page.latestVersion
   const attachment = version?.attachmentId
     ? await context.prisma.attachment.findUnique({
         where: { id: version.attachmentId },
@@ -267,22 +298,32 @@ export const runKbPageReadTool = async (
     : null
   const plain = isCanonicalMarkdown
     ? markdown ?? '(Markdown attachment bytes are unavailable.)'
-    : htmlToPlainText(version?.body ?? '')
-  const truncated = plain.length > PAGE_BODY_CHAR_CAP
-  const body = truncated
-    ? `${plain.slice(0, PAGE_BODY_CHAR_CAP)}\n\n[truncated at ${PAGE_BODY_CHAR_CAP} characters]`
-    : plain
+    : version.body === null && attachment
+      ? `No extracted text is available for ${attachment.filename} (${attachment.mime}). `
+        + 'Use its file-specific tool when available, or ask a person to provide a text-readable version.'
+      : htmlToPlainText(version.body ?? '')
+  const rawOffset = Number(input.offset)
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0
+  const rawLimit = Number(input.limit)
+  const limit = Number.isSafeInteger(rawLimit) && rawLimit > 0
+    ? Math.min(rawLimit, MAX_PAGE_READ_CHARS)
+    : DEFAULT_PAGE_READ_CHARS
+  const end = Math.min(offset + limit, plain.length)
+  const body = plain.slice(Math.min(offset, plain.length), end)
+  const nextOffset = end < plain.length ? end : null
 
   const lines = [
     `Title: ${page.title}`,
     `pageId=${page.id} spaceId=${page.spaceId} status=${page.status}`,
+    `versionId=${version.id} versionNumber=${version.versionNumber}`,
+    `characters=${Math.min(offset, plain.length)}-${end} of ${plain.length} nextOffset=${nextOffset ?? 'none'}`,
     `Labels: ${page.labels.length ? page.labels.join(', ') : '(none)'}`,
     '',
     body || '(This page has no content yet.)',
   ]
 
   return {
-    inputSummary: `pageId=${pageId}`,
+    inputSummary: `pageId=${pageId} versionId=${version.id} offset=${offset}`,
     outputPreview: lines.join('\n'),
     toolName: 'kb_page_read',
   }

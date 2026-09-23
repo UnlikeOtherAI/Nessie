@@ -15,9 +15,13 @@ import {
   pageInclude,
   replaceKnowledgePageVersionChunks,
   type KnowledgePageRecord,
+  ROOT_SHARED_SPACE_CAP,
 } from '@nessie/knowledge'
 import { enqueueQueueJob } from '@nessie/db'
-import { KNOWLEDGE_EMBED_TOPIC, KNOWLEDGE_EXTRACT_TOPIC } from '@nessie/schemas'
+import {
+  KNOWLEDGE_EMBED_TOPIC,
+  KNOWLEDGE_EXTRACT_TOPIC,
+} from '@nessie/schemas'
 
 import {
   KnowledgeItemInfoSchema,
@@ -27,6 +31,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { requireApiKnowledgeInferenceOrigin } from '../services/knowledge-inference-origin.js'
+import { provisionVisibleAgentCoreDocuments } from '../services/agent-core-documents.js'
 import {
   attachSpaceEnvelope,
   canManageKnowledgeSpaceAccess,
@@ -61,7 +66,6 @@ import {
 const PageParamsSchema = z.object({ pageId: z.string().uuid() })
 const SpaceParamsSchema = z.object({ spaceId: z.string().uuid() })
 const ProjectParamsSchema = z.object({ projectId: z.string().uuid() })
-
 export const registerKnowledgeFinderRoutes = (
   app: FastifyInstance,
   deps: KnowledgeRouteDeps,
@@ -102,6 +106,21 @@ export const registerKnowledgeFinderRoutes = (
     const projectId = requireProjectId(actorContext, undefined, reply)
     if (!projectId) return reply
     const viewer = await buildViewer(actorContext)
+    // Existing tenants may predate required files. Provision only incomplete
+    // visible agents, in bounded batches; one corrupt legacy agent is logged
+    // and omitted rather than making every person's Documents root fail.
+    const repairFailures = await provisionVisibleAgentCoreDocuments(
+      prisma,
+      provider,
+      fileService,
+      { actorContext, limit: ROOT_SHARED_SPACE_CAP },
+    )
+    for (const failure of repairFailures) {
+      request.log.warn({
+        agentId: failure.agentId,
+        error: failure.error,
+      }, 'Could not provision required agent documents while building the Finder root')
+    }
     const { root, myDocumentsCreated } = await buildKnowledgeRoot(prisma, {
       // The same reader GET /api/projects is scoped by, so a project an
       // organisation owner/admin reaches without a membership has a folder

@@ -4,6 +4,7 @@ import type { AgentRecord } from '../../../lib/api-client'
 import { Pill } from '../../primitives/Pill'
 import { AgentAvatarQuickEdit } from './AgentAvatarQuickEdit'
 import { AgentStatusDot } from '../../shared/AgentStatusDot'
+import { RunStopButton } from '../../shared/RunStopButton'
 import { agentStatusTone } from '../../shared/agent-presentation'
 import { AgentAvailability } from './AgentAvailability'
 
@@ -29,8 +30,8 @@ type AgentIdentityBlockProps = {
 }
 
 /**
- * Avatar + name + status dot + status `Pill` + role + activity line — the
- * agent's identity, written out once. It was duplicated almost verbatim
+ * Avatar + name + status dot + status `Pill` (with Stop while a run is live)
+ * + role + activity line — the agent's identity, written out once. It was duplicated almost verbatim
  * between `AgentDetailPage`'s header and `AgentDetailDrawer`'s header,
  * including its own copy of the status→tone mapping.
  *
@@ -68,6 +69,15 @@ export const AgentIdentityBlock = ({
           ) : null}
           <AgentStatusDot status={agent.status} />
           <Pill tone={agentStatusTone(agent.status)}>{agent.status}</Pill>
+          {/* The status read names a current run only while one the viewer
+              may read is live — pending, running, or parked on a person's
+              approval or answer — and drops it when that run ends, so Stop
+              is offered exactly then, and "Stopping…" lasts until the run
+              has actually stopped. This is the one Stop a suspended run has:
+              a suspension ends the conversation's thinking bubble. */}
+          {status?.currentRunId ? (
+            <RunStopButton agentName={agent.name} runId={status.currentRunId} />
+          ) : null}
         </div>
         <div className="truncate text-sm text-[color:var(--tx2)]">{agent.role}</div>
         <div className="mt-1">

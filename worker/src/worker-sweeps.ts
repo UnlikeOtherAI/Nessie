@@ -1,4 +1,5 @@
 import { withSweepLock } from '@nessie/db'
+import { expireExecutorConversationLeases, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { expireDeadQueueJobs } from '@nessie/runtime'
 import { DASHBOARD_REFRESH_TOPIC } from '@nessie/dashboard'
 import {
@@ -45,6 +46,10 @@ import {
   reapDeletedMessageEmbeddings,
   sweepMessageEmbeddings,
 } from './control/message-embedding-sweep.js'
+import {
+  reapDeletedTaskEmbeddings,
+  sweepTaskEmbeddings,
+} from './control/task-embedding-sweep.js'
 import { sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import type { WorkerSweepDeps } from './worker-runtime-types.js'
 import { startTaskSetSweep } from './task-sets/register.js'
@@ -472,14 +477,37 @@ const registrySyncSweepInterval = setInterval(() => {
   })
 }, registrySyncSweepMs)
 
-const messageEmbeddingSweepInterval = setInterval(() => {
-  void withSweepLock(pool, 'message-embedding-sweep', async () => {
+const searchEmbeddingSweepInterval = setInterval(() => {
+  void withSweepLock(pool, 'search-embedding-sweep', async () => {
     await reapDeletedMessageEmbeddings(prisma)
-    return sweepMessageEmbeddings(prisma, { embeddingModel: modelClient.embeddingModel })
+    await reapDeletedTaskEmbeddings(prisma)
+    const messages = await sweepMessageEmbeddings(
+      prisma,
+      { embeddingModel: modelClient.embeddingModel },
+    )
+    const tasks = await sweepTaskEmbeddings(
+      prisma,
+      { embeddingModel: modelClient.embeddingModel },
+    )
+    return messages + tasks
   }).catch((error: unknown) => {
-    console.error('[worker.message-embedding-sweep] failed', error)
+    console.error('[worker.search-embedding-sweep] failed', error)
   })
 }, 60_000)
+
+// Executor conversation leases past their idle or absolute window. Carry and
+// dispatch already refuse them lazily; this pass records the end, with its
+// audit row, for the leases nobody tried to use again, and tells each holder.
+// Bounded and idempotent: each end is conditional on the lease still being open.
+const executorLeaseExpiryInterval = setInterval(() => {
+  void withSweepLock(pool, 'executor-lease-expiry', async () => {
+    const ended = await expireExecutorConversationLeases(prisma)
+    await publishExecutorLeaseChanges(realtimeTransport, ended)
+  })
+    .catch((error: unknown) => {
+      console.error('[worker.executor-lease-expiry] failed', error)
+    })
+}, 5 * 60_000)
 
   return {
     stop: () => {
@@ -504,7 +532,8 @@ const messageEmbeddingSweepInterval = setInterval(() => {
       clearInterval(commsRenewInterval)
       clearInterval(commsIncrementalSweepInterval)
       clearInterval(registrySyncSweepInterval)
-      clearInterval(messageEmbeddingSweepInterval)
+      clearInterval(searchEmbeddingSweepInterval)
+      clearInterval(executorLeaseExpiryInterval)
     },
   }
 }

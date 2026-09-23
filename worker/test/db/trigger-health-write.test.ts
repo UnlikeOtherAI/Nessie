@@ -78,8 +78,9 @@ runDatabaseTest('one failure is one transition, however many workers report it',
 
     const row = await prisma.agentTrigger.findUniqueOrThrow({
       where: { id: seed.triggerId },
-      select: { healthReason: true, healthRevision: true, status: true },
+      select: { enabled: true, healthReason: true, healthRevision: true, status: true },
     })
+    assert.equal(row.enabled, false, 'a failed schedule must be explicitly disabled')
     assert.equal(row.status, 'needs_reauthorization')
     assert.equal(row.healthReason, 'uoa_identity_unverifiable')
     assert.equal(row.healthRevision, 1, 'the revision advances once, not once per reporter')

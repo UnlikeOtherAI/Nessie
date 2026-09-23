@@ -8,8 +8,10 @@ import {
   type LiveEntitlements,
 } from '@nessie/runtime'
 import {
+  isWithinProjectWriteScopes,
   resolveAccessibleScopes,
   type AccessibleScopes,
+  type ScopeRef,
   type ScopeResolutionMode,
 } from '@nessie/memory'
 import { searchMessageCandidates } from '@nessie/retrieval'
@@ -18,6 +20,7 @@ import type { RunExecuteJobPayload } from '@nessie/schemas'
 import {
   agentActsAsRequestingPerson,
   runDelegatesToRequestingPerson,
+  type DelegatedRunFacts,
 } from '../delegated-identity.js'
 import { estimateTokens } from '../context-management.js'
 import { buildChannelLink } from '../pa-tools/tool-output.js'
@@ -26,6 +29,7 @@ import {
   admitPrivateConversationLineage,
   originalHumanAuthorId,
 } from './private-conversation-lineage.js'
+import { requiresProjectWriteRecallContainment } from './memory.js'
 
 export const RETRIEVED_CONTEXT_TOKEN_BUDGET = 4_000
 const MAX_NEIGHBORS = 2
@@ -66,17 +70,19 @@ const effectiveUserIdFor = (payload: RunExecuteJobPayload): string | null =>
     ? payload.actorContext.actor.actorId
     : null)
 
+const delegationFactsFor = (context: RunContext): DelegatedRunFacts => ({
+  agentKind: context.agent.agentKind,
+  dmKey: context.channel.dmKey,
+  organizationId: context.channel.organizationId,
+  systemChannelType: context.channel.systemChannelType,
+  systemSlug: context.agent.systemSlug,
+})
+
 const scopeModeFor = (
   context: RunContext,
   userId: string | null,
 ): ScopeResolutionMode | null => {
-  const facts = {
-    agentKind: context.agent.agentKind,
-    dmKey: context.channel.dmKey,
-    organizationId: context.channel.organizationId,
-    systemChannelType: context.channel.systemChannelType,
-    systemSlug: context.agent.systemSlug,
-  }
+  const facts = delegationFactsFor(context)
   const actsAsPerson = agentActsAsRequestingPerson(facts) || runDelegatesToRequestingPerson(facts)
   if (actsAsPerson && !userId) return null
   return actsAsPerson
@@ -125,6 +131,15 @@ const sourceLineage = (message: HistoryMessage): {
     disclosureSources: sources,
   }
 }
+
+/** Every scope admitting a message's lineage would put in the run's sink. */
+const lineageScopes = (lineage: NonNullable<ReturnType<typeof sourceLineage>>): ScopeRef[] => [
+  ...lineage.basisScopes,
+  ...lineage.disclosureSources.map((source) => ({
+    scopeId: source.sourceChannelId,
+    scopeType: 'channel',
+  })),
+]
 
 const isCurrentProjection = (
   message: HistoryMessage,
@@ -217,6 +232,8 @@ export const retrieveRelevantHistory = async (
   context: RunContext,
   payload: RunExecuteJobPayload,
   input: {
+    /** Whether the run was lent a project-delegated tool that writes. */
+    holdsProjectWriteTools?: boolean
     liveEntitlements?: LiveEntitlements
     prompt: string
     tokenBudget?: number
@@ -316,6 +333,13 @@ export const retrieveRelevantHistory = async (
     select: historyMessageSelect,
   })
   const byId = new Map(loaded.map((message) => [message.id, message as HistoryMessage]))
+  // Recalled history is recalled memory too: a run that can write into its
+  // project takes no message whose lineage the project write gate would then
+  // refuse, the same narrowing thought recall applies.
+  const projectWrite = requiresProjectWriteRecallContainment(
+    delegationFactsFor(context),
+    input.holdsProjectWriteTools === true,
+  )
   const threadCounts = new Map<string, number>()
   const blocks: string[] = []
   const messageIds: string[] = []
@@ -341,6 +365,9 @@ export const retrieveRelevantHistory = async (
         input.viewer,
       )
       if (!access.readable || !access.lineage) continue
+      if (projectWrite && !isWithinProjectWriteScopes(lineageScopes(access.lineage), context.channel)) {
+        continue
+      }
       allowed.push(message)
       lineages.push(access.lineage)
     }

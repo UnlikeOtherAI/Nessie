@@ -199,6 +199,7 @@ export const PhoneNavigationLayer = ({
       aria-hidden={inertLayer || hidden ? true : undefined}
       className={classes.join(' ')}
       data-phone-navigation-layer={layerName(role, transition)}
+      data-phone-navigation-pathname={entry.pathname}
       data-phone-navigation-route={entry.key}
       hidden={hidden || undefined}
       inert={inertLayer || undefined}

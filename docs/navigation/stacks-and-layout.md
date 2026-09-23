@@ -216,9 +216,10 @@ full screen, today's fixed-width side panel unchanged on `split`.
 **Knowledge is built.** `KnowledgeWorkspace` registers no Back of its own;
 on `single`, `/knowledge-base` renders only the Finder's root picker while its
 addressable destination routes render the selected space or virtual listing as
-column 0. The route changes first and its effect synchronises the selection;
-the root instance never pushes that destination as a stage underneath the real
-route. Wider layouts still compose the root and detail columns side by side.
+column 0. The pathname owns that split even while the selection state updates,
+so the root instance never pushes the destination as a hidden stage underneath
+the real route. Wider layouts still compose the root and detail columns side by
+side.
 its four inner screens are stages — `knowledge:folder` (11, a folder browsed
 beyond the space root), `knowledge:document` (12, the open document or file),
 `knowledge:history` (13) and `knowledge:editor` (14, `swipeable={false}` for
@@ -235,6 +236,16 @@ folder — the screen it was pushed over — while an inline host renders only t
 deepest pane, exactly the desktop columns, full-width document, history and
 editor of before. Pinned by `knowledge-local-back.test.ts` and the
 three-layer unwind case in `nested-stage-viewport.test.ts`.
+
+The Knowledge root has one **Agents** directory row. It opens
+`/knowledge-base/agents`, whose next column lists readable agent homes; an
+agent opens `/knowledge-base/agents/:agentId` and only then the shared space
+browser. The route ancestry is therefore Knowledge → Agents → agent → page,
+not a flat root crowded with one synthetic row per agent. Cold links, prewarm,
+Tree and column views all preserve that same ancestry.
+On `single`, each route owns its base Finder column and only a folder or
+document opened beneath that route becomes a nested stage; retained route
+instances must suspend their local Back owners while covered by a newer route.
 
 **`AgentDetailPage` is built.** It registers no local Back: `/agents/:id` is a
 real depth-2 route whose parent is Agents, so the shared route Back returns

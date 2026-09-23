@@ -9,6 +9,7 @@ import {
 import { useViewport } from '../../../hooks/useViewport'
 import { useNavigationLayout } from '../../../navigation/mobile-shell'
 import { NestedStage, NestedStageHostContext } from '../../../navigation/NestedStage'
+import { useOverlayLayerCovered } from '../../../navigation/overlay-layer'
 import {
   ColumnBackProvider,
   columnBackPriority,
@@ -101,6 +102,7 @@ export const ColumnBrowserViewport = ({
   const layout = useNavigationLayout()
   const stageHost = useContext(NestedStageHostContext)
   const stacked = layout === 'single' && stageHost !== null
+  const routeCovered = useOverlayLayerCovered()
 
   const [reports, setReports] = useState<Record<number, ColumnStageReport>>({})
   // One stable channel for every column: reports are keyed by index, and an
@@ -133,7 +135,7 @@ export const ColumnBrowserViewport = ({
   // ordinary local-back owner rather than a stage.
   const baseReport = reports[0]
   useLocalBack({
-    active: stacked && baseReport !== undefined,
+    active: stacked && !routeCovered && baseReport !== undefined,
     id: stageId(0),
     label: baseReport?.label ?? 'Back',
     onBack: baseReport?.onBack ?? noop,

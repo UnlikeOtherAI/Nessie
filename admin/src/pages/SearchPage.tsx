@@ -1,132 +1,110 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import type {
-  ChannelRecord,
-  MessageSearchResult,
-  ProjectRecord,
-  UserRecord,
-} from '../lib/api-client'
-import type { TaskRecord } from '../facades/tasks/hooks'
-import { HighlightedPassage } from '../components/features/search/HighlightedPassage'
+
+import { HighlightedText } from '../components/features/search/HighlightedText'
 import { SearchModeToggle } from '../components/features/search/SearchModeToggle'
-import { SectionLabel } from '../components/primitives/SectionLabel'
-import { ScreenHeader } from '../components/shared/ScreenHeader'
+import {
+  buildSearchResultItems,
+  SEARCH_SECTION_ORDER,
+  type SearchResultItem,
+  type SearchSectionTitle,
+} from '../components/features/search/search-result-items'
+import { SearchResultMarker } from '../components/features/search/SearchResultMarker'
 import { PaginationFooter } from '../components/shared/PaginationFooter'
+import { ScreenHeader } from '../components/shared/ScreenHeader'
+import { SectionLabel } from '../components/primitives/SectionLabel'
 import {
   GLOBAL_SEARCH_MODES,
   readStoredSearchMode,
   useGlobalSearch,
   writeStoredSearchMode,
-  type KnowledgeSearchHit,
 } from '../facades/search/hooks'
-import { selectBestPassage } from '../lib/highlight-passage'
 import { useTabParam } from '../navigation/useTabParam'
-import {
-  SearchResultMarker,
-  type SearchMarkerSubject,
-} from '../components/shared/SearchResultMarker'
 
 const rowClass = [
   'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left',
   'transition-colors hover:bg-[color:var(--overlay-weak)]',
 ].join(' ')
 
-// The tile is described, not supplied: a row states what its hit *is* and the
-// shared marker decides whether that has a picture. Passing a rendered glyph is
-// what let people and projects show a letter beside their own avatars.
 interface SearchResultRowProps {
-  subject: SearchMarkerSubject
-  primary: string
-  secondary?: ReactNode
+  item: SearchResultItem
+  query: string
   onClick?: () => void
 }
 
-const SearchResultRow = ({ subject, primary, secondary, onClick }: SearchResultRowProps) => {
+const SearchResultRow = ({ item, query, onClick }: SearchResultRowProps) => {
   const content = (
     <>
-      <SearchResultMarker size={32} subject={subject} />
+      <SearchResultMarker size={32} subject={item.subject} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-[color:var(--tx)]">
-          {primary}
+          <HighlightedText query={query} text={item.primary} />
         </span>
-        {secondary ? (
-          <span className="block truncate text-xs text-[color:var(--tx3)]">{secondary}</span>
+        {item.secondary ? (
+          <span className="block truncate text-xs text-[color:var(--tx3)]">
+            <HighlightedText query={query} text={item.secondary} />
+          </span>
         ) : null}
       </span>
     </>
   )
 
   return onClick ? (
-    <button className={rowClass} onClick={onClick} type="button">
-      {content}
-    </button>
+    <button className={rowClass} onClick={onClick} type="button">{content}</button>
   ) : (
     <div className={rowClass}>{content}</div>
   )
 }
 
-interface SearchSectionProps {
-  title: string
+const SearchSection = ({
+  children,
+  title,
+}: {
   children: ReactNode
-}
-
-const SearchSection = ({ title, children }: SearchSectionProps) => (
+  title: SearchSectionTitle
+}) => (
   <section className="space-y-1">
     <SectionLabel as="h2" className="px-3">{title}</SectionLabel>
     <div className="space-y-0.5">{children}</div>
   </section>
 )
 
-// Hybrid-mode hits carry ranked passages; show the best one with query terms
-// highlighted. Keyword-mode hits fall back to the plain snippet. `hit.score`
-// is ranking metadata only and is never rendered.
-const knowledgeSecondary = (hit: KnowledgeSearchHit, query: string): ReactNode => {
-  const bestPassage = selectBestPassage(hit.passages)
-  return bestPassage ? (
-    <HighlightedPassage passage={bestPassage.content} query={query} />
-  ) : (
-    hit.snippet
-  )
-}
-
 export const SearchPage = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  // `?mode=` through the one tab-state hook, seeded from this device's last
-  // choice so plain `/search` opens the way the reader left it, while a link
-  // that names a mode wins (docs/navigation/overview.md §1, "Tab hosts").
+  // `?mode=` is state of this Search surface. A legacy `text` value becomes
+  // full-text search; a missing value uses the stored choice.
   const [storedMode] = useState(readStoredSearchMode)
-  const [mode, selectMode] = useTabParam('mode', GLOBAL_SEARCH_MODES, storedMode)
-  const [query, setQuery] = useState(() => searchParams.get('query') ?? '')
+  const fallbackMode = searchParams.get('mode') === 'text' ? 'fulltext' : storedMode
+  const [mode, selectMode] = useTabParam('mode', GLOBAL_SEARCH_MODES, fallbackMode)
+  const query = (searchParams.get('query') ?? '').slice(0, 200)
   const results = useGlobalSearch(query, mode)
-
   const active = query.trim().length >= 2
-  const hasTaskPage = mode === 'text' && active && !results.taskPagination.query.isError && (
-    results.tasks.length > 0
-    || results.taskPagination.page > 0
-    || results.taskPagination.canNext
+  const items = useMemo(
+    () => buildSearchResultItems(results, results.appliedQuery, mode),
+    [mode, results],
   )
-  const hasResults =
-    results.channels.length > 0 ||
-    results.people.length > 0 ||
-    results.projects.length > 0 ||
-    results.messages.length > 0 ||
-    results.tasks.length > 0 ||
-    results.knowledge.length > 0 ||
-    results.thoughts.length > 0 ||
-    hasTaskPage
+  const itemsBySection = useMemo(() => {
+    const grouped = new Map<SearchSectionTitle, SearchResultItem[]>()
+    for (const item of items) {
+      const group = grouped.get(item.section) ?? []
+      group.push(item)
+      grouped.set(item.section, group)
+    }
+    return grouped
+  }, [items])
 
-  const openChannel = (channel: ChannelRecord) => navigate(`/channels/${channel.id}`)
-  const openProject = (project: ProjectRecord) => navigate(`/projects/${project.id}`)
-  const openMessage = (message: MessageSearchResult) => navigate(`/channels/${message.channelId}`)
-  const openTask = (task: TaskRecord) => {
-    if (task.projectId) navigate(`/projects/${task.projectId}/board?task=${encodeURIComponent(task.id)}`)
-  }
-  const openKnowledge = (hit: KnowledgeSearchHit) =>
-    navigate(`/knowledge-base?spaceId=${hit.page.spaceId}&pageId=${hit.page.id}`)
+  const hasTaskPage = mode === 'fulltext'
+    && active
+    && !results.taskPagination.query.isError
+    && (
+      results.tasks.length > 0
+      || results.taskPagination.page > 0
+      || results.taskPagination.canNext
+    )
+  const hasResults = items.length > 0 || hasTaskPage
 
   const updateQuery = (nextQuery: string) => {
-    setQuery(nextQuery)
     const next = new URLSearchParams(searchParams)
     if (nextQuery.trim()) next.set('query', nextQuery)
     else next.delete('query')
@@ -136,13 +114,6 @@ export const SearchPage = () => {
   const updateMode = (nextMode: typeof mode) => {
     writeStoredSearchMode(nextMode)
     selectMode(nextMode)
-  }
-
-  // A person row jumps to their DM channel when one is already loaded for the
-  // current user; otherwise it falls back to the channels list.
-  const openPerson = (person: UserRecord) => {
-    const dmChannelId = person.channelIds.find((id) => id.length > 0)
-    navigate(dmChannelId ? `/channels/${dmChannelId}` : '/channels')
   }
 
   return (
@@ -155,44 +126,40 @@ export const SearchPage = () => {
             <input
               autoFocus
               className="admin-input min-w-0 flex-1"
+              maxLength={200}
               onChange={(event) => updateQuery(event.target.value)}
-              placeholder={
-                mode === 'semantic'
-                  ? 'Search semantic memory and knowledge...'
-                : 'Search channels, people, projects, messages, tasks, knowledge...'
-              }
+              placeholder="Search channels, projects, tickets, messages, documents, people, agents, apps, and memory…"
               type="search"
               value={query}
             />
             <SearchModeToggle mode={mode} onChange={updateMode} />
           </div>
-          {mode === 'semantic' ? (
-            <p className="mt-3 text-xs text-[color:var(--tx3)]">
-              Semantic mode searches memory and knowledge by meaning. Messages remain in Text
-              mode.
-            </p>
-          ) : null}
+          <p className="mt-3 text-xs text-[color:var(--tx3)]">
+            {mode === 'semantic'
+              ? 'Hybrid search keeps full-text matches and adds meaning-based results where content has embeddings.'
+              : 'Full text finds the words you entered, without meaning-based expansion.'}
+          </p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-[var(--page-gutter)] py-5">
           {!active ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">
-              {mode === 'semantic'
-                ? 'Search memory and knowledge by meaning.'
-                : 'Search channels, people, projects, messages, tasks, and knowledge.'}
+              Enter at least two characters to search every section.
             </p>
-          ) : results.isLoading ? (
+          ) : results.isLoading && !hasResults ? (
             <p className="px-3 text-sm text-[color:var(--tx3)]">Searching…</p>
           ) : !hasResults ? (
             results.invalidTaskCursor ? (
               <p className="px-3 text-sm text-[color:var(--danger-text)]">
-                This task-search page expired.{' '}
+                This ticket-search page expired.{' '}
                 <button className="admin-link" onClick={results.restartTaskSearch} type="button">
-                  Restart task search
+                  Restart ticket search
                 </button>
               </p>
             ) : results.errorMessage ? (
-              <p className="px-3 text-sm text-[color:var(--danger-text)]">{results.errorMessage}</p>
+              <p className="px-3 text-sm text-[color:var(--danger-text)]">
+                {results.errorMessage}
+              </p>
             ) : (
               <p className="px-3 text-sm text-[color:var(--tx3)]">No results</p>
             )
@@ -200,130 +167,59 @@ export const SearchPage = () => {
             <>
               {results.invalidTaskCursor ? (
                 <p className="px-3 text-sm text-[color:var(--danger-text)]">
-                  This task-search page expired.{' '}
+                  This ticket-search page expired.{' '}
                   <button className="admin-link" onClick={results.restartTaskSearch} type="button">
-                    Restart task search
+                    Restart ticket search
                   </button>
                 </p>
               ) : results.errorMessage ? (
-                // One section failing (e.g. memory search without an embedding
-                // model) must not hide the sections that did return results.
                 <p className="px-3 text-sm text-[color:var(--danger-text)]">
                   {results.errorMessage}
                 </p>
               ) : null}
-              {results.channels.length > 0 ? (
-                <SearchSection title="Channels">
-                  {results.channels.map((channel) => (
-                    <SearchResultRow
-                      key={channel.id}
-                      subject={{ kind: 'channel' }}
-                      onClick={() => openChannel(channel)}
-                      primary={channel.label}
-                      secondary={channel.projectName}
-                    />
-                  ))}
-                </SearchSection>
-              ) : null}
 
-              {results.people.length > 0 ? (
-                <SearchSection title="People">
-                  {results.people.map((person) => (
-                    <SearchResultRow
-                      key={person.id}
-                      subject={{ kind: 'person', user: person, displayName: person.displayName }}
-                      onClick={() => openPerson(person)}
-                      primary={person.displayName}
-                      secondary={person.email}
-                    />
-                  ))}
-                </SearchSection>
-              ) : null}
-
-              {results.projects.length > 0 ? (
-                <SearchSection title="Projects">
-                  {results.projects.map((project) => (
-                    <SearchResultRow
-                      key={project.id}
-                      subject={{ kind: 'project', project }}
-                      onClick={() => openProject(project)}
-                      primary={project.name}
-                    />
-                  ))}
-                </SearchSection>
-              ) : null}
-
-              {results.messages.length > 0 ? (
-                <SearchSection title="Messages">
-                  {results.messages.map((message) => (
-                    <SearchResultRow
-                      key={message.id}
-                      subject={{ kind: 'message' }}
-                      onClick={() => openMessage(message)}
-                      primary={message.snippet}
-                      secondary={`${message.authorName} · ${message.channelLabel}`}
-                    />
-                  ))}
-                </SearchSection>
-              ) : null}
-
-              {hasTaskPage ? (
-                <SearchSection title="Tasks">
-                  {results.tasks.map((task) => (
-                    <SearchResultRow
-                      key={task.id}
-                      subject={{ kind: 'task' }}
-                      onClick={task.projectId ? () => openTask(task) : undefined}
-                      primary={task.title ?? 'Untitled task'}
-                      secondary={task.externalLink?.externalKey ?? task.purpose ?? undefined}
-                    />
-                  ))}
-                  {results.tasks.length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-[color:var(--tx3)]">No task results on this page.</p>
-                  ) : null}
-                  <PaginationFooter
-                    canNext={results.taskPagination.canNext}
-                    canPrevious={results.taskPagination.canPrevious}
-                    className="mx-3"
-                    hideWhenSinglePage
-                    label={results.taskPagination.label}
-                    onPageChange={results.taskPagination.onPageChange}
-                    onPageSizeChange={results.taskPagination.onPageSizeChange}
-                    page={results.taskPagination.page}
-                    pageCount={results.taskPagination.pageCount}
-                    pageSize={results.taskPagination.pageSize}
-                  />
-                </SearchSection>
-              ) : null}
-
-              {results.knowledge.length > 0 ? (
-                <SearchSection title="Knowledge">
-                  {results.knowledge.map((hit) => (
-                    <SearchResultRow
-                      key={hit.page.id}
-                      subject={{ kind: 'knowledge' }}
-                      onClick={() => openKnowledge(hit)}
-                      primary={hit.page.title}
-                      secondary={knowledgeSecondary(hit, query)}
-                    />
-                  ))}
-                </SearchSection>
-              ) : null}
-
-              {results.thoughts.length > 0 ? (
-                <SearchSection title="Memory (semantic)">
-                  {results.thoughts.map((thought) => (
-                    <SearchResultRow
-                      key={thought.id}
-                      subject={{ kind: 'thought' }}
-                      primary={thought.content}
-                      secondary={`Semantic memory - ${Math.round(
-                        thought.similarity * 100,
-                      )}% match`}
-                    />
-                  ))}
-                </SearchSection>
-              ) : null}
+              {SEARCH_SECTION_ORDER.map((section) => {
+                const sectionItems = itemsBySection.get(section) ?? []
+                if (sectionItems.length === 0 && !(section === 'Tickets' && hasTaskPage)) {
+                  return null
+                }
+                return (
+                  <SearchSection key={section} title={section}>
+                    {sectionItems.map((item) => {
+                      const href = item.href
+                      return (
+                        <SearchResultRow
+                          item={item}
+                          key={item.id}
+                          onClick={href ? () => navigate(href) : undefined}
+                          query={results.appliedQuery}
+                        />
+                      )
+                    })}
+                    {section === 'Tickets' && hasTaskPage ? (
+                      <>
+                        {results.tasks.length === 0 ? (
+                          <p className="px-3 py-2 text-sm text-[color:var(--tx3)]">
+                            No ticket results on this page.
+                          </p>
+                        ) : null}
+                        <PaginationFooter
+                          canNext={results.taskPagination.canNext}
+                          canPrevious={results.taskPagination.canPrevious}
+                          className="mx-3"
+                          hideWhenSinglePage
+                          label={results.taskPagination.label}
+                          onPageChange={results.taskPagination.onPageChange}
+                          onPageSizeChange={results.taskPagination.onPageSizeChange}
+                          page={results.taskPagination.page}
+                          pageCount={results.taskPagination.pageCount}
+                          pageSize={results.taskPagination.pageSize}
+                        />
+                      </>
+                    ) : null}
+                  </SearchSection>
+                )
+              })}
             </>
           )}
         </div>

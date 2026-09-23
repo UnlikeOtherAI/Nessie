@@ -212,7 +212,14 @@ export const listProjectsForUser = async (
 export const listProjectDirectory = async (
   prisma: PrismaClient,
   viewer: ProjectViewer,
+  options: {
+    /** Explicit search is the doorway through which a protected project is discoverable. */
+    includeProtectedMatches?: boolean
+    limit?: number
+    query?: string
+  } = {},
 ): Promise<ProjectDirectoryEntry[]> => {
+  const query = options.query?.trim()
   const [projects, activeMembers] = await Promise.all([
     prisma.project.findMany({
       where: {
@@ -227,8 +234,24 @@ export const listProjectDirectory = async (
               OR: [
                 { visibility: 'public' },
                 { members: { some: { userId: viewer.userId } } },
+                // Protected projects stay absent from the browse directory,
+                // but an explicit name/description search may reveal their
+                // limited card (team-model.md: discoverable, not invisible).
+                ...(options.includeProtectedMatches && query
+                  ? [{ visibility: 'protected' as const }]
+                  : []),
               ],
             }),
+        ...(query
+          ? {
+              AND: [{
+                OR: [
+                  { name: { contains: query, mode: 'insensitive' as const } },
+                  { description: { contains: query, mode: 'insensitive' as const } },
+                ],
+              }],
+            }
+          : {}),
       },
       include: {
         ...projectCountsInclude,
@@ -242,6 +265,7 @@ export const listProjectDirectory = async (
         },
       },
       orderBy: { createdAt: 'asc' },
+      ...(options.limit ? { take: options.limit } : {}),
     }),
     prisma.organizationMember.findMany({
       where: { organizationId: viewer.organizationId, deactivatedAt: null },

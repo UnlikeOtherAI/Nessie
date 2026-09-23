@@ -99,6 +99,8 @@ export const decideExecutorCodePairing = async (
       }
     } else if (!pairing.rejectedAt) {
       if (executor) {
+        // Only an unconfirmed pairing gets here: its executor has never
+        // connected, so no lease can be on it and none needs announcing.
         await revokePairingExecutor(tx, executor.id)
         await audit(tx, {
           action: 'executor.pairing.rejected', executorId: executor.id,

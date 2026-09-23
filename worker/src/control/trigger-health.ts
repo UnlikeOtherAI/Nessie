@@ -84,6 +84,7 @@ export const recordTriggerHealthFailure = async (
         Prisma.sql`
           UPDATE "agent_triggers"
           SET
+            "enabled" = false,
             "health_detail" = ${input.error.message},
             "health_reason" = ${input.error.reason},
             "health_revision" = "health_revision" + 1,

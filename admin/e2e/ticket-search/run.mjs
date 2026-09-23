@@ -84,14 +84,32 @@ const main = async () => {
     browser = await launchBrowser()
     context = await openViewportContext(browser, { name: 'desktop', token: seed.token })
     page = await context.newPage()
+
+    // The shell search is the in-context doorway: it returns a grouped ticket
+    // suggestion, highlights the matching text, and opens the canonical board
+    // dialog rather than a search-only copy.
+    await page.page.goto(`${ADMIN_URL}/projects/${project.id}`, { waitUntil: 'domcontentloaded' })
+    const autocomplete = page.page.getByRole('combobox', { name: 'Search', exact: true })
+    await autocomplete.fill(runId)
+    const autocompleteResult = page.page.getByRole('option').filter({ hasText: title })
+    await autocompleteResult.waitFor({ timeout: 60_000 })
+    await autocompleteResult.locator('mark').filter({ hasText: runId }).waitFor()
+    if (process.env.PROJECT_USABILITY_SCREENSHOTS === '1') {
+      await mkdir(SCREENSHOTS, { recursive: true })
+      await page.page.screenshot({ path: `${SCREENSHOTS}/ticket-search-autocomplete.png`, fullPage: false })
+    }
+    await autocompleteResult.click()
+    await page.page.waitForURL(new RegExp(`/projects/${project.id}/board\\?task=${task.id}$`, 'u'))
+    await page.page.getByRole('dialog', { name: 'Task details' }).waitFor()
+
     const expired = new URLSearchParams({
-      mode: 'text', query: title, 'tasks-cursor': 'expired-cursor', 'tasks-direction': 'forward',
-      'tasks-page': '1', 'tasks-scope': `task-search:${title}`,
+      mode: 'fulltext', query: title, 'tasks-cursor': 'expired-cursor', 'tasks-direction': 'forward',
+      'tasks-page': '1', 'tasks-scope': `task-search:fulltext:${title}`,
     })
     await page.page.goto(`${ADMIN_URL}/search?${expired}`, { waitUntil: 'domcontentloaded' })
-    const restart = page.page.getByRole('button', { name: 'Restart task search' })
+    const restart = page.page.getByRole('button', { name: 'Restart ticket search' })
     await restart.waitFor()
-    assert.equal(await page.page.getByText('No task results on this page.').count(), 0)
+    assert.equal(await page.page.getByText('No ticket results on this page.').count(), 0)
     assert.equal(await page.page.getByText('Page 2 of 2').count(), 0)
     if (process.env.PROJECT_USABILITY_SCREENSHOTS === '1') {
       await mkdir(SCREENSHOTS, { recursive: true })
@@ -100,10 +118,10 @@ const main = async () => {
     await restart.click()
     await page.page.waitForURL((url) => (
       url.searchParams.get('query') === title
-      && url.searchParams.get('mode') === 'text'
+      && url.searchParams.get('mode') === 'fulltext'
       && ![...url.searchParams.keys()].some((key) => key.startsWith('tasks-'))
     ))
-    const taskSection = page.page.getByRole('heading', { name: 'Tasks', exact: true }).locator('..')
+    const taskSection = page.page.getByRole('heading', { name: 'Tickets', exact: true }).locator('..')
     const result = taskSection.getByRole('button', { name: new RegExp(title, 'u') })
     try {
       await result.waitFor({ timeout: 60_000 })

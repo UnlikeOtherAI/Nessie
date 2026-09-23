@@ -113,19 +113,16 @@ export const seedFixture = async (pipeline, seedScope, ensurePersonalAssistantBo
     }),
     prisma.organizationMember.createMany({
       data: [
-        { organizationId: scope.organizationId, role: MemberRole.owner, userId: owner.id },
         { organizationId: scope.organizationId, role: MemberRole.member, userId: outsider.id },
       ],
     }),
     prisma.projectMember.createMany({
       data: [
-        { projectId: scope.projectId, role: MemberRole.member, userId: owner.id },
         { projectId: scope.projectId, role: MemberRole.member, userId: outsider.id },
       ],
     }),
     prisma.teamMember.createMany({
       data: [
-        { teamId: scope.teamId, role: MemberRole.member, userId: owner.id },
         { teamId: scope.teamId, role: MemberRole.member, userId: outsider.id },
       ],
     }),

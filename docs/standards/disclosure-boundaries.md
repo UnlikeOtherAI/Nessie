@@ -26,7 +26,9 @@ claims, machine permissions and the explicit mailbox provenance discriminator.
   `visibility` + chain are one fact in two shapes; record a channel scope only
   when the channel is **not public**, because viewer channel scopes come from
   `ChannelMember` rows alone and stamping a public channel withholds the reply
-  from people entitled to read the source; and make search **fail closed**
+  from people entitled to read the source (host program output, whose source
+  is not the room's history, is the one exception — see "Detail"); and make
+  search **fail closed**
   (exclude anything carrying a basis) rather than withhold, because a snippet
   list has nowhere to render a placeholder. On the read side every path asks the
   one predicate — list, single message, and the durable thought log alike, since
@@ -77,9 +79,112 @@ Facts not restated there:
   loaded once into the run context so `runReplyIsRestricted` stays synchronous
   on every streamed delta. Tool-posted messages resolve the bindings of their
   own target channel instead.
+- **Being in the destination is not access to everything an agent knows.** An
+  `AgentBinding` says the agent may participate in that channel; it does not
+  publish the agent's private conversations, documents or other source scopes
+  to the channel's readers. A public-channel reply derived from a private DM is
+  therefore still restricted even when the agent is visibly in the channel.
+  The shareable placeholder describes that exact fact — its sources are not
+  available to everyone who can read the channel — rather than claiming that
+  the agent or the readers are missing from the channel roster.
 - Sink writers today: the transcript window (transitive), memory recall, every
-  knowledge-base read, the conversation searches, attachment reads, and an
-  admitted checkpoint — and a checkpoint on resume is a read path too.
+  knowledge-base read, the conversation searches, attachment reads, every
+  executor `mcp.*` result, and an admitted checkpoint — and a checkpoint on
+  resume is a read path too.
+- **Host program output is the launch conversation's.** A local program an
+  executor fronts (`mcp.tools` / `mcp.call`) answers from the person's own
+  machine — a signed-in browser profile, private repositories — so it is not
+  public web. Launching local apps in a conversation — a person-launched
+  executor run in it, from the launcher's **Local apps on this machine** — is
+  the person's consent to show that machine's program output to that
+  conversation's audience, and nowhere else. An agent cannot bind an executor
+  on its own, so the consent is always a person's. Every `mcp.*` result
+  stamps the run's sink with the launch conversation's scope before its
+  command is sent (`worker/src/run/executor-host-output.ts`; today the run's
+  own channel).
+  The channel is stamped **even when it is public**, the one exception to the
+  public-channel skip above: that room's history is the organisation's to
+  read, but the program's output was consented to that room alone.
+  - A reply into the same conversation is unaffected: the destination
+    implies its own channel.
+  - A write onto a project board is allowed when the launch conversation is a
+    live, ordinary, public channel of that very project, because every project
+    reader can already read it: `assertProjectWriteDestination` treats that
+    channel scope as implied only as a host-output stamp — the sink keeps
+    those apart (`addHostOutputScope` / `hostOutputScopes`) — and still
+    refuses one that carries private-conversation lineage. The same public
+    channel scope from any other source, such as a recalled memory's channel
+    audience, stays refused as before. A protected channel's or a DM's host
+    output never lands on a board.
+  - Anything else — another channel, a DM to someone else, another project's
+    board — is restricted by the basis like any other privileged source.
+  - A run resumed after its worker died is stamped when its toolset is built
+    if the pair already has ToolCalls, because its window replays those
+    answers.
+  - A checkpoint continuation ("keep going", an auto-continuation, a resume
+    after an approval) inherits the stamp, because the note may quote program
+    output verbatim. The checkpoint's persisted basis cannot carry it — the
+    writing run's reply basis subtracts its own channel, which is the stamp —
+    and persisting the channel into `RunBasisScope` would withhold a public
+    room's own run records from the people who can read the room. So
+    `loadRunCheckpointForRun` re-derives it structurally
+    (`loadCheckpointHostOutputScopes`): the writing run, and every run whose
+    checkpoint it consumed back along the chain, stamps its own channel if it
+    has a ToolCall on an `mcp.*` operation, and `admitRunCheckpoint` adds
+    those to the resuming run's sink as host output. The viewer check that
+    admits the checkpoint reads its basis alone: the person resuming is in
+    the conversation the output was consented to.
+  - Task Set processor search binds its own `ollama-search` and is no launch
+    in a conversation; it passes no scope, and its results travel under the
+    set's classified disclosure.
+
+  `worker/test/db/executor-host-output-disclosure.test.ts` pins the three
+  board outcomes and the sales walkthrough's refusal of a protected planning
+  channel's research; `executor-host-output-checkpoint.test.ts` pins that a
+  continuation, and the one after it, still restricts another room and
+  refuses another project's board.
+- **A channel directory read stamps its non-public rooms — except a DM named
+  by its label alone.** `channel_list`, `channel_find`, the channel labels
+  `agent_list` names, the room `agent_bind_channel` links and the record
+  `channel_update` echoes all resolve channels through the acting person's
+  own memberships, so a private or protected room among them is scoped
+  material and stamps (`recordChannelDirectoryRead`,
+  `worker/src/run/pa-tools/message-search-basis.ts`). The one exemption is a
+  direct message the requester is in, named by its label and nothing else:
+  stamping every DM a list returned put each of the person's conversations
+  with their assistants into the run's basis, and the project write gate then
+  refused every ticket write for the rest of the run although no word of
+  those rooms had been read. A DM row that prints free text its members wrote
+  — `channel_list`'s `topic=` — stamps like any other room, and
+  `channel_update` echoes a topic or description only when that call wrote
+  it. The trade-off, accepted: the label of a DM the requester is in (for a
+  person-to-person DM, who it is with) can reach a reply that people outside
+  it read, when the requester asked for their own channel list in a shared
+  room. What a channel *holds* always stamps, DM or not: its messages, its
+  attachments' names and bodies, the conversation searches (whose channel
+  matches also carry a thread title), and the decision policy and agent
+  participants `channel_list` returns for one `channelId`.
+- **Recall under a project write is narrower than containment.** Containment
+  admits the destination's team and channel audiences, which a reply may carry
+  but the project write gate (`assertProjectWriteDestination`,
+  `worker/src/run/pa-tools/ticket-context.ts`) refuses, and a thought whose
+  audience passes it can still carry the private conversation it was captured
+  from. So when containment applies **and** the run was offered a
+  project-delegated tool that writes (`holdsProjectWriteTools` in
+  `run-setup.ts`: lent, offered, not `safe`), recall admits only lineage scopes
+  `{organization, project:<channel.projectId>}` —
+  `constrainScopesToProjectWrite` narrows the search, and
+  `isWithinProjectWriteScopes` judges each recalled thought's whole lineage and
+  each recalled history message, so a team, channel or user audience or any
+  private-conversation source is simply not recalled for that run
+  (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). The gate and
+  every other run are unchanged: a run without write tools recalls exactly as
+  before, and a delegate in its own home is not contained at all. The
+  trade-off, accepted: such a run does not remember what the requester said in
+  a private DM, nor its own room's channel memories, even where its reply
+  alone could have carried them. The alternative — letting the gate accept a
+  source when every member of it can read the project — compares sets of
+  people, which this machinery deliberately never does.
 - **Document versions retain their source boundary.** A `KnowledgePageVersion`
   stores its own basis scopes and private-conversation source authors. A reader
   first passes the document home's ordinary entitlement, then must satisfy the

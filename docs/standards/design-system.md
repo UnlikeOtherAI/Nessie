@@ -38,6 +38,12 @@ summary and points here; **this file is the rule**.
   tokens onto the chrome elements. `:where()` keeps that rule at focus mode's
   specificity, and focus mode is declared after it, so focus mode still wins.
   Overlays render outside the shell and take the surface palette.
+  Focus mode changes those registered colour tokens over one 300ms transition.
+  A pinned menu inherits that in-flight palette from its sidebar wrapper; a
+  sidebar rendered as a phone root or in a portalled drawer is itself the one
+  transition owner. `SidebarTreePanel` inherits the animated `--sb` from that
+  owner — it must not add a second background transition, which doubles and
+  lengthens the curve while text, icons and separators finish on time.
 - **One theme is data, not CSS: the organisation's own.** An organisation
   administrator authors a palette on `/settings/organization?tab=appearance`; it
   appears as one more card on the per-user Colours panel, labelled with the
@@ -225,6 +231,20 @@ summary and points here; **this file is the rule**.
   `.admin-compose[data-expanded]` and one `--compose-line` in `styles.css`.
   Focus is tracked on the `<form>` — a toolbar button blurs the editor, and
   collapsing then would pull it out from under the click.
+  Send and the microphone sit over the right end of that bottom line, so
+  `--compose-send-clearance` is the one width both the collapsed editor and the
+  toolbar keep clear of them; nothing in the toolbar may run under Send. The
+  toolbar is a size container (`compose-bar`), so anything that is more than a
+  glyph decides its form from the room the toolbar actually has, never the
+  window: the holder's executor lease chip ("Minis · local apps · until 21:40 ·
+  End", beside Run on executor) shows where it fits and folds into a dot on Run
+  on executor where it does not, with the launcher dialog carrying the lease
+  and its End. A toolbar with no Run on executor to fold into — a reply
+  panel's — keeps the chip at every width and lets its label give way instead,
+  End always whole. A status like that lives in the toolbar precisely so the
+  composer at rest never grows a line for it, and only in the toolbar of a
+  composer it is true of: a lease chip stands beside the composer whose
+  messages would carry the lease, never beside one whose would not.
 - **One dialog shell.** Every centred modal is `components/shared/Dialog.tsx`
   on `useOverlay` (`ConfirmDialog` builds on it); drawers are `Sheet`, menus
   and pickers `Popover`, toasts `Card`. The overlay family, its layer scale,

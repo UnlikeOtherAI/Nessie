@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
+  GLOBAL_AGENT_BRIEF_PURPOSE,
   parseAgentId,
   parseRunId,
   parseTaskId,
@@ -25,8 +26,13 @@ import {
  *   out of future model context, and leaves the agent's own first reply as the
  *   only visible artifact.
  * - `claimThreadRunOrPend`, so a busy home DM (an open card, a turn still
- *   running) pends the brief for the batched follow-up rather than
- *   double-running the agent. Only the orchestrator's *judgement* is skipped.
+ *   running) pends the brief rather than double-running the agent. Only the
+ *   orchestrator's *judgement* is skipped.
+ * - its own action purpose, `GLOBAL_AGENT_BRIEF_PURPOSE`, on the direct and
+ *   the pended path alike. A pended row carrying it drains alone, as its own
+ *   follow-up run. In an ordinary batch only the latest row drives the prompt,
+ *   and a hidden `system` brief never reaches the model as history, so a brief
+ *   folded behind the person's next message would simply be lost.
  * - `replyPlacement: 'channel'`, because a reply threaded under an invisible
  *   root would never appear in the DM at all.
  * - an idempotency key on the enqueue, so a redelivered caller cannot start the
@@ -101,9 +107,12 @@ export const deliverGlobalAgentBrief = async (
     select: { systemChannelType: true },
     where: { id: input.destinationChannelId },
   })
-  const requesterActorContext = withDelegatedSystemDmIdentity(
-    input.requesterActorContext,
-    { systemChannelType: destination?.systemChannelType ?? null },
+  const requesterActorContext = withActionContext(
+    withDelegatedSystemDmIdentity(
+      input.requesterActorContext,
+      { systemChannelType: destination?.systemChannelType ?? null },
+    ),
+    { purpose: GLOBAL_AGENT_BRIEF_PURPOSE },
   )
 
   const brief = await tx.message.create({

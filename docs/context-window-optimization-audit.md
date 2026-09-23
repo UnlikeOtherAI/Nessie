@@ -221,6 +221,22 @@ exact schema for one-round-trip correction. Delegate sub-agents inherit the
 same tiered view. At or below the threshold, descriptors remain byte-identical
 to the original fully-inline form.
 
+> **Amended (2026-09-22).** The hot set is no longer the fixed ten alone. A
+> tool this agent was deliberately given — the project tools the run was lent,
+> then every tool its policy sets `true` — also arrives in full, because a
+> board-owning agent spent a `tool_spec` round trip per ticket tool before its
+> first real action. Promotion runs in that priority order, in definition order
+> within each group, and stops at `BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS`
+> (24,000 characters of full descriptors); a grant that does not fit stays a
+> stub. Measured on the current registry: a CTO-style agent granted every lent
+> board tool adds about 6.9 KB (18 tools) over the fixed-set view, and the
+> Agent Designer in its home DM about 15.8 KB (33 tools). `tool_spec` is
+> offered only while something is still a stub. Tools a run withholds whatever
+> its policy says — the to-do builtins on an agent with to-dos off, `delegate`
+> on a DeepWater launch turn (`resolveWithheldRunToolIds`) — are removed before
+> the view is built, so they neither spend the promotion budget nor count as a
+> stub that keeps `tool_spec` offered.
+
 Executor descriptors are also code-unit sorted by tool name so database row
 order cannot vary the complete model-facing tool array.
 

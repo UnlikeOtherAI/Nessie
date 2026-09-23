@@ -7,6 +7,31 @@ import { Pill } from '../../primitives/Pill'
 import { EmptyState } from '../../shared/EmptyState'
 import { QueryState } from '../../shared/QueryState'
 import { useIsOwner } from '../../../facades/auth/hooks'
+import type { AgentDocumentsResponse } from '@nessie/schemas'
+
+const ProjectedCoreDocuments = ({
+  documents,
+}: {
+  documents: NonNullable<AgentDocumentsResponse['projectedCoreDocuments']>
+}) => (
+  <div className="h-full overflow-y-auto p-4">
+    <Notice size="sm" tone="neutral">
+      This app-provided agent’s required files are code-owned and read-only.
+    </Notice>
+    <div className="mt-4 space-y-4">
+      {documents.map((document) => (
+        <section className="rounded-lg border border-[color:var(--sep)] bg-[color:var(--surface)]" key={document.role}>
+          <h3 className="border-b border-[color:var(--sep)] px-4 py-3 text-sm font-semibold">
+            {document.filename}
+          </h3>
+          <pre className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-[color:var(--tx2)]">
+            {document.markdown || '(Empty)'}
+          </pre>
+        </section>
+      ))}
+    </div>
+  </div>
+)
 
 const AgentDocumentsTeam = ({
   agentId,
@@ -35,8 +60,8 @@ const AgentDocumentsTeam = ({
         <Notice className="flex flex-wrap items-center gap-2" size="sm" tone="warning">
           <span>
             {core?.state === 'oversized'
-              ? `Core instructions estimate ${core.estimatedTokens} tokens, above the ${core.tokenBudget} token limit. Shorten them before they can be activated.`
-              : 'Published Identity and Working style documents shape new runs. Documents can have narrower access than this agent. Don’t store secrets here.'}
+              ? `Core instructions estimate ${core.estimatedTokens} tokens, above the ${core.tokenBudget} token limit. Shorten them before the agent can start or resume a run.`
+              : 'Published AGENTS.md and personality.md shape every new run. Documents can have narrower access than this agent. Don’t store secrets here.'}
           </span>
           {!selectedSpace.canWrite ? <Pill tone="warning">Read-only</Pill> : null}
         </Notice>
@@ -63,11 +88,14 @@ export const AgentDocumentsTab = ({ agent }: { agent: AgentRecord }) => {
     >
       {() => {
         const space = documentsQuery.data?.space
+        const projected = documentsQuery.data?.projectedCoreDocuments
+
+        if (projected) return <ProjectedCoreDocuments documents={projected} />
 
         if (!space) {
           return (
             <EmptyState>
-              {agent.name} has no document space yet. It will appear after the agent first uses its document tools.
+              {agent.name}’s required document home is unavailable.
             </EmptyState>
           )
         }

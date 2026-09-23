@@ -7,10 +7,10 @@ type AppIconProps = {
   displayName: string
   /** Always a Nessie-served path; an upstream URL never reaches this component. */
   iconUrl: string | null
-  size: 'badge' | 'card' | 'hero'
+  size: 'badge' | 'card' | 'hero' | number
 }
 
-const TILE_PX: Record<AppIconProps['size'], number> = {
+const TILE_PX = {
   // The service mark in a chat card's top-left corner.
   badge: 24,
   card: 48,
@@ -42,7 +42,7 @@ const TILE_PX: Record<AppIconProps['size'], number> = {
 export const AppIcon = ({ displayName, iconUrl, size }: AppIconProps) => {
   const { token } = useAuthSession()
   const objectUrl = useAuthedObjectUrlFromPath(iconUrl, token)
-  const dimension = TILE_PX[size]
+  const dimension = typeof size === 'number' ? size : TILE_PX[size]
 
   return (
     <IdentityTile
@@ -53,7 +53,7 @@ export const AppIcon = ({ displayName, iconUrl, size }: AppIconProps) => {
       fit="contain"
       imageUrl={objectUrl}
       label={displayName}
-      pad={size === 'badge' ? 2 : 8}
+      pad={size === 'badge' || (typeof size === 'number' && size <= 32) ? 2 : 8}
       size={dimension}
     />
   )

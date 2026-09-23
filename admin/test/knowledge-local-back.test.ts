@@ -86,8 +86,7 @@ test('inner knowledge surfaces render or publish the stage Back from one action'
 
   const pane = readSource('../src/components/features/knowledge/KnowledgePane.tsx')
   assert.match(pane, /onBack\?: \(\) => void/)
-  assert.match(pane, /const renderedBack = onBack \?\? \(isStage \? back\?\.onBack : undefined\)/)
-  assert.match(pane, /onBack=\{renderedBack\}/)
+  assert.match(pane, /leading=\{isStage \? <PhoneNavigationButton \/> : undefined\}/)
 
   for (const path of [
     '../src/components/features/knowledge/PagePreview.tsx',

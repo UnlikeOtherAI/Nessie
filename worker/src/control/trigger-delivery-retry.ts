@@ -34,6 +34,8 @@ export const recordDeliveryFailure = async (
     existingDeliveryId?: string
     payload: Prisma.InputJsonValue
     retryCount: number
+    /** Classified authority failures are terminal until a person repairs them. */
+    retryable?: boolean
     source: string
     triggerId: string
   },
@@ -44,12 +46,16 @@ export const recordDeliveryFailure = async (
   // picked up for — a delivery that reads as "retry pending" forever while
   // nothing retries it. Exhaustion is now the same boundary on both sides.
   const exhausted = nextRetryCount >= MAX_DELIVERY_RETRIES
-  const nextRetryAt = exhausted ? null : computeNextRetryAt(input.retryCount)
+  const nextRetryAt = exhausted || input.retryable === false
+    ? null
+    : computeNextRetryAt(input.retryCount)
   const errorMessage = errorMessageOf(input.error)
 
   if (input.existingDeliveryId) {
-    await prisma.agentTriggerDelivery.update({
-      where: { id: input.existingDeliveryId },
+    await prisma.agentTriggerDelivery.updateMany({
+      // A retry can lose its lease race to a successful delivery. Never turn
+      // that already-settled occurrence back into a failure.
+      where: { id: input.existingDeliveryId, status: 'failed' },
       data: {
         status: 'failed',
         errorMessage,
@@ -60,34 +66,47 @@ export const recordDeliveryFailure = async (
     return
   }
 
-  // First failure for this (trigger, dedupeKey). Use an upsert-by-unique when a
-  // dedupeKey is present so a concurrent attempt doesn't violate the constraint;
-  // otherwise create a standalone failed row.
+  // First failure for this (trigger, dedupeKey). Create by the unique key when a
+  // dedupeKey is present, then resolve a concurrent conflict without touching a
+  // settled occurrence; otherwise create a standalone failed row. This
+  // create-plus-conditional-update
+  // is deliberate here: Prisma's upsert update arm cannot say "only while the
+  // existing row is failed", and used to overwrite delivered/skipped rows when
+  // an old scheduled occurrence was reclaimed after its authority changed.
   if (input.dedupeKey) {
-    await prisma.agentTriggerDelivery.upsert({
-      where: {
-        triggerId_dedupeKey: {
+    try {
+      await prisma.agentTriggerDelivery.create({
+        data: {
           triggerId: input.triggerId,
           dedupeKey: input.dedupeKey,
+          payload: input.payload,
+          source: input.source,
+          status: 'failed',
+          errorMessage,
+          retryCount: nextRetryCount,
+          nextRetryAt,
         },
-      },
-      create: {
-        triggerId: input.triggerId,
-        dedupeKey: input.dedupeKey,
-        payload: input.payload,
-        source: input.source,
-        status: 'failed',
-        errorMessage,
-        retryCount: nextRetryCount,
-        nextRetryAt,
-      },
-      update: {
-        status: 'failed',
-        errorMessage,
-        retryCount: nextRetryCount,
-        nextRetryAt,
-      },
-    })
+      })
+    } catch (error) {
+      if (
+        !(error instanceof Prisma.PrismaClientKnownRequestError)
+        || error.code !== 'P2002'
+      ) {
+        throw error
+      }
+      await prisma.agentTriggerDelivery.updateMany({
+        where: {
+          dedupeKey: input.dedupeKey,
+          status: 'failed',
+          triggerId: input.triggerId,
+        },
+        data: {
+          errorMessage,
+          retryCount: nextRetryCount,
+          nextRetryAt,
+        },
+      })
+    }
     return
   }
 

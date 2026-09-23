@@ -1,6 +1,13 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 const UUID = { type: 'string', description: 'The UUID returned by a resolving tool.' } as const
+// Optional on every tool a shared agent can be lent: it is lent them only in
+// its own project channel, where the project is already known, and it holds no
+// project_list to resolve one with. One definition serves both callers, so the
+// description says which one may omit it: the Personal Assistant works across
+// projects and is never defaulted (`ticketProjectIdFor`), not even in a
+// project channel it has joined.
+const PROJECT_ID = { type: 'string', description: 'The project’s UUID. An agent working in its own project channel omits it and gets that channel’s project. The Personal Assistant always names it, from project_list.' } as const
 const LABEL_IDS = { type: 'array', items: { type: 'string' }, description: 'The ticket’s whole label set, as label UUIDs of the ticket’s board from ticket_labels_read; an empty list clears it.' } as const
 const MARKDOWN = 'Ticket descriptions (detail) and comments are Markdown. To show an image inline, upload it with attachment_upload, attach it with ticket_attachment_add, and write ![alt](/api/attachments/<attachmentId>).'
 
@@ -13,8 +20,8 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
     id: 'ticket_list', category: 'projects', label: 'List Tickets', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'List tickets in one project.', safe: true,
-    description: 'List tickets in one project. Resolve projectId with project_list first.',
-    parameters: { type: 'object', properties: { projectId: UUID, status: { type: 'string', description: 'Optional ticket status.' } }, required: ['projectId'] },
+    description: 'List tickets in one project: this channel’s project when projectId is omitted.',
+    parameters: { type: 'object', properties: { projectId: PROJECT_ID, status: { type: 'string', description: 'Optional ticket status.' } }, required: [] },
   },
   {
     id: 'ticket_search', category: 'projects', label: 'Search Tickets', personalAssistantOnly: true,
@@ -62,13 +69,13 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'ticket_board_read', category: 'projects', label: 'Read Ticket Board', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'List a project’s boards and their columns.', safe: true,
     description: 'Read a project’s boards before ticket_create or ticket_move. Each board owns its own tickets and columns; use a returned boardId or columnId, and do not guess UUIDs.',
-    parameters: { type: 'object', properties: { projectId: UUID }, required: ['projectId'] },
+    parameters: { type: 'object', properties: { projectId: PROJECT_ID }, required: [] },
   },
   {
     id: 'ticket_create', category: 'projects', label: 'Create Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Create a ticket in an accessible project.', safe: false,
     description: `Create a project ticket. It is owned by the user and can be assigned to one person or agent. Give a boardId from ticket_board_read to put it on a particular board; without one it lands on the project’s default board. ${MARKDOWN}`,
-    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID, title: { type: 'string' }, purpose: { type: 'string' }, detail: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: 'string', description: 'ISO date or timestamp.' }, assigneeUserId: UUID, assigneeAgentId: UUID, labelIds: LABEL_IDS }, required: ['projectId', 'title'] },
+    parameters: { type: 'object', properties: { projectId: PROJECT_ID, boardId: UUID, title: { type: 'string' }, purpose: { type: 'string' }, detail: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] }, dueDate: { type: 'string', description: 'ISO date or timestamp.' }, assigneeUserId: UUID, assigneeAgentId: UUID, labelIds: LABEL_IDS }, required: ['title'] },
   },
   {
     id: 'ticket_update', category: 'projects', label: 'Update Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
@@ -80,13 +87,13 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'ticket_labels_read', category: 'projects', label: 'Read Ticket Labels', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'List a board’s labels and their IDs.', safe: true,
     description: 'Read a board’s labels before setting labelIds with ticket_create or ticket_update. A ticket’s labels are the labels of the board it is on (ticket_read names it). With boardId, that board’s labels; without, every board’s, grouped by board. Each line gives the labelId to use; do not guess them. A label an external source (Linear, Jira, GitHub, Trello) owns says so.',
-    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID }, required: ['projectId'] },
+    parameters: { type: 'object', properties: { projectId: PROJECT_ID, boardId: UUID }, required: [] },
   },
   {
     id: 'ticket_label_create', category: 'projects', label: 'Create Ticket Label', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Add a label to a board.', safe: false,
     description: 'Create a label on a board: boardId’s, or the project’s default board when it is omitted. If the name is already taken on that board (ignoring case), the existing label is returned instead; use it. color is #rrggbb and optional.',
-    parameters: { type: 'object', properties: { projectId: UUID, boardId: UUID, name: { type: 'string' }, color: { type: 'string', description: '#rrggbb' } }, required: ['projectId', 'name'] },
+    parameters: { type: 'object', properties: { projectId: PROJECT_ID, boardId: UUID, name: { type: 'string' }, color: { type: 'string', description: '#rrggbb' } }, required: ['name'] },
   },
   {
     id: 'ticket_comment_list', category: 'projects', label: 'Read Ticket Comments', personalAssistantOnly: true, projectDelegatedOnly: true,

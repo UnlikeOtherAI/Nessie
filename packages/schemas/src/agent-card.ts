@@ -15,12 +15,16 @@ export {
 } from './agent-card-actions.js'
 export { AgentCardServiceSchema, type AgentCardService } from './agent-card-service.js'
 export {
+  AgentCardExecutorReviewSchema,
   AgentCardMessageMetadataSchema,
   AgentCardRespondBodySchema,
+  AgentCardRespondResultSchema,
   AgentCardResponseMetadataSchema,
   isAgentCardResponseMessage,
+  type AgentCardExecutorReview,
   type AgentCardMessageMetadata,
   type AgentCardRespondBody,
+  type AgentCardRespondResult,
   type AgentCardResponseMetadata,
 } from './agent-card-message-schema.js'
 

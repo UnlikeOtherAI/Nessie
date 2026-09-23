@@ -13,6 +13,58 @@ export type EnsureSpaceResult = {
   created: boolean
 }
 
+/**
+ * The project column on a Knowledge space is a storage envelope, not the
+ * audience of an agent-owned home. Prefer the home that already exists, then
+ * the agent's creation project. Older organisation-level agents can predate
+ * that field, so file them under the invisible shared-channel root (or the
+ * oldest live project on a pre-root test/legacy tenant) without treating the
+ * caller's ambient project as authority.
+ */
+export const resolveAgentDocumentProjectId = async (
+  prisma: PrismaClient | Prisma.TransactionClient,
+  input: {
+    agentId: string
+    organizationId: string
+    preferredProjectId?: string | null
+  },
+): Promise<string> => {
+  const existingHome = await prisma.knowledgeSpace.findFirst({
+    where: {
+      deletedAt: null,
+      organizationId: input.organizationId,
+      ownerAgentId: input.agentId,
+    },
+    select: { projectId: true },
+  })
+  if (existingHome) return existingHome.projectId
+
+  if (input.preferredProjectId) {
+    const preferred = await prisma.project.findFirst({
+      where: {
+        deletedAt: null,
+        id: input.preferredProjectId,
+        organizationId: input.organizationId,
+      },
+      select: { id: true },
+    })
+    if (preferred) return preferred.id
+  }
+
+  const fallback = await prisma.project.findFirst({
+    where: {
+      deletedAt: null,
+      organizationId: input.organizationId,
+    },
+    orderBy: [{ channelRoot: 'desc' }, { createdAt: 'asc' }],
+    select: { id: true },
+  })
+  if (!fallback) {
+    throw new Error('Agent documents require an organization storage project')
+  }
+  return fallback.id
+}
+
 // Ensures the caller's personal "My Docs" knowledge space exists, returning
 // its id. Guarded by a Postgres advisory xact lock keyed on (userId,
 // 'my_docs') — mirrors the ensure*-pattern in personal-assistant.ts — so two
@@ -130,13 +182,20 @@ export const ensureAgentDocsSpace = async (
       )
     `)
 
-    const agent = await tx.agent.findFirst({
-      where: { id: input.agentId, organizationId: input.organizationId },
-      select: { systemManaged: true },
-    })
+    const [agent, project] = await Promise.all([
+      tx.agent.findFirst({
+        where: { id: input.agentId, organizationId: input.organizationId },
+        select: { systemManaged: true },
+      }),
+      tx.project.findFirst({
+        where: { id: input.projectId, organizationId: input.organizationId },
+        select: { id: true },
+      }),
+    ])
     if (!agent || agent.systemManaged) {
       throw new Error('Agent documents are unavailable for a system-managed or unknown agent')
     }
+    if (!project) throw new Error('Agent document project is outside its organization')
 
     const existing = await tx.knowledgeSpace.findFirst({
       where: {

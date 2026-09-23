@@ -1,8 +1,9 @@
 mod command;
+mod job_run;
 // The workspace commands act on inherited directory descriptors with `openat`
 // and friends, which have no Windows equivalent: the Windows helper exists for
-// the two state-security commands, and the parser above still knows all four so
-// the argument contract is one table on every host.
+// the state-security commands and `job-run`, and the parser above still knows
+// every command so the argument contract is one table on every host.
 #[cfg(unix)]
 mod preflight;
 #[cfg(unix)]
@@ -14,8 +15,9 @@ mod state_security;
 
 use command::{parse_command, Command};
 use protocol::{
-    NativeError, PreflightResponse, PreflightStatus, PromotionResponse, PromotionStatus,
-    StateSecurityResponse, StateSecurityStatus,
+    JobRunResponse, JobRunStatus, NativeError, PreflightResponse, PreflightStatus,
+    PromotionResponse, PromotionStatus, StateSecurityResponse, StateSecurityStatus,
+    JOB_RUN_REFUSED_EXIT_CODE,
 };
 use std::env;
 
@@ -73,6 +75,9 @@ fn run_promotion() -> Result<(), NativeError> {
 
 fn run(command: &Command) -> Result<(), NativeError> {
     match command {
+        // The program owns stdout and the exit code from here on, so the
+        // helper says nothing on success and leaves with the program's code.
+        Command::JobRun(argv) => std::process::exit(job_run::run(argv)?),
         Command::WorkspacePreflight => run_preflight(),
         Command::WorkspaceApply => run_promotion(),
         Command::SecureDirectory(path) => {
@@ -115,6 +120,14 @@ fn run(command: &Command) -> Result<(), NativeError> {
 /// unparsable argv keeps answering in the promotion shape, as it always has.
 fn reject(command: Option<&Command>, error: &NativeError) {
     match command {
+        Some(Command::JobRun(_)) => {
+            let encoded = serde_json::to_string(&JobRunResponse {
+                code: Some(error.code.to_owned()),
+                status: JobRunStatus::Rejected,
+            })
+            .expect("response is serializable");
+            eprintln!("{encoded}");
+        }
         Some(Command::WorkspacePreflight) => respond(&PreflightResponse {
             code: Some(error.code.to_owned()),
             manifest_digest: String::new(),
@@ -148,6 +161,7 @@ fn main() {
     };
     if let Err((command, error)) = outcome {
         reject(command.as_ref(), &error);
-        std::process::exit(1);
+        let refused = matches!(command, Some(Command::JobRun(_)));
+        std::process::exit(if refused { JOB_RUN_REFUSED_EXIT_CODE } else { 1 });
     }
 }

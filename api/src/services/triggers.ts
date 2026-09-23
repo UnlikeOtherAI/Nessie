@@ -17,6 +17,7 @@ export {
   listWorkflowInstallationTriggers,
   pauseAgentTrigger,
   resumeAgentTrigger,
+  TriggerResumeError,
   updateAgentTrigger,
 } from './trigger-crud.js'
 export { listAgentTriggerActivity } from './trigger-activity.js'

@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+import {
+  EXECUTOR_CODING_SESSION_REPORT_MAXIMUM,
+  EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
+  ExecutorCodingSessionSummarySchema,
+  ExecutorMcpCallOwnerSchema,
+} from './executor-coding-sessions.js'
+import { RunIdSchema } from './ids.js'
 import { TimestampSchema } from './schema-primitives.js'
 
 /**
@@ -86,6 +93,22 @@ export const ExecutorMcpCallArgumentsSchema = z
   })
   .strict()
 export type ExecutorMcpCallArguments = z.infer<typeof ExecutorMcpCallArgumentsSchema>
+
+/**
+ * The whole `mcp.call` command payload. `args` is what the model asked for;
+ * `runId` and `owner` are stamped by the worker and covered by the argument
+ * digest. The daemon turns `owner` into the reserved `_meta['nessie/owner']`
+ * of a call to the built-in coding-sessions bridge, and never forwards it to
+ * any other server. Absent, the bridge refuses every session tool.
+ */
+export const ExecutorMcpCallPayloadSchema = z
+  .object({
+    args: ExecutorMcpCallArgumentsSchema,
+    owner: ExecutorMcpCallOwnerSchema.optional(),
+    runId: RunIdSchema,
+  })
+  .strict()
+export type ExecutorMcpCallPayload = z.infer<typeof ExecutorMcpCallPayloadSchema>
 
 /* -------------------------------------------------------------------------- */
 /* Tool catalog                                                                */
@@ -223,9 +246,22 @@ export const ExecutorLocalMcpStatusSchema = z
      * an empty array; a server that was never probed for instances omits it.
      */
     kelpieDevices: z.array(KelpieDeviceSchema).max(EXECUTOR_KELPIE_DEVICE_MAXIMUM).optional(),
+    /**
+     * Present only for the built-in `coding-sessions` bridge: its open
+     * sessions, newest first, without anything they said or did. Absent means
+     * the bridge was not asked, never that it has none.
+     */
+    codingSessions: z
+      .array(ExecutorCodingSessionSummarySchema)
+      .max(EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
+      .optional(),
     observedAt: TimestampSchema,
   })
   .strict()
+  .refine(
+    (status) => status.codingSessions === undefined || status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
+    'Only the coding-sessions bridge reports coding sessions.',
+  )
 export type ExecutorLocalMcpStatus = z.infer<typeof ExecutorLocalMcpStatusSchema>
 
 /**

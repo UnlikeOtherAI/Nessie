@@ -311,6 +311,7 @@ dbTest('a resumed wait:true card run recovers the delegated identity', async () 
         organizationId: context.organizationId,
         queueKeyPrefix: 'run:card',
         resumeActorContext: unstamped,
+        resumedByUserId: context.userId,
         runId: parked.id,
         suspendedStatus: 'waiting_input',
         triggerMessageId: triggerMessage.id,

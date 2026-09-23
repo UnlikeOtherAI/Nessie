@@ -48,6 +48,16 @@ export const AgentHandoffToolOutputSchema = z.object({
 export type AgentHandoffToolOutput = z.infer<typeof AgentHandoffToolOutputSchema>
 
 /**
+ * The action purpose a global-agent brief runs under: `agent_handoff`'s and
+ * the Designer's "Continue in chat" draft alike, since both go through
+ * `deliverGlobalAgentBrief`. A brief that reaches a busy home DM pends, and
+ * this purpose is what makes it drain alone
+ * (`packages/db/src/thread-serialization.ts`), so the hidden brief always
+ * drives a run of its own instead of being dropped from a batch.
+ */
+export const GLOBAL_AGENT_BRIEF_PURPOSE = 'global_agent.brief'
+
+/**
  * The hidden `system` brief written into the target's home DM. Server-authored
  * provenance only — the model supplies the prose, never these ids.
  */

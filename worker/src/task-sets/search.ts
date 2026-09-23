@@ -1,6 +1,5 @@
-import {
-  bindExecutorCandidateBundleInTransaction, resolveExecutorAvailabilityCandidates,
-} from '@nessie/executor-manage'
+import { bindPinnedExecutorLocalApps } from '@nessie/executor-manage'
+import type { ToolSchemaDescriptor } from '@nessie/runtime'
 import { AuthorizedActionContextSchema, ExecutorMcpToolCatalogSchema, TaskSetProcessorSchema } from '@nessie/schemas'
 import { buildExecutorToolset, executorToolName } from '../run/executor-toolset.js'
 import { currentExecutorToken } from '../run/execute/lifecycle.js'
@@ -22,6 +21,21 @@ export const taskSetSearchFailure = (output: string): string => {
   return 'processor_search_unavailable'
 }
 
+const TASK_SET_SEARCH_TOOLS = ['ollama_web_search', 'ollama_web_fetch']
+
+/**
+ * The two research tools, read from `ollama-search`'s catalog exactly as the
+ * executor toolset's `dispatch` returned it: the raw result document, never
+ * the agent loop's presentation of it.
+ */
+export const taskSetSearchDescriptors = (listingOutput: string): ToolSchemaDescriptor[] => {
+  const envelope = JSON.parse(listingOutput) as { catalog?: unknown }
+  const catalog = ExecutorMcpToolCatalogSchema.parse(envelope.catalog)
+  const tools = catalog.tools.filter((tool) => TASK_SET_SEARCH_TOOLS.includes(tool.name))
+  if (tools.length !== 2 || catalog.nextCursor) throw new TaskSetBlocked('processor_search_setup_required')
+  return tools.map((tool) => ({ toolName: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema }))
+}
+
 /** Research uses only the selected local processor's approved Ollama server. */
 export const buildTaskSetSearchTools = async (
   deps: ExecutionDependencies, claim: TaskSetClaim, context: RunContext,
@@ -35,29 +49,26 @@ export const buildTaskSetSearchTools = async (
   })
   const host = binding ? await deps.prisma.localInferenceHost.findUnique({ where: { id: binding.hostId } }) : null
   if (!host?.executorId) throw new TaskSetBlocked('processor_search_setup_required')
-  const existing = await deps.prisma.executorBinding.findMany({ where: { runId: claim.attempt.runId } })
-  if (existing.some((entry) => entry.executorId !== host.executorId)) {
+  // The same pinned binder a conversation lease carries through.
+  const pinned = await bindPinnedExecutorLocalApps(deps.prisma, {
+    actorContext: AuthorizedActionContextSchema.parse(claim.set.launchOrigin),
+    actorUserId: claim.set.ownerUserId, agentId: context.agent.id,
+    executorId: host.executorId, runId: claim.attempt.runId,
+  })
+  if (pinned.kind === 'existing' && pinned.bindings.some((entry) => entry.executorId !== host.executorId)) {
     throw new TaskSetBlocked('processor_search_binding_changed')
   }
-  if (existing.length === 0) {
-    const actor = AuthorizedActionContextSchema.parse(claim.set.launchOrigin)
-    const result = await resolveExecutorAvailabilityCandidates(deps.prisma, actor, {
-      agentId: context.agent.id, executorId: host.executorId, operationKeys: ['mcp.tools', 'mcp.call'],
-      runId: claim.attempt.runId,
-    })
-    const candidate = result.candidates.find((entry) => entry.operationKeys.includes('mcp.tools') && entry.operationKeys.includes('mcp.call'))
-    if (!candidate) throw new TaskSetBlocked('processor_search_setup_required')
-    await deps.prisma.$transaction((tx) => bindExecutorCandidateBundleInTransaction(tx, {
-      actorUserId: claim.set.ownerUserId, candidateHandle: candidate.handle,
-      operationKeys: ['mcp.tools', 'mcp.call'], runId: claim.attempt.runId,
-    }))
-  }
+  if (pinned.kind === 'unavailable') throw new TaskSetBlocked('processor_search_setup_required')
   const agent = await deps.prisma.agent.findUniqueOrThrow({
     where: { id: context.agent.id }, select: { toolPolicy: true },
   })
   const toolset = await buildExecutorToolset(deps.prisma, {
     agentId: context.agent.id, agentToolPolicy: agent.toolPolicy as Record<string, boolean> | null,
     encryptionSecret: deps.executorCommandEncryptionSecret,
+    // Not a person's launch in a conversation: the set binds its own
+    // `ollama-search` for public-web research through its owner's account,
+    // and every result travels under the set's own classified disclosure.
+    hostOutput: null,
     organizationId: claim.set.organizationId, runId: claim.attempt.runId,
   })
   if (!toolset.handledNames.has(executorToolName('mcp.tools')) || !toolset.handledNames.has(executorToolName('mcp.call'))) {
@@ -70,15 +81,10 @@ export const buildTaskSetSearchTools = async (
     execute: () => toolset.dispatch(executorToolName('mcp.tools'), { server: 'ollama-search' }, `${claim.attempt.id}:search-catalog`),
   })
   if (!listed.success) throw new TaskSetBlocked('processor_search_setup_required')
-  const envelope = JSON.parse(listed.output) as { catalog?: unknown }
-  const catalog = ExecutorMcpToolCatalogSchema.parse(envelope.catalog)
-  const allowed = ['ollama_web_search', 'ollama_web_fetch']
-  const tools = catalog.tools.filter((tool) => allowed.includes(tool.name))
-  if (tools.length !== 2 || catalog.nextCursor) throw new TaskSetBlocked('processor_search_setup_required')
   return {
-    descriptors: tools.map((tool) => ({ toolName: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema })),
+    descriptors: taskSetSearchDescriptors(listed.output),
     call: async (name, args, callId) => {
-      if (!allowed.includes(name)) throw new TaskSetBlocked('processor_unapproved_tool')
+      if (!TASK_SET_SEARCH_TOOLS.includes(name)) throw new TaskSetBlocked('processor_unapproved_tool')
       const result = await toolset.dispatch(executorToolName('mcp.call'), { server: 'ollama-search', tool: name, arguments: args }, callId)
       if (!result.success) throw new TaskSetBlocked(taskSetSearchFailure(result.output))
       return result.output

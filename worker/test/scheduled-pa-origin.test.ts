@@ -79,8 +79,10 @@ type TriggerPrismaHarness = {
 const createTriggerHarness = (
   teamScopeValid = true,
   organizationMemberActive = true,
-  // Users who are members of the private target channel at fire time.
+  // Users explicitly present in the target channel roster at fire time.
   channelMembers: string[] = [USER_ID],
+  channelVisibility: 'private' | 'public' = 'private',
+  agentBound = true,
 ): TriggerPrismaHarness => {
   const failedDeliveries: Array<Record<string, unknown>> = []
   const organizationMemberQueries: Array<Record<string, unknown>> = []
@@ -131,21 +133,21 @@ const createTriggerHarness = (
         (value): value is string =>
           typeof value === 'string' && value.includes('"actorContext"'),
       )
-      assert.ok(encoded)
-      queuePayloads.push(JSON.parse(encoded))
+      if (encoded) queuePayloads.push(JSON.parse(encoded))
       return 1
     },
   }
   const prisma = {
     agentBinding: {
-      findFirst: async () => ({ id: 'binding' }),
+      findFirst: async () => agentBound ? { id: 'binding' } : null,
     },
     agentTriggerDelivery: {
       findFirst: async () => null,
-      upsert: async (args: { create: Record<string, unknown> }) => {
-        failedDeliveries.push(args.create)
+      create: async (args: { data: Record<string, unknown> }) => {
+        failedDeliveries.push(args.data)
         return {}
       },
+      updateMany: async () => ({ count: 1 }),
     },
     agentTrigger: {
       update: async (args: { data: Record<string, unknown> }) => {
@@ -169,14 +171,16 @@ const createTriggerHarness = (
       findUnique: async () => ({
         channelId: CHANNEL_ID,
         channel: {
+          deletedAt: null,
           organizationId: ORGANIZATION_ID,
-          visibility: 'private',
+          systemChannelType: null,
+          type: 'standard',
+          visibility: channelVisibility,
         },
       }),
     },
-    // The PA is its owner's delegate, so firing into a private channel is
-    // re-checked against that owner's membership at fire time — exactly like a
-    // shared agent's saved launcher.
+    // Unattended scheduled authority requires explicit roster membership even
+    // in a public channel. Manual public-channel access remains unchanged.
     channelMember: {
       findFirst: async (args: { where: { userId: string } }) =>
         channelMembers.includes(args.where.userId) ? { userId: args.where.userId } : null,
@@ -215,6 +219,7 @@ const fireSchedule = async (
     teamId: null,
   },
 ): Promise<void> => queueTriggerRun(harness.prisma, {
+  admissionPolicy: 'scheduled_fail_closed',
   dedupeKey: 'scheduled:one',
   payload: { scheduledFor: '2026-07-19T10:00:00.000Z' },
   source: 'scheduler',
@@ -265,7 +270,10 @@ test('legacy user-owned PA schedule fails closed before run enqueue', async () =
   delete config['launchOrigin']
   const harness = createTriggerHarness()
 
-  await assert.rejects(fireSchedule(harness, config), /then recreate the schedule/)
+  await assert.rejects(
+    fireSchedule(harness, config),
+    /Repair the saved launch configuration before resuming this schedule/,
+  )
   // One transaction, and it is the health transition — which commits its own
   // alert enqueue atomically, so a crash cannot leave a dead schedule with no
   // alert. `queuePayloads` below is what proves no RUN was dispatched.
@@ -274,7 +282,7 @@ test('legacy user-owned PA schedule fails closed before run enqueue', async () =
   assert.equal(harness.failedDeliveries.length, 1)
   assert.match(
     String(harness.failedDeliveries[0]?.['errorMessage']),
-    /then recreate the schedule/,
+    /Repair the saved launch configuration before resuming this schedule/,
   )
   assert.equal(harness.triggerUpdates.length, 1)
   assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
@@ -321,7 +329,7 @@ test('a PA schedule stops firing once its owner loses the private channel', asyn
   const config = await createSchedule()
   const harness = createTriggerHarness(true, true, [])
 
-  await assert.rejects(fireSchedule(harness, config), /no longer has access/)
+  await assert.rejects(fireSchedule(harness, config), /no longer a member/)
   // One transaction, and it is the health transition — which commits its own
   // alert enqueue atomically, so a crash cannot leave a dead schedule with no
   // alert. `queuePayloads` below is what proves no RUN was dispatched.
@@ -330,6 +338,44 @@ test('a PA schedule stops firing once its owner loses the private channel', asyn
   assert.equal(harness.triggerUpdates.length, 1)
   assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
   assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'channel_access_lost')
+})
+
+test('a user-owned schedule stops once its user leaves a public channel', async () => {
+  // Public visibility remains sufficient for an interactive visit, but it is
+  // not durable authority for an unattended schedule. Removing the saved human
+  // from the roster is the explicit stop signal the product promises.
+  const config = await createSchedule()
+  const harness = createTriggerHarness(true, true, [], 'public')
+
+  await assert.rejects(fireSchedule(harness, config), /no longer a member/)
+  assert.equal(harness.transactionCount, 1)
+  assert.equal(harness.queuePayloads.length, 0)
+  assert.equal(harness.failedDeliveries[0]?.['nextRetryAt'], null)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'channel_access_lost')
+})
+
+test('a scheduled shared agent fails closed after it is removed from the channel', async () => {
+  const harness = createTriggerHarness(true, true, [USER_ID], 'public', false)
+
+  await assert.rejects(
+    fireSchedule(
+      harness,
+      { createdViaTool: true, interval_minutes: 60 },
+      {
+        agentKind: 'shared',
+        organizationId: ORGANIZATION_ID,
+        projectId: PROJECT_ID,
+        teamId: TEAM_ID,
+      },
+    ),
+    /agent is no longer in the target channel/,
+  )
+  assert.equal(harness.transactionCount, 1)
+  assert.equal(harness.queuePayloads.length, 0)
+  assert.equal(harness.failedDeliveries[0]?.['nextRetryAt'], null)
+  assert.equal(harness.triggerUpdates[0]?.['status'], 'error')
+  assert.equal(harness.triggerUpdates[0]?.['healthReason'], 'agent_channel_access_lost')
 })
 
 test('deactivated organization member fails before run enqueue', async () => {
@@ -379,7 +425,7 @@ test('legacy REST schedule without an origin fails before run enqueue', async ()
         teamId: TEAM_ID,
       },
     ),
-    /legacy user-facing schedule[\s\S]*then recreate the schedule/,
+    /legacy user-facing schedule[\s\S]*Repair the saved launch configuration/,
   )
   // One transaction, and it is the health transition — which commits its own
   // alert enqueue atomically, so a crash cannot leave a dead schedule with no

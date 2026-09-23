@@ -48,6 +48,7 @@
     "@nessie/memory": "workspace:*",
     "@nessie/model-subscriptions": "workspace:*",
     "@nessie/push": "workspace:*",
+    "@nessie/retrieval": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@nessie/team-admin": "workspace:*",

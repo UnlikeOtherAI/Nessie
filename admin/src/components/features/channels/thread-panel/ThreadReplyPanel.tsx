@@ -26,6 +26,7 @@ import { useAgentLivenessHint } from '../useAgentLivenessHint'
 import { replyComposerDraftKey } from '../composer-draft'
 import { useChannelComposer } from '../useChannelComposer'
 import { useChannelMessageActions } from '../useChannelMessageActions'
+import { ExecutorLeaseIndicator } from '../../executors/ExecutorLeaseIndicator'
 
 interface ThreadReplyPanelProps {
   activeChannel: ChannelRecord
@@ -214,6 +215,15 @@ export const ThreadReplyPanel = ({
   })
 
   const rootDeleted = Boolean(root?.deletedAt)
+  // A room's local-apps launch carries into its own reply thread, so this is
+  // the composer its holder keeps using: their lease sits in its toolbar,
+  // exactly as the main composer's does. The server answers anyone else with
+  // nothing, and the indicator keeps only the lease launched at this root (or
+  // one covering the whole thread).
+  const leaseAgents = useMemo(() => [...agentMap.values()], [agentMap])
+  const executorLeaseIndicator = activeThreadId && openRootMessageId ? (
+    <ExecutorLeaseIndicator agents={leaseAgents} rootMessageId={openRootMessageId} threadId={activeThreadId} />
+  ) : null
 
   // A real depth-2 route drawn as a full-screen overlay over the conversation's
   // own layer, so on the iOS shell it publishes over the conversation's bar and
@@ -352,6 +362,7 @@ export const ThreadReplyPanel = ({
                 </label>
                 <ChannelComposer
                   attachments={attachments}
+                  executorLeaseIndicator={executorLeaseIndicator}
                   isSendPending={isSendPending}
                   sendError={sendError}
                   mentionEntities={mentionEntities}

@@ -1098,3 +1098,133 @@ test('a turn\'s reasoning rides on its assistant message so the provider can hav
   assert.equal(assistant?.role === 'assistant' && assistant.reasoning, 'The tool has what I need.')
   assert.equal(assistant?.role === 'assistant' && assistant.content, 'calling the tool')
 })
+
+// Loop detection: every tool's third identical call is refused, except the
+// observation tools, whose identical calls count only while consecutive.
+
+const scriptedCalls = (calls: Array<{ args: Record<string, unknown>; name: string }>) => {
+  let turn = 0
+  return async (): Promise<InferenceResult> => {
+    const next = calls[turn]
+    turn += 1
+    return next
+      ? { ...toolCallInference(''), toolCalls: [{ arguments: next.args, toolCallId: `tc-${turn}`, toolName: next.name }] }
+      : { ...toolCallInference('done'), toolCalls: [] }
+  }
+}
+
+const userInstructions = (messages: ProviderMessage[]): string[] =>
+  messages.flatMap((message) => (
+    message.role === 'user' && typeof message.content === 'string' && message.content !== 'go'
+      ? [message.content]
+      : []
+  ))
+
+test('watching a catalog four times in a row gets the observation nudge, not the stop order', async () => {
+  const dispatched: string[] = []
+  const list = { args: { server: 'kelpie' }, name: 'executor_mcp_tools' }
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async (_name, _args, toolCallId) => {
+      dispatched.push(toolCallId)
+      return { inputSummary: 'list', output: 'the same catalog', success: true }
+    },
+    initialMessages: initial,
+    runInference: scriptedCalls([list, list, list, list]),
+    tools: [],
+  })
+  assert.deepEqual(dispatched, ['tc-1', 'tc-2', 'tc-3'], 'three in a row run; the fourth is refused')
+  assert.deepEqual(userInstructions(result.messages), [
+    'The result has not changed. Wait with a different call, or tell the person where things stand and end your turn.',
+  ])
+})
+
+test('an observation interleaved with other work is never refused', async () => {
+  const dispatched: string[] = []
+  const list = { args: { server: 'kelpie' }, name: 'executor_mcp_tools' }
+  const calls = [1, 2, 3, 4, 5].flatMap((n) => [list, { args: { n }, name: 'noop' }])
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async (_name, _args, toolCallId) => {
+      dispatched.push(toolCallId)
+      return { inputSummary: 'ran', output: 'ran', success: true }
+    },
+    initialMessages: initial,
+    runInference: scriptedCalls(calls),
+    tools: [],
+  })
+  assert.equal(dispatched.length, calls.length)
+  assert.deepEqual(userInstructions(result.messages), [])
+})
+
+test('an ordinary tool still stops at its third identical call', async () => {
+  const dispatched: string[] = []
+  const search = { args: { q: 'same' }, name: 'kb_search' }
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    executeTool: async (_name, _args, toolCallId) => {
+      dispatched.push(toolCallId)
+      return { inputSummary: 'search', output: 'nothing new', success: true }
+    },
+    initialMessages: initial,
+    runInference: scriptedCalls([search, search, search]),
+    tools: [],
+  })
+  assert.deepEqual(dispatched, ['tc-1', 'tc-2'])
+  assert.deepEqual(userInstructions(result.messages), [
+    'You are repeating the same tool call. Stop and produce a final answer with the information you already have.',
+  ])
+})
+
+test('a resumed run ignores loop counts checkpointed under the old rule', async () => {
+  const dispatched: string[] = []
+  const states: LoopResumeState[] = []
+  const search = { args: { q: 'same' }, name: 'kb_search' }
+  await runAgenticLoop({
+    budget: budget({}),
+    callbacks: { ...noopCallbacks(), onCheckpoint: async (state) => { states.push(state) } },
+    executeTool: async (_name, _args, toolCallId) => {
+      dispatched.push(toolCallId)
+      return { inputSummary: 'search', output: 'nothing new', success: true }
+    },
+    initialMessages: initial,
+    // Two identical calls already counted by the previous rule's unprefixed key.
+    resume: resumeStateFrom({ signatureCounts: { [`kb_search:${JSON.stringify({ q: 'same' })}`]: 2 } }),
+    runInference: scriptedCalls([search]),
+    tools: [],
+  })
+  assert.deepEqual(dispatched, ['tc-1'], 'the call runs: the old count is not read as a third repeat')
+  const saved = Object.keys(states.at(-1)?.signatureCounts ?? {})
+  assert.equal(saved.length, 1)
+  assert.equal(saved.some((key) => key.startsWith('kb_search:')), false, 'the old key is not carried forward')
+})
+
+test('a Stop pressed during a batch of executor calls sends none of the rest', async () => {
+  const dispatched: string[] = []
+  let stopped = false
+  const result = await runAgenticLoop({
+    budget: budget({}),
+    callbacks: noopCallbacks(),
+    checkCancelled: async () => stopped,
+    dispatchesInOrder: (name) => name.startsWith('executor_'),
+    executeTool: async (_name, _args, toolCallId) => {
+      dispatched.push(toolCallId)
+      stopped = true
+      return { inputSummary: 'call', output: 'done on the machine', success: true }
+    },
+    initialMessages: initial,
+    runInference: async () => ({
+      ...toolCallInference(''),
+      toolCalls: [1, 2, 3].map((n) => ({ arguments: { n }, toolCallId: `exec-${n}`, toolName: 'executor_mcp_call' })),
+    }),
+    tools: [],
+  })
+  // The loop's own probe after the batch ends the run; the batch's probe is
+  // what kept the second and third calls, each worth a full command TTL,
+  // from being sent first.
+  assert.deepEqual(dispatched, ['exec-1'])
+  assert.equal(result.cancelled, true)
+})

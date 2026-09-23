@@ -3,15 +3,8 @@ import {
   prepareScheduledAgentTodoTrigger,
 } from '@nessie/team-admin'
 import {
-  activeTeamMatchesAttribution,
   buildTriggerPrompt,
-  loadLedgerIdentitySettings,
-  loadLedgerUoaIdentity,
 } from '@nessie/runtime'
-
-// Read once at startup: whether this deployment signs Ledger calls is never a
-// per-request, per-organization or per-user decision.
-const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 import {
   type AgentTriggerType,
   type TriggerFireSkipReason,
@@ -21,10 +14,13 @@ import { claimThreadRunOrPend } from '../run/thread-serialization.js'
 import { recordDeliveryFailure } from './trigger-delivery-retry.js'
 import { recordTriggerHealthFailure } from './trigger-health.js'
 import {
-  assertTriggerExecutionOriginTenant,
-  resolveTriggerExecutionOrigin,
   TriggerLaunchOriginError,
 } from './trigger-origin.js'
+import {
+  assertTriggerRunAdmission,
+  isAgentChannelAdmissionError,
+  type TriggerRunAdmissionInput,
+} from './trigger-run-admission.js'
 
 // Shared "fire a run from a trigger" primitives used by both the scheduler sweep
 // and event dispatch. Kept separate from the scheduling/claim logic so the two
@@ -47,15 +43,24 @@ export type RetryContext = { reuseDeliveryId?: string; retryCount?: number }
  * webhook receiver's 202 promises its `dedupeKey` is the key
  * `GET /api/triggers/:id/deliveries` reports, and a skip that writes no row
  * leaves that promise unresolvable and indistinguishable from still-in-flight.
- * So the webhook dispatcher passes a recorder and every other caller passes
- * nothing: the scheduler sweep and event dispatch answer nobody, and a delivery
- * row per quiet sweep tick would be noise, not diagnosis.
+ * So the webhook dispatcher passes a recorder and event dispatch passes
+ * nothing. Scheduled triggers use the separate fail-closed policy: authority
+ * loss is an actionable stop, so it writes trigger health and one terminal
+ * delivery for the claimed occurrence even when an empty-work check would have
+ * skipped it.
  *
  * It is deliberately a hook rather than a second copy of the gate in the
  * webhook handler — the decision has exactly one implementation, and a
  * diagnosis derived from a re-read would drift from it.
  */
 export type TriggerFireSkipRecorder = (reason: TriggerFireSkipReason) => Promise<void>
+
+type TriggerRunAdmissionPolicy = 'recheck_then_skip' | 'scheduled_fail_closed'
+
+export type TriggerRunTarget = Omit<TriggerRunAdmissionInput, 'triggerType'> & {
+  id: string
+  type: AgentTriggerType
+}
 
 // Create the delivery for a fresh fire, or reuse+reset the row when retrying.
 export const upsertDelivery = async (
@@ -113,36 +118,146 @@ export const normalizePayload = (payload: unknown): Prisma.InputJsonValue => {
   return {}
 }
 
+const findExistingDelivery = async (
+  prisma: PrismaClient,
+  input: { dedupeKey?: string; triggerId: string },
+): Promise<{ id: string; status: string } | null> =>
+  input.dedupeKey
+    ? prisma.agentTriggerDelivery.findFirst({
+        where: {
+          dedupeKey: input.dedupeKey,
+          triggerId: input.triggerId,
+        },
+        select: { id: true, status: true },
+      })
+    : null
+
+const occurrenceAlreadyHandled = (
+  delivery: { id: string; status: string } | null,
+  retry: RetryContext | undefined,
+): boolean => {
+  if (!delivery) return false
+  return !(
+    retry?.reuseDeliveryId === delivery.id
+    && delivery.status === 'failed'
+  )
+}
+
+const recordTriggerRunFailure = async (
+  prisma: PrismaClient,
+  input: {
+    dedupeKey?: string
+    error: unknown
+    payload: Prisma.InputJsonValue
+    retry?: RetryContext
+    source: string
+    triggerId: string
+  },
+): Promise<void> => {
+  const classified = input.error instanceof TriggerLaunchOriginError
+  await recordDeliveryFailure(prisma, {
+    dedupeKey: input.dedupeKey,
+    error: input.error,
+    existingDeliveryId: input.retry?.reuseDeliveryId,
+    payload: input.payload,
+    retryCount: input.retry?.retryCount ?? 0,
+    retryable: !classified,
+    source: input.source,
+    triggerId: input.triggerId,
+  })
+  if (input.error instanceof TriggerLaunchOriginError) {
+    await recordTriggerHealthFailure(prisma, {
+      error: input.error,
+      triggerId: input.triggerId,
+    })
+  }
+}
+
+/**
+ * Scheduler admission before `skipWhenEmpty` is evaluated.
+ *
+ * A quiet channel cannot hide revoked authority forever. The same admission is
+ * repeated by `queueTriggerRun` after the empty check to close the race. An
+ * existing delivery wins first: a replay must never rewrite a delivered,
+ * skipped or already-failed occurrence after membership changes.
+ */
+export const preflightScheduledTriggerRun = async (
+  prisma: PrismaClient,
+  input: {
+    dedupeKey: string
+    payload: unknown
+    source: string
+    trigger: TriggerRunTarget
+  },
+): Promise<'handled' | 'ready'> => {
+  const existing = await findExistingDelivery(prisma, {
+    dedupeKey: input.dedupeKey,
+    triggerId: input.trigger.id,
+  })
+  if (existing) return 'handled'
+
+  const payload = normalizePayload(input.payload)
+  try {
+    await assertTriggerRunAdmission(prisma, {
+      ...input.trigger,
+      triggerType: input.trigger.type,
+    })
+    return 'ready'
+  } catch (error) {
+    await recordTriggerRunFailure(prisma, {
+      dedupeKey: input.dedupeKey,
+      error,
+      payload,
+      source: input.source,
+      triggerId: input.trigger.id,
+    })
+    throw error
+  }
+}
+
+/** Record a structurally broken scheduled target before a full admission input exists. */
+export const recordScheduledTriggerAdmissionFailure = async (
+  prisma: PrismaClient,
+  input: {
+    dedupeKey: string
+    detail: string
+    payload: unknown
+    source: string
+    triggerId: string
+  },
+): Promise<void> => {
+  const existing = await findExistingDelivery(prisma, {
+    dedupeKey: input.dedupeKey,
+    triggerId: input.triggerId,
+  })
+  if (existing) return
+  await recordTriggerRunFailure(prisma, {
+    dedupeKey: input.dedupeKey,
+    error: new TriggerLaunchOriginError('agent_channel_access_lost', input.detail),
+    payload: normalizePayload(input.payload),
+    source: input.source,
+    triggerId: input.triggerId,
+  })
+}
+
 export const queueTriggerRun = async (
   prisma: PrismaClient,
   input: {
+    admissionPolicy?: TriggerRunAdmissionPolicy
     dedupeKey?: string
     /** See `TriggerFireSkipRecorder`: only the webhook dispatcher passes one. */
     onSkipped?: TriggerFireSkipRecorder
     payload: unknown
     retry?: RetryContext
     source: string
-    trigger: {
-      agent: {
-        agentKind: 'personal_assistant' | 'shared'
-        organizationId: string | null
-        projectId: string | null
-        teamId: string | null
-      }
-      agentId: string
-      config?: unknown
-      id: string
-      targetChannelId: string
-      targetThreadId: string
-      type: AgentTriggerType
-    }
+    trigger: TriggerRunTarget
   },
 ): Promise<void> => {
   // The personal assistant is its owner's delegate, so it is exempt from the
   // *binding* gate — it is not bound to channels the way a shared agent is. It
   // is NOT exempt from the membership re-check: a PA's reach is its owner's
-  // reach, so if the owner has since lost access to a private target channel
-  // the trigger must not fire and load that channel's conversation.
+  // reach, so if the owner has since left any target channel the unattended
+  // trigger must not fire, even where ordinary public browsing remains open.
   //
   // DELIBERATELY STILL PA-KEYED, not moved onto the shared delegation
   // predicate. What is exempted here is the binding lookup, and a DM-homed
@@ -154,146 +269,42 @@ export const queueTriggerRun = async (
   // stopped twice more downstream: `assertGlobalAgentRunPlacement` refuses any
   // destination but the home DM, and the identity-tool gate admits nothing on a
   // run that is not an interactive human turn.
-  const isPersonalAssistantTrigger =
-    input.trigger.agent.agentKind === 'personal_assistant'
-  const existingDelivery = input.dedupeKey
-    ? await prisma.agentTriggerDelivery.findFirst({
-        where: {
-          dedupeKey: input.dedupeKey,
-          triggerId: input.trigger.id,
-        },
-        include: {
-          run: {
-            select: { id: true },
-          },
-        },
-      })
-    : null
-
-  if (existingDelivery?.run?.id) {
-    return
-  }
-
-  const thread = await prisma.thread.findUnique({
-    where: { id: input.trigger.targetThreadId },
-    select: {
-      channel: {
-        select: { organizationId: true, visibility: true },
-      },
-      channelId: true,
-    },
-  })
-  if (!thread || thread.channelId !== input.trigger.targetChannelId) {
-    // The same word the receiver's readiness predicate uses for a target that
-    // no longer hangs together — its 409 is `AGENT_NOT_BOUND` for this too.
-    await input.onSkipped?.('agent_not_bound')
-    return
-  }
-
-  if (!isPersonalAssistantTrigger) {
-    const binding = await prisma.agentBinding.findFirst({
-      where: {
-        agentId: input.trigger.agentId,
-        channelId: input.trigger.targetChannelId,
-      },
-      select: { id: true },
-    })
-    if (!binding) {
-      await input.onSkipped?.('agent_not_bound')
-      return
-    }
-  }
-
-  const content = buildTriggerPrompt({
-    config: input.trigger.config,
-    payload: input.payload,
-    source: input.source,
-    triggerType: input.trigger.type,
-  })
-  const scheduledTodo = prepareScheduledAgentTodoTrigger({
-    config: input.trigger.config,
+  const existingDelivery = await findExistingDelivery(prisma, {
+    dedupeKey: input.dedupeKey,
     triggerId: input.trigger.id,
   })
-
+  if (occurrenceAlreadyHandled(existingDelivery, input.retry)) {
+    return
+  }
   const normalizedPayload = normalizePayload(input.payload)
   try {
-    const executionOrigin = resolveTriggerExecutionOrigin({
-      agent: input.trigger.agent,
-      channelOrganizationId: thread.channel.organizationId,
+    let admission
+    try {
+      admission = await assertTriggerRunAdmission(prisma, {
+        ...input.trigger,
+        triggerType: input.trigger.type,
+      })
+    } catch (error) {
+      if (
+        input.admissionPolicy !== 'scheduled_fail_closed'
+        && isAgentChannelAdmissionError(error)
+      ) {
+        await input.onSkipped?.('agent_not_bound')
+        return
+      }
+      throw error
+    }
+    const { executionOrigin, isPersonalAssistantTrigger } = admission
+    const content = buildTriggerPrompt({
       config: input.trigger.config,
+      payload: input.payload,
+      source: input.source,
       triggerType: input.trigger.type,
     })
-    await assertTriggerExecutionOriginTenant(prisma, executionOrigin)
-
-    // Pre-flight the Ledger identity, so a schedule that can never sign says so
-    // once on the Triggers page instead of burning a failed run every sweep.
-    // Catches the three ways a captured identity goes stale: the link was
-    // revoked, the user's credential epoch rotated (logout, password change,
-    // deactivation), or the schedule predates identity capture entirely.
-    //
-    // It must ask exactly what dispatch asks. `loadLedgerUoaIdentity` checks
-    // only the account link (status, subject, epoch); the header path that
-    // actually signs a model call additionally requires the attributed team's
-    // external UOA mapping to match the captured team. Checking the
-    // narrower condition here let a trigger pass, create a run, and have that
-    // run die at its first inference — silently, because an unattended failure
-    // posts nothing. That is how one production schedule burned ~1.5 hours of
-    // failed runs before its epoch drifted far enough to fail this gate too.
-    if (ledgerSigningConfigured && executionOrigin.userId) {
-      const identity = executionOrigin.uoaIdentity
-        ? await loadLedgerUoaIdentity(prisma, {
-            actorId: executionOrigin.userId,
-            actorType: 'user',
-            organizationId: executionOrigin.organizationId,
-            uoaIdentity: executionOrigin.uoaIdentity,
-            userId: executionOrigin.userId,
-          })
-        : null
-      if (!identity) {
-        throw new TriggerLaunchOriginError(
-          'uoa_identity_unverifiable',
-          'its saved UnlikeOtherAI identity is missing or no longer valid',
-        )
-      }
-      // The same predicate the signing path applies, not a second copy of it.
-      const teamMatches = await activeTeamMatchesAttribution(
-        prisma,
-        {
-          actorId: executionOrigin.userId,
-          actorType: 'user',
-          organizationId: executionOrigin.organizationId,
-          ...(executionOrigin.teamId ? { teamId: executionOrigin.teamId } : {}),
-          userId: executionOrigin.userId,
-        },
-        identity,
-      )
-      if (!teamMatches) {
-        throw new TriggerLaunchOriginError(
-          'uoa_identity_unverifiable',
-          'its saved UnlikeOtherAI team no longer maps to its team',
-        )
-      }
-    }
-
-    // The saved user must still be able to reach the target channel at fire
-    // time — for a shared agent's saved launcher and equally for the personal
-    // assistant's owner. Losing that authorization fails closed; it must never
-    // silently erase the user while retaining their immutable billing team.
-    if (executionOrigin.userId && thread.channel.visibility !== 'public') {
-      const membership = await prisma.channelMember.findFirst({
-        where: {
-          channelId: input.trigger.targetChannelId,
-          userId: executionOrigin.userId,
-        },
-        select: { userId: true },
-      })
-      if (!membership) {
-        throw new TriggerLaunchOriginError(
-          'channel_access_lost',
-          'its saved user no longer has access to the target channel',
-        )
-      }
-    }
+    const scheduledTodo = prepareScheduledAgentTodoTrigger({
+      config: input.trigger.config,
+      triggerId: input.trigger.id,
+    })
 
     await prisma.$transaction(async (tx) => {
       const delivery = await upsertDelivery(tx, {
@@ -412,21 +423,14 @@ export const queueTriggerRun = async (
     }
     // sp-webhook: persist a retryable failed delivery (outside the rolled-back
     // tx) so the retry poller can re-attempt with backoff.
-    await recordDeliveryFailure(prisma, {
+    await recordTriggerRunFailure(prisma, {
       dedupeKey: input.dedupeKey,
       error,
-      existingDeliveryId: input.retry?.reuseDeliveryId,
       payload: normalizedPayload,
-      retryCount: input.retry?.retryCount ?? 0,
+      retry: input.retry,
       source: input.source,
       triggerId: input.trigger.id,
     })
-    if (error instanceof TriggerLaunchOriginError) {
-      await recordTriggerHealthFailure(prisma, {
-        error,
-        triggerId: input.trigger.id,
-      })
-    }
     throw error
   }
 }
