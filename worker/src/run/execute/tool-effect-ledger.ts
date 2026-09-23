@@ -226,6 +226,14 @@ export type ToolEffectScope = {
    * this run's own view of its tool list and reaches nothing outside Nessie.
    */
   isExternalDispatch: (toolName: string) => boolean
+  /**
+   * The offered tool a call's name resolves to — a provider namespace prefix
+   * (`default.`, `functions.`) dropped, exactly as dispatch drops it. Both
+   * claim questions are asked with this name: asked with the raw one, a
+   * `default.executor_mcp_call` or `default.send_message` would be dispatched
+   * as its tool with no claim behind it.
+   */
+  normalizeToolName: (toolName: string) => string
   runId: string
 }
 
@@ -459,7 +467,7 @@ export const createToolEffectLedger = (
   const claimable = (toolName: string, toolCallId: string): boolean =>
     typeof toolCallId === 'string'
     && toolCallId.trim().length > 0
-    && toolCallNeedsEffectRecord(toolName, scope.isExternalDispatch)
+    && toolCallNeedsEffectRecord(scope.normalizeToolName(toolName), scope.isExternalDispatch)
 
   const { prepareTool } = seams
   return {

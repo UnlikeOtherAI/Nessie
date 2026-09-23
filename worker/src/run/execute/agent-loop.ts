@@ -364,7 +364,10 @@ export const runExecutionAgentLoop = async (
     return executeAuthorizedTool(toolName, authorization.executionArgs ?? args, toolCallId, authorization)
   }
 
-  const prepareMainTool = async (toolName: string, args: Record<string, unknown>, toolCallId: string) => {
+  // Every main-loop call is prepared before it runs, so this resolves the name as
+  // dispatch does; asked with a raw `default.<tool>` the gate denies it as unknown.
+  const prepareMainTool = async (requestedToolName: string, args: Record<string, unknown>, toolCallId: string) => {
+    const toolName = normalizeToolName(requestedToolName)
     const authorization = await authorizeMainTool(toolName, args, toolCallId, {
       consumeApprovalProof: false,
     })
@@ -398,12 +401,14 @@ export const runExecutionAgentLoop = async (
   // taken at setup is a second source of truth that could send a call to a
   // connector with no claim behind it. `builtinMetaNames` is left out on
   // purpose: the tool-spec meta tool only rewrites this run's own view of its
-  // tool list, so a durable row per call would buy nothing.
+  // tool list, so a durable row per call would buy nothing. The claim is
+  // decided on the name dispatch resolves, so `default.<tool>` is claimed too.
   const effects = createToolEffectLedger(deps.prisma, {
     isExternalDispatch: externalDispatchPredicate({
       executorToolset: input.executorToolset,
       mcpView,
     }),
+    normalizeToolName,
     runId: context.run.id,
   }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
 
@@ -566,7 +571,7 @@ export const runExecutionAgentLoop = async (
     // is keyed by its program and tool like the bare name is.
     normalizeToolName,
     toolTimeoutError: (name, toolCallId) => input.executorToolset.timeoutErrorFor(normalizeToolName(name), toolCallId)
-      ?? input.mcpToolset.timeoutErrorFor(name),
+      ?? input.mcpToolset.timeoutErrorFor(normalizeToolName(name)),
     toolTimeoutMsFor: (name) => input.executorToolset.timeoutMsFor(normalizeToolName(name)),
     tools: mainToolDefs,
   })

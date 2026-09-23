@@ -199,7 +199,11 @@ failures of Kelpie's `wait_for_element` disable that tool, not every program
 the owner named. A listing counts under `executor_mcp_tools:<server>`, so
 Kelpie not running does not stop the run listing another program. The key
 is built from the offered name after a provider's namespace prefix
-(`default.`, `functions.`) is dropped, as it is for dispatch. A failure the model fixes by changing its call is marked
+(`default.`, `functions.`) is dropped, as it is for dispatch. Every step a call
+passes through resolves that same name — the authorization preflight, the
+tool-effect claim, the timeout and dispatch: a preflight asked with the raw
+name refused Meta models' `default.executor_mcp_call` as an unknown tool, and
+a claim asked with it would have let the call run unclaimed. A failure the model fixes by changing its call is marked
 `correctable` and never counts — the daemon's `EXECUTOR_COMMAND_ARGUMENTS_INVALID`,
 `EXECUTOR_MCP_RESULT_TOO_LARGE` and `EXECUTOR_MCP_CURSOR_INVALID`, and a
 server's own refusal of an unknown tool name or of arguments that fail the
