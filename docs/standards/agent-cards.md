@@ -90,6 +90,28 @@ this standard, not an exception to it.
   [`reply-threads.md`](reply-threads.md) → "Container threads as conversations".
   `AgentHandoffDoorway` stays separate for now — it points at a DM rather than a
   thread — and folding the two is named in the plan's "Later".
+- **The research card is the third presentational pointer, and it is live
+  too.** `Message.metadata.researchRunRef = {schemaVersion: 1, runId}`
+  (`ResearchRunRefMessageMetadataSchema` in
+  `packages/schemas/src/deep-water-message-metadata.ts`, `.strict()`) is written
+  **only** by the server, never from a client or model text, and points at one
+  DeepWater product run. Like the conversation pointer it holds no state: the
+  admin's `ResearchRunCard` renders `GET
+  /api/integrations/products/deep-water/research-runs/:runId` for the viewer
+  right now — the requester's brief being agreed, the launched research for
+  everyone else in the room, or "a research you can't see" on a 404 — and
+  refetches on the content-free `integration.run.updated` event the shell
+  handles once, so its status, report and actions are never a snapshot. Its
+  actions navigate (into the brief, or to the report in Documents), download or
+  copy (`ResearchArtifactActions`); none is a press, so none claims one. It is
+  not a card kind either. The message's text is the plain topic, its twin for
+  search and models, and is not rendered beside the card. An edit is refused
+  (`updateMessage` → `409 MESSAGE_IMMUTABLE_RESEARCH_CARD`, through the one
+  `isResearchRunRefMessage` predicate the admin shares, so the row offers no
+  pencil): a card whose words no longer match the research it shows would lie
+  about it. Deleting it stays allowed; the research itself is untouched. The
+  DeepWater rules are in [`deepwater.md`](deepwater.md) → "Research briefs —
+  the admin".
 - **An action may be a same-app doorway.** An action with `href` is an internal
   router path. It claims the card before navigation, so a draft cannot remain
   open for a stale second choice. A normal `submits: true` action validates the

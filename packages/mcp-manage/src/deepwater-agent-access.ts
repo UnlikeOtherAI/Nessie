@@ -6,29 +6,22 @@ import {
   type DeepWaterAgentAccessResponse,
   type DeepWaterAgentAccessTarget,
 } from '@nessie/schemas'
-
+import { ensureBuiltinToolRegistered, listAgentToolPolicyTargets } from '@nessie/team-admin'
 import {
-  AgentToolPolicyError,
-  listAgentToolPolicyTargets,
-  mergeAgentToolPolicy,
-  mutateAgentToolPolicyInTransaction,
-} from '@nessie/team-admin'
-import { runWithDeepWaterTransitionLock } from './deepwater-transition-lock.js'
-import { synchronizeMcpAgentGrant } from './agent-tool-policy-registry.js'
-const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
-import { ensureBuiltinToolsRegistered } from '@nessie/team-admin'
-import {
-  DEEP_WATER_MANUAL_UPDATER_MARKER,
   DEEP_WATER_RUN_UPDATE_TOOL_ID,
   deepWaterBundleMarkerKey,
-  hasDeepWaterBundleMarker,
 } from '@nessie/runtime'
-import {
-  DeepWaterActiveRunRevocationError,
-  guardDeepWaterPolicyRevocation,
-} from './deepwater-revocation-guard.js'
+
+import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
+
+/**
+ * DeepWater agent access, read side: which registry entries make up a team's
+ * bundle, whether its connector is on the contract access is computed for,
+ * and what each agent holds. Granting and revoking live in
+ * `deepwater-bundle-grants.ts`.
+ */
+
+const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 
 const REQUIRED_MCP_TOOL_NAMES =
   getIntegrationPluginManifest(DEEP_WATER_PRODUCT_SLUG)?.mcp?.tools
@@ -40,13 +33,14 @@ export const DEEP_WATER_REQUIRED_TOOL_COUNT =
 export const DEEP_WATER_AGENT_ACCESS_ERROR_CODES = {
   ACTIVE_RUNS: 'DEEP_WATER_AGENT_ACCESS_ACTIVE_RUNS',
   AGENT_NOT_FOUND: 'DEEP_WATER_AGENT_NOT_FOUND',
+  CONTRACT_OUTDATED: 'DEEP_WATER_CONTRACT_OUTDATED',
   TOOLS_UNAVAILABLE: 'DEEP_WATER_EXPLICIT_TOOLS_UNAVAILABLE',
 } as const
 
 export class DeepWaterAgentAccessError extends Error {
   override readonly name = 'DeepWaterAgentAccessError'
 
-  constructor(public readonly code: string, message: string) {
+  constructor(public readonly code: string, message: string, public readonly details?: unknown) {
     super(message)
   }
 }
@@ -62,6 +56,27 @@ export type DeepWaterPolicyKeys = {
   revocationPolicyKeys: string[]
 }
 
+/**
+ * A team's DeepWater access as its connector actually projects it.
+ * `contractOutdated` means the connector projects another tool contract than
+ * the one access is computed for (the manifest's, unless a contract upgrade
+ * names its target): the bundle is never `configured` from it, and it is only
+ * readable and revocable until an owner enables DeepWater again, which
+ * upgrades it in place.
+ */
+export type DeepWaterTeamAccess = DeepWaterPolicyKeys & { contractOutdated: boolean }
+
+const toolNameOf = (entry: { transportConfig: unknown }): string | null => {
+  const toolName = objectRecord(entry.transportConfig).toolName
+  return typeof toolName === 'string' ? toolName : null
+}
+
+const sameNameSet = (left: readonly string[], right: readonly string[]): boolean => {
+  const a = [...new Set(left)].sort()
+  const b = [...new Set(right)].sort()
+  return a.length === b.length && a.every((name, index) => name === b[index])
+}
+
 export const resolveDeepWaterPolicyKeys = (
   input: {
     builtinPolicyKey: string | null
@@ -70,8 +85,11 @@ export const resolveDeepWaterPolicyKeys = (
       metadata: unknown
       transportConfig: unknown
     }>
+    /** The contract's tool names; the manifest's unless an upgrade names its target. */
+    requiredToolNames?: readonly string[]
   },
 ): DeepWaterPolicyKeys => {
+  const requiredToolNames = input.requiredToolNames ?? REQUIRED_MCP_TOOL_NAMES
   const byToolName = new Map<string, string>()
   let exactProjectionSet = true
   for (const entry of input.projectedEntries) {
@@ -82,7 +100,7 @@ export const resolveDeepWaterPolicyKeys = (
     const toolName = objectRecord(entry.transportConfig).toolName
     if (
       typeof toolName !== 'string'
-      || !REQUIRED_MCP_TOOL_NAMES.includes(toolName)
+      || !requiredToolNames.includes(toolName)
       || byToolName.has(toolName)
     ) {
       exactProjectionSet = false
@@ -91,7 +109,7 @@ export const resolveDeepWaterPolicyKeys = (
     byToolName.set(toolName, entry.id)
   }
 
-  const projectedKeys = REQUIRED_MCP_TOOL_NAMES
+  const projectedKeys = requiredToolNames
     .map((toolName) => byToolName.get(toolName))
     .filter((policyKey): policyKey is string => Boolean(policyKey))
   const policyKeys = [
@@ -101,8 +119,8 @@ export const resolveDeepWaterPolicyKeys = (
   return {
     configured:
       exactProjectionSet
-      && input.projectedEntries.length === REQUIRED_MCP_TOOL_NAMES.length
-      && policyKeys.length === DEEP_WATER_REQUIRED_TOOL_COUNT,
+      && input.projectedEntries.length === requiredToolNames.length
+      && policyKeys.length === requiredToolNames.length + 1,
     policyKeys,
     revocationPolicyKeys: [
       ...new Set([
@@ -118,12 +136,16 @@ export const loadDeepWaterPolicyKeys = async (
   input: {
     organizationId: string
     teamId: string
+    /** The contract access is computed for; the manifest's by default. */
+    contractToolNames?: readonly string[]
   },
-): Promise<DeepWaterPolicyKeys> => {
-  await ensureBuiltinToolsRegistered(
-    prisma,
-    input.organizationId,
-  )
+): Promise<DeepWaterTeamAccess> => {
+  const contractToolNames = input.contractToolNames ?? REQUIRED_MCP_TOOL_NAMES
+  // Only the updater this read looks up. Grant, revoke and the contract upgrade
+  // call this inside the team transition lock's transaction, where registering
+  // every builtin (200+ upserts on one connection) outran the transaction's
+  // timeout under load.
+  await ensureBuiltinToolRegistered(prisma, input.organizationId, DEEP_WATER_RUN_UPDATE_TOOL_ID)
 
   const instance = await prisma.mcpServerInstance.findFirst({
     where: {
@@ -171,6 +193,14 @@ export const loadDeepWaterPolicyKeys = async (
       : Promise.resolve([]),
   ])
 
+  // The contract a team is on is the set of names its connector projects,
+  // whatever each row's state: a disabled row is an incomplete bundle, a
+  // missing or foreign name is another contract.
+  const projectedNames = projectedEntries
+    .map(toolNameOf)
+    .filter((name): name is string => name !== null)
+  const contractOutdated = instance !== null
+    && !sameNameSet(projectedNames, contractToolNames)
   const resolved = resolveDeepWaterPolicyKeys({
     builtinPolicyKey:
       builtin?.enabled === true && builtin.status === 'active'
@@ -178,9 +208,12 @@ export const loadDeepWaterPolicyKeys = async (
         : null,
     projectedEntries: projectedEntries
       .filter((entry) => entry.enabled && entry.status === 'active'),
+    requiredToolNames: contractToolNames,
   })
   return {
     ...resolved,
+    configured: resolved.configured && !contractOutdated,
+    contractOutdated,
     revocationPolicyKeys: [
       ...new Set([
         ...projectedEntries.map((entry) => entry.id),
@@ -188,92 +221,6 @@ export const loadDeepWaterPolicyKeys = async (
       ]),
     ],
   }
-}
-
-type DeepWaterProjectedBundle = {
-  projectedEntries: Array<{
-    id: string
-    metadata: unknown
-    transportConfig: unknown
-  }>
-  teamId: string
-}
-
-/**
- * The updater builtin is org-wide while the five MCP projections are
- * team-specific. Keep that shared allow when another team's exact projection
- * bundle is currently granted to the same agent.
- */
-export const resolveDeepWaterRevocationPolicyKeys = (input: {
-  builtinPolicyKey: string | null
-  currentPolicy: Record<string, boolean>
-  currentRevocationPolicyKeys: readonly string[]
-  currentTeamId: string
-  otherTeamBundles: readonly DeepWaterProjectedBundle[]
-}): string[] => {
-  const bundleMarker = deepWaterBundleMarkerKey(input.currentTeamId)
-  const ownsBuiltin = input.currentPolicy[bundleMarker] === true
-  const anotherTeamUsesBuiltin = input.otherTeamBundles.some((bundle) =>
-    bundle.projectedEntries.some(
-      (entry) => input.currentPolicy[entry.id] === true,
-    ))
-  const preserveBuiltin =
-    !ownsBuiltin
-    || input.currentPolicy[DEEP_WATER_MANUAL_UPDATER_MARKER] === true
-    || hasDeepWaterBundleMarker(input.currentPolicy, bundleMarker)
-    || anotherTeamUsesBuiltin
-
-  return [
-    ...input.currentRevocationPolicyKeys.filter(
-      (policyKey) =>
-        policyKey !== input.builtinPolicyKey || !preserveBuiltin,
-    ),
-    bundleMarker,
-  ]
-}
-
-const loadOtherTeamDeepWaterBundles = async (
-  tx: Prisma.TransactionClient,
-  input: {
-    organizationId: string
-    teamId: string
-  },
-): Promise<DeepWaterProjectedBundle[]> => {
-  const instances = await tx.mcpServerInstance.findMany({
-    where: {
-      organizationId: input.organizationId,
-      scopeId: { not: input.teamId },
-      scopeType: 'team',
-      lifecycleState: 'active',
-      catalogEntry: {
-        name: DEEP_WATER_PRODUCT_SLUG,
-        organizationId: null,
-        visibility: 'public',
-        integratedProducts: {
-          some: { slug: DEEP_WATER_PRODUCT_SLUG },
-        },
-      },
-    },
-    select: {
-      scopeId: true,
-      toolRegistryEntries: {
-        where: {
-          enabled: true,
-          organizationId: input.organizationId,
-          status: 'active',
-        },
-        select: {
-          id: true,
-          metadata: true,
-          transportConfig: true,
-        },
-      },
-    },
-  })
-  return instances.map((instance) => ({
-    projectedEntries: instance.toolRegistryEntries,
-    teamId: instance.scopeId,
-  }))
 }
 
 const summarizeTarget = (
@@ -319,112 +266,11 @@ export const getDeepWaterAgentAccess = async (
     summarizeTarget(target, access, input.teamId))
   return DeepWaterAgentAccessResponseSchema.parse({
     configured: access.configured,
+    contractOutdated: access.contractOutdated,
     personalAssistant:
       summaries.find((target) => target.agentKind === 'personal_assistant')
       ?? null,
     requiredToolCount: DEEP_WATER_REQUIRED_TOOL_COUNT,
     sharedAgents: summaries.filter((target) => target.agentKind === 'shared'),
   })
-}
-
-export const setDeepWaterAgentAccess = async (
-  prisma: PrismaClient,
-  input: {
-    agentId: string
-    enabled: boolean
-    organizationId: string
-    teamId: string
-  },
-): Promise<void> => {
-  try {
-    await runWithDeepWaterTransitionLock(prisma, input, async (tx) => {
-      const access = await loadDeepWaterPolicyKeys(tx, input)
-      if (input.enabled && !access.configured) {
-        throw new DeepWaterAgentAccessError(
-          DEEP_WATER_AGENT_ACCESS_ERROR_CODES.TOOLS_UNAVAILABLE,
-          'Deep Water must be enabled with all six explicit-grant tools before agent access can change.',
-        )
-      }
-
-      if (input.enabled) {
-        await mutateAgentToolPolicyInTransaction(tx, {
-          agentId: input.agentId,
-          organizationId: input.organizationId,
-          update: async (currentPolicy, policyTx) => {
-            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: access.policyKeys.filter((key) => UUID_PATTERN.test(key)) }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
-            for (const entry of entries) {
-              await synchronizeMcpAgentGrant(policyTx, entry, {
-                agentId: input.agentId,
-                enabled: true,
-              })
-            }
-            const bundleMarker = deepWaterBundleMarkerKey(input.teamId)
-            const next = mergeAgentToolPolicy(
-              currentPolicy,
-              access.policyKeys,
-              true,
-            )
-            if (
-              currentPolicy[DEEP_WATER_RUN_UPDATE_TOOL_ID] === true
-              && !hasDeepWaterBundleMarker(currentPolicy)
-              && currentPolicy[DEEP_WATER_MANUAL_UPDATER_MARKER] !== true
-            ) {
-              next[DEEP_WATER_MANUAL_UPDATER_MARKER] = true
-            }
-            next[bundleMarker] = true
-            return next
-          },
-        })
-      } else {
-        await mutateAgentToolPolicyInTransaction(tx, {
-          agentId: input.agentId,
-          organizationId: input.organizationId,
-          update: async (currentPolicy, policyTx) => {
-            await guardDeepWaterPolicyRevocation(policyTx, {
-              organizationId: input.organizationId,
-              teamId: input.teamId,
-            })
-            const otherTeamBundles = await loadOtherTeamDeepWaterBundles(
-              policyTx,
-              input,
-            )
-            const builtinPolicyKey = access.revocationPolicyKeys.includes(
-              DEEP_WATER_RUN_UPDATE_TOOL_ID,
-            )
-              ? DEEP_WATER_RUN_UPDATE_TOOL_ID
-              : null
-            const revokeKeys = resolveDeepWaterRevocationPolicyKeys({
-              builtinPolicyKey,
-              currentPolicy,
-              currentRevocationPolicyKeys: access.revocationPolicyKeys,
-              currentTeamId: input.teamId,
-              otherTeamBundles,
-            })
-            const entries = await policyTx.toolRegistryEntry.findMany({ where: { id: { in: revokeKeys.filter((key) => UUID_PATTERN.test(key)) }, handlerKind: 'mcp' }, select: { description: true, handlerKind: true, id: true, inputSchema: true, metadata: true, outputSchema: true, toolId: true, transportConfig: true } })
-            for (const entry of entries) {
-              await synchronizeMcpAgentGrant(policyTx, entry, {
-                agentId: input.agentId,
-                enabled: false,
-              })
-            }
-            return mergeAgentToolPolicy(currentPolicy, revokeKeys, false)
-          },
-        })
-      }
-    })
-  } catch (error) {
-    if (error instanceof DeepWaterActiveRunRevocationError) {
-      throw new DeepWaterAgentAccessError(
-        DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS,
-        error.message,
-      )
-    }
-    if (error instanceof AgentToolPolicyError) {
-      throw new DeepWaterAgentAccessError(
-        DEEP_WATER_AGENT_ACCESS_ERROR_CODES.AGENT_NOT_FOUND,
-        'Agent is not an editable Deep Water target in this organization.',
-      )
-    }
-    throw error
-  }
 }

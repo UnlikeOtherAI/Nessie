@@ -125,6 +125,11 @@ const KEEP_PREVIOUS_EXEMPT = [
   // project's roles could briefly grant board or sprint controls in the next
   // project, so the new project's decision deliberately loads closed first.
   'src/facades/projects/hooks.ts',
+  // A DeepWater research is read per viewer, and a brief can be private to its
+  // requester. Replaying one run's view or brief under another run's id would
+  // offer that run's actions and artifacts — or its private brief — as this
+  // one's, so a card or dialog shows its skeleton until its own run arrives.
+  'src/facades/deep-water/hooks.ts',
 ]
 
 test('every per-id facade query keeps its previous data', () => {

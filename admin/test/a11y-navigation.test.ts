@@ -129,7 +129,6 @@ test('no bare vh unit remains in the nine overlay panels', () => {
     '../src/components/shared/AttachmentViewer.tsx',
     '../src/components/features/channels/ThoughtProcessDialog.tsx',
     '../src/components/features/billing/UoaBillingCancellationDialog.tsx',
-    '../src/components/features/integrations/DeepWaterResearchLauncherDialog.tsx',
     '../src/components/features/triggers/TriggerEditorDialog.tsx',
   ]
   let bareVhCount = 0
@@ -141,10 +140,11 @@ test('no bare vh unit remains in the nine overlay panels', () => {
     assert.equal(matches.length, 0, `${file} still has a bare vh unit`)
   }
   // Dialog.tsx and AttachmentViewer.tsx each account for more than one of
-  // the plan's nine — assert the total lands on nine dvh conversions across
-  // the group (Dialog xl, MemberManagementPopup, AttachmentViewer x3,
-  // ThoughtProcessDialog, UoaBillingCancellationDialog,
-  // DeepWaterResearchLauncherDialog, TriggerEditorDialog).
+  // the plan's nine — assert the total lands on at least nine dvh conversions
+  // across the group (Dialog xl, MemberManagementPopup, AttachmentViewer x3,
+  // ThoughtProcessDialog, UoaBillingCancellationDialog, TriggerEditorDialog).
+  // The DeepWater launcher dialog that was the ninth panel is gone; its
+  // successor, the research brief, wears the shared Dialog's xl geometry.
   for (const file of overlayFiles) {
     // `dvh` always follows a digit here (`88dvh`, `calc(100dvh-2rem)`), so
     // there is no word boundary before the `d` — only match its tail.

@@ -1,12 +1,16 @@
 import type { FastifyInstance } from 'fastify'
 
+import { registerDeepWaterArtifactRoutes } from './integrations/deep-water-artifacts.js'
 import { registerExternalAgentProductRoutes } from './integrations/external-agent.js'
 import { registerIntegrationHandoffRoutes } from './integrations/handoffs.js'
 import { registerIntegrationProductRoutes } from './integrations/products.js'
+import { registerResearchRunRoutes } from './integrations/research-runs.js'
 import type { RouteDeps } from './types.js'
 
 export const registerIntegrationRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   registerIntegrationProductRoutes(app, deps)
+  registerDeepWaterArtifactRoutes(app, deps)
+  registerResearchRunRoutes(app, deps)
   registerIntegrationHandoffRoutes(app, deps)
   registerExternalAgentProductRoutes(app, deps)
 }

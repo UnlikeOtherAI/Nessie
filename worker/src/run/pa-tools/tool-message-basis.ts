@@ -1,11 +1,11 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { insertMessageBasis, insertMessageDisclosureSources } from '@nessie/runtime'
 
 import {
   computeReplyBasis,
   subtractImpliedScopes,
   type BasisScope,
 } from '../execute/disclosure-basis.js'
-import { persistablePrivateConversationSources } from '../execute/private-conversation-source-storage.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 
 type Tx = Prisma.TransactionClient | PrismaClient
@@ -112,30 +112,7 @@ export const computeDelegatedPostBasis = (input: {
     input.requesterScopes,
   )
 
-/**
- * Attach a basis to a message.
- *
- * `skipDuplicates` plus the fact that nothing here deletes rows is what makes an
- * *edit* a union rather than a replacement: an edit may narrow what a message
- * says, never relax what it is allowed to say.
- */
-export const insertMessageBasis = async (
-  tx: Tx,
-  input: { messageId: string; organizationId: string; basis: readonly BasisScope[] },
-): Promise<void> => {
-  if (input.basis.length === 0) {
-    return
-  }
-  await tx.messageBasisScope.createMany({
-    data: input.basis.map((scope) => ({
-      messageId: input.messageId,
-      organizationId: input.organizationId,
-      scopeId: scope.scopeId,
-      scopeType: scope.scopeType,
-    })),
-    skipDuplicates: true,
-  })
-}
+export { insertMessageBasis }
 
 /** Preserve private-conversation authors when a tool posts into another room. */
 export const insertPrivateConversationSources = async (
@@ -143,16 +120,8 @@ export const insertPrivateConversationSources = async (
   context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
   input: { messageId: string; organizationId: string },
 ): Promise<void> => {
-  const sources = context.consumedSources?.privateConversationSources() ?? []
-  const persistedSources = await persistablePrivateConversationSources(tx, sources)
-  if (persistedSources.length === 0) return
-  await tx.messageDisclosureSource.createMany({
-    data: persistedSources.map((source) => ({
-      messageId: input.messageId,
-      organizationId: input.organizationId,
-      sourceAuthorUserId: source.sourceAuthorUserId,
-      sourceChannelId: source.sourceChannelId,
-    })),
-    skipDuplicates: true,
+  await insertMessageDisclosureSources(tx, {
+    ...input,
+    sources: context.consumedSources?.privateConversationSources() ?? [],
   })
 }

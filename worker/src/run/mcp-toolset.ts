@@ -24,6 +24,11 @@ import {
   type McpToolsetView,
 } from './mcp-toolset-deferred.js'
 import type { DeepWaterHandoffGuard } from './deepwater-handoff-guard.js'
+import type { DeepWaterRunBinder } from './deepwater-run-binder.js'
+import {
+  addDeepWaterIdentityHeaders,
+  isManagedDeepWaterCatalog,
+} from './deepwater-ledger-transport.js'
 import {
   createMcpToolNameAllocator,
   MANAGED_DEEP_WATER_TOOL_NAMES,
@@ -72,15 +77,6 @@ type RegistryRow = {
 const stringRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 
-export const isManagedDeepWaterCatalog = (catalog: {
-  integratedProducts: Array<{ slug: string }>
-  name: string
-  visibility: string
-}): boolean =>
-  catalog.name === 'deep-water'
-  && catalog.visibility === 'public'
-  && catalog.integratedProducts.some((product) => product.slug === 'deep-water')
-
 const isManagedDeepWaterRow = (row: RegistryRow): boolean =>
   Boolean(
     row.mcpInstance
@@ -113,11 +109,11 @@ export type McpToolEntry = {
 export type McpToolset = {
   entries: McpToolEntry[]
   /**
-   * True when the managed DeepWater projections actually reached this run
-   * (granted AND in scope) — the structural fact behind the research routing
-   * block in the system prompt.
+   * The Ledger names of the managed DeepWater tools that actually reached
+   * this run (granted AND in scope) — the structural fact behind the research
+   * routing block in the system prompt, which names only these.
    */
-  hasManagedResearchTools: boolean
+  managedResearchToolNames: ReadonlySet<string>
   /**
    * `inline` exposes every tool schema directly (small setups); `deferred`
    * exposes the mcp_find_tools / mcp_load_tools / mcp_drop_tools flow so a
@@ -148,33 +144,7 @@ const resolveInlineToolLimit = (override?: number): number => {
 
 const defaultSecretResolver = new EnvSecretResolver()
 
-export const addDeepWaterIdentityHeaders = async (
-  transport: McpTransportConfig,
-  ledgerIdentity: LedgerIdentityService | null | undefined,
-  attribution: LedgerAttribution,
-  toolCallId: string,
-): Promise<McpTransportConfig> => {
-  if (!ledgerIdentity) {
-    throw new Error('LEDGER_IDENTITY_UNCONFIGURED')
-  }
-  if (
-    transport.transport === 'stdio'
-    || !transport.headers?.Authorization
-  ) {
-    throw new Error('LEDGER_PROXY_TOKEN_UNSET')
-  }
-  if (!toolCallId.trim()) {
-    throw new Error('LEDGER_TOOL_CALL_ID_REQUIRED')
-  }
-  const identityHeaders = await ledgerIdentity.requestHeaders(
-    attribution,
-    { requireUoaIdentity: true, toolCallId },
-  )
-  return {
-    ...transport,
-    headers: { ...(transport.headers ?? {}), ...identityHeaders },
-  }
-}
+export { addDeepWaterIdentityHeaders, isManagedDeepWaterCatalog }
 
 export const buildMcpToolset = async (
   prisma: PrismaClient,
@@ -196,6 +166,8 @@ export const buildMcpToolset = async (
     /** Test seam for the one worker-side transport call. */
     dispatchMcpTool?: typeof dispatchTool
     deepWaterHandoffGuard?: DeepWaterHandoffGuard
+    /** Binds every DeepWater call outside a launcher handoff turn to its product run. */
+    deepWaterRunBinder?: DeepWaterRunBinder
     ledgerIdentity?: LedgerIdentityService | null
     secretResolver?: SecretResolver
     inlineToolLimit?: number
@@ -412,18 +384,29 @@ export const buildMcpToolset = async (
           secret: null,
         })
       }
-      const guarded = target.deepWater && options.deepWaterHandoffGuard
+      // A launcher handoff turn belongs to its guard; every other DeepWater
+      // call to the run binder (N9.2). The two never see the same call.
+      const guarded = target.deepWater && options.deepWaterHandoffGuard?.bound
         ? await options.deepWaterHandoffGuard.dispatchDeepWater(
             target.originalToolName,
             toolCallId,
             args,
             dispatchTarget,
           )
-        : {
-            deliveryToken: null,
-            result: await dispatchTarget(toolCallId, args),
-            transportInvoked: true,
-      }
+        : target.deepWater && options.deepWaterRunBinder
+          ? {
+              deliveryToken: null,
+              result: (await options.deepWaterRunBinder.dispatch(
+                target.originalToolName,
+                toolCallId,
+                args,
+                dispatchTarget,
+              )).result,
+            }
+          : {
+              deliveryToken: null,
+              result: await dispatchTarget(toolCallId, args),
+            }
       const { deliveryToken, result } = guarded
       // A user-specific credential can make its tool result private even when
       // the agent and destination are shared. Record this immediately before
@@ -472,7 +455,9 @@ export const buildMcpToolset = async (
 
   return {
     entries,
-    hasManagedResearchTools: [...transportByExposedName.values()].some((t) => t.deepWater),
+    managedResearchToolNames: new Set(
+      [...transportByExposedName.values()].filter((t) => t.deepWater).map((t) => t.originalToolName),
+    ),
     mode,
     createView: () =>
       mode === 'deferred'

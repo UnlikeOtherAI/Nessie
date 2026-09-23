@@ -402,7 +402,9 @@ test('a signing deployment fails closed on an org-routed Ledger call with no UOA
           ledgerIdentity: identity,
         }),
       }),
-      /linked UnlikeOtherAI SSO identity/,
+      // The stage keeps the message and marks it as the person's to fix (F4).
+      (error: Error & { requesterIdentityRefused?: true }) =>
+        /linked UnlikeOtherAI SSO identity/.test(error.message) && error.requesterIdentityRefused === true,
     )
 
     assert.equal(dispatched, false, 'must not reach the wire unsigned')

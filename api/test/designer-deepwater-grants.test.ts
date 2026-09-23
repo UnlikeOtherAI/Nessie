@@ -10,6 +10,7 @@ import {
 } from '@nessie/mcp-manage'
 
 import { setDeepWaterAgentAccess } from '../src/services/deepwater-agent-access.js'
+import { getIntegrationPluginManifest } from '../src/services/integration-plugin-manifests.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -18,7 +19,9 @@ dbTest('DeepWater bundle atomically grants and revokes the descriptors the worke
   const organizationId = randomUUID()
   const userId = randomUUID()
   const agentId = randomUUID()
-  const names = ['research_start', 'research_status', 'research_report', 'research_list', 'research_cancel']
+  // The bundle is the manifest's tools, never a hard-coded list.
+  const names = getIntegrationPluginManifest('deep-water')?.mcp?.tools.map((tool) => tool.name) ?? []
+  assert.equal(names.length, 8)
   try {
     // Reuse the migration-owned public catalogue without mutating shared data.
     const product = await prisma.integratedProduct.findUniqueOrThrow({ where: { slug: 'deep-water' } })
@@ -65,12 +68,15 @@ dbTest('DeepWater bundle atomically grants and revokes the descriptors the worke
       outputSchema: entry.outputSchema,
     })
     await prisma.toolRegistryEntry.update({ where: { id: entries[4]!.id }, data: { enabled: false } })
-    await assert.rejects(setDeepWaterAgentAccess(prisma, { ...input, enabled: true }), /all six/)
+    await assert.rejects(
+      setDeepWaterAgentAccess(prisma, { ...input, enabled: true }),
+      /every one of its explicit-grant tools/,
+    )
     assert.equal(await prisma.toolGrant.count({ where: { agentId } }), 0, 'incomplete bundle grants nothing')
     await prisma.toolRegistryEntry.update({ where: { id: entries[4]!.id }, data: { enabled: true } })
     await setDeepWaterAgentAccess(prisma, { ...input, enabled: true })
     const grants = await prisma.toolGrant.findMany({ where: { agentId, roleId: null } })
-    assert.equal(grants.length, 5)
+    assert.equal(grants.length, names.length)
     for (const [index, entry] of entries.entries()) {
       const grant = grants.find((row) => row.toolId === entry.id)
       assert.ok(grant)
@@ -89,7 +95,7 @@ dbTest('DeepWater bundle atomically grants and revokes the descriptors the worke
 
     await setDeepWaterAgentAccess(prisma, { ...input, enabled: false })
     const denied = await prisma.toolGrant.findMany({ where: { agentId, roleId: null } })
-    assert.equal(denied.length, 5, 'revocation leaves explicit tombstones against stale grants')
+    assert.equal(denied.length, names.length, 'revocation leaves explicit tombstones against stale grants')
     assert.ok(denied.every((row) => row.state === 'denied'))
     const revoked = await prisma.agent.findUniqueOrThrow({ where: { id: agentId } })
     assert.notEqual((revoked.toolPolicy as Record<string, boolean>).deep_water_run_update, true)

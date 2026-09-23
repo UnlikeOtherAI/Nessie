@@ -18,20 +18,27 @@ test('first-party integration manifests cover the sibling products', () => {
     deepWater?.mcp.catalogTemplate?.transport.urlEnv,
     'LEDGER_DEEPWATER_MCP_URL',
   )
+  // Brief-first: every research is agreed with DeepWater's planner, so
+  // research_start is not projected (the schemas are pinned to Ledger's
+  // tools/list in @nessie/mcp-manage's contract test).
+  assert.equal(deepWater?.version, '0.3.0')
   assert.deepEqual(
     deepWater?.mcp.tools.map((tool) => tool.name),
     [
-      'research_start',
+      'research_scope_start',
+      'research_scope_reply',
+      'research_scope_get',
+      'research_scope_launch',
       'research_status',
       'research_report',
-      'research_list',
       'research_cancel',
+      'research_list',
     ],
   )
   assert.deepEqual(
-    (deepWater?.mcp.tools.find((tool) => tool.name === 'research_start')
+    (deepWater?.mcp.tools.find((tool) => tool.name === 'research_scope_start')
       ?.inputSchema as { required?: string[] } | undefined)?.required,
-    ['query'],
+    ['topic'],
   )
   assert.equal(deepWater?.install.some((entry) => entry.requiredForAgentUse), true)
   const deepWaterSetup = deepWater?.install[0]?.setup ?? ''

@@ -48,9 +48,9 @@ import type { PendingStreamMessage } from '../../facades/threads/thinking'
 import type { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import type { useChannelMentions } from './useChannelMentions'
 import type { useChannelMessageSearch } from './useChannelMessageSearch'
-import type { useDeepWaterResearchLauncher } from './useDeepWaterResearchLauncher'
 import type { useExecutorRunLauncher } from './useExecutorRunLauncher'
 import type { useReplyThread } from '../../components/features/channels/useReplyThread'
+import { useResearchComposerButton } from '../../components/features/deep-water/useResearchComposerButton'
 
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
@@ -106,7 +106,6 @@ interface ChannelConversationSurfaceProps {
     | 'setOversizePaste'
     | 'secretCapture'
   >
-  deepWaterLauncher: ReturnType<typeof useDeepWaterResearchLauncher>
   // Live document composition for this conversation; the feed owns the popup.
   documentSessions: DocumentStreamEntry[]
   documentStore: DocumentStreamStore
@@ -187,7 +186,6 @@ export const ChannelConversationSurface = ({
   composer,
   conversationAgent,
   conversationRename,
-  deepWaterLauncher,
   documentSessions,
   documentStore,
   executorLauncher,
@@ -239,6 +237,7 @@ export const ChannelConversationSurface = ({
     submitEdit,
     updatePending,
   } = messageActions
+  const researchButton = useResearchComposerButton(composer.message)
   // The same derivation the header uses, so the composer and the Join action
   // can never disagree about whether this person is in the room.
   const roomControls = channelRoomControls({ activeChannel, isPersonalAssistantConversation })
@@ -343,6 +342,7 @@ export const ChannelConversationSurface = ({
         <div ref={feedScroll.contentRef}>
           {visibleActiveTab === 'messages' ? (
             <ChannelMessageFeed
+              channelId={activeChannel?.id ?? null}
               documentSessions={documentSessions}
               documentStore={documentStore}
               agentById={agentMap}
@@ -451,7 +451,7 @@ export const ChannelConversationSurface = ({
           onInsertHashSign={() => composer.mentionRef.current?.insertHashSign()}
           onInvitePendingAgent={(agentId) => void composer.invitePendingAgent(agentId)}
           onConfirmSecretCapture={composer.confirmSecretCapture}
-          onOpenDeepWaterResearch={deepWaterLauncher.open}
+          researchButton={researchButton}
           onOpenExecutorRun={executorLauncher.open}
           executorLeaseIndicator={executorLauncher.leaseIndicator}
           onOversizePaste={composer.setOversizePaste}

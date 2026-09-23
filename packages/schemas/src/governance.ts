@@ -157,6 +157,14 @@ export const AuditActionSchema = z.enum([
   'app.connected',
   'app.capabilities_refreshed',
   'app.disconnected',
+  // A DeepWater research an owner or admin cancelled, or one cancelled here
+  // without Ledger (Water plan amendments N8.5, N9.6), with what happened:
+  // `success` once it is cancelled, `denied` when Ledger refused, `error` when
+  // it could not be asked. A cancel sent through Ledger is first recorded as
+  // `cancel_requested` when Nessie accepts it, and as `cancelled` only once the
+  // worker has Ledger's answer. The run is named by id; never its topic.
+  'integration.research.cancel_requested',
+  'integration.research.cancelled',
   'auth.bootstrap',
   'auth.login',
   'auth.logout',

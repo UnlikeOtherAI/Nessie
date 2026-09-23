@@ -36,7 +36,6 @@ const ALLOWLIST = new Set([
   'admin/src/components/features/channels/DocumentTargetBar.tsx',
   'admin/src/components/features/channels/SecretCaptureDialog.tsx',
   'admin/src/components/features/channels/thread-panel/ThreadReplyPanel.tsx',
-  'admin/src/components/features/integrations/DeepWaterResearchLauncherDialog.tsx',
   'admin/src/components/features/knowledge/FileVersionUploadDialog.tsx',
   'admin/src/components/features/knowledge/notes/PageNotesLayer.tsx',
   'admin/src/components/features/knowledge/wikilink/WikilinkCreateConfirm.tsx',

@@ -25,6 +25,7 @@ import { buildFeedItems } from '../channel-feed'
 import { useAgentLivenessHint } from '../useAgentLivenessHint'
 import { replyComposerDraftKey } from '../composer-draft'
 import { useChannelComposer } from '../useChannelComposer'
+import { useResearchComposerButton } from '../../deep-water/useResearchComposerButton'
 import { useChannelMessageActions } from '../useChannelMessageActions'
 import { ExecutorLeaseIndicator } from '../../executors/ExecutorLeaseIndicator'
 
@@ -205,6 +206,8 @@ export const ThreadReplyPanel = ({
 
   // Same stick-to-bottom behaviour as the channel feed: the panel opens on the
   // newest reply and follows growing rows until the reader scrolls up.
+  // Research started here comes back under this reply thread's root.
+  const researchButton = useResearchComposerButton(message, { rootMessageId: openRootMessageId })
   const threadScroll = useStickToBottom(openRootMessageId, true, {
     failed: repliesQuery.isFetchNextPageError,
     hasMore: Boolean(repliesQuery.hasNextPage),
@@ -309,6 +312,7 @@ export const ThreadReplyPanel = ({
                   </div>
                 ) : null}
                 <ChannelMessageFeed
+                  channelId={activeChannel.id}
                   agentById={agentMap}
                   agentMap={agentMap}
                   channelUsers={channelUsers}
@@ -392,6 +396,7 @@ export const ThreadReplyPanel = ({
                   inviteErrors={inviteErrors}
                   onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
                   onDismissPendingAgent={dismissPendingAgent}
+                  researchButton={researchButton}
                   secretCapture={secretCapture}
                 />
               </>

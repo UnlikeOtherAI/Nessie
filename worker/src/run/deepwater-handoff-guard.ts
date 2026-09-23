@@ -78,6 +78,12 @@ const blockedDispatchResult = (): DeepWaterGuardedDispatchResult => ({
 })
 
 export type DeepWaterHandoffGuard = {
+  /**
+   * True on a launcher handoff turn (a message carrying `integrationLaunch`):
+   * the guard owns every DeepWater call. Otherwise it passes calls through and
+   * the run binder owns them (Water plan amendments N9.2).
+   */
+  bound: boolean
   assertCompletion: () => void
   dispatchDeepWater: (
     originalToolName: string,
@@ -119,6 +125,7 @@ const createGuard = (
 ): DeepWaterHandoffGuard => {
   if (!run) {
     return {
+      bound: false,
       assertCompletion: () => undefined,
       dispatchDeepWater: async (_toolName, toolCallId, args, dispatch) => {
         return {
@@ -225,6 +232,7 @@ const createGuard = (
   }
 
   return {
+    bound: true,
     assertCompletion: () => {
       if (
         !attemptAbandoned

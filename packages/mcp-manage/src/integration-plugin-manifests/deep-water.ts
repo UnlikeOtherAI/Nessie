@@ -1,5 +1,7 @@
 import type { IntegrationPluginManifest } from '@nessie/schemas'
 
+import { DEEP_WATER_BRIEF_CONTRACT_VERSION, deepWaterBriefTools } from './deep-water-brief-tools.js'
+
 /**
  * DeepWater's first-party product contract is isolated because Ledger routing,
  * schemas, credential ownership, and raw-metering semantics form one cohesive boundary
@@ -11,7 +13,7 @@ export const deepWaterIntegrationPluginManifest = {
   manifestRef: 'first-party/deep-water',
   productSlug: 'deep-water',
   name: 'Deep Water',
-  version: '0.2.2',
+  version: DEEP_WATER_BRIEF_CONTRACT_VERSION,
   vendor: 'UnlikeOtherAI',
   install: [
     {
@@ -38,119 +40,17 @@ export const deepWaterIntegrationPluginManifest = {
       auth: { method: 'bearer' },
     },
     toolBundleRef: 'first-party/deep-water-tools',
-    tools: [
-      {
-        name: 'research_start',
-        label: 'Start research',
-        description: 'Start a Ledger-owned, raw-usage-metered Deep Water research job.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: {
-              type: 'string',
-              minLength: 3,
-              maxLength: 20_000,
-              description: 'Research question or task.',
-            },
-            context: {
-              type: 'string',
-              maxLength: 50_000,
-              description:
-                'Optional constraints and background for the research. Ledger accepts no '
-                + 'other research options, so every further choice belongs here as a labelled '
-                + 'line — the same lines Nessie\'s research launcher sends, so a request you '
-                + 'compose by hand behaves like one a person launched. Supported lines and '
-                + 'their values: "Chapter depth: brief|standard|detailed|exhaustive", '
-                + '"Output tier: summary|full", "Output language: <ISO 639-1 code>", '
-                + '"Search quality: standard|premium", "Sections: 3-20", '
-                + '"Searches per pillar: 1-20". Omit a line to accept the pipeline default.',
-            },
-            depth: {
-              type: 'string',
-              enum: ['light', 'standard', 'deep', 'heavy'],
-              default: 'standard',
-            },
-            recency: {
-              type: 'string',
-              enum: ['any', 'recent'],
-              default: 'any',
-            },
-          },
-          required: ['query'],
-          additionalProperties: false,
-        },
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_status',
-        label: 'Read research status',
-        description: 'Read progress and terminal state for a Ledger-owned research job.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Ledger research job id.' },
-          },
-          required: ['id'],
-          additionalProperties: false,
-        },
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_report',
-        label: 'Read research report',
-        description: 'Read the completed report and references for a Ledger-owned research job.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Ledger research job id.' },
-          },
-          required: ['id'],
-          additionalProperties: false,
-        },
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_list',
-        label: 'List research',
-        description: 'List research jobs owned by the delegated UOA user through Ledger.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            limit: {
-              type: 'integer',
-              minimum: 1,
-              maximum: 100,
-              default: 20,
-            },
-          },
-          additionalProperties: false,
-        },
-        privacyTier: 'normal',
-        status: 'available',
-      },
-      {
-        name: 'research_cancel',
-        label: 'Cancel research',
-        description: 'Cancel a running Ledger-owned research job.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            id: { type: 'string', description: 'Ledger research job id.' },
-          },
-          required: ['id'],
-          additionalProperties: false,
-        },
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-    ],
+    // The brief-first contract (Water plan contract D8, §5.2, manifest 0.3.0):
+    // every research Nessie starts is agreed with DeepWater's planner first,
+    // so `research_start` is not projected. The input schemas equal Ledger's
+    // `tools/list` exactly (deep-water.ledger-contract.json); a team on the
+    // launcher contract is upgraded in place on its owner's next enable
+    // (`projectDeepWaterTeamContract`, amendments N9.1).
+    tools: deepWaterBriefTools,
   },
   ui: {
     pages: [
-      { id: 'research-launcher', label: 'Research launcher', status: 'available' },
+      { id: 'research-brief', label: 'Research brief', status: 'available' },
       { id: 'research-runs', label: 'Research runs', status: 'planned' },
       { id: 'research-sources', label: 'Sources and evidence', status: 'planned' },
     ],

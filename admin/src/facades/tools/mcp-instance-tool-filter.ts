@@ -5,8 +5,9 @@ const INSTANCE_PARAM = 'instance'
  * that narrows the owner review when an install has tools awaiting review.
  *
  * Deliberately separate from `deep-water-tool-filter.ts`: that one selects the
- * six-entry DeepWater *bundle* and therefore always includes the built-in
- * `deep_water_run_update` alongside the instance's own rows. This asks a
+ * DeepWater *bundle* (the manifest's projections, however many it names) and
+ * therefore always includes the built-in `deep_water_run_update` alongside the
+ * instance's own rows. This asks a
  * plainer question — which registry entries came from this MCP instance — and
  * folding the two together would make the bundle view leak a builtin into
  * every connector's list.

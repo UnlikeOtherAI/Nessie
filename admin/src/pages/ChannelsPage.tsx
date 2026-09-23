@@ -23,6 +23,7 @@ import { ConversationInfoFlow } from '../components/features/channels/Conversati
 import { type ChannelAgentParticipant, type MessageUserIdentity } from '../components/features/channels/channel-participants'
 import type { ConversationRenameDoorway } from '../components/features/channels/rename-conversation'
 import { ChatToolDock } from '../components/features/channels/tool-rail/ChatToolDock'
+import { ResearchBriefHost } from '../components/features/deep-water/ResearchBriefHost'
 import { conversationRoomEyebrow } from '../components/features/agents/conversations/conversation-presentation'
 import { availableChatTools } from '../components/features/channels/tool-rail/chat-tools'
 import { ChannelOverlays } from './channels/ChannelOverlays'
@@ -248,198 +249,202 @@ export const ChannelsPage = () => {
   if (!me) {
     return null
   }
+  // A research brief opened here comes back to the thread on screen.
+  const researchOrigin = activeChannel && activeThreadId
+    ? { channelId: activeChannel.id, kind: 'thread' as const, threadId: activeThreadId }
+    : null
 
   return (
-    // The leaving thread panel slides past the right edge, so the row clips
-    // for the length of that move — permanently would cut off the composer's
-    // own popovers.
-    <section
-      className={[
-        'relative flex h-full min-h-0',
-        messageSurface.replyThread.isClosing ? 'overflow-hidden' : '',
-      ].join(' ')}
-    >
-      <ChannelConversationSurface
-        activeCall={activeCall}
-        activeChannel={activeChannel}
-        activeThreadId={activeThreadId ?? null}
-        conversation={conversationHeader}
-        agentMap={agentMap}
-        boundAgents={boundAgents}
-        callEligible={callEligible}
-        callStarting={callStarting}
-        voiceCallActive={voiceCall.isActive}
-        voiceCallSupported={voiceCallSupported}
-        channelLiveness={messageSurface.channelLiveness}
-        channelUsers={channelUsers}
-        personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
-        chatDrop={messageSurface.chatDrop}
-        composePlaceholder={composePlaceholder}
-        composer={messageSurface.composer}
-        agentTabAvailable={agentTabAvailable}
-        agentsTabAvailable={agentsTabAvailable}
-        chatToolAgents={chatToolAgents}
-        conversationAgent={conversationAgent}
-        conversationRename={conversationRename}
-        deepWaterLauncher={messageSurface.deepWaterLauncher}
-        documentSessions={messageSurface.documentSessions}
-        documentStore={messageSurface.documentStore}
-        executorLauncher={messageSurface.executorLauncher}
-        externalAgentIdentity={externalAgentIdentity}
-        feedItems={messageSurface.feedItems}
-        feedScroll={messageSurface.feedScroll}
-        messageHistory={{
-          hasOlder: Boolean(messageSurface.hasOlderThreadMessages),
-          isLoadingOlder: messageSurface.isLoadingOlderThreadMessages,
-          olderLoadFailed: messageSurface.olderThreadMessagesFailed,
-          retryOlder: messageSurface.feedScroll.loadOlder,
-        }}
-        isConversationSurface={isConversationSurface}
-        isExternalAgentConversation={isExternalAgentActiveChannel}
-        triggersTabAvailable={triggersTabAvailable}
-        todosTabAvailable={todosTabAvailable}
-        isPersonalAssistantConversation={isPersonalAssistantConversation}
-        joinPending={messageSurface.joinChannel.isPending}
-        mentionEntities={messageSurface.mentionEntities}
-        messageActions={messageSurface.messageActions}
-        me={me}
-        pendingMessages={messageSurface.pendingMessages}
-        personalAssistantChannel={personalAssistantChannel}
-        personalAssistantState={personalAssistantState}
-        renderContent={messageSurface.renderContent}
-        replyThread={messageSurface.replyThread}
-        search={messageSurface.search}
-        shareRestricted={messageSurface.shareRestricted}
-        titleFavorite={titleFavorite}
-        token={token}
-        visibleActiveTab={visibleActiveTab}
-        onCallButton={onCallButton}
-        onCreateAgent={() => void navigate('/agents/designer')}
-        onJoin={() => {
-          if (activeChannel) messageSurface.joinChannel.mutate({ channelId: activeChannel.id })
-        }}
-        onOpenChatTool={openToolScreen}
-        onOpenInfo={() => {
-          if (activeChannel) void navigate(`/channels/${activeChannel.id}/info`)
-        }}
-        onOpenMembers={() => setShowMembersPopup(true)}
-        onOpenSettings={() => messageSurface.setShowChannelSettings(true)}
-        onSelectMessageAgent={setSelectedMessageAgent}
-        onSelectMessageUser={setSelectedMessageUser}
-        onToggleSearch={messageSurface.search.toggleSearch}
-        setActiveTab={setActiveTab}
-      />
-
-      <ChannelOverlays
-        activeCall={activeCall}
-        activeChannel={activeChannel}
-        activeThreadId={activeThreadId ?? null}
-        agentMap={agentMap}
-        agents={agents}
-        allUsers={allUsers}
-        boundAgents={boundAgents}
-        channelUsers={channelUsers}
-        callerCallActionError={callActionError}
-        callerCallActionPending={callActionPending}
-        callerDialogCall={callerDialogCall}
-        voiceCall={{
-          onClose: () => setVoiceDialogOpen(false),
-          onEnd: () => {
-            void voiceCall.end().then(() => setVoiceDialogOpen(false))
-          },
-          onRetry: () => {
-            void voiceCall.start()
-          },
-          onToggleMute: () => voiceCall.setMuted(!voiceCall.state.muted),
-          open: voiceDialogOpen,
-          state: voiceCall.state,
-        }}
-        startCallFailureCode={startCallFailureCode}
-        personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
-        deepWaterDialog={messageSurface.deepWaterLauncher.dialog}
-        hasRespondingAgent={messageSurface.hasRespondingAgent}
-        isExternalAgentConversation={isExternalAgentActiveChannel}
-        isPersonalAssistantConversation={isPersonalAssistantConversation}
-        me={me}
-        mentionEntities={messageSurface.mentionEntities}
-        oversizePaste={messageSurface.oversizePaste}
-        pendingMessages={messageSurface.pendingMessages}
-        renameConversation={{
-          conversation: conversationRecord,
-          onClose: () => setRenameConversationOpen(false),
-          open: renameConversationOpen,
-        }}
-        renderContent={messageSurface.renderContent}
-        replyThread={messageSurface.replyThread}
-        selectedMessageAgent={selectedMessageAgent}
-        selectedMessageUser={selectedMessageUser}
-        showChannelSettings={messageSurface.showChannelSettings}
-        showMembersPopup={showMembersPopup}
-        threadMessages={messageSurface.threadMessages}
-        threadMessageHistory={{
-          hasOlder: Boolean(messageSurface.hasOlderThreadMessages),
-          isLoadingOlder: messageSurface.isLoadingOlderThreadMessages,
-          olderLoadFailed: messageSurface.olderThreadMessagesFailed,
-          retryOlder: messageSurface.feedScroll.loadOlder,
-        }}
-        threadMessageLoader={{
-          failed: messageSurface.olderThreadMessagesFailed,
-          hasMore: Boolean(messageSurface.hasOlderThreadMessages),
-          isLoading: messageSurface.isLoadingOlderThreadMessages,
-          itemCount: messageSurface.threadMessages.length,
-          loadMore: () => messageSurface.fetchOlderThreadMessages({ cancelRefetch: false }),
-          pageCount: messageSurface.threadMessagePageCount,
-        }}
-        threadPendingMessages={messageSurface.threadPendingMessages}
-        token={token}
-        onCancelOversizePaste={() => messageSurface.setOversizePaste(null)}
-        onCloseMembers={() => setShowMembersPopup(false)}
-        onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
-        onCloseSelectedUser={() => setSelectedMessageUser(null)}
-        onCloseSettings={() => messageSurface.setShowChannelSettings(false)}
-        onInsertTrimmed={(trimmed) => {
-          messageSurface.setOversizePaste(null)
-          messageSurface.composer.mentionRef.current?.insertText(trimmed)
-        }}
-        onCloseCallerDialog={onCloseCallerDialog}
-        onCloseStartCallFailure={onCloseStartCallFailure}
-        onFinishCall={onFinishCall}
-        onOpenAgentActivity={(agentId) => {
-          setSelectedMessageAgent(null)
-          onSelectAgent(agentId)
-        }}
-        onSelectAgent={onSelectAgent}
-        onSendAsFile={messageSurface.composer.sendAsFile}
-      />
-      {selectedAgent ? (
-        <ChatToolDock
-          activeChannelId={activeChannel?.id ?? null}
-          activeThreadId={activeThreadId ?? null}
-          agents={chatToolAgents}
-          onClose={closeTool}
-          onSelectAgent={selectChatToolAgent}
-          onToggle={toggleTool}
-          openTool={openTool}
-          otherPanelOpen={Boolean(messageSurface.replyThread.openRootMessageId) || Boolean(dashboardId)}
-          routed={routeTool !== null}
-          selectedAgent={selectedAgent}
-          threadId={messageSurface.browserThreadId ?? null}
-        />
-      ) : null}
-      {activeChannel ? (
-        <ConversationInfoFlow
+    <ResearchBriefHost origin={researchOrigin}>
+      {/* The leaving thread panel slides past the right edge, so the row clips
+          for the length of that move — permanently would cut off the composer's
+          own popovers. */}
+      <section
+        className={[
+          'relative flex h-full min-h-0',
+          messageSurface.replyThread.isClosing ? 'overflow-hidden' : '',
+        ].join(' ')}
+      >
+        <ChannelConversationSurface
+          activeCall={activeCall}
           activeChannel={activeChannel}
-          activeThreadId={messageSurface.replyThread.activeThreadId ?? null}
-          allUsers={allUsers}
-          canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
+          activeThreadId={activeThreadId ?? null}
+          conversation={conversationHeader}
+          agentMap={agentMap}
+          boundAgents={boundAgents}
+          callEligible={callEligible}
+          callStarting={callStarting}
+          voiceCallActive={voiceCall.isActive}
+          voiceCallSupported={voiceCallSupported}
+          channelLiveness={messageSurface.channelLiveness}
           channelUsers={channelUsers}
-          agentTools={availableChatTools(chatToolAgents)}
+          personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
+          chatDrop={messageSurface.chatDrop}
+          composePlaceholder={composePlaceholder}
+          composer={messageSurface.composer}
+          agentTabAvailable={agentTabAvailable}
+          agentsTabAvailable={agentsTabAvailable}
+          chatToolAgents={chatToolAgents}
+          conversationAgent={conversationAgent}
+          conversationRename={conversationRename}
+          documentSessions={messageSurface.documentSessions}
+          documentStore={messageSurface.documentStore}
+          executorLauncher={messageSurface.executorLauncher}
+          externalAgentIdentity={externalAgentIdentity}
+          feedItems={messageSurface.feedItems}
+          feedScroll={messageSurface.feedScroll}
+          messageHistory={{
+            hasOlder: Boolean(messageSurface.hasOlderThreadMessages),
+            isLoadingOlder: messageSurface.isLoadingOlderThreadMessages,
+            olderLoadFailed: messageSurface.olderThreadMessagesFailed,
+            retryOlder: messageSurface.feedScroll.loadOlder,
+          }}
+          isConversationSurface={isConversationSurface}
+          isExternalAgentConversation={isExternalAgentActiveChannel}
+          triggersTabAvailable={triggersTabAvailable}
+          todosTabAvailable={todosTabAvailable}
+          isPersonalAssistantConversation={isPersonalAssistantConversation}
+          joinPending={messageSurface.joinChannel.isPending}
+          mentionEntities={messageSurface.mentionEntities}
+          messageActions={messageSurface.messageActions}
           me={me}
-          onOpenTool={openToolScreen}
+          pendingMessages={messageSurface.pendingMessages}
+          personalAssistantChannel={personalAssistantChannel}
+          personalAssistantState={personalAssistantState}
+          renderContent={messageSurface.renderContent}
+          replyThread={messageSurface.replyThread}
+          search={messageSurface.search}
+          shareRestricted={messageSurface.shareRestricted}
+          titleFavorite={titleFavorite}
+          token={token}
+          visibleActiveTab={visibleActiveTab}
+          onCallButton={onCallButton}
+          onCreateAgent={() => void navigate('/agents/designer')}
+          onJoin={() => {
+            if (activeChannel) messageSurface.joinChannel.mutate({ channelId: activeChannel.id })
+          }}
+          onOpenChatTool={openToolScreen}
+          onOpenInfo={() => {
+            if (activeChannel) void navigate(`/channels/${activeChannel.id}/info`)
+          }}
+          onOpenMembers={() => setShowMembersPopup(true)}
+          onOpenSettings={() => messageSurface.setShowChannelSettings(true)}
+          onSelectMessageAgent={setSelectedMessageAgent}
+          onSelectMessageUser={setSelectedMessageUser}
+          onToggleSearch={messageSurface.search.toggleSearch}
+          setActiveTab={setActiveTab}
         />
-      ) : null}
-      {messageSurface.executorLauncher.dialog}
-      <Outlet />
-    </section>
+
+        <ChannelOverlays
+          activeCall={activeCall}
+          activeChannel={activeChannel}
+          activeThreadId={activeThreadId ?? null}
+          agentMap={agentMap}
+          agents={agents}
+          allUsers={allUsers}
+          boundAgents={boundAgents}
+          channelUsers={channelUsers}
+          callerCallActionError={callActionError}
+          callerCallActionPending={callActionPending}
+          callerDialogCall={callerDialogCall}
+          voiceCall={{
+            onClose: () => setVoiceDialogOpen(false),
+            onEnd: () => {
+              void voiceCall.end().then(() => setVoiceDialogOpen(false))
+            },
+            onRetry: () => {
+              void voiceCall.start()
+            },
+            onToggleMute: () => voiceCall.setMuted(!voiceCall.state.muted),
+            open: voiceDialogOpen,
+            state: voiceCall.state,
+          }}
+          startCallFailureCode={startCallFailureCode}
+          personalAssistantPresences={activeChannel?.personalAssistantPresences ?? []}
+          hasRespondingAgent={messageSurface.hasRespondingAgent}
+          isExternalAgentConversation={isExternalAgentActiveChannel}
+          isPersonalAssistantConversation={isPersonalAssistantConversation}
+          me={me}
+          mentionEntities={messageSurface.mentionEntities}
+          oversizePaste={messageSurface.oversizePaste}
+          pendingMessages={messageSurface.pendingMessages}
+          renameConversation={{
+            conversation: conversationRecord,
+            onClose: () => setRenameConversationOpen(false),
+            open: renameConversationOpen,
+          }}
+          renderContent={messageSurface.renderContent}
+          replyThread={messageSurface.replyThread}
+          selectedMessageAgent={selectedMessageAgent}
+          selectedMessageUser={selectedMessageUser}
+          showChannelSettings={messageSurface.showChannelSettings}
+          showMembersPopup={showMembersPopup}
+          threadMessages={messageSurface.threadMessages}
+          threadMessageHistory={{
+            hasOlder: Boolean(messageSurface.hasOlderThreadMessages),
+            isLoadingOlder: messageSurface.isLoadingOlderThreadMessages,
+            olderLoadFailed: messageSurface.olderThreadMessagesFailed,
+            retryOlder: messageSurface.feedScroll.loadOlder,
+          }}
+          threadMessageLoader={{
+            failed: messageSurface.olderThreadMessagesFailed,
+            hasMore: Boolean(messageSurface.hasOlderThreadMessages),
+            isLoading: messageSurface.isLoadingOlderThreadMessages,
+            itemCount: messageSurface.threadMessages.length,
+            loadMore: () => messageSurface.fetchOlderThreadMessages({ cancelRefetch: false }),
+            pageCount: messageSurface.threadMessagePageCount,
+          }}
+          threadPendingMessages={messageSurface.threadPendingMessages}
+          token={token}
+          onCancelOversizePaste={() => messageSurface.setOversizePaste(null)}
+          onCloseMembers={() => setShowMembersPopup(false)}
+          onCloseSelectedAgent={() => setSelectedMessageAgent(null)}
+          onCloseSelectedUser={() => setSelectedMessageUser(null)}
+          onCloseSettings={() => messageSurface.setShowChannelSettings(false)}
+          onInsertTrimmed={(trimmed) => {
+            messageSurface.setOversizePaste(null)
+            messageSurface.composer.mentionRef.current?.insertText(trimmed)
+          }}
+          onCloseCallerDialog={onCloseCallerDialog}
+          onCloseStartCallFailure={onCloseStartCallFailure}
+          onFinishCall={onFinishCall}
+          onOpenAgentActivity={(agentId) => {
+            setSelectedMessageAgent(null)
+            onSelectAgent(agentId)
+          }}
+          onSelectAgent={onSelectAgent}
+          onSendAsFile={messageSurface.composer.sendAsFile}
+        />
+        {selectedAgent ? (
+          <ChatToolDock
+            activeChannelId={activeChannel?.id ?? null}
+            activeThreadId={activeThreadId ?? null}
+            agents={chatToolAgents}
+            onClose={closeTool}
+            onSelectAgent={selectChatToolAgent}
+            onToggle={toggleTool}
+            openTool={openTool}
+            otherPanelOpen={Boolean(messageSurface.replyThread.openRootMessageId) || Boolean(dashboardId)}
+            routed={routeTool !== null}
+            selectedAgent={selectedAgent}
+            threadId={messageSurface.browserThreadId ?? null}
+          />
+        ) : null}
+        {activeChannel ? (
+          <ConversationInfoFlow
+            activeChannel={activeChannel}
+            activeThreadId={messageSurface.replyThread.activeThreadId ?? null}
+            allUsers={allUsers}
+            canAddPeople={activeChannel.viewerCanManage && activeChannel.type !== 'dm'}
+            channelUsers={channelUsers}
+            agentTools={availableChatTools(chatToolAgents)}
+            me={me}
+            onOpenTool={openToolScreen}
+          />
+        ) : null}
+        {messageSurface.executorLauncher.dialog}
+        <Outlet />
+      </section>
+    </ResearchBriefHost>
   )
 }

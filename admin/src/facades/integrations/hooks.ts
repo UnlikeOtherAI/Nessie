@@ -4,23 +4,16 @@ import type { ChatAssistantSurface } from '@nessie/schemas'
 import type {
   ChannelRecord,
   DeepWaterAgentAccessResponse,
-  DeepWaterResearchLaunchRequest,
-  DeepWaterResearchRunRecord,
   IntegratedProductResponse,
   IntegrationPluginManifest,
-  ThreadMessageRecord,
-  ThreadRecord,
 } from '../../lib/api-client'
 import { useIsOwner } from '../auth/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
-import { channelKeys } from '../channels/keys'
 import { threadKeys } from '../threads/keys'
 import {
   deepWaterAgentAccessKey,
   deepWaterAgentAccessKeyPrefix,
-  deepWaterResearchRunsKey,
-  deepWaterResearchRunsKeyPrefix,
   integratedProductsKey,
   integratedProductsKeyPrefix,
   integrationManifestKey,
@@ -106,19 +99,6 @@ export const useExternalAgentIdentity = (
   }, [isExternal, product, manifestQuery.data])
 }
 
-export const useDeepWaterResearchRuns = () => {
-  const apiClient = useApiClient()
-  const scope = useIntegrationQueryScope()
-
-  return useQuery<DeepWaterResearchRunRecord[]>({
-    queryKey: scope
-      ? deepWaterResearchRunsKey(scope)
-      : [...deepWaterResearchRunsKeyPrefix, 'signed-out'],
-    queryFn: () => apiClient.get('/api/integrations/products/deep-water/research-runs'),
-    enabled: scope !== null,
-  })
-}
-
 export const useDeepWaterAgentAccess = (enabled = true) => {
   const apiClient = useApiClient()
   const scope = useIntegrationQueryScope()
@@ -158,34 +138,3 @@ export const useSyncExternalAgentChannel = () => {
   })
 }
 
-export type DeepWaterResearchLaunchResponse = {
-  channel: ChannelRecord
-  message: ThreadMessageRecord
-  run: DeepWaterResearchRunRecord
-  thread: ThreadRecord
-}
-
-export const useLaunchDeepWaterResearch = () => {
-  const apiClient = useApiClient()
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (input: DeepWaterResearchLaunchRequest) =>
-      apiClient.post<DeepWaterResearchLaunchResponse>(
-        '/api/integrations/products/deep-water/research-launch',
-        input,
-      ),
-    onSuccess: (response) => {
-      void queryClient.invalidateQueries({
-        queryKey: integratedProductsKeyPrefix,
-      })
-      void queryClient.invalidateQueries({
-        queryKey: deepWaterResearchRunsKeyPrefix,
-      })
-      void queryClient.invalidateQueries({ queryKey: channelKeys.all })
-      void queryClient.invalidateQueries({
-        queryKey: threadKeys.messages(response.thread.id),
-      })
-    },
-  })
-}
