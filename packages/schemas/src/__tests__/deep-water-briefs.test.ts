@@ -300,7 +300,8 @@ test('a stored scope state carries DeepWater\'s latest progress, and one written
     { ...progress, at: 'yesterday' },
     { ...progress, sources_found: 31 },
   ]) {
-    assert.equal(DeepWaterScopeStateSchema.safeParse({ ...before, progress: wrong }).success, false, JSON.stringify(wrong))
+    const parsed = DeepWaterScopeStateSchema.safeParse({ ...before, progress: wrong })
+    assert.equal(parsed.success, false, JSON.stringify(wrong))
   }
 })
 
