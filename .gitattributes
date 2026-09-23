@@ -4,3 +4,7 @@
 packages/billing-statement-protocol/** -text
 scripts/with-deep-agent-token.sh text eol=lf
 scripts/with-deep-agent-token.test.sh text eol=lf
+# Ledger's published DeepWater tools/list, copied byte-for-byte and pinned by
+# SHA-256 in packages/mcp-manage/test/deep-water-ledger-contract.test.ts; keep
+# its LF bytes on every platform for the same reason.
+packages/mcp-manage/src/integration-plugin-manifests/deep-water.ledger-contract.json -text

@@ -67,9 +67,12 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 
 - **DeepWater as an agent tool** — an owner-only `team-enablement` toggle
   provisions a **team-scoped, tool-projecting** `McpServerInstance` from the
-  `deep-water` catalog entry and projects Ledger's `research_start` /
-  `research_status` / `research_report` / `research_list` / `research_cancel`
-  as active `mcp_research_*` tools, **always routed through Ledger**:
+  `deep-water` catalog entry and projects the manifest's Ledger tools (the
+  brief-first contract, manifest 0.3.0: the four `research_scope_*` tools plus
+  `research_status` / `research_report` / `research_cancel` /
+  `research_list`, pinned to Ledger's `tools/list`, never `research_start`;
+  an owner's next enable upgrades a team still on the launcher contract in
+  place) as active `mcp_research_*` tools, **always routed through Ledger**:
   `LEDGER_DEEPWATER_MCP_URL` (hosted
   `https://ledger.unlikeotherai.com/v1/mcp/deepwater`) with `LEDGER_PROXY_TOKEN`
   — Nessie's one deployment-wide, product-bound app API key, never a per-user
@@ -77,9 +80,9 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   (`LEDGER_DEEPWATER_MCP_URL_UNSET`,
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE`) rather than persisting a dead
   toggle. Everything else — default OFF with explicit per-agent
-  `requiresExplicitGrant` grants, the exact six-entry launcher bundle and
+  `requiresExplicitGrant` grants, the manifest-derived bundle and
   `/api/integrations/products/deep-water/agent-access`, the team-lock →
-  policy-lock → 6/6-read → run-insert ordering, handoff enforcement via
+  policy-lock → whole-bundle read → run-insert ordering, handoff enforcement via
   server-authored `integrationLaunch` metadata with the
   ambiguity-is-fatal-never-terminal recovery matrix, the
   no-cost/no-currency rule, identity headers, and the managed-instance

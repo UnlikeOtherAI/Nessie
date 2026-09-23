@@ -16,9 +16,43 @@ file is the rule**.
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` when the linked first-party catalog is
   missing), installs a bearer HTTP transport using `LEDGER_PROXY_TOKEN` as
   Nessie's one deployment-wide, product-bound Ledger app API key (never a
-  per-user credential), and projects
-  `research_start`, `research_status`, `research_report`, `research_list`, and
-  `research_cancel` as active `mcp_research_*` tools. Each sibling product must
+  per-user credential), and projects the manifest's tools — the brief-first
+  contract (manifest 0.3.0): `research_scope_start`, `research_scope_reply`,
+  `research_scope_get`, `research_scope_launch`, `research_status`,
+  `research_report`, `research_cancel` and `research_list`, all sensitive, and
+  never `research_start` — as active `mcp_research_*` tools. The tools are
+  `deepWaterBriefTools` in `@nessie/mcp-manage`, built from the shared brief
+  vocabulary, and a contract test deep-equals the manifest's input schemas
+  against `deep-water.ledger-contract.json` — Ledger's own
+  `docs/contracts/deepwater-mcp-tools.json`, copied byte-for-byte and never
+  edited here; the test pins its SHA-256 to the Ledger commit it was copied
+  from, so its descriptions and annotations are Ledger's too, and a refresh is
+  a deliberate re-copy plus a new pin. The manifest's own descriptions are
+  Nessie's and deliberately differ: Ledger tells its clients to read the
+  planner's reply with `research_scope_get`, while a Nessie agent is woken in
+  its thread. `MANAGED_DEEP_WATER_TOOL_NAMES` (the names whose `mcp_<name>`
+  DeepWater owns) is derived from the manifest plus `research_start` until the
+  launcher retires. Ledger serves these tools from its brief release, which must
+  be live before this manifest reaches production. A team still on the
+  launcher contract (manifest 0.2: `research_start`, `research_status`,
+  `research_report`, `research_list`, `research_cancel`) is
+  `contract_outdated` until its owner enables DeepWater again.
+  **Contracts move in place.** An owner enabling DeepWater again runs
+  `projectDeepWaterTeamContract`: a connector already on the manifest's
+  contract is re-pinned (keeping richer probed schemas); one on an older
+  Ledger contract is upgraded — rows for tools both contracts share keep their
+  registry ids and grants, rows for dropped tools are deleted only once no
+  launcher run (`uoa_identity IS NULL`, still queued, running or
+  `needs_setup`) could dispatch them (else 409 `LEDGER_DEEPWATER_ACTIVE_RUNS`
+  and the team keeps its tools), new tools are inserted, and every agent
+  holding the team's bundle marker is granted the new bundle; the legacy
+  direct-provider contract is replaced outright and must be granted again.
+  Agent access and launch authorization are computed from the names the
+  team's connector actually projects: a connector on another contract than
+  the manifest's reports `contractOutdated` (`DEEP_WATER_CONTRACT_OUTDATED`),
+  never a missing grant, and stays revocable. A research brief can be opened
+  only through a connector projecting exactly the brief contract; any other is
+  `contract_outdated` for briefs. Each sibling product must
   use its own app API key; app keys are never reused as webhook signing secrets.
   Transport authentication and caller identity are separate: every call carries
   a short-lived `X-Nessie-Context` RS256 JWT with non-null
@@ -96,9 +130,11 @@ file is the rule**.
   the agent lock. Its minimal target list
   includes the Personal Assistant without exposing PA bindings/activity through
   `/api/agents`. The DeepWater launcher and
-  `/api/integrations/products/deep-water/agent-access` manage/read the five MCP
-  projections plus `deep_water_run_update` as an exact six-entry bundle. Launch
-  stays disabled and the API rejects before run creation until the PA has 6/6;
+  `/api/integrations/products/deep-water/agent-access` manage/read the
+  manifest's MCP projections plus `deep_water_run_update` as one exact bundle
+  whose size is derived from the manifest, never hard-coded. Launch stays
+  disabled and the API rejects before run creation until the PA holds the whole
+  bundle;
   the updater counts only while its registry row is enabled and active, matching
   worker exposure, so a disabled builtin cannot authorize metered work;
   the final enablement/instance/policy reads and run insert are linearized under
@@ -117,12 +153,17 @@ file is the rule**.
   revocable. Registry callability and cleanup identity are separate: a disabled
   updater cannot satisfy readiness, but its protected allow is still removed by
   bundle revocation. Bundle and
-  individual lifecycle revocation return 409 during queued/running/needs_setup
-  work; there is no force override. Each
+  individual lifecycle revocation return 409 while work that needs the grant
+  is open, decided by `guardDeepWaterPolicyRevocation`'s mode: `legacy` (the
+  contract upgrade and the org-wide updater) waits for launcher runs still
+  queued, running or `needs_setup`; `agent` (one agent's revocation) waits for
+  those and for that agent's own briefs not yet launched (`queued`,
+  `drafting`). A launched brief and a person's brief never block a
+  revocation. There is no force override. Each
   org/team enable or disable is cross-process serialized by a PostgreSQL
   transaction-scoped advisory lock; connector rows and the product toggle
   mutate in the same transaction and roll back together on failure. Disable
-  returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, running, or
+  returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, drafting, running, or
   `needs_setup` research run still references the connector; cancel or recover
   the run, or let it reach a terminal state, before retrying disable.
   The worker enables handoff enforcement only from server-authored message
@@ -141,9 +182,11 @@ file is the rule**.
   queue retries, using the exact persisted id and arguments. A validated
   matching `rs_...` `id`/`job_id` plus exact Ledger status is persisted before
   success is returned; a retry then replays that ticket and status locally
-  without another Ledger call. Managed DeepWater owns the canonical five
-  `mcp_research_*` names even when private connectors collide or the grant is
-  absent, so the server-authored prompt can never dispatch a foreign connector.
+  without another Ledger call. Managed DeepWater owns the canonical
+  `mcp_research_*` names — derived from the manifest, plus
+  `mcp_research_start` while legacy handoffs exist — even when private
+  connectors collide or the grant is absent, so the server-authored prompt can
+  never dispatch a foreign connector.
   Same-batch status/report/cancel calls are pinned
   to that persisted id; `research_list` and delegation stay blocked for the
   launch turn so result delivery cannot be hidden inside a timed-out sub-agent.
@@ -212,5 +255,199 @@ file is the rule**.
   The locked write also enforces a terminal start ticket's exact Product status
   mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
   Re-enable preserves richer probed schemas only
-  when tool names exactly match the current Ledger contract; legacy
-  direct-provider projections are replaced and must be explicitly re-granted.
+  when tool names exactly match the current Ledger contract, upgrades an older
+  Ledger contract in place (see "Contracts move in place" above), and replaces
+  legacy direct-provider projections, which must be explicitly re-granted.
+
+## Research briefs — the product-run binding
+
+Every research Nessie starts is agreed with DeepWater's planner first, as a
+brief that lives on one `product_integration_runs` row from the first message
+to the delivered result. These rules hold for every brief row; the brief API,
+worker and card are built on them.
+
+- **Two creators, one lock.** A brief row is written only by
+  `createPersonDeepWaterBrief` (a person, keyed by the request's `actionId`) or
+  `claimAgentOriginRun` (an agent's `research_scope_start`, keyed by the calling
+  Run and its provider tool-call id), both in `@nessie/mcp-manage`. Both run
+  inside the team transition lock and re-read the team switch and its active
+  connector on the brief contract there, binding the row to that connector; the
+  agent path also re-reads its `research_scope_start` grant under its policy
+  lock. So a brief either exists before a disable or revocation looks for open
+  runs, or is never written. Both are idempotent on their key.
+- **The legacy marker is exact.** Both creators write the captured
+  `uoa_identity` and `scope_json` together, and launcher rows and other
+  products write neither; the `product_integration_runs_brief_binding_shape`
+  CHECK makes `uoa_identity IS NULL` the exact legacy marker.
+- **Sources only grow.** `source_scopes` and `disclosure_sources` record what
+  the research was built from, never destination-subtracted. A person's brief
+  starts with its room's channel scope and their own lineage when the room is
+  not public (a private or protected channel, or their Personal Assistant DM),
+  read by `createPersonDeepWaterBrief` from the origin thread itself
+  (`deepWaterPersonOriginSources`); an agent's claim starts with its run's
+  consumed sources. Every content-bearing agent call unions its run's sink in
+  with `unionDeepWaterRunSources` under the row lock, which never removes or
+  reorders an entry.
+- **Stable UOA ids only.** `uoa_identity` is `{subject, organizationId, teamId,
+  tokenVersion}` — never an email or a name. `refreshDeepWaterRunIdentity`
+  renews it from a live action by the same subject, organisation and team, never
+  to an older epoch, and clears a `requester_identity_changed` block in the same
+  statement.
+- **One research, one run.** A Ledger research id binds to at most one product
+  run (partial unique index on `(product_slug, external_run_id)`). It attaches
+  once, from whichever Ledger read names it first — a tool's ack or the watch —
+  and a later read naming another id is a contract violation, not a race. The
+  attach always makes the run `drafting`, even when that first read already
+  reports the research finished, so the watch keeps claiming it until the
+  delivery lands.
+- **Ledger owns a brief's status.** `deep_water_run_update`, the launcher's
+  agent updater, refuses every brief row (`DEEP_WATER_BRIEF_RUN_LEDGER_OWNED`)
+  and only ever matches `uoa_identity IS NULL`: a status or research id an
+  agent wrote would end the watch before the research was delivered.
+- **The projection only advances.** Ledger reads apply under the row lock
+  (`applyDeepWaterScopeResult`, `applyDeepWaterStatusRead`,
+  `applyDeepWaterLaunchTicket`). The brief content moves only on a strictly
+  greater revision, the planner turn only on a greater `(seq, status rank)`,
+  and the status only forward (`queued` → `drafting` → `running`): a read
+  issued before a launch can land after its ticket, so a read never moves a
+  run back. Ledger reverting a launch Water refused (an inline 409 `scope-*`)
+  is known only to the launch job, which moves the run back itself with
+  `revertDeepWaterLaunch` while its launch is the action in flight.
+  `cancelled` is written directly; a finished research is written only by the
+  delivery claim.
+- **A person's action happens once.** `beginDeepWaterPersonAction` records
+  the action in flight and enqueues it in one transaction, keyed by its
+  `actionId`; a request whose key is already queued or done is a replay
+  whatever that action's outcome, and is never re-armed. That is decided
+  before anything else — the busy check and the route's own checks (the
+  revision, still drafting) — because a retry whose response was lost finds
+  the brief already moved on by its own action, and refusing it would make the
+  client resend under a new id and pay for a second planner turn. One action
+  is in flight per brief and is cleared only by its own turn or outcome, with two
+  exceptions: a cancel replaces any in-flight action except the opening
+  `scope_start` before Ledger acknowledged it (there is no research id to
+  cancel yet, so the cancel is refused as busy for those seconds), and a
+  cancelled or finished brief ends whatever action was in flight — including a
+  brief Ledger refused to open (`failUnstartedDeepWaterBrief`), whose opening
+  action ends with its error code in the same write.
+- **Delivery happens once.** `claimDeepWaterDelivery` writes the terminal
+  status with `delivered_at` in one conditional statement; the reply or wake is
+  written in the same transaction. A block (`blockDeepWaterDelivery`) is set
+  once, with its one notice; a retryable block keeps the run `running` so its
+  connector stays for the retry.
+- **One view of a run.** `toDeepWaterResearchRunView` and `toDeepWaterBriefView`
+  (`@nessie/runtime`) build every research view from its row: the status of
+  contract §2.4 (`starting` while a launch is in flight, `needs_setup` as a
+  `needs_operator` failure), the planner's side from register (b) and the
+  person's matching action (`deepWaterPlannerTurnView` — a planner failure is
+  never a person's action error), transcript authors from Nessie's own
+  `turnAuthors`, and the viewer's actions (`deepWaterViewerActions`). The words
+  for a failure, a planner failure and an action error come from one table
+  (`deepwater-brief-view-copy.ts`) that the worker's notices share.
+- **Who may see a run** is `isDeepWaterRunVisible` in `@nessie/runtime`, the
+  one predicate for lists, detail, the card and artifacts: the origin thread's
+  live chain for anyone in it, the full source basis for the requester's
+  portable reach, and a person's brief stays private until it is launched.
+- **The legacy run list.** `GET /api/integrations/products/:productSlug/research-runs`
+  (`listDeepWaterResearchRuns`, rendered by Knowledge › Research's
+  `DeepWaterResearchView` → `DeepWaterRunHistory`) reads the whole team with no
+  viewer predicate, so it returns launcher rows only (`uoa_identity IS NULL`).
+  A brief row there would show a colleague's unlaunched brief — its topic
+  included, from their Personal Assistant or a private channel — to the whole
+  team. **Hand-over:** the brief API's list (`GET
+  /api/integrations/products/deep-water/research-runs?cursor&limit`, `{items:
+  ResearchRunView[], meta}`, every row through `isDeepWaterRunVisible`) takes
+  the same path, so the change that adds it deletes the legacy handler,
+  `listDeepWaterResearchRuns` and its bare-array response in the same commit,
+  and moves `DeepWaterResearchView` and its hook to the paginated
+  `ResearchRunView` shape. Any launcher row the new list still shows goes
+  through the same view mapper and predicate; there is never a window with two
+  handlers on one path, or with brief rows on the unfiltered list.
+
+## Research briefs — the watch, delivery and wakes
+
+Nothing pushes from Ledger to Nessie. The worker watches every open brief and
+research through Ledger (`worker/src/control/deepwater-*.ts`), and that watch is
+the only way results come back.
+
+- **The watch.** `deep-water-watch` runs every 5 s under `withSweepLock` and
+  claims due runs with `claimDueDeepWaterWatchRuns` (`FOR UPDATE SKIP LOCKED`,
+  at most 50): attached briefs and researches still open and not blocked, plus
+  agent briefs whose `research_scope_start` result was lost. Each claim
+  advances `reconcile_seq`, backs `reconcile_after` off, and enqueues one
+  `deep_water.run.watch` job keyed by that sequence (`maxAttempts: 1`: the next
+  claim is the retry). An applied read sets the next read: 5 s while a planner
+  turn or a person's action is in flight, 30 s while the research runs, then
+  half the time since the last change, between 10 minutes and 6 hours.
+- **Reads are cost-free control-plane calls** through the run's own connector
+  (`callDeepWaterLedgerTool`, shared with the run toolset through
+  `deepwater-ledger-transport.ts`), signed as the requester with the captured
+  `uoa_identity` and the `deep-water.delivery` system component, tool-call id
+  `watch:<runId>:<seq>`. A brief is read with `research_scope_get` (with its
+  transcript only once a planner turn has settled since the transcript was
+  captured), a research with `research_status`; the answer goes through the
+  same projection the tool acks use. A transient failure changes nothing; an
+  identity that no longer resolves blocks the run with
+  `requester_identity_changed` until the requester's next live action (or
+  Retry) renews it. Only a person's own brief is blocked quietly, because its
+  dialog says "Sign in again"; an agent's brief tells the requester once that
+  the agent can't carry on (they cannot edit it, and the agent is never woken
+  while the watch is stopped), and a launched research tells them DeepWater
+  can't check on it — never that it finished.
+- **A lost agent scope start** is replayed as the agent's own call — its Run,
+  agent, kind, provider tool-call id and stored arguments — which Ledger answers
+  with the one brief it keyed to that call, or opens now. The attach posts the
+  agent's research card (`ensureDeepWaterResearchCard`, once per run under the
+  row lock). A person's lost opening is retried by its own brief-action job,
+  never replayed by the watch.
+- **Stale actions.** An in-flight action whose job is no longer queued or
+  running ends by what Ledger shows (`settleStaleDeepWaterAction`): a launch
+  whose research is running is finished, one whose planner turn is still open
+  is kept, anything else ends as `unavailable`.
+- **Turn wakes.** After every applied read, `claimDeepWaterTurnWake` takes the
+  settled planner turn once, in turn order, by advancing
+  `last_handled_turn_seq` under the row lock. An agent-authored turn wakes that
+  agent (at most eight wakes per brief, then one notice to the person); a
+  person's turn only advances the claim. Acks never wake.
+- **A wake is one run** (`wakeDeepWaterAgent`): a hidden `system` kickoff with a
+  deterministic id, `metadata.deepWaterDelivery`, the run's full source basis
+  and private-conversation lineage, placed under the research card; then the
+  per-thread claim, with purpose `deep_water.delivery`, the requester as
+  effective user and the captured identity. Such a pending wake drains alone,
+  its failure is announced in the thread, and a replay is a `duplicate`. A wake
+  passes the gates a trigger fire does: a shared agent must still be bound to
+  the origin channel (the Personal Assistant is placed by presence, which its
+  run re-checks), and in a non-public channel the requester must still be a
+  member. A wake that cannot reach anyone (thread or agent gone, agent unbound,
+  requester inactive or out of the room) becomes a notice to the person.
+- **Delivery** (`deliverDeepWaterResearch`) reads `research_report` once per
+  attempt (`delivery:<runId>:report`), stores the exact `report.md` and an RFC
+  4180 `sources.csv` through `FileService` (`recordDeepWaterArtifactFile` keeps
+  the first), imports the report to a page whose id is fixed by the run (the
+  requester's My Docs for a DM or Personal Assistant conversation, otherwise the
+  project's Project Documents; notes for a summary or a truncated report lead
+  the page; a page deleted in Documents — which archives it — or whose marker
+  no longer names this run's stored report blocks rather than being
+  overwritten, and the person's Retry import, `retryDeepWaterDelivery`, puts
+  that same page back with `restoreDeepWaterReportPage` before delivering; the
+  watch never undoes what was done to a page), and then, in the claim's
+  transaction, posts the person's result reply under the card with an alert
+  keyed `deep-water-result:<runId>`, or wakes the agent that asked. A failed
+  research is delivered the same way with a notice or a `failed` wake. An expired or unreadable report is a final block;
+  a changed identity, a destination that went away and any other refusal are
+  retryable blocks. Every notice names its remedy and carries
+  `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks
+  with nothing posted, since there is nowhere to post it.
+- **Realtime.** Every DeepWater transaction collects what it owes realtime and
+  publishes it only after it commits (`runDeepWaterTransaction`,
+  `deepwater-announce.ts`): each card, result and notice (`message.new` /
+  `message.reply`, content-free when the message carries a disclosure basis),
+  the requester's `alert.created` keyed `<eventKey>:<userId>`, and
+  `integration.run.updated {productSlug, runId}` — content-free, on the
+  requester's user lane and, once the run has a card there or an agent opened
+  it, the origin channel's lane — whenever a viewer would see the run change.
+  A publish failure is logged and never undoes the change; nothing polls.
+- **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
+  confirmed within a day (`failed/start_unconfirmed`), telling the agent once
+  (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,
+  so a confirmation that does arrive later still attaches.

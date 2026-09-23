@@ -10,6 +10,7 @@ import {
   NESSIE_LEDGER_APP_API_KEY_ENV,
   removeDeepWaterTeamInstance,
 } from '../src/services/deepwater-activation.js'
+import { getIntegrationPluginManifest } from '../src/services/integration-plugin-manifests.js'
 import {
   asDeepWaterActivationPrisma as asPrisma,
   DEEP_WATER_CATALOG_ID,
@@ -29,6 +30,8 @@ import {
  */
 
 const DEEP_WATER_URL = 'https://8.8.8.8/v1/mcp/deepwater'
+/** The manifest's Ledger tools — the contract every projection must equal. */
+const MANIFEST_TOOLS = (getIntegrationPluginManifest('deep-water')?.mcp?.tools ?? []).map((tool) => tool.name)
 process.env.LEDGER_DEEPWATER_MCP_URL = DEEP_WATER_URL
 process.env.LEDGER_PROXY_TOKEN = 'nessie-ledger-app-api-key'
 process.env.UOA_DOMAIN = 'api.nessie.works'
@@ -67,22 +70,17 @@ test('enabling DeepWater creates a team-scoped instance with a usable transport 
     'Bearer lk_test_proxy_token',
   )
 
-  // The manifest's five Ledger tools carry useful schemas, are active, and
+  // The manifest's Ledger tools carry useful schemas, are active, and
   // require an explicit per-agent grant.
   const toolNames = fake.registry.map((r) => r.toolId.split(':').pop())
-  assert.deepEqual(toolNames.sort(), [
-    'research_cancel',
-    'research_list',
-    'research_report',
-    'research_start',
-    'research_status',
-  ])
+  assert.deepEqual(toolNames.sort(), [...MANIFEST_TOOLS].sort())
+  assert.equal(toolNames.includes('research_start'), false)
   assert.deepEqual(
-    (fake.registry.find((entry) => entry.toolId.endsWith(':research_start'))
+    (fake.registry.find((entry) => entry.toolId.endsWith(':research_scope_start'))
       ?.inputSchema as { required?: string[] }).required,
-    ['query'],
+    ['topic'],
   )
-  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
   assert.ok(fake.registry.every((r) => r.status === 'active'))
   assert.ok(fake.registry.every((r) =>
     (r.metadata as { requiresExplicitGrant?: boolean })?.requiresExplicitGrant === true))
@@ -97,20 +95,14 @@ test('enabling DeepWater twice is idempotent (no duplicate instance)', async () 
   await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
 
   assert.equal(fake.instances.length, 1)
-  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
 })
 
 test('re-enable preserves a current probe schema but enforces the Ledger app key', async () => {
   const seed = { organizationId: randomUUID(), teamId: randomUUID() }
   const instanceId = randomUUID()
   const probedSchema = { type: 'object', properties: { q: { type: 'string' } } }
-  const ledgerTools = [
-    'research_start',
-    'research_status',
-    'research_report',
-    'research_list',
-    'research_cancel',
-  ]
+  const ledgerTools = MANIFEST_TOOLS
   const fake = makeFake({
     ...seed,
     seedInstances: [
@@ -125,7 +117,7 @@ test('re-enable preserves a current probe schema but enforces the Ledger app key
         transportConfig: { transport: 'http', url: 'https://legacy.example.org/mcp' },
         discoveredTools: ledgerTools.map((name) => ({
           name,
-          inputSchema: name === 'research_start' ? probedSchema : { type: 'object' },
+          inputSchema: name === 'research_scope_start' ? probedSchema : { type: 'object' },
         })),
       },
     ],
@@ -136,7 +128,7 @@ test('re-enable preserves a current probe schema but enforces the Ledger app key
         toolId: `mcp:${instanceId}:${name}`,
         label: name,
         description: 'probed',
-        inputSchema: name === 'research_start' ? probedSchema : { type: 'object' },
+        inputSchema: name === 'research_scope_start' ? probedSchema : { type: 'object' },
         outputSchema: null,
         status: 'active',
         metadata: {},
@@ -148,9 +140,9 @@ test('re-enable preserves a current probe schema but enforces the Ledger app key
 
   // No manifest schema overwrites the current adapter probe, but routing and
   // auth are pinned to Ledger.
-  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
   assert.deepEqual(
-    fake.registry.find((entry) => entry.toolId.endsWith(':research_start'))?.inputSchema,
+    fake.registry.find((entry) => entry.toolId.endsWith(':research_scope_start'))?.inputSchema,
     probedSchema,
   )
   assert.deepEqual(fake.instances[0]?.transportConfig, {
@@ -201,7 +193,7 @@ test('re-enable replaces a legacy direct-provider tool contract', async () => {
   await ensureDeepWaterTeamInstance(asPrisma(fake), ownerContext(seed.organizationId), seed)
 
   assert.equal(fake.registry.some((entry) => entry.toolId.endsWith(':research_create')), false)
-  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
   assert.equal(fake.instances[0]?.credentialRef, NESSIE_LEDGER_APP_API_KEY_ENV)
   assert.deepEqual(fake.instances[0]?.transportConfig, {
     transport: 'http',
@@ -239,7 +231,7 @@ test('disabling DeepWater refuses to orphan an active research run', async () =>
     LedgerDeepWaterActiveRunsError,
   )
   assert.equal(fake.instances.length, 1)
-  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
 })
 
 test('disable cannot race a queued null-id dispatch into a billable orphan', async () => {
@@ -270,7 +262,7 @@ test('disable cannot race a queued null-id dispatch into a billable orphan', asy
 
   assert.equal(run.status, 'queued')
   assert.equal(fake.instances.length, 1)
-  assert.equal(fake.registry.length, 5)
+  assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
 })
 
 test('setup-blocked and stale null-id running work remain conservative blockers', async () => {

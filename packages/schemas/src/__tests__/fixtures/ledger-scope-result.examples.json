@@ -1,0 +1,568 @@
+{
+  "contract": "Ledger research brief DTOs v1 — docs/plans/2026-09-22-deepwater-in-nessie/ledger.md §5.3 with review amendments L2, L4, L7 and §5.8. Validated by api/src/routes/research-contract-fixtures.test.ts.",
+  "scope_result": {
+    "dispatching_before_water_answered": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "error_code": null,
+      "title": null,
+      "turn": {
+        "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "seq": 1,
+        "status": "dispatching",
+        "author_kind": "person",
+        "error_code": null,
+        "retryable": false
+      },
+      "brief": null,
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    },
+    "drafting_pending_turn": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "error_code": null,
+      "title": null,
+      "turn": {
+        "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "seq": 1,
+        "status": "pending",
+        "author_kind": "person",
+        "error_code": null,
+        "retryable": false
+      },
+      "brief": {
+        "state": "drafting",
+        "revision": 0,
+        "topic": "How are EV batteries recycled in Europe?",
+        "context": "For a board paper on EU battery rules.",
+        "reply": null,
+        "pillars": [],
+        "settings": {
+          "depth": "standard",
+          "chapter_depth": "standard",
+          "search_quality": "standard",
+          "languages": [],
+          "output_language": "en",
+          "recency": "any",
+          "writing_style": "standard"
+        },
+        "locked_settings": [],
+        "open_questions": [],
+        "analysis": null,
+        "ready": false
+      },
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    },
+    "turn_complete_with_transcript": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "error_code": null,
+      "title": null,
+      "turn": {
+        "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "seq": 1,
+        "status": "complete",
+        "author_kind": "person",
+        "error_code": null,
+        "retryable": false
+      },
+      "brief": {
+        "state": "drafting",
+        "revision": 1,
+        "topic": "How are EV batteries recycled in Europe?",
+        "context": "For a board paper on EU battery rules.",
+        "reply": "I have drafted three pillars.\n\nOne question before we start: should second life be included?",
+        "pillars": [
+          "Collection and logistics",
+          "Recycling processes",
+          "EU regulation"
+        ],
+        "settings": {
+          "depth": "deep",
+          "chapter_depth": "standard",
+          "search_quality": "standard",
+          "languages": [],
+          "output_language": "en",
+          "recency": "year",
+          "writing_style": "standard"
+        },
+        "locked_settings": [
+          "recency"
+        ],
+        "open_questions": [
+          {
+            "question": "Should the research cover battery second life as well as recycling?",
+            "why": "Second life adds a separate set of sources and a chapter.",
+            "suggested_answers": [
+              "Recycling only",
+              "Both"
+            ]
+          }
+        ],
+        "analysis": {
+          "approach": "Compare EU regulation with recycler and industry data.",
+          "complexity": "High",
+          "source_types": [
+            "Regulators",
+            "Industry reports"
+          ],
+          "caveats": [
+            "Recovery rates are self-reported."
+          ],
+          "recommended_depth": "deep",
+          "data_freshness": "The last three years",
+          "estimated_reliability": "Good for regulation, mixed for industry figures"
+        },
+        "ready": false,
+        "messages": [
+          {
+            "id": "3c4d5e6f-7a8b-4c9d-8e0f-000000000001",
+            "seq": "1",
+            "turn_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "role": "requester",
+            "author_kind": "person",
+            "event": "opening",
+            "content": "How are EV batteries recycled in Europe?",
+            "brief_revision": 1,
+            "created_at": "2026-09-23T09:00:10.000Z"
+          },
+          {
+            "id": "3c4d5e6f-7a8b-4c9d-8e0f-000000000002",
+            "seq": "2",
+            "turn_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+            "role": "planner",
+            "author_kind": null,
+            "event": null,
+            "content": "I have drafted three pillars.\n\nOne question before we start: should second life be included?",
+            "brief_revision": 1,
+            "created_at": "2026-09-23T09:00:10.000Z"
+          }
+        ]
+      },
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    },
+    "turn_failed_retryable": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "error_code": null,
+      "title": null,
+      "turn": {
+        "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+        "seq": 2,
+        "status": "failed",
+        "author_kind": "agent",
+        "error_code": "planner_interrupted",
+        "retryable": true
+      },
+      "brief": {
+        "state": "drafting",
+        "revision": 1,
+        "topic": "How are EV batteries recycled in Europe?",
+        "context": "For a board paper on EU battery rules.",
+        "reply": "I have drafted three pillars.\n\nOne question before we start: should second life be included?",
+        "pillars": [
+          "Collection and logistics",
+          "Recycling processes",
+          "EU regulation"
+        ],
+        "settings": {
+          "depth": "deep",
+          "chapter_depth": "standard",
+          "search_quality": "standard",
+          "languages": [],
+          "output_language": "en",
+          "recency": "year",
+          "writing_style": "standard"
+        },
+        "locked_settings": [
+          "recency"
+        ],
+        "open_questions": [
+          {
+            "question": "Should the research cover battery second life as well as recycling?",
+            "why": "Second life adds a separate set of sources and a chapter.",
+            "suggested_answers": [
+              "Recycling only",
+              "Both"
+            ]
+          }
+        ],
+        "analysis": {
+          "approach": "Compare EU regulation with recycler and industry data.",
+          "complexity": "High",
+          "source_types": [
+            "Regulators",
+            "Industry reports"
+          ],
+          "caveats": [
+            "Recovery rates are self-reported."
+          ],
+          "recommended_depth": "deep",
+          "data_freshness": "The last three years",
+          "estimated_reliability": "Good for regulation, mixed for industry figures"
+        },
+        "ready": false
+      },
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    },
+    "turn_lost": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "error_code": null,
+      "title": null,
+      "turn": {
+        "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+        "seq": 2,
+        "status": "failed",
+        "author_kind": "agent",
+        "error_code": "turn_lost",
+        "retryable": true
+      },
+      "brief": {
+        "state": "drafting",
+        "revision": 1,
+        "topic": "How are EV batteries recycled in Europe?",
+        "context": "For a board paper on EU battery rules.",
+        "reply": "I have drafted three pillars.\n\nOne question before we start: should second life be included?",
+        "pillars": [
+          "Collection and logistics",
+          "Recycling processes",
+          "EU regulation"
+        ],
+        "settings": {
+          "depth": "deep",
+          "chapter_depth": "standard",
+          "search_quality": "standard",
+          "languages": [],
+          "output_language": "en",
+          "recency": "year",
+          "writing_style": "standard"
+        },
+        "locked_settings": [
+          "recency"
+        ],
+        "open_questions": [
+          {
+            "question": "Should the research cover battery second life as well as recycling?",
+            "why": "Second life adds a separate set of sources and a chapter.",
+            "suggested_answers": [
+              "Recycling only",
+              "Both"
+            ]
+          }
+        ],
+        "analysis": {
+          "approach": "Compare EU regulation with recycler and industry data.",
+          "complexity": "High",
+          "source_types": [
+            "Regulators",
+            "Industry reports"
+          ],
+          "caveats": [
+            "Recovery rates are self-reported."
+          ],
+          "recommended_depth": "deep",
+          "data_freshness": "The last three years",
+          "estimated_reliability": "Good for regulation, mixed for industry figures"
+        },
+        "ready": false
+      },
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    },
+    "launched": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "running",
+      "error_code": null,
+      "title": "EV battery recycling in the EU",
+      "turn": {
+        "id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+        "seq": 2,
+        "status": "complete",
+        "author_kind": "person",
+        "error_code": null,
+        "retryable": false
+      },
+      "brief": {
+        "state": "launched",
+        "revision": 3,
+        "topic": "How are EV batteries recycled in Europe?",
+        "context": "For a board paper on EU battery rules.",
+        "reply": "I have drafted three pillars.\n\nOne question before we start: should second life be included?",
+        "pillars": [
+          "Collection and logistics",
+          "Recycling processes",
+          "EU regulation"
+        ],
+        "settings": {
+          "depth": "deep",
+          "chapter_depth": "standard",
+          "search_quality": "standard",
+          "languages": [],
+          "output_language": "en",
+          "recency": "year",
+          "writing_style": "standard"
+        },
+        "locked_settings": [
+          "recency"
+        ],
+        "open_questions": [],
+        "analysis": {
+          "approach": "Compare EU regulation with recycler and industry data.",
+          "complexity": "High",
+          "source_types": [
+            "Regulators",
+            "Industry reports"
+          ],
+          "caveats": [
+            "Recovery rates are self-reported."
+          ],
+          "recommended_depth": "deep",
+          "data_freshness": "The last three years",
+          "estimated_reliability": "Good for regulation, mixed for industry figures"
+        },
+        "ready": true
+      },
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    },
+    "cancelled": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "cancelled",
+      "error_code": "cancelled",
+      "title": null,
+      "turn": {
+        "id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        "seq": 1,
+        "status": "failed",
+        "author_kind": "person",
+        "error_code": "job_terminal",
+        "retryable": false
+      },
+      "brief": {
+        "state": "cancelled",
+        "revision": 0,
+        "topic": "How are EV batteries recycled in Europe?",
+        "context": "For a board paper on EU battery rules.",
+        "reply": null,
+        "pillars": [],
+        "settings": {
+          "depth": "standard",
+          "chapter_depth": "standard",
+          "search_quality": "standard",
+          "languages": [],
+          "output_language": "en",
+          "recency": "any",
+          "writing_style": "standard"
+        },
+        "locked_settings": [],
+        "open_questions": [],
+        "analysis": null,
+        "ready": false
+      },
+      "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+      "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events"
+    }
+  },
+  "status": {
+    "drafting_turn_open": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "progress": {
+        "phase": "drafting",
+        "note": "Agreeing the research brief",
+        "at": "2026-09-23T09:00:01.000Z"
+      },
+      "title": null,
+      "error_code": null,
+      "public_url": null,
+      "brief": {
+        "revision": null,
+        "turn_pending": true
+      }
+    },
+    "drafting_idle": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "drafting",
+      "progress": {
+        "phase": "drafting",
+        "note": "The planner has replied",
+        "brief_revision": 3,
+        "at": "2026-09-23T09:02:00.000Z"
+      },
+      "title": null,
+      "error_code": null,
+      "public_url": null,
+      "brief": {
+        "revision": 3,
+        "turn_pending": false
+      }
+    },
+    "running": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "running",
+      "progress": {
+        "phase": "gather",
+        "note": "Research is gathering",
+        "sources_found": 42,
+        "at": "2026-09-23T09:10:00.000Z"
+      },
+      "eta_minutes": 20,
+      "title": "EV battery recycling in the EU",
+      "error_code": null,
+      "public_url": null
+    },
+    "complete_public": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "complete",
+      "progress": {
+        "phase": "complete",
+        "note": "Research complete",
+        "at": "2026-09-23T09:40:00.000Z"
+      },
+      "title": "EV battery recycling in the EU",
+      "error_code": null,
+      "public_url": "https://research.deepwater.live/ev-battery-recycling-in-the-eu-6f1c2d3e"
+    },
+    "cancelled_expired_brief": {
+      "id": "rs_01jzexamplebrief0000000000",
+      "status": "cancelled",
+      "progress": {
+        "phase": "cancelled",
+        "note": "The research brief expired unused",
+        "at": "2026-10-07T09:02:00.000Z"
+      },
+      "title": null,
+      "error_code": "scope_expired",
+      "public_url": null
+    }
+  },
+  "report": {
+    "full": {
+      "title": "EV battery recycling in the EU",
+      "report_markdown": "# EV battery recycling in the EU\n\n…",
+      "references": [
+        {
+          "title": "European Commission — Batteries Regulation",
+          "url": "https://environment.ec.europa.eu/topics/waste-and-recycling/batteries_en",
+          "accessed_at": "2026-09-23T09:20:00.000Z"
+        }
+      ],
+      "depth": "deep",
+      "started_at": "2026-09-23T09:00:00.000Z",
+      "completed_at": "2026-09-23T09:40:00.000Z",
+      "truncated": false,
+      "report_kind": "full",
+      "full_report_error_code": null,
+      "public_url": "https://research.deepwater.live/ev-battery-recycling-in-the-eu-6f1c2d3e"
+    },
+    "summary": {
+      "title": "EV battery recycling in the EU",
+      "report_markdown": "# Summary\n\n…",
+      "references": [
+        {
+          "title": "European Commission — Batteries Regulation",
+          "url": "https://environment.ec.europa.eu/topics/waste-and-recycling/batteries_en",
+          "accessed_at": "2026-09-23T09:20:00.000Z"
+        }
+      ],
+      "depth": "deep",
+      "started_at": "2026-09-23T09:00:00.000Z",
+      "completed_at": "2026-09-23T09:40:00.000Z",
+      "truncated": false,
+      "report_kind": "summary",
+      "full_report_error_code": "under_min_word_count",
+      "public_url": null
+    }
+  },
+  "ticket": {
+    "id": "rs_01jzexamplebrief0000000000",
+    "job_id": "rs_01jzexamplebrief0000000000",
+    "status": "running",
+    "eta_minutes": 20,
+    "status_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000",
+    "events_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/events",
+    "report_url": "https://ledger.unlikeotherai.com/v1/research/rs_01jzexamplebrief0000000000/report"
+  },
+  "turn_error_codes": {
+    "from_water": [
+      "planner_failed",
+      "compute_refused",
+      "planner_interrupted",
+      "planner_stalled",
+      "cancelled"
+    ],
+    "from_ledger": [
+      "turn_rejected",
+      "turn_lost",
+      "job_terminal"
+    ]
+  },
+  "job_error_codes": [
+    "start_timeout",
+    "identity_unavailable",
+    "start_rejected",
+    "missing_upstream_id",
+    "upstream_failed",
+    "cancelled_upstream",
+    "stalled",
+    "cancelled",
+    "cancelled_by_owner",
+    "cancelled_by_operator",
+    "scope_expired",
+    "scope_rejected",
+    "scope_limit"
+  ],
+  "errors": {
+    "scope_revision_conflict": {
+      "mcp": {
+        "error": "scope_revision_conflict",
+        "error_description": "The brief changed since the revision you approved",
+        "status_code": 409,
+        "current_revision": 3
+      },
+      "rest": {
+        "message": "The brief changed since the revision you approved",
+        "code": "scope_revision_conflict",
+        "current_revision": 3
+      }
+    },
+    "scope_busy": {
+      "mcp": {
+        "error": "scope_busy",
+        "error_description": "The planner is still answering the previous message",
+        "status_code": 409
+      },
+      "rest": {
+        "message": "The planner is still answering the previous message",
+        "code": "scope_busy"
+      }
+    },
+    "public_requires_person": {
+      "mcp": {
+        "error": "public_requires_person",
+        "error_description": "Only a person can publish research on the public archive",
+        "status_code": 403
+      },
+      "rest": {
+        "message": "Only a person can publish research on the public archive",
+        "code": "public_requires_person"
+      }
+    },
+    "upstream_unavailable": {
+      "mcp": {
+        "error": "upstream_unavailable",
+        "error_description": "DeepWater did not answer in time; retry with the same request",
+        "status_code": 503
+      },
+      "rest": {
+        "message": "DeepWater did not answer in time; retry with the same request",
+        "code": "upstream_unavailable"
+      }
+    }
+  }
+}

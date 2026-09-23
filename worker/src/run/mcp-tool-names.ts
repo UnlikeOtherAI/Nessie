@@ -1,11 +1,17 @@
+import { deepWaterManifestToolNames } from '@nessie/mcp-manage'
+
 const EXPOSE_NAME_PREFIX = 'mcp_'
 
-export const MANAGED_DEEP_WATER_TOOL_NAMES = new Set([
+/**
+ * The DeepWater tool names Nessie manages (Water plan amendments N9.3): the
+ * manifest's projected tools, derived so a contract change can never leave a
+ * stale list behind, and `research_start`, which stays managed while legacy
+ * launcher runs may still dispatch it through a team that has not upgraded.
+ * The retirement of the launcher handoff (phase E) removes it.
+ */
+export const MANAGED_DEEP_WATER_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...deepWaterManifestToolNames(),
   'research_start',
-  'research_status',
-  'research_report',
-  'research_list',
-  'research_cancel',
 ])
 
 const sanitizeName = (raw: string): string => {

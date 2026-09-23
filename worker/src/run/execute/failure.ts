@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client'
-import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
+import { DEEP_WATER_DELIVERY_PURPOSE, parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
@@ -88,8 +88,14 @@ export const handleRunExecutionFailure = async (
   // to deliver. The failure is not hidden — the run is `failed`, the Triggers
   // page delivery row now shows that outcome, and the error is logged — it
   // simply stops being announced to a room that did not ask.
+  // A DeepWater wake is unattended but owed: the person who asked for the
+  // research is waiting for the agent's answer in this thread.
   const announceFailure =
-    (isInteractiveRun(payload) || payload.actorContext.actionContext.purpose === 'agent.peer_delegation')
+    (
+      isInteractiveRun(payload)
+      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation'
+      || payload.actorContext.actionContext.purpose === DEEP_WATER_DELIVERY_PURPOSE
+    )
     && failureReason !== 'private_agent_placement'
     && failureReason !== 'global_agent_placement'
 

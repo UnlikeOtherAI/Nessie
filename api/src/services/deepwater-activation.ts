@@ -3,12 +3,13 @@ import type { McpToolDescriptor } from '@nessie/mcp-client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   createInstance,
-  projectMcpToolDescriptors,
+  DeepWaterActiveRunRevocationError,
   runWithDeepWaterTransitionLock,
   type McpInstanceRow,
 } from '@nessie/mcp-manage'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
 
+import { projectDeepWaterTeamContract } from './deepwater-projection.js'
 import { getIntegrationPluginManifest } from './integration-plugin-manifests.js'
 import { setProductTeamEnablement } from './integrations.js'
 
@@ -104,19 +105,31 @@ export class LedgerDeepWaterEnablementPersistenceError extends Error {
   }
 }
 
+/**
+ * A team transition that would strand an open research run: a disable, or a
+ * contract upgrade that removes a tool a launcher run may still dispatch. It
+ * names the run by id, status, origin and requester only — never its topic.
+ */
 export class LedgerDeepWaterActiveRunsError extends Error {
   readonly code = 'LEDGER_DEEPWATER_ACTIVE_RUNS'
 
-  constructor(public readonly run: {
-    channelId: string | null
-    externalRunId: string | null
-    id: string
-    status: string
-  }) {
+  constructor(
+    public readonly run: {
+      channelId: string | null
+      id: string
+      originKind: string
+      requestedByUserId: string | null
+      status: string
+    },
+    transition: 'disable' | 'upgrade' = 'disable',
+  ) {
     super(
       `Deep Water run ${run.id} is still ${run.status}`
+      + (transition === 'upgrade'
+        ? '; the team keeps its current Deep Water tools until it finishes'
+        : '')
       + (run.channelId
-        ? `; open /channels/${run.channelId}, ask the Personal Assistant to call research_cancel, and retry after the run becomes terminal.`
+        ? `; open /channels/${run.channelId}, cancel it, and retry after the run becomes terminal.`
         : '; it has no attached chat, so the connector is retained until an explicit run recovery is performed.'),
     )
     this.name = 'LedgerDeepWaterActiveRunsError'
@@ -202,33 +215,11 @@ const findTeamInstance = async (
   })
 
 /**
- * A previously probed Ledger adapter may carry richer schemas than the
- * deterministic manifest. Preserve those schemas only when its tool-name set
- * exactly matches the current Ledger contract. Legacy direct-provider contracts
- * are replaced so old tools can never be dispatched to the Ledger endpoint.
- */
-const hasCurrentLedgerToolContract = (
-  instance: McpInstanceRow,
-  descriptors: McpToolDescriptor[],
-): boolean => {
-  if (!Array.isArray(instance.discoveredTools)) return false
-  const discoveredNames = instance.discoveredTools
-    .map((tool) =>
-      tool && typeof tool === 'object' && typeof (tool as { name?: unknown }).name === 'string'
-        ? (tool as { name: string }).name
-        : null)
-    .filter((name): name is string => name !== null)
-    .sort()
-  const manifestNames = descriptors.map((descriptor) => descriptor.name).sort()
-  return discoveredNames.length === manifestNames.length
-    && discoveredNames.every((name, index) => name === manifestNames[index])
-}
-
-/**
  * Idempotently ensure a team-scoped DeepWater instance whose manifest tools are
- * projected, `active`, and flagged `requiresExplicitGrant`. Missing first-party
- * catalog linkage and a missing Ledger endpoint both fail loudly; enablement is
- * never persisted without a callable connector.
+ * projected, `active`, and flagged `requiresExplicitGrant` — upgrading a
+ * connector on an older Ledger contract in place (`projectDeepWaterTeamContract`).
+ * Missing first-party catalog linkage and a missing Ledger endpoint both fail
+ * loudly; enablement is never persisted without a callable connector.
  */
 const ensureDeepWaterTeamInstanceInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -260,58 +251,23 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
   }
 
   const provisioned = instance
-  const descriptors = manifestToolDescriptors()
-  const preserveProbedSchemas =
-    Boolean(existing) && hasCurrentLedgerToolContract(provisioned, descriptors)
-
-  if (preserveProbedSchemas) {
-    // Keep a current Ledger adapter's richer discovered schemas, but always
-    // enforce the configured Ledger endpoint and Nessie's product-bound app key.
-    await tx.mcpServerInstance.update({
-      where: { id: provisioned.id },
-      data: {
-        credentialRef: NESSIE_LEDGER_APP_API_KEY_ENV,
-        transportConfig: { transport: 'http', url: ledgerUrl },
-        lifecycleState: 'active',
-        healthFailureCount: 0,
-        // Active here means the deterministic Ledger contract is projected.
-        healthLastCheckedAt: null,
-        lastError: null,
-      },
-    })
-  } else {
-    // First provision or legacy direct-provider contract: replace every old
-    // projection before installing Ledger's deterministic tool contract.
-    // Registry ids intentionally change, so explicit grants must be renewed
-    // for the new tools instead of silently inheriting authority.
-    await tx.toolRegistryEntry.deleteMany({
-      where: { mcpInstanceId: provisioned.id },
-    })
-    await tx.mcpServerInstance.update({
-      where: { id: provisioned.id },
-      data: {
-        credentialRef: NESSIE_LEDGER_APP_API_KEY_ENV,
-        transportConfig: { transport: 'http', url: ledgerUrl },
-        discoveredTools: descriptors as unknown as object,
-        lifecycleState: 'active',
-        healthFailureCount: 0,
-        healthLastCheckedAt: null,
-        lastError: null,
-      },
-    })
-    await projectMcpToolDescriptors(tx, {
+  try {
+    await projectDeepWaterTeamContract(tx, {
       organizationId: input.organizationId,
-      instance: { id: provisioned.id, scopeType: 'team', scopeId: input.teamId },
-      descriptors,
+      teamId: input.teamId,
+      instance: provisioned,
+      firstProvision: !existing,
+      descriptors: manifestToolDescriptors(),
+      ledgerUrl,
+      credentialRef: NESSIE_LEDGER_APP_API_KEY_ENV,
     })
+  } catch (error) {
+    if (error instanceof DeepWaterActiveRunRevocationError) {
+      // A contract upgrade waits for the launcher runs its removed tools serve.
+      throw new LedgerDeepWaterActiveRunsError(error.run, 'upgrade')
+    }
+    throw error
   }
-  // First-party team-enable is the review: flip the projected (shared-scope,
-  // so `pending_review` by default) tools to `active` and flag them
-  // `requiresExplicitGrant` so exposure needs an explicit per-agent allow.
-  await tx.toolRegistryEntry.updateMany({
-    where: { mcpInstanceId: provisioned.id },
-    data: { status: 'active', metadata: { requiresExplicitGrant: true } },
-  })
   return tx.mcpServerInstance.findUniqueOrThrow({ where: { id: provisioned.id } })
 }
 
@@ -349,18 +305,23 @@ const removeDeepWaterTeamInstanceInTransaction = async (
   })
   if (!instance) return { instanceId: null }
 
+  // A brief being agreed (`drafting`) holds the connector as much as a running
+  // research: its planner turns and its launch go through it. A research whose
+  // delivery is blocked for a retryable reason stays `running`, so the
+  // connector remains for the retry (Water plan amendments N8.3).
   const activeRun = await tx.productIntegrationRun.findFirst({
     where: {
       connectorId: instance.id,
       organizationId: input.organizationId,
       productSlug: DEEP_WATER_PRODUCT_SLUG,
-      status: { in: ['queued', 'running', 'needs_setup'] },
+      status: { in: ['queued', 'drafting', 'running', 'needs_setup'] },
       teamId: input.teamId,
     },
     select: {
       channelId: true,
-      externalRunId: true,
       id: true,
+      originKind: true,
+      requestedByUserId: true,
       status: true,
     },
   })

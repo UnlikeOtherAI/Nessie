@@ -325,8 +325,10 @@ const updateEntryPolicy = (
           )
         }
         try {
+          // The updater is org-wide and only launcher runs use it.
           await guardDeepWaterPolicyRevocation(policyTx, {
             organizationId: input.organizationId,
+            mode: { kind: 'legacy' },
           })
         } catch (error) {
           translateActiveRunError(error)
@@ -346,6 +348,7 @@ const updateEntryPolicy = (
           await guardDeepWaterPolicyRevocation(policyTx, {
             organizationId: input.organizationId,
             teamId,
+            mode: { kind: 'agent', agentId: input.agentId },
           })
         } catch (error) {
           translateActiveRunError(error)

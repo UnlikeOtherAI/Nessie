@@ -6,8 +6,13 @@ import type {
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { EmptyState } from '../../shared/EmptyState'
 
+// This history renders the legacy list, which holds launcher runs only: a
+// research brief is read through its viewer-filtered view, never here. Brief
+// statuses (`drafting`) are labelled because the status type is shared.
 const statusLabels: Record<ProductIntegrationRunStatus, string> = {
+  cancelled: 'Cancelled',
   completed: 'Completed',
+  drafting: 'Agreeing the brief',
   failed: 'Failed',
   needs_setup: 'Needs setup',
   queued: 'Queued',
@@ -16,7 +21,9 @@ const statusLabels: Record<ProductIntegrationRunStatus, string> = {
 }
 
 const statusTone: Record<ProductIntegrationRunStatus, PillTone> = {
+  cancelled: 'muted',
   completed: 'success',
+  drafting: 'accent',
   failed: 'danger',
   needs_setup: 'warning',
   queued: 'accent',
@@ -136,16 +143,6 @@ export const DeepWaterRunHistory = ({
                   >
                     Open chat
                   </Link>
-                ) : null}
-                {run.reportUrl ? (
-                  <a
-                    className="admin-button admin-button-secondary admin-button-compact h-8"
-                    href={run.reportUrl}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Open original report
-                  </a>
                 ) : null}
               </div>
               {run.statusDetail ? (

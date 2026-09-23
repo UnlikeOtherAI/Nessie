@@ -28,6 +28,24 @@ export class DeepWaterResearchRunConflictError extends Error {
   }
 }
 
+/**
+ * `deep_water_run_update` named a research brief. A brief's status, research id
+ * and result come only from Ledger through the watch (contract §2.3 invariant
+ * 6); the tool keeps only the launcher runs it was written for until phase E
+ * retires it.
+ */
+export class DeepWaterBriefRunUpdateRefusedError extends Error {
+  readonly code = 'DEEP_WATER_BRIEF_RUN_LEDGER_OWNED'
+
+  constructor() {
+    super(
+      'This DeepWater research is kept up to date by DeepWater itself and cannot be changed with '
+      + 'deep_water_run_update. Read its progress with research_status instead.',
+    )
+    this.name = 'DeepWaterBriefRunUpdateRefusedError'
+  }
+}
+
 const terminalStatusRequiredByStartTicket = (
   resultJson: unknown,
 ): ProductIntegrationRunStatus | null => {
