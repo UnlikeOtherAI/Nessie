@@ -112,7 +112,7 @@ export const mapTriggerRecord = (
     status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
     targetChannelId: string | null
     targetThreadId: string | null
-    type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
+    type: AgentTriggerType
     updatedAt: Date
     workflowInstallationId: string | null
   },

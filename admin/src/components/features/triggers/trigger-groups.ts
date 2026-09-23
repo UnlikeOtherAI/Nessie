@@ -39,7 +39,10 @@ const GROUP_ORDER: ReadonlyArray<{
     description: 'Runs when something happens in the team.',
     key: 'event',
     title: 'Events',
-    types: ['event'],
+    // A ticket or document change is something happening in the team. Nothing
+    // can create either type yet, but a row of one must still land in a group
+    // rather than drop out of the list.
+    types: ['event', 'ticket_changed', 'document_changed'],
   },
   {
     description: 'Runs when an outside system calls in.',

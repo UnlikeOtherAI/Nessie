@@ -6,6 +6,7 @@ import {
   parseOrganizationId,
   parseProjectId,
   parseTeamId,
+  type AgentTriggerType,
   type AuthorizedActionContext,
   type WorkflowRunExecuteJobPayload,
 } from '@nessie/schemas'
@@ -33,7 +34,7 @@ export const dispatchWorkflowTrigger = async (
     source: string
     trigger: {
       id: string
-      type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
+      type: AgentTriggerType
       workflowInstallation: {
         active: boolean
         channelId: string | null

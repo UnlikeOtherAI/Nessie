@@ -2,7 +2,9 @@ export type AgentTriggerRecord = {
   id: string
   agentId?: string
   workflowInstallationId?: string
-  type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval'
+  // `ticket_changed` and `document_changed` are in the contract before any
+  // create surface accepts them, so a client renders one but never offers it.
+  type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval' | 'ticket_changed' | 'document_changed'
   status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
   enabled: boolean
   name?: string
