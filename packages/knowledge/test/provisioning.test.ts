@@ -250,8 +250,7 @@ dbTest('ensureTaskFolder finds its own folder again, not the documents inside it
     'a second ensure must not create a second folder',
   )
 
-  // The retired rule said a document with children is a folder. It has
-  // children now; it is still a document.
+  // A document is a leaf. The explicit folder kind is the only container.
   const parent = await provider.createPage({
     authorId: input.actorId,
     authorType: 'user',
@@ -260,22 +259,22 @@ dbTest('ensureTaskFolder finds its own folder again, not the documents inside it
     organizationId: organization.id,
     projectId: project.id,
     spaceId,
-    title: 'Has sub-pages',
+    title: 'Leaf document',
   })
-  await provider.createPage({
-    authorId: input.actorId,
-    authorType: 'user',
-    body: '<p>Child</p>',
-    createdBy: input.actorId,
-    organizationId: organization.id,
-    parentPageId: parent.id,
-    projectId: project.id,
-    spaceId,
-    title: 'A sub-page',
-  })
-  const reread = await provider.getPage(organization.id, parent.id)
-  assert.ok(reread)
-  assert.equal(finderIsFolder(reread), false, 'having children must not make a document a folder')
+  await assert.rejects(
+    provider.createPage({
+      authorId: input.actorId,
+      authorType: 'user',
+      body: '<p>Child</p>',
+      createdBy: input.actorId,
+      organizationId: organization.id,
+      parentPageId: parent.id,
+      projectId: project.id,
+      spaceId,
+      title: 'A child document',
+    }),
+    /parent must be a folder/i,
+  )
 })
 
 dbTest('a folder refuses content and refuses to be published', async (t) => {
@@ -315,7 +314,7 @@ dbTest('a folder refuses content and refuses to be published', async (t) => {
   )
 })
 
-dbTest('a page may be filed under a folder or a document, never under a file', async (t) => {
+dbTest('a page may be filed only under a folder', async (t) => {
   const prisma = new PrismaClient()
   const suffix = randomUUID()
   const email = `task-folder-${suffix}@test.local`
@@ -364,16 +363,14 @@ dbTest('a page may be filed under a folder or a document, never under a file', a
   })
   assert.equal(intoFolder?.parentPageId, folderId)
 
-  // A document still parents sub-pages: wikilinks and the open document's
-  // Sub-pages section depend on it, and the Finder simply does not open a
-  // column for one.
+  // Documents and files are both leaves.
   const intoDocument = await provider.movePage({
     organizationId: organization.id,
     pageId: subject.id,
     parentPageId: document.id,
     position: 0,
   })
-  assert.equal(intoDocument?.parentPageId, document.id)
+  assert.equal(intoDocument, null)
 
   // A file node is a blob. `movePage` refuses by returning null — the same
   // value it returns for "no such page" — which is why `kb_file` reads the
@@ -386,5 +383,5 @@ dbTest('a page may be filed under a folder or a document, never under a file', a
   })
   assert.equal(intoFile, null)
   const unmoved = await provider.getPage(organization.id, subject.id)
-  assert.equal(unmoved?.parentPageId, document.id, 'a refused move must change nothing')
+  assert.equal(unmoved?.parentPageId, folderId, 'a refused move must change nothing')
 })

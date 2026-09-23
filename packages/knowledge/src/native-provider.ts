@@ -149,11 +149,7 @@ const movePage = async (
           spaceId: page.spaceId,
           deletedAt: null,
           status: { not: 'archived' },
-          // A document may still parent sub-pages — wikilinks and the open
-          // document's Sub-pages section depend on it — but a file node is a
-          // blob, and a page filed under one could never be reached. The
-          // Finder's Move to… dialog offers folders only.
-          kind: { in: ['folder', 'document'] },
+          kind: 'folder',
         },
         select: { id: true },
       })

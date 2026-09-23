@@ -77,10 +77,10 @@ DELETE FROM knowledge_page_chunks c USING knowledge_pages p
 ```
 
 Rows under the old convention that are **not** flagged but have children stay
-`document` and keep rendering as documents whose sub-pages are reached from
-the open document's Sub-pages section (`PagePreview`) — the column browser
-does not open a column for them. A verification query the migration PR must
-run and paste into its description:
+`document`; this migration deliberately does not reinterpret content as a
+folder. New creates and moves accept only `kind = 'folder'` as a parent, and a
+document preview never renders children. A verification query the migration PR
+must run and paste into its description:
 
 ```sql
 SELECT count(*) FROM knowledge_pages p
@@ -105,10 +105,9 @@ SELECT count(*) FROM knowledge_pages p
 - `ensureTaskFolder` creates `kind: 'folder'` and looks up by
   `(kind: 'folder', metadata.taskId)`; it still writes `metadata.taskId` and
   `taskId`. It stops writing `metadata.folder`.
-- `movePage` requires the new parent to be `kind IN ('folder', 'document')`
-  — a document may still parent sub-pages (wikilinks and `PagePreview`'s
-  Sub-pages depend on it), but the Finder's Move to… dialog offers folders
-  only.
+- `createPage`, `movePage`, and transfers require a non-root parent to be
+  `kind = 'folder'`. Folders may contain folders and documents; documents are
+  leaves. The editor's Location picker and Finder offer the same choices.
 - `publishPage`, `indexVersionChunks`, `enqueueKnowledgeExtract`,
   `listNativeRecentPages` and the search candidate queries exclude
   `kind = 'folder'`.

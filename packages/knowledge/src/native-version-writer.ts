@@ -142,11 +142,11 @@ export const createPage = async (
       const parent = await tx.knowledgePage.findFirst({
         where: {
           id: input.parentPageId, organizationId: input.organizationId, spaceId: input.spaceId,
-          deletedAt: null, status: { not: 'archived' },
+          deletedAt: null, status: { not: 'archived' }, kind: 'folder',
         },
         select: { id: true },
       })
-      if (!parent) throw new Error('Parent page not found')
+      if (!parent) throw new KnowledgeConflictError('Parent must be a folder')
     }
     const position = input.position ?? await tx.knowledgePage.count({
       where: { parentPageId: input.parentPageId ?? null, spaceId: input.spaceId },

@@ -404,6 +404,7 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
       if (
         parent
         && parent.spaceId === spaceId
+        && parent.kind === 'folder'
         && (await pageShareAllows(actorContext, parent, viewer, 'write'))
       ) {
         return space
