@@ -5,6 +5,7 @@ import {
   loadThoughtDisclosureLineage,
   resolveAccessibleScopes,
   searchAndLogThoughtsInScopes,
+  type RetainSearchResults,
   type ScopeRef,
   type ScopeResolutionMode,
   type SearchResult,
@@ -24,6 +25,19 @@ import type { PrismaClient } from '@prisma/client'
 
 const MAX_MEMORY_RESULTS = 5
 const MAX_MEMORY_CONTEXT_LENGTH = 220
+
+/**
+ * How many times its normal depth a project-write recall searches.
+ *
+ * Project-write containment judges each recalled item's whole lineage after
+ * the search, so a search that asked for only the normal count came back
+ * short — or empty — whenever the requester's best matches had been fed by a
+ * private DM, while project knowledge sat just below the cut. Such a run
+ * searches this many times deeper and keeps at most the normal count of what
+ * survives. A fixed multiple, so the search stays bounded; every other run
+ * searches exactly as deep as before.
+ */
+export const PROJECT_WRITE_RECALL_DEPTH = 3
 
 const CONTAINMENT_DISABLED = new Set(['0', 'false', 'off', 'no'])
 
@@ -247,13 +261,34 @@ export const retrieveRelevantMemories = async (
       return []
     }
 
+    // The thoughts this run takes, in rank order, and the lineage each brings.
+    // The search already narrowed the audience; a thought captured from a
+    // private conversation still carries that conversation, so a
+    // project-write run judges the whole lineage before admitting it.
+    let takenLineages: ThoughtDisclosureLineage[] = []
+    const take: RetainSearchResults = async (found, db) => {
+      const retained = found.filter((result) => !isSuppressedMemory(result.metadata))
+      if (retained.length === 0) return retained
+      const loaded = await loadThoughtDisclosureLineage(db, retained.map((result) => result.id))
+      const lineages = projectWrite
+        ? loaded.filter((lineage) =>
+          isWithinProjectWriteScopes(thoughtLineageScopes(lineage), destination))
+        : loaded
+      // In rank order, so a deeper project-write search still hands the model
+      // no more than the normal count, and only those enter the basis.
+      const taken = retainThoughtsWithLineage(retained, lineages).slice(0, MAX_MEMORY_RESULTS)
+      const takenIds = new Set(taken.map((result) => result.id))
+      takenLineages = lineages.filter((lineage) => takenIds.has(lineage.thoughtId))
+      return taken
+    }
+
     const results = await searchAndLogThoughtsInScopes(
       {
         audienceIds: scopes.audienceIds,
         audienceTypes: scopes.audienceTypes,
         channelId: context.channel.id,
         includeReasoning: false,
-        limit: MAX_MEMORY_RESULTS,
+        limit: projectWrite ? MAX_MEMORY_RESULTS * PROJECT_WRITE_RECALL_DEPTH : MAX_MEMORY_RESULTS,
         organizationId: context.channel.organizationId,
         projectId: payload.actorContext.tenant.projectId ?? null,
         query: prompt,
@@ -276,36 +311,20 @@ export const retrieveRelevantMemories = async (
         userId: effectiveUserId ?? null,
       },
       deps.searchConfig,
+      // A project-write search goes deeper than it keeps, so only what it
+      // keeps is marked accessed and logged as recalled. Access feeds the
+      // recency term of every later ranking: bumping the DM-fed thoughts it
+      // refused would keep lifting exactly those above the project knowledge
+      // it came for. Every other run's bookkeeping is unchanged.
+      projectWrite ? take : undefined,
     )
-
-    const retained = results.filter((result) => !isSuppressedMemory(result.metadata))
+    const memories = projectWrite ? results : await take(results, deps.searchConfig.pool)
 
     // Record what this run actually consumed. The basis of anything the run
     // later materialises is computed from this sink, so a memory that reached
     // the model is provenance even if the model never quotes it.
-    if (retained.length > 0) {
-      const loaded = await loadThoughtDisclosureLineage(
-        deps.searchConfig.pool,
-        retained.map((result) => result.id),
-      )
-      // The search already narrowed the audience; a thought captured from a
-      // private conversation still carries that conversation, so a
-      // project-write run judges the whole lineage before admitting it.
-      const lineages = projectWrite
-        ? loaded.filter((lineage) =>
-          isWithinProjectWriteScopes(thoughtLineageScopes(lineage), destination))
-        : loaded
-      const retainedWithLineage = retainThoughtsWithLineage(retained, lineages)
-      const returnedThoughtIds = new Set(retainedWithLineage.map((result) => result.id))
-      await admitRememberedThoughtLineage(
-        deps.prisma,
-        context.consumedSources,
-        lineages.filter((lineage) => returnedThoughtIds.has(lineage.thoughtId)),
-      )
-      return retainedWithLineage
-    }
-
-    return retained
+    await admitRememberedThoughtLineage(deps.prisma, context.consumedSources, takenLineages)
+    return memories
   } catch (error) {
     console.warn(
       '[worker] Memory search failed, continuing without memories:',

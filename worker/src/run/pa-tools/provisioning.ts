@@ -31,12 +31,13 @@ import { z } from 'zod'
 import { fileServiceFor } from '../file-service.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { requireOwnerMember, resolveActingMember } from './access.js'
+import { buildVisibleChannelWhere, requireOwnerMember, resolveActingMember } from './access.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
 import {
   formatAgentMarkdownLink,
   formatChannelMarkdownLink,
   formatSection,
+  formatTriggerMarkdownLink,
 } from './tool-output.js'
 
 /**
@@ -52,13 +53,16 @@ import {
  * Assistant's DM, an external agent's, a global agent's home), and pass the
  * `agent`/`bind` policy check.
  *
- * Disclosure: `agent_list` is the only read here, and it stamps its scopes (see
- * below). `channel_create`, `agent_create`, `agent_bind_channel` and
- * `agent_trigger_create` are writes whose outputs echo back ids the caller
- * already supplied plus the name of the row they just wrote — no scoped source
- * enters the run's context through them, so there is deliberately no sink call
- * on those four rather than a no-op one. The ids themselves had to come from a
- * read that did stamp: `agent_list` here, or `channel_find`/`channel_list`.
+ * Disclosure: `agent_list` is the read here, and it stamps its scopes (see
+ * below). `channel_create` and `agent_create` are writes whose outputs name
+ * only the row they just wrote — no scoped source enters the run's context
+ * through them, so there is deliberately no sink call on those two rather than
+ * a no-op one. `agent_bind_channel` and `agent_trigger_create` link the room
+ * (and the agent) they name, and those names are read, so they stamp exactly
+ * as `agent_list` stamps the same names — and, like its labels, a room's name
+ * is read only through the caller's own channel visibility. The ids themselves
+ * had to come from a read that did stamp: `agent_list` here, or
+ * `channel_find`/`channel_list`.
  */
 
 // Whether this deployment signs Ledger calls is read once, exactly as
@@ -119,14 +123,16 @@ export const runChannelCreateTool = async (
     throw new Error('That team does not belong to this organisation.')
   }
 
-  // The link is what the person is handed; the ids stay for the calls that
-  // follow (agent_bind_channel), exactly as agent_create's link carries its id.
+  // The link is what the person is handed, and it carries the id the calls
+  // that follow take (agent_bind_channel), exactly as agent_create's does: a
+  // raw `channelId=<uuid>` beside it was copied into the reply as it stood.
+  // What to do next is the tool description's to say, not the result's.
   return {
     inputSummary: `label="${args.label}"`,
     outputPreview: [
       `Created ${describeChannel(channel)}: ${formatChannelMarkdownLink(channel)}`,
-      `channelId=${channel.id} | slug=${channel.slug ?? ''} | visibility=${channel.visibility}`,
-      `You are its owner. Bind an agent with agent_bind_channel, or invite people from the channel page.`,
+      `slug=${channel.slug ?? ''} | visibility=${channel.visibility}`,
+      'You are its owner.',
     ].join('\n'),
     toolName: 'channel_create',
   }
@@ -356,13 +362,17 @@ export const runAgentListTool = async (
     context,
     matches.flatMap((agent) => agent.channelIds),
   )
+  // Links, as agent_create's are: a raw `agentId=<uuid>` is copied into the
+  // reply as it stands. The id agent_update or agent_bind_channel takes is
+  // each link's last segment.
   const lines = matches.map((agent) => {
     const channels = agent.channelIds.length === 0
       ? 'not in any channel yet'
       : agent.channelIds
-        .map((channelId) => `#${labels.get(channelId) ?? 'unknown'} (channelId=${channelId})`)
+        .map((channelId) =>
+          formatChannelMarkdownLink({ id: channelId, label: labels.get(channelId) ?? 'unknown' }))
         .join(', ')
-    return `- "${agent.name}" | role=${agent.role} | agentId=${agent.id} | ${channels}`
+    return `- ${formatAgentMarkdownLink(agent)} | role=${agent.role} | ${channels}`
   })
 
   const empty = needle
@@ -533,13 +543,50 @@ export const runAgentTriggerCreateTool = async (
     )
   }
 
+  // The trigger, the agent it fires and the room it posts into, as links the
+  // model hands on as they are — a raw `triggerId=`/`channelId=` is copied
+  // into the reply as it stands. Each id a later call takes is its link's
+  // last segment.
+  // The agent's name was reached through the caller's own standing (the
+  // access check above), so it stamps as agent_list stamps it. The room's was
+  // not: `createAgentTrigger` checks only that the agent is bound there, and
+  // resolves a thread's room server-side. So the label is read through the
+  // caller's own channel visibility, exactly as agent_list's labels are; a
+  // room they cannot see is linked without its name and stamps nothing.
+  const [target, room] = await Promise.all([
+    context.prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { name: true, visibility: true },
+    }),
+    trigger.targetChannelId
+      ? context.prisma.channel.findFirst({
+        where: {
+          AND: [
+            buildVisibleChannelWhere(member.organizationId, member.userId),
+            { id: trigger.targetChannelId },
+          ],
+        },
+        select: { id: true, label: true, type: true, visibility: true },
+      })
+      : null,
+  ])
+  if (target) recordVisibleAgentRead(context, [{ id: agentId, visibility: target.visibility }])
+  if (room) recordChannelDirectoryRead(context, [room])
+  const triggerLink = formatTriggerMarkdownLink({
+    id: trigger.id,
+    name: trigger.name ?? `${trigger.type} trigger`,
+  })
+
   return {
     inputSummary: `agentId=${agentId} type=${body.type}`,
     outputPreview: [
-      `Created ${trigger.type} trigger${trigger.name ? ` "${trigger.name}"` : ''}`,
-      `triggerId=${trigger.id} | status=${trigger.status}`
+      `Created ${trigger.name ? `${trigger.type} trigger ${triggerLink}` : triggerLink}`
+      + ` for ${formatAgentMarkdownLink({ id: agentId, name: target?.name ?? 'the agent' })}`,
+      `status=${trigger.status}`
       + (trigger.nextRunAt ? ` | next run ${trigger.nextRunAt}` : '')
-      + (trigger.targetChannelId ? ` | posts into channelId=${trigger.targetChannelId}` : ''),
+      + (trigger.targetChannelId
+        ? ` | posts into ${formatChannelMarkdownLink({ id: trigger.targetChannelId, label: room?.label ?? 'channel' })}`
+        : ''),
       ...(trigger.webhookApiKey
         ? ['A webhook key was generated; read it from the Triggers page rather than chat.']
         : []),
