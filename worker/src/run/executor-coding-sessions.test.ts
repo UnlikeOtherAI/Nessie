@@ -124,7 +124,7 @@ test('a wait reads every five seconds under the call’s own id first, and ends 
   assert.deepEqual(sent[0]!.args.arguments, { sessionId: SESSION })
   assert.equal(result.toolCallRecordId, 'row-call-2', 'the call’s own row carries the digest')
   assert.deepEqual(ended.map((row) => row.id), ['row-call-2:poll-1', 'row-call-2:poll-2'])
-  assert.equal(result.watchProgressed, true)
+  assert.deepEqual(result.watch, { progressed: true, state: 'needs_model' }, 'the turn ended: the model acts next')
   assert.match(result.output, /^The turn ended and the session is waiting for input/)
   // One line, rewritten: the latest digest, never the coding agent's own words.
   assert.equal(progress.at(-1), 'coding_session_wait|Claude Code: waiting for input — turn 1, 2 steps (Bash 2)')
@@ -165,9 +165,9 @@ test('a wait that saw nothing move says so, for the loop detector', async () => 
   const quiet = { sessionId: SESSION, status: 'working', summary: { newEvents: 0, toolCounts: {} }, turn: 1 }
   const { sessions } = harness((call) => answer(quiet, `row-${call.providerToolCallId}`), {})
   const first = await sessions.execute(CODING_SESSION_TOOL_NAMES.wait, { sessionId: SESSION }, 'call-4')
-  assert.equal(first.watchProgressed, true, 'the first look at a session is news')
+  assert.deepEqual(first.watch, { progressed: true, state: 'watching' }, 'the first look at a session is news')
   const second = await sessions.execute(CODING_SESSION_TOOL_NAMES.wait, { sessionId: SESSION }, 'call-5')
-  assert.equal(second.watchProgressed, false)
+  assert.deepEqual(second.watch, { progressed: false, state: 'watching' })
   assert.match(second.output, /is still working; calling coding_session_wait again is expected/)
 })
 
@@ -201,10 +201,21 @@ test('a review is framed as the coding agent’s work', async () => {
   assert.match(review.output, /Output from the coding agent you supervise\./)
 })
 
+test('a wait the person’s message ended tells the loop the turn is over', async () => {
+  const working = { agent: 'claude', sessionId: SESSION, status: 'working', summary: { newEvents: 1, toolCounts: {} }, turn: 1 }
+  const { sessions } = harness((call) => answer(working, `row-${call.providerToolCallId}`), {
+    personWrote: async () => true,
+  })
+  const result = await sessions.execute(CODING_SESSION_TOOL_NAMES.wait, { sessionId: SESSION }, 'call-9')
+  assert.deepEqual(result.watch, { progressed: true, state: 'end_turn' })
+  assert.match(result.output, /^The person sent a message; end your turn now/)
+})
+
 test('the person-wrote check reads a live chat message pending for this agent in this thread, and nothing else', async () => {
   const queries: unknown[] = []
+  const createdAt = new Date('2026-09-23T20:00:00.000Z')
   const checks = codingWaitRunChecks({
-    run: { findUnique: async () => ({ cancelRequestedAt: null, principalUserId: null, threadId: 'thread-1' }) },
+    run: { findUnique: async () => ({ cancelRequestedAt: null, createdAt, principalUserId: null, threadId: 'thread-1' }) },
     runThreadPendingMessage: {
       findFirst: async (query: unknown) => {
         queries.push(query)
@@ -214,7 +225,10 @@ test('the person-wrote check reads a live chat message pending for this agent in
   } as unknown as Pick<PrismaClient, 'run' | 'runThreadPendingMessage'>, { agentId: 'agent-1', runId: 'run-1' })
   assert.equal(await checks.personWrote(), false)
   assert.deepEqual((queries[0] as { where: unknown }).where, {
-    agentId: 'agent-1', interactive: true, principalUserId: null, threadId: 'thread-1', triggerId: null,
+    agentId: 'agent-1',
+    // A message still pending from before this run began is not one the person wrote while it waited.
+    createdAt: { gt: createdAt },
+    interactive: true, principalUserId: null, threadId: 'thread-1', triggerId: null,
   })
   assert.equal(await checks.stopRequested(), false)
 })

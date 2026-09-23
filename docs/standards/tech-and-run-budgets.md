@@ -125,15 +125,33 @@ summary and points here; **this file is the rule**.
     the streak, and the fourth in a row is refused with "The result has not
     changed. Wait with a different call, or tell the person where things
     stand and end your turn." — for the two coding ones, with "The coding
-    agent is still working; that is normal. Wait again, or tell the person
-    where things stand and end your turn." A wait (`WATCH_TOOL_NAMES`) is
-    never refused before it runs, because waiting again is the tool working:
-    it reports after it ran whether the session moved (`watchProgressed`),
-    its streak counts only the waits that saw nothing move, and the third
-    such wait in a row gets that same nudge after the batch instead of a
-    refusal. Counts are checkpointed under `#repeat:` /
-    `#observe:` keys; unprefixed counts from an earlier deploy are dropped on
-    resume.
+    session's answer has not changed. If it is working, call
+    coding_session_wait; if it is waiting for you, send it feedback or close
+    it; otherwise tell the person where things stand and end your turn." A
+    wait (`WATCH_TOOL_NAMES`) reports after it ran whether the session moved
+    and why it stopped (`AgenticToolResult.watch`: `progressed`, and a state
+    of `watching`, `needs_model` or `end_turn`), and is judged by that:
+    - **Watching** — the session was still working, or the machine did not
+      answer in time. Waiting again is the tool working, so it is never
+      refused; its streak counts only the waits that saw nothing move, and
+      the third such wait in a row gets "The coding agent is still working;
+      that is normal. Wait again, or tell the person where things stand and
+      end your turn." after the batch instead of a refusal.
+    - **Needs the model** — the turn ended, or the session was interrupted,
+      failed or closed. The wait's own answer says what to do, and a second
+      wait would return the same answer at once, so the same wait again is
+      refused ("Not run: your last wait on this session already returned
+      because it needs you…") until a call that is not an observation — a
+      send, an interrupt, a close, a start, or anything else that can change
+      what the wait would see — ends it.
+    - **End the turn** — the person wrote in the conversation, or stopped the
+      run. Every later wait in the run would stop for the same reason, so
+      every one of them is refused with "The person has sent a message: end
+      your turn now…".
+
+    Counts are checkpointed under `#repeat:` / `#observe:` keys, and the two
+    wait markers under `#settled:` / `#ended:`; unprefixed counts from an
+    earlier deploy are dropped on resume.
   - A provider `finish_reason: length` gets one bounded recovery. Partial prose
     uses a no-tools finalisation from completed evidence. Empty reasoning-only
     output retains tools to finish the already authorized work; a truncated tool

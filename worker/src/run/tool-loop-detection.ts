@@ -8,11 +8,16 @@
  * other call in between resets the streak, and the fourth in a row is the one
  * refused.
  *
- * A wait is the one observation that is never refused before it runs: waiting
- * on a coding agent means calling the same wait again, and that is the tool
- * working as meant. Its streak counts only the waits that saw **no progress**,
- * which the wait itself reports after it ran (`noteWatchProgress`), and the
- * third such wait in a row earns a nudge rather than a refusal.
+ * A wait is the one observation that is not refused for being repeated:
+ * waiting on a coding agent that is still working means calling the same wait
+ * again, and that is the tool working as meant. It reports after it ran
+ * (`noteWatchProgress`) whether what it watched moved and why it stopped
+ * waiting. While the session works, its streak counts only the waits that saw
+ * **no progress**, and the third such wait in a row earns a nudge rather than
+ * a refusal. A wait that stopped because the model has to act is different:
+ * waiting again returns the same answer at once, so the same wait repeated
+ * with no acting call in between is refused, and so is every wait once the
+ * person has written, for the rest of the run.
  */
 
 /**
@@ -26,8 +31,24 @@ export const CODING_OBSERVATION_TOOL_NAMES: ReadonlySet<string> = new Set([
   'coding_session_wait',
 ])
 
-/** Observation tools whose repeats are expected: never refused, nudged when they stop seeing progress. */
+/** Observation tools whose repeats are expected while they watch: nudged when they stop seeing progress. */
 export const WATCH_TOOL_NAMES: ReadonlySet<string> = new Set(['coding_session_wait'])
+
+/**
+ * Why a watch tool stopped waiting. `watching`: what it watches is still busy
+ * (or did not answer in time), and waiting again is expected. `needs_model`:
+ * it stopped because the model has to act — the turn ended, the session was
+ * interrupted, failed or closed. `end_turn`: the person wrote, or stopped the
+ * run, and the model should end its turn.
+ */
+export type WatchState = 'end_turn' | 'needs_model' | 'watching'
+
+/** What a watch tool reports once it ran (`AgenticToolResult.watch`). */
+export type WatchReport = {
+  /** Whether what it waited on moved while it waited. */
+  progressed: boolean
+  state: WatchState
+}
 
 /** Tools that only look. Later tools that wait on or list work join here. */
 export const OBSERVATION_TOOL_NAMES: ReadonlySet<string> = new Set([
@@ -48,6 +69,14 @@ export const REPEATED_OBSERVATION_NUDGE =
   'The result has not changed. Wait with a different call, or tell the person where things stand and end your turn.'
 export const CODING_NO_PROGRESS_NUDGE =
   'The coding agent is still working; that is normal. Wait again, or tell the person where things stand and end your turn.'
+export const CODING_REPEATED_LOOK_NUDGE =
+  'The coding session\'s answer has not changed. If it is working, call coding_session_wait; if it is waiting for '
+  + 'you, send it feedback or close it; otherwise tell the person where things stand and end your turn.'
+export const CODING_WAIT_NEEDS_YOU_NUDGE =
+  'Waiting again will not change the coding session: it is not working, and the last wait on it said why. Act on '
+  + 'that answer — review it, send it a message or close it — or tell the person where it stands and end your turn.'
+export const CODING_WAIT_END_TURN_NUDGE =
+  'The person has sent a message: end your turn now with one line of status; you will read their message next.'
 
 // The checkpoint keys. Counts written before observation tools had their own
 // rule carry neither prefix, and a resumed run drops them: a cumulative count
@@ -55,6 +84,13 @@ export const CODING_NO_PROGRESS_NUDGE =
 // `#` never appears in a tool name, so no unprefixed key can look like these.
 const REPEAT_KEY_PREFIX = '#repeat:'
 const OBSERVE_KEY_PREFIX = '#observe:'
+// A wait that stopped because the model must act, by its exact call; ended by
+// any call that is not an observation, since only such a call can change what
+// the wait would see.
+const SETTLED_KEY_PREFIX = '#settled:'
+// A wait that stopped because the person wrote, by tool name: every later wait
+// in the run would stop for the same reason.
+const ENDED_KEY_PREFIX = '#ended:'
 
 export type LoopVerdict = {
   /** What the loop tells the model after the batch. */
@@ -75,17 +111,34 @@ const REPEATED_OBSERVATION: LoopVerdict = { nudge: REPEATED_OBSERVATION_NUDGE, o
 
 // Listing or reviewing a coding session over and over is waiting by other means.
 const REPEATED_CODING_OBSERVATION: LoopVerdict = {
-  nudge: CODING_NO_PROGRESS_NUDGE,
+  nudge: CODING_REPEATED_LOOK_NUDGE,
   output: REPEATED_OBSERVATION_OUTPUT,
+}
+
+const WAIT_NEEDS_YOU: LoopVerdict = {
+  nudge: CODING_WAIT_NEEDS_YOU_NUDGE,
+  output: 'Not run: your last wait on this session already returned because it needs you, and nothing you did '
+    + 'since can have changed that, so waiting again would return the same answer.',
+}
+
+const WAIT_AFTER_PERSON_WROTE: LoopVerdict = {
+  nudge: CODING_WAIT_END_TURN_NUDGE,
+  output: 'Not run: the person has sent a message, so every wait in this turn would stop at once. End your turn '
+    + 'now with one line of status.',
 }
 
 const streakKeyOf = (toolName: string, args: Record<string, unknown>): string =>
   `${OBSERVE_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
+const settledKeyOf = (toolName: string, args: Record<string, unknown>): string =>
+  `${SETTLED_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
+const endedKeyOf = (toolName: string): string => `${ENDED_KEY_PREFIX}${toolName}`
+
+const RESTORED_KEY_PREFIXES = [REPEAT_KEY_PREFIX, OBSERVE_KEY_PREFIX, SETTLED_KEY_PREFIX, ENDED_KEY_PREFIX]
 
 /** The counts a resumed run may keep, without those written under the old rule. */
 export const restoreLoopCounts = (saved: Record<string, number> | undefined): Map<string, number> =>
   new Map(Object.entries(saved ?? {}).filter(([key]) => (
-    key.startsWith(REPEAT_KEY_PREFIX) || key.startsWith(OBSERVE_KEY_PREFIX)
+    RESTORED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
   )))
 
 /**
@@ -100,17 +153,22 @@ export const countToolCall = (
   const signature = `${toolName}:${JSON.stringify(args)}`
   const streakKey = streakKeyOf(toolName, args)
   const streak = (counts.get(streakKey) ?? 0) + 1
-  // Any call ends every streak it does not continue, so at most one survives.
+  const observation = OBSERVATION_TOOL_NAMES.has(toolName)
+  // Any call ends every streak it does not continue, so at most one survives;
+  // a call that can change something also ends every settled wait.
   for (const key of [...counts.keys()]) {
-    if (key.startsWith(OBSERVE_KEY_PREFIX)) counts.delete(key)
+    if (key.startsWith(OBSERVE_KEY_PREFIX) || (!observation && key.startsWith(SETTLED_KEY_PREFIX))) {
+      counts.delete(key)
+    }
   }
   if (WATCH_TOOL_NAMES.has(toolName)) {
-    // Counted here so another call in between still ends it; judged only
-    // once the wait says whether it saw anything move.
+    // Counted here so another call in between still ends it; a watching wait
+    // is judged only once it says whether it saw anything move.
     counts.set(streakKey, streak)
-    return null
+    if (counts.has(endedKeyOf(toolName))) return WAIT_AFTER_PERSON_WROTE
+    return counts.has(settledKeyOf(toolName, args)) ? WAIT_NEEDS_YOU : null
   }
-  if (OBSERVATION_TOOL_NAMES.has(toolName)) {
+  if (observation) {
     counts.set(streakKey, streak)
     if (streak < OBSERVATION_LOOP_THRESHOLD) return null
     return CODING_OBSERVATION_TOOL_NAMES.has(toolName) ? REPEATED_CODING_OBSERVATION : REPEATED_OBSERVATION
@@ -122,23 +180,33 @@ export const countToolCall = (
 }
 
 /**
- * A watch tool's own report, after it ran: a wait that saw progress restarts
- * its streak, and the third in a row that saw none returns the nudge (and
- * restarts it, so the next nudge is three stalled waits away). A call whose
- * streak another call already ended counts for nothing.
+ * A watch tool's own report, after it ran. The person having written settles
+ * every later wait in the run. A wait that stopped because the model must act
+ * settles that same call until an acting call. A watching wait that saw
+ * progress restarts its streak, and the third in a row that saw none returns
+ * the nudge (and restarts it, so the next nudge is three stalled waits away).
+ * A call whose streak another call already ended — a later call in the same
+ * batch — counts for nothing, except that the person still wrote.
  */
 export const noteWatchProgress = (
   counts: Map<string, number>,
   toolName: string,
   args: Record<string, unknown>,
-  progressed: boolean,
+  report: WatchReport,
 ): string | null => {
   if (!WATCH_TOOL_NAMES.has(toolName)) return null
+  if (report.state === 'end_turn') counts.set(endedKeyOf(toolName), 1)
   const streakKey = streakKeyOf(toolName, args)
   const streak = counts.get(streakKey)
-  if (streak === undefined) return null
-  if (progressed || streak >= WATCH_STALL_THRESHOLD) counts.set(streakKey, 0)
-  return !progressed && streak >= WATCH_STALL_THRESHOLD ? CODING_NO_PROGRESS_NUDGE : null
+  if (streak === undefined || report.state === 'end_turn') return null
+  if (report.state === 'needs_model') {
+    // The wait's own answer says what to do; only a repeat of it is refused.
+    counts.set(settledKeyOf(toolName, args), 1)
+    counts.set(streakKey, 0)
+    return null
+  }
+  if (report.progressed || streak >= WATCH_STALL_THRESHOLD) counts.set(streakKey, 0)
+  return !report.progressed && streak >= WATCH_STALL_THRESHOLD ? CODING_NO_PROGRESS_NUDGE : null
 }
 
 /** One nudge per batch; a plain repeat outranks a repeated observation. */

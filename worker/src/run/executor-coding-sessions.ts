@@ -17,10 +17,11 @@ import {
   codingSessionDescriptors,
   type CodingSessionToolName,
 } from './coding-session-tools.js'
-import { runCodingSessionWait, type CodingWaitTiming } from './coding-session-wait.js'
+import { runCodingSessionWait, type CodingWaitOutcome, type CodingWaitTiming } from './coding-session-wait.js'
 import type { ExecutorCommandOutcome } from './executor-command-dispatch.js'
 import { ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { coerceToolArgumentsToSchema } from './tool-argument-coercion.js'
+import type { WatchState } from './tool-loop-detection.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -83,6 +84,17 @@ export const codingSessionsOffer = async (
   })
   if (!candidate || !executorCodingSessionsAllowed(binding.executor, candidate.actorUserId)) return null
   return { bindingId: binding.id, facts: facts.data }
+}
+
+/**
+ * Why a wait stopped, as the loop detector reads it: an ended turn or a
+ * session that failed or closed needs the model, which a second wait would
+ * only report again; the person writing, or stopping the run, ends the turn;
+ * anything else was still watching.
+ */
+const watchStateOf = (outcome: CodingWaitOutcome): WatchState => {
+  if (outcome === 'attention') return 'needs_model'
+  return outcome === 'person_wrote' || outcome === 'cancelled' ? 'end_turn' : 'watching'
 }
 
 export const createExecutorCodingSessions = (input: {
@@ -211,7 +223,7 @@ export const createExecutorCodingSessions = (input: {
       output: presentCodingWait(waited),
       success: true,
       ...recordIdField,
-      watchProgressed: progressed,
+      watch: { progressed, state: watchStateOf(outcome) },
     }
   }
 
@@ -235,23 +247,26 @@ export const createExecutorCodingSessions = (input: {
  * The two questions a wait asks between reads, from the run's own rows: was
  * the run stopped, and has a person written to this agent in this
  * conversation since it began — a live chat message waiting for the run to
- * end (`RunThreadPendingMessage`), not a trigger's fire.
+ * end (`RunThreadPendingMessage`), not a trigger's fire. A row older than the
+ * run is not news: a drain that sends one message to a run of its own leaves
+ * the rest pending, and they were there before this run was made.
  */
 export const codingWaitRunChecks = (
   prisma: Pick<PrismaClient, 'run' | 'runThreadPendingMessage'>,
   input: { agentId: string; runId: string },
 ) => {
-  let thread: Promise<{ principalUserId: string | null; threadId: string } | null> | undefined
+  let thread: Promise<{ createdAt: Date; principalUserId: string | null; threadId: string } | null> | undefined
   return {
     personWrote: async (): Promise<boolean> => {
       thread ??= prisma.run.findUnique({
-        where: { id: input.runId }, select: { principalUserId: true, threadId: true },
+        where: { id: input.runId }, select: { createdAt: true, principalUserId: true, threadId: true },
       })
       const run = await thread
       if (!run) return false
       const pending = await prisma.runThreadPendingMessage.findFirst({
         where: {
           agentId: input.agentId,
+          createdAt: { gt: run.createdAt },
           interactive: true,
           principalUserId: run.principalUserId,
           threadId: run.threadId,

@@ -13,6 +13,7 @@ import type {
   PgRealtimeTransport,
 } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import type { WatchReport } from './tool-loop-detection.js'
 
 export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
 
@@ -64,10 +65,11 @@ export type AgenticToolResult = {
   toolCallRecordId?: string
   /**
    * Set by a watch tool (`WATCH_TOOL_NAMES` in `tool-loop-detection.ts`):
-   * whether what it waited on moved while it waited. Waits in a row that saw
-   * nothing move earn the loop's no-progress nudge.
+   * whether what it waited on moved while it waited, and why it stopped.
+   * Waits in a row that saw nothing move earn the loop's no-progress nudge;
+   * a repeat of a wait that stopped because the model must act is refused.
    */
-  watchProgressed?: boolean
+  watch?: WatchReport
 }
 
 export type BuiltinToolRuntimeContext = {

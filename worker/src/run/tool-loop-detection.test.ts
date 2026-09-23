@@ -8,6 +8,9 @@ import { executeToolBatch } from './tool-batch.js'
 import {
   CODING_NO_PROGRESS_NUDGE,
   CODING_OBSERVATION_TOOL_NAMES,
+  CODING_REPEATED_LOOK_NUDGE,
+  CODING_WAIT_END_TURN_NUDGE,
+  CODING_WAIT_NEEDS_YOU_NUDGE,
   countToolCall,
   noteWatchProgress,
   OBSERVATION_LOOP_THRESHOLD,
@@ -17,6 +20,7 @@ import {
   restoreLoopCounts,
   strongerNudge,
   WATCH_TOOL_NAMES,
+  type WatchReport,
 } from './tool-loop-detection.js'
 
 const LIST = 'executor_mcp_tools'
@@ -124,19 +128,20 @@ test('listing or reviewing a coding session four times in a row is refused with 
     assert.equal(countToolCall(counts, CODING_SESSION_TOOL_NAMES.review, review), null)
   }
   const verdict = countToolCall(counts, CODING_SESSION_TOOL_NAMES.review, review)
-  assert.equal(verdict?.nudge, CODING_NO_PROGRESS_NUDGE)
-  assert.equal(
-    CODING_NO_PROGRESS_NUDGE,
-    'The coding agent is still working; that is normal. Wait again, or tell the person where things stand and end your turn.',
-  )
+  // A repeated look says nothing of whether the agent is still working.
+  assert.equal(verdict?.nudge, CODING_REPEATED_LOOK_NUDGE)
+  assert.doesNotMatch(CODING_REPEATED_LOOK_NUDGE, /still working/)
 })
 
-test('a wait is never refused before it runs, however often it is repeated', () => {
+test('a watching wait is never refused before it runs, however often it is repeated', () => {
   const counts = new Map<string, number>()
   for (let call = 0; call < 20; call += 1) {
     assert.equal(countToolCall(counts, CODING_SESSION_TOOL_NAMES.wait, { sessionId: 'a' }), null)
+    noteWatchProgress(counts, CODING_SESSION_TOOL_NAMES.wait, { sessionId: 'a' }, { progressed: true, state: 'watching' })
   }
 })
+
+const watching = (progressed: boolean): WatchReport => ({ progressed, state: 'watching' })
 
 test('the third wait in a row that saw nothing move earns the nudge, and progress restarts the count', () => {
   const counts = new Map<string, number>()
@@ -144,8 +149,12 @@ test('the third wait in a row that saw nothing move earns the nudge, and progres
   const args = { sessionId: 'a' }
   const look = (progressed: boolean): string | null => {
     countToolCall(counts, wait, args)
-    return noteWatchProgress(counts, wait, args, progressed)
+    return noteWatchProgress(counts, wait, args, watching(progressed))
   }
+  assert.equal(
+    CODING_NO_PROGRESS_NUDGE,
+    'The coding agent is still working; that is normal. Wait again, or tell the person where things stand and end your turn.',
+  )
   assert.equal(look(false), null)
   assert.equal(look(false), null)
   assert.equal(look(true), null, 'a wait that saw progress restarts the count')
@@ -157,21 +166,68 @@ test('the third wait in a row that saw nothing move earns the nudge, and progres
   look(false)
   countToolCall(counts, CODING_SESSION_TOOL_NAMES.review, args)
   assert.equal(look(false), null)
-  assert.equal(noteWatchProgress(counts, 'kb_search', {}, false), null, 'only a watch tool reports progress')
+  assert.equal(noteWatchProgress(counts, 'kb_search', {}, watching(false)), null, 'only a watch tool reports progress')
   assert.ok(WATCH_TOOL_NAMES.has(wait))
+})
+
+test('a wait that stopped because the model must act is not repeated until an acting call', () => {
+  const counts = new Map<string, number>()
+  const wait = CODING_SESSION_TOOL_NAMES.wait
+  const args = { sessionId: 'a' }
+  assert.equal(countToolCall(counts, wait, args), null)
+  assert.equal(noteWatchProgress(counts, wait, args, { progressed: true, state: 'needs_model' }), null,
+    'the wait’s own answer says what to do')
+  const again = countToolCall(counts, wait, args)
+  assert.equal(again?.nudge, CODING_WAIT_NEEDS_YOU_NUDGE)
+  assert.match(again?.output ?? '', /^Not run: your last wait on this session already returned because it needs you/)
+  assert.doesNotMatch(CODING_WAIT_NEEDS_YOU_NUDGE, /still working/)
+  // Looking at it (a review) changes nothing; another session is another wait.
+  countToolCall(counts, CODING_SESSION_TOOL_NAMES.review, args)
+  assert.equal(countToolCall(counts, wait, args)?.nudge, CODING_WAIT_NEEDS_YOU_NUDGE)
+  assert.equal(countToolCall(counts, wait, { sessionId: 'b' }), null)
+  // Sending it a message can: the next wait runs.
+  countToolCall(counts, CODING_SESSION_TOOL_NAMES.send, { message: 'Also add a test.', sessionId: 'a' })
+  assert.equal(countToolCall(counts, wait, args), null)
+})
+
+test('once the person has written, every later wait in the run is refused with “end your turn”', () => {
+  const counts = new Map<string, number>()
+  const wait = CODING_SESSION_TOOL_NAMES.wait
+  countToolCall(counts, wait, { sessionId: 'a' })
+  noteWatchProgress(counts, wait, { sessionId: 'a' }, { progressed: false, state: 'end_turn' })
+  countToolCall(counts, CODING_SESSION_TOOL_NAMES.send, { message: 'x', sessionId: 'a' })
+  for (const args of [{ sessionId: 'a' }, { sessionId: 'b' }]) {
+    const verdict = countToolCall(counts, wait, args)
+    assert.equal(verdict?.nudge, CODING_WAIT_END_TURN_NUDGE)
+    assert.match(verdict?.output ?? '', /End your turn now/)
+  }
+  // It survives a resume, as the rest of the counts do.
+  assert.equal(countToolCall(restoreLoopCounts(Object.fromEntries(counts)), wait, { sessionId: 'c' })?.nudge,
+    CODING_WAIT_END_TURN_NUDGE)
+  // Recorded even for a wait whose streak a later call in its batch ended.
+  const batch = new Map<string, number>()
+  countToolCall(batch, wait, { sessionId: 'a' })
+  countToolCall(batch, 'kb_search', { q: 'x' })
+  noteWatchProgress(batch, wait, { sessionId: 'a' }, { progressed: false, state: 'end_turn' })
+  assert.equal(countToolCall(batch, wait, { sessionId: 'a' })?.nudge, CODING_WAIT_END_TURN_NUDGE)
 })
 
 test('a batch turns a stalled wait’s report into the loop nudge, and a wait that moved into none', async () => {
   const counts = new Map<string, number>()
-  const run = (watchProgressed: boolean) => executeToolBatch({
+  const run = (watch: WatchReport) => executeToolBatch({
     callbacks: { onToolCallEnd: async () => undefined, onToolCallStart: async () => undefined },
     circuitBreaker: new ToolCircuitBreaker(),
-    executeTool: async () => ({ inputSummary: '', output: 'still working', success: true, watchProgressed }),
+    executeTool: async () => ({ inputSummary: '', output: 'still working', success: true, watch }),
     signatureCounts: counts,
     toolCalls: [{ arguments: { sessionId: 'a' }, toolCallId: `w-${counts.size}-${Math.random()}`, toolName: CODING_SESSION_TOOL_NAMES.wait }],
   })
-  assert.equal((await run(false)).loopNudge, null)
-  assert.equal((await run(false)).loopNudge, null)
-  assert.equal((await run(false)).loopNudge, CODING_NO_PROGRESS_NUDGE)
-  assert.equal((await run(true)).loopNudge, null)
+  assert.equal((await run(watching(false))).loopNudge, null)
+  assert.equal((await run(watching(false))).loopNudge, null)
+  assert.equal((await run(watching(false))).loopNudge, CODING_NO_PROGRESS_NUDGE)
+  assert.equal((await run(watching(true))).loopNudge, null)
+  // A wait that ended on the session needing the model: the next one in a row is refused, and not run.
+  assert.equal((await run({ progressed: true, state: 'needs_model' })).loopNudge, null)
+  const refused = await run(watching(true))
+  assert.equal(refused.loopNudge, CODING_WAIT_NEEDS_YOU_NUDGE)
+  assert.equal(refused.results[0]?.success, false)
 })

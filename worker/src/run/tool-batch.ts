@@ -1,7 +1,7 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
 import { circuitBreakerKey, ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
-import { countToolCall, noteWatchProgress, strongerNudge } from './tool-loop-detection.js'
+import { countToolCall, noteWatchProgress, strongerNudge, type WatchReport } from './tool-loop-detection.js'
 import { summarizeToolInput } from './tool-util.js'
 
 export type ToolApprovalSuspension = {
@@ -28,8 +28,8 @@ export type ExecutedToolResult = {
   toolCallId?: string
   toolCallRecordId?: string
   toolName?: string
-  /** See `AgenticToolResult.watchProgressed`: read by the loop detector after the call. */
-  watchProgressed?: boolean
+  /** See `AgenticToolResult.watch`: read by the loop detector after the call. */
+  watch?: WatchReport
 }
 
 export type ToolBatchCallbacks = {
@@ -277,11 +277,11 @@ export const executeToolBatch = async (input: {
           input.circuitBreaker.recordError(breakerKey)
         }
       }
-      // A wait says, once it ran, whether what it watched moved; a replayed
-      // result says nothing and counts for nothing.
-      if (result.watchProgressed !== undefined) {
+      // A wait says, once it ran, whether what it watched moved and why it
+      // stopped; a replayed result says nothing and counts for nothing.
+      if (result.watch !== undefined) {
         const stalled = noteWatchProgress(
-          input.signatureCounts, countedName(toolCall), toolCall.arguments, result.watchProgressed,
+          input.signatureCounts, countedName(toolCall), toolCall.arguments, result.watch,
         )
         if (stalled) loopNudge = strongerNudge(loopNudge, stalled)
       }

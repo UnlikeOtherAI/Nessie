@@ -84,8 +84,10 @@ between reads. It returns early when the session needs the agent — its turn
 ended (`waiting_for_input`), it was `interrupted`, it `failed` or `closed` —
 and when the agent should stop watching: the person posted a new message in
 this conversation (a live chat `RunThreadPendingMessage` for this agent and
-thread, which says "The person sent a message; end your turn now with one
-line of status; you will read it next."), the run was stopped, or the worker
+thread made after the run was, which says "The person sent a message; end
+your turn now with one line of status; you will read it next." — a row a
+drain left behind from before the run is not news), the run was stopped, or
+the worker
 is draining. A request the host has not picked up yet (`pendingNotice`,
 `queuedMessages`), and the turn a start or a send is still owed, are not the
 turn ending. Its tool timeout is 4.5 minutes; every read's command expires no
@@ -106,8 +108,11 @@ output. The bridge's refusals of a session or an argument are stated as ours
 and are correctable.
 
 The wait, the list and the review are observation tools for the loop
-detector, and a wait that saw nothing move three times in a row is nudged
-rather than refused
+detector. A wait says why it stopped: one that was still watching is never
+refused, and three in a row that saw nothing move are nudged; one that stopped
+because the session needs the agent is not repeated until the agent does
+something that can change that; and once the person has written, no further
+wait runs this turn
 ([tech-and-run-budgets.md](../standards/tech-and-run-budgets.md) → "Loop
 detection"). While it waits, the thought-process bubble shows one line for it,
 rewritten in place under the same chunk id — "Claude Code: working — 14 steps
