@@ -57,7 +57,9 @@ const seed = async (): Promise<Seed> => {
     [`INSERT INTO threads (id, channel_id, created_at, updated_at) VALUES ($1::uuid, $2::uuid, now(), now())`, [ids.thread, ids.channel]],
     [`INSERT INTO users (id, email, display_name, updated_at) VALUES ($1::uuid, $2, 'R', now())`, [ids.requester, `${ids.requester}@brief.test`]],
     [`INSERT INTO agents (id, name, organization_id, team_id, updated_at) VALUES ($1::uuid, 'A', $2::uuid, $3::uuid, now())`, [ids.agent, ids.organization, ids.team]],
-    [`INSERT INTO runs (id, agent_id, thread_id) VALUES ($1::uuid, $2::uuid, $3::uuid)`, [ids.run, ids.agent, ids.thread]],
+    // Terminal, so no run sweep in a concurrently running suite ever picks it up.
+    [`INSERT INTO runs (id, agent_id, thread_id, status) VALUES ($1::uuid, $2::uuid, $3::uuid, 'completed')`,
+      [ids.run, ids.agent, ids.thread]],
     [`INSERT INTO product_team_enablements (organization_id, team_id, product_slug, enabled, updated_at)
       VALUES ($1::uuid, $2::uuid, 'deep-water', true, now())`, [ids.organization, ids.team]],
     [`INSERT INTO mcp_server_instances (id, catalog_entry_id, organization_id, scope_type, scope_id, installed_by,

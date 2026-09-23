@@ -94,8 +94,9 @@ export const seedBriefFixture = async (): Promise<BriefFixture> => {
      VALUES ($1, 'Research agent', $2, $3, $4, now())`,
     [ids.agent, ids.organization, ids.team, ids.project],
   )
+  // Terminal, so no run sweep in a concurrently running suite ever picks it up.
   await pool.query(
-    `INSERT INTO runs (id, agent_id, thread_id) VALUES ($1, $2, $3)`,
+    `INSERT INTO runs (id, agent_id, thread_id, status) VALUES ($1, $2, $3, 'completed')`,
     [ids.originRun, ids.agent, ids.thread],
   )
   await pool.query(
