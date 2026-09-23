@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import {
   useKnowledgeRoot,
@@ -17,7 +17,8 @@ import { useKnowledge } from '../KnowledgeProvider'
 import { useOpenDocument } from '../useOpenDocument'
 import { isAgentDraft } from '../page-status'
 import { FinderListHost } from './FinderListView'
-import { FinderRootColumn, type FinderRootRow } from './FinderRootColumn'
+import { FinderRootBrowserColumn } from './FinderRootBrowserColumn'
+import { FinderAgentsBrowserColumn } from './FinderAgentsBrowserColumn'
 import { FinderStatusStrip } from './FinderStatusBar'
 import type { FinderVirtualRow } from './FinderVirtualColumn'
 import { FinderVirtualPane } from './FinderVirtualPane'
@@ -51,6 +52,8 @@ import { useFinderMove } from './useFinderMove'
 import { useFinderToolbar } from './useFinderToolbar'
 import { useFinderTransfers } from './useFinderTransfers'
 import { useFinderSpreadsheets } from './useFinderSpreadsheets'
+import { useFinderRootNavigation } from './useFinderRootNavigation'
+import { finderRouteColumns, isKnowledgeAgentsRoute } from './finder-route-columns'
 
 /**
  * The Documents Finder: the viewport, its columns, the status bar and the
@@ -81,6 +84,7 @@ export const DocumentsFinder = ({
   scope,
 }: DocumentsFinderProps) => {
   const knowledge = useKnowledge()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
   const single = useNavigationLayout() === 'single'
   const [searchParams, setSearchParams] = useSearchParams()
@@ -200,7 +204,16 @@ export const DocumentsFinder = ({
   }, [knowledge.selectedSpace?.name, knowledge.selectedSpace?.ownerAgentId, pathPages, selectedSpaceId, virtualKind])
 
   const virtualColumnKey = virtualKind ? `virtual:${virtualKind}` : null
-  const deepestKey = virtualColumnKey ?? levels.at(-1)?.key ?? 'root'
+  const agentsDirectorySelected = knowledge.selectedRoot?.kind === 'agents'
+    || knowledge.selectedRoot?.kind === 'agent-space'
+  // On a phone every addressable Knowledge root destination is already a
+  // route layer. Keep its column mounted from the route even during the short
+  // fetch/state sync on a cold deep link; otherwise the route and a nested
+  // column stage both push and the old Documents screen remains on top.
+  const agentsDirectoryRendered = agentsDirectorySelected
+    || (single && orgScope && isKnowledgeAgentsRoute(pathname))
+  const agentsColumnKey = agentsDirectoryRendered ? 'virtual:agents' : null
+  const deepestKey = virtualColumnKey ?? levels.at(-1)?.key ?? agentsColumnKey ?? 'root'
   const [selection, dispatch] = useReducer(finderSelectionReducer, emptyFinderSelection(deepestKey))
 
   // The column holding the selection, else the deepest open one — where a new
@@ -225,32 +238,8 @@ export const DocumentsFinder = ({
   }, [activeLevel, activeRows, virtualColumnKey])
 
   // ── Opening ───────────────────────────────────────────────────────────────
-  const selectedRootRowId = knowledge.activeProductView
-    ? `view:${knowledge.activeProductView}`
-    : knowledge.selectedRoot?.kind === 'latest'
-      ? 'virtual:latest'
-      : knowledge.selectedRoot?.kind === 'shared-with-me'
-        ? 'virtual:shared'
-        : knowledge.selectedRoot?.spaceId
-
-  const openRootRow = useCallback((row: FinderRootRow) => {
-    dispatch({ columnKey: 'root', id: row.id, modifier: 'none', order: [], type: 'click' })
-    switch (row.kind) {
-      case 'latest':
-        knowledge.selectVirtual('latest')
-        return void navigate('/knowledge-base/latest')
-      case 'shared-with-me':
-        knowledge.selectVirtual('shared-with-me')
-        return void navigate('/knowledge-base/shared-with-me')
-      case 'space':
-        knowledge.selectSpace(row.space.spaceId)
-        dispatch({ columnKey: `space:${row.space.spaceId}`, type: 'enterColumn' })
-        return void navigate(`/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`)
-      case 'product-view':
-        knowledge.selectProductView(row.view)
-        return void navigate(`/knowledge-base/views/${encodeURIComponent(row.view)}`)
-    }
-  }, [knowledge, navigate])
+  const { agentsDirectoryOpen, backToAgents, backToRoot, openAgentHome, openRootRow,
+    selectedRootRowId } = useFinderRootNavigation({ dispatch, knowledge, navigate, orgScope })
 
   // Where an opened document goes: the pane beside the browser, or — on the
   // desktop shell — a window of its own. A folder never reaches it.
@@ -282,10 +271,8 @@ export const DocumentsFinder = ({
     spaceId: selectedSpaceId,
   })
 
-  // ── Uploads, menus, the transfer prompt ───────────────────────────────────
   const transfers = useFinderTransfers({ pageById, root: rootQuery.data })
   const uploads = useFinderUploads({ pages: knowledge.pages, spaceId: selectedSpaceId })
-  // ── Drag: in-space moves ──────────────────────────────────────────────────
   const drag = useFinderMove({
     onForeignDrop: transfers.onForeignDrop,
     pageById,
@@ -332,9 +319,7 @@ export const DocumentsFinder = ({
     scopeAgentId: scope.kind === 'agent' ? scope.agentId : undefined,
   })
 
-  // A root row is the only place a *different* root folder can be dropped, so
-  // a cross-root transfer starts there (transfer.md §1). These two prop names
-  // are the contract with Wave 2A, which adds them to `FinderRootColumn`.
+  // A root row is the only place a different root folder can receive a drop.
   const rootDrop = {
     dropHandlersForSpace: (spaceId: string) => drag.dropHandlersFor(spaceId, {
       kind: 'folder',
@@ -369,7 +354,6 @@ export const DocumentsFinder = ({
     selectedIds: selection.ids,
   })
 
-  // ── Geometry ──────────────────────────────────────────────────────────────
   // Every column is independently resizable, keyed by its *slot* (root, the
   // virtual listing, depth:0, depth:1, …) rather than by the folder in it —
   // "the second column is too narrow" is about the position, not the page.
@@ -385,43 +369,36 @@ export const DocumentsFinder = ({
     ? knowledge.spaces.filter((space) => space.id !== selectedSpaceId)
     : []
 
-  // The root column is a screen of its own, so leaving a root folder is a
-  // route change. Project and agent scope have none to return to.
-  const backToRoot = orgScope
-    ? () => {
-        knowledge.selectVirtual(null)
-        void navigate('/knowledge-base')
-      }
-    : undefined
-
   const rootColumn = (
-    <ColumnBrowserColumn
+    <FinderRootBrowserColumn
+      {...rootDrop}
       actions={single ? actions : undefined}
-      key="root"
+      activeRowId={selectedRootRowId}
+      columnActive={rootColumnActive}
+      onOpen={openRootRow}
+      query={rootQuery}
+      refuseProps={uploads.refuseProps}
       resize={resizeFor('root')}
-      screen
-      scrollKey="finder:root"
-      title="Documents"
-    >
-      <div className="h-full" {...uploads.refuseProps}>
-        <FinderRootColumn
-          {...rootDrop}
-          activeRowId={selectedRootRowId}
-          columnActive={rootColumnActive}
-          onOpen={openRootRow}
-          query={{
-            isError: rootQuery.isError,
-            isLoading: rootQuery.isLoading,
-            refetch: rootQuery.refetch,
-          }}
-          root={rootQuery.data}
-        />
-      </div>
-    </ColumnBrowserColumn>
+      root={rootQuery.data}
+    />
   )
+
+  const agentsColumn = agentsDirectoryRendered ? (
+    <FinderAgentsBrowserColumn
+      activeAgentId={knowledge.selectedRoot?.kind === 'agent-space'
+        ? knowledge.selectedRoot.agentId : undefined}
+      backToRoot={backToRoot}
+      columnActive={activeKey === 'virtual:agents'}
+      onOpen={openAgentHome}
+      query={rootQuery}
+      resize={resizeFor('virtual')}
+      root={rootQuery.data}
+    />
+  ) : null
 
   const columns = [
     ...(orgScope ? [rootColumn] : []),
+    ...(agentsColumn ? [agentsColumn] : []),
     ...(virtualColumnKey
       ? [(
         <FinderVirtualPane
@@ -442,6 +419,7 @@ export const DocumentsFinder = ({
           refuseProps={uploads.refuseProps}
           resize={resizeFor('virtual')}
           rows={virtualList}
+          screen={single && orgScope}
           selection={selection}
         />
       )]
@@ -462,8 +440,9 @@ export const DocumentsFinder = ({
           // its parent, a root folder's listing to the root column.
           onBack={level.depth > 0
             ? () => browseTo(pagePath.slice(0, level.depth - 1))
-            : backToRoot}
+            : backToAgents ?? backToRoot}
           resize={resizeFor(`depth:${index}`)}
+          screen={single && orgScope && index === 0}
           scrollKey={`finder:${level.key}`}
           showBack={level.depth > 0 || Boolean(backToRoot)}
           title={level.title}
@@ -499,29 +478,38 @@ export const DocumentsFinder = ({
       ))),
   ]
 
-  // The viewport's per-column widths, in the same order as `columns` above.
   const columnSlots: FinderColumnSlot[] = [
     ...(orgScope ? ['root' as const] : []),
+    ...(agentsColumn ? ['virtual' as const] : []),
     ...(virtualColumnKey
       ? ['virtual' as const]
       : levels.map((_, index) => `depth:${index}` as const)),
   ]
 
-  const statusBar = (<FinderStatusStrip
-      itemCount={virtualColumnKey ? virtualList.length : activeRows.length}
+  const { columns: displayedColumns, slots: displayedColumnSlots } = finderRouteColumns({
+    agentsColumn, columns, folderCount: levels.length, orgScope, pathname,
+    rootColumn, single, slots: columnSlots, virtualColumnKey,
+  })
+  const agentsDirectoryActive = knowledge.selectedRoot?.kind === 'agents'
+
+  const statusBar = <FinderStatusStrip
+      itemCount={agentsDirectoryActive
+        ? rootQuery.data?.agentHomes.length ?? 0
+        : virtualColumnKey ? virtualList.length : activeRows.length}
       message={uploads.statusMessage}
       more={Boolean(virtualColumnKey && virtualQuery.hasNextPage)}
       selectedCount={selection.ids.length}
       showStorage={orgScope}
       single={single}
       transferRows={transfers.progressRows}
-      truncated={rootQuery.data?.sharedTruncated ?? false}
+      truncated={agentsDirectoryActive
+        ? rootQuery.data?.agentHomesTruncated ?? false
+        : rootQuery.data?.sharedTruncated ?? false}
       uploads={uploads}
     />
-  )
 
   // List view is a split affordance: on `single` a column *is* one folder.
-  const listView = view === 'list' && !single && !virtualColumnKey && levels.length > 0
+  const listView = view === 'list' && !single && !virtualColumnKey && !agentsDirectoryOpen && levels.length > 0
 
   // The toolbar spans the window; below `split` the column carries it.
   const toolbar = single ? null : (
@@ -546,7 +534,7 @@ export const DocumentsFinder = ({
       <div className="flex min-h-0 flex-1">
         {scopeReadFailed ? (
           <FinderScopeReadState query={pagesQuery} />
-        ) : view === 'tree' && !single && !virtualColumnKey ? (
+        ) : view === 'tree' && !single && !virtualColumnKey && !agentsDirectoryOpen ? (
           <FinderTreePane activePageId={knowledge.openPageId} browseTo={browseTo}
             createFolderColumnKey={creatingFolderIn} createFolderPending={knowledge.createFolderPending}
             onCancelFolder={closeNewFolder} onSubmitFolder={(name) => submitFolder(activeParentPageId, name)}
@@ -583,9 +571,9 @@ export const DocumentsFinder = ({
         ) : (
           <div className="min-w-0 flex-1">
             <ColumnBrowserViewport
-              activeColumn={columns.length - 1}
-              columns={columns}
-              columnWidths={columnSlots.map(widthFor)}
+              activeColumn={displayedColumns.length - 1}
+              columns={displayedColumns}
+              columnWidths={displayedColumnSlots.map(widthFor)}
               stageScope="knowledge"
             />
           </div>

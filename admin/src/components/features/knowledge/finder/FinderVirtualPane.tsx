@@ -21,6 +21,7 @@ export const FinderVirtualPane = ({
   refuseProps,
   resize,
   rows,
+  screen = false,
   selection,
 }: {
   columnKey: string
@@ -35,11 +36,14 @@ export const FinderVirtualPane = ({
   }
   resize: Parameters<typeof ColumnBrowserColumn>[0]['resize']
   rows: FinderVirtualRow[]
+  /** The route itself owns this column on a single-column Knowledge screen. */
+  screen?: boolean
   selection: FinderSelection
 }): ReactNode => (
   <ColumnBrowserColumn
     onBack={onBack}
     resize={resize}
+    screen={screen}
     showBack
     scrollKey={`finder:${columnKey}`}
     title={kind === 'latest' ? 'Latest' : 'Shared with me'}

@@ -66,13 +66,30 @@ export const seedScope = async (
   const user = await prisma.user.create({
     data: { displayName: `Mock LLM ${suffix}`, email: `mock-llm-${suffix}@example.com` },
   })
+  await Promise.all([
+    prisma.organizationMember.create({
+      data: { organizationId: organization.id, role: 'owner', userId: user.id },
+    }),
+    prisma.projectMember.create({
+      data: { projectId: project.id, role: 'owner', userId: user.id },
+    }),
+    prisma.teamMember.create({
+      data: { role: 'owner', teamId: team.id, userId: user.id },
+    }),
+    prisma.channelMember.create({
+      data: { channelId: channel.id, role: 'owner', userId: user.id },
+    }),
+  ])
   const agent = await prisma.agent.create({
     data: {
       model: 'mock-model',
       name: `mock-llm-agent-${suffix}`,
       organizationId: organization.id,
+      ownerUserId: user.id,
+      projectId: project.id,
       provider: 'openai',
       systemPrompt: 'You are a deterministic smoke-test assistant. Keep answers short.',
+      teamId: team.id,
     },
   })
   return {

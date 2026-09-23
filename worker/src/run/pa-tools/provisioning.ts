@@ -24,7 +24,7 @@ import {
   listAgentsForUser,
   resolveAgentAvatarStyleSafely,
 } from '@nessie/team-admin'
-import { writeCanonicalAgentCore } from '@nessie/knowledge'
+import { ensureCanonicalAgentCore } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
@@ -244,29 +244,20 @@ export const runAgentCreateTool = async (
     visibility: args.visibility,
   })
 
-  const created = await context.prisma.agent.findFirst({
-    where: { id: agent.id, organizationId: member.organizationId },
-    select: { projectId: true },
-  })
-  if (created?.projectId) {
-    await writeCanonicalAgentCore(
-      context.prisma,
-      createWorkerKnowledgeProvider(context),
-      fileServiceFor(context.prisma),
-      {
-        actor: {
-          organizationId: member.organizationId,
-          uoaIdentity: context.actorContext.actionContext.uoaIdentity,
-          userId: member.userId,
-        },
-        agentId: agent.id,
-        attribution: attributionFromActorContext(context.actorContext),
-        organizationId: member.organizationId,
-        projectId: created.projectId,
-        userId: member.userId,
-      },
-    )
-  }
+  await ensureCanonicalAgentCore(
+    context.prisma,
+    createWorkerKnowledgeProvider(context),
+    fileServiceFor(context.prisma),
+    {
+      agentId: agent.id,
+      attribution: attributionFromActorContext(context.actorContext),
+      authorId: member.userId,
+      authorType: 'user',
+      organizationId: member.organizationId,
+      provisionOnly: true,
+      uploaderId: member.userId,
+    },
+  )
 
   return {
     inputSummary: `name="${args.name}"`,

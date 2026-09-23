@@ -208,9 +208,10 @@ export const prepareRunExecution = async (
     select: {
       toolPolicy: true,
       parentAgentId: true,
+      projectId: true,
       todosEnabled: true,
       systemManaged: true,
-      parentAgent: { select: { id: true, name: true, systemManaged: true } },
+      parentAgent: { select: { id: true, name: true, projectId: true, systemManaged: true } },
     },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
@@ -286,14 +287,16 @@ export const prepareRunExecution = async (
   const documentsAgent = agentRecord?.parentAgent ?? {
     id: context.agent.id,
     name: context.agent.name,
+    projectId: agentRecord?.projectId ?? null,
     systemManaged: agentRecord?.systemManaged ?? false,
   }
-  const documentsHome = hasKbWriteTools(resolvedToolIds) && !documentsAgent.systemManaged
+  const documentsHome = hasDocumentsPromptTools(resolvedToolIds)
+    && !documentsAgent.systemManaged
     ? await resolveAgentDocumentsHome(deps.prisma, {
       agentId: documentsAgent.id,
       agentName: documentsAgent.name,
       organizationId: context.channel.organizationId,
-      projectId: context.channel.projectId,
+      projectId: documentsAgent.projectId,
     })
     : null
 
@@ -502,6 +505,7 @@ export const prepareRunExecution = async (
         ? {
           ...documentsHome,
           hasDocumentTools: hasDocumentsPromptTools(resolvedToolIds),
+          hasDocumentWriteTools: hasKbWriteTools(resolvedToolIds),
           hasSpreadsheetTools: hasSpreadsheetPromptTools(resolvedToolIds),
         }
         : undefined,

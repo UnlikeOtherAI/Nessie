@@ -197,9 +197,19 @@ test('agent_create runs the shared avatar seam and survives it failing', async (
           ...input.data,
         }
       },
-      // Core instructions are written only for an agent homed in a project;
-      // this agent has none, so creation skips that write.
-      findFirst: async () => ({ projectId: null }),
+      findFirst: async () => ({
+        id: AGENT_ID,
+        name: 'Researcher',
+        projectId: PROJECT_ID,
+        speakingStyle: null,
+        systemManaged: false,
+        systemPrompt: null,
+      }),
+    },
+    agentCoreDocumentMigration: {
+      // Core provisioning is covered end to end in the knowledge/API suites;
+      // this avatar-seam unit starts from the idempotent completed state.
+      findUnique: async () => ({ documentCount: 2 }),
     },
     toolRegistryEntry: { findMany: async () => [] },
   })

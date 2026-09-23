@@ -73,8 +73,20 @@ test('the agent’s speaking style lands in the system prompt, once', () => {
   }
   const system = systemContent(buildModelPrompt([], withStyle, 'hi', null))
   assert.match(system, /How to talk to this person:/)
+  assert.match(system, /personality\.md:/)
   assert.match(system, /skip the pleasantries/)
   assert.equal(system.split('How to talk to this person:').length - 1, 1)
+})
+
+test('code-owned core is labelled and follows the platform instructions', () => {
+  const context = makeContext('Aria')
+  context.agent.systemPrompt = 'Investigate carefully.'
+  context.agent.speakingStyle = 'Be candid.'
+
+  const system = systemContent(buildModelPrompt([], context, 'hi', null))
+  assert.match(system, /AGENTS\.md:\nInvestigate carefully\./)
+  assert.match(system, /personality\.md:/)
+  assert.ok(system.indexOf('You have access to tools.') < system.indexOf('AGENTS.md:'))
 })
 
 test('an agent with no speaking style carries no block at all', () => {
@@ -286,7 +298,7 @@ test('the to-do facts block is structural and never copies the conversation into
   assert.doesNotMatch(system, /à l'arrache/)
 })
 
-test('the documents home block appears only with its resolved space and full toolset', () => {
+test('the documents home block names on-demand reads and only advertises writes when present', () => {
   const withDocuments = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
     documents: {
       spaceId: '00000000-0000-0000-0000-0000000000d0',
@@ -299,8 +311,22 @@ test('the documents home block appears only with its resolved space and full too
   assert.match(systemContent(withDocuments), /Aria — Documents/)
   assert.match(systemContent(withDocuments), /kb_list/)
   assert.match(systemContent(withDocuments), /kb_search/)
-  assert.match(systemContent(withDocuments), /kb_document_compose/)
-  assert.match(systemContent(withDocuments), /kb_document_edit/)
+  assert.match(systemContent(withDocuments), /kb_page_read/)
+  assert.match(systemContent(withDocuments), /versionId and nextOffset/)
+  assert.doesNotMatch(systemContent(withDocuments), /kb_document_compose/)
+  assert.doesNotMatch(systemContent(withDocuments), /kb_document_edit/)
+
+  const withWrites = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
+    documents: {
+      spaceId: '00000000-0000-0000-0000-0000000000d0',
+      title: 'Aria — Documents',
+      hasDocumentTools: true,
+      hasDocumentWriteTools: true,
+    },
+  })
+  assert.match(systemContent(withWrites), /kb_document_compose/)
+  assert.match(systemContent(withWrites), /kb_document_edit/)
+  assert.match(systemContent(withWrites), /AGENTS\.md and personality\.md/)
 
   const withoutTools = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
     documents: {
@@ -315,6 +341,23 @@ test('the documents home block appears only with its resolved space and full too
     systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null)),
     /Your documents:/,
   )
+})
+
+test('a delegated assignment remains beside the exact AGENTS.md and personality.md snapshot', () => {
+  const context = makeContext('Aria')
+  context.agent.parentAgentId = 'parent-agent'
+  context.agent.systemPrompt = 'Work only on the delegated release audit.'
+  context.agent.speakingStyle = 'This legacy column must not override the snapshot.'
+  context.coreDocuments = [
+    { markdown: 'Question assumptions and cite concrete evidence.', role: 'identity', versionId: 'v1' },
+    { markdown: 'Be candid and concise.', role: 'working_rules', versionId: 'v2' },
+  ]
+
+  const system = systemContent(buildModelPrompt([], context, 'hi', null))
+  assert.match(system, /Work only on the delegated release audit\./)
+  assert.match(system, /AGENTS\.md:\nQuestion assumptions/)
+  assert.match(system, /personality\.md:\nBe candid and concise\./)
+  assert.doesNotMatch(system, /legacy column must not override/)
 })
 
 test('checkpoint notes are injected after the system messages, before the conversation', () => {

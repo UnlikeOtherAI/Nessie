@@ -70,6 +70,7 @@ export const cloneAgentRecord = async (
       projectId: true,
       role: true,
       runLimits: true,
+      speakingStyle: true,
       surfacePolicy: true,
       systemManaged: true,
       systemPrompt: true,
@@ -119,7 +120,7 @@ export const cloneAgentRecord = async (
     teamId: source.teamId ?? undefined,
     todosEnabled: source.todosEnabled,
     toolPolicy,
-    ...(core ? { speakingStyle: core.speakingStyle } : {}),
+    speakingStyle: core?.speakingStyle ?? source.speakingStyle ?? undefined,
     visibility: source.visibility,
   })
 }

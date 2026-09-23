@@ -21,6 +21,8 @@ test('every phone Back doorway renders through the one shared PhoneBackButton', 
       < resolver.indexOf('const target = getPhoneNavigationBackTarget('),
     'an owner must resolve before the route parent',
   )
+  const provider = readSource('../src/layouts/admin-shell/PhoneNavigationProvider.tsx')
+  assert.match(provider, /owners: localBack/)
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')
   assert.match(column, /PhoneBackButton/)
@@ -80,8 +82,10 @@ test('a pushed column browser column owns Back through its stage, registered onc
   assert.match(viewport, /priority=\{columnBackPriority\(index\)\}/)
   assert.match(viewport, /id=\{stageId\(index\)\}/)
   assert.match(viewport, /ColumnBackProvider/)
-  // Column 0 is the page, not a layer, so its Back is an ordinary owner.
-  assert.match(viewport, /active: stacked && baseReport !== undefined/)
+  // Column 0 is the page, not a layer, so its Back is an ordinary owner only
+  // while that route is exposed. A document stage over it owns Back instead.
+  assert.match(viewport, /active: stacked && !routeCovered && baseReport !== undefined/)
+  assert.match(viewport, /useOverlayLayerCovered/)
   assert.doesNotMatch(viewport, /phoneVisible/)
 
   const column = readSource('../src/components/shared/column-browser/ColumnBrowserColumn.tsx')

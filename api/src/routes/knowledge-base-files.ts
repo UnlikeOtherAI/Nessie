@@ -3,6 +3,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { attributionFromActorContext, recordStorageTransferUsage } from '@nessie/runtime'
 import type { FileService } from '@nessie/runtime'
 import {
+  coreDocumentFilename,
+  isAgentCoreDocumentPage,
   isMarkdownAttachment,
   MARKDOWN_IMPORT_MAX_BYTES,
 } from '@nessie/knowledge'
@@ -285,6 +287,15 @@ export const registerKnowledgeBaseFileRoutes = (
     const mime = file.mimetype || 'application/octet-stream'
     const filename = file.filename || 'upload.bin'
     const markdownUpload = isMarkdownAttachment({ filename, mime })
+    const core = await isAgentCoreDocumentPage(prisma, pageId)
+    if (core && (!markdownUpload || filename !== coreDocumentFilename(core.role))) {
+      return sendApiError(
+        reply,
+        409,
+        'AGENT_CORE_FILE_REQUIRED',
+        `Required agent instructions must remain the Markdown file ${coreDocumentFilename(core.role)}`,
+      )
+    }
     const markdownBuffer = markdownUpload
       ? await readStreamCapped(file.file, MARKDOWN_IMPORT_MAX_BYTES)
       : null

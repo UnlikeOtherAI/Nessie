@@ -26,11 +26,13 @@ export type KnowledgeNavigation = ReturnType<typeof useKnowledgeNavigation>
  */
 export type KnowledgeSelectedRoot =
   | { kind: 'space'; spaceId: string }
+  | { kind: 'agent-space'; agentId: string; spaceId: string }
+  | { kind: 'agents' }
   | { kind: 'latest' }
   | { kind: 'shared-with-me' }
   | null
 
-export type KnowledgeVirtualKind = 'latest' | 'shared-with-me'
+export type KnowledgeVirtualKind = 'agents' | 'latest' | 'shared-with-me'
 
 const samePath = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
@@ -56,7 +58,9 @@ export const useKnowledgeNavigation = ({
   )
   // Derived, never stored twice: a virtual folder has no space, and a space
   // row has exactly one.
-  const selectedSpaceId = selectedRoot?.kind === 'space' ? selectedRoot.spaceId : undefined
+  const selectedSpaceId = selectedRoot?.kind === 'space' || selectedRoot?.kind === 'agent-space'
+    ? selectedRoot.spaceId
+    : undefined
   const [pagePath, setPagePathState] = useState<string[]>([])
   const [openPageId, setOpenPageId] = useState<string | undefined>()
   const [editor, setEditor] = useState<KnowledgeEditorState>(null)
@@ -107,6 +111,16 @@ export const useKnowledgeNavigation = ({
     setActiveProductView(undefined)
     closeOverlays()
   }, [closeOverlays, scopeSpaceId, setPagePath, setSelectedSpaceId])
+
+  const selectAgentSpace = useCallback((agentId: string, nextSpaceId: string): void => {
+    if (scopeSpaceId) return
+    setSelectedRoot({ agentId, kind: 'agent-space', spaceId: nextSpaceId })
+    setPagePath([])
+    setOpenPageId(undefined)
+    setSpaceSettingsOpen(false)
+    setActiveProductView(undefined)
+    closeOverlays()
+  }, [closeOverlays, scopeSpaceId, setPagePath])
 
   /**
    * Open Latest or Shared with me — or, with `null`, leave one. A scoped mount
@@ -229,6 +243,7 @@ export const useKnowledgeNavigation = ({
     popTo,
     readEditor,
     readPagePath,
+    selectAgentSpace,
     selectProductView,
     selectSpace,
     selectVirtual,
@@ -262,6 +277,7 @@ export const useKnowledgeNavigation = ({
     popTo,
     readEditor,
     readPagePath,
+    selectAgentSpace,
     selectProductView,
     selectSpace,
     selectVirtual,

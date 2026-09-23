@@ -70,6 +70,8 @@ type KnowledgeContextValue = {
   selectedSpaceId?: string
   selectedSpace: KnowledgeSpaceRecord | null
   selectSpace: (spaceId: string) => void
+  /** Open an agent home while retaining Agents as its route ancestor. */
+  selectAgentSpace: (agentId: string, spaceId: string) => void
   /** Open Latest or Shared with me; `null` leaves the one that is open. */
   selectVirtual: (kind: KnowledgeVirtualKind | null) => void
   // A product-contributed Documents view (e.g. DeepWater's "Research") pinned in
@@ -323,6 +325,7 @@ export const KnowledgeProvider = ({
     selectedSpaceId,
     selectedSpace,
     selectSpace: navigation.selectSpace,
+    selectAgentSpace: navigation.selectAgentSpace,
     selectVirtual: navigation.selectVirtual,
     activeProductView,
     selectProductView: navigation.selectProductView,

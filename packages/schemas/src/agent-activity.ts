@@ -115,11 +115,20 @@ export const AgentDocumentsResponseSchema = z.object({
   // The exact published core versions that the Designer and chat edit. They
   // are returned only after the normal agent-home/document read decision.
   coreDocuments: z.array(z.object({
+    filename: z.enum(['AGENTS.md', 'personality.md']),
     pageId: z.string().uuid(),
     role: z.enum(['identity', 'working_rules']),
     versionId: z.string().uuid(),
     versionNumber: z.number().int().positive(),
     markdown: z.string(),
+  })).optional(),
+  // App-provided agents are immutable blueprints rather than editable org
+  // notebooks. They still present the same two-file contract to people and to
+  // the runtime, as read-only code-owned projections.
+  projectedCoreDocuments: z.array(z.object({
+    filename: z.enum(['AGENTS.md', 'personality.md']),
+    markdown: z.string(),
+    role: z.enum(['identity', 'working_rules']),
   })).optional(),
 })
 export type AgentDocumentsResponse = z.infer<typeof AgentDocumentsResponseSchema>
