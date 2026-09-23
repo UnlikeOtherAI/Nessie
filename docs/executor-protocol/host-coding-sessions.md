@@ -46,7 +46,8 @@ looking at the inbox once more.
 <config dir>/coding-sessions/
   commands/<commandId>.json   first outcome of each executor command
   sessions/<id>/meta.json     bridge-written once: owner, agent, root, path, title
-  sessions/<id>/session.json  host-written, at most one write per 500 ms
+  sessions/<id>/session.json  host-written, at most one write per 500 ms; the
+                              agent's identity and session id are written at once
   sessions/<id>/events.jsonl  projected events, host-written, rotated at 16 MiB
   sessions/<id>/inbox/        requests, one file per executor command
   sessions/<id>/host.lock     the live host's heartbeat
@@ -244,7 +245,12 @@ host serves the session.
 
 Every kill checks the recorded pid and start time, so a reused pid is never
 signalled, and a new host stops a lost host's still-running agent before it
-resumes the session.
+resumes the session. A start time that cannot be read while the process is
+alive — PowerShell or `ps` timing out under load — is read again rather than
+taken for "not ours". What the next host needs, the agent's identity and its
+confirmed session id, skips the 500 ms debounce, and a session id the agent
+never confirmed is dropped: Claude refuses `--session-id` for an id it already
+holds, so the next agent starts afresh rather than failing on every send.
 
 ### Teardown reaches the machine
 
@@ -291,9 +297,10 @@ The model itself knows who is logged in and repeats it: in the live Windows
 run, Claude Code met a repository with no git identity and typed the account's
 e-mail into `git config --global user.email`. So the e-mail and organisation
 from the initialize answer are redactions for the rest of that host's life,
-and every projected string spells them `<account>`. Codex reports no account,
-so its sessions have none. `session_review` runs in the bridge, which never
-sees the account; its commit subjects are the agent's own words.
+and every projected string spells them `<account>`. Codex's `exec` stream
+names no account, so nothing is redacted for it. `session_review` runs in the
+bridge, which never sees the account; its commit subjects are the agent's own
+words.
 
 `session_status` never waits and answers at most 8 KB, `status`,
 `nextCursor` and `pendingNotice` first. `session_review` runs read-only git in

@@ -44,6 +44,15 @@ import {
 const POLL_MS = 300
 const MAX_LOG_BYTES = 1024 * 1024
 
+/**
+ * What the next host needs if this one dies: which agent process to kill and
+ * which agent session to resume. These skip the debounce and are written at
+ * once: a host killed inside the 500 ms window otherwise left the next one a
+ * `working` session with no confirmed agent session, so it started the agent
+ * afresh instead of resuming it (seen on Windows under load).
+ */
+const RECOVERY_FIELDS = ['agentIdentity', 'agentSessionId', 'agentSessionStarted'] as const
+
 type HostContext = {
   control: CodingProcessControl
   loaded: LoadedCodingSessionsConfig
@@ -96,13 +105,18 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
     if (patch.status && patch.status !== before) {
       emit({ kind: 'system', subtype: 'status', status: patch.status, ...(state.reason ? { reason: state.reason } : {}) })
     }
-    writer.schedule()
+    if (RECOVERY_FIELDS.some((key) => key in patch)) void writer.flush()
+    else writer.schedule()
   }
 
   // A previous host died mid-turn: say so, and stop its agent before anything else runs.
   if (previous && (state.status === 'working' || state.status === 'starting') && state.turn > 0) {
     update({ status: 'interrupted', reason: 'host_lost', turnStartedAt: undefined })
   }
+  // An agent session id the agent never confirmed may or may not exist: Claude
+  // creates it on the first message, and refuses `--session-id` for an id it
+  // already has. So an unconfirmed id is dropped and the next agent starts afresh.
+  if (state.agentSessionId !== undefined && state.agentSessionStarted !== true) update({ agentSessionId: undefined })
   if (state.agentIdentity) {
     log('stopping the previous host\'s agent')
     await control.killTree(state.agentIdentity, await control.descendants(state.agentIdentity.pid))

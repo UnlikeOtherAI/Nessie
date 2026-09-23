@@ -51,6 +51,22 @@ const alive = (pid: number): boolean => {
   }
 }
 
+/**
+ * The start time of a process that is still alive, read again when the read
+ * fails: PowerShell and `ps` can time out under load, and a kill that took
+ * "could not read it" for "not the recorded process" would leave the agent
+ * running beside the one a new host starts.
+ */
+const startTimeOfLive = async (
+  pid: number, read: (pid: number) => Promise<string | undefined>,
+): Promise<string | undefined> => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const value = await read(pid)
+    if (value !== undefined || !alive(pid)) return value
+  }
+  return undefined
+}
+
 const system32 = (file: string): string => join(process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows', 'System32', file)
 
 const powershell = (script: string): Promise<string> => run(
@@ -110,7 +126,7 @@ const windowsControl = (jobHelper: string | undefined): CodingProcessControl => 
       { cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: false },
     ),
     identify: async (pid) => {
-      const started = await startedAt(pid)
+      const started = await startTimeOfLive(pid, startedAt)
       return started === undefined ? undefined : { pid, startedAt: started }
     },
     descendants: async (pid) => {
@@ -127,7 +143,7 @@ const windowsControl = (jobHelper: string | undefined): CodingProcessControl => 
       return walk(pid, rows)
     },
     killTree: async (identity, snapshot = []) => {
-      const current = await startedAt(identity.pid)
+      const current = await startTimeOfLive(identity.pid, startedAt)
       if (current !== undefined && (identity.startedAt === undefined || current === identity.startedAt)) {
         await taskkill(identity.pid)
       }
@@ -160,7 +176,7 @@ const posixControl = (platform: NodeJS.Platform): CodingProcessControl => {
       cwd: options.cwd, env: options.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, shell: false, detached: true,
     }),
     identify: async (pid) => {
-      const started = await startedAt(pid)
+      const started = await startTimeOfLive(pid, startedAt)
       return started === undefined ? undefined : { pid, startedAt: started }
     },
     descendants: async (pid) => {
@@ -173,7 +189,7 @@ const posixControl = (platform: NodeJS.Platform): CodingProcessControl => {
       return [...new Set([...walk(pid, rows), ...group])]
     },
     killTree: async (identity, snapshot = []) => {
-      const current = await startedAt(identity.pid)
+      const current = await startTimeOfLive(identity.pid, startedAt)
       if (current !== undefined && (identity.startedAt === undefined || current === identity.startedAt)) {
         kill(-identity.pid, 'SIGKILL')
         kill(identity.pid, 'SIGKILL')

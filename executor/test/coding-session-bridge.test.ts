@@ -4,6 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
+import { createCodingProcessControl } from '../src/coding-session/process-control.js'
 import { alive, createCodingHarness, waitUntil, type CodingHarness } from './coding-session-harness.js'
 
 /**
@@ -102,6 +103,10 @@ test('a host killed with -9 reads as host_lost, and the next send resumes withou
     const lockPath = join(harness.stateDir, 'sessions', sessionId, 'host.lock')
     const host = JSON.parse(await readFile(lockPath, 'utf8')) as { pid: number }
     const firstAgent = (await harness.agents()).find((entry) => entry.event === 'start')!
+    // Windows hands a dead pid to a new process within seconds, so "stopped" is judged by pid and start time.
+    const control = createCodingProcessControl()
+    const firstIdentity = await control.identify(firstAgent.pid as number)
+    assert.ok(firstIdentity?.startedAt, 'the first agent is running')
     process.kill(host.pid, 'SIGKILL')
     const lost = await harness.waitForStatus(sessionId, (body) => body.status === 'interrupted')
     assert.equal(lost.reason, 'host_lost')
@@ -113,7 +118,8 @@ test('a host killed with -9 reads as host_lost, and the next send resumes withou
     assert.equal(starts.length, 2)
     assert.equal(starts[1]!.resume, true)
     assert.equal(starts[1]!.sessionId, firstAgent.sessionId)
-    assert.equal(alive(firstAgent.pid as number), false, 'the lost host\'s agent was stopped before the resume')
+    const survivor = await control.identify(firstAgent.pid as number)
+    assert.notEqual(survivor?.startedAt, firstIdentity.startedAt, 'the lost host\'s agent was stopped before the resume')
     assert.equal(alive(starts[1]!.pid as number), true)
   } finally {
     await harness.cleanup()
