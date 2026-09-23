@@ -38,10 +38,11 @@ import { hostname, userInfo } from 'node:os'
  * (`>`, `2>>`, `<`), `@`, `*` or a one-letter option (`-o`, `-I`) in front of
  * it — with `/`, `\`, `~`, a drive letter (`D:data\…` too) or `file:`; a
  * path that goes on from a closing bracket (`$(pwd)/…`) does not. A route
- * with no host (`/api/ondre/runs`) cannot be told from an absolute path and
- * is rewritten, and a directory with a space in its name ends the path at
- * the space. A branch (`everySegment`) is a name, not a path the model
- * resolves, so none of its segments is left alone.
+ * with no host (`/api/ondre/runs`) and a glob that starts at `*` cannot be
+ * told from an absolute path and are rewritten, and a directory with a
+ * space in its name ends the path at the space. A branch (`everySegment`) is
+ * a name, not a path the model resolves, so none of its segments is left
+ * alone.
  */
 export const USER_PLACEHOLDER = '<user>'
 export const HOST_PLACEHOLDER = '<host>'

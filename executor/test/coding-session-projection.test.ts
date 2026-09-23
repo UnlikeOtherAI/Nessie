@@ -229,8 +229,10 @@ test('a segment of an absolute path the path rules leave alone is still a name, 
   for (const text of ['src/**/ondre/x.ts', 'node_modules/@types/ondre/index.d.ts', '2024/ondre/notes.md', '$(pwd)/ondre/x', '${ROOT}/ondre/x']) {
     assert.equal(person.rewrite(text), text, text)
   }
-  // A directory with a space in its name reads as prose from the space on: a known limit.
+  // Known limits: a directory with a space in its name reads as prose from the space on, and a glob that
+  // starts at `*` cannot be told from emphasis around an absolute path.
   assert.equal(person.rewrite('/data/My Files/ondre/in.csv'), '/data/My Files/ondre/in.csv')
+  assert.equal(person.rewrite('**/ondre/*.ts'), '**/<user>/*.ts')
   // A branch is a name, never a path the model resolves: every segment of it is rewritten.
   assert.equal(person.rewriteBranch('feature/ondre/fix'), 'feature/<user>/fix')
   assert.equal(person.rewriteBranch('minis/ondre'), '<host>/<user>')

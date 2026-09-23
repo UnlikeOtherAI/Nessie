@@ -840,9 +840,10 @@ quote, a bracket, `=`, `,`, `;`, `|` or a `:` that is not `://`, and past a
 redirection (`>`, `2>>`, `<`), `@`, `*` or a one-letter option (`-o`, `-I`)
 — with `/`, `\`, `~`, a drive letter or `file:`; one that goes on from a
 closing bracket (`$(pwd)/ondre/x`) is relative. So a route with no host
-(`/api/ondre/runs`) has its name rewritten, a letter and a colon read as a
-drive (`a:src/ondre/x`), and a directory with a space in its name
-(`/data/My Files/ondre`) ends the path at the space and keeps the name. Two
+(`/api/ondre/runs`) and a glob that starts at `*` (`**/ondre/*.ts`) have
+their name rewritten, a letter and a colon read as a drive (`a:src/ondre/x`),
+and a directory with a space in its name (`/data/My Files/ondre`) ends the
+path at the space and keeps the name. Two
 separators before a name are a URL's host or a UNC server, and are
 rewritten. A branch (`session_review`'s `branch`, a worktree's `branch`, the
 keys of `pullRequests`) is a name, not a path: every segment is rewritten
