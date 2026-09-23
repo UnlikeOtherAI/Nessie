@@ -7,6 +7,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { ExecutorRunLauncherDialog } from '../../src/components/features/executors/ExecutorRunLauncherDialog'
 import type { AgentRecord } from '../../src/lib/api-client'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
+import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
 
 /**
@@ -61,14 +62,19 @@ const Fixture = () => {
 
 const root = document.querySelector('#root')
 if (!(root instanceof HTMLElement)) throw new Error('Executor run launcher fixture root is missing.')
+// The dialog carries the person's own conversation lease, which listens on the
+// session's event stream; the runner answers the session read as signed out,
+// which keeps that stream closed.
 createRoot(root).render(
   <QueryClientProvider client={queries}>
-    <ApiClientProvider client={client}>
-      <BrowserRouter>
-        <LocalBackProvider>
-          <Fixture />
-        </LocalBackProvider>
-      </BrowserRouter>
-    </ApiClientProvider>
+    <AuthSessionProvider>
+      <ApiClientProvider client={client}>
+        <BrowserRouter>
+          <LocalBackProvider>
+            <Fixture />
+          </LocalBackProvider>
+        </BrowserRouter>
+      </ApiClientProvider>
+    </AuthSessionProvider>
   </QueryClientProvider>,
 )

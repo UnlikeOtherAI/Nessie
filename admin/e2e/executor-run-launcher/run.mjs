@@ -62,6 +62,12 @@ const openCase = async (browser, { localAppsReady, width }) => {
     const path = new URL(request.url()).pathname
     const body = request.method() === 'POST' ? request.postDataJSON() : null
     const respond = (data) => route.fulfill({ json: { data } })
+    // The session read answers signed out, which keeps the shared event
+    // stream closed; the launcher's own lease notice finds no lease here.
+    if (path.startsWith('/api/auth/')) {
+      return route.fulfill({ status: 401, json: { error: { code: 'UNAUTHENTICATED', message: 'fixture' } } })
+    }
+    if (path === '/api/executor-leases' && request.method() === 'GET') return respond([])
     if (path === '/api/executor-availability') {
       availability.push(body)
       const localApps = JSON.stringify(body.operationKeys) === JSON.stringify(LOCAL_APPS)
