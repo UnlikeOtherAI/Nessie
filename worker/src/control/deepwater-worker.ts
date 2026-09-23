@@ -10,14 +10,17 @@ import {
   type PgQueueProvider,
 } from '@nessie/runtime'
 import {
+  DEEP_WATER_BRIEF_ACTION_TOPIC,
   DEEP_WATER_RUN_DELIVER_TOPIC,
   DEEP_WATER_RUN_WATCH_TOPIC,
+  DeepWaterBriefActionJobPayloadSchema,
   DeepWaterRunDeliverJobPayloadSchema,
   DeepWaterRunWatchJobPayloadSchema,
   type DeepWaterRunDeliverJobPayload,
 } from '@nessie/schemas'
 
 import { runDeepWaterTransaction, type DeepWaterRealtime } from './deepwater-announce.js'
+import { runDeepWaterBriefAction } from './deepwater-brief-action.js'
 import { startUnconfirmedKickoff, startUnconfirmedNotice } from './deepwater-copy.js'
 import { renewDeepWaterIdentity } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, postDeepWaterNotice } from './deepwater-messages.js'
@@ -26,9 +29,10 @@ import { wakeDeepWaterAgent } from './deepwater-wake.js'
 import { runDeepWaterWatch, watchDeepWaterRun, type DeepWaterWatchDeps } from './deepwater-watch.js'
 
 /**
- * The worker side of DeepWater research briefs: the watch sweep that claims
- * open runs every few seconds (Water plan amendments-fable F1), the reap of
- * briefs Ledger never confirmed (N5a), and the jobs they enqueue. Each sweep
+ * The worker side of DeepWater research briefs: a person's brief actions
+ * (nessie.md §7.3), the watch sweep that claims open runs every few seconds
+ * (Water plan amendments-fable F1), the reap of briefs Ledger never confirmed
+ * (N5a), and the jobs they enqueue. Each sweep
  * runs under its own advisory lock, so one replica claims at a time; the
  * claim itself is `FOR UPDATE SKIP LOCKED`, so even two would not collide.
  */
@@ -118,6 +122,12 @@ export const startDeepWaterWorker = (deps: DeepWaterWorkerDeps): { stop: () => v
   deps.subscribe(
     DEEP_WATER_RUN_WATCH_TOPIC,
     async (job) => runDeepWaterWatch(callDeps, DeepWaterRunWatchJobPayloadSchema.parse(job.payload)),
+    { signal: deps.abortSignal },
+  )
+
+  deps.subscribe(
+    DEEP_WATER_BRIEF_ACTION_TOPIC,
+    async (job) => runDeepWaterBriefAction(callDeps, DeepWaterBriefActionJobPayloadSchema.parse(job.payload), job),
     { signal: deps.abortSignal },
   )
 
