@@ -6,10 +6,13 @@
 --
 -- Every closed vocabulary below is also a Zod enum in
 -- packages/schemas/src/ticket-work.ts, and
--- api/test/ticket-work-contracts-migration.test.ts fails when the two lists
--- disagree. Each vocabulary CHECK is written with an explicit IS NOT NULL
--- where the column must be set: a NULL makes an IN test NULL, and a CHECK that
--- evaluates to NULL passes.
+-- api/test/ticket-work-contracts-migration.test.ts (against the latest
+-- definition across every migration) and ticket-work-contracts-postgres.test.ts
+-- (against the migrated database) fail when the two lists disagree. A later
+-- value is added by a new migration that drops and re-adds the CHECK; this
+-- file is never edited once applied. Each vocabulary CHECK is written with an
+-- explicit IS NOT NULL where the column must be set: a NULL makes an IN test
+-- NULL, and a CHECK that evaluates to NULL passes.
 --
 -- Additive only: no existing column is dropped or tightened.
 
@@ -47,7 +50,8 @@ CREATE TABLE "agent_ticket_work" (
     "last_checks" JSONB,
     "pr_seen_at" TIMESTAMP(3),
     "wake_count" INTEGER NOT NULL DEFAULT 0,
-    "active_ms" INTEGER NOT NULL DEFAULT 0,
+    -- BIGINT: an INTEGER of milliseconds overflows at about 596 hours.
+    "active_ms" BIGINT NOT NULL DEFAULT 0,
     "cost_usd" DECIMAL(20,8) NOT NULL DEFAULT 0,
     "last_wake_at" TIMESTAMP(3),
     "last_wake_reason" TEXT,
@@ -74,7 +78,8 @@ CREATE TABLE "agent_ticket_work" (
           'machine_access_not_set_up', 'machine_access_suspended',
           'machine_access_ended', 'machine_offline',
           'limit_wakes', 'limit_hours', 'limit_cost', 'limit_daily',
-          'left_flow', 'merged', 'mover_lost_access', 'trigger_disabled'
+          'left_flow', 'merged', 'mover_lost_access', 'trigger_disabled',
+          'identity_unverifiable'
         )
       ),
     -- A live record has not ended; a terminal one has, with a reason from the
@@ -95,7 +100,8 @@ CREATE TABLE "agent_ticket_work" (
             'machine_access_not_set_up', 'machine_access_suspended',
             'machine_access_ended', 'machine_offline',
             'limit_wakes', 'limit_hours', 'limit_cost', 'limit_daily',
-            'left_flow', 'merged', 'mover_lost_access', 'trigger_disabled'
+            'left_flow', 'merged', 'mover_lost_access', 'trigger_disabled',
+            'identity_unverifiable'
           )
         )
       ),
@@ -105,11 +111,18 @@ CREATE TABLE "agent_ticket_work" (
         OR "last_wake_reason" IN (
           'pickup', 'dequeued', 'queued',
           'ticket_commented', 'ticket_description_changed',
-          'ticket_priority_changed', 'ticket_moved',
+          'ticket_priority_changed', 'ticket_labels_changed',
+          'ticket_assignee_changed', 'ticket_moved',
           'thread_message', 'document_changed',
           'session_turn_ended', 'session_interrupted', 'session_failed',
           'session_closed', 'reminder', 'quiet', 'machine_back_online'
         )
+      ),
+    -- As `gh pr view --json state` spells it.
+    CONSTRAINT "agent_ticket_work_last_pr_state_known"
+      CHECK (
+        "last_pr_state" IS NULL
+        OR "last_pr_state" IN ('OPEN', 'CLOSED', 'MERGED')
       ),
     -- Prisma declares a scalar list column nullable; an absent session list
     -- is an empty one, never NULL.
@@ -206,7 +219,8 @@ CREATE TABLE "executor_standing_policies" (
             'person', 'access_revoked', 'executor_paused', 'executor_drained',
             'executor_revoked', 'descriptor_narrowed',
             'author_lost_access', 'author_deactivated', 'author_left_organization',
-            'agent_unbound', 'scope_archived', 'trigger_deleted',
+            'agent_unbound', 'target_channel_unavailable', 'scope_archived',
+            'trigger_disabled', 'trigger_deleted',
             'expired', 'replaced'
           )
         )
@@ -240,21 +254,36 @@ CREATE TABLE "executor_standing_policy_executors" (
 
 -- One live work record per (trigger, ticket): a re-entry is a follow on the
 -- same record, never a second pickup. Prisma cannot express a partial index,
--- so this and the two below live here only.
+-- so this and the four below live here only.
 CREATE UNIQUE INDEX "agent_ticket_work_one_live"
   ON "agent_ticket_work"("trigger_id", "task_id")
   WHERE "status" IN ('queued', 'active', 'parked', 'waiting_machine');
 
 -- One ticket per machine: the pool dispatcher's assignment holds even when
--- two pickups race for the same free executor.
-CREATE UNIQUE INDEX "agent_ticket_work_one_active_per_executor"
+-- two pickups race for the same free executor. A record waiting for its
+-- machine to reconnect keeps the slot, so a dequeue onto that machine cannot
+-- take it first and strand the ticket that was mid-work there.
+CREATE UNIQUE INDEX "agent_ticket_work_one_per_executor"
   ON "agent_ticket_work"("executor_id")
-  WHERE "status" = 'active' AND "executor_id" IS NOT NULL;
+  WHERE "status" IN ('active', 'waiting_machine') AND "executor_id" IS NOT NULL;
 
 -- One pending reminder per work record: a new one replaces it.
 CREATE UNIQUE INDEX "agent_reminders_one_pending_per_work"
   ON "agent_reminders"("work_id")
   WHERE "status" = 'pending' AND "work_id" IS NOT NULL;
+
+-- One binding policy per trigger: the dispatcher and the binder look up "the
+-- policy" for a trigger, so a second live or suspended one would leave both
+-- ambiguous, and a confirm must end the policy it replaces first.
+CREATE UNIQUE INDEX "executor_standing_policies_one_binding"
+  ON "executor_standing_policies"("trigger_id")
+  WHERE "status" IN ('live', 'suspended') AND "trigger_id" IS NOT NULL;
+
+-- One outstanding card per trigger: a new prepare ends the one it replaces,
+-- so a stale card can never be confirmed after a newer one was issued.
+CREATE UNIQUE INDEX "executor_standing_policies_one_preparing"
+  ON "executor_standing_policies"("trigger_id")
+  WHERE "status" = 'preparing' AND "trigger_id" IS NOT NULL;
 
 -- CreateIndex
 CREATE INDEX "agent_ticket_work_trigger_id_task_id_idx" ON "agent_ticket_work"("trigger_id", "task_id");
@@ -386,4 +415,9 @@ ALTER TABLE "executor_standing_policies" ADD CONSTRAINT "executor_standing_polic
 ALTER TABLE "executor_standing_policy_executors" ADD CONSTRAINT "executor_standing_policy_executors_policy_id_fkey" FOREIGN KEY ("policy_id") REFERENCES "executor_standing_policies"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+-- CASCADE rather than RESTRICT: no product path hard-deletes an executor
+-- (revoking one is a status change and a fence that ends its policies first).
+-- The one hard delete is the organisation's own, which cascades to its
+-- executors and its policies in one statement; a RESTRICT or NO ACTION key
+-- here makes that delete fail whenever a pool exists.
 ALTER TABLE "executor_standing_policy_executors" ADD CONSTRAINT "executor_standing_policy_executors_executor_id_fkey" FOREIGN KEY ("executor_id") REFERENCES "executors"("id") ON DELETE CASCADE ON UPDATE CASCADE;

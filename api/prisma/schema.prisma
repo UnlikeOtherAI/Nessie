@@ -4252,13 +4252,13 @@ model AgentTriggerDelivery {
 /// (docs/standards/ticket-work.md).
 ///
 /// Enforced in the migration, because Prisma cannot express them: `status`,
-/// `state_reason`, `ended_reason` and `last_wake_reason` are the closed
-/// vocabularies in `packages/schemas/src/ticket-work.ts`; `ended_at` and
-/// `ended_reason` are set exactly when the status is terminal; the partial
+/// `state_reason`, `ended_reason`, `last_wake_reason` and `last_pr_state` are
+/// the closed vocabularies in `packages/schemas/src/ticket-work.ts`; `ended_at`
+/// and `ended_reason` are set exactly when the status is terminal; the partial
 /// unique index `agent_ticket_work_one_live` allows one live record (queued,
 /// active, parked or waiting_machine) per (trigger, ticket); and
-/// `agent_ticket_work_one_active_per_executor` allows one active record per
-/// machine.
+/// `agent_ticket_work_one_per_executor` lets one record hold each machine (the
+/// active one, or the one waiting_machine for it).
 model AgentTicketWork {
   id               String                  @id @default(uuid()) @db.Uuid
   organizationId   String                  @map("organization_id") @db.Uuid
@@ -4291,14 +4291,16 @@ model AgentTicketWork {
   /// already seen, so a session wake at or below it is skipped.
   lastObservedTurn Json                    @default("{}") @map("last_observed_turn")
   pullRequestUrl   String?                 @map("pull_request_url")
-  /// As `gh pr view` reports it: OPEN, CLOSED or MERGED.
+  /// As `gh pr view` reports it: OPEN, CLOSED or MERGED
+  /// (`TicketWorkPullRequestStateSchema`).
   lastPrState      String?                 @map("last_pr_state")
   /// `{ passed, failed, pending }` from the last pull-request read.
   lastChecks       Json?                   @map("last_checks")
   prSeenAt         DateTime?               @map("pr_seen_at")
   wakeCount        Int                     @default(0) @map("wake_count")
   /// Paused while the record is `waiting_machine` or waiting on a person.
-  activeMs         Int                     @default(0) @map("active_ms")
+  /// BigInt: an Int of milliseconds overflows at about 596 hours.
+  activeMs         BigInt                  @default(0) @map("active_ms")
   /// Coding cost deltas plus the Nessie run cost, at the ledger's precision.
   costUsd          Decimal                 @default(0) @map("cost_usd") @db.Decimal(20, 8)
   lastWakeAt       DateTime?               @map("last_wake_at")
@@ -5840,8 +5842,10 @@ model ExecutorAvailabilityCandidate {
 /// Enforced in the migration: `status`, `suspended_reason` and `ended_reason`
 /// are the closed vocabularies in `packages/schemas/src/ticket-work.ts`;
 /// `suspended_reason` is set exactly when suspended, `ended_at` and
-/// `ended_reason` exactly when ended; and a live or suspended policy has been
-/// confirmed and carries the author's origin.
+/// `ended_reason` exactly when ended; a live or suspended policy has been
+/// confirmed and carries the author's origin; and per trigger at most one
+/// policy is live or suspended (`executor_standing_policies_one_binding`) and
+/// at most one is preparing (`executor_standing_policies_one_preparing`).
 model ExecutorStandingPolicy {
   id              String                           @id @default(uuid()) @db.Uuid
   organizationId  String                           @map("organization_id") @db.Uuid
@@ -5896,6 +5900,9 @@ model ExecutorStandingPolicyExecutor {
   localPolicyDigest      String                 @map("local_policy_digest")
   createdAt              DateTime               @default(now()) @map("created_at")
   policy                 ExecutorStandingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  /// Cascade, not Restrict: nothing hard-deletes an executor but its
+  /// organisation's own deletion, which a Restrict key here would refuse.
+  /// Revoking a machine is a status change and a fence that ends the policy.
   executor               Executor               @relation(fields: [executorId], references: [id], onDelete: Cascade)
 
   @@id([policyId, executorId])

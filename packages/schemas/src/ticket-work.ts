@@ -4,11 +4,13 @@ import { z } from 'zod'
  * The run purpose and the closed vocabularies of ticket work, standing machine
  * access and agent reminders (docs/plans/2026-09-23-ticket-driven-agents).
  *
- * Each list is also a CHECK constraint in
- * `api/prisma/migrations/20260923220000_ticket_work_contracts`, and
- * `api/test/ticket-work-contracts-migration.test.ts` reads that SQL and fails
- * when the two disagree. Adding a value is therefore two edits in one change:
- * the list here, and a migration that drops and re-adds the CHECK.
+ * Each list is also a CHECK constraint (or a partial index's WHERE), first
+ * written in `api/prisma/migrations/20260923220000_ticket_work_contracts`.
+ * `api/test/ticket-work-contracts-migration.test.ts` reads every migration in
+ * order and compares each list with the constraint's latest definition, and
+ * `api/test/ticket-work-contracts-postgres.test.ts` compares it with the
+ * migrated database. Adding a value is therefore two edits in one change: the
+ * list here, and a new migration that drops and re-adds the CHECK.
  */
 
 /**
@@ -24,7 +26,8 @@ export const TICKET_WORK_PURPOSE = 'ticket.work'
 /**
  * Where one ticket's work stands. `queued`, `active`, `parked` and
  * `waiting_machine` are live; at most one live record exists per
- * (trigger, ticket), and at most one `active` record per machine.
+ * (trigger, ticket), and at most one record holds each machine: the `active`
+ * one, or the `waiting_machine` one waiting for that machine to reconnect.
  */
 export const TicketWorkStatusSchema = z.enum([
   'queued',
@@ -53,6 +56,18 @@ export const TICKET_WORK_TERMINAL_STATUSES = [
 ] as const satisfies readonly TicketWorkStatus[]
 
 /**
+ * The statuses that hold the record's pinned machine: the unique index
+ * `agent_ticket_work_one_per_executor`'s WHERE list. A `waiting_machine`
+ * record keeps its slot, so a queued ticket is never assigned to the machine
+ * while the ticket that was mid-work on it waits for it to reconnect. A
+ * `parked` or `queued` record may still name an executor without holding it.
+ */
+export const TICKET_WORK_MACHINE_HOLDING_STATUSES = [
+  'active',
+  'waiting_machine',
+] as const satisfies readonly TicketWorkStatus[]
+
+/**
  * Why a work record is in its status, shown on the chip and in the wake facts.
  * A terminal record's `endedReason` is drawn from the same list: the reason it
  * ended is the reason it is in its final state.
@@ -72,6 +87,9 @@ export const TicketWorkStateReasonSchema = z.enum([
   'merged',
   'mover_lost_access',
   'trigger_disabled',
+  // The deployment's ledger refuses unsigned agent runs, and a `ticket.work`
+  // run signs with no user identity, as event triggers do.
+  'identity_unverifiable',
 ])
 export type TicketWorkStateReason = z.infer<typeof TicketWorkStateReasonSchema>
 
@@ -79,6 +97,10 @@ export type TicketWorkStateReason = z.infer<typeof TicketWorkStateReasonSchema>
  * Why a ticket's agent was woken: the first block of every `ticket.work`
  * kickoff. These are configuration vocabulary the trigger's instructions are
  * sectioned by, not behaviour the platform attaches to them.
+ *
+ * One reason per `follow.kinds` entry: comment, description, priority, labels,
+ * assignee, moved, thread_message and document. A `created` event straight
+ * into a start-work column is a `pickup`.
  */
 export const TicketWorkWakeReasonSchema = z.enum([
   'pickup',
@@ -87,6 +109,8 @@ export const TicketWorkWakeReasonSchema = z.enum([
   'ticket_commented',
   'ticket_description_changed',
   'ticket_priority_changed',
+  'ticket_labels_changed',
+  'ticket_assignee_changed',
   'ticket_moved',
   'thread_message',
   'document_changed',
@@ -100,10 +124,16 @@ export const TicketWorkWakeReasonSchema = z.enum([
 ])
 export type TicketWorkWakeReason = z.infer<typeof TicketWorkWakeReasonSchema>
 
+/** A recorded pull request's state, exactly as `gh pr view --json state` spells it. */
+export const TicketWorkPullRequestStateSchema = z.enum(['OPEN', 'CLOSED', 'MERGED'])
+export type TicketWorkPullRequestState = z.infer<typeof TicketWorkPullRequestStateSchema>
+
 /**
  * A standing machine-access policy's lifecycle. `preparing` has a card out and
  * binds nothing; `live` binds; `suspended` binds nothing until the author
- * re-confirms; `ended` is final.
+ * re-confirms; `ended` is final. Per trigger, at most one policy is `live` or
+ * `suspended` and at most one is `preparing` (partial unique indexes), so a
+ * confirm ends the policy it replaces in the same transaction.
  */
 export const ExecutorStandingPolicyStatusSchema = z.enum([
   'preparing',
@@ -146,8 +176,14 @@ export const ExecutorStandingPolicyEndedReasonSchema = z.enum([
   'author_left_organization',
   // The agent was unbound from the trigger's target channel.
   'agent_unbound',
+  // The target channel was archived, made non-public or left the project: the
+  // audience the author agreed to is no longer the one that reads the work.
+  'target_channel_unavailable',
   // The project, the board or a pickup column was archived.
   'scope_archived',
+  // Disabling the trigger ends its policy, as deleting it does: re-enabling
+  // it takes a fresh confirmation.
+  'trigger_disabled',
   'trigger_deleted',
   // A prepared card was never confirmed.
   'expired',
