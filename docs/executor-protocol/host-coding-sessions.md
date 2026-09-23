@@ -568,12 +568,17 @@ one; if that fails too, nothing more is signalled. What the next host needs,
 the agent's identity and its
 confirmed session id, skips the 500 ms debounce, and a session id the agent
 never confirmed is dropped: Claude refuses `--session-id` for an id it already
-holds, so the next agent starts afresh rather than failing on every send. The
-first message stays in `session.json` (`firstPrompt`) until the agent confirms
-its session or answers a turn, so an agent lost before then — its host killed
-after the start left the inbox, or the agent exiting before its init — does
-not take the task with it: when no agent that had it is running any more, the
-next message the owner sends carries it first, the two joined by a blank line.
+holds, so the next agent starts afresh rather than failing on every send.
+Every message sent until the agent confirms its session or answers a turn
+stays in `session.json` (`firstPrompt`, the messages joined by blank lines),
+so an agent lost before then — its host killed after the start left the
+inbox, or the agent exiting before its init — does not take the task with
+it: when no agent that had them is running any more, the next message the
+owner sends carries them first, and that message joins them, so a second
+agent lost the same way hands all of it to a third. A start its host died
+still holding (Claude slow to answer `initialize`, the start still in the
+inbox) is delivered again as the start, once: it is that first message, and
+nothing is put in front of it.
 
 ### The agent guard: no agent outlives its host
 

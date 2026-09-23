@@ -190,19 +190,23 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     return driver
   }
 
-  const deliver = async (text: string): Promise<void> => {
+  const deliver = async (text: string, kind: 'start' | 'send'): Promise<void> => {
     if (!context.mayRunAgent) {
       emit({ kind: 'system', subtype: 'refused', reason: 'config_changed' })
       if (!state.agentSessionStarted) update({ status: 'failed', reason: 'config_changed' })
       return
     }
-    // Until the agent confirms its session the first message stays in the state. An agent that has
-    // none running any more never confirmed it, so the message went with that agent: it goes again first.
+    // Until the agent confirms its session, every message it was given stays in the state. A send
+    // that finds no agent running any more carries them first: the agent that had them never
+    // confirmed its session, so they went with it. A start delivered again (its host died before it
+    // left the inbox) is that first message itself, never a second copy of it.
     const unconfirmed = state.agentSessionStarted !== true
-    const lost = unconfirmed && state.firstPrompt !== undefined && !driver?.running()
-    if (lost) log('sending the first message again: the agent that had it never confirmed its session')
-    const message = lost ? `${state.firstPrompt}\n\n${text}` : text
-    if (unconfirmed && state.firstPrompt === undefined) update({ firstPrompt: text })
+    const held = kind === 'send' && unconfirmed ? state.firstPrompt : undefined
+    const lost = held !== undefined && !driver?.running()
+    if (lost) log('sending the earlier messages again: the agent that had them never confirmed its session')
+    const message = lost ? `${held}\n\n${text}` : text
+    // However many agents are lost before one confirms, the next gets all of it.
+    if (unconfirmed) update({ firstPrompt: held === undefined ? text : `${held}\n\n${text}` })
     try {
       await (await prepare()).send(message, randomUUID())
     } catch (error) {
@@ -229,7 +233,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     } else if (request.kind === 'start' && state.turn > 0) {
       // A start this session already acted on (a replay the bridge let through); nothing to do.
     } else {
-      await deliver(request.text ?? '')
+      await deliver(request.text ?? '', request.kind)
     }
   }
 

@@ -77,9 +77,10 @@ export type CodingSessionState = {
   /** True once the agent has written a transcript, so a new process resumes it. */
   agentSessionStarted?: boolean
   /**
-   * The first message, kept until the agent confirms its session or answers a
-   * turn: an agent lost before then (its host killed, or it exited, before its
-   * init) took the message with it, so the next message carries it again.
+   * Every message sent since the start, joined by blank lines, until the agent
+   * confirms its session or answers a turn: an agent lost before then (its
+   * host killed, or it exited, before its init) took them with it, so the next
+   * send carries them again.
    */
   firstPrompt?: string
   agentVersion?: string

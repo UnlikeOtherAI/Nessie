@@ -35,7 +35,9 @@
  *
  * NESSIE_SCRIPTED_RECORD_DIR, when set, receives `agents.jsonl` (one line per
  * process start and exit, and per message a Claude process receives),
- * grandchild pid files and environment dumps.
+ * grandchild pid files and environment dumps. NESSIE_SCRIPTED_HOLD_INIT=<name>
+ * holds a Claude process's `initialize` answer until the test writes
+ * `release-<name>`: an agent still booting, which has no message yet.
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -260,7 +262,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (message.type === 'control_request') {
     const subtype = message.request?.subtype
     if (subtype === 'initialize') {
-      send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response: { commands: [], pid: process.pid, account: { email: 'person@example.com', organization: 'Private Org' }, session_state: 'idle' } } })
+      const answer = () => send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response: { commands: [], pid: process.pid, account: { email: 'person@example.com', organization: 'Private Org' }, session_state: 'idle' } } })
+      const held = process.env.NESSIE_SCRIPTED_HOLD_INIT
+      if (held) void (async () => { while (!existsSync(join(recordDir, `release-${held}`))) await delay(50) })().then(answer)
+      else answer()
     } else if (subtype === 'interrupt') {
       send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response: { still_queued: [] } } })
       if (turn && !turn.stubborn) {
