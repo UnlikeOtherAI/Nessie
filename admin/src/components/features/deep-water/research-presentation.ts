@@ -1,6 +1,7 @@
 import type {
   DeepWaterBriefAnalysis,
   DeepWaterDeliveryBlockedReason,
+  DeepWaterProgressPhase,
   DeepWaterReportKind,
   DeepWaterResearchReadinessState,
   DeepWaterResearchRunView,
@@ -142,6 +143,32 @@ export const blockedReasonCopy = (
 /** The one remedy a retryable block names, as its button. */
 export const retryDeliveryLabel = (reason: DeepWaterDeliveryBlockedReason | null): string =>
   reason === 'requester_identity_changed' ? 'Retry' : 'Retry import'
+
+// ── Progress (amendments-streaming S2) ───────────────────────────────────────
+
+/**
+ * The five phases a research moves through, in order, in Nessie's words.
+ * DeepWater's own note says what is happening inside the phase ("Finished
+ * chapter 3 of 8"), so these name the stage and never repeat it.
+ */
+const PROGRESS_PHASES: Record<DeepWaterProgressPhase, { label: string; step: number }> = {
+  scoping: { label: 'Planning', step: 1 },
+  gathering: { label: 'Reading sources', step: 2 },
+  synthesising: { label: 'Summarising', step: 3 },
+  verifying: { label: 'Checking', step: 4 },
+  writing_report: { label: 'Writing the report', step: 5 },
+}
+
+const PROGRESS_STEP_COUNT = Object.keys(PROGRESS_PHASES).length
+
+/** "Step 2 of 5: Reading sources". */
+export const progressHeadline = (phase: DeepWaterProgressPhase): string => {
+  const { label, step } = PROGRESS_PHASES[phase]
+  return `Step ${step} of ${PROGRESS_STEP_COUNT}: ${label}`
+}
+
+export const sourcesFoundLabel = (count: number | null): string | null =>
+  count === null ? null : `${count} source${count === 1 ? '' : 's'} found`
 
 // ── Settings (contract §3) ───────────────────────────────────────────────────
 

@@ -250,7 +250,7 @@ export const applyScopeResultToState = (
 
   const pendingChanged = pendingAction !== state.pendingAction
   return {
-    state: { brief, turn, turnAuthors, pendingAction },
+    state: { brief, turn, turnAuthors, pendingAction, progress: state.progress },
     briefAdvanced,
     turnAdvanced,
     pendingActionCleared,
@@ -285,13 +285,19 @@ const SECOND_MS = 1_000
 const MINUTE_MS = 60 * SECOND_MS
 const HOUR_MS = 60 * MINUTE_MS
 
+/** While DeepWater's events reach this run, the watch never reads it more often than this. */
+export const DEEP_WATER_EVENT_BACKSTOP_DELAY_MS = 60 * SECOND_MS
+
+/** A run counts as receiving DeepWater's events while its last one is at most this old. */
+export const DEEP_WATER_EVENT_RECENT_MS = 2 * MINUTE_MS
+
 /**
- * When the Ledger watch should next read this run (amendments-fable F1):
- * every 5 s while the planner or a person's action is in flight, every 30 s
- * while the research runs, otherwise backing off from the last change — half
- * the time since, at least 10 minutes and at most 6 hours.
+ * The watch's own cadence (amendments-fable F1): every 5 s while the planner
+ * or a person's action is in flight, every 30 s while the research runs,
+ * otherwise backing off from the last change — half the time since, at least
+ * 10 minutes and at most 6 hours.
  */
-export const deepWaterWatchDelayMs = (input: {
+const fableWatchDelayMs = (input: {
   status: ProductIntegrationRunStatus
   state: DeepWaterScopeState | null
   msSinceLastChange: number
@@ -303,4 +309,26 @@ export const deepWaterWatchDelayMs = (input: {
     return 30 * SECOND_MS
   }
   return Math.min(Math.max(Math.max(input.msSinceLastChange, 0) / 2, 10 * MINUTE_MS), 6 * HOUR_MS)
+}
+
+/**
+ * When the Ledger watch should next read this run. DeepWater pushes a run's
+ * progress, settled turns and outcome straight to Nessie (amendments-streaming
+ * S2), and each of those makes the worker read the run at once, so while a run
+ * has received an event in the last 2 minutes the watch is only the backstop:
+ * it reads at most every 60 s, where it would otherwise read every 5 or 30 s. A
+ * quiet run keeps its longer backoff either way — an event never makes the
+ * watch read more often. `msSinceLastEvent` is null for a run that has never
+ * received one (the push is off, or DeepWater has not sent one yet), which
+ * reads at the F1 cadence.
+ */
+export const deepWaterWatchDelayMs = (input: {
+  status: ProductIntegrationRunStatus
+  state: DeepWaterScopeState | null
+  msSinceLastChange: number
+  msSinceLastEvent: number | null
+}): number => {
+  const cadence = fableWatchDelayMs(input)
+  const receivingEvents = input.msSinceLastEvent !== null && input.msSinceLastEvent <= DEEP_WATER_EVENT_RECENT_MS
+  return receivingEvents ? Math.max(cadence, DEEP_WATER_EVENT_BACKSTOP_DELAY_MS) : cadence
 }

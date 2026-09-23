@@ -98,6 +98,8 @@ export type DeepWaterBriefRun = {
   ledgerObservedAt: Date
   reconcileAfter: Date
   reconcileSeq: number
+  /** When DeepWater's last research event for this run was received; null before the first. */
+  lastEventAt: Date | null
   requestedAt: Date
   launchedAt: Date | null
   completedAt: Date | null
@@ -175,6 +177,7 @@ export const toDeepWaterBriefRun = (row: ProductIntegrationRun): DeepWaterBriefR
   ledgerObservedAt: row.ledgerObservedAt,
   reconcileAfter: row.reconcileAfter,
   reconcileSeq: row.reconcileSeq,
+  lastEventAt: row.lastEventAt,
   requestedAt: row.requestedAt,
   launchedAt: row.launchedAt,
   completedAt: row.completedAt,
@@ -241,3 +244,7 @@ export const lockDeepWaterBriefRun = async (
 }
 
 export const deepWaterBriefJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJsonValue
+
+/** How long ago DeepWater's last research event for this run arrived, for the watch cadence; null before the first. */
+export const deepWaterMsSinceLastEvent = (run: Pick<DeepWaterBriefRun, 'lastEventAt'>, now: Date): number | null =>
+  run.lastEventAt === null ? null : now.getTime() - run.lastEventAt.getTime()

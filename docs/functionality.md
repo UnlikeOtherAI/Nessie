@@ -109,6 +109,13 @@ Root app layout:
   lock, which re-reads the team switch and its brief-contract connector; an
   agent's claim also takes that agent's policy lock and re-reads its grant
   there, before the call leaves.
+- DeepWater pushes each research's progress, settled planner turns and
+  outcome to the public, HMAC-signed
+  `POST /api/integrations/deep-water/events` (`DEEPWATER_EVENTS_SECRET`; 503
+  without it). Progress streams to the research card; a turn or an outcome
+  only triggers the read the worker's Ledger watch makes, which stays the
+  backstop ([DeepWater](standards/deepwater.md), "Research events from
+  DeepWater").
 - Generic agent create/edit cannot write protected grants or server provenance;
   stale edits preserve current protected values, while clones and spawned
   subtask children strip them. PA bootstrap config cannot inject them, generic

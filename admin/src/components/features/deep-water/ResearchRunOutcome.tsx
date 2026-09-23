@@ -12,6 +12,7 @@ import {
   sourcesLabel,
 } from './research-presentation'
 import { ResearchArtifactActions } from './ResearchArtifactActions'
+import { ResearchProgress } from './ResearchProgress'
 import { startAgainPlace, type ResearchShownIn, type StartAgain } from './research-brief-origin'
 import { useIntentActionId } from './useIntentActionId'
 
@@ -23,7 +24,8 @@ import { useIntentActionId } from './useIntentActionId'
  * one remedy to the person whose remedy it is — everyone else is told only
  * what happened — and offers the artifacts once the result is delivered. A
  * cancel of a still-open research that did not go through (`cancelFailure`)
- * is said to whoever may cancel it, so they know to press Cancel again.
+ * is said to whoever may cancel it, so they know to press Cancel again. While
+ * the research starts or runs it streams where it stands (`ResearchProgress`).
  */
 
 const RESULT_COMES_BACK: Record<ResearchShownIn, string> = {
@@ -104,9 +106,11 @@ export const ResearchRunOutcome = ({
   }
 
   const blocked = run.delivery.state === 'blocked' && run.delivery.blockedReason
+  const underway = (run.status === 'running' || run.status === 'starting') && !blocked
   return (
     <div className="flex flex-col gap-2" data-testid="research-run-outcome">
       {actionsOnly ? null : lines.map((line) => <p className="text-sm text-[color:var(--tx2)]" key={line}>{line}</p>)}
+      {!actionsOnly && underway ? <ResearchProgress run={run} /> : null}
       {!actionsOnly && run.cancelFailure && run.viewer.canCancel ? (
         <ResearchCancelFailure message={run.cancelFailure.message} />
       ) : null}

@@ -329,6 +329,27 @@ jobs:
             ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
               'cd /srv/nessie && bash infrastructure/compose/set-deepsignal-app-key.sh'
 
+      - name: Configure DeepWater research events key
+        # Optional, unlike the keys above: DeepWater pushes research status
+        # straight to Nessie's signed receiver (docs/standards/deepwater.md,
+        # "Research events from DeepWater"). With the secret set it is
+        # installed; without it the host key is removed, so the receiver
+        # answers 503, DeepWater keeps retrying and the watch through Ledger
+        # serves alone. An absent secret never fails the deploy; a malformed
+        # one does, in the validator. The gate can promote a verified tree
+        # older than the receiver, which has neither the receiver nor its
+        # installer: there is nothing to configure then, and the step says so.
+        env:
+          DEEPWATER_EVENTS_SECRET: ${{ secrets.DEEPWATER_EVENTS_SECRET }}
+        run: |
+          if [ ! -f infrastructure/compose/set-deepwater-events-secret.sh ]; then
+            echo "::notice::This tree predates the DeepWater research event receiver; no key to install."
+            exit 0
+          fi
+          bash "$RUNNER_TEMP/ssh-retry.sh" --stdin-var DEEPWATER_EVENTS_SECRET -- \
+            ssh -i ~/.ssh/id_ed25519 "$DEPLOY_USER@$DEPLOY_HOST" \
+              'cd /srv/nessie && bash infrastructure/compose/set-deepwater-events-secret.sh'
+
       - name: Deploy prebuilt images
         env:
           # Short-lived, repo-scoped, and valid only for this job: the host

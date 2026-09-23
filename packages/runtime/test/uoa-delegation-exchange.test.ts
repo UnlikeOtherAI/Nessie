@@ -11,8 +11,8 @@ import {
 } from '../src/uoa-delegation-exchange.js'
 import {
   delegationNotAllowedToday,
-  movedEpochOnceGated,
   movedEpochToday,
+  teamContextUnsupportedToday,
   type UoaProductionRefusal,
 } from './uoa-token-exchange-production-bodies.js'
 
@@ -119,14 +119,15 @@ test('only a proven refusal of the person is identity drift; only an outage pass
 const classifyProduction = async (refusal: UoaProductionRefusal) =>
   classifyUoaExchangeFailure(await failureOf(answering(refusal.status, refusal.body)))
 
-test('UOA\'s production body for a moved sign-in names nobody until UOA lists the subject code', async () => {
-  // Today a refused person and Nessie's own delegation fault are the same bare
-  // 403, so neither may be blamed on the person: identity drift behind it
-  // strands the run until UOA ships the gated body (docs/standards/deepwater.md).
-  assert.deepEqual(movedEpochToday, delegationNotAllowedToday)
-  assert.equal(await classifyProduction(movedEpochToday), 'fault')
+test('UOA\'s production body names a refused person, and leaves Nessie\'s own configuration a bare 403', async () => {
+  // A person whose sign-in moved (or who lost the organisation, team or
+  // domain role) is refused with the public subject code: the run is blocked
+  // on them and they are told (docs/standards/deepwater.md, "Identity drift").
+  assert.equal(await classifyProduction(movedEpochToday), 'identity')
+  // Nessie's own delegation mapping or team-context configuration answers the
+  // bare 403, which must never be blamed on the person.
+  assert.deepEqual(delegationNotAllowedToday, teamContextUnsupportedToday)
+  assert.notDeepEqual(movedEpochToday, delegationNotAllowedToday)
   assert.equal(await classifyProduction(delegationNotAllowedToday), 'fault')
-  // The rollout gate: once UOA's production body names the code, the same
-  // refusal is the person's own, and the run is blocked and they are told.
-  assert.equal(await classifyProduction(movedEpochOnceGated), 'identity')
+  assert.equal(await classifyProduction(teamContextUnsupportedToday), 'fault')
 })

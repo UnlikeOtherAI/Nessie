@@ -1,11 +1,11 @@
-import { useEffect, useState, type KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 import type { DeepWaterBriefMessageView, DeepWaterBriefView } from '@nessie/schemas'
 import { DeepWaterBriefMessageSchema } from '@nessie/schemas'
 import { useActorNames } from '../../shared/ActorName'
 import { Textarea } from '../../shared/FormControls'
 import { MessageMarkdown } from '../channels/MessageMarkdown'
 import { BriefOpenQuestions } from './BriefOpenQuestions'
-import { formatElapsed } from './research-presentation'
+import { useElapsed } from './useElapsed'
 
 /**
  * The conversation with DeepWater's research planner (overview §1 goal 2). The
@@ -17,19 +17,6 @@ import { formatElapsed } from './research-presentation'
  */
 
 const plainText = (text: string) => text
-
-/** The clock beside "replying" — a display tick only; nothing is fetched on it. */
-const useElapsed = (since: string | null): string | null => {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    if (!since) return undefined
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000)
-    return () => window.clearInterval(timer)
-  }, [since])
-  if (!since) return null
-  const started = Date.parse(since)
-  return Number.isFinite(started) ? formatElapsed(now - started) : null
-}
 
 const MessageRow = ({
   message,

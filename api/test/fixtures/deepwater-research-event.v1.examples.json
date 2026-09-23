@@ -1,0 +1,190 @@
+{
+  "contract": "DeepWater research event v1 — docs/plans/2026-09-22-deepwater-in-nessie/amendments-streaming.md S1",
+  "ver": "deepwater.research-event.v1",
+  "request": {
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "x-deepwater-event-id": "<event_id>",
+      "x-deepwater-signature": "sha256=<hex HMAC-SHA256(NESSIE_EVENTS_SIGNING_SECRET, raw body bytes)>"
+    },
+    "notes": [
+      "The body is re-serialised with a fresh sent_at and re-signed on every delivery attempt; event_id is stable.",
+      "A 2xx, including 200 {\"accepted\":false}, completes delivery; 401, 3xx, 408, 429, 5xx and network errors are retried with exponential backoff (5 s doubling, capped at 1 h) for up to 7 days; any other 4xx is dropped.",
+      "research.progress is coalesced per research (latest wins, at most one every 2 s) and stops once the research has an outcome."
+    ]
+  },
+  "examples": {
+    "research.progress": {
+      "ver": "deepwater.research-event.v1",
+      "event_id": "evt_aca2581a925eeb7e4c9ddc00d0442767",
+      "type": "research.progress",
+      "sent_at": "2026-09-23T10:15:02.000Z",
+      "occurred_at": "2026-09-23T10:15:00.000Z",
+      "research": {
+        "ledger_research_id": "rs_01jzexampleresearch",
+        "status": "running",
+        "title": "EV battery recycling in Europe",
+        "report_kind": null,
+        "public_url": null,
+        "error_code": null
+      },
+      "progress": {
+        "phase": "gathering",
+        "note": "Finding and reading sources",
+        "percent": 40,
+        "sources_found": 23,
+        "at": "2026-09-23T10:15:00.000Z"
+      },
+      "turn": null,
+      "nessie": {
+        "organization_id": "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+        "team_id": "1a2b3c4d-5e6f-4789-8abc-def012345678",
+        "user_id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        "run_id": "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5",
+        "agent_id": "5b7c0f3e-2d1a-4c8b-9e6f-0a1b2c3d4e5f",
+        "tool_call_id": "call_research_scope_start_01",
+        "thread_id": "7e6d5c4b-3a29-4817-b605-f4e3d2c1b0a9"
+      }
+    },
+    "research.scope.turn_settled": {
+      "ver": "deepwater.research-event.v1",
+      "event_id": "evt_b75b91e6b4a93f75337aaa839d562dd1",
+      "type": "research.scope.turn_settled",
+      "sent_at": "2026-09-23T10:15:02.000Z",
+      "occurred_at": "2026-09-23T09:02:11.000Z",
+      "research": {
+        "ledger_research_id": "rs_01jzexampleresearch",
+        "status": "drafting",
+        "title": null,
+        "report_kind": null,
+        "public_url": null,
+        "error_code": null
+      },
+      "progress": null,
+      "turn": {
+        "turn_id": "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e",
+        "status": "complete",
+        "revision": 3
+      },
+      "nessie": {
+        "organization_id": "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+        "team_id": "1a2b3c4d-5e6f-4789-8abc-def012345678",
+        "user_id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        "run_id": "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5",
+        "agent_id": "5b7c0f3e-2d1a-4c8b-9e6f-0a1b2c3d4e5f",
+        "tool_call_id": "call_research_scope_start_01",
+        "thread_id": "7e6d5c4b-3a29-4817-b605-f4e3d2c1b0a9"
+      }
+    },
+    "research.completed": {
+      "ver": "deepwater.research-event.v1",
+      "event_id": "evt_45c522c4a22243890f2b02a0a9dde741",
+      "type": "research.completed",
+      "sent_at": "2026-09-23T10:15:02.000Z",
+      "occurred_at": "2026-09-23T11:40:00.000Z",
+      "research": {
+        "ledger_research_id": "rs_01jzexampleresearch",
+        "status": "complete",
+        "title": "EV battery recycling in Europe",
+        "report_kind": "full",
+        "public_url": "https://research.deepwater.live/ev-battery-recycling-in-europe-6f1c2d3e",
+        "error_code": null
+      },
+      "progress": null,
+      "turn": null,
+      "nessie": {
+        "organization_id": "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+        "team_id": "1a2b3c4d-5e6f-4789-8abc-def012345678",
+        "user_id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        "run_id": "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5",
+        "agent_id": null,
+        "tool_call_id": null,
+        "thread_id": null
+      }
+    },
+    "research.completed.summary": {
+      "ver": "deepwater.research-event.v1",
+      "event_id": "evt_9983d034220bfbbf18bbd771b5858f08",
+      "type": "research.completed",
+      "sent_at": "2026-09-23T10:15:02.000Z",
+      "occurred_at": "2026-09-23T11:40:00.000Z",
+      "research": {
+        "ledger_research_id": "rs_01jzexampleresearch",
+        "status": "complete",
+        "title": "EV battery recycling in Europe",
+        "report_kind": "summary",
+        "public_url": null,
+        "error_code": "under_min_word_count"
+      },
+      "progress": null,
+      "turn": null,
+      "nessie": {
+        "organization_id": "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+        "team_id": "1a2b3c4d-5e6f-4789-8abc-def012345678",
+        "user_id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        "run_id": "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5",
+        "agent_id": "5b7c0f3e-2d1a-4c8b-9e6f-0a1b2c3d4e5f",
+        "tool_call_id": "call_research_scope_start_01",
+        "thread_id": "7e6d5c4b-3a29-4817-b605-f4e3d2c1b0a9"
+      }
+    },
+    "research.failed": {
+      "ver": "deepwater.research-event.v1",
+      "event_id": "evt_e19d6033c45efaf0ecfd5c366940c3b7",
+      "type": "research.failed",
+      "sent_at": "2026-09-23T10:15:02.000Z",
+      "occurred_at": "2026-09-23T10:30:00.000Z",
+      "research": {
+        "ledger_research_id": "rs_01jzexampleresearch",
+        "status": "failed",
+        "title": "EV battery recycling in Europe",
+        "report_kind": null,
+        "public_url": null,
+        "error_code": "quality_gate_failed"
+      },
+      "progress": null,
+      "turn": null,
+      "nessie": {
+        "organization_id": "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+        "team_id": "1a2b3c4d-5e6f-4789-8abc-def012345678",
+        "user_id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        "run_id": "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5",
+        "agent_id": "5b7c0f3e-2d1a-4c8b-9e6f-0a1b2c3d4e5f",
+        "tool_call_id": "call_research_scope_start_01",
+        "thread_id": "7e6d5c4b-3a29-4817-b605-f4e3d2c1b0a9"
+      }
+    },
+    "research.cancelled": {
+      "ver": "deepwater.research-event.v1",
+      "event_id": "evt_bbd35c8c23bfde5c1ae1660b8c3fbef8",
+      "type": "research.cancelled",
+      "sent_at": "2026-09-23T10:15:02.000Z",
+      "occurred_at": "2026-09-23T09:05:00.000Z",
+      "research": {
+        "ledger_research_id": "rs_01jzexampleresearch",
+        "status": "cancelled",
+        "title": null,
+        "report_kind": null,
+        "public_url": null,
+        "error_code": "cancelled"
+      },
+      "progress": null,
+      "turn": null,
+      "nessie": {
+        "organization_id": "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a",
+        "team_id": "1a2b3c4d-5e6f-4789-8abc-def012345678",
+        "user_id": "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+        "run_id": "0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5",
+        "agent_id": "5b7c0f3e-2d1a-4c8b-9e6f-0a1b2c3d4e5f",
+        "tool_call_id": "call_research_scope_start_01",
+        "thread_id": "7e6d5c4b-3a29-4817-b605-f4e3d2c1b0a9"
+      }
+    }
+  },
+  "hmac_test_vector": {
+    "raw_body": "{\"ver\":\"deepwater.research-event.v1\",\"event_id\":\"evt_45c522c4a22243890f2b02a0a9dde741\",\"type\":\"research.completed\",\"sent_at\":\"2026-09-23T10:15:02.000Z\",\"occurred_at\":\"2026-09-23T11:40:00.000Z\",\"research\":{\"ledger_research_id\":\"rs_01jzexampleresearch\",\"status\":\"complete\",\"title\":\"EV battery recycling in Europe\",\"report_kind\":\"full\",\"public_url\":\"https://research.deepwater.live/ev-battery-recycling-in-europe-6f1c2d3e\",\"error_code\":null},\"progress\":null,\"turn\":null,\"nessie\":{\"organization_id\":\"9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a\",\"team_id\":\"1a2b3c4d-5e6f-4789-8abc-def012345678\",\"user_id\":\"3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f\",\"run_id\":\"0c1d2e3f-4a5b-4c6d-8e7f-8091a2b3c4d5\",\"agent_id\":null,\"tool_call_id\":null,\"thread_id\":null}}",
+    "secret": "nessie-events-test-vector-secret-0123456789abcdef",
+    "signature": "sha256=d5e171816e8b374b957a6b7ec0958052e1802b7b4fa7b84cdfd6d8d9b2045ad5"
+  }
+}

@@ -46,54 +46,63 @@ const BACKOFF = Prisma.sql`least(greatest((now() - r."ledger_observed_at") / 2, 
 export type DeepWaterWatchClaim = { runId: string; organizationId: string; reconcileSeq: number }
 
 /**
+ * The runs the watch reads — the one definition the sweep and an event's read
+ * share (`claimDeepWaterEventRead`), so an event never reads a run the watch
+ * would leave alone: attached briefs and researches still open, and
+ * agent-origin briefs whose `research_scope_start` result was lost (no research
+ * id yet), which the watch replays with the agent's own stable tool-call id
+ * until the reap gives them up. A blocked run waits for its requester's Retry —
+ * an unattached one only until the reap ends it.
+ */
+const WATCHED_ATTACHED = Prisma.sql`
+  "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+  AND "uoa_identity" IS NOT NULL
+  AND "external_run_id" IS NOT NULL
+  AND "status" IN ('drafting', 'running', 'needs_setup')
+  AND "delivery_blocked_reason" IS NULL`
+
+const WATCHED_UNATTACHED = Prisma.sql`
+  "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+  AND "uoa_identity" IS NOT NULL
+  AND "external_run_id" IS NULL
+  AND "status" = 'queued'
+  AND "origin_kind" = 'agent'
+  AND "origin_run_id" IS NOT NULL
+  AND "delivery_blocked_reason" IS NULL
+  AND "created_at" > now() - ${CONFIRM_WINDOW}`
+
+type ClaimedRow = { id: string; organization_id: string; reconcile_seq: number }
+
+/** Advance each selected run's claim and back it off; the read that follows sets its own cadence. */
+const advanceClaims = (tx: DeepWaterBriefDb, selected: Prisma.Sql) => tx.$queryRaw<ClaimedRow[]>(Prisma.sql`
+  WITH due AS (${selected})
+  UPDATE "product_integration_runs" r
+  SET "reconcile_seq" = r."reconcile_seq" + 1,
+      "reconcile_after" = now() + ${BACKOFF}
+  FROM due
+  WHERE r."id" = due."id"
+  RETURNING r."id"::text AS "id", r."organization_id"::text AS "organization_id", r."reconcile_seq"
+`)
+
+/**
  * Claim the runs due a read and enqueue one watch job for each, in one
- * transaction: attached briefs and researches still open, and agent-origin
- * briefs whose `research_scope_start` result was lost (no research id yet),
- * which the watch replays with the agent's own stable tool-call id until the
- * reap gives them up. A blocked run waits for its requester's Retry — an
- * unattached one only until the reap ends it. Each job is keyed by the claim's
- * sequence and runs once; the next claim is the retry.
+ * transaction. Each job is keyed by the claim's sequence and runs once; the
+ * next claim is the retry.
  */
 export const claimDueDeepWaterWatchRuns = async (
   tx: DeepWaterBriefDb,
   input: { limit: number },
 ): Promise<DeepWaterWatchClaim[]> => {
-  const claim = (due: Prisma.Sql) => tx.$queryRaw<Array<{ id: string; organization_id: string; reconcile_seq: number }>>(Prisma.sql`
-    WITH due AS (${due})
-    UPDATE "product_integration_runs" r
-    SET "reconcile_seq" = r."reconcile_seq" + 1,
-        "reconcile_after" = now() + ${BACKOFF}
-    FROM due
-    WHERE r."id" = due."id"
-    RETURNING r."id"::text AS "id", r."organization_id"::text AS "organization_id", r."reconcile_seq"
-  `)
-  const attached = await claim(Prisma.sql`
+  const due = (watched: Prisma.Sql) => Prisma.sql`
     SELECT "id" FROM "product_integration_runs"
-    WHERE "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
-      AND "uoa_identity" IS NOT NULL
-      AND "external_run_id" IS NOT NULL
-      AND "status" IN ('drafting', 'running', 'needs_setup')
-      AND "delivery_blocked_reason" IS NULL
+    WHERE ${watched}
       AND "reconcile_after" <= now()
     ORDER BY "reconcile_after"
     FOR UPDATE SKIP LOCKED
     LIMIT ${input.limit}
-  `)
-  const unattached = await claim(Prisma.sql`
-    SELECT "id" FROM "product_integration_runs"
-    WHERE "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
-      AND "uoa_identity" IS NOT NULL
-      AND "external_run_id" IS NULL
-      AND "status" = 'queued'
-      AND "origin_kind" = 'agent'
-      AND "origin_run_id" IS NOT NULL
-      AND "delivery_blocked_reason" IS NULL
-      AND "created_at" > now() - ${CONFIRM_WINDOW}
-      AND "reconcile_after" <= now()
-    ORDER BY "reconcile_after"
-    FOR UPDATE SKIP LOCKED
-    LIMIT ${input.limit}
-  `)
+  `
+  const attached = await advanceClaims(tx, due(WATCHED_ATTACHED))
+  const unattached = await advanceClaims(tx, due(WATCHED_UNATTACHED))
   const claims = [...attached, ...unattached].map((row) => ({
     runId: row.id,
     organizationId: row.organization_id,
@@ -108,6 +117,47 @@ export const claimDueDeepWaterWatchRuns = async (
     })
   }
   return claims
+}
+
+/**
+ * DeepWater said something happened to this run (a settled planner turn, an
+ * outcome): record that an event arrived, and claim a watch read now when the
+ * watch reads this run at all. The claim is the sweep's own — it advances
+ * `reconcile_seq`, so a watch job already queued for an older claim stands
+ * down and the read's tool-call id is new — and the caller then makes the read
+ * the watch would. Null when the run is not one the watch reads (blocked,
+ * finished, a launcher run): the event changes nothing there.
+ */
+export const claimDeepWaterEventRead = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string },
+): Promise<DeepWaterWatchClaim | null> => {
+  await recordDeepWaterEventReceived(tx, input)
+  const selected = Prisma.sql`
+    SELECT "id" FROM "product_integration_runs"
+    WHERE "id" = CAST(${input.runId} AS uuid)
+      AND "organization_id" = CAST(${input.organizationId} AS uuid)
+      AND ((${WATCHED_ATTACHED}) OR (${WATCHED_UNATTACHED}))
+    FOR UPDATE
+  `
+  const [claimed] = await advanceClaims(tx, selected)
+  return claimed
+    ? { runId: claimed.id, organizationId: claimed.organization_id, reconcileSeq: claimed.reconcile_seq }
+    : null
+}
+
+/** Note that DeepWater's event for this run arrived now: the watch backs off while they keep coming. */
+export const recordDeepWaterEventReceived = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string },
+): Promise<void> => {
+  await tx.$executeRaw(Prisma.sql`
+    UPDATE "product_integration_runs"
+    SET "last_event_at" = now()
+    WHERE "id" = CAST(${input.runId} AS uuid)
+      AND "organization_id" = CAST(${input.organizationId} AS uuid)
+      AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+  `)
 }
 
 /** How soon a read that failed for a passing reason is tried again while the run moves fast. */
@@ -130,10 +180,15 @@ export const retryDeepWaterWatchSoon = async (
   const locked = await lockDeepWaterBriefRun(tx, input)
   if (!locked || locked.run.reconcileSeq !== input.reconcileSeq) return false
   const { run, now } = locked
+  // The watch's own cadence, as if no event had arrived: DeepWater's events
+  // slow the routine reads down, but a read that failed is retried as soon as
+  // the run's pace asks for, because the event that prompted it (an outcome,
+  // most of all) may be the last one DeepWater sends.
   const cadence = deepWaterWatchDelayMs({
     status: run.status,
     state: run.scopeState,
     msSinceLastChange: now.getTime() - run.ledgerObservedAt.getTime(),
+    msSinceLastEvent: null,
   })
   if (cadence > DEEP_WATER_TRANSIENT_RETRY_MS) return false
   const retryAt = new Date(now.getTime() + DEEP_WATER_TRANSIENT_RETRY_MS)

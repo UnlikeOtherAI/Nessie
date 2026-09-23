@@ -37,6 +37,7 @@ export const researchRun = (overrides: Partial<DeepWaterResearchRunView> = {}): 
       threadId: THREAD,
     },
     pillarCount: 3,
+    progress: null,
     publicUrl: null,
     report: null,
     reportKind: null,

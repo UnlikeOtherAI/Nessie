@@ -538,10 +538,15 @@ contract (manifest 0.3.0: `research_scope_start`, `research_scope_reply`,
 deliberately no direct-provider fallback.
 
 A research brief — opened by a person or a granted agent — comes back on its
-own, but never from Ledger, which relays nothing. The worker's
-`deep-water-watch` sweep claims each open run and its `deep_water.run.watch`
-job reads it through the run's own team connector as a cost-free
-control-plane call signed as the requester with their captured UOA identity.
+own, but never from Ledger, which relays nothing. DeepWater pushes each
+research's progress, settled planner turns and outcome straight to Nessie's
+signed receiver (`POST /api/integrations/deep-water/events`, HMAC over the raw
+body with `DEEPWATER_EVENTS_SECRET`); progress streams to the research card,
+and a turn or an outcome only triggers a read. The reads are the worker's
+`deep-water-watch`, which is also the backstop when the push is off: its sweep
+claims each open run and its `deep_water.run.watch` job reads it through the
+run's own team connector as a cost-free control-plane call signed as the
+requester with their captured UOA identity.
 A finished research is delivered exactly once: its `report.md` and an RFC 4180
 `sources.csv` are stored as retained run output, the report is imported into
 Documents, and then either a result reply lands under the research card in
@@ -557,7 +562,8 @@ may read it. A changed sign-in blocks the run until its requester acts again
 instead of being retried. The rules — watch cadence, delivery, agent wakes,
 stale actions and the reap, identity drift and artifacts — are in
 [docs/standards/deepwater.md](standards/deepwater.md) → "Research briefs — the
-watch, delivery and wakes". The launcher text below governs the legacy
+watch, delivery and wakes", and the receiver's in "Research events from
+DeepWater". The launcher text below governs the legacy
 launcher run only.
 
 - **Descriptor-bound direct grants.** The projected DeepWater rows are flagged

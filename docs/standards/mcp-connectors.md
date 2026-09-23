@@ -99,13 +99,16 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   research brief, whose status Ledger owns. Also:
   [docs/external-tool-integration.md](../external-tool-integration.md).
 
-- **DeepWater results come back on their own, through a watch; Ledger never
-  pushes.** Nothing reaches Nessie from Ledger unasked: the worker's
-  `deep-water-watch` sweep reads every open brief and research through Ledger
-  over the run's own
-  team connector, as cost-free control-plane calls signed as the requester
-  with their captured UOA identity (5 s while a planner turn or action is in
-  flight, 30 s while research runs, then backing off). A finished research is
+- **DeepWater results come back on their own; Ledger never pushes.** Nothing
+  reaches Nessie from Ledger unasked. DeepWater pushes each research's
+  progress, settled turns and outcome straight to Nessie's signed receiver;
+  progress streams to the card, and a turn or an outcome triggers the read the
+  worker's `deep-water-watch` sweep would make — that sweep reads every open
+  brief and research through Ledger over the run's own team connector, as
+  cost-free control-plane calls signed as the requester with their captured
+  UOA identity (5 s while a planner turn or action is in flight, 30 s while
+  research runs, then backing off; never faster than 60 s while DeepWater's
+  events are arriving), and is the backstop when the push is off. A finished research is
   delivered exactly once to the conversation it came from, under its research
   card: its `report.md` and `sources.csv` stored as retained run output, the
   report imported into Documents, then a result reply that alerts the person

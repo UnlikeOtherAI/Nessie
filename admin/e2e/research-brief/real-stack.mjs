@@ -14,7 +14,9 @@
 // played by `real-stack-ledger.mjs` through the watch's own projection and
 // realtime announcer. The walk pins what that verdict must do on every
 // doorway, and that an action the server refuses (a reply from a session with
-// no UOA sign-in) says why rather than failing silently.
+// no UOA sign-in) says why rather than failing silently. DeepWater's own push,
+// unlike Ledger, is played on the wire: a signed research event posted to the
+// real receiver (`real-stack-events.mjs`) moves the room's card live.
 //
 // It owns its servers and never adopts one already listening: run it on ports
 // of its own beside a dev pair (`NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT`)
@@ -25,9 +27,10 @@ import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser, openViewportContext } from '../navigation/lib/browser.mjs'
-import { ADMIN_URL, REPO_ROOT, databaseUrl } from '../navigation/lib/config.mjs'
+import { ADMIN_URL, API_URL, REPO_ROOT, databaseUrl } from '../navigation/lib/config.mjs'
 import { startAdmin, startApi, stopProcess } from '../navigation/lib/servers.mjs'
 import { call, seedTeam } from '../navigation/lib/seed.mjs'
+import { EVENTS_SECRET, pushResearchProgress } from './real-stack-events.mjs'
 import { openDeepWaterSeed } from './real-stack-ledger.mjs'
 
 const SHOTS = resolve(REPO_ROOT, 'e2e', 'screenshots', 'research-brief-real')
@@ -43,6 +46,9 @@ for (const name of [
   'LEDGER_PROXY_TOKEN', 'LEDGER_DEEPWATER_MCP_URL', 'LEDGER_PUBLIC_URL', 'UOA_BASE_URL', 'UOA_CLIENT_SECRET',
   'UOA_CONFIG_JWT_KID', 'UOA_CONFIG_JWT_PRIVATE_KEY_B64', 'UOA_CONFIG_URL', 'UOA_DOMAIN',
 ]) delete process.env[name]
+// DeepWater's own push does reach this API: its receiver has a key, so a
+// signed research event lands on the room's card through the embedded worker.
+process.env.DEEPWATER_EVENTS_SECRET = EVENTS_SECRET
 
 const snap = (page, name) => page.screenshot({ fullPage: false, path: resolve(SHOTS, name) })
 
@@ -121,6 +127,27 @@ const walkResearchCard = async (page, channel, launched) => {
   await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click()
   await dialog.waitFor({ state: 'detached' })
   assert.equal(researchParam(page), null, 'closing the brief clears it from the address')
+}
+
+/**
+ * DeepWater pushes where the launched research stands, straight to the real
+ * receiver: the embedded worker stores it and announces the run over the real
+ * realtime transport, and the card in the room moves with no reload.
+ */
+const walkStreamingCard = async (page, launched, ids) => {
+  const card = page.getByTestId('research-card').filter({ hasText: launched.topic })
+  const answer = await pushResearchProgress(API_URL, {
+    ...ids,
+    progress: { note: 'Finding and reading sources', percent: 40, phase: 'gathering', sources_found: 23 },
+    researchId: launched.id,
+    runId: launched.runId,
+  })
+  assert.equal(answer.status, 202, JSON.stringify(answer.body))
+  const progress = card.getByTestId('research-progress')
+  await progress.getByText('Step 2 of 5: Reading sources').waitFor({ timeout: 30_000 })
+  await progress.getByText(/^23 sources found/).waitFor()
+  assert.equal(await progress.getByRole('progressbar').getAttribute('aria-valuenow'), '40')
+  await snap(page, '05b-card-streams-progress.png')
 }
 
 /**
@@ -292,6 +319,7 @@ const main = async () => {
     }
 
     await walkResearchCard(page, channel, launched)
+    await walkStreamingCard(page, launched, ids)
     await walkOwnBrief(page, channel, own, () => ledger.launchBrief(ids.organizationId, own))
     await walkPersonDrawer(page, channel, colleague)
     await walkThreadDoorways(page, channel, launched, cardMessageId)

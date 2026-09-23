@@ -21,6 +21,7 @@ import {
 } from './steps.mjs'
 import { walkAgentBriefSignIn, walkLostNewBrief, walkNotReadyNewBrief, walkOutdatedTeam } from './steps-recovery.mjs'
 import { walkHeroCancelRefused, walkHeroCancelUnseen, walkReadinessUnread } from './steps-hero.mjs'
+import { walkStreamingKnowledgeRow, walkStreamingResearch, walkTurnEventEndsReplying } from './steps-streaming.mjs'
 import {
   INBOX_BRIEF,
   REPLY_THREAD_BRIEF,
@@ -58,7 +59,9 @@ import {
  * bounded read answered empty with more to come, and the admin's own
  * addresses: a brief on a reply thread's and the Threads inbox's address, and
  * a question handed from a screen with no brief host, dropped from history
- * once taken.
+ * once taken. DeepWater's pushes stream in: a running research's card moves
+ * with each progress frame, the brief dialog stops replying when its turn
+ * lands, and nothing is requested between two frames.
  * Every state is screenshotted under e2e/screenshots/research-brief/.
  */
 
@@ -198,6 +201,15 @@ try {
   const older = await open(desktop)
   await walkOlderCard(older)
   await older.close()
+
+  // 23–24 — DeepWater's pushes: the running card streams, and a landed turn ends "replying".
+  const streaming = await open(desktop)
+  await walkStreamingResearch(streaming, snap)
+  await walkTurnEventEndsReplying(streaming)
+  await streaming.close()
+  const streamingRow = await open(desktop, 'at=/knowledge-base/views/deep-water-research')
+  await walkStreamingKnowledgeRow(streamingRow)
+  await streamingRow.close()
 
   // 09 — an agent's brief: read-only for its requester, who may only discard it.
   const agentPage = await open(desktop)

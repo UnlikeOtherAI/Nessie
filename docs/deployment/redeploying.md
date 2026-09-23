@@ -67,7 +67,11 @@ closed when any active dedicated key is missing or malformed. The retired
 `LEDGER_BILLING_READ_APP_KEY_NESSIE` value is removed from the host `.env` by
 the Ledger installer because raw reporting is now UOA-only. The Ledger caller,
 DeepSignal caller, UOA, session, webhook, and sibling-product keys are separate
-principals, not fallbacks.
+principals, not fallbacks. The one optional key, `DEEPWATER_EVENTS_SECRET`
+(DeepWater's research events to Nessie), goes the same way through
+`set-deepwater-events-secret.sh`: installed when the Actions secret is set,
+removed from the host `.env` when it is not, and never a reason to fail the
+deploy unless it is malformed.
 
 Before images, migrations, or a replacement container start, `redeploy.sh`
 runs `ensure-encryption-key-ring.sh` against the host-only Compose `.env`.

@@ -192,8 +192,11 @@ sentence changes only if the invariant itself did.
   (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
   card, Knowledge › Research and `/apps/deep-water` hero; CI runs it after the
   agent-triggers one. The runner plays the server through `window.__research`
-  (the planner answering, a launch landing, a revision conflict) and pins the
-  whole person brief, the artifact actions and their clipboard fallback, an
+  (the planner answering, a launch landing, a revision conflict, DeepWater's
+  progress pushes as `integration.run.updated` frames) and pins the whole
+  person brief, a running card streaming each push with no request between
+  two, the dialog leaving "replying" as its turn lands, the artifact actions
+  and their clipboard fallback, an
   older card's action, an agent's read-only brief and its discard (accepted,
   then settled by `cancelSettles`), the not-ready doorways and a verdict the
   admin cannot read, the owner's cancel of a research that blocks turning
@@ -213,8 +216,9 @@ sentence changes only if the invariant itself did.
   the composer's Research button in a channel, a reply thread, a person drawer
   and a Threads inbox card, a research card opening its brief through
   `?research=`, a person's own brief read from the brief API, a refused reply
-  saying why, Ledger's launch reaching the open dialog and the room live, and
-  Knowledge › Research. Ledger cannot be doubled on the wire (the pinned egress
+  saying why, Ledger's launch reaching the open dialog and the room live, a
+  signed DeepWater progress event posted to the real receiver moving the
+  room's card live, and Knowledge › Research. Ledger cannot be doubled on the wire (the pinned egress
   refuses loopback, and brief readiness needs a UOA signer), so its answers are
   played through the watch's own projection and realtime announcer
   (`real-stack-ledger.mjs`), and opening a new brief from a composer stays the

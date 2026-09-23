@@ -11,10 +11,12 @@ import {
 } from '@nessie/runtime'
 import {
   DEEP_WATER_BRIEF_ACTION_TOPIC,
+  DEEP_WATER_RESEARCH_EVENT_TOPIC,
   DEEP_WATER_RUN_DELIVER_TOPIC,
   DEEP_WATER_RUN_WATCH_TOPIC,
   DEEP_WATER_START_IDENTITY_CHANGED,
   DeepWaterBriefActionJobPayloadSchema,
+  DeepWaterResearchEventJobPayloadSchema,
   DeepWaterRunDeliverJobPayloadSchema,
   DeepWaterRunWatchJobPayloadSchema,
   type DeepWaterRunDeliverJobPayload,
@@ -26,14 +28,16 @@ import { startIdentityChangedNotice, startUnconfirmedKickoff, startUnconfirmedNo
 import { renewDeepWaterIdentity } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, postDeepWaterNotice } from './deepwater-messages.js'
 import { restoreDeepWaterReportPage } from './deepwater-report-import.js'
+import { handleDeepWaterResearchEvent } from './deepwater-research-event.js'
 import { wakeDeepWaterAgent } from './deepwater-wake.js'
 import { runDeepWaterWatch, watchDeepWaterRun, type DeepWaterWatchDeps } from './deepwater-watch.js'
 
 /**
  * The worker side of DeepWater research briefs: a person's brief actions
- * (nessie.md §7.3), the watch sweep that claims open runs every few seconds
- * (Water plan amendments-fable F1), the reap of briefs Ledger never confirmed
- * (N5a), and the jobs they enqueue. Each sweep
+ * (nessie.md §7.3), DeepWater's own research events (amendments-streaming S2),
+ * the watch sweep that claims open runs every few seconds and is the backstop
+ * for those events (Water plan amendments-fable F1), the reap of briefs Ledger
+ * never confirmed (N5a), and the jobs they enqueue. Each sweep
  * runs under its own advisory lock, so one replica claims at a time; the
  * claim itself is `FOR UPDATE SKIP LOCKED`, so even two would not collide.
  */
@@ -139,6 +143,12 @@ export const startDeepWaterWorker = (deps: DeepWaterWorkerDeps): { stop: () => v
   deps.subscribe(
     DEEP_WATER_BRIEF_ACTION_TOPIC,
     async (job) => runDeepWaterBriefAction(callDeps, DeepWaterBriefActionJobPayloadSchema.parse(job.payload), job),
+    { signal: deps.abortSignal },
+  )
+
+  deps.subscribe(
+    DEEP_WATER_RESEARCH_EVENT_TOPIC,
+    async (job) => handleDeepWaterResearchEvent(callDeps, DeepWaterResearchEventJobPayloadSchema.parse(job.payload)),
     { signal: deps.abortSignal },
   )
 

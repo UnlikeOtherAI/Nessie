@@ -12,6 +12,7 @@ import {
   DeepWaterBriefTopicSchema,
 } from './deep-water-brief-vocabulary.js'
 import { isDeepWaterPublicReportUrl } from './deep-water-ledger-dto.js'
+import { DeepWaterResearchProgressSchema } from './deep-water-research-event.js'
 import {
   DeepWaterBriefAnalysisSchema,
   DeepWaterDeliveryBlockedReasonSchema,
@@ -104,6 +105,14 @@ export const DeepWaterResearchRunViewSchema = z
       .strict()
       .nullable(),
     delivery: DeepWaterDeliveryViewSchema,
+    /**
+     * Where the research stands while it runs, as DeepWater last pushed it
+     * (Water plan amendments-streaming S2): its phase, DeepWater's words for
+     * the step, a percentage when the step is countable, and the sources
+     * found so far. Null unless the research is starting or running with its
+     * delivery not blocked, and before DeepWater has said anything.
+     */
+    progress: DeepWaterResearchProgressSchema.nullable(),
     viewer: DeepWaterResearchRunViewerSchema,
   })
   .strict()
