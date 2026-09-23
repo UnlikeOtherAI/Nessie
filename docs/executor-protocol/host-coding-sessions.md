@@ -622,7 +622,12 @@ stops it before doing anything else.
 
 Sessions outlive runs and daemon restarts, so the daemon ends them itself
 (`executor/src/coding-sessions-daemon.ts`), always through the bridge's
-daemon-only `session_close_all {ownerKey?, sessionId?, reason}`:
+daemon-only `session_close_all {ownerKey?, sessionId?, reason}`. The reason
+is a category in the control plane's grammar (`^[a-z][a-z0-9_]{0,63}$`; free
+text is refused) and becomes each closed session's own `reason`, in
+`session_status`, `session_list` and the `status` event that records the
+close, so a close forced by a lease's end or a revocation reads differently
+on the machine from one the owner asked for, which carries none:
 
 - **When the daemon's authority provably ends.** A failed command poll or
   heartbeat alone closes nothing: sessions are built to outlive a dropped

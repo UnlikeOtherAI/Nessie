@@ -80,6 +80,9 @@ export type CodingBridge = {
 
 const OWNER_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/u
 
+/** The control plane's grammar for a close reason (`lease_ended`, `access_revoked`, `daemon_shutdown`, …). */
+const CLOSE_REASON_PATTERN = /^[a-z][a-z0-9_]{0,63}$/u
+
 /** What a changed, unreviewed configuration still allows: stopping things, and the daemon's report. */
 const ALLOWED_UNREVIEWED = new Set(['session_close', 'session_interrupt', 'session_close_all', 'session_list_all'])
 
@@ -320,6 +323,8 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   /**
    * The daemon's teardown: close every session, one owner's, or one of theirs,
    * wherever the daemon already stops work and whenever the control plane says so.
+   * Its reason is the closed session's, so a close forced by a revocation reads
+   * differently on the machine from one the owner asked for.
    */
   const closeAll = async (
     value: unknown, meta: CodingBridgeCallMeta, commandId: string,
@@ -331,7 +336,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     }
     if (args.sessionId !== undefined && args.ownerKey === undefined) invalidArguments('sessionId needs its ownerKey.')
     const only = args.sessionId === undefined ? undefined : sessionIdArgument(args.sessionId)
-    requiredText(args.reason, 'reason', 200)
+    // It becomes the closed session's own reason, which everything that reads one takes for a category.
+    const reason = requiredText(args.reason, 'reason', 64)
+    if (!CLOSE_REASON_PATTERN.test(reason)) invalidArguments('reason must be a categorical reason such as lease_ended.')
     // Side by side: every host start may take a moment, and many sessions must not add up past the call's budget.
     const closed = await Promise.all((await listSessionMetas(stateDir)).map(async (session) => {
       if (args.ownerKey !== undefined && session.ownerKey !== args.ownerKey) return 0
@@ -339,7 +346,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       const paths = codingSessionPaths(stateDir, session.sessionId)
       const derived = await deriveCodingStatus(paths, await readState(paths))
       if (derived.status === 'closed') return 0
-      await writeRequest(paths, { id: `close-all-${commandId}`.slice(0, 128), kind: 'close', at: new Date().toISOString() })
+      await writeRequest(paths, { id: `close-all-${commandId}`.slice(0, 128), kind: 'close', reason, at: new Date().toISOString() })
       await ensureHost(paths, session.sessionId, true)
       return 1
     }))

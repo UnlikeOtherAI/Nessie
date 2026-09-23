@@ -207,8 +207,9 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     if (request.kind === 'retire') {
       retiring = true
     } else if (request.kind === 'close') {
-      if (driver) await driver.close()
-      else update({ status: 'closed', reason: undefined, turnStartedAt: undefined })
+      // The daemon's close carries its categorical reason; an owner's carries none.
+      if (driver) await driver.close(request.reason)
+      else update({ status: 'closed', reason: request.reason, turnStartedAt: undefined })
     } else if (request.kind === 'interrupt') {
       await driver?.interrupt()
       if (driver?.busy()) pendingInterrupt ??= { at: Date.now(), turn: state.turn }
