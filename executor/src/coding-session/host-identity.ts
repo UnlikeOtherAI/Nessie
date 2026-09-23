@@ -27,10 +27,16 @@ import { hostname, userInfo } from 'node:os'
  * images and the coding agents themselves), is left alone: it would rewrite
  * ordinary words and fixed values, and hide nobody. So is a match that is one
  * whole segment of a relative path (a single `/` or `\` before it, one after):
- * an absolute path was already rewritten whole by the path rules, so such a
- * segment is a repository's own folder (`src/api/x.ts`) or a URL's owner
- * (`github.com/ondre/app`), and rewriting it would hand the model a path that
- * does not exist.
+ * such a segment is a repository's own folder (`src/api/x.ts`), a URL's owner
+ * (`github.com/ondre/app`) or a folder under a root (`<app>/ondre/y.ts`), and
+ * rewriting it would hand the model a path that does not exist. A segment of
+ * an absolute path is never one of those: the path rules rewrite only the
+ * host directories they name, so `/data/ondre/x`, `//server/share/ondre` or
+ * `~other/ondre` reach this pass with the name still in them. A path counts
+ * as absolute when it starts — after whitespace, a quote, a bracket, `=`,
+ * `,`, `;`, `|` or a `:` that is not a URL's `://` — with `/`, `\`, `~`, a
+ * drive letter or `file:`. A branch (`everySegment`) is a name, not a path
+ * the model resolves, so none of its segments is left alone.
  */
 export const USER_PLACEHOLDER = '<user>'
 export const HOST_PLACEHOLDER = '<host>'
@@ -140,12 +146,28 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
 const separator = (character: string | undefined): boolean => character === '/' || character === '\\'
 
+const BEFORE_PATH = /[\s"'`()[\]{}=,;|]/u
+const ABSOLUTE = /^(?:[\\/~]|[A-Za-z]:|file:)/iu
+
+/** Where the path or URL holding `offset` begins; see the header for what ends one. */
+const pathStart = (text: string, offset: number): number => {
+  let start = offset
+  for (; start > 0; start -= 1) {
+    const previous = text[start - 1]!
+    if (BEFORE_PATH.test(previous)) break
+    if (previous === ':' && separator(text[start]) && !separator(text[start + 1])) break
+  }
+  return start
+}
+
 /**
  * One whole segment of a relative path or a URL's path: one separator before
- * it (not two, which is a URL's host or a UNC server), and one after.
+ * it (not two, which is a URL's host or a UNC server), one after, and a path
+ * around it that does not start at the root of anything on this machine.
  */
-const pathSegment = (text: string, offset: number, length: number): boolean => (
+const relativeSegment = (text: string, offset: number, length: number): boolean => (
   separator(text[offset - 1]) && !separator(text[offset - 2]) && separator(text[offset + length])
+  && !ABSOLUTE.test(text.slice(pathStart(text, offset), offset))
 )
 
 /**
@@ -154,7 +176,7 @@ const pathSegment = (text: string, offset: number, length: number): boolean => (
  * user who happens to be called `host` does not turn `<host path>` inside out.
  */
 export const createIdentityRewrite = (
-  identity: HostIdentity, keep: readonly string[],
+  identity: HostIdentity, keep: readonly string[], { everySegment = false }: { everySegment?: boolean } = {},
 ): ((text: string) => string) | undefined => {
   const hosts = identityNames(identity.hosts)
   const hostSet = new Set(hosts.map((name) => name.toLowerCase()))
@@ -174,7 +196,7 @@ export const createIdentityRewrite = (
   return (text) => text.replace(pattern, (match: string, placeholder: string | undefined, ...rest: unknown[]) => {
     if (placeholder !== undefined) return match
     const offset = rest[names.length] as number
-    if (pathSegment(text, offset, match.length)) return match
+    if (!everySegment && relativeSegment(text, offset, match.length)) return match
     const index = rest.slice(0, names.length).findIndex((group) => group !== undefined)
     return names[index]?.placeholder ?? match
   })

@@ -193,6 +193,35 @@ test('a name any machine may carry is no one\'s, and a whole relative path segme
   assert.equal(person.rewritePaths('ondre on minis at /home/ondre/x'), `ondre on minis at ${HOST_PATH_PLACEHOLDER}`, 'the path rules alone')
 })
 
+test('a segment of an absolute path the path rules leave alone is still a name, and so is one in a branch', () => {
+  const person = createPathRewriter([{ name: 'app', paths: ['/home/ondre/src/app'] }, { name: undefined, paths: ['/home/ondre'] }], 'linux', {
+    users: ['ondre'], hosts: ['minis'],
+  })
+  // No host directory the path rules name (`/data`, `/scratch`, `/home2`): the names are all there is to rewrite.
+  assert.equal(person.rewrite('cp /data/ondre/in.csv . && ls /scratch/minis/ondre/ /home2/ondre/x'),
+    'cp /data/<user>/in.csv . && ls /scratch/<host>/<user>/ /home2/<user>/x')
+  // However the absolute path is written, and whatever stands before it.
+  for (const [text, expected] of [
+    ['//fileserver/share/ondre/notes.txt', '//fileserver/share/<user>/notes.txt'],
+    ['\\\\fileserver\\share\\ondre\\notes.txt', HOST_PATH_PLACEHOLDER],
+    ['file:///data/ondre/x', 'file:///data/<user>/x'],
+    ['~other/ondre/x', '~other/<user>/x'],
+    ['D:data\\ondre\\x', 'D:data\\<user>\\x'],
+    ['C:\\Users\\ondre\\x', HOST_PATH_PLACEHOLDER],
+    ['(/data/ondre/x), --out=/data/ondre/x, cwd:/data/ondre/x', '(/data/<user>/x), --out=/data/<user>/x, cwd:/data/<user>/x'],
+    ['"/data/ondre/x"', '"/data/<user>/x"'],
+  ]) {
+    assert.equal(person.rewrite(text!), expected, text)
+  }
+  // A relative path, a URL and a root's own tail still keep a folder spelled like the user.
+  assert.equal(person.rewrite('see (src/ondre/x.ts), https://github.com/ondre/app and /home/ondre/src/app/ondre/y.ts'),
+    'see (src/ondre/x.ts), https://github.com/ondre/app and <app>/ondre/y.ts')
+  // A branch is a name, never a path the model resolves: every segment of it is rewritten.
+  assert.equal(person.rewriteBranch('feature/ondre/fix'), 'feature/<user>/fix')
+  assert.equal(person.rewriteBranch('minis/ondre'), '<host>/<user>')
+  assert.equal(person.rewrite('feature/ondre/fix'), 'feature/ondre/fix', 'as prose it could be a folder')
+})
+
 test('the last pass keeps identifiers whole, so a session named after its user still passes the report schema', () => {
   const session = {
     sessionId: '0f0e0d0c-0b0a-4908-8706-050403020100', ownerKey: `sha256:${'a'.repeat(64)}`, title: 'fix the build on minis for ondre',

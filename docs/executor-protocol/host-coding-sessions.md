@@ -804,14 +804,22 @@ list is `GENERIC_NAMES` in `host-identity.ts`), and the coding agents' own
 `claude` and `codex` — would rewrite ordinary words, relative paths and fixed
 values, and hide nobody. So is a name inside a word (a user `dan` leaves
 `redundant` as it is), and a match that is one whole segment of a relative
-path or a URL's path, with a single `/` or `\` before it and one after:
-absolute paths were already rewritten whole, so such a segment is a
-repository's own folder (`src/ondre/x.ts`) or a URL's owner
-(`github.com/ondre/app`), and rewriting it would hand the model a path that
-does not exist. Two separators before a name are a URL's host or a UNC
-server, and are rewritten. The placeholders already written and UUIDs (a
-session id's hex group may spell a short host name) are never rewritten
-again.
+path or a URL's path, with a single `/` or `\` before it and one after: such
+a segment is a repository's own folder (`src/ondre/x.ts`), a URL's owner
+(`github.com/ondre/app`) or a folder under a root (`<app>/ondre/y.ts`), and
+rewriting it would hand the model a path that does not exist. A segment of an
+absolute path is not left alone: the path rules rewrite only the host
+directories they name, so `/data/ondre/x`, `/home2/ondre`,
+`//server/share/ondre` and `~other/ondre` reach the names with the name still
+in them. A path is absolute when it starts — after whitespace, a quote, a
+bracket, `=`, `,`, `;`, `|`, or a `:` that is not a URL's `://` — with `/`,
+`\`, `~`, a drive letter or `file:` (`host-identity.ts`). Two separators
+before a name are a URL's host or a UNC server, and are rewritten. A branch,
+in `session_review`'s `branch`, a worktree's `branch` and the keys of
+`pullRequests`, is a name and not a path the model resolves, so every segment
+of it is rewritten (`feature/ondre/fix` reads `feature/<user>/fix`). The
+placeholders already written and UUIDs (a session id's hex group may spell a
+short host name) are never rewritten again.
 
 The last pass over an answer gives the path rules alone, without the names,
 to the fields other code parses as fixed values — `sessionId`, `ownerKey`,
