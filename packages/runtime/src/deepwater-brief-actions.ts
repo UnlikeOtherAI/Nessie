@@ -72,17 +72,33 @@ export type DeepWaterPersonActionStart =
    * with an error — so the request is a replay and nothing is re-armed.
    */
   | { kind: 'replay'; run: DeepWaterBriefRun }
-  /** Another action is in flight (or the brief is still opening and cannot be cancelled yet). */
+  /** Another action is in flight. */
   | { kind: 'busy'; run: DeepWaterBriefRun }
   | { kind: 'not_found' }
 
 /** Was this action accepted before? Its queue job key outlives the job. */
-const wasActionAccepted = async (tx: DeepWaterBriefDb, runId: string, actionId: string): Promise<boolean> => {
-  const rows = await tx.$queryRaw<Array<{ accepted: boolean }>>(Prisma.sql`
+export const wasDeepWaterActionAccepted = async (
+  db: DeepWaterBriefDb,
+  runId: string,
+  actionId: string,
+): Promise<boolean> => {
+  const rows = await db.$queryRaw<Array<{ accepted: boolean }>>(Prisma.sql`
     SELECT true AS "accepted" FROM "queue_jobs"
     WHERE "idempotency_key" = ${deepWaterBriefActionJobKey(runId, actionId)}
   `)
   return rows.length > 0
+}
+
+/** Is this action's job still to run, or running — so it may yet call Ledger? */
+export const isDeepWaterActionJobLive = async (
+  db: DeepWaterBriefDb,
+  runId: string,
+  actionId: string,
+): Promise<boolean> => {
+  const rows = await db.$queryRaw<Array<{ status: string }>>(Prisma.sql`
+    SELECT "status" FROM "queue_jobs" WHERE "idempotency_key" = ${deepWaterBriefActionJobKey(runId, actionId)}
+  `)
+  return rows.some((row) => row.status === 'pending' || row.status === 'processing')
 }
 
 /**
@@ -103,11 +119,9 @@ const wasActionAccepted = async (tx: DeepWaterBriefDb, runId: string, actionId: 
  *
  * A cancel is accepted while another action is in flight: stopping a brief
  * must never wait on the planner. It replaces that action, whose own late ack
- * then finds nothing to settle. The one exception is the opening
- * `scope_start` before Ledger acknowledged it: until then there is no research
- * id to cancel, and the brief may be opening in Ledger at that moment, so a
- * cancel accepted then would leave a paid planner turn with nothing to stop
- * it. The cancel is refused as busy for those few seconds.
+ * then finds nothing to settle. A cancel through Ledger needs the research id,
+ * so a brief DeepWater has not named yet is cancelled here instead, by
+ * `cancelUnopenedDeepWaterBrief`; reaching this with one is a caller bug.
  *
  * The job's `acceptedAt` is stamped here, from the same clock read as the
  * action's `since`.
@@ -128,12 +142,12 @@ export const beginDeepWaterPersonAction = async (
   }
   // Under the row lock every acceptance of this run has committed or is still
   // waiting behind us, so the key read here is the whole answer.
-  if (await wasActionAccepted(tx, run.id, job.actionId)) return { kind: 'replay', run }
-  const current = run.scopeState.pendingAction
-  if (isPendingActionInFlight(current)) {
-    if (job.action.kind !== 'cancel') return { kind: 'busy', run }
-    if (current.kind === 'scope_start' && run.externalRunId === null) return { kind: 'busy', run }
+  if (await wasDeepWaterActionAccepted(tx, run.id, job.actionId)) return { kind: 'replay', run }
+  if (job.action.kind === 'cancel' && run.externalRunId === null) {
+    throw new Error(`DeepWater run ${run.id} has no research id to cancel; cancel it with cancelUnopenedDeepWaterBrief`)
   }
+  const current = run.scopeState.pendingAction
+  if (isPendingActionInFlight(current) && job.action.kind !== 'cancel') return { kind: 'busy', run }
   input.precondition?.(run)
 
   if (!await enqueueDeepWaterBriefAction(tx, job)) {

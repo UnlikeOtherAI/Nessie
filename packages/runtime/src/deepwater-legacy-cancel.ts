@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 
 import type { DeepWaterBriefDb, DeepWaterBriefRun } from './deepwater-brief-run-record.js'
+import { recordDeepWaterLocalCancel, wasDeepWaterCancelAccepted } from './deepwater-local-cancel.js'
 import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
 
 /**
@@ -17,9 +18,12 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * - A `running` run with no research id may have a start in flight to Ledger
  *   at this moment, so nothing can safely cancel it: the handoff's own retry
  *   resolves it first.
+ *
+ * A request is judged a replay before the run's state: a retry whose first
+ * answer was lost finds the run already cancelled by its own action.
  */
 
-export type LegacyDeepWaterCancelRoute = 'local' | 'ledger' | 'not_cancellable'
+export type LegacyDeepWaterCancelRoute = 'local' | 'ledger' | 'not_cancellable' | 'replay'
 
 const OPEN_STATUSES = ['queued', 'running', 'needs_setup'] as const
 
@@ -55,22 +59,20 @@ const routeFor = (row: LegacyRow): LegacyDeepWaterCancelRoute => {
 
 /**
  * Decide how a launcher run is cancelled, under its row lock, and cancel it
- * here when Ledger never received it. Null when the run is not a launcher run
- * of this organisation.
+ * here when Ledger never received it. `replay` when this actionId was already
+ * accepted — cancelled here, or enqueued for the worker. Null when the run is
+ * not a launcher run of this organisation.
  */
 export const beginLegacyDeepWaterCancel = async (
   tx: DeepWaterBriefDb,
-  input: { organizationId: string; runId: string },
+  input: { organizationId: string; runId: string; actionId: string },
 ): Promise<LegacyDeepWaterCancelRoute | null> => {
   const row = await readLegacyRow(tx, input)
   if (!row) return null
+  if (await wasDeepWaterCancelAccepted(tx, input.runId, input.actionId)) return 'replay'
   const route = routeFor(row)
   if (route !== 'local') return route
-  await tx.$executeRaw(Prisma.sql`
-    UPDATE "product_integration_runs"
-    SET "status" = 'cancelled', "completed_at" = now(), "updated_at" = CURRENT_TIMESTAMP
-    WHERE "id" = CAST(${input.runId} AS uuid)
-  `)
+  await recordDeepWaterLocalCancel(tx, { runId: input.runId, actionId: input.actionId })
   return 'local'
 }
 

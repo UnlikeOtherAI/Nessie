@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import { applyDeepWaterScopeResult } from '@nessie/runtime'
-import { LedgerScopeResultSchema, type AuthorizedActionContext } from '@nessie/schemas'
+import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { resolveDeepWaterResearchReadiness } from '../src/services/deepwater-research-readiness.js'
-import { RUNS, withBriefApi, type BriefApiFixture } from './deepwater-research-runs-fixture.js'
+import { RUNS, drafted, open, withBriefApi } from './deepwater-research-runs-fixture.js'
 
 /**
  * The DeepWater brief API (Water plan nessie.md §7.1, contract D10,
@@ -15,43 +14,6 @@ import { RUNS, withBriefApi, type BriefApiFixture } from './deepwater-research-r
  * pillars it carries, and an owner cancels any open research with their own
  * identity.
  */
-
-const open = async (fixture: BriefApiFixture, body: Record<string, unknown> = {}) => {
-  const actionId = randomUUID()
-  const response = await fixture.request('POST', RUNS, {
-    actionId,
-    origin: { kind: 'thread', channelId: fixture.ids.channel, threadId: fixture.ids.thread },
-    topic: 'Heat pumps in older houses',
-    settings: { depth: 'light' },
-    ...body,
-  })
-  return { actionId, response, runId: String(response.body.data?.id ?? '') }
-}
-
-/** Ledger opened the brief and its planner answered the first turn. */
-const drafted = async (fixture: BriefApiFixture, runId: string, pillars: string[] = ['Costs']) => {
-  const result = LedgerScopeResultSchema.parse({
-    id: `rs_${randomUUID().replaceAll('-', '')}`,
-    status: 'drafting',
-    error_code: null,
-    title: null,
-    turn: { id: randomUUID(), seq: 1, status: 'complete', author_kind: 'person', error_code: null, retryable: false },
-    brief: {
-      state: 'drafting', revision: 1, topic: 'Heat pumps in older houses', reply: 'Here is a start.',
-      pillars,
-      settings: {
-        depth: 'light', chapter_depth: 'standard', search_quality: 'standard', languages: [],
-        output_language: 'en', recency: 'any', writing_style: 'standard',
-      },
-      locked_settings: ['depth'], open_questions: [], analysis: null, ready: pillars.length > 0,
-    },
-  })
-  await fixture.prisma.$transaction((tx) => applyDeepWaterScopeResult(tx, {
-    organizationId: fixture.ids.organization,
-    runId,
-    result,
-  }))
-}
 
 withBriefApi('opening a brief records its opening action once, and a replay answers the same brief', async (fixture) => {
   const { actionId, response, runId } = await open(fixture)

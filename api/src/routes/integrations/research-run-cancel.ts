@@ -2,9 +2,11 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import {
   beginDeepWaterPersonAction,
   beginLegacyDeepWaterCancel,
+  cancelUnopenedDeepWaterBrief,
   enqueueDeepWaterBriefAction,
   readDeepWaterBriefRun,
   type DeepWaterBriefRun,
+  type DeepWaterPersonActionStart,
 } from '@nessie/runtime'
 import {
   DEEP_WATER_BRIEF_ERROR_CODES,
@@ -43,9 +45,19 @@ import {
  * requester's, and the audit names the owner. An owner who may not read the
  * run is answered with its id and status only.
  *
+ * A brief DeepWater has not named yet (its opening failed, or was lost) is
+ * cancelled here, with no DeepWater call, once nothing can still open it —
+ * so an open brief can always be cleared, not only after the reap gives it up
+ * a day later. While DeepWater may be opening it, the cancel is refused.
+ *
  * A launcher run (from before research briefs) is cancelled by an owner or
  * admin: here, when DeepWater never received it; through DeepWater when it
  * has a research id; and not at all while a start may still be in flight.
+ *
+ * Every cancel is answered once per actionId: a retried request whose first
+ * answer was lost gets 200 with the run as it now is, whichever way the first
+ * one went. Whoever cancels is recorded in the audit when DeepWater keeps no
+ * record of it: an owner's cancel, and any cancel made here.
  */
 
 type RouteHelpers = {
@@ -73,7 +85,7 @@ const OWNER_ONLY = new DeepWaterBriefRefusal(
 const STILL_OPENING = new DeepWaterBriefRefusal(
   409,
   DEEP_WATER_BRIEF_ERROR_CODES.BRIEF_BUSY,
-  'This brief is still opening. Try again in a moment.',
+  'This brief is still being opened. Try again in a few minutes.',
 )
 
 /** Open research: a brief being agreed, a research running, or one parked for an operator. */
@@ -84,6 +96,16 @@ type Acting = {
   canRead: boolean
   /** An organisation owner or admin acting in the run's own team. */
   ownerInTeam: boolean
+}
+
+type CancelRequest = {
+  actorContext: AuthorizedActionContext
+  viewer: DeepWaterResearchViewer
+  acting: Acting
+  run: DeepWaterBriefRun
+  actionId: string
+  /** The acting person's identity for the run's team; DeepWater is asked with it. */
+  identity: DeepWaterRequesterIdentity | null
 }
 
 /** Who is cancelling, or null when this person may not cancel the run at all. */
@@ -106,14 +128,14 @@ export const registerResearchRunCancelRoute = (
 ): void => {
   const { prisma, realtimeHub, requireActorContext, requireUserActor } = deps
 
-  const audit = (actorContext: AuthorizedActionContext, run: DeepWaterBriefRun, via: string) =>
+  const audit = (actorContext: AuthorizedActionContext, run: DeepWaterBriefRun, via: string, actionId: string) =>
     emitAuditEvent(prisma, {
       actorContext,
       action: 'integration.research.cancelled',
       resourceType: 'product_integration_run',
       resourceId: run.id,
       outcome: 'success',
-      metadata: { productSlug: 'deep-water', requestedByUserId: run.requestedByUserId, via },
+      metadata: { productSlug: 'deep-water', requestedByUserId: run.requestedByUserId, via, actionId },
     })
 
   /** The run as the canceller may see it: the full view, or only its id and status. */
@@ -131,43 +153,84 @@ export const registerResearchRunCancelRoute = (
   }
 
   /** A launcher run: cancelled here, or through DeepWater with the owner's identity. */
-  const cancelLauncherRun = async (
-    reply: FastifyReply,
-    input: {
-      actorContext: AuthorizedActionContext
-      viewer: DeepWaterResearchViewer
-      acting: Acting
-      run: DeepWaterBriefRun
-      actionId: string
-      identity: DeepWaterRequesterIdentity | null
-    },
-  ) => {
-    const { run, viewer, acting } = input
+  const cancelLauncherRun = async (reply: FastifyReply, input: CancelRequest) => {
+    const { run, viewer, acting, actionId } = input
     // Only an owner or admin clears a launcher run (N9.6): its requester's
     // own way out is the chat it was handed to.
     if (!acting.ownerInTeam) throw OWNER_ONLY
     const outcome = await prisma.$transaction(async (tx) => {
-      const route = await beginLegacyDeepWaterCancel(tx, { organizationId: run.organizationId, runId: run.id })
+      const route = await beginLegacyDeepWaterCancel(tx, {
+        organizationId: run.organizationId,
+        runId: run.id,
+        actionId,
+      })
       if (route === null) throw notFound()
+      if (route === 'replay') return 'replay' as const
       if (route === 'not_cancellable') throw NOT_CANCELLABLE
       if (route === 'local') return 'cancelled' as const
       if (!input.identity) throw notReady('account_not_linked')
       const enqueued = await enqueueDeepWaterBriefAction(tx, {
         organizationId: run.organizationId,
         runId: run.id,
-        actionId: input.actionId,
+        actionId,
         acceptedAt: new Date().toISOString(),
         actor: { userId: viewer.userId, role: acting.role, identity: input.identity },
         action: { kind: 'cancel' },
       })
-      return enqueued ? 'enqueued' as const : 'replay' as const
+      // The replay check above ran under the run's row lock, which every
+      // acceptance of it takes, so a key that appeared since is a broken
+      // invariant, not a replay.
+      if (!enqueued) throw new Error(`DeepWater cancel ${actionId} on launcher run ${run.id} was accepted outside its lock`)
+      return 'enqueued' as const
     })
     if (outcome === 'cancelled') {
       console.info(`[deep-water] launcher run ${run.id} cancelled locally by ${viewer.userId}; DeepWater never received it`)
-      await audit(input.actorContext, run, 'launcher_local')
+      await audit(input.actorContext, run, 'launcher_local', actionId)
     }
+    // Accepted for DeepWater: the owner is recorded now, as the one who asked.
+    if (outcome === 'enqueued') await audit(input.actorContext, run, 'launcher_ledger', actionId)
     if (outcome !== 'replay') await publishDeepWaterRunUpdated(realtimeHub, run)
     return answer(reply, viewer, acting, run.id, outcome === 'replay' ? 200 : 202)
+  }
+
+  type BriefCancel = DeepWaterPersonActionStart | { kind: 'cancelled_here' }
+
+  /**
+   * A research brief: cancelled here while DeepWater has not named it, else
+   * through DeepWater as the acting person, all under the run's row lock.
+   */
+  const cancelBrief = async (reply: FastifyReply, input: CancelRequest) => {
+    const { run, viewer, acting, actionId, identity } = input
+    const target = { organizationId: run.organizationId, runId: run.id }
+    const outcome = await prisma.$transaction(async (tx): Promise<BriefCancel> => {
+      const unopened = await cancelUnopenedDeepWaterBrief(tx, { ...target, actionId })
+      if (unopened === null) return { kind: 'not_found' }
+      if (unopened === 'replay') return { kind: 'replay', run }
+      if (unopened === 'cancelled') return { kind: 'cancelled_here' }
+      // DeepWater may be opening it right now, and a cancel then would have
+      // nothing to name: the brief it opens would run on with no row.
+      if (unopened === 'opening') throw STILL_OPENING
+      if (unopened === 'not_cancellable') throw NOT_CANCELLABLE
+      if (!identity) throw notReady('account_not_linked')
+      return beginDeepWaterPersonAction(tx, {
+        job: { ...target, actionId, actor: { userId: viewer.userId, role: acting.role, identity }, action: { kind: 'cancel' } },
+        precondition: (locked) => {
+          if (!OPEN_STATUSES.has(locked.status)) throw NOT_CANCELLABLE
+        },
+      })
+    })
+    if (outcome.kind === 'not_found') throw notFound()
+    if (outcome.kind === 'busy') {
+      // A cancel is never busy: it replaces whatever action is in flight.
+      throw new Error(`DeepWater cancel ${actionId} on run ${run.id} was refused as busy`)
+    }
+    if (outcome.kind === 'cancelled_here') {
+      console.info(`[deep-water] brief ${run.id} cancelled here by ${viewer.userId} before DeepWater named it`)
+      await audit(input.actorContext, run, 'unopened_local', actionId)
+    }
+    if (outcome.kind === 'started' && acting.role === 'owner') await audit(input.actorContext, run, 'owner', actionId)
+    if (outcome.kind !== 'replay') await publishDeepWaterRunUpdated(realtimeHub, run)
+    return answer(reply, viewer, acting, run.id, outcome.kind === 'replay' ? 200 : 202)
   }
 
   app.post(`${RESEARCH_RUNS_PATH}/:runId/cancel`, async (request, reply) => {
@@ -191,33 +254,9 @@ export const registerResearchRunCancelRoute = (
       // DeepWater is asked with the acting person's own identity, for the run's team.
       const identity = await resolveDeepWaterRequesterIdentity(prisma, actorContext, run.teamId)
 
-      if (run.scopeState === null) {
-        return cancelLauncherRun(reply, { actorContext, viewer, acting, run, actionId: body.actionId, identity })
-      }
-      if (!identity) throw notReady('account_not_linked')
-      const outcome = await prisma.$transaction((tx) => beginDeepWaterPersonAction(tx, {
-        job: {
-          organizationId: run.organizationId,
-          runId: run.id,
-          actionId: body.actionId,
-          actor: { userId: viewer.userId, role: acting.role, identity },
-          action: { kind: 'cancel' },
-        },
-        precondition: (locked) => {
-          if (!OPEN_STATUSES.has(locked.status)) throw NOT_CANCELLABLE
-          // No research id yet: the brief is still opening in DeepWater (or
-          // its opening was lost and is being replayed), and a cancel then
-          // would have nothing to name.
-          if (locked.externalRunId === null) throw STILL_OPENING
-        },
-      }))
-      if (outcome.kind === 'not_found') throw notFound()
-      if (outcome.kind === 'busy') throw STILL_OPENING
-      if (outcome.kind === 'started') {
-        if (acting.role === 'owner') await audit(actorContext, run, 'owner')
-        await publishDeepWaterRunUpdated(realtimeHub, outcome.run)
-      }
-      return answer(reply, viewer, acting, run.id, outcome.kind === 'started' ? 202 : 200)
+      const cancel: CancelRequest = { actorContext, viewer, acting, run, actionId: body.actionId, identity }
+      if (run.scopeState === null) return cancelLauncherRun(reply, cancel)
+      return cancelBrief(reply, cancel)
     })
   })
 }

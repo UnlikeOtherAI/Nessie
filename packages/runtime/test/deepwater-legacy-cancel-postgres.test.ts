@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import { DeepWaterResearchLaunchRequestSchema } from '@nessie/schemas'
@@ -60,17 +61,24 @@ const launcher = async (
 const statusOf = async (fixture: BriefFixture, runId: string): Promise<string> =>
   (await fixture.prisma.productIntegrationRun.findUniqueOrThrow({ where: { id: runId } })).status
 
-const begin = (fixture: BriefFixture, runId: string) =>
-  fixture.prisma.$transaction((tx) => beginLegacyDeepWaterCancel(tx, { organizationId: fixture.ids.organization, runId }))
+const begin = (fixture: BriefFixture, runId: string, actionId: string = randomUUID()) =>
+  fixture.prisma.$transaction((tx) => beginLegacyDeepWaterCancel(tx, {
+    organizationId: fixture.ids.organization,
+    runId,
+    actionId,
+  }))
 
 withFixture('a launcher run Ledger never received is cancelled here', async (fixture) => {
   const queued = await launcher(fixture, { status: 'queued' })
   const parked = await launcher(fixture, { status: 'needs_setup' })
-  assert.equal(await begin(fixture, queued), 'local')
+  const actionId = randomUUID()
+  assert.equal(await begin(fixture, queued, actionId), 'local')
   assert.equal(await begin(fixture, parked), 'local')
   assert.equal(await statusOf(fixture, queued), 'cancelled')
   assert.equal(await statusOf(fixture, parked), 'cancelled')
-  // Cancelled is terminal: a second request finds nothing left to cancel.
+  // A retry whose first answer was lost is a replay, not a refusal…
+  assert.equal(await begin(fixture, queued, actionId), 'replay')
+  // …while a new request finds nothing left to cancel: cancelled is terminal.
   assert.equal(await begin(fixture, queued), 'not_cancellable')
 })
 
@@ -88,6 +96,13 @@ withFixture('a launcher research is cancelled through Ledger, then recorded once
   const running = await launcher(fixture, { status: 'running', externalRunId: researchId, startToolCallId: 'call_3' })
   assert.equal(await begin(fixture, running), 'ledger')
   assert.equal(await statusOf(fixture, running), 'running', 'nothing changes until Ledger agrees')
+  // The route enqueues the worker's job under the action's key; a retry of it is a replay.
+  const enqueuedId = randomUUID()
+  await fixture.pool.query(
+    `INSERT INTO queue_jobs (topic, payload, idempotency_key) VALUES ('deep_water.brief.action', $1, $2)`,
+    [JSON.stringify({ organizationId: fixture.ids.organization, runId: running }), `deep-water-brief-action:${running}:${enqueuedId}`],
+  )
+  assert.equal(await begin(fixture, running, enqueuedId), 'replay')
 
   const record = (id: string) => fixture.prisma.$transaction((tx) => recordLegacyDeepWaterCancel(tx, {
     organizationId: fixture.ids.organization,
@@ -98,6 +113,7 @@ withFixture('a launcher research is cancelled through Ledger, then recorded once
   assert.equal(await record(researchId), true)
   assert.equal(await statusOf(fixture, running), 'cancelled')
   assert.equal(await record(researchId), false, 'a late job finds it already cancelled')
+  assert.equal(await begin(fixture, running, enqueuedId), 'replay', 'still a replay once Ledger agreed')
 })
 
 withFixture('a research brief is not a launcher run, and its research id finds it in its own team only', async (fixture) => {

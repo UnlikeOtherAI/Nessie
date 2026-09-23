@@ -157,6 +157,7 @@ const loadReportSpaces = async (
 const viewContext = (viewer: DeepWaterResearchViewer, spaces: Map<string, string>, run: DeepWaterBriefRun) => ({
   viewer: { userId: viewer.userId, canChangeTeam: viewer.canChangeTeam && viewer.teamId === run.teamId },
   reportSpaceId: run.knowledgePageId === null ? null : spaces.get(run.knowledgePageId) ?? null,
+  now: new Date(),
 })
 
 /** Research views of runs the caller has already checked are visible. */

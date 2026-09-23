@@ -14,6 +14,7 @@ import {
 
 import { isPendingActionInFlight, isSettledTurnStatus } from './deepwater-brief-registers.js'
 import type { DeepWaterBriefRun } from './deepwater-brief-run-record.js'
+import { isDeepWaterBriefOpening } from './deepwater-local-cancel.js'
 import {
   DEEP_WATER_NEEDS_OPERATOR_MESSAGE,
   deepWaterFailureSentence,
@@ -59,6 +60,7 @@ const viewStatus = (run: DeepWaterBriefRun): DeepWaterResearchRunViewStatus => {
 export const deepWaterViewerActions = (
   run: DeepWaterBriefRun,
   viewer: { userId: string; canChangeTeam: boolean },
+  now: Date,
 ): DeepWaterResearchRunView['viewer'] => {
   const isRequester = run.requestedByUserId !== null && run.requestedByUserId === viewer.userId
   const brief = run.scopeState
@@ -80,7 +82,11 @@ export const deepWaterViewerActions = (
   return {
     canEdit: editable,
     canStart: editable,
-    canCancel: OPEN_STATUSES.has(run.status) && (isRequester || viewer.canChangeTeam),
+    // A brief DeepWater may be opening right now has nothing to cancel yet;
+    // once it opened, or nothing can open it any more, it can be (N8.5).
+    canCancel: OPEN_STATUSES.has(run.status)
+      && (isRequester || viewer.canChangeTeam)
+      && !isDeepWaterBriefOpening(run, now),
     canRetryDelivery: isRequester
       && run.deliveredAt === null
       && run.deliveryBlockedReason !== null
@@ -126,6 +132,8 @@ export type DeepWaterViewContext = {
   viewer: { userId: string; canChangeTeam: boolean }
   /** The Knowledge space of the delivered report page, or null. */
   reportSpaceId: string | null
+  /** When the view is built: whether an opening can still be in flight depends on it. */
+  now: Date
 }
 
 const iso = (value: Date | null): string | null => value?.toISOString() ?? null
@@ -176,7 +184,7 @@ export const toDeepWaterResearchRunView = (
       state: delivered ? 'delivered' : run.deliveryBlockedReason !== null ? 'blocked' : 'pending',
       blockedReason: run.deliveryBlockedReason,
     },
-    viewer: deepWaterViewerActions(run, context.viewer),
+    viewer: deepWaterViewerActions(run, context.viewer, context.now),
   })
 }
 

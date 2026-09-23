@@ -168,6 +168,11 @@ const applySuccess = async (
       ackActionId: payload.actionId,
       turnAuthor: { kind: 'person', userId: payload.actor.userId },
     }))
+    if (!outcome.applied && outcome.reason === 'not_attachable') {
+      // The brief ended here before DeepWater named it, so nothing points at
+      // the research this answer names; it stays idle there until it expires.
+      console.error(`[deep-water] brief ${run.id} ended before DeepWater named it; research ${parsed.data.id} is not attached`)
+    }
     return log(run, payload, outcome.applied ? `applied (${parsed.data.status})` : `not applied (${outcome.reason})`)
   }
   if (action.kind === 'launch') {

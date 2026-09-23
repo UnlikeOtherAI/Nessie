@@ -33,6 +33,8 @@ const CHANNEL = '10000000-0000-4000-8000-000000000007'
 const THREAD = '10000000-0000-4000-8000-000000000008'
 const ORG = '10000000-0000-4000-8000-000000000009'
 const SINCE = '2026-09-23T09:00:00.000Z'
+/** A minute after SINCE: an opening sent then may still be at DeepWater. */
+const NOW = new Date('2026-09-23T09:01:00.000Z')
 
 const turn = (overrides: Partial<DeepWaterTurnRegister> = {}): DeepWaterTurnRegister => ({
   id: T1, seq: 1, status: 'pending', errorCode: null, retryable: false, authorKind: 'person', ...overrides,
@@ -63,7 +65,7 @@ const run = (overrides: Partial<DeepWaterBriefRun> = {}): DeepWaterBriefRun => (
   ...overrides,
 })
 
-const context = { viewer: { userId: REQUESTER, canChangeTeam: false }, reportSpaceId: null }
+const context = { viewer: { userId: REQUESTER, canChangeTeam: false }, reportSpaceId: null, now: NOW }
 
 test('the planner turn view follows register (b) and the person\'s matching action', () => {
   assert.deepEqual(deepWaterPlannerTurnView(null), { status: 'idle' })
@@ -120,33 +122,57 @@ test('the view status follows contract §2.4 and a failure reads plainly', () =>
 
 test('only the requester edits a person\'s brief, and an owner may cancel any open run', () => {
   const draft = run()
-  assert.deepEqual(deepWaterViewerActions(draft, { userId: REQUESTER, canChangeTeam: false }), {
+  assert.deepEqual(deepWaterViewerActions(draft, { userId: REQUESTER, canChangeTeam: false }, NOW), {
     canEdit: true, canStart: true, canCancel: true, canRetryDelivery: false,
   })
-  assert.deepEqual(deepWaterViewerActions(draft, { userId: OTHER, canChangeTeam: true }), {
+  assert.deepEqual(deepWaterViewerActions(draft, { userId: OTHER, canChangeTeam: true }, NOW), {
     canEdit: false, canStart: false, canCancel: true, canRetryDelivery: false,
   })
-  assert.equal(deepWaterViewerActions(draft, { userId: OTHER, canChangeTeam: false }).canCancel, false)
+  assert.equal(deepWaterViewerActions(draft, { userId: OTHER, canChangeTeam: false }, NOW).canCancel, false)
   const busy = run({ scopeState: state({ pendingAction: action() }) })
-  assert.equal(deepWaterViewerActions(busy, { userId: REQUESTER, canChangeTeam: false }).canEdit, false)
+  assert.equal(deepWaterViewerActions(busy, { userId: REQUESTER, canChangeTeam: false }, NOW).canEdit, false)
   const agentBrief = run({ originKind: 'agent', originAgentId: T2 })
-  assert.equal(deepWaterViewerActions(agentBrief, { userId: REQUESTER, canChangeTeam: false }).canEdit, false)
-  assert.equal(deepWaterViewerActions(agentBrief, { userId: REQUESTER, canChangeTeam: false }).canCancel, true)
+  assert.equal(deepWaterViewerActions(agentBrief, { userId: REQUESTER, canChangeTeam: false }, NOW).canEdit, false)
+  assert.equal(deepWaterViewerActions(agentBrief, { userId: REQUESTER, canChangeTeam: false }, NOW).canCancel, true)
   const blocked = run({ status: 'running', deliveryBlockedReason: 'requester_identity_changed' })
-  assert.equal(deepWaterViewerActions(blocked, { userId: REQUESTER, canChangeTeam: false }).canRetryDelivery, true)
+  assert.equal(deepWaterViewerActions(blocked, { userId: REQUESTER, canChangeTeam: false }, NOW).canRetryDelivery, true)
   const final = run({ status: 'completed', deliveryBlockedReason: 'report_expired' })
-  assert.equal(deepWaterViewerActions(final, { userId: REQUESTER, canChangeTeam: false }).canRetryDelivery, false)
-  assert.equal(deepWaterViewerActions(final, { userId: REQUESTER, canChangeTeam: true }).canCancel, false)
+  assert.equal(deepWaterViewerActions(final, { userId: REQUESTER, canChangeTeam: false }, NOW).canRetryDelivery, false)
+  assert.equal(deepWaterViewerActions(final, { userId: REQUESTER, canChangeTeam: true }, NOW).canCancel, false)
 })
 
 test('a launcher run is cancellable only by a team owner or admin while it is open', () => {
   const launcher = run({ scopeState: null, uoaIdentity: null, input: null, status: 'running' })
-  assert.deepEqual(deepWaterViewerActions(launcher, { userId: REQUESTER, canChangeTeam: false }), {
+  assert.deepEqual(deepWaterViewerActions(launcher, { userId: REQUESTER, canChangeTeam: false }, NOW), {
     canEdit: false, canStart: false, canCancel: false, canRetryDelivery: false,
   })
-  assert.equal(deepWaterViewerActions(launcher, { userId: OTHER, canChangeTeam: true }).canCancel, true)
+  assert.equal(deepWaterViewerActions(launcher, { userId: OTHER, canChangeTeam: true }, NOW).canCancel, true)
   const ended = run({ scopeState: null, uoaIdentity: null, input: null, status: 'completed' })
-  assert.equal(deepWaterViewerActions(ended, { userId: OTHER, canChangeTeam: true }).canCancel, false)
+  assert.equal(deepWaterViewerActions(ended, { userId: OTHER, canChangeTeam: true }, NOW).canCancel, false)
+})
+
+test('a brief DeepWater may be opening offers no Cancel until it opened or its opening ended', () => {
+  const opening = run({
+    status: 'queued',
+    externalRunId: null,
+    scopeState: state({ pendingAction: action({ kind: 'scope_start' }) }),
+  })
+  assert.equal(deepWaterViewerActions(opening, { userId: REQUESTER, canChangeTeam: true }, NOW).canCancel, false)
+  // Past the window its job retries in, the job has given up or died: Cancel is offered, and
+  // the cancel route decides from the job itself.
+  const lateEnough = new Date(Date.parse(SINCE) + 30 * 60_000)
+  assert.equal(deepWaterViewerActions(opening, { userId: REQUESTER, canChangeTeam: false }, lateEnough).canCancel, true)
+  // Ledger never answered, or refused: nothing can open it any more, so it can be cancelled here.
+  const stalled = run({
+    status: 'queued',
+    externalRunId: null,
+    scopeState: state({ pendingAction: action({ kind: 'scope_start', error: { code: 'unavailable', at: SINCE } }) }),
+  })
+  assert.equal(deepWaterViewerActions(stalled, { userId: REQUESTER, canChangeTeam: false }, NOW).canCancel, true)
+  assert.equal(deepWaterViewerActions(stalled, { userId: OTHER, canChangeTeam: true }, NOW).canCancel, true)
+  // An agent's unnamed brief carries no action of the person's; the route decides whether its run is still sending.
+  const agentBrief = run({ status: 'queued', externalRunId: null, originKind: 'agent', originAgentId: OTHER })
+  assert.equal(deepWaterViewerActions(agentBrief, { userId: REQUESTER, canChangeTeam: false }, NOW).canCancel, true)
 })
 
 test('transcript authors come from Nessie\'s own turn record, never from the wire', () => {

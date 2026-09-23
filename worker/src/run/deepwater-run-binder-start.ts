@@ -128,6 +128,13 @@ export const dispatchDeepWaterScopeStart = async (
 ): Promise<DeepWaterBoundDispatch> => {
   const claimed = await claim(ctx, toolCallId, args)
   if (!('run' in claimed)) return claimed
+  if (claimed.run.status === 'cancelled') {
+    // A retried call for a brief already cancelled: sent again, it could open
+    // the brief its requester or a team owner just cancelled.
+    log(claimed.run, 'not sent again: the brief was cancelled')
+    return refused('DEEP_WATER_BRIEF_CANCELLED', 'This research brief was cancelled. '
+      + 'Do not start it again unless the person asks for it.')
+  }
 
   let result
   try {

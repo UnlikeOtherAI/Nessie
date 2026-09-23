@@ -180,7 +180,10 @@ file is the rule**.
   null external id remains a conservative blocker because Ledger dispatch may
   be in flight; an owner cancels a launcher run Ledger never received locally,
   one with a research id through Ledger, and one whose start may still be in
-  flight not at all until its handoff resolves it. Disable
+  flight not at all until its handoff resolves it. A brief DeepWater never
+  named is cancelled locally once nothing can still open it (see "A brief
+  DeepWater never named is cancelled here"), so no open brief blocks a
+  disable until the reap. Disable
   targets only the instance linked from the first-party public product, so
   private same-name catalogs are untouched. `deep_water_run_update` is not
   PA-only and takes tenancy strictly from the run context (same team + thread;
@@ -347,15 +350,28 @@ worker and card are built on them.
   the brief already moved on by its own action, and refusing it would make the
   client resend under a new id and pay for a second planner turn. One action
   is in flight per brief and is cleared only by its own turn or outcome, with two
-  exceptions: a cancel replaces any in-flight action except the opening
-  `scope_start` before Ledger acknowledged it (there is no research id to
-  cancel yet, so the cancel is refused as busy for those seconds), and a
-  cancelled or finished brief ends whatever action was in flight — including a
-  brief Ledger refused to open (`failUnstartedDeepWaterBrief`), whose opening
-  action ends with its error code in the same write. The job carries
-  `acceptedAt`, stamped under the row lock from the same clock read as the
-  action's `since`; its retry window runs from it, never from the queue row's
-  `enqueued_at`, which every retry moves forward.
+  exceptions: a cancel replaces any in-flight action, and a cancelled or
+  finished brief ends whatever action was in flight — including a brief Ledger
+  refused to open (`failUnstartedDeepWaterBrief`), whose opening action ends
+  with its error code in the same write. The job carries `acceptedAt`, stamped
+  under the row lock from the same clock read as the action's `since`; its
+  retry window runs from it, never from the queue row's `enqueued_at`, which
+  every retry moves forward.
+- **A brief DeepWater never named is cancelled here.** A cancel through
+  Ledger needs a research id, so `cancelUnopenedDeepWaterBrief`
+  (`deepwater-local-cancel.ts`) cancels an unnamed `queued` brief locally,
+  under its row lock, once nothing can still open it: not while a person's
+  opening job is queued or running, an agent's origin run is `pending` or
+  `running`, or a watch replay of the agent's start is queued or running —
+  any of those could open a paid brief no row points at, so the cancel is
+  refused as `DEEP_WATER_BRIEF_BUSY` meanwhile. The cancel records its
+  `actionId` on the run (`result_json.cancelActionId`), so a retried request
+  is a replay, and an answer that names a research afterwards is not attached
+  (logged). An agent's retried `research_scope_start` for a cancelled brief is
+  never sent again. The view offers no Cancel on a person's brief whose
+  opening is in flight and younger than the action retry window
+  (`isDeepWaterBriefOpening`); past it the job has given up or died, so Cancel
+  is offered and the route decides from the job itself.
 - **Delivery happens once.** `claimDeepWaterDelivery` writes the terminal
   status with `delivered_at` in one conditional statement; the reply or wake is
   written in the same transaction. A block (`blockDeepWaterDelivery`) is set
@@ -430,7 +446,11 @@ connector, and the same projection applies every answer.
   owner with the owner's live identity and the `deep-water.owner-cancel`
   component, which Ledger checks against the owner's UOA team role — never as
   the requester. The Nessie audit (`integration.research.cancelled`) names the
-  owner as the actor and the run by id.
+  owner as the actor and the run by id — when their cancel of a brief or a
+  launcher run is accepted for Ledger, and for every cancel Nessie makes
+  itself (an unnamed brief, a launcher run Ledger never received), whoever
+  asked. Every cancel is answered once per `actionId`: a retried request whose
+  answer was lost gets 200 with the run as it now is.
 - **Agents and briefs — the run binder** (`worker/src/run/deepwater-run-binder*.ts`)
   wraps every DeepWater call outside a launcher handoff turn.
   `research_scope_start` claims its run with `claimAgentOriginRun` before the

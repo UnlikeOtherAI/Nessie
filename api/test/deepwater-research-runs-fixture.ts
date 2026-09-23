@@ -3,7 +3,8 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import { deepWaterBriefTools } from '@nessie/mcp-manage'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import { applyDeepWaterScopeResult, readDeepWaterBriefRun, settleDeepWaterPersonAction } from '@nessie/runtime'
+import { LedgerScopeResultSchema, deepWaterBriefActionJobKey, type AuthorizedActionContext } from '@nessie/schemas'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { registerResearchRunRoutes } from '../src/routes/integrations/research-runs.js'
@@ -180,4 +181,77 @@ export const withBriefApi = (name: string, body: (fixture: BriefApiFixture) => P
       await cleanup()
     }
   })
+}
+
+/** A person opens a brief from the fixture's public thread. */
+export const open = async (fixture: BriefApiFixture, body: Record<string, unknown> = {}) => {
+  const actionId = randomUUID()
+  const response = await fixture.request('POST', RUNS, {
+    actionId,
+    origin: { kind: 'thread', channelId: fixture.ids.channel, threadId: fixture.ids.thread },
+    topic: 'Heat pumps in older houses',
+    settings: { depth: 'light' },
+    ...body,
+  })
+  return { actionId, response, runId: String(response.body.data?.id ?? '') }
+}
+
+/** Ledger opened the brief and its planner answered the first turn. */
+export const drafted = async (fixture: BriefApiFixture, runId: string, pillars: string[] = ['Costs']) => {
+  const result = LedgerScopeResultSchema.parse({
+    id: `rs_${randomUUID().replaceAll('-', '')}`,
+    status: 'drafting',
+    error_code: null,
+    title: null,
+    turn: { id: randomUUID(), seq: 1, status: 'complete', author_kind: 'person', error_code: null, retryable: false },
+    brief: {
+      state: 'drafting', revision: 1, topic: 'Heat pumps in older houses', reply: 'Here is a start.',
+      pillars,
+      settings: {
+        depth: 'light', chapter_depth: 'standard', search_quality: 'standard', languages: [],
+        output_language: 'en', recency: 'any', writing_style: 'standard',
+      },
+      locked_settings: ['depth'], open_questions: [], analysis: null, ready: pillars.length > 0,
+    },
+  })
+  await fixture.prisma.$transaction((tx) => applyDeepWaterScopeResult(tx, {
+    organizationId: fixture.ids.organization,
+    runId,
+    result,
+  }))
+}
+
+/**
+ * The opening job gave up the way the worker does after its retry window:
+ * the opening action ends as unavailable and the job finishes. DeepWater
+ * never named the brief.
+ */
+export const openingGaveUp = async (fixture: BriefApiFixture, runId: string): Promise<void> => {
+  const run = await readDeepWaterBriefRun(fixture.prisma, { organizationId: fixture.ids.organization, runId })
+  const opening = run?.scopeState?.pendingAction?.actionId
+  if (!opening) throw new Error(`brief ${runId} has no opening action`)
+  await fixture.prisma.$transaction((tx) => settleDeepWaterPersonAction(tx, {
+    organizationId: fixture.ids.organization, runId, actionId: opening, errorCode: 'unavailable',
+  }))
+  await fixture.prisma.$executeRawUnsafe(
+    `UPDATE queue_jobs SET status = 'done' WHERE idempotency_key = $1`,
+    deepWaterBriefActionJobKey(runId, opening),
+  )
+}
+
+/** The organisation owner, linked to DeepWater and signed in on the team. */
+export const signInOwner = async (fixture: BriefApiFixture): Promise<BriefApiFixture['identity']> => {
+  const identity = {
+    subject: `uoa|${fixture.ids.owner}`, organizationId: fixture.identity.organizationId,
+    teamId: fixture.identity.teamId, tokenVersion: 5,
+  }
+  await fixture.prisma.productAccountLink.create({
+    data: {
+      organizationId: fixture.ids.organization, userId: fixture.ids.owner, productSlug: 'deep-water',
+      uoaSub: identity.subject, uoaTokenVersion: 5, status: 'linked',
+    },
+  })
+  fixture.signIn('owner', identity)
+  fixture.actAs('owner')
+  return identity
 }
