@@ -89,8 +89,7 @@ summary and points here; **this file is the rule**.
     `runWindDownAt`): the wait then answers "This run is nearly out of time…"
     and the agent still has the rest of the run to say where the session
     stands; a wait begun past that point reads once and returns. The command
-    TTLs live in
-    `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
+    TTLs live in `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
     `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
     `executor-timing.ts`, which must stay ≥ the daemon's worst case for one
     command (a 10 s start + one 60 s call deadline, which also bounds a whole

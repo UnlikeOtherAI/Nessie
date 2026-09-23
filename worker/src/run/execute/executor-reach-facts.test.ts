@@ -137,7 +137,8 @@ test('only a DM with no other person in it names the executor', async () => {
   // No acting person, no DM of theirs to name it in.
   const { prisma: noPerson } = stubPrisma({ channel: { members: [], type: 'dm' } })
   const unattended = await loadExecutorReachFacts(noPerson, {
-    agentId, channelId, hostOutput: null, lease: carried, organizationId, personUserId: null, runId, toolNames: LOCAL_APPS,
+    agentId, channelId, hostOutput: null, lease: carried, organizationId, personUserId: null, runId,
+    toolNames: LOCAL_APPS,
   })
   assert.equal(unattended?.kind === 'bound' && unattended.executorLabel, null)
 })

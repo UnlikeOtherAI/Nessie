@@ -414,7 +414,9 @@ dbTest('only the pairing owner may Close, and only a session the machine lists a
     const ownerKey = ownerKeyOf(world.executorId, world.agentId, world.adminId)
     await listSessions(world, [{ ownerKey, sessionId }])
     await assert.rejects(
-      requestExecutorCodingSessionClose(world.prisma, world.adminContext, { executorId: world.executorId, ownerKey, sessionId }),
+      requestExecutorCodingSessionClose(world.prisma, world.adminContext, {
+        executorId: world.executorId, ownerKey, sessionId,
+      }),
       { code: 'EXECUTOR_CODING_SESSIONS_OWNER_ONLY', message: /this executor is shared/ },
     )
     assert.equal((await closeRows(world)).length, 0)

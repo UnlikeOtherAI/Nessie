@@ -201,9 +201,10 @@ export const createCodingSessionsDaemon = (input: {
         ? { data: [], success: true as const }
         : ExecutorCodingSessionCloseListSchema.safeParse(instructions)
       if (parsed.success) {
-        const listed = new Map((parsed.data as ExecutorCodingSessionClose[]).map((entry): [string, ExecutorCodingSessionClose] => (
-          [`${entry.ownerKey}|${entry.sessionId ?? ''}`, entry]
-        )))
+        const listed = new Map<string, ExecutorCodingSessionClose>()
+        for (const entry of parsed.data as ExecutorCodingSessionClose[]) {
+          listed.set(`${entry.ownerKey}|${entry.sessionId ?? ''}`, entry)
+        }
         for (const key of [...pending.keys()]) if (!listed.has(key)) pending.delete(key)
         for (const [key, entry] of listed) {
           if (pending.has(key) || pending.size < PENDING_CLOSE_MAXIMUM) pending.set(key, entry)

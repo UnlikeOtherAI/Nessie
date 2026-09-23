@@ -150,10 +150,9 @@ dbTest('listing the bridge’s catalog meets the same rule, and a listing never 
   await withWorld({ pairingOwner: 'holder', scope: 'private' }, async (world) => {
     const { bindingId, runId } = await launchedCall(world, 'mcp.tools')
     await createCommand(world, { bindingId, payload: { ...listing, runId }, runId })
+    const owner = { actorUserId: world.holderId, agentId: world.agentId }
     await assert.rejects(
-      createCommand(world, {
-        bindingId, payload: { ...listing, owner: { actorUserId: world.holderId, agentId: world.agentId }, runId }, runId,
-      }),
+      createCommand(world, { bindingId, payload: { ...listing, owner, runId }, runId }),
       refusedWith('EXECUTOR_COMMAND_PAYLOAD_INVALID'),
     )
   })

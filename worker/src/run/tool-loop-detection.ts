@@ -181,13 +181,14 @@ export const countToolCall = (
 }
 
 /**
- * A watch tool's own report, after it ran. The person having written settles
- * every later wait in the run. A wait that stopped because the model must act
- * settles that same call until an acting call. A watching wait that saw
- * progress restarts its streak, and the third in a row that saw none returns
- * the nudge (and restarts it, so the next nudge is three stalled waits away).
- * A call whose streak another call already ended — a later call in the same
- * batch — counts for nothing, except that the person still wrote.
+ * A watch tool's own report, after it ran. The turn being over — the person
+ * wrote, or the run's time runs low — settles every later wait in the run. A
+ * wait that stopped because the model must act settles that same call until
+ * an acting call. A watching wait that saw progress restarts its streak, and
+ * the third in a row that saw none returns the nudge (and restarts it, so the
+ * next nudge is three stalled waits away). A call whose streak another call
+ * already ended — a later call in the same batch — counts for nothing, except
+ * that the turn is still over.
  */
 export const noteWatchProgress = (
   counts: Map<string, number>,

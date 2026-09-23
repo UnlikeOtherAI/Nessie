@@ -137,10 +137,10 @@ turn 2, 14 steps (Bash 7, Edit 3)". While the agent works the line leads with
 its latest tool call as the bridge projected it (`summary.lastTool` in a
 status read: the tool's name and its one-line input summary, paths
 rewritten), so a long test run reads apart from a stall; otherwise with the
-status. It never carries what the coding agent said. The run's machine-reach fact names the tools and
-lists the sessions the person holds there as the machine last reported them —
-their titles only in the person's own DM, where the listing stamps the run's
-disclosure basis as a coding tool's answer does
+status. It never carries what the coding agent said. The run's machine-reach
+fact names the tools and lists the sessions the person holds there as the
+machine last reported them — their titles only in the person's own DM, where
+the listing stamps the run's disclosure basis as a coding tool's answer does
 ([conversation-leases.md](conversation-leases.md) → §5).
 
 ## Two processes: a stateless bridge and one host per session
