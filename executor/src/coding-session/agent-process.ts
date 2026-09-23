@@ -71,9 +71,9 @@ const NOT_LOGGED_IN = new RegExp(
 
 export const agentFailureReason = (lines: readonly string[]): string => {
   const text = lines.join('\n')
-  // The Windows job helper's own refusal: it ran nothing, so nothing ran uncontained.
-  if (text.includes('"code":"EXECUTOR_JOB_SPAWN_FAILED"')) return 'agent_missing'
-  if (/"code":"EXECUTOR_(JOB_CONTAINMENT_FAILED|JOB_PARENT_GONE)"/u.test(text)) return 'containment_failed'
+  // The Windows job helper's and the agent guard's own refusals: either ran nothing, or stopped what it started.
+  if (/"code":"EXECUTOR_(JOB|GUARD)_SPAWN_FAILED"/u.test(text)) return 'agent_missing'
+  if (/"code":"EXECUTOR_(JOB_(CONTAINMENT_FAILED|PARENT_GONE)|GUARD_(CONTAINMENT_FAILED|NO_AGENT))"/u.test(text)) return 'containment_failed'
   if (NOT_LOGGED_IN.test(text)) return 'agent_not_logged_in'
   if (/usage limit|quota|rate limit/iu.test(text)) return 'agent_quota_exhausted'
   return 'agent_exited'
@@ -124,7 +124,8 @@ export const startAgentProcess = async (
   void exited.then(() => log.end())
   child.stdin?.on('error', () => undefined)
   if (child.stdout) createInterface({ input: child.stdout }).on('line', onLine)
-  const identity = await context.control.identify(child.pid)
+  // Through the agent guard this is the agent's own identity, which the guard reports; otherwise the child's.
+  const identity = await (context.control.identifySpawned?.(child) ?? context.control.identify(child.pid))
   if (!identity) {
     // With no start time, no later kill could tell this process from whatever
     // inherits its pid, so it does not keep running. The handle is still ours.
@@ -138,7 +139,10 @@ export const startAgentProcess = async (
     write: (text) => {
       if (!done && child.stdin?.writable) child.stdin.write(text)
     },
-    endInput: () => { child.stdin?.end() },
+    endInput: () => {
+      if (context.control.endInput) context.control.endInput(child)
+      else child.stdin?.end()
+    },
     exited,
     alive: () => !done,
     stderrTail: () => [...tail],

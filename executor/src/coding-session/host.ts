@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { unlink } from 'node:fs/promises'
 
-import { AgentStartError, type AgentDriver } from './agent-process.js'
 import { buildAgentEnvironment } from './agent-env.js'
+import { createHostProcessControl } from './agent-guard.js'
+import { AgentStartError, type AgentDriver } from './agent-process.js'
 import { createClaudeDriver } from './claude-driver.js'
 import { codexAccountRedactions, createCodexDriver } from './codex-driver.js'
 import { codingSessionsDigestMatches, loadCodingSessionsConfig, type LoadedCodingSessionsConfig } from './config.js'
 import { ensureCodingSessionHost, executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
 import { stopOwnUserUnit } from './host-unit.js'
-import { createCodingProcessControl, type CodingProcessControl } from './process-control.js'
+import type { CodingProcessControl } from './process-control.js'
 import { createProjector, SECRET_NAME, type Projector } from './projection.js'
 import { gitStartSnapshot } from './review.js'
 import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots.js'
@@ -303,12 +304,12 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
   // Roots nobody reviewed are never resolved; a host under a changed file only stops things.
   const roots = await resolveCodingRoots(mayRunAgent ? loaded : { ...loaded, config: { ...loaded.config, roots: [] } })
   if (!mayRunAgent) log('the configuration no longer matches its reviewed digest; agents will not start')
+  const entry = resolveExecutorEntry()
   const context: HostContext = {
-    control: createCodingProcessControl(),
+    control: createHostProcessControl(entry),
     loaded, meta, paths, log, mayRunAgent, roots,
     projector: createProjector(roots.rewriter),
   }
-  const entry = resolveExecutorEntry()
   const runtimeDigest = await executorRuntimeDigest(entry)
   for (;;) {
     const lock = await acquireHostLock(paths.lock, runtimeDigest)

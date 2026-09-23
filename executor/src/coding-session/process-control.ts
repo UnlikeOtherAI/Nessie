@@ -22,6 +22,9 @@ import type { CodingProcessIdentity } from './types.js'
  * development run has no verified helper, and falls back to killing the tree
  * it can see by `taskkill /F`, pid by pid, which misses exactly that
  * grandchild. A packaged runtime whose helper is missing starts no agent.
+ * Wherever neither a Job Object nor a unit's cgroup would end an agent whose
+ * host died, the host starts it through the agent guard (`agent-guard.ts`),
+ * which kills it with these same calls when the host's pipe closes.
  *
  * Every signal checks an identity (pid plus process start time) first, so a
  * pid the OS has since handed to somebody else is never signalled. That holds
@@ -35,6 +38,14 @@ export type CodingProcessControl = {
   refusal?: string
   spawnAgent: (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => ChildProcess
   identify: (pid: number) => Promise<CodingProcessIdentity | undefined>
+  /**
+   * The identity to record for what `spawnAgent` started, when that process
+   * is not the agent itself (the guard reports its agent's); otherwise the
+   * spawned process's own, by `identify`.
+   */
+  identifySpawned?: (child: ChildProcess) => Promise<CodingProcessIdentity | undefined>
+  /** Ends the agent's input; the child's stdin is simply ended when this is absent. */
+  endInput?: (child: ChildProcess) => void
   /**
    * Every live descendant of the recorded process, read before anything is
    * signalled; none unless it is still that process.
@@ -249,7 +260,7 @@ const procStat = (text: string): { ppid: number; pgid: number; started?: string 
   return { ppid: Number(fields[1]), pgid: Number(fields[2]), ...(/^\d+$/u.test(fields[19] ?? '') ? { started: fields[19] } : {}) }
 }
 
-const posixControl = (platform: NodeJS.Platform): CodingProcessControl => {
+const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingProcessControl => {
   const startedAt = async (pid: number): Promise<string | undefined> => {
     if (platform === 'linux') return procStat(await readFile(`/proc/${pid}/stat`, 'utf8').catch(() => ''))?.started
     return parsePsStartTime(await run('/bin/ps', ['-o', 'lstart=', '-p', String(pid)], PS_ENVIRONMENT))
@@ -305,7 +316,7 @@ const posixControl = (platform: NodeJS.Platform): CodingProcessControl => {
         return rootIsOurs || pending.length > 0
       }
       if (!signal(before, 'SIGTERM')) return
-      const deadline = Date.now() + TERM_GRACE_MS
+      const deadline = Date.now() + termGraceMs
       let current = before
       do {
         await delay(100)
@@ -320,18 +331,19 @@ const posixControl = (platform: NodeJS.Platform): CodingProcessControl => {
  * The control for this host. A packaged Windows runtime without its native
  * helper refuses to start agents at all: without the Job Object nothing
  * contains a grandchild that outlives its parent, and the development
- * fallback is only for development.
+ * fallback is only for development. `termGraceMs` is how long a POSIX tree
+ * has between SIGTERM and SIGKILL.
  */
 export const createCodingProcessControl = (
   platform: NodeJS.Platform = process.platform,
-  options: { jobHelper?: string; packaged?: boolean } = {
+  options: { jobHelper?: string; packaged?: boolean; termGraceMs?: number } = {
     jobHelper: platform === 'win32' ? packagedJobHelper() : undefined,
     packaged: process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1',
   },
 ): CodingProcessControl => (
   platform === 'win32'
     ? windowsControl(options.jobHelper, options.packaged && !options.jobHelper ? 'containment_failed' : undefined)
-    : posixControl(platform)
+    : posixControl(platform, options.termGraceMs ?? TERM_GRACE_MS)
 )
 
 export const codingProcessIsAlive = alive
