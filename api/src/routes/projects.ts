@@ -15,7 +15,7 @@ import {
 } from '../contracts/team.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { canAccessAttachment } from '../services/attachments.js'
+import { canAccessAttachment, isRelinkableAttachment } from '../services/attachments.js'
 import { registerProjectReadRoutes } from './project-reads.js'
 import type { RouteDeps } from './types.js'
 
@@ -200,6 +200,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       })
       if (
         !attachment
+        || !isRelinkableAttachment(attachment)
         || !(await canAccessAttachment(prisma, attachment, {
           organizationId: actorContext.tenant.organizationId,
           userId: actorContext.actor.actorId,

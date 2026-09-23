@@ -174,6 +174,18 @@ export const canReadRunExecutorImages = async (
   })
 }
 
+/**
+ * Whether an attachment may be linked somewhere new — a logo, an avatar, a
+ * feedback item. Every such surface serves the file on its own authority,
+ * and the organisation logo does so to anyone at all through
+ * `/api/brand/logo`. An executor command's image is readable only by whoever
+ * may read its run, so it is never re-linked: a new link would publish a
+ * private room's screenshot past that. Each link path asks this beside
+ * `canAccessAttachment`, which only answers whether the caller may read it.
+ */
+export const isRelinkableAttachment = (attachment: { executorCommandId?: string | null }): boolean =>
+  !attachment.executorCommandId
+
 const isOrganizationAdmin = async (
   prisma: PrismaClient,
   input: { organizationId: string; userId: string },

@@ -17,6 +17,7 @@ import { rateLimitFor, resolveGlobalRateLimitBucket } from '../src/routes/auth-r
 import { registerExecutorDaemonRoutes } from '../src/routes/executor-daemon-routes.js'
 import { registerCreateThreadMessageRoute } from '../src/routes/thread-message-create.js'
 import { registerUploadRoutes } from '../src/routes/uploads.js'
+import { createFeedback, FeedbackServiceError } from '../src/services/feedback.js'
 import {
   ATTACHMENT_SECRET,
   attachmentTestPrisma,
@@ -148,11 +149,13 @@ dbTest('a daemon can tell a refusal from a reason to wait by the status alone', 
     assert.equal(unknown.statusCode, 404)
 
     const now = Date.now()
-    for (let index = 0; index < EXECUTOR_ATTACHMENT_RATE_MAXIMUM; index += 1) {
+    // This window and the next, so a minute boundary passing mid-test cannot
+    // hand the upload below a fresh one.
+    for (let index = 0; index < 2 * EXECUTOR_ATTACHMENT_RATE_MAXIMUM; index += 1) {
       await countRateLimitHit(world.prisma, {
         bucket: EXECUTOR_ATTACHMENT_RATE_BUCKET,
         keyHash: rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId),
-        nowMs: now,
+        nowMs: now + (index < EXECUTOR_ATTACHMENT_RATE_MAXIMUM ? 0 : EXECUTOR_ATTACHMENT_RATE_WINDOW_MS),
         rule: { max: EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: EXECUTOR_ATTACHMENT_RATE_WINDOW_MS },
       })
     }
@@ -256,5 +259,19 @@ dbTest('a screenshot is never re-linked to a message nor discarded as a pending 
       where: { idempotencyKey: { in: messages.map((message) => `push:${message.id}`) } },
     })
     await world.prisma.message.deleteMany({ where: { threadId: world.threadId } })
+  })
+})
+
+dbTest('a screenshot is not feedback its launching person can file, though they uploaded it', async () => {
+  await withApp({ channelVisibility: 'private' }, async (harness) => {
+    const { world } = harness
+    const attachmentId = await uploadedScreenshot(harness)
+    await assert.rejects(
+      createFeedback(world.prisma, loadConfig({ argv: [], env: {} }), {
+        organizationId: world.organizationId, userId: world.holderId,
+      }, { attachmentId, body: 'The page looks wrong', title: 'Screenshot' }),
+      (error: unknown) => error instanceof FeedbackServiceError && error.code === 'INVALID_ATTACHMENT',
+    )
+    assert.equal(await world.prisma.feedback.count({ where: { organizationId: world.organizationId } }), 0)
   })
 })

@@ -162,11 +162,13 @@ dbTest('Nessie asking the daemon to wait keeps the image for the next poll', asy
   await withDaemonAndApi(async ({ apiBaseUrl, world }) => {
     const keyHash = rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId)
     const now = Date.now()
-    for (let index = 0; index < EXECUTOR_ATTACHMENT_RATE_MAXIMUM; index += 1) {
+    // This window and the next, so a minute boundary passing mid-test cannot
+    // hand the upload below a fresh one.
+    for (let index = 0; index < 2 * EXECUTOR_ATTACHMENT_RATE_MAXIMUM; index += 1) {
       await countRateLimitHit(world.prisma, {
         bucket: EXECUTOR_ATTACHMENT_RATE_BUCKET,
         keyHash,
-        nowMs: now,
+        nowMs: now + (index < EXECUTOR_ATTACHMENT_RATE_MAXIMUM ? 0 : EXECUTOR_ATTACHMENT_RATE_WINDOW_MS),
         rule: { max: EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: EXECUTOR_ATTACHMENT_RATE_WINDOW_MS },
       })
     }
