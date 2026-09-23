@@ -357,34 +357,52 @@ export const retrieveRelevantHistory = async (
   const messageIds: string[] = []
   let tokenCount = 0
 
+  // The lineage a message brings into the run, or null when the run may not
+  // take it: a stale projection, a viewer who cannot read it, or — for a run
+  // lent a project write — anything outside what every project reader has.
+  const admissibleLineage = async (
+    message: HistoryMessage,
+  ): Promise<NonNullable<ReturnType<typeof sourceLineage>> | null> => {
+    if (!isCurrentProjection(message, deps.modelClient.embeddingModel)) return null
+    const access = await readableMessage(
+      deps.prisma,
+      message,
+      context.channel.organizationId,
+      input.viewer,
+    )
+    if (!access.readable || !access.lineage) return null
+    if (projectWrite && !isWithinProjectWriteScopes(lineageScopes(access.lineage), context.channel)) {
+      return null
+    }
+    return access.lineage
+  }
+
   for (const candidate of candidates) {
     if (blocks.length >= MAX_HISTORY_CANDIDATES) break
     const seed = byId.get(candidate.id)
     if (
       !seed
-      || !isCurrentProjection(seed, deps.modelClient.embeddingModel)
       || (threadCounts.get(seed.threadId) ?? 0) >= MAX_PASSAGES_PER_THREAD
+      // Every passage carries its seed, so a seed that alone overruns what is
+      // left of the budget cannot be admitted, whatever its neighbours are.
+      || tokenCount + estimateTokens(formatPassage([seed])) > tokenBudget
     ) continue
+
+    // A passage is admitted only with its seed, so the seed is judged before
+    // its neighbours are read: a project-write run, searching three times as
+    // deep past private hits, spends no passage read on a hit it refuses.
+    const seedLineage = await admissibleLineage(seed)
+    if (!seedLineage) continue
 
     const passage = await loadPassage(deps.prisma, seed)
     const allowed: HistoryMessage[] = []
     const lineages: NonNullable<ReturnType<typeof sourceLineage>>[] = []
     for (const message of passage) {
-      if (!isCurrentProjection(message, deps.modelClient.embeddingModel)) continue
-      const access = await readableMessage(
-        deps.prisma,
-        message,
-        context.channel.organizationId,
-        input.viewer,
-      )
-      if (!access.readable || !access.lineage) continue
-      if (projectWrite && !isWithinProjectWriteScopes(lineageScopes(access.lineage), context.channel)) {
-        continue
-      }
+      const lineage = message.id === seed.id ? seedLineage : await admissibleLineage(message)
+      if (!lineage) continue
       allowed.push(message)
-      lineages.push(access.lineage)
+      lineages.push(lineage)
     }
-    if (allowed.length === 0 || !allowed.some((message) => message.id === seed.id)) continue
 
     const block = formatPassage(allowed)
     const blockTokens = estimateTokens(block)

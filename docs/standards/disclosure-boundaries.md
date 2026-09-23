@@ -184,7 +184,16 @@ Facts not restated there:
   to the normal count; only those enter the basis. Searching at the normal
   depth, a requester whose best matches had all been fed by a private DM got
   nothing back while project knowledge sat just below the cut
-  (`worker/test/db/project-write-recall-depth.test.ts`). The gate and every
+  (`worker/test/db/project-write-recall-depth.test.ts`). Only the thoughts it
+  keeps are marked accessed and logged as recalled
+  (`searchAndLogThoughtsInScopes`'s `retain`, `packages/memory/src/search.ts`):
+  `last_accessed_at` feeds the recency term of every later ranking, so bumping
+  the DM-fed thoughts the run refused would keep lifting exactly those — into
+  the next non-write run's basis, and back above the cut of the next
+  project-write one. A history candidate costs no passage read unless its seed
+  is one the run may take and still fits the budget, so the hits the deeper
+  history search passes over cost it no neighbour reads
+  (`retrieveRelevantHistory`, `execute/history-recall.ts`). The gate and every
   other run are unchanged: a run without write tools recalls exactly as before,
   at the same depth, and a delegate in its own home is not contained at all. The
   trade-off, accepted: such a run does not remember what the requester said in

@@ -243,6 +243,71 @@ test('searchAndLogThoughtsInScopes queries the multi-scope function and logs sco
   )
 })
 
+// A caller that searches deeper than it keeps (a project-write recall) must not
+// refresh the thoughts it threw away: access feeds every later ranking.
+test('searchAndLogThoughtsInScopes marks accessed and logs only what retain keeps', async () => {
+  const KEPT = '11111111-1111-1111-1111-111111111112'
+  const DROPPED = '11111111-1111-1111-1111-111111111111'
+  const queries: { params: unknown[] | undefined; sql: string }[] = []
+  const row = (id: string, similarity: number) => ({
+    content: `Thought ${id}`,
+    created_at: '2026-04-08T20:00:00.000Z',
+    id,
+    importance: 0.7,
+    metadata: null,
+    owner_type: 'agent',
+    similarity,
+    visibility: 'organization',
+  })
+
+  const pool = createPoolStub((sql, params) => {
+    queries.push({ params, sql })
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] }
+    if (sql.includes('match_thoughts_in_scopes')) return { rows: [row(DROPPED, 0.9), row(KEPT, 0.8)] }
+    if (sql.includes('UPDATE thoughts')) return { rowCount: 1, rows: [] }
+    if (sql.includes('INSERT INTO thought_recalls')) {
+      return {
+        rowCount: 1,
+        rows: [{
+          contentId: KEPT,
+          id: '22222222-2222-2222-2222-222222222222',
+          rankPosition: 2,
+          retrievalMode: 'hybrid',
+          thoughtId: KEPT,
+        }],
+      }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  let offered: string[] = []
+  const results = await searchAndLogThoughtsInScopes(
+    {
+      audienceIds: ['33333333-3333-3333-3333-333333333333'],
+      audienceTypes: ['organization'],
+      channelId: '66666666-6666-6666-6666-666666666666',
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      query: 'webhook',
+      runningAgentId: '99999999-9999-9999-9999-999999999999',
+      userId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    },
+    { modelClient: { embed: async () => [0.1] }, pool },
+    async (ranked) => {
+      offered = ranked.map(({ id }) => id)
+      return ranked.filter(({ id }) => id === KEPT)
+    },
+  )
+
+  assert.deepEqual(offered, [DROPPED, KEPT], 'retain sees the whole ranking')
+  assert.deepEqual(results.map(({ id, rankPosition, recallId }) => ({ id, rankPosition, recallId })), [
+    { id: KEPT, rankPosition: 2, recallId: '22222222-2222-2222-2222-222222222222' },
+  ])
+  const bumped = queries.filter((query) => query.sql.includes('UPDATE thoughts'))
+  assert.deepEqual(bumped.map((query) => query.params?.[0]), [[KEPT]])
+  const logged = queries.filter((query) => query.sql.includes('INSERT INTO thought_recalls'))
+  assert.deepEqual(logged.map((query) => query.params?.[0]), [[KEPT]])
+})
+
 test('searchAndLogThoughtsInScopes returns nothing when no scopes are accessible', async () => {
   const pool = createPoolStub((sql) => {
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {

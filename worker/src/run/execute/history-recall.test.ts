@@ -337,3 +337,58 @@ test('a deeper project-write search still admits no more passages than the norma
 
   assert.deepEqual(result.messageIds, seeds.slice(0, 12).map(({ id }) => id))
 })
+
+// The passage around a hit is read only for a hit the run can take: its seed
+// is judged, and measured against what is left of the budget, first. A deeper
+// project-write search past private hits must not multiply the reads.
+test('a hit the run refuses, or that cannot fit, costs no passage read', async () => {
+  const seeds = Array.from({ length: 36 }, (_, index) => ({
+    ...message(),
+    id: `${String(index).padStart(8, '0')}-6666-4666-8666-666666666666`,
+    threadId: `${String(index).padStart(8, '0')}-3333-4333-8333-333333333333`,
+    // The first two dozen are private-room hits a project write refuses.
+    thread: { channel: { id: CHANNEL_ID, visibility: index < 24 ? 'private' : 'public' } },
+  }))
+  const recallWith = async (tokenBudget: number) => {
+    const deps = historyDeps()
+    let passageReads = 0
+    deps.prisma.message.findMany = async (input: {
+      where: { createdAt?: { lte?: Date }; id?: { in: string[] }; threadId?: string }
+    }) => {
+      if (input.where.id) return seeds.filter((row) => input.where.id?.in.includes(row.id))
+      if (!input.where.createdAt?.lte) return []
+      passageReads += 1
+      return seeds.filter((row) => row.threadId === input.where.threadId)
+    }
+    deps.searchConfig.pool.query = async (sql: string) => {
+      if (sql.includes('FROM channels c\n     JOIN agent_bindings')) {
+        return { rows: [{ id: CHANNEL_ID, projectId: null, teamId: null }] }
+      }
+      if (sql.includes('FROM agents WHERE')) return { rows: [{ projectId: null, teamId: null }] }
+      return {
+        rows: seeds.map((row, index) => ({
+          createdAt: row.createdAt,
+          id: row.id,
+          lexicalRank: index + 1,
+          semanticRank: index + 1,
+        })),
+      }
+    }
+    const result = await retrieveRelevantHistory(deps as never, context() as never, payload, {
+      holdsProjectWriteTools: true,
+      prompt: 'Čau, je deploy po migraci hotový?',
+      tokenBudget,
+      viewer: agentViewer,
+    })
+    return { passageReads, result }
+  }
+
+  const roomy = await recallWith(4_000)
+  assert.deepEqual(roomy.result.messageIds, seeds.slice(24).map(({ id }) => id))
+  assert.equal(roomy.passageReads, 12, 'one read per admitted passage, none for a refused hit')
+
+  // Room for one passage: every later hit is measured, not read.
+  const tight = await recallWith(100)
+  assert.deepEqual(tight.result.messageIds, [seeds[24]?.id])
+  assert.equal(tight.passageReads, 1)
+})

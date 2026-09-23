@@ -33,6 +33,7 @@ type Seed = {
   boardRoomId: string
   cleanThoughts: string[]
   dmId: string
+  dmLineageMessages: string[]
   dmThoughts: string[]
   leadershipId: string
   leadershipMessages: string[]
@@ -43,11 +44,18 @@ type Seed = {
   teamId: string
 }
 
+type Counts = {
+  cleanHits: number
+  /** Public-room messages that carry the requester's DM as their source. */
+  dmLineageHits?: number
+  privateHits: number
+}
+
 const seed = async (
   prisma: PrismaClient,
   pool: Pool,
   suffix: string,
-  counts: { cleanHits: number; privateHits: number },
+  counts: Counts,
 ): Promise<Seed> => {
   const requester = await prisma.user.create({
     data: { displayName: 'Requester', email: `depth-requester-${suffix}@example.test` },
@@ -169,12 +177,33 @@ const seed = async (
     })
     publicMessages.push(created.id)
   }
+  // Public-room messages relaying what the requester said in their DM: the
+  // room is public and nothing in their basis is out of reach, so only their
+  // DM source is what a project write refuses. Each says the word more often
+  // than any clean one, in a thread of its own.
+  const dmLineageMessages: string[] = []
+  for (let index = 0; index < (counts.dmLineageHits ?? 0); index += 1) {
+    const thread = await prisma.thread.create({ data: { channelId: boardRoom.id, title: `relay${index}` } })
+    const created = await prisma.message.create({
+      data: {
+        content: `Webhook webhook webhook freeze, relayed from the assistant chat, note ${index + 1}.`,
+        disclosureSources: {
+          create: { organizationId: organization.id, sourceAuthorUserId: requester.id, sourceChannelId: dm.id },
+        },
+        role: 'assistant',
+        agentId: agent.id,
+        threadId: thread.id,
+      },
+    })
+    dmLineageMessages.push(created.id)
+  }
 
   return {
     agentId: agent.id,
     boardRoomId: boardRoom.id,
     cleanThoughts,
     dmId: dm.id,
+    dmLineageMessages,
     dmThoughts,
     leadershipId: leadership.id,
     leadershipMessages,
@@ -264,9 +293,19 @@ const recallHistory = (
     },
   })
 
+// Records the candidate search's per-arm limit (its tenth parameter) from the
+// real query, so a test can pin the depth a recall searched at.
+const spyOnCandidateDepth = (pool: Pool, depths: unknown[]): Pool => ({
+  connect: () => pool.connect(),
+  query: (sql: string, params?: unknown[]) => {
+    if (sql.includes('lexical AS')) depths.push(params?.[9])
+    return pool.query(sql, params)
+  },
+}) as unknown as Pool
+
 const withSeed = async (
   t: { after: (fn: () => Promise<void>) => void },
-  counts: { cleanHits: number; privateHits: number },
+  counts: Counts,
   run: (prisma: PrismaClient, pool: Pool, s: Seed) => Promise<void>,
 ): Promise<void> => {
   const prisma = new PrismaClient()
@@ -315,10 +354,54 @@ runDatabaseTest('a run without write tools recalls memories exactly as before', 
   })
 })
 
+const accessOf = async (pool: Pool, ids: string[]) => {
+  const { rows } = await pool.query<{ access_count: number; id: string; last_accessed_at: Date | null }>(
+    'SELECT id, access_count, last_accessed_at FROM thoughts WHERE id = ANY($1::uuid[])',
+    [ids],
+  )
+  return new Map(rows.map((row) => [row.id, { count: row.access_count, at: row.last_accessed_at?.getTime() ?? null }]))
+}
+
+const recalledThoughtIds = async (pool: Pool, ids: string[]): Promise<string[]> => {
+  const { rows } = await pool.query<{ thought_id: string }>(
+    'SELECT thought_id FROM thought_recalls WHERE thought_id = ANY($1::uuid[])',
+    [ids],
+  )
+  return rows.map((row) => row.thought_id).sort()
+}
+
+// The deeper search ranks the DM-fed thoughts too. Access feeds the recency
+// term of every later ranking, so refreshing the ones it refused would lift
+// exactly those above the project knowledge the next recall came for.
+runDatabaseTest('a project-write recall refreshes and logs only the thoughts it keeps', async (t) => {
+  await withSeed(t, FEW_CLEAN, async (prisma, pool, s) => {
+    const every = [...s.dmThoughts, ...s.cleanThoughts]
+    const before = await accessOf(pool, every)
+
+    const memories = await recallMemories(prisma, pool, s, true)
+    assert.deepEqual(memories.map(({ id }) => id), s.cleanThoughts)
+
+    const after = await accessOf(pool, every)
+    for (const id of s.dmThoughts) {
+      assert.deepEqual(after.get(id), before.get(id), 'a refused DM-fed thought is not marked accessed')
+    }
+    for (const id of s.cleanThoughts) {
+      assert.equal(after.get(id)?.count, (before.get(id)?.count ?? 0) + 1, 'a kept thought is')
+    }
+    assert.deepEqual(await recalledThoughtIds(pool, every), [...s.cleanThoughts].sort())
+  })
+})
+
 runDatabaseTest('a project-write recall never returns more than the normal count', async (t) => {
   await withSeed(t, { cleanHits: MEMORY_LIMIT + 2, privateHits: MEMORY_LIMIT + 2 }, async (prisma, pool, s) => {
     const memories = await recallMemories(prisma, pool, s, true)
     assert.deepEqual(memories.map(({ id }) => id), s.cleanThoughts.slice(0, MEMORY_LIMIT))
+    // The clean ones below the cut were passed over too, so they are not
+    // logged as recalled either.
+    assert.deepEqual(
+      await recalledThoughtIds(pool, [...s.dmThoughts, ...s.cleanThoughts]),
+      s.cleanThoughts.slice(0, MEMORY_LIMIT).sort(),
+    )
   })
 })
 
@@ -335,10 +418,44 @@ runDatabaseTest('a run lent a project write still recalls public history below t
 
 runDatabaseTest('a run without write tools recalls history exactly as before', async (t) => {
   await withSeed(t, FEW_CLEAN, async (prisma, pool, s) => {
-    const history = await recallHistory(prisma, pool, s, false)
-    // The normal candidate depth holds only private-room passages, so the
-    // public ones below it are not reached, as before.
+    const depths: unknown[] = []
+    const history = await recallHistory(prisma, spyOnCandidateDepth(pool, depths), s, false)
+    // The normal depth, measured on the real query: each ranking arm's limit
+    // is four times it.
+    assert.deepEqual(depths, [HISTORY_CANDIDATES * 4])
+    // It holds only private-room passages, so the public ones below it are
+    // not reached, as before.
     assert.ok(history.messageIds.length > 0)
     assert.ok(history.messageIds.every((id) => s.leadershipMessages.includes(id)))
+  })
+})
+
+// History's own DM lineage: public-room messages relaying what the requester
+// said in their DM, more of them than the normal candidate depth and every one
+// ranked above the clean ones. Nothing but that source is out of reach, so this
+// is the lineage filter alone at work under the deeper search.
+const DM_RELAYED = { cleanHits: 3, dmLineageHits: HISTORY_CANDIDATES + 2, privateHits: 0 }
+
+runDatabaseTest('a run lent a project write recalls public history below the DM-relayed hits', async (t) => {
+  await withSeed(t, DM_RELAYED, async (prisma, pool, s) => {
+    const sink = createConsumedSourceSink()
+    const depths: unknown[] = []
+    const history = await recallHistory(prisma, spyOnCandidateDepth(pool, depths), s, true, sink)
+    assert.deepEqual(depths, [HISTORY_CANDIDATES * 3 * 4])
+    assert.deepEqual([...history.messageIds].sort(), [...s.publicMessages].sort())
+    assert.deepEqual(sink.list(), [])
+    assert.deepEqual(sink.privateConversationSources(), [], 'the DM never enters the basis')
+  })
+})
+
+runDatabaseTest('a run without write tools takes the DM-relayed history, DM and all', async (t) => {
+  await withSeed(t, DM_RELAYED, async (prisma, pool, s) => {
+    const sink = createConsumedSourceSink()
+    const history = await recallHistory(prisma, pool, s, false, sink)
+    assert.ok(history.messageIds.length > 0)
+    assert.ok(history.messageIds.every((id) => s.dmLineageMessages.includes(id)))
+    assert.deepEqual(sink.privateConversationSources(), [
+      { sourceAuthorUserId: s.requesterId, sourceChannelId: s.dmId },
+    ])
   })
 })
