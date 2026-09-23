@@ -680,9 +680,14 @@ CHECK), who asked, and when it was made and resolved — written in the
 transaction that causes it (`executor-coding-session-closes.ts`):
 
 - a conversation lease's end, for its holder, unless they still hold another
-  live lease for the same agent there; a new lease withdraws that owner's
-  open `lease_ended` request, never one for revoked access or a paused or
-  revoked machine ([conversation-leases.md](conversation-leases.md) → §3). A
+  live lease for the same agent there. One transition that ends several of
+  the holder's leases writes one request, and its own end takes precedence
+  over an `expired` it found on the way: a pause that finds one of them already
+  past its window asks with `executor_paused` and the person who paused, not
+  `lease_ended` and nobody, whichever lease it read first. A new lease
+  withdraws that owner's open `lease_ended` request, never one for revoked
+  access or a paused or revoked machine
+  ([conversation-leases.md](conversation-leases.md) → §3). A
   drain ends every lease on the machine, so it closes each live holder's
   sessions this way, a turn in flight included; unlike a pause it leaves
   sessions no live lease covered;

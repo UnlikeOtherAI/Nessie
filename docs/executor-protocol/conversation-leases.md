@@ -173,7 +173,10 @@ person), not to one conversation, and the other conversation may be driving
 them. A fence says which it was (`access_revoked`, `executor_paused`,
 `executor_revoked`); every other end — a drain's included, so a drain closes
 each live holder's sessions, a turn in flight among them — reads
-`lease_ended`. A new lease for the same owner withdraws that owner's open
+`lease_ended`. A fence says so even when it also finds one of the holder's
+leases already past its window: that lease is recorded `expired`, but the
+owner's one request names the fence and who pressed it. A new lease for the
+same owner withdraws that owner's open
 `lease_ended` request, so a relaunch — `replaced` — keeps the sessions it
 would otherwise have closed; a fence's request stands, since the authority
 those sessions ran under ended, and so does the pairing owner's own Close on
