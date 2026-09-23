@@ -90,7 +90,9 @@ shaped afterwards, on the agent loop's authorized-tool path only
   `isError` result leads with "The program reported an error:".
 - `structuredContent` only when there is no text, as compact JSON of at most
   4 000 characters.
-- Each image as `[image N: image/png, 131 KB]` (PR 4 attaches them); a
+- Each image as `[image N: image/png, 131 KB]`, sized from the reference's
+  `byteLength` — the daemon has already taken the bytes out (below) — and an
+  image it did not keep as its `[image unavailable: <reason>]` text; a
   `resource_link` as `[resource: <name>]`, never its URI, which names a path
   on the person's disk.
 - The whole capped at 12 000 characters, with "[… N more characters not shown —
@@ -130,11 +132,65 @@ is the launch conversation's". `buildExecutorToolset` takes the scope as a
 required `hostOutput`, so a caller has to decide: Task Set search passes
 `null` and says why.
 
+## Images leave the result on the machine
+
+A result's images never ride its receipt. Before the daemon measures an
+`mcp.call` result, `mcp-images.ts` decodes every `image` content item with
+base64 `data` and keeps it only when its declared type is PNG, JPEG, WebP or
+GIF **and its magic bytes agree** (`sniffExecutorImageMimeType`,
+`@nessie/schemas` `executor-attachments.ts`, which the control plane checks
+with too). At most 6 distinct images per result, 4 MiB each, 8 MiB together;
+an image repeated in several items is kept once. A kept image becomes
+`{type: 'image', mimeType, attachmentDigest: 'sha256:<hex>', byteLength}`. One
+over a limit, of another type or whose bytes disagree becomes the text
+`[image unavailable: <reason>]`, and the reason is always ours.
+
+The same base64 anywhere else in the result — as a substring of any string,
+which covers a text item holding JSON and `structuredContent` — becomes
+`[image: attachment sha256:…]`, or the placeholder of an image not kept.
+Kelpie sends every screenshot three times (its text JSON, the image item,
+`structuredContent`); this collapses them into one attachment without
+touching Kelpie, and the real 55 KB example.com answer shrinks to a few
+hundred bytes. A copy shorter than 64 characters is left alone: no real image
+is that small, and program text can contain one by chance.
+
+The bytes become the command's sidecars,
+`<runtimeDir>/attachments/<commandId>/<sha256 hex>.bin`, written and fsynced
+inside the call — so before `command-recovery.ts` journals the
+`result_pending` entry that references them. A call with nowhere to keep
+them, or a write that fails, withdraws each image to its placeholder: a result
+never names bytes nobody holds.
+
+Before the receipt, `command-attachments.ts` uploads each referenced image on
+its own request, signed under the `attachment` domain
+([command-attachments.md](../executor-protocol/command-attachments.md)). Each
+upload's deadline grows with its size, and all of one result's together fit
+`EXECUTOR_MCP_UPLOAD_BUDGET_MS`, the part of the command's expiry kept for
+them. A restart between an upload and the receipt uploads again from the
+same journal and sidecars; Nessie takes the same command and digest as the
+same attachment.
+
+**A refused upload is terminal, never retried.** A 4xx withdraws that image —
+its reference and its markers become
+`[image unavailable: Nessie refused it (<message>)]` — the rewritten result is
+journaled, and the receipt carries it with its digest computed afresh. A
+sidecar that is missing or no longer matches its digest is withdrawn the same
+way. Three 4xx answers are not a refusal of the image and are retried with
+the receipt behind them: a fenced or stale connection (409
+`EXECUTOR_CONNECTION_FENCED`, `EXECUTOR_HEARTBEAT_STALE`), 408 and 429. A
+timeout, a 5xx or a lost connection throws, and the next poll delivers again.
+
+An acknowledged receipt removes its command's sidecars, after the journal is
+cleared. The daemon's start removes every sidecar folder but the one the
+journal still names, before its first poll, and removes nothing when the
+journal cannot be read.
+
 ## A result the lane cannot carry is stated, never retried
 
 The daemon measures an `mcp.call` result as the exact document it returns —
-`code` and `success` included — against the 64 KiB terminal-result budget,
-and refuses one over it as `EXECUTOR_MCP_RESULT_TOO_LARGE` with its size
+`code` and `success` included, its images already out of it — against the
+64 KiB terminal-result budget, and refuses one over it as
+`EXECUTOR_MCP_RESULT_TOO_LARGE` with its size
 (`mcp-session-manager.ts`). An `isError` result measured before its code was
 added once passed that check and was then refused by the control plane.
 
@@ -384,6 +440,17 @@ prove. It runs with `--test-force-exit` for one pinned upstream reason: on
 leaves the parent's stdin referenced, so a process that probes a server which is
 not installed never exits. A test asserts that leak, and starts failing when the
 SDK fixes it — that is the signal to drop the flag.
+
+Image extraction runs against Kelpie's own answer: the screenshot result the
+real Kelpie sent from a Windows browser is saved verbatim as
+`executor/test/fixtures/kelpie-screenshot-result.json`, and
+`mcp-images.test.ts` proves its three copies collapse into one attachment,
+alongside the caps and the magic-byte check; the scripted server's `kelpie`
+mode answers with the same file through a real session.
+`command-attachments.test.ts` drives the journal on a real disk: the sidecar
+exists when the `result_pending` entry is saved, a restart between upload and
+receipt uploads again, a refusal is withdrawn and never re-sent, a transient
+failure is, and the start sweep keeps only the journal's command.
 
 Kelpie detection runs `describe` as a real process too, against a stand-in
 CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact
