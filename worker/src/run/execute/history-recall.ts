@@ -29,11 +29,21 @@ import {
   admitPrivateConversationLineage,
   originalHumanAuthorId,
 } from './private-conversation-lineage.js'
-import { requiresProjectWriteRecallContainment } from './memory.js'
+import {
+  PROJECT_WRITE_RECALL_DEPTH,
+  requiresProjectWriteRecallContainment,
+} from './memory.js'
 
 export const RETRIEVED_CONTEXT_TOKEN_BUDGET = 4_000
 const MAX_NEIGHBORS = 2
 const MAX_PASSAGES_PER_THREAD = 2
+/**
+ * The candidate search's normal depth (`searchMessageCandidates`' default),
+ * and so the most passages one recall admits. A project-write run searches
+ * `PROJECT_WRITE_RECALL_DEPTH` times deeper, because its lineage filter runs
+ * on the passages, and still admits no more than this.
+ */
+const MAX_HISTORY_CANDIDATES = 12
 
 type HistoryMessage = {
   agentId: string | null
@@ -309,6 +319,14 @@ export const retrieveRelevantHistory = async (
     select: { agentId: true },
     where: { id: context.run.threadId },
   })
+  // Recalled history is recalled memory too: a run that can write into its
+  // project takes no message whose lineage the project write gate would then
+  // refuse, the same narrowing thought recall applies — and, like it, searches
+  // deeper so that filter does not leave the recall short.
+  const projectWrite = requiresProjectWriteRecallContainment(
+    delegationFactsFor(context),
+    input.holdsProjectWriteTools === true,
+  )
   const candidates = await searchMessageCandidates({
     channelIds: scopes.channelIds,
     embeddingModel: deps.modelClient.embeddingModel,
@@ -318,6 +336,7 @@ export const retrieveRelevantHistory = async (
     runningAgentId: context.agent.id,
     scopeIds: scopes.audienceIds,
     scopeTypes: scopes.audienceTypes,
+    take: projectWrite ? MAX_HISTORY_CANDIDATES * PROJECT_WRITE_RECALL_DEPTH : MAX_HISTORY_CANDIDATES,
     ...(conversationThread?.agentId ? { threadIds: [context.run.threadId] } : {}),
   }, deps.searchConfig.pool)
   const candidateIds = candidates.map((candidate) => candidate.id)
@@ -333,19 +352,13 @@ export const retrieveRelevantHistory = async (
     select: historyMessageSelect,
   })
   const byId = new Map(loaded.map((message) => [message.id, message as HistoryMessage]))
-  // Recalled history is recalled memory too: a run that can write into its
-  // project takes no message whose lineage the project write gate would then
-  // refuse, the same narrowing thought recall applies.
-  const projectWrite = requiresProjectWriteRecallContainment(
-    delegationFactsFor(context),
-    input.holdsProjectWriteTools === true,
-  )
   const threadCounts = new Map<string, number>()
   const blocks: string[] = []
   const messageIds: string[] = []
   let tokenCount = 0
 
   for (const candidate of candidates) {
+    if (blocks.length >= MAX_HISTORY_CANDIDATES) break
     const seed = byId.get(candidate.id)
     if (
       !seed

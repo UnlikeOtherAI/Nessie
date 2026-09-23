@@ -177,9 +177,16 @@ Facts not restated there:
   `isWithinProjectWriteScopes` judges each recalled thought's whole lineage and
   each recalled history message, so a team, channel or user audience or any
   private-conversation source is simply not recalled for that run
-  (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). The gate and
-  every other run are unchanged: a run without write tools recalls exactly as
-  before, and a delegate in its own home is not contained at all. The
+  (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). That
+  judgement runs after the search, so such a run's search goes
+  `PROJECT_WRITE_RECALL_DEPTH` (3) times deeper — 15 thoughts instead of 5, 36
+  history candidates instead of 12 — and keeps what survives, in rank order, up
+  to the normal count; only those enter the basis. Searching at the normal
+  depth, a requester whose best matches had all been fed by a private DM got
+  nothing back while project knowledge sat just below the cut
+  (`worker/test/db/project-write-recall-depth.test.ts`). The gate and every
+  other run are unchanged: a run without write tools recalls exactly as before,
+  at the same depth, and a delegate in its own home is not contained at all. The
   trade-off, accepted: such a run does not remember what the requester said in
   a private DM, nor its own room's channel memories, even where its reply
   alone could have carried them. The alternative — letting the gate accept a
