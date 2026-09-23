@@ -1,7 +1,0 @@
-parent_config: ../.swiftlint.yml
-included:
-  - DeepWater
-  - DeepWaterTests
-  - DeepWaterUITests
-excluded:
-  - build

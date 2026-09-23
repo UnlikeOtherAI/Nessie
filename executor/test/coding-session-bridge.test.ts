@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -24,20 +24,25 @@ const started = async (harness: CodingHarness, args: Record<string, unknown>): P
 const lastResultText = (body: Record<string, unknown>): string => (body.lastResult as { text: string } | undefined)?.text ?? ''
 
 test('a session survives bridge restarts, and its turn ends in a result', { timeout: 120_000 }, async () => {
-  const harness = await createCodingHarness({ idleTimeoutMs: 200 })
+  const harness = await createCodingHarness({
+    idleTimeoutMs: 200,
+    agentEnv: { inheritUserSession: false, set: { NESSIE_SCRIPTED_WAIT_FOR_RELEASE: '1' } },
+  })
+  const release = join(harness.recordDir, 'release-turn')
   try {
-    const sessionId = await started(harness, { prompt: '#sleep=1500 first task' })
+    const sessionId = await started(harness, { prompt: 'first task' })
     await harness.restartBridge()
     const working = await harness.waitForStatus(sessionId, (body) => body.status === 'working')
     assert.equal(working.turn, 1)
     await harness.restartBridge()
+    await writeFile(release, '')
     const done = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     assert.match(lastResultText(done), /first task/)
     const listed = await harness.call('session_list', {})
     assert.deepEqual((listed.body.sessions as { sessionId: string }[]).map((entry) => entry.sessionId), [sessionId])
     assert.deepEqual(listed.body.agents, ['claude', 'codex'])
   } finally {
-    await harness.cleanup()
+    try { await writeFile(release, '') } finally { await harness.cleanup() }
   }
 })
 
