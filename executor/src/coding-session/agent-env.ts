@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import type { CodingSessionsConfig } from './config.js'
+import { resolveProgramPath } from './program-path.js'
 
 /**
  * The environment a coding agent runs in.
@@ -49,16 +50,17 @@ const LOGIN_SHELL_MARKER = '__NESSIE_LOGIN_ENVIRONMENT__'
 export type CommandOutcome = { code: number | null; missing: boolean; stdout: string }
 
 export type CommandRunner = (
-  file: string, args: string[], options?: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number },
+  file: string, args: string[],
+  options?: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; maxBytes?: number },
 ) => Promise<CommandOutcome>
 
-export const runCommand: CommandRunner = (file, args, options = {}) => new Promise((settle) => {
+const runResolved: CommandRunner = (file, args, options = {}) => new Promise((settle) => {
   execFile(file, args, {
     ...(options.env ? { env: options.env } : {}),
     ...(options.cwd ? { cwd: options.cwd } : {}),
     timeout: options.timeoutMs ?? 15_000,
     windowsHide: true,
-    maxBuffer: 4 * 1024 * 1024,
+    maxBuffer: options.maxBytes ?? 4 * 1024 * 1024,
   }, (error, stdout) => {
     const failure = error as (NodeJS.ErrnoException & { code?: number | string }) | null
     settle({
@@ -68,6 +70,18 @@ export const runCommand: CommandRunner = (file, args, options = {}) => new Promi
     })
   })
 })
+
+/**
+ * A command that outlives `timeoutMs` or prints more than `maxBytes` is killed
+ * and answers with code `null`. A bare program name is found on the absolute
+ * entries of its environment's `PATH` only, never in `cwd` — which is a
+ * session's repository (`program-path.ts`) — and one found nowhere is missing.
+ */
+export const runCommand: CommandRunner = async (file, args, options = {}) => {
+  const program = await resolveProgramPath(file, options.env ?? process.env)
+  if (program === undefined) return { code: null, missing: true, stdout: '' }
+  return runResolved(program, args, options)
+}
 
 /** An environment whose names compare the way the OS compares them. */
 const environmentMap = (platform: NodeJS.Platform, from: NodeJS.ProcessEnv = {}) => {

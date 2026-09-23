@@ -8,6 +8,7 @@ import type { ExecutorCommandEnvelope } from '@nessie/schemas'
 
 import { CODEX_EGRESS_ORIGINS, createExecutorCodingSessionManager } from '../src/coding-session-manager.js'
 import type { GuestVmSession } from '../src/guest-vm-session.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const runId = '00000000-0000-4000-8000-000000000351'
 
@@ -49,7 +50,7 @@ const stateFor = (workspaceRoot: string) => ({
   workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
-test('Codex sessions use the private guest profile and expose typed lifecycle only', async () => {
+test('Codex sessions use the private guest profile and expose typed lifecycle only', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-coding-manager-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-coding-workspace-'))
   let resolveClosed: (() => void) | undefined
@@ -102,7 +103,7 @@ test('Codex sessions use the private guest profile and expose typed lifecycle on
   }
 })
 
-test('fencing an in-flight Codex session destroys it before a prompt can launch', async () => {
+test('fencing an in-flight Codex session destroys it before a prompt can launch', { skip: WINDOWS_STATE_HELPER_SKIP, timeout: 60_000 }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-coding-fence-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-coding-fence-workspace-'))
   let resolveClosed: (() => void) | undefined

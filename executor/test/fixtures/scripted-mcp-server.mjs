@@ -21,11 +21,18 @@
  *                   Windows (kelpie-screenshot-result.json: the base64 in the
  *                   text JSON, an image item and structuredContent), and the
  *                   same shape around a 200 KB PNG
+ *
+ * In any mode, NESSIE_TEST_MCP_START_LOG names a file each process appends its
+ * pid to as it starts, so a suite can count the processes a server ran as, and
+ * NESSIE_TEST_MCP_INIT_DELAY_MS holds the handshake's answer that long, so a
+ * start can be caught still in flight.
  */
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const mode = process.env.NESSIE_TEST_MCP_MODE ?? 'ok'
+
+if (process.env.NESSIE_TEST_MCP_START_LOG) appendFileSync(process.env.NESSIE_TEST_MCP_START_LOG, `${process.pid}\n`)
 
 if (mode === 'never-start') process.exit(3)
 
@@ -188,7 +195,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     return
   }
   if (request.method === 'initialize') {
-    send({
+    const answer = () => send({
       jsonrpc: '2.0',
       id: request.id,
       result: {
@@ -197,6 +204,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
         serverInfo: { name: 'scripted', version: '9.9.9' },
       },
     })
+    setTimeout(answer, Number.parseInt(process.env.NESSIE_TEST_MCP_INIT_DELAY_MS ?? '0', 10))
     return
   }
   if (request.method === 'notifications/initialized') return

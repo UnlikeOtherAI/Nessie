@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
@@ -340,6 +343,117 @@ test('concurrent calls to one server serialize instead of interleaving on the st
     })
   } finally {
     await sessions.stopAll()
+  }
+})
+
+const isRunning = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The pids the fixture logged as it started, one line each. */
+const startedPids = async (startLog: string): Promise<number[]> => (await readFile(startLog, 'utf8').catch(() => ''))
+  .split('\n').filter(Boolean).map(Number)
+
+const until = async (condition: () => Promise<boolean>, what: string, timeoutMs = 10_000): Promise<void> => {
+  const deadline = Date.now() + timeoutMs
+  while (!(await condition())) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`)
+    await new Promise((resolve) => { setTimeout(resolve, 50) })
+  }
+}
+
+/** A scripted server that logs each process it starts as, and answers its handshake late. */
+const loggedServer = (startLog: string, initDelayMs: number): ExecutorLocalMcpServer => ({
+  command: [process.execPath, SCRIPT],
+  env: {
+    NESSIE_TEST_MCP_INIT_DELAY_MS: String(initDelayMs),
+    NESSIE_TEST_MCP_MODE: 'ok',
+    NESSIE_TEST_MCP_START_LOG: startLog,
+  },
+  name: 'scripted',
+})
+
+test('a probe and a command that both find no session share one server process', async () => {
+  // The reporter probes on its own cadence, so it and a command meet a cold
+  // server together. Each once started its own process; the one that lost the
+  // race was dropped from the session map and never closed.
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-mcp-starts-'))
+  const startLog = join(directory, 'starts.log')
+  const sessions = managerFor([loggedServer(startLog, 500)])
+  let pids: number[] = []
+  try {
+    const [probed, called] = await Promise.all([
+      sessions.probe('scripted'),
+      sessions.callTool('scripted', 'echo', { value: 'cold' }),
+    ])
+    assert.equal(probed.available, true)
+    assert.equal(called.success, true)
+    pids = await startedPids(startLog)
+    assert.equal(pids.length, 1, `one start serves both, but the server ran as ${pids.length} processes`)
+    // A later command reuses it rather than starting again.
+    assert.equal((await sessions.callTool('scripted', 'echo', { value: 'warm' })).success, true)
+    assert.deepEqual(await startedPids(startLog), pids)
+  } finally {
+    await sessions.stopAll()
+  }
+  try {
+    await until(async () => pids.every((pid) => !isRunning(pid)), 'the server to stop with the manager')
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+test('a start still in flight when the manager stops is closed, not left running', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-mcp-stop-start-'))
+  const startLog = join(directory, 'starts.log')
+  const sessions = managerFor([loggedServer(startLog, 1_500)])
+  try {
+    const calling = sessions.callTool('scripted', 'echo', { value: 'late' })
+    await until(async () => (await startedPids(startLog)).length > 0, 'the server process to start')
+    const [pid] = await startedPids(startLog)
+    await sessions.stopAll()
+    // The call settles either way; what matters is that nothing outlives the stop.
+    await calling
+    await until(async () => !isRunning(pid!), 'the server started during the stop to exit', 5_000)
+  } finally {
+    await sessions.stopAll()
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
+test('a manager starts no server while it stops, even one nothing was starting when the stop began', async () => {
+  // The stop waits on the slow server's start; a call to another server arriving
+  // meanwhile once started a process of its own, which the stop never saw.
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-mcp-stopping-'))
+  const slowLog = join(directory, 'slow.log')
+  const otherLog = join(directory, 'other.log')
+  const sessions = managerFor([
+    { ...loggedServer(slowLog, 1_500), name: 'slow' },
+    { ...loggedServer(otherLog, 0), name: 'other' },
+  ])
+  try {
+    const calling = sessions.callTool('slow', 'echo', { value: 'first' })
+    await until(async () => (await startedPids(slowLog)).length > 0, 'the slow server to start')
+    const stopping = sessions.stopAll()
+    const late = await sessions.callTool('other', 'echo', { value: 'late' })
+    assert.equal(late.success, false)
+    assert.equal(late.code, 'EXECUTOR_MCP_UNAVAILABLE')
+    assert.deepEqual(await sessions.probe('other'), { available: false, reason: 'not_probed' })
+    await stopping
+    await calling
+    assert.deepEqual(await startedPids(otherLog), [], 'nothing started once the stop had begun')
+    const [slow] = await startedPids(slowLog)
+    await until(async () => !isRunning(slow!), 'the slow server to stop with the manager', 5_000)
+    // A finished stop leaves the manager usable: the daemon's suites restart the bridge this way.
+    assert.equal((await sessions.callTool('other', 'echo', { value: 'after' })).success, true)
+  } finally {
+    await sessions.stopAll()
+    await rm(directory, { force: true, recursive: true })
   }
 })
 

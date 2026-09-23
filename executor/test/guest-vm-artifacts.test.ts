@@ -6,6 +6,7 @@ import test from 'node:test'
 
 import { verifyPrivateGuestVmFile } from '../src/guest-vm-artifacts.js'
 import { readPinnedScriptDigests, verifyPinnedResource } from '../src/hyperv/scripts.js'
+import { WINDOWS_GUEST_RESOURCES_SKIP } from './windows-prerequisites.js'
 
 /**
  * The Linux trust root is not this account's ownership but dpkg's: apt
@@ -27,7 +28,9 @@ const asRoot = process.getuid?.() === 0
 const stage = async (): Promise<string> => realpath(await mkdtemp(join(tmpdir(), 'nessie-artifacts-')))
 
 test('an owner-private artifact is accepted, and a shared one is not', async (context) => {
-  if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
+  // Windows proves an artifact against the installed package manifest, never
+  // by owner and mode, so this arm has nothing to stage there, packaged or not.
+  if (process.platform === 'win32') {
     context.skip('Windows packaged artifacts use the installed manifest provenance test below')
     return
   }
@@ -139,8 +142,12 @@ test('a manifest-pinned resource accepts only the installed bytes and never esca
 })
 
 test('an installed Windows package validates its real VM artifact and rejects an untrusted copy', async (context) => {
-  if (process.platform !== 'win32' || process.env.NESSIE_EXECUTOR_PACKAGED_CLI !== '1') {
+  if (process.platform !== 'win32') {
     context.skip('requires the installed Windows executor runtime')
+    return
+  }
+  if (WINDOWS_GUEST_RESOURCES_SKIP) {
+    context.skip(WINDOWS_GUEST_RESOURCES_SKIP)
     return
   }
   const installedArtifact = join(dirname(process.execPath), 'resources', 'guest', 'build-initrd.exe')

@@ -17,6 +17,7 @@ import {
   workspaceForRun,
   writeSandboxFile,
 } from '../src/sandbox-workspace.js'
+import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import { loadExecutorState, saveExecutorState, type ExecutorLocalState } from '../src/state-store.js'
 import {
   assertExecutorWorkspaceFolders,
@@ -26,6 +27,7 @@ import {
 } from '../src/workspace-folders.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
 import type { ExecutorHost } from '../src/host-platform.js'
+import { WINDOWS_STATE_HELPER_SKIP, WINDOWS_SYMLINK_SKIP } from './windows-prerequisites.js'
 
 const sandboxHost: ExecutorHost = {
   platform: { architecture: 'arm64', os: 'macos', osMajorVersion: 15 },
@@ -156,7 +158,7 @@ test('a workspace path splits into its folder and the path beneath it', () => {
   for (const path of ['../other/secret', 'nessie/../other/secret', 'nessie/..', '..']) {
     assert.throws(() => splitExecutorWorkspacePath(path), /may not contain "\.\."/)
   }
-  for (const path of ['/etc/passwd', '\\\\etc\\\\passwd']) {
+  for (const path of ['/etc/passwd', '\\\\etc\\\\passwd', 'C:\\\\Users\\\\someone', 'c:/Users/someone', 'D:relative']) {
     assert.throws(() => splitExecutorWorkspacePath(path), /must be relative/)
   }
   assert.throws(() => splitExecutorWorkspacePath('nes\0sie/x'), /NUL/)
@@ -210,7 +212,7 @@ test('a read may not leave its folder, reach another folder, or reach an unpaire
   }
 })
 
-test('a symbolic link inside one folder cannot be followed into another folder', async () => {
+test('a symbolic link inside one folder cannot be followed into another folder', { skip: WINDOWS_SYMLINK_SKIP }, async () => {
   const fixture = await twoFolders('folder-symlink')
   const view = hostView(...fixture.folders)
   try {
@@ -236,7 +238,7 @@ test('a symbolic link inside one folder cannot be followed into another folder',
   }
 })
 
-test('a write reaches only its own folder and snapshots only that folder', async () => {
+test('a write reaches only its own folder and snapshots only that folder', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const fixture = await twoFolders('folder-write')
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-folder-write-state-'))
   const runId = '00000000-0000-4000-8000-000000000311'
@@ -284,7 +286,7 @@ test('a write reaches only its own folder and snapshots only that folder', async
   }
 })
 
-test('a review across two folders is folder-qualified and refuses one-folder promotion', async () => {
+test('a review across two folders is folder-qualified and refuses one-folder promotion', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const fixture = await twoFolders('folder-review')
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-folder-review-state-'))
   const runId = '00000000-0000-4000-8000-000000000312'
@@ -374,7 +376,7 @@ test('a guest session refuses to start while more than one folder is configured'
   }
 })
 
-test('a state file written before folders had names keeps working', async () => {
+test('a state file written before folders had names keeps working', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-folder-legacy-'))
   const stateDir = join(root, 'state')
   const workspace = join(root, 'Projects')
@@ -399,7 +401,9 @@ test('a state file written before folders had names keeps working', async () => 
   try {
     // Written the way the previous binary wrote it, not through the current
     // save path: this is a file that already exists on somebody's machine.
-    await mkdir(stateDir, { mode: 0o700 })
+    // On Windows that binary secured the directory through the helper too.
+    if (process.platform === 'win32') await ensureOwnerOnlyStateDirectory(stateDir)
+    else await mkdir(stateDir, { mode: 0o700 })
     await writeFile(join(stateDir, 'executor-state.json'), `${JSON.stringify(legacy)}\n`, { mode: 0o600 })
     const loaded = await loadExecutorState(stateDir)
     assert.deepEqual(loaded.workspaceFolders, [{ name: 'projects', path: workspace }])
@@ -509,7 +513,7 @@ test('the CLI names folders on the command line and over standard input', () => 
   )
 })
 
-test('a configured folder set is refused while a draft or sandbox exists', async () => {
+test('a configured folder set is refused while a draft or sandbox exists', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const fixture = await twoFolders('folder-frozen')
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-folder-frozen-state-'))
   const runId = '00000000-0000-4000-8000-000000000318'

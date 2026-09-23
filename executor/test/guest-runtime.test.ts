@@ -14,8 +14,9 @@ import {
 import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import { startGuestVmSession } from '../src/guest-vm-session.js'
 import { stopSandboxWorkspace } from '../src/sandbox-workspace.js'
+import { WINDOWS_GUEST_RESOURCES_SKIP, WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
-test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown', async () => {
+test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-guest-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-guest-state-'))
   const runId = '00000000-0000-4000-8000-000000000109'
@@ -42,7 +43,7 @@ test('a guest COW lease is exact-run, path-derived, and fences sandbox teardown'
   }
 })
 
-test('guest runtime bundles pin every browser and coding artifact without host fallback', async () => {
+test('guest runtime bundles pin every browser and coding artifact without host fallback', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const bundle = await mkdtemp(join(tmpdir(), 'nessie-guest-runtime-'))
   const snapshotParent = await mkdtemp(join(tmpdir(), 'nessie-guest-runtime-snapshot-'))
   const browserPath = join(bundle, 'bin', 'browser')
@@ -100,7 +101,7 @@ test('guest runtime bundles pin every browser and coding artifact without host f
   }
 })
 
-test('a guest VM session mounts a private runtime snapshot and keeps its token out of argv', async () => {
+test('a guest VM session mounts a private runtime snapshot and keeps its token out of argv', { skip: WINDOWS_GUEST_RESOURCES_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-session-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-session-state-'))
   const runId = '00000000-0000-4000-8000-000000000121'

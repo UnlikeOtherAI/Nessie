@@ -10,6 +10,7 @@ import { CODING_SESSION_ID_PATTERN } from './types.js'
  * primitives every writer uses.
  *
  *   <stateDir>/commands/<commandId>.json   the first outcome of each executor command
+ *   <stateDir>/agent-help.json             what each installed CLI's --help offers, per program and mtime
  *   <stateDir>/sessions/<id>/meta.json     bridge-written once
  *   <stateDir>/sessions/<id>/session.json  host-written, debounced
  *   <stateDir>/sessions/<id>/events.jsonl  host-written, rotated at 16 MiB
@@ -33,6 +34,7 @@ export type CodingSessionPaths = {
 }
 
 export const codingCommandsDir = (stateDir: string): string => join(stateDir, 'commands')
+export const codingAgentHelpCache = (stateDir: string): string => join(stateDir, 'agent-help.json')
 export const codingSessionsDir = (stateDir: string): string => join(stateDir, 'sessions')
 
 export const codingSessionPaths = (stateDir: string, sessionId: string): CodingSessionPaths => {

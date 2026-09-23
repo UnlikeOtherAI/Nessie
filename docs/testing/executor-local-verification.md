@@ -162,6 +162,95 @@ Checked on 2026-09-07 from the `test/executor-test-environment` worktree.
   multi-instance smoke requires a separate freshly migrated database and must
   not use the active development database.
 
+## The executor suite on Windows — 2026-09-23
+
+`pnpm --filter @nessie/executor test` finishes on Windows. On this PC it ran
+544 tests in 98 s: 454 passed, 0 failed, 90 skipped; with the native helper
+built, the second pass described below ran 99 more (95 passed, 4 skipped, 0
+failed), and the whole command exited 0 in 113 s. Before this
+change, four files never finished (`browser-session-manager`,
+`coding-session-manager`, `command-session-manager`, `hyperv-backend`). Run
+one file at a time with a four-minute limit each, the other 74 files had 67
+failures.
+
+Every skip states its reason in the test output, and every condition is
+`false` on Linux and macOS, so CI runs exactly what it ran before. The shared
+conditions are in `executor/test/windows-prerequisites.ts`:
+
+- **Executor state (53 tests).** On Windows, state is owner-only through a
+  DACL that only the packaged native helper sets and reads. The helper runs
+  only when `NESSIE_EXECUTOR_PACKAGED_CLI=1` is set and
+  `nessie-executor-native.exe` sits beside the running `node.exe`. A
+  development Node has neither, so every state save refuses. Some of these
+  tests then waited for a guest start that never came, and that hung the
+  run. The four tests that wait on such a start now also carry a 60 s
+  timeout. The test script runs these again where they can pass, beside a
+  helper built in `executor/native/target/release` (below).
+- **Guest VM resources (4).** Windows checks VM artifacts against the
+  installed package's `resources/guest/…`.
+- **Symbolic links (5, plus 4 that already skipped themselves).** Creating a
+  file symlink on Windows needs Developer Mode or an elevated token.
+- **POSIX-only behaviour.** Firecracker sessions, its vsock and its signals
+  (9), the Unix-socket egress gateway (1), the systemd unit and XDG paths
+  (4), POSIX mode-bit proofs of state (2) and of VM artifacts (1), and the
+  macOS Chrome cookie import package (1).
+
+Some of the fixes made tests run on Windows instead of skipping:
+
+- The Hyper-V backend and transport suites use real `\\.\pipe\` names on
+  Windows. They used to listen on a temp-directory path, which `net` refuses
+  there.
+- A drive-letter workspace path is refused as "must be relative". It used to
+  be refused as a folder named "C:".
+- A fixture that creates state on Windows secures the state directory
+  through the helper first, as the daemon does.
+- The coding-sessions config round trip proves the file's DACL through the
+  helper instead of reading mode bits.
+
+The state tests run on Windows once a helper is built. The package's `test`
+script is `scripts/run-tests.mjs`: on Linux and macOS it runs `node --test`
+over the same glob and nothing else. On Windows it runs the suite, in which
+the state tests skip, and then, when `executor/native/target/release` holds
+`nessie-executor-native.exe`, keeps a copy of the running Node beside it
+(refreshed when the Node version changes) and runs every file that names
+`WINDOWS_STATE_HELPER_SKIP` again under that copy with
+`NESSIE_EXECUTOR_PACKAGED_CLI=1`. That is the only way the executor runs the
+helper: `state-security.ts` accepts one beside the running Node and marked,
+on purpose, so a development Node cannot point it elsewhere. With no build it
+prints how to make one. From `executor/`:
+
+```bash
+(cd native && cargo build --release)
+pnpm test
+```
+
+Only those files run under the marker, not the whole suite: the marker also
+makes `src/index.ts` run as an entry point (three of the fourteen files
+import it, and print the CLI's pairing hint when they do) and turns on the
+packaged-runtime checks. On this PC the second pass ran 99 tests in 13 s: 95
+passed, 4 skipped (two for symlinks, one for a packaged bundle, one for the
+guest resources) and 0 failed. `browser-config`, `guest-runtime` and
+`guest-vm-artifacts` also need the guest resources. They passed (7 passed, 2
+skipped) under the installed package's own Node,
+`C:\Program Files\Nessie Executor\node.exe`, with the same marker. With the
+helper built, `coding-session-containment.test.ts` finds it in `native/target`
+and runs its Job Object case in the ordinary run too.
+
+A heavily loaded machine slows the coding-session bridge suite down. It
+passed in 86 s when run alone. With another worktree's full suite running
+beside it, it took 220 s and two of its 30 s status waits ran out.
+
+The same load broke two teardown bounds until the Windows kill changed. The
+agent guard's stand-in host test must see the agent and its grandchild gone
+within 5 s, and it failed in two of three full runs. A Kelpie describe
+stopped for its budget must answer within 10 s, and it failed in one. The
+kill then cost two PowerShell
+table reads and a `taskkill` per process, and under load one table read
+took 1–3.5 s. Now a kill is one PowerShell. The guard starts its kill's
+PowerShell as soon as its agent has an identity, and a describe's start time
+comes from the same table as its tree. In the full suite the guard's kill
+now takes 0.5–0.8 s, where it took 1.5–2.1 s cold.
+
 ## Discovered versus executed coverage
 
 | Capability | Status |

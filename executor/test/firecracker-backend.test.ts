@@ -22,6 +22,15 @@ const KVM_ABSENT = {
 
 const IDENTITY = { gid: 1_000, uid: 1_000 }
 
+/**
+ * A session needs the host this backend runs on: its API and vsock sockets
+ * are Unix sockets under a directory it proves owner-only by mode bits, and
+ * Windows offers neither. The checks that need no session run everywhere.
+ */
+const LINUX_HOST_ONLY = process.platform === 'win32'
+  ? 'Firecracker sessions need Unix sockets under a directory proved owner-only by mode bits; Windows offers neither.'
+  : false
+
 type StagedImages = { argv: string[][] }
 
 /**
@@ -82,7 +91,7 @@ const stageRuntime = async (): Promise<{
   }
 }
 
-test('the Firecracker backend runs without a jailer, as the daemon itself', async () => {
+test('the Firecracker backend runs without a jailer, as the daemon itself', { skip: LINUX_HOST_ONLY }, async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
   const { fake, spawnProcess } = createFakeFirecracker({ bootstrapToken })
@@ -185,7 +194,7 @@ test('the guest is told its shares are block devices, and never on macOS', async
   )
 })
 
-test('a session with forced egress boots with both guest channels listening', async () => {
+test('a session with forced egress boots with both guest channels listening', { skip: LINUX_HOST_ONLY }, async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
   const { fake, spawnProcess } = createFakeFirecracker({ bootstrapToken })
@@ -209,7 +218,7 @@ test('a session with forced egress boots with both guest channels listening', as
   }
 })
 
-test('a guest that never presents its control hello fails the session closed and cleans up', async () => {
+test('a guest that never presents its control hello fails the session closed and cleans up', { skip: LINUX_HOST_ONLY }, async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
   const { fake, spawnProcess } = createFakeFirecracker({ bootGuest: false, bootstrapToken })
@@ -230,7 +239,7 @@ test('a guest that never presents its control hello fails the session closed and
   }
 })
 
-test('a guest presenting the wrong bootstrap token is refused before any control byte is served', async () => {
+test('a guest presenting the wrong bootstrap token is refused before any control byte is served', { skip: LINUX_HOST_ONLY }, async () => {
   const staged = await stageRuntime()
   const bootstrapToken = randomBytes(32).toString('base64url')
   // The guest speaks a well-formed hello carrying somebody else's token.

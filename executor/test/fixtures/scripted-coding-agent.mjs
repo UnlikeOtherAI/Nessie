@@ -6,8 +6,11 @@
  * captured from claude 2.1.280 and codex-cli 0.155.1.
  *
  * Which protocol it speaks follows from its argv, exactly as the real CLIs are
- * invoked: `--version`, `auth status` / `login status`, `-p …` (Claude), or
- * `exec …` (Codex). What a turn does is chosen by directives in the message:
+ * invoked: `--version`, `--help` (the help texts captured from those versions,
+ * in `agent-help/`; `NESSIE_SCRIPTED_HELP=older` answers with the edited
+ * Claude help that lacks `--permission-prompts`), `auth status` /
+ * `login status`, `-p …` (Claude), or `exec …` (Codex). What a turn does is
+ * chosen by directives in the message:
  *
  *   #sleep=<ms>   a foreground tool call that takes that long (interruptible;
  *                 a follow-up written meanwhile folds into the running turn)
@@ -24,6 +27,7 @@
  *   #background   leaves a background task whose completion starts a turn nobody asked for
  *   #stubborn     acknowledges an interrupt and carries on regardless (with #sleep)
  *   #secret       prints a GitHub token and a value the configuration set, as `gh auth token` and `printenv` would
+ *   #identity     prints the OS user and host names, as git, npm and a shell prompt do
  *   #codexfail    (Codex) the usage-limit failure codex-cli 0.155.1 prints
  *
  * NESSIE_SCRIPTED_RECORD_DIR, when set, receives `agents.jsonl` (one line per
@@ -32,8 +36,8 @@
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { homedir, hostname, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -71,6 +75,13 @@ const environmentReport = () => {
 
 if (argv[0] === '--version') {
   process.stdout.write('9.9.9 (Scripted Coding Agent)\n')
+  process.exit(0)
+}
+if (argv.at(-1) === '--help') {
+  const help = argv[0] !== 'exec'
+    ? process.env.NESSIE_SCRIPTED_HELP === 'older' ? 'claude-older.txt' : 'claude-2.1.280.txt'
+    : argv[1] === 'resume' ? 'codex-0.155.1-exec-resume.txt' : 'codex-0.155.1-exec.txt'
+  process.stdout.write(readFileSync(new URL(`./agent-help/${help}`, import.meta.url), 'utf8'))
   process.exit(0)
 }
 if (argv[0] === 'auth' && argv[1] === 'status') {
@@ -175,6 +186,11 @@ const runTurn = async (first) => {
     await tool('Bash', { command: `export GH_TOKEN=${token}` }, '')
     await tool('Bash', { command: 'gh auth token' }, token)
     send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: `SCRIPTED_SET is ${process.env.SCRIPTED_SET}` }] } })
+  }
+  if (text().includes('#identity')) {
+    const user = userInfo().username
+    await tool('Bash', { command: 'git commit -m wip' }, `Exit code 128\nAuthor identity unknown\nfatal: unable to auto-detect email address (got '${user}@${hostname()}.(none)')`, true)
+    send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: `npm whoami says ${user}; the prompt reads ${user}@${hostname()} MINGW64` }] } })
   }
   if (text().includes('#deny')) {
     send({ type: 'system', subtype: 'permission_denied', tool_name: 'Bash', tool_use_id: 'toolu_denied', message: 'denied' })

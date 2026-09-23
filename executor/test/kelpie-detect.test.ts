@@ -10,6 +10,7 @@ import {
   kelpieDescribeCommand,
   kelpieDescriptionFromJson,
   kelpieDeviceFromDescribeEntry,
+  stopKelpieDescribes,
 } from '../src/kelpie-detect.js'
 
 const OBSERVED = '2026-09-17T10:00:00.000Z'
@@ -300,34 +301,110 @@ const isRunning = (pid: number): boolean => {
   }
 }
 
-test('a describe stopped through a kelpie.cmd shim leaves no Kelpie process behind', {
+/**
+ * Runs `command` as a Kelpie whose describe hangs and that starts a sleeping
+ * process of its own, lets detection stop it for its budget, and answers the
+ * two pids with those still running a moment after describe answered.
+ */
+const describeHangingTree = async (
+  command: (directory: string) => Promise<string[]>,
+  env: Record<string, string> = {},
+): Promise<{ description: unknown; running: number[]; started: number[] }> => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-hang-'))
+  const pidFile = join(directory, 'kelpie.pid')
+  const childPidFile = join(directory, 'child.pid')
+  const started: number[] = []
+  try {
+    const description = await describeKelpie(
+      {
+        command: await command(directory),
+        env: { ...env, NESSIE_TEST_CHILD_PID_FILE: childPidFile, NESSIE_TEST_PID_FILE: pidFile },
+        name: 'kelpie',
+      },
+      { timeoutMs: 5_000 },
+    )
+    for (const file of [pidFile, childPidFile]) started.push(Number.parseInt(await readFile(file, 'utf8'), 10))
+    assert.ok(started.every(Number.isSafeInteger), 'the hanging Kelpie and its child both started')
+    // Describe answers once the tree is signalled; an exit can take a moment to show.
+    const deadline = Date.now() + 2_000
+    while (started.some(isRunning) && Date.now() < deadline) {
+      await new Promise((resolve) => { setTimeout(resolve, 100) })
+    }
+    return { description, running: started.filter(isRunning), started }
+  } finally {
+    for (const pid of started) if (isRunning(pid)) process.kill(pid)
+    await rm(directory, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
+  }
+}
+
+test('a describe stopped through a kelpie.cmd shim leaves no Kelpie process behind, nor one it started', {
   skip: process.platform === 'win32'
     ? false
     : 'Only a .cmd shim puts cmd.exe between the daemon and Kelpie.',
+  timeout: 60_000,
 }, async () => {
   // Killing the shim's cmd.exe alone left the Kelpie under it running, one
-  // more orphan with every report sweep.
-  const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-hang-'))
-  const pidFile = join(directory, 'kelpie.pid')
-  let kelpiePid: number | undefined
-  try {
+  // more orphan with every report sweep; a process of Kelpie's own sits one
+  // level further down.
+  const { description, running } = await describeHangingTree(async (directory) => {
     const shim = join(directory, 'kelpie.cmd')
     await writeFile(shim, `@"${process.execPath}" "${HANGING_KELPIE}" %*\r\n`)
-    const description = await describeKelpie(
-      { command: [shim, 'mcp'], env: { NESSIE_TEST_PID_FILE: pidFile }, name: 'kelpie' },
-      { timeoutMs: 1_500 },
-    )
-    assert.equal(description, undefined)
-    kelpiePid = Number.parseInt(await readFile(pidFile, 'utf8'), 10)
-    assert.ok(Number.isSafeInteger(kelpiePid), 'the hanging Kelpie started under the shim')
-    const deadline = Date.now() + 10_000
-    while (isRunning(kelpiePid) && Date.now() < deadline) {
+    return [shim, 'mcp']
+  })
+  assert.equal(description, undefined)
+  assert.deepEqual(running, [], 'the Kelpie under the shim and its child were stopped with it')
+})
+
+test('a describe stopped for its budget ends the process Kelpie started too', { timeout: 60_000 }, async () => {
+  // Kelpie killed alone leaves its own child running with describe's stdout
+  // open — on POSIX in the daemon's process group, where nothing ends it.
+  const { description, running } = await describeHangingTree(async () => [process.execPath, HANGING_KELPIE, 'mcp'])
+  assert.equal(description, undefined)
+  assert.deepEqual(running, [], 'Kelpie and the process it started were both stopped')
+})
+
+test('a describe that exited while a process it started holds its output has that process stopped too', {
+  skip: process.platform === 'win32'
+    ? 'On Windows a descendant of an exited describe is out of reach without a Job Object.'
+    : false,
+  timeout: 60_000,
+}, async () => {
+  // Describe's pipes never close, so the budget runs out on a describe that has
+  // already exited: its own pid is gone, but its process group is not.
+  const { description, running } = await describeHangingTree(
+    async () => [process.execPath, HANGING_KELPIE, 'mcp'], { NESSIE_TEST_EXIT_EARLY: '1' },
+  )
+  assert.equal(description, undefined)
+  assert.deepEqual(running, [], 'what was left of describe\'s group was stopped')
+})
+
+test('the daemon\'s shutdown stops a describe still in flight, tree and all', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-shutdown-'))
+  const pidFiles = [join(directory, 'kelpie.pid'), join(directory, 'child.pid')]
+  const started: number[] = []
+  try {
+    const describing = describeKelpie({
+      command: [process.execPath, HANGING_KELPIE, 'mcp'],
+      env: { NESSIE_TEST_PID_FILE: pidFiles[0]!, NESSIE_TEST_CHILD_PID_FILE: pidFiles[1]! },
+      name: 'kelpie',
+    }, { timeoutMs: 60_000 })
+    const deadline = Date.now() + 20_000
+    while (started.length < 2 && Date.now() < deadline) {
       await new Promise((resolve) => { setTimeout(resolve, 100) })
+      const read = await Promise.all(pidFiles.map((file) => readFile(file, 'utf8').catch(() => '')))
+      if (read.every(Boolean)) started.push(...read.map((text) => Number.parseInt(text, 10)))
     }
-    assert.equal(isRunning(kelpiePid), false, 'the Kelpie under the shim was stopped with it')
+    assert.equal(started.length, 2, 'the hanging Kelpie and its child both started')
+    const stoppedAt = Date.now()
+    await stopKelpieDescribes()
+    assert.equal(await describing, undefined)
+    assert.ok(Date.now() - stoppedAt < 15_000, 'long before its own budget')
+    const gone = Date.now() + 2_000
+    while (started.some(isRunning) && Date.now() < gone) await new Promise((resolve) => { setTimeout(resolve, 100) })
+    assert.deepEqual(started.filter(isRunning), [])
   } finally {
-    if (kelpiePid !== undefined && isRunning(kelpiePid)) process.kill(kelpiePid)
-    await rm(directory, { force: true, recursive: true })
+    for (const pid of started) if (isRunning(pid)) process.kill(pid)
+    await rm(directory, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
   }
 })
 

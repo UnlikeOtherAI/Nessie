@@ -10,12 +10,13 @@ import test from 'node:test'
 import { createDeepTestExecutionAdapter, serveDeepTestExecutionAdapter } from '../src/deeptest-execution-adapter.js'
 import { createDeepTestSourceSnapshot } from '../src/deeptest-source-snapshot.js'
 import type { ExecutorDeepTestExecutionGrant } from '../src/state-store.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const exec = promisify(execFile)
 const binding = { account_id: 'account.test', project_id: 'project.test', review_id: 'review.test', session_id: 'session.test' }
 const frame = (operation: string, fields: Record<string, unknown> = {}) => ({ ...binding, ...fields, operation, protocol_version: 1, request_id: `request_${operation.replaceAll('.', '_')}` })
 
-test('revoking a grant stops a blocked command before it can report success', async () => {
+test('revoking a grant stops a blocked command before it can report success', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-execution-adapter-'))
   try {
     await exec('git', ['init', '--quiet', root]); await exec('git', ['-C', root, 'config', 'user.email', 'test@example']); await exec('git', ['-C', root, 'config', 'user.name', 'Test']); await writeFile(join(root, 'app.ts'), 'export {}\n'); await exec('git', ['-C', root, 'add', '.']); await exec('git', ['-C', root, 'commit', '--quiet', '-m', 'test'])
@@ -35,7 +36,7 @@ test('revoking a grant stops a blocked command before it can report success', as
   } finally { await rm(root, { force: true, recursive: true }) }
 })
 
-test('stdin EOF closes a running command before it can emit a successful result', async () => {
+test('stdin EOF closes a running command before it can emit a successful result', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-execution-eof-'))
   try {
     await exec('git', ['init', '--quiet', root]); await exec('git', ['-C', root, 'config', 'user.email', 'test@example']); await exec('git', ['-C', root, 'config', 'user.name', 'Test']); await writeFile(join(root, 'app.ts'), 'export {}\n'); await exec('git', ['-C', root, 'add', '.']); await exec('git', ['-C', root, 'commit', '--quiet', '-m', 'test'])
@@ -66,7 +67,7 @@ test('stdin EOF closes a running command before it can emit a successful result'
   } finally { await rm(root, { force: true, recursive: true }) }
 })
 
-test('a run cannot reuse a guest lease under a different reviewed source snapshot', async () => {
+test('a run cannot reuse a guest lease under a different reviewed source snapshot', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-execution-snapshot-pin-'))
   try {
     await exec('git', ['init', '--quiet', root])
@@ -235,7 +236,7 @@ test('a failed manager stop keeps a run available for a later release retry', as
   }
 })
 
-test('grant revocation during source materialization settles before any guest starts', async () => {
+test('grant revocation during source materialization settles before any guest starts', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-execution-materialization-revoke-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-execution-materialization-state-'))
   try {
