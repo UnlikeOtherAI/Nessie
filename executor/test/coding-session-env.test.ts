@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 
 import {
@@ -118,11 +119,14 @@ test('only the parent-session coupling and the executor markers are stripped; pa
   assert.deepEqual(overridden, { CLAUDE_CODE_DISABLE_AUTO_MEMORY: '0' }, 'set may turn auto-memory back on')
 })
 
+const helpText = (name: string): string => readFileSync(new URL(`./fixtures/agent-help/${name}`, import.meta.url), 'utf8')
+
 test('the self-check names each failure, reads only the login flag, and treats gh as optional', async () => {
   const claude = { command: ['/opt/claude'], args: [], allowedTools: [], disallowedTools: [] }
   type CheckInput = Parameters<typeof runCodingSelfCheck>[0]
+  const help = { 'claude --help': { stdout: helpText('claude-2.1.280.txt') } }
   const check = (answers: Record<string, Answer>, extra: Partial<CheckInput> = {}) => runCodingSelfCheck({
-    agent: 'claude', config: claude, cwd: '/w', env: {}, platform: 'linux', run: runner(answers), ...extra,
+    agent: 'claude', config: claude, cwd: '/w', env: {}, platform: 'linux', run: runner({ ...help, ...answers }), ...extra,
   })
   const loggedIn = { stdout: '{"loggedIn":true,"email":"person@example.com"}' }
   assert.deepEqual(await check({ 'git --version': {}, 'gh auth': { missing: true }, 'claude --version': { stdout: '2.1.280 (Claude Code)\n' }, 'claude auth': loggedIn }), {
@@ -135,13 +139,26 @@ test('the self-check names each failure, reads only the login flag, and treats g
   assert.deepEqual(await check({ 'gh auth': { missing: true }, 'claude auth': { code: 1, stdout: '{"loggedIn":false}' } }), {
     ok: false, reason: 'agent_not_logged_in',
   })
+  // What the CLI offers is read before its login: a CLI too old for `auth status` is outdated, not logged out.
+  assert.deepEqual(await check({ 'claude --help': { stdout: helpText('claude-older.txt') }, 'claude auth': { code: 1 } }), {
+    ok: false, reason: 'agent_outdated', missing: ['--permission-prompts'],
+  })
+  assert.deepEqual(await check({ 'claude --help': { code: null } }), { ok: false, reason: 'agent_outdated', missing: ['--help'] })
+  assert.deepEqual(await check({ 'gh auth': { missing: true }, 'claude auth': loggedIn }, {
+    config: { ...claude, permissionMode: 'default' },
+  }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode default'] })
   assert.deepEqual(await check({ 'gh auth': { code: 1 }, 'claude auth': loggedIn }), { ok: false, reason: 'gh_not_authenticated' })
   assert.deepEqual(await check({}, { platform: 'win32', received: { NESSIE_EXECUTOR_SUPERVISOR: 'service' } }), {
     ok: false, reason: 'unsupported_supervisor',
   })
   const codex = await runCodingSelfCheck({
     agent: 'codex', config: { command: ['node', 'codex.js'], args: [], allowedTools: [], disallowedTools: [] }, cwd: '/w', env: {},
-    platform: 'linux', run: runner({ 'gh auth': { missing: true }, 'node codex.js login status': { code: 1 } }),
+    platform: 'linux', run: runner({
+      'gh auth': { missing: true },
+      'node codex.js exec resume --help': { stdout: helpText('codex-0.155.1-exec-resume.txt') },
+      'node codex.js exec --help': { stdout: helpText('codex-0.155.1-exec.txt') },
+      'node codex.js login status': { code: 1 },
+    }),
   })
   assert.deepEqual(codex, { ok: false, reason: 'agent_not_logged_in' })
 })

@@ -15,6 +15,7 @@ import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots
 import { runCodingSelfCheck } from './self-check.js'
 import { openEventLog } from './session-events.js'
 import {
+  codingAgentHelpCache,
   codingSessionPaths,
   createDebouncedJsonWriter,
   readJson,
@@ -158,8 +159,14 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       ...Object.entries(env).filter(([name]) => SECRET_NAME.test(name)).map(([, value]) => value),
     ])
     if (meta.agent === 'codex') context.projector.redact(await codexAccountRedactions(env))
-    const check = await runCodingSelfCheck({ agent: meta.agent, config: agent, cwd: folder, env })
-    if (!check.ok) throw new AgentStartError(check.reason)
+    const check = await runCodingSelfCheck({
+      agent: meta.agent, config: agent, cwd: folder, env, helpCacheFile: codingAgentHelpCache(loaded.stateDir),
+      ...(loaded.config.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: loaded.config.maxBudgetUsd }),
+    })
+    if (!check.ok) {
+      if (check.missing?.length) log(`the agent's --help does not offer ${check.missing.slice(0, 10).join(', ')}`)
+      throw new AgentStartError(check.reason)
+    }
     if (check.agentVersion) update({ agentVersion: context.projector.line(check.agentVersion, 80) })
     if (state.baseCommit === undefined && state.worktreesAtStart === undefined) update(await gitStartSnapshot(folder))
     const driverContext = {

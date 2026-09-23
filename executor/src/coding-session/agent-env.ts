@@ -49,16 +49,18 @@ const LOGIN_SHELL_MARKER = '__NESSIE_LOGIN_ENVIRONMENT__'
 export type CommandOutcome = { code: number | null; missing: boolean; stdout: string }
 
 export type CommandRunner = (
-  file: string, args: string[], options?: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number },
+  file: string, args: string[],
+  options?: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; maxBytes?: number },
 ) => Promise<CommandOutcome>
 
+/** A command that outlives `timeoutMs` or prints more than `maxBytes` is killed and answers with code `null`. */
 export const runCommand: CommandRunner = (file, args, options = {}) => new Promise((settle) => {
   execFile(file, args, {
     ...(options.env ? { env: options.env } : {}),
     ...(options.cwd ? { cwd: options.cwd } : {}),
     timeout: options.timeoutMs ?? 15_000,
     windowsHide: true,
-    maxBuffer: 4 * 1024 * 1024,
+    maxBuffer: options.maxBytes ?? 4 * 1024 * 1024,
   }, (error, stdout) => {
     const failure = error as (NodeJS.ErrnoException & { code?: number | string }) | null
     settle({

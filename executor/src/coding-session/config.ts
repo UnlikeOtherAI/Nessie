@@ -17,9 +17,13 @@ import { CODING_AGENT_NAMES, type CodingAgentName } from './types.js'
  * person has reviewed what that change means.
  */
 
-/** The `--permission-mode` choices Claude Code 2.1.280 accepts; anything else is refused here. */
-export const CLAUDE_PERMISSION_MODES = ['acceptEdits', 'auto', 'bypassPermissions', 'manual', 'dontAsk', 'plan'] as const
-export type ClaudePermissionMode = typeof CLAUDE_PERMISSION_MODES[number]
+/**
+ * A `--permission-mode` value is only shaped here. Which modes exist is the
+ * installed CLI's to say — 2.1.280 lists acceptEdits, auto, bypassPermissions,
+ * manual, dontAsk and plan, and a newer one may list more — so the host's
+ * self-check reads the choices from its `--help` before every start.
+ */
+const PERMISSION_MODE = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/u
 
 /** The daemon passes the reviewed digest here; a mismatch stops every host start. */
 export const CODING_SESSIONS_CONFIG_DIGEST_ENV = 'NESSIE_CODING_SESSIONS_CONFIG_DIGEST'
@@ -27,7 +31,7 @@ export const CODING_SESSIONS_CONFIG_DIGEST_ENV = 'NESSIE_CODING_SESSIONS_CONFIG_
 export type CodingAgentConfig = {
   command: string[]
   args: string[]
-  permissionMode?: ClaudePermissionMode
+  permissionMode?: string
   allowedTools: string[]
   disallowedTools: string[]
   model?: string
@@ -155,9 +159,8 @@ const agentConfig = (name: CodingAgentName, value: unknown): CodingAgentConfig =
     }
   }
   const permissionMode = value.permissionMode
-  if (permissionMode !== undefined
-    && !(CLAUDE_PERMISSION_MODES as readonly unknown[]).includes(permissionMode)) {
-    refuse(`${where}.permissionMode must be one of ${CLAUDE_PERMISSION_MODES.join(', ')}.`)
+  if (permissionMode !== undefined && (typeof permissionMode !== 'string' || !PERMISSION_MODE.test(permissionMode))) {
+    refuse(`${where}.permissionMode must be a mode name, such as acceptEdits or plan.`)
   }
   if (value.model !== undefined && (typeof value.model !== 'string' || !MODEL_NAME.test(value.model))) {
     refuse(`${where}.model must be a model name or alias.`)
@@ -165,7 +168,7 @@ const agentConfig = (name: CodingAgentName, value: unknown): CodingAgentConfig =
   return {
     command,
     args,
-    ...(permissionMode === undefined ? {} : { permissionMode: permissionMode as ClaudePermissionMode }),
+    ...(permissionMode === undefined ? {} : { permissionMode: permissionMode as string }),
     allowedTools: stringList(value.allowedTools, `${where}.allowedTools`, 64, 200),
     disallowedTools: stringList(value.disallowedTools, `${where}.disallowedTools`, 64, 200),
     ...(value.model === undefined ? {} : { model: value.model as string }),

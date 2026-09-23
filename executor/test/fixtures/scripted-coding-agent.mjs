@@ -6,8 +6,11 @@
  * captured from claude 2.1.280 and codex-cli 0.155.1.
  *
  * Which protocol it speaks follows from its argv, exactly as the real CLIs are
- * invoked: `--version`, `auth status` / `login status`, `-p …` (Claude), or
- * `exec …` (Codex). What a turn does is chosen by directives in the message:
+ * invoked: `--version`, `--help` (the help texts captured from those versions,
+ * in `agent-help/`; `NESSIE_SCRIPTED_HELP=older` answers with the edited
+ * Claude help that lacks `--permission-prompts`), `auth status` /
+ * `login status`, `-p …` (Claude), or `exec …` (Codex). What a turn does is
+ * chosen by directives in the message:
  *
  *   #sleep=<ms>   a foreground tool call that takes that long (interruptible;
  *                 a follow-up written meanwhile folds into the running turn)
@@ -33,7 +36,7 @@
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, hostname, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -72,6 +75,13 @@ const environmentReport = () => {
 
 if (argv[0] === '--version') {
   process.stdout.write('9.9.9 (Scripted Coding Agent)\n')
+  process.exit(0)
+}
+if (argv.at(-1) === '--help') {
+  const help = argv[0] !== 'exec'
+    ? process.env.NESSIE_SCRIPTED_HELP === 'older' ? 'claude-older.txt' : 'claude-2.1.280.txt'
+    : argv[1] === 'resume' ? 'codex-0.155.1-exec-resume.txt' : 'codex-0.155.1-exec.txt'
+  process.stdout.write(readFileSync(new URL(`./agent-help/${help}`, import.meta.url), 'utf8'))
   process.exit(0)
 }
 if (argv[0] === 'auth' && argv[1] === 'status') {

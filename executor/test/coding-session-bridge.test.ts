@@ -160,6 +160,18 @@ test('codex runs a process per turn, resumes its thread, and reports its failure
   }
 })
 
+test('a CLI whose --help lacks a flag the adapter passes is refused before it starts', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness({ agentEnv: { inheritUserSession: false, set: { NESSIE_SCRIPTED_HELP: 'older' } } })
+  try {
+    const sessionId = await started(harness, { prompt: 'anything' })
+    const failed = await harness.waitForStatus(sessionId, (body) => body.status === 'failed')
+    assert.equal(failed.reason, 'agent_outdated')
+    assert.deepEqual((await harness.agents()).filter((entry) => entry.event === 'start'), [], 'no agent process started')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
 test('no host path, no account data and no OS user or host name reach any answer', { timeout: 120_000 }, async () => {
   const harness = await createCodingHarness()
   try {
