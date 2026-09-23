@@ -44,7 +44,7 @@ export const ExecutorPermissionsPanel = ({ access, onPrepared }: {
       </div>
       <FormError>{error}</FormError>
       <ExecutorPermissionDetails revision={latest} />
-      <ExecutorLocalMcpPanel descriptorRevisions={[latest]} localMcp={access.localMcp} />
+      <ExecutorLocalMcpPanel descriptorRevisions={[latest]} executorId={access.executorId} localMcp={access.localMcp} />
     </div>
   )
 }

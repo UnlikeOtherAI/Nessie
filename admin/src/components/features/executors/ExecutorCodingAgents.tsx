@@ -1,5 +1,7 @@
 import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
 
+import { EXECUTOR_CODING_AGENT_LABELS } from './executor-presentation'
+
 /**
  * What the machine's built-in coding bridge may do, read from the power facts
  * the signed descriptor carries: which coding agents, in which standing
@@ -16,8 +18,6 @@ import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
 export type ExecutorCodingAgentsProps = {
   codingSessions?: ExecutorCodingSessionsFacts
 }
-
-const AGENT_LABEL = { claude: 'Claude Code', codex: 'Codex' } as const
 
 // Claude Code's `--permission-mode`; `default` means the CLI's own settings on
 // that machine decide, which is what a reviewer has to read it as.
@@ -57,7 +57,7 @@ export const describeExecutorCodingAgents = (facts: ExecutorCodingSessionsFacts)
     const terms = [modeLabel(agent, facts.permissionMode[agent] ?? 'default')]
     // `allowedToolCount` counts Claude Code's `allowedTools`; Codex has none.
     if (agent === 'claude') terms.push(commandCount(facts.allowedToolCount))
-    return `${AGENT_LABEL[agent]} (${terms.join(', ')})`
+    return `${EXECUTOR_CODING_AGENT_LABELS[agent]} (${terms.join(', ')})`
   })
   return `${listed(agents)} in ${listed(facts.rootNames)}`
 }

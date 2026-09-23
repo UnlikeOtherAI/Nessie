@@ -1,4 +1,5 @@
 import {
+  EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
   EXECUTOR_KELPIE_MCP_SERVER_NAME,
   type ExecutorLocalMcpReport,
   type ExecutorLocalMcpStatus,
@@ -8,6 +9,8 @@ import {
 import type { ExecutorDescriptorRevisionView } from '../../../facades/executors/local-mcp'
 import { Pill } from '../../primitives/Pill'
 import { SectionLabel } from '../../primitives/SectionLabel'
+import { ExecutorCodingSessions } from './ExecutorCodingSessions'
+import { executorObservedAge } from './executor-presentation'
 
 /**
  * What the daemon last said about each local MCP server its policy names, and
@@ -25,31 +28,21 @@ import { SectionLabel } from '../../primitives/SectionLabel'
  *   nothing about whether a browser is out there;
  * - `kelpieDevices: []` — Kelpie answered and no browser did: the remedy is
  *   to open Kelpie on a device, not to install it.
+ *
+ * The built-in coding bridge also lists the sessions open on the machine,
+ * with Close for the person who paired it (`ExecutorCodingSessions`).
  */
 
 export type ExecutorLocalMcpPanelProps = {
   descriptorRevisions?: readonly ExecutorDescriptorRevisionView[]
+  executorId: string
   localMcp?: ExecutorLocalMcpReport
 }
 
 const serverDisplayName = (server: string): string =>
-  server === EXECUTOR_KELPIE_MCP_SERVER_NAME ? 'Kelpie' : server
-
-/**
- * The age of an observation is the only honest "current" this screen has, so
- * it renders beside every entry rather than behind a hover. The exact
- * timestamp stays on the title for anyone who needs it.
- */
-const observedAge = (timestamp: string): string => {
-  const elapsedMs = Date.now() - new Date(timestamp).getTime()
-  if (Number.isNaN(elapsedMs)) return 'at an unreadable time'
-  if (elapsedMs < 60_000) return 'just now'
-  const minutes = Math.round(elapsedMs / 60_000)
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours} h ago`
-  return `${Math.round(hours / 24)} d ago`
-}
+  server === EXECUTOR_KELPIE_MCP_SERVER_NAME
+    ? 'Kelpie'
+    : server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME ? 'Coding sessions' : server
 
 const availabilityPill = (status: ExecutorLocalMcpStatus) => {
   if (status.available) return <Pill size="sm" tone="success" uppercase={false}>available</Pill>
@@ -104,7 +97,7 @@ const KelpieDeviceRow = ({ device }: { device: KelpieDevice }) => {
           : <Pill size="sm" tone="accent" uppercase={false}>pair on the device</Pill>}
       </div>
       <p className="mt-0.5 text-[color:var(--tx3)]">
-        last seen <span title={device.lastSeenAt}>{observedAge(device.lastSeenAt)}</span>
+        last seen <span title={device.lastSeenAt}>{executorObservedAge(device.lastSeenAt)}</span>
       </p>
       {device.paired ? null : (
         <p className="mt-0.5 text-[color:var(--tx2)]">
@@ -138,22 +131,24 @@ const KelpieInventory = ({ status }: { status: ExecutorLocalMcpStatus }) => {
   )
 }
 
-const ServerStatusBlock = ({ status }: { status: ExecutorLocalMcpStatus }) => (
+const ServerStatusBlock = ({ executorId, status }: { executorId: string; status: ExecutorLocalMcpStatus }) => (
   <div className="border-b border-[color:var(--sep)] py-3 text-sm">
     <div className="flex flex-wrap items-center gap-2">
       <span className="font-medium text-[color:var(--tx)]">{serverDisplayName(status.server)}</span>
       {availabilityPill(status)}
       <span className="text-[color:var(--tx3)]" title={status.observedAt}>
-        observed {observedAge(status.observedAt)}
+        observed {executorObservedAge(status.observedAt)}
       </span>
     </div>
     {!status.available ? <p className="mt-1 text-[color:var(--tx2)]">{unavailableCopy(status)}</p> : null}
     <KelpieInventory status={status} />
+    <ExecutorCodingSessions executorId={executorId} status={status} />
   </div>
 )
 
 export const ExecutorLocalMcpPanel = ({
   descriptorRevisions,
+  executorId,
   localMcp,
 }: ExecutorLocalMcpPanelProps) => {
   // Only the active revision's names carry a question worth asking — a
@@ -181,7 +176,9 @@ export const ExecutorLocalMcpPanel = ({
           The machine has not reported whether these apps are available yet.
         </p>
       ) : null}
-      {statuses.map((status) => <ServerStatusBlock key={status.server} status={status} />)}
+      {statuses.map((status) => (
+        <ServerStatusBlock executorId={executorId} key={status.server} status={status} />
+      ))}
       {unreported.map((name) => (
         <div className="border-b border-[color:var(--sep)] py-3 text-sm" key={name}>
           <div className="flex flex-wrap items-center gap-2">

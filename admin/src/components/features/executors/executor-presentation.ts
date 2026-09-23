@@ -1,4 +1,6 @@
-import type { ExecutorRecordResponse, ExecutorStatus, ImplementedExecutorOperationKey } from '@nessie/schemas'
+import type {
+  ExecutorCodingAgentName, ExecutorRecordResponse, ExecutorStatus, ImplementedExecutorOperationKey,
+} from '@nessie/schemas'
 import type { PillTone } from '../../primitives/Pill'
 
 // One reading of an executor's status and scope, shared by the list row, the
@@ -75,3 +77,25 @@ export const EXECUTOR_OPERATION_LABELS: Record<ImplementedExecutorOperationKey, 
 
 export const executorOperationLabel = (key: string): string =>
   EXECUTOR_OPERATION_LABELS[key as ImplementedExecutorOperationKey] ?? key
+
+/** The coding agents the built-in bridge runs, as a person names them. */
+export const EXECUTOR_CODING_AGENT_LABELS: Record<ExecutorCodingAgentName, string> = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+}
+
+/**
+ * The age of something the machine reported. A heartbeat snapshot is the only
+ * honest "current" an executor screen has, so it renders beside every entry
+ * rather than behind a hover; the exact timestamp belongs on the title.
+ */
+export const executorObservedAge = (timestamp: string, now = Date.now()): string => {
+  const elapsedMs = now - new Date(timestamp).getTime()
+  if (Number.isNaN(elapsedMs)) return 'at an unreadable time'
+  if (elapsedMs < 60_000) return 'just now'
+  const minutes = Math.round(elapsedMs / 60_000)
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours} h ago`
+  return `${Math.round(hours / 24)} d ago`
+}
