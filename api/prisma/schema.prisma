@@ -1194,9 +1194,6 @@ model User {
   executorAvailabilityCandidates        ExecutorAvailabilityCandidate[]        @relation("ExecutorAvailabilityCandidateActor")
   executorConversationLeases            ExecutorConversationLease[]            @relation("ExecutorConversationLeaseActor")
   endedExecutorConversationLeases       ExecutorConversationLease[]            @relation("ExecutorConversationLeaseEndedBy")
-  startedTicketWork                     AgentTicketWork[]                      @relation("AgentTicketWorkStartedBy")
-  authoredStandingPolicies              ExecutorStandingPolicy[]               @relation("ExecutorStandingPolicyAuthor")
-  endedStandingPolicies                 ExecutorStandingPolicy[]               @relation("ExecutorStandingPolicyEndedBy")
   createdAgentTodoTemplates             AgentTodoTemplate[]                    @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                     AgentTodo[]                            @relation("AgentTodoCreatedBy")
   createdTaskChecklists                 TaskChecklist[]                        @relation("TaskChecklistCreatedBy")
@@ -1213,6 +1210,10 @@ model User {
   browserPersonalAccessGrants BrowserPersonalAccessGrant[] @relation("BrowserPersonalAccessGrantUser")
 
   taskCommentsAuthored TaskComment[] @relation("TaskCommentAuthor")
+
+  startedTicketWork        AgentTicketWork[]        @relation("AgentTicketWorkStartedBy")
+  authoredStandingPolicies ExecutorStandingPolicy[] @relation("ExecutorStandingPolicyAuthor")
+  endedStandingPolicies    ExecutorStandingPolicy[] @relation("ExecutorStandingPolicyEndedBy")
 
   @@map("users")
 }
@@ -5549,12 +5550,12 @@ model Executor {
   operationGrants        ExecutorAgentOperationGrant[]
   sessions               ExecutorSession[]
   bindings               ExecutorBinding[]
+  standingPolicyPools    ExecutorStandingPolicyExecutor[]
+  ticketWork             AgentTicketWork[]
   continuations          ExecutorContinuation[]
   daemonChallenges       ExecutorDaemonChallenge[]
   availabilityCandidates ExecutorAvailabilityCandidate[]
   conversationLeases     ExecutorConversationLease[]
-  standingPolicyPools    ExecutorStandingPolicyExecutor[]
-  ticketWork             AgentTicketWork[]
   browserCookieImports   BrowserCookieImport[]
 
   @@unique([organizationId, id])
@@ -5767,6 +5768,36 @@ model ExecutorConversationLease {
   @@map("executor_conversation_leases")
 }
 
+/// An opaque, short-lived choice made by the server's availability resolver.
+/// Only its digest is stored; later binding consumes it exactly once under the
+/// run/operation lock, rather than accepting a model- or browser-supplied
+/// executor identifier.
+model ExecutorAvailabilityCandidate {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  executorId            String                     @map("executor_id") @db.Uuid
+  capabilityRevisionId  String                     @map("capability_revision_id") @db.Uuid
+  actorUserId           String                     @map("actor_user_id") @db.Uuid
+  agentId               String                     @map("agent_id") @db.Uuid
+  runId                 String?                    @map("run_id") @db.Uuid
+  projectId             String?                    @map("project_id") @db.Uuid
+  operationKeys         String[]                   @map("operation_keys")
+  authorizationRevision Int                        @map("authorization_revision")
+  handleDigest          String                     @unique @map("handle_digest")
+  expiresAt             DateTime                   @map("expires_at")
+  consumedAt            DateTime?                  @map("consumed_at")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  executor              Executor                   @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  capabilityRevision    ExecutorCapabilityRevision @relation(fields: [capabilityRevisionId], references: [id], onDelete: Restrict)
+  actorUser             User                       @relation("ExecutorAvailabilityCandidateActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  agent                 Agent                      @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  run                   Run?                       @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([actorUserId, agentId, expiresAt])
+  @@index([executorId, expiresAt])
+  @@index([runId])
+  @@map("executor_availability_candidates")
+}
+
 /// Standing machine access: the third way an executor's local-apps pair is
 /// bound to a run, beside a person's launch and a conversation lease. The
 /// machines' owner (the author) confirms it once with fresh verification; it
@@ -5838,36 +5869,6 @@ model ExecutorStandingPolicyExecutor {
   @@unique([policyId, position])
   @@index([executorId])
   @@map("executor_standing_policy_executors")
-}
-
-/// An opaque, short-lived choice made by the server's availability resolver.
-/// Only its digest is stored; later binding consumes it exactly once under the
-/// run/operation lock, rather than accepting a model- or browser-supplied
-/// executor identifier.
-model ExecutorAvailabilityCandidate {
-  id                    String                     @id @default(uuid()) @db.Uuid
-  executorId            String                     @map("executor_id") @db.Uuid
-  capabilityRevisionId  String                     @map("capability_revision_id") @db.Uuid
-  actorUserId           String                     @map("actor_user_id") @db.Uuid
-  agentId               String                     @map("agent_id") @db.Uuid
-  runId                 String?                    @map("run_id") @db.Uuid
-  projectId             String?                    @map("project_id") @db.Uuid
-  operationKeys         String[]                   @map("operation_keys")
-  authorizationRevision Int                        @map("authorization_revision")
-  handleDigest          String                     @unique @map("handle_digest")
-  expiresAt             DateTime                   @map("expires_at")
-  consumedAt            DateTime?                  @map("consumed_at")
-  createdAt             DateTime                   @default(now()) @map("created_at")
-  executor              Executor                   @relation(fields: [executorId], references: [id], onDelete: Cascade)
-  capabilityRevision    ExecutorCapabilityRevision @relation(fields: [capabilityRevisionId], references: [id], onDelete: Restrict)
-  actorUser             User                       @relation("ExecutorAvailabilityCandidateActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  agent                 Agent                      @relation(fields: [agentId], references: [id], onDelete: Restrict)
-  run                   Run?                       @relation(fields: [runId], references: [id], onDelete: Cascade)
-
-  @@index([actorUserId, agentId, expiresAt])
-  @@index([executorId, expiresAt])
-  @@index([runId])
-  @@map("executor_availability_candidates")
 }
 
 model ExecutorCommand {
