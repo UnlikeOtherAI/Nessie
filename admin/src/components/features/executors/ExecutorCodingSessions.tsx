@@ -43,10 +43,12 @@ type SessionRowProps = {
   closing: boolean
   onClose: () => void
   pending: boolean
+  /** When the list was last read, which each row's age counts from; it moves on with every re-read. */
+  readAt: number
   session: ExecutorCodingSessionRecord
 }
 
-const SessionRow = ({ canClose, closing, onClose, pending, session }: SessionRowProps) => (
+const SessionRow = ({ canClose, closing, onClose, pending, readAt, session }: SessionRowProps) => (
   <li className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2" data-testid="executor-coding-session">
     <div className="grid min-w-0 flex-1 gap-0.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -58,7 +60,7 @@ const SessionRow = ({ canClose, closing, onClose, pending, session }: SessionRow
       <p className="text-[color:var(--tx3)]">
         {EXECUTOR_CODING_AGENT_LABELS[session.agent]} in {session.root}
         {' · '}driven by {session.ownerAgentName ?? 'an agent you cannot see'}
-        {' · '}updated <span title={session.updatedAt}>{executorObservedAge(session.updatedAt)}</span>
+        {' · '}updated <span title={session.updatedAt}>{executorObservedAge(session.updatedAt, readAt)}</span>
       </p>
     </div>
     {closing ? (
@@ -117,6 +119,7 @@ const CodingSessionList = ({ executorId }: { executorId: string }) => {
                   key={session.sessionId}
                   onClose={() => closeSession(session)}
                   pending={close.isPending}
+                  readAt={query.dataUpdatedAt}
                   session={session}
                 />
               ))}

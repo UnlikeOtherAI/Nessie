@@ -15,19 +15,14 @@ import { executorKeys } from './keys'
 // agent it may name, so nothing here decides any of them.
 
 /**
- * How soon to read the list again while a Close waits for the machine. The
- * request rides the next heartbeat (every 20 s) and the session leaves the
- * list with the next local-MCP report, so "Closing…" is re-read at the
- * heartbeat's pace and goes when the report drops it. With nothing closing
- * there is nothing to wait for.
+ * How often the list is read again while it is on screen. It is the
+ * machine's last local-MCP report, which any heartbeat (every 20 s) may
+ * replace, so an open section follows it at that pace: a session that ended
+ * leaves, one that started arrives, "Closing…" goes when the report drops the
+ * row, and each row's age moves on. Nothing is read while the section is not
+ * mounted or the tab is in the background.
  */
-export const EXECUTOR_CODING_SESSION_CLOSING_RECHECK_MS = 20_000
-
-export const executorCodingSessionsRecheckDelay = (
-  list: Pick<ExecutorCodingSessionListResponse, 'sessions'> | undefined,
-): number | false => list?.sessions.some((session) => session.closing)
-  ? EXECUTOR_CODING_SESSION_CLOSING_RECHECK_MS
-  : false
+export const EXECUTOR_CODING_SESSIONS_RECHECK_MS = 20_000
 
 export const useExecutorCodingSessions = (executorId: string) => {
   const apiClient = useApiClient()
@@ -35,11 +30,11 @@ export const useExecutorCodingSessions = (executorId: string) => {
     // One machine's sessions are never listed, or closed, from another's page.
     placeholderData: undefined,
     queryKey: executorKeys.codingSessions(executorId),
-    queryFn: () => apiClient.get(
+    queryFn: (): Promise<ExecutorCodingSessionListResponse> => apiClient.get(
       `/api/executors/${executorId}/coding-sessions`,
       ExecutorCodingSessionListResponseSchema,
     ),
-    refetchInterval: (query) => executorCodingSessionsRecheckDelay(query.state.data),
+    refetchInterval: EXECUTOR_CODING_SESSIONS_RECHECK_MS,
   })
 }
 

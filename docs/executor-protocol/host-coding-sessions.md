@@ -623,9 +623,12 @@ not list as that owner's and open with `EXECUTOR_CODING_SESSION_NOT_FOUND`
 `executor.coding_session.close_requested` (the session id, nothing it did),
 and answers 202 `{closing: true, sessionId}` — accepted, not done; a second
 press while it is open adds nothing. The row reads "Closing…" from the press.
-While any row is closing the list is read again every 20 s, the heartbeat's
-pace, and the row goes once a report no longer carries the session, which
-takes up to the report's two-minute refresh. A report whose bridge status has
+While the section is on screen (and the tab in front) the list is read again
+every 20 s, the heartbeat's pace, because any heartbeat may replace the report
+it is: a session that ended leaves, one that started arrives, each row's
+"updated … ago" counts from the latest read, and a closing row goes once a
+report no longer carries the session, which takes up to the report's
+two-minute refresh. A report whose bridge status has
 no `codingSessions` says "Open coding sessions have not been checked yet" and
 asks the API nothing.
 
