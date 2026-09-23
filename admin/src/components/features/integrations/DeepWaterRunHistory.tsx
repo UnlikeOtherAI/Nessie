@@ -6,6 +6,9 @@ import type {
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { EmptyState } from '../../shared/EmptyState'
 
+// This history renders the legacy list, which holds launcher runs only: a
+// research brief is read through its viewer-filtered view, never here. Brief
+// statuses (`drafting`) are labelled because the status type is shared.
 const statusLabels: Record<ProductIntegrationRunStatus, string> = {
   cancelled: 'Cancelled',
   completed: 'Completed',

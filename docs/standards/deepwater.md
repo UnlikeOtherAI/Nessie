@@ -335,6 +335,21 @@ worker and card are built on them.
   one predicate for lists, detail, the card and artifacts: the origin thread's
   live chain for anyone in it, the full source basis for the requester's
   portable reach, and a person's brief stays private until it is launched.
+- **The legacy run list.** `GET /api/integrations/products/:productSlug/research-runs`
+  (`listDeepWaterResearchRuns`, rendered by Knowledge › Research's
+  `DeepWaterResearchView` → `DeepWaterRunHistory`) reads the whole team with no
+  viewer predicate, so it returns launcher rows only (`uoa_identity IS NULL`).
+  A brief row there would show a colleague's unlaunched brief — its topic
+  included, from their Personal Assistant or a private channel — to the whole
+  team. **Hand-over:** the brief API's list (`GET
+  /api/integrations/products/deep-water/research-runs?cursor&limit`, `{items:
+  ResearchRunView[], meta}`, every row through `isDeepWaterRunVisible`) takes
+  the same path, so the change that adds it deletes the legacy handler,
+  `listDeepWaterResearchRuns` and its bare-array response in the same commit,
+  and moves `DeepWaterResearchView` and its hook to the paginated
+  `ResearchRunView` shape. Any launcher row the new list still shows goes
+  through the same view mapper and predicate; there is never a window with two
+  handlers on one path, or with brief rows on the unfiltered list.
 
 ## Research briefs — the watch, delivery and wakes
 
