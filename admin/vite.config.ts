@@ -51,6 +51,7 @@ export default defineConfig(({ command, mode }) => {
   const includeTaskSetsFixture = env.NESSIE_TASK_SETS_E2E_FIXTURE === '1'
   const includeTaskDialogFixture = env.NESSIE_TASK_DIALOG_E2E_FIXTURE === '1'
   const includeOverlayLayerFixture = env.NESSIE_OVERLAY_LAYER_E2E_FIXTURE === '1'
+  const includeResearchBriefFixture = env.NESSIE_RESEARCH_BRIEF_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -70,6 +71,7 @@ export default defineConfig(({ command, mode }) => {
     || includeTaskSetsFixture
     || includeTaskDialogFixture
     || includeOverlayLayerFixture
+    || includeResearchBriefFixture
     || includeExecutorLocalMcpFixture
     || includeExecutorPairingFixture
     || includeExecutorAgentsFixture
@@ -106,6 +108,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeOverlayLayerFixture ? {
             overlayLayer: resolve(__dirname, 'e2e/overlay-layer/index.html'),
+          } : {}),
+          ...(includeResearchBriefFixture ? {
+            researchBrief: resolve(__dirname, 'e2e/research-brief/index.html'),
           } : {}),
           ...(includeExecutorLocalMcpFixture ? {
             executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),

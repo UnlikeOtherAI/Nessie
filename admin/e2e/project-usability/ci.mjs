@@ -56,6 +56,7 @@ const main = async () => {
     )
     await runBrowserSuite(resolve(here, '../task-dialog/run.mjs'), 'task-dialog')
     await runBrowserSuite(resolve(here, '../overlay-layer/run.mjs'), 'overlay-layer')
+    await runBrowserSuite(resolve(here, '../research-brief/run.mjs'), 'research-brief')
     // This is a stateful, provider-boundary fixture: it proves the member
     // management screen never sends an email or touches UOA while running CI.
     await runBrowserSuite(resolve(here, '../member-management/run.mjs'), 'member-management')
