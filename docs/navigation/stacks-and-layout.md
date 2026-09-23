@@ -237,6 +237,11 @@ deepest pane, exactly the desktop columns, full-width document, history and
 editor of before. Pinned by `knowledge-local-back.test.ts` and the
 three-layer unwind case in `nested-stage-viewport.test.ts`.
 
+When a document's immediate parent is a folder, its Back removes only the
+document from the drill path and restores that folder browser (including its
+columns context); a document whose immediate parent is another page still
+returns to that parent page's detail.
+
 The Knowledge root has one **Agents** directory row. It opens
 `/knowledge-base/agents`, whose next column lists readable agent homes; an
 agent opens `/knowledge-base/agents/:agentId` and only then the shared space
