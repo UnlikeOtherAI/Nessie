@@ -53,7 +53,9 @@ const initialEntries: PendingStreamMessage[] = [
   },
 ]
 
-const agentRecord = (status: 'idle' | 'thinking') => ({
+type AgentStatus = AgentRecord['status']
+
+const agentRecord = (status: AgentStatus) => ({
   id: AGENT_PAGE_ID,
   lastActivityAt: '2026-09-23T09:00:00.000Z',
   name: 'Release manager',
@@ -69,7 +71,7 @@ const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } 
 
 const Fixture = () => {
   const [entries, setEntries] = useState(initialEntries)
-  const [agentStatus, setAgentStatus] = useState<'idle' | 'thinking'>('thinking')
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>('thinking')
   const [opened, setOpened] = useState<string[]>([])
 
   useEffect(() => {
@@ -79,7 +81,7 @@ const Fixture = () => {
         setEntries((current) => current.filter((entry) => entry.runId !== runId))
       },
       // `run.updated`: the agent caches are invalidated and re-read.
-      runUpdated: (status: 'idle' | 'thinking') => {
+      runUpdated: (status: AgentStatus) => {
         setAgentStatus(status)
         void queries.invalidateQueries({ queryKey: agentKeys.status(AGENT_PAGE_ID) })
       },

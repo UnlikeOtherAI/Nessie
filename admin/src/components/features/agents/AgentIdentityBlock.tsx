@@ -70,9 +70,11 @@ export const AgentIdentityBlock = ({
           <AgentStatusDot status={agent.status} />
           <Pill tone={agentStatusTone(agent.status)}>{agent.status}</Pill>
           {/* The status read names a current run only while one the viewer
-              may read is pending or running, and drops it when that run
-              ends — so Stop is offered exactly then, and "Stopping…" lasts
-              until the run has actually stopped. */}
+              may read is live — pending, running, or parked on a person's
+              approval or answer — and drops it when that run ends, so Stop
+              is offered exactly then, and "Stopping…" lasts until the run
+              has actually stopped. This is the one Stop a suspended run has:
+              a suspension ends the conversation's thinking bubble. */}
           {status?.currentRunId ? (
             <RunStopButton agentName={agent.name} runId={status.currentRunId} />
           ) : null}

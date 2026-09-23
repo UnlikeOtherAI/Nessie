@@ -14,7 +14,8 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  * the admin and nothing behind it. It pins:
  *
  * - the Stop icon on the channel bubble, the thread bubble and the agent
- *   page's status pill while their run is live;
+ *   page's status pill while their run is live — on the pill in the two
+ *   suspended states too, where no bubble is left to carry it;
  * - the request: `POST /api/runs/<that run>/cancel`, once, and pressing Stop
  *   never also opens the thought process;
  * - the pending state: "Stopping…" holds after the API has answered, because
@@ -32,13 +33,16 @@ const RUN_CHANNEL = '00000000-0000-4000-8000-0000000000a1'
 const RUN_THREAD = '00000000-0000-4000-8000-0000000000a2'
 const RUN_AGENT = '00000000-0000-4000-8000-0000000000a3'
 const RUN_AGENT_NEXT = '00000000-0000-4000-8000-0000000000a4'
+const RUN_AGENT_APPROVAL = '00000000-0000-4000-8000-0000000000a5'
+const RUN_AGENT_INPUT = '00000000-0000-4000-8000-0000000000a6'
 const AGENT_PAGE_ID = '00000000-0000-4000-8000-0000000000b3'
 
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/run-stop')
 
-// Mutable per context: which run the agent header's status read reports.
+// Mutable per context: which run, in which agent status, the agent header's
+// status read reports.
 const openCase = async (browser, contextOptions) => {
-  const state = { agentRunId: RUN_AGENT, cancels: [] }
+  const state = { agentRunId: RUN_AGENT, agentStatus: 'thinking', cancels: [] }
   const context = await browser.newContext(contextOptions)
   await context.route('**/api/**', async (route) => {
     const request = route.request()
@@ -65,7 +69,7 @@ const openCase = async (browser, contextOptions) => {
             agentId: AGENT_PAGE_ID,
             lastActivityAt: '2026-09-23T09:00:00.000Z',
             since: '2026-09-23T09:00:00.000Z',
-            status: state.agentRunId ? 'thinking' : 'idle',
+            status: state.agentRunId ? state.agentStatus : 'idle',
             ...(state.agentRunId ? { currentRunId: state.agentRunId } : {}),
           },
         },
@@ -164,6 +168,32 @@ try {
   await stopAgent.waitFor()
   assert.equal(await agentPage.getByText('Stopping…', { exact: true }).count(), 0)
   await agentPage.screenshot({ path: resolve(screenshots, '05-agent-next-run.png') })
+
+  // A run parked on a person's approval, then one waiting for their answer.
+  // A suspension publishes `stream.done`, so the conversation's bubble is
+  // gone; the status read still names the run, and the header is where
+  // Stop is. The API cancels a suspended run at once, so the next read names
+  // none and Stop leaves.
+  for (const [agentStatus, runId, shot] of [
+    ['waiting_approval', RUN_AGENT_APPROVAL, '06-agent-waiting-approval.png'],
+    ['waiting_input', RUN_AGENT_INPUT, '07-agent-waiting-input.png'],
+  ]) {
+    state.agentRunId = runId
+    state.agentStatus = agentStatus
+    await page.evaluate((status) => { window.__runStopFixture.runUpdated(status) }, agentStatus)
+    await agentPage.getByText(agentStatus, { exact: true }).waitFor()
+    await stopAgent.waitFor()
+    assert.equal(await agentPage.getByText('Stopping…', { exact: true }).count(), 0,
+      `${agentStatus}: a new run never inherits the last Stopping…`)
+    await agentPage.screenshot({ path: resolve(screenshots, shot) })
+    await stopAgent.click()
+    await agentPage.getByText('Stopping…', { exact: true }).waitFor()
+    assert.equal(state.cancels.at(-1), runId, `${agentStatus}: Stop cancels that run`)
+    state.agentRunId = null
+    await page.evaluate(() => { window.__runStopFixture.runUpdated('idle') })
+    await agentPage.getByTestId('run-stop').waitFor({ state: 'detached' })
+  }
+  assert.deepEqual(state.cancels, [RUN_CHANNEL, RUN_THREAD, RUN_AGENT, RUN_AGENT_APPROVAL, RUN_AGENT_INPUT])
   assert.deepEqual(errors, [])
   await context.close()
 
@@ -178,7 +208,7 @@ try {
     assert.ok(phoneBox.width >= 44 && phoneBox.height >= 44,
       `${name} is a 44px target under a finger, got ${phoneBox.width}×${phoneBox.height}`)
   }
-  await phone.page.screenshot({ fullPage: true, path: resolve(screenshots, '06-phone.png') })
+  await phone.page.screenshot({ fullPage: true, path: resolve(screenshots, '08-phone.png') })
   assert.deepEqual(phone.errors, [])
   await phone.context.close()
 

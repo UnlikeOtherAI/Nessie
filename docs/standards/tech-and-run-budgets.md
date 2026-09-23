@@ -264,8 +264,11 @@ summary and points here; **this file is the rule**.
   (`admin/src/components/features/channels/RunStopContinue.tsx`, `useContinueRun`).
   Stop is drawn only while its surface already knows the run is live: a bubble
   exists from `stream.start` to `stream.done` (a `running` run; suspension and
-  cancel both publish the `done`), and the agent status read names a
-  `currentRunId` only for a pending or running run the viewer may read. The
+  cancel both publish the `done`), and the agent status read (and the
+  realtime snapshot) names a `currentRunId` for a run the viewer may read in
+  any live status — `pending`, `running`, `waiting_approval`,
+  `waiting_input` — so a suspended run's Stop is the agent header's; a
+  suspended run names no active tool. The
   press holds "Stopping…" until that surface drops the run, because the flag
   is read only between iterations and after a tool batch settles — and a
   batch's executor calls run one after another, each allowed its command TTL

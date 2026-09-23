@@ -11,10 +11,13 @@ type RunStopButtonProps = {
 }
 
 /**
- * Stop for a live run, drawn where a person watches it: the thinking bubble
- * and the agent's status pill. A caller renders it only while the run is live
- * (`pending`, `running`, `waiting_approval`, `waiting_input`) and drops it when
- * the run leaves that state, which is what ends "Stopping…".
+ * Stop for a live run, drawn where a person watches it, and only while that
+ * surface knows the run is live; dropping it when the run ends is what ends
+ * "Stopping…". The thinking bubble carries it while the run streams (a
+ * `running` run: the bubble goes at `stream.done`, which a suspension also
+ * publishes). The agent's status pill carries it in every live state —
+ * `pending`, `running`, `waiting_approval`, `waiting_input` — because the
+ * status read names the current run in all four.
  *
  * Stop is cooperative — `POST /api/runs/:runId/cancel` flags a running run and
  * the loop ends it between model iterations and tool batches — so the press
