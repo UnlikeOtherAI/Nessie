@@ -183,10 +183,29 @@ const enqueueNoticePush = async (
 }
 
 /**
+ * Has the room never been shown this person's brief? A person's brief is
+ * theirs alone until they launch it — nobody else may see it
+ * (`isDeepWaterRunVisible`), and the room first learns of it from the card
+ * posted at Start. Read from the row, not the caller's copy, so a card posted
+ * earlier in this transaction counts.
+ */
+const isUnannouncedPersonBrief = async (tx: Tx, run: DeepWaterBriefRun): Promise<boolean> => {
+  if (run.originKind !== 'person') return false
+  const row = await tx.productIntegrationRun.findUnique({ where: { id: run.id }, select: { messageId: true } })
+  return !row?.messageId
+}
+
+/**
  * Post a result or notice addressed to the person who asked, under the card,
  * stamped for the thread, with a durable alert keyed to the run and kind so a
  * replay never alerts twice, and a push to their devices. Null when the origin
  * thread is gone.
+ *
+ * A notice about a person's brief the room was never shown (DeepWater never
+ * confirmed it, or refused it before launch) also carries the requester's own
+ * `user` scope, which only they satisfy: they are told in the conversation
+ * they asked from, and everyone else sees the withheld placeholder rather than
+ * the topic of a brief they may not see.
  */
 export const postDeepWaterNotice = async (
   tx: Tx,
@@ -194,15 +213,19 @@ export const postDeepWaterNotice = async (
   run: DeepWaterBriefRun,
   input: { kind: DeepWaterNoticeKind; content: string; alertKey?: string },
 ): Promise<{ messageId: string } | null> => {
-  if (!run.threadId || !run.requestedByUserId) return null
+  const requester = run.requestedByUserId
+  if (!run.threadId || !requester) return null
   const thread = await deepWaterThreadBasis(tx, run)
   if (!thread) return null
+  const basis = await isUnannouncedPersonBrief(tx, run)
+    ? [...thread.basis, { scopeType: 'user', scopeId: requester }]
+    : thread.basis
   const root = await deepWaterReplyRoot(tx, run)
   const notice = {
-    basisScopes: thread.basis,
+    basisScopes: basis,
     content: input.content,
     disclosureSources: run.disclosureSources,
-    followedByUserIds: [run.requestedByUserId],
+    followedByUserIds: [requester],
     metadata: DeepWaterNoticeMessageMetadataSchema.parse({
       deepWaterNotice: { schemaVersion: 1, runId: run.id, kind: input.kind },
     }) as Prisma.InputJsonValue,
@@ -221,10 +244,10 @@ export const postDeepWaterNotice = async (
     channelId: thread.channelId,
     actorUserId: null,
     actorAgentId: null,
-    mentionedUserIds: [run.requestedByUserId],
+    mentionedUserIds: [requester],
     eventKey,
   })
-  const restricted = thread.basis.length > 0 || run.disclosureSources.length > 0
+  const restricted = basis.length > 0 || run.disclosureSources.length > 0
   await enqueueNoticePush(tx, {
     run,
     messageId: message.id,

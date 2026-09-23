@@ -442,7 +442,12 @@ the only way results come back.
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
   `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks
-  with nothing posted, since there is nowhere to post it.
+  with nothing posted, since there is nowhere to post it. A notice about a
+  person's brief the room was never shown — no card yet, because DeepWater
+  never confirmed it or refused it before launch — also carries the
+  requester's own `user` scope, so it reaches them in the conversation they
+  asked from while everyone else sees the withheld placeholder, never the
+  topic of a brief they may not see.
 - **Artifacts.** A delivered research's `report.md` (the exact markdown Ledger
   returned) and `sources.csv` are retained run output. They are stored with no
   uploader, message or publication, so the generic attachment route refuses
