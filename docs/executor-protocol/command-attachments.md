@@ -124,7 +124,10 @@ What is stored, who it belongs to and who may read it are in
 [file-storage.md](../standards/file-storage.md), and so is how the worker
 shows it to the model: the result's reference resolved to this attachment
 through the command's `ToolCall`, and its bytes read only when a prompt is
-built.
+built. How a person sees it — thumbnails in the thought-process dialog and the
+agent page's tool execution log — is in
+[executor-local-mcp.md](../standards/executor-local-mcp.md) → "People see a
+call's screenshots where they read the call".
 
 A terminal receipt is refused as `EXECUTOR_COMMAND_RESULT_INVALID` when its
 result carries an `image` content item whose `attachmentDigest` was not kept

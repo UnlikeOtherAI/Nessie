@@ -179,6 +179,13 @@ sentence changes only if the invariant itself did.
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
   [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
+- **Tool screenshot coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:tool-screenshots`. A pure fixture suite
+  (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`) in Browser Suites' executor step: a
+  local program's screenshots as thumbnails in the thought-process dialog and
+  the agent page's tool execution log, the original in the attachment viewer
+  (over the dialog in the blocking layer), at 1280 and 390 px. The rules are in
+  [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md).
 - **Overlay layer coverage:** run
   `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
   over the real navigation stack, in the same lifecycle after the task-dialog

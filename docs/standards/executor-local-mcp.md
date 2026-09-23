@@ -203,6 +203,40 @@ cleared. The daemon's start removes every sidecar folder but the one the
 journal still names, before its first poll, and removes nothing when the
 journal cannot be read.
 
+## People see a call's screenshots where they read the call
+
+The images are not a model-only input. A person sees them in two places, one
+component (`admin/src/components/shared/ToolScreenshots.tsx`) in both:
+
+- **The thought-process dialog** (`ThoughtProcessDialog`, the doorway from a
+  thinking bubble): thumbnails under the tool line of the call that took them.
+  A line is written as its call starts, before the call has a `ToolCall`, so
+  the worker's thought recorder names that `ToolCall` on the line once the
+  call ends (`run_thinking_chunks.tool_call_id`, paired by the provider's call
+  id; a call id two calls in flight share links neither). The full thought log
+  (`GET /api/threads/:threadId/runs/:runId/thinking`) carries each named
+  line's refs; a live line never does, so the dialog always reads the full
+  log, and reads it again each time another line is known to have returned —
+  something followed it, or the run stopped streaming.
+- **The agent page's tool execution log** (`ToolExecutionLog` on the Activity
+  tab, the home): the same thumbnails on the call's card, from
+  `ToolCallEntry.attachments` (`/api/agents/:agentId/activity` and
+  `/api/agents/:agentId/runs/:runId/tools`).
+
+Both carry refs, never bytes — `{attachmentId, mimeType, byteLength,
+filename, hasThumbnail}` (`ToolCallAttachmentSchema`), joined ToolCall →
+ExecutorCommand → Attachment by `api/src/services/tool-call-attachments.ts` —
+and list a ref only for a viewer the attachment routes would serve it to: the
+executor-command arm's own run-level question (`canReadRunExecutorImages`),
+asked once per run. A reader who may see the call but not its image (the
+run's trigger carries a basis they cannot read) sees the call with no
+thumbnail rather than one that answers 404. The bytes come from the ordinary
+routes — `/api/attachments/:id/thumbnail` where the ref has a thumbnail, else
+the original — and a press opens the original in the shared attachment
+viewer; over the dialog that viewer is the sanctioned `blocking` nesting, so
+Back and Escape close it before the dialog
+([overlays.md](../navigation/overlays.md)).
+
 ## A result the lane cannot carry is stated, never retried
 
 The daemon measures an `mcp.call` result as the exact document it returns —
@@ -440,6 +474,7 @@ pnpm --filter @nessie/executor run test:mcp
 pnpm --filter @nessie/worker run test:unit
 pnpm --filter @nessie/admin test:e2e:executor-local-mcp
 pnpm --filter @nessie/admin test:e2e:executor-run-launcher
+pnpm --filter @nessie/admin test:e2e:tool-screenshots
 ```
 
 `test:e2e:executor-run-launcher` is a pure fixture suite
@@ -448,7 +483,15 @@ API client: the eight options in order, the local-apps description, the
 availability request and the launch payload carrying exactly the pair, and the
 explanation when no machine offers it. Browser Suites runs it beside the other
 executor suites; `test:e2e:executor-local-mcp` runs in the project-usability
-lifecycle.
+lifecycle. `test:e2e:tool-screenshots` (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`,
+in the same executor step) is a pure fixture over the real thought-process
+dialog and the real agent page Activity tab, with the image Kelpie really
+returned: no thumbnail while the call runs and both once the next thought
+shows it returned, the thumbnail route or the original as each ref says, the
+original in the viewer — over the dialog in the blocking layer, Escape closing
+only the viewer — at 1280 and 390 px. Who gets which refs is the API's job:
+`api/test/tool-call-screenshots.test.ts` runs both reads and the thought log on
+a real database, including the reader who sees the call but not its image.
 
 The executor suite drives a **real MCP server subprocess**
 (`executor/test/fixtures/scripted-mcp-server.mjs`), because the JSON-RPC
