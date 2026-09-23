@@ -33,7 +33,8 @@ export type AgentDriverContext = {
 export type AgentDriver = {
   /** The first message starts (or resumes) the agent; later ones follow up. */
   send: (text: string, uuid: string) => Promise<void>
-  interrupt: () => Promise<void>
+  /** Stops the running turn; `reason` becomes the interrupted status's reason. */
+  interrupt: (reason?: string) => Promise<void>
   /** Ends the agent and every process under it; the session is closed. */
   close: () => Promise<void>
   /** Ends the agent process only; the session stays resumable. */

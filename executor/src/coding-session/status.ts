@@ -70,6 +70,9 @@ const pendingNotice = (
   }
   if (derived.inboxPending > 0 && derived.hostLive) notes.push(`${derived.inboxPending} request(s) not yet picked up.`)
   if (state?.queued) notes.push(`${state.queued} message(s) queued for the next turn.`)
+  if (state?.backgroundTasks) {
+    notes.push(`${state.backgroundTasks} background task(s) the coding agent started are still running; one finishing starts a new turn.`)
+  }
   const denied = state?.lastResult?.permissionDenials.length ?? 0
   if (denied > 0 && (derived.status === 'waiting_for_input' || derived.status === 'interrupted')) {
     notes.push(`The coding agent was denied ${denied} action(s) that need approval; see permissionDenials.`)
@@ -135,6 +138,7 @@ export const composeCodingStatus = async (input: {
       turn: state?.turn ?? 0,
       updatedAt: state?.updatedAt ?? meta.createdAt,
       ...(state?.queued ? { queuedMessages: state.queued } : {}),
+      ...(state?.backgroundTasks ? { backgroundTasks: state.backgroundTasks } : {}),
       moreEvents: page.more || keep < page.events.length,
       ...(input.detail === 'events'
         ? { events: page.events.slice(0, keep) }

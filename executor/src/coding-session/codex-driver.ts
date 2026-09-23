@@ -8,6 +8,9 @@ import {
 } from './agent-process.js'
 import { codexArguments, createCodexTurnState } from './codex-adapter.js'
 import { CODING_EVENT_LIMITS } from './projection.js'
+import { AGENT_SESSION_ID_PATTERN } from './types.js'
+
+type CodexTurn = { agent: AgentProcess; interrupted: boolean; reason?: string; done: Promise<void> }
 
 /**
  * Codex runs one `exec` process per turn. `thread.started` names the session,
@@ -15,34 +18,44 @@ import { CODING_EVENT_LIMITS } from './projection.js'
  * to end and then starts the next one, joined with any other waiting message;
  * interrupt kills the turn's process tree, and the thread stays resumable from
  * its rollout.
+ *
+ * `starting` is set before the first await of a turn and cleared only once
+ * `turn` holds its process, so between one turn's exit and the next turn's
+ * spawn the driver never looks idle: a host deciding whether to leave, or a
+ * message arriving in that instant, sees a turn under way and waits for it.
  */
 export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
-  let turn: { agent: AgentProcess; interrupted: boolean; done: Promise<void> } | undefined
+  let turn: CodexTurn | undefined
   let starting = false
   let closing = false
   const queue: string[] = []
 
-  const runTurn = async (text: string): Promise<void> => {
+  const startTurn = async (text: string): Promise<void> => {
     if (!await context.stillOwner()) throw new AgentStartError('host_superseded')
+    if (closing) return
     const state = context.state()
     const threadId = state.agentSessionStarted === true ? state.agentSessionId : undefined
     const current = createCodexTurnState(context.projector)
-    starting = true
-    let agent: AgentProcess
-    try {
-      agent = await startAgentProcess(context, [
-        context.agent.command[0]!,
-        ...codexArguments(context.agent, { folder: context.folder, ...(threadId ? { threadId } : {}) }),
-      ], (line) => {
-        const signals = current.accept(line)
-        for (const event of signals.events) context.emit(event)
-        if (signals.threadId && !context.state().agentSessionStarted) {
+    const agent = await startAgentProcess(context, [
+      context.agent.command[0]!,
+      ...codexArguments(context.agent, { folder: context.folder, ...(threadId ? { threadId } : {}) }),
+    ], (line) => {
+      const signals = current.accept(line)
+      for (const event of signals.events) context.emit(event)
+      if (signals.threadId && !context.state().agentSessionStarted) {
+        // It becomes an argv entry of every later turn, so only an id of the documented shape is kept.
+        if (AGENT_SESSION_ID_PATTERN.test(signals.threadId)) {
           context.update({ agentSessionId: signals.threadId, agentSessionStarted: true })
+        } else {
+          context.emit({ kind: 'system', subtype: 'agent_failed', reason: 'agent_session_id_invalid' })
         }
-        if (signals.test) context.update({ lastTest: signals.test })
-      })
-    } finally {
-      starting = false
+      }
+      if (signals.test) context.update({ lastTest: signals.test })
+    })
+    if (closing) {
+      // The session closed while this turn was starting; its prompt is never delivered.
+      await context.control.killTree(agent.identity)
+      return
     }
     context.emit({ kind: 'user', text: context.projector.text(text, CODING_EVENT_LIMITS.user) })
     context.update({
@@ -51,31 +64,43 @@ export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
     })
     agent.write(text)
     agent.endInput()
-    const entry = { agent, interrupted: false, done: Promise.resolve() }
+    const entry: CodexTurn = { agent, interrupted: false, done: Promise.resolve() }
     entry.done = agent.exited.then(({ code }) => {
       turn = undefined
       const result = current.finish({ code, interrupted: entry.interrupted })
       context.emit({ kind: 'result', ...result })
-      const reason = result.subtype === 'agent_exited' ? agentFailureReason(agent.stderrTail()) : undefined
+      const failure = result.subtype === 'agent_exited' ? agentFailureReason(agent.stderrTail()) : undefined
       context.update({
         status: closing ? 'closed' : entry.interrupted ? 'interrupted' : 'waiting_for_input',
-        reason, lastResult: result, agentIdentity: undefined, turnStartedAt: undefined,
+        reason: entry.interrupted ? entry.reason : failure,
+        lastResult: result, agentIdentity: undefined, turnStartedAt: undefined,
       })
       if (closing || queue.length === 0) return
       const next = queue.splice(0).join('\n\n')
       context.update({ queued: 0 })
       void runTurn(next).catch((error: unknown) => {
-        const failure = error instanceof AgentStartError ? error.reason : 'agent_exited'
-        context.update({ status: 'interrupted', reason: failure })
+        const reason = error instanceof AgentStartError ? error.reason : 'agent_exited'
+        // A host that lost its lock writes nothing more; its heartbeat is about to exit it.
+        if (reason !== 'host_superseded') context.update({ status: 'interrupted', reason })
       })
     })
     turn = entry
   }
 
-  const killTurn = async (): Promise<void> => {
+  const runTurn = async (text: string): Promise<void> => {
+    starting = true
+    try {
+      await startTurn(text)
+    } finally {
+      starting = false
+    }
+  }
+
+  const killTurn = async (reason?: string): Promise<void> => {
     const current = turn
     if (!current) return
     current.interrupted = true
+    current.reason = reason
     await context.control.killTree(current.agent.identity)
     await current.done
   }
@@ -89,7 +114,7 @@ export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
       }
       await runTurn(text)
     },
-    interrupt: killTurn,
+    interrupt: (reason) => killTurn(reason),
     close: async () => {
       closing = true
       queue.length = 0
@@ -98,7 +123,8 @@ export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
       if (leftover) await context.control.killTree(leftover)
       context.update({ status: 'closed', reason: undefined, queued: 0, agentIdentity: undefined, turnStartedAt: undefined })
     },
-    endIdle: async () => undefined,
+    // Nothing outlives a turn here, so ending the agent is ending its turn; the thread stays resumable.
+    endIdle: () => killTurn(),
     running: () => turn !== undefined || starting,
     busy: () => turn !== undefined || starting || queue.length > 0,
   }

@@ -43,6 +43,7 @@ import {
 
 const POLL_MS = 300
 const MAX_LOG_BYTES = 1024 * 1024
+const INTERRUPT_GRACE_MS = 30_000
 
 /**
  * What the next host needs if this one dies: which agent process to kill and
@@ -126,6 +127,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
   let driver: AgentDriver | undefined
   let retiring = false
   let superseded = false
+  let pendingInterrupt: { at: number; reason?: string } | undefined
   const prepare = async (): Promise<AgentDriver> => {
     if (driver) return driver
     const agent = loaded.config.agents[meta.agent]
@@ -171,6 +173,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
       else update({ status: 'closed', reason: undefined, turnStartedAt: undefined })
     } else if (request.kind === 'interrupt') {
       await driver?.interrupt()
+      if (driver?.busy()) pendingInterrupt ??= { at: Date.now() }
     } else if (state.status === 'closed' || state.status === 'failed') {
       emit({ kind: 'system', subtype: 'ignored', reason: state.status })
     } else if (request.kind === 'start' && state.turn > 0) {
@@ -192,13 +195,31 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
   }, HOST_HEARTBEAT_MS)
 
   // Checked between requests, never beside one, so ending an idle agent cannot race a follow-up.
+  // A turn past maxTurnMinutes is interrupted. Any interrupt whose turn has
+  // still not ended a grace later (30 s, or the turn limit when that is
+  // shorter) ends the agent process instead — an agent that ignores it, or a
+  // message the CLI dropped, never keeps a session working — and the session
+  // stays resumable.
   const enforceLimits = async (): Promise<void> => {
     const now = Date.now()
-    if (driver?.busy() && state.turnStartedAt
-      && now - Date.parse(state.turnStartedAt) > loaded.config.maxTurnMinutes * 60_000) {
+    const limitMs = loaded.config.maxTurnMinutes * 60_000
+    if (pendingInterrupt) {
+      if (!driver?.busy()) {
+        pendingInterrupt = undefined
+      } else if (now - pendingInterrupt.at > Math.min(INTERRUPT_GRACE_MS, limitMs)) {
+        const { reason } = pendingInterrupt
+        pendingInterrupt = undefined
+        emit({ kind: 'system', subtype: 'interrupt_ignored', ...(reason ? { reason } : {}) })
+        await driver.endIdle()
+        update({ status: 'interrupted', reason, turnStartedAt: undefined })
+      }
+      return
+    }
+    if (driver?.busy() && state.turnStartedAt && now - Date.parse(state.turnStartedAt) > limitMs) {
       emit({ kind: 'system', subtype: 'limit', reason: 'max_turn_minutes' })
       update({ turnStartedAt: undefined })
-      await driver.interrupt()
+      pendingInterrupt = { at: now, reason: 'max_turn_minutes' }
+      await driver.interrupt('max_turn_minutes')
     } else if (driver?.running() && !driver.busy()
       && now - Date.parse(state.updatedAt) > loaded.config.idleMinutes * 60_000) {
       log('ending the idle agent')

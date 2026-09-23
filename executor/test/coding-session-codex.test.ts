@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
+import type { AgentDriver, AgentDriverContext } from '../src/coding-session/agent-process.js'
 import { codexArguments, createCodexTurnState } from '../src/coding-session/codex-adapter.js'
+import { createCodexDriver } from '../src/coding-session/codex-driver.js'
 import { createPathRewriter } from '../src/coding-session/path-rewrite.js'
+import { createCodingProcessControl } from '../src/coding-session/process-control.js'
 import { createProjector } from '../src/coding-session/projection.js'
+import { codingSessionPaths } from '../src/coding-session/session-files.js'
+import { initialCodingSessionState, type CodingSessionState } from '../src/coding-session/types.js'
+import { SCRIPTED_AGENT, waitUntil } from './coding-session-harness.js'
 
 /**
  * Codex's `exec --json` protocol. The failure transcript is the one
@@ -73,4 +82,56 @@ test('items become tool, tool_result and assistant events; unknown events are ke
 test('a process that exits without ending its turn, or is killed, says which', () => {
   assert.equal(createCodexTurnState(projector).finish({ code: 1, interrupted: false }).subtype, 'agent_exited')
   assert.equal(createCodexTurnState(projector).finish({ code: null, interrupted: true }).subtype, 'interrupted')
+})
+
+const SESSION = '0f0e0d0c-0b0a-4908-8706-050403020100'
+
+test('a message sent while one turn exits and the next is starting waits its turn: one codex at a time', { timeout: 60_000 }, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'nessie-codex-driver-'))
+  try {
+    const paths = codingSessionPaths(dir, SESSION)
+    await mkdir(paths.dir, { recursive: true })
+    const state: CodingSessionState = { ...initialCodingSessionState(new Date().toISOString()), status: 'starting' }
+    let driver: AgentDriver | undefined
+    let probed = false
+    const observed: { running: boolean; busy: boolean }[] = []
+    const context: AgentDriverContext = {
+      agent: { command: [process.execPath, SCRIPTED_AGENT], args: [], allowedTools: [], disallowedTools: [] },
+      control: createCodingProcessControl(process.platform, {}),
+      env: { ...process.env, NESSIE_SCRIPTED_RECORD_DIR: dir },
+      folder: dir, paths, projector,
+      // Slow, so the gap between one turn's exit and the next turn's spawn is wide.
+      stillOwner: () => new Promise((settle) => { setTimeout(() => settle(true), 300) }),
+      emit: () => undefined,
+      update: (patch) => {
+        Object.assign(state, patch)
+        // The exit handler clears the queue and starts the next turn in one go. Right after that,
+        // in the very gap the race lived in, the driver must not look idle and a send must queue.
+        if (patch.queued === 0 && patch.status === undefined && driver && !probed) {
+          probed = true
+          queueMicrotask(() => {
+            observed.push({ running: driver!.running(), busy: driver!.busy() })
+            void driver!.send('third', 'u-3')
+          })
+        }
+      },
+      state: () => state,
+      log: () => undefined,
+    }
+    driver = createCodexDriver(context)
+    await driver.send('#sleep=800 first', 'u-1')
+    await driver.send('second', 'u-2')
+    await waitUntil(async () => (state.turn === 3 && state.status === 'waiting_for_input' ? true : undefined), 40_000, 'three turns')
+    assert.deepEqual(observed, [{ running: true, busy: true }])
+    const lines = (await readFile(join(dir, 'agents.jsonl'), 'utf8')).split('\n').filter(Boolean)
+      .map((line) => JSON.parse(line) as { event: string; pid: number })
+    let live = 0
+    for (const entry of lines) {
+      live += entry.event === 'start' ? 1 : -1
+      assert.ok(live <= 1, 'two codex processes never run at once')
+    }
+    assert.equal(lines.filter((entry) => entry.event === 'start').length, 3)
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
 })

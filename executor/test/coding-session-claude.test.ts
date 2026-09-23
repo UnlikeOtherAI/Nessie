@@ -142,22 +142,51 @@ test('a message still queued when a result arrives keeps the session working unt
   assert.ok(state.accept(result({ total_cost_usd: 0.05 })).turnFinished)
 })
 
-test('background tasks hold the turn open, and a turn nobody asked for is still reported', () => {
+test('background tasks are counted, never hold a turn open, and the turn one starts is reported', () => {
   const state = createClaudeStreamState(projector)
   state.noteSent('u-1')
   state.accept(lifecycle('u-1', 'started'))
-  state.accept(line({ type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'b1' }] }))
-  assert.equal(state.accept(result()).turnFinished, undefined)
+  // A dev server started in the background runs for as long as the agent does.
+  const started = state.accept(line({ type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'b1' }] }))
+  assert.equal(started.backgroundTasks, 1)
+  assert.ok(state.accept(result()).turnFinished, 'the result ends the turn with the task still running')
+  assert.equal(state.busy(), false)
+  assert.equal(state.backgroundTasks(), 1)
   const notice = state.accept(line({
     type: 'system', subtype: 'task_notification', output_file: 'C:\\Users\\ondre\\x.output', summary: 'Background command "sleep" completed',
   }))
   assert.deepEqual(notice.events, [{ kind: 'system', subtype: 'task', message: 'Background command "sleep" completed' }])
-  const done = state.accept(line({ type: 'system', subtype: 'background_tasks_changed', tasks: [] }))
-  assert.ok(done.turnFinished)
+  assert.equal(state.accept(line({ type: 'system', subtype: 'background_tasks_changed', tasks: [] })).backgroundTasks, 0)
   assert.equal(state.accept(line({ type: 'system', subtype: 'init', model: 'm', permissionMode: 'default' })).active, true)
   const unsolicited = state.accept(result({ origin: { kind: 'task-notification' }, total_cost_usd: 0.03 }))
   assert.equal(unsolicited.turnFinished?.origin, 'task-notification')
   assert.equal(unsolicited.turnFinished?.costUsd, 0.01, 'the CLI reports a running total; a turn costs its delta')
+  assert.equal(state.processCostUsd(), 0.03)
+})
+
+test('an interrupt cancels the messages that had not started, except those it says are still queued', () => {
+  const state = createClaudeStreamState(projector)
+  state.noteSent('u-1')
+  state.accept(lifecycle('u-1', 'started'))
+  state.noteSent('u-2')
+  state.accept(lifecycle('u-2', 'queued'))
+  state.noteSent('u-3')
+  const ack = state.accept(line({
+    type: 'control_response',
+    response: { subtype: 'success', request_id: 'nessie-interrupt', response: { still_queued: [{ uuid: 'u-3' }] } },
+  }))
+  assert.deepEqual(ack.events, [{ kind: 'system', subtype: 'cancelled', message: '1 message(s) had not started and were cancelled by the interrupt.' }])
+  assert.equal(state.accept(result({ subtype: 'error_during_execution', is_error: true })).turnFinished, undefined, 'u-3 is still to come')
+  state.accept(lifecycle('u-3', 'started'))
+  assert.ok(state.accept(result()).turnFinished)
+  // A message the CLI dropped without a word no longer holds the interrupted turn open.
+  const dropped = createClaudeStreamState(projector)
+  dropped.noteSent('u-1')
+  dropped.accept(lifecycle('u-1', 'started'))
+  dropped.noteSent('u-9')
+  dropped.accept(line({ type: 'control_response', response: { subtype: 'success', request_id: 'nessie-interrupt', response: {} } }))
+  assert.ok(dropped.accept(result({ subtype: 'error_during_execution', is_error: true })).turnFinished)
+  assert.equal(dropped.busy(), false)
 })
 
 test('tool calls, results, denials and test runs are projected; permission prompts are answered deny', () => {

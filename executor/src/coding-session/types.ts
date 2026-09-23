@@ -91,6 +91,8 @@ export type CodingSessionState = {
   lastSeq: number
   /** Follow-ups waiting for the next turn (Codex runs one process per turn). */
   queued: number
+  /** Background tasks the agent left running; they hold no turn open, and one finishing starts a turn of its own. */
+  backgroundTasks?: number
 }
 
 /**
@@ -124,6 +126,9 @@ export type CodingSessionRequest = {
   reason?: string
   at: string
 }
+
+/** The agent CLIs' own session and thread ids, which later become argv: a UUID, never anything read as a flag. */
+export const AGENT_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 
 export const CODING_SESSION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u
 

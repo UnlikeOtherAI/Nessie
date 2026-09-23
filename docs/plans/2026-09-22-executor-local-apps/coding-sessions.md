@@ -109,8 +109,9 @@ it received (so `NESSIE_EXECUTOR_PACKAGED_CLI` survives), detached, stdio to
 Every agent and tool spawn passes `windowsHide: true`. Before killing, the host
 checks the recorded agent identity (pid + process start time) so it never
 signals a reused pid — and reads the tree only below a root that is still that
-process, checking each descendant's own start time before its signal. When a new host takes over a session whose previous
-agent is still alive, it kills that tree before resuming.
+process, checking each descendant's own start time before its signal. When a
+new host takes over a session whose previous agent is still alive, it kills
+that tree before resuming.
 
 **Teardown reaches the machine.**
 
@@ -124,8 +125,11 @@ agent is still alive, it kills that tree before resuming.
   daemon closes those owners' sessions.
 - A person's **Close** on a session in the admin (§8) travels the same way.
 - Hard limits from config: `maxTurnMinutes` (default 45) interrupts a runaway
-  turn; `maxBudgetUsd` per turn is passed to Claude; `idleMinutes` (default 30)
-  ends an idle agent process (the session stays resumable).
+  turn, and ends its agent process when an interrupt is ignored for 30 s;
+  `maxBudgetUsd` per turn is passed to Claude, whose budget counts a
+  per-process total, so each new turn starts in a fresh process resuming the
+  session; `idleMinutes` (default 30) ends an idle agent process (the session
+  stays resumable).
 
 ## 4. The reviewed descriptor
 
@@ -222,8 +226,10 @@ One long-lived process per live host:
   at the next tool boundary, which is the steering behaviour we want.
 - Interrupt = `control_request {subtype:'interrupt'}`; close = `end_session`,
   stdin end, then the tree kill after 5 s.
-- Turn finished = a `result` with no queued or started `command_lifecycle` and
-  no background tasks; unsolicited results (`origin.kind`) are recorded too.
+- Turn finished = a `result` with no queued or started `command_lifecycle`;
+  background tasks are reported as a count rather than holding the turn open
+  (a dev server never ends), and unsolicited results (`origin.kind`) are
+  recorded too.
 - The appended system prompt says a Nessie agent is driving it, there is no
   person at this terminal, it should work in its own git worktree, commit and
   push as its instructions say, and end each turn with a short summary of what

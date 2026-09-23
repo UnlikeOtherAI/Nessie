@@ -18,6 +18,7 @@
  *   #test         runs a failing test command (exit code 3)
  *   #deny         reports a permission denial
  *   #background   leaves a background task whose completion starts a turn nobody asked for
+ *   #stubborn     acknowledges an interrupt and carries on regardless (with #sleep)
  *   #codexfail    (Codex) the usage-limit failure codex-cli 0.155.1 prints
  *
  * NESSIE_SCRIPTED_RECORD_DIR, when set, receives `agents.jsonl` (one line per
@@ -143,7 +144,7 @@ const result = (text, extra = {}) => {
 
 const runTurn = async (first) => {
   const messages = [first]
-  const current = { messages, interrupted: false, wake: undefined }
+  const current = { messages, interrupted: false, wake: undefined, stubborn: first.text.includes('#stubborn') }
   turn = current
   lifecycle(first.uuid, 'started')
   init()
@@ -221,7 +222,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response: { commands: [], pid: process.pid, account: { email: 'person@example.com', organization: 'Private Org' }, session_state: 'idle' } } })
     } else if (subtype === 'interrupt') {
       send({ type: 'control_response', response: { subtype: 'success', request_id: message.request_id, response: { still_queued: [] } } })
-      if (turn) {
+      if (turn && !turn.stubborn) {
         turn.interrupted = true
         turn.wake?.()
       }

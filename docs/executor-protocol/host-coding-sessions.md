@@ -173,13 +173,30 @@ One process per live host:
   (see "What the bridge reports") and are never written anywhere.
 - A follow-up is a stdin user line carrying our uuid. It folds into a running
   turn at the next tool boundary, and messages and results do not map one to
-  one, so a turn ends only when a result has arrived, no message of ours is
-  still queued and no background task runs. A message that had *started* when
-  a result arrived belongs to that turn, however late its `completed` event.
-  A turn a finished background task starts on its own is reported with its
-  `origin`.
-- Interrupt is a control request; close is `end_session`, end of stdin, and
-  the tree kill five seconds later.
+  one, so a turn ends once a result has arrived and no message of ours is
+  still queued. A message that had *started* when a result arrived belongs to
+  that turn, however late its `completed` event.
+- Background tasks hold no turn open: a dev server or a watcher runs for as
+  long as the agent does, and a turn waiting on one would never end. The
+  session reports `backgroundTasks` while any run, and the turn one of them
+  starts when it finishes is reported with its `origin`. An idle agent is
+  still ended after `idleMinutes`, background tasks and all.
+- Interrupt is a control request. Its answer cancels every message of ours
+  that had not started, except those it lists as `still_queued`, so a message
+  the CLI dropped never keeps the session busy. Close is `end_session`, end of
+  stdin, and the tree kill five seconds later.
+- `maxTurnMinutes` interrupts a turn that runs past it. Any interrupt whose
+  turn has not ended 30 s later (or after the turn limit, when that is
+  shorter) ends the agent process instead, with the session `interrupted`
+  and resumable (reason `max_turn_minutes` when the limit asked).
+- `--max-budget-usd` is counted against the CLI's per-process running total
+  (`total_cost_usd` accumulates across turns), so with `maxBudgetUsd` set, a
+  message that would start a new turn in a process that has already spent
+  something goes to a fresh process resuming the same session: every turn
+  starts with the whole budget. A process with background tasks still running
+  is kept, because a restart would end them. Whether 2.1.280 applies the
+  budget per process or per turn was not measured; the restart is right either
+  way.
 - `--permission-prompts none` was verified live: anything that would prompt is
   denied without a control request, and the denial arrives in the result's
   `permission_denials`, which the session reports as `permissionDenials`. The

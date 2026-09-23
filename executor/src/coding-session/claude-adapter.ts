@@ -72,6 +72,8 @@ export type ClaudeSignals = {
   ready?: true
   initializeFailed?: true
   interruptAcknowledged?: true
+  /** How many background tasks run now, whenever that changes. */
+  backgroundTasks?: number
   endAcknowledged?: true
   agentSessionId?: string
   /** The agent is working on a turn, whether or not we asked it to. */
@@ -85,6 +87,9 @@ export type ClaudeStreamState = {
   accept: (line: string) => ClaudeSignals
   noteSent: (uuid: string) => void
   busy: () => boolean
+  backgroundTasks: () => number
+  /** What this process has spent so far: the CLI's own running total. */
+  processCostUsd: () => number
 }
 
 const record = (value: unknown): value is Record<string, unknown> => (
@@ -93,14 +98,33 @@ const record = (value: unknown): value is Record<string, unknown> => (
 
 const DROPPED_TYPES = new Set(['rate_limit_event', 'stream_event', 'keep_alive'])
 
+/** The uuids an interrupt answer says are still queued; its entries are ids or records carrying one. */
+const stillQueued = (response: Record<string, unknown>): Set<string> => {
+  const answer = record(response.response) ? response.response : {}
+  const entries = Array.isArray(answer.still_queued) ? answer.still_queued : []
+  return new Set(entries.flatMap((entry: unknown) => {
+    if (typeof entry === 'string') return [entry]
+    if (!record(entry)) return []
+    const uuid = entry.uuid ?? entry.command_uuid
+    return typeof uuid === 'string' ? [uuid] : []
+  }))
+}
+
 /**
  * Turn accounting. Messages and results do not map one to one: two messages
  * written back to back become one turn, a follow-up written during a tool call
  * folds into the running turn, and a finished background task starts a turn
- * nobody asked for. So a turn is finished only once a result has arrived, no
- * message of ours is still queued, and no background task is running. A
- * command that had *started* when the result arrived was part of that turn,
- * however late its `completed` lifecycle event turns up.
+ * nobody asked for. So a turn is finished once a result has arrived and no
+ * message of ours is still queued. A command that had *started* when the
+ * result arrived was part of that turn, however late its `completed`
+ * lifecycle event turns up.
+ *
+ * Background tasks do not hold a turn open: a dev server or a watcher runs
+ * for as long as the agent lives, and a turn waiting on one would never end.
+ * Their count is reported instead, and the turn one of them starts when it
+ * finishes is reported as its own. An interrupt cancels the messages still
+ * waiting to start, except those its answer lists as still queued, so a
+ * message the CLI dropped never keeps the session busy.
  */
 export const createClaudeStreamState = (projector: Projector): ClaudeStreamState => {
   const commands = new Map<string, 'sent' | 'queued' | 'started'>()
@@ -113,7 +137,7 @@ export const createClaudeStreamState = (projector: Projector): ClaudeStreamState
   let lastInit = ''
 
   const finish = (signals: ClaudeSignals): void => {
-    if (!pendingResult || commands.size > 0 || backgroundTasks > 0) return
+    if (!pendingResult || commands.size > 0) return
     signals.turnFinished = pendingResult
     pendingResult = undefined
     active = false
@@ -144,7 +168,7 @@ export const createClaudeStreamState = (projector: Projector): ClaudeStreamState
     }
     if (event.subtype === 'background_tasks_changed' && Array.isArray(event.tasks)) {
       backgroundTasks = event.tasks.length
-      finish(signals)
+      signals.backgroundTasks = backgroundTasks
     }
     // status, thinking_tokens, task_started, task_updated and the rest carry
     // nothing the supervisor reads, and some carry host paths.
@@ -227,7 +251,9 @@ export const createClaudeStreamState = (projector: Projector): ClaudeStreamState
       commands.set(uuid, 'sent')
       active = true
     },
-    busy: () => active || commands.size > 0 || backgroundTasks > 0 || pendingResult !== undefined,
+    busy: () => active || commands.size > 0 || pendingResult !== undefined,
+    backgroundTasks: () => backgroundTasks,
+    processCostUsd: () => processCostUsd,
     accept: (text) => {
       const signals: ClaudeSignals = { events: [] }
       let event: unknown
@@ -250,7 +276,20 @@ export const createClaudeStreamState = (projector: Projector): ClaudeStreamState
             const account = record(answer.account) ? answer.account : {}
             projector.redact([account.email, account.organization])
           }
-          if (response.request_id === INTERRUPT_ID) signals.interruptAcknowledged = true
+          if (response.request_id === INTERRUPT_ID) {
+            signals.interruptAcknowledged = true
+            const kept = stillQueued(response)
+            let cancelled = 0
+            for (const [uuid, state] of commands) {
+              if (state === 'started' || kept.has(uuid)) continue
+              commands.delete(uuid)
+              cancelled += 1
+            }
+            if (cancelled > 0) {
+              signals.events.push({ kind: 'system', subtype: 'cancelled', message: `${cancelled} message(s) had not started and were cancelled by the interrupt.` })
+            }
+            finish(signals)
+          }
           if (response.request_id === END_ID) signals.endAcknowledged = true
           break
         }

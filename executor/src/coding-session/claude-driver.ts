@@ -17,7 +17,7 @@ import {
   type ClaudeSignals,
   type ClaudeStreamState,
 } from './claude-adapter.js'
-import type { CodingSessionResult } from './types.js'
+import { AGENT_SESSION_ID_PATTERN, type CodingSessionResult } from './types.js'
 
 /**
  * One long-lived Claude Code process per live host.
@@ -27,6 +27,13 @@ import type { CodingSessionResult } from './types.js'
  * is a control request; close is `end_session`, end of stdin, and the tree
  * kill five seconds later, with the descendants read before anything was
  * signalled so a tool that outlives Claude is still found.
+ *
+ * The CLI enforces `--max-budget-usd` against its per-process running total
+ * (`total_cost_usd` accumulates across turns), so with a budget configured a
+ * message that would start a new turn in a process that has already spent
+ * something is sent to a fresh process resuming the same session: every turn
+ * starts with the whole budget. A process with background tasks still running
+ * is kept instead, because a restart would end them.
  */
 const READY_TIMEOUT_MS = 60_000
 const CLOSE_GRACE_MS = 5_000
@@ -38,6 +45,7 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
   let stream: ClaudeStreamState | undefined
   let starting: Promise<AgentProcess> | undefined
   let interruptRequested = false
+  let interruptReason: string | undefined
   let ending = false
 
   const beginTurn = (): void => {
@@ -50,27 +58,31 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
     const state = context.state()
     context.update({
       status: interruptRequested ? 'interrupted' : 'waiting_for_input',
-      reason: undefined,
+      reason: interruptRequested ? interruptReason : undefined,
       lastResult: result,
       permissionDenials: [...state.permissionDenials, ...result.permissionDenials].slice(-20),
       ...(result.costUsd === undefined ? {} : { totalCostUsd: (state.totalCostUsd ?? 0) + result.costUsd }),
       turnStartedAt: undefined,
     })
     interruptRequested = false
+    interruptReason = undefined
   }
 
   const handle = (signals: ClaudeSignals, ready: { resolve: () => void; reject: (error: Error) => void }): void => {
     for (const event of signals.events) context.emit(event)
     if (signals.ready) ready.resolve()
     if (signals.initializeFailed) ready.reject(new AgentStartError('agent_exited'))
-    if (signals.agentSessionId && !context.state().agentSessionStarted) {
-      context.update({ agentSessionId: signals.agentSessionId, agentSessionStarted: true })
+    // It becomes `--resume <id>` for every later process, so only an id of the documented shape is kept.
+    const sessionId = signals.agentSessionId
+    if (sessionId && !context.state().agentSessionStarted && AGENT_SESSION_ID_PATTERN.test(sessionId)) {
+      context.update({ agentSessionId: sessionId, agentSessionStarted: true })
     }
     if (signals.active) beginTurn()
     if (signals.answerControlRequest) {
       agent?.write(claudeDenyLine(signals.answerControlRequest.requestId, signals.answerControlRequest.supported))
     }
     if (signals.test) context.update({ lastTest: signals.test })
+    if (signals.backgroundTasks !== undefined) context.update({ backgroundTasks: signals.backgroundTasks })
     if (signals.turnFinished) finishTurn(signals.turnFinished)
   }
 
@@ -105,7 +117,7 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
       if (ending || context.state().status === 'closed') return
       context.log(`claude exited with code ${code}`)
       const busy = current.busy()
-      context.update({ agentIdentity: undefined })
+      context.update({ agentIdentity: undefined, backgroundTasks: undefined })
       if (busy || context.state().status === 'working' || context.state().status === 'starting') {
         context.emit({ kind: 'system', subtype: 'agent_exited', reason })
         context.update({ status: 'interrupted', reason, turnStartedAt: undefined })
@@ -140,20 +152,30 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
     }
     await context.control.killTree(identity, snapshot)
     agent = undefined
-    context.update({ agentIdentity: undefined })
+    // An interrupt the ended process never answered belongs to it, not to the next turn.
+    interruptRequested = false
+    interruptReason = undefined
+    // Its background tasks went with it.
+    context.update({ agentIdentity: undefined, backgroundTasks: undefined })
     ending = false
   }
 
   return {
     send: async (text, uuid) => {
+      if (context.maxBudgetUsd !== undefined && agent?.alive() && stream && !stream.busy()
+        && stream.processCostUsd() > 0 && stream.backgroundTasks() === 0) {
+        context.log('starting a fresh claude process so the next turn has its whole budget')
+        await stop()
+      }
       const running = await ensureAgent()
       stream?.noteSent(uuid)
       beginTurn()
       running.write(claudeUserLine(uuid, text))
     },
-    interrupt: async () => {
+    interrupt: async (reason) => {
       if (!agent?.alive() || !stream?.busy()) return
       interruptRequested = true
+      interruptReason = reason
       agent.write(claudeControlLine('interrupt'))
     },
     close: async () => {
