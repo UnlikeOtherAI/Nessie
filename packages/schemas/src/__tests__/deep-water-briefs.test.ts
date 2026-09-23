@@ -17,6 +17,7 @@ import {
   ProductIntegrationRunStatusSchema,
   ResearchRunRefMessageMetadataSchema,
   StartDeepWaterBriefRequestSchema,
+  deepWaterReplyAction,
   emptyDeepWaterScopeState,
   isResearchRunRefMessage,
   toLedgerBriefSettings,
@@ -330,6 +331,39 @@ test('a brief action job lets an owner only cancel', () => {
     ).success,
     true,
   )
+})
+
+test('a reply job carries base_revision exactly when it edits, as Ledger requires', () => {
+  const payload = (action: Record<string, unknown>) => ({
+    organizationId: RUN_ID,
+    runId: RUN_ID,
+    actionId: ACTION_ID,
+    actor: {
+      userId: USER_ID,
+      role: 'requester',
+      identity: { subject: 'uoa|1', organizationId: 'o', teamId: 't', tokenVersion: 0 },
+    },
+    action,
+  })
+  const parses = (action: Record<string, unknown>) =>
+    DeepWaterBriefActionJobPayloadSchema.safeParse(payload({ kind: 'reply', message: 'hi', ...action })).success
+  assert.equal(parses({}), true)
+  assert.equal(parses({ baseRevision: 3, pillars: ['Costs'] }), true)
+  assert.equal(parses({ baseRevision: 3, settings: { depth: null } }), true)
+  // Ledger's research_scope_reply refuses both of these.
+  assert.equal(parses({ baseRevision: 3 }), false, 'a bare base revision edits nothing')
+  assert.equal(parses({ pillars: ['Costs'] }), false, 'an edit names the revision it edited')
+
+  // The request may carry a bare base revision for the API's own check; the job drops it.
+  const plain = DeepWaterBriefReplyRequestSchema.parse({ actionId: ACTION_ID, message: 'Focus on the UK', baseRevision: 3 })
+  assert.deepEqual(deepWaterReplyAction(plain), { kind: 'reply', message: 'Focus on the UK' })
+  assert.equal(parses(deepWaterReplyAction(plain)), true)
+  const edited = DeepWaterBriefReplyRequestSchema.parse({
+    actionId: ACTION_ID, message: 'Only costs', baseRevision: 3, pillars: ['Costs'],
+  })
+  assert.deepEqual(deepWaterReplyAction(edited), { kind: 'reply', message: 'Only costs', baseRevision: 3, pillars: ['Costs'] })
+  assert.equal(parses(deepWaterReplyAction(edited)), true)
+  assert.throws(() => deepWaterReplyAction({ message: 'Only costs', pillars: ['Costs'] }), /carries the revision/)
 })
 
 test('product runs know the brief statuses', () => {

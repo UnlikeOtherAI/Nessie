@@ -221,7 +221,11 @@ export type CreateDeepWaterBriefRequest = z.infer<typeof CreateDeepWaterBriefReq
 const hasEdits = (body: { pillars?: unknown; settings?: unknown }): boolean =>
   body.pillars !== undefined || body.settings !== undefined
 
-/** `POST …/:runId/messages` — reply to the planner; `baseRevision` is required with edits. */
+/**
+ * `POST …/:runId/messages` — reply to the planner; `baseRevision` is required
+ * with edits. Alone it is the API's own revision check and never reaches
+ * Ledger: the job is built with `deepWaterReplyAction`, which drops it.
+ */
 export const DeepWaterBriefReplyRequestSchema = z
   .object({
     actionId: uuid,

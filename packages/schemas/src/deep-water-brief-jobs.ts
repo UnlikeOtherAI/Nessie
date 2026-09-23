@@ -6,6 +6,7 @@ import {
   DeepWaterBriefSettingsEditSchema,
 } from './deep-water-brief-vocabulary.js'
 import { DeepWaterRequesterIdentitySchema } from './deep-water-run-state.js'
+import type { DeepWaterBriefReplyRequest } from './deep-water-briefs.js'
 
 /**
  * Queue contracts between the Nessie API, which persists a person's brief
@@ -84,17 +85,44 @@ export const DeepWaterBriefActionJobPayloadSchema = z
     action: DeepWaterBriefActionSchema,
   })
   .strict()
+  // Ledger's `research_scope_reply` takes `base_revision` exactly when pillars
+  // or settings are edited, and refuses it on a plain reply; the job is what
+  // the worker forwards, so it holds Ledger's rule, not the request's.
   .refine(
     (payload) => payload.action.kind !== 'reply'
-      || !hasEdits(payload.action)
-      || payload.action.baseRevision !== undefined,
-    { message: 'A reply with edits carries its base revision.', path: ['action', 'baseRevision'] },
+      || hasEdits(payload.action) === (payload.action.baseRevision !== undefined),
+    {
+      message: 'A reply carries its base revision exactly when it edits pillars or settings.',
+      path: ['action', 'baseRevision'],
+    },
   )
   .refine(
     (payload) => payload.actor.role === 'requester' || payload.action.kind === 'cancel',
     { message: 'Only a cancel may act on someone else\'s brief.', path: ['actor', 'role'] },
   )
 export type DeepWaterBriefActionJobPayload = z.infer<typeof DeepWaterBriefActionJobPayloadSchema>
+
+/**
+ * The job action for a person's reply (`POST …/:runId/messages`). The request
+ * may carry `baseRevision` without edits — the API checks it against the brief
+ * it has, to refuse a reply to a brief that moved on — but Ledger refuses a
+ * `base_revision` that edits nothing, so it travels only with the edits.
+ */
+export const deepWaterReplyAction = (
+  request: Pick<DeepWaterBriefReplyRequest, 'message' | 'baseRevision' | 'pillars' | 'settings'>,
+): Extract<DeepWaterBriefAction, { kind: 'reply' }> => {
+  if (!hasEdits(request)) return { kind: 'reply', message: request.message }
+  if (request.baseRevision === undefined) {
+    throw new Error('A reply that edits the brief carries the revision it edited.')
+  }
+  return {
+    kind: 'reply',
+    message: request.message,
+    baseRevision: request.baseRevision,
+    ...(request.pillars !== undefined ? { pillars: request.pillars } : {}),
+    ...(request.settings !== undefined ? { settings: request.settings } : {}),
+  }
+}
 
 /**
  * `identity` is the live identity of a person retrying a blocked delivery; it
