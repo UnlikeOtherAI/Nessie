@@ -596,7 +596,9 @@ agree) does not.
   start time, and reports `{pid, startedAt}` on the pipe before it relays
   anything. That is the identity the host records, so every kill the host
   makes goes to the agent and never to the guard; an agent whose start time
-  cannot be read is stopped at once. A host waits 60 s for that report (a
+  cannot be read is stopped at once with its tree, by one table read that
+  needs no identity (`killChildTree`), else by the group it leads on POSIX
+  (it is the guard's own unreaped child). A host waits 60 s for that report (a
   guard's start and three table reads fit well inside it); after that it
   closes the guard's pipe, which the guard reads as its host dying, gives it
   ten seconds to end what it started and exit, then kills it, and only once
@@ -937,9 +939,11 @@ there it is the unit that proves it and the stand-in the guard. The same file
 kills a guard outright while its host lives (the agent, and on POSIX its
 grandchild, gone by the time the host hears it exited), closes a guard's pipe
 right after the agent starts (on Windows that is before the report, so the
-identity-free kill runs), stands in a guard that never reports (asked to
-stop, then killed), and has a descendant write for longer than the drain
-after its agent exited (every line reaches the host).
+identity-free kill runs), stands in a guard that never reports (asked to stop,
+then killed) and one that cannot identify its agent
+(`fixtures/agent-guard-unidentified.ts`: the tree goes, or with no table its
+group), and has a descendant write for longer than the drain after its agent
+exited (every line reaches the host).
 `coding-session-systemd.test.ts` restarts a stand-in executor unit with the
 real unit's `KillMode=control-group` while a turn is held and drives the same
 session afterwards — still working, the same agent, the turn finished and a

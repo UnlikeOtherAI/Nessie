@@ -237,11 +237,12 @@ const watchAgentEnding = (child: ChildProcess): AgentEndingWatch => {
   }
 }
 
-/** The guard itself, in the process the host started. */
-export const runCodingAgentGuard = async (): Promise<void> => {
+/** The guard itself, in the process the host started; its suite stands in a `control` of its own. */
+export const runCodingAgentGuard = async (
+  control: CodingProcessControl = createCodingProcessControl(process.platform, { termGraceMs: HOST_GONE_GRACE_MS }),
+): Promise<void> => {
   const send = process.send?.bind(process)
   if (!send) throw new Error(AGENT_GUARD_USAGE)
-  const control = createCodingProcessControl(process.platform, { termGraceMs: HOST_GONE_GRACE_MS })
   let agent: ChildProcess | undefined
   /** Kills the identified agent's tree; unset until the agent has a start time. */
   let kill: (() => Promise<void>) | undefined
@@ -249,12 +250,12 @@ export const runCodingAgentGuard = async (): Promise<void> => {
   for (const stream of [process.stdin, process.stdout, process.stderr]) stream.on('error', () => undefined)
 
   /**
-   * An agent the host has not been told about yet: the host died while its
-   * start time was still being read (a cold PowerShell on Windows, seconds on
-   * a loaded machine). Its tree comes from one table read, which needs no
-   * identity first; failing that, it is still this process's unreaped child,
-   * so its pid — and on POSIX its process group, which it leads — is still
-   * its own.
+   * An agent the host has not been told about: its start time could not be
+   * read at all, or the host died while it still was being read (a cold
+   * PowerShell on Windows, seconds on a loaded machine). Its tree comes from
+   * one table read, which needs no identity first; failing that, it is still
+   * this process's unreaped child, so its pid — and on POSIX its process
+   * group, which it leads — is still its own.
    */
   const killUnidentified = async (child: ChildProcess): Promise<void> => {
     if (await control.killChildTree(child).catch(() => false)) return
@@ -324,14 +325,15 @@ export const runCodingAgentGuard = async (): Promise<void> => {
   }
 
   const found = await control.identify(child.pid)
-  // An agent with no start time could never be told from whatever inherits its pid, so it does not keep running.
+  // An agent with no start time could never be told from whatever inherits its pid, so it does not keep running,
+  // and neither does what it started: its pid alone would leave its group and tree running on unwatched.
   const unidentified = !found && !ending.exited()
   if (found) {
     // Made ready before the host can die: a dead host's agent has five seconds, and a cold kill can take most of them.
     kill = control.standbyKill?.(found) ?? (() => control.killTree(found))
     send({ kind: 'agent', pid: found.pid, startedAt: found.startedAt }, () => undefined)
   } else if (unidentified) {
-    child.kill('SIGKILL')
+    await killUnidentified(child)
   }
   child.stdout?.pipe(process.stdout)
   child.stderr?.pipe(process.stderr)
