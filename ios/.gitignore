@@ -1,0 +1,6 @@
+build/
+*.xcresult/
+**/xcuserdata/
+**/*.xcuserstate
+!DeepWater/Assets.xcassets/**/*.png
+!Screenshots/*.png
