@@ -83,6 +83,16 @@ every later call with that id returns it and does nothing else.
 Reads use a `generation.byteOffset.seq` cursor and consume only
 newline-terminated lines. The bridge keeps a delivered cursor per session —
 one owner per session, so per owner — and the model never has to carry one.
+Every event line is at most 4 KiB — a longer one (JSON escaping and Czech
+text make 4 000 characters far more bytes) is shortened field by field when
+it is written — so one event always fits a read and an 8 KB answer, and
+every read moves the cursor: events are halved down to one, a long final
+result is cut next, and a line longer than the read window that got into the
+file anyway is skipped whole with a notice. A rotation whose rename Windows
+refuses is retried like every other rename and otherwise tried again half a
+minute later, and the new generation reaches `session.json` at once rather
+than after the debounce, so a reader never pairs the new file with the old
+generation.
 Status is derived at read time: a session still marked working whose host has
 stopped heartbeating reads `interrupted` with reason `host_lost`, and a read
 that finds requests waiting with no live or starting host starts one.

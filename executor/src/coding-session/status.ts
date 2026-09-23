@@ -58,7 +58,7 @@ export const readDeliveredCursor = async (paths: CodingSessionPaths): Promise<Ev
 )
 
 const pendingNotice = (
-  derived: DerivedCodingStatus, state: CodingSessionState | undefined, rotated: boolean,
+  derived: DerivedCodingStatus, state: CodingSessionState | undefined, rotated: boolean, skipped: boolean,
 ): string => {
   const notes: string[] = []
   if (derived.reason === 'host_lost') {
@@ -78,6 +78,7 @@ const pendingNotice = (
     notes.push(`The coding agent was denied ${denied} action(s) that need approval; see permissionDenials.`)
   }
   if (rotated) notes.push('Older events were rotated away.')
+  if (skipped) notes.push('An event too large to report was skipped.')
   return notes.join(' ')
 }
 
@@ -122,9 +123,11 @@ export const composeCodingStatus = async (input: {
   const cursorAfter = (keep: number): EventCursor => (
     keep === page.events.length ? page.next : keep === 0 ? start : page.positions[keep - 1]!
   )
+  let lastResult = ended ? state?.lastResult : undefined
+  let events = page.events
   const build = (keep: number): Record<string, unknown> => {
     const next = cursorAfter(keep)
-    const notice = pendingNotice(derived, state, page.rotated)
+    const notice = pendingNotice(derived, state, page.rotated, page.skipped)
     return {
       status: derived.status,
       nextCursor: encodeEventCursor(next),
@@ -139,24 +142,39 @@ export const composeCodingStatus = async (input: {
       updatedAt: state?.updatedAt ?? meta.createdAt,
       ...(state?.queued ? { queuedMessages: state.queued } : {}),
       ...(state?.backgroundTasks ? { backgroundTasks: state.backgroundTasks } : {}),
-      moreEvents: page.more || keep < page.events.length,
+      moreEvents: page.more || keep < events.length,
       ...(input.detail === 'events'
-        ? { events: page.events.slice(0, keep) }
-        : { summary: summarise(page.events.slice(0, keep)) }),
-      ...(ended && state?.lastResult ? { lastResult: state.lastResult } : {}),
+        ? { events: events.slice(0, keep) }
+        : { summary: summarise(events.slice(0, keep)) }),
+      ...(lastResult ? { lastResult } : {}),
       ...(state?.permissionDenials.length ? { permissionDenials: state.permissionDenials.slice(-5) } : {}),
     }
   }
-  let keep = page.events.length
+  // The answer shrinks without ever stalling: events are halved down to one,
+  // then a long final result is cut, and if the one event still does not fit
+  // (each line is capped when it is written, so it should) its placeholder
+  // goes out instead. Either way the cursor moves.
+  const tooBig = (value: Record<string, unknown>): boolean => (
+    Buffer.byteLength(JSON.stringify(value)) > CODING_STATUS_MAX_BYTES
+  )
+  let keep = events.length
   let answer = build(keep)
-  while (Buffer.byteLength(JSON.stringify(answer)) > CODING_STATUS_MAX_BYTES && keep > 0) {
+  while (tooBig(answer) && keep > 1) {
     keep = Math.floor(keep / 2)
     answer = build(keep)
   }
-  if (Buffer.byteLength(JSON.stringify(answer)) > CODING_STATUS_MAX_BYTES && state?.lastResult) {
-    answer = { ...answer, lastResult: { ...state.lastResult, text: state.lastResult.text.slice(0, 1_500) } }
+  if (tooBig(answer) && lastResult) {
+    lastResult = {
+      ...lastResult, text: lastResult.text.slice(0, 1_500), permissionDenials: lastResult.permissionDenials.slice(0, 5),
+    }
+    answer = build(keep)
   }
-  if (keep > 0 || page.rotated) {
+  if (tooBig(answer) && keep === 1) {
+    const [only] = events
+    events = [{ seq: only!.seq, at: only!.at, kind: 'system', subtype: 'oversized' }]
+    answer = build(keep)
+  }
+  if (keep > 0 || page.rotated || page.skipped) {
     await writeJsonAtomic(paths.delivered, { cursor: encodeEventCursor(cursorAfter(keep)) }).catch(() => undefined)
   }
   return answer

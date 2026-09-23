@@ -78,10 +78,24 @@ const RENAME_RETRY_MS = 2_000
 const delay = (ms: number): Promise<void> => new Promise((settle) => { setTimeout(settle, ms) })
 
 /**
- * Replaces `path` atomically. On Windows a rename over a file an indexer,
- * scanner or editor holds open without FILE_SHARE_DELETE fails with EPERM,
- * EACCES or EBUSY for a moment, so those are retried for up to two seconds.
+ * A rename that rides out Windows: a file an indexer, scanner or editor holds
+ * open without FILE_SHARE_DELETE fails with EPERM, EACCES or EBUSY for a
+ * moment, so those are retried for up to two seconds.
  */
+export const renameWithRetry = async (from: string, to: string): Promise<void> => {
+  const deadline = Date.now() + RENAME_RETRY_MS
+  for (let wait = 25; ; wait = Math.min(wait * 2, 250)) {
+    try {
+      await rename(from, to)
+      return
+    } catch (error) {
+      if (!RETRIED_RENAME_CODES.has((error as NodeJS.ErrnoException).code ?? '') || Date.now() >= deadline) throw error
+      await delay(wait)
+    }
+  }
+}
+
+/** Replaces `path` atomically, through a temporary file and `renameWithRetry`. */
 export const writeJsonAtomic = async (path: string, value: unknown): Promise<void> => {
   const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`
   const handle = await open(temporary, 'wx', 0o600)
@@ -90,19 +104,11 @@ export const writeJsonAtomic = async (path: string, value: unknown): Promise<voi
   } finally {
     await handle.close()
   }
-  const deadline = Date.now() + RENAME_RETRY_MS
-  for (let wait = 25; ; wait = Math.min(wait * 2, 250)) {
-    try {
-      await rename(temporary, path)
-      return
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code ?? ''
-      if (!RETRIED_RENAME_CODES.has(code) || Date.now() >= deadline) {
-        await unlink(temporary).catch(() => undefined)
-        throw error
-      }
-      await delay(wait)
-    }
+  try {
+    await renameWithRetry(temporary, path)
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined)
+    throw error
   }
 }
 

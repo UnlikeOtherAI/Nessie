@@ -4,7 +4,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { encodeEventCursor, openEventLog, parseEventCursor, readEventPage } from '../src/coding-session/session-events.js'
+import {
+  encodeEventCursor,
+  EVENT_LINE_MAX_BYTES,
+  fitEventLine,
+  openEventLog,
+  parseEventCursor,
+  readEventPage,
+} from '../src/coding-session/session-events.js'
 import { codingSessionPaths, writeJsonAtomic, type CodingSessionPaths } from '../src/coding-session/session-files.js'
 import { acquireHostLock, hostLockIsStale, readHostLock } from '../src/coding-session/session-lock.js'
 import { claimCommand, listRequests, writeRequest } from '../src/coding-session/session-requests.js'
@@ -142,6 +149,63 @@ test('status is derived at read time and fits 8 KB with status and nextCursor fi
     assert.equal((quiet.summary as { newEvents: number }).newEvents, 0)
     assert.ok(Buffer.byteLength(JSON.stringify(quiet)) < 600, 'a poll with nothing new stays small')
     await held?.release()
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('an event is capped when it is written, whatever escaping and Czech text do to its size', () => {
+  const text = 'Příliš žluťoučký kůň úpěl ďábelské ódy. "Uvozovky"\n'.repeat(80).slice(0, 4_000)
+  const denials = Array.from({ length: 20 }, () => ({ tool: 'Bash', summary: `git push --force ${'ř'.repeat(280)}` }))
+  const event = { seq: 7, at: '2026-09-23T00:00:00.000Z', kind: 'result', text, isError: false, subtype: 'success', permissionDenials: denials } as const
+  const line = fitEventLine(event)
+  assert.ok(Buffer.byteLength(line) <= EVENT_LINE_MAX_BYTES, `${Buffer.byteLength(line)} bytes`)
+  const parsed = JSON.parse(line) as { seq: number; kind: string; subtype: string; text: string }
+  assert.deepEqual([parsed.seq, parsed.kind, parsed.subtype], [7, 'result', 'success'])
+  assert.ok(parsed.text.startsWith('Příliš žluťoučký'))
+  const small = { seq: 8, at: 'x', kind: 'assistant', text: 'short' } as const
+  assert.equal(fitEventLine(small), `${JSON.stringify(small)}\n`)
+})
+
+test('a line longer than the read window is skipped whole instead of stalling every read', async () => {
+  const { dir, paths } = await scratch()
+  try {
+    await writeFile(paths.events, `${JSON.stringify({ seq: 1, at: 'x', kind: 'assistant', text: 'z'.repeat(20_000) })}\n`)
+    await appendFile(paths.events, `${JSON.stringify({ seq: 2, at: 'x', kind: 'assistant', text: 'after' })}\n`)
+    const first = await readEventPage(paths, 0, undefined, { maxBytes: 7 * 1024, maxEvents: 200 })
+    assert.deepEqual([first.events.length, first.skipped, first.more], [0, true, true])
+    const second = await readEventPage(paths, 0, first.next, { maxBytes: 7 * 1024, maxEvents: 200 })
+    assert.deepEqual(second.events.map((event) => event.seq), [2])
+    // A long line still being written (no newline yet) is waited for, not skipped.
+    await appendFile(paths.events, JSON.stringify({ seq: 3, at: 'x', kind: 'assistant', text: 'y'.repeat(20_000) }))
+    const partial = await readEventPage(paths, 0, second.next, { maxBytes: 7 * 1024, maxEvents: 200 })
+    assert.deepEqual([partial.events.length, partial.skipped, partial.next.offset], [0, false, second.next.offset])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('status in events mode always moves its cursor, even past big events and a long final result', async () => {
+  const { dir, paths } = await scratch()
+  try {
+    let position = { generation: 0, lastSeq: 0 }
+    const log = await openEventLog(paths, position, (next) => { position = next })
+    for (let index = 0; index < 6; index += 1) {
+      await log.append({ kind: 'assistant', text: `${index} ${'č"\n'.repeat(1_500)}` })
+    }
+    await log.close()
+    const lastResult = { text: 'ř"'.repeat(2_000), isError: false, subtype: 'success', permissionDenials: [] }
+    const state = { ...initialCodingSessionState('2026-09-22T00:00:00.000Z'), status: 'waiting_for_input' as const, lastResult, ...position }
+    const derived = await deriveCodingStatus(paths, state)
+    const seen: number[] = []
+    for (let poll = 0; poll < 12 && seen.length < 6; poll += 1) {
+      const answer = await composeCodingStatus({ paths, meta, state, derived, detail: 'events' })
+      assert.ok(Buffer.byteLength(JSON.stringify(answer)) <= CODING_STATUS_MAX_BYTES)
+      const events = answer.events as { seq: number }[]
+      assert.ok(events.length > 0, `poll ${poll} delivered nothing`)
+      seen.push(...events.map((event) => event.seq))
+    }
+    assert.deepEqual(seen, [1, 2, 3, 4, 5, 6])
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

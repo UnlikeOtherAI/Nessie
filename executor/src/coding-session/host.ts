@@ -91,7 +91,9 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
   const events = await openEventLog(paths, position, (next) => {
     state.eventsGeneration = next.generation
     state.lastSeq = next.lastSeq
-    writer.schedule()
+    // A reader that took the old generation for the new file would deliver its events twice.
+    if (next.rotated) void writer.flush()
+    else writer.schedule()
   })
   const emit = (body: CodingEventBody): void => {
     void events.append(body).catch((error: unknown) => log(`event append failed: ${String(error)}`))
