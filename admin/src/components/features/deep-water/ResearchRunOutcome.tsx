@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { DeepWaterResearchRunView } from '@nessie/schemas'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { useRetryResearchDelivery } from '../../../facades/deep-water/mutations'
 import { briefActionFailure } from './brief-action-errors'
-import { useIsOwner } from '../../../facades/auth/hooks'
 import {
   SUMMARY_NOTE,
   blockedReasonCopy,
