@@ -311,12 +311,18 @@ worker and card are built on them.
 - **A person's action happens once.** `beginDeepWaterPersonAction` records
   the action in flight and enqueues it in one transaction, keyed by its
   `actionId`; a request whose key is already queued or done is a replay
-  whatever that action's outcome, and is never re-armed. One action is in
+  whatever that action's outcome, and is never re-armed. That is decided
+  before anything else — the busy check and the route's own checks (the
+  revision, still drafting) — because a retry whose response was lost finds
+  the brief already moved on by its own action, and refusing it would make the
+  client resend under a new id and pay for a second planner turn. One action is in
   flight per brief and is cleared only by its own turn or outcome, with two
   exceptions: a cancel replaces any in-flight action except the opening
   `scope_start` before Ledger acknowledged it (there is no research id to
   cancel yet, so the cancel is refused as busy for those seconds), and a
-  cancelled or finished brief ends whatever action was in flight.
+  cancelled or finished brief ends whatever action was in flight — including a
+  brief Ledger refused to open (`failUnstartedDeepWaterBrief`), whose opening
+  action ends with its error code in the same write.
 - **Delivery happens once.** `claimDeepWaterDelivery` writes the terminal
   status with `delivered_at` in one conditional statement; the reply or wake is
   written in the same transaction. A block (`blockDeepWaterDelivery`) is set

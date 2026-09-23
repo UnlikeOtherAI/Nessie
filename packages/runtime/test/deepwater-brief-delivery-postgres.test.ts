@@ -20,6 +20,7 @@ import {
   refreshDeepWaterRunIdentity,
 } from '../src/deepwater-brief-identity.js'
 import { readDeepWaterBriefRun } from '../src/deepwater-brief-run-record.js'
+import { deepWaterPlannerTurnView } from '../src/deepwater-brief-view.js'
 import { loadDeepWaterOriginDestination } from '../src/deepwater-brief-viewer.js'
 import { insertBrief, personOrigin, seedBriefFixture, type BriefFixture } from './deepwater-brief-fixture.js'
 
@@ -288,14 +289,73 @@ withFixture('an action id is carried out once: a replay after it settled re-arms
   assert.equal(await jobCount(failed), 1)
 })
 
+withFixture('a retry whose first response was lost is a replay, whatever the brief became since', async (fixture) => {
+  const { run } = await insertBrief(fixture, personOrigin())
+  const actor = { userId: fixture.ids.requester, role: 'requester' as const, identity: fixture.identity }
+  const begin = (actionId: string, precondition?: () => void) =>
+    fixture.prisma.$transaction((tx) => beginDeepWaterPersonAction(tx, {
+      job: {
+        organizationId: fixture.ids.organization,
+        runId: run.id,
+        actionId,
+        actor,
+        action: { kind: 'reply', message: 'Focus on the UK' },
+      },
+      ...(precondition ? { precondition } : {}),
+    }))
+  const settle = (actionId: string) =>
+    fixture.prisma.$transaction((tx) => settleDeepWaterPersonAction(tx, {
+      organizationId: fixture.ids.organization, runId: run.id, actionId, errorCode: null,
+    }))
+  const opening = (await read(fixture, run.id))?.scopeState?.pendingAction?.actionId
+  assert.ok(opening)
+  assert.equal(await settle(opening), true)
+
+  // The reply is accepted; its response is lost; the planner answers and the
+  // watch settles it, so the brief is now at a newer revision.
+  const lost = randomUUID()
+  assert.equal((await begin(lost)).kind, 'started')
+  assert.equal(await settle(lost), true)
+  const conflict = () => {
+    throw new Error('DEEP_WATER_BRIEF_REVISION_CONFLICT')
+  }
+  const retried = await begin(lost, conflict)
+  assert.equal(retried.kind, 'replay', 'the route check never judges an action it already accepted')
+
+  // With a newer action in flight, the retry is still a replay, never busy.
+  const newer = randomUUID()
+  assert.equal((await begin(newer)).kind, 'started')
+  assert.equal((await begin(lost, conflict)).kind, 'replay')
+  assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction?.actionId, newer, 'nothing is re-armed')
+  const jobs = await fixture.pool.query(
+    `SELECT count(*)::int AS n FROM queue_jobs WHERE idempotency_key = $1`,
+    [`deep-water-brief-action:${run.id}:${lost}`],
+  )
+  assert.equal(jobs.rows[0].n, 1, 'the planner is asked once')
+
+  // A new action is still judged: busy while another is in flight.
+  assert.equal((await begin(randomUUID(), conflict)).kind, 'busy')
+})
+
 withFixture('only an unstarted brief is failed without a research, and the origin destination loads live', async (fixture) => {
   const { run } = await insertBrief(fixture)
+  const opening = (await read(fixture, run.id))?.scopeState?.pendingAction
+  assert.equal(opening?.kind, 'scope_start')
+  assert.equal(deepWaterPlannerTurnView((await read(fixture, run.id))?.scopeState ?? null).status, 'replying')
   const fail = () => fixture.prisma.$transaction((tx) => failUnstartedDeepWaterBrief(tx, {
-    organizationId: fixture.ids.organization, runId: run.id, failureCode: 'scope_rejected',
+    organizationId: fixture.ids.organization, runId: run.id, failureCode: 'scope_rejected', actionErrorCode: 'rejected',
   }))
   assert.equal(await fail(), true)
   assert.equal(await fail(), false)
-  assert.equal((await read(fixture, run.id))?.failureCode, 'scope_rejected')
+  const failed = await read(fixture, run.id)
+  assert.equal(failed?.status, 'failed')
+  assert.equal(failed?.failureCode, 'scope_rejected')
+  // The opening action ends with the run, so the brief never shows the planner still replying.
+  assert.deepEqual(
+    { id: failed?.scopeState?.pendingAction?.actionId, code: failed?.scopeState?.pendingAction?.error?.code },
+    { id: opening?.actionId, code: 'rejected' },
+  )
+  assert.equal(deepWaterPlannerTurnView(failed?.scopeState ?? null).status, 'idle')
 
   await fixture.pool.query(
     `INSERT INTO agent_bindings (id, agent_id, channel_id) VALUES ($1, $2, $3)`,

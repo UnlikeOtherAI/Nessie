@@ -67,6 +67,15 @@ export type DeepWaterPersonActionStart =
   | { kind: 'busy'; run: DeepWaterBriefRun }
   | { kind: 'not_found' }
 
+/** Was this action accepted before? Its queue job key outlives the job. */
+const wasActionAccepted = async (tx: DeepWaterBriefDb, runId: string, actionId: string): Promise<boolean> => {
+  const rows = await tx.$queryRaw<Array<{ accepted: boolean }>>(Prisma.sql`
+    SELECT true AS "accepted" FROM "queue_jobs"
+    WHERE "idempotency_key" = ${deepWaterBriefActionJobKey(runId, actionId)}
+  `)
+  return rows.length > 0
+}
+
 /**
  * Record a person's action as in flight and enqueue it, atomically. The
  * `precondition` runs under the row lock, so a route's checks (the requester,
@@ -76,7 +85,12 @@ export type DeepWaterPersonActionStart =
  * Each actionId is carried out once (contract §1): its queue job key outlives
  * the job, so a request whose key is already there is a replay whether that
  * action is still in flight, finished, or failed — it is never recorded as in
- * flight again with no job to finish it.
+ * flight again with no job to finish it. That is decided first, before the
+ * busy check and the `precondition`: a retry whose first response was lost
+ * finds the brief moved on by its own action (a newer revision, launched, or
+ * another action now in flight), and judging it against that state would
+ * refuse it — and a refused person resends with a new actionId, paying for a
+ * second planner turn.
  *
  * A cancel is accepted while another action is in flight: stopping a brief
  * must never wait on the planner. It replaces that action, whose own late ack
@@ -100,8 +114,10 @@ export const beginDeepWaterPersonAction = async (
   if (run.scopeState === null) {
     throw new Error(`DeepWater run ${run.id} is a legacy launcher run, not a research brief`)
   }
+  // Under the row lock every acceptance of this run has committed or is still
+  // waiting behind us, so the key read here is the whole answer.
+  if (await wasActionAccepted(tx, run.id, job.actionId)) return { kind: 'replay', run }
   const current = run.scopeState.pendingAction
-  if (current !== null && current.actionId === job.actionId) return { kind: 'replay', run }
   if (isPendingActionInFlight(current)) {
     if (job.action.kind !== 'cancel') return { kind: 'busy', run }
     if (current.kind === 'scope_start' && run.externalRunId === null) return { kind: 'busy', run }
@@ -109,8 +125,9 @@ export const beginDeepWaterPersonAction = async (
   input.precondition?.(run)
 
   if (!await enqueueDeepWaterBriefAction(tx, job)) {
-    // The key is already queued or done: this action ran before and settled.
-    return { kind: 'replay', run }
+    // Every acceptance takes the row lock first, so a key that appeared since
+    // the read above is a broken invariant, not a replay to wave through.
+    throw new Error(`DeepWater action ${job.actionId} on run ${run.id} was accepted outside the run's lock`)
   }
   const state = DeepWaterScopeStateSchema.parse({
     ...run.scopeState,
@@ -218,24 +235,37 @@ export const revertDeepWaterLaunch = async (
  * A brief Ledger definitively refused to open (a scope start or an agent's
  * claim that never got a research id) is failed. It never had a research, so
  * there is nothing to deliver and nothing for the watch to read.
+ *
+ * The action in flight — a person's opening `scope_start`, the only one an
+ * unopened brief can hold — ends with `actionErrorCode` in the same write, so
+ * the brief never shows a failed run whose planner is still "replying".
  */
 export const failUnstartedDeepWaterBrief = async (
   tx: DeepWaterBriefDb,
-  input: { organizationId: string; runId: string; failureCode: string },
+  input: {
+    organizationId: string
+    runId: string
+    failureCode: string
+    actionErrorCode: DeepWaterPendingActionErrorCode
+  },
 ): Promise<boolean> => {
-  const updated = await tx.productIntegrationRun.updateMany({
-    where: {
-      id: input.runId,
-      organizationId: input.organizationId,
-      externalRunId: null,
-      status: 'queued',
-      uoaIdentity: { not: Prisma.DbNull },
-    },
-    data: {
-      status: 'failed',
-      failureCode: DeepWaterFailureCodeSchema.parse(input.failureCode),
-      completedAt: new Date(),
-    },
+  const failureCode = DeepWaterFailureCodeSchema.parse(input.failureCode)
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  const scopeState = locked?.run.scopeState
+  if (!locked || !scopeState) return false
+  const { run, now } = locked
+  if (run.status !== 'queued' || run.externalRunId !== null) return false
+
+  const action = scopeState.pendingAction
+  const state = DeepWaterScopeStateSchema.parse({
+    ...scopeState,
+    pendingAction: isPendingActionInFlight(action)
+      ? { ...action, error: { code: input.actionErrorCode, at: now.toISOString() } }
+      : action,
   })
-  return updated.count === 1
+  await tx.productIntegrationRun.update({
+    where: { id: run.id },
+    data: { status: 'failed', failureCode, completedAt: now, scopeJson: deepWaterBriefJson(state) },
+  })
+  return true
 }

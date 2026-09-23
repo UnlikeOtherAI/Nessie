@@ -288,6 +288,8 @@ const replayAgentScopeStart = async (
         organizationId: run.organizationId,
         runId: run.id,
         failureCode,
+        // An agent's brief has no person's action in flight; the agent hears it by the wake.
+        actionErrorCode: 'rejected',
       })
       if (!failed) return
       announce.run(run)
