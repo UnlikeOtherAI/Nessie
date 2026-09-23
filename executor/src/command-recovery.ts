@@ -38,6 +38,22 @@ export type ExecutorCommandRecoveryStore = {
   save: (recovery: ExecutorCommandRecovery) => Promise<void>
 }
 
+/**
+ * A result's images, which live beside the journal as sidecars
+ * (`command-attachments.ts`). They are uploaded before the result's receipt —
+ * `deliver` answers the result to send, with any image Nessie refused
+ * withdrawn and journaled through `journal` — and released once the receipt
+ * is acknowledged.
+ */
+export type ExecutorCommandRecoveryAttachments = {
+  deliver: (input: {
+    command: ExecutorCommandEnvelope
+    journal: (result: Record<string, unknown>) => Promise<void>
+    result: Record<string, unknown>
+  }) => Promise<Record<string, unknown>>
+  release: (commandId: ExecutorCommandEnvelope['commandId']) => Promise<void>
+}
+
 export type ExecutorCommandRecoveryTransport = {
   poll: () => Promise<ExecutorCommandEnvelope | null>
   receipt: (input: {
@@ -179,6 +195,7 @@ const isRefusedReplacement = (result: Record<string, unknown> | undefined): bool
  * twice.
  */
 export const recoverOrPollExecutorCommand = async (input: {
+  attachments?: ExecutorCommandRecoveryAttachments
   execute: (command: ExecutorCommandEnvelope) => Promise<Record<string, unknown>>
   /** Told when the control plane refused a result and it was replaced. */
   onResultRefused?: (command: ExecutorCommandEnvelope) => void
@@ -232,6 +249,18 @@ export const recoverOrPollExecutorCommand = async (input: {
   }
 
   if (recovery.phase === 'result_pending') {
+    // The images a result references reach Nessie before the receipt does,
+    // from sidecars written before this entry was journaled. A restart here
+    // uploads them again; the control plane takes that as the same upload.
+    const pending = recovery
+    if (input.attachments && pending.result) {
+      const result = await input.attachments.deliver({
+        command: pending.command,
+        journal: (next) => input.store.save({ ...pending, result: next }),
+        result: pending.result,
+      })
+      recovery = { ...pending, result }
+    }
     try {
       await input.transport.receipt({
         commandId: recovery.command.commandId,
@@ -255,6 +284,10 @@ export const recoverOrPollExecutorCommand = async (input: {
       })
     }
     await input.store.clear()
+    // After the journal lets go, never before: a crash between the two leaves
+    // a folder no journal names, which the daemon's next start removes, where
+    // the other order would leave a journal naming images that are gone.
+    await input.attachments?.release(recovery.command.commandId).catch(() => undefined)
   }
   return true
 }

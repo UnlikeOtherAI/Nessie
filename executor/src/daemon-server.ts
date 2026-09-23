@@ -11,6 +11,10 @@ import {
   pollAndExecuteCommand,
   waitForExecutorDaemonShutdown,
 } from './daemon.js'
+import {
+  createExecutorCommandAttachmentStore,
+  sweepExecutorCommandAttachments,
+} from './command-attachments.js'
 import { createExecutorCommandRecoveryStore } from './command-recovery.js'
 import { acquireExecutorDaemonLease } from './daemon-lease.js'
 import { createLocalMcpReporter } from './local-mcp-report.js'
@@ -41,8 +45,13 @@ export const serveExecutor = async (
     // the runtime directory every second, which on Windows is two native-helper
     // process spawns a second and nothing at all on POSIX.
     const recoveryStore = createExecutorCommandRecoveryStore(stateDir)
+    const attachmentStore = createExecutorCommandAttachmentStore(stateDir)
+    // Before the first poll, so no folder a new command writes can be swept.
+    await sweepExecutorCommandAttachments(recoveryStore, attachmentStore).catch((error: unknown) => {
+      console.error('[nessie-executor] attachment sweep failed:', error instanceof Error ? error.message : String(error))
+    })
     const commandPoll = createNonOverlappingExecutorTask(() => pollAndExecuteCommand(
-      stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions, recoveryStore,
+      stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions, recoveryStore, attachmentStore,
     ).catch(async (error) => {
       await browserSessions.stopAll()
       await commandSessions.stopAll()

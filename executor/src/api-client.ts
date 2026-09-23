@@ -1,4 +1,9 @@
-import type { ExecutorCommandEnvelope, ExecutorCommandReceipt } from '@nessie/schemas'
+import type {
+  ExecutorCommandAttachment,
+  ExecutorCommandEnvelope,
+  ExecutorCommandReceipt,
+  ExecutorDaemonCommandAttachmentResponse,
+} from '@nessie/schemas'
 import type { BrowserCookieImportOffer } from './browser-cookie-import-bridge.js'
 
 type ApiError = { error?: { code?: string; message?: string } }
@@ -43,6 +48,21 @@ export type ExecutorApiClient = {
       signature: string
     },
   ) => Promise<{ recorded: boolean }>
+  /**
+   * One image of a command's result, before its receipt. It carries its own
+   * deadline, because an upload's time grows with its size.
+   */
+  uploadCommandAttachment: (
+    baseUrl: string,
+    input: {
+      attachment: ExecutorCommandAttachment
+      connectionEpoch: string
+      dataBase64: string
+      executorId: string
+      signature: string
+    },
+    options: { timeoutMs: number },
+  ) => Promise<ExecutorDaemonCommandAttachmentResponse>
   issueChallenge: (baseUrl: string, executorId: string) =>
     Promise<{ challenge: string; expiresAt: string }>
   localInferenceHost: (
@@ -92,10 +112,15 @@ export const createExecutorApi = (options: {
   }
   const pending = new Set<AbortController>()
 
-  const post = async <T>(baseUrl: string, path: string, body: unknown): Promise<T> => {
+  const post = async <T>(
+    baseUrl: string,
+    path: string,
+    body: unknown,
+    timeoutMs = requestTimeoutMs,
+  ): Promise<T> => {
     const controller = new AbortController()
     pending.add(controller)
-    const timeout = setTimeout(() => controller.abort('deadline'), requestTimeoutMs)
+    const timeout = setTimeout(() => controller.abort('deadline'), timeoutMs)
     try {
       const response = await fetchImpl(normalizeUrl(baseUrl, path), {
         body: JSON.stringify(body),
@@ -143,6 +168,8 @@ export const createExecutorApi = (options: {
     pollCommand: (baseUrl, input) => post(baseUrl, '/api/executor-daemon/commands/poll', input),
     recordCommandReceipt: (baseUrl, input) =>
       post(baseUrl, '/api/executor-daemon/commands/receipt', input),
+    uploadCommandAttachment: (baseUrl, input, options) =>
+      post(baseUrl, '/api/executor-daemon/commands/attachment', input, options.timeoutMs),
     issueChallenge: (baseUrl, executorId) =>
       post(baseUrl, '/api/executor-daemon/challenge', { executorId }),
     localInferenceHost: (baseUrl, input) =>
