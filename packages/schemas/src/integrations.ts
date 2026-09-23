@@ -1,10 +1,10 @@
 import { z } from 'zod'
 
+import { DeepWaterResearchReadinessSchema } from './deep-water-briefs.js'
 import {
   McpServerLifecycleStateSchema,
   McpServerScopeTypeSchema,
 } from './mcp.js'
-import { DeepWaterResearchReadinessSchema } from './deep-water-briefs.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 
 export const IntegratedProductCategorySchema = z.enum([
@@ -211,13 +211,11 @@ export const IntegratedProductResponseSchema = z.object({
   teamEnablement: ProductTeamEnablementRecordSchema.nullable(),
   updatedAt: TimestampSchema,
   /**
-   * Whether this viewer can open a DeepWater research brief right now, and
-   * whether they are the one who could change that (Water plan nessie.md
-   * §7.1). Present on the `deep-water` entry only; every other product omits
-   * it. The admin's composer button, brief dialog and readiness screen read
-   * this one verdict rather than re-deriving it from the fields above.
+   * Whether the viewer can start DeepWater research in this team, and why not
+   * (Water plan nessie.md §7.1 "Readiness"). Present only on the `deep-water`
+   * entry; every research doorway reads it instead of re-deriving it.
    */
-  research: DeepWaterResearchReadinessSchema.nullable().optional(),
+  research: DeepWaterResearchReadinessSchema.optional(),
 })
 export type IntegratedProductResponse = z.infer<typeof IntegratedProductResponseSchema>
 

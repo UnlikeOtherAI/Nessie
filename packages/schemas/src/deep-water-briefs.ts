@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { PaginationMetaSchema } from './api.js'
 import {
   DeepWaterBriefContextSchema,
   DeepWaterBriefMessageSchema,
@@ -97,6 +98,19 @@ export const DeepWaterResearchRunViewSchema = z
   })
   .strict()
 export type DeepWaterResearchRunView = z.infer<typeof DeepWaterResearchRunViewSchema>
+
+/**
+ * `GET …/research-runs?cursor&limit` — the runs this viewer may see, newest
+ * first. Rows the viewer may not see are left out, so a page can be shorter
+ * than `limit` only when it is the last; `total` is not counted.
+ */
+export const DeepWaterResearchRunListSchema = z
+  .object({
+    items: z.array(DeepWaterResearchRunViewSchema),
+    meta: PaginationMetaSchema,
+  })
+  .strict()
+export type DeepWaterResearchRunList = z.infer<typeof DeepWaterResearchRunListSchema>
 
 export const DeepWaterBriefMessageAuthorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('person'), userId: uuid }).strict(),
