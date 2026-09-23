@@ -413,6 +413,11 @@ accepted, started, or terminal transition; it never polls past pending local
 recovery. If the process died after local execution began but before its result
 was durable, the replacement daemon returns
 `EXECUTOR_COMMAND_UNKNOWN_OUTCOME` and does not run the side effect again.
+A terminal result the server refuses as `EXECUTOR_COMMAND_RESULT_INVALID`
+would be refused on every retry and hold the machine's only command lane, so
+the daemon journals the small terminal failure `EXECUTOR_RESULT_REFUSED` in
+its place and sends that, with its own digest; a lost response replays the
+replacement, never the refused result.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored
@@ -928,7 +933,7 @@ EXECUTOR_BINDING_FENCED          EXECUTOR_COMMAND_REPLAY
 EXECUTOR_COMMAND_UNKNOWN_OUTCOME EXECUTOR_APPROVAL_STALE
 EXECUTOR_CANDIDATE_INVALID       EXECUTOR_PROMOTION_CONFLICT
 EXECUTOR_PROMOTION_UNSAFE_PATH   EXECUTOR_EGRESS_DENIED
-EXECUTOR_CREDENTIAL_REVOKED
+EXECUTOR_CREDENTIAL_REVOKED      EXECUTOR_RESULT_REFUSED
 EXECUTOR_VM_GUEST_HANDSHAKE_FAILED
 ```
 

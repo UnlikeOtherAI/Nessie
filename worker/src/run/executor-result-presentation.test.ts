@@ -155,6 +155,17 @@ test('an mcp.call result keeps its success, correctable flag and ToolCall record
   assert.equal(presented.output, 'The call did not complete (EXECUTOR_COMMAND_ARGUMENTS_INVALID). bad')
 })
 
+test('a result the machine replaced after Nessie refused it says the program did run', () => {
+  const presented = presentExecutorResultForModel('mcp.call', { server: 'kelpie', tool: 'navigate' }, {
+    inputSummary: '{"server":"kelpie"}',
+    output: JSON.stringify({ code: 'EXECUTOR_RESULT_REFUSED', success: false }),
+    success: false,
+  })
+  assert.equal(presented.success, false)
+  assert.match(presented.output, /^The program ran, but its answer could not be delivered \(EXECUTOR_RESULT_REFUSED\)/)
+  assert.match(presented.output, /before making it again/)
+})
+
 const kelpieCatalog = (count: number): ExecutorMcpTool[] => Array.from({ length: count }, (_, index) => ({
   description: `Do thing number ${index} in the browser. It has a long explanation that the model does not need yet, `
     + 'with examples and caveats. '.repeat(20),

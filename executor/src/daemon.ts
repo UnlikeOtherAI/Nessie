@@ -391,6 +391,13 @@ export const pollAndExecuteCommand = async (
       mcpSessions,
       commandSessions,
     }),
+    // The result itself stays on this machine: it can quote program output.
+    onResultRefused: (command) => {
+      console.error(
+        `[nessie-executor] Nessie refused the result of ${command.operationKey} command ${command.commandId}; `
+        + 'it was reported as EXECUTOR_RESULT_REFUSED instead.',
+      )
+    },
     store,
     transport: {
       poll: async () => {

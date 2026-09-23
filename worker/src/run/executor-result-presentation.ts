@@ -81,6 +81,12 @@ const binaryLabel = (kind: string, item: Record<string, unknown>, data: unknown)
 const describeRefusal = (document: Record<string, unknown>): string => {
   const code = typeof document.code === 'string' ? document.code : 'EXECUTOR_COMMAND_FAILED'
   const message = typeof document.message === 'string' ? ` ${document.message}` : ''
+  // The machine replaces a result Nessie refused (executor/src/command-recovery.ts):
+  // the program did run, so repeating the call could repeat what it did.
+  if (code === 'EXECUTOR_RESULT_REFUSED') {
+    return `The program ran, but its answer could not be delivered (${code}). `
+      + 'Check whether the call took effect before making it again, and ask for a narrower result.'
+  }
   const hint = code === 'EXECUTOR_MCP_RESULT_TOO_LARGE' ? ' Ask the program for a narrower result.' : ''
   return `The call did not complete (${code}).${message}${hint}`
 }

@@ -16,6 +16,12 @@ const UNKNOWN_OUTCOME_RESULT = {
   code: 'EXECUTOR_COMMAND_UNKNOWN_OUTCOME',
   success: false,
 }
+// What a result the control plane refused becomes. It is small and well formed
+// by construction, so the replacement receipt cannot be refused the same way.
+export const EXECUTOR_RESULT_REFUSED_RESULT = {
+  code: 'EXECUTOR_RESULT_REFUSED',
+  success: false,
+}
 
 type ReceiptState = 'accepted' | 'started' | 'result_acknowledged'
 
@@ -157,6 +163,14 @@ const receiptWasFencedByUnknownOutcome = (error: unknown): boolean => (
   error instanceof ExecutorApiError && error.code === 'EXECUTOR_COMMAND_REPLAY'
 )
 
+const resultWasRefused = (error: unknown): boolean => (
+  error instanceof ExecutorApiError && error.code === 'EXECUTOR_COMMAND_RESULT_INVALID'
+)
+
+const isRefusedReplacement = (result: Record<string, unknown> | undefined): boolean => (
+  result?.code === EXECUTOR_RESULT_REFUSED_RESULT.code && Object.keys(result).length === 2
+)
+
 /**
  * Advance one command to a durable terminal receipt. A response may disappear
  * after the server commits any receipt; retrying that same transition is safe.
@@ -166,6 +180,8 @@ const receiptWasFencedByUnknownOutcome = (error: unknown): boolean => (
  */
 export const recoverOrPollExecutorCommand = async (input: {
   execute: (command: ExecutorCommandEnvelope) => Promise<Record<string, unknown>>
+  /** Told when the control plane refused a result and it was replaced. */
+  onResultRefused?: (command: ExecutorCommandEnvelope) => void
   store: ExecutorCommandRecoveryStore
   transport: ExecutorCommandRecoveryTransport
 }): Promise<boolean> => {
@@ -216,11 +232,28 @@ export const recoverOrPollExecutorCommand = async (input: {
   }
 
   if (recovery.phase === 'result_pending') {
-    await input.transport.receipt({
-      commandId: recovery.command.commandId,
-      result: recovery.result,
-      state: 'result_acknowledged',
-    })
+    try {
+      await input.transport.receipt({
+        commandId: recovery.command.commandId,
+        result: recovery.result,
+        state: 'result_acknowledged',
+      })
+    } catch (error) {
+      // A refused result is refused again on every retry, and the journal
+      // holds this machine's only command lane: retrying it would wedge the
+      // executor behind one bad answer for good. The replacement is journaled
+      // before it is sent, so a lost response replays it rather than the
+      // refused result; the receipt's digest is computed from it afresh.
+      if (!resultWasRefused(error) || isRefusedReplacement(recovery.result)) throw error
+      input.onResultRefused?.(recovery.command)
+      recovery = { ...recovery, result: { ...EXECUTOR_RESULT_REFUSED_RESULT } }
+      await input.store.save(recovery)
+      await input.transport.receipt({
+        commandId: recovery.command.commandId,
+        result: recovery.result,
+        state: 'result_acknowledged',
+      })
+    }
     await input.store.clear()
   }
   return true

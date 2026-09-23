@@ -88,6 +88,22 @@ shaped afterwards, on the agent loop's authorized-tool path only
 
 The `mcp.tools` listing and a tool's schema are framed the same way.
 
+## A result the lane cannot carry is stated, never retried
+
+The daemon measures an `mcp.call` result as the exact document it returns —
+`code` and `success` included — against the 64 KiB terminal-result budget,
+and refuses one over it as `EXECUTOR_MCP_RESULT_TOO_LARGE` with its size
+(`mcp-session-manager.ts`). An `isError` result measured before its code was
+added once passed that check and was then refused by the control plane.
+
+Should the control plane still refuse a terminal result as
+`EXECUTOR_COMMAND_RESULT_INVALID`, the daemon replaces it in its recovery
+journal with `{success: false, code: 'EXECUTOR_RESULT_REFUSED'}` and sends
+that instead (`command-recovery.ts`). The refused receipt would be refused
+again on every retry, and the journal is the executor's only command lane.
+The model reads that the program ran but its answer could not be delivered,
+so it checks before repeating the call.
+
 ## Timing: the command outlives everything that can happen to it
 
 The daemon bounds a session start at `EXECUTOR_MCP_START_TIMEOUT_MS` (10 s) and
