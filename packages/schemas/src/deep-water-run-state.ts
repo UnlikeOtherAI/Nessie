@@ -14,6 +14,7 @@ import {
   DeepWaterAuthorKindSchema,
   LedgerScopeTurnStatusSchema,
 } from './deep-water-ledger-dto.js'
+import { DeepWaterResearchProgressSchema } from './deep-water-research-event.js'
 
 /**
  * What a DeepWater brief product run stores (`product_integration_runs`, see
@@ -227,13 +228,19 @@ export const DeepWaterPendingActionSchema = z
   .strict()
 export type DeepWaterPendingAction = z.infer<typeof DeepWaterPendingActionSchema>
 
-/** `scope_json`: written non-null by both brief insert paths. */
+/**
+ * `scope_json`: written non-null by both brief insert paths. `progress` is the
+ * latest snapshot DeepWater pushed of a running research (Water plan
+ * amendments-streaming S2), replaced only by one DeepWater observed later; a
+ * row written before the push existed has none.
+ */
 export const DeepWaterScopeStateSchema = z
   .object({
     brief: DeepWaterBriefRegisterSchema.nullable(),
     turn: DeepWaterTurnRegisterSchema.nullable(),
     turnAuthors: z.record(uuid, DeepWaterTurnAuthorSchema),
     pendingAction: DeepWaterPendingActionSchema.nullable(),
+    progress: DeepWaterResearchProgressSchema.nullable().default(null),
   })
   .strict()
 export type DeepWaterScopeState = z.infer<typeof DeepWaterScopeStateSchema>
@@ -243,6 +250,7 @@ export const emptyDeepWaterScopeState = (): DeepWaterScopeState => ({
   turn: null,
   turnAuthors: {},
   pendingAction: null,
+  progress: null,
 })
 
 /** Why a finished research could not be delivered, and the one remedy each names. */
