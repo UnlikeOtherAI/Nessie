@@ -225,4 +225,3 @@ test('a bare program name is found on the absolute PATH entries only, never in t
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
 })
-
