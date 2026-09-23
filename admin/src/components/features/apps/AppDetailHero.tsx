@@ -1,6 +1,8 @@
 import type { AppDetailRecord } from '@nessie/schemas'
 import { Link } from 'react-router-dom'
+import { DEEP_WATER_PRODUCT_SLUG } from '../../../facades/deep-water/hooks'
 import { Pill } from '../../primitives/Pill'
+import { DeepWaterTeamControls } from '../deep-water/DeepWaterTeamControls'
 import { AppBoardSourceAction } from './AppBoardSourceAction'
 import { AppIcon } from './AppIcon'
 import { AppTrustBadge } from './AppTrustBadge'
@@ -36,8 +38,8 @@ export const AppDetailHero = ({
   //
   // Two shapes reach here. `none` is the state with no control at all
   // (unavailable / turned off by an admin); `disabled` is a button that is
-  // visible but cannot be pressed — an integration-managed app like Deep Water,
-  // which is switched on for the team by its product rather than connected here.
+  // visible but cannot be pressed — an integration-managed app, which is
+  // switched on for the team by its product rather than connected here.
   //
   // The disabled case carries its reason in the button's `title`, which is
   // enough on a card but not here: a tooltip is invisible on touch and to
@@ -50,7 +52,13 @@ export const AppDetailHero = ({
   // no explanation of its own — it is not an availability verdict — so the
   // action's `title` stands in there.
   const explanation = appUnavailableExplanation(app)
-  const blocked =
+  // DeepWater is switched on for a team here, by its owner, rather than
+  // connected: its own controls take the place of Connect and of the sentence
+  // explaining why Connect cannot be pressed.
+  const deepWater = app.slug === DEEP_WATER_PRODUCT_SLUG
+  const blocked = deepWater
+    ? null
+    :
     cta.kind === 'disabled'
       ? { label: null, reason: explanation ?? { link: null, text: cta.title } }
       : cta.kind === 'none' && status.kind === 'quiet'
@@ -92,8 +100,14 @@ export const AppDetailHero = ({
             {app.longDescription ?? app.shortDescription}
           </p>
 
+          {deepWater ? (
+            <div className="mt-3">
+              <DeepWaterTeamControls />
+            </div>
+          ) : null}
+
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {cta.kind === 'connect' ? (
+            {deepWater ? null : cta.kind === 'connect' ? (
               // The one control on this page that acts rather than navigates.
               // It opens the shared review dialog; only its explicit confirm
               // button may begin a connection.
