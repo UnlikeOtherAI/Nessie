@@ -31,6 +31,8 @@ export const postAgentCard = async (
     expiresAt: Date | null
     /** A prepared executor access change the card opens a review of. */
     executorAccessChangeId?: string
+    /** A prepared workspace promotion the card opens a review of. */
+    executorWorkspacePromotionId?: string
     respondentUserIds: string[]
   },
 ): Promise<{ cardId: string; messageId: string }> => {
@@ -50,6 +52,9 @@ export const postAgentCard = async (
         channelId: context.channel.id,
         ...(input.executorAccessChangeId
           ? { executorAccessChangeId: input.executorAccessChangeId }
+          : {}),
+        ...(input.executorWorkspacePromotionId
+          ? { executorWorkspacePromotionId: input.executorWorkspacePromotionId }
           : {}),
         expiresAt: input.expiresAt,
         messageId: message.id,

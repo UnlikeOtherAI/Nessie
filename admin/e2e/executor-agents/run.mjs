@@ -16,10 +16,11 @@ const makeAgent = (number, name) => ({
 })
 
 // The confirmation card an assistant posts in chat after preparing a change.
-// It holds only the change's id; the press is what mints a token, for the
-// presser, and the card opens the same review dialog with it (F6).
+// It holds only the change's id; every press mints a fresh token, for the
+// presser, and the card opens the same review dialog with it (F6). It stays
+// open until the change is confirmed, so a review closed early is pressed again.
 const reviewCardId = '55555555-5555-4555-8555-555555555555'
-const cardMintedToken = `card-${'c'.repeat(38)}`
+const cardMintedToken = (press) => `card-${press}-${'c'.repeat(36)}`
 const reviewCard = (pressed) => ({
   action: pressed ? 'none' : 'respond',
   actions: [{ key: 'review', label: 'Review', style: 'primary', submits: true }],
@@ -52,7 +53,8 @@ const fixtureApi = () => {
   candidates[2].name = 'Personal Assistant'
   const prepared = new Map()
   const requests = []
-  let cardPressed = false
+  let cardPresses = 0
+  let cardResolved = false
   let failure = null
   let verification = 'password'
   let hiddenIdentity = null
@@ -71,6 +73,7 @@ const fixtureApi = () => {
   }
   return {
     roster, candidates, requests,
+    cardPresses: () => cardPresses,
     failNext: (endpoint) => { failure = endpoint },
     verification: (method) => { verification = method },
     hideIdentity: (agentId) => { hiddenIdentity = agentId },
@@ -84,28 +87,30 @@ const fixtureApi = () => {
         failure = null
         return send({ error: { code: 'TEMPORARY', message: 'Please try again.' } }, 503)
       }
-      if (url.pathname === `/api/agent-cards/${reviewCardId}`) return send({ data: reviewCard(cardPressed) })
+      if (url.pathname === `/api/agent-cards/${reviewCardId}`) return send({ data: reviewCard(cardResolved) })
       if (url.pathname === `/api/agent-cards/${reviewCardId}/respond`) {
         assert.deepEqual(body, { actionKey: 'review', secrets: {}, values: {} },
           'a review press carries no value and no secret — the card has no inputs')
-        assert.equal(cardPressed, false, 'the card is claimed once')
-        cardPressed = true
+        assert.equal(cardResolved, false, 'a resolved card is never pressed')
+        cardPresses += 1
         // The server's side of the press: a pending change this person
-        // prepared from chat, and a token minted for them at this moment.
+        // prepared from chat, and a token minted for them at this moment —
+        // replacing the last one, so only the newest confirms.
         const accessChangeId = uuid(2000)
+        const confirmationToken = cardMintedToken(cardPresses)
         prepared.set(accessChangeId, {
           change: { kind: 'agent_executor_grant', agentId: uuid(102), state: 'allowed' },
           receipt: {
-            accessChangeId, confirmationToken: cardMintedToken, executorId,
+            accessChangeId, confirmationToken, executorId,
             expiresAt: new Date(Date.now() + 600_000).toISOString(), requiresFreshVerification: true,
           },
           verificationMethod: 'password',
         })
+        // Pressed, not answered: the card stays open while the change waits.
         return send({ data: {
           cardId: reviewCardId,
-          executorReview: { accessChangeId, confirmationToken: cardMintedToken },
-          responseMessageId: uuid(904),
-          status: 'resolved',
+          executorReview: { accessChangeId, confirmationToken },
+          status: 'open',
         } })
       }
       if (url.pathname === `/api/executors/${executorId}/agents`) return send(paginate(roster, url))
@@ -161,6 +166,8 @@ const fixtureApi = () => {
           const index = source.findIndex((agent) => agent.agentId === agentId)
           assert.ok(index >= 0)
           destination.push({ ...source.splice(index, 1)[0], assigned: state === 'allowed' })
+          // Confirming closes the chat card that opened the review.
+          if (decision[1] === uuid(2000)) cardResolved = true
         }
         return send({ data: { executorId, authorizationRevision: 2 } })
       }
@@ -344,18 +351,28 @@ const evaluate = async (browser, viewport) => {
     await visible(card.getByText('Give an agent access to this executor', { exact: true }))
     assert.match(await card.innerText(), /Nothing is applied until you confirm it there, with your password/)
     await page.screenshot({ path: resolve(screenshots, `review-card-${viewport.width}.png`), fullPage: true })
-    await card.getByRole('button', { name: 'Review', exact: true }).click()
+    const reviewButton = card.getByRole('button', { name: 'Review', exact: true })
+    await reviewButton.click()
     await visible(review)
     await visible(review.getByText('Candidate 02 will be able to use this machine’s approved permissions.'))
     assert.equal(await review.getByText('The confirmation token is missing', { exact: false }).count(), 0)
-    assert.equal(page.url().includes(cardMintedToken), false, 'the minted token never enters the address')
+    assert.equal(page.url().includes(cardMintedToken(1)), false, 'the minted token never enters the address')
+    // Closed without confirming: the change is still pending, so the card is
+    // still open and its Review button presses again, minting a new token.
+    await review.getByRole('button', { name: 'Close', exact: true }).click()
+    await absent(review)
+    await visible(reviewButton)
+    await reviewButton.click()
+    await visible(review)
+    assert.equal(api.cardPresses(), 2)
+    assert.equal(page.url().includes(cardMintedToken(2)), false, 'nor does the second')
     await page.screenshot({ path: resolve(screenshots, `review-card-dialog-${viewport.width}.png`), fullPage: true })
     await review.getByLabel('Confirm with current password').fill('fixture-proof')
     await review.getByRole('button', { name: 'Allow access', exact: true }).click()
     await absent(review)
-    // The stub asserted the confirm carried the press's token; the grant landed.
+    // The stub asserted the confirm carried the newest press's token; the grant landed.
     const confirmCall = api.requests.find((entry) => entry.path === `/api/executor-access-changes/${uuid(2000)}/confirm`)
-    assert.equal(confirmCall?.body.confirmationToken, cardMintedToken)
+    assert.equal(confirmCall?.body.confirmationToken, cardMintedToken(2))
     assert.ok(api.roster.some((agent) => agent.agentId === uuid(102)), 'confirming from chat grants the agent')
     await visible(card.getByText(/^Review by Ondrej Rafaj/))
     assert.equal(await card.getByRole('button', { name: 'Review', exact: true }).count(), 0)

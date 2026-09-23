@@ -191,7 +191,8 @@ export const EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinit
   label: 'Prepare Reviewed Team Promotion',
   description:
     'Prepare the requesting user’s own reviewed executor draft for a host-team promotion. '
-    + 'The user must inspect and password-confirm the exact manifest in Executors; this assistant cannot write the host team.',
+    + 'It posts a confirmation card in this conversation, where the user inspects and '
+    + 'password-confirms the exact manifest; this assistant cannot write the host team.',
   parameters: {
     type: 'object',
     properties: { reviewCommandId: UUID },

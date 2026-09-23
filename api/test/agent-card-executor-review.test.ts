@@ -6,6 +6,8 @@ import { Prisma, PrismaClient } from '@prisma/client'
 import {
   confirmExecutorAccessChange,
   prepareExecutorAccessChange,
+  rejectExecutorAccessChange,
+  rejectExecutorWorkspacePromotion,
   type ExecutorAccessChange,
 } from '@nessie/executor-manage'
 import { AuthorizedActionContextSchema, type AuthorizedActionContext } from '@nessie/schemas'
@@ -21,9 +23,10 @@ import type { RouteDeps } from '../src/routes/types.js'
  * The prepare tool put `#confirmationToken=<token>` in its output; the secret
  * scanner rightly redacted it before the model saw it, so the link it posted
  * opened a review with no token. The tool now posts a review card holding only
- * the change's id, and pressing it mints the token for the presser inside the
- * press. These drive the real press route over a real database and then the
- * unchanged confirm rules with whatever the press handed back.
+ * the change's id, and every press mints a fresh token for the presser while
+ * the change is pending; the card closes when the change does. These drive the
+ * real press route over a real database and then the unchanged confirm rules
+ * with whatever the press handed back.
  */
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
@@ -181,61 +184,123 @@ const confirm = (
   input: { accessChangeId: string; confirmationToken: string; freshVerificationSatisfied: boolean },
 ) => confirmExecutorAccessChange(prisma, s.actor, input)
 
-runDatabaseTest('pressing Review hands the presser the one token that confirms the change', async (t) => {
+
+type PressBody = {
+  data: {
+    executorReview?: { accessChangeId?: string; confirmationToken: string; promotionId?: string }
+    responseMessageId?: string
+    status: string
+  }
+}
+
+const reviewFrom = async (prisma: PrismaClient, s: Seed, cardId: string) => {
+  const response = await press(prisma, s, cardId)
+  assert.equal(response.statusCode, 200, response.body)
+  const body = JSON.parse(response.body) as PressBody
+  // Pressed, never answered: the card is still open for the next press.
+  assert.equal(body.data.status, 'open')
+  assert.equal(body.data.responseMessageId, undefined)
+  const review = body.data.executorReview
+  assert.ok(review, 'the press answers with the review it opens')
+  return review
+}
+
+runDatabaseTest('every press hands the presser a fresh token, and only the newest confirms', async (t) => {
   await withSeed(t, async (prisma, s) => {
     const { cardId, prepared } = await prepareWithCard(prisma, s, { action: 'pause', kind: 'lifecycle' })
 
-    const response = await press(prisma, s, cardId)
-    assert.equal(response.statusCode, 200, response.body)
-    const body = JSON.parse(response.body) as {
-      data: { executorReview?: { accessChangeId: string; confirmationToken: string }; status: string }
-    }
-    assert.equal(body.data.status, 'resolved')
-    const review = body.data.executorReview
-    assert.ok(review, 'the press answers with the review it opens')
-    assert.equal(review.accessChangeId, prepared.accessChangeId)
-    assert.notEqual(review.confirmationToken, prepared.confirmationToken)
+    const first = await reviewFrom(prisma, s, cardId)
+    assert.equal(first.accessChangeId, prepared.accessChangeId)
+    assert.notEqual(first.confirmationToken, prepared.confirmationToken)
+    // The review closed without confirming — or the response was lost, the
+    // page reloaded, another device opened the DM. The card is still open, so
+    // the same person just presses again.
+    let card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+    assert.equal(card.status, 'open')
+    const second = await reviewFrom(prisma, s, cardId)
+    assert.notEqual(second.confirmationToken, first.confirmationToken)
 
-    // The token is in that response and nowhere durable.
-    const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
-    assert.equal(card.status, 'resolved')
-    assert.equal(JSON.stringify(card).includes(review.confirmationToken), false)
-    const reply = await prisma.message.findUniqueOrThrow({ where: { id: card.responseMessageId! } })
-    assert.equal(JSON.stringify(reply).includes(review.confirmationToken), false)
-    // A review is the person's to finish, so the press does not wake the agent.
+    // The tokens are in those responses and nowhere durable, and a press
+    // writes no reply and wakes nobody: the review is the person's to finish.
+    card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+    for (const token of [first.confirmationToken, second.confirmationToken]) {
+      assert.equal(JSON.stringify(card).includes(token), false)
+    }
+    assert.equal(card.responseMessageId, null)
+    assert.equal(await prisma.message.count({
+      where: { metadata: { path: ['agentCardResponse', 'cardId'], equals: cardId } },
+    }), 0)
     const woken = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
       SELECT count(*)::bigint AS count FROM queue_jobs WHERE idempotency_key = ${`orchestrate:card:${cardId}`}
     `)
     assert.equal(Number(woken[0]?.count), 0)
+    assert.equal(await prisma.auditLog.count({
+      where: { action: 'agent_card.responded', organizationId: s.organizationId, resourceId: cardId },
+    }), 2, 'each press is on the audit trail')
 
-    // The token minted at prepare time was shown to nobody and is now dead.
-    await assert.rejects(
-      confirm(prisma, s, { ...prepared, freshVerificationSatisfied: false }),
-      /Access change not found/,
-    )
-    // The press's token confirms, under the unchanged rules.
-    const confirmed = await confirm(prisma, s, { ...review, freshVerificationSatisfied: false })
+    // Only the newest token works: the prepare-time one (shown to nobody) and
+    // the first press's are dead.
+    for (const stale of [prepared.confirmationToken, first.confirmationToken]) {
+      await assert.rejects(
+        confirm(prisma, s, {
+          accessChangeId: prepared.accessChangeId,
+          confirmationToken: stale,
+          freshVerificationSatisfied: false,
+        }),
+        /Access change not found/,
+      )
+    }
+    const confirmed = await confirm(prisma, s, {
+      accessChangeId: prepared.accessChangeId,
+      confirmationToken: second.confirmationToken,
+      freshVerificationSatisfied: false,
+    })
     assert.equal(confirmed.executorId, s.executorId)
     const executor = await prisma.executor.findUniqueOrThrow({ where: { id: s.executorId } })
     assert.equal(executor.status, 'paused')
+
+    // Confirming closed the card in the same transaction, as its preparer.
+    card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+    assert.equal(card.status, 'resolved')
+    assert.equal(card.resolvedActionKey, 'review')
+    assert.equal(card.resolvedByUserId, s.userId)
+    const after = await press(prisma, s, cardId)
+    assert.equal(after.statusCode, 409, after.body)
+    assert.match(after.body, /CARD_NOT_OPEN/)
   })
 })
 
 runDatabaseTest('a change that needs fresh verification still needs it', async (t) => {
   await withSeed(t, async (prisma, s) => {
     const { cardId } = await prepareWithCard(prisma, s, { action: 'revoke', kind: 'lifecycle' })
-    const response = await press(prisma, s, cardId)
-    assert.equal(response.statusCode, 200, response.body)
-    const review = (JSON.parse(response.body) as {
-      data: { executorReview: { accessChangeId: string; confirmationToken: string } }
-    }).data.executorReview
+    const review = await reviewFrom(prisma, s, cardId)
 
     await assert.rejects(
-      confirm(prisma, s, { ...review, freshVerificationSatisfied: false }),
+      confirm(prisma, s, {
+        accessChangeId: review.accessChangeId!,
+        confirmationToken: review.confirmationToken,
+        freshVerificationSatisfied: false,
+      }),
       /Fresh verification is required/,
     )
     const executor = await prisma.executor.findUniqueOrThrow({ where: { id: s.executorId } })
     assert.equal(executor.status, 'online', 'nothing was applied without the proof')
+    const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+    assert.equal(card.status, 'open', 'a refused confirm leaves the card to press again')
+  })
+})
+
+runDatabaseTest('rejecting the change from its review cancels the card', async (t) => {
+  await withSeed(t, async (prisma, s) => {
+    const { cardId, prepared } = await prepareWithCard(prisma, s, { action: 'pause', kind: 'lifecycle' })
+    const review = await reviewFrom(prisma, s, cardId)
+
+    await rejectExecutorAccessChange(prisma, s.actor, {
+      accessChangeId: prepared.accessChangeId,
+      confirmationToken: review.confirmationToken,
+    })
+    const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+    assert.equal(card.status, 'cancelled')
   })
 })
 
@@ -251,6 +316,7 @@ runDatabaseTest('only the person who prepared the change can be handed its token
     assert.match(response.body, /EXECUTOR_ACCESS_CHANGE_STALE/)
     assert.equal(response.body.includes('confirmationToken'), false)
 
+    // A bystander's press neither closes the card nor rotates the token.
     const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
     assert.equal(card.status, 'open', 'a refused press leaves the card for its person')
     const after = await prisma.executorContinuation.findUniqueOrThrow({ where: { id: prepared.accessChangeId } })
@@ -258,17 +324,75 @@ runDatabaseTest('only the person who prepared the change can be handed its token
   })
 })
 
-runDatabaseTest('a change that is no longer pending refuses the press and leaves the card open', async (t) => {
+// A press that finds the change already over closes the card to match rather
+// than leaving a live Review button that always fails until the sweep runs.
+runDatabaseTest('a change that is over closes its card on the next press', async (t) => {
   await withSeed(t, async (prisma, s) => {
-    const { cardId, prepared } = await prepareWithCard(prisma, s, { action: 'pause', kind: 'lifecycle' })
-    // Confirmed through another door — the Executors page with its own token.
-    await confirm(prisma, s, { ...prepared, freshVerificationSatisfied: false })
+    const cases = [
+      { data: { status: 'consumed' as const }, expected: 'resolved' },
+      { data: { status: 'rejected' as const }, expected: 'cancelled' },
+      { data: { expiresAt: new Date(Date.now() - 1_000) }, expected: 'expired' },
+    ]
+    for (const { data, expected } of cases) {
+      const { cardId, prepared } = await prepareWithCard(prisma, s, { action: 'pause', kind: 'lifecycle' })
+      // Settled through a door that is not the card, behind the card's back.
+      await prisma.executorContinuation.update({ where: { id: prepared.accessChangeId }, data })
 
-    const response = await press(prisma, s, cardId)
-    assert.equal(response.statusCode, 409, response.body)
-    assert.match(response.body, /no longer waiting for your review/)
-    const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
-    assert.equal(card.status, 'open')
-    assert.equal(card.responseMessageId, null)
+      const response = await press(prisma, s, cardId)
+      assert.equal(response.statusCode, 409, response.body)
+      assert.match(response.body, /no longer waiting for your review/)
+      const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+      assert.equal(card.status, expected, JSON.stringify(data))
+      assert.equal(card.responseMessageId, null)
+    }
+  })
+})
+
+// The workspace promotion prepare tool used to hand the model
+// `#confirmationToken=<token>` too. Its card is the same card: an id, and a
+// token minted per press.
+runDatabaseTest('a workspace promotion card mints its own token per press', async (t) => {
+  await withSeed(t, async (prisma, s) => {
+    const promotion = await prisma.executorContinuation.create({
+      data: {
+        actorUserId: s.userId,
+        confirmationTokenHash: `prepare-time-${randomUUID()}`,
+        executorId: s.executorId,
+        expiresAt: new Date(Date.now() + 600_000),
+        subject: 'invocation',
+        subjectDigest: 'sha256:test',
+      },
+    })
+    const message = await prisma.message.create({
+      data: { agentId: s.agentId, content: 'Confirm a workspace promotion', role: 'assistant', threadId: s.threadId },
+    })
+    const card = await prisma.agentCard.create({
+      data: {
+        agentId: s.agentId,
+        channelId: s.channelId,
+        executorWorkspacePromotionId: promotion.id,
+        expiresAt: promotion.expiresAt,
+        messageId: message.id,
+        organizationId: s.organizationId,
+        respondentUserIds: [s.userId],
+        runId: s.runId,
+        spec: { ...REVIEW_CARD, title: 'Confirm a workspace promotion' },
+        threadId: s.threadId,
+      },
+    })
+
+    const review = await reviewFrom(prisma, s, card.id)
+    assert.equal(review.promotionId, promotion.id)
+    assert.equal(review.accessChangeId, undefined)
+    const stored = await prisma.executorContinuation.findUniqueOrThrow({ where: { id: promotion.id } })
+    assert.notEqual(stored.confirmationTokenHash, promotion.confirmationTokenHash)
+
+    // The press's token is the one the promotion's own rules accept: rejecting
+    // with it verifies it, and closes the card.
+    await rejectExecutorWorkspacePromotion(prisma, s.actor, {
+      confirmationToken: review.confirmationToken,
+      promotionId: promotion.id,
+    })
+    assert.equal((await prisma.agentCard.findUniqueOrThrow({ where: { id: card.id } })).status, 'cancelled')
   })
 })

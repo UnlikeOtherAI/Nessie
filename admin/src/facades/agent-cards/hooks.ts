@@ -17,6 +17,18 @@ export const useAgentCard = (cardId: string | undefined) => {
   })
 }
 
+/**
+ * Re-read one card. An executor review card is closed by the server when its
+ * change is confirmed or rejected, which is not a press, so the renderer asks
+ * for the card again when the review it opened closes.
+ */
+export const useRefreshAgentCard = () => {
+  const queryClient = useQueryClient()
+  return (cardId: string) => {
+    void queryClient.invalidateQueries({ queryKey: agentCardKeys.card(cardId) })
+  }
+}
+
 export type RespondToAgentCardInput = {
   actionKey: string
   cardId: string
@@ -52,8 +64,9 @@ export const useRespondToAgentCard = () => {
     // refreshing only on success left a resolved card looking pressable.
     onSettled: (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: agentCardKeys.card(input.cardId) })
-      // The press wrote a real reply, so the feed and the reply panel refresh
-      // through the path they already use for any other message.
+      // An answer wrote a real reply, so the feed and the reply panel refresh
+      // through the path they already use for any other message. (A review
+      // card's press writes none; the refresh is merely redundant there.)
       void queryClient.invalidateQueries({ queryKey: threadKeys.messages(input.threadId) })
     },
   })

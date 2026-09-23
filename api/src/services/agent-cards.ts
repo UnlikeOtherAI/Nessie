@@ -56,6 +56,7 @@ export const loadReadableCard = async (
       channel: { select: { systemChannelType: true, visibility: true } },
       channelId: true,
       executorAccessChangeId: true,
+      executorWorkspacePromotionId: true,
       expiresAt: true,
       id: true,
       message: {

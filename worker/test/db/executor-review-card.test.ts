@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
+import { AT_REST_SECRET_PURPOSE, encryptWithKeyRing, toEncryptionKeyRing } from '@nessie/runtime'
 import { AgentCardSpecSchema } from '@nessie/schemas'
 import { AGENT_DESIGNER_BLUEPRINT, AGENT_DESIGNER_SLUG, ensureGlobalAgentBootstrap } from '@nessie/team-admin'
 
@@ -10,6 +11,7 @@ import type { RunContext } from '../../src/run/execute/types.js'
 import {
   runExecutorAgentGrantPrepareTool,
   runExecutorLifecyclePrepareTool,
+  runExecutorWorkspacePromotionPrepareTool,
 } from '../../src/run/pa-tools/executors.js'
 import type { BuiltinToolRuntimeContext } from '../../src/run/tool-types.js'
 import { runDatabaseTest } from './support.js'
@@ -230,4 +232,124 @@ runDatabaseTest('every prepared access change is confirmed through the same card
   const spec = AgentCardSpecSchema.parse(card.spec)
   assert.equal(spec.subtitle, 'Pause this executor')
   assert.doesNotMatch(JSON.stringify(spec.blocks), /password/)
+})
+
+// The workspace promotion prepare tool answered with `#confirmationToken=` in
+// its output too — the same secret in the same model-visible text. It posts
+// the same card now, holding only the promotion's id.
+runDatabaseTest('a prepared workspace promotion posts the same card, and no token', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  const queueJobIds: string[] = []
+  t.after(async () => {
+    // The receipt rows restrict their executor's deletion; they go first.
+    await prisma.executorCommand.deleteMany({ where: { binding: { executorId: s.executorId } } })
+    await prisma.executorBinding.deleteMany({ where: { executorId: s.executorId } })
+    await prisma.queueJob.deleteMany({ where: { id: { in: queueJobIds } } })
+    await cleanup(prisma, s)
+    await prisma.$disconnect()
+  })
+  const secret = `promotion-card-${randomUUID()}`
+
+  // A reviewed draft the owner's own run produced: the command the promotion
+  // names, with its encrypted receipt.
+  const revision = await prisma.executorCapabilityRevision.create({
+    data: {
+      descriptor: {},
+      executorId: s.executorId,
+      localPolicyDigest: 'test',
+      reviewStatus: 'active',
+      revision: 1,
+      signature: 'test',
+    },
+  })
+  const trigger = await prisma.message.create({
+    data: { content: 'Promote the draft', role: 'user', threadId: s.threadId, userId: s.ownerId },
+  })
+  const reviewRun = await prisma.run.create({
+    data: { agentId: s.targetAgentId, status: 'completed', threadId: s.threadId, triggerMessageId: trigger.id },
+  })
+  const binding = await prisma.executorBinding.create({
+    data: {
+      authorizationRevision: 0,
+      candidateHandleDigest: 'test',
+      capabilityRevisionId: revision.id,
+      executorId: s.executorId,
+      fence: 1n,
+      operationKey: 'workspace.review',
+      runId: reviewRun.id,
+    },
+  })
+  const queueJob = await prisma.queueJob.create({
+    data: { payload: {}, status: 'completed', topic: 'executor.command' },
+  })
+  queueJobIds.push(queueJob.id)
+  const toolCall = await prisma.toolCall.create({
+    data: {
+      agentId: s.targetAgentId,
+      inputSummary: 'Review the draft',
+      runId: reviewRun.id,
+      startedAt: new Date(),
+      toolName: 'executor.workspace.review',
+    },
+  })
+  const manifestDigest = `sha256:${'a'.repeat(64)}`
+  const command = await prisma.executorCommand.create({
+    data: {
+      argumentDigest: 'test',
+      bindingId: binding.id,
+      queueJobId: queueJob.id,
+      resultCiphertext: JSON.stringify(encryptWithKeyRing(
+        toEncryptionKeyRing(secret),
+        AT_REST_SECRET_PURPOSE.executorCommand,
+        JSON.stringify({
+          changeCount: 1,
+          changes: [{ byteCount: 12, kind: 'created', path: 'draft.txt' }],
+          manifestDigest,
+          success: true,
+        }),
+      )),
+      resultDigest: `sha256:${'b'.repeat(64)}`,
+      state: 'result_acknowledged',
+      toolCallId: toolCall.id,
+    },
+  })
+
+  const context = designerContext(prisma, s)
+  const result = await runExecutorWorkspacePromotionPrepareTool(
+    { ...context, executorCommandEncryptionSecret: secret } as BuiltinToolRuntimeContext,
+    { reviewCommandId: command.id },
+  )
+
+  assert.match(result.outputPreview, /put a confirmation card in this conversation/)
+  assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/agents\/executors/)
+  assert.doesNotMatch(result.outputPreview.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, ''), TOKEN_SHAPE)
+  assert.equal(result.deliveredToConversation, true)
+
+  const promotion = await prisma.executorContinuation.findFirstOrThrow({
+    where: { executorId: s.executorId, subject: 'invocation' },
+    select: { expiresAt: true, id: true },
+  })
+  const card = await prisma.agentCard.findFirstOrThrow({
+    where: { threadId: s.threadId },
+    select: {
+      executorAccessChangeId: true,
+      executorWorkspacePromotionId: true,
+      expiresAt: true,
+      message: { select: { content: true, metadata: true } },
+      respondentUserIds: true,
+      spec: true,
+    },
+  })
+  assert.equal(card.executorWorkspacePromotionId, promotion.id)
+  assert.equal(card.executorAccessChangeId, null)
+  assert.deepEqual(card.respondentUserIds, [s.ownerId])
+  assert.equal(card.expiresAt?.getTime(), promotion.expiresAt.getTime())
+  const spec = AgentCardSpecSchema.parse(card.spec)
+  assert.equal(spec.title, 'Confirm a workspace promotion')
+  assert.equal(spec.subtitle, 'Write 1 reviewed change to the host workspace')
+  assert.deepEqual(spec.actions, [{ key: 'review', label: 'Review', style: 'primary', submits: true }])
+  for (const text of [JSON.stringify(card.spec), card.message.content, JSON.stringify(card.message.metadata)]) {
+    assert.doesNotMatch(text, /confirmationToken|promotion=/)
+  }
 })

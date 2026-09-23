@@ -1,21 +1,25 @@
 import {
   AgentCardMessageMetadataSchema,
   BROWSER_VIEWPORT_PRESETS,
+  type AgentCardExecutorReview,
   type AgentCardPresenter,
-  type AgentCardRespondResult,
 } from '@nessie/schemas'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { useViewport, type ViewportSnapshot } from '../../../hooks/useViewport'
-import { useAgentCard, useRespondToAgentCard } from '../../../facades/agent-cards/hooks'
+import {
+  useAgentCard,
+  useRefreshAgentCard,
+  useRespondToAgentCard,
+} from '../../../facades/agent-cards/hooks'
 import {
   useActivatePersonalBrowserAccessGrant,
   useRevokePersonalBrowserAccessGrant,
 } from '../../../facades/browser-cloud/hooks'
 import { FormError } from '../../shared/FormActions'
 import { AppIcon } from '../apps/AppIcon'
-import { ExecutorAccessChangeDialog } from '../executors/ExecutorReviewDialogs'
+import { ExecutorAccessChangeDialog, ExecutorPromotionDialog } from '../executors/ExecutorReviewDialogs'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentCardBlocks, AgentCardProse, type AgentCardFieldValue } from './AgentCardBlocks'
 import { ChatCardShell } from './ChatCardShell'
@@ -85,6 +89,7 @@ export const AgentCardMessage = ({
   const navigate = useNavigate()
   const query = useAgentCard(cardId)
   const respond = useRespondToAgentCard()
+  const refreshCard = useRefreshAgentCard()
   const activateBrowser = useActivatePersonalBrowserAccessGrant()
   const revokeBrowser = useRevokePersonalBrowserAccessGrant()
 
@@ -98,9 +103,10 @@ export const AgentCardMessage = ({
   // An executor review card's press answers with a confirmation token minted
   // for this person. It opens the one review dialog the Executors page uses,
   // right here, and lives only in this state: never an address, never the
-  // query cache, gone when the review closes.
-  const [executorReview, setExecutorReview] =
-    useState<NonNullable<AgentCardRespondResult['executorReview']> | null>(null)
+  // query cache, gone when the review closes. The card stays open while the
+  // change is pending, so closing the review without confirming — or losing
+  // this state to a reload or another device — only means pressing again.
+  const [executorReview, setExecutorReview] = useState<AgentCardExecutorReview | null>(null)
 
   if (!cardId) return null
   const card = query.data
@@ -135,7 +141,7 @@ export const AgentCardMessage = ({
         onSuccess: (result) => {
           setSecrets({})
           setSubmissionError(null)
-          if (result.executorReview) setExecutorReview(result.executorReview)
+          if (result.status === 'open') setExecutorReview(result.executorReview)
           if (href) {
             navigate(destinationWithCard(href, card.cardId), {
               state: { agentCardFormValues: effectiveValues, agentCardId: card.cardId },
@@ -306,14 +312,30 @@ export const AgentCardMessage = ({
       {executorReview ? (
         // The dialog portals out of the card, but React still bubbles its
         // clicks through here, and the whole card is a click target for the
-        // thread.
+        // thread. Closing it re-reads the card: a confirm or a reject closed
+        // it on the server, which no press told this query about.
         <div onClick={(event) => event.stopPropagation()}>
-          <ExecutorAccessChangeDialog
-            accessChangeId={executorReview.accessChangeId}
-            confirmationToken={executorReview.confirmationToken}
-            onClose={() => setExecutorReview(null)}
-            open
-          />
+          {'accessChangeId' in executorReview ? (
+            <ExecutorAccessChangeDialog
+              accessChangeId={executorReview.accessChangeId}
+              confirmationToken={executorReview.confirmationToken}
+              onClose={() => {
+                setExecutorReview(null)
+                refreshCard(card.cardId)
+              }}
+              open
+            />
+          ) : (
+            <ExecutorPromotionDialog
+              confirmationToken={executorReview.confirmationToken}
+              onClose={() => {
+                setExecutorReview(null)
+                refreshCard(card.cardId)
+              }}
+              open
+              promotionId={executorReview.promotionId}
+            />
+          )}
         </div>
       ) : null}
     </ChatCardShell>

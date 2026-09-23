@@ -110,13 +110,20 @@ export {
 export {
   confirmExecutorAccessChange,
   getExecutorAccessChangeForUser,
-  issueExecutorAccessChangeConfirmationToken,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
   requiresFreshExecutorVerification,
   type ExecutorAccessChange,
   type PreparedExecutorAccessChange,
 } from './executor-access-changes.js'
+export {
+  closeExecutorReviewCards,
+  EXECUTOR_REVIEW_CARD_ACTION_KEY,
+  issueExecutorAccessChangeConfirmationToken,
+  issueExecutorWorkspacePromotionConfirmationToken,
+  settledExecutorReviewOutcome,
+  type ExecutorReviewOutcome,
+} from './executor-review-cards.js'
 export {
   listExecutorWorkspaceReviews,
   listOriginatingExecutorWorkspaceReviews,

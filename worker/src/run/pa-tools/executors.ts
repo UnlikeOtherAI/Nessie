@@ -1,4 +1,5 @@
 import {
+  EXECUTOR_REVIEW_CARD_ACTION_KEY,
   formatExecutorLocalMcp,
   getExecutorAccessView,
   getExecutorForUser,
@@ -116,51 +117,57 @@ const reviewCardSubtitle = (change: ExecutorAccessChange): string => {
 }
 
 /**
- * The confirmation card a prepared access change is reviewed through.
+ * The confirmation card a prepared access change or workspace promotion is
+ * reviewed through.
  *
- * The change used to come back as a review link carrying its confirmation
- * token in the fragment. That token is a secret the model must never see, and
- * the secret scanner rightly redacted it from the tool output — so the link
- * the Designer posted opened a review with no token, and the change could not
- * be confirmed from chat at all. The card holds only the change's id and asks
- * only the person who prepared it; pressing Review mints a token for that
- * person inside the press (`issueExecutorAccessChangeConfirmationToken`) and
- * opens the existing review with it. The token prepared here is discarded
+ * Both used to come back as a review link carrying the confirmation token in
+ * the fragment. That token is a secret the model must never see, and the
+ * secret scanner rightly redacted it from the tool output — so the link the
+ * Designer posted opened a review with no token, and the change could not be
+ * confirmed from chat at all. The card holds only the change's id and asks
+ * only the person who prepared it; every press of Review mints a fresh token
+ * for that person (`@nessie/executor-manage` `executor-review-cards.ts`) and
+ * opens the existing review with it, and the card stays open until the change
+ * is confirmed, rejected or expires. The token prepared here is discarded
  * unseen. Confirming is unchanged: same actor, the token, fresh verification
  * where the change needs it.
  */
 const postReviewCard = async (
   context: BuiltinToolRuntimeContext,
   actorContext: AuthorizedActionContext,
-  prepared: { accessChangeId: string; expiresAt: Date; requiresFreshVerification: boolean },
-  change: ExecutorAccessChange,
+  review: {
+    change: { accessChangeId: string } | { promotionId: string }
+    expiresAt: Date
+    requiresFreshVerification: boolean
+    subtitle: string
+    title: string
+  },
 ): Promise<void> => {
   const runContext = context.runContext
   // Unreachable past the delegated surface check, which requires one.
   if (!runContext) throw new Error('Unable to resolve the current conversation.')
-  const minutes = Math.max(1, Math.round((prepared.expiresAt.getTime() - Date.now()) / 60_000))
+  const minutes = Math.max(1, Math.round((review.expiresAt.getTime() - Date.now()) / 60_000))
   await postAgentCard(context, runContext, {
     card: {
-      actions: [{ key: 'review', label: 'Review', style: 'primary', submits: true }],
+      actions: [{ key: EXECUTOR_REVIEW_CARD_ACTION_KEY, label: 'Review', style: 'primary', submits: true }],
       blocks: [{
         markdown:
           'Review opens exactly what changes. Nothing is applied until you confirm it there'
-          + `${prepared.requiresFreshVerification ? ', with your password' : ''}. `
+          + `${review.requiresFreshVerification ? ', with your password' : ''}. `
           + `This expires in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
         type: 'text',
       }],
       schemaVersion: 1,
-      subtitle: reviewCardSubtitle(change),
-      title: 'Confirm an executor change',
+      subtitle: review.subtitle,
+      title: review.title,
     },
-    executorAccessChangeId: prepared.accessChangeId,
-    expiresAt: prepared.expiresAt,
+    ...('accessChangeId' in review.change
+      ? { executorAccessChangeId: review.change.accessChangeId }
+      : { executorWorkspacePromotionId: review.change.promotionId }),
+    expiresAt: review.expiresAt,
     respondentUserIds: [actorContext.actor.actorId],
   })
 }
-
-const promotionReviewLink = (prepared: { confirmationToken: string; promotionId: string }): string =>
-  `/agents/executors?promotion=${prepared.promotionId}#confirmationToken=${prepared.confirmationToken}`
 
 const auditPreparedAccessChange = async (
   context: BuiltinToolRuntimeContext,
@@ -207,7 +214,13 @@ const prepare = async (
     change,
   })
   await auditPreparedAccessChange(context, actorContext, prepared)
-  await postReviewCard(context, actorContext, prepared, change)
+  await postReviewCard(context, actorContext, {
+    change: { accessChangeId: prepared.accessChangeId },
+    expiresAt: prepared.expiresAt,
+    requiresFreshVerification: prepared.requiresFreshVerification,
+    subtitle: reviewCardSubtitle(change),
+    title: 'Confirm an executor change',
+  })
   return {
     // The card is this turn's message: it says what to do, so the run may end
     // without restating it.
@@ -448,11 +461,24 @@ export const runExecutorWorkspacePromotionPrepareTool = async (
   } catch {
     console.error('[executor] Failed to emit workspace-promotion audit event')
   }
+  // The same card as an access change, for the same reason: the token this
+  // prepare minted must never reach the model, so it is discarded unseen and
+  // the card's press mints the one that confirms.
+  await postReviewCard(context, actorContext, {
+    change: { promotionId: prepared.promotionId },
+    expiresAt: prepared.expiresAt,
+    requiresFreshVerification: true,
+    subtitle: `Write ${prepared.changeCount} reviewed change${prepared.changeCount === 1 ? '' : 's'} to the host workspace`,
+    title: 'Confirm a workspace promotion',
+  })
   return {
+    deliveredToConversation: true,
     inputSummary: `reviewCommandId=${reviewCommandId}`,
     outputPreview:
-      `Prepared workspace promotion ${prepared.promotionId}. It expires at ${prepared.expiresAt.toISOString()}. `
-      + `The requesting user must inspect and password-confirm it here: ${promotionReviewLink(prepared)}`,
+      'Prepared the promotion and put a confirmation card in this conversation. Its Review '
+      + 'button opens the exact promotion for the requesting person; nothing is written until '
+      + 'they confirm it there, with fresh account verification. '
+      + `It expires at ${prepared.expiresAt.toISOString()}.`,
     toolName: 'executor_workspace_promotion_prepare',
   }
 }

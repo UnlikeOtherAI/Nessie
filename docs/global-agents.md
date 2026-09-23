@@ -280,11 +280,15 @@ prepares is confirmed from a card it posts in the person's own DM, not from a
 link. The link carried the confirmation token in its fragment; the secret
 scanner redacted the token from the tool output, so the review it opened could
 not confirm and the person had to redo the grant on the machine's Agents tab.
-The card stores only the change's id and answers only its preparer; pressing
-Review mints a token for that person inside the press and opens the same
+The card stores only the change's id and answers only its preparer; every
+press of Review mints a fresh token for that person and opens the same
 confirmation dialog in place, where an allow still asks for their password.
-The mechanics are in [agent cards](standards/agent-cards.md) → "An executor
-review card holds an id".
+The card stays open while the change is pending — closing the review early,
+reloading or switching device only means pressing again — and closes when the
+change is confirmed, rejected or expires. A workspace promotion prepared in
+chat is confirmed through the same card. The mechanics are in
+[agent cards](standards/agent-cards.md) → "An executor review card holds an
+id".
 
 ### What the catalogue states, and what it withholds
 

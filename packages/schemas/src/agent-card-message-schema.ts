@@ -67,26 +67,37 @@ export const AgentCardRespondBodySchema = z
 export type AgentCardRespondBody = z.infer<typeof AgentCardRespondBodySchema>
 
 /**
- * What a committed press answers, to the presser alone.
+ * What a press answers, to the presser alone.
  *
- * `executorReview` is present only for a system-authored executor review card:
- * the confirmation token minted for this presser at the press, so the review
- * it opens can confirm. It lives in this response and in the presser's memory
- * — never in the card row, the message, realtime, an address or a model's
- * context.
+ * An ordinary card is answered: it resolves and its response message exists.
+ * A system-authored executor review card is only pressed: it stays `open`
+ * while its change is pending, and each press answers with a confirmation
+ * token minted for this presser at that moment — for an access change or a
+ * workspace promotion — so the review it opens can confirm. The token lives in
+ * this response and in the presser's memory, never in the card row, the
+ * message, realtime, an address or a model's context; pressing again mints a
+ * new one and the old one dies.
  */
-export const AgentCardRespondResultSchema = z
-  .object({
-    cardId: z.string().uuid(),
-    responseMessageId: z.string().uuid(),
-    status: z.literal('resolved'),
-    executorReview: z
-      .object({
-        accessChangeId: z.string().uuid(),
-        confirmationToken: z.string().min(1),
-      })
-      .strict()
-      .optional(),
-  })
-  .strict()
+export const AgentCardExecutorReviewSchema = z.union([
+  z.object({ accessChangeId: z.string().uuid(), confirmationToken: z.string().min(1) }).strict(),
+  z.object({ promotionId: z.string().uuid(), confirmationToken: z.string().min(1) }).strict(),
+])
+export type AgentCardExecutorReview = z.infer<typeof AgentCardExecutorReviewSchema>
+
+export const AgentCardRespondResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      cardId: z.string().uuid(),
+      responseMessageId: z.string().uuid(),
+      status: z.literal('resolved'),
+    })
+    .strict(),
+  z
+    .object({
+      cardId: z.string().uuid(),
+      executorReview: AgentCardExecutorReviewSchema,
+      status: z.literal('open'),
+    })
+    .strict(),
+])
 export type AgentCardRespondResult = z.infer<typeof AgentCardRespondResultSchema>

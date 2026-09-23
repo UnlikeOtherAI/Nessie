@@ -23,9 +23,9 @@ import { useExecutorAccess } from '../../../facades/executors/hooks'
  *
  * They are reached from more than one place — prepared on the executor's own
  * detail screen, opened from a link that names the change in the query and
- * carries its token in the fragment, and (for an access change) opened in chat
- * by the confirmation card an assistant posts, whose press mints the token for
- * the person pressing it — so both live in components any of those can mount.
+ * carries its token in the fragment, and opened in chat by the confirmation
+ * card an assistant posts, each of whose presses mints a fresh token for the
+ * person pressing it — so both live in components any of those can mount.
  * The token is never put in the address these components control: it arrives
  * as a prop and stays in memory.
  */
