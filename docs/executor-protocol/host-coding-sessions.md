@@ -17,15 +17,32 @@ This chapter describes the executor side, which is built and tested: the
 bridge and its hosts, containment per supervisor, the configuration the
 executor generates the `coding-sessions` server from, the power facts in the
 signed descriptor, the reserved `_meta` the daemon stamps, and the daemon's
-teardown. What makes it reachable from a run is the control plane's, and is
-not written yet: the worker stamping `owner` on the `mcp.call` payload, the
-rule that refuses anyone but a private executor's pairing owner
-(`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), the first-class agent tools, the API
-producing `codingSessionClose`, and the review and admin rendering of the
-facts and sessions below. Until the worker stamps an owner every session tool
-refuses, so the bridge cannot be driven through a plain `mcp.call`. The
-overview's trust table already says that its guest-coding row does not cover
-this bridge; the bridge's own row lands with the control-plane rule.
+teardown. Of the control plane's half, the worker stamps `owner` on a call to
+the bridge, the rule below refuses anyone but a private executor's pairing
+owner, the API writes and sends `codingSessionClose`, and a review renders
+the power facts ("Who may drive it" and "Close requests" below). The
+first-class agent tools and the admin's session list with its Close are not
+written yet, so today a run reaches the bridge only through a plain
+`mcp.call`. The bridge's row in the overview's trust table states the rule.
+
+## Who may drive it
+
+The control plane allows an `mcp.call` to the bridge only on a **private**
+executor, and only for a binding made for that executor's **pairing owner**:
+the consumed availability candidate names the person, never anything the
+model sent (`executor-coding-session-owner.ts` in `@nessie/executor-manage`).
+Anyone else — every entitled member of a project or organisation executor,
+another rostered person on a private one — is refused with
+`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`, a failure the model does not correct by
+changing its call, whose message says in plain words that coding sessions act
+as the machine's owner. The reserved name is the bridge's whatever the
+revision says, so a call to `coding-sessions` meets the rule even on a
+revision without the facts. It is checked where the command is created
+(`createExecutorCommand`, so no command exists) and again where the daemon
+collects it, where a refusal becomes the command's result rather than a poll
+failure that would hold every later command behind it. The same check pins
+the payload's `owner`: exactly the binding's candidate on a call to the
+revision's bridge, absent on every other call.
 
 ## Two processes: a stateless bridge and one host per session
 
@@ -406,6 +423,45 @@ The same daemon-only `session_list_all` feeds the local-MCP report: for
 `sessionId`, `ownerKey`, `title`, `status` (with a categorical `reason`),
 `agent`, `root` and `updatedAt`, newest first and at most 32 — never a prompt,
 a transcript or a path. Absent means the bridge was not asked.
+
+### Close requests
+
+The control plane keeps each instruction as a row of
+`executor_coding_session_close_requests` — executor, owner key, optional
+session id, a reason from `EXECUTOR_CODING_SESSION_CLOSE_REASONS` (`lease_ended`,
+`access_revoked`, `executor_paused`, `executor_revoked`, `person`, pinned by a
+CHECK), who asked, and when it was made and resolved — written in the
+transaction that causes it (`executor-coding-session-closes.ts`):
+
+- a conversation lease's end, for its holder, unless they still hold another
+  live lease for the same agent there; a new lease withdraws that owner's
+  open request ([conversation-leases.md](conversation-leases.md) → §3);
+- the agent's access withdrawn (a deny of the pair or of the whole suite, or
+  its removal from the roster), for that agent and the pairing owner; the
+  pairing owner's removal from the roster, for every agent they bound the
+  pair for there;
+- the executor paused or revoked (a pairing's revoke included), for every
+  agent the pairing owner bound the pair for there and every owner key the
+  machine's last report listed. A revoked executor's heartbeat is refused,
+  and that refusal is what closes its sessions (`EXECUTOR_NOT_FOUND` above);
+  its rows record the intent.
+
+Owner keys are derived as the daemon derives `_meta['nessie/owner']`
+(`executorCodingSessionOwnerKey`), and only for the one person who can own a
+session — a private executor's pairing owner. The table's partial unique
+indexes keep one open request per owner and one per named session, so a
+pause that ends leases and fences the machine asks once.
+
+Every heartbeat answers with the executor's open requests, oldest first and at
+most `EXECUTOR_CODING_SESSION_CLOSE_MAXIMUM`, and omits `codingSessionClose`
+when there are none. A request is resolved by the local-MCP report a
+heartbeat carries when that report's `coding-sessions` status lists no open
+session for the owner (or not the named session), was observed more than the
+heartbeat's one-minute clock allowance after the request was made, and is not
+cut at its 32-session maximum; by any report from a daemon that fronts no
+bridge, whose close would do nothing; and by any heartbeat once it is a day
+old. A status without `codingSessions` settles nothing, because the bridge was
+not asked.
 
 ## What the bridge reports
 

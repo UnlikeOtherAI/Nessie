@@ -400,8 +400,8 @@ agent's own account (which the model knows and repeats) reads `<account>`, and
 its failures are named codes, never the underlying error. The whole contract is in
 [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md).
 
-It is the one named server that is not a program somebody named, and three
-rules follow from that:
+It is the one named server that is not a program somebody named, and the one
+that acts as the machine's own user, and these rules follow from that:
 
 - **The executor generates its entry.** `configure` takes a `codingSessions`
   object and writes the server itself; a hand-named server called
@@ -412,7 +412,21 @@ rules follow from that:
   the root names and the configuration's digest, inside
   `localPolicyDigest`. Flags that would carry power past those facts are
   refused in the configuration. Paths, programs and values still stay on the
-  host.
+  host. The descriptor-review projection carries the facts verbatim, and a
+  review reads them as "Coding agents on this machine: Claude Code (accept
+  edits, 3 pre-allowed commands) in nessie" (`ExecutorCodingAgents.tsx`).
+- **Only a private executor's pairing owner drives it.** A coding agent acts
+  as the machine's own user, so `createExecutorCommand` refuses an `mcp.call`
+  to the bridge unless the executor is private and the binding was made for
+  its pairing owner (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), and the daemon's
+  poll refuses it again. Every other program on the same machine stays
+  reachable to everyone the policy lets reach it.
+- **What ends a person's authority closes their sessions.** A lease's end, an
+  access withdrawal and a paused or revoked executor write a close request in
+  their own transaction, and the heartbeat carries it as `codingSessionClose`
+  until a later report shows it done
+  ([host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "Close requests").
 - **Its report carries its open sessions.** The local-MCP status for
   `coding-sessions` may carry `codingSessions`: each open session's id,
   owner key, title, status, agent, root name and `updatedAt` — never what it

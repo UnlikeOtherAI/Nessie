@@ -392,7 +392,9 @@ when one changes, the same turn updates it, not this section.
   never means empty, at any layer — a policy that names nothing permits nothing,
   and a Kelpie that could not look has not found nothing. The pair is the one
   bundle that carries across runs, and only into the launching person's own
-  follow-ups under a conversation lease, each bound afresh.
+  follow-ups under a conversation lease, each bound afresh. The built-in
+  coding-sessions bridge acts as the machine's own user, so only a private
+  executor's pairing owner may drive it.
   Read [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md)
   before writing code here.
 - **Local Ollama agents are owner-host-only and never fall back to cloud.**

@@ -162,8 +162,20 @@ transition that ends it.
 Anyone else pressing End, and any id that is not a lease, gets 404
 `EXECUTOR_NOT_FOUND`. A review that keeps both keys leaves the leases alone:
 their existing bindings are fenced by the revision check, and the next carry
-binds the new revision afresh. Ending a lease stops future reach only; closing
-the holder's coding sessions on the machine comes with the host coding bridge.
+binds the new revision afresh.
+
+Every end also asks the machine to close the holder's coding sessions on it,
+in the same transaction (`endExecutorConversationLeasesInTransaction` writes
+an `executor_coding_session_close_requests` row the next heartbeat carries as
+`codingSessionClose`) — unless that person still holds another live lease for
+the same agent on the machine: sessions belong to the owner (executor, agent,
+person), not to one conversation, and the other conversation may be driving
+them. A fence says which it was (`access_revoked`, `executor_paused`,
+`executor_revoked`); every other end reads `lease_ended`. A new lease for the
+same owner withdraws that owner's open request, so a relaunch — `replaced` —
+keeps the sessions it would otherwise have closed. Only a private executor's
+pairing owner can own a session, so nobody else's lease end asks for anything
+([host-coding-sessions.md](host-coding-sessions.md)).
 
 ## 4. Who can see it
 
