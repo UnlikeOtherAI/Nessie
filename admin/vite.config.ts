@@ -37,6 +37,7 @@ export default defineConfig(({ command, mode }) => {
   const includeMemberManagementFixture = env.NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE === '1'
   const includeAppConnectScopeFixture = env.NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE === '1'
   const includeAgentProposalCardFixture = env.NESSIE_AGENT_PROPOSAL_CARD_E2E_FIXTURE === '1'
+  const includeAgentTriggersFixture = env.NESSIE_AGENT_TRIGGERS_E2E_FIXTURE === '1'
   const includeChannelAgentControlsFixture =
     env.NESSIE_CHANNEL_AGENT_CONTROLS_E2E_FIXTURE === '1'
   const includeChannelDecisionsFixture = env.NESSIE_CHANNEL_DECISIONS_E2E_FIXTURE === '1'
@@ -69,6 +70,7 @@ export default defineConfig(({ command, mode }) => {
   ...(includeMemberManagementFixture
     || includeAppConnectScopeFixture
     || includeAgentProposalCardFixture
+    || includeAgentTriggersFixture
     || includeChannelAgentControlsFixture
     || includeChannelDecisionsFixture
     || includeVisibilityAffordancesFixture
@@ -97,6 +99,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeAgentProposalCardFixture ? {
             agentProposalCard: resolve(__dirname, 'e2e/agent-proposal-card/index.html'),
+          } : {}),
+          ...(includeAgentTriggersFixture ? {
+            agentTriggers: resolve(__dirname, 'e2e/agent-triggers/index.html'),
           } : {}),
           ...(includeChannelAgentControlsFixture ? {
             channelAgentControls: resolve(__dirname, 'e2e/channel-agent-controls/index.html'),
