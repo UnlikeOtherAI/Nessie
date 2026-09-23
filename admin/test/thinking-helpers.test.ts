@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   appendThinkingEntry,
+  countSettledToolLines,
   countThinkingEntries,
   groupPendingByRoot,
   mergeThinkingEntries,
@@ -273,4 +274,45 @@ test('countThinkingEntries totals the ticker growth across runs', () => {
     ]),
     3,
   )
+})
+
+const screenshot = {
+  attachmentId: '40000000-0000-4000-8000-000000000001',
+  byteLength: 13_715,
+  filename: 'kelpie-screenshot-1.png',
+  hasThumbnail: true,
+  mimeType: 'image/png',
+}
+
+test('a live tool line takes the screenshots only the full log carries, in the live order', () => {
+  // The live line was published before its call returned anything; the full
+  // log, read once it had, holds the same chunk with its images.
+  const live = [reasoning('1', 'Opening the page.'), tool('2', 'executor_mcp_call: server=kelpie')]
+  const log = [
+    reasoning('1', 'Opening the page.'),
+    { ...tool('2', 'executor_mcp_call: server=kelpie'), attachments: [screenshot] },
+    reasoning('3', 'The page loaded.'),
+  ]
+
+  const merged = mergeThinkingEntries(live, log)
+  assert.deepEqual(merged.map((entry) => entry.id), ['1', '2', '3'])
+  assert.deepEqual(merged[1]?.attachments, [screenshot])
+  assert.equal(live[1]?.attachments, undefined, 'the live view itself is not mutated')
+
+  const blocks = toThinkingBlocks(merged)
+  assert.deepEqual(blocks.map((block) => [block.kind, block.attachments?.length ?? 0]), [
+    ['reasoning', 0],
+    ['tool', 1],
+    ['reasoning', 0],
+  ])
+})
+
+test('a tool line counts as returned once something follows it, or once the run stops streaming', () => {
+  const running = toThinkingBlocks([reasoning('1', 'Look.'), tool('2', 'kelpie_navigate'), tool('3', 'kelpie_screenshot')])
+  assert.equal(countSettledToolLines(running, true), 1, 'the newest line may still be running')
+  assert.equal(countSettledToolLines(running, false), 2, 'a finished run has returned every call')
+
+  const answered = toThinkingBlocks([tool('2', 'kelpie_screenshot'), reasoning('3', 'It shows a login form.')])
+  assert.equal(countSettledToolLines(answered, true), 1)
+  assert.equal(countSettledToolLines([], true), 0)
 })
