@@ -173,6 +173,10 @@ export const registerCreateThreadMessageRoute = (
           organizationId: actorContext.tenant.organizationId,
           uploaderId: actorContext.actor.actorId,
           messageId: null,
+          // An executor command's image names its uploader but is the run's:
+          // posting it would read it into this room's history past the
+          // run's own disclosure.
+          executorCommandId: null,
         },
         data: { messageId: result.message.id },
       })

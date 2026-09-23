@@ -178,6 +178,9 @@ const EXECUTOR_DAEMON_SESSION_ROUTES = new Set([
   '/api/executor-daemon/descriptor',
   '/api/executor-daemon/commands/poll',
   '/api/executor-daemon/commands/receipt',
+  // Its per-executor image rate is the handler's (`@nessie/executor-manage`
+  // executor-command-attachments.ts); this is the same per-IP floor.
+  '/api/executor-daemon/commands/attachment',
   '/api/executor-daemon/browser-cookie-imports/pending',
   '/api/executor-daemon/browser-cookie-imports/upload',
   '/api/executor-enrollments/submit',
