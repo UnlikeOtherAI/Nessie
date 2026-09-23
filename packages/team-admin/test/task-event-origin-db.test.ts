@@ -97,6 +97,10 @@ const seed = async (prisma: PrismaClient) => {
     cleanup: async () => {
       await prisma.organization.deleteMany({ where: { id: organization.id } })
       await prisma.user.deleteMany({ where: { id: person.id } })
+      // The dispatch jobs this seed's events enqueued carry no key to cascade on.
+      await prisma.queueJob.deleteMany({
+        where: { topic: TRIGGER_TICKET_DISPATCH_TOPIC, payload: { path: ['organizationId'], equals: organization.id } },
+      })
     },
   }
 }
