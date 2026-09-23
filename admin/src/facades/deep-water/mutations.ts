@@ -60,6 +60,9 @@ export const useCreateResearchBrief = () => {
     onError: reportUnreadableAnswer,
     onSuccess: (brief) => {
       if (scope) queryClient.setQueryData(deepWaterKeys.brief(brief.id, scope), brief)
+    },
+    // An answer that could not be read may still have opened a brief: the lists show it either way.
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.lists })
     },
   })

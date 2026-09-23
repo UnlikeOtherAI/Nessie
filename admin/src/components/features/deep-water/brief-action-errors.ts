@@ -85,3 +85,19 @@ export const briefActionFailure = (error: unknown): BriefActionFailure => {
         : refuse('That couldn’t be done. Try again.', true)
   }
 }
+
+/**
+ * The new-brief form's reading of a failure. An answer that could not be read
+ * may have opened a brief the form has nothing of yet, so it is not told
+ * "here is where it stands": pressing the button again reuses the key, and the
+ * same brief answers.
+ */
+export const newBriefFailure = (error: unknown): BriefActionFailure => {
+  const read = briefActionFailure(error)
+  if (!(error instanceof ApiClientError) || error.code !== 'INVALID_RESPONSE') return read
+  return {
+    message: 'Nessie opened the brief, but its answer couldn’t be read. Press Plan with DeepWater again to open it.',
+    refetch: false,
+    retrySameAction: true,
+  }
+}

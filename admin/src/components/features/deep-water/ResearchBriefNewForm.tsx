@@ -8,7 +8,7 @@ import { useCreateResearchBrief } from '../../../facades/deep-water/mutations'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
 import { FormField } from '../../shared/FormField'
 import { Textarea } from '../../shared/FormControls'
-import { briefActionFailure } from './brief-action-errors'
+import { newBriefFailure } from './brief-action-errors'
 import { useIntentActionId } from './useIntentActionId'
 
 /**
@@ -70,7 +70,7 @@ export const ResearchBriefNewForm = ({
     const id = actionId.take(body)
     create.mutate({ actionId: id, ...body }, {
       onError: (failure) => {
-        const read = briefActionFailure(failure)
+        const read = newBriefFailure(failure)
         actionId.settle(read.retrySameAction)
         setError(read.message)
       },

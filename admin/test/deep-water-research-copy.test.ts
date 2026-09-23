@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { ApiClientError } from '@nessie/client-core'
 
-import { briefActionFailure } from '../src/components/features/deep-water/brief-action-errors.js'
+import { briefActionFailure, newBriefFailure } from '../src/components/features/deep-water/brief-action-errors.js'
 import {
   deepWaterTeamControl,
   deepWaterTeamStatus,
@@ -160,6 +160,13 @@ test('a synchronous refusal of a brief action reads as its remedy', () => {
   assert.equal(unreadable.retrySameAction, true)
   assert.doesNotMatch(unreadable.message, /connection/i)
   assert.doesNotMatch(unreadable.message, FORBIDDEN)
+  // A new brief whose answer could not be read has nothing on screen to point at:
+  // pressing Plan again replays the same key and opens it.
+  const unreadableNew = newBriefFailure(apiError('INVALID_RESPONSE', 202))
+  assert.equal(unreadableNew.retrySameAction, true)
+  assert.doesNotMatch(unreadableNew.message, /where it stands/i)
+  assert.match(unreadableNew.message, /Plan with DeepWater again/)
+  assert.deepEqual(newBriefFailure(apiError('INTERNAL', 503)), briefActionFailure(apiError('INTERNAL', 503)))
 })
 
 test('an owner gets the one change there is to make for the team', () => {
