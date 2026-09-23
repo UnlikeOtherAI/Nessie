@@ -345,8 +345,15 @@ test('a request refused because of its images is its own reason, which the call 
     'openai chat request failed with HTTP 400: Invalid content type. image_url is only supported by certain models.',
     // OpenRouter's wording, which it answers as a 404.
     'openai-compatible chat request failed with HTTP 404: No endpoints found that support image input',
+    // Words the billing and timeout arms read, on an image refusal.
+    'openai-compatible chat request failed with HTTP 400: image quota exceeded for this request',
+    'openai-compatible chat request failed with HTTP 400: insufficient image resolution',
+    'openai-compatible chat request failed with HTTP 400: timed out while fetching image_url',
+    // An oversized image payload.
+    'openai-compatible chat request failed with HTTP 413: image too large',
   ]) {
-    assert.equal(classifyError(providerFailure(message, message.includes('HTTP 404') ? 404 : 400)), 'image_rejected', message)
+    const status = Number(/HTTP (\d{3})/.exec(message)![1])
+    assert.equal(classifyError(providerFailure(message, status)), 'image_rejected', message)
   }
   // Once the call site has asked again without images, it is a configuration answer.
   const recovery = resolveRecovery('image_rejected', 0, { remaining: 6, total: 6 })

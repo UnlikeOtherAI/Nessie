@@ -17,6 +17,13 @@ export const estimateToolSchemaTokens = (tools: ToolSchemaDescriptor[]): number 
 // thread full of photos triggers compaction instead of overflowing the model.
 const IMAGE_TOKEN_ESTIMATE = 1500
 
+// A tool's image is a full-page screenshot, not a chat photo: a 1918×957
+// Kelpie capture measured about 2 300 prompt tokens on the production model
+// (docs/plans/2026-09-22-executor-local-apps/screenshots.md). Priced as a
+// photo, two shown screenshot turns ran a third over their estimate, and
+// compaction fired after the window had already overflowed.
+const TOOL_IMAGE_TOKEN_ESTIMATE = 2_300
+
 // A tool-images turn holds references, and its pictures are read in when the
 // provider input is built (`tool-images.ts`), so they are counted from the
 // references — unless the turn is one too old to carry them any more.
@@ -33,18 +40,30 @@ export const estimateMessageTokens = (msg: ProviderMessage, toolImagesShown = tr
     if (msg.role === 'user' && msg.images) {
       imageTokens = msg.images.length * IMAGE_TOKEN_ESTIMATE
     } else if (isToolImagesMessage(msg) && toolImagesShown) {
-      imageTokens = msg.toolImages.length * IMAGE_TOKEN_ESTIMATE
+      imageTokens = msg.toolImages.length * TOOL_IMAGE_TOKEN_ESTIMATE
     }
   }
   return estimateTokens(content) + imageTokens + 4
 }
 
+const shownToolImageTurns = (messages: ProviderMessage[]): Set<ProviderMessage> => new Set(
+  messages.filter((msg) => isToolImagesMessage(msg)).slice(-TOOL_IMAGE_TURNS_SHOWN),
+)
+
 export const estimateMessagesTokens = (messages: ProviderMessage[]): number => {
-  const shown = new Set<ProviderMessage>(
-    messages.filter((msg) => isToolImagesMessage(msg)).slice(-TOOL_IMAGE_TURNS_SHOWN),
-  )
+  const shown = shownToolImageTurns(messages)
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg, shown.has(msg)), 0)
 }
+
+/**
+ * The tokens the pictures of the shown tool-images turns add: what an
+ * estimator that knows only `images` — `@deep/agent`'s — leaves out.
+ */
+export const estimateShownToolImageTokens = (messages: ProviderMessage[]): number =>
+  [...shownToolImageTurns(messages)].reduce(
+    (sum, msg) => sum + (isToolImagesMessage(msg) ? msg.toolImages.length * TOOL_IMAGE_TOKEN_ESTIMATE : 0),
+    0,
+  )
 
 // Closed units of context: an assistant turn that requested tool calls stays
 // glued to its tool results, and to the turn carrying their images. Every

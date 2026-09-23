@@ -111,7 +111,10 @@ export type ExecutorResultImages = ReadonlyMap<string, ToolImageRef>
 // (executor/src/mcp-images.ts) and is shown to the model when Nessie holds
 // its attachment: numbered, so the images turn after the batch can name it the
 // same way. Bytes a program sent inline, or a reference with no attachment
-// behind it, are named but never shown, and take no number.
+// behind it, are named but never shown, and take no number. The daemon keeps
+// an image repeated in one result once and references it from each place, so
+// a repeat is named by the number it already has and shown once: sent twice,
+// it spent two of the prompt's six image slots on one picture.
 const imageLine = (
   item: Record<string, unknown>,
   images: ExecutorResultImages | undefined,
@@ -120,6 +123,8 @@ const imageLine = (
   const digest = typeof item.attachmentDigest === 'string' ? item.attachmentDigest : null
   const ref = digest ? images?.get(digest) : undefined
   if (ref) {
+    const earlier = shown.findIndex((image) => image.attachmentId === ref.attachmentId)
+    if (earlier >= 0) return toolImageLabel(earlier + 1, ref.byteLength)
     shown.push(ref)
     return toolImageLabel(shown.length, ref.byteLength)
   }

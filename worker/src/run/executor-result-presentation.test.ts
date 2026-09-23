@@ -139,6 +139,24 @@ test('a reference Nessie holds no attachment for is said to be unavailable and t
     .includes('[image unavailable: Nessie does not hold it for this call]'))
 })
 
+test('an image the result repeats is shown once, under the number it already has', () => {
+  const images = new Map([
+    [KEPT_DIGEST, { attachmentId: '0b7c6a8e-3f1d-4c2a-9e5b-7d8f9a0b1c2d', byteLength: 13_715, mimeType: 'image/png' }],
+    [SECOND_DIGEST, { attachmentId: '1b7c6a8e-3f1d-4c2a-9e5b-7d8f9a0b1c2d', byteLength: 131_072, mimeType: 'image/png' }],
+  ])
+  // The daemon keeps a repeated image once and references it from each place.
+  const { imageRefs, output } = shapeExecutorMcpCallResult('kelpie', {
+    content: [keptReference(KEPT_DIGEST), keptReference(SECOND_DIGEST, 131_072), keptReference(KEPT_DIGEST)],
+    success: true,
+  }, images)
+  assert.deepEqual(lines(output).filter((line) => line.startsWith('[image')), [
+    '[image 1: screenshot, 13 KB]',
+    '[image 2: screenshot, 128 KB]',
+    '[image 1: screenshot, 13 KB]',
+  ])
+  assert.deepEqual(imageRefs, [images.get(KEPT_DIGEST), images.get(SECOND_DIGEST)])
+})
+
 test('the whole answer is capped with a paging hint that counts what was left out', () => {
   const text = 'a'.repeat(EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS + 500)
   const output = presentExecutorMcpCallResult('kelpie', { content: [{ text, type: 'text' }], success: true })

@@ -92,6 +92,10 @@ export const userMessageForFailureReason = (
 
 const IMAGE_CONTENT = /\bimages?\b|image_url|vision|multimodal|multi-modal/
 
+const isContextOverflowMessage = (message: string): boolean =>
+  message.includes('context')
+  && (message.includes('length') || message.includes('overflow') || message.includes('too long') || message.includes('maximum'))
+
 export const classifyError = (error: unknown): FailoverReason => {
   if (error instanceof PrivateAgentPlacementError) return 'private_agent_placement'
   if (error instanceof GlobalAgentPlacementError) return 'global_agent_placement'
@@ -148,13 +152,28 @@ export const classifyError = (error: unknown): FailoverReason => {
   if (status === 429 || message.includes('rate limit') || message.includes('too many requests')) {
     return 'rate_limit'
   }
+  // A request refused because of the pictures in it: a model that takes no
+  // image input, or an image it would not decode, fetch or accept. Providers
+  // answer it as a 400, an oversized one as a 413; OpenRouter says "No
+  // endpoints found that support image input" as a 404, which is why this sits
+  // above the not-found arm. It is the one rejection a run gets past on its
+  // own: the call site strips the images and asks once more
+  // (`execute/tool-image-inference.ts`). It is decided before the word-only
+  // arms below, because an image refusal that says "quota", "insufficient" or
+  // "timed out" was read as billing or a timeout and never got that retry; a
+  // context overflow that happens to mention its images stays one, since
+  // compaction, not blindness, is what answers it.
+  if (
+    (status === 400 || status === 413 || (status === 404 && message.includes('support')))
+    && IMAGE_CONTENT.test(message)
+    && !isContextOverflowMessage(message)
+  ) {
+    return 'image_rejected'
+  }
   if (status === 402 || message.includes('billing') || message.includes('quota') || message.includes('insufficient')) {
     return 'billing'
   }
-  if (
-    message.includes('context') &&
-    (message.includes('length') || message.includes('overflow') || message.includes('too long') || message.includes('maximum'))
-  ) {
+  if (isContextOverflowMessage(message)) {
     return 'context_overflow'
   }
   if (message.includes('timeout') || message.includes('timed out') || message.includes('etimedout') || message.includes('econnreset')) {
@@ -165,15 +184,6 @@ export const classifyError = (error: unknown): FailoverReason => {
   }
   if (status === 503 || message.includes('overloaded') || message.includes('service unavailable')) {
     return 'overloaded'
-  }
-  // A request refused because of the pictures in it: a model that takes no
-  // image input, or an image it would not decode or accept. Providers answer
-  // it as a 400; OpenRouter says "No endpoints found that support image input"
-  // as a 404, which is why this sits above the not-found arm. It is the one
-  // rejection a run gets past on its own: the call site strips the images and
-  // asks once more (`execute/tool-image-inference.ts`).
-  if ((status === 400 || (status === 404 && message.includes('support'))) && IMAGE_CONTENT.test(message)) {
-    return 'image_rejected'
   }
   // A 404 from a chat/completions endpoint is never a missing route — the route
   // is the provider's own. It means the configured model is not available to
