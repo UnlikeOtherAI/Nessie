@@ -27,12 +27,13 @@ Each rule is tagged with the PR that first enforces it in code:
   decision with one delivery row per decision; and `ticket_changed` itself,
   released with its typed configuration, its server-side resolution and
   field-level refusals, the one-pickup-per-column rule, and the Designer's
-  `project_structure_read` and generated trigger catalogue. What a decision
-  then does — the work record, its thread, the `ticket.work` run — is the
-  rest of T1: until it lands the worker's work seam
-  (`notImplementedTicketWorkSeam`, `worker/src/control/ticket-work-seam.ts`)
-  records each start or wake as a failed, retryable delivery rather than
-  starting anything.
+  `project_structure_read` and generated trigger catalogue; and what a
+  decision then does — the work record and its one thread, the `ticket.work`
+  run acting as the agent with its ticket tools, wakes that coalesce, the
+  kickoff rebuilt from the record, the work thread's posting rule and event
+  rows, `assignOnPickup`, teardown in the move and on disabling a trigger,
+  and the `wakesPerTicket` and `startsPerDay` limits. No machine does ticket
+  work yet: the agent reads, comments on and moves tickets.
 - **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
@@ -203,12 +204,14 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `follow.includeSourceEvents` — for a `source`-origin event. Nothing else
   wakes it, and a source event never picks up or resumes work.** A re-entry
   into a start-work column obeys the same rule, so a token's or an agent's
-  move back leaves a parked record parked. **(from T1)** Text from anyone but a
+  move back leaves a parked record parked. **(T1)** Text from anyone but a
   board editor — agents, sources (opted in or not), external provider users,
   people who cannot edit the board — reaches the agent only as quoted,
   attributed, untrusted content, which it is told never to forward to the
-  coding agent as an instruction; the dispatcher already marks a source wake
-  `untrusted` for the kickoff to frame. Each follow kind wakes with its own
+  coding agent as an instruction: `describeWakeEvent`
+  (`worker/src/control/ticket-work-events.ts`) asks each author's right to
+  edit the board when it builds the kickoff, and frames a wake the dispatcher
+  marked `untrusted` (an opted-in source event) the same way whoever wrote it. Each follow kind wakes with its own
   reason (`TICKET_FOLLOW_WAKE_REASONS`): comment `ticket_commented`,
   description `ticket_description_changed`, priority
   `ticket_priority_changed`, labels `ticket_labels_changed`, assignee
@@ -223,18 +226,33 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   start-work nor end, a ticket it has no live work on — writes no row; every
   event it would act on writes one. The decision itself is the pure
   `decideTicketTrigger` (`worker/src/control/ticket-trigger-decision.ts`);
-  a start or a wake goes through the `TicketWorkSeam` inside the delivery's
-  transaction, and a throw there leaves a failed, retryable row, which the
-  delivery-retry poller decides again through
+  a start or a wake goes through the `TicketWorkSeam` (`createTicketWorkSeam`,
+  `worker/src/control/ticket-work.ts`) inside the delivery's transaction, and
+  a throw there leaves a failed, retryable row — a classified authority loss,
+  such as the agent no longer being in the target channel, also moves the
+  trigger's health, through the `recordTriggerRunFailure` a trigger fire uses
+  — which the delivery-retry poller decides again through
   `reattemptTicketTriggerDelivery` because a ticket trigger has no fixed
-  thread. Entering an end column sends one machine-less `ticket_moved` wake
+  thread. The bookkeeping is `settleTicketDelivery`
+  (`ticket-trigger-settle.ts`), shared with the work thread's messages. Entering an end column sends one machine-less `ticket_moved` wake
   for the record that move ended, except when the trigger's own agent made
   the move (`own_agent_event`); a priority change on a `queued` record wakes
   nothing (`priority_while_queued`).
-- **(from T1) Only board editors write in a work thread**, checked live by the
-  message route. A person's message there starts no ordinary run: it becomes a
-  `thread_message` follow wake, and the message is stamped
-  `metadata.ticketWorkSteer = true`.
+- **(T1) Only board editors write in a work thread**, checked live by the
+  message route on every post (`findTicketWorkThread` and
+  `canPostInTicketWorkThread`, `packages/team-admin/src/ticket-work-thread.ts`;
+  a thread is a work thread for as long as any work record names it, its work
+  ended or its trigger deleted). Anyone else gets 403
+  `TICKET_WORK_THREAD_READ_ONLY` with `TICKET_WORK_THREAD_READ_ONLY_SENTENCE`,
+  the words the composer shows. A board editor's message there is stamped
+  `metadata.ticketWorkSteer = true` and starts no ordinary run: delivery
+  enqueues `ticket-work.thread-message` instead of orchestration, and the
+  worker decides it (`dispatchTicketThreadMessage`) as a `thread_message`
+  follow of the thread's live record — under the origin rule again, one
+  delivery deduped on `thread:<triggerId>:<messageId>`, retried by the same
+  poller arm. A trigger that does not follow `thread_message`, or a thread
+  whose work ended, wakes nothing: the message stays where the next run reads
+  it.
 
 ## A `ticket.work` run acts as the agent, never as a person
 
@@ -244,44 +262,127 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   follow-up run and is never folded into a batch with people's messages, so no
   person's message is consumed under the agent's authority.
   `packages/db/test/thread-serialization-ticket-work.test.ts` pins it.
-- **(from T1) Pending wakes for the same work record coalesce when they are
+- **(T1) Pending wakes for the same work record coalesce when they are
   enqueued, not when they drain.** At most one pending `ticket.work` row
   exists per work record: a wake for a record that already has one folds its
   event into that row's kickoff instead of adding a second row, so the one
-  run that drains lists every event in order (*"Since your last run: Ondrej
-  commented …; priority high → urgent; session turn 3 ended."*) and counts
+  run that drains lists every event in order (*"Since your last run, in order
+  (2 changes): 1. ticket_commented: Ondrej commented: … 2. …"*) and counts
   once against `wakesPerTicket`. Draining alone is unchanged: the drain still
-  takes one row per run. `RunThreadPendingMessage` has no work-record key
-  today, so T1 adds one (a `workId` column, or a typed field of the stored
-  actor context) and pins the fold beside the drain-alone test, which pins
-  one wake per run.
-- **(from T1) The actor is the agent**: `actorType: 'agent'`,
-  `effectiveUserId: null`, `interactive: false`, purpose `ticket.work` — the
-  way event triggers already run (`worker/src/control/trigger-origin.ts`).
-  `effectiveUserId` is read across the codebase as "act as this person", so
-  the run **never reconstructs one**: not the mover, not the trigger's author
-  (`authorUserId` is authorship and grants nothing, above), not the machine
-  owner.
-  Tools that need a person refuse, and a test pins each: knowledge reads of a
-  private space, `schedule_task`, mailbox tools, identity tools and every
-  setup verb.
+  takes one row per run. The work-record key is a typed field of the stored
+  actor context, `actionContext.ticketWorkId`, and the fold runs under the
+  thread's claim/drain lock (`lockThreadRunSlot`, `@nessie/db`), so a drain
+  has either already taken the kickoff (the wake then pends its own) or has
+  not started (the run it starts reads the folded kickoff). The kickoff keeps
+  its events in `metadata.ticketWorkKickoff` (`TicketWorkKickoffMetadataSchema`)
+  and is re-rendered whole on each fold. A pending row of another purpose —
+  a person's ordinary message, say — is never folded into, and never drains
+  with a kickoff.
+- **(T1) The actor is the agent**: `actorType: 'agent'`,
+  `effectiveUserId: null`, `interactive: false`, purpose `ticket.work`, the
+  record in `actionContext.ticketWorkId` (`queueTicketWorkRun`,
+  `worker/src/control/ticket-work-run.ts`) — the way event triggers already
+  run (`worker/src/control/trigger-origin.ts`). `effectiveUserId` is read
+  across the codebase as "act as this person", so the run **never
+  reconstructs one**: not the mover, not the trigger's author (`authorUserId`
+  is authorship and grants nothing, above), not the machine owner. Tools that
+  need a person refuse, and `worker/test/db/ticket-work-authority.test.ts`
+  pins each: `kb_page_read` of a person's private space (the agent reads with
+  its own reach), `schedule_task`, the mailbox and every other mail tool, and
+  every setup verb (`project_create`, `channel_create`, `agent_create`,
+  `agent_trigger_create`, `ticket_board_create`, `ticket_label_create`, and
+  the ticket tools that need a person, `ticket_create` and `ticket_assign`).
+  Schedules and mail would otherwise fall back to the agent's own authority,
+  so `TICKET_WORK_PERSON_TOOL_IDS` (`worker/src/run/execute/ticket-work-setup.ts`)
+  are withheld from the run's toolset and refused by the builtin dispatcher;
+  identity tools and setup verbs refuse on their own, through
+  `requireActingUserId`, which says why on a ticket.work run.
 - **(T0) `isProjectDelegatedRun` decides a `ticket.work` run by its own arm,
-  first, and that arm admits nothing** (`worker/src/run/execute/run-setup.ts`).
-  So the run can never be lent project tools through a person-started arm
-  (`interactive`, `agent.peer_delegation`, `channel.policy`), whatever its
-  actor context says; `worker/test/pa-tools-ticket-activity.test.ts` pins it
-  for user and agent actors, interactive or not. **(from T1)** T1 replaces
-  that `false` with the admission: the agent's live binding to a channel of
-  the ticket's project and its tool policy. Writes go through an agent task
-  actor recorded as `agent:<id>` with `runId` (`taskEventBy`,
-  `packages/team-admin/src/task-access.ts`), never through
-  `requireActingUserId`.
+  first** (`worker/src/run/execute/run-setup.ts`). So the run can never be
+  lent project tools through a person-started arm (`interactive`,
+  `agent.peer_delegation`, `channel.policy`), whatever its actor context says.
+  **(T1)** The arm admits a shared agent whose run serves a work record — run
+  setup re-reads it, and it must name this agent and this thread
+  (`loadTicketWorkRunFacts`) — of this channel's own project, and the caller
+  still requires the agent's binding to the channel; it is lent only
+  `TICKET_WORK_PROJECT_TOOL_IDS` (read, list, board read, update, move,
+  transition, the checklist, label, comment and file reads, and comment add)
+  that its tool policy grants; `worker/test/pa-tools-ticket-activity.test.ts`
+  pins it for user and agent actors, interactive or not. Those tools resolve a
+  `TicketMember` (`worker/src/run/pa-tools/ticket-member.ts`): the agent
+  itself, whose reach is its live binding to a channel of the project
+  (`projectFor`, refusing with *"<agent> is no longer in a channel of this
+  project."*), which reads a run-derived ticket only when that run carries no
+  disclosure basis, and which writes through an `AgentTaskActor`
+  (`packages/team-admin/src/task-access.ts`) credited `agent:<id>` with its
+  run — never through `requireActingUserId`. The run's conversation is only
+  the agent's own replies and people's stamped messages
+  (`ticketWorkConversationWhere`), and everything it writes carries the
+  ticket's project basis.
 - **(from T1) The run signs with the ledger as event triggers do, with no
   user identity.** A deployment that refuses unsigned agent runs sets the
   record's `stateReason` to `identity_unverifiable`, which the chip shows,
   and raises the trigger's health banner.
-- **(from T1)** `ticket.work` run limits are clamped to a platform ceiling in
-  `worker/src/run/run-budget.ts`, whatever the agent's own `runLimits` say.
+- **(T1)** `ticket.work` run limits are clamped to `TICKET_WORK_RUN_CEILING`
+  in `worker/src/run/run-budget.ts` (500 cents, 300k tokens, 200 iterations,
+  300 tool calls, 20 minutes), whatever the agent's own `runLimits` say; a
+  tighter limit of the agent's own still wins.
+
+## The work record, its thread, and what every wake says (T1)
+
+- **A pickup creates one record** (`startTicketWork`,
+  `worker/src/control/ticket-work.ts`): `active`, no executor, `startedByUserId`
+  the mover, `startedByEventId` the `column_entered` or `created` event, and a
+  `work_started` row on the ticket. A pickup racing another for the same
+  ticket refuses (`no_longer_applies`) under the trigger's start lock.
+- **One thread per (trigger, ticket)** (`ensureTicketWorkThread`,
+  `packages/team-admin/src/ticket-work-thread.ts`, apart from the
+  size-capped `agent-conversations.ts`): a conversation with the trigger's
+  agent in its target channel, opened by nobody, with metadata
+  `{ taskId, triggerId }` and the title `ticketWorkThreadTitle` gives — the
+  mirrored key and the title (*"ENG-12 Fix login redirect"*), or the title
+  alone for a native ticket, which has no key. A ticket that comes back after
+  its work ended is worked in the same thread while it is still in the
+  trigger's target channel.
+- **Every wake's kickoff is rebuilt from the record**
+  (`renderTicketWorkKickoff`, `worker/src/control/ticket-work-kickoff.ts`),
+  with the same three blocks whatever woke it: *Why you were woken* (each
+  event's reason code and what happened, in order), *State* (the ticket and
+  its id, board, column and category, priority and assignee; every column of
+  the board with its category and id; when the work started and by whom;
+  "wake n of m"; that no machine does ticket work yet; the pull request on
+  record; that this is the ticket's work thread, what wakes it next, and that
+  its own changes never do) and *Instructions* (the trigger's `general`, then
+  each section matching a reason: `onPickup`, `onTicketChanged` for every
+  ticket change and thread message, `onSessionTurnEnded`, `onReminder`,
+  `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
+  instruction that no longer parses costs the instructions alone. A comment
+  carries its full text and its author, a description change the new
+  description (T2 adds the line diff), a thread message the message.
+- **Every wake writes one compact thread row** — a `system` message with
+  `metadata.ticketWorkEvent` (`TicketWorkThreadEventSchema`: `woken` with its
+  wake reason, or `stopped` with its state reason) and the content *"Woken:
+  Ondrej commented"* or *"Stopped: 30 wakes used. …"*. The thread feed admits
+  those rows by their `kind` (`listThreadMessages`,
+  `api/src/services/message-read-model.ts`) and still hides every kickoff. A
+  row never repeats ticket text, because a public channel's audience can be
+  wider than the ticket's project.
+- **Ticket activity** gains `work_started` and `work_ended`
+  (`TICKET_WORK_ACTIVITY_EVENT_TYPES`, `TicketWorkActivityPayloadSchema`:
+  `system` origin, the record, its status and reason, and `by` for whoever
+  caused it); `work_queued`, `work_paused` and `work_resumed` are named for
+  the machine queue (from T4). None is dispatched.
+- **(T1) `assignOnPickup` is applied in the move** (`resolvePickupAssignment`,
+  `packages/team-admin/src/ticket-work-pickup.ts`, before
+  `moveProjectTaskToColumn`'s transaction): when an unassigned ticket enters a
+  pickup column of an enabled trigger that assigns on pickup and the move
+  itself qualifies — a person's own session, a board editor, from outside the
+  pickup set, no live work of that trigger on the ticket — the trigger's agent
+  is assigned instead of the mover, with an `assigned` event of `system`
+  origin and reason `assign_on_pickup` that wakes nothing. A ticket with any
+  assignee keeps it, and any other move keeps the assign-the-mover rule (an
+  agent with no person behind it that moves an unassigned ticket into
+  in-progress takes it itself).
 
 ## The machine owner's authority is read only by the standing-policy binder (from T4)
 
@@ -342,7 +443,8 @@ hold these, so no read-then-write race can break them:
 - `agent_ticket_work_one_live`: one live record (`queued`, `active`, `parked`
   or `waiting_machine`) per `(trigger_id, task_id)`. A ticket re-entering a
   pickup column while its record is live, `parked` included, is a
-  `ticket_moved` follow on that record, never a second pickup (from T1).
+  `ticket_moved` follow on that record, never a second pickup, and a person's
+  re-entry resumes a parked record (T1).
 - `agent_ticket_work_one_per_executor`: one record holds each `executor_id` —
   the `active` one, or the `waiting_machine` one waiting for that machine to
   reconnect (`TICKET_WORK_MACHINE_HOLDING_STATUSES`). A dequeue onto a machine
@@ -366,7 +468,7 @@ and a generated migration that drops them is wrong.
 `agent_ticket_work_ended_known` requires `ended_at` and `ended_reason` exactly
 when a record is terminal. `triggerId` and `policyId` are `onDelete: SetNull`,
 so a record and its audit outlive a deleted trigger or policy; the trigger
-delete service ends live records first (from T1). `active_ms` is a `BIGINT`
+delete service ends live records first (T1). `active_ms` is a `BIGINT`
 (Prisma `BigInt`), because an `INTEGER` of milliseconds overflows at about 596
 hours.
 
@@ -377,16 +479,24 @@ has ended, and when the agent itself moves a ticket to Done, the loop guard
 suppresses its own wake. So each of these happens **in the transaction that
 causes it**:
 
-- **(from T1) Entering an `endOn` column**, whoever moved the ticket, the
-  agent included: the record goes to `done` (`stateReason: merged` when a
-  merged pull request is on record) or `cancelled`, its reminders are
-  cancelled, its machine is freed and the pool dispatcher is enqueued, all
-  inside the move transaction. The agent then gets one machine-less
-  `ticket_moved` wake, only to comment. A review-category column outside
-  `endOn` parks the record instead, which keeps its sessions, frees its
-  machine slot and enqueues the dispatcher in the same way.
-- **(from T1) Disabling or deleting the trigger** ends every live record with
-  `trigger_disabled`. **(from T4)** Its sessions get close requests
+- **(T1) Entering an `endOn` column**, whoever moved the ticket, the agent
+  included: the record goes to `done` in a done-category column
+  (`stateReason: merged` when a merged pull request is on record, `left_flow`
+  otherwise) or `cancelled` (`left_flow`), its reminders are cancelled and a
+  `work_ended` row names who moved it, all inside the move transaction —
+  `recordColumnEntered` calls `applyTicketWorkColumnEntry`
+  (`packages/team-admin/src/ticket-work-teardown.ts`), so a drag, a
+  `ticket_move`, a status transition and an inbound source change tear down
+  alike. The agent then gets one machine-less `ticket_moved` wake, only to
+  comment (none for its own move). A review-category column outside `endOn`
+  and outside the pickup set parks the record instead. **(from T4)** The same
+  transaction frees the record's machine, writes its sessions' close requests
+  and enqueues the pool dispatcher; in T1 no record holds a machine.
+- **(T1) Disabling or deleting the trigger** ends every live record with
+  `trigger_disabled`, in that transaction (`endTicketWorkForTrigger`,
+  `packages/team-admin/src/ticket-work-records.ts`: `updateAgentTrigger`
+  switching it off, the Triggers page's pause, and `deleteAgentTrigger`, which
+  ends them first). **(from T4)** Its sessions get close requests
   (`trigger_changed`), and the trigger's policy ends, with `trigger_disabled`
   or `trigger_deleted`, so re-enabling a trigger takes a fresh confirmation.
 - **(from T4) Suspending machine access** (either `suspendedReason`) moves
@@ -409,10 +519,17 @@ causes it**:
   (`policy_suspended`) or ending (`policy_ended`), or a limit (`work_limit`).
   T4 adds those five reasons to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and
   its CHECK.
-- **(from T4) Limits are enforced by the platform.** A record over
-  `wakesPerTicket`, `ticketHours`, `ticketUsd`, `startsPerDay` or `dailyUsd`
-  goes to `failed` with its `limit_*` reason and its sessions get close
-  requests; the ticket says how to continue.
+- **Limits are enforced by the platform.** **(T1)** A wake that would start a
+  run past `wakesPerTicket` (every model run counts once; a wake folded into a
+  pending kickoff does not count again) starts none: the record goes to
+  `failed` with `limit_wakes`, the ticket gets a `work_ended` row, the thread a
+  *"Stopped: 30 wakes used. Move the ticket out of and back into a start-work
+  column to continue"* row, and the delivery is skipped `limit_wakes`. A
+  pickup past the trigger's `startsPerDay` (UTC day, counted under the
+  trigger's start lock) is recorded `failed` with `limit_daily`, starts
+  nothing, and is skipped `limit_starts`. **(from T4)** `ticketHours`,
+  `ticketUsd` and `dailyUsd` fail the record the same way, and its sessions
+  get close requests.
 - **(from T4) The policy ends in the same transaction as each fence**, reusing
   the `endExecutorConversationLeasesInTransaction` call sites. The target
   channel being archived, made non-public or leaving the project is one of
@@ -447,6 +564,8 @@ causes it**:
 - The queue topics and their payload schemas are in
   `packages/schemas/src/jobs.ts`: `TRIGGER_TICKET_DISPATCH_TOPIC` (T1,
   subscribed in `worker/src/worker-subscriptions-integrations.ts`),
+  `TICKET_WORK_THREAD_MESSAGE_TOPIC` (T1, a person's message in a work
+  thread, subscribed beside it),
   `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (from
   T3, with an optional idempotency `bucket`) and `TICKET_WORK_SESSION_TOPIC`
   (from T5, whose `status` is only one that wakes: `waiting_for_input`,
@@ -456,9 +575,9 @@ causes it**:
   online, access being re-confirmed — enqueues it with a short idempotency
   window, and the periodic tick is only the backstop (from T5). So dispatch is
   one idempotent job that reads the queue and the pools afresh, and there is
-  no per-executor dispatch topic. Only `trigger.ticket.dispatch` has a
-  subscriber so far; each other handler parses its payload with its schema
-  when it lands.
+  no per-executor dispatch topic. Only `trigger.ticket.dispatch` and
+  `ticket-work.thread-message` have a subscriber so far; each other handler
+  parses its payload with its schema when it lands.
 - The dispatch vocabularies are in `packages/schemas/src/ticket-triggers.ts`:
   the stored `ticket_changed` config the dispatcher reads
   (`TicketChangedStoredConfigSchema`, the board and pickup columns by id),
@@ -479,8 +598,10 @@ causes it**:
   ([docs/deployment/upgrade-paths.md](../deployment/upgrade-paths.md)).
 - `packages/db/test/thread-serialization-ticket-work.test.ts`: a wake drains
   alone, as the agent.
-- `worker/test/pa-tools-ticket-activity.test.ts`: a `ticket.work` run is not
-  project-delegated.
+- `worker/test/pa-tools-ticket-activity.test.ts`: a `ticket.work` run is lent
+  only its agent-capable ticket tools, only through its own arm, and withholds
+  and refuses the tools that act for a person. `worker/src/run/run-budget.test.ts`:
+  the ceiling it is clamped to.
 - `packages/schemas/src/__tests__/task-events.test.ts`,
   `packages/schemas/src/__tests__/ticket-work-jobs.test.ts` and
   `packages/schemas/src/__tests__/ticket-triggers.test.ts`: the origin,
@@ -501,7 +622,22 @@ causes it**:
   nothing and write a skip; a token or agent move back leaves a parked
   record parked; a source event wakes live work only when opted in; a
   non-editor's comment wakes nothing; the end wake and the own-move guard;
-  and the failed-then-retried delivery.
+  and a failed start retried by the poller onto the same row.
+- `worker/test/db/ticket-work.test.ts`: the seam against Postgres — a pickup's
+  record, thread, `assignOnPickup`, activity row, wake row, three-block
+  kickoff and a run as the agent; wakes folding into one pending kickoff while
+  a person's pended message is never consumed by a `ticket.work` run; the
+  wake and start limits; teardown in the move, the agent's own move to Done
+  included; parking and a person's resume on the same record; the thread
+  reused when the ticket comes back; `assignOnPickup`'s three cases; and a
+  disabled or deleted trigger ending its work.
+  `worker/test/db/ticket-work-thread.test.ts`: a thread message as a
+  `thread_message` wake, a non-editor's refused again at dispatch, and the
+  content rules. `worker/test/db/ticket-work-authority.test.ts`: the ticket
+  tools acting as the agent through its binding, the refusals, and the run's
+  conversation. `api/test/ticket-work-thread-routes.test.ts`: the posting
+  rule, the stamp and the wake job in place of orchestration, and the feed's
+  event rows.
 - `packages/team-admin/test/trigger-type-availability.test.ts`,
   `api/test/trigger-type-unreleased-routes.test.ts`,
   `worker/test/trigger-type-unreleased-tools.test.ts` and

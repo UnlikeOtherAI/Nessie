@@ -404,6 +404,23 @@ channels does not stamp the run's disclosure basis; reading a channel's content
 does, and that stamp blocks the project write.) The Personal Assistant works
 across projects and still names one.
 
+**Unattended runs never reconstruct a requester — and the one unattended run
+lent these tools acts as its agent instead.** A `ticket.work` run (a ticket's
+work record waking its agent, [ticket-work.md](ticket-work.md)) has no
+person behind it and no `effectiveUserId`: not the mover, not the trigger's
+author. `isProjectDelegatedRun` admits it by its own arm — a shared agent
+whose run serves a work record of the channel's own project, still bound to
+the channel — and lends it only `TICKET_WORK_PROJECT_TOOL_IDS`, the tools
+with an agent path, that its policy grants. They resolve the agent itself as
+the acting member (`resolveTicketMember`), reach the project only through
+that binding, and write through an `AgentTaskActor` credited `agent:<id>`
+with the run; `requireActingUserId` is never consulted, so every tool that
+needs a person — identity tools, setup verbs, the rest of the peer set —
+refuses as it does on any unattended run, and schedules and mail, which would
+fall back to the agent's own authority, are withheld and refused outright.
+That is the two-lock rule's shape for ticket work: the arm admits only the
+agent's own reach, and no path to a person's exists to be opened.
+
 A run lent any of these tools that writes recalls memory under project-write
 containment: only organisation and same-project material, never a thought fed
 by a private conversation (`requiresProjectWriteRecallContainment`,

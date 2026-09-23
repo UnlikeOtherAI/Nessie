@@ -57,7 +57,12 @@ reads say who made the change and how the call was authenticated.
   - `agent { agentId, runId }`: the worker's ticket tools
     (`ticketEventAuthorFor`). A Personal Assistant's or a shared agent's write
     is an agent's even when a person asked for it; `by` still names that
-    person, and names `agent:<id>` only when no person is behind the run.
+    person, and names `agent:<id>` only when no person is behind the run. A
+    `ticket.work` run has none: its tools write through an `AgentTaskActor`
+    (`task-access.ts`, `userId: null`), whose reach is the agent's live
+    binding to a channel of the project (`agentBoundProjectWhere`) rather than
+    a member's entitlement, which links no uploads, and whose events and
+    comments are the agent's ([ticket work](ticket-work.md)).
   - `source { boardSourceId }`: an inbound board-source change
     (`sourceEventAuthorship`, `board-source-apply-events.ts`), with
     `by: source:<id>`.
@@ -82,6 +87,22 @@ reads say who made the change and how the call was authenticated.
   trigger — the way `project-task-attention.ts` enqueues its alert. A
   rolled-back write leaves neither behind. `status_changed`, attachment and
   checklist events are history only.
+- **A column change also settles the ticket's agent work, in the same
+  transaction.** `recordColumnEntered` ends a live work record in an end
+  column or parks it in a review column (`applyTicketWorkColumnEntry`), so
+  every door that moves a ticket tears its work down alike — the trigger's
+  own agent included.
+- **The work an agent does on a ticket is history too**: `work_started` and
+  `work_ended` (`TICKET_WORK_ACTIVITY_EVENT_TYPES`,
+  `TicketWorkActivityPayloadSchema`), each with `system` origin, the work
+  record, its status and reason, and `by` naming whoever caused it. They are
+  not dispatched.
+- **An unassigned ticket a person starts an agent's work on goes to that
+  agent.** A qualifying move into a start-work column of a trigger that
+  assigns on pickup writes an `assigned` event of `system` origin with reason
+  `assign_on_pickup` instead of the mover's `moved_to_in_progress`
+  ([ticket work](ticket-work.md) → "The work record, its thread, and what
+  every wake says").
 
 ## Files: one upload door, several link doors
 
