@@ -66,6 +66,9 @@ export const useOwnExecutorLeases = (threadId?: string) => {
   }, [queryClient])
   useEventStream({ enabled: Boolean(threadId), onFrame })
   return useQuery({
+    // A lease reaches one conversation; another's must never stand beside this
+    // composer, where it would claim a reach this room lacks and End it from here.
+    placeholderData: undefined,
     queryKey: executorKeys.conversationLeases(threadId),
     queryFn: () => apiClient.get(
       `/api/executor-leases?threadId=${encodeURIComponent(threadId as string)}`,
@@ -79,6 +82,8 @@ export const useOwnExecutorLeases = (threadId?: string) => {
 export const useExecutorMachineLeases = (executorId: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    // One machine's leases are never listed, or ended, from another's page.
+    placeholderData: undefined,
     queryKey: executorKeys.machineLeases(executorId),
     queryFn: () => apiClient.get(
       `/api/executors/${executorId}/leases`,
