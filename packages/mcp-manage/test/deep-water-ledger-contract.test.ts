@@ -4,19 +4,27 @@ import test from 'node:test'
 
 import { deepWaterIntegrationPluginManifest } from '../src/integration-plugin-manifests/deep-water.js'
 import {
+  DEEP_WATER_BRIEF_CONTRACT_VERSION,
+  DEEP_WATER_BRIEF_TOOL_NAMES,
+  DEEP_WATER_LAUNCHER_TOOL_NAMES,
+  deepWaterBriefTools,
+} from '../src/integration-plugin-manifests/deep-water-brief-tools.js'
+import {
   deepWaterManifestToolNames,
   isCurrentDeepWaterToolContract,
+  isLedgerDeepWaterToolContract,
+  projectsDeepWaterBriefContract,
 } from '../src/deepwater-team-connector.js'
 
 /**
- * The DeepWater manifest is Nessie's copy of Ledger's tool contract, and must
- * stay equal to it: a projected schema that disagrees with Ledger's makes an
- * agent send arguments Ledger refuses, or silently omit ones it needs.
+ * The brief tool contract is Nessie's copy of Ledger's, and must stay equal to
+ * it: a projected schema that disagrees with Ledger's makes an agent send
+ * arguments Ledger refuses, or silently omit ones it needs.
  *
- * `deep-water.ledger-contract.json` is Ledger's `tools/list` for the eight
- * tools Nessie projects (Water plan contract §10, fixture 2). Ledger publishes
- * it as `docs/contracts/deepwater-mcp-tools.json`; replace this copy
- * byte-for-byte from there whenever Ledger's contract changes.
+ * `deep-water.ledger-contract.json` is Ledger's own published `tools/list` for
+ * the eight tools Nessie projects (Water plan contract §10, fixture 2), copied
+ * byte-for-byte from Ledger's `docs/contracts/deepwater-mcp-tools.json`.
+ * Replace it from there, never by hand, whenever Ledger's contract changes.
  */
 
 type LedgerTool = {
@@ -28,31 +36,32 @@ type LedgerTool = {
 const fixture = JSON.parse(readFileSync(
   new URL('../src/integration-plugin-manifests/deep-water.ledger-contract.json', import.meta.url),
   'utf8',
-)) as { tools: LedgerTool[] }
+)) as { server: string; endpoint: string; tools: LedgerTool[] }
 
-const manifestTools = deepWaterIntegrationPluginManifest.mcp.tools
+const names = (tools: ReadonlyArray<{ name: string }>): string[] => tools.map((tool) => tool.name).sort()
 
-test('the manifest projects exactly the eight brief-first tools, never research_start', () => {
-  assert.equal(deepWaterIntegrationPluginManifest.version, '0.3.0')
-  assert.deepEqual(
-    [...manifestTools.map((tool) => tool.name)].sort(),
-    [...fixture.tools.map((tool) => tool.name)].sort(),
-  )
-  assert.equal(manifestTools.length, 8)
-  assert.equal(manifestTools.some((tool) => tool.name === 'research_start'), false)
-  assert.deepEqual(deepWaterManifestToolNames(), manifestTools.map((tool) => tool.name))
+test('the fixture is Ledger\'s DeepWater MCP tools/list', () => {
+  assert.equal(fixture.server, 'ledger-deepwater')
+  assert.equal(fixture.endpoint, '/v1/mcp/deepwater')
 })
 
-test('every projected input schema deep-equals Ledger\'s tools/list', () => {
+test('the brief contract is exactly Ledger\'s eight brief-first tools, never research_start', () => {
+  assert.equal(DEEP_WATER_BRIEF_CONTRACT_VERSION, '0.3.0')
+  assert.deepEqual(names(deepWaterBriefTools), names(fixture.tools))
+  assert.equal(deepWaterBriefTools.length, 8)
+  assert.equal(DEEP_WATER_BRIEF_TOOL_NAMES.includes('research_start'), false)
+})
+
+test('every brief tool input schema deep-equals Ledger\'s tools/list', () => {
   for (const ledgerTool of fixture.tools) {
-    const projected = manifestTools.find((tool) => tool.name === ledgerTool.name)
-    assert.ok(projected, `${ledgerTool.name} is projected`)
+    const projected = deepWaterBriefTools.find((tool) => tool.name === ledgerTool.name)
+    assert.ok(projected, `${ledgerTool.name} is in the brief contract`)
     assert.deepStrictEqual(projected.inputSchema, ledgerTool.inputSchema, ledgerTool.name)
   }
 })
 
-test('every DeepWater tool is sensitive: research content and reports cross the boundary', () => {
-  for (const tool of manifestTools) {
+test('every brief tool is sensitive: research content and reports cross the boundary', () => {
+  for (const tool of deepWaterBriefTools) {
     assert.equal(tool.privacyTier, 'sensitive', tool.name)
   }
 })
@@ -65,13 +74,36 @@ test('only the read tools are declared read-only by Ledger', () => {
   assert.deepEqual(readOnly, ['research_list', 'research_report', 'research_scope_get', 'research_status'])
 })
 
-test('a team connector is current only on the manifest\'s exact tool names', () => {
-  const discovered = fixture.tools.map((tool) => ({ name: tool.name, inputSchema: tool.inputSchema }))
-  assert.equal(isCurrentDeepWaterToolContract(discovered), true)
-  assert.equal(isCurrentDeepWaterToolContract([...discovered].reverse()), true)
-  assert.equal(isCurrentDeepWaterToolContract([...discovered, { name: 'research_start' }]), false)
-  assert.equal(isCurrentDeepWaterToolContract(discovered.slice(1)), false)
-  const legacy = ['research_start', 'research_status', 'research_report', 'research_list', 'research_cancel']
-  assert.equal(isCurrentDeepWaterToolContract(legacy.map((name) => ({ name }))), false)
+test('the manifest still projects the launcher contract until the brief release', () => {
+  // Ledger serves the brief tools only once its brief release is deployed, and
+  // the launcher's Personal Assistant handoff needs research_start until the
+  // brief dialog replaces it; the release that ships both flips this.
+  assert.equal(deepWaterIntegrationPluginManifest.version, '0.2.2')
+  assert.deepEqual(deepWaterManifestToolNames().sort(), [...DEEP_WATER_LAUNCHER_TOOL_NAMES].sort())
+})
+
+test('a connector is current only on the manifest\'s exact tool names', () => {
+  const launcher = DEEP_WATER_LAUNCHER_TOOL_NAMES.map((name) => ({ name }))
+  assert.equal(isCurrentDeepWaterToolContract(launcher), true)
+  assert.equal(isCurrentDeepWaterToolContract([...launcher].reverse()), true)
+  assert.equal(isCurrentDeepWaterToolContract(launcher.slice(1)), false)
+  assert.equal(isCurrentDeepWaterToolContract([...launcher, { name: 'research_scope_start' }]), false)
   assert.equal(isCurrentDeepWaterToolContract(null), false)
+})
+
+test('a brief can be opened only through a connector on the brief contract', () => {
+  const brief = fixture.tools.map((tool) => ({ name: tool.name, inputSchema: tool.inputSchema }))
+  assert.equal(projectsDeepWaterBriefContract(brief), true)
+  assert.equal(projectsDeepWaterBriefContract([...brief, { name: 'research_start' }]), false)
+  assert.equal(projectsDeepWaterBriefContract(brief.slice(1)), false)
+  assert.equal(projectsDeepWaterBriefContract(DEEP_WATER_LAUNCHER_TOOL_NAMES.map((name) => ({ name }))), false)
+})
+
+test('Ledger contracts upgrade in place; the legacy direct-provider contract does not', () => {
+  assert.equal(isLedgerDeepWaterToolContract(DEEP_WATER_LAUNCHER_TOOL_NAMES.map((name) => ({ name }))), true)
+  assert.equal(isLedgerDeepWaterToolContract(DEEP_WATER_BRIEF_TOOL_NAMES.map((name) => ({ name }))), true)
+  assert.equal(isLedgerDeepWaterToolContract([{ name: 'research_create' }]), false)
+  assert.equal(isLedgerDeepWaterToolContract([{ name: 'research_status' }, { name: 'research_create' }]), false)
+  assert.equal(isLedgerDeepWaterToolContract([]), false)
+  assert.equal(isLedgerDeepWaterToolContract(null), false)
 })

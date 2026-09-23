@@ -11,13 +11,13 @@ import {
   claimAgentOriginRun,
   createPersonDeepWaterBrief,
 } from '../src/deepwater-brief-creation.js'
-import { deepWaterIntegrationPluginManifest } from '../src/integration-plugin-manifests/deep-water.js'
+import { deepWaterBriefTools } from '../src/integration-plugin-manifests/deep-water-brief-tools.js'
 import { projectMcpToolDescriptors } from '../src/mcp-tool-registry-projection.js'
 import { runWithDeepWaterTransitionLock } from '../src/deepwater-transition-lock.js'
 
 /**
- * Brief creation re-reads the team's DeepWater switch and current-contract
- * connector inside the team transition lock (Water plan amendments N8.2), and
+ * Brief creation re-reads the team's DeepWater switch and a connector on the
+ * brief contract inside the team transition lock (Water plan amendments N8.2), and
  * an agent's claim re-reads its own grant under its policy lock. These are
  * lock-ordering guarantees, so only PostgreSQL can show them.
  */
@@ -67,14 +67,14 @@ const seed = async (): Promise<Seed> => {
       SELECT $1::uuid, "id", $2::uuid, 'team', $3::uuid, $4::uuid, 'active', $5::jsonb, now()
       FROM mcp_catalog_entries WHERE "name" = 'deep-water' AND "organization_id" IS NULL`,
       [ids.instance, ids.organization, ids.team, ids.requester,
-        JSON.stringify(deepWaterIntegrationPluginManifest.mcp.tools.map((tool) => ({ name: tool.name })))]],
+        JSON.stringify(deepWaterBriefTools.map((tool) => ({ name: tool.name })))]],
   ] as const
   for (const [text, values] of statements) await prisma.$executeRawUnsafe(text, ...values)
 
   await prisma.$transaction((tx) => projectMcpToolDescriptors(tx, {
     organizationId: ids.organization,
     instance: { id: ids.instance, scopeType: 'team', scopeId: ids.team },
-    descriptors: deepWaterIntegrationPluginManifest.mcp.tools.map((tool) => ({
+    descriptors: deepWaterBriefTools.map((tool) => ({
       name: tool.name, title: tool.label, description: tool.description, inputSchema: tool.inputSchema,
     })),
   }))
@@ -142,7 +142,7 @@ withSeed('a person brief is created only on a ready team, bound to its connector
   await assert.rejects(createPersonDeepWaterBrief(s.prisma, { ...common(s), actionId: randomUUID() }), notReady('team_off'))
 })
 
-withSeed('a team on an older tool contract, or with no active connector, is not ready', async (s) => {
+withSeed('a team on the launcher tool contract, or with no active connector, is not ready', async (s) => {
   await s.prisma.mcpServerInstance.update({
     where: { id: s.ids.instance },
     data: { discoveredTools: [{ name: 'research_start' }, { name: 'research_status' }] },

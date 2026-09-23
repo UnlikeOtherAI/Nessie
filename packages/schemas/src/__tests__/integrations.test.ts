@@ -85,6 +85,7 @@ test('SetProductTeamEnablementRequestSchema requires a boolean enabled flag', ()
 test('Deep Water agent access requires typed bundle targets and exact counts', () => {
   const response = DeepWaterAgentAccessResponseSchema.parse({
     configured: true,
+    contractOutdated: false,
     personalAssistant: {
       agentId: '8f3a5a00-0e64-4d10-a517-0d0b69c1d901',
       agentKind: 'personal_assistant',

@@ -16,19 +16,36 @@ file is the rule**.
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` when the linked first-party catalog is
   missing), installs a bearer HTTP transport using `LEDGER_PROXY_TOKEN` as
   Nessie's one deployment-wide, product-bound Ledger app API key (never a
-  per-user credential), and projects the manifest's tools —
+  per-user credential), and projects the manifest's tools — today the
+  launcher contract (manifest 0.2): `research_start`, `research_status`,
+  `research_report`, `research_list`, and `research_cancel` — as active
+  `mcp_research_*` tools. The brief-first contract (0.3.0:
   `research_scope_start`, `research_scope_reply`, `research_scope_get`,
   `research_scope_launch`, `research_status`, `research_report`,
-  `research_cancel` and `research_list` (manifest 0.3.0) — as active
-  `mcp_research_*` tools. Their input schemas equal Ledger's `tools/list`
-  exactly: `@nessie/mcp-manage` builds them from the shared brief vocabulary
-  and a contract test deep-equals them against the committed Ledger fixture
-  `deep-water.ledger-contract.json`. `research_start` is no longer projected,
-  because every research Nessie starts is agreed with DeepWater's planner first;
-  it stays in the worker's managed tool names only while legacy launcher runs
-  may still dispatch it, and leaves with the launcher handoff. A team whose
-  connector still carries an older tool-name set is `contract_outdated` and
-  cannot open a brief until it is upgraded. Each sibling product must
+  `research_cancel` and `research_list`; no `research_start`) is defined as
+  `deepWaterBriefTools` in `@nessie/mcp-manage`, built from the shared brief
+  vocabulary, and a contract test deep-equals its input schemas against
+  `deep-water.ledger-contract.json` — Ledger's own
+  `docs/contracts/deepwater-mcp-tools.json`, copied byte-for-byte and never
+  edited here. It becomes the manifest's projection only in the release that
+  ships the brief API and dialog, after Ledger serves those tools, because the
+  launcher's Personal Assistant handoff needs `research_start` until then.
+  **Contracts move in place.** An owner enabling DeepWater again runs
+  `projectDeepWaterTeamContract`: a connector already on the manifest's
+  contract is re-pinned (keeping richer probed schemas); one on an older
+  Ledger contract is upgraded — rows for tools both contracts share keep their
+  registry ids and grants, rows for dropped tools are deleted only once no
+  launcher run (`uoa_identity IS NULL`, still queued, running or
+  `needs_setup`) could dispatch them (else 409 `LEDGER_DEEPWATER_ACTIVE_RUNS`
+  and the team keeps its tools), new tools are inserted, and every agent
+  holding the team's bundle marker is granted the new bundle; the legacy
+  direct-provider contract is replaced outright and must be granted again.
+  Agent access and launch authorization are computed from the names the
+  team's connector actually projects: a connector on another contract than
+  the manifest's reports `contractOutdated` (`DEEP_WATER_CONTRACT_OUTDATED`),
+  never a missing grant, and stays revocable. A research brief can be opened
+  only through a connector projecting exactly the brief contract; any other is
+  `contract_outdated` for briefs. Each sibling product must
   use its own app API key; app keys are never reused as webhook signing secrets.
   Transport authentication and caller identity are separate: every call carries
   a short-lived `X-Nessie-Context` RS256 JWT with non-null
@@ -129,12 +146,17 @@ file is the rule**.
   revocable. Registry callability and cleanup identity are separate: a disabled
   updater cannot satisfy readiness, but its protected allow is still removed by
   bundle revocation. Bundle and
-  individual lifecycle revocation return 409 during queued/running/needs_setup
-  work; there is no force override. Each
+  individual lifecycle revocation return 409 while work that needs the grant
+  is open, decided by `guardDeepWaterPolicyRevocation`'s mode: `legacy` (the
+  contract upgrade and the org-wide updater) waits for launcher runs still
+  queued, running or `needs_setup`; `agent` (one agent's revocation) waits for
+  those and for that agent's own briefs not yet launched (`queued`,
+  `drafting`). A launched brief and a person's brief never block a
+  revocation. There is no force override. Each
   org/team enable or disable is cross-process serialized by a PostgreSQL
   transaction-scoped advisory lock; connector rows and the product toggle
   mutate in the same transaction and roll back together on failure. Disable
-  returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, running, or
+  returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a queued, drafting, running, or
   `needs_setup` research run still references the connector; cancel or recover
   the run, or let it reach a terminal state, before retrying disable.
   The worker enables handoff enforcement only from server-authored message
@@ -154,10 +176,10 @@ file is the rule**.
   matching `rs_...` `id`/`job_id` plus exact Ledger status is persisted before
   success is returned; a retry then replays that ticket and status locally
   without another Ledger call. Managed DeepWater owns the canonical
-  `mcp_research_*` names — derived from the manifest, plus `mcp_research_start`
-  while legacy handoffs exist — even when private connectors collide or the
-  grant is absent, so the server-authored prompt can never dispatch a foreign
-  connector.
+  `mcp_research_*` names — derived from the manifest and the brief contract,
+  plus `mcp_research_start` while legacy handoffs exist — even when private
+  connectors collide or the grant is absent, so the server-authored prompt can
+  never dispatch a foreign connector.
   Same-batch status/report/cancel calls are pinned
   to that persisted id; `research_list` and delegation stay blocked for the
   launch turn so result delivery cannot be hidden inside a timed-out sub-agent.
@@ -226,8 +248,9 @@ file is the rule**.
   The locked write also enforces a terminal start ticket's exact Product status
   mapping (`complete` → `completed`; negative terminal outcomes → `failed`).
   Re-enable preserves richer probed schemas only
-  when tool names exactly match the current Ledger contract; legacy
-  direct-provider projections are replaced and must be explicitly re-granted.
+  when tool names exactly match the current Ledger contract, upgrades an older
+  Ledger contract in place (see "Contracts move in place" above), and replaces
+  legacy direct-provider projections, which must be explicitly re-granted.
 
 ## Research briefs — the product-run binding
 
@@ -240,8 +263,8 @@ worker and card are built on them.
   `createPersonDeepWaterBrief` (a person, keyed by the request's `actionId`) or
   `claimAgentOriginRun` (an agent's `research_scope_start`, keyed by the calling
   Run and its provider tool-call id), both in `@nessie/mcp-manage`. Both run
-  inside the team transition lock and re-read the team switch and its active,
-  current-contract connector there, binding the row to that connector; the
+  inside the team transition lock and re-read the team switch and its active
+  connector on the brief contract there, binding the row to that connector; the
   agent path also re-reads its `research_scope_start` grant under its policy
   lock. So a brief either exists before a disable or revocation looks for open
   runs, or is never written. Both are idempotent on their key.

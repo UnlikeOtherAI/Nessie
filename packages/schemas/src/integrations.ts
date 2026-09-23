@@ -231,6 +231,12 @@ export type DeepWaterAgentAccessTarget =
 
 export const DeepWaterAgentAccessResponseSchema = z.object({
   configured: z.boolean(),
+  /**
+   * The team's connector projects an older DeepWater tool contract than the
+   * manifest's. Its bundle cannot be granted until an owner enables DeepWater
+   * for the team again, which upgrades the connector in place.
+   */
+  contractOutdated: z.boolean(),
   personalAssistant: DeepWaterAgentAccessTargetSchema.nullable(),
   requiredToolCount: z.number().int().positive(),
   sharedAgents: z.array(DeepWaterAgentAccessTargetSchema),

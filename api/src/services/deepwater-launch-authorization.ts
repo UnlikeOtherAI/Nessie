@@ -12,6 +12,7 @@ import { loadDeepWaterPolicyKeys } from './deepwater-agent-access.js'
 
 export const DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES = {
   ACCESS_REQUIRED: 'DEEP_WATER_PERSONAL_ASSISTANT_ACCESS_REQUIRED',
+  CONTRACT_OUTDATED: 'DEEP_WATER_CONTRACT_OUTDATED',
   MCP_INACTIVE: 'DEEP_WATER_MCP_INACTIVE',
   TEAM_DISABLED: 'DEEP_WATER_TEAM_DISABLED',
 } as const
@@ -27,8 +28,8 @@ export class DeepWaterLaunchAuthorizationError extends Error {
 /**
  * Linearize the launch boundary with both mutable authorities, in one lock
  * order everywhere: team transition first, then the Personal Assistant policy.
- * The final enabled/connector/6-of-6 reads and the caller's run insert all
- * happen inside the same transaction.
+ * The final enabled/connector/whole-bundle reads and the caller's run insert
+ * all happen inside the same transaction.
  */
 export const runWithAuthorizedDeepWaterLaunch = <T>(
   prisma: PrismaClient,
@@ -107,6 +108,15 @@ export const runWithAuthorizedDeepWaterLaunch = <T>(
         select: { toolPolicy: true },
       }),
     ])
+    // Access is computed from the team's own projection: a connector on an
+    // older contract than the manifest's is reported as such, never as a
+    // missing grant the owner could not repair from here.
+    if (access.contractOutdated) {
+      throw new DeepWaterLaunchAuthorizationError(
+        DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES.CONTRACT_OUTDATED,
+        'Deep Water must be updated for this team before research can start. An organisation owner updates it by enabling Deep Water for the team again.',
+      )
+    }
     const policy = normalizeToolPolicy(agent?.toolPolicy)
     if (
       !access.configured

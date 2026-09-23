@@ -16,15 +16,20 @@ type DeepWaterResearchLauncherDialogProps = {
 
 const readinessMessage = ({
   connectorReady,
+  contractOutdated,
   personalAssistantReady,
   teamReady,
 }: {
   connectorReady: boolean
+  contractOutdated: boolean
   personalAssistantReady: boolean
   teamReady: boolean
 }): string | undefined => {
-  if (!teamReady) return 'An organization owner must enable Deep Water for this team first.'
-  if (!connectorReady) return 'The team’s Ledger MCP connector is not active yet.'
+  if (!teamReady) return 'An organisation owner must enable Deep Water for this team first.'
+  if (!connectorReady) return 'Deep Water is not connected for this team yet.'
+  if (contractOutdated) {
+    return 'An organisation owner must update Deep Water for this team by enabling it again.'
+  }
   if (!personalAssistantReady) {
     return 'An organisation owner must grant the Personal Assistant every Deep Water tool.'
   }
@@ -44,8 +49,9 @@ export const DeepWaterResearchLauncherDialog = ({
   const accessQuery = useDeepWaterAgentAccess(open)
   const teamReady = product.teamEnablement?.enabled === true
   const connectorReady = product.mcpInstallation?.lifecycleState === 'active'
+  const contractOutdated = accessQuery.data?.contractOutdated === true
   const personalAssistantReady = accessQuery.data?.personalAssistant?.enabled === true
-  const canLaunch = teamReady && connectorReady && personalAssistantReady
+  const canLaunch = teamReady && connectorReady && !contractOutdated && personalAssistantReady
 
   return (
     <Dialog
@@ -65,7 +71,7 @@ export const DeepWaterResearchLauncherDialog = ({
         readinessMessage={
           accessQuery.isLoading
             ? 'Checking Deep Water access…'
-            : readinessMessage({ connectorReady, personalAssistantReady, teamReady })
+            : readinessMessage({ connectorReady, contractOutdated, personalAssistantReady, teamReady })
         }
       />
     </Dialog>

@@ -109,7 +109,7 @@ export const deepWaterToolInputSchemas = {
     revision: nonNegativeInteger,
     pillars,
     settings: editSettings,
-    public: { type: 'boolean' },
+    public: { default: false, type: 'boolean' },
   }, ['id', 'revision']),
   research_status: plainObject({ id: researchId }, ['id']),
   research_report: plainObject({ id: researchId }, ['id']),

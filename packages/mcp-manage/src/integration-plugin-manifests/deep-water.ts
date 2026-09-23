@@ -1,7 +1,5 @@
 import type { IntegrationPluginManifest } from '@nessie/schemas'
 
-import { deepWaterToolInputSchemas } from './deep-water-tool-schemas.js'
-
 /**
  * DeepWater's first-party product contract is isolated because Ledger routing,
  * schemas, credential ownership, and raw-metering semantics form one cohesive boundary
@@ -13,7 +11,7 @@ export const deepWaterIntegrationPluginManifest = {
   manifestRef: 'first-party/deep-water',
   productSlug: 'deep-water',
   name: 'Deep Water',
-  version: '0.3.0',
+  version: '0.2.2',
   vendor: 'UnlikeOtherAI',
   install: [
     {
@@ -40,86 +38,111 @@ export const deepWaterIntegrationPluginManifest = {
       auth: { method: 'bearer' },
     },
     toolBundleRef: 'first-party/deep-water-tools',
-    // The brief-first contract (Water plan contract D8, §5.2): every research
-    // Nessie starts is agreed with DeepWater's planner first, so
-    // `research_start` is not projected. Input schemas equal Ledger's
-    // `tools/list` exactly (deep-water.ledger-contract.json).
     tools: [
       {
-        name: 'research_scope_start',
-        label: 'Open a research brief',
-        description:
-          'Open a DeepWater research brief for a question. DeepWater\'s research planner proposes '
-          + 'pillars (each becomes a chapter) and settings. Put background and constraints in '
-          + 'context as plain prose. Returns at once; the planner answers later and you are woken '
-          + 'in this thread when it does, so do not poll. Every research starts with a brief.',
-        inputSchema: deepWaterToolInputSchemas.research_scope_start,
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_scope_reply',
-        label: 'Reply to the research planner',
-        description:
-          'Answer DeepWater\'s research planner on an open brief. To edit, send base_revision with '
-          + 'the replacement pillars list and only the settings you change (null clears one). '
-          + 'Returns at once; you are woken when the planner answers.',
-        inputSchema: deepWaterToolInputSchemas.research_scope_reply,
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_scope_get',
-        label: 'Read a research brief',
-        description:
-          'Read a research brief: its pillars, settings, the planner\'s open questions and latest '
-          + 'turn. Leave include_transcript off unless you need the whole conversation.',
-        inputSchema: deepWaterToolInputSchemas.research_scope_get,
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_scope_launch',
-        label: 'Start the agreed research',
-        description:
-          'Start the research the brief describes, at its current revision, optionally with final '
-          + 'edits. Start a brief once and never start a second research for the same question. '
-          + 'Leave public unset: only a person can publish a report.',
-        inputSchema: deepWaterToolInputSchemas.research_scope_launch,
+        name: 'research_start',
+        label: 'Start research',
+        description: 'Start a Ledger-owned, raw-usage-metered Deep Water research job.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              minLength: 3,
+              maxLength: 20_000,
+              description: 'Research question or task.',
+            },
+            context: {
+              type: 'string',
+              maxLength: 50_000,
+              description:
+                'Optional constraints and background for the research. Ledger accepts no '
+                + 'other research options, so every further choice belongs here as a labelled '
+                + 'line — the same lines Nessie\'s research launcher sends, so a request you '
+                + 'compose by hand behaves like one a person launched. Supported lines and '
+                + 'their values: "Chapter depth: brief|standard|detailed|exhaustive", '
+                + '"Output tier: summary|full", "Output language: <ISO 639-1 code>", '
+                + '"Search quality: standard|premium", "Sections: 3-20", '
+                + '"Searches per pillar: 1-20". Omit a line to accept the pipeline default.',
+            },
+            depth: {
+              type: 'string',
+              enum: ['light', 'standard', 'deep', 'heavy'],
+              default: 'standard',
+            },
+            recency: {
+              type: 'string',
+              enum: ['any', 'recent'],
+              default: 'any',
+            },
+          },
+          required: ['query'],
+          additionalProperties: false,
+        },
         privacyTier: 'sensitive',
         status: 'available',
       },
       {
         name: 'research_status',
         label: 'Read research status',
-        description: 'Read the progress and final state of a DeepWater research.',
-        inputSchema: deepWaterToolInputSchemas.research_status,
+        description: 'Read progress and terminal state for a Ledger-owned research job.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Ledger research job id.' },
+          },
+          required: ['id'],
+          additionalProperties: false,
+        },
         privacyTier: 'sensitive',
         status: 'available',
       },
       {
         name: 'research_report',
         label: 'Read research report',
-        description:
-          'Read the finished report and its references. report_kind=summary means the full report '
-          + 'could not be written and this is the research summary.',
-        inputSchema: deepWaterToolInputSchemas.research_report,
-        privacyTier: 'sensitive',
-        status: 'available',
-      },
-      {
-        name: 'research_cancel',
-        label: 'Cancel research',
-        description: 'Cancel a research brief that is still being agreed, or a research that is running.',
-        inputSchema: deepWaterToolInputSchemas.research_cancel,
+        description: 'Read the completed report and references for a Ledger-owned research job.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Ledger research job id.' },
+          },
+          required: ['id'],
+          additionalProperties: false,
+        },
         privacyTier: 'sensitive',
         status: 'available',
       },
       {
         name: 'research_list',
         label: 'List research',
-        description: 'List the DeepWater research the person you act for has asked for, newest first.',
-        inputSchema: deepWaterToolInputSchemas.research_list,
+        description: 'List research jobs owned by the delegated UOA user through Ledger.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            limit: {
+              type: 'integer',
+              minimum: 1,
+              maximum: 100,
+              default: 20,
+            },
+          },
+          additionalProperties: false,
+        },
+        privacyTier: 'normal',
+        status: 'available',
+      },
+      {
+        name: 'research_cancel',
+        label: 'Cancel research',
+        description: 'Cancel a running Ledger-owned research job.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Ledger research job id.' },
+          },
+          required: ['id'],
+          additionalProperties: false,
+        },
         privacyTier: 'sensitive',
         status: 'available',
       },

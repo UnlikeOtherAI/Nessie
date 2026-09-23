@@ -1,8 +1,10 @@
 {
+  "server": "ledger-deepwater",
+  "endpoint": "/v1/mcp/deepwater",
   "tools": [
     {
       "name": "research_scope_start",
-      "description": "Open a research brief with DeepWater's planner through Ledger. Returns immediately; the planner answers asynchronously — read its reply with research_scope_get.",
+      "description": "Open a research brief with DeepWater's planner: give the question and any background, pillars or settings already known. Returns at once; the planner's first reply arrives asynchronously and is read with research_scope_get.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -207,7 +209,7 @@
     },
     {
       "name": "research_scope_reply",
-      "description": "Reply to DeepWater's planner on an open research brief, optionally editing pillars and settings against base_revision. Returns immediately; read the planner's answer with research_scope_get.",
+      "description": "Send the next message to DeepWater's planner for an open brief, optionally with edited pillars or settings based on the revision you last read (base_revision). Returns at once; read the planner's reply with research_scope_get.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -468,7 +470,7 @@
     },
     {
       "name": "research_scope_get",
-      "description": "Read a research brief: its pillars, settings, open questions and the planner's latest turn. include_transcript also returns the whole conversation.",
+      "description": "Read a research brief: its status, the planner's latest reply, pillars, settings, open questions and revision. Set include_transcript only when the whole conversation is needed.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -492,7 +494,7 @@
         "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true,
-        "openWorldHint": false
+        "openWorldHint": true
       },
       "execution": {
         "taskSupport": "forbidden"
@@ -500,7 +502,7 @@
     },
     {
       "name": "research_scope_launch",
-      "description": "Launch the agreed research brief at the given revision, optionally applying final edits. Returns an asynchronous job ticket.",
+      "description": "Start the research exactly as agreed at the given brief revision, optionally with a final edit to pillars or settings. Returns a research ticket; follow it with research_status and research_report.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -737,6 +739,7 @@
             "additionalProperties": false
           },
           "public": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -813,7 +816,7 @@
     },
     {
       "name": "research_cancel",
-      "description": "Best-effort cancel a non-terminal research job owned by this Ledger proxy token.",
+      "description": "Cancel a research job or an open research brief owned by this Ledger proxy token.",
       "inputSchema": {
         "type": "object",
         "properties": {

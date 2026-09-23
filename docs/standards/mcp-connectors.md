@@ -67,11 +67,13 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 
 - **DeepWater as an agent tool** — an owner-only `team-enablement` toggle
   provisions a **team-scoped, tool-projecting** `McpServerInstance` from the
-  `deep-water` catalog entry and projects the manifest's Ledger tools (the
-  four `research_scope_*` brief tools plus `research_status` /
-  `research_report` / `research_cancel` / `research_list`; `research_start` is
-  no longer projected) as active `mcp_research_*` tools, **always routed
-  through Ledger**:
+  `deep-water` catalog entry and projects the manifest's Ledger tools (today
+  the launcher contract, `research_start` / `research_status` /
+  `research_report` / `research_list` / `research_cancel`; the brief-first
+  contract that replaces `research_start` with the four `research_scope_*`
+  tools is defined and pinned to Ledger's `tools/list`, and an owner's next
+  enable upgrades a team onto it in place once the manifest projects it) as
+  active `mcp_research_*` tools, **always routed through Ledger**:
   `LEDGER_DEEPWATER_MCP_URL` (hosted
   `https://ledger.unlikeotherai.com/v1/mcp/deepwater`) with `LEDGER_PROXY_TOKEN`
   — Nessie's one deployment-wide, product-bound app API key, never a per-user
