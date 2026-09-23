@@ -521,8 +521,11 @@ reaches a global agent's home DM, and every property that makes it safe is a
 property of the delivery: a hidden `system` message (never a `role: 'user'` row
 written under the person's id, the integration-handoff mistake),
 `claimThreadRunOrPend` so a busy DM pends instead of double-running the agent,
-`replyPlacement: 'channel'` because a reply threaded under an invisible root
-would never appear, and an idempotency key on the enqueue. It takes the two
+the brief's own action purpose `global_agent.brief` so that pended brief later
+drains alone as its own run (batched, it would be lost behind the person's next
+message: only a batch's latest row drives the run, and a hidden `system` row is
+never history), `replyPlacement: 'channel'` because a reply threaded under an
+invisible root would never appear, and an idempotency key on the enqueue. It takes the two
 queue functions as parameters, exactly as `startAgentTodoRun` does: this package
 is loaded from its build output by processes that resolve `@nessie/db`
 differently.

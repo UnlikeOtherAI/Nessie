@@ -1,15 +1,23 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   AuthorizedActionContextSchema,
+  GLOBAL_AGENT_BRIEF_PURPOSE,
+  MAILBOX_DELIVERY_PURPOSE,
   parseAgentId,
   parseChannelId,
   parseRunId,
   parseTaskId,
   parseThreadId,
   RunExecuteJobPayloadSchema,
+  TASK_SET_DELIVERY_PURPOSE,
   withActionContext,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+import {
+  loadMailboxDeliveryStep,
+  mailboxDeliveryRunSource,
+  recordMailboxDeliveryRun,
+} from './mailbox-delivery-run.js'
 import { enqueueRunExecution } from './queue.js'
 
 // Per-(agent, principal, thread) run serialization. `principal` is null for
@@ -20,12 +28,15 @@ import { enqueueRunExecution } from './queue.js'
 // `RunThreadPendingMessage` row instead of spawning a concurrent run; when the
 // in-flight run reaches a terminal state (completed, cancelled, failed —
 // including the budget-gate block), the terminal path batches ordinary pending
-// rows in arrival order. Peer-delegated hidden briefs drain one at a time so
-// each keeps its original human authority and disclosure lineage. No message is lost across
-// a worker crash: the row is the pending marker, and the periodic
-// `sweepPendingThreadMessages` re-poll enqueues the follow-up for any pair
-// whose run disappeared without draining (crash between terminal update and
-// drain, or an API-side queued cancel that never reached the worker).
+// rows in arrival order. Rows whose purpose is in `DRAINS_ALONE_PURPOSES` —
+// mailbox deliveries (peer-delegated briefs, task-set deliveries, plan and
+// workflow step mail) and global-agent briefs — drain one at a time, each as
+// its own follow-up run under its own actor context, principal and reply
+// root. No message is lost across a worker crash: the row is the pending
+// marker, and the periodic `sweepPendingThreadMessages` re-poll enqueues the
+// follow-up for any pair whose run disappeared without draining (crash between
+// terminal update and drain, or an API-side queued cancel that never reached
+// the worker).
 //
 // Race freedom comes from a transaction-scoped advisory lock keyed on
 // (agentId, principalUserId, threadId) taken by BOTH the claim side (orchestrate.decide reply,
@@ -47,9 +58,33 @@ import { enqueueRunExecution } from './queue.js'
 // Batch visibility caveat: an ordinary batched follow-up loads pended `user`/
 // `assistant` messages as thread history, but `loadConversation` excludes
 // `system`-role messages. Ordinary scheduled kickoffs therefore coalesce to
-// the latest self-contained "check for work" directive. A peer-delegation
-// brief is different: it drains alone with its durable hidden message and
-// original human authority, so it never inherits another brief's lineage.
+// the latest self-contained "check for work" directive. A hidden kickoff that
+// carries its own payload and requester is different, because folding it into
+// a batch would drop the payload and run it under the latest row's identity:
+// - a peer-delegation brief keeps its original human authority and disclosure
+//   lineage, so it never inherits another brief's;
+// - a task-set delivery keeps its owner's identity and its `task-set:<id>`
+//   correlation, and its completed-result notice actually reaches the model;
+// - a global-agent brief (`agent_handoff`, or the Designer's "Continue in
+//   chat") keeps the brief the person was handed over with, rather than losing
+//   it behind their next message in the same DM;
+// - any other mailbox delivery — a plan or workflow step's mail, or mail sent
+//   through `POST /api/mailbox` — keeps its body, which is its whole prompt.
+// Each drains alone, with its durable hidden message as the prompt. A mailbox
+// delivery's row also keeps `mailboxMessageId`, and its follow-up run is
+// linked to the plan or workflow step the mail was sent for exactly as a
+// direct mailbox claim's run is (`mailbox-delivery-run.ts`).
+
+// Pending rows whose action purpose makes them drain alone. The purpose is
+// already in the row's stored actor context, so no column marks it.
+// `promptOverride` also drains alone, but it means pinned classifier
+// instructions, not a kickoff with its own requester.
+const DRAINS_ALONE_PURPOSES: ReadonlySet<string> = new Set([
+  'agent.peer_delegation',
+  TASK_SET_DELIVERY_PURPOSE,
+  MAILBOX_DELIVERY_PURPOSE,
+  GLOBAL_AGENT_BRIEF_PURPOSE,
+])
 
 // Statuses that count as "a run is in flight for this (agent, thread)".
 // `waiting_approval` is in-flight: the run resumes after the approval, so new
@@ -117,6 +152,9 @@ export const claimThreadRunOrPend = async (
       actorContext: AuthorizedActionContext
       channelId: string
       interactive: boolean
+      // The mailbox delivery this pend stands for, so the drain can link the
+      // follow-up run to the step the mail was sent for.
+      mailboxMessageId?: string
       messageId: string
       promptOverride?: string
       replyPlacement?: 'thread' | 'channel'
@@ -172,6 +210,7 @@ export const claimThreadRunOrPend = async (
       messageId: input.pending.messageId,
       channelId: input.pending.channelId,
       interactive: input.pending.interactive,
+      mailboxMessageId: input.pending.mailboxMessageId ?? null,
       promptOverride: input.pending.promptOverride ?? null,
       replyPlacement: input.pending.replyPlacement ?? null,
       actorContext: JSON.parse(
@@ -200,14 +239,14 @@ export const isThreadRunSlotBusy = async (
 }
 
 // Drain ordinary pending messages for (agent, thread) into ONE batched
-// follow-up. A peer-delegation marker drains individually so its hidden
-// message, disclosure basis, and requesting human remain inseparable. The
-// latest message of an ordinary batch drives the run's prompt, triggerMessageId
-// (restart replay), interactivity (budget
-// exemption), actor context, and — when it came from a trigger fire — the
+// follow-up. A row whose purpose is in `DRAINS_ALONE_PURPOSES` drains
+// individually so its hidden message, disclosure basis, and requesting human
+// remain inseparable. The latest message of an ordinary batch drives the run's
+// prompt, triggerMessageId (restart replay), interactivity (budget exemption),
+// actor context, and — when it came from a trigger fire — the
 // triggerId/triggerDeliveryId linkage. Returns the follow-up run id, or null
 // when there is nothing to drain (no pendings, or a run is already in flight
-// again). A peer brief is deliberately the one-row exception above.
+// again). A drain-alone row is deliberately the one-row exception above.
 export const drainPendingThreadMessages = async (
   prisma: PrismaClient,
   input: { agentId: string; principalUserId?: string; threadId: string },
@@ -239,21 +278,28 @@ export const drainPendingThreadMessages = async (
     if (pendings.length === 0) {
       return null
     }
-    const firstPeerIndex = pendings.findIndex((pending) => pending.promptOverride
-      || AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose === 'agent.peer_delegation')
-    // Preserve arrival order. Drain ordinary work before the first peer as its
-    // usual batch; drain a first peer alone. Later markers remain durable for
-    // the next terminal drain, rather than being silently coalesced under a
-    // different brief's authority.
-    const pendingBatch = firstPeerIndex < 0
+    const firstAloneIndex = pendings.findIndex((pending) => {
+      const purpose = AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose
+      return Boolean(pending.promptOverride) || (purpose !== undefined && DRAINS_ALONE_PURPOSES.has(purpose))
+    })
+    // Preserve arrival order. Drain ordinary work before the first row that
+    // drains alone as its usual batch; drain such a first row alone. Later
+    // markers remain durable for the next terminal drain, rather than being
+    // silently coalesced under a different requester's authority.
+    const pendingBatch = firstAloneIndex < 0
       ? pendings
-      : firstPeerIndex === 0
+      : firstAloneIndex === 0
         ? [pendings[0]!]
-        : pendings.slice(0, firstPeerIndex)
+        : pendings.slice(0, firstAloneIndex)
     const latest = pendingBatch[pendingBatch.length - 1]
     if (!latest) {
       return null
     }
+    // A mailbox delivery drains alone, so when this row stands for one it is
+    // the whole batch.
+    const deliveryStep = latest.mailboxMessageId
+      ? await loadMailboxDeliveryStep(tx, latest.mailboxMessageId)
+      : null
 
     const thread = await tx.thread.findUniqueOrThrow({
       where: { id: input.threadId },
@@ -317,7 +363,9 @@ export const drainPendingThreadMessages = async (
       data: {
         agentId: input.agentId,
         organizationId: thread.channel.organizationId,
-        purpose: (scheduledKickoff ? 'Scheduled to-do' : latest.message.content).slice(0, 200),
+        purpose: (scheduledKickoff
+          ? 'Scheduled to-do'
+          : deliveryStep?.subject ?? latest.message.content).slice(0, 200),
         runId: run.id,
         status: 'inbox',
       },
@@ -339,6 +387,7 @@ export const drainPendingThreadMessages = async (
       // its holder's own (`carryForwardExecutorBindings`).
       batchMessageIds: pendingBatch.map((pending) => pending.messageId),
       interactive: latest.interactive,
+      ...(deliveryStep ? mailboxDeliveryRunSource(deliveryStep) : {}),
       ...(latest.promptOverride ? { promptOverride: latest.promptOverride } : {}),
       messageId: scheduledKickoff?.id ?? latest.messageId,
       runId: parseRunId(run.id),
@@ -348,6 +397,15 @@ export const drainPendingThreadMessages = async (
     // Keyed by the fresh run id so the follow-up enqueue never collides with
     // the per-message `run:<messageId>:<agentId>` keys of prior turns.
     await enqueueRunExecution(tx, payload, `run:batch:${run.id}`)
+    if (deliveryStep && latest.mailboxMessageId) {
+      await recordMailboxDeliveryRun(tx, {
+        agentId: input.agentId,
+        mailboxMessageId: latest.mailboxMessageId,
+        runId: run.id,
+        step: deliveryStep,
+        taskId: task.id,
+      })
+    }
 
     await tx.runThreadPendingMessage.deleteMany({
       where: { seq: { in: pendingBatch.map((pending) => pending.seq) } },

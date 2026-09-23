@@ -6,9 +6,8 @@ import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
 import { finderRootGroups } from '../src/components/features/knowledge/finder/FinderRootColumn'
 import { agentDocumentsSpaceDisplayName } from '../src/components/features/knowledge/finder/agent-space-name'
 import { buildFinderToolbarActions } from '../src/components/features/knowledge/finder/finder-toolbar-actions'
-import {
-  migrateStoredFinderView,
-} from '../src/components/features/knowledge/finder/finder-view'
+import { finderRouteColumns } from '../src/components/features/knowledge/finder/finder-route-columns'
+import { migrateStoredFinderView } from '../src/components/features/knowledge/finder/finder-view'
 
 /**
  * The root column and the toolbar that sits over it (browser-ui.md §3, §6,
@@ -44,6 +43,65 @@ const root = (overrides: Partial<KnowledgeRoot> = {}): KnowledgeRoot => ({
   sharedTruncated: false,
   sharedWithMeCount: 0,
   ...overrides,
+})
+
+test('phone Knowledge routes never stack the root picker over their detail column', () => {
+  assert.deepEqual(
+    finderRouteColumns({
+      agentsColumn: null,
+      columns: ['root', 'detail'],
+      folderCount: 1,
+      orgScope: true,
+      pathname: '/knowledge-base',
+      rootColumn: 'root',
+      single: true,
+      slots: ['root', 'depth:0'],
+      virtualColumnKey: null,
+    }),
+    { columns: ['root'], slots: ['root'] },
+  )
+  assert.deepEqual(
+    finderRouteColumns({
+      agentsColumn: null,
+      columns: ['root', 'detail'],
+      folderCount: 1,
+      orgScope: true,
+      pathname: '/knowledge-base/spaces/space-a',
+      rootColumn: 'root',
+      single: true,
+      slots: ['root', 'depth:0'],
+      virtualColumnKey: null,
+    }),
+    { columns: ['detail'], slots: ['depth:0'] },
+  )
+  assert.deepEqual(
+    finderRouteColumns({
+      agentsColumn: null,
+      columns: ['root', 'detail'],
+      folderCount: 1,
+      orgScope: true,
+      pathname: '/knowledge-base',
+      rootColumn: 'root',
+      single: false,
+      slots: ['root', 'depth:0'],
+      virtualColumnKey: null,
+    }),
+    { columns: ['root', 'detail'], slots: ['root', 'depth:0'] },
+  )
+  assert.deepEqual(
+    finderRouteColumns({
+      agentsColumn: null,
+      columns: ['detail'],
+      folderCount: 1,
+      orgScope: false,
+      pathname: '/projects/project-a',
+      rootColumn: 'root',
+      single: true,
+      slots: ['depth:0'],
+      virtualColumnKey: null,
+    }),
+    { columns: ['detail'], slots: ['depth:0'] },
+  )
 })
 
 test('the first group is continuous: virtual folders, My Documents and projects, no hairline', () => {

@@ -19,6 +19,13 @@ export {
   enqueueRunExecution,
 } from './queue.js'
 export {
+  loadMailboxDeliveryStep,
+  mailboxDeliveryRunSource,
+  recordMailboxDeliveryRun,
+  WORKFLOW_STEP_SUSPEND_DEADLINE_MS,
+  type MailboxDeliveryStep,
+} from './mailbox-delivery-run.js'
+export {
   claimMessageEmbeddingInTransaction,
   messageContentHash,
   type MessageEmbeddingClaimInput,

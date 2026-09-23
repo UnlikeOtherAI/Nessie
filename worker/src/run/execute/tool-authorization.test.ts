@@ -790,6 +790,32 @@ test('main executor: an executor call is timed by the executor toolset', async (
   assert.deepEqual(harness.executorTimeoutLookups, ['executor_mcp_call'])
 })
 
+// Meta's models call `default.<tool>` for a tool offered as `<tool>`. The main
+// loop prepares every call before running it, so the preflight has to resolve
+// the name as dispatch does — and so does the ledger's claim decision.
+const namespacedExecutorCall = () => runLoop({
+  executorTools: {
+    'executor_mcp_call': { inputSummary: 'call', output: '{"success":true}', success: true },
+  },
+  toolArgs: { server: 'kelpie', tool: 'navigate' },
+  toolName: 'default.executor_mcp_call',
+})
+
+test('main executor: a namespaced executor call is authorized and dispatched as the offered tool', async () => {
+  const harness = await namespacedExecutorCall()
+  const contents = harness.result.messages.map((message) =>
+    (typeof message.content === 'string' ? message.content : ''))
+  assert.ok(!contents.some((content) => content.includes('tool_denied')), JSON.stringify(contents))
+  assert.deepEqual(harness.dispatchedExecutor, ['executor_mcp_call'])
+})
+
+test('main executor: a namespaced executor call is claimed in the tool-effect ledger before it runs', async () => {
+  const harness = await namespacedExecutorCall()
+  const claim = harness.fake.toolEffects.get(effectKey({ runId: RUN_ID, toolCallId: 'call-1' }))
+  assert.ok(claim, 'an external dispatch under a provider prefix ran without a durable claim')
+  assert.equal(claim['state'], 'completed')
+})
+
 const toolMessage = (result: LoopHarness['result'], marker: string): string => {
   const contents = result.messages.map((message) => (typeof message.content === 'string' ? message.content : ''))
   const found = contents.find((content) => content.includes(marker))

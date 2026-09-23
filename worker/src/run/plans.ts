@@ -204,31 +204,6 @@ export const appendDelegationStep = async (
     return { stepId: step.id }
   })
 
-export const markDelegationStepQueued = async (
-  prisma: PrismaLike,
-  input: {
-    artifacts: Record<string, unknown>
-    planId?: string | null
-    planStepId?: string | null
-  },
-): Promise<void> => {
-  if (!input.planId || !input.planStepId) {
-    return
-  }
-
-  await prisma.planStep.update({
-    where: { id: input.planStepId },
-    data: {
-      artifacts: input.artifacts as Prisma.InputJsonValue,
-      status: 'running',
-    },
-  })
-  await prisma.plan.update({
-    where: { id: input.planId },
-    data: { status: 'waiting' },
-  })
-}
-
 export const markDelegationStepFinished = async (
   prisma: PrismaLike,
   input: {

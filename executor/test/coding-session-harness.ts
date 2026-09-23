@@ -44,6 +44,8 @@ export type CodingHarness = {
   call: (tool: string, args: Record<string, unknown>, options?: CallOptions) => Promise<BridgeAnswer>
   /** Kills the bridge process; the next call starts a fresh one. */
   restartBridge: () => Promise<void>
+  /** Ends a turn the scripted agent is holding with `#hold=<name>`. */
+  release: (name: string) => Promise<void>
   agents: () => Promise<Record<string, unknown>[]>
   waitForStatus: (
     sessionId: string, accept: (body: Record<string, unknown>) => boolean, owner?: string, timeoutMs?: number,
@@ -204,6 +206,7 @@ export const createCodingHarness = async (options: {
   return {
     dir, root, configPath, stateDir, recordDir, outputs, manager, server, call, agents,
     restartBridge: () => manager.stopAll(),
+    release: (name) => writeFile(join(recordDir, `release-${name}`), ''),
     waitForStatus: (sessionId, accept, owner = OWNER_A, timeoutMs = 30_000) => waitUntil(async () => {
       const answer = await call('session_status', { sessionId }, { owner })
       return answer.ok && accept(answer.body) ? answer.body : undefined

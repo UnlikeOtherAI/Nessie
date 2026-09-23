@@ -121,5 +121,11 @@ and immediately before mailbox dispatch; the original processor's grant is
 never inherited by the receiver. A blocked delivery persists
 its remedy and one owner alert per health transition; retry is explicit.
 Mailbox admission stamps the same lineage on the hidden prompt and run.
+A delivery that reaches a busy receiver pends, then drains alone
+(`task_set.delivery` is in `DRAINS_ALONE_PURPOSES`,
+`packages/db/src/thread-serialization.ts`). It is never folded into a batch,
+where only the latest message drives the run and its hidden notice would be
+lost, so each delivery runs under its own owner and `task-set:<id>`
+correlation.
 Database regressions cover completion gates, replica takeover, receipt recovery,
 destination/source refusal, and mailbox lineage through real run enqueueing.

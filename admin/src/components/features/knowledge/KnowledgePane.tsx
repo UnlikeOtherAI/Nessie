@@ -25,10 +25,11 @@ type KnowledgePaneProps = {
 
 // Full-width chrome for the knowledge main area. Its actions use the shared
 // responsive header so a project Docs tab can collapse into More without ever
-// overlapping the title or an adjacent navigation column. On a phone the
-// leading doorway belongs to the outer route header (the shell's
-// PhoneNavigationButton, fed by the local-back registry), so panes receive
-// onBack only on wider layouts and never paint a second phone Back.
+// overlapping the title or an adjacent navigation column. A hosted stage owns
+// its Back action even though `KnowledgeWorkspace` deliberately passes no
+// `onBack`: native iOS publishes that action into its bar, while web and
+// Android render the same action in this header. The route header underneath
+// the stage is retained off-screen and cannot be the visible doorway.
 export const KnowledgePane = ({ actions, below, children, onBack, title }: KnowledgePaneProps) => {
   // Only a pane that *is* an open stage publishes. The same component also
   // renders in a route layer — the space's root listing beneath an open
@@ -44,7 +45,6 @@ export const KnowledgePane = ({ actions, below, children, onBack, title }: Knowl
     back,
     title,
   }, isStage)
-
   return (
     <div className="flex h-full flex-col bg-[color:var(--main)]">
       {hidden

@@ -636,7 +636,13 @@ cargo test --manifest-path executor/native/Cargo.toml
 
 `scripted-coding-agent.mjs` speaks both protocols as the real CLIs printed
 them, and the subprocess suites drive a real bridge through the daemon's own
-MCP session manager; they run on Windows, Linux and macOS alike. On Linux
+MCP session manager; they run on Windows, Linux and macOS alike. A suite that
+must see a turn while it runs holds it open with `#hold=<name>` and releases
+it with the harness's `release`, rather than timing it with `#sleep`: a
+bridge respawn and a detached host's start race each other under load, so a
+timed turn can end before anything observes it. A follow-up that must fold
+into a held turn waits for the agent's own `message` record before the
+release. On Linux
 with a reachable user manager those hosts run in their own
 `systemd-run --user` units, so the same suites cover that start. The Job
 Object is proved twice:

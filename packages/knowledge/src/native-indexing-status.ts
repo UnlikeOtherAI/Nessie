@@ -194,8 +194,14 @@ const stateFromChunks = (
 ): KnowledgeIndexingState => {
   if (!chunks || chunks.total === 0) return { state: 'not_indexed', reason: 'empty' }
   if (chunks.unembedded === 0) return { state: 'indexed', versionId }
-  if (embedJobStatus === 'dead') return { state: 'failed', stage: 'embed' }
-  return { state: 'pending', stage: 'embed' }
+  // Missing vectors alone do not mean work is running. A completed job can
+  // leave them behind (for example when its origin cannot authorize a model
+  // call), and an absent job cannot ever finish. Both need a visible retry,
+  // not a spinner that keeps the Finder polling forever.
+  if (embedJobStatus === 'pending' || embedJobStatus === 'processing') {
+    return { state: 'pending', stage: 'embed' }
+  }
+  return { state: 'failed', stage: 'embed' }
 }
 
 /**
