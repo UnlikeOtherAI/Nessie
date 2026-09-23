@@ -5,17 +5,16 @@ import { deepWaterToolInputSchemas } from './deep-water-tool-schemas.js'
 /**
  * DeepWater's brief-first tool contract (Water plan contract D8, §5.2; manifest
  * 0.3.0): every research Nessie starts is agreed with DeepWater's planner
- * first, so these eight tools replace `research_start`.
+ * first, so these eight tools replace `research_start`. The manifest projects
+ * exactly this list.
  *
- * It is defined here, and proven equal to Ledger's published `tools/list`
+ * It is proven equal to Ledger's published `tools/list`
  * (`deep-water.ledger-contract.json`, copied byte-for-byte from Ledger's
- * `docs/contracts/deepwater-mcp-tools.json`), before any team projects it.
- * The manifest still projects the launcher contract below: Ledger serves the
- * brief tools only once its brief release is deployed, and the launcher and its
- * Personal Assistant handoff need `research_start` until the brief API and
- * dialog replace them. The release that ships those makes this the manifest's
- * tool list; every enabled team then upgrades on its owner's next enable
- * (`ensureDeepWaterTeamInstance`, amendments N9.1).
+ * `docs/contracts/deepwater-mcp-tools.json`). Ledger serves these tools from
+ * its brief release (phase C), which must be deployed before this contract
+ * reaches Nessie production. A team still on the launcher contract upgrades in
+ * place on its owner's next enable (`ensureDeepWaterTeamInstance`, amendments
+ * N9.1), once no launcher run could still dispatch `research_start`.
  */
 
 export type DeepWaterManifestTool = IntegrationPluginManifest['mcp']['tools'][number]

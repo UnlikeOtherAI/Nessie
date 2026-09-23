@@ -43,8 +43,9 @@ export const isCurrentDeepWaterToolContract = (discoveredTools: unknown): boolea
 
 /**
  * Does the instance project exactly the brief-first contract — the only one a
- * research brief can be agreed and launched through? Until the manifest
- * projects that contract, no team does, and no brief can be opened.
+ * research brief can be agreed and launched through? The manifest projects it,
+ * so a team whose connector does not is `contract_outdated` until its owner's
+ * next enable upgrades it.
  */
 export const projectsDeepWaterBriefContract = (discoveredTools: unknown): boolean => {
   const discovered = discoveredToolNames(discoveredTools)

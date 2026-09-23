@@ -76,7 +76,7 @@ const seed = async (): Promise<Seed> => {
     organizationId: ids.organization,
     instance: { id: ids.instance, scopeType: 'team', scopeId: ids.team },
     descriptors: deepWaterBriefTools.map((tool) => ({
-      name: tool.name, title: tool.label, description: tool.description, inputSchema: tool.inputSchema,
+      name: tool.name, title: tool.label, description: tool.description, inputSchema: tool.inputSchema ?? {},
     })),
   }))
   await prisma.toolRegistryEntry.updateMany({

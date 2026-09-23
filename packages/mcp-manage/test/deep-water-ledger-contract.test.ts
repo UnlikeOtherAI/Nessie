@@ -74,20 +74,25 @@ test('only the read tools are declared read-only by Ledger', () => {
   assert.deepEqual(readOnly, ['research_list', 'research_report', 'research_scope_get', 'research_status'])
 })
 
-test('the manifest still projects the launcher contract until the brief release', () => {
-  // Ledger serves the brief tools only once its brief release is deployed, and
-  // the launcher's Personal Assistant handoff needs research_start until the
-  // brief dialog replaces it; the release that ships both flips this.
-  assert.equal(deepWaterIntegrationPluginManifest.version, '0.2.2')
-  assert.deepEqual(deepWaterManifestToolNames().sort(), [...DEEP_WATER_LAUNCHER_TOOL_NAMES].sort())
+test('the manifest projects the brief contract, 0.3.0, with Ledger\'s exact schemas', () => {
+  assert.equal(deepWaterIntegrationPluginManifest.version, '0.3.0')
+  assert.deepEqual(deepWaterManifestToolNames().sort(), names(fixture.tools))
+  assert.equal(deepWaterManifestToolNames().includes('research_start'), false)
+  for (const tool of deepWaterIntegrationPluginManifest.mcp.tools) {
+    const ledgerTool = fixture.tools.find((candidate) => candidate.name === tool.name)
+    assert.deepStrictEqual(tool.inputSchema, ledgerTool?.inputSchema, tool.name)
+    // Options are typed fields now; no description carries a prose options contract.
+    assert.doesNotMatch(JSON.stringify(tool.inputSchema), /Supported lines/)
+  }
 })
 
 test('a connector is current only on the manifest\'s exact tool names', () => {
-  const launcher = DEEP_WATER_LAUNCHER_TOOL_NAMES.map((name) => ({ name }))
-  assert.equal(isCurrentDeepWaterToolContract(launcher), true)
-  assert.equal(isCurrentDeepWaterToolContract([...launcher].reverse()), true)
-  assert.equal(isCurrentDeepWaterToolContract(launcher.slice(1)), false)
-  assert.equal(isCurrentDeepWaterToolContract([...launcher, { name: 'research_scope_start' }]), false)
+  const brief = DEEP_WATER_BRIEF_TOOL_NAMES.map((name) => ({ name }))
+  assert.equal(isCurrentDeepWaterToolContract(brief), true)
+  assert.equal(isCurrentDeepWaterToolContract([...brief].reverse()), true)
+  assert.equal(isCurrentDeepWaterToolContract(brief.slice(1)), false)
+  assert.equal(isCurrentDeepWaterToolContract([...brief, { name: 'research_start' }]), false)
+  assert.equal(isCurrentDeepWaterToolContract(DEEP_WATER_LAUNCHER_TOOL_NAMES.map((name) => ({ name }))), false)
   assert.equal(isCurrentDeepWaterToolContract(null), false)
 })
 

@@ -16,20 +16,20 @@ file is the rule**.
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` when the linked first-party catalog is
   missing), installs a bearer HTTP transport using `LEDGER_PROXY_TOKEN` as
   Nessie's one deployment-wide, product-bound Ledger app API key (never a
-  per-user credential), and projects the manifest's tools — today the
-  launcher contract (manifest 0.2): `research_start`, `research_status`,
-  `research_report`, `research_list`, and `research_cancel` — as active
-  `mcp_research_*` tools. The brief-first contract (0.3.0:
-  `research_scope_start`, `research_scope_reply`, `research_scope_get`,
-  `research_scope_launch`, `research_status`, `research_report`,
-  `research_cancel` and `research_list`; no `research_start`) is defined as
+  per-user credential), and projects the manifest's tools — the brief-first
+  contract (manifest 0.3.0): `research_scope_start`, `research_scope_reply`,
+  `research_scope_get`, `research_scope_launch`, `research_status`,
+  `research_report`, `research_cancel` and `research_list`, all sensitive, and
+  never `research_start` — as active `mcp_research_*` tools. The tools are
   `deepWaterBriefTools` in `@nessie/mcp-manage`, built from the shared brief
-  vocabulary, and a contract test deep-equals its input schemas against
-  `deep-water.ledger-contract.json` — Ledger's own
+  vocabulary, and a contract test deep-equals the manifest's input schemas
+  against `deep-water.ledger-contract.json` — Ledger's own
   `docs/contracts/deepwater-mcp-tools.json`, copied byte-for-byte and never
-  edited here. It becomes the manifest's projection only in the release that
-  ships the brief API and dialog, after Ledger serves those tools, because the
-  launcher's Personal Assistant handoff needs `research_start` until then.
+  edited here. Ledger serves these tools from its brief release, which must
+  be live before this manifest reaches production. A team still on the
+  launcher contract (manifest 0.2: `research_start`, `research_status`,
+  `research_report`, `research_list`, `research_cancel`) is
+  `contract_outdated` until its owner enables DeepWater again.
   **Contracts move in place.** An owner enabling DeepWater again runs
   `projectDeepWaterTeamContract`: a connector already on the manifest's
   contract is re-pinned (keeping richer probed schemas); one on an older
@@ -176,8 +176,8 @@ file is the rule**.
   matching `rs_...` `id`/`job_id` plus exact Ledger status is persisted before
   success is returned; a retry then replays that ticket and status locally
   without another Ledger call. Managed DeepWater owns the canonical
-  `mcp_research_*` names — derived from the manifest and the brief contract,
-  plus `mcp_research_start` while legacy handoffs exist — even when private
+  `mcp_research_*` names — derived from the manifest, plus
+  `mcp_research_start` while legacy handoffs exist — even when private
   connectors collide or the grant is absent, so the server-authored prompt can
   never dispatch a foreign connector.
   Same-batch status/report/cancel calls are pinned

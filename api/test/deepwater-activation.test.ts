@@ -74,10 +74,11 @@ test('enabling DeepWater creates a team-scoped instance with a usable transport 
   // require an explicit per-agent grant.
   const toolNames = fake.registry.map((r) => r.toolId.split(':').pop())
   assert.deepEqual(toolNames.sort(), [...MANIFEST_TOOLS].sort())
+  assert.equal(toolNames.includes('research_start'), false)
   assert.deepEqual(
-    (fake.registry.find((entry) => entry.toolId.endsWith(':research_start'))
+    (fake.registry.find((entry) => entry.toolId.endsWith(':research_scope_start'))
       ?.inputSchema as { required?: string[] }).required,
-    ['query'],
+    ['topic'],
   )
   assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
   assert.ok(fake.registry.every((r) => r.status === 'active'))
@@ -116,7 +117,7 @@ test('re-enable preserves a current probe schema but enforces the Ledger app key
         transportConfig: { transport: 'http', url: 'https://legacy.example.org/mcp' },
         discoveredTools: ledgerTools.map((name) => ({
           name,
-          inputSchema: name === 'research_start' ? probedSchema : { type: 'object' },
+          inputSchema: name === 'research_scope_start' ? probedSchema : { type: 'object' },
         })),
       },
     ],
@@ -127,7 +128,7 @@ test('re-enable preserves a current probe schema but enforces the Ledger app key
         toolId: `mcp:${instanceId}:${name}`,
         label: name,
         description: 'probed',
-        inputSchema: name === 'research_start' ? probedSchema : { type: 'object' },
+        inputSchema: name === 'research_scope_start' ? probedSchema : { type: 'object' },
         outputSchema: null,
         status: 'active',
         metadata: {},
@@ -141,7 +142,7 @@ test('re-enable preserves a current probe schema but enforces the Ledger app key
   // auth are pinned to Ledger.
   assert.equal(fake.registry.length, MANIFEST_TOOLS.length)
   assert.deepEqual(
-    fake.registry.find((entry) => entry.toolId.endsWith(':research_start'))?.inputSchema,
+    fake.registry.find((entry) => entry.toolId.endsWith(':research_scope_start'))?.inputSchema,
     probedSchema,
   )
   assert.deepEqual(fake.instances[0]?.transportConfig, {

@@ -4,13 +4,17 @@ import test from 'node:test'
 
 import { Prisma, PrismaClient } from '@prisma/client'
 import type { McpToolDescriptor } from '@nessie/mcp-client'
-import { deepWaterBriefTools } from '@nessie/mcp-manage'
+import {
+  DEEP_WATER_LAUNCHER_TOOL_NAMES,
+  deepWaterBriefTools,
+  grantDeepWaterBundleInTransaction,
+  loadDeepWaterPolicyKeys,
+} from '@nessie/mcp-manage'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { runWithDeepWaterTransitionLock } from '../src/services/deepwater-activation.js'
 import { setDeepWaterAgentAccess } from '../src/services/deepwater-agent-access.js'
 import { projectDeepWaterTeamContract } from '../src/services/deepwater-projection.js'
-import { getIntegrationPluginManifest } from '../src/services/integration-plugin-manifests.js'
 
 /**
  * A real team with a DeepWater connector, its Personal Assistant and one
@@ -42,7 +46,17 @@ const descriptorsOf = (tools: ReadonlyArray<{
     inputSchema: tool.inputSchema ?? {},
   }))
 
-export const launcherDescriptors = descriptorsOf(getIntegrationPluginManifest('deep-water')?.mcp?.tools ?? [])
+/**
+ * The launcher contract (manifest 0.2) a team may still project: its names are
+ * the contract, so the schemas here are placeholders.
+ */
+export const launcherDescriptors = descriptorsOf(DEEP_WATER_LAUNCHER_TOOL_NAMES.map((name) => ({
+  name,
+  label: name,
+  description: `Launcher contract ${name}`,
+  inputSchema: { type: 'object' },
+})))
+/** The brief contract, which the manifest projects. */
 export const briefDescriptors = descriptorsOf(deepWaterBriefTools)
 
 export type Seed = {
@@ -162,9 +176,23 @@ export const legacyRun = (s: Seed, data: Partial<Prisma.ProductIntegrationRunUnc
     },
   })
 
-/** A team on the launcher contract whose Personal Assistant holds the whole bundle. */
+/**
+ * A team still on the launcher contract whose Personal Assistant was granted
+ * that whole bundle before the manifest moved to the brief contract.
+ */
 export const launcherTeam = async (s: Seed): Promise<Map<string, string>> => {
   assert.equal(await projectContract(s, launcherDescriptors, true), 'projected')
+  await runWithDeepWaterTransitionLock(s.prisma, team(s), async (tx) => {
+    const access = await loadDeepWaterPolicyKeys(tx, { ...team(s), contractToolNames: DEEP_WATER_LAUNCHER_TOOL_NAMES })
+    assert.equal(access.configured, true)
+    await grantDeepWaterBundleInTransaction(tx, { access, agentId: s.personalAssistantId, ...team(s) })
+  })
+  return registryIds(s)
+}
+
+/** A team on the manifest's brief contract whose Personal Assistant holds the whole bundle. */
+export const briefTeam = async (s: Seed): Promise<Map<string, string>> => {
+  assert.equal(await projectContract(s, briefDescriptors, true), 'projected')
   await setDeepWaterAgentAccess(s.prisma, { ...team(s), agentId: s.personalAssistantId, enabled: true })
   return registryIds(s)
 }

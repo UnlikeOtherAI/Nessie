@@ -1,19 +1,16 @@
-import { DEEP_WATER_BRIEF_TOOL_NAMES, deepWaterManifestToolNames } from '@nessie/mcp-manage'
+import { deepWaterManifestToolNames } from '@nessie/mcp-manage'
 
 const EXPOSE_NAME_PREFIX = 'mcp_'
 
 /**
- * The DeepWater tool names Nessie manages, derived from the contracts so a
- * contract change can never leave a stale list behind: the manifest's
- * projected tools, the brief contract's (reserved before any team projects
- * them, so no private connector can hold a name the brief flow dispatches),
- * and `research_start`, which stays managed while legacy launcher runs may
- * still dispatch it through a team that has not upgraded (Water plan
- * amendments N9.3). The retirement of the launcher handoff removes it.
+ * The DeepWater tool names Nessie manages (Water plan amendments N9.3): the
+ * manifest's projected tools, derived so a contract change can never leave a
+ * stale list behind, and `research_start`, which stays managed while legacy
+ * launcher runs may still dispatch it through a team that has not upgraded.
+ * The retirement of the launcher handoff (phase E) removes it.
  */
 export const MANAGED_DEEP_WATER_TOOL_NAMES: ReadonlySet<string> = new Set([
   ...deepWaterManifestToolNames(),
-  ...DEEP_WATER_BRIEF_TOOL_NAMES,
   'research_start',
 ])
 

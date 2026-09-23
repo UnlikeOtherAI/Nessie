@@ -15,7 +15,7 @@ import {
   setDeepWaterAgentAccess,
 } from '../src/services/deepwater-agent-access.js'
 import {
-  launcherTeam,
+  briefTeam,
   legacyRun,
   team,
   withSeed,
@@ -50,7 +50,7 @@ const blockedBy = (runId: string) => (error: unknown) =>
   && error.message.includes(runId)
 
 withSeed('a disable waits for a brief being agreed and for a launched agent research', async (s) => {
-  await launcherTeam(s)
+  await briefTeam(s)
   const drafting = await briefRun(s, { originKind: 'person', status: 'drafting' })
   await assert.rejects(removeDeepWaterTeamInstance(s.prisma, team(s)), (error: unknown) =>
     error instanceof LedgerDeepWaterActiveRunsError
@@ -69,7 +69,7 @@ withSeed('a disable waits for a brief being agreed and for a launched agent rese
 })
 
 withSeed('revoking an agent waits only for its own briefs that are not launched', async (s) => {
-  await launcherTeam(s)
+  await briefTeam(s)
   await setDeepWaterAgentAccess(s.prisma, { ...team(s), agentId: s.sharedAgentId, enabled: true })
 
   // Another agent's brief, a person's brief and the agent's own launched research never block.
@@ -86,7 +86,7 @@ withSeed('revoking an agent waits only for its own briefs that are not launched'
 })
 
 withSeed('an open launcher run blocks every revocation; briefs never block the legacy mode', async (s) => {
-  await launcherTeam(s)
+  await briefTeam(s)
   const legacyGuard = () => s.prisma.$transaction((tx) =>
     guardDeepWaterPolicyRevocation(tx, { organizationId: s.organizationId, mode: { kind: 'legacy' } }))
 

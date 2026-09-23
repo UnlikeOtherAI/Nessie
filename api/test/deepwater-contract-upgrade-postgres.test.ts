@@ -47,21 +47,26 @@ import {
  * connector on another contract than the manifest's reports
  * `contractOutdated` instead of being read as missing grants.
  *
- * The manifest still projects the launcher contract, so these tests move a
- * team to the brief contract through `projectDeepWaterTeamContract` — the step
- * `ensureDeepWaterTeamInstance` runs with the manifest's descriptors — and
- * back through `ensureDeepWaterTeamInstance` itself.
+ * The manifest projects the brief contract, so a team still on the launcher
+ * contract is outdated until its owner's next enable
+ * (`ensureDeepWaterTeamInstance`) moves it. The suites below also drive
+ * `projectDeepWaterTeamContract` — the step that enable runs with the
+ * manifest's descriptors — directly.
  */
 
-withSeed('the launcher contract stays usable while the manifest projects it', async (s) => {
+withSeed('a team still on the launcher contract is outdated, and opens no brief, until it is upgraded', async (s) => {
   await launcherTeam(s)
   const access = await loadDeepWaterPolicyKeys(s.prisma, team(s))
-  assert.equal(access.contractOutdated, false)
-  assert.equal(access.configured, true)
-  assert.equal(access.policyKeys.length, DEEP_WATER_LAUNCHER_TOOL_NAMES.length + 1)
-  const connectorId = await runWithAuthorizedDeepWaterLaunch(s.prisma, team(s), async (_tx, id) => id)
-  assert.equal(connectorId, s.instanceId)
-  // A brief needs the brief contract: this team cannot open one yet.
+  assert.equal(access.contractOutdated, true)
+  assert.equal(access.configured, false)
+  // Its launcher access is still what it was: every launcher tool is granted.
+  const launcherAccess = await loadDeepWaterPolicyKeys(s.prisma, { ...team(s), contractToolNames: DEEP_WATER_LAUNCHER_TOOL_NAMES })
+  assert.equal(launcherAccess.policyKeys.length, DEEP_WATER_LAUNCHER_TOOL_NAMES.length + 1)
+  await assert.rejects(
+    runWithAuthorizedDeepWaterLaunch(s.prisma, team(s), async () => 'launched'),
+    (error: unknown) => error instanceof DeepWaterLaunchAuthorizationError
+      && error.code === DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES.CONTRACT_OUTDATED,
+  )
   assert.deepEqual(await readDeepWaterTeamConnector(s.prisma, team(s)), {
     state: 'contract_outdated',
     instanceId: s.instanceId,
@@ -129,7 +134,6 @@ withSeed('once the launcher run ends the upgrade keeps shared ids and re-grants 
 
 withSeed('a connector on another contract than the manifest\'s reports contractOutdated, not missing grants', async (s) => {
   await launcherTeam(s)
-  assert.equal(await projectContract(s, briefDescriptors), 'upgraded')
 
   const access = await loadDeepWaterPolicyKeys(s.prisma, team(s))
   assert.equal(access.contractOutdated, true)
@@ -151,7 +155,6 @@ withSeed('a connector on another contract than the manifest\'s reports contractO
 
 withSeed('enabling DeepWater again moves the team onto the manifest\'s contract, guarded the same way', async (s) => {
   await launcherTeam(s)
-  assert.equal(await projectContract(s, briefDescriptors), 'upgraded')
   const run = await legacyRun(s, { status: 'needs_setup' })
 
   await assert.rejects(
@@ -169,4 +172,10 @@ withSeed('enabling DeepWater again moves the team onto the manifest\'s contract,
   assert.equal(access.configured, true)
   const policy = await policyOf(s, s.personalAssistantId)
   assert.ok(access.policyKeys.every((key) => policy[key] === true), 'the bundle holder follows the contract')
+  assert.deepEqual(
+    [...(await registryIds(s)).keys()].sort(),
+    [...DEEP_WATER_BRIEF_TOOL_NAMES].sort(),
+    'the team now projects the brief contract',
+  )
+  assert.deepEqual(await readDeepWaterTeamConnector(s.prisma, team(s)), { state: 'ready', instanceId: s.instanceId })
 })

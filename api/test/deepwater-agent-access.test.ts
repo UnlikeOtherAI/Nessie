@@ -38,6 +38,7 @@ test('Deep Water access resolves the exact manifest projections plus updater bui
     projectedEntries,
   })
 
+  assert.equal(names.length, 8)
   assert.equal(DEEP_WATER_REQUIRED_TOOL_COUNT, names.length + 1)
   assert.equal(resolved.configured, true)
   assert.deepEqual(resolved.policyKeys, [
