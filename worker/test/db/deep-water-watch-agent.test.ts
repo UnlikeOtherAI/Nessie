@@ -306,3 +306,40 @@ withFixture('an agent\'s brief whose requester\'s sign-in changed tells them onc
   assert.equal((await fixture.read(brief.id)).agentWakeCount, 1)
   assert.deepEqual((await kickoffs(fixture)).map((message) => message.id), [deepWaterWakeKickoffId(brief.id, 'turn', turnId)])
 })
+
+withFixture('a failed planner turn wakes its agent to try again; past eight wakes the person is told once', async (fixture) => {
+  const brief = await fixture.insert('agent')
+  const rs = researchId()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'pending', authorKind: 'agent', errorCode: null, retryable: false },
+  })
+  const failed = { id: randomUUID(), seq: 2, status: 'failed', author_kind: 'agent' as const, retryable: true }
+  fixture.ledger.answer('research_scope_get', (args) => ({
+    ...wireScope({ id: rs, revision: 1, withTranscript: args.include_transcript === true }),
+    turn: { ...failed, error_code: 'planner_unavailable' },
+  }))
+  await watch(fixture, brief.id)
+
+  const [kickoff] = await kickoffs(fixture)
+  assert.equal(kickoff?.id, deepWaterWakeKickoffId(brief.id, 'turn', failed.id))
+  assert.match(kickoff?.content ?? '', /could not answer the brief/)
+  assert.match(kickoff?.content ?? '', /Send your reply again with mcp_research_scope_reply/)
+  assert.doesNotMatch(kickoff?.content ?? '', /planner_unavailable/, 'a kickoff never quotes the error code')
+  assert.equal((await fixture.read(brief.id)).agentWakeCount, 1)
+
+  // The eighth wake was the last: the next answers tell the person once instead.
+  await fixture.prisma.productIntegrationRun.update({ where: { id: brief.id }, data: { agentWakeCount: 8 } })
+  for (const seq of [3, 4]) {
+    const turn = { id: randomUUID(), seq, status: 'complete', author_kind: 'agent' as const }
+    fixture.ledger.answer('research_scope_get', (args) =>
+      wireScope({ id: rs, turn, revision: seq, withTranscript: args.include_transcript === true }))
+    await watch(fixture, brief.id)
+  }
+  const capped = await fixture.read(brief.id)
+  assert.equal(capped.agentWakeCount, 8)
+  assert.equal(capped.lastHandledTurnSeq, 4)
+  assert.ok(capped.wakeCapNoticeAt)
+  assert.equal((await kickoffs(fixture)).length, 1, 'no wake past the cap')
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['wake_cap'])
+})
