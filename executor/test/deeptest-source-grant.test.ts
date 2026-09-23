@@ -15,6 +15,7 @@ import {
   saveExecutorState,
   type ExecutorLocalState,
 } from '../src/state-store.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const stateFor = (
   workspaceRoot: string,
@@ -42,7 +43,7 @@ const fixture = async (): Promise<{ stateDir: string; workspaceRoot: string }> =
   return { stateDir, workspaceRoot }
 }
 
-test('paired state publishes an exact credential-free source grant', async () => {
+test('paired state publishes an exact credential-free source grant', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const original = stateFor(workspaceRoot)
@@ -74,7 +75,7 @@ test('paired state publishes an exact credential-free source grant', async () =>
   }
 })
 
-test('connection-only state saves preserve the existing valid source grant', async () => {
+test('connection-only state saves preserve the existing valid source grant', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const state = stateFor(workspaceRoot)
@@ -96,7 +97,7 @@ test('connection-only state saves preserve the existing valid source grant', asy
   }
 })
 
-test('a changed source projection is revoked before a failed paired-state save', async () => {
+test('a changed source projection is revoked before a failed paired-state save', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const original = stateFor(workspaceRoot)
@@ -121,7 +122,7 @@ test('a changed source projection is revoked before a failed paired-state save',
   }
 })
 
-test('the explicit locked recovery command republishes authoritative paired state', async () => {
+test('the explicit locked recovery command republishes authoritative paired state', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const state = stateFor(workspaceRoot)
@@ -137,7 +138,7 @@ test('the explicit locked recovery command republishes authoritative paired stat
   }
 })
 
-test('connection metadata cannot republish after source-grant publication fails', async () => {
+test('connection metadata cannot republish after source-grant publication fails', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const original = stateFor(workspaceRoot)
@@ -166,7 +167,7 @@ test('connection metadata cannot republish after source-grant publication fails'
   }
 })
 
-test('a concurrent state mutation cannot race a later grant revocation', async () => {
+test('a concurrent state mutation cannot race a later grant revocation', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const state = stateFor(workspaceRoot)
@@ -183,7 +184,7 @@ test('a concurrent state mutation cannot race a later grant revocation', async (
   }
 })
 
-test('a delayed writer cannot restore a source capability after revocation', async () => {
+test('a delayed writer cannot restore a source capability after revocation', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const original = stateFor(workspaceRoot)
@@ -204,7 +205,7 @@ test('a delayed writer cannot restore a source capability after revocation', asy
   }
 })
 
-test('a delayed writer cannot recreate paired state after it is forgotten', async () => {
+test('a delayed writer cannot recreate paired state after it is forgotten', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const original = stateFor(workspaceRoot)
@@ -223,7 +224,7 @@ test('a delayed writer cannot recreate paired state after it is forgotten', asyn
   }
 })
 
-test('forgetting paired state invalidates its source grant first', async () => {
+test('forgetting paired state invalidates its source grant first', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     await saveExecutorState(stateDir, stateFor(workspaceRoot))
@@ -236,7 +237,7 @@ test('forgetting paired state invalidates its source grant first', async () => {
   }
 })
 
-test('the source adapter rejects a grant with credential-shaped extra fields', async () => {
+test('the source adapter rejects a grant with credential-shaped extra fields', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     await saveExecutorState(stateDir, stateFor(workspaceRoot))

@@ -16,6 +16,7 @@ import {
   releaseGuestWorkspaceLease,
 } from '../src/guest-workspace-lease.js'
 import { stopSandboxWorkspace } from '../src/sandbox-workspace.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const exec = promisify(execFile)
 const runId = '00000000-0000-4000-8000-000000000401'
@@ -41,7 +42,7 @@ const leaseFor = async (stateDir: string, workspaceRoot: string) => await create
   },
 )
 
-test('execution COW leases contain only reviewed Git blobs and never ignored or Git metadata', async () => {
+test('execution COW leases contain only reviewed Git blobs and never ignored or Git metadata', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-execution-materialized-state-'))
   const root = await reviewedRepository()
   let releaseSource: (() => Promise<void>) | undefined
@@ -68,7 +69,7 @@ test('execution COW leases contain only reviewed Git blobs and never ignored or 
   }
 })
 
-test('a tracked mutation in an execution lease denies the final reviewed-source check', async () => {
+test('a tracked mutation in an execution lease denies the final reviewed-source check', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-execution-materialized-state-'))
   const root = await reviewedRepository()
   let releaseSource: (() => Promise<void>) | undefined
@@ -91,7 +92,7 @@ test('a tracked mutation in an execution lease denies the final reviewed-source 
   }
 })
 
-test('an extra lease path is denied before its contents are read', async () => {
+test('an extra lease path is denied before its contents are read', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-execution-materialized-state-'))
   const root = await reviewedRepository()
   let releaseSource: (() => Promise<void>) | undefined

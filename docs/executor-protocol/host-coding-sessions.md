@@ -596,8 +596,10 @@ real unit's `KillMode=control-group` while a turn is held and drives the same
 session afterwards — still working, the same agent, the turn finished and a
 follow-up served — whenever `systemctl --user is-system-running` answers
 `running` or `degraded`, and says why it skipped otherwise. The configuration
-round trip through a real state file is skipped on Windows, where saving
-executor state needs the packaged helper. The live cycle — start, follow-up, a
+round trip through a real state file is skipped on a development Node on
+Windows, where saving executor state needs the packaged helper; under a
+packaged runtime it runs, and proves the config file owner-only through the
+helper's DACL check instead of mode bits (`executor/test/windows-prerequisites.ts`). The live cycle — start, follow-up, a
 denied `git push`, review and close against a logged-in Claude Code, and a
 Codex turn — needs real subscriptions and is not automated.
 

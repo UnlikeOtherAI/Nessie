@@ -16,6 +16,7 @@ import {
   measureGuestImageSource,
   resolveGuestImageBuilder,
 } from '../src/guest-images.js'
+import { WINDOWS_SYMLINK_SKIP } from './windows-prerequisites.js'
 
 const run = promisify(execFile)
 const IDENTITY = { gid: 65_534, uid: 65_534 }
@@ -83,7 +84,7 @@ test('a root-owned daemon is refused before an image the guest would reject is b
   assert.deepEqual(guestImageIdentity({ getgid: () => 20, getuid: () => 501 }), { gid: 20, uid: 501 })
 })
 
-test('an image is sized from the tree it must hold, and refuses a linked tree', async () => {
+test('an image is sized from the tree it must hold, and refuses a linked tree', { skip: WINDOWS_SYMLINK_SKIP }, async () => {
   const staged = await stageSource()
   try {
     const usage = await measureGuestImageSource(staged.workspace)

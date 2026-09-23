@@ -13,6 +13,7 @@ import {
   saveExecutorState,
   type ExecutorLocalState,
 } from '../src/state-store.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const stateFor = (workspaceRoot: string, revision = 1): ExecutorLocalState => ({
   apiBaseUrl: 'https://api.nessie.example',
@@ -44,7 +45,7 @@ const fixture = async (): Promise<{ stateDir: string; workspaceRoot: string }> =
   return { stateDir, workspaceRoot }
 }
 
-test('only explicit active-testing opt-in publishes a credential-free execution grant', async () => {
+test('only explicit active-testing opt-in publishes a credential-free execution grant', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const state = stateFor(workspaceRoot)
@@ -76,7 +77,7 @@ test('only explicit active-testing opt-in publishes a credential-free execution 
   }
 })
 
-test('a source-only pairing cannot mint an active execution grant', async () => {
+test('a source-only pairing cannot mint an active execution grant', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const sourceOnly = stateFor(workspaceRoot)
@@ -94,7 +95,7 @@ test('a source-only pairing cannot mint an active execution grant', async () => 
   }
 })
 
-test('a changed descriptor revokes execution access before a failed state save', async () => {
+test('a changed descriptor revokes execution access before a failed state save', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const original = stateFor(workspaceRoot)
@@ -112,7 +113,7 @@ test('a changed descriptor revokes execution access before a failed state save',
   }
 })
 
-test('revocation and forget remove an execution grant, and malformed grants fail closed', async () => {
+test('revocation and forget remove an execution grant, and malformed grants fail closed', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
     const state = stateFor(workspaceRoot)

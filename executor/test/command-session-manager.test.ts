@@ -12,6 +12,7 @@ import { createExecutorCommandSessionManager } from '../src/command-session-mana
 import { createDeepTestSourceSnapshot } from '../src/deeptest-source-snapshot.js'
 import type { GuestVmSession } from '../src/guest-vm-session.js'
 import { stopSandboxWorkspace } from '../src/sandbox-workspace.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const runId = '00000000-0000-4000-8000-000000000451'
 const exec = promisify(execFile)
@@ -92,7 +93,7 @@ const stateFor = (workspaceRoot: string) => ({
   workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
-test('command session starts one no-egress COW guest and forwards an argv request without a shell', async () => {
+test('command session starts one no-egress COW guest and forwards an argv request without a shell', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-command-manager-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-command-workspace-'))
   let resolveClosed: (() => void) | undefined
@@ -144,7 +145,7 @@ test('command session starts one no-egress COW guest and forwards an argv reques
   }
 })
 
-test('command session refuses a guest without the command runtime', async () => {
+test('command session refuses a guest without the command runtime', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-command-runtime-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-command-runtime-workspace-'))
   let stopped = 0
@@ -175,7 +176,7 @@ test('command session refuses a guest without the command runtime', async () => 
   }
 })
 
-test('command lease verification admits the real clean COW Git workspace before starting a guest', async () => {
+test('command lease verification admits the real clean COW Git workspace before starting a guest', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-command-lease-verify-'))
   const workspaceRoot = await createGitWorkspace()
   let started = 0
@@ -201,7 +202,7 @@ test('command lease verification admits the real clean COW Git workspace before 
   }
 })
 
-test('command lease verification rejects a workspace changed after review before any guest starts', async () => {
+test('command lease verification rejects a workspace changed after review before any guest starts', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-command-lease-mutation-'))
   const workspaceRoot = await createGitWorkspace()
   let started = 0
@@ -232,7 +233,7 @@ test('command lease verification rejects a workspace changed after review before
   }
 })
 
-test('cancelling command lease verification prevents guest startup and releases its COW lease', async () => {
+test('cancelling command lease verification prevents guest startup and releases its COW lease', { skip: WINDOWS_STATE_HELPER_SKIP, timeout: 60_000 }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-command-lease-cancel-'))
   const workspaceRoot = await createGitWorkspace()
   let releaseVerification: ((value: boolean) => void) | undefined

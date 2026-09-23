@@ -11,6 +11,7 @@ import {
   spawnPackagedStateSecurityHelper,
   type StateSecurityCommand,
 } from '../src/state-security.js'
+import { WINDOWS_SYMLINK_SKIP } from './windows-prerequisites.js'
 
 type HelperCall = { command: StateSecurityCommand; path: string }
 
@@ -27,6 +28,16 @@ const recordingHelper = (calls: HelperCall[], reject?: string) => async (
   if (reject) throw new Error(reject)
 }
 
+/**
+ * The POSIX arm reads real mode bits from the filesystem it runs on, and
+ * Windows reports a fixed `0o666`-shaped mode for every path, so the arm is
+ * staged only on a host that has mode bits. The Windows arm's tests below run
+ * everywhere through the recording helper.
+ */
+const POSIX_MODE_BITS = process.platform === 'win32'
+  ? 'Windows reports no POSIX mode bits, so a POSIX privacy proof cannot be staged on it.'
+  : false
+
 const withDirectory = async (body: (directory: string) => Promise<void>): Promise<void> => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-state-security-'))
   try {
@@ -36,7 +47,7 @@ const withDirectory = async (body: (directory: string) => Promise<void>): Promis
   }
 }
 
-test('POSIX proves privacy from ownership and mode bits, and never calls the helper', async () => {
+test('POSIX proves privacy from ownership and mode bits, and never calls the helper', { skip: POSIX_MODE_BITS }, async () => {
   await withDirectory(async (directory) => {
     const calls: HelperCall[] = []
     const deps = { helper: recordingHelper(calls), platform: 'linux' as NodeJS.Platform }
@@ -54,7 +65,7 @@ test('POSIX proves privacy from ownership and mode bits, and never calls the hel
   })
 })
 
-test('a POSIX state path readable by the group or the world is refused', async () => {
+test('a POSIX state path readable by the group or the world is refused', { skip: POSIX_MODE_BITS }, async () => {
   await withDirectory(async (directory) => {
     const deps = { helper: recordingHelper([]), platform: 'linux' as NodeJS.Platform }
     const stateDir = join(directory, 'executors', 'one')
@@ -128,7 +139,7 @@ test('a helper that refuses fails the check closed on Windows', async () => {
   })
 })
 
-test('a symlinked or wrongly-shaped state path is refused on either host', async () => {
+test('a symlinked or wrongly-shaped state path is refused on either host', { skip: WINDOWS_SYMLINK_SKIP }, async () => {
   await withDirectory(async (directory) => {
     const stateDir = join(directory, 'executors', 'one')
     await mkdir(stateDir, { recursive: true })

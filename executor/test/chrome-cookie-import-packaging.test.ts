@@ -9,7 +9,10 @@ import {
   prepareChromeCookieImport,
 } from '../scripts/prepare-chrome-cookie-import.mjs'
 
-test('development packaging creates an isolated pinned extension and native host without registering either', async () => {
+test('development packaging creates an isolated pinned extension and native host without registering either', {
+  // The package is the macOS one: a POSIX shell launcher, zipped with /usr/bin/zip.
+  skip: process.platform === 'win32' ? 'The Chrome cookie import package is built for macOS, with a POSIX launcher and /usr/bin/zip.' : false,
+}, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-chrome-import-package-'))
   const output = join(root, 'output')
   const keyPath = join(root, 'development-public.der.base64')
