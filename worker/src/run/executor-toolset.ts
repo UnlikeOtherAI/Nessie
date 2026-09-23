@@ -69,8 +69,11 @@ export type ExecutorToolset = {
    * the first time this run asks and kept for the rest of it.
    */
   mcpCatalog: (server: string, providerToolCallId: string) => Promise<ExecutorMcpCatalogAnswer>
-  /** Fatal and replay-safe for this run's executor tools; null for any other name. */
-  timeoutErrorFor: (toolName: string) => Error | null
+  /**
+   * Fatal and replay-safe for this run's executor tools, naming the ToolCall
+   * the provider call's command was recorded under; null for any other name.
+   */
+  timeoutErrorFor: (toolName: string, providerToolCallId?: string) => Error | null
   /** Command TTL plus margin for this run's executor tools; undefined for any other name. */
   timeoutMsFor: (toolName: string) => number | undefined
 }
@@ -226,6 +229,10 @@ export const buildExecutorToolset = async (
     }]
   }).sort((left, right) => compareToolName(left.toolName, right.toolName))
   const entryByName = new Map(entries.map((entry) => [entry.toolName, entry]))
+  // The ToolCall each provider call's command is recorded under, known before
+  // the command exists, so a backstop that gives up on a dispatch still names
+  // the row it opened. A catalog walk's first page carries the call's own id.
+  const recordIdByProviderCall = new Map<string, string>()
   const recordHostOutput = (): void => {
     if (input.hostOutput) input.hostOutput.sink.add(input.hostOutput.launchScope)
   }
@@ -268,6 +275,8 @@ export const buildExecutorToolset = async (
     if (HOST_OUTPUT_OPERATION_KEYS.has(entry.operationKey)) recordHostOutput()
     const startedAt = new Date()
     const commandId = randomUUID()
+    const toolCallRecordId = randomUUID()
+    recordIdByProviderCall.set(providerToolCallId, toolCallRecordId)
     const created = await prisma.$transaction(async (tx) => {
       const binding = await assertExecutorCommandBindingCurrent(tx, entry.bindingId, {
         // browser.open is the one transition that consumes its freshly
@@ -338,6 +347,7 @@ export const buildExecutorToolset = async (
       }
       const toolCall = await tx.toolCall.create({
         data: {
+          id: toolCallRecordId,
           agentId: input.agentId,
           inputSummary: summarizeToolInput(args),
           runId: input.runId,
@@ -396,7 +406,10 @@ export const buildExecutorToolset = async (
     dispatch,
     handledNames: new Set(entries.map((entry) => entry.toolName)),
     mcpCatalog: catalogs.load,
-    ...executorToolTimeouts((toolName) => entryByName.get(toolName)?.operationKey),
+    ...executorToolTimeouts(
+      (toolName) => entryByName.get(toolName)?.operationKey,
+      (providerToolCallId) => recordIdByProviderCall.get(providerToolCallId),
+    ),
   }
 }
 

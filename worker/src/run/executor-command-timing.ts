@@ -3,6 +3,7 @@ import {
   EXECUTOR_TOOL_TIMEOUT_MARGIN_MS,
 } from '@nessie/schemas'
 
+import { EXECUTOR_MCP_CATALOG_MAX_PAGES } from './executor-mcp-catalog.js'
 import { FatalToolExecutionError } from './tool-execution-errors.js'
 
 // File operations and the other bounded daemon reads and writes.
@@ -53,8 +54,9 @@ export const executorToolTimeoutMs = (operationKey: string): number =>
  * answers the call as an unknown outcome instead of repeating a side effect. A
  * plain retriable "timed out" would invite the model to send it twice.
  *
- * `toolCallRecordId` is absent when the backstop fired: the durable record was
- * created inside the dispatch the timeout gave up on.
+ * `toolCallRecordId` names the durable ToolCall the command was recorded under,
+ * so whoever catches this can end that row rather than open a second one. It
+ * is absent only when no command was ever started for the call.
  */
 export class ExecutorUnknownOutcomeError extends FatalToolExecutionError {
   constructor(readonly toolCallRecordId?: string) {
@@ -65,12 +67,28 @@ export class ExecutorUnknownOutcomeError extends FatalToolExecutionError {
 /**
  * A toolset's two timeout answers, given how it maps its own tool names to
  * operation keys: undefined (and null) for any name it does not offer.
+ *
+ * `recordIdOf` names the ToolCall a call's command was recorded under, so the
+ * backstop's unknown outcome ends that row instead of the batch opening a
+ * second one beside it.
  */
-export const executorToolTimeouts = (operationKeyOf: (toolName: string) => string | undefined) => ({
-  timeoutErrorFor: (toolName: string): Error | null =>
-    operationKeyOf(toolName) === undefined ? null : new ExecutorUnknownOutcomeError(),
+export const executorToolTimeouts = (
+  operationKeyOf: (toolName: string) => string | undefined,
+  recordIdOf: (providerToolCallId: string) => string | undefined = () => undefined,
+) => ({
+  timeoutErrorFor: (toolName: string, providerToolCallId?: string): Error | null =>
+    operationKeyOf(toolName) === undefined
+      ? null
+      : new ExecutorUnknownOutcomeError(providerToolCallId === undefined ? undefined : recordIdOf(providerToolCallId)),
   timeoutMsFor: (toolName: string): number | undefined => {
     const operationKey = operationKeyOf(toolName)
-    return operationKey === undefined ? undefined : executorToolTimeoutMs(operationKey)
+    if (operationKey === undefined) return undefined
+    // The agent loop answers `executor_mcp_tools` with a catalog walk: up to
+    // that many `mcp.tools` commands one after another, each on its own TTL
+    // and each waiting its turn in the machine's one command lane. One
+    // command's backstop would fire before a second page's own TTL did.
+    return operationKey === 'mcp.tools'
+      ? executorToolTimeoutMs(operationKey) * EXECUTOR_MCP_CATALOG_MAX_PAGES
+      : executorToolTimeoutMs(operationKey)
   },
 })

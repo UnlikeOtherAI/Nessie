@@ -138,7 +138,8 @@ export const executeToolBatch = async (input: {
   /** The run's loop-detection counts (`tool-loop-detection.ts`), mutated in call order. */
   signatureCounts: Map<string, number>
   toolCalls: ProviderToolCall[]
-  toolTimeoutError?: (toolName: string) => Error | null
+  /** The error a timed-out call answers with; given the provider's call id. */
+  toolTimeoutError?: (toolName: string, toolCallId: string) => Error | null
   /** Each tool's own timeout; undefined keeps the batch default. */
   toolTimeoutMsFor?: (toolName: string) => number | undefined
 }): Promise<{
@@ -242,7 +243,7 @@ export const executeToolBatch = async (input: {
         execute(controller.signal),
         timeoutMs,
         toolCall.toolName,
-        () => input.toolTimeoutError?.(toolCall.toolName) ?? null,
+        () => input.toolTimeoutError?.(toolCall.toolName, toolCall.toolCallId) ?? null,
         () => controller.abort(),
       )
       const durationMs = Date.now() - startedAt.getTime()

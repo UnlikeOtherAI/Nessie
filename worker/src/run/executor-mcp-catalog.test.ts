@@ -3,7 +3,11 @@ import test from 'node:test'
 
 import type { ExecutorMcpTool } from '@nessie/schemas'
 
+import { ToolCircuitBreaker } from './circuit-breaker.js'
+import { executorToolTimeouts, ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { createExecutorMcpCatalogs } from './executor-mcp-catalog.js'
+import { presentExecutorMcpCatalogAnswer } from './executor-result-presentation.js'
+import { executeToolBatch } from './tool-batch.js'
 import type { AgenticToolResult } from './tools.js'
 
 const DIGEST = `sha256:${'a'.repeat(64)}`
@@ -139,4 +143,71 @@ test('an answer that is not a catalog of that program is refused', async () => {
   const answer = await catalogs.load('kelpie', 'call-1')
   assert.ok('failure' in answer)
   assert.match(answer.failure.output, /a catalog this run cannot read/)
+})
+
+test('a later page whose outcome is unknown still ends the first page’s record', async () => {
+  const unknown = new ExecutorUnknownOutcomeError('record-2')
+  const ended: string[] = []
+  const pages = [page([tool('navigate')], { nextCursor: '1', recordId: 'record-1' })]
+  const catalogs = createExecutorMcpCatalogs({
+    endPage: async (toolCallRecordId) => { ended.push(toolCallRecordId) },
+    listPage: async () => {
+      const next = pages.shift()
+      if (!next) throw unknown
+      return next
+    },
+    mcpServers: () => ['kelpie'],
+  })
+  await assert.rejects(catalogs.load('kelpie', 'call-1'), (error) => error === unknown)
+  // The first page is the model's call, and its answer never comes; the page
+  // that threw is ended here too, for a walk nobody awaits any more.
+  assert.deepEqual(ended.sort(), ['record-1', 'record-2'])
+  assert.equal(catalogs.inputSchemaOf('kelpie', 'navigate'), undefined, 'nothing is cached from a broken walk')
+})
+
+test('a two-page walk whose second page queues past one command’s backstop still completes', async (t) => {
+  // Page one is a cold start plus tools/list; page two waits in the machine's
+  // one command lane behind another run's call. Each page is inside its own
+  // TTL, but together they outlast one command's TTL plus margin (130 s).
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const pages = [
+    page([tool('navigate')], { nextCursor: '1', recordId: 'record-1' }),
+    page([tool('click')], { recordId: 'record-2' }),
+  ]
+  const catalogs = createExecutorMcpCatalogs({
+    endPage: async () => undefined,
+    listPage: async () => {
+      await new Promise((resolve) => { setTimeout(resolve, 70_000) })
+      return pages.shift()!
+    },
+    mcpServers: () => ['kelpie'],
+  })
+  const timeouts = executorToolTimeouts((name) => (name === 'executor_mcp_tools' ? 'mcp.tools' : undefined))
+  assert.ok((timeouts.timeoutMsFor('executor_mcp_tools') ?? 0) > 140_000)
+  const endedWith: Array<string | undefined> = []
+  let settled = false
+  const batch = executeToolBatch({
+    callbacks: {
+      onToolCallEnd: async (...args) => { endedWith.push(args[8]) },
+      onToolCallStart: async () => undefined,
+    },
+    circuitBreaker: new ToolCircuitBreaker(),
+    dispatchesInOrder: () => true,
+    executeTool: async (_name, args, toolCallId) => presentExecutorMcpCatalogAnswer(
+      args,
+      await catalogs.load('kelpie', toolCallId),
+    ),
+    signatureCounts: new Map(),
+    toolCalls: [{ arguments: { server: 'kelpie' }, toolCallId: 'call-1', toolName: 'executor_mcp_tools' }],
+    toolTimeoutError: timeouts.timeoutErrorFor,
+    toolTimeoutMsFor: timeouts.timeoutMsFor,
+  }).finally(() => { settled = true })
+  for (let second = 0; second < 150 && !settled; second += 1) {
+    await new Promise((resolve) => { setImmediate(resolve) })
+    t.mock.timers.tick(1_000)
+  }
+  const result = await batch
+  assert.equal(result.results[0]?.success, true)
+  assert.match(result.results[0]?.output ?? '', /offers 2 tools/)
+  assert.deepEqual(endedWith, ['record-1'], 'the answer ends the first page’s record')
 })

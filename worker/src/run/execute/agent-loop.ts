@@ -562,7 +562,7 @@ export const runExecutionAgentLoop = async (
     // Executor tools go in call order, on their command TTL plus a margin, and
     // a timeout is the TTL's own fatal unknown outcome, never a retriable one.
     dispatchesInOrder: (name) => input.executorToolset.handledNames.has(normalizeToolName(name)),
-    toolTimeoutError: (name) => input.executorToolset.timeoutErrorFor(normalizeToolName(name))
+    toolTimeoutError: (name, toolCallId) => input.executorToolset.timeoutErrorFor(normalizeToolName(name), toolCallId)
       ?? input.mcpToolset.timeoutErrorFor(name),
     toolTimeoutMsFor: (name) => input.executorToolset.timeoutMsFor(normalizeToolName(name)),
     tools: mainToolDefs,

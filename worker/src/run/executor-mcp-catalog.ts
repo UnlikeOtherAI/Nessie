@@ -4,8 +4,9 @@ import type { ExecutorMcpInputSchemaLookup } from './executor-tool-arguments.js'
 import type { AgenticToolResult } from './tools.js'
 
 // The daemon fits each page to its 64 KiB result budget, so Kelpie's catalog
-// is one or two pages; sixteen covers the protocol's 512-tool ceiling.
-const MAX_CATALOG_PAGES = 16
+// is one or two pages; sixteen covers the protocol's 512-tool ceiling. The
+// walk's own tool timeout is this many pages' (`executor-command-timing.ts`).
+export const EXECUTOR_MCP_CATALOG_MAX_PAGES = 16
 
 /**
  * A program's whole catalog, or the one failure that stopped this run from
@@ -43,7 +44,10 @@ const failed = (inputSummary: string, output: string, toolCallRecordId?: string)
  * listing, one tool's schema and the argument shaping all answer from it
  * without another round trip to the machine. Pages after the first are
  * separate commands with their own ToolCall rows, which the walk ends itself —
- * left open, the newest of them would read as a tool still running.
+ * left open, the newest of them would read as a tool still running. A page
+ * whose command outcome is unknown ends the walk by throwing, and the walk
+ * ends the first page's row on the way out, because the answer that would
+ * have ended it never comes.
  */
 export const createExecutorMcpCatalogs = (input: {
   endPage: (toolCallRecordId: string, result: AgenticToolResult, durationMs: number) => Promise<void>
@@ -69,12 +73,28 @@ export const createExecutorMcpCatalogs = (input: {
       let cursor: string | undefined
       let digest: string | undefined
       let firstRecordId: string | undefined
-      for (let page = 1; page <= MAX_CATALOG_PAGES; page += 1) {
+      const walkStartedAt = Date.now()
+      for (let page = 1; page <= EXECUTOR_MCP_CATALOG_MAX_PAGES; page += 1) {
         const startedAt = Date.now()
-        const result = await input.listPage(
-          { server, ...(cursor === undefined ? {} : { cursor }) },
-          page === 1 ? providerToolCallId : `${providerToolCallId}:page-${page}`,
-        )
+        let result: AgenticToolResult
+        try {
+          result = await input.listPage(
+            { server, ...(cursor === undefined ? {} : { cursor }) },
+            page === 1 ? providerToolCallId : `${providerToolCallId}:page-${page}`,
+          )
+        } catch (error) {
+          // The error's own record is the caller's to end; ending it here too
+          // covers a walk nobody is awaiting any more.
+          const thrownRecordId = error instanceof Error
+            ? (error as Error & { toolCallRecordId?: unknown }).toolCallRecordId
+            : undefined
+          const open = [firstRecordId, typeof thrownRecordId === 'string' ? thrownRecordId : undefined]
+          const unknown: AgenticToolResult = { inputSummary, output: 'The catalog walk stopped.', success: false }
+          for (const recordId of new Set(open)) {
+            if (recordId) await input.endPage(recordId, unknown, Date.now() - walkStartedAt).catch(() => undefined)
+          }
+          throw error
+        }
         if (page === 1) firstRecordId = result.toolCallRecordId
         else if (result.toolCallRecordId) await input.endPage(result.toolCallRecordId, result, Date.now() - startedAt)
         if (!result.success) return { failure: { ...result, toolCallRecordId: firstRecordId } }

@@ -126,6 +126,15 @@ runDatabaseTest('a launched local-apps run lists a paged catalog once and shapes
     assert.equal(open, 'BEGIN UNTRUSTED EXTERNAL DATA')
     assert.match(banner!, /^Output of the program `kelpie` on the person's machine\./)
     assert.match(called.output, /\{"echoed":\{"value":"hello"\}\}/)
+    // A backstop that gave up on that call names the row its command was
+    // recorded under, which the worker chose before the command existed.
+    const backstop = toolset.timeoutErrorFor('executor_mcp_call', 'provider-call-3') as { toolCallRecordId?: string }
+    assert.equal(backstop.toolCallRecordId, called.toolCallRecordId)
+    assert.equal(
+      (toolset.timeoutErrorFor('executor_mcp_tools', 'provider-call-1') as { toolCallRecordId?: string }).toolCallRecordId,
+      rows[0]!.id,
+      'a walk is named by its first page, the model’s call',
+    )
     await daemon.stop()
   } finally {
     await daemon?.stop().catch(() => undefined)

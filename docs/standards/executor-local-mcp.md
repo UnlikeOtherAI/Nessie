@@ -151,7 +151,10 @@ unknown outcome that aborts the run.
 The worker's own per-tool timeout for an executor tool sits
 `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` past the TTL, and when it fires it raises the
 same fatal unknown outcome — never a retriable timeout, because the program may
-still finish the call. Executor calls in one model batch are dispatched one
+still finish the call. A listing is a catalog walk of up to sixteen `mcp.tools`
+pages, one command each, so `executor_mcp_tools` is timed as sixteen commands
+rather than one: a second page queued behind another run's call on the same
+machine used to outlast one command's backstop and abort the run. Executor calls in one model batch are dispatched one
 after another, since the machine runs one command at a time and each command's
 TTL starts when the worker creates it; the worker runs four `executor.command`
 subscriptions so one machine's slow call never holds up another's. A person's

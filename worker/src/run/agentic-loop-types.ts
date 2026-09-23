@@ -71,7 +71,7 @@ export type AgenticLoopInput = {
     captured?: { toolResults: ExecutedToolResult[] },
     options?: { maxOutputTokens?: number; noTools?: boolean },
   ) => Promise<InferenceResult>
-  toolTimeoutError?: (toolName: string) => Error | null
+  toolTimeoutError?: (toolName: string, toolCallId: string) => Error | null
   /** A tool's own timeout; undefined keeps `budget.toolTimeoutMs`. */
   toolTimeoutMsFor?: (toolName: string) => number | undefined
   tools: ToolSchemaDescriptor[]

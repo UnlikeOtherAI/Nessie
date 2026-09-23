@@ -14,6 +14,7 @@ import {
   executorToolTimeoutMs,
   ExecutorUnknownOutcomeError,
 } from './executor-command-timing.js'
+import { EXECUTOR_MCP_CATALOG_MAX_PAGES } from './executor-mcp-catalog.js'
 import { buildExecutorToolset } from './executor-toolset.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
 
@@ -81,14 +82,20 @@ test('the toolset times its own tools by their command and answers nothing for o
 
   assert.deepEqual([...toolset.handledNames].sort(), ['executor_mcp_call', 'executor_mcp_tools'])
   assert.equal(toolset.timeoutMsFor('executor_mcp_call'), EXECUTOR_MCP_COMMAND_TTL_MS + EXECUTOR_TOOL_TIMEOUT_MARGIN_MS)
-  assert.equal(toolset.timeoutMsFor('executor_mcp_tools'), EXECUTOR_MCP_COMMAND_TTL_MS + EXECUTOR_TOOL_TIMEOUT_MARGIN_MS)
+  // A listing is a catalog walk of up to that many pages, each its own command.
+  assert.equal(
+    toolset.timeoutMsFor('executor_mcp_tools'),
+    (EXECUTOR_MCP_COMMAND_TTL_MS + EXECUTOR_TOOL_TIMEOUT_MARGIN_MS) * EXECUTOR_MCP_CATALOG_MAX_PAGES,
+  )
   assert.equal(toolset.timeoutMsFor('kb_search'), undefined)
   // A bound tool that is not offered to this run is not this toolset's either.
   assert.equal(toolset.timeoutMsFor('executor_file_read'), undefined)
 
-  const error = toolset.timeoutErrorFor('executor_mcp_call')
+  const error = toolset.timeoutErrorFor('executor_mcp_call', 'provider-call-1')
   assert.ok(error instanceof ExecutorUnknownOutcomeError)
   assert.equal(isFatalToolExecutionError(error), true)
+  // Nothing was dispatched for that call, so there is no row to name.
+  assert.equal(error.toolCallRecordId, undefined)
   assert.equal(toolset.timeoutErrorFor('kb_search'), null)
 })
 

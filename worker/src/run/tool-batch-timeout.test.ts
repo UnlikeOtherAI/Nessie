@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { ToolCircuitBreaker } from './circuit-breaker.js'
+import { ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { executeToolBatch } from './tool-batch.js'
 
 /**
@@ -96,4 +97,26 @@ test('a call that finishes inside its timeout is never aborted', async () => {
   assert.equal(batch.results[0]?.output, 'done')
   assert.ok(observed.signal)
   assert.equal(observed.signal.aborted, false)
+})
+
+test('a backstop that gives up on an executor dispatch ends the row it opened, not a new one', async () => {
+  // The executor toolset knows the ToolCall a call's command was recorded
+  // under before the command exists, and the timeout error names it: without
+  // that, the batch ended the call by creating a second row and the first
+  // read as a tool still running.
+  const ended: Array<string | undefined> = []
+  const unknown = new ExecutorUnknownOutcomeError('record-for-tc-1')
+  await assert.rejects(executeToolBatch({
+    callbacks: {
+      onToolCallEnd: async (...args) => { ended.push(args[8]) },
+      onToolCallStart: async () => undefined,
+    },
+    circuitBreaker: new ToolCircuitBreaker(),
+    executeTool: (_toolName, _args, _toolCallId, signal) => stalledProviderCall({}, signal),
+    signatureCounts: new Map(),
+    toolCalls: [{ arguments: {}, toolCallId: 'tc-1', toolName: 'executor_mcp_call' }],
+    toolTimeoutError: (_toolName, toolCallId) => (toolCallId === 'tc-1' ? unknown : null),
+    toolTimeoutMsFor: () => 25,
+  }), (error) => error === unknown)
+  assert.deepEqual(ended, ['record-for-tc-1'])
 })

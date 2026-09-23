@@ -65,7 +65,17 @@ summary and points here; **this file is the rule**.
     same fatal `ExecutorUnknownOutcomeError` as an expired TTL — the run is
     requeued and its replay reports an unknown outcome — never a retriable
     "timed out", because the command may still complete on the machine and a
-    retry would repeat its side effect. The command TTLs live in
+    retry would repeat its side effect. `executor_mcp_tools` is the one
+    executor tool that is several commands: the agent loop answers it with a
+    catalog walk of up to
+    `EXECUTOR_MCP_CATALOG_MAX_PAGES` (16) `mcp.tools` pages in sequence, each
+    its own command on its own TTL and each waiting its own turn in the
+    machine's lane, so its timeout is sixteen commands' worth; one command's
+    worth fired before a second page's TTL did. The toolset chooses each
+    command's ToolCall id before creating it, so the backstop's unknown outcome
+    names that row and the batch ends it instead of opening a second one; a
+    walk that throws also ends its first page's row, which its answer would
+    have ended. The command TTLs live in
     `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
     `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
     `executor-timing.ts`, which must stay ≥ the daemon's start (10 s) + call
