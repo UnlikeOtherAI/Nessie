@@ -254,7 +254,9 @@ test('the source adapter rejects a grant with credential-shaped extra fields', {
 const packagedBundle = join(dirname(process.execPath), 'nessie-executor.cjs')
 
 test('the staged packaged child serves the credential-free grant', {
-  skip: !existsSync(packagedBundle),
+  skip: existsSync(packagedBundle)
+    ? false
+    : 'Needs a packaged executor: its nessie-executor.cjs bundle beside the node running this test.',
 }, async () => {
   const { stateDir, workspaceRoot } = await fixture()
   try {
