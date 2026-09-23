@@ -237,7 +237,8 @@ test('the research routing block rides in the system prompt when tools allow it'
   const withResearch = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
     routing: {
       hasDelegate: false,
-      hasResearchTools: true,
+      researchTools: new Set(['research_scope_start', 'research_scope_launch']),
+      hasCardPost: true,
       hasWebSearch: true,
       isHandoffTurn: false,
     },
@@ -247,7 +248,8 @@ test('the research routing block rides in the system prompt when tools allow it'
   const handoffTurn = buildModelPrompt([], makeContext('Aria'), 'hi', null, {
     routing: {
       hasDelegate: true,
-      hasResearchTools: true,
+      researchTools: new Set(['research_scope_start', 'research_scope_launch']),
+      hasCardPost: true,
       hasWebSearch: true,
       isHandoffTurn: true,
     },

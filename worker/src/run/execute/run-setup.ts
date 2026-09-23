@@ -477,7 +477,8 @@ export const prepareRunExecution = async (
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
-        hasResearchTools: mcpToolset.hasManagedResearchTools,
+        researchTools: mcpToolset.managedResearchToolNames,
+        hasCardPost: resolvedToolIds.has('card_post'),
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },

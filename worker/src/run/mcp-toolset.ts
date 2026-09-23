@@ -109,11 +109,11 @@ export type McpToolEntry = {
 export type McpToolset = {
   entries: McpToolEntry[]
   /**
-   * True when the managed DeepWater projections actually reached this run
-   * (granted AND in scope) — the structural fact behind the research routing
-   * block in the system prompt.
+   * The Ledger names of the managed DeepWater tools that actually reached
+   * this run (granted AND in scope) — the structural fact behind the research
+   * routing block in the system prompt, which names only these.
    */
-  hasManagedResearchTools: boolean
+  managedResearchToolNames: ReadonlySet<string>
   /**
    * `inline` exposes every tool schema directly (small setups); `deferred`
    * exposes the mcp_find_tools / mcp_load_tools / mcp_drop_tools flow so a
@@ -455,7 +455,9 @@ export const buildMcpToolset = async (
 
   return {
     entries,
-    hasManagedResearchTools: [...transportByExposedName.values()].some((t) => t.deepWater),
+    managedResearchToolNames: new Set(
+      [...transportByExposedName.values()].filter((t) => t.deepWater).map((t) => t.originalToolName),
+    ),
     mode,
     createView: () =>
       mode === 'deferred'
