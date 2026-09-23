@@ -11,6 +11,10 @@
  *
  *   #sleep=<ms>   a foreground tool call that takes that long (interruptible;
  *                 a follow-up written meanwhile folds into the running turn)
+ *   #hold=<name>  the same foreground tool call, held until the test writes
+ *                 `release-<name>` into the record directory — for a test that
+ *                 must observe the turn while it runs, however slowly the
+ *                 bridge or host starts
  *   #fork         starts a grandchild that escapes the process group (a
  *                 detached node sleeping for ten minutes) and records its pid
  *   #path         prints host paths: the working folder, home, ~/.claude
@@ -23,11 +27,12 @@
  *   #codexfail    (Codex) the usage-limit failure codex-cli 0.155.1 prints
  *
  * NESSIE_SCRIPTED_RECORD_DIR, when set, receives `agents.jsonl` (one line per
- * process start and exit), grandchild pid files and environment dumps.
+ * process start and exit, and per message a Claude process receives),
+ * grandchild pid files and environment dumps.
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -39,6 +44,11 @@ const record = (entry) => {
 }
 const send = (event) => { process.stdout.write(`${JSON.stringify(event)}\n`) }
 const delay = (ms) => new Promise((settle) => { setTimeout(settle, ms) })
+// Resolves once the test releases the hold, or stops looking when the turn
+// holding it ends another way (an interrupt).
+const released = async (name, holder) => {
+  while (turn === holder && !existsSync(join(recordDir, `release-${name}`))) await delay(50)
+}
 const option = (name) => {
   const index = argv.indexOf(name)
   return index >= 0 ? argv[index + 1] : undefined
@@ -171,11 +181,14 @@ const runTurn = async (first) => {
     extra.permission_denials = [{ tool_name: 'Bash', tool_use_id: 'toolu_denied', tool_input: { command: 'git push --force' } }]
   }
   const sleep = /#sleep=(\d+)/u.exec(text())
-  if (sleep) {
+  const hold = /#hold=([\w-]+)/u.exec(text())
+  if (sleep || hold) {
     const id = `toolu_${randomUUID().slice(0, 8)}`
-    send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: `sleep ${sleep[1]}` } }] } })
+    const command = sleep ? `sleep ${sleep[1]}` : `wait-for ${hold[1]}`
+    send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } })
     send({ type: 'system', subtype: 'task_started', task_id: 't1', tool_use_id: id, is_backgrounded: false })
-    await Promise.race([delay(Number(sleep[1])), new Promise((settle) => { current.wake = settle })])
+    const finished = sleep ? delay(Number(sleep[1])) : released(hold[1], current)
+    await Promise.race([finished, new Promise((settle) => { current.wake = settle })])
     if (current.interrupted) {
       send({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 1, terminal_reason: 'aborted_tools', session_id: sessionId, total_cost_usd: totalCost, permission_denials: [] })
       for (const message of messages) lifecycle(message.uuid, 'completed')
@@ -243,6 +256,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const content = message.message?.content
   const text = typeof content === 'string' ? content : content?.map((block) => block.text ?? '').join('') ?? ''
   const entry = { uuid: message.uuid ?? randomUUID(), text }
+  record({ agent: 'claude', event: 'message', text })
   lifecycle(entry.uuid, 'queued')
   queued.push(entry)
   if (!turn) void drain()

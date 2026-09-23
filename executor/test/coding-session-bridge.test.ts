@@ -26,11 +26,16 @@ const lastResultText = (body: Record<string, unknown>): string => (body.lastResu
 test('a session survives bridge restarts, and its turn ends in a result', { timeout: 120_000 }, async () => {
   const harness = await createCodingHarness({ idleTimeoutMs: 200 })
   try {
-    const sessionId = await started(harness, { prompt: '#sleep=1500 first task' })
+    // The turn is held open until the test has seen it: a bridge respawn and
+    // the detached host's start race each other, and a timed turn could end
+    // before the new bridge first answers, leaving `working` never observed.
+    const sessionId = await started(harness, { prompt: '#hold=first first task' })
     await harness.restartBridge()
     const working = await harness.waitForStatus(sessionId, (body) => body.status === 'working')
     assert.equal(working.turn, 1)
     await harness.restartBridge()
+    // The turn ends while no bridge is running; the next bridge reads its result.
+    await harness.release('first')
     const done = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     assert.match(lastResultText(done), /first task/)
     const listed = await harness.call('session_list', {})
@@ -44,9 +49,13 @@ test('a session survives bridge restarts, and its turn ends in a result', { time
 test('a follow-up written during a turn folds into that turn', { timeout: 120_000 }, async () => {
   const harness = await createCodingHarness()
   try {
-    const sessionId = await started(harness, { prompt: '#sleep=3000 build the parser' })
+    // Held, not timed: the follow-up must reach the agent while the turn runs.
+    const sessionId = await started(harness, { prompt: '#hold=parser build the parser' })
     await harness.waitForStatus(sessionId, (body) => body.status === 'working')
     assert.equal((await harness.call('session_send', { sessionId, message: 'also add tests' })).ok, true)
+    await waitUntil(async () => ((await harness.agents()).some((entry) =>
+      entry.event === 'message' && entry.text === 'also add tests') ? true : undefined), 30_000, 'the agent to receive the follow-up')
+    await harness.release('parser')
     const done = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     assert.match(lastResultText(done), /build the parser \| also add tests/)
     assert.equal(done.turn, 1)
