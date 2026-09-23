@@ -119,7 +119,9 @@ const parseLauncherFacts = (row: ProductIntegrationRun): DeepWaterLauncherFacts 
   return {
     // The same test the cancel route makes under the row lock: the key's presence.
     startRecorded: Object.hasOwn(result, 'startToolCallId'),
-    ledgerCancel: result.ledgerCancel === undefined ? null : DeepWaterLauncherLedgerCancelSchema.parse(result.ledgerCancel),
+    ledgerCancel: result.ledgerCancel === undefined
+      ? null
+      : DeepWaterLauncherLedgerCancelSchema.parse(result.ledgerCancel),
   }
 }
 
