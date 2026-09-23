@@ -8,7 +8,9 @@ import {
   failedNotice,
   identityChangedOnAgentBriefNotice,
   identityChangedWhileRunningNotice,
+  noticePushBody,
   resultNotice,
+  startIdentityChangedNotice,
   startUnconfirmedNotice,
   turnKickoff,
   wakeCapNotice,
@@ -33,6 +35,8 @@ test('person-facing notices use plain words and never the plumbing', () => {
     wakeCapNotice('Heat pumps'),
     identityChangedWhileRunningNotice('Heat pumps'),
     identityChangedOnAgentBriefNotice('Heat pumps'),
+    startIdentityChangedNotice({ topic: 'Heat pumps', agentOrigin: true }),
+    startIdentityChangedNotice({ topic: 'Heat pumps', agentOrigin: false }),
     ...(['requester_identity_changed', 'ledger_unavailable', 'knowledge_destination_unavailable',
       'report_expired', 'report_malformed'] as const)
       .map((reason) => blockedNotice({ topic: 'Heat pumps', reason })),
@@ -69,6 +73,10 @@ test('a turn kickoff names the next tools, or what to do when the planner failed
 
 test('failure reasons are plain and never the raw code', () => {
   assert.equal(deepWaterFailureMessage('scope_limit'), 'too many research briefs are open at once')
+  assert.equal(
+    deepWaterFailureMessage('start_identity_changed'),
+    'your sign-in changed before the research brief could be opened',
+  )
   assert.equal(deepWaterFailureMessage('something_new'), 'DeepWater stopped before the research finished')
   assert.equal(deepWaterFailureMessage(null), 'DeepWater stopped before the research finished')
 })
@@ -86,4 +94,24 @@ test('a changed sign-in on an agent\'s brief names the remedy and never a result
   assert.match(notice, /agent working on your DeepWater research brief “Heat pumps” can't carry on/)
   assert.match(notice, /Sign in again, then choose Retry/)
   assert.doesNotMatch(notice, /finished|saved to Documents/)
+})
+
+test('a brief a changed sign-in stopped is closed in words that blame the sign-in, never DeepWater', () => {
+  const agent = startIdentityChangedNotice({ topic: 'Heat pumps', agentOrigin: true })
+  assert.match(agent, /agent working on your DeepWater research brief “Heat pumps” couldn't open it/)
+  assert.match(agent, /because your sign-in has changed, so it has been closed/)
+  assert.match(agent, /ask the agent to open a new brief/)
+  assert.doesNotMatch(agent, /confirm/)
+  const own = startIdentityChangedNotice({ topic: 'Heat pumps', agentOrigin: false })
+  assert.match(own, /Your DeepWater research brief “Heat pumps” couldn't be opened/)
+  assert.doesNotMatch(own, /agent/)
+})
+
+test('a lock screen says only a finished research is waiting to be saved', () => {
+  assert.match(noticePushBody('blocked'), /before it can be saved/)
+  for (const kind of ['identity_changed', 'start_identity_changed'] as const) {
+    assert.doesNotMatch(noticePushBody(kind), /saved|finished/, kind)
+    assert.match(noticePushBody(kind), /sign-in|Sign in/, kind)
+  }
+  assert.doesNotMatch(noticePushBody('start_identity_changed'), /confirm/)
 })

@@ -42,7 +42,16 @@ deactivated member are never candidates, in the composer or on the server.
   the channel is open, so even a stray row stays hidden.
 - **An open channel rings a non-member.** `handlePushDispatch` adds the active
   organisation members in `mentionUserIds` who never joined an open channel,
-  framed as a mention; a private channel never widens its recipients.
+  framed as a mention; a private channel never widens its recipients. A job
+  with explicit `recipientUserIds` (a DeepWater result naming its requester)
+  follows the same rule for the mentioned people it addresses, and never rings
+  anyone outside that list.
+- **A server-authored notice may address one person.** A DeepWater result or
+  notice is not a person's @mention, but it is written to the requester: the
+  worker writes their `mention` row with a durable event key
+  (`deep-water-<kind>:<runId>`), follows the reply thread and queues the push in
+  the notice's own transaction, and publishes `alert.created` after commit —
+  never by parsing an `@` out of the text.
 - **Invite before sending.** Before a draft that @mentions people is posted in
   a standard channel, the composer (`useMentionInviteGate`) asks
   `GET /api/channels/:channelId/mention-audience?userIds=…` which of them cannot

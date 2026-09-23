@@ -13,7 +13,7 @@ import {
 } from '../../src/control/deepwater-report-import.js'
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
 import { retryDeepWaterDelivery } from '../../src/control/deepwater-worker.js'
-import { researchId, seedWatchFixture, type WatchFixture } from './deep-water-watch-fixture.js'
+import { launchedBrief, researchId, seedWatchFixture, type WatchFixture } from './deep-water-watch-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 
 /**
@@ -52,7 +52,7 @@ const finishedResearch = async (fixture: WatchFixture) => {
   const run = await fixture.insert('person')
   const rs = researchId()
   await fixture.attach(run.id, {
-    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
   })
   fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })

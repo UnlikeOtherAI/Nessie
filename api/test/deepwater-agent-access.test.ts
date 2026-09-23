@@ -200,6 +200,7 @@ const buildAccessPrisma = (
     [deepWaterBundleMarkerKey(teamId), true] as const,
   ])
   let updateCalls = 0
+  const registered: string[] = []
   const grants: Array<{ toolId: string; state: string; config: unknown }> = []
   const tx = {
     $executeRaw: async () => {
@@ -252,7 +253,10 @@ const buildAccessPrisma = (
         events.push('projection-read')
         return liveEntries
       },
-      upsert: async () => ({}),
+      upsert: async ({ where }: any) => {
+        registered.push(where.organizationId_scopeKey_toolId.toolId)
+        return {}
+      },
     },
     toolGrant: {
       updateMany: async ({ where, data }: any) => { const grant = grants.find((item) => item.toolId === where.toolId); if (!grant) return { count: 0 }; Object.assign(grant, data); return { count: 1 } },
@@ -276,6 +280,7 @@ const buildAccessPrisma = (
       return updateCalls
     },
     get grants() { return grants },
+    registered,
   }
 }
 
@@ -295,6 +300,9 @@ test('bundle grant locks team before final projection read and agent policy', as
   assert.equal(state.updateCalls, 1)
   for (const entry of liveEntries) assert.equal(state.policy[entry.id], true)
   assert.equal(state.grants.filter((grant) => grant.state === 'allowed').length, liveEntries.length)
+  // Inside the lock's transaction only the updater it reads is registered, never
+  // every builtin: 200+ upserts on one connection outran the transaction timeout.
+  assert.deepEqual(state.registered, [DEEP_WATER_RUN_UPDATE_TOOL_ID])
 })
 
 test('bundle revoke blocks while a linked run is nonterminal', async () => {

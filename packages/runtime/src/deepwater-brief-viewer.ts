@@ -1,5 +1,4 @@
 import type { PrismaClient } from '@prisma/client'
-import type { ProductIntegrationRunStatus } from '@nessie/schemas'
 
 import type { DeepWaterBriefRun } from './deepwater-brief-run-record.js'
 import { viewerSatisfiesBasis, type DisclosureViewer } from './disclosure-predicate.js'
@@ -20,8 +19,9 @@ import {
  * - `portable`: the viewer satisfies the full, unsubtracted source basis.
  *
  * The requester sees the run when either holds. Anyone else needs `inThread`,
- * and never sees a person's brief before it is launched. A denied viewer (live
- * entitlement revoked) sees nothing.
+ * and never sees a person's brief that was not launched
+ * (`isDeepWaterPersonBriefUnlaunched`) — whatever became of it. A denied viewer
+ * (live entitlement revoked) sees nothing.
  */
 
 /** The origin thread's live destination: its chain and the agents bound to its channel. */
@@ -30,8 +30,21 @@ export type DeepWaterOriginDestination = {
   boundAgentIds: readonly string[]
 }
 
+/**
+ * A person's brief nobody else has been shown. It is theirs alone until it is
+ * launched: `launched_at` is set only by the projection that sees the launch
+ * and cleared when Ledger reverts one, so a brief cancelled, refused or given
+ * up before launch stays private for good, not just while it is being agreed.
+ * One fact for the viewer predicate and for where a notice about the run may
+ * be posted (the worker's `postDeepWaterNotice`), so the two cannot drift.
+ * Launcher runs (no captured identity) were never briefs.
+ */
+export const isDeepWaterPersonBriefUnlaunched = (
+  run: Pick<DeepWaterBriefRun, 'originKind' | 'uoaIdentity' | 'launchedAt'>,
+): boolean => run.originKind === 'person' && run.uoaIdentity !== null && run.launchedAt === null
+
 export type DeepWaterRunVisibilityInput = {
-  run: Pick<DeepWaterBriefRun, 'requestedByUserId' | 'originKind' | 'status' | 'sourceScopes'>
+  run: Pick<DeepWaterBriefRun, 'requestedByUserId' | 'originKind' | 'uoaIdentity' | 'launchedAt' | 'sourceScopes'>
   viewerUserId: string
   /** `resolveDisclosureViewer` with the request's live entitlements. */
   viewer: DisclosureViewer
@@ -40,8 +53,6 @@ export type DeepWaterRunVisibilityInput = {
   /** Null when the origin thread or channel no longer exists. */
   originDestination: DeepWaterOriginDestination | null
 }
-
-const UNLAUNCHED_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set(['queued', 'drafting'])
 
 export const isDeepWaterRunVisible = (input: DeepWaterRunVisibilityInput): boolean => {
   if (input.viewer.kind === 'denied') return false
@@ -57,7 +68,7 @@ export const isDeepWaterRunVisible = (input: DeepWaterRunVisibilityInput): boole
   if (run.requestedByUserId !== null && run.requestedByUserId === input.viewerUserId) {
     return inThread || viewerSatisfiesBasis(run.sourceScopes, input.viewer)
   }
-  if (run.originKind === 'person' && UNLAUNCHED_STATUSES.has(run.status)) return false
+  if (isDeepWaterPersonBriefUnlaunched(run)) return false
   return inThread
 }
 

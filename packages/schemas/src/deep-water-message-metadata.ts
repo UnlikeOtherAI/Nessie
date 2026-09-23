@@ -81,8 +81,15 @@ export const DeepWaterNoticeKindSchema = z.enum([
   'failed',
   /** The finished research could not be delivered; the notice names the remedy. */
   'blocked',
+  /**
+   * The requester's sign-in changed, so DeepWater can't carry on with a brief or
+   * a research for them until they sign in again and choose Retry.
+   */
+  'identity_changed',
   /** DeepWater never confirmed the brief. */
   'start_unconfirmed',
+  /** The brief was closed unopened: its requester's changed sign-in stopped it and was not renewed. */
+  'start_identity_changed',
   /** The agent that asked could not be woken, so the person is told instead. */
   'wake_unreachable',
   /** The agent working on the brief has been woken as often as a brief allows. */

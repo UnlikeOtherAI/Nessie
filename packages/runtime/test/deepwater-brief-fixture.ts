@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import type { DeepWaterBriefInput, DeepWaterRequesterIdentity } from '@nessie/schemas'
+import {
+  LedgerScopeBriefSchema,
+  type DeepWaterBriefInput,
+  type DeepWaterRequesterIdentity,
+  type LedgerScopeBrief,
+} from '@nessie/schemas'
 import { Pool } from 'pg'
 
 import {
@@ -158,3 +163,29 @@ export const insertBrief = (
     disclosureSources: [{ sourceChannelId: fixture.ids.channel, sourceAuthorUserId: fixture.ids.requester }],
     origin,
   }))
+
+/**
+ * Water's brief as a scope read carries it, in the state Water holds: a
+ * `launched` brief is Water's own proof that the research was launched.
+ */
+export const scopeBrief = (state: 'drafting' | 'launched' | 'cancelled', revision = 2): LedgerScopeBrief =>
+  LedgerScopeBriefSchema.parse({
+    state,
+    revision,
+    topic: 'Heat pumps in older houses',
+    reply: null,
+    pillars: ['Costs'],
+    settings: {
+      depth: 'light',
+      chapter_depth: 'standard',
+      search_quality: 'standard',
+      languages: [],
+      output_language: 'en',
+      recency: 'any',
+      writing_style: 'standard',
+    },
+    locked_settings: [],
+    open_questions: [],
+    analysis: null,
+    ready: true,
+  })

@@ -69,7 +69,17 @@ Facts not restated there:
   row is not a substitute for stamping its canonical basis and source authors.
 - The remainder after `computeReplyBasis` is stamped as `MessageBasisScope` +
   `RunBasisScope` in the same transaction as the message; `agent-message.ts`
-  opens that transaction itself rather than trusting callers.
+  opens that transaction itself rather than trusting callers. A server-authored
+  message that relays gathered content (a DeepWater research card, result or
+  notice) is stamped only inside its own create:
+  `SystemAuthoredMessageInput.basisScopes` / `disclosureSources` go through the
+  shared `insertMessageBasis` / `insertMessageDisclosureSources` helpers in the
+  row's transaction, with the remainder computed against the destination
+  thread's live chain and bound agents. A notice about a person's DeepWater
+  brief that was never launched is not posted in the room at all, withheld or
+  otherwise: it goes to the requester's own Personal Assistant conversation,
+  stamped against that thread, because a placeholder in the room would still
+  say that a private brief exists ([deepwater.md](deepwater.md) → "Delivery").
 - The run ledger is monotone and is persisted before any run plan, tool
   summary/preview, or crash checkpoint records derived content. A run that has
   not replied yet is therefore still protected at every metadata read path.
@@ -249,6 +259,11 @@ Facts not restated there:
 - A manual share publishes the content-free `message.disclosure.changed` event
   to the destination channel scopes. Open readers refetch the reply through
   the current predicate; granting it never puts its text on the realtime wire.
+- A delivered DeepWater research is retained output of its product run. The
+  Knowledge version it imports carries the run's full `source_scopes` and
+  `disclosure_sources`, and its stored `report.md` / `sources.csv` are served
+  only behind `isDeepWaterRunVisible` — the same predicate as the run's list,
+  detail and card ([deepwater.md](deepwater.md) → "Artifacts").
 - A task, plan, or child-agent activity row linked to a run is a retained run
   output: its reader must satisfy both the run channel entitlement and that
   run's disclosure basis. A task without a run keeps ordinary task visibility.
@@ -308,7 +323,10 @@ Facts not restated there:
   brief, delegated subtask assignment, or peer-delegation mailbox brief is a
   hidden trigger message, never an untracked prompt override:
   it stamps the inherited basis and these same original authors before the child
-  run receives its bytes. Public conversations create none.
+  run receives its bytes. Public conversations create none. A DeepWater wake
+  kickoff is the same kind of hidden trigger: it carries the research run's
+  full, unsubtracted `source_scopes` and `disclosure_sources`, and the woken
+  run admits them as its trigger's lineage.
 - A queued trigger owns its author provenance even after it leaves the recent
   transcript window. `admitTriggerMessageLineage` reads the trigger's own
   channel, role and raw-human author fields before its content or pinned

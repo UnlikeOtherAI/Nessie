@@ -45,6 +45,14 @@ Details beyond the rules above:
 - KB file nodes (`KnowledgePage.kind = file`) and page attachments live
   alongside documents — see
   [docs/knowledge-base-requirements.md](../knowledge-base-requirements.md).
+- **DeepWater research artifacts** (`report.md`, `sources.csv`) are stored
+  through `FileService.store` at delivery, on the requester's attribution, and
+  linked from their product run (`product_integration_runs.report_file_id` /
+  `sources_file_id`, first receipt wins; a losing copy is deleted through
+  `FileService.delete`). They carry no uploader, message or publication, so
+  `canAccessAttachment` refuses them; they are read only through the run's
+  artifact routes behind its viewer predicate — see
+  [deepwater.md](deepwater.md) → "Artifacts".
 - **One deliberate exception:** `agent_browser_tabs.screenshot` holds the
   product's own JPEG of each tab an agent's browser was left on (≤ 400 KB,
   ≤ 12 per browser, overwritten on every capture). It is a snapshot the

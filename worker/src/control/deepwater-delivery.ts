@@ -67,6 +67,12 @@ export const renewDeepWaterIdentity = (
 ): Promise<void> =>
   runDeepWaterTransaction(deps, async (tx, announce) => {
     const renewed = await refreshDeepWaterRunIdentity(tx, input)
+    if (!renewed.refreshed) {
+      // Another person, organisation or team, or an older sign-in: the capture
+      // is kept, and so is any block it caused.
+      console.warn(`[deep-water] run ${input.runId}: a live identity did not renew the captured one`)
+      return
+    }
     if (!renewed.unblocked) return
     const run = await readDeepWaterBriefRun(tx, input)
     if (run) announce.run(run)
@@ -185,6 +191,12 @@ export const deliverDeepWaterResearch = async (
   if (read.outcome === 'refused') {
     if (read.error.statusCode === 410 || read.error.code === 'expired') return block(deps, run, 'report_expired')
     if (isTransientLedgerRefusal(read.error)) return 'retry'
+    if (read.error.code === 'not_ready') {
+      // The status said finished and a finished research never un-finishes, so
+      // this is Ledger catching up with itself (nessie.md §7.5): read again.
+      console.warn(`[deep-water] research_report not ready yet for finished run ${run.id}; the watch reads again`)
+      return 'retry'
+    }
     console.error(`[deep-water] research_report refused (${read.error.code}) for run ${run.id}`)
     return block(deps, run, 'ledger_unavailable')
   }
@@ -192,10 +204,11 @@ export const deliverDeepWaterResearch = async (
   if (!parsed.success) return block(deps, run, 'report_malformed')
   const report = parsed.data
 
-  const title = run.title ?? report.title ?? run.input?.topic ?? run.queryPreview
+  // The title the run shows once delivered: the claim keeps Ledger's when it has one.
+  const title = report.title ?? run.title ?? run.input?.topic ?? run.queryPreview
   const destination = await resolveDeepWaterReportDestination(deps.prisma, run)
   if (!destination) return block(deps, run, 'knowledge_destination_unavailable')
-  const files = await storeDeepWaterArtifacts(deps, run, { report, title, projectId: destination.projectId })
+  const files = await storeDeepWaterArtifacts(deps, run, { report, projectId: destination.projectId })
   const page = await ensureDeepWaterReportPage(deps, run, {
     destination,
     reportFileId: files.reportFileId,

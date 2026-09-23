@@ -24,6 +24,8 @@ export const deepWaterFailureMessage = (failureCode: string | null): string => {
       return 'DeepWater did not start the research'
     case 'start_unconfirmed':
       return 'DeepWater did not confirm the research brief'
+    case 'start_identity_changed':
+      return 'your sign-in changed before the research brief could be opened'
     case 'timed_out':
       return 'the research stopped making progress'
     default:

@@ -9,6 +9,7 @@ import {
   agentOrigin,
   insertBrief,
   personOrigin,
+  scopeBrief,
   seedBriefFixture,
   type BriefFixture,
 } from './deepwater-brief-fixture.js'
@@ -57,7 +58,7 @@ withFixture('the launcher updater refuses a brief row and leaves it to Ledger', 
       status: 'running',
       errorCode: null,
       title: null,
-      brief: null,
+      brief: scopeBrief('launched'),
       turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
     },
   }))

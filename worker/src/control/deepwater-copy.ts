@@ -1,6 +1,7 @@
 import { deepWaterFailureMessage } from '@nessie/runtime'
 import type {
   DeepWaterDeliveryBlockedReason,
+  DeepWaterNoticeKind,
   DeepWaterReportKind,
   DeepWaterTurnRegister,
 } from '@nessie/schemas'
@@ -91,6 +92,21 @@ export const startUnconfirmedNotice = (topic: string): string =>
   `DeepWater didn't confirm your research brief for ${quoted(topic)}. Open a new brief if you still `
   + 'need this research.'
 
+/**
+ * A brief the requester's changed sign-in stopped from opening, closed by the
+ * reap because they did not renew it in time (amendments-fable F4, N5a).
+ * What stopped it was their sign-in, not DeepWater, so it is never told as
+ * unconfirmed; and the agent is not woken to say it, since it could only act
+ * with the sign-in UOA refused.
+ */
+export const startIdentityChangedNotice = (input: { topic: string; agentOrigin: boolean }): string =>
+  (input.agentOrigin
+    ? `The agent working on your DeepWater research brief ${quoted(input.topic)} couldn't open it `
+    : `Your DeepWater research brief ${quoted(input.topic)} couldn't be opened `)
+  + 'because your sign-in has changed, so it has been closed. Sign in again, then '
+  + (input.agentOrigin ? 'ask the agent to open a new brief' : 'open a new brief')
+  + ' if you still need this research.'
+
 const BLOCKED_REMEDY: Record<DeepWaterDeliveryBlockedReason, string> = {
   requester_identity_changed:
     'your sign-in has changed since you asked for it. Sign in again, then choose Retry import on the research',
@@ -135,6 +151,43 @@ export const wakeUnreachableNotice = (input: { topic: string; finished: boolean;
     : `The agent working on your DeepWater research brief ${quoted(input.topic)} couldn't be told `
       + 'what the research planner said. Ask it to carry on, or open a new brief yourself.'
 
+/**
+ * The agent was woken with the research's end but could not act for the
+ * person, because their sign-in changed (amendments-fable F4): they are told
+ * what the agent would have told them, with the report's link when there is
+ * one, and what to do.
+ */
+export const wakeIdentityChangedNotice = (input:
+  | { topic: string; finished: true; link: string }
+  | { topic: string; finished: false; failureCode: string | null }): string =>
+  input.finished
+    ? `Your DeepWater research ${quoted(input.topic)} has finished, but the agent that asked for it `
+      + 'couldn\'t carry on because your sign-in has changed. The report is in Documents: '
+      + `[open it](${input.link}). Sign in again before you ask the agent about it.`
+    : `Your DeepWater research ${quoted(input.topic)} didn't finish: `
+      + `${deepWaterFailureMessage(input.failureCode)}. The agent that asked for it couldn't tell you `
+      + 'because your sign-in has changed. Sign in again, then start it again when you\'re ready.'
+
 export const wakeCapNotice = (topic: string): string =>
   `The agent working on your DeepWater research brief ${quoted(topic)} has gone back and forth with `
   + 'the research planner many times without starting the research. Ask it to start or stop the brief.'
+
+const NOTICE_PUSH_BODY: Record<DeepWaterNoticeKind, string> = {
+  result: 'Your DeepWater research has finished.',
+  failed: 'Your DeepWater research didn\'t finish.',
+  // Only a finished research's delivery is blocked; a changed sign-in on a
+  // brief or a running research is `identity_changed`.
+  blocked: 'Your DeepWater research needs you before it can be saved.',
+  identity_changed: 'Sign in again so your DeepWater research can carry on.',
+  start_unconfirmed: 'DeepWater didn\'t confirm your research brief.',
+  start_identity_changed: 'Your DeepWater research brief was closed because your sign-in has changed.',
+  wake_unreachable: 'There\'s news about your DeepWater research.',
+  wake_cap: 'Your DeepWater research brief needs you.',
+}
+
+/**
+ * What a lock screen shows for a notice whose words it may not show (one
+ * drawn on sources the room does not imply): what kind of news it is, never
+ * the topic or anything from the research.
+ */
+export const noticePushBody = (kind: DeepWaterNoticeKind): string => NOTICE_PUSH_BODY[kind]

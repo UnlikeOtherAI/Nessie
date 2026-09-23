@@ -8,6 +8,7 @@ import {
   DeepWaterBriefSettingsSchema,
   DeepWaterBriefSettingsSeedSchema,
   DeepWaterBriefTopicSchema,
+  toLedgerBriefSettings,
 } from './deep-water-brief-vocabulary.js'
 import {
   DeepWaterAuthorKindSchema,
@@ -77,6 +78,26 @@ export const DeepWaterBriefInputSchema = z
   })
   .strict()
 export type DeepWaterBriefInput = z.infer<typeof DeepWaterBriefInputSchema>
+
+/**
+ * The `research_scope_start` arguments a brief's stored input stands for — the
+ * one builder for a brief's opening call and for every replay of it.
+ *
+ * Ledger answers a repeated tool-call id with the brief it keyed to that call
+ * only when the arguments normalise to the same request (it fingerprints the
+ * trimmed topic and context, the pillars and the parsed settings), and answers
+ * `conflict` otherwise. A replay built any other way than the call it repeats
+ * could therefore be refused while Ledger keeps the brief it opened, so the
+ * opening call is built here too, never sent as the caller wrote it.
+ */
+export const deepWaterScopeStartLedgerArgs = (
+  input: Pick<DeepWaterBriefInput, 'topic' | 'context' | 'pillars' | 'settings'>,
+): Record<string, unknown> => ({
+  topic: input.topic,
+  ...(input.context ? { context: input.context } : {}),
+  ...(input.pillars ? { pillars: input.pillars } : {}),
+  ...(input.settings ? { settings: toLedgerBriefSettings(input.settings) } : {}),
+})
 
 export const DeepWaterBriefComplexitySchema = z.enum(['low', 'medium', 'high', 'very_high'])
 
@@ -247,7 +268,26 @@ export const DEEP_WATER_RETRYABLE_DELIVERY_BLOCKS: ReadonlySet<DeepWaterDelivery
 export const DeepWaterReportKindSchema = z.enum(['full', 'summary'])
 export type DeepWaterReportKind = z.infer<typeof DeepWaterReportKindSchema>
 
-/** `failure_code`: Ledger's job error code, or one of Nessie's own (`start_unconfirmed`). */
+/**
+ * `failure_code`: Ledger's job error code, or one of Nessie's own
+ * (`start_unconfirmed`, `start_identity_changed`).
+ */
 export const DeepWaterFailureCodeSchema = z.string().regex(/^[a-z_]{1,64}$/)
 
+/** The reap gave up a brief DeepWater never confirmed within its window. */
 export const DEEP_WATER_START_UNCONFIRMED = 'start_unconfirmed'
+
+/**
+ * The reap gave up a brief whose opening was stopped by its requester's
+ * changed sign-in, and which they did not renew within the window.
+ */
+export const DEEP_WATER_START_IDENTITY_CHANGED = 'start_identity_changed'
+
+/**
+ * Nessie's own codes for a brief the reap gave up. A confirmation that arrives
+ * later still attaches such a brief (N1): it was never refused.
+ */
+export const DEEP_WATER_REAPED_FAILURE_CODES: ReadonlySet<string> = new Set([
+  DEEP_WATER_START_UNCONFIRMED,
+  DEEP_WATER_START_IDENTITY_CHANGED,
+])

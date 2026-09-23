@@ -262,6 +262,8 @@ export type DeepWaterResearchRunActionRequest = z.infer<typeof DeepWaterResearch
 
 /** Synchronous error codes of the brief API. */
 export const DEEP_WATER_BRIEF_ERROR_CODES = {
+  /** A visible research has no such stored artifact: not delivered yet, or a failed research. */
+  ARTIFACT_NOT_FOUND: 'DEEP_WATER_ARTIFACT_NOT_FOUND',
   BRIEF_BUSY: 'DEEP_WATER_BRIEF_BUSY',
   BRIEF_INCOMPLETE: 'DEEP_WATER_BRIEF_INCOMPLETE',
   BRIEF_NOT_EDITABLE: 'DEEP_WATER_BRIEF_NOT_EDITABLE',
@@ -269,6 +271,8 @@ export const DEEP_WATER_BRIEF_ERROR_CODES = {
   BRIEF_THREAD_FORBIDDEN: 'DEEP_WATER_BRIEF_THREAD_FORBIDDEN',
   DELIVERY_NOT_BLOCKED: 'DEEP_WATER_DELIVERY_NOT_BLOCKED',
   NOT_READY: 'DEEP_WATER_NOT_READY',
+  /** Copy markdown carries the report through the API; past its proxy budget, download it instead. */
+  REPORT_TOO_LARGE_TO_COPY: 'DEEP_WATER_REPORT_TOO_LARGE_TO_COPY',
   RESEARCH_NOT_FOUND: 'DEEP_WATER_RESEARCH_NOT_FOUND',
   RUN_NOT_CANCELLABLE: 'DEEP_WATER_RUN_NOT_CANCELLABLE',
   SOURCE_ACCESS: 'DEEP_WATER_SOURCE_ACCESS',

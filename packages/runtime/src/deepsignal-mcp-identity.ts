@@ -12,8 +12,8 @@ import {
 import {
   createUoaDelegatedIdentityService,
   loadUoaDelegatedIdentitySettings,
-  UoaDelegatedIdentityError,
 } from './uoa-delegated-identity.js'
+import { UoaDelegatedIdentityError } from './uoa-delegation-exchange.js'
 
 const DEEPSIGNAL_PRODUCT_SLUG = 'deepsignal'
 

@@ -12,12 +12,14 @@ import {
   findUnconfirmedDeepWaterBriefs,
   reapUnconfirmedDeepWaterBrief,
   recordDeepWaterAgentWake,
+  retryDeepWaterWatchSoon,
   settleStaleDeepWaterAction,
 } from '../src/deepwater-watch-state.js'
 import {
   agentOrigin,
   insertBrief,
   personOrigin,
+  scopeBrief,
   seedBriefFixture,
   type BriefFixture,
 } from './deepwater-brief-fixture.js'
@@ -95,16 +97,22 @@ withFixture('a claim takes due open runs and lost agent starts once, with one wa
     `UPDATE product_integration_runs SET delivery_blocked_reason = 'requester_identity_changed' WHERE id = $1`,
     [blocked.id],
   )
+  // A lost agent start whose requester's sign-in changed waits for their Retry.
+  const { run: blockedAgentStart } = await insertBrief(fixture, agentOrigin(fixture))
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET delivery_blocked_reason = 'requester_identity_changed' WHERE id = $1`,
+    [blockedAgentStart.id],
+  )
   const { run: staleAgentStart } = await insertBrief(fixture, agentOrigin(fixture))
   await fixture.pool.query(
     `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = $1`,
     [staleAgentStart.id],
   )
-  for (const run of [drafting, lostAgentStart, unattachedPerson, blocked, staleAgentStart]) await makeDue(fixture, run.id)
+  const all = [drafting, lostAgentStart, unattachedPerson, blocked, blockedAgentStart, staleAgentStart]
+  for (const run of all) await makeDue(fixture, run.id)
 
   const mine = (claims: Array<{ runId: string; reconcileSeq: number }>) =>
-    claims.filter((claim) => [drafting, lostAgentStart, unattachedPerson, blocked, staleAgentStart]
-      .some((run) => run.id === claim.runId))
+    claims.filter((claim) => all.some((run) => run.id === claim.runId))
   const first = mine(await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 })))
   assert.deepEqual(
     first.map((claim) => claim.runId).sort(),
@@ -126,12 +134,18 @@ withFixture('a claim takes due open runs and lost agent starts once, with one wa
   assert.deepEqual(mine(await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 }))), [])
 })
 
-withFixture('a brief DeepWater never confirmed is reaped once, after a day, and stays attachable', async (fixture) => {
+withFixture('a brief DeepWater never confirmed is reaped once, after a day, blocked or not, and stays attachable', async (fixture) => {
   const { run: young } = await insertBrief(fixture, personOrigin())
   const { run: old } = await insertBrief(fixture, personOrigin())
+  // Stopped on its requester's changed sign-in and never renewed: ended too, as that.
+  const { run: blocked } = await insertBrief(fixture, agentOrigin(fixture))
   await fixture.pool.query(
-    `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = $1`,
-    [old.id],
+    `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = ANY($1::uuid[])`,
+    [[old.id, blocked.id]],
+  )
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET delivery_blocked_reason = 'requester_identity_changed' WHERE id = $1`,
+    [blocked.id],
   )
   const reap = (runId: string) => fixture.prisma.$transaction((tx) => reapUnconfirmedDeepWaterBrief(tx, {
     organizationId: fixture.ids.organization,
@@ -140,8 +154,18 @@ withFixture('a brief DeepWater never confirmed is reaped once, after a day, and 
   const due = await findUnconfirmedDeepWaterBriefs(fixture.prisma, { limit: 500 })
   assert.ok(due.some((target) => target.runId === old.id))
   assert.ok(!due.some((target) => target.runId === young.id))
+  assert.ok(due.some((target) => target.runId === blocked.id), 'a block never keeps a brief open past its window')
 
   assert.equal(await reap(young.id), null)
+  const closed = await reap(blocked.id)
+  assert.equal(closed?.status, 'failed')
+  assert.equal(closed?.failureCode, 'start_identity_changed')
+  assert.equal(closed?.deliveryBlockedReason, null, 'nothing is left to retry')
+  assert.equal((await read(fixture, blocked.id))?.deliveryBlockedReason, null)
+  assert.equal(await reap(blocked.id), null, 'reaped once')
+  const lateBlocked = await apply(fixture, blocked.id, result(researchId()))
+  assert.equal(lateBlocked.applied && lateBlocked.run.status, 'drafting', 'a late confirmation still attaches it')
+
   const reaped = await reap(old.id)
   assert.equal(reaped?.status, 'failed')
   assert.equal(reaped?.failureCode, 'start_unconfirmed')
@@ -174,11 +198,37 @@ withFixture('an action whose job is gone ends by what Ledger shows', async (fixt
   assert.equal(await settle(lostReply), 'unavailable')
   assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction?.error?.code, 'unavailable')
 
+  // A launch whose job died while Ledger still shows it starting (a bare
+  // running, no proof of launch yet) ended with its job: the person may act again.
+  const cutOff = randomUUID()
+  await setPendingAction(fixture, run.id, { kind: 'launch', actionId: cutOff })
+  await apply(fixture, run.id, result(rs, { status: 'running', turn: turn({ id: open.id, status: 'complete' }) }))
+  assert.equal((await read(fixture, run.id))?.status, 'drafting')
+  assert.equal(await settle(cutOff), 'unavailable')
+
   const launch = randomUUID()
   await setPendingAction(fixture, run.id, { kind: 'launch', actionId: launch })
-  await apply(fixture, run.id, result(rs, { status: 'running', turn: turn({ id: open.id, status: 'complete' }) }))
+  await apply(fixture, run.id, result(rs, {
+    status: 'running',
+    brief: scopeBrief('launched'),
+    turn: turn({ id: open.id, status: 'complete' }),
+  }))
   assert.equal(await settle(launch), 'finished')
   assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction, null)
+
+  // needs_setup is a launched research too.
+  const { run: setup } = await insertBrief(fixture, personOrigin())
+  const rsSetup = researchId()
+  const setupTurn = turn({ authorKind: 'person' })
+  await apply(fixture, setup.id, result(rsSetup, { turn: setupTurn }))
+  const setupLaunch = randomUUID()
+  await setPendingAction(fixture, setup.id, { kind: 'launch', actionId: setupLaunch })
+  await apply(fixture, setup.id, result(rsSetup, { status: 'needs_setup', turn: setupTurn }))
+  assert.equal(await fixture.prisma.$transaction((tx) => settleStaleDeepWaterAction(tx, {
+    organizationId: fixture.ids.organization,
+    runId: setup.id,
+    actionId: setupLaunch,
+  })), 'finished')
 })
 
 withFixture('a settled turn wakes its agent author once, in order; a person\'s turn only advances', async (fixture) => {
@@ -220,7 +270,9 @@ withFixture('an attach that names a finished research leaves the run where the n
   const rsQueued = researchId()
   const finished = await apply(fixture, queued.id, result(rsQueued, { status: 'complete', turn: turn({ authorKind: 'person' }) }))
   assert.equal(finished.applied && finished.attached, true)
-  assert.equal(finished.applied && finished.run.status, 'drafting', 'the attach makes it drafting (N1)')
+  // Ledger finishes only launched research, so the launch is seen before its result.
+  assert.equal(finished.applied && finished.run.status, 'running', 'a finished research was launched')
+  assert.ok(finished.applied && finished.run.launchedAt)
   assert.equal(finished.applied && finished.run.externalRunId, rsQueued)
   assert.deepEqual(finished.applied && finished.ledgerTerminal, { status: 'complete', errorCode: null })
 
@@ -232,7 +284,7 @@ withFixture('an attach that names a finished research leaves the run where the n
   )
   const rsReaped = researchId()
   const revived = await apply(fixture, reaped.id, result(rsReaped, { status: 'failed', errorCode: 'upstream_failed' }))
-  assert.equal(revived.applied && revived.run.status, 'drafting')
+  assert.equal(revived.applied && revived.run.status, 'drafting', 'the attach makes it drafting (N1); a bare failed is no launch')
   assert.equal(revived.applied && revived.run.failureCode, null)
   assert.deepEqual(revived.applied && revived.ledgerTerminal, { status: 'failed', errorCode: 'upstream_failed' })
 
@@ -244,4 +296,46 @@ withFixture('an attach that names a finished research leaves the run where the n
   assert.ok(claimed.includes(queued.id), 'the attached run is claimed again')
   assert.ok(claimed.includes(reaped.id), 'the revived run is claimed again')
   assert.equal((await read(fixture, queued.id))?.deliveredAt, null)
+})
+
+withFixture('a read that failed for a passing reason is tried again soon only while the run moves fast', async (fixture) => {
+  const claimOf = async (runId: string) => {
+    await makeDue(fixture, runId)
+    const claims = await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 }))
+    const claim = claims.find((entry) => entry.runId === runId)
+    assert.ok(claim, 'the run was claimed')
+    return claim
+  }
+  const retry = (runId: string, reconcileSeq: number) => fixture.prisma.$transaction((tx) =>
+    retryDeepWaterWatchSoon(tx, { organizationId: fixture.ids.organization, runId, reconcileSeq }))
+  const scheduledIn = async (runId: string) =>
+    ((await read(fixture, runId))?.reconcileAfter.getTime() ?? 0) - Date.now()
+
+  // A research that is running: the claim backed it off; the failed read brings it back within 30 s.
+  const { run: research } = await insertBrief(fixture, personOrigin())
+  await apply(fixture, research.id, result(researchId(), { status: 'running', brief: scopeBrief('launched') }))
+  const researchClaim = await claimOf(research.id)
+  assert.ok(await scheduledIn(research.id) > 9 * 60_000)
+  assert.equal(await retry(research.id, researchClaim.reconcileSeq - 1), false, 'an older claim owns nothing')
+  assert.equal(await retry(research.id, researchClaim.reconcileSeq), true)
+  const soon = await scheduledIn(research.id)
+  assert.ok(soon > 20_000 && soon <= 30_000, `read again within 30 s (${soon} ms)`)
+  assert.equal(await retry(research.id, researchClaim.reconcileSeq), false, 'never later, never twice')
+
+  // A quiet brief — nothing in flight — keeps the claim's backoff.
+  const { run: quiet } = await insertBrief(fixture, personOrigin())
+  await apply(fixture, quiet.id, result(researchId()))
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET scope_json = jsonb_set(scope_json, '{pendingAction}', 'null'::jsonb) WHERE id = $1`,
+    [quiet.id],
+  )
+  const quietClaim = await claimOf(quiet.id)
+  assert.equal(await retry(quiet.id, quietClaim.reconcileSeq), false)
+  assert.ok(await scheduledIn(quiet.id) > 9 * 60_000)
+
+  // A planner turn in flight is fast too.
+  const { run: talking } = await insertBrief(fixture, personOrigin())
+  await apply(fixture, talking.id, result(researchId(), { turn: turn({ status: 'pending', authorKind: 'person' }) }))
+  const talkingClaim = await claimOf(talking.id)
+  assert.equal(await retry(talking.id, talkingClaim.reconcileSeq), true)
 })

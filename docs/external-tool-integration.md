@@ -535,6 +535,29 @@ endpoint `https://ledger.unlikeotherai.com/v1/mcp/deepwater`), installs an
 into `ToolRegistryEntry`; disabling removes the instance and its tool rows.
 There is deliberately no direct-provider fallback.
 
+A research brief — opened by a person or a granted agent — comes back on its
+own, but never from Ledger, which relays nothing. The worker's
+`deep-water-watch` sweep claims each open run and its `deep_water.run.watch`
+job reads it through the run's own team connector as a cost-free
+control-plane call signed as the requester with their captured UOA identity.
+A finished research is delivered exactly once: its `report.md` and an RFC 4180
+`sources.csv` are stored as retained run output, the report is imported into
+Documents, and then either a result reply lands under the research card in
+the conversation it came from, alerting the person who asked by an explicit
+recipient alert (`deep-water-result:<runId>`), or one run wakes the agent
+that asked. Every change a viewer would see publishes `integration.run.updated`
+after commit. The artifacts are served only by
+`GET /api/integrations/products/deep-water/research-runs/:runId/artifacts/`
+`report.md`, `sources.csv` and `report` (the Copy markdown JSON), behind the
+same viewer predicate as the run itself: a person's brief stays theirs until
+it is launched, and one built from a private room stays with the people who
+may read it. A changed sign-in blocks the run until its requester acts again
+instead of being retried. The rules — watch cadence, delivery, agent wakes,
+stale actions and the reap, identity drift and artifacts — are in
+[docs/standards/deepwater.md](standards/deepwater.md) → "Research briefs — the
+watch, delivery and wakes". The launcher text below governs the legacy
+launcher run only.
+
 - **Descriptor-bound direct grants.** The projected DeepWater rows are flagged
   `requiresExplicitGrant` (metadata) and the
   `deep_water_run_update` builtin sets the same flag on its

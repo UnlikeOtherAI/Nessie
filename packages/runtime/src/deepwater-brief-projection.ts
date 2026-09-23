@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import {
-  DEEP_WATER_START_UNCONFIRMED,
+  DEEP_WATER_REAPED_FAILURE_CODES,
   DeepWaterScopeStateSchema,
   type DeepWaterScopeState,
   type DeepWaterTurnAuthor,
@@ -39,13 +39,21 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  *   state;
  * - the brief projection only advances (the two registers), and so does the
  *   status: a read never moves a run back (`running` to `drafting`), because
- *   a read issued before a launch can be applied after its ticket. The one
+ *   a read issued before a launch can be applied after its ticket;
+ * - a run moves into its launched statuses only on proof of launch: a launch
+ *   ticket, a brief whose own state is `launched`, `needs_setup`, or a
+ *   `complete`. Ledger shows a launch in flight (`starting`) as `running`,
+ *   and a launch Water refuses from there is reverted to `drafting`, so a bare
+ *   `running` launches nothing — it would post a person's card to the room
+ *   and open their brief to it for a launch that may yet be undone. The one
  *   real way back, Ledger reverting a launch Water refused, is known only to
- *   the launch job, which moves the run back itself (`revertDeepWaterLaunch`);
+ *   the launch job, which settles its action itself (`revertDeepWaterLaunch`);
  * - non-terminal Ledger statuses move the run forward; `cancelled` is written
  *   directly; a finished research (`complete`, `failed`, `timed_out`) is
  *   reported back as `ledgerTerminal` and written only by the delivery claim,
- *   so `completed` and `delivered_at` always land in one transaction;
+ *   so `completed` and `delivered_at` always land in one transaction — after
+ *   moving a brief Ledger shows was launched to `running`, so its launch is
+ *   seen before its result;
  * - the title is captured as soon as Ledger reports it;
  * - the watch is rescheduled from the new state.
  */
@@ -85,7 +93,11 @@ export type DeepWaterProjectionOutcome =
       /** The planner turn this read settled, for the per-turn wake claim (N4). */
       newlySettledTurn: DeepWaterTurnRegister | null
       pendingActionCleared: boolean
-      /** The run became `running` with this read: a person-origin card may be owed. */
+      /**
+       * The run was launched with this read — it moved into `running` or
+       * `needs_setup` — so `launched_at` is set and a person-origin card may
+       * be owed.
+       */
       launched: boolean
       /** Ledger reports a finished research: the caller runs delivery (N3). */
       ledgerTerminal: DeepWaterLedgerTerminal | null
@@ -98,8 +110,9 @@ const TERMINAL_RUN_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set(
   'warning',
 ])
 
+/** A brief the reap gave up, never refused: a late confirmation still attaches it. */
 const isRevivable = (run: DeepWaterBriefRun): boolean =>
-  run.status === 'failed' && run.failureCode === DEEP_WATER_START_UNCONFIRMED
+  run.status === 'failed' && run.failureCode !== null && DEEP_WATER_REAPED_FAILURE_CODES.has(run.failureCode)
 
 /** N1: a run takes its Ledger research id only while nothing else could have. */
 const isAttachable = (run: DeepWaterBriefRun): boolean =>
@@ -126,6 +139,12 @@ const originTurnAuthor = (run: DeepWaterBriefRun): DeepWaterTurnAuthor | null =>
 type StatusStep = {
   status: ProductIntegrationRunStatus
   ledgerTerminal: DeepWaterLedgerTerminal | null
+  /**
+   * Ledger shows the research running but the read carries no proof of
+   * launch yet: the run keeps its status and is read at a running research's
+   * pace, so the proof (or the revert) is seen within seconds.
+   */
+  awaitingProof: boolean
 }
 
 /**
@@ -143,17 +162,54 @@ const STATUS_RANK: Record<ProductIntegrationRunStatus, number> = {
   warning: 3,
 }
 
-/** What a Ledger status does to a live run's product status (contract §2.4); never backwards. */
+/**
+ * The live statuses only a launched research reaches: Ledger reports
+ * `needs_setup` only for a launched job (from `starting` or `running`), so a
+ * brief that moves straight from `drafting` to `needs_setup` was launched too,
+ * and its card and room are owed exactly as for `running`.
+ */
+const LAUNCHED_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set(['running', 'needs_setup'])
+
+/**
+ * What a Ledger status does to a live run's product status (contract §2.4);
+ * never backwards, and into a launched status only on proof of launch.
+ *
+ * `launched` is that proof from the read itself: a launch ticket, or a brief
+ * whose own state is `launched` (Water launched it, which nothing reverts).
+ * `needs_setup` and `complete` are proof on their own — Ledger reports
+ * `needs_setup` only for a launched research and finishes only launched
+ * research. A bare `running` is not: Ledger shows `starting` as `running`
+ * while the launch call is still out, and reverts it to `drafting` when Water
+ * refuses the launch, so moving on it would post a person's card and open
+ * their brief to the room for a launch that is then undone. A bare `failed`
+ * is not either: it can be a refusal before launch.
+ *
+ * A finished research is written by the delivery claim, but one with proof of
+ * launch moves to `running` first when Nessie never saw it run (a launch ack
+ * lost, or a research that finished between two reads): the launch is what
+ * posts a person's card and opens the run to its room, and a result must never
+ * be delivered to a room that was not shown the research.
+ */
 const statusStepForLedger = (
   current: ProductIntegrationRunStatus,
   ledger: LedgerResearchStatus,
   errorCode: string | null,
+  launched: boolean,
 ): StatusStep => {
   if (ledger === 'complete' || ledger === 'failed' || ledger === 'timed_out') {
-    return { status: current, ledgerTerminal: { status: ledger, errorCode } }
+    const status = (launched || ledger === 'complete') && STATUS_RANK[current] < STATUS_RANK.running
+      ? 'running'
+      : current
+    return { status, ledgerTerminal: { status: ledger, errorCode }, awaitingProof: false }
   }
   const next = productRunStatusForLedger(ledger)
-  return { status: STATUS_RANK[next] < STATUS_RANK[current] ? current : next, ledgerTerminal: null }
+  if (STATUS_RANK[next] < STATUS_RANK[current]) return { status: current, ledgerTerminal: null, awaitingProof: false }
+  // Moving between `running` and `needs_setup` is not a launch; moving into
+  // `running` from a brief is, and needs its proof.
+  if (next === 'running' && !launched && !LAUNCHED_STATUSES.has(current)) {
+    return { status: current, ledgerTerminal: null, awaitingProof: true }
+  }
+  return { status: next, ledgerTerminal: null, awaitingProof: false }
 }
 
 /**
@@ -199,6 +255,8 @@ type ProjectionWrite = {
   attachResearchId: string | null
   state: DeepWaterScopeState
   status: ProductIntegrationRunStatus
+  /** Read at a running research's pace while Ledger shows one without proof (`StatusStep`). */
+  awaitingProof: boolean
   title: string | null
   contentChanged: boolean
 }
@@ -214,11 +272,14 @@ const writeProjection = async (
   const changed = write.contentChanged || statusChanged || titleChanged || write.attachResearchId !== null
   const observedAt = changed ? now : run.ledgerObservedAt
   const delayMs = deepWaterWatchDelayMs({
-    status: write.status,
+    status: write.awaitingProof ? 'running' : write.status,
     state: write.state,
     msSinceLastChange: now.getTime() - observedAt.getTime(),
   })
-  const launched = write.status === 'running' && run.status !== 'running'
+  // The move into a launched status is the launch, whichever one Ledger
+  // reported; moving between them (an operator's `needs_setup` and its
+  // recovery) is not a second launch.
+  const launched = LAUNCHED_STATUSES.has(write.status) && !LAUNCHED_STATUSES.has(run.status)
 
   const data: Prisma.ProductIntegrationRunUpdateInput = {
     scopeJson: deepWaterBriefJson(DeepWaterScopeStateSchema.parse(write.state)),
@@ -291,7 +352,7 @@ export const applyDeepWaterScopeResult = async (
   // where the watch claims it: a delivery that does not finish now is retried
   // by the next claim instead of stranding an attached `queued` row.
   const from: ProductIntegrationRunStatus = attaching ? 'drafting' : run.status
-  const step = statusStepForLedger(from, result.status, result.errorCode)
+  const step = statusStepForLedger(from, result.status, result.errorCode, result.brief?.state === 'launched')
   const finishedByStatus = pendingActionFinishedByStatus(application.state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...application.state, pendingAction: null } : application.state
 
@@ -301,6 +362,7 @@ export const applyDeepWaterScopeResult = async (
     attachResearchId: attaching ? result.id : null,
     state: nextState,
     status: step.status,
+    awaitingProof: step.awaitingProof,
     title: result.title ?? run.title,
     contentChanged: application.changed || finishedByStatus,
   })
@@ -329,7 +391,7 @@ export const applyDeepWaterStatusRead = async (
   assertBoundTo(run, input.status.id)
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
 
-  const step = statusStepForLedger(run.status, input.status.status, input.status.errorCode)
+  const step = statusStepForLedger(run.status, input.status.status, input.status.errorCode, false)
   const finishedByStatus = pendingActionFinishedByStatus(state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...state, pendingAction: null } : state
   const written = await writeProjection(tx, {
@@ -338,6 +400,7 @@ export const applyDeepWaterStatusRead = async (
     attachResearchId: null,
     state: nextState,
     status: step.status,
+    awaitingProof: step.awaitingProof,
     title: input.status.title ?? run.title,
     contentChanged: finishedByStatus,
   })
@@ -370,7 +433,8 @@ export const applyDeepWaterLaunchTicket = async (
   assertBoundTo(run, input.ticket.id)
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
 
-  const step = statusStepForLedger(run.status, input.ticket.status, null)
+  // A ticket is Ledger's answer to a launch: the research was launched.
+  const step = statusStepForLedger(run.status, input.ticket.status, null, true)
   const action = state.pendingAction
   const acked = isPendingActionInFlight(action)
     && action.kind === 'launch'
@@ -383,6 +447,7 @@ export const applyDeepWaterLaunchTicket = async (
     attachResearchId: null,
     state: nextState,
     status: step.status,
+    awaitingProof: step.awaitingProof,
     title: run.title,
     contentChanged: finished,
   })

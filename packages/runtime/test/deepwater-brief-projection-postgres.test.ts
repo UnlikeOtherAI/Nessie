@@ -17,6 +17,7 @@ import {
   agentOrigin,
   insertBrief,
   personOrigin,
+  scopeBrief,
   seedBriefFixture,
   type BriefFixture,
 } from './deepwater-brief-fixture.js'
@@ -253,6 +254,55 @@ withFixture('status reads write cancelled directly and hand a finished research 
   assert.equal(failedRead.applied && failedRead.run.title, 'Heat pumps')
 })
 
+withFixture('a brief first seen in needs_setup was launched, and finishing from there is still its launch', async (fixture) => {
+  const statusRead = (runId: string, rs: string, status: 'running' | 'complete') =>
+    fixture.prisma.$transaction((tx) => applyDeepWaterStatusRead(tx, {
+      organizationId: fixture.ids.organization,
+      runId,
+      status: {
+        id: rs, status, phase: null, sourcesFound: null, etaMinutes: null,
+        title: null, errorCode: null, brief: null, publicUrl: null,
+      },
+    }))
+
+  // Ledger sets needs_setup only on a launched job, from starting or running.
+  const { run } = await insertBrief(fixture)
+  const rs = researchId()
+  await apply(fixture, run.id, scopeResult(rs, { turn: turn({ status: 'complete' }) }))
+  const setup = await apply(fixture, run.id, scopeResult(rs, { status: 'needs_setup', turn: turn({ status: 'complete' }) }))
+  assert.equal(setup.applied && setup.run.status, 'needs_setup')
+  assert.equal(setup.applied && setup.launched, true)
+  const launchedAt = setup.applied ? setup.run.launchedAt : null
+  assert.ok(launchedAt)
+
+  // Its recovery is not a second launch, and keeps the first launch time.
+  const recovered = await statusRead(run.id, rs, 'running')
+  assert.equal(recovered.applied && recovered.run.status, 'running')
+  assert.equal(recovered.applied && recovered.launched, false)
+  assert.deepEqual(recovered.applied && recovered.run.launchedAt, launchedAt)
+
+  // One that finishes straight from needs_setup is handed to delivery as launched.
+  const { run: stuck } = await insertBrief(fixture)
+  const rsStuck = researchId()
+  await apply(fixture, stuck.id, scopeResult(rsStuck, { turn: turn({ status: 'complete' }) }))
+  await apply(fixture, stuck.id, scopeResult(rsStuck, { status: 'needs_setup', turn: turn({ status: 'complete' }) }))
+  const finished = await statusRead(stuck.id, rsStuck, 'complete')
+  assert.equal(finished.applied && finished.run.status, 'needs_setup')
+  assert.ok(finished.applied && finished.run.launchedAt)
+  assert.deepEqual(finished.applied && finished.ledgerTerminal, { status: 'complete', errorCode: null })
+
+  // A launch ticket naming needs_setup is a launch too.
+  const { run: ticketed } = await insertBrief(fixture)
+  const rsTicketed = researchId()
+  await apply(fixture, ticketed.id, scopeResult(rsTicketed, { turn: turn({ status: 'complete' }) }))
+  const ticket = await fixture.prisma.$transaction((tx) => applyDeepWaterLaunchTicket(tx, {
+    organizationId: fixture.ids.organization, runId: ticketed.id, ticket: { id: rsTicketed, status: 'needs_setup' },
+  }))
+  assert.equal(ticket.applied && ticket.run.status, 'needs_setup')
+  assert.equal(ticket.applied && ticket.launched, true)
+  assert.ok(ticket.applied && ticket.run.launchedAt)
+})
+
 const setPendingAction = (fixture: BriefFixture, runId: string, kind: 'launch' | 'cancel', actionId: string) =>
   fixture.pool.query(
     `UPDATE product_integration_runs
@@ -288,18 +338,36 @@ withFixture('a drafting read applied after the launch ticket never moves the res
   assert.equal(staleStatus.applied && staleStatus.run.status, 'running')
 })
 
-withFixture('only the launch job\'s own refusal moves a launched run back to drafting', async (fixture) => {
+withFixture('a bare running is no launch, and only the launch job\'s own refusal ends the launch', async (fixture) => {
   const { run } = await insertBrief(fixture)
   const rs = researchId()
   await apply(fixture, run.id, scopeResult(rs, { turn: turn({ status: 'complete' }) }))
   const launchAction = randomUUID()
   await setPendingAction(fixture, run.id, 'launch', launchAction)
 
-  // The watch saw Ledger's `starting` (reported as running) while the launch call was out.
-  const seen = await apply(fixture, run.id, scopeResult(rs, { status: 'running', turn: turn({ status: 'complete' }) }))
-  assert.equal(seen.applied && seen.run.status, 'running')
-  assert.ok(seen.applied && seen.run.launchedAt)
+  // The watch saw Ledger's `starting` (reported as running) while the launch
+  // call was out, with Water's brief still drafting: Water may yet refuse it.
+  const seen = await apply(fixture, run.id, scopeResult(rs, {
+    status: 'running',
+    brief: scopeBrief('drafting'),
+    turn: turn({ status: 'complete' }),
+  }))
+  assert.equal(seen.applied && seen.run.status, 'drafting')
+  assert.equal(seen.applied && seen.launched, false)
+  assert.equal(seen.applied && seen.run.launchedAt, null)
   assert.equal(seen.applied && seen.run.scopeState?.pendingAction?.actionId, launchAction, 'a read never finishes a launch')
+  // Nor is a status read's running, nor a scope read that could not reach Water's brief.
+  const statusSeen = await fixture.prisma.$transaction((tx) => applyDeepWaterStatusRead(tx, {
+    organizationId: fixture.ids.organization,
+    runId: run.id,
+    status: {
+      id: rs, status: 'running', phase: null, sourcesFound: null, etaMinutes: null,
+      title: null, errorCode: null, brief: null, publicUrl: null,
+    },
+  }))
+  assert.equal(statusSeen.applied && statusSeen.run.status, 'drafting')
+  const briefless = await apply(fixture, run.id, scopeResult(rs, { status: 'running', turn: turn({ status: 'complete' }) }))
+  assert.equal(briefless.applied && briefless.run.launchedAt, null)
 
   const revert = (actionId: string) => fixture.prisma.$transaction((tx) => revertDeepWaterLaunch(tx, {
     organizationId: fixture.ids.organization, runId: run.id, actionId, errorCode: 'revision_conflict',
@@ -311,6 +379,25 @@ withFixture('only the launch job\'s own refusal moves a launched run back to dra
   assert.equal(reverted?.launchedAt, null)
   assert.equal(reverted?.scopeState?.pendingAction?.error?.code, 'revision_conflict')
   assert.equal(await revert(launchAction), false, 'a settled launch is reverted once')
+
+  // Water's own launched brief is proof, whatever Ledger's status says.
+  const { run: proved } = await insertBrief(fixture)
+  const rsProved = researchId()
+  await apply(fixture, proved.id, scopeResult(rsProved, { turn: turn({ status: 'complete' }) }))
+  // Before Water's brief can be read, Ledger's word alone launches nothing, but
+  // the run is read again at a running research's pace until the proof comes.
+  const unproven = await apply(fixture, proved.id, scopeResult(rsProved, { status: 'running', turn: turn({ status: 'complete' }) }))
+  assert.equal(unproven.applied && unproven.run.status, 'drafting')
+  const nextRead = unproven.applied ? unproven.run.reconcileAfter.getTime() - Date.now() : 0
+  assert.ok(nextRead > 20_000 && nextRead <= 30_000, `read again within 30 s (${nextRead} ms)`)
+  const launchedByWater = await apply(fixture, proved.id, scopeResult(rsProved, {
+    status: 'running',
+    brief: scopeBrief('launched'),
+    turn: turn({ status: 'complete' }),
+  }))
+  assert.equal(launchedByWater.applied && launchedByWater.run.status, 'running')
+  assert.equal(launchedByWater.applied && launchedByWater.launched, true)
+  assert.ok(launchedByWater.applied && launchedByWater.run.launchedAt)
 
   // Cancelling finishes any action in flight with the brief.
   const cancelAction = randomUUID()

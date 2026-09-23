@@ -386,24 +386,93 @@ the only way results come back.
   `watch:<runId>:<seq>`. A brief is read with `research_scope_get` (with its
   transcript only once a planner turn has settled since the transcript was
   captured), a research with `research_status`; the answer goes through the
-  same projection the tool acks use. A transient failure changes nothing; an
-  identity that no longer resolves blocks the run with
-  `requester_identity_changed` until the requester's next live action (or
-  Retry) renews it. Only a person's own brief is blocked quietly, because its
-  dialog says "Sign in again"; an agent's brief tells the requester once that
-  the agent can't carry on (they cannot edit it, and the agent is never woken
-  while the watch is stopped), and a launched research tells them DeepWater
-  can't check on it — never that it finished.
+  same projection the tool acks use. A failure that passes (Ledger restarting,
+  a timeout, a transient refusal, UOA not answering or answering 408, 429 or a
+  5xx) is read again within 30 s while the run moves fast — a turn or action in
+  flight, a research running — instead of waiting out the claim's backoff
+  (`retryDeepWaterWatchSoon`, which only ever brings the next read earlier); a
+  definitive refusal, a malformed answer or a missing connector keeps the
+  backoff, and a deployment fault (UOA refusing Nessie's client or assertion
+  with 400 or 401, any 403 that does not name the person, or an answer outside
+  its contract) fails the read, so the job's failure is logged and the backoff
+  stands. An identity that no longer resolves — the link gone or re-teamed,
+  the link recording a newer sign-in epoch than the one captured (the person
+  signed in to Nessie again), or UOA refusing to delegate the captured
+  identity with a 403 naming `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN`, or delegating
+  it for another sign-in epoch (`classifyUoaExchangeFailure`) — blocks the run
+  with `requester_identity_changed` until the requester's Retry renews it (on
+  their own brief, their next action there does too); it is never retried in a
+  loop. Only a person's own brief is blocked quietly, because its dialog says
+  "Sign in again"; everyone else is told once, as an `identity_changed` notice:
+  an agent's brief that the agent can't carry on (they cannot edit it, and the
+  agent is never woken while the watch is stopped), and a launched research
+  that DeepWater can't check on it — never that it finished, nor that it is
+  waiting to be saved.
+- **Identity drift and UOA's rollout gate.** UOA answers 403 for Nessie's own
+  delegation setup too (a missing or disabled mapping, an inactive client
+  domain, a resource or scope the mapping does not allow), and its production
+  body names a code only when the code is on its public list
+  (`PRODUCTION_PUBLIC_ERROR_CODES`), so a bare 403 is never taken as the
+  person's doing. `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` is not on that list yet
+  (UnlikeOtherAuthenticator main 2e7fb24; the bodies are pinned in
+  `packages/runtime/test/uoa-token-exchange-production-bodies.ts`), so **today
+  a person UOA refuses fails the read as a fault**: the job's failure is
+  logged, the claim's backoff grows to 6 hours, the run is not blocked, nobody
+  is told, and Retry is not offered (it needs a block). No live action renews a
+  launched or finished research. Such a run is caught only once Nessie can see
+  the change itself — the requester signs in to Nessie again (an ordinary
+  sign-in records the new epoch on their DeepWater link; an account-recovery
+  sign-in refreshes only the Nessie link) or loses the link or team — when its
+  next read blocks it and tells them as above. A requester who never signs in again, or who
+  loses an organisation, team or domain role only at UOA, strands the run: a
+  finished research is never delivered and nobody is told. **Rollout gate:**
+  UOA must list `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` as a public production code
+  and give its configuration refusal (an active team with organisation
+  features off under a team policy other than `all_active_memberships`) a code
+  of its own, which stays a Nessie fault; until both ship, identity drift is
+  this known limitation (`docs/known-limitations.md` L25), and flipping the
+  pinned fixture is how the change is taken up.
+- **A launch is seen before its result.** A research Ledger shows was launched
+  — `complete`, or a brief whose state is `launched` — moves the run to
+  `running` (setting `launched_at`) before its result is delivered, even when
+  the watch never saw it run (a launch acknowledgement lost, or a research
+  that finished between two reads), so a person's card is posted and the room
+  is shown the research before the result lands under that card. A move into
+  `needs_setup` is a launch as well — Ledger reports it only for a launched
+  research — so it sets `launched_at` and posts the card the same way, and a
+  research that finishes from there is delivered under it; moving between
+  `running` and `needs_setup` afterwards is not a second launch. A bare
+  `failed` on a brief is never taken as a launch: it can be a refusal before
+  one. Nor is a bare `running`: Ledger shows a launch whose call is still out
+  (`starting`) as `running`, and puts it back to `drafting` when Water refuses
+  it, so a brief moves to `running` only on proof — a launch ticket, or Water's
+  own brief state `launched` (`statusStepForLedger`). Otherwise a person's card
+  would be posted in the room, and their brief opened to it, for a launch that
+  is then undone. Until the proof comes the brief is read at a running
+  research's pace (30 s), so a launch whose acknowledgement was lost is seen
+  as soon as Water's brief can be read.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
-  agent, kind, provider tool-call id and stored arguments — which Ledger answers
-  with the one brief it keyed to that call, or opens now. The attach posts the
-  agent's research card (`ensureDeepWaterResearchCard`, once per run under the
-  row lock). A person's lost opening is retried by its own brief-action job,
-  never replayed by the watch.
+  agent, kind and provider tool-call id — which Ledger answers with the one
+  brief it keyed to that call, or opens now. Ledger fingerprints the arguments
+  and answers a replay that differs with `conflict`, so the opening call and
+  every replay send exactly `deepWaterScopeStartLedgerArgs(run.input)`
+  (`@nessie/schemas`), never the arguments as the caller wrote them; a
+  `conflict` still means Ledger holds a live brief for that call, so it is
+  logged as the broken invariant it is and the run is held for the reap
+  (`holdDeepWaterScopeStartReplay`: its next read falls due as its confirm
+  window closes, so it is never replayed again), never failed as refused. The
+  attach posts the agent's research card
+  (`ensureDeepWaterResearchCard`, once per run under the row lock). The replay
+  signs as the requester, so a changed sign-in blocks it and tells them once,
+  exactly as a read does; the blocked brief is not claimed again until their
+  Retry renews the identity and replays it, and if they have not by the time
+  its confirm window closes, the reap ends it. A person's
+  lost opening is retried by its own brief-action job, never replayed by the
+  watch.
 - **Stale actions.** An in-flight action whose job is no longer queued or
   running ends by what Ledger shows (`settleStaleDeepWaterAction`): a launch
-  whose research is running is finished, one whose planner turn is still open
-  is kept, anything else ends as `unavailable`.
+  whose run is launched (`running` or `needs_setup`) is finished, one whose
+  planner turn is still open is kept, anything else ends as `unavailable`.
 - **Turn wakes.** After every applied read, `claimDeepWaterTurnWake` takes the
   settled planner turn once, in turn order, by advancing
   `last_handled_turn_seq` under the row lock. An agent-authored turn wakes that
@@ -419,7 +488,17 @@ the only way results come back.
   the origin channel (the Personal Assistant is placed by presence, which its
   run re-checks), and in a non-public channel the requester must still be a
   member. A wake that cannot reach anyone (thread or agent gone, agent unbound,
-  requester inactive or out of the room) becomes a notice to the person.
+  requester inactive or out of the room) becomes a notice to the person. So
+  does a terminal wake (`completed`, `failed`) whose run fails because it
+  cannot sign as the requester any more (`isRequesterIdentityRefusal`: no
+  linked identity, or UOA refusing the person): delivery counted the wake when
+  it was claimed or pended, so the run's failure handler posts DeepWater's
+  notice under the card instead of the agent's reply — with the Knowledge link
+  for a finished research — once, as the run's result message
+  (`tellRequesterDeepWaterWakeFailed`). Any run that fails this way is failed,
+  never retried or answered with an apology, and tells its person to sign in
+  again. A planner-turn wake is left to the brief's own watch read, which
+  blocks on the same identity and tells them.
 - **Delivery** (`deliverDeepWaterResearch`) reads `research_report` once per
   attempt (`delivery:<runId>:report`), stores the exact `report.md` and an RFC
   4180 `sources.csv` through `FileService` (`recordDeepWaterArtifactFile` keeps
@@ -433,11 +512,42 @@ the only way results come back.
   watch never undoes what was done to a page), and then, in the claim's
   transaction, posts the person's result reply under the card with an alert
   keyed `deep-water-result:<runId>`, or wakes the agent that asked. A failed
-  research is delivered the same way with a notice or a `failed` wake. An expired or unreadable report is a final block;
+  research is delivered the same way with a notice or a `failed` wake. An
+  expired or unreadable report is a final block;
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
-  `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks
-  with nothing posted, since there is nowhere to post it.
+  `metadata.deepWaterNotice {schemaVersion, runId, kind}` — the result reply
+  too (`kind: 'result'`), which is how a client finds the research, and so its
+  artifact actions, from the reply. The result reply carries no
+  `metadata.documentRef` (the plan's §7.5 named one): that pointer is a
+  document-stream session's (`DocumentRefMetadataSchema` requires its
+  `sessionId`), which a research never has, so the Knowledge link lives in the
+  reply's words and in the run's own view, reached through `deepWaterNotice`. A delivery whose conversation is gone
+  blocks with nothing posted, since there is nowhere to post it. A notice about
+  a person's brief that was never launched (`isDeepWaterPersonBriefUnlaunched`,
+  the fact the viewer predicate uses: DeepWater never confirmed it, refused it,
+  or it failed before launch) goes to the requester's own Personal Assistant
+  conversation, at the top level, unless the brief came from there: the room
+  was never shown it, and even a withheld placeholder there would tell everyone
+  else that a private brief exists. A person's brief that ended without a
+  launch stays theirs alone in every read, whatever its status.
+- **Artifacts.** A delivered research's `report.md` (the exact markdown Ledger
+  returned) and `sources.csv` are retained run output. They are stored with no
+  uploader, message or publication, so the generic attachment route refuses
+  them, and are served only by `GET …/research-runs/:runId/artifacts/report.md`
+  and `…/sources.csv` (downloads under the name they were stored with,
+  `deepWaterArtifactFileName` in `@nessie/schemas` — the same function the
+  admin names the download with — with the
+  attachment download path's caching, ETag and transfer metering) and
+  `…/artifacts/report` (`{markdown, truncated, reportKind}` for Copy markdown,
+  `no-store`, refused with `DEEP_WATER_REPORT_TOO_LARGE_TO_COPY` past the 8 MiB
+  proxy budget, where Download still works). Each reads the run through
+  `loadVisibleDeepWaterRun` (`api/src/services/deepwater-research-run-access.ts`:
+  a fresh live-entitlement viewer, the origin thread's reach, then
+  `isDeepWaterRunVisible`), so a research the viewer may not see answers
+  `DEEP_WATER_RESEARCH_NOT_FOUND` exactly as a missing one does. Until delivery,
+  and for a failed research, there is nothing to serve
+  (`DEEP_WATER_ARTIFACT_NOT_FOUND`), matching the view's `artifacts: null`.
 - **Realtime.** Every DeepWater transaction collects what it owes realtime and
   publishes it only after it commits (`runDeepWaterTransaction`,
   `deepwater-announce.ts`): each card, result and notice (`message.new` /
@@ -447,7 +557,28 @@ the only way results come back.
   requester's user lane and, once the run has a card there or an agent opened
   it, the origin channel's lane — whenever a viewer would see the run change.
   A publish failure is logged and never undoes the change; nothing polls.
+  Every result and notice also queues one `push.dispatch` job in its own
+  transaction, keyed `push:<messageId>`, addressed to the requester alone and
+  framed as a mention by DeepWater, so their mention preference applies; the
+  dispatcher rechecks their access, preferences and devices, and rings them in
+  an open room they read without joining. A notice that carries a disclosure
+  basis is `generic`: it stays a mention, but the lock screen shows only
+  `genericBody`, DeepWater's words for the kind of news (`noticePushBody`:
+  "Your DeepWater research has finished."), never the topic or the agent-reply
+  wording. Each kind says only what is true of every notice of that kind: only
+  a finished research's blocked delivery (`blocked`) "needs you before it can
+  be saved"; a changed sign-in on a brief or a running research is
+  `identity_changed` ("Sign in again so your DeepWater research can carry on.").
 - **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
   confirmed within a day (`failed/start_unconfirmed`), telling the agent once
-  (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,
-  so a confirmation that does arrive later still attaches.
+  (a `start_unconfirmed` wake) or the person once. A brief blocked on its
+  requester's changed sign-in is reaped too, because the reap is the only thing
+  that ends an unlaunched brief, and an open one keeps the team from turning
+  DeepWater off and the agent's DeepWater tools from being revoked. What
+  stopped it was the sign-in, not DeepWater, so it is never told as
+  unconfirmed: it ends as `failed/start_identity_changed`, its block is cleared
+  (an ended brief has nothing to retry), and the requester alone is told once
+  (`start_identity_changed`: the brief was closed because their sign-in
+  changed) — the agent is not woken, since it could act only with the sign-in
+  UOA refused. `delivered_at` stays unset either way, so a confirmation that
+  does arrive later still attaches.

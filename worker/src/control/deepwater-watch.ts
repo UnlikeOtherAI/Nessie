@@ -4,7 +4,9 @@ import {
   applyDeepWaterStatusRead,
   blockDeepWaterDelivery,
   failUnstartedDeepWaterBrief,
+  holdDeepWaterScopeStartReplay,
   readDeepWaterBriefRun,
+  retryDeepWaterWatchSoon,
   settleStaleDeepWaterAction,
   type DeepWaterBriefRun,
   type DeepWaterProjectionOutcome,
@@ -13,7 +15,7 @@ import {
   LedgerResearchStatusDtoSchema,
   LedgerScopeResultSchema,
   deepWaterBriefActionJobKey,
-  toLedgerBriefSettings,
+  deepWaterScopeStartLedgerArgs,
   type DeepWaterRunWatchJobPayload,
 } from '@nessie/schemas'
 
@@ -56,8 +58,18 @@ const log = (run: DeepWaterBriefRun, what: string): void => {
   console.info(`[deep-water] watch ${run.id}: ${what}`)
 }
 
-/** Did Ledger's refusal or silence leave nothing to do but read again later? */
-const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutcome, { outcome: 'ok' }>): void => {
+/**
+ * Ledger's refusal or silence left nothing to do but read again later. A
+ * definitive refusal, a malformed answer or a missing connector keeps the
+ * claim's backoff; a failure that passes is tried again soon while the run
+ * moves fast (`retryDeepWaterWatchSoon`). An identity outcome never gets here:
+ * only the requester can fix it, so it blocks (`blockOnIdentity`).
+ */
+const retryLater = async (
+  deps: DeepWaterWatchDeps,
+  run: DeepWaterBriefRun,
+  outcome: Exclude<DeepWaterLedgerOutcome, { outcome: 'ok' | 'identity' }>,
+): Promise<void> => {
   if (outcome.outcome === 'refused' && !isTransientLedgerRefusal(outcome.error)) {
     console.error(`[deep-water] watch ${run.id}: Ledger refused the read (${outcome.error.code})`)
     return
@@ -72,17 +84,24 @@ const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutc
     console.warn(`[deep-water] watch ${run.id}: the team's DeepWater connector is not active`)
     return
   }
-  log(run, `read deferred (${outcome.outcome})`)
+  const soon = await deps.prisma.$transaction((tx) => retryDeepWaterWatchSoon(tx, {
+    organizationId: run.organizationId,
+    runId: run.id,
+    reconcileSeq: run.reconcileSeq,
+  }))
+  log(run, `read deferred (${outcome.outcome})${soon ? '; reading again within 30 s' : ''}`)
 }
 
 /**
  * The requester's captured identity no longer resolves (F4). The block stops
- * the watch until their next live action (or Retry) renews it. A person's own
- * brief says "Sign in again" in its dialog, from the run itself, so it needs
- * no notice. Everyone else is told once, because nothing else would tell them:
- * an agent's brief waits on a person who cannot edit it and an agent that is
- * never woken again, and a launched research is still running — never told as
- * finished.
+ * the watch until their Retry renews it — or, on their own brief, their next
+ * action there. A person's own brief says "Sign in again" in its dialog, from
+ * the run itself, so it needs no notice. Everyone else is told once
+ * (`identity_changed`), because nothing else would tell them: an agent's brief
+ * — being agreed, or opened and not yet confirmed — waits on a person who
+ * cannot edit it and an agent that is never woken again, and a launched
+ * research is still running — never told as finished, nor as one waiting to be
+ * saved.
  */
 const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun): Promise<void> => {
   await runDeepWaterTransaction(deps, async (tx, announce) => {
@@ -93,11 +112,11 @@ const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun)
     })
     if (!blocked) return
     announce.run(run)
-    const brief = run.status === 'drafting'
+    const brief = run.status === 'drafting' || run.status === 'queued'
     if (brief && run.originKind === 'person') return
     const topic = deepWaterTopicPreview(run)
     await postDeepWaterNotice(tx, announce, run, {
-      kind: 'blocked',
+      kind: 'identity_changed',
       content: brief ? identityChangedOnAgentBriefNotice(topic) : identityChangedWhileRunningNotice(topic),
       alertKey: `deep-water-identity:${run.id}:${run.reconcileSeq}`,
     })
@@ -193,12 +212,12 @@ const readBrief = async (
       return null
     }
     if (answer.outcome !== 'ok') {
-      retryLater(run, answer)
+      await retryLater(deps, run, answer)
       return null
     }
     const parsed = LedgerScopeResultSchema.safeParse(answer.structured)
     if (!parsed.success) {
-      retryLater(run, { outcome: 'malformed', reason: 'research_scope_get answered outside the contract' })
+      await retryLater(deps, run, { outcome: 'malformed', reason: 'research_scope_get answered outside the contract' })
       return null
     }
     return applyRead(deps, (tx) => applyDeepWaterScopeResult(tx, {
@@ -242,9 +261,9 @@ const readResearch = async (
     args: { id: run.externalRunId },
   })
   if (read.outcome === 'identity') return blockOnIdentity(deps, run)
-  if (read.outcome !== 'ok') return retryLater(run, read)
+  if (read.outcome !== 'ok') return retryLater(deps, run, read)
   const parsed = LedgerResearchStatusDtoSchema.safeParse(read.structured)
-  if (!parsed.success) return retryLater(run, { outcome: 'malformed', reason: 'research_status answered outside the contract' })
+  if (!parsed.success) return retryLater(deps, run, { outcome: 'malformed', reason: 'research_status answered outside the contract' })
   const applied = await applyRead(deps, (tx) => applyDeepWaterStatusRead(tx, {
     organizationId: run.organizationId,
     runId: run.id,
@@ -256,9 +275,16 @@ const readResearch = async (
 /**
  * An agent's `research_scope_start` whose result never came back: replay it
  * as that same call (the agent's Run, agent and provider tool-call id, and the
- * arguments it sent), which Ledger answers with the one brief it keyed to the
- * call — or opens it now, which is what the agent asked for. A definitive
- * refusal ends the brief and tells the agent.
+ * arguments built from the stored input exactly as the opening call was,
+ * `deepWaterScopeStartLedgerArgs`), which Ledger answers with the one brief it
+ * keyed to the call — or opens it now, which is what the agent asked for. A
+ * definitive refusal ends the brief and tells the agent.
+ *
+ * `conflict` is not a refusal: it says Ledger already opened a brief for this
+ * call, under other arguments. Failing the run would strand that live brief
+ * with nobody watching it, and replaying it again would get the same answer,
+ * so the run is held for the reap and the broken invariant is logged as the
+ * error it is.
  */
 const replayAgentScopeStart = async (
   deps: DeepWaterWatchDeps,
@@ -276,20 +302,26 @@ const replayAgentScopeStart = async (
   if (!agentId || !agent || !run.input || !run.originToolCallId) {
     return log(run, 'origin agent or call is gone; the reap will end it')
   }
-  const input = run.input
   const read = await callDeepWaterLedgerTool(deps, {
     organizationId: run.organizationId,
     connectorId,
     attribution: deepWaterAgentOriginAttribution(run, { agentKind: agent.agentKind, identity }),
     toolCallId: run.originToolCallId,
     toolName: 'research_scope_start',
-    args: {
-      topic: input.topic,
-      ...(input.context ? { context: input.context } : {}),
-      ...(input.pillars ? { pillars: input.pillars } : {}),
-      ...(input.settings ? { settings: toLedgerBriefSettings(input.settings) } : {}),
-    },
+    args: deepWaterScopeStartLedgerArgs(run.input),
   })
+  if (read.outcome === 'refused' && read.error.code === 'conflict') {
+    await deps.prisma.$transaction((tx) => holdDeepWaterScopeStartReplay(tx, {
+      organizationId: run.organizationId,
+      runId: run.id,
+      reconcileSeq: run.reconcileSeq,
+    }))
+    console.error(
+      `[deep-water] watch ${run.id}: Ledger holds a brief for this scope start under other arguments; `
+      + 'it cannot be attached, so the run is held for the reap and never replayed again',
+    )
+    return
+  }
   if (read.outcome === 'refused' && !isTransientLedgerRefusal(read.error)) {
     const topic = deepWaterTopicPreview(run)
     const failureCode = read.error.code.replace(/[^a-z_]/g, '_').slice(0, 64) || 'start_rejected'
@@ -315,9 +347,13 @@ const replayAgentScopeStart = async (
     })
     return log(run, `scope start refused (${read.error.code})`)
   }
-  if (read.outcome !== 'ok') return retryLater(run, read)
+  // Replayed as the requester, so a changed sign-in stops it here too (F4):
+  // blocked and told, and replayed again only once their Retry renews it. Past
+  // the confirm window the reap ends it, in words that blame the sign-in.
+  if (read.outcome === 'identity') return blockOnIdentity(deps, run)
+  if (read.outcome !== 'ok') return retryLater(deps, run, read)
   const parsed = LedgerScopeResultSchema.safeParse(read.structured)
-  if (!parsed.success) return retryLater(run, { outcome: 'malformed', reason: 'research_scope_start answered outside the contract' })
+  if (!parsed.success) return retryLater(deps, run, { outcome: 'malformed', reason: 'research_scope_start answered outside the contract' })
   const applied = await runDeepWaterTransaction(deps, async (tx, announce) => {
     const outcome = await applyDeepWaterScopeResult(tx, {
       organizationId: run.organizationId,

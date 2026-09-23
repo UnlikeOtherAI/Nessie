@@ -4,10 +4,9 @@ import type { PrismaClient } from '@prisma/client'
 
 import type { LedgerAttribution } from './ledger.js'
 import { completeLedgerAttribution } from './ledger-attribution.js'
+import { UoaDelegatedIdentityError, exchangeUoaDelegation } from './uoa-delegation-exchange.js'
 
 const NESSIE_PRODUCT = 'nessie'
-const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange'
-const JWT_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:jwt'
 const DEFAULT_AUTH_BASE_URL = 'https://authentication.unlikeotherai.com'
 const ASSERTION_TTL_SECONDS = 60
 const CONTEXT_TTL_SECONDS = 5 * 60
@@ -75,19 +74,6 @@ type DelegationCacheEntry = {
   token: string
 }
 
-export class UoaDelegatedIdentityError extends Error {
-  constructor(
-    public readonly code:
-      | 'UOA_IDENTITY_REQUIRED'
-      | 'UOA_ACTIVE_TEAM_REQUIRED'
-      | 'UOA_TOKEN_EXCHANGE_FAILED',
-    message: string,
-  ) {
-    super(message)
-    this.name = 'UoaDelegatedIdentityError'
-  }
-}
-
 const envValue = (env: NodeJS.ProcessEnv, name: string): string | null => {
   const value = env[name]?.trim()
   return value ? value : null
@@ -135,49 +121,6 @@ const signJwt = (
     .sign('RSA-SHA256', Buffer.from(signingInput), settings.privateKeyPem)
     .toString('base64url')
   return `${signingInput}.${signature}`
-}
-
-const decodeJwtExpiry = (token: string, fallback: number): number => {
-  const payload = token.split('.')[1]
-  if (!payload) return fallback
-  try {
-    const claims = JSON.parse(
-      Buffer.from(payload, 'base64url').toString('utf8'),
-    ) as { exp?: unknown }
-    return typeof claims.exp === 'number' ? claims.exp : fallback
-  } catch {
-    return fallback
-  }
-}
-
-const decodeJwtTokenVersion = (token: string): number | undefined => {
-  const payload = token.split('.')[1]
-  if (!payload) {
-    throw new UoaDelegatedIdentityError(
-      'UOA_TOKEN_EXCHANGE_FAILED',
-      'UOA delegation exchange returned an invalid access token.',
-    )
-  }
-  try {
-    const claims = JSON.parse(
-      Buffer.from(payload, 'base64url').toString('utf8'),
-    ) as { tv?: unknown }
-    if (claims.tv === undefined) return undefined
-    if (
-      typeof claims.tv !== 'number'
-      || !Number.isSafeInteger(claims.tv)
-      || claims.tv < 0
-    ) {
-      throw new Error('invalid token version')
-    }
-    return claims.tv
-  } catch (error) {
-    if (error instanceof UoaDelegatedIdentityError) throw error
-    throw new UoaDelegatedIdentityError(
-      'UOA_TOKEN_EXCHANGE_FAILED',
-      'UOA delegation exchange returned an invalid access token.',
-    )
-  }
 }
 
 const resolveUserId = (attribution: LedgerAttribution): string | null =>
@@ -406,58 +349,16 @@ export const createUoaDelegatedIdentityService = (input: {
       uoaSub: identity.subject,
       uoaTokenVersion: identity.tokenVersion,
     }, nowSeconds)
-    const clientHash = crypto
-      .createHash('sha256')
-      .update(input.settings.sourceDomain + input.settings.clientSecret)
-      .digest('hex')
-    const exchangeUrl = new URL(`${input.settings.authBaseUrl}/auth/token`)
-    exchangeUrl.searchParams.set('config_url', input.settings.configUrl)
-    const response = await fetchImpl(exchangeUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${clientHash}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        grant_type: TOKEN_EXCHANGE_GRANT,
-        product: NESSIE_PRODUCT,
-        scope: options.delegationScope,
-        subject_token_type: JWT_TOKEN_TYPE,
-        resource: audience,
-        subject_token: subjectToken,
-      }),
+    const exchanged = await exchangeUoaDelegation(input.settings, fetchImpl, {
+      subjectToken,
+      scope: options.delegationScope,
+      audience,
+      tokenVersion: identity.tokenVersion,
+      nowSeconds,
+      fallbackTtlSeconds: CONTEXT_TTL_SECONDS,
     })
-    if (!response.ok) {
-      throw new UoaDelegatedIdentityError(
-        'UOA_TOKEN_EXCHANGE_FAILED',
-        `UOA delegation exchange failed with status ${response.status}.`,
-      )
-    }
-    const body = await response.json() as {
-      access_token?: unknown
-      expires_in?: unknown
-    }
-    if (typeof body.access_token !== 'string' || body.access_token.length === 0) {
-      throw new UoaDelegatedIdentityError(
-        'UOA_TOKEN_EXCHANGE_FAILED',
-        'UOA delegation exchange returned no access token.',
-      )
-    }
-    const returnedTokenVersion = decodeJwtTokenVersion(body.access_token)
-    if (returnedTokenVersion !== identity.tokenVersion) {
-      throw new UoaDelegatedIdentityError(
-        'UOA_TOKEN_EXCHANGE_FAILED',
-        'UOA delegation exchange returned an access token for a different credential epoch.',
-      )
-    }
-    const fallbackExpiry =
-      nowSeconds
-      + (typeof body.expires_in === 'number' ? body.expires_in : CONTEXT_TTL_SECONDS)
-    cache.set(cacheKey, {
-      token: body.access_token,
-      expiresAt: decodeJwtExpiry(body.access_token, fallbackExpiry),
-    })
-    return body.access_token
+    cache.set(cacheKey, exchanged)
+    return exchanged.token
   }
 
   return {

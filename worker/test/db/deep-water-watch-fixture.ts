@@ -11,7 +11,8 @@ import {
   type DeepWaterBriefRunOrigin,
   type LedgerIdentityService,
 } from '@nessie/runtime'
-import type { LedgerScopeResult, WsScope } from '@nessie/schemas'
+import { LedgerScopeBriefSchema, type LedgerScopeBrief, type LedgerScopeResult, type WsScope } from '@nessie/schemas'
+import { personalAssistantDmKey } from '@nessie/team-admin'
 
 import type { DeepWaterWatchDeps } from '../../src/control/deepwater-watch.js'
 import type { dispatchTool } from '../../src/run/tool-dispatch.js'
@@ -45,9 +46,14 @@ export type WatchFixture = {
   deps: DeepWaterWatchDeps
   ledger: ScriptedLedger
   realtime: RecordedRealtime
-  ids: Record<'organization' | 'project' | 'team' | 'channel' | 'thread' | 'requester' | 'agent' | 'originRun' | 'connector', string>
+  ids: Record<
+    | 'organization' | 'project' | 'team' | 'channel' | 'thread' | 'requester' | 'agent' | 'originRun' | 'connector'
+    | 'assistantChannel' | 'assistantThread',
+    string
+  >
   identity: { subject: string; organizationId: string; teamId: string; tokenVersion: number }
-  failIdentity: (fail: boolean) => void
+  /** `true` loses the requester's link; an error is thrown as the signer's own. */
+  failIdentity: (failure: boolean | LedgerIdentityError) => void
   insert: (origin: 'person' | 'agent', options?: { toolCallId?: string }) => Promise<DeepWaterBriefRun>
   attach: (runId: string, result: LedgerScopeResult) => Promise<void>
   read: (runId: string) => Promise<DeepWaterBriefRun>
@@ -75,6 +81,22 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     },
   })
   const thread = await prisma.thread.create({ data: { channelId: channel.id } })
+  // The requester's own Personal Assistant conversation, as sign-in bootstraps it.
+  const assistantChannel = await prisma.channel.create({
+    data: {
+      dmKey: personalAssistantDmKey({ organizationId: organization.id, userId: requester.id }),
+      label: 'Personal Assistant',
+      members: { create: [{ userId: requester.id }] },
+      organizationId: organization.id,
+      projectId: project.id,
+      slug: `pa-${suffix}`,
+      systemChannelType: 'personal_assistant',
+      teamId: team.id,
+      type: 'dm',
+      visibility: 'private',
+    },
+  })
+  const assistantThread = await prisma.thread.create({ data: { channelId: assistantChannel.id, title: 'General' } })
   const agent = await prisma.agent.create({
     data: { name: 'Analyst', organizationId: organization.id, projectId: project.id, teamId: team.id, role: 'assistant' },
   })
@@ -105,10 +127,11 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
       answers.set(toolName, { structured, success })
     },
   }
-  let identityFails = false
+  let identityFailure: boolean | LedgerIdentityError = false
   const ledgerIdentity: LedgerIdentityService = {
     requestHeaders: async (_attribution, options) => {
-      if (identityFails) throw new LedgerIdentityError('LEDGER_UOA_IDENTITY_REQUIRED', 'no linked identity')
+      if (identityFailure instanceof LedgerIdentityError) throw identityFailure
+      if (identityFailure) throw new LedgerIdentityError('LEDGER_UOA_IDENTITY_REQUIRED', 'no linked identity')
       return { 'X-Nessie-Context': `signed:${options?.toolCallId ?? ''}` }
     },
   }
@@ -195,6 +218,8 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     agent: agent.id,
     originRun: originRun.id,
     connector: connector.id,
+    assistantChannel: assistantChannel.id,
+    assistantThread: assistantThread.id,
   }
   const read = async (runId: string): Promise<DeepWaterBriefRun> => {
     const run = await readDeepWaterBriefRun(prisma, { organizationId: organization.id, runId })
@@ -208,7 +233,7 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     realtime: { published, failPublishes: (fail) => { publishesFail = fail } },
     ids,
     identity,
-    failIdentity: (fail) => { identityFails = fail },
+    failIdentity: (failure) => { identityFailure = failure },
     insert: async (originKind, options = {}) => {
       const origin: DeepWaterBriefRunOrigin = originKind === 'person'
         ? { kind: 'person', actionId: randomUUID() }
@@ -247,6 +272,7 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     read,
     cleanup: async () => {
       await deleteThreadQueueJobs(prisma, thread.id)
+      await deleteThreadQueueJobs(prisma, assistantThread.id)
       await prisma.$executeRawUnsafe(`DELETE FROM queue_jobs WHERE payload->>'organizationId' = $1`, organization.id)
       await prisma.runThreadPendingMessage.deleteMany({ where: { threadId: thread.id } })
       await prisma.organization.deleteMany({ where: { id: organization.id } })
@@ -256,12 +282,44 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
   }
 }
 
+type BriefState = 'drafting' | 'launched' | 'cancelled'
+
+/** Water's brief on the wire, as Ledger passes it through. */
+const wireBrief = (input: { revision: number; state?: BriefState; withTranscript?: boolean }) => ({
+  state: input.state ?? 'drafting',
+  revision: input.revision,
+  topic: 'Heat pumps in older houses',
+  reply: 'I have drafted two pillars.',
+  pillars: ['Costs', 'Performance'],
+  settings: {
+    depth: 'light',
+    chapter_depth: 'standard',
+    search_quality: 'standard',
+    languages: [],
+    output_language: 'en',
+    recency: 'any',
+    writing_style: 'standard',
+  },
+  locked_settings: ['depth'],
+  open_questions: [],
+  analysis: null,
+  ready: true,
+  ...(input.withTranscript ? { messages: [] } : {}),
+})
+
+/**
+ * Water's brief once Water launched it: the proof of launch a scope read
+ * carries (a bare `running` is Ledger's `starting`, which may still revert).
+ */
+export const launchedBrief = (): LedgerScopeBrief => LedgerScopeBriefSchema.parse(wireBrief({ revision: 2, state: 'launched' }))
+
 /** A ScopeResult on the wire, as Ledger's research_scope_* tools answer. */
 export const wireScope = (input: {
   id: string
   status?: string
   turn?: { id: string; seq: number; status: string; author_kind: 'person' | 'agent'; retryable?: boolean }
   revision?: number
+  briefState?: BriefState
   withTranscript?: boolean
 }): Record<string, unknown> => ({
   id: input.id,
@@ -271,25 +329,9 @@ export const wireScope = (input: {
   turn: input.turn ? { error_code: null, retryable: false, ...input.turn } : null,
   brief: input.revision === undefined
     ? null
-    : {
-        state: 'drafting',
+    : wireBrief({
         revision: input.revision,
-        topic: 'Heat pumps in older houses',
-        reply: 'I have drafted two pillars.',
-        pillars: ['Costs', 'Performance'],
-        settings: {
-          depth: 'light',
-          chapter_depth: 'standard',
-          search_quality: 'standard',
-          languages: [],
-          output_language: 'en',
-          recency: 'any',
-          writing_style: 'standard',
-        },
-        locked_settings: ['depth'],
-        open_questions: [],
-        analysis: null,
-        ready: true,
-        ...(input.withTranscript ? { messages: [] } : {}),
-      },
+        ...(input.briefState ? { state: input.briefState } : {}),
+        ...(input.withTranscript ? { withTranscript: true } : {}),
+      }),
 })

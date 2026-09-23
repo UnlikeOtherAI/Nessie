@@ -2,13 +2,17 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import { DeepWaterDeliveryMessageMetadataSchema, type RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  DeepWaterDeliveryMessageMetadataSchema,
+  deepWaterScopeStartLedgerArgs,
+  type RunExecuteJobPayload,
+} from '@nessie/schemas'
 
 import { renewDeepWaterIdentity } from '../../src/control/deepwater-delivery.js'
 import { reapUnconfirmedDeepWaterBriefs } from '../../src/control/deepwater-worker.js'
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
 import { deepWaterWakeKickoffId } from '../../src/control/deepwater-wake.js'
-import { researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
+import { launchedBrief, researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 
 /**
@@ -63,6 +67,51 @@ withFixture('a lost scope start is replayed as the agent\'s own call, attached, 
   fixture.ledger.answer('research_scope_get', wireScope({ id: rs, turn: opening }))
   await watch(fixture, run.id)
   assert.equal(await fixture.prisma.message.count({ where: { threadId: fixture.ids.thread, role: 'assistant' } }), 1)
+})
+
+withFixture('a replay repeats the opening call\'s own arguments, built by the one builder', async (fixture) => {
+  // Ledger fingerprints a scope start and answers a replay whose arguments
+  // normalise differently with `conflict`; the opening call and every replay
+  // are built from the stored input by `deepWaterScopeStartLedgerArgs`.
+  const run = await fixture.insert('agent', { toolCallId: 'call_scope_start_args' })
+  const input = {
+    schemaVersion: 1,
+    topic: 'Heat pumps in older houses',
+    context: 'Solid brick, no cavity.',
+    pillars: ['Costs', 'Noise'],
+    settings: { depth: 'deep', chapterDepth: 'detailed', languages: ['cs', 'en'], outputLanguage: 'en' },
+    originRootMessageId: null,
+  } as const
+  await fixture.prisma.productIntegrationRun.update({ where: { id: run.id }, data: { input } })
+  fixture.ledger.answer('research_scope_start', wireScope({ id: researchId() }))
+  await watch(fixture, run.id)
+
+  const [call] = fixture.ledger.calls
+  assert.deepEqual(call?.args, deepWaterScopeStartLedgerArgs(input))
+  assert.deepEqual(call?.args, {
+    topic: 'Heat pumps in older houses',
+    context: 'Solid brick, no cavity.',
+    pillars: ['Costs', 'Noise'],
+    settings: { depth: 'deep', chapter_depth: 'detailed', languages: ['cs', 'en'], output_language: 'en' },
+  })
+})
+
+withFixture('a replay Ledger answers with conflict is not a refusal: its live brief is never failed', async (fixture) => {
+  const run = await fixture.insert('agent')
+  fixture.ledger.answer('research_scope_start', {
+    error: 'conflict',
+    error_description: 'research_scope_start was already used with different input',
+    status_code: 409,
+  }, false)
+  await watch(fixture, run.id)
+
+  const kept = await fixture.read(run.id)
+  assert.equal(kept.status, 'queued', 'left for the reap, never reported as refused')
+  assert.equal(kept.failureCode, null)
+  assert.deepEqual(await kickoffs(fixture), [], 'the agent is not told a brief Ledger holds was refused')
+  // The same call would only get the same answer: the next read is due when
+  // the confirm window closes, which the unattached claim never admits.
+  assert.equal(kept.reconcileAfter.getTime(), kept.createdAt.getTime() + 24 * 3_600_000)
 })
 
 withFixture('a settled planner turn wakes its agent once, under the card, as the person it asked for', async (fixture) => {
@@ -120,7 +169,7 @@ withFixture('a finished research is imported to Documents and wakes the agent to
   const run = await fixture.insert('agent')
   const rs = researchId()
   await fixture.attach(run.id, {
-    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'agent', errorCode: null, retryable: false },
   })
   fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null, public_url: null })
@@ -131,7 +180,7 @@ withFixture('a finished research is imported to Documents and wakes the agent to
     started_at: '2026-09-23T09:00:00.000Z',
     completed_at: '2026-09-23T09:30:00.000Z',
     truncated: false,
-    title: 'Heat pumps',
+    title: 'Tepelná čerpadla ve starých domech',
     report_kind: 'full',
     full_report_error_code: null,
     public_url: null,
@@ -141,6 +190,7 @@ withFixture('a finished research is imported to Documents and wakes the agent to
 
   const delivered = await fixture.read(run.id)
   assert.equal(delivered.status, 'completed')
+  assert.equal(delivered.title, 'Tepelná čerpadla ve starých domech', 'the report\'s own title is kept')
   assert.ok(delivered.deliveredAt)
   assert.equal(delivered.sourceCount, 1)
   assert.equal(delivered.reportKind, 'full')
@@ -154,6 +204,18 @@ withFixture('a finished research is imported to Documents and wakes the agent to
   assert.equal(
     Buffer.concat(chunks).toString('utf8'),
     'title,url,accessed_at\r\n"Study, ""A""",https://example.org/a,2026-09-23T09:00:00.000Z\r\n',
+  )
+  // Stored under the names the admin downloads them as, accents folded, never split.
+  const files = await fixture.prisma.attachment.findMany({
+    where: { id: { in: [delivered.reportFileId, delivered.sourcesFileId] } },
+    select: { id: true, filename: true, mime: true },
+  })
+  assert.deepEqual(
+    files.map((file) => [file.id === delivered.reportFileId ? 'report' : 'sources', file.filename, file.mime]).sort(),
+    [
+      ['report', 'tepelna-cerpadla-ve-starych-domech.md', 'text/markdown'],
+      ['sources', 'tepelna-cerpadla-ve-starych-domech.csv', 'text/csv'],
+    ],
   )
   assert.equal(fixture.ledger.calls.filter((call) => call.toolName === 'research_report').length, 1)
   const terminal = await kickoffs(fixture)
@@ -182,7 +244,7 @@ const finishResearch = async (fixture: WatchFixture) => {
   const run = await fixture.insert('agent')
   const rs = researchId()
   await fixture.attach(run.id, {
-    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'agent', errorCode: null, retryable: false },
   })
   fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })
@@ -266,7 +328,7 @@ withFixture('an agent\'s brief whose requester\'s sign-in changed tells them onc
   assert.equal(fixture.ledger.calls.length, 0, 'nothing reaches Ledger without the identity')
   assert.deepEqual(await kickoffs(fixture), [], 'the agent cannot be woken as someone who is not signed in')
   // The person cannot edit an agent's brief and the agent is not woken again, so they are told — once.
-  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'])
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['identity_changed'])
   const [notice] = await fixture.prisma.message.findMany({
     where: { threadId: fixture.ids.thread, role: 'assistant', agentId: null },
   })
@@ -292,4 +354,41 @@ withFixture('an agent\'s brief whose requester\'s sign-in changed tells them onc
   await watch(fixture, brief.id)
   assert.equal((await fixture.read(brief.id)).agentWakeCount, 1)
   assert.deepEqual((await kickoffs(fixture)).map((message) => message.id), [deepWaterWakeKickoffId(brief.id, 'turn', turnId)])
+})
+
+withFixture('a failed planner turn wakes its agent to try again; past eight wakes the person is told once', async (fixture) => {
+  const brief = await fixture.insert('agent')
+  const rs = researchId()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'pending', authorKind: 'agent', errorCode: null, retryable: false },
+  })
+  const failed = { id: randomUUID(), seq: 2, status: 'failed', author_kind: 'agent' as const, retryable: true }
+  fixture.ledger.answer('research_scope_get', (args) => ({
+    ...wireScope({ id: rs, revision: 1, withTranscript: args.include_transcript === true }),
+    turn: { ...failed, error_code: 'planner_unavailable' },
+  }))
+  await watch(fixture, brief.id)
+
+  const [kickoff] = await kickoffs(fixture)
+  assert.equal(kickoff?.id, deepWaterWakeKickoffId(brief.id, 'turn', failed.id))
+  assert.match(kickoff?.content ?? '', /could not answer the brief/)
+  assert.match(kickoff?.content ?? '', /Send your reply again with mcp_research_scope_reply/)
+  assert.doesNotMatch(kickoff?.content ?? '', /planner_unavailable/, 'a kickoff never quotes the error code')
+  assert.equal((await fixture.read(brief.id)).agentWakeCount, 1)
+
+  // The eighth wake was the last: the next answers tell the person once instead.
+  await fixture.prisma.productIntegrationRun.update({ where: { id: brief.id }, data: { agentWakeCount: 8 } })
+  for (const seq of [3, 4]) {
+    const turn = { id: randomUUID(), seq, status: 'complete', author_kind: 'agent' as const }
+    fixture.ledger.answer('research_scope_get', (args) =>
+      wireScope({ id: rs, turn, revision: seq, withTranscript: args.include_transcript === true }))
+    await watch(fixture, brief.id)
+  }
+  const capped = await fixture.read(brief.id)
+  assert.equal(capped.agentWakeCount, 8)
+  assert.equal(capped.lastHandledTurnSeq, 4)
+  assert.ok(capped.wakeCapNoticeAt)
+  assert.equal((await kickoffs(fixture)).length, 1, 'no wake past the cap')
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['wake_cap'])
 })
