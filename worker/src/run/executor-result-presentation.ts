@@ -58,17 +58,21 @@ export const readsAsFrameMarker = (line: string): boolean =>
   line.normalize('NFKC').toUpperCase().replace(/[^A-Z]/g, '').includes(FRAME_MARKER_LETTERS)
 
 /**
- * Program output framed so the program cannot close the frame: every line of
+ * Output from the machine framed so it cannot close the frame: every line of
  * it that could read as either marker is quoted, which leaves the text
- * readable and makes the real closing line the only one.
+ * readable and makes the real closing line the only one. `lead` is ours and
+ * goes above the frame.
  */
-const frameProgramOutput = (server: string, body: string, lead?: string): string => [
+export const frameUntrustedOutput = (banner: string, body: string, lead?: string): string => [
   ...(lead ? [lead] : []),
   FRAME_OPEN,
-  programBanner(server),
+  banner,
   body.split('\n').map((line) => (readsAsFrameMarker(line) ? `> ${line}` : line)).join('\n'),
   FRAME_CLOSE,
 ].join('\n')
+
+const frameProgramOutput = (server: string, body: string, lead?: string): string =>
+  frameUntrustedOutput(programBanner(server), body, lead)
 
 const capProgramOutput = (body: string): string => {
   if (body.length <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS) return body
@@ -92,7 +96,7 @@ const binaryLabel = (kind: string, item: Record<string, unknown>, data: unknown)
 }
 
 /** A daemon refusal carries no program output: its code and message are ours. */
-const describeRefusal = (document: Record<string, unknown>): string => {
+export const describeRefusal = (document: Record<string, unknown>): string => {
   const code = typeof document.code === 'string' ? document.code : 'EXECUTOR_COMMAND_FAILED'
   const message = typeof document.message === 'string' ? ` ${document.message}` : ''
   // The machine replaces a result Nessie refused (executor/src/command-recovery.ts):

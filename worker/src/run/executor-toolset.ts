@@ -1,25 +1,26 @@
-import { randomUUID } from 'node:crypto'
-
 import {
-  assertExecutorCommandBindingCurrent,
-  createExecutorCommand,
   ensureExecutorLogicalTools,
-  EXECUTOR_ERROR_CODES,
-  ExecutorError,
   reviewedCodingSessionsServer,
-  waitForExecutorCommandResult,
-  type ExecutorCommandBindingFacts,
 } from '@nessie/executor-manage'
-import { ExecutorMcpServerNamesSchema, type ExecutorProfile } from '@nessie/schemas'
+import { ExecutorMcpServerNamesSchema } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
 import type { ToolSchemaDescriptor } from '@nessie/runtime'
 
+import { CODING_SESSION_TOOL_NAMES, isCodingSessionToolName } from './coding-session-tools.js'
+import { CODING_WAIT_TOOL_TIMEOUT_MS } from './coding-session-wait.js'
 import {
-  executorCommandTtlMs,
-  executorToolTimeouts,
-  ExecutorUnknownOutcomeError,
-} from './executor-command-timing.js'
-import { isCorrectableExecutorFailure } from './executor-correctable-failures.js'
+  codingSessionsOffer,
+  codingWaitRunChecks,
+  createExecutorCodingSessions,
+  type ExecutorCodingSessions,
+} from './executor-coding-sessions.js'
+import {
+  createExecutorCommandDispatch,
+  EXECUTOR_COMMAND_TOPIC,
+  executorDispatchResult,
+  type ExecutorCommandTarget,
+} from './executor-command-dispatch.js'
+import { executorToolTimeouts, ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { HOST_OUTPUT_OPERATION_KEYS, type ExecutorHostOutputDisclosure } from './executor-host-output.js'
 import { createExecutorMcpCatalogs, type ExecutorMcpCatalogAnswer } from './executor-mcp-catalog.js'
 import { descriptorFor, executorToolName } from './executor-tool-descriptors.js'
@@ -27,20 +28,13 @@ import { shapeExecutorToolArguments } from './executor-tool-arguments.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
-// The descriptors live in their own module; these names stay importable from here.
-export { descriptorFor, executorToolName }
+// The descriptors and the command machinery live in their own modules; these
+// names stay importable from here.
+export { descriptorFor, EXECUTOR_COMMAND_TOPIC, executorDispatchResult, executorToolName }
 
-const EXECUTOR_COMMAND_TOPIC = 'executor.command'
-
-type ExecutorEntry = {
-  bindingId: string
-  /** The reviewed coding-sessions bridge's server name, when the bound revision offers it. */
-  codingSessionsServer: string | null
+type ExecutorEntry = ExecutorCommandTarget & {
   descriptor: ToolSchemaDescriptor
   mcpServers: readonly string[]
-  operationKey: string
-  sessionId: string | null
-  sessionProfile: ExecutorProfile | null
   toolName: string
 }
 
@@ -55,38 +49,13 @@ const reviewedMcpServers = (descriptor: unknown): readonly string[] => {
   return named.success ? named.data : []
 }
 
-/**
- * What dispatch answers for a terminal result: the raw document, verbatim.
- * Task Set search parses exactly this; the model sees it only after the agent
- * loop's presentation (`executor-result-presentation.ts`).
- */
-export const executorDispatchResult = (document: Record<string, unknown>) => ({
-  output: JSON.stringify(document),
-  success: document.success === true,
-  ...(isCorrectableExecutorFailure(document) ? { correctable: true as const } : {}),
-})
-
-/**
- * The command payload. A call to the bound revision's coding-sessions bridge
- * carries `owner` — the agent and the person the binding's candidate was made
- * for, never anything the model sent — beside `runId`, under the argument
- * digest, and no other call ever does. The model reaches only `args`: an
- * `owner` it puts there is refused by the daemon's strict envelope, and
- * `_meta` inside `arguments` goes to the program as the program's own.
- */
-const executorCommandPayload = (
-  entry: ExecutorEntry,
-  args: Record<string, unknown>,
-  runId: string,
-  binding: ExecutorCommandBindingFacts,
-): Record<string, unknown> => {
-  const bridgeCall = entry.operationKey === 'mcp.call'
-    && entry.codingSessionsServer !== null
-    && args.server === entry.codingSessionsServer
-  return { args, ...(bridgeCall ? { owner: binding.owner } : {}), runId }
-}
-
 export type ExecutorToolset = {
+  /**
+   * The first-class coding-session tools, when this run is offered them
+   * (`executor-coding-sessions.ts`); `dispatch` answers their names too, and
+   * the agent loop calls `execute` itself to lend a wait its hooks.
+   */
+  codingSessions: ExecutorCodingSessions | null
   descriptors: ToolSchemaDescriptor[]
   dispatch: (toolName: string, args: Record<string, unknown>, providerToolCallId: string) => Promise<AgenticToolResult>
   handledNames: Set<string>
@@ -124,6 +93,7 @@ export const buildExecutorToolset = async (
   if (!encryptionSecret) {
     const unavailable = { inputSummary: '', output: 'Executor transport is unavailable.', success: false }
     return {
+      codingSessions: null,
       descriptors: [],
       dispatch: async () => unavailable,
       handledNames: new Set(),
@@ -139,12 +109,25 @@ export const buildExecutorToolset = async (
         // The bound revision's reviewed policy names the local programs the
         // two mcp tools may reach, and the model is told exactly those.
         capabilityRevision: { select: { descriptor: true } },
+        // Who the binding was made for, and whose machine it is: the coding
+        // tools are offered only to a private executor's pairing owner.
+        candidateHandleDigest: true,
+        executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
         id: true,
         operationKey: true,
         session: { select: { id: true, profile: true, status: true } },
       },
     }),
   ])
+  const mcpCallToolId = logicalTools.get('mcp.call')
+  const codingOffer = await codingSessionsOffer(
+    prisma,
+    bindings,
+    mcpCallToolId !== undefined && input.agentToolPolicy?.[mcpCallToolId] === true,
+  )
+  // With the first-class tools offered, the generic pair names every program
+  // but the bridge, which the model reaches through them alone.
+  const codingServer = codingOffer?.facts.serverName ?? null
   const codingOperationKeys = new Set(['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'])
   const browserBindings = bindings.filter((binding) => (
     binding.operationKey === 'browser.open'
@@ -242,6 +225,7 @@ export const buildExecutorToolset = async (
       && binding.operationKey === 'coding.launch') return []
     const registryId = logicalTools.get(binding.operationKey as never)
     const mcpServers = reviewedMcpServers(binding.capabilityRevision?.descriptor)
+      .filter((server) => server !== codingServer)
     const descriptor = descriptorFor(binding.operationKey, { mcpServers })
     if (!registryId || input.agentToolPolicy?.[registryId] !== true || !descriptor) return []
     return [{
@@ -275,18 +259,50 @@ export const buildExecutorToolset = async (
     })
     if (earlier > 0) recordHostOutput()
   }
+  const endRecord = (outputPreview: string) => async (
+    toolCallRecordId: string, result: AgenticToolResult, durationMs: number,
+  ): Promise<void> => {
+    await prisma.toolCall.updateMany({
+      where: { id: toolCallRecordId, runId: input.runId },
+      data: { durationMs, endedAt: new Date(), outputPreview, success: result.success },
+    })
+  }
   const catalogs = createExecutorMcpCatalogs({
-    endPage: async (toolCallRecordId, result, durationMs) => {
-      await prisma.toolCall.updateMany({
-        where: { id: toolCallRecordId, runId: input.runId },
-        data: { durationMs, endedAt: new Date(), outputPreview: 'A page of the program catalog.', success: result.success },
-      })
-    },
+    endPage: endRecord('A page of the program catalog.'),
     listPage: (args, providerToolCallId) => dispatch(executorToolName('mcp.tools'), args, providerToolCallId),
     mcpServers: () => entryByName.get(executorToolName('mcp.tools'))?.mcpServers ?? [],
   })
+  const dispatchCommand = createExecutorCommandDispatch({
+    agentId: input.agentId, encryptionSecret, prisma, recordHostOutput, recordIdByProviderCall, runId: input.runId,
+  })
+  const codingSessions = codingOffer
+    ? createExecutorCodingSessions({
+      call: (toolName, args, providerToolCallId, expiresBy) => dispatchCommand({
+        bindingId: codingOffer.bindingId,
+        codingSessionsServer: codingOffer.facts.serverName,
+        operationKey: 'mcp.call',
+        sessionId: null,
+        sessionProfile: null,
+      }, toolName, args, providerToolCallId, expiresBy ? { expiresBy } : {}),
+      endRecord: endRecord('A status read of the coding session.'),
+      facts: codingOffer.facts,
+      ...codingWaitRunChecks(prisma, { agentId: input.agentId, runId: input.runId }),
+    })
+    : null
+  // The bridge is not a program the generic pair reaches while its own tools
+  // are offered: asked for anyway, the model is pointed at them.
+  const bridgeViaGenericPair = (args: Record<string, unknown>): AgenticToolResult => ({
+    correctable: true,
+    inputSummary: summarizeToolInput(args),
+    output: 'This run reaches the coding-sessions bridge through the coding_session_* tools, not through '
+      + 'executor_mcp_tools or executor_mcp_call.',
+    success: false,
+  })
 
   const dispatch: ExecutorToolset['dispatch'] = async (toolName, modelArgs, providerToolCallId) => {
+    if (codingSessions && isCodingSessionToolName(toolName)) {
+      return codingSessions.execute(toolName, modelArgs, providerToolCallId)
+    }
     const entry = entryByName.get(toolName)
     if (!entry) {
       return { correctable: true, inputSummary: summarizeToolInput(modelArgs), output: `Unknown executor tool: ${toolName}`, success: false }
@@ -297,157 +313,34 @@ export const buildExecutorToolset = async (
       modelArgs,
       catalogs.inputSchemaOf,
     )
-    // Before the command exists: whatever the program answers, a failure
-    // included, is its output, and a catalog page is as much a read as a call.
-    if (HOST_OUTPUT_OPERATION_KEYS.has(entry.operationKey)) recordHostOutput()
-    const startedAt = new Date()
-    const commandId = randomUUID()
-    const toolCallRecordId = randomUUID()
-    recordIdByProviderCall.set(providerToolCallId, toolCallRecordId)
-    const created = await prisma.$transaction(async (tx) => {
-      const binding = await assertExecutorCommandBindingCurrent(tx, entry.bindingId, {
-        // browser.open is the one transition that consumes its freshly
-        // created pending session. Delivery still requires active, so a
-        // queued command cannot reopen a stopped browser.
-        allowPendingBrowserOpen: entry.operationKey === 'browser.open',
-        allowPendingCodingLaunch: entry.operationKey === 'coding.launch',
-        allowPendingCommandRun: entry.operationKey === 'command.run',
-      })
-      if (binding.runId !== input.runId) throw new Error('Executor binding run mismatch.')
-      if (binding.sessionId !== entry.sessionId) throw new Error('Executor binding session mismatch.')
-      if (
-        entry.operationKey === 'browser.open'
-        || entry.operationKey === 'coding.launch'
-        || entry.operationKey === 'command.run'
-      ) {
-        if (!binding.sessionId || !entry.sessionProfile) {
-          return { sessionUnavailable: entry.sessionProfile ?? 'workspace_sandbox' as const }
-        }
-        const activated = await tx.executorSession.updateMany({
-          where: {
-            executorId: binding.executorId,
-            id: binding.sessionId,
-            profile: entry.sessionProfile,
-            runId: input.runId,
-            status: 'pending',
-          },
-          data: { status: 'active' },
-        })
-        if (activated.count !== 1) return { sessionUnavailable: entry.sessionProfile }
-      }
-      if (
-        entry.operationKey === 'browser.observe'
-        || entry.operationKey === 'browser.act'
-        || (entry.sessionProfile === 'workspace_sandbox' && entry.operationKey === 'workspace.review')
-        || (entry.sessionProfile === 'coding_session' && (
-          entry.operationKey === 'coding.observe' || entry.operationKey === 'workspace.review'
-        ))
-      ) {
-        if (!binding.sessionId || !entry.sessionProfile) {
-          return { sessionUnavailable: entry.sessionProfile ?? 'workspace_sandbox' as const }
-        }
-        const active = await tx.executorSession.findFirst({
-          where: {
-            executorId: binding.executorId,
-            id: binding.sessionId,
-            profile: entry.sessionProfile,
-            runId: input.runId,
-            status: entry.sessionProfile === 'coding_session'
-              ? { in: ['active', 'attention'] }
-              : 'active',
-          },
-          select: { id: true },
-        })
-        if (!active) return { sessionUnavailable: entry.sessionProfile }
-      }
-      if (entry.operationKey === 'sandbox.stop' && binding.sessionId) {
-        await tx.executorSession.updateMany({
-          where: {
-            executorId: binding.executorId,
-            id: binding.sessionId,
-            ...(entry.sessionProfile ? { profile: entry.sessionProfile } : {}),
-            runId: input.runId,
-            status: { in: ['pending', 'active', 'attention', 'detached'] },
-          },
-          data: { status: 'stopped' },
-        })
-      }
-      const toolCall = await tx.toolCall.create({
-        data: {
-          id: toolCallRecordId,
-          agentId: input.agentId,
-          inputSummary: summarizeToolInput(args),
-          runId: input.runId,
-          startedAt,
-          toolName,
-          executorBindingId: entry.bindingId,
-        },
-        select: { id: true },
-      })
-      const queueJob = await tx.queueJob.create({
-        data: {
-          idempotencyKey: `executor-command:${input.runId}:${providerToolCallId}`,
-          payload: { commandId },
-          status: 'pending',
-          topic: EXECUTOR_COMMAND_TOPIC,
-        },
-        select: { id: true },
-      })
-      const expiresAt = new Date(startedAt.getTime() + executorCommandTtlMs(entry.operationKey))
-      await createExecutorCommand(tx, {
-        bindingId: entry.bindingId,
-        commandId,
-        encryptionSecret,
-        expiresAt,
-        payload: executorCommandPayload(entry, args, input.runId, binding),
-        queueJobId: queueJob.id,
-        toolCallId: toolCall.id,
-      })
-      return { expiresAt, toolCallId: toolCall.id }
-    }).catch((error: unknown) => {
-      // The coding-sessions rule refused the call where its command is made:
-      // the lane's own refusal, in words the model can pass on to the person.
-      if (error instanceof ExecutorError && error.code === EXECUTOR_ERROR_CODES.CODING_SESSIONS_OWNER_ONLY) {
-        return { refused: { code: error.code, message: error.message, success: false } }
-      }
-      throw error
-    })
-    if ('refused' in created) {
-      return { inputSummary: summarizeToolInput(args), ...executorDispatchResult(created.refused) }
+    if (codingServer !== null && args.server === codingServer && HOST_OUTPUT_OPERATION_KEYS.has(entry.operationKey)) {
+      return bridgeViaGenericPair(args)
     }
-    if ('sessionUnavailable' in created) {
-      return {
-        inputSummary: summarizeToolInput(args),
-        output: created.sessionUnavailable === 'coding_session'
-          ? 'The coding session is no longer available for this run.'
-          : 'The browser session is no longer available for this run.',
-        success: false,
-      }
-    }
-    const result = await waitForExecutorCommandResult(
-      prisma,
-      encryptionSecret,
-      commandId,
-      created.expiresAt,
-    )
-    if (!result) throw new ExecutorUnknownOutcomeError(created.toolCallId)
-    return {
-      inputSummary: summarizeToolInput(args),
-      ...executorDispatchResult(result),
-      toolCallRecordId: created.toolCallId,
-    }
+    const outcome = await dispatchCommand(entry, toolName, args, providerToolCallId)
+    if (outcome.kind === 'expired') throw new ExecutorUnknownOutcomeError(outcome.toolCallRecordId)
+    return outcome.result
   }
 
+  const timeouts = executorToolTimeouts(
+    (toolName) => entryByName.get(toolName)?.operationKey
+      ?? (codingSessions && isCodingSessionToolName(toolName) ? 'mcp.call' : undefined),
+    (providerToolCallId) => recordIdByProviderCall.get(providerToolCallId),
+  )
   return {
-    descriptors: entries.map((entry) => entry.descriptor),
+    codingSessions,
+    descriptors: [...entries.map((entry) => entry.descriptor), ...(codingSessions?.descriptors ?? [])],
     dispatch,
-    handledNames: new Set(entries.map((entry) => entry.toolName)),
-    mcpCatalog: catalogs.load,
-    ...executorToolTimeouts(
-      (toolName) => entryByName.get(toolName)?.operationKey,
-      (providerToolCallId) => recordIdByProviderCall.get(providerToolCallId),
-    ),
+    handledNames: new Set([
+      ...entries.map((entry) => entry.toolName),
+      ...(codingSessions?.descriptors ?? []).map((descriptor) => descriptor.toolName),
+    ]),
+    mcpCatalog: async (server, providerToolCallId) => (codingServer !== null && server === codingServer
+      ? { failure: bridgeViaGenericPair({ server }) }
+      : catalogs.load(server, providerToolCallId)),
+    timeoutErrorFor: timeouts.timeoutErrorFor,
+    // A wait is four minutes of reads; its own deadline ends it inside this.
+    timeoutMsFor: (toolName) => (codingSessions && toolName === CODING_SESSION_TOOL_NAMES.wait
+      ? CODING_WAIT_TOOL_TIMEOUT_MS
+      : timeouts.timeoutMsFor(toolName)),
   }
 }
-
-export { EXECUTOR_COMMAND_TOPIC }

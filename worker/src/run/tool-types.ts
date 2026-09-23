@@ -62,6 +62,12 @@ export type AgenticToolResult = {
   success: boolean
   /** A pre-created durable ToolCall used by an executor command. */
   toolCallRecordId?: string
+  /**
+   * Set by a watch tool (`WATCH_TOOL_NAMES` in `tool-loop-detection.ts`):
+   * whether what it waited on moved while it waited. Waits in a row that saw
+   * nothing move earn the loop's no-progress nudge.
+   */
+  watchProgressed?: boolean
 }
 
 export type BuiltinToolRuntimeContext = {

@@ -145,7 +145,13 @@ export const runExecutionAgentLoop = async (
     payload,
     stubbedBuiltinToolIds: input.stubbedBuiltinToolIds,
   })
-  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset)
+  // A coding-session wait watches for the worker's drain between its reads,
+  // and keeps its one line in the thought process current instead of adding
+  // a line per read.
+  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset, {
+    onProgress: (toolName, line) => input.thinkingRecorder.replaceToolLine(toolName, line),
+    ...(input.drainSignal ? { signal: input.drainSignal } : {}),
+  })
 
   const contextPlan = buildContextPlan({
     model: context.agent.model,

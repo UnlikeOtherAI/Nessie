@@ -209,7 +209,10 @@ server that instead answers them with a JSON-RPC error still counts: the daemon
 reports that only as a refused call.
 
 `executor_mcp_tools` is an observation tool for loop detection: listing the same
-catalog again is allowed until the fourth identical call in a row.
+catalog again is allowed until the fourth identical call in a row. The
+coding-session list, review and wait are too, and a wait is never refused
+before it runs ([tech-and-run-budgets.md](tech-and-run-budgets.md) → "Loop
+detection").
 
 ## The pair is the one bundle that carries across runs
 
@@ -421,6 +424,18 @@ that acts as the machine's own user, and these rules follow from that:
   its pairing owner (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), and the daemon's
   poll refuses it again. Every other program on the same machine stays
   reachable to everyone the policy lets reach it.
+- **The model drives it through tools of its own, not the pair.** A run the
+  rule allows is offered `coding_session_list`, `_start`, `_wait`, `_send`,
+  `_interrupt`, `_review` and `_close`, each an `mcp.call` to one bridge tool
+  through the same dispatch, and `executor_mcp_tools` / `executor_mcp_call`
+  stop naming the bridge; asked for through them anyway, it is refused as
+  correctable before any command exists. The wait is the worker's: short
+  status reads every 5 s for up to 4 minutes, nothing held on the lane
+  between them, returning early when the session needs the agent or the
+  person writes. Coding output has its own banner ("Output from the coding
+  agent you supervise…"). The contract is in
+  [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "The agent's tools".
 - **What ends a person's authority closes their sessions.** A lease's end, an
   access withdrawal and a paused or revoked executor write a close request in
   their own transaction, and the heartbeat carries it as `codingSessionClose`

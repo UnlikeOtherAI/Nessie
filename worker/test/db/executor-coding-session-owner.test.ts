@@ -122,53 +122,85 @@ runDatabaseTest('the bridge gets the binding’s owner, other programs none, and
     const ownerKey = executorCodingSessionOwnerKey(executorId, owner)
     assert.equal(ownerKey, codingSessionOwnerKey(executorId, owner), 'the control plane derives the daemon’s own key')
 
-    // The model forges an owner and reserved `_meta` inside its arguments.
+    // The pairing owner's run reaches the bridge through its own tools, and
+    // the model forges an owner and reserved `_meta` beside a call to one: a
+    // coding tool's arguments are the bridge tool's own, so neither leaves
+    // the worker.
     const forged = {
       _meta: { 'nessie/owner': `sha256:${'f'.repeat(64)}` },
       owner: { actorUserId: otherUserId, agentId: randomUUID() },
       value: 'fix the pricing page',
     }
-    const toBridge = await execute('executor_mcp_call', {
-      arguments: forged, server: 'coding-sessions', tool: 'echo',
-    }, 'provider-call-1', actor)
+    const commands = () => prisma.executorCommand.count({ where: { binding: { runId: run.id } } })
+    assert.ok(toolset.handledNames.has('coding_session_list'))
+    const toBridge = await execute('coding_session_list', forged, 'provider-call-1', actor)
     assert.equal(toBridge.success, true, toBridge.output)
     assert.deepEqual(delivered.at(-1), {
-      args: { arguments: forged, server: 'coding-sessions', tool: 'echo' },
+      args: { arguments: {}, server: 'coding-sessions', tool: 'session_list' },
       operationKey: 'mcp.call',
       owner,
-    }, 'stamped from the candidate, beside the model’s untouched arguments')
+    }, 'stamped from the candidate, and nothing the model forged in the payload')
     const bridgeEcho = echoIn(toBridge.output)
-    assert.deepEqual(bridgeEcho.echoed, forged, 'the program gets the model’s arguments as its own, untouched')
+    assert.deepEqual(bridgeEcho.echoed, {})
     assert.equal(bridgeEcho.meta?.['nessie/owner'], ownerKey, 'the reserved key names the binding’s owner')
 
+    // While its own tools are offered, the generic pair does not reach the bridge at all.
+    const beforeGeneric = await commands()
+    const viaGeneric = await execute('executor_mcp_call', {
+      arguments: forged, server: 'coding-sessions', tool: 'echo',
+    }, 'provider-call-2', actor)
+    assert.equal(viaGeneric.success, false)
+    assert.equal(viaGeneric.correctable, true)
+    assert.match(viaGeneric.output, /through the coding_session_\* tools/)
+    assert.equal(await commands(), beforeGeneric)
+
+    // Any other program gets the model's arguments as its own, untouched, and no owner.
     const toKelpie = await execute('executor_mcp_call', {
       arguments: forged, server: 'kelpie', tool: 'echo',
-    }, 'provider-call-2', actor)
+    }, 'provider-call-3', actor)
     assert.equal(toKelpie.success, true, toKelpie.output)
     assert.deepEqual(delivered.at(-1), {
       args: { arguments: forged, server: 'kelpie', tool: 'echo' }, operationKey: 'mcp.call',
     }, 'no other program gets an owner')
-    assert.equal(echoIn(toKelpie.output).meta, null)
+    const kelpieEcho = echoIn(toKelpie.output)
+    assert.deepEqual(kelpieEcho.echoed, forged, 'the program gets the model’s arguments as its own, untouched')
+    assert.equal(kelpieEcho.meta, null)
 
     // An owner beside the model's arguments is not the payload's: the daemon's
-    // strict envelope refuses it by name, and the payload still carries the binding's.
+    // strict envelope refuses it by name, and the payload carries none.
     const topLevel = await execute('executor_mcp_call', {
-      owner: forged.owner, server: 'coding-sessions', tool: 'echo',
-    }, 'provider-call-3', actor)
+      owner: forged.owner, server: 'kelpie', tool: 'echo',
+    }, 'provider-call-4', actor)
     assert.equal(topLevel.success, false)
     assert.match(topLevel.output, /EXECUTOR_COMMAND_ARGUMENTS_INVALID.*unexpected `owner`/)
-    assert.deepEqual((delivered.at(-1) as { owner?: unknown }).owner, owner)
+    assert.equal((delivered.at(-1) as { owner?: unknown }).owner, undefined)
 
     // Once the machine is somebody else's, the rule refuses the bridge before
-    // any command exists, in words the model can pass on — and still reaches Kelpie.
+    // any command exists, in words the model can pass on: through the tools
+    // this run was offered, and through the generic pair of a run built now,
+    // which is offered none. Kelpie is still reached.
     await prisma.executor.update({ where: { id: executorId }, data: { pairingOwnerUserId: otherUserId } })
-    const commandsBefore = await prisma.executorCommand.count({ where: { binding: { runId: run.id } } })
-    const refused = await execute('executor_mcp_call', { server: 'coding-sessions', tool: 'echo' }, 'provider-call-4', actor)
+    const commandsBefore = await commands()
+    const ownerOnly = /^The call did not complete \(EXECUTOR_CODING_SESSIONS_OWNER_ONLY\)\. Coding sessions on this machine act as the person who paired it/
+    const refused = await execute('coding_session_list', {}, 'provider-call-5', actor)
     assert.equal(refused.success, false)
     assert.equal(refused.correctable, undefined, 'not something the model fixes by changing its call')
-    assert.match(refused.output, /^The call did not complete \(EXECUTOR_CODING_SESSIONS_OWNER_ONLY\)\. Coding sessions on this machine act as the person who paired it/)
-    assert.equal(await prisma.executorCommand.count({ where: { binding: { runId: run.id } } }), commandsBefore)
-    const stillKelpie = await execute('executor_mcp_call', { server: 'kelpie', tool: 'echo' }, 'provider-call-5', actor)
+    assert.match(refused.output, ownerOnly)
+    const rebuilt = await buildExecutorToolset(prisma, {
+      agentId, agentToolPolicy: toolPolicy, encryptionSecret: LANE_SECRET, hostOutput: null, organizationId, runId: run.id,
+    })
+    assert.equal(rebuilt.codingSessions, null, 'someone else’s machine offers no coding tools')
+    const executeRebuilt = createExecutorToolExecution(
+      { prisma } as unknown as ExecutionDependencies,
+      { run: { id: run.id } } as unknown as RunContext,
+      rebuilt,
+    )
+    const refusedGeneric = await executeRebuilt('executor_mcp_call', { server: 'coding-sessions', tool: 'echo' }, 'provider-call-6', actor)
+    assert.equal(refusedGeneric.success, false)
+    assert.equal(refusedGeneric.correctable, undefined)
+    assert.match(refusedGeneric.output, ownerOnly)
+    assert.equal(await commands(), commandsBefore)
+    const stillKelpie = await executeRebuilt('executor_mcp_call', { server: 'kelpie', tool: 'echo' }, 'provider-call-7', actor)
     assert.equal(stillKelpie.success, true, stillKelpie.output)
     await daemon.stop()
   } finally {
