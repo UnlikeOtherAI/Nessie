@@ -19,6 +19,7 @@ import {
   parseThreadId,
   parseUserId,
   resolvePageLimit,
+  ticketWorkThreadRefOf,
   type ActiveRunStatus,
   type AgentConversationRecord,
   type PaginationMeta,
@@ -182,6 +183,7 @@ const conversationThreadSelect = {
   id: true,
   agentId: true,
   title: true,
+  metadata: true,
   startedByUserId: true,
   createdAt: true,
   channel: {
@@ -504,6 +506,7 @@ const buildConversationRecords = async (
       unreadCount: unread.get(row.id) ?? 0,
       activeRun: activeRuns.get(row.id) ?? null,
       lastRunOutcome: outcomes.get(row.id) ?? null,
+      ticket: ticketWorkThreadRefOf(row.metadata),
       createdAt: row.createdAt.toISOString(),
     })
   }
