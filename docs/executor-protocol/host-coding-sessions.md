@@ -195,8 +195,10 @@ The MCP SDK gives the bridge a minimal environment, so with
 shell's `env -0` on macOS; `systemctl --user show-environment` and the login
 shell on Linux. It strips only `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_MESSAGING_SOCKET`,
-`CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH` and the executor's own two markers,
-then applies `pass` and `set`. Before an agent starts, the host checks
+`CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH` and the executor's own markers
+(`NESSIE_EXECUTOR_PACKAGED_CLI`, `NESSIE_CODING_SESSIONS_CONFIG_DIGEST`,
+`NESSIE_EXECUTOR_SUPERVISOR`, `NESSIE_CODING_SESSION_UNIT`), then applies
+`pass` and `set`. Before an agent starts, the host checks
 `git --version`, the agent's `--version` and login status, and `gh auth status`
 when `gh` is installed; a failure makes the session `failed` with
 `agent_missing`, `agent_not_logged_in`, `git_missing`, `gh_not_authenticated`,
@@ -225,7 +227,9 @@ The Windows service refusal reads the token, not only the marker:
 `NESSIE_EXECUTOR_SUPERVISOR=service`, or a SID from `whoami /user` (by its
 System32 path) that is LocalSystem, LocalService, NetworkService or a virtual
 service account (`S-1-5-80-…`). None of them has a Claude login or a user
-profile.
+profile. The MCP SDK's minimal environment drops the marker, so the daemon
+adds its own `NESSIE_EXECUTOR_SUPERVISOR` to the bridge's environment when it
+starts it, and to no other server's.
 
 The Linux unit gets the bridge's environment through `--setenv` (a transient
 unit starts from the manager's environment, not its caller's), its output in

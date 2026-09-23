@@ -23,9 +23,10 @@ import type { CodingSessionsConfig } from './config.js'
  *
  * Only the variables that couple an agent to a parent Claude Code session are
  * stripped — an owner's deliberate `CLAUDE_CODE_*` setting survives — plus the
- * executor's own two markers, which describe the executor rather than the
- * person. Then `pass` and `set` apply, and auto-memory is off unless `set`
- * turns it back on, so it cannot become a channel between owners.
+ * executor's own markers (packaged CLI, reviewed digest, supervisor, systemd
+ * unit), which describe the executor rather than the person. Then `pass` and
+ * `set` apply, and auto-memory is off unless `set` turns it back on, so it
+ * cannot become a channel between owners.
  */
 
 export const PARENT_SESSION_VARIABLES = [
@@ -36,7 +37,12 @@ export const PARENT_SESSION_VARIABLES = [
   'CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH',
 ] as const
 
-const EXECUTOR_MARKERS = ['NESSIE_EXECUTOR_PACKAGED_CLI', 'NESSIE_CODING_SESSIONS_CONFIG_DIGEST']
+const EXECUTOR_MARKERS = [
+  'NESSIE_EXECUTOR_PACKAGED_CLI',
+  'NESSIE_CODING_SESSIONS_CONFIG_DIGEST',
+  'NESSIE_EXECUTOR_SUPERVISOR',
+  'NESSIE_CODING_SESSION_UNIT',
+]
 
 const LOGIN_SHELL_MARKER = '__NESSIE_LOGIN_ENVIRONMENT__'
 

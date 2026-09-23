@@ -103,6 +103,7 @@ test('only the parent-session coupling and the executor markers are stripped; pa
       PATH: '/usr/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_CODE_SSE_PORT: '1', CLAUDE_CODE_MESSAGING_SOCKET: '/s',
       CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH: '1', CLAUDE_CODE_GIT_BASH_PATH: '/bash', NESSIE_EXECUTOR_PACKAGED_CLI: '1',
       NESSIE_CODING_SESSIONS_CONFIG_DIGEST: 'sha256:x', FORWARD_ME: 'yes',
+      NESSIE_EXECUTOR_SUPERVISOR: 'desktop', NESSIE_CODING_SESSION_UNIT: 'nessie-coding-x',
     },
   })
   assert.deepEqual(env, {

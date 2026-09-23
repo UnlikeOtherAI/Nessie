@@ -3,7 +3,7 @@ import type { Readable } from 'node:stream'
 import { executorApi } from './api-client.js'
 import { createExecutorBrowserSessionManager } from './browser-session-manager.js'
 import { createExecutorCodingSessionManager } from './coding-session-manager.js'
-import { createCodingSessionsDaemon } from './coding-sessions-daemon.js'
+import { createCodingSessionsDaemon, withDaemonSupervisor } from './coding-sessions-daemon.js'
 import { createExecutorCommandSessionManager } from './command-session-manager.js'
 import {
   claimExecutor,
@@ -41,7 +41,7 @@ export const serveExecutor = async (
     const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
     const commandSessions = createExecutorCommandSessionManager(stateDir, live)
     const codingSessions = createExecutorCodingSessionManager(stateDir, live)
-    const namedMcpServers = live.mcpServers ?? []
+    const namedMcpServers = withDaemonSupervisor(live.mcpServers ?? [])
     const mcpSessions = createExecutorMcpSessionManager(namedMcpServers, live.descriptor.limits)
     // Coding sessions outlive runs and daemon restarts, so the daemon ends
     // them itself wherever it ends its other sessions.

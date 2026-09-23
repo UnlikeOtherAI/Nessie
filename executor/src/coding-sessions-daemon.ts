@@ -17,7 +17,12 @@ import {
   CODING_SESSION_DAEMON_CONTROL_META,
   CODING_SESSION_OWNER_META,
 } from './coding-session/meta-keys.js'
-import { codingSessionsPolicyOf, codingSessionsServerConfigPath } from './coding-sessions-policy.js'
+import {
+  codingSessionsPolicyOf,
+  codingSessionsServerConfigPath,
+  isBuiltinCodingSessionsServer,
+} from './coding-sessions-policy.js'
+import { SUPERVISOR_ENVIRONMENT_VARIABLE } from './host-platform.js'
 import type { ExecutorLocalMcpServer } from './mcp-servers.js'
 import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
 
@@ -46,6 +51,21 @@ import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
 export const codingSessionOwnerKey = (executorId: string, owner: ExecutorMcpCallOwner): string => (
   `sha256:${createHash('sha256').update(executorCodingSessionOwnerKeyInput(executorId, owner)).digest('hex')}`
 )
+
+/**
+ * The named servers as this daemon starts them. The built-in bridge also gets
+ * the daemon's supervisor marker, which the MCP SDK's minimal environment
+ * would otherwise drop, so a host under the Windows service is refused by the
+ * marker as well as by its token. No other server's environment changes.
+ */
+export const withDaemonSupervisor = (
+  servers: readonly ExecutorLocalMcpServer[], environment: NodeJS.ProcessEnv = process.env,
+): ExecutorLocalMcpServer[] => {
+  const supervisor = environment[SUPERVISOR_ENVIRONMENT_VARIABLE]
+  return servers.map((server) => (supervisor && isBuiltinCodingSessionsServer(server)
+    ? { ...server, env: { ...server.env, [SUPERVISOR_ENVIRONMENT_VARIABLE]: supervisor } }
+    : server))
+}
 
 export type CodingSessionsDaemon = {
   /** The reserved `_meta` for one call: defined only for the built-in bridge. */

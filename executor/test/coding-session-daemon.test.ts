@@ -14,7 +14,7 @@ import {
 
 import { executorApi } from '../src/api-client.js'
 import { CODING_SESSIONS_CONFIG_DIGEST_ENV, codingSessionsConfigDigest, normalizeCodingSessionsConfig } from '../src/coding-session/config.js'
-import { codingSessionOwnerKey, createCodingSessionsDaemon } from '../src/coding-sessions-daemon.js'
+import { codingSessionOwnerKey, createCodingSessionsDaemon, withDaemonSupervisor } from '../src/coding-sessions-daemon.js'
 import { executeExecutorCommand, heartbeatExecutor } from '../src/daemon.js'
 import { createLocalMcpReporter } from '../src/local-mcp-report.js'
 import type { ExecutorLocalMcpServer } from '../src/mcp-servers.js'
@@ -118,6 +118,14 @@ test('owner and command id reach the built-in bridge as reserved _meta, and no o
   } finally {
     await mcpSessions.stopAll()
   }
+})
+
+test('the bridge alone is started with the daemon\'s supervisor marker, which the SDK would drop', () => {
+  const [bridge, other] = withDaemonSupervisor([bridgeSpec(), otherSpec], { NESSIE_EXECUTOR_SUPERVISOR: 'service' })
+  assert.equal(bridge!.env?.NESSIE_EXECUTOR_SUPERVISOR, 'service')
+  assert.equal(bridge!.env?.[CODING_SESSIONS_CONFIG_DIGEST_ENV], digest)
+  assert.deepEqual(other, otherSpec)
+  assert.deepEqual(withDaemonSupervisor([bridgeSpec()], {}), [bridgeSpec()])
 })
 
 test('a coding-sessions entry that is not the executor\'s own bridge gets no _meta', async () => {
