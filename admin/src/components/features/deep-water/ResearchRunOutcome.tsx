@@ -11,7 +11,7 @@ import {
   sourcesLabel,
 } from './research-presentation'
 import { ResearchArtifactActions } from './ResearchArtifactActions'
-import { startAgainPlace, type StartAgain } from './research-brief-origin'
+import { startAgainPlace, type ResearchShownIn, type StartAgain } from './research-brief-origin'
 import { useIntentActionId } from './useIntentActionId'
 
 /**
@@ -22,6 +22,11 @@ import { useIntentActionId } from './useIntentActionId'
  * one remedy, and offers the artifacts once the result is delivered.
  */
 
+const RESULT_COMES_BACK: Record<ResearchShownIn, string> = {
+  elsewhere: 'DeepWater is researching. The result will come back to the conversation it was asked in.',
+  its_conversation: 'DeepWater is researching. The result will come back to this conversation.',
+}
+
 const documentHref = (report: NonNullable<DeepWaterResearchRunView['report']>): string =>
   `/knowledge-base?spaceId=${encodeURIComponent(report.spaceId)}&pageId=${encodeURIComponent(report.pageId)}`
 
@@ -30,6 +35,7 @@ export const ResearchRunOutcome = ({
   meUserId,
   onStartAgain,
   run,
+  shownIn,
 }: {
   /**
    * Beside a DeepWater notice or result reply, whose own words already say
@@ -44,6 +50,7 @@ export const ResearchRunOutcome = ({
    */
   onStartAgain: StartAgain | null
   run: DeepWaterResearchRunView
+  shownIn: ResearchShownIn
 }) => {
   const retry = useRetryResearchDelivery()
   const actionId = useIntentActionId()
@@ -71,7 +78,7 @@ export const ResearchRunOutcome = ({
       break
     case 'running':
       if (run.delivery.state !== 'blocked') {
-        lines.push('DeepWater is researching. The result will come back to this conversation.')
+        lines.push(RESULT_COMES_BACK[shownIn])
       }
       break
     case 'completed': {

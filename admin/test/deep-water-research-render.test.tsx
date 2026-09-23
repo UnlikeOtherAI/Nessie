@@ -104,6 +104,7 @@ test('the outcome of a summary says so, and links the summary in Documents', () 
     meUserId: REQUESTER,
     onStartAgain: null,
     run: completedRun({ reportKind: 'summary', truncated: true }),
+    shownIn: 'its_conversation',
   }))
   const lines = texts(doc, '[data-testid="research-run-outcome"] p')
   assert.ok(lines.includes('Finished with 42 sources.'))
@@ -119,10 +120,14 @@ test('a blocked delivery names its remedy, and only the requester gets Retry imp
     status: 'running',
     viewer: { canCancel: false, canEdit: false, canRetryDelivery, canStart: false },
   })
-  const own = render(createElement(ResearchRunOutcome, { meUserId: REQUESTER, onStartAgain: null, run: blocked(true) }))
+  const own = render(createElement(ResearchRunOutcome, {
+    meUserId: REQUESTER, onStartAgain: null, run: blocked(true), shownIn: 'its_conversation',
+  }))
   assert.match(own.body.textContent ?? '', /Retry import puts it back/)
   assert.ok(texts(own, 'button').includes('Retry import'))
-  const theirs = render(createElement(ResearchRunOutcome, { meUserId: null, onStartAgain: null, run: blocked(false) }))
+  const theirs = render(createElement(ResearchRunOutcome, {
+    meUserId: null, onStartAgain: null, run: blocked(false), shownIn: 'its_conversation',
+  }))
   assert.equal(texts(theirs, 'button').includes('Retry import'), false)
 })
 
@@ -135,9 +140,22 @@ test('a failed research of your own offers Start again with its question', () =>
     meUserId: REQUESTER,
     onStartAgain: () => undefined,
     run: failed,
+    shownIn: 'elsewhere',
   }))
   assert.ok(texts(doc, 'p').includes('DeepWater could not start this research.'))
   assert.ok(texts(doc, 'button').includes('Start again'))
+})
+
+test('a running research says where its result comes back, by where it is shown', () => {
+  const running = researchRun({ status: 'running' })
+  const line = (shownIn: 'its_conversation' | 'elsewhere') =>
+    texts(render(createElement(ResearchRunOutcome, { meUserId: REQUESTER, onStartAgain: null, run: running, shownIn })),
+      '[data-testid="research-run-outcome"] p')
+  assert.deepEqual(line('its_conversation'),
+    ['DeepWater is researching. The result will come back to this conversation.'])
+  // Knowledge › Research, the Threads inbox, a brief over another screen: no "this conversation" there.
+  assert.deepEqual(line('elsewhere'),
+    ['DeepWater is researching. The result will come back to the conversation it was asked in.'])
 })
 
 const startBar = (brief = researchBrief(), overrides: Record<string, unknown> = {}) =>

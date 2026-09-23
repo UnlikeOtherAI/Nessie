@@ -87,7 +87,7 @@ const ResearchList = () => {
                     )}
                   >
                     <div className="mt-2">
-                      <ResearchRunBody meUserId={me?.user.id ?? null} run={run} />
+                      <ResearchRunBody meUserId={me?.user.id ?? null} run={run} shownIn="elsewhere" />
                     </div>
                   </Row>
                 ))}

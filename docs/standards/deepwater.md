@@ -484,7 +484,11 @@ the screen it goes to that conversation, which opens the brief itself.
   doorway hands over travels in router state, never in the address. A doorway
   over another conversation than the screen's names that conversation
   (`NewBriefPlace`, `research-brief-origin.ts`), and "Start again" restarts a
-  research where it was asked, reply thread included.
+  research where it was asked, reply thread included. A research's "the
+  result will come back to this conversation" is said only over the
+  conversation it was asked in (its card, or its brief over that thread);
+  Knowledge › Research, the Threads inbox and a brief over another
+  conversation say "the conversation it was asked in" (`researchShownIn`).
 - **Edits are local until they ride on an action** (contract D4,
   amendments-fable F8). A setting is sent only when it differs from what
   DeepWater holds, because every key sent is a lock; pillars ride as a whole

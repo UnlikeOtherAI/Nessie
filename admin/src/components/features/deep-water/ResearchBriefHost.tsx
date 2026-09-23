@@ -119,6 +119,7 @@ export const ResearchBriefHost = ({
           onStartAgain={openNew}
           origin={briefOrigin}
           runId={runId}
+          screenOrigin={origin}
         />
       ) : null}
     </ResearchBriefHostContext.Provider>

@@ -18,6 +18,7 @@ import {
   researchConversationHref,
 } from '../src/facades/deep-water/navigation.js'
 import { readResearchRunRef } from '../src/components/features/deep-water/ResearchRunCard.js'
+import { researchShownIn } from '../src/components/features/deep-water/research-brief-origin.js'
 
 /**
  * The DeepWater facades: the realtime decision, the cache keys it
@@ -116,6 +117,17 @@ test('a conversation is addressed at its reply thread when the brief comes back 
     researchConversationHref({ channelId: 'c1', rootMessageId: 'r1', threadId: 't1' }),
     '/channels/c1/threads/t1/replies/r1',
   )
+})
+
+test('"this conversation" is said only over the conversation the research was asked in', () => {
+  const run = { origin: { agentId: null, cardMessageId: null, channelId: 'c1', kind: 'person' as const,
+    rootMessageId: 'r1', threadId: 't1' } }
+  assert.equal(researchShownIn({ channelId: 'c1', kind: 'thread', threadId: 't1' }, run), 'its_conversation')
+  assert.equal(researchShownIn({ channelId: 'c1', kind: 'thread', threadId: 't2' }, run), 'elsewhere')
+  assert.equal(researchShownIn({ channelId: 'c2', kind: 'thread', threadId: 't1' }, run), 'elsewhere')
+  // Knowledge › Research and the Threads inbox show no conversation of their own.
+  assert.equal(researchShownIn({ kind: 'personal' }, run), 'elsewhere')
+  assert.equal(researchShownIn(null, run), 'elsewhere')
 })
 
 test('a card renders only from a server-written, well-formed pointer', () => {

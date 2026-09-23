@@ -290,6 +290,9 @@ try {
   await list.getByText('Heat pumps in Victorian terraced houses', { exact: true }).waitFor()
   assert.equal(await list.locator('[data-research-run]').count(), 6)
   await list.getByText('Research summary (the full report could not be written).').waitFor()
+  // Knowledge › Research is no conversation: "this conversation" would name the wrong place.
+  await list.locator('[data-research-run="50000000-0000-4000-8000-000000000006"]')
+    .getByText('The result will come back to the conversation it was asked in.', { exact: false }).waitFor()
   await snap(knowledge, '18-knowledge-research.png')
   await knowledge.getByRole('button', { name: 'New research' }).first().click()
   const personal = knowledge.getByTestId('research-brief-new')

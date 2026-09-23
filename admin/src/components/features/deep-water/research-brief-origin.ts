@@ -20,6 +20,23 @@ export type NewBriefPlace = {
   rootMessageId?: string | null
 }
 
+/**
+ * Where a research is shown: in the conversation it was asked in (its card, or
+ * its brief over that conversation), or anywhere else — Knowledge › Research,
+ * the Threads inbox, a brief over another conversation — where "this
+ * conversation" would name the wrong place.
+ */
+export type ResearchShownIn = 'its_conversation' | 'elsewhere'
+
+/** Is a research shown over the conversation it was asked in? Reply threads are part of it. */
+export const researchShownIn = (
+  screen: DeepWaterBriefOriginRequest | null,
+  run: Pick<DeepWaterResearchRunView, 'origin'>,
+): ResearchShownIn =>
+  screen?.kind === 'thread' && screen.channelId === run.origin.channelId && screen.threadId === run.origin.threadId
+    ? 'its_conversation'
+    : 'elsewhere'
+
 /** Open a new brief with this question, coming back to this place. */
 export type OpenNewBrief = (topic?: string, place?: NewBriefPlace) => void
 

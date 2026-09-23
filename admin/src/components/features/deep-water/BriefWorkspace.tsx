@@ -28,7 +28,7 @@ import { BriefPillarsEditor } from './BriefPillarsEditor'
 import { BriefSettingsEditor, type SettingChange } from './BriefSettingsEditor'
 import { answerShowsInFlight } from './brief-sent-action'
 import { BriefStartBar } from './BriefStartBar'
-import type { StartAgain } from './research-brief-origin'
+import type { ResearchShownIn, StartAgain } from './research-brief-origin'
 import { isResearchFinished } from './research-presentation'
 import { ResearchRunOutcome } from './ResearchRunOutcome'
 import { useBriefDraft } from './useBriefDraft'
@@ -47,10 +47,12 @@ export const BriefWorkspace = ({
   brief,
   meUserId,
   onStartAgain,
+  shownIn,
 }: {
   brief: DeepWaterBriefView
   meUserId: string
   onStartAgain: StartAgain
+  shownIn: ResearchShownIn
 }) => {
   const queryClient = useQueryClient()
   const scope = useDeepWaterViewerScope()
@@ -197,7 +199,7 @@ export const BriefWorkspace = ({
         </p>
       ) : null}
       {!drafting ? (
-        <ResearchRunOutcome meUserId={meUserId} onStartAgain={onStartAgain} run={brief} />
+        <ResearchRunOutcome meUserId={meUserId} onStartAgain={onStartAgain} run={brief} shownIn={shownIn} />
       ) : null}
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">

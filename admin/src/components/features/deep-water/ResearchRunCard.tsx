@@ -76,7 +76,8 @@ const ResolvedResearchRunCard = ({ runId }: { runId: string }) => {
           <Pill size="sm" tone={STATUS_TONE[run.status]} uppercase={false}>{STATUS_LABEL[run.status]}</Pill>
         </div>
         <p className="text-sm font-semibold text-[color:var(--tx)]">{researchName(run)}</p>
-        <ResearchRunBody meUserId={meUserId} run={run} />
+        {/* A research card is posted in the conversation its research was asked in. */}
+        <ResearchRunBody meUserId={meUserId} run={run} shownIn="its_conversation" />
       </div>
     </ChatCardShell>
   )
@@ -106,7 +107,13 @@ const ResolvedNoticeActions = ({ runId }: { runId: string }) => {
   if (!run) return null
   return (
     <div className="mt-2" data-testid="research-notice-actions">
-      <ResearchRunOutcome actionsOnly meUserId={me?.user.id ?? null} onStartAgain={doorway.openNew} run={run} />
+      <ResearchRunOutcome
+        actionsOnly
+        meUserId={me?.user.id ?? null}
+        onStartAgain={doorway.openNew}
+        run={run}
+        shownIn="its_conversation"
+      />
     </div>
   )
 }

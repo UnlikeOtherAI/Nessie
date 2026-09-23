@@ -9,7 +9,7 @@ import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'
 import { Dialog } from '../../shared/Dialog'
 import { BriefWorkspace } from './BriefWorkspace'
-import type { StartAgain } from './research-brief-origin'
+import { researchShownIn, type StartAgain } from './research-brief-origin'
 import { STATUS_LABEL, STATUS_TONE, researchName } from './research-presentation'
 import { ResearchBriefNewForm } from './ResearchBriefNewForm'
 import { ResearchReadinessScreen } from './ResearchReadinessScreen'
@@ -30,18 +30,23 @@ export const ResearchBriefDialog = ({
   onStartAgain,
   origin,
   runId,
+  screenOrigin,
 }: {
   initialTopic: string
   onClose: () => void
   onCreated: (runId: string) => void
   onStartAgain: StartAgain
+  /** Where a new brief's result comes back. */
   origin: DeepWaterBriefOriginRequest | null
   runId: string | null
+  /** The conversation the screen under the dialog shows, if it shows one. */
+  screenOrigin: DeepWaterBriefOriginRequest | null
 }) => {
   const { me } = useAuthSession()
   const readiness = useDeepWaterReadiness()
   const briefQuery = useResearchBrief(runId)
   const brief = briefQuery.data && briefQuery.data.id === runId ? briefQuery.data : null
+  const shownIn = brief ? researchShownIn(screenOrigin, brief) : 'elsewhere'
 
   const title = runId ? (brief ? researchName(brief) : 'Research') : 'New research'
   const description = brief ? (
@@ -77,7 +82,7 @@ export const ResearchBriefDialog = ({
       return <ResearchBriefNewForm initialTopic={initialTopic} onCreated={onCreated} origin={origin} />
     }
     if (brief && me) {
-      return <BriefWorkspace brief={brief} meUserId={me.user.id} onStartAgain={onStartAgain} />
+      return <BriefWorkspace brief={brief} meUserId={me.user.id} onStartAgain={onStartAgain} shownIn={shownIn} />
     }
     if (briefQuery.isError) {
       return isResearchNotFound(briefQuery.error) ? (
