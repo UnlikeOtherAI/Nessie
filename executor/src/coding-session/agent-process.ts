@@ -35,8 +35,8 @@ export type AgentDriver = {
   send: (text: string, uuid: string) => Promise<void>
   /** Stops the running turn; `reason` becomes the interrupted status's reason. */
   interrupt: (reason?: string) => Promise<void>
-  /** Ends the agent and every process under it; the session is closed. */
-  close: () => Promise<void>
+  /** Ends the agent and every process under it; the session is closed, `reason` its closed status's reason. */
+  close: (reason?: string) => Promise<void>
   /** Ends the agent process only; the session stays resumable. */
   endIdle: () => Promise<void>
   running: () => boolean

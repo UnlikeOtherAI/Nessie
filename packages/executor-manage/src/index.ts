@@ -170,6 +170,7 @@ export {
   issueExecutorAccessChangeConfirmationToken,
   issueExecutorWorkspacePromotionConfirmationToken,
   settledExecutorReviewOutcome,
+  type ClosedExecutorReviewCard,
   type ExecutorReviewOutcome,
 } from './executor-review-cards.js'
 export {

@@ -79,6 +79,55 @@ test('Windows: machine then user, Path joined, the logon\'s USERNAME kept, names
   assert.equal(env.ONEDRIVE, 'C:\\Users\\Ondřej\\OneDrive', 'read as UTF-8, not the console code page')
 })
 
+const captureRegistry = (registry: Record<'machine' | 'user', string[][]>) => captureUserSessionEnvironment('win32', {
+  SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\ondre', USERNAME: 'ondre', PATH: 'C:\\minimal', SystemDrive: 'C:',
+}, runner({ 'powershell.exe -NoProfile': { stdout: JSON.stringify(registry) } }))
+
+test('Windows: only string values become variables, as a logon takes them', async () => {
+  const env = await captureRegistry({
+    machine: [['Path', 'ExpandString', '%SystemRoot%\\system32'], ['INSTALLER_FLAG', 'DWord', '1'], ['INSTALLER_SIZE', 'QWord', '4294967296']],
+    user: [['INCLUDE_DIRS', 'MultiString', 'C:\\a C:\\b'], ['BLOB', 'Binary', '1 2 3'], ['NOTHING', 'None', ''], ['PLAIN', 'String', 'yes']],
+  })
+  assert.equal(env.PLAIN, 'yes')
+  assert.equal(env.PATH, 'C:\\Windows\\system32')
+  for (const name of ['INSTALLER_FLAG', 'INSTALLER_SIZE', 'INCLUDE_DIRS', 'BLOB', 'NOTHING']) assert.equal(env[name], undefined, name)
+})
+
+test('Windows: an expandable value reads the same whatever order its key lists its values in', async () => {
+  const machine = [
+    ['DEVKIT_BIN', 'ExpandString', '%DEVKIT%\\bin'],
+    ['Path', 'ExpandString', '%SystemRoot%\\system32;%DEVKIT_BIN%'],
+    ['DEVKIT', 'String', 'C:\\devkit'],
+  ]
+  // A user Path from profile creation lists before the variables installers added to it later.
+  const user = [
+    ['Path', 'ExpandString', '%PYENV_HOME%\\bin;%GOPATH%\\bin'],
+    ['CACHE', 'ExpandString', '%GOPATH%\\cache'],
+    ['GOPATH', 'ExpandString', '%USERPROFILE%\\go'],
+    ['PYENV_HOME', 'String', 'C:\\Users\\ondre\\.pyenv'],
+    ['TOOLS', 'ExpandString', '%DEVKIT_BIN%\\tools'],
+  ]
+  const listed = await captureRegistry({ machine, user })
+  assert.equal(listed.DEVKIT_BIN, 'C:\\devkit\\bin', 'a plain value is set before any expandable one of its key')
+  assert.equal(listed.TOOLS, 'C:\\devkit\\bin\\tools', 'the machine key is merged before the user key expands')
+  assert.equal(listed.PATH, 'C:\\Windows\\system32;C:\\devkit\\bin;C:\\Users\\ondre\\.pyenv\\bin;C:\\Users\\ondre\\go\\bin',
+    'each half of Path is expanded once its own key is merged')
+  assert.equal(listed.CACHE, 'C:\\Users\\ondre\\go\\cache', 'an expandable value reads another of its own key, listed after it')
+  assert.deepEqual(await captureRegistry({ machine: [...machine].reverse(), user: [...user].reverse() }), listed)
+})
+
+test('Windows: an expandable value naming itself reads what came before its key, and a cycle ends', async () => {
+  const env = await captureRegistry({
+    machine: [['PSModulePath', 'ExpandString', '%SystemRoot%\\modules']],
+    user: [
+      ['PSModulePath', 'ExpandString', '%PSModulePath%;%USERPROFILE%\\modules'],
+      ['PING', 'ExpandString', '%PONG%%PONG%'], ['PONG', 'ExpandString', '%PING%%PING%'],
+    ],
+  })
+  assert.equal(env.PSModulePath, 'C:\\Windows\\modules;C:\\Users\\ondre\\modules', 'once, not once per round')
+  assert.ok(env.PING!.length <= 32_767 && env.PONG!.length <= 32_767, 'no longer than Windows lets a variable be')
+})
+
 test('macOS: launchctl supplies the agent socket, the login shell the rest, past a noisy profile', async () => {
   const login = `Last login: today\nwelcome!\n__NESSIE_LOGIN_ENVIRONMENT__\0LANG=en_GB.UTF-8\0PATH=/opt/homebrew/bin:/usr/bin\0BAD NAME=x\0MULTI=a\nb\0`
   const env = await captureUserSessionEnvironment('darwin', { HOME: '/Users/ondre', SHELL: '/bin/zsh', PATH: '/usr/bin' }, runner({
@@ -154,6 +203,11 @@ test('the self-check names each failure, reads only the login flag, and treats g
   assert.deepEqual(await check({ 'gh auth': { missing: true }, 'claude auth': loggedIn }, {
     config: { ...claude, permissionMode: 'default' },
   }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode default'] })
+  // Choices this parser cannot read refuse nothing; the host logs the mode as not checked.
+  const unquoted = helpText('claude-2.1.280.txt').replace(/\(choices: "acceptEdits",[\s\S]*?"plan"\)/u, '(choices: acceptEdits, plan)')
+  assert.deepEqual(await check({
+    'claude --help': { stdout: unquoted }, 'gh auth': { missing: true }, 'claude --version': { stdout: '2.1.280 (Claude Code)\n' }, 'claude auth': loggedIn,
+  }, { config: { ...claude, permissionMode: 'plan' } }), { ok: true, agentVersion: '2.1.280 (Claude Code)', unverified: ['--permission-mode plan'] })
   assert.deepEqual(await check({ 'gh auth': { code: 1 }, 'claude auth': loggedIn }), { ok: false, reason: 'gh_not_authenticated' })
   assert.deepEqual(await check({}, { platform: 'win32', received: { NESSIE_EXECUTOR_SUPERVISOR: 'service' } }), {
     ok: false, reason: 'unsupported_supervisor',

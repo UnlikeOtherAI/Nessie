@@ -17,12 +17,32 @@ import { buildRealtimeScopesForChannel } from './message-destination.js'
  *
  * `card_post` posts the card a model wrote; a tool that posts a card the
  * server wrote — the executor review card, the browser sign-in card — goes
- * through the same door, so a card can never exist without its message, its
- * notice or its alert, and the pointer is written only after the row exists,
- * so a client never reads a card id that resolves to nothing.
+ * through the same door, so a card can never exist without its message, and
+ * the pointer is written only after the row exists, so a client never reads a
+ * card id that resolves to nothing. What follows the commit is best-effort:
+ * the card is durable and answerable by then, so a step that fails is logged
+ * and the post still answers with the card, rather than a failure the model
+ * would answer by posting it again.
  *
  * Design: docs/plans/2026-09-01-agent-chat-cards.md
  */
+
+const afterCommit = async <T>(
+  step: string,
+  cardId: string,
+  action: () => Promise<T>,
+): Promise<T | undefined> => {
+  try {
+    return await action()
+  } catch (error) {
+    console.error(`[agent-card] ${step} failed after the card committed`, {
+      cardId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
+  }
+}
+
 export const postAgentCard = async (
   context: BuiltinToolRuntimeContext,
   runContext: RunContext,
@@ -90,20 +110,24 @@ export const postAgentCard = async (
     return { cardId: card.id, message }
   })
 
+  // Bookkeeping that fails still announces the card, without its place in the
+  // reply thread.
   const reply = runContext.replyRootMessageId
-    ? await applyRunReplyBookkeeping(context.prisma, runContext, created.message.createdAt)
+    ? await afterCommit('reply bookkeeping', created.cardId, () =>
+      applyRunReplyBookkeeping(context.prisma, runContext, created.message.createdAt))
     : undefined
-  await publishMessageCreated(context.realtimeTransport, runContext, {
-    content: created.message.content,
-    messageId: created.message.id,
-    role: 'assistant',
-    ...(created.message.basis.length > 0 ? { restricted: true } : {}),
-    ...(reply ? { reply } : {}),
-  })
+  await afterCommit('message publish', created.cardId, () =>
+    publishMessageCreated(context.realtimeTransport, runContext, {
+      content: created.message.content,
+      messageId: created.message.id,
+      role: 'assistant',
+      ...(created.message.basis.length > 0 ? { restricted: true } : {}),
+      ...(reply ? { reply } : {}),
+    }))
 
   // Named respondents are being asked for something, so they get the ordinary
   // mention bell and push. A thread-wide card alerts nobody: it is read like
-  // any other channel message.
+  // any other channel message. Best-effort on its own (`mention-alerts.ts`).
   await alertCardRespondents(context, {
     channelId: context.channel.id,
     messageCreatedAt: created.message.createdAt,

@@ -103,6 +103,25 @@ test('the permission mode is checked against the choices this CLI lists, not a l
   assert.deepEqual(check('review', { '': newer }), { ok: true }, 'a mode a newer CLI adds needs no executor release')
 })
 
+test('a list this parser cannot read leaves the mode unchecked, and no list at all refuses it', () => {
+  const check = (permissionMode: string, capabilities: AgentCapabilities) => (
+    checkAgentCapabilities({ agent: 'claude', config: agent({ permissionMode }), capabilities })
+  )
+  const listed = /\(choices: "acceptEdits",[\s\S]*?"plan"\)/u
+  // A later CLI that prints its choices unquoted: it still checks the value against them, so nothing is refused here.
+  const unquoted = parseHelpText(helpText('claude-2.1.280.txt').replace(listed, '(choices: acceptEdits, plan, default)'))
+  assert.deepEqual(unquoted.choices['--permission-mode'], [], 'a list, nothing of which could be read')
+  assert.deepEqual(check('plan', { '': unquoted }), { ok: true, unverified: ['--permission-mode plan'] })
+  // One that lists none: commander prints the list exactly when the CLI checks the value, so a mode it lacks
+  // would be ignored rather than refused — a restrictive `plan` running as something else.
+  const bare = parseHelpText(helpText('claude-2.1.280.txt').replace(listed, ''))
+  assert.ok(bare.flags.includes('--permission-mode'))
+  assert.equal(bare.choices['--permission-mode'], undefined)
+  assert.deepEqual(check('plan', { '': bare }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode plan'] })
+  // A list that was read still refuses a mode it lacks.
+  assert.deepEqual(check('review', { '': CLAUDE }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode review'] })
+})
+
 test('Codex needs exec, exec resume, and each flag where the subcommand that parses it lists it', () => {
   const codex = agent({ command: ['node', '/opt/codex.js'], args: ['--sandbox', 'workspace-write'], model: 'gpt-5' })
   assert.deepEqual(checkAgentCapabilities({ agent: 'codex', config: codex, capabilities: CODEX }), { ok: true })

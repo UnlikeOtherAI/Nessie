@@ -15,9 +15,10 @@
  * waiting. While the session works, its streak counts only the waits that saw
  * **no progress**, and the third such wait in a row earns a nudge rather than
  * a refusal. A wait that stopped because the model has to act is different:
- * waiting again returns the same answer at once, so the same wait repeated
- * with no acting call in between is refused, and so is every wait once the
- * person has written or the run's time runs low, for the rest of the run.
+ * waiting again returns the same answer at once, so another wait on that
+ * session with no acting call in between is refused, however its arguments
+ * are written, and so is every wait once the person has written or the run's
+ * time runs low, for the rest of the run.
  */
 
 /**
@@ -85,9 +86,9 @@ export const CODING_WAIT_END_TURN_NUDGE =
 // `#` never appears in a tool name, so no unprefixed key can look like these.
 const REPEAT_KEY_PREFIX = '#repeat:'
 const OBSERVE_KEY_PREFIX = '#observe:'
-// A wait that stopped because the model must act, by its exact call; ended by
-// any call that is not an observation, since only such a call can change what
-// the wait would see.
+// A wait that stopped because the model must act, by the session it waited on;
+// ended by any call that is not an observation, since only such a call can
+// change what the wait would see.
 const SETTLED_KEY_PREFIX = '#settled:'
 // A wait that stopped because the turn is over (the person wrote, or the run is
 // nearly out of time), by tool name: every later wait would stop for the same reason.
@@ -128,19 +129,67 @@ const WAIT_AFTER_TURN_ENDED: LoopVerdict = {
     + 'at once. End your turn now with one line of status.',
 }
 
-const streakKeyOf = (toolName: string, args: Record<string, unknown>): string =>
-  `${OBSERVE_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+
+// The session a wait names, read as execution reads it: the whole arguments
+// object may arrive as a JSON string (`coerceToolArgumentsToSchema`), and a key
+// the tool does not define is left behind. Parsed here rather than imported, so
+// this module stays free of the builtin tool catalog that parser loads.
+const sessionOf = (args: unknown): unknown => {
+  let value = args
+  if (typeof value === 'string' && value.trim().startsWith('{')) {
+    try {
+      value = JSON.parse(value.trim())
+    } catch {
+      return undefined
+    }
+  }
+  return isRecord(value) ? value.sessionId : undefined
+}
+
+// A wait's keys name the session, not the arguments' text: an extra key, a
+// reordering or a double-encoded object is still the same wait on the machine,
+// so neither a settled wait nor a stall streak starts over for one.
+const watchKeyOf = (prefix: string, toolName: string, args: unknown): string =>
+  `${prefix}${toolName}:${JSON.stringify(sessionOf(args) ?? null)}`
+
+const streakKeyOf = (toolName: string, args: Record<string, unknown>): string => (
+  WATCH_TOOL_NAMES.has(toolName)
+    ? watchKeyOf(OBSERVE_KEY_PREFIX, toolName, args)
+    : `${OBSERVE_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
+)
 const settledKeyOf = (toolName: string, args: Record<string, unknown>): string =>
-  `${SETTLED_KEY_PREFIX}${toolName}:${JSON.stringify(args)}`
+  watchKeyOf(SETTLED_KEY_PREFIX, toolName, args)
 const endedKeyOf = (toolName: string): string => `${ENDED_KEY_PREFIX}${toolName}`
 
 const RESTORED_KEY_PREFIXES = [REPEAT_KEY_PREFIX, OBSERVE_KEY_PREFIX, SETTLED_KEY_PREFIX, ENDED_KEY_PREFIX]
 
-/** The counts a resumed run may keep, without those written under the old rule. */
+// A wait's key checkpointed when it still named the whole arguments object,
+// `#settled:coding_session_wait:{"sessionId":"a"}`, under the session it names.
+const restoredKeyOf = (key: string): string => {
+  const prefix = [SETTLED_KEY_PREFIX, OBSERVE_KEY_PREFIX].find((candidate) => key.startsWith(candidate))
+  if (!prefix) return key
+  const rest = key.slice(prefix.length)
+  const toolName = rest.slice(0, rest.indexOf(':'))
+  if (!WATCH_TOOL_NAMES.has(toolName)) return key
+  try {
+    const written: unknown = JSON.parse(rest.slice(toolName.length + 1))
+    return isRecord(written) ? watchKeyOf(prefix, toolName, written) : key
+  } catch {
+    return key
+  }
+}
+
+/**
+ * The counts a resumed run may keep, without those written under the old
+ * rule. A wait's keys written by the whole arguments object are carried over
+ * by the session they name, so a wait settled before the resume stays settled.
+ */
 export const restoreLoopCounts = (saved: Record<string, number> | undefined): Map<string, number> =>
-  new Map(Object.entries(saved ?? {}).filter(([key]) => (
-    RESTORED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))
-  )))
+  new Map(Object.entries(saved ?? {})
+    .filter(([key]) => RESTORED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix)))
+    .map(([key, count]) => [restoredKeyOf(key), count]))
 
 /**
  * Count one call, in the order the model made it, and say whether it must be
@@ -183,12 +232,12 @@ export const countToolCall = (
 /**
  * A watch tool's own report, after it ran. The turn being over — the person
  * wrote, or the run's time runs low — settles every later wait in the run. A
- * wait that stopped because the model must act settles that same call until
- * an acting call. A watching wait that saw progress restarts its streak, and
- * the third in a row that saw none returns the nudge (and restarts it, so the
- * next nudge is three stalled waits away). A call whose streak another call
- * already ended — a later call in the same batch — counts for nothing, except
- * that the turn is still over.
+ * wait that stopped because the model must act settles every wait on that
+ * session until an acting call. A watching wait that saw progress restarts
+ * its streak, and the third in a row that saw none returns the nudge (and
+ * restarts it, so the next nudge is three stalled waits away). A call whose
+ * streak another call already ended — a later call in the same batch — counts
+ * for nothing, except that the turn is still over.
  */
 export const noteWatchProgress = (
   counts: Map<string, number>,

@@ -396,5 +396,5 @@ Known gaps, found in review of PR 3b and left for later:
   being carried out when the owner launches again can land after their new
   session starts. Giving `session_close_all` the request's time, so it closes
   only sessions started before it, would close the race
-  (`docs/executor-protocol/host-coding-sessions.md` → "Teardown reaches the
+  (`docs/executor-protocol/host-coding-sessions-containment.md` → "Teardown reaches the
   machine").

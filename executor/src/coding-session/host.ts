@@ -120,6 +120,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete (state as Record<string, unknown>)[key]
     }
+    // Confirmed, or answered: from here on the agent's own transcript holds the first message.
+    if (patch.agentSessionStarted === true || patch.lastResult !== undefined) delete state.firstPrompt
     state.updatedAt = new Date().toISOString()
     if (patch.status && patch.status !== before) {
       emit({ kind: 'system', subtype: 'status', status: patch.status, ...(state.reason ? { reason: state.reason } : {}) })
@@ -134,7 +136,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
   }
   // An agent session id the agent never confirmed may or may not exist: Claude
   // creates it on the first message, and refuses `--session-id` for an id it
-  // already has. So an unconfirmed id is dropped and the next agent starts afresh.
+  // already has. So an unconfirmed id is dropped and the next agent starts
+  // afresh — given the first message again (`deliver`), which the lost one took with it.
   if (state.agentSessionId !== undefined && state.agentSessionStarted !== true) update({ agentSessionId: undefined })
   if (state.agentIdentity) {
     log('stopping the previous host\'s agent')
@@ -175,6 +178,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       if (named) log(check.reason === 'agent_help_unreadable' ? `the agent's help did not answer: ${named}` : `the agent's --help does not offer ${named}`)
       throw new AgentStartError(check.reason)
     }
+    if (check.unverified) log(`the agent's --help lists no choices this host can read for ${check.unverified.join(', ')}; not checked`)
     if (check.agentVersion) update({ agentVersion: context.projector.line(check.agentVersion, 80) })
     if (state.baseCommit === undefined && state.worktreesAtStart === undefined) update(await gitStartSnapshot(folder))
     const driverContext = {
@@ -186,14 +190,25 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     return driver
   }
 
-  const deliver = async (text: string): Promise<void> => {
+  const deliver = async (text: string, kind: 'start' | 'send'): Promise<void> => {
     if (!context.mayRunAgent) {
       emit({ kind: 'system', subtype: 'refused', reason: 'config_changed' })
       if (!state.agentSessionStarted) update({ status: 'failed', reason: 'config_changed' })
       return
     }
+    // Until the agent confirms its session, every message it was given stays in the state. A send
+    // that finds no agent running any more carries them first: the agent that had them never
+    // confirmed its session, so they went with it. A start delivered again (its host died before it
+    // left the inbox) is that first message itself, never a second copy of it.
+    const unconfirmed = state.agentSessionStarted !== true
+    const held = kind === 'send' && unconfirmed ? state.firstPrompt : undefined
+    const lost = held !== undefined && !driver?.running()
+    if (lost) log('sending the earlier messages again: the agent that had them never confirmed its session')
+    const message = lost ? `${held}\n\n${text}` : text
+    // However many agents are lost before one confirms, the next gets all of it.
+    if (unconfirmed) update({ firstPrompt: held === undefined ? text : `${held}\n\n${text}` })
     try {
-      await (await prepare()).send(text, randomUUID())
+      await (await prepare()).send(message, randomUUID())
     } catch (error) {
       const reason = error instanceof AgentStartError ? error.reason : 'agent_exited'
       if (reason === 'host_superseded') throw new HostSuperseded()
@@ -207,8 +222,9 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     if (request.kind === 'retire') {
       retiring = true
     } else if (request.kind === 'close') {
-      if (driver) await driver.close()
-      else update({ status: 'closed', reason: undefined, turnStartedAt: undefined })
+      // The daemon's close carries its categorical reason; an owner's carries none.
+      if (driver) await driver.close(request.reason)
+      else update({ status: 'closed', reason: request.reason, turnStartedAt: undefined })
     } else if (request.kind === 'interrupt') {
       await driver?.interrupt()
       if (driver?.busy()) pendingInterrupt ??= { at: Date.now(), turn: state.turn }
@@ -217,7 +233,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     } else if (request.kind === 'start' && state.turn > 0) {
       // A start this session already acted on (a replay the bridge let through); nothing to do.
     } else {
-      await deliver(request.text ?? '')
+      await deliver(request.text ?? '', request.kind)
     }
   }
 
@@ -318,7 +334,7 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
   if (!mayRunAgent) log('the configuration no longer matches its reviewed digest; agents will not start')
   const entry = resolveExecutorEntry()
   const context: HostContext = {
-    control: createHostProcessControl(entry),
+    control: createHostProcessControl(entry, { log }),
     loaded, meta, paths, log, mayRunAgent, roots,
     projector: createProjector(roots.rewriter),
   }

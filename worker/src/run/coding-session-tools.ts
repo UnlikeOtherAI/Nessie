@@ -154,10 +154,10 @@ const text = (value: unknown): string | undefined =>
 
 /**
  * The bridge tool's own arguments, from the model's: `task` is the bridge's
- * `prompt`, a start without `agent` gets the default agent, a blank `path` or
- * `title` is left out (the root itself, and a title from the task) rather
- * than refused, and a key the tool does not define is left behind rather than
- * sent to be refused.
+ * `prompt`, a start without `agent` (or with a blank one) gets the default
+ * agent, a blank `path` or `title` is left out (the root itself, and a title
+ * from the task) rather than refused, and a key the tool does not define is
+ * left behind rather than sent to be refused.
  */
 export const codingBridgeArguments = (
   toolName: CodingSessionToolName,
@@ -171,7 +171,7 @@ export const codingBridgeArguments = (
       const path = text(args.path)
       const title = text(args.title)
       return {
-        agent: args.agent ?? defaultCodingAgent(facts),
+        agent: text(args.agent) ?? defaultCodingAgent(facts),
         prompt: args.task,
         root: args.root,
         ...(path === undefined ? {} : { path }),

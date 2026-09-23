@@ -14,9 +14,12 @@ import { resolveProgramPath } from './program-path.js'
  * locale, proxy and CA settings — so with `inheritUserSession` the host
  * rebuilds a login-like environment the way each OS builds one:
  *
- * - Windows: the machine then user `Environment` registry keys (user wins,
- *   `Path` is machine;user), plus `PATHEXT`, `ComSpec`, `windir`, `ProgramData`
- *   and `TMP` where those are still missing.
+ * - Windows: the string values of the machine then user `Environment`
+ *   registry keys (user wins, `Path` is machine;user), each key's plain values
+ *   set before its expandable ones are expanded, those against each other
+ *   until nothing changes, so the order a key lists them in makes no
+ *   difference, plus `PATHEXT`, `ComSpec`,
+ *   `windir`, `ProgramData` and `TMP` where those are still missing.
  * - macOS: `launchctl getenv` for `SSH_AUTH_SOCK` and `TMPDIR`, then the login
  *   shell's `env -0`.
  * - Linux: `systemctl --user show-environment` (with `XDG_RUNTIME_DIR` and the
@@ -181,6 +184,9 @@ const expandWindows = (value: string, lookup: (name: string) => string | undefin
   value.replace(/%([^%]+)%/gu, (match, name: string) => lookup(name) ?? match)
 )
 
+/** The most characters Windows lets one environment variable hold. */
+const MAX_WINDOWS_VALUE = 32_767
+
 const captureWindows = async (received: NodeJS.ProcessEnv, run: CommandRunner): Promise<Record<string, string>> => {
   const env = environmentMap('win32', received)
   const systemRoot = env.get('SystemRoot') ?? 'C:\\Windows'
@@ -189,13 +195,28 @@ const captureWindows = async (received: NodeJS.ProcessEnv, run: CommandRunner): 
     '-NoProfile', '-NonInteractive', '-Command', REGISTRY_SCRIPT,
   ])).stdout)
   const valueOf = (entry: RegistryValue): string => (entry.type === 'REG_EXPAND_SZ' ? expandWindows(entry.value, env.get) : entry.value)
+  const isPath = (entry: RegistryValue): boolean => entry.name.toUpperCase() === 'PATH'
   const paths: string[] = []
   for (const [scope, entries] of [['machine', machine], ['user', user]] as const) {
-    for (const entry of entries) {
-      if (entry.name.toUpperCase() === 'PATH') paths.push(valueOf(entry))
-      // The machine key's USERNAME is SYSTEM; the logon's own value is the right one.
-      else if (!(scope === 'machine' && entry.name.toUpperCase() === 'USERNAME')) env.set(entry.name, valueOf(entry))
+    // String values only, as a logon takes them. The machine key's USERNAME is SYSTEM; the logon's is the right one.
+    const kept = entries.filter((entry) => (entry.type === 'REG_SZ' || entry.type === 'REG_EXPAND_SZ')
+      && !(scope === 'machine' && entry.name.toUpperCase() === 'USERNAME'))
+    for (const entry of kept) if (entry.type === 'REG_SZ' && !isPath(entry)) env.set(entry.name, entry.value)
+    // The expandable ones after the plain ones, all of them in rounds against what the last round set, until a
+    // round changes nothing: `GOBIN=%GOPATH%\bin` resolves wherever the key lists the two, since the order a key
+    // lists its values in is when each was written, not what each needs. A value naming itself reads what came
+    // before this key. A cycle ends within one round per value, none longer than Windows lets a variable be.
+    const expandable = kept.filter((entry) => entry.type === 'REG_EXPAND_SZ' && !isPath(entry))
+    const before = new Map(expandable.map((entry) => [entry.name.toUpperCase(), env.get(entry.name)]))
+    for (let round = 0; round <= expandable.length; round += 1) {
+      const next = expandable.map((entry) => [entry.name, expandWindows(entry.value, (name) => (
+        name.toUpperCase() === entry.name.toUpperCase() ? before.get(name.toUpperCase()) : env.get(name)
+      )).slice(0, MAX_WINDOWS_VALUE)] as const)
+      if (next.every(([name, value]) => env.get(name) === value)) break
+      for (const [name, value] of next) env.set(name, value)
     }
+    const path = kept.find(isPath)
+    if (path) paths.push(valueOf(path))
   }
   if (paths.some(Boolean)) env.set('Path', paths.filter(Boolean).join(';'))
   if (!env.get('PATHEXT')) env.set('PATHEXT', '.COM;.EXE;.BAT;.CMD')

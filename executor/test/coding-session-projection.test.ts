@@ -193,6 +193,64 @@ test('a name any machine may carry is no one\'s, and a whole relative path segme
   assert.equal(person.rewritePaths('ondre on minis at /home/ondre/x'), `ondre on minis at ${HOST_PATH_PLACEHOLDER}`, 'the path rules alone')
 })
 
+test('a segment of an absolute path the path rules leave alone is still a name, and so is one in a branch', () => {
+  const person = createPathRewriter([{ name: 'app', paths: ['/home/ondre/src/app'] }, { name: undefined, paths: ['/home/ondre'] }], 'linux', {
+    users: ['ondre'], hosts: ['minis'],
+  })
+  // No host directory the path rules name (`/data`, `/scratch`, `/home2`): the names are all there is to rewrite.
+  assert.equal(person.rewrite('cp /data/ondre/in.csv . && ls /scratch/minis/ondre/ /home2/ondre/x'),
+    'cp /data/<user>/in.csv . && ls /scratch/<host>/<user>/ /home2/<user>/x')
+  // However the absolute path is written, and whatever stands before it.
+  for (const [text, expected] of [
+    ['//fileserver/share/ondre/notes.txt', '//fileserver/share/<user>/notes.txt'],
+    ['\\\\fileserver\\share\\ondre\\notes.txt', HOST_PATH_PLACEHOLDER],
+    ['file:///data/ondre/x', 'file:///data/<user>/x'],
+    ['~other/ondre/x', '~other/<user>/x'],
+    ['D:data\\ondre\\x', 'D:data\\<user>\\x'],
+    ['C:\\Users\\ondre\\x', HOST_PATH_PLACEHOLDER],
+    ['(/data/ondre/x), --out=/data/ondre/x, cwd:/data/ondre/x', '(/data/<user>/x), --out=/data/<user>/x, cwd:/data/<user>/x'],
+    ['"/data/ondre/x"', '"/data/<user>/x"'],
+    // A redirection, `@file`, emphasis or a one-letter option in front of the path is not part of it.
+    ['echo x >/data/ondre/out.log', 'echo x >/data/<user>/out.log'],
+    ['cmd 2>/data/ondre/err &>/data/ondre/all', 'cmd 2>/data/<user>/err &>/data/<user>/all'],
+    ['sort </data/ondre/in', 'sort </data/<user>/in'],
+    ['curl -d @/data/ondre/body', 'curl -d @/data/<user>/body'],
+    ['**/data/ondre/x**', '**/data/<user>/x**'],
+    ['gcc -o/data/ondre/bin -I/data/ondre/include x.c', 'gcc -o/data/<user>/bin -I/data/<user>/include x.c'],
+    // A route with no host cannot be told from an absolute path.
+    ['/api/ondre/runs', '/api/<user>/runs'],
+  ]) {
+    assert.equal(person.rewrite(text!), expected, text)
+  }
+  // A relative path, a URL and a root's own tail still keep a folder spelled like the user.
+  assert.equal(person.rewrite('see (src/ondre/x.ts), https://github.com/ondre/app and /home/ondre/src/app/ondre/y.ts'),
+    'see (src/ondre/x.ts), https://github.com/ondre/app and <app>/ondre/y.ts')
+  // So do a glob, a scoped package, a numbered folder and a path that goes on from what the shell expands.
+  for (const text of ['src/**/ondre/x.ts', 'node_modules/@types/ondre/index.d.ts', '2024/ondre/notes.md', '$(pwd)/ondre/x', '${ROOT}/ondre/x']) {
+    assert.equal(person.rewrite(text), text, text)
+  }
+  // Known limits: a directory with a space in its name reads as prose from the space on, and a glob that
+  // starts at `*` cannot be told from emphasis around an absolute path.
+  assert.equal(person.rewrite('/data/My Files/ondre/in.csv'), '/data/My Files/ondre/in.csv')
+  assert.equal(person.rewrite('**/ondre/*.ts'), '**/<user>/*.ts')
+  // A branch is a name, never a path the model resolves: every segment of it is rewritten.
+  assert.equal(person.rewriteBranch('feature/ondre/fix'), 'feature/<user>/fix')
+  assert.equal(person.rewriteBranch('minis/ondre'), '<host>/<user>')
+  assert.equal(person.rewrite('feature/ondre/fix'), 'feature/ondre/fix', 'as prose it could be a folder')
+})
+
+test('a long token full of names is read once, not once per name', () => {
+  const person = createPathRewriter([{ name: undefined, paths: ['/home/ondre'] }], 'linux', { users: ['ondre'], hosts: ['minis'] })
+  // An agent's tool output, or a file it prints: every name a folder of the one relative path.
+  const text = `src/${'ondre/'.repeat(50_000)}x.ts`
+  const began = performance.now()
+  const rewritten = person.rewrite(text)
+  const elapsed = performance.now() - began
+  assert.equal(rewritten, text)
+  // Scanning back to the token's start for each name took minutes for this, the host's heartbeat blocked meanwhile.
+  assert.ok(elapsed < 1_000, `${Math.round(elapsed)} ms for ${text.length} characters`)
+})
+
 test('the last pass keeps identifiers whole, so a session named after its user still passes the report schema', () => {
   const session = {
     sessionId: '0f0e0d0c-0b0a-4908-8706-050403020100', ownerKey: `sha256:${'a'.repeat(64)}`, title: 'fix the build on minis for ondre',

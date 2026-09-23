@@ -17,6 +17,7 @@ import {
   PreparedExecutorWorkspacePromotionSchema,
 } from '../contracts/executors.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { announceClosedExecutorReviewCards } from '../services/agent-card-executor-review.js'
 import { emitAuditEvent } from '../services/audit.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
@@ -125,7 +126,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
           'The executor is no longer available to promote this reviewed draft.',
         )
       }
-      const confirmed = await confirmExecutorWorkspacePromotion(prisma, actorContext, {
+      const { closedReviewCards, ...confirmed } = await confirmExecutorWorkspacePromotion(prisma, actorContext, {
         candidateHandle: candidate.handle,
         confirmationToken: body.confirmationToken,
         encryptionSecret: encryptionKeyRing,
@@ -144,6 +145,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
         resourceId: confirmed.promotionId,
         resourceType: 'executor_workspace_promotion',
       })
+      await announceClosedExecutorReviewCards(deps, closedReviewCards)
       return createApiResponse(confirmed)
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
@@ -170,6 +172,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
         resourceId: rejected.promotionId,
         resourceType: 'executor_workspace_promotion',
       })
+      await announceClosedExecutorReviewCards(deps, rejected.closedReviewCards)
       return createApiResponse({ rejected: true })
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply

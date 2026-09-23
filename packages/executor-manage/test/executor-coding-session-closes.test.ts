@@ -26,7 +26,7 @@ import {
 
 /**
  * Close requests for coding sessions against real rows
- * (docs/executor-protocol/host-coding-sessions.md → "Teardown reaches the
+ * (docs/executor-protocol/host-coding-sessions-containment.md → "Teardown reaches the
  * machine"): written in the transaction of every lease end, access withdrawal
  * and machine fence, for the owner keys the daemon itself derives; carried on
  * every heartbeat, oldest first, until a report taken after the request shows
@@ -105,6 +105,48 @@ dbTest('the owner’s other live lease keeps the sessions; its last lease’s en
     assert.equal(row?.requestedByUserId, null, 'nobody asked: the lease ran out')
     assert.equal((await world.prisma.executorConversationLease.findUniqueOrThrow({ where: { id: second.lease.id } })).endedReason, 'expired')
   })
+})
+
+dbTest('a fence that also finds an expired lease of the owner closes their sessions for the fence', async () => {
+  const fences = [
+    {
+      reason: 'executor_paused',
+      run: (world: LeaseWorld) => transitionExecutorLifecycle(world.prisma, world.adminContext, {
+        executorId: world.executorId, action: 'pause',
+      }),
+    },
+    {
+      reason: 'access_revoked',
+      run: (world: LeaseWorld) => confirm(world, { kind: 'agent_executor_grant', agentId: world.agentId, state: 'denied' }),
+    },
+  ] as const
+  for (const fence of fences) {
+    // The fence reads the owner's leases in no promised order, so each of the
+    // two takes a turn as the one already past its idle window; the other is
+    // used after that, as a dispatch would, and is still live.
+    for (const expiredIndex of [0, 1]) {
+      await withWorld(OWNED, async (world) => {
+        const leases = [await launchLocalApps(world), await launchLocalApps(world)].map((launch) => launch.lease.id)
+        const expired = leases[expiredIndex]!
+        const live = leases[1 - expiredIndex]!
+        await world.prisma.executorConversationLease.update({
+          where: { id: expired }, data: { idleExpiresAt: new Date(Date.now() - 1_000) },
+        })
+        await world.prisma.executorConversationLease.update({ where: { id: live }, data: { lastUsedAt: new Date() } })
+        await fence.run(world)
+        const ended = await world.prisma.executorConversationLease.findMany({
+          where: { id: { in: leases } }, select: { endedReason: true, id: true },
+        })
+        assert.deepEqual(
+          Object.fromEntries(ended.map((lease) => [lease.id, lease.endedReason])),
+          { [expired]: 'expired', [live]: fence.reason },
+        )
+        assert.deepEqual((await openRows(world)).map((row) => [row.ownerKey, row.reason, row.requestedByUserId]), [
+          [holderKey(world), fence.reason, world.adminId],
+        ], `the ${fence.reason} speaks for the owner, not the expiry it found on the way`)
+      })
+    }
+  }
 })
 
 dbTest('a relaunch in the same conversation withdraws the close its replaced lease asked for', async () => {

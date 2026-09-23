@@ -225,28 +225,46 @@ this standard, not an exception to it.
     or cancelled), the card sweep expires it with the change, and a press that
     finds the change already over closes the card to match and answers
     `409 EXECUTOR_ACCESS_CHANGE_STALE`, so a stale card never keeps a live
-    button. A press by anyone else while the change is pending refuses with the
+    button. `closeExecutorReviewCards` returns the cards it closed; once that
+    commits, the confirm and reject routes of both kinds of change, and the
+    press, publish `card.updated` with each card's new status to its room
+    (`announceClosedExecutorReviewCards`, logged and never thrown). Nothing
+    published it before, so the preparer's other devices kept a live Review
+    button, and the rest of the room an open card, until they reloaded. The
+    sweep's expiry still publishes nothing, for any card. A press finds a
+    change over when the card and its change, which expire at the same
+    instant, lapse between the press's two reads of the clock, or when a
+    confirm elsewhere commits while the press waits on the change's row. A
+    press by anyone else while the change is pending refuses with the
     same code and leaves the card and the token alone. Closing the dialog
     re-reads the card. Confirming itself is untouched — same actor, the token,
     fresh verification where the change needs it. Pinned by
     `api/test/agent-card-executor-review.test.ts`,
+    `api/test/executor-workspace-promotion-confirm.test.ts` (a promotion
+    confirmed through its route, with fresh verification),
     `worker/test/db/executor-review-card.test.ts` and the executor-agents
     fixture suite, which closes the review and presses again.
 - **Every card goes through one door.** `postAgentCard`
   (`worker/src/run/pa-tools/agent-card-post.ts`) is the only place the worker
   writes an `AgentCard` row: `card_post`, the executor review card and
   `browser_login_request`'s sign-in card all post through it, so none can
-  exist without its message, its pointer, its realtime notice or its
-  respondents' bell. The sign-in tool used to carry its own copy of all five,
-  which is where two copies drift. Its personal browser grant is written
-  inside the card's own transaction by the door's `browserLogin` step, so
-  neither exists without the other, and the grant's deadline — which the
-  deployment's browser TTL may shorten — is the card's. `card_post` never
-  passes that step, so no model-written card can grant browser access. Pinned
-  by `worker/test/browser-login-request.test.ts` (no second writer) and
+  exist without its message and its pointer, and each gets the same reply
+  bookkeeping, realtime notice and respondents' bell. The sign-in tool used to
+  carry its own copy of all five, which is where two copies drift. Those three
+  follow the commit and are best-effort, as a press's announcements are: the
+  card is durable and answerable by then, so a step that fails is logged and
+  the post still answers with the card. Throwing there failed the tool call
+  beside a live card, which the model could only take for a post to try
+  again. The sign-in card's personal browser grant is written inside the
+  card's own transaction by the door's `browserLogin` step, so neither exists
+  without the other, and the grant's deadline — which the deployment's
+  browser TTL may shorten — is the card's. `card_post` never passes that step,
+  so no model-written card can grant browser access. Pinned by
+  `worker/test/browser-login-request.test.ts` (no second writer) and
   `worker/test/db/browser-login-card.test.ts` (the card, its grant, the
-  requester's bell, the tool result that parks the run on the card, and a
-  failed grant taking the card with it).
+  requester's bell, the tool result that parks the run on the card, a failed
+  grant taking the card with it, and a failed notice or reply bookkeeping
+  after the commit leaving the card and its answer standing).
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the
