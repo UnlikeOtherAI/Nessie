@@ -38,6 +38,12 @@ summary and points here; **this file is the rule**.
   tokens onto the chrome elements. `:where()` keeps that rule at focus mode's
   specificity, and focus mode is declared after it, so focus mode still wins.
   Overlays render outside the shell and take the surface palette.
+  Focus mode changes those registered colour tokens over one 300ms transition.
+  A pinned menu inherits that in-flight palette from its sidebar wrapper; a
+  sidebar rendered as a phone root or in a portalled drawer is itself the one
+  transition owner. `SidebarTreePanel` inherits the animated `--sb` from that
+  owner — it must not add a second background transition, which doubles and
+  lengthens the curve while text, icons and separators finish on time.
 - **One theme is data, not CSS: the organisation's own.** An organisation
   administrator authors a palette on `/settings/organization?tab=appearance`; it
   appears as one more card on the per-user Colours panel, labelled with the
