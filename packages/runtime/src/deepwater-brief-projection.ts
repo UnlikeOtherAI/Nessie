@@ -1,0 +1,375 @@
+import { Prisma } from '@prisma/client'
+import {
+  DEEP_WATER_START_UNCONFIRMED,
+  DeepWaterScopeStateSchema,
+  type DeepWaterScopeState,
+  type DeepWaterTurnAuthor,
+  type DeepWaterTurnRegister,
+  type LedgerResearchStatus,
+  type LedgerResearchStatusDto,
+  type LedgerResearchTicket,
+  type LedgerScopeResult,
+  type ProductIntegrationRunStatus,
+} from '@nessie/schemas'
+
+import {
+  applyScopeResultToState,
+  deepWaterWatchDelayMs,
+  isPendingActionInFlight,
+  productRunStatusForLedger,
+} from './deepwater-brief-registers.js'
+import {
+  deepWaterBriefJson,
+  lockDeepWaterBriefRun,
+  type DeepWaterBriefDb,
+  type DeepWaterBriefRun,
+} from './deepwater-brief-run-record.js'
+import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
+
+/**
+ * Applying what Ledger says about a brief to its product run, under the row
+ * lock (Water plan amendments N1, N2, F1, F8).
+ *
+ * Every Ledger read reaches the run through one of three entries — a scope
+ * result (a scope tool's ack or a watch read), a status read, or a launch
+ * ticket — and all three share the same rules:
+ *
+ * - the Ledger research id attaches once (`attachScopeStart`), from whichever
+ *   read arrives first, and never moves a row out of `running` or a terminal
+ *   state;
+ * - the brief projection only advances (the two registers);
+ * - non-terminal Ledger statuses are authoritative; `cancelled` is written
+ *   directly; a finished research (`complete`, `failed`, `timed_out`) is
+ *   reported back as `ledgerTerminal` and written only by the delivery claim,
+ *   so `completed` and `delivered_at` always land in one transaction;
+ * - the title is captured as soon as Ledger reports it;
+ * - the watch is rescheduled from the new state.
+ */
+
+/** The run is bound to one Ledger research and a read named another. */
+export class DeepWaterResearchIdMismatchError extends Error {
+  override readonly name = 'DeepWaterResearchIdMismatchError'
+
+  constructor(readonly runId: string, readonly boundResearchId: string, readonly incomingResearchId: string) {
+    super(`DeepWater run ${runId} is bound to ${boundResearchId} but a Ledger read named ${incomingResearchId}`)
+  }
+}
+
+/** Ledger returned a research id another product run already holds. */
+export class DeepWaterResearchIdTakenError extends Error {
+  override readonly name = 'DeepWaterResearchIdTakenError'
+
+  constructor(readonly runId: string, readonly researchId: string, readonly holderRunId: string) {
+    super(`DeepWater research ${researchId} is already bound to run ${holderRunId}, not ${runId}`)
+  }
+}
+
+export type DeepWaterLedgerTerminal = {
+  status: Extract<LedgerResearchStatus, 'complete' | 'failed' | 'timed_out'>
+  errorCode: string | null
+}
+
+export type DeepWaterProjectionOutcome =
+  | { applied: false; reason: 'not_found' | 'not_attachable' | 'terminal' }
+  | {
+      applied: true
+      run: DeepWaterBriefRun
+      /** This read bound the Ledger research id to the run. */
+      attached: boolean
+      /** Anything a viewer sees changed: publish `integration.run.updated`. */
+      changed: boolean
+      /** The planner turn this read settled, for the per-turn wake claim (N4). */
+      newlySettledTurn: DeepWaterTurnRegister | null
+      pendingActionCleared: boolean
+      /** The run became `running` with this read: a person-origin card may be owed. */
+      launched: boolean
+      /** Ledger reports a finished research: the caller runs delivery (N3). */
+      ledgerTerminal: DeepWaterLedgerTerminal | null
+    }
+
+const TERMINAL_RUN_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'warning',
+])
+
+const isRevivable = (run: DeepWaterBriefRun): boolean =>
+  run.status === 'failed' && run.failureCode === DEEP_WATER_START_UNCONFIRMED
+
+/** N1: a run takes its Ledger research id only while nothing else could have. */
+const isAttachable = (run: DeepWaterBriefRun): boolean =>
+  run.externalRunId === null
+  && (run.status === 'queued' || run.status === 'drafting' || isRevivable(run))
+
+const requireBriefState = (run: DeepWaterBriefRun): DeepWaterScopeState => {
+  if (run.scopeState === null) {
+    // Legacy launcher rows carry neither identity nor brief; the brief flow
+    // never selects them, so reaching one here is a caller bug.
+    throw new Error(`DeepWater run ${run.id} is a legacy launcher run, not a research brief`)
+  }
+  return run.scopeState
+}
+
+/** The author of a brief's opening turn is whoever opened the brief (N1). */
+const originTurnAuthor = (run: DeepWaterBriefRun): DeepWaterTurnAuthor | null => {
+  if (run.originKind === 'agent') {
+    return run.originAgentId ? { kind: 'agent', agentId: run.originAgentId } : null
+  }
+  return run.requestedByUserId ? { kind: 'person', userId: run.requestedByUserId } : null
+}
+
+type StatusStep = {
+  status: ProductIntegrationRunStatus
+  ledgerTerminal: DeepWaterLedgerTerminal | null
+}
+
+/** What a Ledger status does to a live run's product status (contract §2.4). */
+const statusStepForLedger = (
+  current: ProductIntegrationRunStatus,
+  ledger: LedgerResearchStatus,
+  errorCode: string | null,
+): StatusStep => {
+  if (ledger === 'complete' || ledger === 'failed' || ledger === 'timed_out') {
+    return { status: current, ledgerTerminal: { status: ledger, errorCode } }
+  }
+  return { status: productRunStatusForLedger(ledger), ledgerTerminal: null }
+}
+
+/** A launch is done once the research left drafting; a cancel once it is cancelled. */
+const pendingActionFinishedByStatus = (
+  state: DeepWaterScopeState,
+  status: ProductIntegrationRunStatus,
+): boolean => {
+  const action = state.pendingAction
+  if (!isPendingActionInFlight(action)) return false
+  if (action.kind === 'launch') return status !== 'drafting' && status !== 'queued'
+  if (action.kind === 'cancel') return status === 'cancelled'
+  return false
+}
+
+const assertBoundTo = (run: DeepWaterBriefRun, researchId: string): void => {
+  if (run.externalRunId !== null && run.externalRunId !== researchId) {
+    throw new DeepWaterResearchIdMismatchError(run.id, run.externalRunId, researchId)
+  }
+}
+
+const assertResearchIdFree = async (
+  tx: DeepWaterBriefDb,
+  run: DeepWaterBriefRun,
+  researchId: string,
+): Promise<void> => {
+  // Checked before the write rather than caught after it: a unique violation
+  // would abort the caller's whole transaction.
+  const holder = await tx.productIntegrationRun.findFirst({
+    where: { productSlug: DEEP_WATER_PRODUCT_SLUG, externalRunId: researchId, id: { not: run.id } },
+    select: { id: true },
+  })
+  if (holder) {
+    throw new DeepWaterResearchIdTakenError(run.id, researchId, holder.id)
+  }
+}
+
+type ProjectionWrite = {
+  run: DeepWaterBriefRun
+  now: Date
+  attachResearchId: string | null
+  state: DeepWaterScopeState
+  status: ProductIntegrationRunStatus
+  title: string | null
+  contentChanged: boolean
+}
+
+/** Write one projection step and reschedule the watch from the result. */
+const writeProjection = async (
+  tx: DeepWaterBriefDb,
+  write: ProjectionWrite,
+): Promise<{ run: DeepWaterBriefRun; changed: boolean; launched: boolean }> => {
+  const { run, now } = write
+  const statusChanged = write.status !== run.status
+  const titleChanged = write.title !== run.title
+  const changed = write.contentChanged || statusChanged || titleChanged || write.attachResearchId !== null
+  const observedAt = changed ? now : run.ledgerObservedAt
+  const delayMs = deepWaterWatchDelayMs({
+    status: write.status,
+    state: write.state,
+    msSinceLastChange: now.getTime() - observedAt.getTime(),
+  })
+  const launched = write.status === 'running' && run.status !== 'running'
+
+  const data: Prisma.ProductIntegrationRunUpdateInput = {
+    scopeJson: deepWaterBriefJson(DeepWaterScopeStateSchema.parse(write.state)),
+    status: write.status,
+    title: write.title,
+    ledgerObservedAt: observedAt,
+    reconcileAfter: new Date(now.getTime() + delayMs),
+  }
+  if (write.attachResearchId !== null) {
+    data.externalRunId = write.attachResearchId
+    data.failureCode = null
+    data.completedAt = null
+  }
+  if (launched) {
+    data.launchedAt = run.launchedAt ?? now
+  } else if (write.status === 'drafting' && run.launchedAt !== null) {
+    // Ledger reverted a launch that Water refused (amendments L3).
+    data.launchedAt = null
+  }
+  if (write.status === 'cancelled' && statusChanged) {
+    data.completedAt = now
+  }
+  await tx.productIntegrationRun.update({ where: { id: run.id }, data })
+
+  const next = await lockDeepWaterBriefRun(tx, { organizationId: run.organizationId, runId: run.id })
+  if (!next) throw new Error(`DeepWater run ${run.id} vanished under its own row lock`)
+  return { run: next.run, changed, launched }
+}
+
+export type ApplyDeepWaterScopeResultInput = {
+  organizationId: string
+  runId: string
+  result: LedgerScopeResult
+  /** The in-flight person action this result is the tool result of. */
+  ackActionId?: string | null
+  /** The author of `result.turn` when this is that author's own content-bearing call. */
+  turnAuthor?: DeepWaterTurnAuthor | null
+}
+
+/**
+ * Apply one ScopeResult — a scope tool's ack or a watch read. The first read
+ * that names the research attaches it (`attachScopeStart`): an ack, a watch
+ * read and a revival after the reaper all converge on the same row.
+ */
+export const applyDeepWaterScopeResult = async (
+  tx: DeepWaterBriefDb,
+  input: ApplyDeepWaterScopeResultInput,
+): Promise<DeepWaterProjectionOutcome> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  if (!locked) return { applied: false, reason: 'not_found' }
+  const { run, now } = locked
+  const state = requireBriefState(run)
+  const result = input.result
+
+  const attaching = run.externalRunId === null
+  if (attaching) {
+    if (!isAttachable(run)) return { applied: false, reason: 'not_attachable' }
+    await assertResearchIdFree(tx, run, result.id)
+  } else {
+    assertBoundTo(run, result.id)
+    if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
+  }
+
+  const openingAuthor = result.turn?.seq === 1 ? originTurnAuthor(run) : null
+  const application = applyScopeResultToState(state, result, {
+    ackActionId: input.ackActionId ?? null,
+    turnAuthor: input.turnAuthor ?? openingAuthor,
+  })
+
+  // A revived row starts again from `queued`: its reap is undone by the attach.
+  const from = isRevivable(run) ? 'queued' : run.status
+  const step = statusStepForLedger(from, result.status, result.errorCode)
+  const finishedByStatus = pendingActionFinishedByStatus(application.state, step.status)
+  const nextState = finishedByStatus ? { ...application.state, pendingAction: null } : application.state
+
+  const written = await writeProjection(tx, {
+    run,
+    now,
+    attachResearchId: attaching ? result.id : null,
+    state: nextState,
+    status: step.status,
+    title: result.title ?? run.title,
+    contentChanged: application.changed || finishedByStatus,
+  })
+  return {
+    applied: true,
+    run: written.run,
+    attached: attaching,
+    changed: written.changed,
+    newlySettledTurn: application.newlySettledTurn,
+    pendingActionCleared: application.pendingActionCleared || finishedByStatus,
+    launched: written.launched,
+    ledgerTerminal: step.ledgerTerminal,
+  }
+}
+
+/** Apply a `research_status` read of a bound run. */
+export const applyDeepWaterStatusRead = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string; status: LedgerResearchStatusDto },
+): Promise<DeepWaterProjectionOutcome> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  if (!locked) return { applied: false, reason: 'not_found' }
+  const { run, now } = locked
+  const state = requireBriefState(run)
+  if (run.externalRunId === null) return { applied: false, reason: 'not_attachable' }
+  assertBoundTo(run, input.status.id)
+  if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
+
+  const step = statusStepForLedger(run.status, input.status.status, input.status.errorCode)
+  const finishedByStatus = pendingActionFinishedByStatus(state, step.status)
+  const nextState = finishedByStatus ? { ...state, pendingAction: null } : state
+  const written = await writeProjection(tx, {
+    run,
+    now,
+    attachResearchId: null,
+    state: nextState,
+    status: step.status,
+    title: input.status.title ?? run.title,
+    contentChanged: finishedByStatus,
+  })
+  return {
+    applied: true,
+    run: written.run,
+    attached: false,
+    changed: written.changed,
+    newlySettledTurn: null,
+    pendingActionCleared: finishedByStatus,
+    launched: written.launched,
+    ledgerTerminal: step.ledgerTerminal,
+  }
+}
+
+/**
+ * Apply the ticket `research_scope_launch` returned. The ticket names the
+ * research the brief already is; anything else is a Ledger contract violation.
+ * A launch ack after a watch read already moved the run on changes nothing.
+ */
+export const applyDeepWaterLaunchTicket = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string; ticket: LedgerResearchTicket; ackActionId?: string | null },
+): Promise<DeepWaterProjectionOutcome> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  if (!locked) return { applied: false, reason: 'not_found' }
+  const { run, now } = locked
+  const state = requireBriefState(run)
+  if (run.externalRunId === null) return { applied: false, reason: 'not_attachable' }
+  assertBoundTo(run, input.ticket.id)
+  if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
+
+  const step = statusStepForLedger(run.status, input.ticket.status, null)
+  const action = state.pendingAction
+  const acked = isPendingActionInFlight(action)
+    && action.kind === 'launch'
+    && (input.ackActionId === undefined || input.ackActionId === null || action.actionId === input.ackActionId)
+  const finished = acked || pendingActionFinishedByStatus(state, step.status)
+  const nextState = finished ? { ...state, pendingAction: null } : state
+  const written = await writeProjection(tx, {
+    run,
+    now,
+    attachResearchId: null,
+    state: nextState,
+    status: step.status,
+    title: run.title,
+    contentChanged: finished,
+  })
+  return {
+    applied: true,
+    run: written.run,
+    attached: false,
+    changed: written.changed,
+    newlySettledTurn: null,
+    pendingActionCleared: finished,
+    launched: written.launched,
+    ledgerTerminal: step.ledgerTerminal,
+  }
+}
