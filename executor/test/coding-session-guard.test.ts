@@ -322,12 +322,18 @@ test('a guard that never reports is told to stop, then killed, and the start is 
   }
 })
 
-/** The agent exits at once; its child, on the same stdout, keeps writing for longer than a one-second drain. */
+/**
+ * The agent exits after three seconds, time enough for the guard to identify
+ * it; its child, on the same stdout, keeps writing for three more, far longer
+ * than a one-second drain. Detached, or on Windows it would be in the agent's
+ * own kill-on-close job and die with it.
+ */
 const OUTLIVED_AGENT = `
 const { spawn } = require('node:child_process')
-const ticks = 'let n = 0; const t = setInterval(() => { console.log("tick " + ++n); if (n === 8) { console.log("last"); clearInterval(t) } }, 300)'
-spawn(process.execPath, ['-e', ticks], { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true })
+const ticks = 'let n = 0; const t = setInterval(() => { console.log("tick " + ++n); if (n === 20) { console.log("last"); clearInterval(t) } }, 300)'
+spawn(process.execPath, ['-e', ticks], { detached: true, stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true }).unref()
 console.log('agent done')
+setTimeout(() => process.exit(0), 3_000)
 `
 
 test('the guard relays an agent\'s output to the end, however long a descendant holds its pipes', { timeout: 60_000 }, async () => {
@@ -338,5 +344,5 @@ test('the guard relays an agent\'s output to the end, however long a descendant 
   assert.ok(await control.identifySpawned!(guard))
   assert.deepEqual(await exited, { code: 0, signal: null })
   await waitUntil(async () => (out.includes('last') ? true : undefined), 5_000, 'the descendant\'s last line')
-  assert.deepEqual([out[0], out.at(-1), out.length], ['agent done', 'last', 10])
+  assert.deepEqual([out[0], out.at(-1), out.length], ['agent done', 'last', 22])
 })
