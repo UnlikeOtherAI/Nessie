@@ -454,28 +454,48 @@ agree) does not.
   start time, and reports `{pid, startedAt}` on the pipe before it relays
   anything. That is the identity the host records, so every kill the host
   makes goes to the agent and never to the guard; an agent whose start time
-  cannot be read is stopped at once.
+  cannot be read is stopped at once. A host waits 60 s for that report (a
+  guard's start and three table reads fit well inside it); after that it
+  closes the guard's pipe, which the guard reads as its host dying, gives it
+  ten seconds to end what it started and exit, then kills it, and only once
+  the guard has exited does the start fail with `containment_failed`.
 - **Transparent otherwise.** stdin, stdout and stderr are relayed, and the
   guard exits with the agent's code, or dies of its signal, once the agent's
-  output is read. Its own refusals go to stderr with exit code 125, as the job
+  output is read: when its pipes close, or — a descendant holding them — once
+  they have been quiet for a second with nothing still waiting to reach the
+  host. A line still arriving, or a relay paused because a busy host has not
+  read the last one, keeps it waiting, so the turn's final `result` line is
+  never cut off. Its own refusals go to stderr with exit code 125, as the job
   helper's do: `EXECUTOR_GUARD_SPAWN_FAILED` reads as `agent_missing`,
-  `EXECUTOR_GUARD_CONTAINMENT_FAILED` and `EXECUTOR_GUARD_NO_AGENT` as
-  `containment_failed`.
+  `EXECUTOR_GUARD_CONTAINMENT_FAILED`, `EXECUTOR_GUARD_NO_AGENT` and
+  `EXECUTOR_GUARD_HOST_GONE` as `containment_failed`.
 - **The pipe closing is the host dying,** however it died. The guard then
   kills the agent's group and tree with the same identity-checked calls the
   host uses — SIGTERM, SIGKILL three seconds later on POSIX; pid by pid on
-  Windows, never `taskkill /T` — and exits. On Windows the guard starts that
+  Windows, never `taskkill /T` — writes `EXECUTOR_GUARD_HOST_GONE` for a host
+  that closed the pipe itself, and exits. On Windows the guard starts that
   kill's PowerShell as soon as the agent has an identity and holds it ready
   (it exits with the guard, unused): cold, a PowerShell and its CIM module
   took most of the five seconds on a loaded machine; ready, the same kill
-  took under one there. A dead host closes the
-  guard's stdin too, so the end of the agent's input is also sent on the pipe
-  when the host means it: stdin ending alone never lets the agent finish its
-  turn on its own.
+  took under one there. A host that dies while the agent's start time is
+  still being read — that cold PowerShell, seconds under load — leaves an
+  agent with no identity yet: its tree then comes from one table read that
+  needs none (`killChildTree`), and failing that its own still-unreaped pid
+  and, on POSIX, the group it leads. A dead host closes the guard's stdin
+  too, so the end of the agent's input is also sent on the pipe when the host
+  means it: stdin ending alone never lets the agent finish its turn on its
+  own.
 
-A guard killed outright cannot act; on Windows the agent is in the guard's own
-kill-on-close job and dies with it, and elsewhere the next host started for
-the session stops the agent before doing anything else, as it always has.
+A guard killed outright cannot act, but its host sees it go. On Windows the
+agent is in the guard's own kill-on-close job and dies with it (a child the
+agent started is not: libuv's job lets it break away, the same grandchild a
+development run's pid-by-pid kill misses). Elsewhere the agent runs on in a
+group of its own, so a host that sees its guard exit kills the agent's tree,
+identity-checked, before it records the agent as exited and forgets the
+identity — an agent that really exited is not there to kill, and one whose
+pid is not alive costs no table read. Only when the host and the guard both
+die at once is the agent left to the next host started for the session, which
+stops it before doing anything else.
 
 ### Teardown reaches the machine
 
@@ -652,7 +672,13 @@ agent cannot start, which hosts use it, and a host killed with -9
 (`taskkill /F` on Windows) — a stand-in host, and a real bridge's host
 mid-turn under `#fork` — with the agent and its grandchild gone within five
 seconds. On Linux with a user manager that second host is in its unit, so
-there it is the unit that proves it and the stand-in the guard.
+there it is the unit that proves it and the stand-in the guard. The same file
+kills a guard outright while its host lives (the agent, and on POSIX its
+grandchild, gone by the time the host hears it exited), closes a guard's pipe
+right after the agent starts (on Windows that is before the report, so the
+identity-free kill runs), stands in a guard that never reports (asked to
+stop, then killed), and has a descendant write for longer than the drain
+after its agent exited (every line reaches the host).
 `coding-session-systemd.test.ts` restarts a stand-in executor unit with the
 real unit's `KillMode=control-group` while a turn is held and drives the same
 session afterwards — still working, the same agent, the turn finished and a

@@ -47,7 +47,16 @@ const REFUSED = 125
 const HOST_GONE_GRACE_MS = 3_000
 /** A host sends the agent as soon as the guard starts; a guard told nothing for this long gives up. */
 const START_TIMEOUT_MS = 30_000
-/** A descendant can hold an exited agent's pipes; a second after its `exit` is enough. */
+/**
+ * How long a host waits for its guard's report. A guard's own start and its
+ * agent's identify — three table reads at most, ten seconds each — fit well
+ * inside it; a guard that has not reported by then is stuck, before its message
+ * loop or in a read that will not end.
+ */
+const REPORT_TIMEOUT_MS = 60_000
+/** What a guard told to stop gets to end its agent's tree and exit before it is killed itself. */
+const TEARDOWN_MS = 10_000
+/** After the agent's `exit`, how long its pipes stay quiet before a descendant holding them is all that is left. */
 const DRAIN_MS = 1_000
 
 type AgentStart = { command: string; args: string[]; cwd: string; env: Record<string, string> }
@@ -62,7 +71,14 @@ const agentStart = (message: unknown): AgentStart | undefined => {
   return { command: value.command, args: value.args, cwd: value.cwd, env: env as Record<string, string> }
 }
 
-export type AgentGuardLaunch = { argv: readonly string[]; cwd: string; env: NodeJS.ProcessEnv }
+export type AgentGuardLaunch = {
+  argv: readonly string[]
+  cwd: string
+  env: NodeJS.ProcessEnv
+  /** `REPORT_TIMEOUT_MS` and `TEARDOWN_MS`, shorter in the guard's own suite. */
+  reportTimeoutMs?: number
+  teardownMs?: number
+}
 
 /** The host's side: `spawnAgent` starts the guard, and the identity recorded is the one the guard reports. */
 export const guardedProcessControl = (
@@ -80,8 +96,18 @@ export const guardedProcessControl = (
     guard.send({ kind: 'start', command, args, cwd: options.cwd, env: options.env }, () => undefined)
     return guard
   },
+  /**
+   * The guard's report, or nothing once it exits. A guard that has not
+   * reported within the bound has its pipe closed, which it reads as its host
+   * dying: it ends whatever it started, tree and all, says so on stderr and
+   * exits — and one that cannot even do that is killed. Only its exit settles
+   * this, so the host never kills a guard that is still ending its agent.
+   */
   identifySpawned: (guard) => new Promise((settle) => {
+    let force: NodeJS.Timeout | undefined
     const finish = (identity?: CodingProcessIdentity): void => {
+      clearTimeout(timer)
+      clearTimeout(force)
       guard.off('message', onMessage)
       guard.off('exit', onExit)
       settle(identity)
@@ -95,6 +121,11 @@ export const guardedProcessControl = (
     }
     // A guard that exits without a report stopped whatever it started; the reason is on its stderr.
     const onExit = (): void => finish()
+    const timer = setTimeout(() => {
+      guard.off('message', onMessage)
+      if (guard.connected) guard.disconnect()
+      force = setTimeout(() => guard.kill('SIGKILL'), launch.teardownMs ?? TEARDOWN_MS)
+    }, launch.reportTimeoutMs ?? REPORT_TIMEOUT_MS)
     guard.on('message', onMessage)
     guard.once('exit', onExit)
     if (guard.exitCode !== null || guard.signalCode !== null) finish()
@@ -136,8 +167,12 @@ export const createHostProcessControl = (entry: string, input: {
 
 const refusal = (code: string): string => `${JSON.stringify({ code, status: 'rejected' })}\n`
 
-/** Resolves once what was written to stdout and stderr has been handed on, or a moment later. */
-const flushed = (): Promise<void> => new Promise((settle) => {
+/**
+ * Resolves once what was written to stdout and stderr has been handed on. A
+ * live host reads both to the end, so this waits for it however busy it is;
+ * `capMs` bounds it where the host is probably gone and nobody reads at all.
+ */
+const flushed = (capMs?: number): Promise<void> => new Promise((settle) => {
   let pending = 2
   const one = (): void => {
     pending -= 1
@@ -145,8 +180,62 @@ const flushed = (): Promise<void> => new Promise((settle) => {
   }
   process.stdout.write('', one)
   process.stderr.write('', one)
-  setTimeout(settle, DRAIN_MS).unref()
+  if (capMs !== undefined) setTimeout(settle, capMs).unref()
 })
+
+type AgentEnding = { code: number | null; signal: NodeJS.Signals | null }
+
+type AgentEndingWatch = {
+  ended: Promise<AgentEnding>
+  exited: () => boolean
+  /** Once stdout and stderr are piped on: a listener before that would take the agent's first lines from the relay. */
+  relaying: () => void
+}
+
+/**
+ * The agent's ending once its output has all been relayed: when its pipes
+ * close, or — a descendant holding them open — once they have been quiet for
+ * `DRAIN_MS` with nothing of theirs still waiting to reach the host. Quiet is
+ * measured, not assumed: a line still arriving, or a relay paused because a
+ * busy host has not read the last one, keeps the guard waiting, so the turn's
+ * final `result` line is never cut off.
+ */
+const watchAgentEnding = (child: ChildProcess): AgentEndingWatch => {
+  let timer: NodeJS.Timeout | undefined
+  let ending: AgentEnding | undefined
+  let relayed = false
+  let settle: (value: AgentEnding) => void = () => undefined
+  const ended = new Promise<AgentEnding>((resolve) => { settle = resolve })
+  const quiet = (): void => {
+    clearTimeout(timer)
+    timer = setTimeout(() => {
+      if (process.stdout.writableLength > 0 || process.stderr.writableLength > 0) quiet()
+      else settle(ending!)
+    }, DRAIN_MS)
+    timer.unref()
+  }
+  child.once('exit', (code, signal) => {
+    ending = { code, signal }
+    if (relayed) quiet()
+  })
+  child.once('close', (code, signal) => {
+    clearTimeout(timer)
+    settle({ code, signal })
+  })
+  return {
+    ended,
+    exited: () => ending !== undefined,
+    relaying: () => {
+      relayed = true
+      const onData = (): void => {
+        if (ending) quiet()
+      }
+      child.stdout?.on('data', onData)
+      child.stderr?.on('data', onData)
+      if (ending) quiet()
+    },
+  }
+}
 
 /** The guard itself, in the process the host started. */
 export const runCodingAgentGuard = async (): Promise<void> => {
@@ -159,12 +248,38 @@ export const runCodingAgentGuard = async (): Promise<void> => {
   let hostGone = false
   for (const stream of [process.stdin, process.stdout, process.stderr]) stream.on('error', () => undefined)
 
+  /**
+   * An agent the host has not been told about yet: the host died while its
+   * start time was still being read (a cold PowerShell on Windows, seconds on
+   * a loaded machine). Its tree comes from one table read, which needs no
+   * identity first; failing that, it is still this process's unreaped child,
+   * so its pid — and on POSIX its process group, which it leads — is still
+   * its own.
+   */
+  const killUnidentified = async (child: ChildProcess): Promise<void> => {
+    if (await control.killChildTree(child).catch(() => false)) return
+    if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return
+    if (process.platform !== 'win32') {
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+        return
+      } catch {
+        // No such group any more; the child's own handle below.
+      }
+    }
+    child.kill('SIGKILL')
+  }
+
   // From here on only this teardown ends the guard: the agent dying of its SIGTERM must not end it before the SIGKILL.
   process.once('disconnect', () => {
     hostGone = true
     void (async () => {
+      if (!agent) process.exit(1)
       if (kill) await kill().catch(() => undefined)
-      else agent?.kill('SIGKILL')
+      else await killUnidentified(agent)
+      // Read only by a host that closed the pipe itself because no report came (`identifySpawned`).
+      process.stderr.write(refusal('EXECUTOR_GUARD_HOST_GONE'))
+      await flushed(DRAIN_MS)
       process.exit(1)
     })()
   })
@@ -196,14 +311,7 @@ export const runCodingAgentGuard = async (): Promise<void> => {
 
   const child = control.spawnAgent(request.command, request.args, { cwd: request.cwd, env: request.env })
   agent = child
-  let agentExited = false
-  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((settle) => {
-    child.once('exit', (code, signal) => {
-      agentExited = true
-      setTimeout(() => settle({ code, signal }), DRAIN_MS).unref()
-    })
-    child.once('close', (code, signal) => settle({ code, signal }))
-  })
+  const ending = watchAgentEnding(child)
   const spawned = await new Promise<boolean>((settle) => {
     child.once('spawn', () => settle(true))
     child.once('error', () => settle(false))
@@ -217,7 +325,7 @@ export const runCodingAgentGuard = async (): Promise<void> => {
 
   const found = await control.identify(child.pid)
   // An agent with no start time could never be told from whatever inherits its pid, so it does not keep running.
-  const unidentified = !found && !agentExited
+  const unidentified = !found && !ending.exited()
   if (found) {
     // Made ready before the host can die: a dead host's agent has five seconds, and a cold kill can take most of them.
     kill = control.standbyKill?.(found) ?? (() => control.killTree(found))
@@ -235,8 +343,9 @@ export const runCodingAgentGuard = async (): Promise<void> => {
     })
     process.stdin.pipe(child.stdin, { end: false })
   }
+  ending.relaying()
 
-  const { code, signal } = await exited
+  const { code, signal } = await ending.ended
   if (hostGone) return
   if (unidentified) process.stderr.write(refusal('EXECUTOR_GUARD_CONTAINMENT_FAILED'))
   await flushed()

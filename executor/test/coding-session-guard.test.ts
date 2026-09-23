@@ -1,16 +1,23 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { readdir, readFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 
-import { AGENT_GUARD_COMMAND, createHostProcessControl, guardedProcessControl } from '../src/coding-session/agent-guard.js'
-import { agentFailureReason } from '../src/coding-session/agent-process.js'
+import {
+  AGENT_GUARD_COMMAND,
+  createHostProcessControl,
+  guardedProcessControl,
+  type AgentGuardLaunch,
+} from '../src/coding-session/agent-guard.js'
+import { agentFailureReason, startAgentProcess } from '../src/coding-session/agent-process.js'
 import { CODING_SESSION_UNIT_ENV, runsInOwnUserUnit } from '../src/coding-session/host-unit.js'
 import { createCodingProcessControl, type CodingProcessControl } from '../src/coding-session/process-control.js'
+import { codingSessionPaths } from '../src/coding-session/session-files.js'
 import { alive, createCodingHarness, waitUntil } from './coding-session-harness.js'
 
 /**
@@ -195,4 +202,141 @@ test('a host killed mid-turn takes its agent and the agent\'s grandchild with it
   } finally {
     await harness.cleanup()
   }
+})
+
+const agentContext = async (dir: string, control: CodingProcessControl) => {
+  const paths = codingSessionPaths(dir, randomUUID())
+  await mkdir(paths.dir, { recursive: true })
+  return { control, env: process.env, folder: tmpdir(), paths, log: () => undefined }
+}
+
+/** A guarded control that remembers each guard it started. */
+type RecordingGuards = { control: CodingProcessControl; guards: ChildProcess[] }
+
+const recordingGuards = (launch: AgentGuardLaunch = guardLaunch): RecordingGuards => {
+  const guarded = guardedProcessControl(createCodingProcessControl(process.platform, {}), launch)
+  const guards: ChildProcess[] = []
+  return {
+    guards,
+    control: {
+      ...guarded,
+      spawnAgent: (command, args, options) => {
+        const guard = guarded.spawnAgent(command, args, options)
+        guards.push(guard)
+        return guard
+      },
+    },
+  }
+}
+
+const gone = (pids: number[], what: string, timeoutMs = 5_000): Promise<true> => (
+  waitUntil(async () => (pids.every((pid) => !alive(pid)) ? true : undefined), timeoutMs, what)
+)
+
+/** Kills what a failed run left, each by its own start time. */
+const cleanUp = async (pids: number[]): Promise<void> => {
+  const control = createCodingProcessControl(process.platform, {})
+  for (const pid of pids.filter(alive)) {
+    const identity = await control.identify(pid)
+    if (identity) await control.killTree(identity)
+  }
+}
+
+test('a guard that ends while its host lives takes its agent with it before the host hears the agent exited', {
+  timeout: 90_000,
+}, async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'nessie-guard-orphan-'))
+  const pids: number[] = []
+  try {
+    const { control, guards } = recordingGuards()
+    const out: string[] = []
+    const context = await agentContext(dir, control)
+    const agent = await startAgentProcess(context, [process.execPath, '-e', FORKING_AGENT], (line) => out.push(line))
+    const grandchild = Number(await waitUntil(async () => out.find((line) => /^\d+$/u.test(line)), 30_000, 'the grandchild'))
+    pids.push(agent.identity.pid, grandchild)
+    // Killed outright, the way the OOM killer ends it: the guard has no chance to act.
+    hardKill(guards[0]!.pid!)
+    await agent.exited
+    // On POSIX the agent leads a group of its own and would run on; on Windows it is in the guard's
+    // kill-on-close job and dies with it, while a grandchild of its own breaks away from that job.
+    await gone([agent.identity.pid], 'the agent, once the host has heard it exited', 3_000)
+    if (process.platform !== 'win32') await gone([grandchild], 'the agent\'s grandchild', 3_000)
+  } finally {
+    await cleanUp(pids)
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+
+/** An agent that starts a grandchild outside its group and writes both pids to `GUARD_TEST_PIDS`, at once. */
+const EARLY_FORKING_AGENT = `
+const { spawn } = require('node:child_process')
+const grandchild = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { detached: true, stdio: 'ignore', windowsHide: true })
+grandchild.unref()
+require('node:fs').writeFileSync(process.env.GUARD_TEST_PIDS, process.pid + ' ' + grandchild.pid)
+setTimeout(() => {}, 600000)
+`
+
+test('a host gone before its guard reported still takes the agent\'s whole tree with it', { timeout: 90_000 }, async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), 'nessie-guard-early-'))
+  const pids: number[] = []
+  try {
+    const { control } = recordingGuards()
+    const file = join(dir, 'pids')
+    const guard = control.spawnAgent(process.execPath, ['-e', EARLY_FORKING_AGENT], {
+      cwd: tmpdir(), env: { ...process.env, GUARD_TEST_PIDS: file },
+    })
+    let reported = false
+    guard.on('message', () => { reported = true })
+    const exited = exitOf(guard)
+    const written = await waitUntil(async () => readFile(file, 'utf8').catch(() => undefined), 30_000, 'the agent\'s pids')
+    pids.push(...written.split(' ').map(Number))
+    // What the guard sees of a host that died: its pipe closing.
+    guard.disconnect()
+    // Where reading the agent's start time is slow (a PowerShell on Windows) this comes before the report.
+    t.diagnostic(reported ? 'the guard had already reported the agent' : 'the guard had not yet reported the agent')
+    await gone(pids, 'the agent and its grandchild')
+    assert.equal((await exited).code, 1)
+  } finally {
+    await cleanUp(pids)
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+
+test('a guard that never reports is told to stop, then killed, and the start is not left waiting', { timeout: 60_000 }, async () => {
+  // Stand-ins for a guard stuck before it reports: one that still hears its pipe close, one that does not.
+  const stuck = (onDisconnect: string): AgentGuardLaunch => ({
+    ...guardLaunch,
+    argv: [process.execPath, '-e', `process.on('disconnect', () => { ${onDisconnect} }); setInterval(() => {}, 1000)`],
+    reportTimeoutMs: 1_000,
+    teardownMs: 2_000,
+  })
+  for (const [launch, ending] of [[stuck('process.exit(3)'), 'exits on its own'], [stuck(''), 'is killed']] as const) {
+    const { control } = recordingGuards(launch)
+    const guard = control.spawnAgent(process.execPath, ['-e', ''], { cwd: tmpdir(), env: process.env })
+    const exited = exitOf(guard)
+    const started = Date.now()
+    assert.equal(await control.identifySpawned!(guard), undefined, ending)
+    assert.ok(guard.exitCode !== null || guard.signalCode !== null, `a guard that ${ending} has exited before the host moves on`)
+    assert.ok(Date.now() - started < 10_000)
+    if (ending === 'exits on its own') assert.equal((await exited).code, 3)
+  }
+})
+
+/** The agent exits at once; its child, on the same stdout, keeps writing for longer than a one-second drain. */
+const OUTLIVED_AGENT = `
+const { spawn } = require('node:child_process')
+const ticks = 'let n = 0; const t = setInterval(() => { console.log("tick " + ++n); if (n === 8) { console.log("last"); clearInterval(t) } }, 300)'
+spawn(process.execPath, ['-e', ticks], { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true })
+console.log('agent done')
+`
+
+test('the guard relays an agent\'s output to the end, however long a descendant holds its pipes', { timeout: 60_000 }, async () => {
+  const control = guardedProcessControl(createCodingProcessControl(process.platform, {}), guardLaunch)
+  const guard = control.spawnAgent(process.execPath, ['-e', OUTLIVED_AGENT], { cwd: tmpdir(), env: process.env })
+  const out = lines(guard.stdout!)
+  const exited = exitOf(guard)
+  assert.ok(await control.identifySpawned!(guard))
+  assert.deepEqual(await exited, { code: 0, signal: null })
+  await waitUntil(async () => (out.includes('last') ? true : undefined), 5_000, 'the descendant\'s last line')
+  assert.deepEqual([out[0], out.at(-1), out.length], ['agent done', 'last', 10])
 })
