@@ -31,7 +31,7 @@ export const BriefIdentityNotice = ({ brief, ownBrief }: { brief: DeepWaterBrief
     const id = actionId.take({ deliver: brief.id })
     retry.mutate({ actionId: id, runId: brief.id }, {
       onError: (failure) => {
-        const read = briefActionFailure(failure)
+        const read = briefActionFailure(failure, 'deliver')
         actionId.settle(read.retrySameAction)
         setError(read.message)
       },

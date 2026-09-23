@@ -63,7 +63,7 @@ export const ResearchRunOutcome = ({
     const id = actionId.take({ deliver: run.id })
     retry.mutate({ actionId: id, runId: run.id }, {
       onError: (error) => {
-        const failure = briefActionFailure(error)
+        const failure = briefActionFailure(error, 'deliver')
         actionId.settle(failure.retrySameAction)
         setRetryError(failure.message)
       },

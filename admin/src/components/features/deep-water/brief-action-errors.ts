@@ -12,6 +12,9 @@ import { readinessCopy } from './research-presentation'
  * `pendingAction.error` with Nessie's own words, so they are not here.
  */
 
+/** The action that was refused: a refusal's remedy depends on what was asked. */
+export type BriefAction = 'create' | 'reply' | 'start' | 'cancel' | 'deliver'
+
 export type BriefActionFailure = {
   message: string
   /**
@@ -31,7 +34,21 @@ const readinessReason = (details: unknown): string | null => {
   return parsed.success && parsed.data !== 'ready' ? readinessCopy(parsed.data, false).message : null
 }
 
-export const briefActionFailure = (error: unknown): BriefActionFailure => {
+/**
+ * `DEEP_WATER_BRIEF_BUSY` means something different for each action: a reply
+ * or Start waits for DeepWater to finish with the last change to the brief,
+ * while a cancel waits for DeepWater to finish opening the brief — before
+ * then there is nothing it could name to stop.
+ */
+const BUSY_COPY: Record<BriefAction, string> = {
+  cancel: 'DeepWater is still opening this brief, so it can’t be stopped yet. Try again in a few minutes.',
+  create: 'DeepWater is busy just now. Try again in a moment.',
+  deliver: 'DeepWater is busy just now. Try again in a moment.',
+  reply: 'DeepWater is still working on the last change to this brief. Try again once it has answered.',
+  start: 'DeepWater is still working on the last change to this brief. Try again once it has answered.',
+}
+
+export const briefActionFailure = (error: unknown, action: BriefAction): BriefActionFailure => {
   if (!(error instanceof ApiClientError)) {
     return {
       message: 'That didn’t reach Nessie. Check your connection, then try again.',
@@ -49,7 +66,7 @@ export const briefActionFailure = (error: unknown): BriefActionFailure => {
       // The rebase notice says what DeepWater changed; this says only what to do.
       return refuse('The brief changed just before you sent that. Check it, then try again.', true)
     case codes.BRIEF_BUSY:
-      return refuse('DeepWater’s research planner is still answering. Try again once it has replied.', true)
+      return refuse(BUSY_COPY[action], true)
     case codes.BRIEF_NOT_EDITABLE:
       return refuse('This brief can’t be changed any more.', true)
     case codes.BRIEF_INCOMPLETE:
@@ -93,7 +110,7 @@ export const briefActionFailure = (error: unknown): BriefActionFailure => {
  * same brief answers.
  */
 export const newBriefFailure = (error: unknown): BriefActionFailure => {
-  const read = briefActionFailure(error)
+  const read = briefActionFailure(error, 'create')
   if (!(error instanceof ApiClientError) || error.code !== 'INVALID_RESPONSE') return read
   return {
     message: 'Nessie opened the brief, but its answer couldn’t be read. Press Plan with DeepWater again to open it.',

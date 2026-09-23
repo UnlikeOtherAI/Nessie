@@ -183,8 +183,11 @@ sentence changes only if the invariant itself did.
   overlay-layer one. The runner plays the server through `window.__research`
   (the planner answering, a launch landing, a revision conflict) and pins the
   whole person brief, the artifact actions and their clipboard fallback, an
-  agent's read-only brief, the not-ready doorways and the owner's cancel of a
-  research that blocks turning DeepWater off. The rules are in
+  older card's action, an agent's read-only brief and its discard (accepted,
+  then settled by `cancelSettles`), the not-ready doorways, the owner's cancel
+  of a research that blocks turning DeepWater off (requested, still refusing,
+  then stopped), and Knowledge › Research with a research from before briefs
+  and a second page walked back. The rules are in
   [`docs/standards/deepwater.md`](docs/standards/deepwater.md) → "Research
   briefs — the admin".
 - **Overlay layer coverage:** run

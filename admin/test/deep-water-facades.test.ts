@@ -10,6 +10,7 @@ import {
   researchRunIdFromFrame,
 } from '../src/facades/deep-water/events.js'
 import { deepWaterKeys, type DeepWaterViewerScope } from '../src/facades/deep-water/keys.js'
+import { hasResearchStopped } from '../src/facades/deep-water/mutations.js'
 import {
   KNOWLEDGE_RESEARCH_VIEW_PATH,
   readResearchBriefPrefill,
@@ -128,6 +129,14 @@ test('"this conversation" is said only over the conversation the research was as
   // Knowledge › Research and the Threads inbox show no conversation of their own.
   assert.equal(researchShownIn({ kind: 'personal' }, run), 'elsewhere')
   assert.equal(researchShownIn(null, run), 'elsewhere')
+})
+
+test('an accepted cancel has stopped the research only when the answer says it is over', () => {
+  // The view's statuses, and a non-viewer's raw run statuses.
+  for (const status of ['cancelled', 'completed', 'failed', 'warning']) assert.equal(hasResearchStopped({ status }), true)
+  for (const status of ['drafting', 'starting', 'running', 'queued', 'needs_setup']) {
+    assert.equal(hasResearchStopped({ status }), false, `${status} is still open`)
+  }
 })
 
 test('a card renders only from a server-written, well-formed pointer', () => {

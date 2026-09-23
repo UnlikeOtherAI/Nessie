@@ -252,6 +252,26 @@ export const walkOlderCard = async (page) => {
   })
 }
 
+/**
+ * Discarding a brief is accepted before DeepWater has stopped it: the dialog
+ * says it is being discarded, offers neither Discard again nor Start, and
+ * shows the brief cancelled once DeepWater has.
+ */
+export const walkDiscardBrief = async (page, dialog, runId, snap) => {
+  await dialog.getByRole('button', { name: 'Discard brief' }).click()
+  await dialog.getByRole('group', { name: 'Discard brief' }).getByRole('button', { name: 'Discard' }).click()
+  await dialog.getByTestId('research-brief-cancelling').getByText('Discarding this brief…').waitFor()
+  const cancels = await page.evaluate((id) => window.__research.calls.filter((call) =>
+    call.method === 'POST' && call.path.endsWith(`${id}/cancel`)).length, runId)
+  assert.equal(cancels, 1)
+  assert.equal(await dialog.getByRole('button', { name: 'Discard brief' }).count(), 0, 'no second discard')
+  assert.equal(await dialog.getByRole('button', { name: 'Start research' }).count(), 0)
+  await snap(page, '09b-brief-discarding.png')
+  await page.evaluate((id) => window.__research.cancelSettles(id), runId)
+  await dialog.getByText('This research was cancelled.').waitFor()
+  await dialog.getByTestId('research-brief-start').waitFor({ state: 'detached' })
+}
+
 /** Knowledge › Research pages forwards on the server, and Previous walks back along the address. */
 export const walkResearchPages = async (page) => {
   const list = page.getByTestId('research-list')

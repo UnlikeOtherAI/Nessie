@@ -99,22 +99,38 @@ const OPEN_STATUS_WORDS: Record<string, string> = {
 }
 
 /**
- * "A research started by Jana is still being researched." Cancel is offered
- * only with the cancel standing (`viewerCanChangeTeam`, owners and admins), so
- * without it the sentence does not point at a Cancel that is not there.
+ * Where the owner stands with the research that refused the change:
+ * - `can_cancel` — the owner-or-admin cancel standing (`viewerCanChangeTeam`),
+ *   so Cancel is offered beside the sentence;
+ * - `cannot_cancel` — without it, the sentence does not point at a Cancel that
+ *   is not there;
+ * - `cancel_requested` — the cancel was accepted, but DeepWater has not
+ *   stopped the research yet, so the change would still be refused;
+ * - `stopped` — it has stopped, and the change can be tried again.
  */
+export type OpenResearchStanding = 'can_cancel' | 'cannot_cancel' | 'cancel_requested' | 'stopped'
+
+/** "A research started by Jana is still being researched." */
 export const openResearchSentence = (
   run: DeepWaterActiveRunConflict,
   requesterName: string | null,
-  canCancel: boolean,
+  standing: OpenResearchStanding,
 ): string => {
   const who = run.originKind === 'agent'
     ? 'an agent'
     : requesterName ?? 'someone in this team'
   const where = OPEN_STATUS_WORDS[run.status] ?? 'still open'
-  return canCancel
-    ? `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — cancel it `
-      + 'here, or let it finish, then try again.'
-    : `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — try again once `
-      + 'it has finished.'
+  switch (standing) {
+    case 'can_cancel':
+      return `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — cancel it `
+        + 'here, or let it finish, then try again.'
+    case 'cannot_cancel':
+      return `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — try again `
+        + 'once it has finished.'
+    case 'cancel_requested':
+      return `Cancel requested for the research started by ${who}. Until it has stopped, DeepWater stays as it `
+        + 'is — try again once it has.'
+    case 'stopped':
+      return `The research started by ${who} has stopped. You can try again now.`
+  }
 }

@@ -183,6 +183,17 @@ test('the requester\'s drafting brief offers the publish switch, off, and Start'
   assert.ok(texts(doc, 'button').includes('Discard brief'))
 })
 
+test('a brief being discarded says so, and offers neither Discard again nor Start', () => {
+  const doc = startBar(researchBrief(), { cancelling: true })
+  assert.equal(doc.querySelector('[data-testid="research-brief-cancelling"]')?.textContent, 'Discarding this brief…')
+  assert.deepEqual(texts(doc, 'button'), [])
+  assert.equal(doc.querySelector('[role="switch"]'), null, 'nothing is left to publish')
+  const running = startBar(researchBrief({ status: 'running' }), { canOfferStart: false, cancelling: true })
+  assert.equal(running.querySelector('[data-testid="research-brief-cancelling"]')?.textContent,
+    'Stopping this research…')
+  assert.equal(texts(running, 'button').includes('Cancel research'), false)
+})
+
 test('Start that cannot be pressed yet says why', () => {
   const doc = startBar(researchBrief(), { blockedReason: 'Add at least one pillar.' })
   const start = [...doc.querySelectorAll('button')].find((button) => button.textContent === 'Start research')

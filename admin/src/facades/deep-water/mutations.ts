@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
 import { ApiClientError } from '@nessie/client-core'
 import {
   DeepWaterBriefViewSchema,
@@ -108,21 +109,46 @@ export const useStartResearchBrief = (runId: string) => {
 }
 
 /**
+ * What a cancel is answered with: the research view for a viewer who may read
+ * the run, or only its id and status for a team owner or admin who may not
+ * (amendments N8.5). Both carry these two fields, and nothing else is read
+ * from the answer — the refetch shows the rest.
+ */
+const ResearchCancelAnswerSchema = z.object({ id: z.string().uuid(), status: z.string().min(1) })
+export type ResearchCancelAnswer = z.infer<typeof ResearchCancelAnswerSchema>
+
+/**
+ * Where a research stands after a cancel was accepted, read from that answer.
+ * The API answers 202 once it has recorded the cancel for its worker, so a
+ * research is usually still open then — DeepWater stops it a moment later —
+ * and only a research cancelled on the spot (one DeepWater never received, or
+ * had not named yet) or one that ended meanwhile is already over. The view's
+ * statuses and a non-viewer's raw run statuses spell the finished ones alike.
+ */
+export const hasResearchStopped = (answer: Pick<ResearchCancelAnswer, 'status'>): boolean =>
+  answer.status === 'cancelled' || answer.status === 'completed' || answer.status === 'failed'
+    || answer.status === 'warning'
+
+/**
  * Cancel a brief or a running research — the requester's own, or, for a team
- * owner or admin, any open research in the team (amendments N8.5). A viewer who
- * may not read the run gets only its id and status back.
+ * owner or admin, any open research in the team (amendments N8.5).
+ *
+ * The mutation stays pending until the run has been read again: the brief
+ * then shows the cancel in flight (`pendingAction.kind === 'cancel'`), so the
+ * dialog goes from "sending" to "cancelling" without offering Cancel again in
+ * between.
  */
 export const useCancelResearchRun = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    // A viewer who may not read the run is answered with its id and status
-    // only, so the answer is not read as a view; the refetch shows the rest.
-    mutationFn: (input: { actionId: string; runId: string }) =>
-      api.post<unknown>(`${researchRunPath(input.runId)}/cancel`, { actionId: input.actionId }),
-    onSettled: (_result, _error, input) => {
-      void queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(input.runId) })
+    mutationFn: (input: { actionId: string; runId: string }): Promise<ResearchCancelAnswer> =>
+      api.post(`${researchRunPath(input.runId)}/cancel`, { actionId: input.actionId }, undefined,
+        ResearchCancelAnswerSchema),
+    onError: reportUnreadableAnswer,
+    onSettled: async (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.lists })
+      await queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(input.runId) })
     },
   })
 }

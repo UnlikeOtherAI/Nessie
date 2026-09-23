@@ -44,6 +44,10 @@ import {
  * person's brief (`drafting`, `opening-failed` — the planner could not answer
  * the question that opened it — or `sign-in`); `?many=1` adds enough older
  * research for a second page of Knowledge › Research at ten a page.
+ *
+ * A cancel is answered as the API answers it: accepted (202) with the research
+ * still open and the cancel in flight; the runner settles it later
+ * (`cancelSettles`), as DeepWater stopping the research does.
  */
 
 const params = new URLSearchParams(location.search)
@@ -178,13 +182,18 @@ const post = async (path: string, body?: Record<string, unknown>): Promise<unkno
     })))
   }
   if (action === 'cancel') {
+    // Accepted: the research stays open, with the cancel in flight, until DeepWater stops it.
     const brief = briefs.get(id)
-    if (brief) return toRun(updateBrief(id, (entry) => ({ ...entry, status: 'cancelled', viewer: { ...entry.viewer,
-      canCancel: false, canEdit: false, canStart: false } })))
+    if (brief) {
+      return toRun(updateBrief(id, (entry) => ({
+        ...entry,
+        pendingAction: { actionId, error: null, kind: 'cancel', since },
+        viewer: { ...entry.viewer, canEdit: false, canStart: false },
+      })))
+    }
     const view = runs.get(id)
     if (!view) throw notFound()
-    runs.set(id, { ...view, status: 'cancelled', viewer: { ...view.viewer, canCancel: false } })
-    return { id, status: 'cancelled' }
+    return view
   }
   if (action === 'deliver') {
     return toRun(updateBrief(id, (brief) => ({ ...brief, delivery: { blockedReason: null, state: 'pending' } })))
@@ -233,6 +242,17 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 Object.assign(window, {
   __research: {
     calls,
+    /** DeepWater stops a research whose cancel was accepted. */
+    cancelSettles: (id: string) => {
+      if (briefs.has(id)) {
+        updateBrief(id, (brief) => ({ ...brief, pendingAction: null, status: 'cancelled',
+          viewer: { ...brief.viewer, canCancel: false, canEdit: false, canStart: false } }))
+      } else {
+        const view = runs.get(id)
+        if (view) runs.set(id, { ...view, status: 'cancelled', viewer: { ...view.viewer, canCancel: false } })
+      }
+      invalidateResearchRun(queryClient, id)
+    },
     conflictNext: () => {
       store.conflictNext = true
     },

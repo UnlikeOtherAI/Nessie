@@ -83,9 +83,16 @@ export const BriefWorkspace = ({
     if (!drafting) setStartError(null)
   }, [drafting])
   const ownBrief = brief.origin.kind === 'person' && brief.requestedByUserId === meUserId
+  // A cancel accepted by the API but not carried out yet: DeepWater stops the
+  // research a moment later, and until then nothing else is offered. One
+  // DeepWater refused comes back with its error and can be tried again.
+  const cancelInFlight = brief.pendingAction?.kind === 'cancel' && brief.pendingAction.error === null
+  const cancelling = cancel.isPending || cancelInFlight
   // The person keeps editing locally while the planner works (F8); the server
-  // decides whether a reply or Start is accepted right now.
-  const canEditLocally = ownBrief && drafting && brief.revision !== null
+  // decides whether a reply or Start is accepted right now. A brief being
+  // discarded is not edited: its unsent edits stay in the draft, and come back
+  // if the discard is refused.
+  const canEditLocally = ownBrief && drafting && brief.revision !== null && !cancelling
   const edits = canEditLocally ? draft.edits : NO_EDITS
   // What the person sees: DeepWater's brief, the edits of an action still in
   // flight, then their unsent edits on top. Only the unsent ones read "Not
@@ -119,7 +126,7 @@ export const BriefWorkspace = ({
       typed: text === draft.message.trim() }
     reply.mutate({ actionId, ...body }, {
       onError: (error) => {
-        const failure = briefActionFailure(error)
+        const failure = briefActionFailure(error, 'reply')
         replyId.settle(failure.retrySameAction)
         setReplyError(failure.message)
         if (failure.refetch) refetchBrief()
@@ -144,7 +151,7 @@ export const BriefWorkspace = ({
     const sent = { actionId, edits, kind: 'start' as const, message: '', revision: brief.revision, typed: false }
     start.mutate({ actionId, ...body }, {
       onError: (error) => {
-        const failure = briefActionFailure(error)
+        const failure = briefActionFailure(error, 'start')
         startId.settle(failure.retrySameAction)
         setStartError(failure.message)
         if (failure.refetch) refetchBrief()
@@ -161,7 +168,7 @@ export const BriefWorkspace = ({
     const actionId = cancelId.take({ cancel: brief.id })
     cancel.mutate({ actionId, runId: brief.id }, {
       onError: (error) => {
-        const failure = briefActionFailure(error)
+        const failure = briefActionFailure(error, 'cancel')
         cancelId.settle(failure.retrySameAction)
         setStartError(failure.message)
       },
@@ -245,7 +252,7 @@ export const BriefWorkspace = ({
           blockedReason={startBlockedReason()}
           brief={brief}
           canOfferStart={ownBrief && drafting}
-          cancelling={cancel.isPending}
+          cancelling={cancelling}
           error={startError}
           onCancel={brief.viewer.canCancel ? cancelResearch : null}
           onPublishChange={setPublish}

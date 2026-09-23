@@ -140,22 +140,22 @@ const apiError = (code: string, status: number, details?: unknown) =>
   new ApiClientError('refused', code, status, details)
 
 test('a synchronous refusal of a brief action reads as its remedy', () => {
-  const conflict = briefActionFailure(apiError('DEEP_WATER_BRIEF_REVISION_CONFLICT', 409, { currentRevision: 4 }))
+  const conflict = briefActionFailure(apiError('DEEP_WATER_BRIEF_REVISION_CONFLICT', 409, { currentRevision: 4 }), 'reply')
   assert.equal(conflict.refetch, true, 'a revision conflict rebases the unsent edits onto the new brief')
   assert.equal(conflict.retrySameAction, false)
-  assert.equal(briefActionFailure(apiError('DEEP_WATER_BRIEF_INCOMPLETE', 422)).message,
+  assert.equal(briefActionFailure(apiError('DEEP_WATER_BRIEF_INCOMPLETE', 422), 'start').message,
     'Add at least one pillar before you start the research.')
   assert.equal(
-    briefActionFailure(apiError('DEEP_WATER_NOT_READY', 409, { reason: 'team_off' })).message,
+    briefActionFailure(apiError('DEEP_WATER_NOT_READY', 409, { reason: 'team_off' }), 'reply').message,
     readinessCopy('team_off', false).message,
   )
-  const lost = briefActionFailure(new TypeError('fetch failed'))
+  const lost = briefActionFailure(new TypeError('fetch failed'), 'reply')
   assert.equal(lost.retrySameAction, true, 'a lost request is retried under the same key')
-  assert.equal(briefActionFailure(apiError('INTERNAL', 503)).retrySameAction, true)
-  assert.equal(briefActionFailure(apiError('SOMETHING_ELSE', 400)).retrySameAction, false)
+  assert.equal(briefActionFailure(apiError('INTERNAL', 503), 'start').retrySameAction, true)
+  assert.equal(briefActionFailure(apiError('SOMETHING_ELSE', 400), 'start').retrySameAction, false)
   // Accepted, but the answer broke the contract: never "check your connection"; a
   // retry is a replay under the same key, and the brief is read again.
-  const unreadable = briefActionFailure(apiError('INVALID_RESPONSE', 202))
+  const unreadable = briefActionFailure(apiError('INVALID_RESPONSE', 202), 'reply')
   assert.equal(unreadable.refetch, true)
   assert.equal(unreadable.retrySameAction, true)
   assert.doesNotMatch(unreadable.message, /connection/i)
@@ -166,7 +166,25 @@ test('a synchronous refusal of a brief action reads as its remedy', () => {
   assert.equal(unreadableNew.retrySameAction, true)
   assert.doesNotMatch(unreadableNew.message, /where it stands/i)
   assert.match(unreadableNew.message, /Plan with DeepWater again/)
-  assert.deepEqual(newBriefFailure(apiError('INTERNAL', 503)), briefActionFailure(apiError('INTERNAL', 503)))
+  assert.deepEqual(newBriefFailure(apiError('INTERNAL', 503)), briefActionFailure(apiError('INTERNAL', 503), 'create'))
+})
+
+test('a busy refusal says what the refused action is waiting for', () => {
+  const busy = (action: Parameters<typeof briefActionFailure>[1]) =>
+    briefActionFailure(apiError('DEEP_WATER_BRIEF_BUSY', 409), action)
+  // A reply or Start waits for DeepWater to finish with the last change.
+  assert.match(busy('reply').message, /still working on the last change to this brief/)
+  assert.equal(busy('start').message, busy('reply').message)
+  // A cancel is refused only while DeepWater is still opening the brief: never
+  // "the planner is still answering", which would send the person to wait for
+  // a reply that has nothing to do with it.
+  assert.match(busy('cancel').message, /^DeepWater is still opening this brief/)
+  assert.doesNotMatch(busy('cancel').message, /answer|replied|change/i)
+  for (const action of ['create', 'reply', 'start', 'cancel', 'deliver'] as const) {
+    assert.equal(busy(action).refetch, true)
+    assert.equal(busy(action).retrySameAction, false)
+    assert.doesNotMatch(busy(action).message, FORBIDDEN)
+  }
 })
 
 test('an owner gets the one change there is to make for the team', () => {
@@ -190,18 +208,28 @@ test('an open research that blocks a change is named by who and where, never its
   // Anything more the refusal names about the run (its chat) is not read.
   assert.deepEqual(failure, { kind: 'open_research', run })
   assert.equal(
-    openResearchSentence(run, 'Jana', true),
+    openResearchSentence(run, 'Jana', 'can_cancel'),
     'A research started by Jana is having its brief agreed. It keeps DeepWater as it is until it ends — cancel it '
       + 'here, or let it finish, then try again.',
   )
   assert.match(
-    openResearchSentence({ ...run, originKind: 'agent', status: 'running' }, null, true),
+    openResearchSentence({ ...run, originKind: 'agent', status: 'running' }, null, 'can_cancel'),
     /^A research started by an agent is being researched\./,
   )
   // Without the cancel standing there is no Cancel beside it, so none is pointed at.
-  const noCancel = openResearchSentence(run, 'Jana', false)
+  const noCancel = openResearchSentence(run, 'Jana', 'cannot_cancel')
   assert.doesNotMatch(noCancel, /cancel/i)
   assert.match(noCancel, /try again once it has finished\.$/)
+  // An accepted cancel is not a stopped research: the change is still refused
+  // until DeepWater has stopped it, and nothing asks for a second cancel.
+  const requested = openResearchSentence(run, 'Jana', 'cancel_requested')
+  assert.equal(requested, 'Cancel requested for the research started by Jana. Until it has stopped, DeepWater '
+    + 'stays as it is — try again once it has.')
+  assert.equal(openResearchSentence(run, 'Jana', 'stopped'),
+    'The research started by Jana has stopped. You can try again now.')
+  for (const standing of ['can_cancel', 'cannot_cancel', 'cancel_requested', 'stopped'] as const) {
+    assert.doesNotMatch(openResearchSentence(run, 'Jana', standing), FORBIDDEN)
+  }
   const unnamed = teamChangeFailure(apiError('LEDGER_DEEPWATER_ACTIVE_RUNS', 409))
   assert.equal(unnamed.kind, 'message')
   assert.equal(teamChangeFailure(apiError('LEDGER_DEEPWATER_MCP_URL_UNSET', 503)).kind, 'message')

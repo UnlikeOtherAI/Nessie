@@ -513,6 +513,17 @@ the screen it goes to that conversation, which opens the brief itself.
   it; a finished research offers Retry import only where `canRetryDelivery`
   says so. A brief whose sign-in no longer resolves shows "Sign in again to
   continue this brief" (F4).
+- **A cancel is a state of its own.** `POST …/cancel` answers 202 once the
+  cancel is recorded for the worker; the research stays open, with
+  `pendingAction.kind === 'cancel'`, until DeepWater has stopped it. From the
+  moment Discard or Cancel is pressed until then, the dialog says "Discarding
+  this brief…" or "Stopping this research…" and offers neither the cancel again
+  nor Start, and the brief is not edited (its unsent edits stay in the draft).
+  The cancel mutation settles only once the run has been read again, so the
+  cancel never reappears in between; a cancel DeepWater refused comes back with
+  its error and can be pressed again. A refusal reads by the action refused
+  (`briefActionFailure(error, action)`): `DEEP_WATER_BRIEF_BUSY` on a cancel
+  means the brief is still being opened, never that the planner is answering.
 - **Every composer's Research button is always there** — the conversation's; a
   reply thread's and a Threads inbox card's, whose brief carries the thread's
   `rootMessageId` so the research card and its result land under that root; and
@@ -533,7 +544,12 @@ the screen it goes to that conversation, which opens the brief itself.
   (`LEDGER_DEEPWATER_ACTIVE_RUNS`, whose `details` name the run by id, status,
   origin and requester — `DeepWaterActiveRunConflictSchema`) shows that research
   by who started it and where it stands, never its question, with "Cancel this
-  research" as the owner's own cancel.
+  research" as the owner's own cancel. An accepted cancel leaves the block in
+  place saying the cancel is requested and to try again once the research has
+  stopped, with no second Cancel — also when trying the change again meanwhile
+  is refused by the same research. An owner who may read the research sees it
+  stop there (its view, refreshed by the realtime update); one who may not
+  learns it by trying the change again.
 - **Artifacts are one component.** `ResearchArtifactActions` — Download report
   (or summary) `.md`, Download sources `.csv`, Copy markdown, and "Open on
   research.deepwater.live" only when the view carries `publicUrl` — is used by

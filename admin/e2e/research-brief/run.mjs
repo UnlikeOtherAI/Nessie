@@ -10,6 +10,7 @@ import {
   assertThreadCards,
   walkBriefElsewhere,
   walkBriefToStart,
+  walkDiscardBrief,
   walkFailedReply,
   walkLauncherResearch,
   walkNewBrief,
@@ -32,12 +33,13 @@ import {
  * brief from the composer (and from a composer over another conversation), a
  * failed research started again under its reply thread, an older card's
  * action opening a brief under its own reply thread, an agent's read-only
- * brief, a reply the planner could not answer coming back and being sent
- * again, the failed opening turn, the sign-in state, every artifact action
- * including the clipboard fallback, the not-ready doorways for a member, an
- * admin (who is offered no team control) and an owner, the owner's cancel of
- * the research that blocks turning DeepWater off, and Knowledge › Research
- * with a research from before briefs and a second page.
+ * brief discarded (the discard in flight, then done), a reply the planner
+ * could not answer coming back and being sent again, the failed opening turn,
+ * the sign-in state, every artifact action including the clipboard fallback,
+ * the not-ready doorways for a member, an admin (who is offered no team
+ * control) and an owner, the owner's cancel of the research that blocks
+ * turning DeepWater off (requested, still refusing, then stopped), and
+ * Knowledge › Research with a research from before briefs and a second page.
  * Every state is screenshotted under e2e/screenshots/research-brief/.
  */
 
@@ -186,6 +188,7 @@ try {
   await agentDialog.getByText('An agent started this research, so it stays private', { exact: false }).waitFor()
   await agentDialog.getByRole('button', { name: 'Discard brief' }).waitFor()
   await snap(agentPage, '09-agent-brief.png')
+  await walkDiscardBrief(agentPage, agentDialog, '50000000-0000-4000-8000-000000000002', snap)
   await agentPage.close()
 
   // 10 — the planner could not answer a reply: its words come back, and Send again sends them.
@@ -277,8 +280,21 @@ try {
   await blocking.getByText('A research started by an agent is being researched.', { exact: false }).waitFor()
   assert.doesNotMatch(await blocking.innerText(), /installers/i, 'the refusal never shows the research question')
   await snap(hero, '16-hero-open-research.png')
+  // The cancel is accepted before DeepWater has stopped the research: the
+  // block stays, says so, and offers no second cancel.
   await blocking.getByRole('button', { name: 'Cancel this research' }).click()
-  await blocking.waitFor({ state: 'detached' })
+  await blocking.getByText('Cancel requested for the research started by an agent.', { exact: false }).waitFor()
+  assert.equal(await blocking.getByRole('button').count(), 0, 'no second cancel')
+  await snap(hero, '16b-hero-cancel-requested.png')
+  // Trying again meanwhile is refused by the same research, still stopping.
+  await heroControls.getByRole('button', { name: 'Turn off DeepWater' }).click()
+  await confirm.getByRole('button', { name: 'Turn off' }).click()
+  await confirm.waitFor({ state: 'detached' })
+  await blocking.getByText('Cancel requested', { exact: false }).waitFor()
+  assert.equal(await blocking.getByRole('button').count(), 0, 'still no second cancel')
+  // DeepWater stops it; the owner sees that here, and the change goes through.
+  await hero.evaluate((id) => window.__research.cancelSettles(id), '50000000-0000-4000-8000-000000000006')
+  await blocking.getByText('The research started by an agent has stopped. You can try again now.').waitFor()
   await heroControls.getByRole('button', { name: 'Turn off DeepWater' }).click()
   await confirm.getByRole('button', { name: 'Turn off' }).click()
   await heroControls.getByRole('button', { name: 'Turn on DeepWater' }).waitFor()
