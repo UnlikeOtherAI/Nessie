@@ -402,7 +402,9 @@ idle close and the probes above cannot take a coding turn with them. Its
 output is projected and path-rewritten before it leaves the host, the coding
 agent's own account (which the model knows and repeats) reads `<account>`, the
 OS user and host names read `<user>` and `<host>`, a CLI whose `--help` lacks
-a flag the bridge passes is refused before it starts, and
+a flag the bridge passes is refused before it starts, no agent outlives its
+host (a Job Object, the host's own systemd unit, or else the
+`coding-session-agent-guard` the host starts it through), and
 its failures are named codes, never the underlying error. The whole contract is in
 [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md).
 
@@ -425,7 +427,8 @@ rules follow from that:
   said or did. Absent means the bridge was not asked; only that server may
   carry the field.
 
-Both built-in servers are dispatched by `executor/src/builtin-mcp-cli.ts`.
+Both built-in servers, the session host and the agent guard are dispatched by
+`executor/src/builtin-mcp-cli.ts`.
 
 ## Verifying
 

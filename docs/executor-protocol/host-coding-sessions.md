@@ -339,11 +339,11 @@ was missing; the session carries only the categorical reason.
 
 | Host | How the session host runs | Survives a daemon restart | How the tree dies |
 | --- | --- | --- | --- |
-| Windows, desktop companion or hand-run daemon | detached; a packaged runtime starts the agent through the native helper's `job-run`, which holds it in a Job Object with `KILL_ON_JOB_CLOSE` | yes | the helper exits with the agent, and ends the job at once when the host dies; closing or killing the helper kills everything in the job. A development run has no verified helper and kills the tree it can see pid by pid with `taskkill /F` by its absolute System32 path; a packaged runtime whose helper is missing starts no agent (`containment_failed`) |
+| Windows, desktop companion or hand-run daemon | detached; a packaged runtime starts the agent through the native helper's `job-run`, which holds it in a Job Object with `KILL_ON_JOB_CLOSE` | yes | the helper exits with the agent, and ends the job at once when the host dies; closing or killing the helper kills everything in the job. A development run has no verified helper: it starts the agent through the agent guard, and it and the guard kill the tree they can see pid by pid with `taskkill /F` by its absolute System32 path; a packaged runtime whose helper is missing starts no agent (`containment_failed`) |
 | Windows service (virtual account) | refused: the session fails with `unsupported_supervisor` | — | — |
-| macOS | detached, its own session | yes | group kill, then a sweep of every descendant in a `ps -A -o pid=,ppid=,pgid=,lstart=` snapshot taken before signalling (`/proc` on Linux); SIGTERM first, SIGKILL two seconds later |
+| macOS | detached, its own session; the agent runs under the agent guard | yes | group kill, then a sweep of every descendant in a `ps -A -o pid=,ppid=,pgid=,lstart=` snapshot taken before signalling (`/proc` on Linux); SIGTERM first, SIGKILL two seconds later — three when the guard does it because the host died |
 | Linux with a reachable user manager | `systemd-run --user --collect --unit nessie-coding-<sessionId> -p KillMode=control-group -p TimeoutStopSec=10` | yes, and it can never block the executor unit's stop | the unit's cgroup dies with the host; a closing host stops its own unit |
-| Linux without one | detached (`setsid`) | no | as macOS |
+| Linux without one | detached (`setsid`); the agent runs under the agent guard | no | as macOS |
 
 `job-run -- <program> [args…]` starts the program suspended, assigns it to
 the job and only then resumes it, so nothing the agent runs is ever outside
@@ -379,13 +379,6 @@ restart can stop it), and the lock still decides which host serves the
 session. The daemon's close-all asks every session's host side by side, so
 many sessions do not add up past the call's budget.
 
-On macOS, and on Linux without a user manager, nothing watches the host the
-way the Windows job helper does: after a host is SIGKILLed or runs out of
-memory, its agent sees its stdin close and finishes the turn it is in —
-editing the worktree unobserved, its result unrecorded — and the next host
-started for the session stops it before doing anything else. A parent-death
-watch there is not built.
-
 Every kill checks the recorded pid and start time, so a reused pid is never
 signalled, and a new host stops a lost host's still-running agent before it
 resumes the session. The tree is held to the same rule: descendants are read
@@ -405,6 +398,49 @@ seconds before SIGKILL, so a `git` caught mid-commit can remove its
 confirmed session id, skips the 500 ms debounce, and a session id the agent
 never confirmed is dropped: Claude refuses `--session-id` for an id it already
 holds, so the next agent starts afresh rather than failing on every send.
+
+### The agent guard: no agent outlives its host
+
+On macOS, on Linux without a unit of its own and in a Windows development
+run, nothing else would end an agent whose host was SIGKILLed or ran out of
+memory: it saw its stdin close and finished the turn it was in, editing the
+worktree unobserved, its result unrecorded. (On Windows libuv's own
+kill-on-close job took the agent with its host, but not the agent's
+children.) So there the host starts the agent through
+`nessie-executor coding-session-agent-guard` — the same entry, runtime
+arguments and environment as the host, from the host's folder — and a
+packaged Windows host (the Job Object) or a Linux host in its unit (the
+cgroup; `NESSIE_CODING_SESSION_UNIT` names it and `/proc/self/cgroup` must
+agree) does not.
+
+- **One inherited pipe.** The guard is started detached (on Windows every
+  other child is in its parent's kill-on-close job, which would end the guard
+  with the host before it could act) with Node's IPC channel at fd 3. The
+  agent's argv, folder and environment arrive on that pipe, never on the
+  guard's command line; a guard told nothing for 30 s refuses.
+- **The agent's own identity.** The guard starts the agent as its child in a
+  process group of its own (detached on POSIX, hidden on Windows), reads its
+  start time, and reports `{pid, startedAt}` on the pipe before it relays
+  anything. That is the identity the host records, so every kill the host
+  makes goes to the agent and never to the guard; an agent whose start time
+  cannot be read is stopped at once.
+- **Transparent otherwise.** stdin, stdout and stderr are relayed, and the
+  guard exits with the agent's code, or dies of its signal, once the agent's
+  output is read. Its own refusals go to stderr with exit code 125, as the job
+  helper's do: `EXECUTOR_GUARD_SPAWN_FAILED` reads as `agent_missing`,
+  `EXECUTOR_GUARD_CONTAINMENT_FAILED` and `EXECUTOR_GUARD_NO_AGENT` as
+  `containment_failed`.
+- **The pipe closing is the host dying,** however it died. The guard then
+  kills the agent's group and tree with the same identity-checked calls the
+  host uses — SIGTERM, SIGKILL three seconds later on POSIX; `taskkill /F`
+  pid by pid on Windows, never `/T` — and exits. A dead host closes the
+  guard's stdin too, so the end of the agent's input is also sent on the pipe
+  when the host means it: stdin ending alone never lets the agent finish its
+  turn on its own.
+
+A guard killed outright cannot act; on Windows the agent is in the guard's own
+kill-on-close job and dies with it, and elsewhere the next host started for
+the session stops the agent before doing anything else, as it always has.
 
 ### Teardown reaches the machine
 
@@ -547,14 +583,26 @@ Object is proved twice:
 `executor/native/tests/job_run.rs` drives the built helper (exit code, stdio,
 an orphaned grandchild dying with the job, the job dying with its parent), and
 `coding-session-containment.test.ts` kills an agent's orphaning tree through
-the helper whenever `executor/native/target` holds a build. The configuration
+the helper whenever `executor/native/target` holds a build.
+`coding-session-guard.test.ts` runs the real agent guard: the agent's own
+identity, environment, output and exit code through it, its refusal when the
+agent cannot start, which hosts use it, and a host killed with -9
+(`taskkill /F` on Windows) — a stand-in host, and a real bridge's host
+mid-turn under `#fork` — with the agent and its grandchild gone within five
+seconds. On Linux with a user manager that second host is in its unit, so
+there it is the unit that proves it and the stand-in the guard.
+`coding-session-systemd.test.ts` restarts a stand-in executor unit with the
+real unit's `KillMode=control-group` while a turn is held and drives the same
+session afterwards — still working, the same agent, the turn finished and a
+follow-up served — whenever `systemctl --user is-system-running` answers
+`running` or `degraded`, and says why it skipped otherwise. The configuration
 round trip through a real state file is skipped on Windows, where saving
 executor state needs the packaged helper. The live cycle — start, follow-up, a
 denied `git push`, review and close against a logged-in Claude Code, and a
-Codex turn — needs real subscriptions and is not automated, and neither is a
-`systemctl --user restart` of the executor unit around a live session.
+Codex turn — needs real subscriptions and is not automated.
 
-Both were last run by hand on 2026-09-23. On Windows an MCP client started the
+The live cycle, and the restart before it became a suite, were last run by
+hand on 2026-09-23. On Windows an MCP client started the
 built bridge with the daemon's own generated argv and environment, stamped an
 owner in `_meta`, and drove Claude Code (haiku, `acceptEdits`, `Bash(git *)`)
 through a task, a correction, a review showing both commits and a close, once
