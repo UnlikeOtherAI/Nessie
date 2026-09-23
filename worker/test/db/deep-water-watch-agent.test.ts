@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { PrismaClient } from '@prisma/client'
 import { DeepWaterDeliveryMessageMetadataSchema, type RunExecuteJobPayload } from '@nessie/schemas'
 
+import { renewDeepWaterIdentity } from '../../src/control/deepwater-delivery.js'
 import { reapUnconfirmedDeepWaterBriefs } from '../../src/control/deepwater-worker.js'
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
 import { deepWaterWakeKickoffId } from '../../src/control/deepwater-wake.js'
@@ -239,6 +240,52 @@ withFixture('a requester who left a private room is not acted for there; they ar
     id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
     turn: { id: turnId, seq: 1, status: 'pending', authorKind: 'agent', errorCode: null, retryable: false },
   })
+  fixture.ledger.answer('research_scope_get', wireScope({
+    id: rs, turn: { id: turnId, seq: 1, status: 'complete', author_kind: 'agent' }, revision: 1, withTranscript: true,
+  }))
+  await watch(fixture, brief.id)
+  assert.equal((await fixture.read(brief.id)).agentWakeCount, 1)
+  assert.deepEqual((await kickoffs(fixture)).map((message) => message.id), [deepWaterWakeKickoffId(brief.id, 'turn', turnId)])
+})
+
+withFixture('an agent\'s brief whose requester\'s sign-in changed tells them once, and a renewed sign-in resumes it', async (fixture) => {
+  const brief = await fixture.insert('agent')
+  const rs = researchId()
+  const turnId = randomUUID()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: turnId, seq: 1, status: 'pending', authorKind: 'agent', errorCode: null, retryable: false },
+  })
+  fixture.failIdentity(true)
+  await watch(fixture, brief.id)
+  await watch(fixture, brief.id)
+
+  const blocked = await fixture.read(brief.id)
+  assert.equal(blocked.deliveryBlockedReason, 'requester_identity_changed')
+  assert.equal(blocked.status, 'drafting')
+  assert.equal(fixture.ledger.calls.length, 0, 'nothing reaches Ledger without the identity')
+  assert.deepEqual(await kickoffs(fixture), [], 'the agent cannot be woken as someone who is not signed in')
+  // The person cannot edit an agent's brief and the agent is not woken again, so they are told — once.
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'])
+  const [notice] = await fixture.prisma.message.findMany({
+    where: { threadId: fixture.ids.thread, role: 'assistant', agentId: null },
+  })
+  assert.match(notice?.content ?? '', /can't carry on because your sign-in has changed/)
+  assert.match(notice?.content ?? '', /Sign in again, then choose Retry/)
+  assert.equal(
+    await fixture.prisma.userAlert.count({ where: { userId: fixture.ids.requester, messageId: notice?.id ?? '' } }),
+    1,
+    'the notice alerts the requester',
+  )
+
+  // Their next live identity renews the brief's and clears the block; the watch resumes.
+  fixture.failIdentity(false)
+  await renewDeepWaterIdentity(fixture.deps, {
+    organizationId: fixture.ids.organization,
+    runId: brief.id,
+    identity: { ...fixture.identity, tokenVersion: fixture.identity.tokenVersion + 1 },
+  })
+  assert.equal((await fixture.read(brief.id)).deliveryBlockedReason, null)
   fixture.ledger.answer('research_scope_get', wireScope({
     id: rs, turn: { id: turnId, seq: 1, status: 'complete', author_kind: 'agent' }, revision: 1, withTranscript: true,
   }))

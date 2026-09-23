@@ -381,9 +381,12 @@ the only way results come back.
   captured), a research with `research_status`; the answer goes through the
   same projection the tool acks use. A transient failure changes nothing; an
   identity that no longer resolves blocks the run with
-  `requester_identity_changed` (quietly for a brief, and for a launched
-  research with a notice that DeepWater can't check on it — never that it
-  finished) until the requester's next live action renews it.
+  `requester_identity_changed` until the requester's next live action (or
+  Retry) renews it. Only a person's own brief is blocked quietly, because its
+  dialog says "Sign in again"; an agent's brief tells the requester once that
+  the agent can't carry on (they cannot edit it, and the agent is never woken
+  while the watch is stopped), and a launched research tells them DeepWater
+  can't check on it — never that it finished.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind, provider tool-call id and stored arguments — which Ledger answers
   with the one brief it keyed to that call, or opens now. The attach posts the

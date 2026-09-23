@@ -115,6 +115,15 @@ export const identityChangedWhileRunningNotice = (topic: string): string =>
   `DeepWater can't check on your research ${quoted(topic)} because your sign-in has changed. `
   + 'Sign in again, then choose Retry on the research, so its result still comes back here.'
 
+/**
+ * The same, for a brief an agent is still agreeing for the person: the agent
+ * cannot be told what the planner says until they act, and nothing else would
+ * tell them — a person's own brief says so in its dialog instead.
+ */
+export const identityChangedOnAgentBriefNotice = (topic: string): string =>
+  `The agent working on your DeepWater research brief ${quoted(topic)} can't carry on because `
+  + 'your sign-in has changed. Sign in again, then choose Retry on the research so the agent can continue.'
+
 export const wakeUnreachableNotice = (input: { topic: string; finished: boolean; link: string | null }): string =>
   input.finished && input.link
     ? `The DeepWater research you asked an agent for, ${quoted(input.topic)}, has finished, but the `

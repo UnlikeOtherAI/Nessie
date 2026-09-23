@@ -6,6 +6,7 @@ import {
   completedKickoff,
   deepWaterFailureMessage,
   failedNotice,
+  identityChangedOnAgentBriefNotice,
   identityChangedWhileRunningNotice,
   resultNotice,
   startUnconfirmedNotice,
@@ -31,6 +32,7 @@ test('person-facing notices use plain words and never the plumbing', () => {
     wakeUnreachableNotice({ topic: 'Heat pumps', finished: false, link: null }),
     wakeCapNotice('Heat pumps'),
     identityChangedWhileRunningNotice('Heat pumps'),
+    identityChangedOnAgentBriefNotice('Heat pumps'),
     ...(['requester_identity_changed', 'ledger_unavailable', 'knowledge_destination_unavailable',
       'report_expired', 'report_malformed'] as const)
       .map((reason) => blockedNotice({ topic: 'Heat pumps', reason })),
@@ -77,4 +79,11 @@ test('a changed sign-in says a running research is still running, and a blocked 
   assert.doesNotMatch(running, /finished|saved to Documents/)
   const finished = blockedNotice({ topic: 'Heat pumps', reason: 'requester_identity_changed' })
   assert.match(finished, /has finished, but it couldn't be saved to Documents/)
+})
+
+test('a changed sign-in on an agent\'s brief names the remedy and never a result', () => {
+  const notice = identityChangedOnAgentBriefNotice('Heat pumps')
+  assert.match(notice, /agent working on your DeepWater research brief “Heat pumps” can't carry on/)
+  assert.match(notice, /Sign in again, then choose Retry/)
+  assert.doesNotMatch(notice, /finished|saved to Documents/)
 })

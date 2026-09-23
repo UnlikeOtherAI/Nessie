@@ -25,7 +25,12 @@ import {
   type DeepWaterLedgerOutcome,
 } from '../run/deepwater-ledger-call.js'
 import { runDeepWaterTransaction } from './deepwater-announce.js'
-import { failedKickoff, failedNotice, identityChangedWhileRunningNotice } from './deepwater-copy.js'
+import {
+  failedKickoff,
+  failedNotice,
+  identityChangedOnAgentBriefNotice,
+  identityChangedWhileRunningNotice,
+} from './deepwater-copy.js'
 import { deliverDeepWaterResearch, type DeepWaterDeliveryDeps } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, ensureDeepWaterResearchCard, postDeepWaterNotice } from './deepwater-messages.js'
 import { handleDeepWaterTurnWake } from './deepwater-turn-wake.js'
@@ -71,9 +76,13 @@ const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutc
 }
 
 /**
- * The requester's captured identity no longer resolves (F4). A brief waits for
- * their next live action, which renews it; a launched research, still running,
- * also tells them — as still running, never as finished.
+ * The requester's captured identity no longer resolves (F4). The block stops
+ * the watch until their next live action (or Retry) renews it. A person's own
+ * brief says "Sign in again" in its dialog, from the run itself, so it needs
+ * no notice. Everyone else is told once, because nothing else would tell them:
+ * an agent's brief waits on a person who cannot edit it and an agent that is
+ * never woken again, and a launched research is still running — never told as
+ * finished.
  */
 const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun): Promise<void> => {
   await runDeepWaterTransaction(deps, async (tx, announce) => {
@@ -83,12 +92,13 @@ const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun)
       reason: 'requester_identity_changed',
     })
     if (!blocked) return
-    // The brief dialog shows "Sign in again" from the run itself.
     announce.run(run)
-    if (run.status === 'drafting') return
+    const brief = run.status === 'drafting'
+    if (brief && run.originKind === 'person') return
+    const topic = deepWaterTopicPreview(run)
     await postDeepWaterNotice(tx, announce, run, {
       kind: 'blocked',
-      content: identityChangedWhileRunningNotice(deepWaterTopicPreview(run)),
+      content: brief ? identityChangedOnAgentBriefNotice(topic) : identityChangedWhileRunningNotice(topic),
       alertKey: `deep-water-identity:${run.id}:${run.reconcileSeq}`,
     })
   })
