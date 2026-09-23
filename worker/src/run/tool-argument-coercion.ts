@@ -87,20 +87,33 @@ const coerceItems = (value: unknown[], itemSchema: unknown): unknown[] => {
   })
 }
 
-const builtinParameterSchemas = (
-  toolName: string,
-): Record<string, unknown> | null => {
-  const definition = BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.id === toolName)
-  const parameters = definition?.parameters as { properties?: unknown } | undefined
-  const properties = parameters?.properties
+const declaredProperties = (inputSchema: unknown): Record<string, unknown> | null => {
+  const properties = (inputSchema as { properties?: unknown } | null | undefined)?.properties
   return properties && typeof properties === 'object' && !Array.isArray(properties)
     ? properties as Record<string, unknown>
     : null
 }
 
-export const coerceJsonEncodedToolArguments = (
-  toolName: string,
+export type ToolArgumentCoercion = {
+  /**
+   * Only turn strings into the declared `number`, `integer` or `boolean`, and
+   * never parse a string into an object or an array. The executor uses it on a
+   * local program's own arguments, whose grammar is the program's: the worker
+   * shapes a scalar to the type the program advertised and leaves the rest.
+   */
+  scalarsOnly?: boolean
+}
+
+/**
+ * The same correction against any JSON Schema, for tools that are not
+ * builtins: an executor tool's model-facing schema, or the input schema a local
+ * program advertised for one of its tools. Only the schema's top-level
+ * `properties` are consulted.
+ */
+export const coerceToolArgumentsToSchema = (
+  inputSchema: unknown,
   args: Record<string, unknown> | string,
+  options: ToolArgumentCoercion = {},
 ): Record<string, unknown> => {
   // The whole arguments object may itself arrive as a JSON-encoded string.
   if (typeof args === 'string') {
@@ -119,13 +132,13 @@ export const coerceJsonEncodedToolArguments = (
   if (!args || typeof args !== 'object' || Array.isArray(args)) {
     return {} as Record<string, unknown>
   }
-  const properties = builtinParameterSchemas(toolName)
+  const properties = declaredProperties(inputSchema)
   if (!properties) return args
 
   let corrected: Record<string, unknown> | null = null
   for (const [key, value] of Object.entries(args)) {
     const schema = properties[key]
-    const want = declaredKind(schema)
+    const want = options.scalarsOnly ? null : declaredKind(schema)
 
     let next: unknown = value
     if (typeof value === 'string') {
@@ -150,3 +163,11 @@ export const coerceJsonEncodedToolArguments = (
   }
   return corrected ?? args
 }
+
+export const coerceJsonEncodedToolArguments = (
+  toolName: string,
+  args: Record<string, unknown> | string,
+): Record<string, unknown> => coerceToolArgumentsToSchema(
+  BUILTIN_TOOL_DEFINITIONS.find((tool) => tool.id === toolName)?.parameters,
+  args,
+)
