@@ -13,6 +13,7 @@ import type { Pool } from 'pg'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import type { ThinkingRecorder } from './thinking-recorder.js'
 import type { ExecutorMcpCatalogAnswer } from '../executor-mcp-catalog.js'
 import type { ExecutorToolset } from '../executor-toolset.js'
 import type { McpToolset } from '../mcp-toolset.js'
@@ -278,6 +279,8 @@ type LoopHarness = {
 const runLoop = async (input: {
   allowBuiltinExec?: boolean
   builtinName?: string
+  /** The toolset's first-class coding tools; their names join the executor names. */
+  codingSessions?: NonNullable<ExecutorToolset['codingSessions']>
   mcpTools?: Record<string, AgenticToolResult>
   executorCatalog?: ExecutorMcpCatalogAnswer
   executorTools?: Record<string, AgenticToolResult>
@@ -287,6 +290,7 @@ const runLoop = async (input: {
   rules?: Array<Record<string, unknown>>
   // Sequence of sub-agent turns used by the delegate path.
   subAgentTurns?: InferenceResult[]
+  thinkingRecorder?: ThinkingRecorder
   toolName: string
   toolArgs?: Record<string, unknown>
 }): Promise<LoopHarness> => {
@@ -326,12 +330,16 @@ const runLoop = async (input: {
   } as unknown as McpToolset
 
   const executorToolset = {
+    codingSessions: input.codingSessions ?? null,
     descriptors: [],
     dispatch: async (name: string) => {
       dispatchedExecutor.push(name)
       return executorEntries[name]
     },
-    handledNames: new Set(Object.keys(executorEntries)),
+    handledNames: new Set([
+      ...Object.keys(executorEntries),
+      ...(input.codingSessions?.descriptors ?? []).map((descriptor) => descriptor.toolName),
+    ]),
     mcpCatalog: async (server: string) => {
       catalogRequests.push(server)
       return input.executorCatalog ?? { failure: { inputSummary: '', output: 'no catalog scripted', success: false } }
@@ -415,7 +423,7 @@ const runLoop = async (input: {
       mcpToolset,
       resolvedToolIds: input.resolvedBuiltinToolIds ?? new Set([builtinName, 'delegate']),
       stubbedBuiltinToolIds: new Set(),
-      thinkingRecorder: {
+      thinkingRecorder: input.thinkingRecorder ?? {
         appendReasoning: async () => undefined,
         appendToolLine: async () => undefined,
         close: async () => undefined,
@@ -814,6 +822,41 @@ test('main executor: a namespaced executor call is claimed in the tool-effect le
   const claim = harness.fake.toolEffects.get(effectKey({ runId: RUN_ID, toolCallId: 'call-1' }))
   assert.ok(claim, 'an external dispatch under a provider prefix ran without a durable claim')
   assert.equal(claim['state'], 'completed')
+})
+
+test('main executor: a namespaced coding wait keeps rewriting the one thought-process line it opened', async () => {
+  // Lines keyed as the recorder keys them, so the wait's rewrite lands only
+  // on a line opened under the same name.
+  const lines = new Map<string, string>()
+  const thinkingRecorder: ThinkingRecorder = {
+    appendReasoning: async () => undefined,
+    appendToolLine: async (toolName, summary) => { lines.set(toolName, `${toolName}: ${summary}`) },
+    close: async () => undefined,
+    replaceToolLine: async (toolName, text) => {
+      if (lines.has(toolName)) lines.set(toolName, `${toolName}: ${text}`)
+    },
+  }
+  const waited: string[] = []
+  const codingSessions: NonNullable<ExecutorToolset['codingSessions']> = {
+    descriptors: [{ description: 'wait', inputSchema: { properties: {}, type: 'object' }, toolName: 'coding_session_wait' }],
+    execute: async (toolName, _args, _callId, hooks) => {
+      waited.push(toolName)
+      await hooks?.onProgress?.('coding_session_wait', 'Claude Code: working — 14 steps (Bash 7, Edit 3)')
+      return { inputSummary: 'wait', output: 'The turn ended.', success: true }
+    },
+    server: 'coding-sessions',
+  }
+  await runLoop({
+    codingSessions,
+    thinkingRecorder,
+    toolArgs: { sessionId: 'a' },
+    // Meta's models prefix the offered name.
+    toolName: 'default.coding_session_wait',
+  })
+  assert.deepEqual(waited, ['coding_session_wait'])
+  assert.deepEqual([...lines.entries()], [
+    ['coding_session_wait', 'coding_session_wait: Claude Code: working — 14 steps (Bash 7, Edit 3)'],
+  ], 'one line, under the offered name, and rewritten in place')
 })
 
 const toolMessage = (result: LoopHarness['result'], marker: string): string => {

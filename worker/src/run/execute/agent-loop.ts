@@ -473,7 +473,9 @@ export const runExecutionAgentLoop = async (
       onToolCallStart: async (toolName, _args) => {
         const startedAt = new Date()
         // Tool activity is part of the thought process, not a separate feed.
-        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
+        // The line goes under the offered name, the one a watching call
+        // rewrites it by, whatever prefix the provider put on the call.
+        await input.thinkingRecorder.appendToolLine(normalizeToolName(toolName), summarizeToolInput(_args))
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
