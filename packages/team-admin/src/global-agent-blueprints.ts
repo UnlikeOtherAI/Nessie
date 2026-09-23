@@ -287,57 +287,14 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   // multiplying. Everything else safe stays on by default; explicit-grant tools
   // are off by default and PA-only tools are structurally denied to it today.
   toolPolicy: {
-    agent_avatar_generate: true,
-    agent_avatar_update: true,
-    agent_bind_channel: true,
-    agent_create: true,
-    agent_list: true,
-    agent_read: true,
-    agent_tool_catalog: true,
-    agent_tool_access_set: true,
-    agent_tool_access_inspect: true,
-    agent_deepwater_access_set: true,
-    agent_unbind_channel: true,
-    agent_trigger_list: true,
-    agent_trigger_update: true,
-    agent_trigger_delete: true,
-    agent_delete: true,
-    email_account_list: true,
-    email_account_agent_access: true,
-    agent_trigger_create: true,
-    agent_update: true,
-    // Kept for a person who asks for a channel. It is never a step in building
-    // an agent: one made for every new agent is a room nobody asked for, so
-    // the prompt says a new agent lives in the channels named, or nowhere yet.
-    channel_create: true,
-    // Connecting the app an agent needs is part of building that agent. These
-    // act with the person's own connector rights, so a shared install is still
-    // refused to anyone whose role would be refused it on the Apps page.
-    // `connector_uninstall` is deliberately absent: designing an agent is never
-    // a reason to take an app away from everyone else using it.
-    connector_authorize: true,
-    connector_discover: true,
-    connector_install: true,
-    connector_library_search: true,
-    connector_list: true,
-    connector_set_secret: true,
-    connector_test: true,
-    // The machines an agent can be given work on. Reading them is what makes
-    // "which of my executors should it use" answerable at all; the grant is
-    // whole-suite and still ends in the person's own confirmation with fresh
-    // verification, in the review its confirmation card opens. No
-    // `identityDelegatedOnly` on any of the three: that flag removes the
-    // Personal Assistant's arm, and the PA keeps its executor tools.
-    executor_agent_grant_prepare: true,
-    executor_inspect: true,
-    executor_list: true,
-    project_create: true,
-    project_list: true,
-    team_create: true,
-    // Builtins are deny-mode, so the `true`s above change nothing on their own —
-    // the `personalAssistantOnly` gate is what admits them, and it reads
-    // `identityToolIds` below. They are written explicitly anyway so the stored
-    // row states the intent, and so revoking one is a single `false`.
+    // The declared half of the delegated set: every identity verb below is
+    // stated `true` on the stored row, from the SAME derived list, so the two
+    // can never drift — the bootstrap DB test asserts each declared id.
+    // Builtins are deny-mode, so these `true`s change nothing on their own
+    // (the `personalAssistantOnly` gate arm reading `identityToolIds` is what
+    // admits them); the row states the intent, and revoking one is a single
+    // `false` added AFTER this spread so it wins.
+    ...Object.fromEntries(DESIGNER_ACT_AS_USER_TOOL_IDS.map((id) => [id, true])),
     delegate: false,
     spawn_subtask: false,
   },
