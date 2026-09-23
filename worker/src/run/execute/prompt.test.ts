@@ -498,3 +498,9 @@ test('the shared main prompt guides proportionate completion without a token rul
   assert.match(system, /clear, proportionate detail/)
   assert.doesNotMatch(system, /output-token cap/)
 })
+
+test('every agent is told to report only what its tool calls returned, once', () => {
+  const system = systemContent(buildModelPrompt([], makeContext('Aria'), 'hi', null))
+  const rule = 'Report only what your tool calls returned. Never say you started, ran or finished something you did not.'
+  assert.equal(system.split(rule).length - 1, 1)
+})

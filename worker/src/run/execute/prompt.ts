@@ -174,6 +174,10 @@ export const buildModelPrompt = (
     coreInstructionBlock(context),
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
+    // Said outright because the failure it answers was a claim, not a call: an
+    // agent told a person it had started work on their machine when no tool
+    // call had run at all.
+    'Report only what your tool calls returned. Never say you started, ran or finished something you did not.',
     AGENT_SECRET_SAFETY_INSTRUCTION,
     'When you need an id for a channel, person, or thread you only know by name, '
       + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
