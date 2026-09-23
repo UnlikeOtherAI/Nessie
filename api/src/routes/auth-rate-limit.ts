@@ -50,6 +50,9 @@ export const RATE_LIMIT_BUCKETS = {
   boardSourceWebhookIp: 'board_source.webhook.ip',
   agentEmailInboundIp: 'agent_email.inbound.ip',
   executorDaemonSessionIp: 'executor.daemon_session.ip',
+  // The one daemon route that carries bytes, with a body limit raised to a
+  // 4 MiB image's base64: the session floor would let one IP send gigabytes.
+  executorAttachmentIp: 'executor.attachment.ip',
   publicRouteIp: 'api.public.ip',
   // Dictation is handler-applied, not global: the transcription route is
   // authenticated, so it is limited per account as well as per IP.
@@ -178,9 +181,6 @@ const EXECUTOR_DAEMON_SESSION_ROUTES = new Set([
   '/api/executor-daemon/descriptor',
   '/api/executor-daemon/commands/poll',
   '/api/executor-daemon/commands/receipt',
-  // Its per-executor image rate is the handler's (`@nessie/executor-manage`
-  // executor-command-attachments.ts); this is the same per-IP floor.
-  '/api/executor-daemon/commands/attachment',
   '/api/executor-daemon/browser-cookie-imports/pending',
   '/api/executor-daemon/browser-cookie-imports/upload',
   '/api/executor-enrollments/submit',
@@ -206,6 +206,12 @@ const POST_ROUTE_BUCKETS: ReadonlyMap<string, RateLimitBucketName> = new Map([
   // than its signed follow-up requests: it is public before the host key has
   // been proved and must not become a host-id probing or storage-flood path.
   ['/api/local-inference/daemon/challenge', 'executorDaemonIp'],
+  // An image upload is parsed before its signature can be checked, and its
+  // body may be 5.6 MB, so it gets a bucket sized to real traffic rather than
+  // the daemon-session flood ceiling. Its per-executor attempt rate is the
+  // handler's, after the signature (`@nessie/executor-manage`
+  // executor-command-attachments.ts).
+  ['/api/executor-daemon/commands/attachment', 'executorAttachmentIp'],
   ['/api/threads/:threadId/messages', 'threadMessageIp'],
   ['/api/mailbox-connections/discover', 'mailboxDiscoverIp'],
   ['/api/triggers/webhook', 'triggerWebhookIp'],

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { ToolCallEntrySchema } from '@nessie/schemas'
+import { recordExecutorCommandReceipt } from '@nessie/executor-manage'
+import { canonicalExecutorJson, ToolCallEntrySchema } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { RunThinkingLogSchema } from '../src/contracts/messaging.js'
@@ -14,6 +15,7 @@ import { loadAgentActivity, loadRunToolCalls } from '../src/services/agent-read-
 import {
   ATTACHMENT_SECRET,
   attachmentTestPrisma,
+  digestOf,
   kelpieScreenshot,
   seedAttachmentWorld,
   type AttachmentWorld,
@@ -74,15 +76,32 @@ const withApp = async (run: (harness: Harness) => Promise<void>): Promise<void> 
   }
 }
 
-/** A Kelpie screenshot call: its ToolCall, the tool line it started, and the kept image. */
-const screenshotCall = async ({ app, world }: Harness) => {
+/**
+ * A Kelpie screenshot call: its ToolCall, the tool line it started, and the
+ * kept image — delivered, unless `delivered` is false, in a result that names
+ * it.
+ */
+const screenshotCall = async ({ app, world }: Harness, options: { delivered?: boolean } = {}) => {
   const commandId = await world.createCommand('started')
+  const screenshot = kelpieScreenshot()
   const uploaded = await app.inject({
     method: 'POST',
     url: '/api/executor-daemon/commands/attachment',
-    payload: world.upload(commandId, kelpieScreenshot()) as unknown as Record<string, unknown>,
+    payload: world.upload(commandId, screenshot) as unknown as Record<string, unknown>,
   })
   assert.equal(uploaded.statusCode, 200, uploaded.body)
+  if (options.delivered !== false) {
+    const result = {
+      content: [{ attachmentDigest: digestOf(screenshot), byteLength: screenshot.length, mimeType: 'image/png', type: 'image' }],
+      success: true,
+    }
+    await recordExecutorCommandReceipt(world.prisma, ATTACHMENT_SECRET, world.executorId, {
+      commandId,
+      occurredAt: new Date().toISOString(),
+      resultDigest: `sha256:${createHash('sha256').update(canonicalExecutorJson(result)).digest('hex')}`,
+      state: 'result_acknowledged',
+    }, result)
+  }
   const { toolCallId } = await world.prisma.executorCommand.findUniqueOrThrow({
     where: { id: commandId },
     select: { toolCallId: true },
@@ -150,6 +169,21 @@ dbTest('a screenshot call reads back with its id and the image it returned, on b
     // Without a person reading, nothing is listed.
     const unattended = await loadRunToolCalls(world.prisma, world.agentId, world.runId)
     assert.deepEqual(unattended.map((call) => call.attachments), [[]])
+  })
+})
+
+dbTest('a call whose command never delivered its result shows nothing it uploaded', async () => {
+  await withApp(async (harness) => {
+    const { world } = harness
+    // Uploaded, then the command expired with no result: no model saw it.
+    const { attachmentId, toolCallId } = await screenshotCall(harness, { delivered: false })
+    const runCalls = await loadRunToolCalls(world.prisma, world.agentId, world.runId, {
+      visibility: viewer(world, world.holderId),
+    })
+    assert.deepEqual(runCalls.map((call) => [call.id, call.attachments]), [[toolCallId, []]])
+    const log = RunThinkingLogSchema.parse((await thinkingLogAs(harness, world.holderId)).json().data)
+    const listed = log.entries.flatMap((entry) => entry.attachments ?? []).map((image) => image.attachmentId)
+    assert.equal(listed.includes(attachmentId), false)
   })
 })
 

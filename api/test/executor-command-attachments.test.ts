@@ -2,11 +2,18 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { EXECUTOR_ATTACHMENT_RATE_MAXIMUM } from '@nessie/executor-manage'
+import { loadConfig } from '@nessie/config'
+import { countRateLimitHit, rateLimitKeyHash } from '@nessie/db'
+import {
+  EXECUTOR_ATTACHMENT_RATE_BUCKET,
+  EXECUTOR_ATTACHMENT_RATE_MAXIMUM,
+  EXECUTOR_ATTACHMENT_RATE_WINDOW_MS,
+} from '@nessie/executor-manage'
 import { EXECUTOR_RESULT_IMAGE_MAX_BASE64_LENGTH } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { registerRawBodyJsonParser } from '../src/lib/raw-body-json-parser.js'
+import { rateLimitFor, resolveGlobalRateLimitBucket } from '../src/routes/auth-rate-limit.js'
 import { registerExecutorDaemonRoutes } from '../src/routes/executor-daemon-routes.js'
 import { registerCreateThreadMessageRoute } from '../src/routes/thread-message-create.js'
 import { registerUploadRoutes } from '../src/routes/uploads.js'
@@ -140,20 +147,55 @@ dbTest('a daemon can tell a refusal from a reason to wait by the status alone', 
     const unknown = await postUpload(app, world.upload(randomUUID(), screenshot))
     assert.equal(unknown.statusCode, 404)
 
-    await world.prisma.attachment.createMany({
-      data: Array.from({ length: EXECUTOR_ATTACHMENT_RATE_MAXIMUM }, (_, index) => ({
-        contentByteLength: 100, contentDigest: `sha256:${String(index).padStart(64, '0')}`,
-        executorCommandId: leased, filename: `seeded-${index}.png`, kind: 'image', mime: 'image/png',
-        organizationId: world.organizationId, sizeBytes: 100n, storageKey: `${world.organizationId}/seeded-${index}`,
-        uploaderId: world.holderId,
-      })),
-    })
+    const now = Date.now()
+    for (let index = 0; index < EXECUTOR_ATTACHMENT_RATE_MAXIMUM; index += 1) {
+      await countRateLimitHit(world.prisma, {
+        bucket: EXECUTOR_ATTACHMENT_RATE_BUCKET,
+        keyHash: rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId),
+        nowMs: now,
+        rule: { max: EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: EXECUTOR_ATTACHMENT_RATE_WINDOW_MS },
+      })
+    }
     // 429 is the one answer the daemon keeps the image for and retries.
     const busy = await postUpload(app, world.upload(started, screenshot))
     assert.equal(busy.statusCode, 429)
     assert.equal(busy.json().error.code, 'EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED')
     assert.equal(busy.headers['retry-after'], '60')
   })
+})
+
+dbTest('an unsigned upload is answered without a byte reaching storage', async () => {
+  await withApp({}, async ({ app, world }) => {
+    const commandId = await world.createCommand('started')
+    const forged = { ...world.upload(commandId, pngBytes(2 * 1024 * 1024)), signature: 'A'.repeat(86) }
+    const refused = await postUpload(app, forged)
+    assert.equal(refused.statusCode, 401)
+    assert.equal(refused.json().error.code, 'EXECUTOR_DAEMON_PROOF_INVALID')
+    // Past the raised limit, the body is not even read.
+    const oversized = await app.inject({
+      method: 'POST',
+      url: '/api/executor-daemon/commands/attachment',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ ...forged, dataBase64: 'A'.repeat(EXECUTOR_RESULT_IMAGE_MAX_BASE64_LENGTH + 32 * 1024) }),
+    })
+    assert.equal(oversized.statusCode, 413)
+    assert.equal(await world.prisma.attachment.count({ where: { organizationId: world.organizationId } }), 0)
+    assert.equal(await world.prisma.storageUsageEvent.count({ where: { organizationId: world.organizationId } }), 0)
+  })
+})
+
+test('the upload route has its own per-IP bucket, sized to real traffic, before its body is read', () => {
+  const bucket = resolveGlobalRateLimitBucket({
+    isPublic: true, method: 'POST', routePath: '/api/executor-daemon/commands/attachment',
+  })
+  assert.equal(bucket, 'executorAttachmentIp')
+  const { bucket: storeKey, rule } = rateLimitFor(loadConfig({ argv: [], env: {} }), 'executorAttachmentIp')
+  assert.equal(storeKey, 'executor.attachment.ip')
+  assert.deepEqual(rule, { max: 2 * EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: 60_000 })
+  // The other daemon routes keep the session floor.
+  assert.equal(resolveGlobalRateLimitBucket({
+    isPublic: true, method: 'POST', routePath: '/api/executor-daemon/commands/receipt',
+  }), 'executorDaemonSessionIp')
 })
 
 dbTest('a run\'s screenshot is served to the people in its conversation and to nobody else', async () => {

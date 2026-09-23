@@ -3,15 +3,20 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import type { ExecutorCommandReceiptState } from '@prisma/client'
+import { countRateLimitHit, rateLimitKeyHash } from '@nessie/db'
 import type { FileService } from '@nessie/runtime'
 import { EXECUTOR_RESULT_IMAGE_MAX_BYTES } from '@nessie/schemas'
 
 import {
   authorizeExecutorDaemonControlCall,
+  deleteExecutorCommandAttachments,
+  EXECUTOR_ATTACHMENT_RATE_BUCKET,
   EXECUTOR_ATTACHMENT_RATE_MAXIMUM,
+  EXECUTOR_ATTACHMENT_RATE_WINDOW_MS,
   ExecutorError,
   recordAuthorizedExecutorCommandAttachment,
   recordExecutorCommandReceipt,
+  releaseUnreferencedExecutorCommandAttachments,
 } from '../src/index.js'
 import { executorCommandDigest } from '../src/executor-command-codec.js'
 import {
@@ -45,11 +50,16 @@ const withWorld = async (run: (world: AttachmentWorld) => Promise<void>): Promis
   }
 }
 
-const record = (world: AttachmentWorld, input: ReturnType<AttachmentWorld['upload']>, fileService?: FileService) =>
+const record = (
+  world: AttachmentWorld,
+  input: ReturnType<AttachmentWorld['upload']>,
+  fileService?: FileService,
+  now?: Date,
+) =>
   recordAuthorizedExecutorCommandAttachment(world.prisma, {
     encryptionSecret: ATTACHMENT_SECRET,
     fileService: fileService ?? world.fileService,
-  }, input)
+  }, input, now)
 
 const refusedWith = (code: string) => (error: unknown): boolean => {
   assert.ok(error instanceof ExecutorError, String(error))
@@ -245,28 +255,179 @@ dbTest('uploads that race still keep at most six, and one image racing itself is
   })
 })
 
-dbTest('an executor over its image rate is told to wait, not refused', async () => {
+/**
+ * Spends `count` of the executor's upload attempts in the window `now` falls
+ * in. The rate tests hold one clock throughout, so a minute boundary passing
+ * mid-test cannot reset the window under them.
+ */
+const spendAttempts = async (world: AttachmentWorld, count: number, now: Date): Promise<void> => {
+  for (let index = 0; index < count; index += 1) {
+    await countRateLimitHit(world.prisma, {
+      bucket: EXECUTOR_ATTACHMENT_RATE_BUCKET,
+      keyHash: rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId),
+      nowMs: now.getTime(),
+      rule: { max: EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: EXECUTOR_ATTACHMENT_RATE_WINDOW_MS },
+    })
+  }
+}
+
+const resetAttempts = (world: AttachmentWorld) => world.prisma.$executeRaw`
+  DELETE FROM "rate_limit_buckets"
+  WHERE "key_hash" = ${rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId)}
+`
+
+dbTest('an executor over its attempt rate is told to wait, not refused', async () => {
   await withWorld(async (world) => {
-    // Another command of the same executor already kept the window's worth.
-    const busy = await world.createCommand('started')
-    await world.prisma.attachment.createMany({
-      data: Array.from({ length: EXECUTOR_ATTACHMENT_RATE_MAXIMUM }, (_, index) => ({
-        contentByteLength: 100, contentDigest: `sha256:${String(index).padStart(64, '0')}`,
-        executorCommandId: busy, filename: `seeded-${index}.png`, kind: 'image', mime: 'image/png',
-        organizationId: world.organizationId, sizeBytes: 100n, storageKey: `${world.organizationId}/seeded-${index}`,
-        uploaderId: world.holderId,
-      })),
+    const now = new Date()
+    await spendAttempts(world, EXECUTOR_ATTACHMENT_RATE_MAXIMUM, now)
+    const commandId = await world.createCommand('started')
+    await assert.rejects(
+      record(world, world.upload(commandId, pngBytes(500)), undefined, now),
+      refusedWith('EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED'),
+    )
+    assert.equal((await imagesOf(world, commandId)).length, 0)
+    // The next window takes it.
+    await resetAttempts(world)
+    assert.ok(await record(world, world.upload(commandId, pngBytes(500)), undefined, now))
+  })
+})
+
+dbTest('a repeat of an image already kept still spends the executor\'s rate', async () => {
+  await withWorld(async (world) => {
+    const commandId = await world.createCommand('started')
+    const screenshot = kelpieScreenshot()
+    const now = new Date()
+    assert.ok(await record(world, world.upload(commandId, screenshot), undefined, now))
+    // A daemon re-sending a kept image in a loop costs Nessie a parsed body
+    // and a locked transaction each time, though nothing new is stored.
+    await spendAttempts(world, EXECUTOR_ATTACHMENT_RATE_MAXIMUM - 2, now)
+    assert.equal(await record(world, world.upload(commandId, screenshot), undefined, now), null, 'the window\'s last attempt')
+    await assert.rejects(
+      record(world, world.upload(commandId, screenshot), undefined, now),
+      refusedWith('EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED'),
+    )
+  })
+})
+
+dbTest('an unsigned upload is refused before its bytes are read, and spends no executor\'s rate', async () => {
+  await withWorld(async (world) => {
+    const commandId = await world.createCommand('started')
+    // Signed under the wrong domain AND carrying bytes that are not their
+    // digest: the signature answers first.
+    await assert.rejects(
+      record(world, world.upload(commandId, kelpieScreenshot(), { digest: digestOf(pngBytes(100)), domain: 'receipt' })),
+      refusedWith('EXECUTOR_DAEMON_PROOF_INVALID'),
+    )
+    const [counter] = await world.prisma.$queryRaw<Array<{ count: number }>>`
+      SELECT "count" FROM "rate_limit_buckets"
+      WHERE "key_hash" = ${rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId)}
+    `
+    assert.equal(counter, undefined, 'nobody without the machine key can spend its rate')
+  })
+})
+
+dbTest('only a local program\'s call takes images', async () => {
+  await withWorld(async (world) => {
+    for (const operationKey of ['browser.observe', 'command.run']) {
+      const commandId = await world.createCommand('started', 'kelpie', operationKey)
+      await assert.rejects(
+        record(world, world.upload(commandId, kelpieScreenshot())),
+        refusedWith('EXECUTOR_COMMAND_ATTACHMENT_REFUSED'),
+      )
+      assert.equal((await imagesOf(world, commandId)).length, 0)
+    }
+    assert.equal(await world.prisma.storageUsageEvent.count({ where: { organizationId: world.organizationId } }), 0)
+  })
+})
+
+dbTest('a full storage quota refuses the image, with no row and no usage written', async () => {
+  await withWorld(async (world) => {
+    await world.prisma.budget.create({
+      data: {
+        mode: 'off', organizationId: world.organizationId, scopeId: world.organizationId,
+        scopeType: 'organization', storageLimitBytes: 1_000n,
+      },
     })
     const commandId = await world.createCommand('started')
     await assert.rejects(
-      record(world, world.upload(commandId, pngBytes(500))),
-      refusedWith('EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED'),
+      record(world, world.upload(commandId, kelpieScreenshot())),
+      (error: unknown) => {
+        refusedWith('EXECUTOR_COMMAND_ATTACHMENT_REFUSED')(error)
+        assert.match((error as Error).message, /file storage is full/)
+        return true
+      },
     )
-    // An hour later the same rows no longer count.
-    await world.prisma.attachment.updateMany({
-      where: { executorCommandId: busy }, data: { createdAt: new Date(Date.now() - 3_600_000) },
-    })
-    assert.ok(await record(world, world.upload(commandId, pngBytes(500))))
+    assert.equal((await imagesOf(world, commandId)).length, 0)
+    assert.equal(await world.prisma.storageUsageEvent.count({ where: { organizationId: world.organizationId } }), 0)
+  })
+})
+
+dbTest('a receipt that lands while the bytes are written leaves no image behind it', async () => {
+  await withWorld(async (world) => {
+    const commandId = await world.createCommand('started')
+    let entered!: () => void
+    const storeEntered = new Promise<void>((resolve) => { entered = resolve })
+    let release!: () => void
+    const released = new Promise<void>((resolve) => { release = resolve })
+    const slowFiles: FileService = {
+      ...world.fileService,
+      store: async (input) => {
+        entered()
+        await released
+        return world.fileService.store(input)
+      },
+    }
+    const uploading = record(world, world.upload(commandId, kelpieScreenshot()), slowFiles)
+    await storeEntered
+    // The daemon gave the image up (its upload outlived the command) and
+    // reported the result without it.
+    const result = { content: [{ text: '[image unavailable: it could not be delivered before its command expired]', type: 'text' }], success: true }
+    await recordExecutorCommandReceipt(world.prisma, ATTACHMENT_SECRET, world.executorId, {
+      commandId, occurredAt: new Date().toISOString(), resultDigest: executorCommandDigest(result),
+      state: 'result_acknowledged',
+    }, result)
+    release()
+    await assert.rejects(uploading, refusedWith('EXECUTOR_COMMAND_ATTACHMENT_REFUSED'))
+    assert.equal((await imagesOf(world, commandId)).length, 0)
+    assert.equal(await world.prisma.storageUsageEvent.count({ where: { organizationId: world.organizationId } }), 0)
+  })
+})
+
+dbTest('after intake, the images a result does not name are freed through the FileService', async () => {
+  await withWorld(async (world) => {
+    const commandId = await world.createCommand('started')
+    const named = pngBytes(1_500)
+    const dropped = pngBytes(1_700)
+    await record(world, world.upload(commandId, named))
+    const unnamed = await record(world, world.upload(commandId, dropped))
+    assert.ok(unnamed)
+    const result = {
+      content: [{ attachmentDigest: digestOf(named), byteLength: named.length, mimeType: 'image/png', type: 'image' }],
+      success: true,
+    }
+    await recordExecutorCommandReceipt(world.prisma, ATTACHMENT_SECRET, world.executorId, {
+      commandId, occurredAt: new Date().toISOString(), resultDigest: executorCommandDigest(result),
+      state: 'result_acknowledged',
+    }, result)
+
+    const release = () => releaseUnreferencedExecutorCommandAttachments(
+      world.prisma, world.fileService, commandId, result,
+    )
+    assert.equal(await release(), 1)
+    assert.deepEqual((await imagesOf(world, commandId)).map((row) => row.contentDigest), [digestOf(named)])
+    // Its bytes, its thumbnail and their accounting net out.
+    assert.equal(await world.fileService.openStream(unnamed.id, world.organizationId), null)
+    const usage = await world.prisma.storageUsageEvent.findMany({ where: { attachmentId: unnamed.id } })
+    assert.equal(usage.reduce((sum, event) => sum + event.deltaBytes, 0n), 0n)
+    assert.ok(usage.some((event) => event.operation === 'delete'))
+    // Again is nothing more.
+    assert.equal(await release(), 0)
+
+    // The retention hook: without `keep`, every image of the command goes.
+    assert.equal(await deleteExecutorCommandAttachments(world.prisma, world.fileService, commandId), 1)
+    assert.equal((await imagesOf(world, commandId)).length, 0)
+    const all = await world.prisma.storageUsageEvent.findMany({ where: { organizationId: world.organizationId } })
+    assert.equal(all.reduce((sum, event) => sum + event.deltaBytes, 0n), 0n, 'the organisation\'s usage is back to nothing')
   })
 })
 

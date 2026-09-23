@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 
-import type { Attachment, Prisma, PrismaClient } from '@prisma/client'
+import { Prisma, type Attachment, type PrismaClient } from '@prisma/client'
+import { countRateLimitHit, rateLimitKeyHash } from '@nessie/db'
 import {
   FileTooLargeError,
   QuotaExceededError,
@@ -36,23 +37,30 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
  * The daemon applies the same caps when it extracts; they are applied again
  * here because the machine key is the only thing vouching for the request.
  * The signature, the command's state and the caps are decided under the
- * executor's connection lock; the bytes are written after it, outside, so a
- * 4 MiB write never stalls that executor's polls and receipts. The caps are
+ * executor's connection lock, before a byte of the body is decoded or hashed:
+ * the signature covers the digest and the size, so the bytes are checked
+ * against them afterwards, and an unsigned body costs no decode at all. The
+ * bytes are written after the lock, outside it, so a 4 MiB write never stalls
+ * that executor's polls and receipts. The caps and the command's state are
  * checked once more inside the store's own admission transaction, which is
- * what makes them exact when uploads race.
+ * what makes them exact when uploads race each other or the receipt.
  */
 
 /** A command takes images while its result may still be on its way. */
 const ACCEPTING_STATES: ReadonlySet<string> = new Set(['accepted', 'started', 'unknown_outcome'])
 
 /**
- * Images one executor may upload per window, across all its commands. A
- * program answering with screenshots in a loop is at a handful a minute; this
- * bounds what a machine key alone can write. Over it the upload answers 429,
- * which the daemon retries on its next poll rather than giving the image up.
+ * Signed upload attempts one executor may make per window, across all its
+ * commands — a repeat of an image already kept included, because each is
+ * still a parsed body and a locked transaction. A program answering with
+ * screenshots in a loop is at a handful a minute; this bounds what a machine
+ * key alone can make Nessie do. Over it the upload answers 429, which the
+ * daemon retries on its next poll rather than giving the image up. The count
+ * is the shared rate-limit store's (`@nessie/db` rate-limit-window.ts).
  */
 export const EXECUTOR_ATTACHMENT_RATE_WINDOW_MS = 60_000
 export const EXECUTOR_ATTACHMENT_RATE_MAXIMUM = 60
+export const EXECUTOR_ATTACHMENT_RATE_BUCKET = 'executor.attachment.executor'
 
 const EXTENSIONS: Readonly<Record<ExecutorImageMimeType, string>> = {
   'image/gif': 'gif',
@@ -85,35 +93,6 @@ const keptImages = (tx: Prisma.TransactionClient, commandId: string): Promise<Ke
     where: { executorCommandId: commandId },
     select: { contentByteLength: true, contentDigest: true },
   })
-
-/** Images this executor's commands kept since `since`. */
-const recentExecutorImages = async (
-  tx: Prisma.TransactionClient,
-  input: { executorId: string; organizationId: string; since: Date },
-): Promise<number> => {
-  const recent = await tx.attachment.groupBy({
-    by: ['executorCommandId'],
-    where: {
-      createdAt: { gt: input.since },
-      executorCommandId: { not: null },
-      organizationId: input.organizationId,
-    },
-    _count: { _all: true },
-  })
-  if (recent.length === 0) return 0
-  const own = await tx.executorCommand.findMany({
-    where: {
-      binding: { executorId: input.executorId },
-      id: { in: recent.flatMap((group) => (group.executorCommandId ? [group.executorCommandId] : [])) },
-    },
-    select: { id: true },
-  })
-  const ownIds = new Set(own.map((command) => command.id))
-  return recent.reduce(
-    (sum, group) => sum + (group.executorCommandId && ownIds.has(group.executorCommandId) ? group._count._all : 0),
-    0,
-  )
-}
 
 // Named after the program that answered, when the command still says which:
 // `kelpie-screenshot-2.png`. Server names are already lowercase slugs.
@@ -163,21 +142,21 @@ type AttachmentPlan = {
 }
 
 /**
- * Under the executor lock: the command is this executor's and still takes
- * images, and this one fits. Null when the same image is already kept — a
- * re-upload after a restart, in any state, is the same attachment.
+ * Under the executor lock: the command is this executor's local-program call
+ * and still takes images, and this one fits. Null when the same image is
+ * already kept — a re-upload after a restart, in any state, is the same
+ * attachment.
  */
 const planExecutorCommandAttachment = async (
   tx: Prisma.TransactionClient,
   encryptionSecret: EncryptionKeyRingInput,
   executorId: string,
   attachment: AttachmentUpload['attachment'],
-  now: Date,
 ): Promise<AttachmentPlan | null> => {
   const command = await tx.executorCommand.findUnique({
     where: { id: attachment.commandId },
     select: {
-      binding: { select: { candidateHandleDigest: true, executorId: true } },
+      binding: { select: { candidateHandleDigest: true, executorId: true, operationKey: true } },
       deliveryPayloadCiphertext: true,
       id: true,
       state: true,
@@ -194,6 +173,11 @@ const planExecutorCommandAttachment = async (
   if (!command || command.binding.executorId !== executorId) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor command is unavailable.')
   }
+  // Only a local program's call has its images read by the worker; any other
+  // command's upload would be charged to the person and shown to nobody.
+  if (command.binding.operationKey !== 'mcp.call') {
+    throw refused('Only a local program\'s call returns images.')
+  }
   const kept = await keptImages(tx, command.id)
   if (kept.some((image) => image.contentDigest === attachment.digest)) return null
   if (!ACCEPTING_STATES.has(command.state)) {
@@ -202,17 +186,6 @@ const planExecutorCommandAttachment = async (
   assertWithinCommandCaps(kept, attachment.byteLength)
   const { run } = command.toolCall
   const organizationId = run.thread.channel.organizationId
-  const recent = await recentExecutorImages(tx, {
-    executorId,
-    organizationId,
-    since: new Date(now.getTime() - EXECUTOR_ATTACHMENT_RATE_WINDOW_MS),
-  })
-  if (recent >= EXECUTOR_ATTACHMENT_RATE_MAXIMUM) {
-    throw new ExecutorError(
-      EXECUTOR_ERROR_CODES.COMMAND_ATTACHMENT_RATE_LIMITED,
-      'This executor is uploading images faster than Nessie keeps them; try again shortly.',
-    )
-  }
   // The person whose launch the command runs under: the binding candidate's
   // actor. The file is theirs for quota and accounting, as a chat upload is.
   const candidate = await tx.executorAvailabilityCandidate.findUnique({
@@ -241,6 +214,52 @@ const isUniqueViolation = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002'
 
 /**
+ * Counts one signed attempt against the executor's rate, after the signature
+ * and before the bytes: an unsigned request cannot spend an executor's rate,
+ * and a signed one over it costs no decode.
+ */
+const admitExecutorAttachmentAttempt = async (
+  prisma: PrismaClient,
+  executorId: string,
+  now: Date,
+): Promise<void> => {
+  const hit = await countRateLimitHit(prisma, {
+    bucket: EXECUTOR_ATTACHMENT_RATE_BUCKET,
+    keyHash: rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, executorId),
+    nowMs: now.getTime(),
+    rule: { max: EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: EXECUTOR_ATTACHMENT_RATE_WINDOW_MS },
+  })
+  if (hit.limited) {
+    throw new ExecutorError(
+      EXECUTOR_ERROR_CODES.COMMAND_ATTACHMENT_RATE_LIMITED,
+      'This executor is uploading images faster than Nessie keeps them; try again shortly.',
+    )
+  }
+}
+
+/**
+ * The store's last word, in its admission transaction and under the command's
+ * own receipt lock (`executor-command-results.ts`): the image is still new,
+ * the caps still hold, and the command still takes images. A receipt that
+ * landed after the plan was made would otherwise be followed by an image its
+ * result never names.
+ */
+const admitIntoCommand = async (
+  tx: Prisma.TransactionClient,
+  commandId: string,
+  attachment: AttachmentUpload['attachment'],
+): Promise<void> => {
+  await tx.$executeRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`executor-command:${commandId}`}, 0))
+  `)
+  const current = await keptImages(tx, commandId)
+  if (current.some((image) => image.contentDigest === attachment.digest)) throw new ImageAlreadyKept()
+  const command = await tx.executorCommand.findUnique({ where: { id: commandId }, select: { state: true } })
+  if (!command || !ACCEPTING_STATES.has(command.state)) throw refused('This command no longer takes images.')
+  assertWithinCommandCaps(current, attachment.byteLength)
+}
+
+/**
  * `POST /api/executor-daemon/commands/attachment`. Answers the attachment it
  * stored, or null when the image was already kept for the command; either way
  * the daemon hears `{recorded: true}`.
@@ -252,16 +271,6 @@ export const recordAuthorizedExecutorCommandAttachment = async (
   now = new Date(),
 ): Promise<Attachment | null> => {
   const { attachment } = input
-  // The signature covers the digest, not the bytes, so the bytes must be the
-  // digest's; and a declared type is only a claim until the magic agrees.
-  const bytes = Buffer.from(input.dataBase64, 'base64')
-  const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
-  if (bytes.length !== attachment.byteLength || digest !== attachment.digest) {
-    throw invalid('The image bytes do not match their signed digest.')
-  }
-  if (sniffExecutorImageMimeType(bytes) !== attachment.mimeType) {
-    throw invalid(`The image bytes are not the ${attachment.mimeType} they declare.`)
-  }
   const plan = await authorizeExecutorDaemonControlCall(
     prisma,
     {
@@ -272,19 +281,26 @@ export const recordAuthorizedExecutorCommandAttachment = async (
       signature: input.signature,
       type: 'attachment',
     },
-    (tx) => planExecutorCommandAttachment(tx, deps.encryptionSecret, input.executorId, attachment, now),
+    (tx) => planExecutorCommandAttachment(tx, deps.encryptionSecret, input.executorId, attachment),
     now,
   )
+  await admitExecutorAttachmentAttempt(prisma, input.executorId, now)
   if (!plan) return null
+  // The signature covers the digest, not the bytes, so the bytes must be the
+  // digest's; and a declared type is only a claim until the magic agrees.
+  const bytes = Buffer.from(input.dataBase64, 'base64')
+  const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+  if (bytes.length !== attachment.byteLength || digest !== attachment.digest) {
+    throw invalid('The image bytes do not match their signed digest.')
+  }
+  if (sniffExecutorImageMimeType(bytes) !== attachment.mimeType) {
+    throw invalid(`The image bytes are not the ${attachment.mimeType} they declare.`)
+  }
   try {
     const { attachment: stored } = await deps.fileService.store({
       // Again under the organisation's admission lock, so two racing uploads
       // for one command cannot both pass the caps checked above.
-      admit: async (tx) => {
-        const current = await keptImages(tx, plan.commandId)
-        if (current.some((image) => image.contentDigest === attachment.digest)) throw new ImageAlreadyKept()
-        assertWithinCommandCaps(current, attachment.byteLength)
-      },
+      admit: (tx) => admitIntoCommand(tx, plan.commandId, attachment),
       attribution: {
         actorId: plan.agentId,
         actorType: 'agent',
@@ -309,6 +325,7 @@ export const recordAuthorizedExecutorCommandAttachment = async (
     return stored
   } catch (error) {
     if (error instanceof ImageAlreadyKept || isUniqueViolation(error)) return null
+    if (error instanceof ExecutorError) throw error
     if (error instanceof QuotaExceededError) throw refused("The organisation's file storage is full.")
     if (error instanceof FileTooLargeError) throw refused('The image is larger than this Nessie accepts.')
     throw error
@@ -372,3 +389,65 @@ export const assertExecutorResultImagesKept = async (
     }
   }
 }
+
+/**
+ * Frees a command's images through `FileService.delete`, so the stored bytes,
+ * the thumbnail and their accounting all net out; an image whose digest is in
+ * `keep` stays.
+ *
+ * Anything that hard-deletes an executor command, or the run or tool call
+ * above it, calls this without `keep` first: `executorCommandId` is an
+ * app-enforced pointer, so a command deleted without it leaves its files on
+ * the person's quota with nothing pointing at them. Nothing deletes a command
+ * today (a ToolCall's command is `onDelete: Restrict`); this is the one hook a
+ * run retention or organisation purge must use when it arrives.
+ */
+export const deleteExecutorCommandAttachments = async (
+  prisma: PrismaClient,
+  fileService: Pick<FileService, 'delete'>,
+  commandId: string,
+  options: { keep?: readonly string[] } = {},
+): Promise<number> => {
+  const keep = options.keep ?? []
+  const images = await prisma.attachment.findMany({
+    where: {
+      executorCommandId: commandId,
+      ...(keep.length > 0 ? { contentDigest: { notIn: [...keep] } } : {}),
+    },
+    select: { id: true, organizationId: true },
+  })
+  if (images.length === 0) return 0
+  const command = await prisma.executorCommand.findUnique({
+    where: { id: commandId },
+    select: { toolCall: { select: { agentId: true, id: true, runId: true } } },
+  })
+  const toolCall = command?.toolCall
+  for (const image of images) {
+    await fileService.delete(image.id, image.organizationId, {
+      actorId: toolCall?.agentId ?? 'executor-daemon',
+      actorType: toolCall ? 'agent' : 'system',
+      agentId: toolCall?.agentId ?? null,
+      organizationId: image.organizationId,
+      runId: toolCall?.runId ?? null,
+      systemComponent: 'executor-daemon.attachment',
+      toolCallId: toolCall?.id ?? null,
+    })
+  }
+  return images.length
+}
+
+/**
+ * After result intake, the command's images its accepted result does not
+ * name are freed. They were uploaded and then never delivered — withdrawn
+ * once an upload outlived the command, or part of a result Nessie refused and
+ * the daemon replaced — so no model saw them, no result names them, and no
+ * person should be shown them or carry them on their quota.
+ */
+export const releaseUnreferencedExecutorCommandAttachments = (
+  prisma: PrismaClient,
+  fileService: Pick<FileService, 'delete'>,
+  commandId: string,
+  result: Record<string, unknown> | undefined,
+): Promise<number> => deleteExecutorCommandAttachments(prisma, fileService, commandId, {
+  keep: executorResultImageReferences(result).map((reference) => reference.attachmentDigest),
+})

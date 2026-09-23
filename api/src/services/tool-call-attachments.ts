@@ -16,7 +16,10 @@ export type ToolCallAttachmentViewer = {
  *
  * A call's images are the attachments of the executor command it recorded:
  * ToolCall → ExecutorCommand (`toolCallId`) → Attachment (`executorCommandId`),
- * in upload order, which is the order the result names them. They are refs
+ * in upload order, which is the order the result names them. Only a command
+ * whose result was accepted lists any: result intake frees every image the
+ * result does not name, so what is listed is what the model was given, and a
+ * command that never delivered a result shows nothing it uploaded. They are refs
  * only; the bytes are the ordinary attachment routes' to serve, and a ref is
  * listed only where those routes would serve it to this viewer — the same
  * run-level question `canAccessAttachment` asks, once per run — so no surface
@@ -32,7 +35,7 @@ export const loadToolCallAttachments = async (
 
   const runByToolCall = new Map(toolCalls.map((toolCall) => [toolCall.id, toolCall.runId]))
   const found = await prisma.executorCommand.findMany({
-    where: { toolCallId: { in: [...runByToolCall.keys()] } },
+    where: { state: 'result_acknowledged', toolCallId: { in: [...runByToolCall.keys()] } },
     select: { id: true, toolCall: { select: { runId: true } }, toolCallId: true },
   })
   // A call is asked about as part of its run; one that turns out to belong to

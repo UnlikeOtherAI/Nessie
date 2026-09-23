@@ -4,6 +4,7 @@ import {
   recordAuthorizedExecutorCommandAttachment,
   recordAuthorizedExecutorCommandReceipt,
   recordExecutorDaemonChallenge,
+  releaseUnreferencedExecutorCommandAttachments,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
   submitExecutorEnrollment,
@@ -135,6 +136,15 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       if (!body) return reply
       try {
         await recordAuthorizedExecutorCommandReceipt(prisma, deps.encryptionKeyRing, body)
+        // The images the accepted result does not name were never delivered
+        // (docs/executor-protocol/command-attachments.md). A failure here
+        // fails the receipt, and the daemon's retry of the same receipt is
+        // taken as recorded and frees them then.
+        if (body.receipt.state === 'result_acknowledged') {
+          await releaseUnreferencedExecutorCommandAttachments(
+            prisma, deps.fileService, body.receipt.commandId, body.result,
+          )
+        }
         return createApiResponse({ recorded: true })
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply

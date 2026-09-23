@@ -62,10 +62,13 @@ export {
   recordAuthorizedExecutorCommandReceipt,
 } from './executor-daemon-control.js'
 export {
+  deleteExecutorCommandAttachments,
+  EXECUTOR_ATTACHMENT_RATE_BUCKET,
   EXECUTOR_ATTACHMENT_RATE_MAXIMUM,
   EXECUTOR_ATTACHMENT_RATE_WINDOW_MS,
   executorResultImageReferences,
   recordAuthorizedExecutorCommandAttachment,
+  releaseUnreferencedExecutorCommandAttachments,
 } from './executor-command-attachments.js'
 export {
   ensureExecutorLogicalTools,

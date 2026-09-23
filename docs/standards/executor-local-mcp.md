@@ -189,7 +189,7 @@ takes the same command and digest as the same attachment.
 Nessie keeps each image as a `FileService` file of its command, owned by the
 run's organisation and accounted to the person whose launch the command runs
 under ([file-storage.md](file-storage.md)). It checks the type, the digest and
-the caps again, plus 60 images a minute per executor, and refuses a result
+the caps again, takes images only for an `mcp.call`, allows 60 signed upload attempts a minute per executor (repeats included), and refuses a result
 whose reference names an image it did not keep for that command
 ([command-attachments.md](../executor-protocol/command-attachments.md) → "On
 the control plane").
@@ -246,6 +246,9 @@ component (`admin/src/components/shared/ToolScreenshots.tsx`) in both:
 Both carry refs, never bytes — `{attachmentId, mimeType, byteLength,
 filename, hasThumbnail}` (`ToolCallAttachmentSchema`), joined ToolCall →
 ExecutorCommand → Attachment by `api/src/services/tool-call-attachments.ts` —
+only for a command whose result was accepted (result intake has by then freed
+every image the result does not name, so a person sees what the model was
+given and nothing a command uploaded before it expired without a result) —
 and list a ref only for a viewer the attachment routes would serve it to: the
 executor-command arm's own run-level question (`canReadRunExecutorImages`),
 asked once per run. A reader who may see the call but not its image (the

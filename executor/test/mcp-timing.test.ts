@@ -59,9 +59,11 @@ test('one result’s image uploads fit the upload budget, and no upload is timed
     assert.ok(executorAttachmentUploadTimeoutMs(bytes) >= EXECUTOR_API_REQUEST_TIMEOUT_MS, `${bytes} bytes`)
   }
   // The transfer on top grows with the bytes: a 4 MiB image on a 2 Mbit/s uplink.
-  assert.ok(executorAttachmentUploadTimeoutMs(EXECUTOR_RESULT_IMAGE_MAX_BYTES) > executorAttachmentUploadTimeoutMs(13_715))
+  const largest = executorAttachmentUploadTimeoutMs(EXECUTOR_RESULT_IMAGE_MAX_BYTES)
+  assert.ok(largest > executorAttachmentUploadTimeoutMs(13_715))
   assert.equal(
-    executorAttachmentUploadTimeoutMs(EXECUTOR_RESULT_IMAGE_MAX_BYTES),
-    EXECUTOR_API_REQUEST_TIMEOUT_MS + Math.ceil(EXECUTOR_RESULT_IMAGE_MAX_BYTES / EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS),
+    largest,
+    EXECUTOR_API_REQUEST_TIMEOUT_MS
+      + Math.ceil(EXECUTOR_RESULT_IMAGE_MAX_BYTES / EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS),
   )
 })

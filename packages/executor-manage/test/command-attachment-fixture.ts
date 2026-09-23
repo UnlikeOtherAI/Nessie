@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { PrismaClient, type ExecutorCommandReceiptState } from '@prisma/client'
+import { rateLimitKeyHash } from '@nessie/db'
 import { createFileService, getStorage, type FileService } from '@nessie/runtime'
 import { canonicalExecutorPayload } from '@nessie/schemas'
 
+import { EXECUTOR_ATTACHMENT_RATE_BUCKET } from '../src/executor-command-attachments.js'
 import { encryptExecutorCommandJson } from '../src/executor-command-codec.js'
 
 /**
@@ -111,11 +113,31 @@ export const seedAttachmentWorld = async (
     },
   })
 
-  /** An `mcp.call` to Kelpie under the launch, in `state`. */
-  const createCommand = async (state: ExecutorCommandReceiptState = 'started', server = 'kelpie') => {
+  // One binding per operation, as the launch makes them.
+  const bindings = new Map<string, string>([['mcp.call', binding.id]])
+  const bindingFor = async (operationKey: string): Promise<string> => {
+    const known = bindings.get(operationKey)
+    if (known) return known
+    const created = await prisma.executorBinding.create({
+      data: {
+        authorizationRevision: 1, candidateHandleDigest: handleDigest, capabilityRevisionId: revision.id,
+        executorId, fence: 1n, operationKey, runId: run.id,
+      },
+    })
+    bindings.set(operationKey, created.id)
+    return created.id
+  }
+
+  /** An `mcp.call` to Kelpie under the launch, in `state` — or a command of `operationKey`. */
+  const createCommand = async (
+    state: ExecutorCommandReceiptState = 'started',
+    server = 'kelpie',
+    operationKey = 'mcp.call',
+  ) => {
+    const bindingId = await bindingFor(operationKey)
     const toolCall = await prisma.toolCall.create({
       data: {
-        agentId, executorBindingId: binding.id, inputSummary: `server=${server}`, runId: run.id,
+        agentId, executorBindingId: bindingId, inputSummary: `server=${server}`, runId: run.id,
         startedAt: new Date(), toolName: 'executor_mcp_call',
       },
     })
@@ -125,7 +147,7 @@ export const seedAttachmentWorld = async (
     const payload = { args: { server, tool: 'screenshot' }, runId: run.id }
     const command = await prisma.executorCommand.create({
       data: {
-        argumentDigest: `sha256:${'4'.repeat(64)}`, bindingId: binding.id, queueJobId: queueJob.id, state,
+        argumentDigest: `sha256:${'4'.repeat(64)}`, bindingId, queueJobId: queueJob.id, state,
         deliveryPayloadCiphertext: encryptExecutorCommandJson(ATTACHMENT_SECRET, payload),
         payloadExpiresAt: new Date(Date.now() + 60_000), toolCallId: toolCall.id,
       },
@@ -189,10 +211,15 @@ export const seedAttachmentWorld = async (
   const cleanup = async () => {
     await prisma.storageUsageEvent.deleteMany({ where: { organizationId } })
     await prisma.attachment.deleteMany({ where: { organizationId } })
+    await prisma.budget.deleteMany({ where: { organizationId } })
+    await prisma.$executeRaw`
+      DELETE FROM "rate_limit_buckets" WHERE "key_hash" = ${rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, executorId)}
+    `
+    const bindingIds = [...bindings.values()]
     const commands = await prisma.executorCommand.findMany({
-      where: { bindingId: binding.id }, select: { queueJobId: true },
+      where: { bindingId: { in: bindingIds } }, select: { queueJobId: true },
     })
-    await prisma.executorCommand.deleteMany({ where: { bindingId: binding.id } })
+    await prisma.executorCommand.deleteMany({ where: { bindingId: { in: bindingIds } } })
     await prisma.queueJob.deleteMany({ where: { id: { in: commands.map((command) => command.queueJobId) } } })
     await prisma.toolCall.deleteMany({ where: { runId: run.id } })
     await prisma.executorBinding.deleteMany({ where: { executorId } })

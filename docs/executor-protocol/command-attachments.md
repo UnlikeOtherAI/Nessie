@@ -110,25 +110,37 @@ journaled as delivered.
 `recordAuthorizedExecutorCommandAttachment` (`@nessie/executor-manage`
 `executor-command-attachments.ts`) answers the request, in this order:
 
-1. The body is parsed against the schema on the one daemon route with a raised
+1. Before the body is read, the route's own per-IP bucket
+   (`executorAttachmentIp`, 120 a minute — twice one executor's own rate)
+   answers a flood with `429`: the body may be 5.6 MB and is parsed before
+   its signature can be checked, so the daemon-session floor (6 000 a minute)
+   would have let one address send gigabytes.
+2. The body is parsed against the schema on the one daemon route with a raised
    body limit — the largest image's base64 plus a 16 KiB envelope; everything
    else stays at 1 MiB.
-2. The digest is recomputed over the decoded bytes and their magic checked
-   against `mimeType`. A mismatch is `400 EXECUTOR_COMMAND_ATTACHMENT_INVALID`.
 3. Under the executor's connection lock, as for a poll or a receipt: the
    `attachment` signature, the live connection epoch and a fresh
-   `occurredAt`. The command must be this executor's (`404
-   EXECUTOR_NOT_FOUND`). An image already kept for the command answers
-   `{recorded: true}` at once, whatever the command's state. A new one needs
-   the command `accepted`, `started` or `unknown_outcome` and the command's
-   caps to hold — 6 images, 8 MiB together — or it is `409
-   EXECUTOR_COMMAND_ATTACHMENT_REFUSED`. Past 60 images a minute from one
-   executor it is `429 EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED` with
-   `Retry-After`, which the daemon retries rather than gives up.
-4. After the lock, the bytes are stored through `FileService`, so a 4 MiB
-   write never holds up that executor's polls and receipts. The caps are
-   checked once more inside the store's quota transaction, which is what keeps
-   them exact when uploads race. A full storage quota is a `409` refusal.
+   `occurredAt` — before a byte of `dataBase64` is decoded, so an unsigned
+   body costs no decode or hash. The command must be this executor's (`404
+   EXECUTOR_NOT_FOUND`) and an `mcp.call`, the one operation whose images
+   the worker reads (`409 EXECUTOR_COMMAND_ATTACHMENT_REFUSED` otherwise). An
+   image already kept for the command answers `{recorded: true}` without its
+   bytes being read, whatever the command's state. A new one needs the command
+   `accepted`, `started` or `unknown_outcome` and the command's caps to
+   hold — 6 images, 8 MiB together — or it is `409
+   EXECUTOR_COMMAND_ATTACHMENT_REFUSED`.
+4. Every signed attempt then counts against the executor's rate, a repeat of
+   a kept image included: past 60 a minute it is `429
+   EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED` with `Retry-After`, which the
+   daemon retries rather than gives up.
+5. The digest is recomputed over the decoded bytes and their magic checked
+   against `mimeType`. A mismatch is `400 EXECUTOR_COMMAND_ATTACHMENT_INVALID`.
+6. After the lock, the bytes are stored through `FileService`, so a 4 MiB
+   write never holds up that executor's polls and receipts. The caps and the
+   command's state are checked once more inside the store's quota transaction,
+   under the command's receipt lock, which is what keeps the caps exact when
+   uploads race and keeps an image from landing after its command's result. A
+   full storage quota is a `409` refusal.
 
 What is stored, who it belongs to and who may read it are in
 [file-storage.md](../standards/file-storage.md), and so is how the worker
@@ -144,3 +156,11 @@ result carries an `image` content item whose `attachmentDigest` was not kept
 for that same command with the same `mimeType` and `byteLength`, or one that
 does not parse as a reference. The daemon answers that refusal as it answers
 any other: with the small `EXECUTOR_RESULT_REFUSED` result in its place.
+
+Once a terminal receipt is recorded, the route frees through
+`FileService.delete` every image of the command that its result does not
+name (`releaseUnreferencedExecutorCommandAttachments`): one the daemon
+withdrew after its upload outlived the command, or all of them when the result
+was replaced by `EXECUTOR_RESULT_REFUSED`. A failure there fails the receipt,
+and the daemon's retry of the same receipt is taken as recorded and frees them
+then.

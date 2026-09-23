@@ -3,11 +3,20 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
+import { countRateLimitHit, rateLimitKeyHash } from '@nessie/db'
+import {
+  EXECUTOR_ATTACHMENT_RATE_BUCKET,
+  EXECUTOR_ATTACHMENT_RATE_MAXIMUM,
+  EXECUTOR_ATTACHMENT_RATE_WINDOW_MS,
+} from '@nessie/executor-manage'
 import { canonicalExecutorJson } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { executorApi } from '../../executor/src/api-client.js'
-import { deliverExecutorCommandAttachments } from '../../executor/src/command-attachments.js'
+import {
+  deliverExecutorCommandAttachments,
+  ExecutorAttachmentDeliveryDeferred,
+} from '../../executor/src/command-attachments.js'
 import { uploadExecutorCommandAttachment } from '../../executor/src/daemon.js'
 import { signExecutorDaemonPayload } from '../../executor/src/daemon-signature.js'
 import { executorMcpImageReferences, extractExecutorMcpImages } from '../../executor/src/mcp-images.js'
@@ -16,6 +25,8 @@ import { registerExecutorDaemonRoutes } from '../src/routes/executor-daemon-rout
 import {
   ATTACHMENT_SECRET,
   attachmentTestPrisma,
+  digestOf,
+  pngBytes,
   seedAttachmentWorld,
   type AttachmentWorld,
 } from '../../packages/executor-manage/test/command-attachment-fixture.js'
@@ -68,10 +79,11 @@ const deliverKelpie = async (apiBaseUrl: string, world: AttachmentWorld, command
   const state = {
     apiBaseUrl, connectionEpoch: '1', executorId: world.executorId, machinePrivateKey: world.machinePrivateKey,
   }
-  const journaled: Record<string, unknown>[] = []
+  const journaled: Array<{ delivered: string[]; result: Record<string, unknown> }> = []
   const result = await deliverExecutorCommandAttachments({
-    command: { commandId } as never,
-    journal: async (rewritten) => { journaled.push(rewritten) },
+    // A live command: a failure before its expiry is retried, not withdrawn.
+    command: { commandId, expiresAt: new Date(Date.now() + 60_000).toISOString() } as never,
+    journal: async (progress) => { journaled.push(progress) },
     result: { ...extracted.result, success: true },
     sidecars: { read: async (_commandId, imageDigest) => sidecars.get(imageDigest) ?? null },
     upload: uploadExecutorCommandAttachment(state as never),
@@ -104,9 +116,9 @@ dbTest('the daemon\'s own upload of Kelpie\'s screenshot is kept, and the result
     const commandId = await world.createCommand('started')
     const { extracted, journaled, result, state } = await deliverKelpie(apiBaseUrl, world, commandId)
     assert.equal(extracted.images.length, 1, 'Kelpie\'s three copies are one image')
-    assert.equal(journaled.length, 0, 'nothing was withdrawn')
     const [reference] = executorMcpImageReferences(result)
     assert.ok(reference)
+    assert.deepEqual(journaled.map((progress) => progress.delivered), [[reference.attachmentDigest]], 'journaled as delivered')
 
     const kept = await world.prisma.attachment.findFirstOrThrow({ where: { executorCommandId: commandId } })
     assert.equal(kept.contentDigest, reference.attachmentDigest)
@@ -135,6 +147,8 @@ dbTest('an image Nessie refuses is rewritten to its placeholder, and that result
     })
     const { journaled, result, state } = await deliverKelpie(apiBaseUrl, world, commandId)
     assert.equal(journaled.length, 1, 'the rewritten result is journaled before the receipt')
+    assert.deepEqual(journaled[0]!.delivered, [])
+    assert.deepEqual(journaled[0]!.result, result)
     assert.deepEqual(executorMcpImageReferences(result), [])
     assert.match(
       JSON.stringify(result),
@@ -146,26 +160,57 @@ dbTest('an image Nessie refuses is rewritten to its placeholder, and that result
 
 dbTest('Nessie asking the daemon to wait keeps the image for the next poll', async () => {
   await withDaemonAndApi(async ({ apiBaseUrl, world }) => {
-    const busy = await world.createCommand('started')
-    await world.prisma.attachment.createMany({
-      data: Array.from({ length: 60 }, (_, index) => ({
-        contentByteLength: 100, contentDigest: `sha256:${String(index).padStart(64, '0')}`,
-        executorCommandId: busy, filename: `seeded-${index}.png`, kind: 'image', mime: 'image/png',
-        organizationId: world.organizationId, sizeBytes: 100n, storageKey: `${world.organizationId}/seeded-${index}`,
-        uploaderId: world.holderId,
-      })),
-    })
+    const keyHash = rateLimitKeyHash(EXECUTOR_ATTACHMENT_RATE_BUCKET, world.executorId)
+    const now = Date.now()
+    for (let index = 0; index < EXECUTOR_ATTACHMENT_RATE_MAXIMUM; index += 1) {
+      await countRateLimitHit(world.prisma, {
+        bucket: EXECUTOR_ATTACHMENT_RATE_BUCKET,
+        keyHash,
+        nowMs: now,
+        rule: { max: EXECUTOR_ATTACHMENT_RATE_MAXIMUM, windowMs: EXECUTOR_ATTACHMENT_RATE_WINDOW_MS },
+      })
+    }
     const commandId = await world.createCommand('started')
     await assert.rejects(
       deliverKelpie(apiBaseUrl, world, commandId),
-      (error: unknown) => (error as { status?: number }).status === 429,
+      (error: unknown) => error instanceof ExecutorAttachmentDeliveryDeferred
+        && (error.cause as { status?: number }).status === 429,
     )
     assert.equal(await world.prisma.attachment.count({ where: { executorCommandId: commandId } }), 0)
-    await world.prisma.attachment.updateMany({
-      where: { executorCommandId: busy }, data: { createdAt: new Date(Date.now() - 3_600_000) },
-    })
-    const { journaled } = await deliverKelpie(apiBaseUrl, world, commandId)
-    assert.equal(journaled.length, 0)
+    // The next window.
+    await world.prisma.$executeRaw`DELETE FROM "rate_limit_buckets" WHERE "key_hash" = ${keyHash}`
+    const { result } = await deliverKelpie(apiBaseUrl, world, commandId)
+    assert.equal(executorMcpImageReferences(result).length, 1)
+    assert.equal(await world.prisma.attachment.count({ where: { executorCommandId: commandId } }), 1)
+  })
+})
+
+dbTest('the receipt frees the images its result does not name', async () => {
+  await withDaemonAndApi(async ({ apiBaseUrl, world }) => {
+    const commandId = await world.createCommand('started')
+    const named = pngBytes(1_200)
+    const dropped = pngBytes(1_300)
+    for (const bytes of [named, dropped]) {
+      await executorApi.uploadCommandAttachment(apiBaseUrl, world.upload(commandId, bytes), { timeoutMs: 15_000 })
+    }
+    assert.equal(await world.prisma.attachment.count({ where: { executorCommandId: commandId } }), 2)
+    // The daemon gave the second one up — say its upload outlived the command
+    // while the server still went on to keep it.
+    const result = {
+      content: [
+        { attachmentDigest: digestOf(named), byteLength: named.length, mimeType: 'image/png', type: 'image' },
+        { text: '[image unavailable: it could not be delivered before its command expired]', type: 'text' },
+      ],
+      success: true,
+    }
+    const state = {
+      apiBaseUrl, connectionEpoch: '1', executorId: world.executorId, machinePrivateKey: world.machinePrivateKey,
+    }
+    assert.deepEqual(await sendReceipt(state, commandId, result), { recorded: true })
+    const kept = await world.prisma.attachment.findMany({ where: { executorCommandId: commandId } })
+    assert.deepEqual(kept.map((row) => row.contentDigest), [digestOf(named)])
+    // The daemon retrying the same receipt is taken as recorded, again.
+    assert.deepEqual(await sendReceipt(state, commandId, result), { recorded: true })
     assert.equal(await world.prisma.attachment.count({ where: { executorCommandId: commandId } }), 1)
   })
 })

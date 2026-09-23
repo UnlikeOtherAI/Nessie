@@ -350,7 +350,9 @@ test('a failure that lasts past the command’s expiry ends in a receipt, its im
     const api = fakeControlPlane({ failAlwaysWith: TIMEOUT })
     const expiresAt = Date.parse(command.expiresAt)
     let clock = expiresAt - 60_000
-    const run = () => recover({ journal: journal.store, now: () => clock, receipts: api.receipts, sidecars, upload: api.upload })
+    const run = () => recover({
+      journal: journal.store, now: () => clock, receipts: api.receipts, sidecars, upload: api.upload,
+    })
 
     // A slow uplink or a lasting storage fault: every attempt times out.
     await assert.rejects(run(), ExecutorAttachmentDeliveryDeferred)
