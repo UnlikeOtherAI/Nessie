@@ -90,11 +90,21 @@ shaped afterwards, on the agent loop's authorized-tool path only
   `isError` result leads with "The program reported an error:".
 - `structuredContent` only when there is no text, as compact JSON of at most
   4 000 characters.
-- Each image as `[image N: image/png, 131 KB]`, sized from the reference's
-  `byteLength` — the daemon has already taken the bytes out (below) — and an
-  image it did not keep as its `[image unavailable: <reason>]` text; a
-  `resource_link` as `[resource: <name>]`, never its URI, which names a path
-  on the person's disk.
+- Each image the daemon kept (below) as `[image N: screenshot, 131 KB]`,
+  sized from the reference's `byteLength` and numbered among the images the
+  model is shown. `execute/executor-tool-execution.ts` resolves the result's
+  references to the command's attachments first
+  (`executor-result-images.ts`: the command found through its `ToolCall` in
+  this run, the digest, type and size matched), and the result carries them
+  on as `imageRefs`; the loop then shows the pictures in one turn after the
+  batch, read from `FileService` only when each provider input is built
+  ([file-storage.md](file-storage.md) → "A tool's images reach the model by
+  reference"). A reference with no attachment behind it reads
+  `[image unavailable: Nessie does not hold it for this call]`, an image the
+  daemon did not keep its own `[image unavailable: <reason>]` text, and bytes
+  a program sent inline `[image: image/png, 2 KB, not shown]`; none of those
+  takes a number. A `resource_link` reads `[resource: <name>]`, never its
+  URI, which names a path on the person's disk.
 - The whole capped at 12 000 characters, with "[… N more characters not shown —
   ask the program for a narrower result]".
 - Framed by its own banner — "Output of the program `<server>` on the person's
@@ -469,6 +479,15 @@ basis; and `api/test/executor-command-attachment-daemon.test.ts` puts the
 daemon's own extraction, upload client, delivery loop and receipt signing in
 front of those routes over real HTTP, with the saved Kelpie answer — kept,
 refused into its placeholder, and asked to wait.
+`worker/test/db/executor-tool-images.test.ts` takes that kept screenshot the
+rest of the way on a real database and `FileService`: resolved to its
+attachment for this run and for no other, written into a real crash
+checkpoint as a reference with no bytes, and read back into the prompt from
+storage. The worker's unit suites pin the loader's rules
+(`message-attachments-tool-images.test.ts`), the loop and its checkpoint round
+trip (`tool-images-loop.test.ts`), a vision and a non-vision connector through
+the real inference stage (`inference-tool-images.test.ts`), and the one retry
+without images (`execute/tool-image-inference.test.ts`).
 
 Kelpie detection runs `describe` as a real process too, against a stand-in
 CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact
