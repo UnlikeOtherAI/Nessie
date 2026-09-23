@@ -251,6 +251,33 @@ file is the rule**.
   rather than "Say so". Quoting the portrait reason, reporting a pinned style
   and never showing a raw id are rules in the Designer's own prompt, where
   instructions belong.
+- **A ticket-driven agent is set up from the project's real structure, and a
+  refusal names the field.** `project_structure_read(projectId, agentId?)`
+  (`worker/src/run/pa-tools/provisioning-structure.ts`) is the Designer's read
+  of what a project is made of: its boards with every column and category,
+  the live ordinary channels in it the person can read
+  (`buildVisibleChannelWhere`) with their visibility and whether the named
+  agent is in each, and the document spaces they can read (the knowledge
+  viewer `kb_list` reads with) with their top-level folders (`kb_list`'s
+  version gate). It is `identityDelegatedOnly`, like `agent_read`: it acts as
+  the person in the home DM and a project they are not in reads as missing.
+  The persona sets such an agent up in order — the agent, then a public
+  channel of the board's project, then the `ticket_changed` trigger from those
+  names — and drafts the trigger's sectioned instructions, from a neutral
+  example, never promising a machine (none does ticket work before T4 of
+  [the ticket-driven agents plan](../plans/2026-09-23-ticket-driven-agents/overview.md)).
+  The catalogue's trigger section is generated from the typed trigger config
+  union (`describeAgentTriggerTypes`, `packages/schemas/src/trigger-configs.ts`),
+  as the agent tools' `type` enum and config prose are, and its ticket-work
+  facts say only what ships; board tools reach a project's board on a
+  person's turn in its channels or when a `ticket_changed` trigger wakes the
+  agent there. `agent_trigger_create` and `agent_trigger_update` relay a
+  ticket trigger's field-level refusal as it is and, on success, say back the
+  board as a link and the columns it resolved by name and category. The
+  proposal card gains a "Starts work when" field for such an agent. Pinned by
+  `worker/test/db/designer-ticket-trigger.test.ts`, the blueprint and
+  catalogue tests and the proposal-card fixture suite. The trigger rules
+  themselves are [ticket-work.md](ticket-work.md)'s.
 
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored

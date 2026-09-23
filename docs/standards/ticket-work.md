@@ -24,13 +24,15 @@ Each rule is tagged with the PR that first enforces it in code:
 - **(T1)** shipped so far in T1: ticket event provenance (an origin on every
   ticket writer, `column_entered`, `priority_changed`), the dispatch job
   enqueued in the event's own transaction, and `trigger.ticket.dispatch`'s
-  decision with one delivery row per decision. What a decision then does —
-  the work record, its thread, the `ticket.work` run — is the rest of T1:
-  until it lands the worker's work seam (`notImplementedTicketWorkSeam`,
-  `worker/src/control/ticket-work-seam.ts`) records each start or wake as a
-  failed, retryable delivery rather than starting anything, and
-  `ticket_changed` stays in `UNRELEASED_TRIGGER_TYPES`, so no trigger exists
-  to reach it.
+  decision with one delivery row per decision; and `ticket_changed` itself,
+  released with its typed configuration, its server-side resolution and
+  field-level refusals, the one-pickup-per-column rule, and the Designer's
+  `project_structure_read` and generated trigger catalogue. What a decision
+  then does — the work record, its thread, the `ticket.work` run — is the
+  rest of T1: until it lands the worker's work seam
+  (`notImplementedTicketWorkSeam`, `worker/src/control/ticket-work-seam.ts`)
+  records each start or wake as a failed, retryable delivery rather than
+  starting anything.
 - **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
@@ -43,13 +45,15 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
 
 - `ticket_changed` and `document_changed` are in `AgentTriggerType` (Prisma)
   and `AgentTriggerTypeSchema` (`packages/schemas/src/lifecycle.ts`) before
-  anything may create one. They are listed in `UNRELEASED_TRIGGER_TYPES`
+  anything may create one. An unreleased type is listed in
+  `UNRELEASED_TRIGGER_TYPES`
   (`packages/team-admin/src/trigger-type-availability.ts`), and every
-  agent-trigger create surface refuses them with
+  agent-trigger create surface refuses it with
   `unreleasedTriggerTypeRefusal`'s one sentence:
   `POST /api/agents/:agentId/triggers` answers 400
   `TRIGGER_TYPE_UNAVAILABLE`, `agent_trigger_create` throws it, and
-  `createAgentTrigger` returns null before touching the database.
+  `createAgentTrigger` returns null before touching the database. **(T1)**
+  `ticket_changed` is off the list; `document_changed` stays on it until T2.
 - **Both types are agent-only, permanently.** Workflow installations are
   gated by `WORKFLOW_TRIGGER_TYPES` (manual, scheduled, webhook, event,
   interval), not by the release list: `POST
@@ -60,20 +64,83 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   work record and `ticket.work` runs, and a workflow has none of these, so
   releasing a type for agents never opens it there. A new trigger type is
   agent-only until it is added to that list deliberately.
-- Nothing that lists trigger types to a person or a model names them: the
-  Designer's list is built from `RELEASED_TRIGGER_TYPES`,
-  `workflow_trigger_create` offers exactly `WORKFLOW_TRIGGER_TYPES`, and the
-  admin's `TriggerTypePicker` offers the five released types. The picker
-  serves the agent and the workflow editors alike, so when T1 adds
-  `ticket_changed` to it, it offers it only for an agent target. The
-  `agent-triggers` browser suite pins the picker;
-  `admin/test/trigger-type-unreleased.test.tsx` pins the labels and the edit
-  refusal.
+- Nothing that lists trigger types to a person or a model names an
+  unreleased one: **(T1)** the agent tools' `type` enum and the Designer's
+  trigger catalogue are generated from the typed config union
+  (`AGENT_TRIGGER_INPUT_TYPES`, `packages/schemas/src/trigger-configs.ts`),
+  which holds exactly the released types — a test holds the union and
+  `RELEASED_TRIGGER_TYPES` equal — `workflow_trigger_create` offers exactly
+  `WORKFLOW_TRIGGER_TYPES`, and the admin's `TriggerTypePicker` offers the
+  released types it has an editor for. The picker serves the agent and the
+  workflow editors alike, so when it offers `ticket_changed`, it offers it
+  only for an agent target. The `agent-triggers` browser suite pins the
+  picker; `admin/test/trigger-type-unreleased.test.tsx` pins the labels and
+  the edit refusal.
 - Taking a type off `UNRELEASED_TRIGGER_TYPES` is what releases it for
-  agents. That happens in the PR that ships the type's typed configuration,
-  dispatch and editor (T1 for `ticket_changed`, T2 for `document_changed`),
-  never earlier: a row nobody can configure and that never fires is worse
-  than a refusal.
+  agents. That happens in the PR that ships the type's typed configuration
+  (its arm on the union), dispatch and editor (T1 for `ticket_changed`, T2
+  for `document_changed`), never earlier: a row nobody can configure and
+  that never fires is worse than a refusal.
+
+## A ticket trigger's configuration is resolved on the server (T1)
+
+- **The config is one arm of a typed union.** `AgentTriggerConfigInputSchema`
+  (`packages/schemas/src/trigger-configs.ts`) discriminates on `type`, with a
+  `.describe()` on every field (a test walks them with
+  `listUndescribedFields`). The `ticket_changed` arm is `targetChannelId`
+  beside a config of `boardId?`, `pickup? { columns: ({id} | {name} |
+  {category: in_progress | review})[], assignOnPickup = true }` (null or
+  absent: the trigger starts no work), `follow` and `endOn` (the stored
+  schema's own fields and defaults), `limits { wakesPerTicket = 30,
+  startsPerDay = 20 }` capped by `TICKET_TRIGGER_LIMIT_CEILINGS`, and
+  `instructions { general, onPickup?, onTicketChanged?, onSessionTurnEnded?,
+  onReminder?, onQueued? }`. It is strict: an unknown key is refused. A limit
+  or option nothing enforces yet is not on it; the PR that enforces one adds
+  it. The other arms describe the keys their fire paths read and are not
+  checked by the union; those types keep their own checks and the generic
+  refusal.
+- **Resolution** (`resolveTicketChangedTrigger`,
+  `packages/team-admin/src/trigger-ticket-config.ts`) derives the project
+  from the target channel, never from the caller. The channel must be live
+  (not deleted or archived), ordinary (`standard`, no system type, no DM
+  key), **public** — every ticket reader must be able to open its work
+  thread — and have the agent bound. `boardId` may be left out when that
+  project has exactly one board; a board of another project is refused. A
+  pickup column is resolved by id, by name (case-insensitive, exactly one
+  match) or by category (every column of it), and stored by id; an `endOn`
+  id must be on the board, and a pickup column that `endOn` would end is
+  refused. `targetThreadId` and `nextRunAt` are refused. The stored config is
+  `TicketChangedStoredConfigSchema`'s shape with limits and instructions
+  (`TicketChangedWorkConfigSchema` types them), and the trigger's
+  `scope_project_id` / `scope_board_id` are the resolved project and board.
+- **Refusals are field-level.** A refused config throws
+  `TriggerConfigRefusalError` (`trigger-config-refusal.ts`) with one
+  `{ path, reason }` per wrong field, for example `pickup.columns[0]: no
+  column "In Progres" on board Engineering (columns: Backlog, In progress,
+  Review, Done)`. The Triggers routes answer 400 `TRIGGER_CONFIG_REFUSED`
+  with the first path as `error.field` and every refusal in `error.details`;
+  `agent_trigger_create` and `agent_trigger_update` relay the message as it
+  is, and on success say back the board as a link and the columns it
+  resolved.
+- **One enabled pickup trigger per column.** At most one enabled
+  `ticket_changed` trigger picks up from a column, so two agents never start
+  on the same ticket. It is checked on create, on every edit, on switching a
+  trigger on (`updateAgentTrigger` with `enabled: true`) and on resume
+  (`resumeAgentTrigger`, `ticketTriggerPickupConflict`), each under a
+  transaction-scoped advisory lock on the board, so two writes racing for a
+  column cannot both pass; the refusal names the other trigger and its
+  agent. A disabled trigger claims nothing.
+- **An edit names only what it changes.** `updateAgentTrigger` reads the
+  stored config back in the input's words (`ticketChangedConfigAsInput`),
+  lays the patch's top-level keys over it and resolves the whole again, so a
+  changed channel or board re-checks every column. A name or description
+  edit resolves nothing.
+- **Authorship grants nothing.** Every agent trigger records who set it up
+  as `config.authorUserId` (server-owned: stripped from client input, never
+  returned). It is not `createdByUserId`, because that key is what
+  `resolveTriggerExecutionOrigin` and the resume check read as the identity
+  a schedule's fire acts as; an author on any other trigger reconstructs
+  nobody, which `worker/src/control/trigger-identity.test.ts` pins.
 
 ## A ticket or document trigger is found by its scope
 
@@ -81,6 +148,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   the two new types only; every existing type leaves both null. Both keys are
   `ON DELETE SET NULL`, so deleting the board or project leaves the trigger
   row behind, unscoped.
+- **(T1)** `createAgentTrigger` and `updateAgentTrigger` write both from the
+  resolved configuration (above), in the transaction that writes the config.
 - **(T1)** The ticket dispatcher looks triggers up by these columns, never by
   loading every trigger in the organisation and matching JSON in memory:
   `dispatchTicketEvent` (`worker/src/control/ticket-trigger-dispatch.ts`)
@@ -190,8 +259,9 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `effectiveUserId: null`, `interactive: false`, purpose `ticket.work` — the
   way event triggers already run (`worker/src/control/trigger-origin.ts`).
   `effectiveUserId` is read across the codebase as "act as this person", so
-  the run **never reconstructs one**: not the mover, not the trigger's creator
-  (`createdByUserId` is authorship and grants nothing), not the machine owner.
+  the run **never reconstructs one**: not the mover, not the trigger's author
+  (`authorUserId` is authorship and grants nothing, above), not the machine
+  owner.
   Tools that need a person refuse, and a test pins each: knowledge reads of a
   private space, `schedule_task`, mailbox tools, identity tools and every
   setup verb.
@@ -435,8 +505,22 @@ causes it**:
 - `packages/team-admin/test/trigger-type-availability.test.ts`,
   `api/test/trigger-type-unreleased-routes.test.ts`,
   `worker/test/trigger-type-unreleased-tools.test.ts` and
-  `admin/test/trigger-type-unreleased.test.tsx`: the unreleased types are
-  refused on every agent surface, and both types on every workflow surface.
+  `admin/test/trigger-type-unreleased.test.tsx`: the unreleased type is
+  refused on every agent surface, both types on every workflow surface, and
+  the released types are the typed config union's.
+- `packages/schemas/src/__tests__/trigger-configs.test.ts`: the union's
+  types, the `ticket_changed` arm's defaults and refusals, a description on
+  every field, and the generated prose.
+- `packages/team-admin/test/trigger-ticket-config-db.test.ts`: resolution by
+  name and by category with the board left out, each field-level refusal,
+  the public-channel requirement, one enabled pickup per column on create,
+  enable and edit, an edit that names one key, and authorship recorded and
+  never returned. `api/test/trigger-config-refusal-routes.test.ts`: both
+  routes answer `TRIGGER_CONFIG_REFUSED` with the field and the details.
+- `worker/test/db/designer-ticket-trigger.test.ts`: `project_structure_read`
+  lists only what the person asking can see, and the Designer's
+  `agent_trigger_create` / `agent_trigger_update` resolve from names, refuse
+  field by field and say back what they resolved.
 - `pnpm --filter @nessie/admin test:e2e:agent-triggers`: the real Triggers
   editor offers the released types and neither new one, at 1280 and 390 px.
   T1 extends it over each `ticket_changed` configuration state.
