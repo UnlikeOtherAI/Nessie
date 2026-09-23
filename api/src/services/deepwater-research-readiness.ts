@@ -7,6 +7,7 @@ import {
 } from '@nessie/runtime'
 import {
   DeepWaterRequesterIdentitySchema,
+  isAdminActor,
   type AuthorizedActionContext,
   type DeepWaterRequesterIdentity,
   type DeepWaterResearchReadiness,
@@ -91,7 +92,10 @@ export const resolveDeepWaterResearchReadiness = async (
   input: { teamId: string; ledgerIdentity: LedgerIdentityService | null },
 ): Promise<DeepWaterResearchReadiness> => ({
   state: (await resolveDeepWaterResearchAccess(prisma, actorContext, input)).state,
-  // Turning DeepWater on or off for the team is owner-only (the team-enablement
-  // route), so this is the owner role, not owner-or-admin.
-  viewerCanChangeTeam: actorContext.actor.roles?.includes('owner') ?? false,
+  // The cancel standing (amendments N8.5): an organisation owner or admin may
+  // cancel any open research in their team, exactly as the cancel route checks
+  // it (`resolveDeepWaterResearchViewer`). Turning DeepWater on, off or
+  // updating it is owner-only, so a client gates those on the session's owner
+  // role, never on this.
+  viewerCanChangeTeam: isAdminActor(actorContext),
 })

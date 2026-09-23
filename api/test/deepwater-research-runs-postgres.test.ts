@@ -178,7 +178,11 @@ withBriefApi('research readiness names the one remedy for this person and team',
   assert.deepEqual(await readiness(context(fixture.ids.requester, true)), { state: 'ready', viewerCanChangeTeam: false })
   assert.equal((await readiness(context(fixture.ids.colleague, false))).state, 'account_not_linked')
   assert.equal((await readiness(context(fixture.ids.requester, true), null)).state, 'unavailable')
+  // The cancel standing, as the cancel route decides it: an owner or an admin,
+  // never a member.
   assert.equal((await readiness(context(fixture.ids.owner, false, ['owner']))).viewerCanChangeTeam, true)
+  assert.equal((await readiness(context(fixture.ids.owner, false, ['admin']))).viewerCanChangeTeam, true)
+  assert.equal((await readiness(context(fixture.ids.colleague, false, ['member']))).viewerCanChangeTeam, false)
 
   await fixture.prisma.mcpServerInstance.update({
     where: { id: fixture.ids.connector },
