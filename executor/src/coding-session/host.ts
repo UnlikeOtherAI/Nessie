@@ -334,7 +334,7 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
   if (!mayRunAgent) log('the configuration no longer matches its reviewed digest; agents will not start')
   const entry = resolveExecutorEntry()
   const context: HostContext = {
-    control: createHostProcessControl(entry),
+    control: createHostProcessControl(entry, { log }),
     loaded, meta, paths, log, mayRunAgent, roots,
     projector: createProjector(roots.rewriter),
   }

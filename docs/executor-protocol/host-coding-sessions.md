@@ -551,7 +551,10 @@ that check and the kill share one handle, so not even the moment between
 them can hand the pid on, and the whole kill is one PowerShell: the table,
 then the root, then each member, then a closing line; one ended before that
 line (out of its ten seconds under load) has not done the kill, so the guard's
-ready-held kill is followed by a cold one. An identity without a start time is
+ready-held kill is followed by a cold one. That cold kill goes by the members
+the ready-held one's table showed: the likeliest stop is right after the root,
+and a root already gone leaves no tree to walk down from, so a detached
+grandchild would be out of its reach. An identity without a start time is
 unknown and is never signalled. A start time that cannot be read while the
 process is alive — PowerShell or `ps` timing out under load — is read again;
 an agent whose start time still cannot be read is stopped through the host's
@@ -564,7 +567,10 @@ timing out on a loaded Mac) is not an empty table, which would end the grace
 early and let a `setsid` grandchild that ignores SIGTERM go without its
 SIGKILL: the grace goes on by the last good table, each read in it capped at
 what is left, and a fresh read with the full ten seconds follows a failed last
-one; if that fails too, nothing more is signalled. What the next host needs,
+one; if that fails too, nothing more is signalled — not even the group, whose
+id a stranger may lead by then if every member has exited — and the host log
+says so (`no process table after the grace: SIGKILL skipped for …`), since a
+member that ignores SIGTERM may still be running. What the next host needs,
 the agent's identity and its
 confirmed session id, skips the 500 ms debounce, and a session id the agent
 never confirmed is dropped: Claude refuses `--session-id` for an id it already
@@ -957,7 +963,10 @@ Object is proved twice:
 an orphaned grandchild dying with the job, the job dying with its parent), and
 `coding-session-containment.test.ts` kills an agent's orphaning tree through
 the helper whenever `executor/native/target` holds a build; it also fails
-chosen `ps` reads under the macOS kill and checks the Windows kill's last line.
+chosen `ps` reads under the macOS kill (over Linux's `/bin/ps` in CI: no
+macOS runner runs this suite), checks the Windows kill's last line, and stops a
+Windows standby right after it killed the agent to see its cold kill still
+end the agent's detached child.
 `coding-session-guard.test.ts` runs the real agent guard: the agent's own
 identity, environment, output and exit code through it, its refusal when the
 agent cannot start, which hosts use it, and a host killed with -9

@@ -361,7 +361,9 @@ const parseWindowsTable = (text: string): ProcessTable => {
   return rows
 }
 
-const windowsControl = (jobHelper: string | undefined, refusal: string | undefined): CodingProcessControl => {
+const windowsControl = (
+  jobHelper: string | undefined, refusal: string | undefined, killOnCue: string,
+): CodingProcessControl => {
   const startedAt = async (pid: number): Promise<string | undefined> => {
     const answer = (await powershell(
       `$p = Get-Process -Id ${pid} -ErrorAction SilentlyContinue; if ($p) { $p.StartTime.ToFileTimeUtc() }`,
@@ -411,13 +413,20 @@ const windowsControl = (jobHelper: string | undefined, refusal: string | undefin
       return found
     },
     standbyKill: (identity) => {
-      const reply = (printed: string): string[] => targets(parseWindowsTable(printed), identity, [])
-      const standing = powershellExchange(WINDOWS_KILL_ON_CUE, reply, true)
+      /** Who the standby's table showed below the agent. */
+      let members: CodingProcessIdentity[] = []
+      const reply = (printed: string): string[] => {
+        const before = parseWindowsTable(printed)
+        members = treeOf(identity, before, false)
+        return targets(before, identity, [])
+      }
+      const standing = powershellExchange(killOnCue, reply, true)
       let fired: Promise<void> | undefined
-      // A standby that died before its cue, read no table or was ended before its list was done: a cold kill does it.
+      // A standby that died before its cue, read no table or was ended before its list was done: a cold kill does
+      // it. It goes by the members the standby saw, since a root killed first leaves nothing to walk down from.
       return () => fired ??= (async () => {
         standing.cue()
-        if (!await standing.done) await killTree(identity)
+        if (!await standing.done) await killTree(identity, members)
       })()
     },
   }
@@ -452,7 +461,9 @@ const systemPs: PsRunner = async (args, timeoutMs) => {
   return failed ? undefined : stdout
 }
 
-const posixControl = (platform: NodeJS.Platform, termGraceMs: number, ps: PsRunner): CodingProcessControl => {
+const posixControl = (
+  platform: NodeJS.Platform, termGraceMs: number, ps: PsRunner, log: (message: string) => void = () => undefined,
+): CodingProcessControl => {
   const startedAt = async (pid: number): Promise<string | undefined> => {
     if (platform === 'linux') return procStat(await readFile(`/proc/${pid}/stat`, 'utf8').catch(() => ''))?.started
     return parsePsStartTime(await ps(['-o', 'lstart=', '-p', String(pid)], TOOL_TIMEOUT_MS) ?? '')
@@ -487,7 +498,8 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number, ps: PsRunn
    * read. A SIGKILL is checked against a fresh table, so a grace that ended on
    * a failed read gets one more with the whole tool budget, which bounds the
    * overrun to that one read; `undefined` when it fails too, and then nothing
-   * can be checked, so nothing more is signalled.
+   * can be checked, so nothing more is signalled and `log` says so: a member
+   * that ignores SIGTERM may still be running.
    */
   const afterGrace = async (
     before: ProcessTable, gone: (table: ProcessTable) => boolean,
@@ -532,6 +544,7 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number, ps: PsRunn
     )
     const after = await afterGrace(before, gone)
     if (after) signal(after, 'SIGKILL')
+    else log(`no process table after the grace: SIGKILL skipped for pid ${identity.pid}'s group and tree (${members.size + 1} processes)`)
   }
   return {
     // Its own process group, so the group can be killed without the host.
@@ -569,6 +582,7 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number, ps: PsRunn
       if (!signal(before, 'SIGTERM')) return false
       const after = await afterGrace(before, (current) => stillThere(members, current).length === 0)
       if (after) signal(after, 'SIGKILL')
+      else log(`no process table after the grace: SIGKILL skipped for the group pid ${leader.pid} led (${members.size} processes)`)
       return true
     },
   }
@@ -580,18 +594,26 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number, ps: PsRunn
  * contains a grandchild that outlives its parent, and the development
  * fallback is only for development. `termGraceMs` is how long a POSIX tree
  * has between SIGTERM and SIGKILL, and `ps` is how the table is read where
- * there is no `/proc`.
+ * there is no `/proc`. `log` hears of a SIGKILL skipped because no table could
+ * be read to check it against. `killOnCue` is the Windows standby's script,
+ * unless a test stands in one that stops partway through.
  */
 export const createCodingProcessControl = (
   platform: NodeJS.Platform = process.platform,
-  options: { jobHelper?: string; packaged?: boolean; termGraceMs?: number; ps?: PsRunner } = {
+  options: {
+    jobHelper?: string; packaged?: boolean; termGraceMs?: number; ps?: PsRunner
+    log?: (message: string) => void; killOnCue?: string
+  } = {
     jobHelper: platform === 'win32' ? packagedJobHelper() : undefined,
     packaged: process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1',
   },
 ): CodingProcessControl => (
   platform === 'win32'
-    ? windowsControl(options.jobHelper, options.packaged && !options.jobHelper ? 'containment_failed' : undefined)
-    : posixControl(platform, options.termGraceMs ?? TERM_GRACE_MS, options.ps ?? systemPs)
+    ? windowsControl(
+      options.jobHelper, options.packaged && !options.jobHelper ? 'containment_failed' : undefined,
+      options.killOnCue ?? WINDOWS_KILL_ON_CUE,
+    )
+    : posixControl(platform, options.termGraceMs ?? TERM_GRACE_MS, options.ps ?? systemPs, options.log)
 )
 
 export const codingProcessIsAlive = alive

@@ -275,9 +275,12 @@ test('POSIX: a table read that fails in the grace neither ends it early nor spar
   }
 })
 
-test('POSIX: with no table at all after the grace, nothing unchecked is signalled', { skip: posixWithPs, timeout: 60_000 }, async () => {
+test('POSIX: with no table at all after the grace, nothing unchecked is signalled, and the log says so', {
+  skip: posixWithPs, timeout: 60_000,
+}, async () => {
   const stand = standInPs()
-  const control = createCodingProcessControl('darwin', { termGraceMs: 1_000, ps: stand.ps })
+  const logged: string[] = []
+  const control = createCodingProcessControl('darwin', { termGraceMs: 1_000, ps: stand.ps, log: (line) => logged.push(line) })
   const agent = control.spawnAgent(process.execPath, ['-e', STUBBORN_OUTSIDER], { cwd: tmpdir(), env: process.env })
   const outsider = Number(await firstLine(agent))
   try {
@@ -289,6 +292,8 @@ test('POSIX: with no table at all after the grace, nothing unchecked is signalle
     await control.killTree(identity)
     const budgets = stand.budgets(mark)
     assert.equal(budgets.at(-1), 10_000, 'a grace that ended on a failed read has one more, with the whole budget')
+    assert.equal(logged.length, 1, 'containment that could not be finished is on record')
+    assert.match(logged[0]!, new RegExp(`^no process table after the grace: SIGKILL skipped for pid ${agent.pid}'s group and tree`, 'u'))
     await new Promise((settle) => { setTimeout(settle, 500) })
     assert.equal(alive(agent.pid!), false, 'the agent died of its SIGTERM')
     assert.equal(alive(outsider), true, 'a pid no table could check is never sent a SIGKILL')
@@ -388,6 +393,42 @@ test('Windows: a kill\'s PowerShell has done the kill only once it says it handl
     assert.equal(await stopped('exit 0'), false, 'gone partway through, even with a clean exit code')
   } finally {
     target.kill()
+  }
+})
+
+/** An agent with a detached child, which libuv's kill-on-close job does not end with it; the child's pid is printed. */
+const AGENT_WITH_DETACHED_CHILD = `
+const { spawn } = require('node:child_process')
+const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { detached: true, stdio: 'ignore', windowsHide: true })
+console.log(child.pid)
+setInterval(() => {}, 1000)
+`
+
+test('Windows: a standby stopped after it killed the agent leaves its cold kill the members it saw', {
+  skip: process.platform !== 'win32' ? 'Windows only' : false,
+  timeout: 90_000,
+}, async () => {
+  // The standby as a slow kill under load leaves it: the table read, the first line sent back — the agent
+  // itself — killed, and the PowerShell gone before the rest.
+  const firstOnly = WINDOWS_KILL.replace('while ($null', 'if ($null').replace(/; '\.'$/u, '; exit 0')
+  assert.ok(firstOnly.includes('if ($null') && firstOnly.endsWith('exit 0'), 'the stand-in is the real kill, cut short')
+  const killOnCue = `if ($null -eq [Console]::In.ReadLine()) { exit }; ${firstOnly}`
+  const control = createCodingProcessControl('win32', { killOnCue })
+  const agent = spawn(process.execPath, ['-e', AGENT_WITH_DETACHED_CHILD], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
+  const child = Number(await firstLine(agent))
+  try {
+    const identity = await control.identify(agent.pid!)
+    assert.ok(identity?.startedAt)
+    assert.ok((await control.descendants(identity)).some((entry) => entry.pid === child), 'the child is in the agent\'s tree')
+    await control.standbyKill!(identity)()
+    const everyone = [agent.pid!, child]
+    const deadline = Date.now() + 10_000
+    while (everyone.some(alive) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
+    assert.deepEqual(everyone.map(alive), [false, false],
+      'the cold kill reached the child, though the agent it would have walked down from was already gone')
+  } finally {
+    if (alive(child)) process.kill(child)
+    agent.kill()
   }
 })
 

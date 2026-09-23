@@ -147,12 +147,14 @@ export const createHostProcessControl = (entry: string, input: {
   platform?: NodeJS.Platform
   jobHelper?: string
   inOwnUnit?: boolean
+  /** The host's own log, for a kill that could not be finished. */
+  log?: (message: string) => void
 } = {}): CodingProcessControl => {
   const platform = input.platform ?? process.platform
   const environment = input.environment ?? process.env
   const jobHelper = 'jobHelper' in input ? input.jobHelper : platform === 'win32' ? packagedJobHelper(environment) : undefined
   const control = createCodingProcessControl(platform, {
-    jobHelper, packaged: environment.NESSIE_EXECUTOR_PACKAGED_CLI === '1',
+    jobHelper, packaged: environment.NESSIE_EXECUTOR_PACKAGED_CLI === '1', ...(input.log ? { log: input.log } : {}),
   })
   const contained = jobHelper !== undefined
     || platform === 'linux' && (input.inOwnUnit ?? runsInOwnUserUnit(environment))
