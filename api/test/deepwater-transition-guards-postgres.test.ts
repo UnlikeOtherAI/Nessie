@@ -44,10 +44,12 @@ const briefRun = (
 const revoke = (s: Seed, agentId: string) =>
   setDeepWaterAgentAccess(s.prisma, { ...team(s), agentId, enabled: false })
 
+// The run is named in `details` for the app page's Cancel; the message is plain copy.
 const blockedBy = (runId: string) => (error: unknown) =>
   error instanceof DeepWaterAgentAccessError
   && error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS
-  && error.message.includes(runId)
+  && (error.details as { id?: unknown } | undefined)?.id === runId
+  && !error.message.includes(runId)
 
 withSeed('a disable waits for a brief being agreed and for a launched agent research', async (s) => {
   await briefTeam(s)

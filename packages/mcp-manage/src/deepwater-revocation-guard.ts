@@ -16,10 +16,11 @@ export class DeepWaterActiveRunRevocationError extends Error {
     requestedByUserId: string | null
     status: string
   }) {
-    // Never the topic: the run is named by id and status, and the remedy is
-    // DeepWater's app page, where a team owner or admin can cancel it (N8.5).
+    // Customer copy: never the topic, the run's id or its stored status. The
+    // run is named in `details` for the Cancel the app page offers, where a
+    // team owner or admin can cancel it (N8.5).
     super(
-      `A DeepWater research (${run.id}) that needs these tools is still ${run.status}.`
+      'A DeepWater research that needs these tools is still open.'
       + ' Cancel it from DeepWater in Apps, or let it finish, then try again.',
     )
   }

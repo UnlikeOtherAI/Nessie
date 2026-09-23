@@ -175,8 +175,9 @@ file is the rule**.
   open research causes — a disable, a contract upgrade, a grant revocation —
   names that run in the 409's `details` by id, status, origin and requester
   only (never its topic), so a team owner or admin can cancel it from
-  DeepWater's app page (`POST …/research-runs/:runId/cancel`) and try again.
-  Even a
+  DeepWater's app page (`POST …/research-runs/:runId/cancel`) and try again;
+  the message itself is plain copy that names neither the run's id nor its
+  stored status. Even a
   null external id remains a conservative blocker because Ledger dispatch may
   be in flight; an owner cancels a launcher run Ledger never received locally,
   one with a research id through Ledger, and one whose start may still be in
