@@ -330,10 +330,17 @@ export const prepareRunExecution = async (
     (async () => {
       // A person's own follow-up in the conversation they launched local apps
       // in is bound afresh here, immediately before the toolset reads the
-      // run's bindings. A refusal is an outcome, never a throw.
+      // run's bindings. A refusal is an outcome, never a throw — and the carry
+      // runs for every agent's every turn, so an unexpected failure in it (a
+      // lost connection) must not sink an ordinary one either: the run goes on
+      // with whatever bindings it already has, and no reach facts are told.
       const lease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+        .catch((error: unknown) => {
+          console.warn('[worker] executor lease carry failed for run', context.run.id, error)
+          return undefined
+        })
       context.executorLease = lease
-      if (lease.kind === 'carried') {
+      if (lease?.kind === 'carried') {
         // The carry moved the idle window the holder's composer shows. Only
         // the holder's own job carries, so the job's actor is the recipient.
         await publishExecutorLeaseChanges(deps.realtimeTransport, [{
