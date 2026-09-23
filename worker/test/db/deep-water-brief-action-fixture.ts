@@ -6,7 +6,12 @@ import {
   type DeepWaterBriefRun,
   type LedgerAttribution,
 } from '@nessie/runtime'
-import { LedgerScopeResultSchema, type DeepWaterBriefActionJobPayload } from '@nessie/schemas'
+import {
+  DeepWaterBriefActionJobPayloadSchema,
+  LedgerScopeResultSchema,
+  deepWaterBriefActionJobKey,
+  type DeepWaterBriefActionJobPayload,
+} from '@nessie/schemas'
 
 import { runDeepWaterBriefAction } from '../../src/control/deepwater-brief-action.js'
 import type { DeepWaterWatchDeps } from '../../src/control/deepwater-watch.js'
@@ -24,7 +29,7 @@ export type ActionFixture = WatchFixture & {
   attributions: LedgerAttribution[]
   /** A person's brief Ledger has opened, with its first planner turn answered. */
   openBrief: () => Promise<{ run: DeepWaterBriefRun; rs: string }>
-  /** Record an action as the API does; returns the job the worker receives. */
+  /** Record an action as the API does; returns the job the worker receives, as it was enqueued. */
   begin: (
     run: DeepWaterBriefRun,
     action: DeepWaterBriefActionJobPayload['action'],
@@ -75,16 +80,14 @@ export const withActionFixture = (name: string, body: (fixture: ActionFixture) =
         return { run: await watch.read(run.id), rs }
       },
       begin: async (run, action, actor = requester()) => {
-        const job: DeepWaterBriefActionJobPayload = {
-          organizationId: run.organizationId,
-          runId: run.id,
-          actionId: randomUUID(),
-          actor,
-          action,
-        }
+        const job = { organizationId: run.organizationId, runId: run.id, actionId: randomUUID(), actor, action }
         const started = await watch.prisma.$transaction((tx) => beginDeepWaterPersonAction(tx, { job }))
         if (started.kind !== 'started') throw new Error(`the action was not started (${started.kind})`)
-        return job
+        const [enqueued] = await watch.prisma.$queryRawUnsafe<Array<{ payload: unknown }>>(
+          'SELECT payload FROM queue_jobs WHERE idempotency_key = $1',
+          deepWaterBriefActionJobKey(run.id, job.actionId),
+        )
+        return DeepWaterBriefActionJobPayloadSchema.parse(enqueued?.payload)
       },
       opening: (run) => {
         const action = run.scopeState?.pendingAction
@@ -93,12 +96,12 @@ export const withActionFixture = (name: string, body: (fixture: ActionFixture) =
           organizationId: run.organizationId,
           runId: run.id,
           actionId: action.actionId,
+          acceptedAt: action.since,
           actor: requester(),
           action: { kind: 'scope_start' },
         }
       },
-      perform: (payload) =>
-        runDeepWaterBriefAction(deps, payload, { attempt: 1, enqueuedAt: new Date().toISOString() }),
+      perform: (payload) => runDeepWaterBriefAction(deps, payload, { attempt: 1 }),
     }
     await body(fixture)
   })

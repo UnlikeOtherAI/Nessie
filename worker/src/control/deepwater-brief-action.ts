@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client'
 import {
+  DEEP_WATER_ACTION_RETRY_WINDOW_MS,
   QueueRetryAfterError,
   applyDeepWaterLaunchTicket,
   applyDeepWaterScopeResult,
@@ -47,14 +48,11 @@ import type { DeepWaterWatchDeps } from './deepwater-watch.js'
  *   refused opening fails the brief, since it never existed.
  * - A transient failure (Ledger unreachable, a 5xx, a timeout) retries with the
  *   same tool-call id, which Ledger replays rather than repeats — for at most
- *   30 minutes from when the person acted (amendments N5), then the action ends
- *   as `unavailable`.
+ *   30 minutes from when the action was accepted (amendments N5, the job's
+ *   `acceptedAt`), then the action ends as `unavailable`.
  * - Every call is cost-free control-plane work; the planner's paid turn runs in
  *   Water under Ledger job compute (contract §8).
  */
-
-/** How long a person's action keeps retrying a Ledger that cannot be reached (N5). */
-export const DEEP_WATER_ACTION_RETRY_WINDOW_MS = 30 * 60_000
 
 const RETRY_BASE_MS = 5_000
 const RETRY_MAX_MS = 60_000
@@ -272,7 +270,7 @@ const cancelLauncherRun = async (
 export const runDeepWaterBriefAction = async (
   deps: DeepWaterWatchDeps,
   payload: DeepWaterBriefActionJobPayload,
-  job: { attempt: number; enqueuedAt: string },
+  job: { attempt: number },
 ): Promise<void> => {
   const run = await readDeepWaterBriefRun(deps.prisma, payload)
   if (!run) return
@@ -286,10 +284,9 @@ export const runDeepWaterBriefAction = async (
     throw new Error(`DeepWater launcher run ${run.id} cannot take a ${payload.action.kind} brief action`)
   }
   const target = { organizationId: run.organizationId, runId: run.id, actionId: payload.actionId }
-  // The window runs from when the person acted: the action's own record, or
-  // for a launcher run (which has none) the job's.
-  const since = Date.parse(pending?.since ?? job.enqueuedAt)
-  if (Date.now() - since >= DEEP_WATER_ACTION_RETRY_WINDOW_MS) {
+  // The window runs from when the action was accepted — never from the queue
+  // row's `enqueued_at`, which every retry moves forward.
+  if (Date.now() - Date.parse(payload.acceptedAt) >= DEEP_WATER_ACTION_RETRY_WINDOW_MS) {
     if (!legacy) await settle(deps, run, target, 'unavailable')
     console.warn(`[deep-water] brief action ${payload.actionId} on run ${run.id} gave up: Ledger stayed unreachable`)
     return

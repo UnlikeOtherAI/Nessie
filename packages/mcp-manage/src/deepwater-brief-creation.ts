@@ -129,10 +129,13 @@ export const createPersonDeepWaterBrief = (
     const sources = await personOriginSources(tx, input)
     const inserted = await insertDeepWaterBriefRun(tx, { ...input, ...sources, connectorId, origin })
     if (inserted.created) {
+      const opening = inserted.run.scopeState?.pendingAction
+      if (!opening) throw new Error(`DeepWater brief ${inserted.run.id} was inserted without its opening action`)
       await enqueueDeepWaterBriefAction(tx, {
         organizationId: input.organizationId,
         runId: inserted.run.id,
         actionId: input.actionId,
+        acceptedAt: opening.since,
         actor: { userId: input.requestedByUserId, role: 'requester', identity: input.identity },
         action: { kind: 'scope_start' },
       })

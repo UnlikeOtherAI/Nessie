@@ -156,6 +156,7 @@ export const registerResearchRunCancelRoute = (
         organizationId: run.organizationId,
         runId: run.id,
         actionId: input.actionId,
+        acceptedAt: new Date().toISOString(),
         actor: { userId: viewer.userId, role: acting.role, identity: input.identity },
         action: { kind: 'cancel' },
       })

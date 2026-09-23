@@ -30,6 +30,12 @@ import {
 export const DEEP_WATER_ACTIVE_WATCH_DELAY_MS = 5_000
 
 /**
+ * How long an action's job keeps retrying a Ledger that cannot be reached,
+ * from when Nessie accepted the action (amendments N5); then it gives up.
+ */
+export const DEEP_WATER_ACTION_RETRY_WINDOW_MS = 30 * 60_000
+
+/**
  * Brief actions retry transient Ledger failures with `QueueRetryAfterError`,
  * which does not consume attempts; this bounds genuine handler crashes.
  */
@@ -41,6 +47,9 @@ const ACTION_KIND_FOR_JOB: Record<DeepWaterBriefActionJobPayload['action']['kind
   launch: 'launch',
   cancel: 'cancel',
 }
+
+/** A brief action as a route asks for it; the time it is accepted is stamped under the row lock. */
+export type DeepWaterBriefActionRequest = Omit<DeepWaterBriefActionJobPayload, 'acceptedAt'>
 
 /** Enqueue a brief action inside the caller's transaction; a replayed key is a no-op. */
 export const enqueueDeepWaterBriefAction = async (
@@ -99,18 +108,21 @@ const wasActionAccepted = async (tx: DeepWaterBriefDb, runId: string, actionId: 
  * id to cancel, and the brief may be opening in Ledger at that moment, so a
  * cancel accepted then would leave a paid planner turn with nothing to stop
  * it. The cancel is refused as busy for those few seconds.
+ *
+ * The job's `acceptedAt` is stamped here, from the same clock read as the
+ * action's `since`.
  */
 export const beginDeepWaterPersonAction = async (
   tx: DeepWaterBriefDb,
   input: {
-    job: DeepWaterBriefActionJobPayload
+    job: DeepWaterBriefActionRequest
     precondition?: (run: DeepWaterBriefRun) => void
   },
 ): Promise<DeepWaterPersonActionStart> => {
-  const job = DeepWaterBriefActionJobPayloadSchema.parse(input.job)
-  const locked = await lockDeepWaterBriefRun(tx, { organizationId: job.organizationId, runId: job.runId })
+  const locked = await lockDeepWaterBriefRun(tx, { organizationId: input.job.organizationId, runId: input.job.runId })
   if (!locked) return { kind: 'not_found' }
   const { run, now } = locked
+  const job = DeepWaterBriefActionJobPayloadSchema.parse({ ...input.job, acceptedAt: now.toISOString() })
   if (run.scopeState === null) {
     throw new Error(`DeepWater run ${run.id} is a legacy launcher run, not a research brief`)
   }
@@ -135,7 +147,7 @@ export const beginDeepWaterPersonAction = async (
     pendingAction: {
       kind: ACTION_KIND_FOR_JOB[job.action.kind],
       actionId: job.actionId,
-      since: now.toISOString(),
+      since: job.acceptedAt,
       turnId: null,
       error: null,
     },

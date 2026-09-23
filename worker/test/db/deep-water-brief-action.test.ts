@@ -128,17 +128,10 @@ withActionFixture('an unreachable Ledger is retried with the same call, for 30 m
   assert.equal(first?.toolCallId, second?.toolCallId, 'a retry replays the same call')
   assert.equal((await fixture.read(run.id)).scopeState?.pendingAction?.error, null, 'still in flight')
 
-  // The person acted more than 30 minutes ago: the action ends, and nothing is sent.
-  const state = (await fixture.read(run.id)).scopeState
-  const action = state?.pendingAction
-  assert.ok(state && action)
-  await fixture.prisma.productIntegrationRun.update({
-    where: { id: run.id },
-    data: {
-      scopeJson: { ...state, pendingAction: { ...action, since: new Date(Date.now() - 31 * 60_000).toISOString() } },
-    },
-  })
-  await fixture.perform(reply)
+  assert.equal(reply.acceptedAt, (await fixture.read(run.id)).scopeState?.pendingAction?.since)
+
+  // The action was accepted more than 30 minutes ago: it ends, and nothing is sent.
+  await fixture.perform({ ...reply, acceptedAt: new Date(Date.now() - 31 * 60_000).toISOString() })
   assert.equal(fixture.ledger.calls.length, 2)
   assert.equal((await fixture.read(run.id)).scopeState?.pendingAction?.error?.code, 'unavailable')
 })

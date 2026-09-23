@@ -69,12 +69,18 @@ export type DeepWaterBriefAction = z.infer<typeof DeepWaterBriefActionSchema>
  * owner or admin cancelling someone else's run with their own identity
  * (amendments-fable F3). The identity is the acting person's live session,
  * captured from the request that enqueued the job.
+ *
+ * `acceptedAt` is when Nessie accepted the action — for a brief, the same
+ * instant as its `pendingAction.since`. The worker's retry window runs from
+ * it: the queue row's own `enqueued_at` moves forward on every retry, so it
+ * cannot bound one.
  */
 export const DeepWaterBriefActionJobPayloadSchema = z
   .object({
     organizationId: uuid,
     runId: uuid,
     actionId: uuid,
+    acceptedAt: z.string().datetime({ offset: true }),
     actor: z
       .object({
         userId: uuid,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { createDeepWaterResearchRun } from '@nessie/runtime'
+import { QueueRetryAfterError, createDeepWaterResearchRun } from '@nessie/runtime'
 import { DeepWaterResearchLaunchRequestSchema, ResearchRunRefMessageMetadataSchema } from '@nessie/schemas'
 
 import { withActionFixture } from './deep-water-brief-action-fixture.js'
@@ -116,6 +116,7 @@ withActionFixture('a launcher run is cancelled through Ledger and recorded once 
     organizationId: legacy.organizationId,
     runId: legacy.id,
     actionId: '3f0f3a7e-8c55-4d2f-9f6b-0d2a4bd1c001',
+    acceptedAt: new Date().toISOString(),
     actor: { userId: fixture.ids.requester, role: 'owner' as const, identity: fixture.identity },
     action: { kind: 'cancel' as const },
   }
@@ -125,4 +126,37 @@ withActionFixture('a launcher run is cancelled through Ledger and recorded once 
 
   assert.equal(fixture.attributions[0]?.systemComponent, 'deep-water.owner-cancel')
   assert.equal((await fixture.read(created.id)).status, 'cancelled')
+})
+
+withActionFixture('a launcher cancel stops retrying 30 minutes after it was accepted, however often it retried', async (fixture) => {
+  const created = await createDeepWaterResearchRun(fixture.prisma, {
+    connectorId: fixture.ids.connector,
+    input: DeepWaterResearchLaunchRequestSchema.parse({ query: 'Launcher research' }),
+    organizationId: fixture.ids.organization,
+    requestedByUserId: fixture.ids.requester,
+    teamId: fixture.ids.team,
+  })
+  const rs = researchId()
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: created.id },
+    data: { status: 'running', externalRunId: rs },
+  })
+  const job = {
+    organizationId: created.organizationId,
+    runId: created.id,
+    actionId: '3f0f3a7e-8c55-4d2f-9f6b-0d2a4bd1c002',
+    acceptedAt: new Date(Date.now() - 29 * 60_000).toISOString(),
+    actor: { userId: fixture.ids.requester, role: 'owner' as const, identity: fixture.identity },
+    action: { kind: 'cancel' as const },
+  }
+  fixture.ledger.answer('research_cancel', { error: 'upstream_unavailable', status_code: 503 }, false)
+
+  // Each retry is a fresh attempt the queue re-dated; the window still runs from acceptance.
+  await assert.rejects(fixture.perform(job), (error: unknown) => error instanceof QueueRetryAfterError)
+  await assert.rejects(fixture.perform(job), (error: unknown) => error instanceof QueueRetryAfterError)
+  assert.equal(fixture.ledger.calls.length, 2)
+
+  await fixture.perform({ ...job, acceptedAt: new Date(Date.now() - 31 * 60_000).toISOString() })
+  assert.equal(fixture.ledger.calls.length, 2, 'past the window nothing is sent')
+  assert.equal((await fixture.read(created.id)).status, 'running', 'the run is left for its owner to cancel again')
 })

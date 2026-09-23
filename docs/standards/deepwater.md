@@ -352,7 +352,10 @@ worker and card are built on them.
   cancel yet, so the cancel is refused as busy for those seconds), and a
   cancelled or finished brief ends whatever action was in flight — including a
   brief Ledger refused to open (`failUnstartedDeepWaterBrief`), whose opening
-  action ends with its error code in the same write.
+  action ends with its error code in the same write. The job carries
+  `acceptedAt`, stamped under the row lock from the same clock read as the
+  action's `since`; its retry window runs from it, never from the queue row's
+  `enqueued_at`, which every retry moves forward.
 - **Delivery happens once.** `claimDeepWaterDelivery` writes the terminal
   status with `delivered_at` in one conditional statement; the reply or wake is
   written in the same transaction. A block (`blockDeepWaterDelivery`) is set
@@ -393,7 +396,7 @@ connector, and the same projection applies every answer.
   `deep_water.brief.action` job (`/deliver`: `deep_water.run.deliver`) in the
   same transaction, which also brings the watch's next read to 5 s, and is
   answered 202. The job carries the acting person's live UOA identity from the
-  request. A reply is judged against the revision Nessie last saw
+  request and the instant Nessie accepted it (`acceptedAt`). A reply is judged against the revision Nessie last saw
   (`DEEP_WATER_BRIEF_REVISION_CONFLICT` with `currentRevision`); Start counts
   the pillars it carries, so hand-written pillars launch even after the planner
   failed (`DEEP_WATER_BRIEF_INCOMPLETE` only when neither has one). Words sent
@@ -417,7 +420,8 @@ connector, and the same projection applies every answer.
   `identity_required`, never as ambiguity. An unreachable Ledger (transport
   failure, timeout, 5xx, 408, 429, `upstream_unavailable`) is retried with the
   same tool-call id — which Ledger replays rather than repeats — for 30 minutes
-  from when the person acted, then the action ends as `unavailable`. An answer
+  from the job's `acceptedAt` (`DEEP_WATER_ACTION_RETRY_WINDOW_MS`), then the
+  action ends as `unavailable`; a launcher run's cancel stops the same way. An answer
   outside Ledger's contract is deterministic and is never retried. An action a
   read, a cancel or the stale-action settle already ended is not sent.
 - **An owner's cancel is the owner's own.** A team owner or admin may cancel
