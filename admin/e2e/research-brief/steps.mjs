@@ -165,3 +165,32 @@ export const walkReplyThreadBrief = async (page) => {
     threadId: '40000000-0000-4000-8000-000000000002',
   })
 }
+
+/**
+ * A reply DeepWater's planner could not answer (amendments N2): DeepWater
+ * writes no transcript row for it and the action clears without an error, yet
+ * the person's words come back into the box, and Send again sends those words —
+ * never the question, never an earlier reply.
+ */
+export const walkFailedReply = async (page, snap) => {
+  const dialog = page.getByTestId('research-brief-dialog')
+  await dialog.getByTestId('research-brief-workspace').waitFor()
+  const box = dialog.getByRole('textbox', { name: /^Reply to / })
+  const words = 'Only houses built before 1919, please.'
+  await box.fill(words)
+  await dialog.getByTestId('research-brief-conversation').getByRole('button', { name: 'Send', exact: true }).click()
+  await dialog.getByTestId('research-brief-replying').waitFor()
+  assert.equal(await box.inputValue(), '', 'a sent reply leaves the box')
+
+  await page.evaluate((id) => window.__research.plannerFails(id), RUN.draft)
+  await dialog.getByText('stopped responding before it answered', { exact: false }).waitFor()
+  await page.waitForFunction((expected) =>
+    document.querySelector('[aria-label^="Reply to "]')?.value === expected, words)
+  await snap(page, '10-brief-reply-failed.png')
+
+  await dialog.getByRole('button', { name: 'Send again' }).click()
+  const resend = await lastPost(page, `${RUN.draft}/messages`)
+  assert.equal(resend.body.message, words)
+  await dialog.getByTestId('research-brief-replying').waitFor()
+  assert.equal(await box.inputValue(), '', 'the resent words leave the box again')
+}

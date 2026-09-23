@@ -5,56 +5,50 @@ import {
   NO_EDITS,
   briefAfterEdits,
   hasLocalEdits,
-  layerEdits,
   rebaseEdits,
-  reviveBriefEdits,
   type BriefEdits,
 } from './brief-edits'
+import {
+  EMPTY_BRIEF_DRAFT,
+  draftAfterSend,
+  isBriefDraftEmpty,
+  reviveBriefDraft,
+  sendAgainMessage,
+  settleSentAction,
+  type BriefDraft,
+  type SentBriefAction,
+} from './brief-sent-action'
 
 /**
- * The person's unsent work on one brief — the reply they are typing and their
- * edits to the pillars and settings — kept through `useDraft`
- * (`draft:research-brief:<runId>`), so closing the dialog or reloading loses
- * nothing (docs/navigation content-and-drafts §15).
+ * The person's unsent work on one brief — the reply they are typing, their
+ * edits to the pillars and settings, and the action they last sent — kept
+ * through `useDraft` (`draft:research-brief:<runId>`), so closing the dialog
+ * or reloading loses nothing (docs/navigation content-and-drafts §15).
  *
  * Two things only this hook knows (amendments-fable F8):
  * - **Rebase.** When the brief moves on underneath unsent edits (the planner
  *   answered, or an action was refused as a revision conflict and the brief
  *   was fetched again), the edits are kept on top of the new brief and the
  *   dialog is told what DeepWater changed.
- * - **Restore.** A sent reply is cleared from the draft, but held until the
- *   brief shows how its action ended; if DeepWater refused it, its words and
- *   edits come back into the draft, so trying again is one tap. While it is
- *   held, its edits are still shown (`inFlightEdits`).
+ * - **Restore.** What an action carried leaves the draft when it is sent, but
+ *   is held until the brief shows how the action ended
+ *   (`settleSentAction`): a refusal gives its words and edits back, and a
+ *   reply the planner could not answer gives its words back and is what Send
+ *   again sends. While it is held, its edits are still shown
+ *   (`inFlightEdits`).
  */
-
-export type BriefDraft = { edits: BriefEdits; message: string }
-
-const EMPTY_DRAFT: BriefDraft = { edits: NO_EDITS, message: '' }
-
-const reviveDraft = (stored: unknown): BriefDraft | null => {
-  if (!stored || typeof stored !== 'object') return null
-  const record = stored as Record<string, unknown>
-  return {
-    edits: reviveBriefEdits(record.edits),
-    message: typeof record.message === 'string' ? record.message : '',
-  }
-}
 
 type BriefBase = Pick<DeepWaterBriefView, 'lockedSettings' | 'pillars' | 'revision' | 'settings'>
 
-/** An action that went out, with what it carried and the revision it was sent against. */
-type Sent = { actionId: string; draft: BriefDraft; revision: number | null }
-
 export const useBriefDraft = (brief: DeepWaterBriefView) => {
-  const { draft, setDraft, clear } = useDraft<BriefDraft>(draftKey('research-brief', brief.id), {
-    initial: EMPTY_DRAFT,
-    isEmpty: (value) => value.message.trim() === '' && !hasLocalEdits(value.edits),
-    revive: reviveDraft,
+  const { draft, setDraft } = useDraft<BriefDraft>(draftKey('research-brief', brief.id), {
+    initial: EMPTY_BRIEF_DRAFT,
+    isEmpty: isBriefDraftEmpty,
+    revive: reviveBriefDraft,
   })
   const [base, setBase] = useState<BriefBase>(brief)
   const [changed, setChanged] = useState<string[]>([])
-  const [sent, setSent] = useState<Sent | null>(null)
+  const sent = draft.sent
 
   // The brief moved on: carry the unsent edits over and say what changed. What
   // the person already sent counts as theirs, not as DeepWater's change.
@@ -62,7 +56,7 @@ export const useBriefDraft = (brief: DeepWaterBriefView) => {
     if (brief.revision === base.revision) return
     setBase(brief)
     if (!hasLocalEdits(draft.edits)) return
-    const before = sent && sent.revision === base.revision ? briefAfterEdits(base, sent.draft.edits) : base
+    const before = sent && sent.revision === base.revision ? briefAfterEdits(base, sent.edits) : base
     const rebase = rebaseEdits(before, brief, draft.edits)
     setDraft((current) => ({ ...current, edits: rebase.edits }))
     if (rebase.changed.length > 0) setChanged(rebase.changed)
@@ -71,27 +65,14 @@ export const useBriefDraft = (brief: DeepWaterBriefView) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brief.revision])
 
-  // How the last sent action ended, read off the brief. The API's answer can
-  // reach this component after the send settles, so a brief that does not yet
-  // name the action is not taken as its end: the action is over only when the
-  // brief names it with an error, names another action, or has moved past the
-  // revision it was sent against.
-  const pending = brief.pendingAction
-  const revisionNow = brief.revision
+  // How the last sent action ended, read off every brief the dialog sees.
+  const { pendingAction, plannerTurn, revision, status } = brief
   useEffect(() => {
-    if (!sent) return
-    const ours = pending?.actionId === sent.actionId
-    if (ours && pending.error !== null) {
-      setDraft((current) => ({
-        edits: layerEdits(sent.draft.edits, current.edits),
-        message: current.message.trim() === '' ? sent.draft.message : current.message,
-      }))
-      setSent(null)
-      return
+    const progress = { pendingAction, plannerTurn, revision, status }
+    if (settleSentAction(draft, progress)) {
+      setDraft((current) => settleSentAction(current, progress) ?? current)
     }
-    if (ours) return
-    if (pending || revisionNow !== sent.revision) setSent(null)
-  }, [pending, revisionNow, sent, setDraft])
+  }, [draft, pendingAction, plannerTurn, revision, setDraft, status])
 
   const setMessage = useCallback((message: string) => {
     setDraft((current) => ({ ...current, message }))
@@ -102,21 +83,14 @@ export const useBriefDraft = (brief: DeepWaterBriefView) => {
   }, [setDraft])
 
   /**
-   * The action went out with these edits (and, for a typed reply, this
-   * message): forget them from the draft, but hold them until the brief says
-   * how the action ended. A one-tap answer or a resend leaves what the person
-   * is typing alone.
+   * The server accepted this action: what it carried leaves the draft (only
+   * while it still equals what was sent), and the action is held until the
+   * brief says how it ended.
    */
-  const revision = brief.revision
-  const markSent = useCallback((actionId: string, what: BriefDraft, typedMessageSent: boolean) => {
-    setSent({ actionId, draft: what, revision })
+  const markSent = useCallback((action: SentBriefAction) => {
     setChanged([])
-    if (typedMessageSent) {
-      clear()
-      return
-    }
-    setDraft((current) => ({ ...current, edits: NO_EDITS }))
-  }, [clear, revision, setDraft])
+    setDraft((current) => draftAfterSend(current, action))
+  }, [setDraft])
 
   return {
     changed,
@@ -129,8 +103,10 @@ export const useBriefDraft = (brief: DeepWaterBriefView) => {
      * next read; once the brief moves past the revision they were sent
      * against, it carries them itself.
      */
-    inFlightEdits: sent && sent.revision === brief.revision ? sent.draft.edits : NO_EDITS,
+    inFlightEdits: sent && sent.revision === brief.revision ? sent.edits : NO_EDITS,
     markSent,
+    /** What Send again sends after the planner could not answer, or null when nothing is known. */
+    sendAgain: sendAgainMessage(draft.unanswered, brief),
     setEdits,
     setMessage,
   }

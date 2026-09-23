@@ -3,7 +3,6 @@ import test from 'node:test'
 
 import { ApiClientError } from '@nessie/client-core'
 
-import { lastRequesterMessage } from '../src/components/features/deep-water/BriefConversation.js'
 import { briefActionFailure } from '../src/components/features/deep-water/brief-action-errors.js'
 import {
   deepWaterTeamControl,
@@ -123,22 +122,6 @@ test('the replying clock reads as seconds, then minutes, then hours', () => {
 
 test('a one-tap answer names the question it answers', () => {
   assert.equal(openQuestionReply(' Which country? ', ' The UK '), 'Which country?\nThe UK')
-})
-
-test('Send again repeats the last thing the person or agent said, else the question', () => {
-  const message = (kind: 'person' | 'planner' | 'agent', content: string) => ({
-    author: kind === 'person' ? { kind, userId: PERSON } : kind === 'agent'
-      ? { kind, agentId: OTHER } : { kind },
-    content,
-    createdAt: '2026-09-23T09:00:00.000Z',
-    id: '30000000-0000-4000-8000-000000000001',
-  }) as Parameters<typeof lastRequesterMessage>[0]['messages'][number]
-  assert.equal(lastRequesterMessage({ messages: [], topic: 'Heat pumps' }), 'Heat pumps')
-  assert.equal(
-    lastRequesterMessage({ messages: [message('person', 'UK only'), message('planner', 'Noted.')], topic: 'x' }),
-    'UK only',
-  )
-  assert.equal(lastRequesterMessage({ messages: [message('agent', 'Focus on costs')], topic: 'x' }), 'Focus on costs')
 })
 
 test('a retry of the same intent reuses its key; a new intent or a decided outcome mints a new one', () => {

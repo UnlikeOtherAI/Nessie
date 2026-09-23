@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { DeepWaterBriefView } from '@nessie/schemas'
 import { useDeepWaterViewerScope } from '../../../facades/deep-water/hooks'
@@ -26,6 +26,7 @@ import { BriefConversation } from './BriefConversation'
 import { BriefIdentityNotice } from './BriefIdentityNotice'
 import { BriefPillarsEditor } from './BriefPillarsEditor'
 import { BriefSettingsEditor, type SettingChange } from './BriefSettingsEditor'
+import { answerShowsInFlight } from './brief-sent-action'
 import { BriefStartBar } from './BriefStartBar'
 import { isResearchFinished } from './research-presentation'
 import { ResearchRunOutcome } from './ResearchRunOutcome'
@@ -58,12 +59,26 @@ export const BriefWorkspace = ({
   const replyId = useIntentActionId()
   const startId = useIntentActionId()
   const cancelId = useIntentActionId()
-  const { changed, dismissChanged, draft, inFlightEdits, markSent, setEdits, setMessage } = useBriefDraft(brief)
+  const {
+    changed,
+    dismissChanged,
+    draft,
+    inFlightEdits,
+    markSent,
+    sendAgain,
+    setEdits,
+    setMessage,
+  } = useBriefDraft(brief)
   const [publish, setPublish] = useState(false)
   const [replyError, setReplyError] = useState<string | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
 
   const drafting = brief.status === 'drafting'
+  // A Start refused while the brief was still being agreed says so until the
+  // brief leaves drafting; once the research is starting, it no longer applies.
+  useEffect(() => {
+    if (!drafting) setStartError(null)
+  }, [drafting])
   const ownBrief = brief.origin.kind === 'person' && brief.requestedByUserId === meUserId
   // The person keeps editing locally while the planner works (F8); the server
   // decides whether a reply or Start is accepted right now.
@@ -97,7 +112,8 @@ export const BriefWorkspace = ({
       ...(payloadHasEdits(payload) && brief.revision !== null ? { baseRevision: brief.revision, ...payload } : {}),
     }
     const actionId = replyId.take(body)
-    const typedMessageSent = text === draft.message.trim()
+    const sent = { actionId, edits, kind: 'reply' as const, message: text, revision: brief.revision,
+      typed: text === draft.message.trim() }
     reply.mutate({ actionId, ...body }, {
       onError: (error) => {
         const failure = briefActionFailure(error)
@@ -105,9 +121,9 @@ export const BriefWorkspace = ({
         setReplyError(failure.message)
         if (failure.refetch) refetchBrief()
       },
-      onSuccess: () => {
+      onSuccess: (answer) => {
         replyId.settle(false)
-        markSent(actionId, { edits, message: typedMessageSent ? text : '' }, typedMessageSent)
+        markSent({ ...sent, seen: !answerShowsInFlight(sent, answer) })
       },
     })
   }
@@ -122,6 +138,7 @@ export const BriefWorkspace = ({
     }
     const body = { revision: brief.revision, ...payload, ...(publish ? { public: true } : {}) }
     const actionId = startId.take(body)
+    const sent = { actionId, edits, kind: 'start' as const, message: '', revision: brief.revision, typed: false }
     start.mutate({ actionId, ...body }, {
       onError: (error) => {
         const failure = briefActionFailure(error)
@@ -129,9 +146,9 @@ export const BriefWorkspace = ({
         setStartError(failure.message)
         if (failure.refetch) refetchBrief()
       },
-      onSuccess: () => {
+      onSuccess: (answer) => {
         startId.settle(false)
-        markSent(actionId, { edits, message: '' }, false)
+        markSent({ ...sent, seen: !answerShowsInFlight(sent, answer) })
       },
     })
   }
@@ -192,6 +209,7 @@ export const BriefWorkspace = ({
           message={draft.message}
           onMessageChange={setMessage}
           onSend={sendReply}
+          sendAgain={sendAgain}
           sending={reply.isPending}
         />
         <div className="flex min-w-0 flex-col gap-6">

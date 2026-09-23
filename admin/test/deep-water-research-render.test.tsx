@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MemoryRouter } from 'react-router-dom'
 
 import { BriefAnalysisSummary } from '../src/components/features/deep-water/BriefAnalysisSummary.js'
+import { BriefConversation } from '../src/components/features/deep-water/BriefConversation.js'
 import { BriefOpenQuestions } from '../src/components/features/deep-water/BriefOpenQuestions.js'
 import { BriefSettingsEditor } from '../src/components/features/deep-water/BriefSettingsEditor.js'
 import { BriefStartBar } from '../src/components/features/deep-water/BriefStartBar.js'
@@ -247,4 +248,30 @@ test('not ready: an owner is sent to turn DeepWater on; a member is told who can
     viewerCanChangeTeam: false,
   }))
   assert.ok(texts(unlinked, 'button').includes('Sign in again'))
+})
+
+const failedConversation = (sendAgain: string | null) =>
+  render(createElement(BriefConversation, {
+    brief: researchBrief({
+      plannerTurn: { actionId: null, message: 'DeepWater’s research planner couldn’t answer.', retryable: true, status: 'failed' },
+    }),
+    canCompose: true,
+    canSend: true,
+    error: null,
+    meUserId: REQUESTER,
+    message: '',
+    onMessageChange: () => undefined,
+    onSend: () => undefined,
+    sendAgain,
+    sending: false,
+  }))
+
+test('a reply the planner could not answer offers Send again only when its words are known', () => {
+  const known = failedConversation('Only houses built before 1919, please.')
+  assert.ok(texts(known, '[role="alert"]').some((line) => line.includes('couldn’t answer')))
+  assert.ok(texts(known, 'button').includes('Send again'))
+  // Sent from elsewhere and not recorded here: nothing is guessed.
+  const unknown = failedConversation(null)
+  assert.equal(texts(unknown, 'button').includes('Send again'), false)
+  assert.match(unknown.body.textContent ?? '', /Write your reply again below to send it\./)
 })

@@ -12,7 +12,8 @@ import { formatElapsed } from './research-presentation'
  * planner's reply arrives whole — there is no token streaming in this release
  * (amendments-fable F8) — so while it works the dialog says so, with how long
  * it has been at it. A planner that could not answer says why, and a person
- * can send their last message again; its open questions offer one-tap answers.
+ * can send the words it failed on again (`sendAgainMessage`); its open
+ * questions offer one-tap answers.
  */
 
 const plainText = (text: string) => text
@@ -28,15 +29,6 @@ const useElapsed = (since: string | null): string | null => {
   if (!since) return null
   const started = Date.parse(since)
   return Number.isFinite(started) ? formatElapsed(now - started) : null
-}
-
-/** The words a failed turn is retried with: the last thing the person (or agent) said. */
-export const lastRequesterMessage = (brief: Pick<DeepWaterBriefView, 'messages' | 'topic'>): string => {
-  for (let index = brief.messages.length - 1; index >= 0; index -= 1) {
-    const message = brief.messages[index]
-    if (message && (message.author.kind === 'person' || message.author.kind === 'agent')) return message.content
-  }
-  return brief.topic
 }
 
 const MessageRow = ({
@@ -92,6 +84,8 @@ export type BriefConversationProps = {
   message: string
   onMessageChange: (message: string) => void
   onSend: (message: string) => void
+  /** The words Send again sends after the planner could not answer; null when they are not known. */
+  sendAgain: string | null
   sending: boolean
 }
 
@@ -104,6 +98,7 @@ export const BriefConversation = ({
   message,
   onMessageChange,
   onSend,
+  sendAgain,
   sending,
 }: BriefConversationProps) => {
   const resolveActor = useActorNames()
@@ -152,15 +147,18 @@ export const BriefConversation = ({
       {turn.status === 'failed' ? (
         <div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--danger-text)]" role="alert">
           <span>{turn.message}</span>
-          {turn.retryable && canCompose ? (
+          {turn.retryable && canCompose && sendAgain !== null ? (
             <button
               className="admin-button admin-button-secondary admin-button-compact"
               disabled={!ready}
-              onClick={() => send(lastRequesterMessage(brief))}
+              onClick={() => send(sendAgain)}
               type="button"
             >
               Send again
             </button>
+          ) : null}
+          {turn.retryable && canCompose && sendAgain === null ? (
+            <span className="text-[color:var(--tx2)]">Write your reply again below to send it.</span>
           ) : null}
         </div>
       ) : null}

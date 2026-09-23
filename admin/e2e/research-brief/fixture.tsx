@@ -36,7 +36,8 @@ import {
  *
  * `?at=` is the address the memory router starts at; `?readiness=` and
  * `?owner=1` set the server's verdict on the products list; `?brief=` picks the
- * person's brief (`drafting`, `failed`, `sign-in`).
+ * person's brief (`drafting`, `opening-failed` — the planner could not answer
+ * the question that opened it — or `sign-in`).
  */
 
 const params = new URLSearchParams(location.search)
@@ -53,11 +54,16 @@ try {
 const toRun = (brief: DeepWaterBriefView): DeepWaterResearchRunView =>
   DeepWaterResearchRunViewSchema.strip().parse(brief)
 
+/** Nessie's words for a planner turn that stalled (`deepWaterPlannerFailureMessage`). */
+const PLANNER_STALLED = 'DeepWater’s research planner stopped responding before it answered.'
+const failedTurn = { actionId: null, message: PLANNER_STALLED, retryable: true, status: 'failed' } as const
+
 const personBrief = (): DeepWaterBriefView => {
-  if (briefVariant === 'failed') {
+  if (briefVariant === 'opening-failed') {
+    // No turn has been answered: the transcript is empty and the brief is as it was opened.
     return draftBrief({
-      plannerTurn: { actionId: null, message: 'DeepWater’s research planner couldn’t answer just now. Send your '
-        + 'message again to retry.', retryable: true, status: 'failed' },
+      analysis: null, lockedSettings: [], messages: [], openQuestions: [], pillarCount: 0, pillars: [],
+      plannerTurn: failedTurn, revision: 0,
     })
   }
   if (briefVariant === 'sign-in') {
@@ -212,6 +218,16 @@ Object.assign(window, {
     launched: (id: string) => {
       updateBrief(id, (brief) => ({ ...brief, pendingAction: null, startedAt: new Date().toISOString(),
         status: 'running', viewer: { ...brief.viewer, canEdit: false, canStart: false } }))
+      invalidateResearchRun(queryClient, id)
+    },
+    /** DeepWater's planner stalls on the person's last reply: no transcript row, the action cleared. */
+    plannerFails: (id: string) => {
+      updateBrief(id, (brief) => ({
+        ...brief,
+        pendingAction: null,
+        plannerTurn: failedTurn,
+        viewer: { ...brief.viewer, canEdit: true, canStart: true },
+      }))
       invalidateResearchRun(queryClient, id)
     },
     plannerAnswers: (id: string) => {

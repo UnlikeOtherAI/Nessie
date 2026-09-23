@@ -5,7 +5,14 @@ import { resolve } from 'node:path'
 import { launchBrowser } from '../navigation/lib/browser.mjs'
 import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
 import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
-import { assertBrief, assertThreadCards, walkBriefToStart, walkNewBrief, walkReplyThreadBrief } from './steps.mjs'
+import {
+  assertBrief,
+  assertThreadCards,
+  walkBriefToStart,
+  walkFailedReply,
+  walkNewBrief,
+  walkReplyThreadBrief,
+} from './steps.mjs'
 
 /**
  * DeepWater research in the admin, rendered (Water plan nessie.md §7.7, §7.9;
@@ -17,9 +24,10 @@ import { assertBrief, assertThreadCards, walkBriefToStart, walkNewBrief, walkRep
  * landing, a revision conflict. It walks the person's whole brief (a one-tap
  * answer carrying an unsent pillar and setting edit, the planner's answer, a
  * conflict rebased with "what changed", Start with the publish switch), a new
- * brief from the composer, an agent's read-only brief, the failed and sign-in
- * states, every artifact action including the clipboard fallback, the
- * not-ready doorways for a member and an owner, and the owner's cancel of the
+ * brief from the composer, an agent's read-only brief, a reply the planner
+ * could not answer coming back and being sent again, the failed opening turn,
+ * the sign-in state, every artifact action including the clipboard fallback,
+ * the not-ready doorways for a member and an owner, and the owner's cancel of the
  * research that blocks turning DeepWater off. Every state is screenshotted
  * under e2e/screenshots/research-brief/.
  */
@@ -156,15 +164,19 @@ try {
   await snap(agentPage, '09-agent-brief.png')
   await agentPage.close()
 
-  // 10 — a failed planner turn: Send again repeats the person's last words.
-  const failed = await open(desktop, 'brief=failed&at=/channels/c?research=50000000-0000-4000-8000-000000000001')
-  const failedDialog = failed.getByTestId('research-brief-dialog')
-  await failedDialog.getByText('couldn’t answer just now', { exact: false }).waitFor()
-  await failedDialog.getByRole('button', { name: 'Send again' }).click()
-  const resend = await failed.evaluate(() => window.__research.calls.filter((call) => call.method === 'POST').at(-1))
-  assert.equal(resend.body.message, 'How well do heat pumps work in Victorian terraced houses?')
-  await snap(failed, '10-brief-failed-resent.png')
+  // 10 — the planner could not answer a reply: its words come back, and Send again sends them.
+  const failed = await open(desktop, 'at=/channels/c?research=50000000-0000-4000-8000-000000000001')
+  await walkFailedReply(failed, snap)
   await failed.close()
+
+  // 10b — the planner could not answer the question that opened the brief: Send again sends the question.
+  const opening = await open(desktop, 'brief=opening-failed&at=/channels/c?research=50000000-0000-4000-8000-000000000001')
+  const openingDialog = opening.getByTestId('research-brief-dialog')
+  await openingDialog.getByText('stopped responding before it answered', { exact: false }).waitFor()
+  await openingDialog.getByRole('button', { name: 'Send again' }).click()
+  const resend = await opening.evaluate(() => window.__research.calls.filter((call) => call.method === 'POST').at(-1))
+  assert.equal(resend.body.message, 'How well do heat pumps work in Victorian terraced houses?')
+  await opening.close()
 
   // 11 — the sign-in the brief was opened with no longer works (F4).
   const signIn = await open(desktop, 'brief=sign-in&at=/channels/c?research=50000000-0000-4000-8000-000000000001')

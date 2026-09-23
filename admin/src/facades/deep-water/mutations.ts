@@ -31,6 +31,14 @@ export const newResearchActionId = (): string => crypto.randomUUID()
 
 const parse = <T>(schema: { parse: (value: unknown) => T }, value: unknown): T => schema.parse(value)
 
+/**
+ * Start's answer is the research view, a subset of the brief view: laid over
+ * the brief the dialog holds, it shows the research starting — and Start no
+ * longer offered — the moment the server has accepted it, not a refetch later.
+ */
+export const briefWithRunView = (brief: DeepWaterBriefView, run: DeepWaterResearchRunView): DeepWaterBriefView =>
+  brief.id === run.id ? { ...brief, ...run } : brief
+
 export const useCreateResearchBrief = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
@@ -64,9 +72,17 @@ export const useReplyToResearchBrief = (runId: string) => {
 export const useStartResearchBrief = (runId: string) => {
   const api = useApiClient()
   const queryClient = useQueryClient()
+  const scope = useDeepWaterViewerScope()
   return useMutation({
     mutationFn: async (input: StartDeepWaterBriefRequest): Promise<DeepWaterResearchRunView> =>
       parse(DeepWaterResearchRunViewSchema, await api.post(`${researchRunPath(runId)}/start`, input)),
+    onSuccess: (run) => {
+      if (!scope) return
+      queryClient.setQueryData<DeepWaterBriefView>(
+        deepWaterKeys.brief(runId, scope),
+        (brief) => (brief ? briefWithRunView(brief, run) : brief),
+      )
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(runId) })
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.lists })

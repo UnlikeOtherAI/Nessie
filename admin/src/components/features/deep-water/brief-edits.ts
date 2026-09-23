@@ -197,6 +197,28 @@ export const hasLocalEdits = (edits: BriefEdits): boolean =>
   edits.pillars !== undefined || Object.keys(edits.settings ?? {}).length > 0
 
 /**
+ * The edits left once an action that carried `sent` went out. Only what still
+ * equals what was sent is dropped: a pillar list or a setting the person
+ * changed again while the action was on its way is theirs, not sent, and stays
+ * unsent (amendments-fable F8).
+ */
+export const subtractEdits = (current: BriefEdits, sent: BriefEdits): BriefEdits => {
+  const next: BriefEdits = {}
+  if (current.pillars !== undefined && !sameValue(current.pillars, sent.pillars)) next.pillars = current.pillars
+  const settings: SettingEdits = {}
+  for (const key of DEEP_WATER_BRIEF_SETTING_KEYS) {
+    const value = current.settings?.[key]
+    if (value === undefined) continue
+    const wasSent = sent.settings !== undefined
+      && Object.prototype.hasOwnProperty.call(sent.settings, key)
+      && sameValue(sent.settings[key], value)
+    if (!wasSent) (settings as Record<string, unknown>)[key] = value
+  }
+  if (Object.keys(settings).length > 0) next.settings = settings
+  return next
+}
+
+/**
  * Set one setting locally. Choosing the value DeepWater already holds for a key
  * it still decides is no change at all, so it forgets the edit rather than
  * locking the planner out of a choice the person did not make.
