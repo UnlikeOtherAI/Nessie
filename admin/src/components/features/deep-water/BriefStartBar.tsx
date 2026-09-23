@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DeepWaterBriefView } from '@nessie/schemas'
 import { Switch } from '../../primitives/Switch'
+import { ResearchCancelFailure } from './ResearchRunOutcome'
 
 /**
  * The foot of a brief: the person-only choice to publish the finished report
@@ -12,7 +13,10 @@ import { Switch } from '../../primitives/Switch'
  * A cancel is its own state: from the moment it is sent until the research has
  * stopped, the bar says it is being discarded or stopped and offers neither
  * Cancel again nor Start — the API accepts a cancel at once, but DeepWater
- * stops the research a moment later.
+ * stops the research a moment later. One that did not go through comes back
+ * with its reason (`cancelFailure`) and Cancel is offered again — said here for
+ * a brief still being agreed, and in the research's outcome above once it has
+ * been started.
  */
 
 export type StartBarProps = {
@@ -125,6 +129,9 @@ export const BriefStartBar = ({
       </div>
       {offerStart && blockedReason ? (
         <p className="text-right text-xs text-[color:var(--tx3)]">{blockedReason}</p>
+      ) : null}
+      {drafting && !cancelling && onCancel && brief.cancelFailure ? (
+        <ResearchCancelFailure message={brief.cancelFailure.message} />
       ) : null}
       {error ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
     </div>

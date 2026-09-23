@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { DeepWaterActiveRunConflict } from '@nessie/schemas'
-import { useDeepWaterReadiness, useResearchRun } from '../../../facades/deep-water/hooks'
+import { isResearchNotFound, useDeepWaterReadiness, useResearchRun } from '../../../facades/deep-water/hooks'
 import {
   hasResearchStopped,
   useCancelResearchRun,
@@ -11,14 +11,16 @@ import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { briefActionFailure } from './brief-action-errors'
 import {
   TEAM_CONTROL_LABEL,
+  cancelOfferedAgain,
   deepWaterTeamControls,
   deepWaterTeamStatus,
   openResearchSentence,
+  openResearchStanding,
   teamChangeFailure,
-  type OpenResearchStanding,
   type TeamChangeFailure,
 } from './deep-water-team-copy'
 import { isResearchFinished } from './research-presentation'
+import { ResearchReadinessUnread } from './ResearchReadinessScreen'
 import { useIntentActionId } from './useIntentActionId'
 
 /**
@@ -30,7 +32,8 @@ import { useIntentActionId } from './useIntentActionId'
  * naming that research by who started it and where it stands (never its
  * question), with Cancel beside it, so the owner is never sent to ask an agent
  * to do it. The readiness screen behind the composer's Research button sends
- * owners here.
+ * owners here. A verdict that could not be read says so, with Try again,
+ * rather than offering to turn on a team that may already be on.
  */
 
 export const DeepWaterTeamControls = () => {
@@ -38,30 +41,49 @@ export const DeepWaterTeamControls = () => {
   const setEnabled = useSetDeepWaterTeamEnabled()
   const [confirmingOff, setConfirmingOff] = useState(false)
   const [failure, setFailure] = useState<TeamChangeFailure | null>(null)
-  // Research this owner has asked to cancel, by run id. A cancel is accepted
+  // Every refusal of a change, counted, and the research this owner has asked
+  // to cancel, by run id, with the count it was asked at. A cancel is accepted
   // before DeepWater has stopped the research, so trying the change again
-  // meanwhile is refused by the same research: it is then said to be stopping,
-  // and Cancel is not offered a second time.
-  const [cancelRequested, setCancelRequested] = useState<ReadonlySet<string>>(() => new Set())
-  const teamEnabled = readiness.product?.teamEnablement?.enabled === true
-  const controls = deepWaterTeamControls(readiness.state, teamEnabled, readiness.viewerIsOwner)
+  // meanwhile is refused by the same research; whether that is the cancel
+  // still on its way or one that did not go through, the research's own view
+  // says — and for an owner who may not read it, a refusal since the cancel
+  // is all there is to go on.
+  const [refusals, setRefusals] = useState(0)
+  // The count as of now, for a cancel accepted after a render that saw fewer.
+  const refusalsSoFar = useRef(0)
+  const [cancelRequested, setCancelRequested] = useState<ReadonlyMap<string, number>>(() => new Map())
 
-  if (readiness.isLoading) return null
+  if (readiness.state === null) {
+    return readiness.isError ? (
+      <div className="flex max-w-2xl flex-col gap-3" data-testid="deep-water-team-controls">
+        <ResearchReadinessUnread onRetry={readiness.retry} />
+      </div>
+    ) : null
+  }
+  const state = readiness.state
+  const teamEnabled = readiness.product?.teamEnablement?.enabled === true
+  const controls = deepWaterTeamControls(state, teamEnabled, readiness.viewerIsOwner)
 
   const change = (enabled: boolean) => {
     setFailure(null)
     setEnabled.mutate(enabled, {
-      onError: (error) => setFailure(teamChangeFailure(error)),
+      onError: (error) => {
+        refusalsSoFar.current += 1
+        setRefusals(refusalsSoFar.current)
+        setFailure(teamChangeFailure(error))
+      },
       // Refused or done, the confirm has had its answer; a refusal is said on
       // the hero, beside the research that caused it.
       onSettled: () => setConfirmingOff(false),
     })
   }
 
+  const requestedAt = failure?.kind === 'open_research' ? cancelRequested.get(failure.run.id) : undefined
+
   return (
-    <div className="flex max-w-2xl flex-col gap-3" data-state={readiness.state} data-testid="deep-water-team-controls">
+    <div className="flex max-w-2xl flex-col gap-3" data-state={state} data-testid="deep-water-team-controls">
       <p className="text-sm text-[color:var(--tx2)]">
-        {deepWaterTeamStatus(readiness.state, teamEnabled, readiness.viewerIsOwner)}
+        {deepWaterTeamStatus(state, teamEnabled, readiness.viewerIsOwner)}
       </p>
       {controls.length > 0 ? (
         <div className="flex flex-wrap gap-2">
@@ -88,9 +110,13 @@ export const DeepWaterTeamControls = () => {
       {failure?.kind === 'open_research' ? (
         <OpenResearch
           canCancel={readiness.viewerCanChangeTeam}
-          cancelRequested={cancelRequested.has(failure.run.id)}
+          cancelRequested={requestedAt !== undefined}
           key={failure.run.id}
-          onCancelRequested={() => setCancelRequested((current) => new Set(current).add(failure.run.id))}
+          onCancelRequested={() => {
+            const runId = failure.run.id
+            setCancelRequested((current) => new Map(current).set(runId, refusalsSoFar.current))
+          }}
+          refusedAgain={requestedAt !== undefined && refusals > requestedAt}
           run={failure.run}
           viewerIsOwner={readiness.viewerIsOwner}
         />
@@ -121,14 +147,17 @@ export const DeepWaterTeamControls = () => {
  * on the verdict's cancel standing (`viewerCanChangeTeam`, owners and admins,
  * amendments N8.5). The cancel is the owner's own action (amendments-fable
  * F3). The API accepts it before DeepWater has stopped the research, so the
- * block stays, saying the research is stopping, until it has: an owner who may
- * read the research sees it stop here (its view is refreshed by the realtime
- * update); one who may not learns it from trying the change again.
+ * block stays, saying the research is stopping, until it has. An owner who may
+ * read the research watches it here (its view is refreshed by the realtime
+ * update): they see it stop, and a cancel that did not go through comes back
+ * with its reason and Cancel offered again. One who may not read it learns
+ * only from trying the change again, and is offered Cancel again then.
  */
-const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run, viewerIsOwner }: {
+const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, refusedAgain, run, viewerIsOwner }: {
   canCancel: boolean
   cancelRequested: boolean
   onCancelRequested: () => void
+  refusedAgain: boolean
   run: DeepWaterActiveRunConflict
   viewerIsOwner: boolean
 }) => {
@@ -137,16 +166,19 @@ const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run, view
   const actionId = useIntentActionId()
   const [error, setError] = useState<string | null>(null)
   const [stoppedOnAnswer, setStoppedOnAnswer] = useState(false)
-  // A 404 is the answer for an owner who may not read the research: nothing to watch.
-  const watched = useResearchRun(cancelRequested ? run.id : null)
-  const watchedStopped = watched.data?.id === run.id && isResearchFinished(watched.data.status)
+  const watched = useResearchRun(run.id)
+  const view = watched.data?.id === run.id ? watched.data : null
   const requester = run.requestedByUserId ? resolveActor('user', run.requestedByUserId) : null
 
-  const standing: OpenResearchStanding = stoppedOnAnswer || watchedStopped
-    ? 'stopped'
-    : cancelRequested
-      ? 'cancel_requested'
-      : canCancel ? 'can_cancel' : 'cannot_cancel'
+  const standing = openResearchStanding({
+    canCancel,
+    cancelRequested,
+    refusedAgain,
+    stoppedOnAnswer,
+    unreadable: watched.isError && isResearchNotFound(watched.error),
+    view: view ? { cancelFailed: view.cancelFailure !== null, finished: isResearchFinished(view.status) } : null,
+  })
+  const offerCancel = standing === 'can_cancel' || cancelOfferedAgain(standing)
 
   const cancelRun = () => {
     setError(null)
@@ -175,7 +207,12 @@ const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run, view
       <p className="text-sm text-[color:var(--tx)]">
         {openResearchSentence(run, requester?.named ? requester.name : null, standing)}
       </p>
-      {standing === 'can_cancel' ? (
+      {standing === 'cancel_failed' && view?.cancelFailure ? (
+        <p className="text-sm text-[color:var(--danger-text)]" data-testid="deep-water-cancel-failure">
+          {view.cancelFailure.message}
+        </p>
+      ) : null}
+      {offerCancel ? (
         <div>
           <button
             className="admin-button admin-button-secondary admin-button-danger admin-button-compact"
@@ -183,7 +220,7 @@ const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run, view
             onClick={cancelRun}
             type="button"
           >
-            {cancel.isPending ? 'Cancelling…' : 'Cancel this research'}
+            {cancel.isPending ? 'Cancelling…' : standing === 'can_cancel' ? 'Cancel this research' : 'Cancel again'}
           </button>
         </div>
       ) : null}

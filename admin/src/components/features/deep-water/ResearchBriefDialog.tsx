@@ -13,7 +13,7 @@ import { BriefWorkspace } from './BriefWorkspace'
 import { researchShownIn, type ResearchShownIn, type StartAgain } from './research-brief-origin'
 import { STATUS_LABEL, STATUS_TONE, researchName } from './research-presentation'
 import { ResearchBriefNewForm } from './ResearchBriefNewForm'
-import { ResearchReadinessScreen } from './ResearchReadinessScreen'
+import { ResearchReadinessScreen, ResearchReadinessUnread } from './ResearchReadinessScreen'
 import { ResearchRunOutcome } from './ResearchRunOutcome'
 
 /**
@@ -82,7 +82,9 @@ export const ResearchBriefDialog = ({
 
   const body = () => {
     if (!runId) {
-      if (readiness.isLoading) return <Skeleton variant="detail" />
+      if (readiness.state === null) {
+        return readiness.isError ? <ResearchReadinessUnread onRetry={readiness.retry} /> : <Skeleton variant="detail" />
+      }
       if (readiness.state !== 'ready') {
         return (
           <ResearchReadinessScreen

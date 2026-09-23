@@ -536,8 +536,13 @@ the screen it goes to that conversation, which opens the brief itself.
   this brief…" or "Stopping this research…" and offers neither the cancel again
   nor Start, and the brief is not edited (its unsent edits stay in the draft).
   The cancel mutation settles only once the run has been read again, so the
-  cancel never reappears in between; a cancel DeepWater refused comes back with
-  its error and can be pressed again. A refusal reads by the action refused
+  cancel never reappears in between. A cancel that did not go through —
+  DeepWater refused it, or could not be asked — comes back as the view's
+  `cancelFailure` while the research is open: its words are said to whoever may
+  cancel (`viewer.canCancel`), beside Cancel — at the brief's foot while it is
+  being agreed, in the research's outcome once it has started (card, Knowledge
+  row, dialog) — and Cancel is offered again; the brief conversation does not
+  repeat a cancel's error. A refusal reads by the action refused
   (`briefActionFailure(error, action, viewerIsOwner)`): `DEEP_WATER_BRIEF_BUSY`
   on a cancel means the brief is still being opened, never that the planner is
   answering, and `DEEP_WATER_NOT_READY` names the readiness remedy for the
@@ -552,7 +557,16 @@ the screen it goes to that conversation, which opens the brief itself.
   instead of a brief: a team owner is sent to `/apps/deep-water` to turn
   DeepWater on or update it, anyone else — admins included — is told to ask a
   team owner, and an unlinked sign-in is asked to sign in again. The verdict is
-  the products list's `research` readiness; the admin never re-derives it.
+  the products list's `research` readiness, read through
+  `DeepWaterResearchReadinessSchema` (`readDeepWaterReadiness`); the admin never
+  re-derives it. No deep-water entry, or one sent without a verdict (the API
+  gives none outside a team), is `unavailable`. A products read that failed, or
+  a verdict outside the contract (an admin and API deployed at different
+  versions), is logged once and said as "DeepWater's status couldn't be
+  loaded" with Try again (`ResearchReadinessUnread`) — on the hero, behind the
+  composer's button (whose label then claims no reason) — never as DeepWater
+  being off or unreachable; `readinessCopy` throws on a state it has no words
+  for rather than render an undefined title.
 - **The owner's controls live on the `/apps/deep-water` hero**
   (`DeepWaterTeamControls`): turn DeepWater on, off (confirmed) or update it to
   the brief tools — a team that needs updating is on, so its owner is offered
@@ -567,10 +581,17 @@ the screen it goes to that conversation, which opens the brief itself.
   by who started it and where it stands, never its question, with "Cancel this
   research" as the owner's own cancel. An accepted cancel leaves the block in
   place saying the cancel is requested and to try again once the research has
-  stopped, with no second Cancel — also when trying the change again meanwhile
-  is refused by the same research. An owner who may read the research sees it
-  stop there (its view, refreshed by the realtime update); one who may not
-  learns it by trying the change again.
+  stopped, with no second Cancel while it is on its way — also when trying the
+  change again meanwhile is refused by the same research
+  (`openResearchStanding`). An owner who may read the research watches its
+  view there (refreshed by the realtime update): they see it stop, and a
+  cancel that did not go through (`cancelFailure`) comes back with its reason
+  and "Cancel again", however often the change has been tried since. One who
+  may not read it (its read answers 404) learns only from trying the change
+  again: refused by the same research after their cancel was accepted, they are
+  told the cancel may not have gone through and offered "Cancel again" — a
+  newer cancel replaces the one before, never doubles it. A verdict the admin
+  could not read offers no change at all, only Try again.
 - **Artifacts are one component.** `ResearchArtifactActions` — Download report
   (or summary) `.md`, Download sources `.csv`, Copy markdown, and "Open on
   research.deepwater.live" only when the view carries `publicUrl` — is used by

@@ -1,12 +1,14 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { ZodIssue } from 'zod'
 import { ApiClientError } from '@nessie/client-core'
 import {
   DeepWaterBriefViewSchema,
+  DeepWaterResearchReadinessSchema,
   DeepWaterResearchRunListSchema,
   DeepWaterResearchRunViewSchema,
   type DeepWaterBriefView,
-  type DeepWaterResearchReadiness,
+  type DeepWaterResearchReadinessState,
   type DeepWaterResearchRunList,
   type DeepWaterResearchRunView,
   type IntegratedProductResponse,
@@ -107,10 +109,34 @@ export const useResearchRunList = () => {
   })
 }
 
-export type DeepWaterReadiness = DeepWaterResearchReadiness & {
+const logged = new WeakSet<object>()
+
+/** Log a failure the first time it is seen: the same query error or verdict reaches every composer. */
+const logOnce = (subject: unknown, message: string, detail?: unknown): void => {
+  if (subject !== null && typeof subject === 'object') {
+    if (logged.has(subject)) return
+    logged.add(subject)
+  }
+  console.error(`[deep-water] ${message}`, subject, ...(detail === undefined ? [] : [detail]))
+}
+
+export type DeepWaterReadiness = {
+  /**
+   * The server's verdict: can this viewer open a research brief here. Null
+   * while it loads, and when it could not be read (`isError`) — never a
+   * guess, so no doorway says DeepWater is off or unavailable without the
+   * server having said so.
+   */
+  state: DeepWaterResearchReadinessState | null
   isLoading: boolean
+  /** The products list could not be read, or its DeepWater verdict broke the contract. */
+  isError: boolean
+  /** Read the verdict again, for a screen that says it could not be loaded. */
+  retry: () => void
   /** The deep-water products entry, for the owner's team controls. */
   product: IntegratedProductResponse | null
+  /** The verdict's cancel standing: team owners and admins (amendments N8.5). */
+  viewerCanChangeTeam: boolean
   /**
    * The viewer holds the owner role: the only standing `PATCH
    * …/team-enablement` accepts, so turning DeepWater on, off or updating it —
@@ -120,24 +146,70 @@ export type DeepWaterReadiness = DeepWaterResearchReadiness & {
   viewerIsOwner: boolean
 }
 
+/** The verdict as read from one state of the products query, before the hook adds its actions. */
+export type DeepWaterReadinessRead = Pick<
+  DeepWaterReadiness,
+  'isError' | 'isLoading' | 'product' | 'state' | 'viewerCanChangeTeam'
+> & {
+  /** The contract the sent verdict broke, for the log; null when it was read, or none was sent. */
+  issues: ZodIssue[] | null
+}
+
 /**
  * Can this viewer open a research brief here, and who could change that — the
- * server's one verdict on the deep-water products entry (nessie.md §7.1). An
- * entry without the verdict, or no entry at all, is `unavailable`: the admin
- * never guesses readiness from the enablement and connector fields.
+ * server's one verdict on the deep-water products entry (nessie.md §7.1),
+ * read through its schema. No entry, or an entry the server sent without a
+ * verdict (it gives none outside a team), is `unavailable`: research cannot
+ * start here. A products read that failed, or a verdict that does not match
+ * the contract (an admin and API deployed at different versions), is
+ * `isError` — never presented as DeepWater being off or unreachable, and
+ * never guessed from the enablement and connector fields. Pure, so every
+ * case is tested without a query.
  */
+export const readDeepWaterReadiness = (products: {
+  data: IntegratedProductResponse[] | undefined
+  isError: boolean
+  isPending: boolean
+}): DeepWaterReadinessRead => {
+  const product = products.data?.find((entry) => entry.slug === DEEP_WATER_PRODUCT_SLUG) ?? null
+  const sent: unknown = product?.research
+  const verdict = sent === undefined ? null : DeepWaterResearchReadinessSchema.safeParse(sent)
+  const issues = verdict !== null && !verdict.success ? verdict.error.issues : null
+  const read = verdict?.success ? verdict.data : null
+  const isError = products.isError || issues !== null
+  return {
+    isError,
+    isLoading: products.isPending,
+    issues,
+    product,
+    state: isError || products.isPending ? null : read?.state ?? 'unavailable',
+    viewerCanChangeTeam: read?.viewerCanChangeTeam ?? false,
+  }
+}
+
+/** The verdict for this viewer (`readDeepWaterReadiness`), with a way to read it again; failures are logged. */
 export const useDeepWaterReadiness = (): DeepWaterReadiness => {
   const products = useIntegratedProducts()
   const viewerIsOwner = useIsOwner()
-  return useMemo(() => {
-    const product = products.data?.find((entry) => entry.slug === DEEP_WATER_PRODUCT_SLUG) ?? null
-    const verdict = product?.research ?? null
-    return {
-      isLoading: products.isPending,
-      product,
-      state: verdict?.state ?? 'unavailable',
-      viewerCanChangeTeam: verdict?.viewerCanChangeTeam ?? false,
-      viewerIsOwner,
-    }
-  }, [products.data, products.isPending, viewerIsOwner])
+  const { data, error, isError, isPending, refetch } = products
+  const read = useMemo(() => readDeepWaterReadiness({ data, isError, isPending }), [data, isError, isPending])
+  const { issues, product } = read
+
+  // Every composer reads the verdict, so each failure is logged once, not once per composer.
+  useEffect(() => {
+    if (error) logOnce(error, 'the products list could not be read for research readiness')
+  }, [error])
+  useEffect(() => {
+    if (issues) logOnce(product?.research, 'the products list sent a research readiness verdict outside the contract', issues)
+  }, [issues, product])
+
+  return useMemo(() => ({
+    isError: read.isError,
+    isLoading: read.isLoading,
+    product: read.product,
+    retry: () => void refetch(),
+    state: read.state,
+    viewerCanChangeTeam: read.viewerCanChangeTeam,
+    viewerIsOwner,
+  }), [read, refetch, viewerIsOwner])
 }

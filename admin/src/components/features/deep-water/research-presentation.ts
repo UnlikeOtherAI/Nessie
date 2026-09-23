@@ -272,12 +272,25 @@ export const readinessCopy = (
         reason: 'it isn’t available right now',
         title: 'DeepWater isn’t available',
       }
+    default: {
+      // The verdict is read through its schema (`useDeepWaterReadiness`), so a
+      // state without words here is a contract this admin was built without.
+      const unworded: never = state
+      throw new Error(`[deep-water] research readiness "${String(unworded)}" has no words`)
+    }
   }
 }
 
+/** What a doorway says when the verdict could not be read: never a guess at why. */
+export const READINESS_UNREAD_COPY = {
+  message: 'Whether DeepWater can research for this team couldn’t be checked just now.',
+  title: 'DeepWater’s status couldn’t be loaded',
+} as const
+
 /**
  * The composer button always shows; its label says why it would not open a
- * brief. Null while the verdict is still loading: no reason is claimed yet.
+ * brief. Null while the verdict is still loading, or when it could not be
+ * read: no reason is claimed, and the dialog it opens says what happened.
  */
 export const researchButtonTitle = (
   state: DeepWaterResearchReadinessState | null,

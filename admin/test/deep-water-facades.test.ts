@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { QueryClient } from '@tanstack/react-query'
+import type { IntegratedProductResponse } from '@nessie/schemas'
 
 import { copyText, researchArtifactPath } from '../src/facades/deep-water/artifacts.js'
 import {
@@ -9,6 +10,7 @@ import {
   invalidateResearchRun,
   researchRunIdFromFrame,
 } from '../src/facades/deep-water/events.js'
+import { readDeepWaterReadiness } from '../src/facades/deep-water/hooks.js'
 import { deepWaterKeys, type DeepWaterViewerScope } from '../src/facades/deep-water/keys.js'
 import { hasResearchStopped } from '../src/facades/deep-water/mutations.js'
 import {
@@ -171,4 +173,27 @@ test('Copy markdown copies, or says the person has to copy it themselves', async
   } finally {
     console.warn = quiet
   }
+})
+
+test('the readiness verdict is read through its schema, and a verdict that cannot be read is said as that', () => {
+  const entry = (research?: unknown) => ({ research, slug: 'deep-water' }) as unknown as IntegratedProductResponse
+  const settled = (data: IntegratedProductResponse[]) =>
+    readDeepWaterReadiness({ data, isError: false, isPending: false })
+
+  const ready = settled([entry({ state: 'team_off', viewerCanChangeTeam: true })])
+  assert.equal(ready.state, 'team_off')
+  assert.equal(ready.viewerCanChangeTeam, true)
+  assert.equal(ready.isError, false)
+  // No DeepWater on this server, or no verdict outside a team: research cannot start here.
+  assert.equal(settled([]).state, 'unavailable')
+  assert.equal(settled([entry()]).state, 'unavailable')
+  // A state this admin does not know (an API deployed ahead of it) is an unread verdict, never a guess.
+  const skewed = settled([entry({ state: 'paused', viewerCanChangeTeam: true })])
+  assert.deepEqual([skewed.state, skewed.isError, skewed.viewerCanChangeTeam], [null, true, false])
+  assert.ok(skewed.issues && skewed.issues.length > 0, 'the broken contract is kept for the log')
+  // A failed products read is not DeepWater being off: nothing is claimed about the team.
+  const failed = readDeepWaterReadiness({ data: undefined, isError: true, isPending: false })
+  assert.deepEqual([failed.state, failed.isError, failed.isLoading, failed.product], [null, true, false, null])
+  const loading = readDeepWaterReadiness({ data: undefined, isError: false, isPending: true })
+  assert.deepEqual([loading.state, loading.isError, loading.isLoading], [null, false, true])
 })

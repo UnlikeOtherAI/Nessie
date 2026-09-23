@@ -16,7 +16,10 @@ import { BriefOpenQuestions } from '../src/components/features/deep-water/BriefO
 import { BriefSettingsEditor } from '../src/components/features/deep-water/BriefSettingsEditor.js'
 import { BriefStartBar } from '../src/components/features/deep-water/BriefStartBar.js'
 import { ResearchArtifactActions } from '../src/components/features/deep-water/ResearchArtifactActions.js'
-import { ResearchReadinessScreen } from '../src/components/features/deep-water/ResearchReadinessScreen.js'
+import {
+  ResearchReadinessScreen,
+  ResearchReadinessUnread,
+} from '../src/components/features/deep-water/ResearchReadinessScreen.js'
 import { ResearchRunOutcome } from '../src/components/features/deep-water/ResearchRunOutcome.js'
 import { AuthSessionProvider } from '../src/providers/AuthSessionProvider.js'
 import { AGENT, COLLEAGUE, REQUESTER, completedRun, researchBrief, researchRun } from './deep-water-research-fixtures.js'
@@ -358,4 +361,52 @@ test('a reply the planner could not answer offers Send again only when its words
   const unknown = failedConversation(null)
   assert.equal(texts(unknown, 'button').includes('Send again'), false)
   assert.match(unknown.body.textContent ?? '', /Write your reply again below to send it\./)
+})
+
+const CANCEL_UNREACHED = 'DeepWater couldn’t be reached, so this research wasn’t cancelled. Try again in a few minutes.'
+const cancelRefused = {
+  cancelFailure: { code: 'unavailable' as const, message: CANCEL_UNREACHED },
+  pendingAction: {
+    actionId: '80000000-0000-4000-8000-000000000002',
+    error: { code: 'unavailable' as const, message: 'DeepWater couldn’t be reached. Try again in a moment.' },
+    kind: 'cancel' as const,
+    since: '2026-09-23T09:05:00.000Z',
+  },
+}
+
+test('a cancel that did not go through is said to whoever can cancel, once, beside Cancel', () => {
+  const running = (canCancel: boolean) => researchRun({
+    cancelFailure: cancelRefused.cancelFailure,
+    status: 'running',
+    viewer: { canCancel, canEdit: false, canRetryDelivery: false, canStart: false },
+  })
+  const own = render(createElement(ResearchRunOutcome, {
+    meUserId: REQUESTER, onStartAgain: null, run: running(true), shownIn: 'its_conversation',
+  }))
+  assert.equal(own.querySelector('[data-testid="research-cancel-failure"]')?.textContent, CANCEL_UNREACHED)
+  // Someone who cannot cancel it has nothing to try again.
+  const theirs = render(createElement(ResearchRunOutcome, {
+    meUserId: COLLEAGUE, onStartAgain: null, run: running(false), shownIn: 'its_conversation',
+  }))
+  assert.equal(theirs.querySelector('[data-testid="research-cancel-failure"]'), null)
+
+  // A brief still being agreed says it at its foot, where Discard is offered again — and not a second time
+  // in the conversation, which keeps the words of every other refused action.
+  const brief = researchBrief(cancelRefused)
+  const bar = startBar(brief)
+  assert.equal(bar.querySelector('[data-testid="research-cancel-failure"]')?.textContent, CANCEL_UNREACHED)
+  assert.ok(texts(bar, 'button').includes('Discard brief'))
+  const conversation = render(createElement(BriefConversation, {
+    brief, canCompose: true, canSend: true, error: null, meUserId: REQUESTER, message: '',
+    onMessageChange: () => undefined, onSend: () => undefined, sendAgain: null, sending: false,
+  }))
+  assert.equal(conversation.body.textContent?.includes('Try again in a moment'), false)
+})
+
+test('a readiness verdict that could not be read says so, with Try again, never "off"', () => {
+  const doc = render(createElement(ResearchReadinessUnread, { onRetry: () => undefined }))
+  const block = doc.querySelector('[data-testid="research-readiness-unread"]')
+  assert.match(block?.textContent ?? '', /couldn’t be loaded/)
+  assert.doesNotMatch(block?.textContent ?? '', /\boff\b|Turn on/)
+  assert.deepEqual(texts(doc, 'button'), ['Try again'])
 })

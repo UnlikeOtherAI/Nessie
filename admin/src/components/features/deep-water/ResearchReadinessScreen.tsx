@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { DeepWaterResearchReadinessState } from '@nessie/schemas'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
-import { readinessCopy } from './research-presentation'
+import { READINESS_UNREAD_COPY, readinessCopy } from './research-presentation'
 
 /**
  * Why research cannot start here yet, and the one way forward (nessie.md
@@ -55,3 +55,18 @@ export const ResearchReadinessScreen = ({
     </div>
   )
 }
+
+/**
+ * The products list could not be read, or its verdict broke the contract
+ * (`useDeepWaterReadiness().isError`): said as that, with Try again — never as
+ * DeepWater being off or unreachable, which the server has not said.
+ */
+export const ResearchReadinessUnread = ({ onRetry }: { onRetry: () => void }) => (
+  <div className="flex flex-col items-start gap-2" data-testid="research-readiness-unread" role="alert">
+    <p className="text-sm font-semibold text-[color:var(--tx)]">{READINESS_UNREAD_COPY.title}</p>
+    <p className="text-sm text-[color:var(--tx2)]">{READINESS_UNREAD_COPY.message}</p>
+    <button className="admin-button admin-button-secondary admin-button-compact" onClick={onRetry} type="button">
+      Try again
+    </button>
+  </div>
+)

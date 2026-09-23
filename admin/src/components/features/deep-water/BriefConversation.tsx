@@ -162,7 +162,8 @@ export const BriefConversation = ({
           ) : null}
         </div>
       ) : null}
-      {brief.pendingAction?.error ? (
+      {/* A cancel that did not go through is said beside Cancel (`cancelFailure`), not here. */}
+      {brief.pendingAction?.error && brief.pendingAction.kind !== 'cancel' ? (
         <p className="text-sm text-[color:var(--danger-text)]" role="alert">{brief.pendingAction.error.message}</p>
       ) : null}
 

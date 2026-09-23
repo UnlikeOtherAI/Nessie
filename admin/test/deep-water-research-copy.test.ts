@@ -5,10 +5,13 @@ import { ApiClientError } from '@nessie/client-core'
 
 import { briefActionFailure, newBriefFailure } from '../src/components/features/deep-water/brief-action-errors.js'
 import {
+  cancelOfferedAgain,
   deepWaterTeamControls,
   deepWaterTeamStatus,
   openResearchSentence,
+  openResearchStanding,
   teamChangeFailure,
+  type OpenResearchFacts,
 } from '../src/components/features/deep-water/deep-water-team-copy.js'
 import {
   blockedReasonCopy,
@@ -16,9 +19,11 @@ import {
   downloadReportLabel,
   formatElapsed,
   openQuestionReply,
+  READINESS_UNREAD_COPY,
   readinessCopy,
   reportNoun,
   researchButtonTitle,
+  researchListPage,
   researchName,
   researchStatusLine,
   retryDeliveryLabel,
@@ -107,6 +112,22 @@ test('every not-ready state names its remedy, and the composer button says why',
   assert.equal(researchButtonTitle('ready', false), 'Research with DeepWater')
   assert.equal(researchButtonTitle(null, false), 'Research with DeepWater', 'no reason is claimed while loading')
   assert.equal(researchButtonTitle('team_off', false), 'Research with DeepWater — it’s off for this team')
+  // A verdict that could not be read claims no reason, and is never worded as DeepWater being off.
+  assert.doesNotMatch(`${READINESS_UNREAD_COPY.title} ${READINESS_UNREAD_COPY.message}`, /\boff\b|reached|unavailable/i)
+  assert.doesNotMatch(`${READINESS_UNREAD_COPY.title} ${READINESS_UNREAD_COPY.message}`, FORBIDDEN)
+  // A state this admin has no words for is a broken contract, said loudly — never an undefined title.
+  assert.throws(() => readinessCopy('on' as never, true), /research readiness "on" has no words/)
+})
+
+test('Knowledge › Research is empty only when its first page has nothing further back', () => {
+  assert.deepEqual(researchListPage({ count: 0, hasMore: false, index: 0 }), { kind: 'no_research' })
+  assert.deepEqual(researchListPage({ count: 3, hasMore: true, index: 0 }), { kind: 'rows' })
+  // The server's bounded read can answer an empty first page with more to come: the pager stays, and says so.
+  const further = researchListPage({ count: 0, hasMore: true, index: 0 })
+  assert.equal(further.kind, 'nothing_here')
+  assert.match(further.kind === 'nothing_here' ? further.note : '', /choose Next to keep looking\.$/)
+  const end = researchListPage({ count: 0, hasMore: false, index: 2 })
+  assert.match(end.kind === 'nothing_here' ? end.note : '', /Choose Previous to go back\.$/)
 })
 
 test('a blocked delivery names its remedy to the requester, and only what happened to anyone else', () => {
@@ -313,5 +334,48 @@ test('an open research that blocks a change is named by who and where, never its
   assert.deepEqual(lost, { kind: 'message', message: 'Nessie didn’t answer. Check your connection, then try again.' })
   for (const copy of [unnamed, teamChangeFailure(apiError('X', 503))]) {
     assert.doesNotMatch(copy.kind === 'message' ? copy.message : '', FORBIDDEN)
+  }
+})
+
+test('an owner\'s cancel on the hero follows the research to its end, and is offered again when it did not go through', () => {
+  const facts = (overrides: Partial<OpenResearchFacts> = {}): OpenResearchFacts => ({
+    canCancel: true, cancelRequested: false, refusedAgain: false, stoppedOnAnswer: false, unreadable: false,
+    view: { cancelFailed: false, finished: false }, ...overrides,
+  })
+  assert.equal(openResearchStanding(facts()), 'can_cancel')
+  assert.equal(openResearchStanding(facts({ canCancel: false })), 'cannot_cancel')
+  // Accepted: stopping, and the change is refused meanwhile without a second cancel.
+  assert.equal(openResearchStanding(facts({ cancelRequested: true })), 'cancel_requested')
+  assert.equal(openResearchStanding(facts({ cancelRequested: true, refusedAgain: true })), 'cancel_requested')
+  // Then refused, or given up, by DeepWater: said, and Cancel offered again, however often the change was tried.
+  const failed = openResearchStanding(facts({ cancelRequested: true, refusedAgain: true,
+    view: { cancelFailed: true, finished: false } }))
+  assert.equal(failed, 'cancel_failed')
+  assert.equal(cancelOfferedAgain(failed), true)
+  assert.equal(openResearchStanding(facts({ canCancel: false, view: { cancelFailed: true, finished: false } })),
+    'cannot_cancel')
+  // Stopped: by the answer itself, or seen in the research's view.
+  assert.equal(openResearchStanding(facts({ cancelRequested: true, stoppedOnAnswer: true })), 'stopped')
+  assert.equal(openResearchStanding(facts({ view: { cancelFailed: false, finished: true } })), 'stopped')
+  // An owner who may not read the research: requested, and once the change is refused by it again, unconfirmed.
+  const blind = { unreadable: true, view: null }
+  assert.equal(openResearchStanding(facts({ ...blind, cancelRequested: true })), 'cancel_requested')
+  const unconfirmed = openResearchStanding(facts({ ...blind, cancelRequested: true, refusedAgain: true }))
+  assert.equal(unconfirmed, 'cancel_unconfirmed')
+  assert.equal(cancelOfferedAgain(unconfirmed), true)
+  assert.equal(cancelOfferedAgain('cancel_requested'), false)
+  // While the research's view is still loading, nothing is claimed about the cancel's outcome.
+  assert.equal(openResearchStanding(facts({ cancelRequested: true, refusedAgain: true, view: null })), 'cancel_requested')
+
+  const run = { id: '40000000-0000-4000-8000-000000000001', originKind: 'agent' as const, requestedByUserId: null,
+    status: 'running' }
+  assert.equal(openResearchSentence(run, null, 'cancel_failed'), 'The research started by an agent wasn’t '
+    + 'cancelled: it is being researched, and DeepWater stays as it is until it ends — cancel it again, or let it '
+    + 'finish, then try again.')
+  assert.equal(openResearchSentence(run, null, 'cancel_unconfirmed'), 'Cancel requested for the research started '
+    + 'by an agent, but it is still open — the cancel may not have gone through. Cancel it again, or try again once '
+    + 'it has stopped.')
+  for (const standing of ['cancel_failed', 'cancel_unconfirmed'] as const) {
+    assert.doesNotMatch(openResearchSentence(run, null, standing), FORBIDDEN)
   }
 })

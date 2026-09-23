@@ -21,7 +21,9 @@ import { useIntentActionId } from './useIntentActionId'
  * all show (Rule zero: one component, never a second rendering). It never
  * calls a summary the full report (amendments N10), names a blocked delivery's
  * one remedy to the person whose remedy it is — everyone else is told only
- * what happened — and offers the artifacts once the result is delivered.
+ * what happened — and offers the artifacts once the result is delivered. A
+ * cancel of a still-open research that did not go through (`cancelFailure`)
+ * is said to whoever may cancel it, so they know to press Cancel again.
  */
 
 const RESULT_COMES_BACK: Record<ResearchShownIn, string> = {
@@ -105,6 +107,9 @@ export const ResearchRunOutcome = ({
   return (
     <div className="flex flex-col gap-2" data-testid="research-run-outcome">
       {actionsOnly ? null : lines.map((line) => <p className="text-sm text-[color:var(--tx2)]" key={line}>{line}</p>)}
+      {!actionsOnly && run.cancelFailure && run.viewer.canCancel ? (
+        <ResearchCancelFailure message={run.cancelFailure.message} />
+      ) : null}
       {blocked ? (
         <div className="flex flex-wrap items-center gap-2">
           {actionsOnly ? null : (
@@ -145,3 +150,10 @@ export const ResearchRunOutcome = ({
     </div>
   )
 }
+
+/** Why the last cancel of a still-open research did not go through, said beside where Cancel is. */
+export const ResearchCancelFailure = ({ message }: { message: string }) => (
+  <p className="text-sm text-[color:var(--danger-text)]" data-testid="research-cancel-failure" role="alert">
+    {message}
+  </p>
+)

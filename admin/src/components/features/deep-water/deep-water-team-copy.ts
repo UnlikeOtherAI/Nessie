@@ -109,9 +109,55 @@ const OPEN_STATUS_WORDS: Record<string, string> = {
  *   is not there;
  * - `cancel_requested` — the cancel was accepted, but DeepWater has not
  *   stopped the research yet, so the change would still be refused;
+ * - `cancel_failed` — the research's own view says its last cancel did not go
+ *   through (`cancelFailure`): DeepWater refused it or could not be asked, so
+ *   Cancel is offered again with the reason;
+ * - `cancel_unconfirmed` — for an owner who may not read the research, the
+ *   change was refused by it again after their cancel was accepted: they
+ *   cannot see whether that cancel went through, so Cancel is offered again
+ *   (a newer cancel replaces the one before, never doubles it);
  * - `stopped` — it has stopped, and the change can be tried again.
  */
-export type OpenResearchStanding = 'can_cancel' | 'cannot_cancel' | 'cancel_requested' | 'stopped'
+export type OpenResearchStanding =
+  | 'can_cancel'
+  | 'cannot_cancel'
+  | 'cancel_requested'
+  | 'cancel_failed'
+  | 'cancel_unconfirmed'
+  | 'stopped'
+
+export type OpenResearchFacts = {
+  /** The verdict's cancel standing: owners and admins. */
+  canCancel: boolean
+  /** This owner's cancel of the research was accepted on this screen. */
+  cancelRequested: boolean
+  /** Trying the change again was refused by the same research since that cancel was accepted. */
+  refusedAgain: boolean
+  /** The cancel's own answer said the research had already stopped. */
+  stoppedOnAnswer: boolean
+  /** The research as this owner reads it; null while it loads, and for an owner who may not read it. */
+  view: { finished: boolean; cancelFailed: boolean } | null
+  /** The owner may not read the research: its read answered 404. */
+  unreadable: boolean
+}
+
+/**
+ * The standing, from what this screen knows. The research's own view is
+ * exact, so it decides for an owner who may read it; an owner who may not
+ * learns only that the change is still refused.
+ */
+export const openResearchStanding = (facts: OpenResearchFacts): OpenResearchStanding => {
+  if (facts.stoppedOnAnswer || facts.view?.finished) return 'stopped'
+  if (facts.view?.cancelFailed) return facts.canCancel ? 'cancel_failed' : 'cannot_cancel'
+  if (facts.cancelRequested) {
+    return facts.unreadable && facts.refusedAgain && facts.canCancel ? 'cancel_unconfirmed' : 'cancel_requested'
+  }
+  return facts.canCancel ? 'can_cancel' : 'cannot_cancel'
+}
+
+/** Cancel again, after one that did not go through or whose outcome cannot be seen. */
+export const cancelOfferedAgain = (standing: OpenResearchStanding): boolean =>
+  standing === 'cancel_failed' || standing === 'cancel_unconfirmed'
 
 /** "A research started by Jana is still being researched." */
 export const openResearchSentence = (
@@ -133,6 +179,12 @@ export const openResearchSentence = (
     case 'cancel_requested':
       return `Cancel requested for the research started by ${who}. Until it has stopped, DeepWater stays as it `
         + 'is — try again once it has.'
+    case 'cancel_failed':
+      return `The research started by ${who} wasn’t cancelled: it is ${where}, and DeepWater stays as it is `
+        + 'until it ends — cancel it again, or let it finish, then try again.'
+    case 'cancel_unconfirmed':
+      return `Cancel requested for the research started by ${who}, but it is still open — the cancel may not `
+        + 'have gone through. Cancel it again, or try again once it has stopped.'
     case 'stopped':
       return `The research started by ${who} has stopped. You can try again now.`
   }

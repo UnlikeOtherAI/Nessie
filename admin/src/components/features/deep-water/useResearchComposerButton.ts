@@ -30,6 +30,6 @@ export const useResearchComposerButton = (
   if (!openNew) return undefined
   return {
     onOpen: () => openNew(message.trim(), place),
-    title: researchButtonTitle(readiness.isLoading ? null : readiness.state, readiness.viewerIsOwner),
+    title: researchButtonTitle(readiness.state, readiness.viewerIsOwner),
   }
 }
