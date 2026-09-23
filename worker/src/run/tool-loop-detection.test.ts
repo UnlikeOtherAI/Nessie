@@ -190,6 +190,28 @@ test('a wait that stopped because the model must act is not repeated until an ac
   assert.equal(countToolCall(counts, wait, args), null)
 })
 
+test('a settled wait is the session it names, however the rest of its arguments are written', () => {
+  const counts = new Map<string, number>()
+  const wait = CODING_SESSION_TOOL_NAMES.wait
+  // Every one of these reaches the same session_status call on the machine:
+  // execution parses a double-encoded object and leaves a key the tool does
+  // not define behind.
+  const sameSession = [
+    { sessionId: 'a' },
+    { extra: 1, sessionId: 'a' },
+    { sessionId: 'a', extra: '1' },
+    '{ "sessionId": "a" }' as unknown as Record<string, unknown>,
+  ]
+  countToolCall(counts, wait, sameSession[1]!)
+  noteWatchProgress(counts, wait, sameSession[1]!, { progressed: true, state: 'needs_model' })
+  for (const args of sameSession) {
+    assert.equal(countToolCall(counts, wait, args)?.nudge, CODING_WAIT_NEEDS_YOU_NUDGE, JSON.stringify(args))
+  }
+  // Another session is another wait, whichever way it is written.
+  assert.equal(countToolCall(counts, wait, { extra: 1, sessionId: 'b' }), null)
+  assert.equal(countToolCall(counts, wait, '{"sessionId":"b"}' as unknown as Record<string, unknown>), null)
+})
+
 test('once the person has written, every later wait in the run is refused with “end your turn”', () => {
   const counts = new Map<string, number>()
   const wait = CODING_SESSION_TOOL_NAMES.wait

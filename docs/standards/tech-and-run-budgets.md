@@ -163,11 +163,13 @@ summary and points here; **this file is the rule**.
       failed or closed. (A turn that ended with background tasks still
       running counts as watching: a task finishing starts a turn of its
       own.) The wait's own answer says what to do, and a second
-      wait would return the same answer at once, so the same wait again is
-      refused ("Not run: your last wait on this session already returned
-      because it needs you…") until a call that is not an observation — a
-      send, an interrupt, a close, a start, or anything else that can change
-      what the wait would see — ends it.
+      wait would return the same answer at once, so another wait on that
+      session is refused ("Not run: your last wait on this session already
+      returned because it needs you…") until a call that is not an
+      observation — a send, an interrupt, a close, a start, or anything else
+      that can change what the wait would see — ends it. The refusal is keyed
+      by the session the wait names, not by its arguments' text, so an extra
+      key or a double-encoded object does not get round it.
     - **End the turn** — the person wrote in the conversation or stopped the
       run, or the run's wallclock entered its wind-down. Every later wait in
       the run would stop for the same reason, so every one of them is refused
