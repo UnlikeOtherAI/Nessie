@@ -290,9 +290,9 @@ file is the rule**.
   with no effective user, so a person's message is never consumed by it).
   Each such row becomes a follow-up run of its own, in arrival order, and
   ordinary rows before it drain as their usual batch. The purpose is already
-  in the pending row's stored actor context, so no column marks it. A new kickoff of this kind — a
-  delivery, a wake, a brief — adds its purpose to that set in the same
-  change. `worker/test/db/task-set-delivery-drain.test.ts`,
+  in the pending row's stored actor context, so no column marks it. A new
+  kickoff of this kind — a delivery, a wake, a brief — adds its purpose to
+  that set in the same change. `worker/test/db/task-set-delivery-drain.test.ts`,
   `worker/test/db/agent-handoff-drain.test.ts`,
   `worker/test/db/mailbox-step-delivery-drain.test.ts` and
   `packages/db/test/thread-serialization-ticket-work.test.ts`.
