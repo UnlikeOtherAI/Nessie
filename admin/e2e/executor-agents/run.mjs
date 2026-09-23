@@ -366,6 +366,11 @@ const evaluate = async (browser, viewport) => {
     await visible(review)
     assert.equal(api.cardPresses(), 2)
     assert.equal(page.url().includes(cardMintedToken(2)), false, 'nor does the second')
+    // The review has only just opened: wait out its fade, or the shot shows
+    // the card through a half-opaque dialog.
+    await page.evaluate(() => Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getTiming().iterations !== Infinity)
+      .map((animation) => animation.finished.catch(() => undefined))))
     await page.screenshot({ path: resolve(screenshots, `review-card-dialog-${viewport.width}.png`), fullPage: true })
     await review.getByLabel('Confirm with current password').fill('fixture-proof')
     await review.getByRole('button', { name: 'Allow access', exact: true }).click()
