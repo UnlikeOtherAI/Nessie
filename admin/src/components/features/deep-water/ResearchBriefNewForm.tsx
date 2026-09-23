@@ -21,8 +21,11 @@ import { useIntentActionId } from './useIntentActionId'
 
 type NewBriefDraft = { context: string; topic: string }
 
-const originKey = (origin: DeepWaterBriefOriginRequest): string =>
-  origin.kind === 'thread' ? origin.threadId : 'personal'
+/** One draft per place a brief comes back to: a conversation, one of its reply threads, or the PA. */
+const originKey = (origin: DeepWaterBriefOriginRequest): string => {
+  if (origin.kind === 'personal') return 'personal'
+  return origin.rootMessageId ? `${origin.threadId}:${origin.rootMessageId}` : origin.threadId
+}
 
 const reviveNewBrief = (stored: unknown): NewBriefDraft | null => {
   if (!stored || typeof stored !== 'object') return null

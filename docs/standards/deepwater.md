@@ -492,7 +492,9 @@ question.
   it; a finished research offers Retry import only where `canRetryDelivery`
   says so. A brief whose sign-in no longer resolves shows "Sign in again to
   continue this brief" (F4).
-- **The composer's Research button is always there.** When the viewer cannot
+- **The composer's Research button is always there** — the conversation's, and
+  a reply thread's, whose brief carries the thread's `rootMessageId` so the
+  research card and its result land under that root. When the viewer cannot
   start research it says why in its label and opens `ResearchReadinessScreen`
   instead of a brief: an owner or admin is sent to `/apps/deep-water` to turn
   DeepWater on or update it, anyone else is told who can, and an unlinked

@@ -30,11 +30,13 @@ import { ResearchBriefDialog } from './ResearchBriefDialog'
  * so there is one dialog and one way in (Rule zero: reuse the surface).
  */
 
-type NewBrief = { topic: string }
+/** A new brief's question, and the reply thread it was started from, if any. */
+type NewBrief = { rootMessageId: string | null; topic: string }
 
 type ResearchBriefHostValue = {
   open: (runId: string) => void
-  openNew: (topic?: string) => void
+  /** `rootMessageId`: started from a reply thread, whose root the research card is posted under. */
+  openNew: (topic?: string, rootMessageId?: string) => void
 }
 
 const ResearchBriefHostContext = createContext<ResearchBriefHostValue | null>(null)
@@ -70,9 +72,9 @@ export const ResearchBriefHost = ({
     writeRunId(next)
   }, [writeRunId])
 
-  const openNew = useCallback((topic?: string) => {
+  const openNew = useCallback((topic?: string, rootMessageId?: string) => {
     if (runId) writeRunId(null)
-    setNewBrief({ topic: topic ?? '' })
+    setNewBrief({ rootMessageId: rootMessageId ?? null, topic: topic ?? '' })
   }, [runId, writeRunId])
 
   // A doorway elsewhere handed over a question to start from. It is taken
@@ -81,7 +83,7 @@ export const ResearchBriefHost = ({
   const prefillTopic = readResearchBriefPrefill(location.state)?.topic ?? null
   useEffect(() => {
     if (prefillTopic === null) return
-    setNewBrief({ topic: prefillTopic })
+    setNewBrief({ rootMessageId: null, topic: prefillTopic })
     redirect({ hash: location.hash, pathname: location.pathname, search: location.search })
     // Once per arrival: the entry's key names the arrival that carried the
     // question, and the redirect that drops it is a new entry.
@@ -94,6 +96,10 @@ export const ResearchBriefHost = ({
   }, [runId, writeRunId])
 
   const value = useMemo(() => ({ open, openNew }), [open, openNew])
+  // A brief started from a reply thread comes back under that thread's root.
+  const briefOrigin = origin?.kind === 'thread' && newBrief?.rootMessageId
+    ? { ...origin, rootMessageId: newBrief.rootMessageId }
+    : origin
 
   return (
     <ResearchBriefHostContext.Provider value={value}>
@@ -104,7 +110,7 @@ export const ResearchBriefHost = ({
           onClose={close}
           onCreated={open}
           onStartAgain={openNew}
-          origin={origin}
+          origin={briefOrigin}
           runId={runId}
         />
       ) : null}

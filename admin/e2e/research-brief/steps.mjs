@@ -148,3 +148,20 @@ export const walkNewBrief = async (page, snap) => {
   assert.match(created.body.actionId, /^[0-9a-f-]{36}$/)
   await snap(page, '08-new-brief-replying.png')
 }
+
+/** A brief started from a reply thread's composer comes back under that thread's root. */
+export const walkReplyThreadBrief = async (page) => {
+  await page.getByTestId('reply-research-button').click()
+  const form = page.getByTestId('research-brief-new')
+  assert.equal(await form.getByRole('textbox').first().inputValue(), 'Compare the three quotes we got')
+  await form.getByRole('button', { name: 'Plan with DeepWater' }).click()
+  await page.getByTestId('research-brief-replying').waitFor()
+  const created = await page.evaluate(() => window.__research.calls.find((call) =>
+    call.method === 'POST' && call.path === '/api/integrations/products/deep-water/research-runs'))
+  assert.deepEqual(created.body.origin, {
+    channelId: '40000000-0000-4000-8000-000000000001',
+    kind: 'thread',
+    rootMessageId: '60000000-0000-4000-8000-000000000099',
+    threadId: '40000000-0000-4000-8000-000000000002',
+  })
+}

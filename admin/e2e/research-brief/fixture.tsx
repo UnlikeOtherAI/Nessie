@@ -228,10 +228,15 @@ Object.assign(window, {
 
 const COMPOSER_TEXT = 'Could we look into heat pumps for the Leeds office before winter?'
 
-/** The composer's Research button, as `ChannelComposer` draws it from the same hook. */
-const ComposerStrip = () => {
-  const [message, setMessage] = useState(COMPOSER_TEXT)
-  const button = useResearchComposerButton(message)
+const REPLY_ROOT = '60000000-0000-4000-8000-000000000099'
+
+/**
+ * The composer's Research button, as `ChannelComposer` draws it from the same
+ * hook — the conversation's, or a reply thread's (`rootMessageId`).
+ */
+const ComposerStrip = ({ rootMessageId, testId }: { rootMessageId?: string; testId: string }) => {
+  const [message, setMessage] = useState(rootMessageId ? 'Compare the three quotes we got' : COMPOSER_TEXT)
+  const button = useResearchComposerButton(message, rootMessageId)
   return (
     <div className="flex items-center gap-2 rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-2">
       <input
@@ -244,7 +249,7 @@ const ComposerStrip = () => {
         <button
           aria-label={button.title}
           className="admin-button admin-button-secondary"
-          data-testid="composer-research-button"
+          data-testid={testId}
           onClick={button.onOpen}
           title={button.title}
           type="button"
@@ -273,7 +278,8 @@ const Thread = () => (
         </p>
         <ResearchNoticeActions metadata={{ deepWaterNotice: { kind: 'result', runId: RUN.done, schemaVersion: 1 } }} />
       </div>
-      <ComposerStrip />
+      <ComposerStrip testId="composer-research-button" />
+      <ComposerStrip rootMessageId={REPLY_ROOT} testId="reply-research-button" />
     </div>
   </ResearchBriefHost>
 )

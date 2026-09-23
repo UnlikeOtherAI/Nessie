@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { launchBrowser } from '../navigation/lib/browser.mjs'
 import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
 import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
-import { assertBrief, assertThreadCards, walkBriefToStart, walkNewBrief } from './steps.mjs'
+import { assertBrief, assertThreadCards, walkBriefToStart, walkNewBrief, walkReplyThreadBrief } from './steps.mjs'
 
 /**
  * DeepWater research in the admin, rendered (Water plan nessie.md §7.7, §7.9;
@@ -138,6 +138,9 @@ try {
   const composer = await open(desktop)
   await walkNewBrief(composer, snap)
   await composer.close()
+  const reply = await open(desktop)
+  await walkReplyThreadBrief(reply)
+  await reply.close()
 
   // 09 — an agent's brief: read-only for its requester, who may only discard it.
   const agentPage = await open(desktop)

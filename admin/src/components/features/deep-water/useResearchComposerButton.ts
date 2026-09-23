@@ -15,13 +15,17 @@ export type ResearchComposerButton = {
  * pre-filled with whatever they had typed, which stays in the composer.
  * Undefined only where no brief host is mounted to open it.
  */
-export const useResearchComposerButton = (message: string): ResearchComposerButton | undefined => {
+export const useResearchComposerButton = (
+  message: string,
+  /** The reply thread's root, for the composer of a reply thread. */
+  rootMessageId?: string,
+): ResearchComposerButton | undefined => {
   const readiness = useDeepWaterReadiness()
   const doorway = useResearchBriefDoorway()
   const openNew = doorway.openNew
   if (!openNew) return undefined
   return {
-    onOpen: () => openNew(message.trim()),
+    onOpen: () => openNew(message.trim(), rootMessageId),
     title: researchButtonTitle(readiness.isLoading ? null : readiness.state, readiness.viewerCanChangeTeam),
   }
 }
