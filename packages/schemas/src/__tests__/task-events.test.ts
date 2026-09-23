@@ -18,7 +18,6 @@ test('each origin door parses with exactly its own fields', () => {
   const origins = [
     { kind: 'session' },
     { kind: 'token', keyId: 'key_live_42' },
-    { kind: 'agent', agentId: AGENT },
     { kind: 'agent', agentId: AGENT, runId: RUN },
     { kind: 'source', boardSourceId: SOURCE },
     { kind: 'system' },
@@ -38,7 +37,9 @@ test('an origin outside the allowlist, or smuggling another door\'s field, is re
     { kind: 'token' },
     { kind: 'token', keyId: '' },
     { kind: 'agent' },
-    { kind: 'agent', agentId: 'not-a-uuid' },
+    // An agent writes only from inside a run, so its origin always names it.
+    { kind: 'agent', agentId: AGENT },
+    { kind: 'agent', agentId: 'not-a-uuid', runId: RUN },
     { kind: 'agent', agentId: AGENT, runId: 'not-a-uuid' },
     { kind: 'source' },
     'session',
@@ -106,7 +107,9 @@ test('agent, source and system origins are credited as their writers credit them
     // An unattended agent run, and a personal assistant acting as its person.
     { by: `agent:${AGENT}`, origin: { kind: 'agent', agentId: AGENT, runId: RUN } },
     { by: USER, origin: { kind: 'agent', agentId: AGENT, runId: RUN } },
-    // A source sync and the platform have no member behind them.
+    // A source sync credits its source (board-source-apply.ts); the platform
+    // has nobody behind it.
+    { by: `source:${SOURCE}`, origin: { kind: 'source', boardSourceId: SOURCE } },
     { origin: { kind: 'source', boardSourceId: SOURCE } },
     { origin: { kind: 'system' } },
   ]
@@ -116,5 +119,24 @@ test('agent, source and system origins are credited as their writers credit them
       true,
       JSON.stringify(authorship),
     )
+  }
+})
+
+test('an author that disagrees with its origin is refused', () => {
+  const change = { fromColumnId: FROM, toColumnId: TO }
+  const agent = { kind: 'agent', agentId: AGENT, runId: RUN }
+  const refused = [
+    // Another agent's credit, a source's, or none at all on an agent's write.
+    { by: `agent:${RUN}`, origin: agent },
+    { by: `source:${SOURCE}`, origin: agent },
+    { origin: agent },
+    // A source credited as a member, or as another source.
+    { by: USER, origin: { kind: 'source', boardSourceId: SOURCE } },
+    { by: `source:${FROM}`, origin: { kind: 'source', boardSourceId: SOURCE } },
+  ]
+  for (const authorship of refused) {
+    const result = ColumnEnteredTaskEventPayloadSchema.safeParse({ ...change, ...authorship })
+    assert.equal(result.success, false, JSON.stringify(authorship))
+    assert.deepEqual(result.error?.issues.map((issue) => issue.path.join('.')), ['by'])
   }
 })

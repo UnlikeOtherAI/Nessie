@@ -571,25 +571,47 @@ export type TriggerDocumentDispatchJobPayload =
  * heartbeat wakes nothing twice. `turn` is the session's turn number as the
  * report stated it; the handler skips a wake at or below the work record's
  * `lastObservedTurn`.
+ *
+ * `status` is only a status that wakes: a session that is `starting` or
+ * `working` never does, so the payload cannot carry one.
  */
 export const TICKET_WORK_SESSION_TOPIC = 'ticket-work.session'
 
 export const TicketWorkSessionJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
   workId: z.string().uuid(),
   sessionId: z.string().uuid(),
   turn: z.number().int().nonnegative(),
-  status: ExecutorCodingSessionStatusSchema,
+  status: ExecutorCodingSessionStatusSchema.extract(['waiting_for_input', 'interrupted', 'failed', 'closed']),
 })
 export type TicketWorkSessionJobPayload = z.infer<typeof TicketWorkSessionJobPayloadSchema>
 
 /**
+ * `ticket-work.dispatch` queue job — a machine may have come free: a work
+ * record holding it ended or parked, one of its sessions closed, or it came
+ * back online. The pool dispatcher picks, across every policy whose pool
+ * includes that executor, the highest-priority, oldest queued record, and
+ * re-checks the ticket, the mover and the policy before assigning it. It
+ * carries ids only; the queue, the pool and the machine's state are read
+ * afresh under the pool rows' locks.
+ */
+export const TICKET_WORK_DISPATCH_TOPIC = 'ticket-work.dispatch'
+
+export const TicketWorkDispatchJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  executorId: z.string().uuid(),
+})
+export type TicketWorkDispatchJobPayload = z.infer<typeof TicketWorkDispatchJobPayloadSchema>
+
+/**
  * `ticket-work.sweep` queue job — the one periodic pass over live work: quiet
  * wakes, limits, dequeue onto free machines, standing-policy re-checks, and a
- * queued record whose job was lost. Everything it needs is in the database.
+ * queued record whose job was lost. Everything it needs is in the database;
+ * `bucket` is the tick's idempotency key, as on `board-source.sync.sweep`.
  */
 export const TICKET_WORK_SWEEP_TOPIC = 'ticket-work.sweep'
 
-export const TicketWorkSweepJobPayloadSchema = z.object({}).strict()
+export const TicketWorkSweepJobPayloadSchema = z.object({ bucket: z.string().optional() }).strict()
 export type TicketWorkSweepJobPayload = z.infer<typeof TicketWorkSweepJobPayloadSchema>
 
 /**

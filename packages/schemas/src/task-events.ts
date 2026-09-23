@@ -21,7 +21,8 @@ const uuid = z.string().uuid()
  *
  * - `token`: an API key or the MCP surface, which act for a member without
  *   that member being at a screen.
- * - `agent`: a worker ticket tool, with the run it came from when there is one.
+ * - `agent`: a worker ticket tool, with the run it came from. Agents write
+ *   only from inside a run, so the run is always known.
  * - `source`: an inbound board-source sync.
  * - `system`: everything else, including migrations and platform teardown.
  *
@@ -30,36 +31,47 @@ const uuid = z.string().uuid()
 export const TaskEventOriginSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('session') }).strict(),
   z.object({ kind: z.literal('token'), keyId: z.string().min(1) }).strict(),
-  z.object({ kind: z.literal('agent'), agentId: uuid, runId: uuid.optional() }).strict(),
+  z.object({ kind: z.literal('agent'), agentId: uuid, runId: uuid }).strict(),
   z.object({ kind: z.literal('source'), boardSourceId: uuid }).strict(),
   z.object({ kind: z.literal('system') }).strict(),
 ])
 export type TaskEventOrigin = z.infer<typeof TaskEventOriginSchema>
 
 /**
- * `by` is what `taskEventBy` (`@nessie/team-admin`) returns: the member's user
- * id, or `agent:<id>` for an agent run with no person behind it. It is absent
- * when neither authored the change (a source sync, the platform).
+ * `by` is the author the ticket's history names. A person's session or key,
+ * and an agent run acting for the person who asked, write what `taskEventBy`
+ * (`@nessie/team-admin`) returns: the member's user id, or `agent:<id>` for an
+ * unattended agent run with no person behind it. A source sync writes
+ * `source:<boardSourceId>` (`board-source-apply.ts`). It is absent only when
+ * nobody authored the change (the platform).
  */
 const authoredEventShape = {
   by: z.string().min(1).optional(),
   origin: TaskEventOriginSchema,
 }
 
-// A `session` or `token` origin always names the member who holds that session
-// or key: a pickup asks whether exactly that member can edit the board.
-const requireMemberForPersonOrigins = (
+/**
+ * `by` must agree with the origin, because the dispatcher decides from these
+ * fields alone: a `session` or `token` origin names the member who holds that
+ * session or key (a pickup asks whether exactly that member can edit the
+ * board); an `agent` origin names that same agent or the member its run acted
+ * for; a `source` origin names that same source when it names anything.
+ */
+const requireAuthorMatchingOrigin = (
   payload: { by?: string | undefined; origin: TaskEventOrigin },
   context: z.RefinementCtx,
 ): void => {
-  const { kind } = payload.origin
-  if ((kind === 'session' || kind === 'token') && !uuid.safeParse(payload.by).success) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['by'],
-      message: `A ${kind} origin names the member it authenticated.`,
-    })
+  const { by, origin } = payload
+  const isMember = uuid.safeParse(by).success
+  let problem: string | null = null
+  if ((origin.kind === 'session' || origin.kind === 'token') && !isMember) {
+    problem = `A ${origin.kind} origin names the member it authenticated.`
+  } else if (origin.kind === 'agent' && !isMember && by !== `agent:${origin.agentId}`) {
+    problem = 'An agent origin names that agent, or the member its run acted for.'
+  } else if (origin.kind === 'source' && by !== undefined && by !== `source:${origin.boardSourceId}`) {
+    problem = 'A source origin names that source.'
   }
+  if (problem) context.addIssue({ code: z.ZodIssueCode.custom, path: ['by'], message: problem })
 }
 
 /**
@@ -75,7 +87,7 @@ export const ColumnEnteredTaskEventPayloadSchema = z
     toColumnId: uuid,
   })
   .superRefine((payload, context) => {
-    requireMemberForPersonOrigins(payload, context)
+    requireAuthorMatchingOrigin(payload, context)
     if (payload.fromColumnId === payload.toColumnId) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -94,7 +106,7 @@ export const PriorityChangedTaskEventPayloadSchema = z
     to: TaskPrioritySchema,
   })
   .superRefine((payload, context) => {
-    requireMemberForPersonOrigins(payload, context)
+    requireAuthorMatchingOrigin(payload, context)
     if (payload.from === payload.to) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

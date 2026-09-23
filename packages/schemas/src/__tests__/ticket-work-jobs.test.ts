@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  TICKET_WORK_DISPATCH_TOPIC,
   TICKET_WORK_SESSION_TOPIC,
   TICKET_WORK_SWEEP_TOPIC,
   TRIGGER_DOCUMENT_DISPATCH_TOPIC,
   TRIGGER_TICKET_DISPATCH_TOPIC,
+  TicketWorkDispatchJobPayloadSchema,
   TicketWorkSessionJobPayloadSchema,
   TicketWorkSweepJobPayloadSchema,
   TriggerDocumentDispatchJobPayloadSchema,
@@ -19,6 +21,7 @@ const TRIGGER = '2d8f3e4c-5f60-4172-8c83-94a5bc6d7e8f'
 const PAGE = '3e9f4f5d-6071-4283-9d94-a5b6cd7e8f90'
 const WORK = '4fa05a6e-7182-4394-8ea5-b6c7de8f9a01'
 const SESSION = '5ab16b7f-8293-44a5-9fb6-c7d8ef9a0b12'
+const EXECUTOR = '6bc27c80-93a4-45b6-80c7-d8e9f0a1b2c3'
 
 // Queue rows outlive a deploy, so a topic or purpose string is a wire value:
 // renaming one strands every job and pending row already written under it.
@@ -26,6 +29,7 @@ test('the ticket-work topics and run purpose keep their wire names', () => {
   assert.equal(TRIGGER_TICKET_DISPATCH_TOPIC, 'trigger.ticket.dispatch')
   assert.equal(TRIGGER_DOCUMENT_DISPATCH_TOPIC, 'trigger.document.dispatch')
   assert.equal(TICKET_WORK_SESSION_TOPIC, 'ticket-work.session')
+  assert.equal(TICKET_WORK_DISPATCH_TOPIC, 'ticket-work.dispatch')
   assert.equal(TICKET_WORK_SWEEP_TOPIC, 'ticket-work.sweep')
   assert.equal(TICKET_WORK_PURPOSE, 'ticket.work')
 })
@@ -52,26 +56,38 @@ test('trigger.document.dispatch names the trigger and page, never a version', ()
   assert.equal(TriggerDocumentDispatchJobPayloadSchema.safeParse({ organizationId: ORG, pageId: PAGE }).success, false)
 })
 
-test('ticket-work.session carries the turn and a coding-session status', () => {
-  const payload = { workId: WORK, sessionId: SESSION, turn: 3, status: 'waiting_for_input' }
+test('ticket-work.session carries the turn and only a status that wakes', () => {
+  const payload = { organizationId: ORG, workId: WORK, sessionId: SESSION, turn: 3, status: 'waiting_for_input' }
   assert.deepEqual(TicketWorkSessionJobPayloadSchema.parse(payload), payload)
   for (const status of ['interrupted', 'failed', 'closed']) {
     assert.equal(TicketWorkSessionJobPayloadSchema.safeParse({ ...payload, status }).success, true, status)
   }
   const refused = [
+    // A session still starting or working never wakes the ticket's agent.
+    { ...payload, status: 'starting' },
+    { ...payload, status: 'working' },
     { ...payload, status: 'ended' },
     { ...payload, turn: -1 },
     { ...payload, turn: 1.5 },
     { ...payload, turn: '3' },
     { ...payload, sessionId: 'session-1' },
-    { workId: WORK, sessionId: SESSION, status: 'failed' },
+    { organizationId: ORG, workId: WORK, sessionId: SESSION, status: 'failed' },
+    { workId: WORK, sessionId: SESSION, turn: 3, status: 'failed' },
   ]
   for (const candidate of refused) {
     assert.equal(TicketWorkSessionJobPayloadSchema.safeParse(candidate).success, false, JSON.stringify(candidate))
   }
 })
 
-test('ticket-work.sweep takes no arguments', () => {
+test('ticket-work.dispatch names the machine that may have come free', () => {
+  const payload = { organizationId: ORG, executorId: EXECUTOR }
+  assert.deepEqual(TicketWorkDispatchJobPayloadSchema.parse(payload), payload)
+  assert.equal(TicketWorkDispatchJobPayloadSchema.safeParse({ organizationId: ORG }).success, false)
+  assert.equal(TicketWorkDispatchJobPayloadSchema.safeParse({ ...payload, executorId: 'pc' }).success, false)
+})
+
+test('ticket-work.sweep takes only its tick bucket', () => {
   assert.deepEqual(TicketWorkSweepJobPayloadSchema.parse({}), {})
+  assert.deepEqual(TicketWorkSweepJobPayloadSchema.parse({ bucket: '2026-09-23T14:05' }), { bucket: '2026-09-23T14:05' })
   assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ workId: WORK }).success, false)
 })
