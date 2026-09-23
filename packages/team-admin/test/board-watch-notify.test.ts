@@ -288,14 +288,13 @@ runDatabaseTest('a task the board filter hides tells that board nobody', async (
   }
 })
 
-runDatabaseTest('an agent whose reader cannot see the task is dropped too', async () => {
+runDatabaseTest('a legacy agent watcher row is never a recipient', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
   try {
-    // An agent watcher is woken in a DM a *person* reads, and the kickoff
-    // carries ticket titles. So the same entitlement rule the user branch
-    // applies has to reach whoever is on the other side of the agent —
-    // otherwise the agent branch is a way around it.
+    // Watchers are people: an agent starts work from a ticket trigger. A row
+    // written before that (the migration turns every one into a disabled
+    // trigger) must not become a way to wake anything, whoever added it.
     const agent = await prisma.agent.create({
       data: {
         name: 'Triage',
@@ -310,99 +309,8 @@ runDatabaseTest('an agent whose reader cannot see the task is dropped too', asyn
         boardId: seeded.boardId,
         organizationId: seeded.organizationId,
         agentId: agent.id,
-        // The outsider is in the organisation but not in this project.
-        addedByUserId: seeded.outsiderUserId,
+        addedByUserId: seeded.ownerUserId,
       },
-    })
-    assert.deepEqual(await resolveBoardWatchRecipients(prisma, [event(seeded)]), [])
-  } finally {
-    await cleanup(prisma, seeded)
-    await prisma.$disconnect()
-  }
-})
-
-runDatabaseTest('a legacy private or system watcher emits no recipient', async () => {
-  const prisma = new PrismaClient()
-  const seeded = await seed(prisma)
-  try {
-    const [privateAgent, systemAgent] = await Promise.all([
-      prisma.agent.create({
-        data: {
-          name: 'Someone else’s private agent',
-          organizationId: seeded.organizationId,
-          ownerUserId: seeded.watcherUserId,
-          projectId: seeded.projectId,
-          role: 'assistant',
-          visibility: 'private',
-        },
-      }),
-      prisma.agent.create({
-        data: {
-          name: 'System agent',
-          organizationId: seeded.organizationId,
-          projectId: seeded.projectId,
-          role: 'assistant',
-          systemManaged: true,
-          systemSlug: `system-${randomUUID()}`,
-          visibility: 'team',
-        },
-      }),
-    ])
-    await prisma.boardWatcher.createMany({
-      data: [
-        {
-          boardId: seeded.boardId,
-          organizationId: seeded.organizationId,
-          agentId: privateAgent.id,
-          addedByUserId: seeded.ownerUserId,
-        },
-        {
-          boardId: seeded.boardId,
-          organizationId: seeded.organizationId,
-          agentId: systemAgent.id,
-          addedByUserId: seeded.ownerUserId,
-        },
-      ],
-    })
-    // Recipient resolution is before the worker writes any bell, kickoff or
-    // run. Legacy rows must not become a notification path around admission.
-    assert.deepEqual(await resolveBoardWatchRecipients(prisma, [event(seeded)]), [])
-  } finally {
-    await cleanup(prisma, seeded)
-    await prisma.$disconnect()
-  }
-})
-
-runDatabaseTest('a legacy private watcher is dropped after its owner is deactivated', async () => {
-  const prisma = new PrismaClient()
-  const seeded = await seed(prisma)
-  try {
-    const agent = await prisma.agent.create({
-      data: {
-        name: 'Former owner’s agent',
-        organizationId: seeded.organizationId,
-        ownerUserId: seeded.watcherUserId,
-        projectId: seeded.projectId,
-        role: 'assistant',
-        visibility: 'private',
-      },
-    })
-    await prisma.boardWatcher.create({
-      data: {
-        boardId: seeded.boardId,
-        organizationId: seeded.organizationId,
-        agentId: agent.id,
-        addedByUserId: seeded.watcherUserId,
-      },
-    })
-    await prisma.organizationMember.update({
-      where: {
-        organizationId_userId: {
-          organizationId: seeded.organizationId,
-          userId: seeded.watcherUserId,
-        },
-      },
-      data: { deactivatedAt: new Date() },
     })
     assert.deepEqual(await resolveBoardWatchRecipients(prisma, [event(seeded)]), [])
   } finally {

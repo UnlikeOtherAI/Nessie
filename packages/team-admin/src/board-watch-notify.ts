@@ -3,7 +3,6 @@ import type { PrismaClient } from '@prisma/client'
 import { BoardFilterSchema, DEFAULT_BOARD_FILTER, type BoardFilter } from '@nessie/schemas'
 
 import { boardFilterWhere, boardTaskPoolWhere } from './board-placement.js'
-import { isBoardWatcherAgentEligible } from './board-watchers.js'
 import { isProjectAccessibleToUser } from './project-structure.js'
 
 const readFilter = (value: unknown): BoardFilter => {
@@ -60,25 +59,12 @@ export type BoardWatchEvent = {
   changes: BoardWatchChange[]
 }
 
-export type BoardWatchRecipient =
-  | { kind: 'user'; userId: string; boardId: string; taskIds: string[] }
-  | {
-      kind: 'agent'
-      agentId: string
-      boardId: string
-      taskIds: string[]
-      /**
-       * The administrator who put this agent on the watch list. A shared agent
-       * is woken in its DM with them, because that is the conversation their
-       * choice created — and it keeps the run attributable to a person.
-       */
-      addedByUserId: string
-      /** Resolved when the watcher was added; null on a row that predates it. */
-      channelId: string | null
-      threadId: string | null
-      /** The adder's captured session, replayed so the run can sign. */
-      launchOrigin: unknown
-    }
+/**
+ * One person to tell. Watchers are people: an agent starts work from a
+ * `ticket_changed` trigger instead (`board-watchers.ts`), so a legacy agent
+ * row is never a recipient.
+ */
+export type BoardWatchRecipient = { kind: 'user'; userId: string; boardId: string; taskIds: string[] }
 
 /**
  * Which boards in this project both contain the task and are watched.
@@ -93,7 +79,7 @@ const watchedBoardsShowingTask = async (
   const boards = await prisma.board.findMany({
     where: {
       projectId: event.projectId,
-      watchers: { some: {} },
+      watchers: { some: { userId: { not: null } } },
     },
     select: { id: true, isDefault: true, filter: true },
   })
@@ -149,53 +135,19 @@ export const resolveBoardWatchRecipients = async (
   const organizationId = events[0]!.organizationId
 
   const byUser = new Map<string, { boardId: string; taskIds: Set<string> }>()
-  const byAgent = new Map<
-    string,
-    {
-      boardId: string
-      taskIds: Set<string>
-      addedByUserId: string
-      channelId: string | null
-      threadId: string | null
-      launchOrigin: unknown
-    }
-  >()
 
   for (const event of events) {
     const boardIds = await watchedBoardsShowingTask(prisma, event)
     if (boardIds.length === 0) continue
     const watchers = await prisma.boardWatcher.findMany({
-      where: { boardId: { in: boardIds } },
-      select: {
-        boardId: true,
-        userId: true,
-        agentId: true,
-        addedByUserId: true,
-        channelId: true,
-        threadId: true,
-        launchOrigin: true,
-      },
+      where: { boardId: { in: boardIds }, userId: { not: null } },
+      select: { boardId: true, userId: true },
     })
     for (const watcher of watchers) {
-      if (watcher.userId) {
-        const existing = byUser.get(watcher.userId)
-        if (existing) existing.taskIds.add(event.taskId)
-        else byUser.set(watcher.userId, { boardId: watcher.boardId, taskIds: new Set([event.taskId]) })
-      }
-      if (watcher.agentId) {
-        const existing = byAgent.get(watcher.agentId)
-        if (existing) existing.taskIds.add(event.taskId)
-        else {
-          byAgent.set(watcher.agentId, {
-            addedByUserId: watcher.addedByUserId,
-            boardId: watcher.boardId,
-            channelId: watcher.channelId,
-            launchOrigin: watcher.launchOrigin,
-            taskIds: new Set([event.taskId]),
-            threadId: watcher.threadId,
-          })
-        }
-      }
+      if (!watcher.userId) continue
+      const existing = byUser.get(watcher.userId)
+      if (existing) existing.taskIds.add(event.taskId)
+      else byUser.set(watcher.userId, { boardId: watcher.boardId, taskIds: new Set([event.taskId]) })
     }
   }
 
@@ -212,43 +164,6 @@ export const resolveBoardWatchRecipients = async (
     )
     if (!allowed) continue
     recipients.push({ kind: 'user', userId, boardId: entry.boardId, taskIds: [...entry.taskIds] })
-  }
-
-  for (const [agentId, entry] of byAgent) {
-    // Legacy rows predate watcher-time admission. Recheck before any alert or
-    // wake so a private home, a system row, or a departed private owner cannot
-    // use delivery as a path around current authority.
-    if (!(await isBoardWatcherAgentEligible(prisma, {
-      addedByUserId: entry.addedByUserId,
-      agentId,
-      organizationId,
-    }))) continue
-    // The person who reads this agent's DM must be entitled to the task, for
-    // the same reason a user recipient must: the kickoff carries ticket titles
-    // into a conversation a human opens, and the run's replies land there too.
-    // The user branch above already learned this; the agent branch is the same
-    // rule applied to whoever is on the other side of the agent.
-    const readerAllowed = await isProjectAccessibleToUser(
-      prisma,
-      {
-        isOrganizationAdmin: await isActiveOrganizationAdmin(prisma, organizationId, entry.addedByUserId),
-        organizationId,
-        userId: entry.addedByUserId,
-      },
-      projectId,
-    )
-    if (!readerAllowed) continue
-
-    recipients.push({
-      kind: 'agent',
-      agentId,
-      addedByUserId: entry.addedByUserId,
-      boardId: entry.boardId,
-      channelId: entry.channelId,
-      launchOrigin: entry.launchOrigin,
-      taskIds: [...entry.taskIds],
-      threadId: entry.threadId,
-    })
   }
 
   return recipients

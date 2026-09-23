@@ -4,7 +4,12 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { ensurePrivateAgentHome, listBoardWatchers, setBoardWatchers } from '../src/index.js'
+import {
+  AGENT_WATCHERS_RETIRED_SENTENCE,
+  ensurePrivateAgentHome,
+  listBoardWatchers,
+  setBoardWatchers,
+} from '../src/index.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -130,7 +135,6 @@ const watcherInput = (seeded: Seed) => ({
   addedByUserId: seeded.adderId,
   boardId: seeded.boardId,
   organizationId: seeded.organizationId,
-  origin: { teamId: seeded.teamId },
 })
 
 const cleanup = async (prisma: PrismaClient, seeded: Seed): Promise<void> => {
@@ -138,103 +142,83 @@ const cleanup = async (prisma: PrismaClient, seeded: Seed): Promise<void> => {
   await prisma.user.deleteMany({ where: { id: { in: [seeded.adderId, seeded.otherId] } } })
 }
 
-runDatabaseTest('another person’s private agent is refused before a DM or watcher row is written', async () => {
+runDatabaseTest('an agent recipient is refused in words, and nothing is written', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
   try {
-    assert.deepEqual(
-      await setBoardWatchers(prisma, {
-        ...watcherInput(seeded),
-        watchers: [{ kind: 'agent', id: seeded.otherPrivateAgentId }],
-      }),
-      { error: 'RECIPIENT_NOT_REACHABLE', recipientId: seeded.otherPrivateAgentId },
-    )
+    // Every kind of agent, beside a person: the list is refused whole, with the
+    // sentence that says where agent wakes moved.
+    for (const agentId of [seeded.sharedAgentId, seeded.ownPrivateAgentId, seeded.systemAgentId]) {
+      assert.deepEqual(
+        await setBoardWatchers(prisma, {
+          ...watcherInput(seeded),
+          watchers: [{ kind: 'user', id: seeded.otherId }, { kind: 'agent', id: agentId }],
+        }),
+        { error: 'AGENT_WATCHERS_RETIRED', recipientId: agentId },
+      )
+    }
     assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId } }), 0)
-    assert.equal(await prisma.channel.count({ where: { organizationId: seeded.organizationId } }), 2)
+    assert.match(AGENT_WATCHERS_RETIRED_SENTENCE, /Agents start work from the column menu/)
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
   }
 })
 
-runDatabaseTest('the adder’s private agent and an ordinary shared agent are valid watchers', async () => {
+runDatabaseTest('people watchers are saved and listed; a legacy agent row is not listed', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
   try {
-    const watchers = await setBoardWatchers(prisma, {
-      ...watcherInput(seeded),
-      watchers: [
-        { kind: 'agent', id: seeded.ownPrivateAgentId },
-        { kind: 'agent', id: seeded.sharedAgentId },
-      ],
-    })
-    assert.ok(Array.isArray(watchers), JSON.stringify(watchers))
-    assert.deepEqual(
-      watchers.map((watcher) => watcher.recipientId).sort(),
-      [seeded.ownPrivateAgentId, seeded.sharedAgentId].sort(),
-    )
-    assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId } }), 2)
-  } finally {
-    await cleanup(prisma, seeded)
-    await prisma.$disconnect()
-  }
-})
-
-runDatabaseTest('a private watcher is never disclosed to another member', async () => {
-  const prisma = new PrismaClient()
-  const seeded = await seed(prisma)
-  try {
-    const created = await setBoardWatchers(prisma, {
-      ...watcherInput(seeded),
-      watchers: [{ kind: 'agent', id: seeded.ownPrivateAgentId }],
-    })
-    assert.ok(Array.isArray(created), JSON.stringify(created))
-    assert.deepEqual(
-      await listBoardWatchers(prisma, {
+    await prisma.boardWatcher.create({
+      data: {
+        addedByUserId: seeded.adderId,
+        agentId: seeded.sharedAgentId,
         boardId: seeded.boardId,
         organizationId: seeded.organizationId,
-        userId: seeded.otherId,
-      }),
-      [],
-    )
+      },
+    })
+    const watchers = await setBoardWatchers(prisma, {
+      ...watcherInput(seeded),
+      watchers: [{ kind: 'user', id: seeded.otherId }, { kind: 'user', id: seeded.adderId }],
+    })
+    assert.ok(Array.isArray(watchers), JSON.stringify(watchers))
+    assert.deepEqual(watchers.map((watcher) => [watcher.kind, watcher.recipientId]).sort(), [
+      ['user', seeded.adderId],
+      ['user', seeded.otherId],
+    ].sort())
+    // The save replaced the whole list, the legacy agent row with it.
+    assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId, agentId: { not: null } } }), 0)
+    await prisma.boardWatcher.create({
+      data: {
+        addedByUserId: seeded.adderId,
+        agentId: seeded.sharedAgentId,
+        boardId: seeded.boardId,
+        organizationId: seeded.organizationId,
+      },
+    })
+    const listed = await listBoardWatchers(prisma, {
+      boardId: seeded.boardId,
+      organizationId: seeded.organizationId,
+      userId: seeded.adderId,
+    })
+    assert.deepEqual(listed.map((watcher) => watcher.kind), ['user', 'user'])
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
   }
 })
 
-runDatabaseTest('a private agent is unreachable after its owner leaves the organisation', async () => {
+runDatabaseTest('a person outside the organisation is not reachable', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
   try {
     await prisma.organizationMember.update({
-      where: { organizationId_userId: { organizationId: seeded.organizationId, userId: seeded.adderId } },
+      where: { organizationId_userId: { organizationId: seeded.organizationId, userId: seeded.otherId } },
       data: { deactivatedAt: new Date() },
     })
     assert.deepEqual(
-      await setBoardWatchers(prisma, {
-        ...watcherInput(seeded),
-        watchers: [{ kind: 'agent', id: seeded.ownPrivateAgentId }],
-      }),
-      { error: 'RECIPIENT_NOT_REACHABLE', recipientId: seeded.ownPrivateAgentId },
-    )
-    assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId } }), 0)
-  } finally {
-    await cleanup(prisma, seeded)
-    await prisma.$disconnect()
-  }
-})
-
-runDatabaseTest('system agents are refused before a watcher list is replaced', async () => {
-  const prisma = new PrismaClient()
-  const seeded = await seed(prisma)
-  try {
-    assert.deepEqual(
-      await setBoardWatchers(prisma, {
-        ...watcherInput(seeded),
-        watchers: [{ kind: 'agent', id: seeded.systemAgentId }],
-      }),
-      { error: 'RECIPIENT_NOT_REACHABLE', recipientId: seeded.systemAgentId },
+      await setBoardWatchers(prisma, { ...watcherInput(seeded), watchers: [{ kind: 'user', id: seeded.otherId }] }),
+      { error: 'RECIPIENT_NOT_REACHABLE', recipientId: seeded.otherId },
     )
     assert.equal(await prisma.boardWatcher.count({ where: { boardId: seeded.boardId } }), 0)
   } finally {
