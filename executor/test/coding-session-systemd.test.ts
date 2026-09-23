@@ -11,8 +11,8 @@ import { createCodingProcessControl } from '../src/coding-session/process-contro
 import { alive, createCodingHarness, waitUntil } from './coding-session-harness.js'
 
 /**
- * The systemd restart case (host-coding-sessions.md → "Containment and
- * teardown, per supervisor"). On Linux with a reachable user manager a session
+ * The systemd restart case (host-coding-sessions-containment.md →
+ * "Containment and teardown, per supervisor"). On Linux with a reachable user manager a session
  * host runs in a unit of its own, so restarting the executor's unit — whose
  * `KillMode=control-group` kills everything in its cgroup — must leave a turn
  * running. A stand-in executor unit with that kill mode starts a real bridge

@@ -26,7 +26,7 @@ import {
 
 /**
  * Close requests for coding sessions against real rows
- * (docs/executor-protocol/host-coding-sessions.md → "Teardown reaches the
+ * (docs/executor-protocol/host-coding-sessions-containment.md → "Teardown reaches the
  * machine"): written in the transaction of every lease end, access withdrawal
  * and machine fence, for the owner keys the daemon itself derives; carried on
  * every heartbeat, oldest first, until a report taken after the request shows
