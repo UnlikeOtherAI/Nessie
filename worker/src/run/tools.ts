@@ -37,10 +37,7 @@ import {
   runMeetingLinkCreateTool,
   runPeopleSearchTool,
   runPersonalAssistantJoinChannelTool,
-  runProjectCreateTool,
-  runProjectListTool,
   runSendMessageTool,
-  runTeamCreateTool,
   runTicketArchiveDoneTool,
   runTicketAssignTool,
   runTicketBoardReadTool,
@@ -96,6 +93,7 @@ import { summarizeToolInput, wrapTool } from './tool-util.js'
 import { dispatchKbTool } from './kb-tool-dispatch.js'
 import { dispatchSheetTool } from './sheet-tool-dispatch.js'
 import { TICKET_ACTIVITY_TOOL_RUNNERS } from './pa-tools/tickets.js'
+import { PROJECT_STRUCTURE_TOOL_RUNNERS } from './pa-tools/provisioning-structure.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 import { dispatchSandboxedBuiltinTool } from './sandboxed-tool-dispatch.js'
 
@@ -160,10 +158,13 @@ const executeBuiltinToolUncorrected = async (
   if (mailResult) return mailResult
   const sandboxedResult = await dispatchSandboxedBuiltinTool(toolName, args, context, inputSummary)
   if (sandboxedResult) return sandboxedResult
-  const ticketActivityTool = Object.hasOwn(TICKET_ACTIVITY_TOOL_RUNNERS, toolName)
+  // Ticket activity, and team structure (the project and team a channel lives
+  // inside, the read that turns their NAMES into ids, and what a project is
+  // made of): dispatched by table.
+  const tableTool = Object.hasOwn(TICKET_ACTIVITY_TOOL_RUNNERS, toolName)
     ? TICKET_ACTIVITY_TOOL_RUNNERS[toolName]
-    : undefined
-  if (ticketActivityTool) return wrapTool(inputSummary, () => ticketActivityTool(context, args))
+    : Object.hasOwn(PROJECT_STRUCTURE_TOOL_RUNNERS, toolName) ? PROJECT_STRUCTURE_TOOL_RUNNERS[toolName] : undefined
+  if (tableTool) return wrapTool(inputSummary, () => tableTool(context, args))
   switch (toolName) {
     case 'card_post':
       return wrapTool(inputSummary, () => runCardPostTool(context, args))
@@ -281,14 +282,6 @@ const executeBuiltinToolUncorrected = async (
       return wrapTool(inputSummary, () => runChannelCreateTool(context, args))
     case 'agent_create':
       return wrapTool(inputSummary, () => runAgentCreateTool(context, args))
-    // Team structure: the project and team a channel lives inside, plus
-    // the read that turns a project or team NAME into the id they take.
-    case 'project_list':
-      return wrapTool(inputSummary, () => runProjectListTool(context, args))
-    case 'project_create':
-      return wrapTool(inputSummary, () => runProjectCreateTool(context, args))
-    case 'team_create':
-      return wrapTool(inputSummary, () => runTeamCreateTool(context, args))
     case 'ticket_list':
       return wrapTool(inputSummary, () => runTicketListTool(context, args))
     case 'ticket_search':

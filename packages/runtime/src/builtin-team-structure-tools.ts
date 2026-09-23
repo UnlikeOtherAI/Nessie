@@ -50,6 +50,37 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     safe: true,
   },
   {
+    // The read a ticket trigger's config is built from: without it the
+    // Designer guesses board, column and channel ids. Identity-delegated like
+    // agent_read — it acts as the person in the Designer's home DM and answers
+    // only what that person can see.
+    id: 'project_structure_read',
+    category: 'projects',
+    summary: 'Read a project’s boards and columns, channels and document spaces.',
+    label: 'Read Project Structure',
+    personalAssistantOnly: true,
+    identityDelegatedOnly: true,
+    description:
+      'Read what a project is made of, before you set up work in it: its boards with every column and its '
+      + 'category (todo, in_progress, review, done), the channels in it you can read with their visibility, '
+      + 'and its document spaces with their top-level folders. Pass agentId to see which channels that '
+      + 'agent is already in. A ticket_changed trigger needs a board, its start-work columns and a public '
+      + 'channel the agent is in; take them from here rather than guessing. Only what you can see is listed. '
+      + 'Resolve the projectId with project_list.',
+    parameters: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'The project, from project_list.' },
+        agentId: {
+          type: 'string',
+          description: 'Optional: the agent whose channel placements to show, from agent_list.',
+        },
+      },
+      required: ['projectId'],
+    },
+    safe: true,
+  },
+  {
     id: 'project_create',
     category: 'projects',
     summary: 'Create a project, owned by the user.',

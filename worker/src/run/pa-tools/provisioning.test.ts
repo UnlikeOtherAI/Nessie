@@ -888,6 +888,9 @@ test('agent_trigger_create keeps a caller-supplied launchOrigin out of the store
     },
   })
 
+  // The only identity key stored is the server's own authorship stamp, taken
+  // from the acting member rather than the model's config. It grants nothing:
+  // a manual fire still runs as the agent.
   const config = created[0]?.config as Record<string, unknown>
-  assert.deepEqual(config, { prompt: 'Do the thing' })
+  assert.deepEqual(config, { authorUserId: USER_ID, prompt: 'Do the thing' })
 })

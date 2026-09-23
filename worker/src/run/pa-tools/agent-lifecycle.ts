@@ -14,6 +14,7 @@ import { z } from 'zod'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { emitWorkerAuditEvent } from '../execute/policy.js'
+import { describeTicketTriggerScope } from './provisioning-ticket-trigger.js'
 import { formatTriggerMarkdownLink } from './tool-output.js'
 
 const Id = z.string().uuid()
@@ -83,11 +84,14 @@ export const runAgentTriggerUpdateTool = async (
   )) {
     throw new Error('Trigger not found.')
   }
+  // A ticket trigger's refusal names its fields (`TriggerConfigRefusalError`),
+  // and travels to the model as it is; every other type answers null.
   const updated = await updateAgentTrigger(context.prisma, {
     organizationId: member.organizationId,
     triggerId: trigger.id,
   }, args)
   if (!updated) throw new Error('Trigger configuration is invalid.')
+  const scope = await describeTicketTriggerScope(context, member, updated)
   await emitWorkerAuditEvent(context.prisma, member.actorContext, {
     action: 'trigger.updated',
     metadata: { fields: Object.keys(args).filter((key) => key !== 'triggerId') },
@@ -104,7 +108,10 @@ export const runAgentTriggerUpdateTool = async (
   })
   return {
     inputSummary: `triggerId=${args.triggerId}`,
-    outputPreview: `Updated ${triggerLink(updated)} | status=${updated.status} | enabled=${updated.enabled}`,
+    outputPreview: [
+      `Updated ${triggerLink(updated)} | status=${updated.status} | enabled=${updated.enabled}`,
+      ...scope,
+    ].join('\n'),
     toolName: 'agent_trigger_update',
   }
 }
