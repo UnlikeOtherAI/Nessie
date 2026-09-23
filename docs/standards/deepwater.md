@@ -337,8 +337,10 @@ worker and card are built on them.
   and the status only forward (`queued` → `drafting` → `running`): a read
   issued before a launch can land after its ticket, so a read never moves a
   run back. Ledger reverting a launch Water refused (an inline 409 `scope-*`)
-  is known only to the launch job, which moves the run back itself with
-  `revertDeepWaterLaunch` while its launch is the action in flight.
+  is known only to whoever made the launch call: a person's launch job moves
+  the run back with `revertDeepWaterLaunch` while its launch is the action in
+  flight, and the run binder moves an agent's refused launch back with
+  `revertDeepWaterAgentLaunch`.
   `cancelled` is written directly; a finished research is written only by the
   delivery claim.
 - **A person's action happens once.** `beginDeepWaterPersonAction` records
@@ -459,9 +461,10 @@ connector, and the same projection applies every answer.
   requester (none means `LEDGER_UOA_IDENTITY_REQUIRED`, and nothing is written)
   and the calling run's consumed sources. Ledger's answer attaches the research
   and posts the agent's research card; a definitive refusal fails the run; a
-  throw, a transient failure or an answer outside the contract leaves it
-  `queued` for the watch to replay, and the agent is told the brief may have
-  started and not to call `research_scope_start` again. After a start or a
+  throw, a transient failure, an answer outside the contract or an answer
+  Nessie could not record leaves it `queued` for the watch to replay, and the
+  agent is told the brief may have started and not to call
+  `research_scope_start` again. After a start or a
   reply the agent is told the planner is working and that it will be woken
   there. Every other call naming a research resolves that research's run in
   the same organisation and team and must act for its requester
@@ -473,7 +476,12 @@ connector, and the same projection applies every answer.
   basis into the reading run; a reply or an editing launch unions the run's
   whole sink into the research first. An agent never publishes
   (`DEEP_WATER_PUBLISH_REQUIRES_PERSON`). Every answer goes through the shared
-  projection and renews the captured identity.
+  projection and renews the captured identity; one outside the contract is
+  logged and not applied. `research_list` feeds the person's own scope and
+  every listed research's basis before the answer reaches the agent; a list
+  Nessie cannot read is withheld (`DEEP_WATER_LIST_UNREADABLE`), never passed
+  through unbound. A `scope_*` refusal of an agent's launch moves its run back
+  to drafting and tells the agent the research did not start.
 - **A shared agent can use DeepWater only in a run with no private-conversation
   lineage.** The private-conversation write gate applies to every DeepWater
   tool, reads included, with no DeepWater exemption: exporting other people's

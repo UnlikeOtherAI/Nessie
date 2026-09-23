@@ -259,6 +259,39 @@ export const revertDeepWaterLaunch = async (
 }
 
 /**
+ * The same revert for a launch an agent made with its own
+ * `research_scope_launch` call: that call is not an action in flight here, so
+ * only the binder that got the `scope_*` refusal knows Ledger put the brief
+ * back to drafting. Moving the run back is safe even when Ledger never moved
+ * it: the watch's next read moves it forward again if Ledger shows otherwise.
+ * A person's launch in flight is left to its own job. Null unless the run was
+ * moved back.
+ */
+export const revertDeepWaterAgentLaunch = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string },
+): Promise<DeepWaterBriefRun | null> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  const scopeState = locked?.run.scopeState
+  if (!locked || !scopeState) return null
+  const { run, now } = locked
+  const action = scopeState.pendingAction
+  if (run.status !== 'running' || (isPendingActionInFlight(action) && action.kind === 'launch')) return null
+
+  const delayMs = deepWaterWatchDelayMs({ status: 'drafting', state: scopeState, msSinceLastChange: 0 })
+  await tx.productIntegrationRun.update({
+    where: { id: run.id },
+    data: {
+      status: 'drafting',
+      launchedAt: null,
+      ledgerObservedAt: now,
+      reconcileAfter: new Date(now.getTime() + delayMs),
+    },
+  })
+  return { ...run, status: 'drafting', launchedAt: null }
+}
+
+/**
  * A brief Ledger definitively refused to open (a scope start or an agent's
  * claim that never got a research id) is failed. It never had a research, so
  * there is nothing to deliver and nothing for the watch to read.

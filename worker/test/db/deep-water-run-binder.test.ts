@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
-import { ResearchRunRefMessageMetadataSchema } from '@nessie/schemas'
+import { LedgerScopeResultSchema, ResearchRunRefMessageMetadataSchema } from '@nessie/schemas'
 
 import { createDeepWaterRunBinder } from '../../src/run/deepwater-run-binder.js'
 import { withBinderFixture } from './deep-water-run-binder-fixture.js'
@@ -174,4 +174,71 @@ withBinderFixture('a launch moves the agent\'s brief to running and renews the r
   const stored = await fixture.read(run.id)
   assert.equal(stored.status, 'running')
   assert.deepEqual(stored.uoaIdentity, renewed)
+})
+
+withBinderFixture('a research list feeds what each listed run was built from, and one Nessie cannot read is withheld', async (fixture) => {
+  const rs = researchId()
+  fixture.answer(wireScope({ id: rs, revision: 0, turn: { id: randomUUID(), seq: 1, status: 'complete', author_kind: 'agent' } }))
+  await fixture.binder.dispatch('research_scope_start', 'call_open', scopeArgs, fixture.send)
+  const [run] = await agentRuns(fixture)
+  assert.ok(run)
+  const hidden = { scopeType: 'channel' as const, scopeId: randomUUID() }
+  const author = { sourceChannelId: hidden.scopeId, sourceAuthorUserId: randomUUID() }
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: run.id },
+    data: { sourceScopes: [hidden], disclosureSources: [author] },
+  })
+  const row = {
+    id: rs, status: 'drafting', title: null, error_code: null, query: 'A private topic',
+    depth: 'light', started_at: '2026-09-23T09:00:00.000Z', completed_at: null, has_report: false,
+  }
+
+  fixture.answer({ jobs: [{ ...row, started_at: 7 }], limit: 20 })
+  const unreadable = await fixture.binder.dispatch('research_list', 'call_list_bad', {}, fixture.send)
+  assert.equal(unreadable.result.success, false)
+  assert.match(unreadable.result.output, /^DEEP_WATER_LIST_UNREADABLE/)
+  assert.doesNotMatch(unreadable.result.output, /A private topic/, 'the topics never reach the agent unbound')
+
+  fixture.answer({ jobs: [row], limit: 20 })
+  const listed = await fixture.binder.dispatch('research_list', 'call_list', {}, fixture.send)
+  assert.equal(listed.result.success, true)
+  assert.ok(fixture.sink.list().some((scope) => scope.scopeId === hidden.scopeId))
+  assert.deepEqual(fixture.sink.privateConversationSources(), [author])
+})
+
+withBinderFixture('a launch Ledger refused after a read saw it starting goes back to drafting, and the agent is told', async (fixture) => {
+  const rs = researchId()
+  fixture.answer(wireScope({ id: rs, revision: 1, turn: { id: randomUUID(), seq: 1, status: 'complete', author_kind: 'agent' } }))
+  await fixture.binder.dispatch('research_scope_start', 'call_open', scopeArgs, fixture.send)
+  const [run] = await agentRuns(fixture)
+  assert.ok(run)
+  // While the launch was at Ledger, a watch read saw the research starting.
+  fixture.onSend(async () => {
+    await fixture.attach(run.id, LedgerScopeResultSchema.parse(wireScope({ id: rs, status: 'starting', revision: 1 })))
+    assert.equal((await fixture.read(run.id)).status, 'running')
+  })
+  fixture.answer({ error: 'scope_revision_conflict', status_code: 409, current_revision: 2 }, false)
+  const announced = fixture.realtime.published.length
+
+  const refused = await fixture.binder.dispatch('research_scope_launch', 'call_launch', { id: rs, revision: 1 }, fixture.send)
+
+  assert.equal(refused.result.success, false)
+  assert.match(refused.result.output, /scope_revision_conflict/, 'the agent reads Ledger\'s own refusal')
+  assert.match(refused.result.output, /did not start this research/)
+  const stored = await fixture.read(run.id)
+  assert.equal(stored.status, 'drafting')
+  assert.equal(stored.launchedAt, null)
+  assert.ok(
+    fixture.realtime.published.slice(announced).some((event) => event.event === 'integration.run.updated'),
+    'viewers are told the research is being agreed again',
+  )
+
+  // A refusal that is not Ledger putting the brief back leaves the run where the reads put it.
+  fixture.onSend(async () => {
+    await fixture.attach(run.id, LedgerScopeResultSchema.parse(wireScope({ id: rs, status: 'running', revision: 2 })))
+  })
+  fixture.answer({ error: 'not_drafting', status_code: 409 }, false)
+  const late = await fixture.binder.dispatch('research_scope_launch', 'call_again', { id: rs, revision: 2 }, fixture.send)
+  assert.doesNotMatch(late.result.output, /did not start this research/)
+  assert.equal((await fixture.read(run.id)).status, 'running')
 })

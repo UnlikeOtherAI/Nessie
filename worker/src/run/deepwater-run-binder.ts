@@ -5,6 +5,7 @@ import {
   findDeepWaterBriefRunByResearchId,
   refreshDeepWaterRunIdentity,
   resolveDisclosureViewer,
+  revertDeepWaterAgentLaunch,
   toDeepWaterBriefRun,
   unionDeepWaterRunSources,
   viewerSatisfiesBasis,
@@ -17,6 +18,7 @@ import {
   LedgerResearchStatusDtoSchema,
   LedgerResearchTicketSchema,
   LedgerScopeResultSchema,
+  LedgerToolErrorSchema,
   deepWaterToolAsksToPublish,
   deepWaterToolEditsBrief,
   deepWaterToolResearchId,
@@ -25,6 +27,7 @@ import {
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { runDeepWaterTransaction } from '../control/deepwater-announce.js'
+import { revertsLaunch } from '../control/deepwater-brief-action-errors.js'
 import type { ExecutionDependencies, RunContext } from './execute/types.js'
 import {
   deepWaterRunBinderContext,
@@ -36,7 +39,11 @@ import {
   type DeepWaterSend,
 } from './deepwater-run-binder-context.js'
 import { dispatchDeepWaterScopeStart } from './deepwater-run-binder-start.js'
-import { plannerWorkingGuidance } from './deepwater-tool-guidance.js'
+import {
+  deepWaterToolRefusal,
+  launchRefusedGuidance,
+  plannerWorkingGuidance,
+} from './deepwater-tool-guidance.js'
 
 /**
  * Binds an agent's DeepWater tool calls to their product runs (Water plan
@@ -91,6 +98,15 @@ const feedRequester = (ctx: DeepWaterRunBinderContext): void => {
   if (ctx.effectiveUserId) ctx.consumedSources.add({ scopeType: 'user', scopeId: ctx.effectiveUserId })
 }
 
+/**
+ * Ledger's answer to a bound call is outside its contract: nothing is applied
+ * (the watch's own read brings the run up to date) and the drift is logged.
+ */
+const outsideContract = (run: DeepWaterBriefRun, toolName: string): null => {
+  console.error(`[deep-water] ${toolName} for run ${run.id} answered outside the contract; not applied`)
+  return null
+}
+
 /** Apply a bound call's answer to its brief run, renewing the captured sign-in with it. */
 const applyAnswer = async (
   ctx: DeepWaterRunBinderContext,
@@ -103,7 +119,7 @@ const applyAnswer = async (
   const apply = async (tx: Tx): Promise<DeepWaterProjectionOutcome | null> => {
     if (toolName === 'research_scope_get' || toolName === 'research_scope_reply') {
       const result = LedgerScopeResultSchema.safeParse(structured)
-      if (!result.success) return null
+      if (!result.success) return outsideContract(run, toolName)
       return applyDeepWaterScopeResult(tx, {
         ...target,
         result: result.data,
@@ -114,12 +130,17 @@ const applyAnswer = async (
     }
     if (toolName === 'research_scope_launch') {
       const ticket = LedgerResearchTicketSchema.safeParse(structured)
-      return ticket.success ? applyDeepWaterLaunchTicket(tx, { ...target, ticket: ticket.data }) : null
+      return ticket.success
+        ? applyDeepWaterLaunchTicket(tx, { ...target, ticket: ticket.data })
+        : outsideContract(run, toolName)
     }
     if (toolName === 'research_cancel' || toolName === 'research_status') {
       const status = LedgerResearchStatusDtoSchema.safeParse(structured)
-      return status.success ? applyDeepWaterStatusRead(tx, { ...target, status: status.data }) : null
+      return status.success
+        ? applyDeepWaterStatusRead(tx, { ...target, status: status.data })
+        : outsideContract(run, toolName)
     }
+    // `research_report` changes nothing the run records; delivery reads it itself.
     return null
   }
   try {
@@ -133,6 +154,35 @@ const applyAnswer = async (
     // watch re-reads the research, so the projection catches up there.
     console.error(`[deep-water] could not apply ${toolName} to run ${run.id}; the watch will re-read it`, error)
   }
+}
+
+/**
+ * Ledger refused the agent's launch. A `scope_*` refusal comes after Ledger
+ * put the brief back to drafting (amendments L3), and nothing else here knows
+ * it: a watch read that saw the research starting meanwhile has moved the run
+ * on, and the projection never moves back. So the run returns to drafting
+ * here, and the agent reads the refusal with what to do next.
+ */
+const revertRefusedLaunch = async (
+  ctx: DeepWaterRunBinderContext,
+  run: DeepWaterBriefRun,
+  answer: DeepWaterBoundDispatch,
+): Promise<DeepWaterBoundDispatch> => {
+  const refusal = LedgerToolErrorSchema.safeParse(structuredOf(answer.result))
+  if (!refusal.success || !revertsLaunch(refusal.data.code)) return answer
+  try {
+    await runDeepWaterTransaction(ctx, async (tx, announce) => {
+      const reverted = await revertDeepWaterAgentLaunch(tx, { organizationId: run.organizationId, runId: run.id })
+      if (!reverted) return
+      announce.run(reverted)
+      console.info(`[deep-water] run ${run.id}: launch refused (${refusal.data.code}); back to drafting`)
+    })
+  } catch (error) {
+    // The agent still reads Ledger's refusal; the run keeps showing the
+    // research as running until a launch lands or the brief ends.
+    console.error(`[deep-water] run ${run.id}: could not move a refused launch back to drafting`, error)
+  }
+  return { ...answer, result: withGuidance(answer.result, launchRefusedGuidance) }
 }
 
 const NOT_OPENED_HERE = 'This research was not opened in this team, so it cannot be changed from here.'
@@ -191,7 +241,11 @@ const dispatchBound = async (
   }
 
   const answer = await plain(send, toolCallId, args)
-  if (!answer.result.success) return answer
+  if (!answer.result.success) {
+    return toolName === 'research_scope_launch' && run.scopeState !== null
+      ? revertRefusedLaunch(ctx, run, answer)
+      : answer
+  }
   if (CONTENT_READS.has(toolName)) feedRunSources(ctx, run)
   // A launcher run's status belongs to its handoff until it retires (phase E).
   if (run.scopeState !== null) await applyAnswer(ctx, run, toolName, structuredOf(answer.result))
@@ -200,7 +254,15 @@ const dispatchBound = async (
     : answer
 }
 
-/** `research_list`: the person's own research, and what each bound one was built from (N6). */
+const LIST_UNREADABLE = 'DeepWater answered the research list in a form Nessie cannot read, '
+  + 'so it was not shown. Read a research by its id instead.'
+
+/**
+ * `research_list`: the person's own research, and what each bound one was
+ * built from (N6). Every listed research's topic is in the answer, so the
+ * answer reaches the agent only once each listed run's basis is in its sink:
+ * one Nessie cannot read is withheld, never passed through unbound.
+ */
 const dispatchList = async (
   ctx: DeepWaterRunBinderContext,
   toolCallId: string,
@@ -209,13 +271,21 @@ const dispatchList = async (
 ): Promise<DeepWaterBoundDispatch> => {
   const answer = await plain(send, toolCallId, args)
   if (!answer.result.success) return answer
-  feedRequester(ctx)
   const list = LedgerResearchListSchema.safeParse(structuredOf(answer.result))
-  if (!list.success || !ctx.teamId || list.data.jobs.length === 0) return answer
+  if (!list.success) {
+    console.error(`[deep-water] research_list for run ${ctx.runId} answered outside the contract; withheld`)
+    return {
+      result: { success: false, output: deepWaterToolRefusal('DEEP_WATER_LIST_UNREADABLE', LIST_UNREADABLE), raw: null },
+      transportInvoked: true,
+    }
+  }
+  feedRequester(ctx)
+  if (list.data.jobs.length === 0) return answer
+  // Research ids are unique across Nessie, so a listed research bound in any
+  // team of this organisation is one of the person's runs.
   const rows = await ctx.prisma.productIntegrationRun.findMany({
     where: {
       organizationId: ctx.organizationId,
-      teamId: ctx.teamId,
       productSlug: 'deep-water',
       externalRunId: { in: list.data.jobs.map((job) => job.id) },
     },

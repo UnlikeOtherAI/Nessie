@@ -23,5 +23,15 @@ export const scopeStartUncertainGuidance = [
   'Do not call mcp_research_scope_start again for this request.',
 ].join(' ')
 
+/**
+ * Ledger refused `research_scope_launch` and put the brief back to drafting
+ * (amendments L3): the research did not start.
+ */
+export const launchRefusedGuidance = [
+  'DeepWater did not start this research, so its brief is still being agreed.',
+  'Read it with mcp_research_scope_get before you launch it again,',
+  'and tell the person if it cannot be launched.',
+].join(' ')
+
 /** A binder refusal the agent must not retry, with its code first for the model's own logic. */
 export const deepWaterToolRefusal = (code: string, message: string): string => `${code}: ${message}`

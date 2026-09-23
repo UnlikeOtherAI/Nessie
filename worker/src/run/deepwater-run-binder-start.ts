@@ -101,22 +101,47 @@ const claim = async (
   }
 }
 
-/** Apply Ledger's answer: attach the research, record this agent as the turn's author, post its card. */
+/**
+ * Apply Ledger's answer: attach the research, record this agent as the turn's
+ * author, post its card. Null when the answer is outside the contract, or
+ * when it could not be recorded here — Ledger has the brief either way, and
+ * the watch's replay of this same call attaches it.
+ */
 const applyStart = async (ctx: DeepWaterRunBinderContext, claimed: Claimed, structured: unknown) => {
   const result = LedgerScopeResultSchema.safeParse(structured)
-  if (!result.success) return null
+  if (!result.success) {
+    console.error(`[deep-water] agent brief ${claimed.run.id}: research_scope_start answered outside the contract`)
+    return null
+  }
   const target = { organizationId: ctx.organizationId, runId: claimed.run.id }
-  await runDeepWaterTransaction(ctx, async (tx, announce) => {
-    const outcome = await applyDeepWaterScopeResult(tx, {
-      ...target,
-      result: result.data,
-      turnAuthor: { kind: 'agent', agentId: ctx.agentId },
+  try {
+    await runDeepWaterTransaction(ctx, async (tx, announce) => {
+      const outcome = await applyDeepWaterScopeResult(tx, {
+        ...target,
+        result: result.data,
+        turnAuthor: { kind: 'agent', agentId: ctx.agentId },
+      })
+      if (!outcome.applied) {
+        if (outcome.reason === 'not_attachable') {
+          // Cancelled or ended here before DeepWater named it: nothing points
+          // at this research, which stays idle there until it expires.
+          console.error(`[deep-water] agent brief ${claimed.run.id} ended before DeepWater named it; `
+            + `research ${result.data.id} is not attached`)
+        }
+        return log(claimed.run, `start answer not applied (${outcome.reason})`)
+      }
+      if (outcome.changed) announce.run(outcome.run)
+      if (outcome.attached) await ensureDeepWaterResearchCard(tx, announce, target)
+      await refreshDeepWaterRunIdentity(tx, { ...target, identity: claimed.identity })
     })
-    if (!outcome.applied) return log(claimed.run, `start answer not applied (${outcome.reason})`)
-    if (outcome.changed) announce.run(outcome.run)
-    if (outcome.attached) await ensureDeepWaterResearchCard(tx, announce, target)
-    await refreshDeepWaterRunIdentity(tx, { ...target, identity: claimed.identity })
-  })
+  } catch (error) {
+    if (isFatalToolExecutionError(error)) throw error
+    // The call reached Ledger, so the brief may exist there; the run stays
+    // queued and the watch replays this very call, which attaches it (N1).
+    console.error(`[deep-water] agent brief ${claimed.run.id} (run ${ctx.runId}): could not record research `
+      + `${result.data.id}; the watch will replay the start`, error)
+    return null
+  }
   return result.data.id
 }
 
@@ -150,7 +175,6 @@ export const dispatchDeepWaterScopeStart = async (
   if (result.success) {
     const researchId = await applyStart(ctx, claimed, structuredOf(result))
     if (researchId) return { result: withGuidance(result, plannerWorkingGuidance(researchId)), transportInvoked: true }
-    console.error(`[deep-water] agent brief ${claimed.run.id}: research_scope_start answered outside the contract`)
     return { result: withGuidance(result, scopeStartUncertainGuidance), transportInvoked: true }
   }
 
