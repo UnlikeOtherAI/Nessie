@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import type { TaskEventOrigin } from '@nessie/schemas'
 
 import { listAccessibleProjectIds, type ProjectViewer } from './project-structure.js'
 
@@ -14,15 +15,35 @@ import { listAccessibleProjectIds, type ProjectViewer } from './project-structur
  * comment's author (a personal assistant acts *as* its person and leaves it
  * unset). `unattended` marks an agent run with no person behind it, whose
  * `TaskEvent.by` is `agent:<id>` rather than a user id.
+ *
+ * `origin` is the door the call came through, stamped by the layer that
+ * authenticated it (docs/standards/ticket-work.md): a route's session or
+ * credential, the worker's run, a source sync. It is never the caller's claim,
+ * and absent means `system` — never `session` — so a caller that forgets it
+ * can never start or steer ticket work.
  */
 export type TaskActor = ProjectViewer & {
   agentId?: string | null
   unattended?: boolean
+  origin?: TaskEventOrigin
 }
+
+/** The fields of a `TaskActor` that decide how a `TaskEvent` names its author. */
+export type TaskEventAuthor = Pick<TaskActor, 'userId' | 'agentId' | 'unattended' | 'origin'>
 
 /** The `by` a `TaskEvent` payload carries: a user id, or `agent:<id>` unattended. */
 export const taskEventBy = (actor: Pick<TaskActor, 'userId' | 'agentId' | 'unattended'>): string =>
   actor.unattended && actor.agentId ? `agent:${actor.agentId}` : actor.userId
+
+export const SYSTEM_TASK_EVENT_ORIGIN: TaskEventOrigin = { kind: 'system' }
+
+/** `by` and `origin` together: every event an actor writes carries both. */
+export const taskEventAuthorship = (
+  actor: TaskEventAuthor,
+): { by: string; origin: TaskEventOrigin } => ({
+  by: taskEventBy(actor),
+  origin: actor.origin ?? SYSTEM_TASK_EVENT_ORIGIN,
+})
 
 export type ProjectTaskVisibility = { accessibleProjectIds: string[]; actorUserId: string }
 

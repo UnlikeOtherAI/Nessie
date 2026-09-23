@@ -17,6 +17,8 @@ import {
 } from '@nessie/schemas'
 
 import { loadStoredAssetUrls, rewriteProviderUrls } from './board-source-apply-activity.js'
+import { recordInboundItemEvents, sourceEventAuthorship } from './board-source-apply-events.js'
+import { recordTaskEvent } from './task-event-dispatch.js'
 
 /**
  * Turning one external item into one Nessie task.
@@ -432,12 +434,11 @@ export const syncTaskSourceLabels = async (
     })
   }
   if (options.recordEvent && (added.length > 0 || removed.length > 0)) {
-    await db.taskEvent.create({
-      data: {
-        taskId,
-        eventType: 'labels_changed',
-        payload: { by: `source:${source.id}`, bySourceId: source.id, added, removed },
-      },
+    await recordTaskEvent(db, {
+      taskId,
+      eventType: 'labels_changed',
+      payload: { ...sourceEventAuthorship(source.id), bySourceId: source.id, added, removed },
+      scope: source,
     })
   }
   return { added, removed }
@@ -551,10 +552,22 @@ export const applyInboundItem = async (
     if (id) {
       const previous = await tx.task.findUnique({
         where: { id },
-        select: { status: true, assigneeUserId: true, assigneeAgentId: true, boardId: true },
+        select: {
+          status: true,
+          archivedAt: true,
+          assigneeUserId: true,
+          assigneeAgentId: true,
+          boardId: true,
+          detail: true,
+        },
       })
       boardId = previous?.boardId ?? null
       await tx.task.update({ where: { id }, data: base })
+      if (previous) {
+        await recordInboundItemEvents(tx, {
+          source, taskId: id, boardId, previous, next: base, remoteStateId: item.stateId,
+        })
+      }
       if (
         previous &&
         (previous.assigneeUserId !== base.assigneeUserId ||
@@ -562,23 +575,7 @@ export const applyInboundItem = async (
       ) {
         changes.push('assignee')
       }
-      if (previous && previous.status !== status) {
-        changes.push('status')
-        // The vendor is the authority for its own item, so this bypasses
-        // `VALID_TRANSITIONS` — but it still records who moved it and from what.
-        await tx.taskEvent.create({
-          data: {
-            taskId: id,
-            eventType: 'status_changed',
-            payload: {
-              bySourceId: source.id,
-              from: previous.status,
-              to: status,
-              remoteStateId: item.stateId,
-            },
-          },
-        })
-      }
+      if (previous && previous.status !== status) changes.push('status')
     } else {
       const created = await tx.task.create({
         data: {
@@ -590,6 +587,9 @@ export const applyInboundItem = async (
         select: { id: true },
       })
       id = created.id
+      await recordInboundItemEvents(tx, {
+        source, taskId: id, boardId: null, previous: null, next: base, remoteStateId: item.stateId,
+      })
     }
 
     if (Object.keys(fieldValues).length > 0) {

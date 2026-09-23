@@ -3,12 +3,20 @@ import {
   DEFAULT_LABEL_COLOR,
   normalizeLabelName,
   parseProjectId,
+  type TaskEventOrigin,
   type TaskLabelRecord,
 } from '@nessie/schemas'
 
 import { resolveTaskHomeBoard } from './board-placement.js'
 import type { BoardSourceWriteBack, BoardSourceWriteBackError } from './board-source-writeback.js'
-import { findAccessibleTask, isUuid, taskEventBy, type TaskActor } from './task-access.js'
+import {
+  findAccessibleTask,
+  isUuid,
+  SYSTEM_TASK_EVENT_ORIGIN,
+  taskEventAuthorship,
+  type TaskActor,
+} from './task-access.js'
+import { recordTaskEvent } from './task-event-dispatch.js'
 
 /**
  * A board's labels, and the labels on a ticket.
@@ -467,7 +475,7 @@ export const planTaskLabels = async (
 export const applyTaskLabelPlan = async (
   tx: Prisma.TransactionClient,
   plan: TaskLabelPlan,
-  options: { by: string | null; ownedWrittenUpstream: boolean },
+  options: { by: string | null; origin?: TaskEventOrigin; ownedWrittenUpstream: boolean },
 ): Promise<void> => {
   const add = [...plan.localAdd, ...(options.ownedWrittenUpstream ? [] : plan.ownedAdd)]
   const remove = [...plan.localRemove, ...(options.ownedWrittenUpstream ? [] : plan.ownedRemove)]
@@ -481,11 +489,14 @@ export const applyTaskLabelPlan = async (
     })
   }
   if (plan.added.length > 0 || plan.removed.length > 0) {
-    await tx.taskEvent.create({
-      data: {
-        taskId: plan.taskId,
-        eventType: 'labels_changed',
-        payload: { by: options.by, added: plan.added, removed: plan.removed },
+    await recordTaskEvent(tx, {
+      taskId: plan.taskId,
+      eventType: 'labels_changed',
+      payload: {
+        by: options.by,
+        origin: options.origin ?? SYSTEM_TASK_EVENT_ORIGIN,
+        added: plan.added,
+        removed: plan.removed,
       },
     })
   }
@@ -529,6 +540,6 @@ export const setTaskLabels = async (
     ownedWrittenUpstream = outcome !== null
   }
   await prisma.$transaction((tx) =>
-    applyTaskLabelPlan(tx, plan, { by: taskEventBy(actor), ownedWrittenUpstream }))
+    applyTaskLabelPlan(tx, plan, { ...taskEventAuthorship(actor), ownedWrittenUpstream }))
   return { added: plan.added, removed: plan.removed }
 }

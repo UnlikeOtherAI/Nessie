@@ -12,7 +12,8 @@ import {
 } from '@nessie/schemas'
 
 import type { BoardSourceCommentWriteBackError as BoardSourceWriteBackError } from './board-source-writeback.js'
-import { findAccessibleTask, isUuid, taskEventBy, type TaskActor } from './task-access.js'
+import { findAccessibleTask, isUuid, SYSTEM_TASK_EVENT_ORIGIN, taskEventBy, type TaskActor } from './task-access.js'
+import { recordTaskEvent } from './task-event-dispatch.js'
 import {
   attachmentRemover,
   linkUploadsToTask,
@@ -277,17 +278,17 @@ export const createTaskComment = async (
           data: { organizationId: task.organizationId, taskId: task.id, body, ...author },
           select: { id: true },
         })
-    await tx.taskEvent.create({
-      data: {
-        taskId: task.id,
-        eventType: 'comment_added',
-        payload: {
-          by,
-          commentId: comment.id,
-          ...(actor.agentId ? { agentId: actor.agentId } : {}),
-          ...(external ? { externalId: external.externalId } : {}),
-        },
+    await recordTaskEvent(tx, {
+      taskId: task.id,
+      eventType: 'comment_added',
+      payload: {
+        by,
+        origin: actor.origin ?? SYSTEM_TASK_EVENT_ORIGIN,
+        commentId: comment.id,
+        ...(actor.agentId ? { agentId: actor.agentId } : {}),
+        ...(external ? { externalId: external.externalId } : {}),
       },
+      scope: { organizationId: task.organizationId, projectId: task.projectId },
     })
     const linked = await linkUploadsToTask(tx, {
       organizationId: task.organizationId,

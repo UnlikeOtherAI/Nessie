@@ -4,10 +4,18 @@ import {
   parseUserId,
   type AuthorizedActionContext,
   type TaskEmbedOrigin,
+  type TaskEventOrigin,
 } from '@nessie/schemas'
 import { isAgentAccessibleToActor } from './access-checks.js'
 import { projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
-import { isUuid, projectTaskVisibilityWhere, type ProjectTaskVisibility } from './task-access.js'
+import {
+  isUuid,
+  projectTaskVisibilityWhere,
+  taskEventAuthorship,
+  type ProjectTaskVisibility,
+} from './task-access.js'
+import { recordColumnEntered, resolveHomeColumnId } from './task-column-events.js'
+import { recordTaskEvent } from './task-event-dispatch.js'
 import {
   linkUploadsToTask,
   mapProjectTaskWithCount,
@@ -17,7 +25,11 @@ import {
 import { applyTaskLabelPlan, type TaskLabelSetError } from './task-labels.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { dropStalePlacements } from './project-task-move.js'
-import { boardTaskPoolWhere, resolveTaskHomeBoard } from './board-placement.js'
+import {
+  boardTaskPoolWhere,
+  resolveProjectTaskDetailPlacement,
+  resolveTaskHomeBoard,
+} from './board-placement.js'
 import {
   resolveOutboundAssignee,
   type BoardSourceWriteBack,
@@ -135,6 +147,11 @@ export type CreateProjectTaskInput = {
   attachmentIds?: readonly string[]
   /** Semantic projection claimed while the originating session still exists. */
   embedding?: { model: string; origin?: TaskEmbedOrigin }
+  /** Set when an agent creates the ticket; see `TaskActor`. */
+  agentId?: string | null
+  unattended?: boolean
+  /** The authenticated door, stamped by the caller's auth layer; absent ⇒ `system`. */
+  origin?: TaskEventOrigin
 }
 
 export type ProjectTaskCreateError = {
@@ -187,6 +204,7 @@ export const createProjectTask = async (
     if (missing) return { error: 'LABEL_NOT_ON_BOARD', labelId: missing }
   }
   const status: TaskStatus = input.assigneeUserId || input.assigneeAgentId ? 'assigned' : 'inbox'
+  const authorship = taskEventAuthorship({ ...input, userId: input.createdByUserId })
   const task = await prisma.$transaction(async (tx) => {
     const created = await tx.task.create({
       data: {
@@ -201,9 +219,19 @@ export const createProjectTask = async (
       },
       include: projectTaskInclude,
     })
-    const event = await tx.taskEvent.create({
-      data: { taskId: created.id, eventType: 'created', payload: { by: input.createdByUserId, assigneeUserId: input.assigneeUserId ?? null } },
-      select: { id: true },
+    // Where the new ticket landed: creating one straight into a start-work
+    // column is a pickup under the same origin rule as moving it there.
+    const placement = await resolveProjectTaskDetailPlacement(tx, created)
+    const event = await recordTaskEvent(tx, {
+      taskId: created.id,
+      eventType: 'created',
+      payload: {
+        ...authorship,
+        assigneeUserId: input.assigneeUserId ?? null,
+        boardId: placement?.boardId ?? null,
+        columnId: placement?.columnId ?? null,
+      },
+      scope: { organizationId: input.organizationId, projectId: input.projectId ?? null },
     })
     await input.assignmentAttention?.(tx, {
       actorUserId: input.createdByUserId, assigneeUserId: input.assigneeUserId ?? null,
@@ -214,7 +242,7 @@ export const createProjectTask = async (
       await applyTaskLabelPlan(tx, {
         taskId: created.id, added: labelIds, removed: [], localAdd: labelIds, localRemove: [],
         ownedAdd: [], ownedRemove: [], upstreamLabelIds: null,
-      }, { by: input.createdByUserId, ownedWrittenUpstream: false })
+      }, { ...authorship, ownedWrittenUpstream: false })
     }
     const linked = await linkUploadsToTask(tx, {
       organizationId: input.organizationId, uploaderUserId: input.createdByUserId,
@@ -251,6 +279,11 @@ export const assignProjectTask = async (
     assigneeAgentId?: string | null
     actorContext: AuthorizedActionContext
     assignmentAttention?: ProjectTaskAssignmentAttention
+    /** Set when an agent assigns; see `TaskActor`. */
+    agentId?: string | null
+    unattended?: boolean
+    /** The authenticated door, stamped by the caller's auth layer; absent ⇒ `system`. */
+    origin?: TaskEventOrigin
   },
   writeBack?: BoardSourceWriteBack,
 ): Promise<ProjectTaskRecord | ProjectTaskAssignError | BoardSourceWriteBackError> => {
@@ -314,9 +347,15 @@ export const assignProjectTask = async (
       data: { assigneeUserId: userId, assigneeAgentId: agentId, ...(nextStatus ? { status: nextStatus } : {}) },
     })
     if (count === 0) return null
-    const event = await tx.taskEvent.create({
-      data: { taskId: input.taskId, eventType: assigned ? 'assigned' : 'unassigned', payload: { by: input.actorContext.actor.actorId, assigneeUserId: userId, assigneeAgentId: agentId } },
-      select: { id: true },
+    const event = await recordTaskEvent(tx, {
+      taskId: input.taskId,
+      eventType: assigned ? 'assigned' : 'unassigned',
+      payload: {
+        ...taskEventAuthorship({ ...input, userId: input.actorContext.actor.actorId }),
+        assigneeUserId: userId,
+        assigneeAgentId: agentId,
+      },
+      scope: { organizationId: input.organizationId, projectId: existing.projectId },
     })
     await input.assignmentAttention?.(tx, {
       actorUserId: input.actorContext.actor.actorId, assigneeUserId: userId, eventKey: `task-assigned:${event.id}`,
@@ -331,15 +370,28 @@ export type ProjectTaskTransitionError = { error: 'NOT_FOUND' | 'INVALID_TRANSIT
 
 export const transitionProjectTask = async (
   prisma: PrismaClient,
-  input: { taskId: string; organizationId: string; status: TaskStatus; actorId: string },
+  input: {
+    taskId: string
+    organizationId: string
+    status: TaskStatus
+    actorId: string
+    /** Set when an agent changes the status; see `TaskActor`. */
+    agentId?: string | null
+    unattended?: boolean
+    /** The authenticated door, stamped by the caller's auth layer; absent ⇒ `system`. */
+    origin?: TaskEventOrigin
+  },
 ): Promise<ProjectTaskRecord | ProjectTaskTransitionError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, projectId: true, boardId: true, archivedAt: true },
   })
   if (!existing) return { error: 'NOT_FOUND' }
   if (!isProjectTaskTransitionValid(existing.status, input.status)) return { error: 'INVALID_TRANSITION', from: existing.status }
+  const authorship = taskEventAuthorship({ ...input, userId: input.actorId })
+  const scope = { organizationId: input.organizationId, projectId: existing.projectId }
   const task = await prisma.$transaction(async (tx) => {
+    const fromColumnId = await resolveHomeColumnId(tx, existing)
     const { count } = await tx.task.updateMany({
       where: { id: input.taskId, organizationId: input.organizationId, status: existing.status },
       data: { status: input.status },
@@ -350,7 +402,21 @@ export const transitionProjectTask = async (
     // ignores a stale pin, but leaving one behind would mean board-written data
     // that disagrees with the board, so it goes here on every board.
     await dropStalePlacements(tx, input.taskId)
-    await tx.taskEvent.create({ data: { taskId: input.taskId, eventType: 'status_changed', payload: { by: input.actorId, from: existing.status, to: input.status } } })
+    await recordTaskEvent(tx, {
+      taskId: input.taskId,
+      eventType: 'status_changed',
+      payload: { ...authorship, from: existing.status, to: input.status },
+      scope,
+    })
+    // A new status is a new column on the ticket's board — the move a person
+    // sees, and the one a ticket trigger reacts to.
+    await recordColumnEntered(tx, {
+      taskId: input.taskId,
+      scope,
+      fromColumnId,
+      toColumnId: await resolveHomeColumnId(tx, { ...existing, status: input.status }),
+      authorship,
+    })
     return tx.task.findFirst({ where: { id: input.taskId }, include: projectTaskInclude })
   })
   return task ? mapProjectTaskWithCount(prisma, task) : { error: 'INVALID_TRANSITION', from: existing.status }
