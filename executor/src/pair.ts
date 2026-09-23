@@ -22,16 +22,13 @@ import {
 } from '@nessie/schemas'
 
 import { executorApi } from './api-client.js'
+import { planCodingSessions, type CodingSessionsRequest } from './coding-sessions-policy.js'
 import { assertHostSupportsOperations, buildSignedDescriptor } from './descriptor.js'
 import { compileExecutorEgressPolicy } from './egress-policy.js'
 import { verifyPrivateCodexAuthProfile, verifyPrivateGuestVmFile } from './guest-vm-artifacts.js'
 import { verifyGuestRuntimeBundle } from './guest-runtime-bundle.js'
 import { detectExecutorHost, type ExecutorHost } from './host-platform.js'
-import {
-  assertExecutorLocalMcpServers,
-  executorLocalMcpServerNames,
-  type ExecutorLocalMcpServer,
-} from './mcp-servers.js'
+import { executorLocalMcpServerNames, type ExecutorLocalMcpServer } from './mcp-servers.js'
 import { verifyNativeHelperPath } from './native-helper.js'
 import {
   clearExecutorPreparedPairing,
@@ -282,14 +279,24 @@ export const configureExecutorLocalPolicy = async (
   // An omitted list keeps the named servers; an empty one removes them all,
   // which the operation check below then refuses while mcp.* stays enabled.
   mcpServers: readonly ExecutorLocalMcpServer[] = state.mcpServers ?? [],
+  // The built-in coding-sessions bridge is never a named server: the executor
+  // generates its entry from this, and its power facts join the descriptor.
+  codingSessions: CodingSessionsRequest = {},
 ): Promise<ExecutorLocalState> => {
-  const namedMcpServers = [...assertExecutorLocalMcpServers(mcpServers)]
   const canonicalWorkspaceFolders = sameWorkspaceFolders(workspaceFolders, state.workspaceFolders)
     ? state.workspaceFolders
     : await configureExecutorWorkspaceFolders(workspaceFolders)
   if (!sameWorkspaceFolders(canonicalWorkspaceFolders, state.workspaceFolders)) {
     await assertWorkspaceMayChange(stateDir)
   }
+  const bridge = await planCodingSessions({
+    ...codingSessions,
+    current: { facts: state.descriptor.codingSessions, servers: state.mcpServers },
+    mcpServers,
+    stateDir,
+    workspaceFolders: canonicalWorkspaceFolders,
+  })
+  const namedMcpServers = bridge.servers
   const permittedPrograms = configuredCommandAllowlist(commandAllowlist)
   const operationKeys = configuredOperationKeys(
     requestedOperationKeys,
@@ -305,12 +312,14 @@ export const configureExecutorLocalPolicy = async (
   if (operationKeys.includes(PROMOTION_OPERATION_KEY) && !helper) {
     throw new Error('workspace.promote requires an owner-only native helper path.')
   }
+  await bridge.persist(operationKeys)
   const next: ExecutorLocalState = {
     ...state,
     // Rebuilt field by field rather than spread over the previous descriptor:
     // an emptied allowlist has to leave no key behind, because a `commandAllowlist`
     // present but undefined is not canonicalizable and would fail the next digest.
     descriptor: {
+      ...(bridge.facts ? { codingSessions: bridge.facts } : {}),
       ...(permittedPrograms.length > 0 ? { commandAllowlist: permittedPrograms } : {}),
       limits: state.descriptor.limits,
       ...(namedMcpServers.length > 0

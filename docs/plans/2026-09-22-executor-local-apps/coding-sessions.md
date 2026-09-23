@@ -100,7 +100,7 @@ it received (so `NESSIE_EXECUTOR_PACKAGED_CLI` survives), detached, stdio to
 
 | Host | How the session host runs | Survives a daemon restart | How the tree dies |
 |---|---|---|---|
-| Windows, desktop companion or hand-run daemon | detached; the agent runs under the packaged native helper's new `job-run` subcommand, which holds a Job Object with `KILL_ON_JOB_CLOSE` | yes | host death or close kills the whole job; `taskkill /T /F` by absolute `%SystemRoot%\System32` path only as the dev fallback |
+| Windows, desktop companion or hand-run daemon | detached; the agent runs under the packaged native helper's new `job-run` subcommand, which holds a Job Object with `KILL_ON_JOB_CLOSE` | yes | host death or close kills the whole job; `taskkill /F` per verified pid, by absolute `%SystemRoot%\System32` path, only as the dev fallback |
 | Windows service (virtual account) | **refused**: `unsupported_supervisor` — that account has no Claude login and no user profile | — | — |
 | macOS, menu-bar app / desktop / hand-run | `setsid`; own process group | yes | group kill, then a descendant sweep from a `ps -A -o pid=,ppid=,pgid=` snapshot taken before signalling (catches setsid'd grandchildren) |
 | Linux with a user manager (`systemctl --user` reachable; `XDG_RUNTIME_DIR` derived from `/run/user/<uid>`) | `systemd-run --user --collect --unit nessie-coding-<id> -p KillMode=control-group -p TimeoutStopSec=10 -- …` | yes, and it can never block the executor unit's stop/restart | `systemctl --user stop nessie-coding-<id>` |
@@ -108,23 +108,33 @@ it received (so `NESSIE_EXECUTOR_PACKAGED_CLI` survives), detached, stdio to
 
 Every agent and tool spawn passes `windowsHide: true`. Before killing, the host
 checks the recorded agent identity (pid + process start time) so it never
-signals a reused pid. When a new host takes over a session whose previous
-agent is still alive, it kills that tree before resuming.
+signals a reused pid — and reads the tree only below a root that is still that
+process, checking each descendant's own start time before its signal. When a
+new host takes over a session whose previous agent is still alive, it kills
+that tree before resuming.
 
 **Teardown reaches the machine.**
 
 - The daemon keeps a registry of bridge-owned sessions by owner key and calls
   the reserved bridge tool `session_close_all {ownerKey?, reason}` (accepted
   only with `_meta['nessie/daemon-control']`, which only the daemon's own calls
-  carry) wherever it already calls `codingSessions.stopAll()` — claim or
-  heartbeat failure, fence — and at shutdown when the policy opts in.
+  carry) when the daemon's authority provably ends — the API answers that the
+  executor is unknown or revoked, or refuses its proof — or no heartbeat has
+  succeeded for ten minutes, and at shutdown when the policy opts in. A
+  transient poll or heartbeat failure, and the reclaim after a fence, close
+  nothing: these sessions are built to outlive a dropped connection, and
+  closing on every blip would end every long turn on the machine for good.
 - The heartbeat response gains `codingSessionClose: [{ownerKey, reason}]`,
   produced when a lease ends, access is revoked or the executor is paused; the
-  daemon closes those owners' sessions.
+  daemon closes those owners' sessions, and retries on every later heartbeat
+  an instruction the bridge could not carry out.
 - A person's **Close** on a session in the admin (§8) travels the same way.
 - Hard limits from config: `maxTurnMinutes` (default 45) interrupts a runaway
-  turn; `maxBudgetUsd` per turn is passed to Claude; `idleMinutes` (default 30)
-  ends an idle agent process (the session stays resumable).
+  turn, and ends its agent process when an interrupt is ignored for 30 s;
+  `maxBudgetUsd` per turn is passed to Claude, whose budget counts a
+  per-process total, so each new turn starts in a fresh process resuming the
+  session; `idleMinutes` (default 30) ends an idle agent process (the session
+  stays resumable).
 
 ## 4. The reviewed descriptor
 
@@ -157,6 +167,7 @@ codingSessions?: {
   agents: Array<'claude' | 'codex'>
   permissionMode: Record<'claude' | 'codex', string>
   allowedToolCount: number
+  environmentNames: string[]   // agentEnv.set and agentEnv.pass, names only
   rootNames: string[]
   configDigest: string   // sha256 of the canonical host-local config
 }
@@ -221,8 +232,10 @@ One long-lived process per live host:
   at the next tool boundary, which is the steering behaviour we want.
 - Interrupt = `control_request {subtype:'interrupt'}`; close = `end_session`,
   stdin end, then the tree kill after 5 s.
-- Turn finished = a `result` with no queued or started `command_lifecycle` and
-  no background tasks; unsolicited results (`origin.kind`) are recorded too.
+- Turn finished = a `result` with no queued or started `command_lifecycle`;
+  background tasks are reported as a count rather than holding the turn open
+  (a dev server never ends), and unsolicited results (`origin.kind`) are
+  recorded too.
 - The appended system prompt says a Nessie agent is driving it, there is no
   person at this terminal, it should work in its own git worktree, commit and
   push as its instructions say, and end each turn with a short summary of what

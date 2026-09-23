@@ -32,9 +32,6 @@ Sequential Task Sets, their native agent tools and the configured
 > feature nobody can navigate to counts as unfinished. The four checks and the
 > history behind each are in [`AGENTS.md`](AGENTS.md) → "Rule zero".
 
-The standalone DeepWater SwiftUI app lives in `ios/`; its platforms, native tests
-and OAuth hosting prerequisite are documented in [docs/deepwater-ios.md](docs/deepwater-ios.md).
-
 ## Per-subsystem rules live in `docs/standards/`
 
 One file per subsystem, deliberately **not** loaded into every session.

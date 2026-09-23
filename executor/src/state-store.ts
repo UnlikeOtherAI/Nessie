@@ -13,9 +13,11 @@ import {
   ExecutorWorkspaceFolderNamesSchema,
   executorWorkspaceFolderNameIsLegal,
   ImplementedExecutorOperationKeySchema,
+  type ExecutorCodingSessionsFacts,
   type ExecutorEnrollmentRequest,
 } from '@nessie/schemas'
 
+import { codingSessionsStateIsConsistent } from './coding-sessions-policy.js'
 import {
   assertExecutorLocalMcpServers,
   executorLocalMcpServerNames,
@@ -76,6 +78,12 @@ export type ExecutorLocalState = {
      * reading an empty array could not express.
      */
     mcpServers?: string[]
+    /**
+     * What the built-in coding-sessions bridge may do. Present exactly when
+     * `mcpServers` below holds the executor's own generated bridge entry,
+     * pinned to the same configuration digest.
+     */
+    codingSessions?: ExecutorCodingSessionsFacts
     /**
      * The folder names this revision exposes. Absent means the descriptor was
      * signed before folders had names and describes exactly one folder; see the
@@ -625,6 +633,7 @@ export const loadExecutorState = async (stateDir: string): Promise<ExecutorLocal
   ) {
     throw new Error('Executor state is malformed.')
   }
+  if (!codingSessionsStateIsConsistent(descriptor.codingSessions, mcpServers)) throw new Error('Executor state is malformed.')
   // The single legacy root becomes one named folder here and nowhere else, and
   // `workspaceRoot` is dropped so no later save can write both spellings.
   const rest = { ...(parsed as ExecutorLocalState) } as ExecutorLocalState & { workspaceRoot?: string }

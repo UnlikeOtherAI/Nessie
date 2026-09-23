@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  MAILBOX_DELIVERY_PURPOSE,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -9,6 +10,7 @@ import {
   parseTeamId,
   parseThreadId,
   parseUserId,
+  TASK_SET_DELIVERY_PURPOSE,
   UoaSessionIdentitySchema,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
@@ -49,13 +51,13 @@ export const buildMailboxActorContext = (input: {
       agentId: parseAgentId(input.targetAgentId),
       channelId: parseChannelId(input.channelId),
       correlationId: undefined,
-      purpose: 'mailbox.delivery',
+      purpose: MAILBOX_DELIVERY_PURPOSE,
       requestId: randomUUID(),
       ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
       ...(carriesRequester
         ? {
             effectiveUserId: parseUserId(input.actorId),
-            purpose: isTaskSetDelivery ? 'task_set.delivery' : 'agent.peer_delegation',
+            purpose: isTaskSetDelivery ? TASK_SET_DELIVERY_PURPOSE : 'agent.peer_delegation',
             correlationId: isTaskSetDelivery ? `task-set:${input.taskSetId}` : String(input.peerDelegationDepth),
             ...(uoaIdentity ? { uoaIdentity } : {}),
           }

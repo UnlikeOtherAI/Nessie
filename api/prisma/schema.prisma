@@ -4106,12 +4106,18 @@ model RunThreadPendingMessage {
   // pending marker. Keeping the template provenance here lets a batched drain
   // coalesce repeated fires into one instance without minting orphaned work.
   todoTemplateId    String?               @map("todo_template_id") @db.Uuid
+  // The mailbox delivery this marker stands for (null for chat and trigger
+  // pends). The drain reads the plan or workflow step the mail was sent for
+  // from it, so the follow-up run is linked to that step exactly as a direct
+  // mailbox claim's run is (`packages/db/src/mailbox-delivery-run.ts`).
+  mailboxMessageId  String?               @map("mailbox_message_id") @db.Uuid
   createdAt         DateTime              @default(now()) @map("created_at")
   agent             Agent                 @relation(fields: [agentId], references: [id], onDelete: Cascade)
   thread            Thread                @relation(fields: [threadId], references: [id], onDelete: Cascade)
   message           Message               @relation(fields: [messageId], references: [id], onDelete: Cascade)
   trigger           AgentTrigger?         @relation(fields: [triggerId], references: [id], onDelete: SetNull)
   triggerDelivery   AgentTriggerDelivery? @relation(fields: [triggerDeliveryId], references: [id], onDelete: SetNull)
+  mailboxMessage    AgentMailboxMessage?  @relation(fields: [mailboxMessageId], references: [id], onDelete: SetNull)
 
   @@index([agentId, messageId, principalUserId])
   @@index([todoTemplateId])
@@ -4428,6 +4434,7 @@ model AgentMailboxMessage {
   updatedAt           DateTime             @updatedAt @map("updated_at")
   thread              Thread?              @relation(fields: [threadId], references: [id], onDelete: SetNull)
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pendingThreadMessages RunThreadPendingMessage[]
 
   @@unique([toAgentId, correlationId])
   @@index([taskSetId])

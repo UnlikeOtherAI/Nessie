@@ -3,6 +3,7 @@ import type { Readable } from 'node:stream'
 import { executorApi } from './api-client.js'
 import { createExecutorBrowserSessionManager } from './browser-session-manager.js'
 import { createExecutorCodingSessionManager } from './coding-session-manager.js'
+import { createCodingSessionsDaemon, withDaemonSupervisor } from './coding-sessions-daemon.js'
 import { createExecutorCommandSessionManager } from './command-session-manager.js'
 import {
   claimExecutor,
@@ -22,6 +23,14 @@ import { startExecutorLocalInferenceSupervisor } from './local-inference-supervi
 import { createExecutorMcpSessionManager } from './mcp-session-manager.js'
 import type { ExecutorLocalState } from './state-store.js'
 
+// A shutdown that opted in to closing coding sessions gets this long to ask the bridge.
+const CODING_SESSION_SHUTDOWN_BUDGET_MS = 5_000
+
+const withinShutdownBudget = (work: Promise<void>): Promise<void> => Promise.race([
+  work.catch(() => undefined),
+  new Promise<void>((settle) => { setTimeout(settle, CODING_SESSION_SHUTDOWN_BUDGET_MS).unref() }),
+])
+
 /** Runs the paired executor and its sibling local Ollama host under one lease. */
 export const serveExecutor = async (
   stateDir: string,
@@ -36,9 +45,17 @@ export const serveExecutor = async (
     const browserSessions = createExecutorBrowserSessionManager(stateDir, live)
     const commandSessions = createExecutorCommandSessionManager(stateDir, live)
     const codingSessions = createExecutorCodingSessionManager(stateDir, live)
-    const namedMcpServers = live.mcpServers ?? []
+    const namedMcpServers = withDaemonSupervisor(live.mcpServers ?? [])
     const mcpSessions = createExecutorMcpSessionManager(namedMcpServers, live.descriptor.limits)
-    const localMcp = createLocalMcpReporter(namedMcpServers, mcpSessions)
+    // Coding sessions outlive runs and daemon restarts, so the daemon ends
+    // them itself wherever it ends its other sessions.
+    const codingBridge = createCodingSessionsDaemon({
+      executorId: live.executorId,
+      facts: live.descriptor.codingSessions,
+      servers: namedMcpServers,
+      sessions: mcpSessions,
+    })
+    const localMcp = createLocalMcpReporter(namedMcpServers, mcpSessions, { codingSessions: codingBridge.report })
     void localMcp.refresh().catch(() => undefined)
     let shuttingDown = false
     // One store for the daemon's whole life. Building it per poll re-secured
@@ -51,25 +68,34 @@ export const serveExecutor = async (
       console.error('[nessie-executor] attachment sweep failed:', error instanceof Error ? error.message : String(error))
     })
     const commandPoll = createNonOverlappingExecutorTask(() => pollAndExecuteCommand(
-      stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions, recoveryStore, attachmentStore,
+      stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions, recoveryStore, codingBridge,
+      attachmentStore,
     ).catch(async (error) => {
       await browserSessions.stopAll()
       await commandSessions.stopAll()
       await codingSessions.stopAll()
+      // Host coding sessions outlive a failed poll; only a definitive or lasting failure closes them.
+      await codingBridge.connectionFailed('command_poll_failed', error).catch(() => undefined)
       console.error('[nessie-executor] command poll failed:', error instanceof Error ? error.message : String(error))
     }))
     const heartbeat = createNonOverlappingExecutorTask(async () => {
       try {
-        await heartbeatExecutor(live, localMcp.current())
+        // Closing never delays the next heartbeat: it runs beside it, serialised on its own,
+        // and every heartbeat retries whatever an earlier one could not carry out.
+        const close = await heartbeatExecutor(live, localMcp.current())
+        codingBridge.connectionHealthy()
+        void codingBridge.close(close).catch(() => undefined)
       } catch (error) {
         await browserSessions.stopAll()
         await commandSessions.stopAll()
         await codingSessions.stopAll()
+        await codingBridge.connectionFailed('heartbeat_failed', error).catch(() => undefined)
         if (!shuttingDown) {
           try {
             live = await claimExecutor(stateDir, live)
             live = await localInference.supervisor.reconnect(live)
           } catch (claimError) {
+            await codingBridge.connectionFailed('claim_failed', claimError).catch(() => undefined)
             console.error('[nessie-executor] reconnect failed:', claimError instanceof Error ? claimError.message : String(claimError))
           }
         }
@@ -110,7 +136,9 @@ export const serveExecutor = async (
         ...(localInferencePoll.current() ? [localInferencePoll.current()] : []),
       ])
       await Promise.allSettled([
-        browserSessions.stopAll(), commandSessions.stopAll(), codingSessions.stopAll(), mcpSessions.stopAll(),
+        browserSessions.stopAll(), commandSessions.stopAll(), codingSessions.stopAll(),
+        // The bridge answers through the MCP session, so it closes before that session stops.
+        withinShutdownBudget(codingBridge.shutdown()).then(() => mcpSessions.stopAll()),
       ])
     }
   } finally {

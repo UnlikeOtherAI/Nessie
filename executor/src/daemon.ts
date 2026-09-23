@@ -25,6 +25,7 @@ import { signExecutorDaemonPayload } from './daemon-signature.js'
 import type { ExecutorBrowserSessionManager } from './browser-session-manager.js'
 import type { ExecutorConnectedBrowserSessionManager } from './connected-browser-session-manager.js'
 import type { ExecutorCodingSessionManager } from './coding-session-manager.js'
+import type { CodingSessionsDaemon } from './coding-sessions-daemon.js'
 import type { ExecutorCommandSessionManager } from './command-session-manager.js'
 import {
   createExecutorCommandAttachmentStore,
@@ -80,10 +81,15 @@ export const claimExecutor = async (
   return next
 }
 
+/**
+ * Sends one heartbeat and answers with the heartbeat's `codingSessionClose`
+ * instructions, unparsed: `CodingSessionsDaemon.close` validates them, so a
+ * field this daemon does not know never fails the heartbeat itself.
+ */
 export const heartbeatExecutor = async (
   state: ExecutorLocalState,
   localMcp?: ExecutorLocalMcpReport,
-): Promise<void> => {
+): Promise<unknown> => {
   if (!state.connectionEpoch) {
     throw new Error('Executor has not claimed a live daemon connection.')
   }
@@ -98,13 +104,14 @@ export const heartbeatExecutor = async (
     observedAt,
   }
   const signature = signExecutorDaemonPayload(state.machinePrivateKey, 'heartbeat', signed)
-  await executorApi.heartbeat(state.apiBaseUrl, {
+  const response = await executorApi.heartbeat(state.apiBaseUrl, {
     connectionEpoch: state.connectionEpoch,
     executorId: state.executorId,
     ...(localMcp === undefined ? {} : { localMcp }),
     observedAt,
     signature,
   })
+  return response.codingSessionClose
 }
 
 const digest = (value: unknown): string =>
@@ -198,6 +205,8 @@ export const executeExecutorCommand = async (
     commandSessions?: ExecutorCommandSessionManager
     codingSessions?: ExecutorCodingSessionManager
     mcpSessions?: ExecutorMcpSessionManager
+    /** Stamps who a call to the built-in coding-sessions bridge is for. */
+    codingBridge?: Pick<CodingSessionsDaemon, 'callMeta'>
   } = {},
 ): Promise<Record<string, unknown>> => {
   if (!ImplementedExecutorOperationKeySchema.safeParse(command.operationKey).success) {
@@ -398,12 +407,11 @@ export const executeExecutorCommand = async (
   }
   if (command.operationKey === 'mcp.tools' || command.operationKey === 'mcp.call') {
     const { attachments } = dependencies
-    return executeExecutorMcpCommand(
-      command.operationKey,
-      command.payload.args,
-      dependencies.mcpSessions,
-      attachments && ((images) => attachments.write(command.commandId, images)),
-    )
+    return executeExecutorMcpCommand(command.operationKey, command.payload.args, dependencies.mcpSessions, {
+      codingBridge: dependencies.codingBridge,
+      commandId: command.commandId,
+      payload: command.payload,
+    }, attachments && ((images) => attachments.write(command.commandId, images)))
   }
   // Other declared-only operations remain unavailable.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
@@ -425,6 +433,7 @@ export const pollAndExecuteCommand = async (
   codingSessions: ExecutorCodingSessionManager,
   mcpSessions: ExecutorMcpSessionManager,
   store: ExecutorCommandRecoveryStore = createExecutorCommandRecoveryStore(stateDir),
+  codingBridge?: Pick<CodingSessionsDaemon, 'callMeta'>,
   sidecars: ExecutorCommandAttachmentStore = createExecutorCommandAttachmentStore(stateDir),
 ): Promise<void> => {
   const connectionEpoch = state.connectionEpoch
@@ -453,6 +462,7 @@ export const pollAndExecuteCommand = async (
       codingSessions,
       mcpSessions,
       commandSessions,
+      ...(codingBridge ? { codingBridge } : {}),
     }),
     // The result itself stays on this machine: it can quote program output.
     onResultRefused: (command) => {

@@ -1,8 +1,10 @@
 import {
   ExecutorMcpCallArgumentsSchema,
+  ExecutorMcpCallPayloadSchema,
   ExecutorMcpToolsArgumentsSchema,
 } from '@nessie/schemas'
 
+import type { CodingSessionsDaemon } from './coding-sessions-daemon.js'
 import type { ExecutorMcpImageSink } from './mcp-images.js'
 import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
 
@@ -67,6 +69,15 @@ export const executeExecutorMcpCommand = async (
   operationKey: 'mcp.tools' | 'mcp.call',
   args: unknown,
   sessions: ExecutorMcpSessionManager | undefined,
+  bridge?: {
+    codingBridge?: Pick<CodingSessionsDaemon, 'callMeta'>
+    commandId: string
+    /**
+     * The whole delivered payload, checked strictly: its server-stamped
+     * `owner` is the only thing beside `args` and `runId` it may carry.
+     */
+    payload: unknown
+  },
   images?: ExecutorMcpImageSink,
 ): Promise<Record<string, unknown>> => {
   if (!sessions) return { code: 'EXECUTOR_MCP_UNAVAILABLE', success: false }
@@ -77,8 +88,16 @@ export const executeExecutorMcpCommand = async (
   }
   const parsed = ExecutorMcpCallArgumentsSchema.safeParse(args)
   if (!parsed.success) return invalidArguments(operationKey, parsed.error.issues)
+  const payload = bridge ? ExecutorMcpCallPayloadSchema.safeParse(bridge.payload) : undefined
+  if (payload && !payload.success) return invalidArguments(operationKey, payload.error.issues)
+  const owner = payload?.data.owner
   // `arguments` is passed through untouched: the tool's own grammar belongs to
   // the server, and validating it here would guarantee drift the first time
-  // that server ships a new field.
-  return sessions.callTool(parsed.data.server, parsed.data.tool, parsed.data.arguments, images)
+  // that server ships a new field. Who the call is for travels beside it, in
+  // reserved `_meta`, and only to the executor's own coding-sessions bridge.
+  const meta = bridge?.codingBridge?.callMeta(parsed.data.server, {
+    commandId: bridge.commandId,
+    ...(owner ? { owner } : {}),
+  })
+  return sessions.callTool(parsed.data.server, parsed.data.tool, parsed.data.arguments, meta, images)
 }

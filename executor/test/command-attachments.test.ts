@@ -187,7 +187,9 @@ test('a real screenshot’s sidecar is on disk before the result that references
     const api = fakeControlPlane()
     try {
       await recover({
-        execute: () => executeExecutorMcpCommand('mcp.call', command.payload.args, sessions, (images) => sidecars.write(command.commandId, images)),
+        execute: () => executeExecutorMcpCommand(
+          'mcp.call', command.payload.args, sessions, undefined, (images) => sidecars.write(command.commandId, images),
+        ),
         journal: store,
         receipts: api.receipts,
         sidecars,

@@ -13,6 +13,7 @@ this document.
 - [Protocol and threat model](#1-scope-and-non-goals)
 - [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
 - [Conversation leases](conversation-leases.md) — how a person's own follow-ups keep local apps
+- [Host coding sessions: the `coding-sessions` bridge](host-coding-sessions.md)
 - [Command attachments](command-attachments.md) — the images a result references, uploaded before its receipt
 
 ## 1. Scope and non-goals
@@ -36,7 +37,17 @@ arbitrary local-network proxy.
 | Agent, including Personal Assistant | Invoke an already available operation; prepare a proposed access change for its requesting user. | Administer access, approve itself, select a free-form executor, alter local policy, or apply a prepared change. |
 | Nessie control plane | Resolve availability, bind a run, lease commands, retain redacted audit facts, and send policy narrowing. | Dial a machine, widen local policy, access host credentials, or treat terminal text as an authorization/outcome. |
 | Executor daemon | Enforce local policy, pair outward, run the VM/gateway, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host team/credentials directly, or send raw local data to audit. |
-| Guest VM / coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
+| Guest VM / guest coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
+
+The last row is the guest `coding.*` lane. The owner-named host-local coding
+bridge (`coding-sessions`) is not a guest principal: a coding agent it runs
+acts with the host OS user's full authority — their files, their git and SSH
+credentials, their Claude or ChatGPT login — takes follow-ups through a prompt
+channel, and writes host files directly rather than by promotion. Its own
+contract, and why it exists at all, are in
+[host-coding-sessions.md](host-coding-sessions.md); its row in this table
+lands with the control-plane rule that offers it only on a private executor
+to that executor's pairing owner.
 
 A descriptor signed by an executor key proves that paired key made the claim;
 it does not prove the host is uncompromised. That limitation is deliberate and
@@ -172,7 +183,10 @@ therefore cannot extend its last-seen time. Sixty seconds is also the sole
 server-side liveness threshold: once the last authenticated daemon activity is
 older, an online executor is durably marked offline before it can be listed,
 selected, or dispatched. This channel reports availability only: it cannot
-lease or execute a command. Every HTTP control request has a 15-second client
+lease or execute a command. The one instruction its response may carry is
+`codingSessionClose`, which asks the daemon to close named owners' host coding
+sessions ([host-coding-sessions.md](host-coding-sessions.md)); it stops work
+and never starts any. Every HTTP control request has a 15-second client
 deadline and is cancelled during daemon shutdown. A heartbeat still in flight
 suppresses the next interval, so network delay cannot accumulate overlapping
 liveness or reconnect requests.
@@ -810,8 +824,10 @@ The companion derives that state solely from the fixed tmux dead-pane fields;
 it never captures a terminal pane. An exited session moves to `attention`, where
 the agent may use the bundle's `team.review` operation; `sandbox.stop`, a
 timeout, daemon fencing, VM exit, or revocation stops the guest and erases the
-transient login material. There is no remote terminal attach, prompt channel,
-or terminal-control API.
+transient login material. The guest lane has no remote terminal attach,
+prompt channel, or terminal-control API; the host-local coding bridge, a
+separate owner-named server, does have a prompt channel
+([host-coding-sessions.md](host-coding-sessions.md)).
 
 Its optional `--team-cow` argument exists only for the companion's
 lease-derived release probe. It passes that one COW directory into the fixed VM

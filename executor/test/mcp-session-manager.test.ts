@@ -141,7 +141,7 @@ test('a real Kelpie screenshot leaves the result as one kept image before it is 
         kept.push({ bytes: image.bytes.length, digest: image.digest, mimeType: image.mimeType })
       }
     }
-    const result = await sessions.callTool('kelpie', 'kelpie_screenshot', {}, keep) as {
+    const result = await sessions.callTool('kelpie', 'kelpie_screenshot', {}, undefined, keep) as {
       content: Array<Record<string, unknown>>
       structuredContent: Record<string, unknown>
       success: boolean
@@ -155,7 +155,7 @@ test('a real Kelpie screenshot leaves the result as one kept image before it is 
     assert.ok(Buffer.byteLength(JSON.stringify(result)) < 1_024)
 
     // A page as large as Hacker News's was three copies over the whole budget.
-    const large = await sessions.callTool('kelpie', 'kelpie_screenshot_large', {}, keep)
+    const large = await sessions.callTool('kelpie', 'kelpie_screenshot_large', {}, undefined, keep)
     assert.equal(large.success, true, 'no longer EXECUTOR_MCP_RESULT_TOO_LARGE')
     assert.equal(kept.at(-1)?.bytes, 200_000)
 
