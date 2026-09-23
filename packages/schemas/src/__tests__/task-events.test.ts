@@ -3,7 +3,9 @@ import test from 'node:test'
 
 import {
   ColumnEnteredTaskEventPayloadSchema,
+  CreatedTaskEventPayloadSchema,
   PriorityChangedTaskEventPayloadSchema,
+  TaskEventAuthorshipSchema,
   TaskEventOriginSchema,
 } from '../task-events.js'
 
@@ -139,4 +141,21 @@ test('an author that disagrees with its origin is refused', () => {
     assert.equal(result.success, false, JSON.stringify(authorship))
     assert.deepEqual(result.error?.issues.map((issue) => issue.path.join('.')), ['by'])
   }
+})
+
+test('any dispatched event\'s authorship parses alone, keeping its own fields', () => {
+  const comment = { by: USER, origin: { kind: 'session' }, commentId: TO }
+  assert.deepEqual(TaskEventAuthorshipSchema.parse(comment), comment)
+  // The same author-matches-origin rule: an agent's write never reads as a session.
+  assert.equal(TaskEventAuthorshipSchema.safeParse({ by: `agent:${AGENT}`, origin: { kind: 'session' } }).success, false)
+  // An event written before origins existed has none, and parses as nothing.
+  assert.equal(TaskEventAuthorshipSchema.safeParse({ by: USER }).success, false)
+})
+
+test('created names the board and column the ticket landed in, or null for neither', () => {
+  const created = { by: USER, origin: { kind: 'session' }, boardId: FROM, columnId: TO, assigneeUserId: null }
+  assert.deepEqual(CreatedTaskEventPayloadSchema.parse(created), created)
+  const projectless = { origin: { kind: 'system' }, boardId: null, columnId: null }
+  assert.deepEqual(CreatedTaskEventPayloadSchema.parse(projectless), projectless)
+  assert.equal(CreatedTaskEventPayloadSchema.safeParse({ by: USER, origin: { kind: 'session' } }).success, false)
 })

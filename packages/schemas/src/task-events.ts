@@ -75,6 +75,36 @@ const requireAuthorMatchingOrigin = (
 }
 
 /**
+ * The authorship every ticket-trigger event carries, read from any event type
+ * the dispatcher acts on (`comment_added`, `detail_edited`, `labels_changed`,
+ * `assigned`, …) without restating each type's own fields. Unknown keys pass
+ * through, so a writer's own fields survive a parse.
+ */
+export const TaskEventAuthorshipSchema = z
+  .object(authoredEventShape)
+  .passthrough()
+  .superRefine(requireAuthorMatchingOrigin)
+export type TaskEventAuthorship = z.infer<typeof TaskEventAuthorshipSchema>
+
+/**
+ * `created`: where a new ticket landed, as its home board placed it when it
+ * was written. A ticket created straight into a start-work column is a
+ * pickup under the same origin rule as a move, so the column is stamped by
+ * the writer rather than re-derived later from a ticket that may have moved
+ * since. Both are null for a projectless ticket, or a board with no column
+ * for its status.
+ */
+export const CreatedTaskEventPayloadSchema = z
+  .object({
+    ...authoredEventShape,
+    boardId: uuid.nullable(),
+    columnId: uuid.nullable(),
+  })
+  .passthrough()
+  .superRefine(requireAuthorMatchingOrigin)
+export type CreatedTaskEventPayload = z.infer<typeof CreatedTaskEventPayloadSchema>
+
+/**
  * `column_entered`: written on every column change, including a move between
  * two columns of the same category, which changes no status and so writes no
  * `status_changed`. `fromColumnId` is the column the ticket left, or null when
