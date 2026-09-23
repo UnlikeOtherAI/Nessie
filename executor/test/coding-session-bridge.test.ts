@@ -137,6 +137,40 @@ test('a host killed with -9 reads as host_lost, and the next send resumes withou
   }
 })
 
+test('a host lost before the agent confirmed its session hands the first message to the next agent', {
+  timeout: 150_000,
+}, async () => {
+  const harness = await createCodingHarness()
+  try {
+    // The agent has the task and says nothing, not even its init: the start has left the
+    // inbox, and the session is unconfirmed.
+    const sessionId = await started(harness, { prompt: '#quiet=gap the original task' })
+    const session = join(harness.stateDir, 'sessions', sessionId)
+    await waitUntil(async () => ((await harness.agents()).some((entry) => entry.event === 'message') ? true : undefined),
+      30_000, 'the agent to receive the task')
+    await waitUntil(async () => ((await readdir(join(session, 'inbox'))).some((name) => name.endsWith('.json')) ? undefined : true),
+      30_000, 'the start to leave the inbox')
+    const host = JSON.parse(await readFile(join(session, 'host.lock'), 'utf8')) as { pid: number }
+    process.kill(host.pid, 'SIGKILL')
+    const lost = await harness.waitForStatus(sessionId, (body) => body.status === 'interrupted')
+    assert.equal(lost.reason, 'host_lost')
+    await harness.call('session_send', { sessionId, message: 'carry on' })
+    await waitUntil(async () => ((await harness.agents()).filter((entry) => entry.event === 'start').length === 2 ? true : undefined),
+      60_000, 'the next agent')
+    await harness.release('gap')
+    const done = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input', undefined, 60_000)
+    assert.match(lastResultText(done), /the original task\s+carry on/u, 'the task the lost agent never started on is not lost with it')
+    const starts = (await harness.agents()).filter((entry) => entry.event === 'start')
+    assert.equal(starts[1]!.resume, false, 'an id the agent never confirmed is not resumed')
+    assert.notEqual(starts[1]!.sessionId, starts[0]!.sessionId, 'nor claimed again')
+    const state = JSON.parse(await readFile(join(session, 'session.json'), 'utf8')) as Record<string, unknown>
+    assert.equal(state.agentSessionStarted, true)
+    assert.equal(state.firstPrompt, undefined, 'once confirmed, the first message is the agent\'s own transcript\'s to keep')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
 test('codex runs a process per turn, resumes its thread, and reports its failure shape', { timeout: 120_000 }, async () => {
   const harness = await createCodingHarness()
   try {

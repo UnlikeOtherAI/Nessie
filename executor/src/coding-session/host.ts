@@ -120,6 +120,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     for (const [key, value] of Object.entries(patch)) {
       if (value === undefined) delete (state as Record<string, unknown>)[key]
     }
+    // Confirmed, or answered: from here on the agent's own transcript holds the first message.
+    if (patch.agentSessionStarted === true || patch.lastResult !== undefined) delete state.firstPrompt
     state.updatedAt = new Date().toISOString()
     if (patch.status && patch.status !== before) {
       emit({ kind: 'system', subtype: 'status', status: patch.status, ...(state.reason ? { reason: state.reason } : {}) })
@@ -134,7 +136,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
   }
   // An agent session id the agent never confirmed may or may not exist: Claude
   // creates it on the first message, and refuses `--session-id` for an id it
-  // already has. So an unconfirmed id is dropped and the next agent starts afresh.
+  // already has. So an unconfirmed id is dropped and the next agent starts
+  // afresh — given the first message again (`deliver`), which the lost one took with it.
   if (state.agentSessionId !== undefined && state.agentSessionStarted !== true) update({ agentSessionId: undefined })
   if (state.agentIdentity) {
     log('stopping the previous host\'s agent')
@@ -193,8 +196,15 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       if (!state.agentSessionStarted) update({ status: 'failed', reason: 'config_changed' })
       return
     }
+    // Until the agent confirms its session the first message stays in the state. An agent that has
+    // none running any more never confirmed it, so the message went with that agent: it goes again first.
+    const unconfirmed = state.agentSessionStarted !== true
+    const lost = unconfirmed && state.firstPrompt !== undefined && !driver?.running()
+    if (lost) log('sending the first message again: the agent that had it never confirmed its session')
+    const message = lost ? `${state.firstPrompt}\n\n${text}` : text
+    if (unconfirmed && state.firstPrompt === undefined) update({ firstPrompt: text })
     try {
-      await (await prepare()).send(text, randomUUID())
+      await (await prepare()).send(message, randomUUID())
     } catch (error) {
       const reason = error instanceof AgentStartError ? error.reason : 'agent_exited'
       if (reason === 'host_superseded') throw new HostSuperseded()

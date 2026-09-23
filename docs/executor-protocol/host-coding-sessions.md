@@ -554,7 +554,12 @@ seconds before SIGKILL, so a `git` caught mid-commit can remove its
 `index.lock`. What the next host needs, the agent's identity and its
 confirmed session id, skips the 500 ms debounce, and a session id the agent
 never confirmed is dropped: Claude refuses `--session-id` for an id it already
-holds, so the next agent starts afresh rather than failing on every send.
+holds, so the next agent starts afresh rather than failing on every send. The
+first message stays in `session.json` (`firstPrompt`) until the agent confirms
+its session or answers a turn, so an agent lost before then — its host killed
+after the start left the inbox, or the agent exiting before its init — does
+not take the task with it: when no agent that had it is running any more, the
+next message the owner sends carries it first, the two joined by a blank line.
 
 ### The agent guard: no agent outlives its host
 

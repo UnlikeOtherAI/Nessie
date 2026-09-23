@@ -18,6 +18,9 @@
  *                 `release-<name>` into the record directory — for a test that
  *                 must observe the turn while it runs, however slowly the
  *                 bridge or host starts
+ *   #quiet=<name> (Claude) says nothing about the turn, not even its init,
+ *                 until the test writes `release-<name>`: an agent that has
+ *                 the message but has not yet confirmed its session
  *   #fork         starts a grandchild that escapes the process group (a
  *                 detached node sleeping for ten minutes) and records its pid
  *   #path         prints host paths: the working folder, home, ~/.claude
@@ -168,6 +171,8 @@ const runTurn = async (first) => {
   const messages = [first]
   const current = { messages, interrupted: false, wake: undefined, stubborn: first.text.includes('#stubborn') }
   turn = current
+  const quiet = /#quiet=([\w-]+)/u.exec(first.text)
+  if (quiet) await released(quiet[1], current)
   lifecycle(first.uuid, 'started')
   init()
   send({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', unifiedWindows: { five_hour: { utilization: 0.4 } } } })
