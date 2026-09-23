@@ -53,6 +53,11 @@ summary and points here; **this file is the rule**.
     single loop chokepoint (head ~70% / tail ~30%, idempotent). Per-tool caps:
     4,000 chars for `web_search`/`web_fetch`/`document_read`, 12,000 for raw
     `http_fetch` bodies, 32,000 as the ceiling (`worker/src/run/tool-util.ts`).
+    A local program's answer through `executor_mcp_call` is shaped before that
+    chokepoint and capped at 12,000 chars with a "narrower result" hint, its
+    images and links reduced to placeholders
+    (`worker/src/run/executor-result-presentation.ts`,
+    [executor-local-mcp.md](executor-local-mcp.md)).
   - **Tool timeouts are per tool.** `executeToolBatch` asks
     `toolTimeoutMsFor(toolName)`: an executor tool gets its command TTL plus
     `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` (10 s), every other tool the budget's

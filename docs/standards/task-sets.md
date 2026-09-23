@@ -125,6 +125,13 @@ transitions. Run it through Turbo with `DATABASE_URL`:
 `pnpm exec turbo run test:task-sets --filter=@nessie/worker`.
 The normal worker suite also discovers these tests.
 
+Processor search parses the executor toolset's raw `dispatch` document — the
+`ollama-search` catalog and each call's failure code. The agent loop shapes
+executor results for its model after dispatch, never inside it;
+`worker/test/task-set-search-dispatch.test.ts` pins search against a real MCP
+server subprocess so a change to that order fails CI rather than every
+research step.
+
 Knowledge tests stream 80,000 JSONL records and an 80,000-row XLSX, verify
 restart, selected sheets and read-only SQLite, and replay output receipts.
 Local-host/executor tests exercise signed resource identity, shared capacity,
