@@ -400,7 +400,9 @@ an agent instructs, follows, interrupts, reviews and closes. It holds no state
 in memory — each session belongs to a detached `coding-session-host` — so the
 idle close and the probes above cannot take a coding turn with them. Its
 output is projected and path-rewritten before it leaves the host, the coding
-agent's own account (which the model knows and repeats) reads `<account>`, and
+agent's own account (which the model knows and repeats) reads `<account>`, the
+OS user and host names read `<user>` and `<host>`, a CLI whose `--help` lacks
+a flag the bridge passes is refused before it starts, and
 its failures are named codes, never the underlying error. The whole contract is in
 [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md).
 

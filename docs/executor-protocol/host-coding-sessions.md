@@ -46,6 +46,8 @@ looking at the inbox once more.
 ```
 <config dir>/coding-sessions/
   commands/<commandId>.json   first outcome of each executor command
+  agent-help.json             what each installed CLI's --help offers, per
+                              program path, size and modification time
   sessions/<id>/meta.json     bridge-written once: owner, agent, root, path, title
   sessions/<id>/session.json  host-written, at most one write per 500 ms; the
                               agent's identity and session id are written at once
@@ -146,6 +148,11 @@ object (`null` withdraws the bridge, absent keeps it). That object is closed:
 `model`), `agentEnv` (`inheritUserSession`, `pass`, `set`),
 `maxLiveSessionsPerOwner` (3), `idleMinutes` (30), `maxTurnMinutes` (45),
 `maxBudgetUsd` and `closeOnDaemonShutdown` (false). Unknown keys are refused.
+`permissionMode` is checked for its shape only (a letter, then up to 39
+letters, digits, `_` or `-`): which modes exist is the installed CLI's to
+say, so the host checks it against the choices the CLI's own `--help` lists
+before every start (see "Environment and self-check"), and a mode a newer
+Claude Code adds needs no executor release.
 
 An agent's `args` and `command` may not carry what the facts below would not
 show. For Claude that is every flag that bypasses, widens or relocates its
@@ -288,10 +295,45 @@ shell on Linux. It strips only `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 (`NESSIE_EXECUTOR_PACKAGED_CLI`, `NESSIE_CODING_SESSIONS_CONFIG_DIGEST`,
 `NESSIE_EXECUTOR_SUPERVISOR`, `NESSIE_CODING_SESSION_UNIT`), then applies
 `pass` and `set`. Before an agent starts, the host checks
-`git --version`, the agent's `--version` and login status, and `gh auth status`
-when `gh` is installed; a failure makes the session `failed` with
-`agent_missing`, `agent_not_logged_in`, `git_missing`, `gh_not_authenticated`,
-or `unsupported_supervisor` (the Windows service's virtual account).
+`git --version`, the agent's `--version`, what the agent's `--help` offers, its
+login status, and `gh auth status` when `gh` is installed; a failure makes the
+session `failed` with `git_missing`, `agent_missing`, `agent_outdated`,
+`permission_mode_unsupported`, `agent_not_logged_in`, `gh_not_authenticated`,
+or `unsupported_supervisor` (the Windows service's virtual account). The
+read-only probes run side by side and are judged in that order; the login is
+asked only after the help, because a CLI too old for `auth status` would
+otherwise read as logged out.
+
+The help check proves the installed CLI accepts every flag the adapter will
+pass, so an outdated CLI is refused with `agent_outdated` before it starts
+rather than dying on its first message with an argument error. The flags
+required are the adapter's own argv, fresh and resumed, so a flag the adapter
+gains is required with it:
+
+- Claude Code (`claude --help`): `-p`, `--input-format`, `--output-format`,
+  `--verbose`, `--replay-user-messages`, `--session-id`, `--resume`,
+  `--permission-prompts` and `--append-system-prompt`; then
+  `--permission-mode`, `--allowedTools`, `--disallowedTools`, `--model` and
+  `--max-budget-usd` when the configuration turns each on; and every flag in
+  the owner's `args`. A configured `permissionMode` must be one of the
+  `(choices: …)` that `--permission-mode` lists (2.1.280: `acceptEdits`,
+  `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan` — no `default`),
+  or the start fails with `permission_mode_unsupported`.
+- Codex (`codex exec --help` and `codex exec resume --help`): each help's
+  `Usage:` line must name its subcommand (a codex without `exec resume`
+  answers that help with the `exec` one); `-C` and `--json` on `exec`,
+  `--json` on `exec resume`, which parses it there; `-m` with a `model`; and
+  the owner's `args`. codex-cli 0.155.1's `exec` lists no `--full-auto`, so a
+  configuration that still passes it is refused this way too.
+
+Only option lines are read — a flag a description merely mentions (2.1.280
+names `--permission-prompt-tool` only inside `--permission-prompts`'s text)
+does not count. Each help gets 15 s and 256 KiB. What it offers is cached in
+`agent-help.json` per agent and per real path, size and modification time of
+each file in the agent's `command` (a bare name is found on the agent
+environment's `PATH`), so an updated CLI is read afresh and an unchanged one
+once; a help that could not be read is not cached. The host log names what
+was missing; the session carries only the categorical reason.
 
 ## Containment and teardown, per supervisor
 
@@ -421,6 +463,25 @@ is taken whole — a space-separated word a separator follows is still part of
 the path — and every profile directory beside the host user's, and the
 program directories, are named outright so a spaced last component is too.
 
+The OS user and host names leave no more than the paths do. In the live
+Windows run git printed `unable to auto-detect email address (got
+'ondre@Minis.(none)')`; npm, a Git Bash prompt and `whoami` print the same
+names with no path around them. So after the path rules the same rewriter
+spells the user `<user>` and the host `<host>`, as whole words and
+case-insensitively, in every projected field and every answer. The user's
+names are `os.userInfo()`, `USERNAME`, `USER`, `LOGNAME` and the home
+directory's own name; the host's are `os.hostname()` and `COMPUTERNAME`, each
+whole and by its first label, `<short>.<USERDNSDOMAIN>` on a Windows domain,
+and on Windows the NetBIOS form (its first 15 characters). The `os` answers
+matter most: the MCP SDK's minimal environment carries no `COMPUTERNAME`. A
+name shorter than three characters, and one any machine may carry (`root`,
+`user`, `admin`, `administrator`, `guest`, `nobody`, `system`, `localhost`),
+is left alone: it would rewrite ordinary words and hide nobody. So is a name
+inside a word — a user `dan` leaves `redundant` as it is — and the
+placeholders already written and UUIDs (a session id's hex group may spell a
+short host name) are never rewritten again. The rule has a price: a pull
+request URL whose owner is spelled like the OS user reads `<user>` there too.
+
 Credentials are scrubbed before anything else and read `<secret>`. A coding
 agent runs `gh auth token`, `printenv` or `cat .env`, or pastes a header into
 `curl`, and its command and output are exactly what the events carry. So the
@@ -453,7 +514,10 @@ branch, the base commit recorded at start, commits since, `git diff --stat`,
 uncommitted and untracked counts, worktrees created under the root since the
 start, `gh pr view` per branch when `gh` is installed, the last test command
 with its exit code, and `staleIndexLock` when a git killed mid-commit left
-`index.lock` behind, which every later git command would fail on.
+`index.lock` behind, which every later git command would fail on. Branch
+names — often their author's — are rewritten like every other string, keys
+of `pullRequests` included (the bridge's last pass rewrites values, not
+keys), while `gh` is still asked about each branch by its real name.
 
 ## Verifying
 
@@ -464,7 +528,13 @@ cargo test --manifest-path executor/native/Cargo.toml
 
 `scripted-coding-agent.mjs` speaks both protocols as the real CLIs printed
 them, and the subprocess suites drive a real bridge through the daemon's own
-MCP session manager; they run on Windows, Linux and macOS alike. A suite that
+MCP session manager; they run on Windows, Linux and macOS alike. It answers
+`--help` with the texts captured from claude 2.1.280 and codex-cli 0.155.1
+(`executor/test/fixtures/agent-help/`), or with `claude-older.txt` — the
+2.1.280 text with `--permission-prompts` taken out — under
+`NESSIE_SCRIPTED_HELP=older`, which the bridge suite starts to see
+`agent_outdated`; its `#identity` directive prints the machine's real user
+and host names the way git and a shell prompt do. A suite that
 must see a turn while it runs holds it open with `#hold=<name>` and releases
 it with the harness's `release`, rather than timing it with `#sleep`: a
 bridge respawn and a detached host's start race each other under load, so a
