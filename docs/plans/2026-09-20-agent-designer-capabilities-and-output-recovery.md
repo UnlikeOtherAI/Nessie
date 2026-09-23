@@ -162,3 +162,20 @@ nothing in it may be a secret or an instruction addressed to the model.
   confirms every executor grant. Mechanics:
   [agent cards](../standards/agent-cards.md) → "An executor review card holds
   an id".
+
+- **A restricted label is about the designed agent, and the block now says
+  whose verb it is (2026-09-23).** Asked "can CTO see executors?", the
+  Designer answered that `executor_list` / `executor_agent_grant_prepare`
+  "are Personal Assistant only — I can't grant it from here" — while holding
+  all three executor verbs through identity delegation, in the very
+  conversation whose executor section told it to use them. The catalogue's
+  restricted list ("Tools that exist but are not yours to grant") rendered
+  every `personal_assistant_only` builtin with that label, and for the home-DM
+  face three of those keys were its own. Same failure and same remedy as
+  `protectedAccess`: whether a verb is "not yours" is a property of the face
+  reading the block, so `buildGlobalAgentCatalogueBlock` now takes the run's
+  resolved tool ids (`heldToolIds`) and renders a held restricted verb under
+  "Verbs you hold in this conversation" — never under the not-yours list, and
+  never as "Personal Assistant only". The admission machinery needed no
+  change: the verbs were resolved and in the schema array all along; the
+  prompt was the only thing refusing.

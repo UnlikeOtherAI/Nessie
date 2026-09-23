@@ -79,6 +79,23 @@ export type GlobalAgentCatalogueFacts = {
    * what every face that only advises should say.
    */
   protectedAccess?: GlobalAgentProtectedAccessFacts
+  /**
+   * Every tool id this run actually resolved, so a restricted entry that IS
+   * one of this face's own verbs is never described as somebody else's.
+   *
+   * The restricted list answers "what can a designed agent be given", and
+   * "`executor_agent_grant_prepare` — Personal Assistant only" is a true
+   * answer to that question. But the same line, read by the face that holds
+   * the verb through identity delegation, is a false answer to "what can I do
+   * here" — and the Designer believed it, telling a person executor grants
+   * were the Personal Assistant's business while the tool sat in its own
+   * schema array. Same failure, same remedy as `protectedAccess`: whether a
+   * verb is "not yours" is a property of the face reading the block, so the
+   * split is made from what the run resolved, never from the tool alone.
+   * Absent is "this face holds nothing", the right answer for the page
+   * sidebar and the shared-channel face.
+   */
+  heldToolIds?: ReadonlySet<string>
 }
 
 const MODEL_SHORTLIST = 20
@@ -442,8 +459,15 @@ export const buildGlobalAgentCatalogueBlock = (
         (entry) => entry.restriction === 'explicit_grant',
       )
     : []
+  // And a restricted verb this face itself resolved is not "somebody else's"
+  // either: the Designer holds the executor verbs through identity delegation
+  // in its own home DM, and describing them as "Personal Assistant only" had
+  // it refuse grants it was holding the tools for (`heldToolIds` above).
+  const held = facts.catalogue.restricted.filter(
+    (entry) => facts.heldToolIds?.has(entry.key) === true,
+  )
   const notGrantable = facts.catalogue.restricted.filter(
-    (entry) => !grantable.includes(entry),
+    (entry) => !grantable.includes(entry) && !held.includes(entry),
   )
 
   return [
@@ -463,6 +487,16 @@ export const buildGlobalAgentCatalogueBlock = (
         ]
       : []),
     ...(access.canSet ? [...protectedGrantSection(access), ''] : []),
+    ...(held.length > 0
+      ? [
+          'Verbs you hold in this conversation, acting as the person you are '
+          + 'talking to. A designed agent can never hold one as a tool-policy '
+          + 'key — you use it for them, here, rather than sending them to '
+          + 'somebody else:',
+          ...held.map(describeGrantable),
+          '',
+        ]
+      : []),
     ...(notGrantable.length > 0
       ? [
           'Tools that exist but are not yours to grant — name them and say '
