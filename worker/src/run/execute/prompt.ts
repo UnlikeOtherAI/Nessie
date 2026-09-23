@@ -420,12 +420,10 @@ export const loadConversation = async (
     where: {
       threadId: input.threadId,
       role: { not: 'system' },
-      AND: [
-        ...(input.rootMessageId
-          ? [{ OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }] }]
-          : []),
-        ...(input.ticketWorkAgentId ? [ticketWorkConversationWhere(input.ticketWorkAgentId)] : []),
-      ],
+      ...(input.rootMessageId
+        ? { OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }] }
+        : {}),
+      ...(input.ticketWorkAgentId ? { AND: [ticketWorkConversationWhere(input.ticketWorkAgentId)] } : {}),
     },
     orderBy: { createdAt: 'desc' },
     select: {

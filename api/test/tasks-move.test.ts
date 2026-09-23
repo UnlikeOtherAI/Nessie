@@ -149,6 +149,8 @@ const makePrisma = (
     },
     // No ticket trigger in this project, so no event enqueues a dispatch.
     agentTrigger: { findFirst: async () => null },
+    // No agent is working the ticket, so entering a column tears nothing down.
+    agentTicketWork: { findMany: async () => [] },
     taskBoardPlacement: {
       findMany: async () => placements,
       findUnique: async ({ where }: { where: { taskId_boardId: { taskId: string; boardId: string } } }) =>

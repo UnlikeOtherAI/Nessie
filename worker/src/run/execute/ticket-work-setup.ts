@@ -55,13 +55,14 @@ export const TICKET_WORK_PERSON_TOOL_IDS: ReadonlySet<string> = new Set([
   'mailbox_search', 'mailbox_read', 'mailbox_compose', 'mailbox_send', 'mail_present',
 ])
 
-export const isTicketWorkRun = (actorContext: Pick<AuthorizedActionContext, 'actionContext'>): boolean =>
-  actorContext.actionContext.purpose === TICKET_WORK_PURPOSE
+/** Structural, from the run's own action purpose. A context-less caller (a partial fixture) is no ticket work. */
+export const isTicketWorkRun = (actorContext: Pick<AuthorizedActionContext, 'actionContext'> | undefined): boolean =>
+  actorContext?.actionContext?.purpose === TICKET_WORK_PURPOSE
 
 /** Why a tool refuses on a `ticket.work` run, or null when it may run. */
 export const ticketWorkToolRefusal = (
   toolName: string,
-  actorContext: Pick<AuthorizedActionContext, 'actionContext'>,
+  actorContext: Pick<AuthorizedActionContext, 'actionContext'> | undefined,
 ): string | null =>
   isTicketWorkRun(actorContext) && TICKET_WORK_PERSON_TOOL_IDS.has(toolName)
     ? `${toolName} acts for a person, and ticket work has none behind it: you act as yourself. `

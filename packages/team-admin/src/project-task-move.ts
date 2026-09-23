@@ -188,7 +188,7 @@ export const moveProjectTaskToColumn = async (
         taskId: existing.id,
         boardId: column.board.id,
         toColumnId: column.id,
-        fromColumnId: await resolveHomeColumnId(prisma, existing),
+        fromColumnId: () => resolveHomeColumnId(prisma, existing),
         actorId: input.actorId,
         ...(input.origin ? { origin: input.origin } : {}),
       })

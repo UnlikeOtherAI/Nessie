@@ -36,7 +36,8 @@ export const resolvePickupAssignment = async (
     taskId: string
     boardId: string
     toColumnId: string
-    fromColumnId: string | null
+    /** Where the ticket renders before the move; read only when a trigger could pick it up. */
+    fromColumnId: () => Promise<string | null>
     actorId: string | null
     origin?: TaskEventOrigin
   },
@@ -47,15 +48,17 @@ export const resolvePickupAssignment = async (
     select: { id: true, agentId: true, config: true },
     orderBy: { createdAt: 'asc' },
   })
-  const trigger = triggers.find((row) => {
+  const trigger = triggers.flatMap((row) => {
     const config = TicketChangedStoredConfigSchema.safeParse(row.config)
     const pickup = config.success ? config.data.pickup : null
-    return row.agentId !== null
-      && pickup?.assignOnPickup === true
-      && pickup.columnIds.includes(input.toColumnId)
-      && !(input.fromColumnId !== null && pickup.columnIds.includes(input.fromColumnId))
-  })
-  if (!trigger?.agentId) return null
+    return row.agentId && pickup?.assignOnPickup === true && pickup.columnIds.includes(input.toColumnId)
+      ? [{ id: row.id, agentId: row.agentId, columnIds: pickup.columnIds }]
+      : []
+  })[0]
+  if (!trigger) return null
+  // Only entering the start-work set is a pickup, never a move between two of its columns.
+  const fromColumnId = await input.fromColumnId()
+  if (fromColumnId !== null && trigger.columnIds.includes(fromColumnId)) return null
   const live = await prisma.agentTicketWork.count({
     where: { triggerId: trigger.id, taskId: input.taskId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
   })
