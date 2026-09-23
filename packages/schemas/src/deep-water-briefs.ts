@@ -10,6 +10,7 @@ import {
   DeepWaterBriefSettingsSeedSchema,
   DeepWaterBriefTopicSchema,
 } from './deep-water-brief-vocabulary.js'
+import { isDeepWaterPublicReportUrl } from './deep-water-ledger-dto.js'
 import {
   DeepWaterBriefAnalysisSchema,
   DeepWaterDeliveryBlockedReasonSchema,
@@ -89,7 +90,7 @@ export const DeepWaterResearchRunViewSchema = z
     /** Which stored artifacts exist; null until the result is delivered. */
     artifacts: z.object({ report: z.boolean(), sources: z.boolean() }).strict().nullable(),
     /** Present only for a finished public report on research.deepwater.live. */
-    publicUrl: z.string().url().nullable(),
+    publicUrl: z.string().refine(isDeepWaterPublicReportUrl).nullable(),
     failure: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
     delivery: DeepWaterDeliveryViewSchema,
     viewer: DeepWaterResearchRunViewerSchema,

@@ -38,7 +38,17 @@ const nullableString = z.string().nullish().transform((value) => value ?? null)
 /** The only origin a public report link may have. */
 export const DEEP_WATER_PUBLIC_REPORT_ORIGIN = 'https://research.deepwater.live'
 
-const isPublicReportUrl = (value: string): boolean => {
+/**
+ * Is `value` a link to a report on research.deepwater.live? One rule for every
+ * place that accepts the link — Ledger's DTOs, the delivery claim and the
+ * `public_url` column CHECK (`LIKE 'https://research.deepwater.live/%'`) — so a
+ * value one of them accepts can never be refused by another. The raw string
+ * must start with the origin and a path, exactly as stored: a parsed-origin
+ * comparison alone would admit `HTTPS://research.deepwater.live/x` or a bare
+ * origin, which the CHECK refuses inside the delivery transaction.
+ */
+export const isDeepWaterPublicReportUrl = (value: string): boolean => {
+  if (!value.startsWith(`${DEEP_WATER_PUBLIC_REPORT_ORIGIN}/`)) return false
   try {
     const url = new URL(value)
     return url.origin === DEEP_WATER_PUBLIC_REPORT_ORIGIN
@@ -55,7 +65,7 @@ const isPublicReportUrl = (value: string): boolean => {
  */
 const nullablePublicUrl = z
   .string()
-  .refine(isPublicReportUrl, { message: `public_url must be on ${DEEP_WATER_PUBLIC_REPORT_ORIGIN}` })
+  .refine(isDeepWaterPublicReportUrl, { message: `public_url must be on ${DEEP_WATER_PUBLIC_REPORT_ORIGIN}` })
   .nullish()
   .transform((value) => value ?? null)
 

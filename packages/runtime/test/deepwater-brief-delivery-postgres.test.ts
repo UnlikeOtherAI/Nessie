@@ -101,15 +101,24 @@ withFixture('delivery is claimed exactly once and records the result', async (fi
   assert.equal(stored?.publicUrl, 'https://research.deepwater.live/heat-pumps-ab12cd')
   assert.equal(stored?.sourceCount, 41)
 
-  const other = (await insertBrief(fixture)).run.id
-  await assert.rejects(
-    fixture.prisma.$transaction((tx) => claimDeepWaterDelivery(tx, {
-      organizationId: fixture.ids.organization,
-      runId: other,
-      outcome: completed(pageId, { publicUrl: 'https://evil.example/report' }),
-    })),
-    /research\.deepwater\.live/,
-  )
+  // One rule with the Ledger DTOs and the column CHECK: a link the parse
+  // would accept by origin alone is refused here by name, never by the CHECK.
+  for (const publicUrl of [
+    'https://evil.example/report',
+    'https://research.deepwater.live',
+    'HTTPS://research.deepwater.live/report',
+  ]) {
+    const other = (await insertBrief(fixture)).run.id
+    await assert.rejects(
+      fixture.prisma.$transaction((tx) => claimDeepWaterDelivery(tx, {
+        organizationId: fixture.ids.organization,
+        runId: other,
+        outcome: completed(pageId, { publicUrl }),
+      })),
+      /must be on https:\/\/research\.deepwater\.live/,
+      publicUrl,
+    )
+  }
 })
 
 withFixture('a failed research is delivered through the same claim', async (fixture) => {

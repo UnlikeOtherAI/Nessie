@@ -166,6 +166,11 @@ test('LedgerResearchStatusDtoSchema accepts only the public research origin', ()
     'http://research.deepwater.live/heat-pumps',
     'https://user:pw@research.deepwater.live/heat-pumps',
     'not a url',
+    // Both parse to the right origin, but the stored column (and the delivery
+    // claim) take only the literal origin followed by a path.
+    'https://research.deepwater.live',
+    'HTTPS://research.deepwater.live/heat-pumps',
+    'https://research.deepwater.live.evil.example/heat-pumps',
   ]) {
     assert.equal(
       LedgerResearchStatusDtoSchema.safeParse({ id: 'rs_abc123', status: 'complete', public_url: url }).success,

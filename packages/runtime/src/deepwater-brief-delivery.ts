@@ -4,6 +4,7 @@ import {
   DEEP_WATER_RETRYABLE_DELIVERY_BLOCKS,
   DeepWaterDeliveryBlockedReasonSchema,
   DeepWaterFailureCodeSchema,
+  isDeepWaterPublicReportUrl,
   type DeepWaterDeliveryBlockedReason,
   type DeepWaterReportKind,
 } from '@nessie/schemas'
@@ -82,8 +83,9 @@ export type DeepWaterDeliveryOutcome =
 
 const assertPublicUrl = (publicUrl: string | null): string | null => {
   if (publicUrl === null) return null
-  // The column CHECK holds the same line; failing here names the run.
-  if (new URL(publicUrl).origin !== DEEP_WATER_PUBLIC_REPORT_ORIGIN) {
+  // The same rule as the Ledger DTOs and the column CHECK; failing here names
+  // the cause instead of a constraint violation.
+  if (!isDeepWaterPublicReportUrl(publicUrl)) {
     throw new Error(`DeepWater public report link must be on ${DEEP_WATER_PUBLIC_REPORT_ORIGIN}`)
   }
   return publicUrl
