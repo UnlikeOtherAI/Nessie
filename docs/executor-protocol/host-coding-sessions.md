@@ -196,6 +196,6 @@ pnpm --filter @nessie/executor run test:mcp
 
 `scripted-coding-agent.mjs` speaks both protocols as the real CLIs printed
 them, and the subprocess suites drive a real bridge through the daemon's own
-MCP session manager. A live cycle — start, follow-up, a denied `git push`,
-review and close against the logged-in Claude Code, and the Codex failure
-path — was run on Windows while this was written; it is not automated.
+MCP session manager; they run on Windows and Linux alike. The live cycle —
+start, follow-up, a denied `git push`, review and close against a logged-in
+Claude Code, and a Codex turn — needs real subscriptions and is not automated.
