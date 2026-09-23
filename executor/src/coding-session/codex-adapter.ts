@@ -1,6 +1,6 @@
 import type { CodingAgentConfig } from './config.js'
 import { CODING_EVENT_LIMITS, looksLikeTestCommand, type Projector } from './projection.js'
-import type { CodingEventBody, CodingSessionResult } from './types.js'
+import type { CodingEventBody, CodingPermissionDenial, CodingSessionResult } from './types.js'
 
 /**
  * Codex's `exec --json` protocol: one process per turn, the prompt on stdin.
@@ -50,6 +50,9 @@ const record = (value: unknown): value is Record<string, unknown> => (
 
 export const createCodexTurnState = (projector: Projector): CodexTurnState => {
   let lastMessage = ''
+  // A command or an edit the sandbox or the approval policy refused, which the
+  // result carries as permissionDenials the way Claude's does.
+  const denials: CodingPermissionDenial[] = []
   let outcome: CodingSessionResult | undefined
   const started = Date.now()
 
@@ -62,6 +65,9 @@ export const createCodexTurnState = (projector: Projector): CodexTurnState => {
       const command = projector.line(item.command, CODING_EVENT_LIMITS.tool)
       if (type === 'item.started') {
         signals.events.push({ kind: 'tool', name: 'shell', summary: command })
+      } else if (completed && item.status === 'declined') {
+        if (denials.length < 20) denials.push({ tool: 'shell', summary: command })
+        signals.events.push({ kind: 'system', subtype: 'permission_denied', tool: 'shell' })
       } else if (completed) {
         const exitCode = typeof item.exit_code === 'number' ? item.exit_code : undefined
         const isError = exitCode !== undefined && exitCode !== 0
@@ -75,10 +81,15 @@ export const createCodexTurnState = (projector: Projector): CodexTurnState => {
       }
     } else if (item.type === 'file_change' && completed) {
       const changes = Array.isArray(item.changes) ? item.changes : []
-      const summary = changes.slice(0, 10).map((change: unknown) => (
+      const summary = projector.line(changes.slice(0, 10).map((change: unknown) => (
         record(change) ? `${projector.line(change.kind, 20)} ${projector.line(change.path, 200)}` : ''
-      )).filter(Boolean).join(', ')
-      signals.events.push({ kind: 'tool', name: 'edit', summary: projector.line(summary, CODING_EVENT_LIMITS.tool) })
+      )).filter(Boolean).join(', '), CODING_EVENT_LIMITS.tool)
+      if (item.status === 'declined') {
+        if (denials.length < 20) denials.push({ tool: 'edit', summary })
+        signals.events.push({ kind: 'system', subtype: 'permission_denied', tool: 'edit' })
+      } else {
+        signals.events.push({ kind: 'tool', name: 'edit', summary })
+      }
     } else if (item.type === 'mcp_tool_call' && type === 'item.started') {
       const name = `mcp:${projector.line(item.server, 40)}.${projector.line(item.tool, 40)}`
       signals.events.push({ kind: 'tool', name, summary: '' })
@@ -107,12 +118,12 @@ export const createCodexTurnState = (projector: Projector): CodexTurnState => {
       } else if (event.type === 'item.started' || event.type === 'item.updated' || event.type === 'item.completed') {
         if (record(event.item)) acceptItem(event.type, event.item, signals)
       } else if (event.type === 'turn.completed') {
-        outcome = { text: lastMessage, isError: false, subtype: 'success', permissionDenials: [] }
+        outcome = { text: lastMessage, isError: false, subtype: 'success', permissionDenials: denials }
         signals.turnEnded = true
       } else if (event.type === 'turn.failed') {
         const message = record(event.error) ? event.error.message : undefined
         outcome = {
-          text: projector.text(message, CODING_EVENT_LIMITS.result), isError: true, subtype: 'error', permissionDenials: [],
+          text: projector.text(message, CODING_EVENT_LIMITS.result), isError: true, subtype: 'error', permissionDenials: denials,
         }
         signals.turnEnded = true
       } else if (event.type === 'error') {
@@ -125,10 +136,10 @@ export const createCodexTurnState = (projector: Projector): CodexTurnState => {
     finish: (exit) => {
       const durationMs = Date.now() - started
       if (exit.interrupted) {
-        return { text: lastMessage, isError: true, subtype: 'interrupted', durationMs, permissionDenials: [] }
+        return { text: lastMessage, isError: true, subtype: 'interrupted', durationMs, permissionDenials: denials }
       }
       if (outcome) return { ...outcome, durationMs }
-      return { text: lastMessage, isError: true, subtype: 'agent_exited', durationMs, permissionDenials: [] }
+      return { text: lastMessage, isError: true, subtype: 'agent_exited', durationMs, permissionDenials: denials }
     },
   }
 }

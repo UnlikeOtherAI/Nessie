@@ -1,3 +1,7 @@
+import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
 import {
   agentFailureReason,
   AgentStartError,
@@ -9,6 +13,25 @@ import {
 import { codexArguments, createCodexTurnState } from './codex-adapter.js'
 import { CODING_EVENT_LIMITS } from './projection.js'
 import { AGENT_SESSION_ID_PATTERN } from './types.js'
+
+/**
+ * The ChatGPT account Codex is logged in as, for redaction: `exec` never
+ * prints it, but the model knows who it works for and can repeat it, as
+ * Claude Code did. Read from the id token's claims in Codex's own
+ * `auth.json`, held in memory only; no token is ever used or kept.
+ */
+export const codexAccountRedactions = async (env: NodeJS.ProcessEnv): Promise<string[]> => {
+  const home = env.CODEX_HOME || join(env.USERPROFILE || env.HOME || homedir(), '.codex')
+  try {
+    const auth = JSON.parse(await readFile(join(home, 'auth.json'), 'utf8')) as { tokens?: { id_token?: unknown } }
+    const token = auth.tokens?.id_token
+    if (typeof token !== 'string') return []
+    const claims = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')) as Record<string, unknown>
+    return [claims.email, claims.name].filter((value): value is string => typeof value === 'string')
+  } catch {
+    return []
+  }
+}
 
 type CodexTurn = { agent: AgentProcess; interrupted: boolean; reason?: string; done: Promise<void> }
 

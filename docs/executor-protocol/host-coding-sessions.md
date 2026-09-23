@@ -393,14 +393,33 @@ tool and tool result 300 (errors 1 000), result 4 000 — and init's `cwd`,
 are never read into one. Every absolute path under a root becomes
 `<root>/relative` and every other absolute path `<host path>`, in all its
 spellings (slashes, case, `\\?\`, `/c/…`, JSON-escaped), and each answer is
-rewritten once more, string by string, on its way out.
+rewritten once more, string by string, on its way out. A directory name with
+spaces (`C:\Program Files\Git`, another account's `C:\Users\Other Person`)
+is taken whole — a space-separated word a separator follows is still part of
+the path — and every profile directory beside the host user's, and the
+program directories, are named outright so a spaced last component is too.
+
+Credentials are scrubbed before anything else and read `<secret>`. A coding
+agent runs `gh auth token`, `printenv` or `cat .env`, or pastes a header into
+`curl`, and its command and output are exactly what the events carry. So the
+values the host gave it — every `agentEnv.set` value, and every inherited
+variable whose name says credential (`*TOKEN*`, `*SECRET*`, `*PASSWORD*`,
+`*API_KEY*`, …) — are redactions for that host's life, and anything shaped like
+a GitHub, Anthropic, OpenAI, Slack or AWS key, a JWT, a bearer header, a
+private key block or a `NAME=value` whose name says credential is replaced
+wherever it appears.
 
 The model itself knows who is logged in and repeats it: in the live Windows
 run, Claude Code met a repository with no git identity and typed the account's
 e-mail into `git config --global user.email`. So the e-mail and organisation
 from the initialize answer are redactions for the rest of that host's life,
 and every projected string spells them `<account>`. Codex's `exec` stream
-names no account, so nothing is redacted for it. `session_review` runs in the
+names no account, but the model behind it knows it just the same, so the
+e-mail and name in the id token's claims in Codex's own `auth.json` are read
+at start (held in memory, no token used) and redacted the same way. A
+command or an edit Codex declined (`status: "declined"` on the item, a shape
+from the 0.155.1 binary not yet seen live) is a permission denial on its
+result, as Claude's are. `session_review` runs in the
 bridge, which never sees the account; its commit subjects are the agent's own
 words.
 

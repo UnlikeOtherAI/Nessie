@@ -4,12 +4,12 @@ import { unlink } from 'node:fs/promises'
 import { AgentStartError, type AgentDriver } from './agent-process.js'
 import { buildAgentEnvironment } from './agent-env.js'
 import { createClaudeDriver } from './claude-driver.js'
-import { createCodexDriver } from './codex-driver.js'
+import { codexAccountRedactions, createCodexDriver } from './codex-driver.js'
 import { codingSessionsDigestMatches, loadCodingSessionsConfig, type LoadedCodingSessionsConfig } from './config.js'
 import { ensureCodingSessionHost, executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
 import { stopOwnUserUnit } from './host-unit.js'
 import { createCodingProcessControl, type CodingProcessControl } from './process-control.js'
-import { createProjector, type Projector } from './projection.js'
+import { createProjector, SECRET_NAME, type Projector } from './projection.js'
 import { gitStartSnapshot } from './review.js'
 import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots.js'
 import { runCodingSelfCheck } from './self-check.js'
@@ -151,6 +151,12 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     const folder = await resolveCodingFolder(findCodingRoot(context.roots, meta.rootName), meta.path)
       .catch(() => { throw new AgentStartError('root_unavailable') })
     const env = await buildAgentEnvironment({ config: loaded.config.agentEnv })
+    // What the host hands the agent as a credential never comes back out in its events.
+    context.projector.redactSecrets([
+      ...Object.values(loaded.config.agentEnv.set),
+      ...Object.entries(env).filter(([name]) => SECRET_NAME.test(name)).map(([, value]) => value),
+    ])
+    if (meta.agent === 'codex') context.projector.redact(await codexAccountRedactions(env))
     const check = await runCodingSelfCheck({ agent: meta.agent, config: agent, cwd: folder, env })
     if (!check.ok) throw new AgentStartError(check.reason)
     if (check.agentVersion) update({ agentVersion: context.projector.line(check.agentVersion, 80) })

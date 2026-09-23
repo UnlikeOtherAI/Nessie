@@ -19,6 +19,7 @@
  *   #deny         reports a permission denial
  *   #background   leaves a background task whose completion starts a turn nobody asked for
  *   #stubborn     acknowledges an interrupt and carries on regardless (with #sleep)
+ *   #secret       prints a GitHub token and a value the configuration set, as `gh auth token` and `printenv` would
  *   #codexfail    (Codex) the usage-limit failure codex-cli 0.155.1 prints
  *
  * NESSIE_SCRIPTED_RECORD_DIR, when set, receives `agents.jsonl` (one line per
@@ -159,6 +160,12 @@ const runTurn = async (first) => {
   }
   if (text().includes('#env')) send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: environmentReport() }] } })
   if (text().includes('#test')) await tool('Bash', { command: 'pnpm test' }, 'Exit code 3\nFAIL src/app.test.ts', true)
+  if (text().includes('#secret')) {
+    const token = `ghp_${'Z9y8'.repeat(9)}`
+    await tool('Bash', { command: `export GH_TOKEN=${token}` }, '')
+    await tool('Bash', { command: 'gh auth token' }, token)
+    send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: `SCRIPTED_SET is ${process.env.SCRIPTED_SET}` }] } })
+  }
   if (text().includes('#deny')) {
     send({ type: 'system', subtype: 'permission_denied', tool_name: 'Bash', tool_use_id: 'toolu_denied', message: 'denied' })
     extra.permission_denials = [{ tool_name: 'Bash', tool_use_id: 'toolu_denied', tool_input: { command: 'git push --force' } }]

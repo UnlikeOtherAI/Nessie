@@ -51,6 +51,31 @@ test('every other absolute path becomes <host path>, and ordinary text survives'
   assert.equal(mac.rewrite('/users/ONDRE/src/app/README.md'), '<app>/README.md', 'macOS compares case-insensitively')
 })
 
+test('a directory name with spaces leaves no tail of itself behind', () => {
+  assert.equal(windows.rewrite('read C:\\Users\\Other Person\\AppData\\x.json now'), `read ${HOST_PATH_PLACEHOLDER} now`)
+  assert.equal(windows.rewrite('ran C:\\Program Files\\Git\\bin\\bash.exe -lc'), `ran ${HOST_PATH_PLACEHOLDER} -lc`)
+  assert.equal(linux.rewrite('wrote /home/jane doe/x and left'), `wrote ${HOST_PATH_PLACEHOLDER} and left`)
+  assert.equal(windows.rewrite('edited C:\\Users\\ondre\\Projects\\Nessie\\My Docs\\a.md'), 'edited <nessie>/My Docs/a.md')
+  // Prose after a path is still prose.
+  assert.equal(windows.rewrite('see D:\\work\\a.ts and b.ts'), `see ${HOST_PATH_PLACEHOLDER} and b.ts`)
+})
+
+test('credentials read <secret>, whether the host knows the value or only its shape', () => {
+  const projector = createProjector(windows)
+  projector.redactSecrets(['configured-secret-value', 'short'])
+  const token = `ghp_${'A1b2'.repeat(9)}`
+  assert.equal(projector.toolInput('Bash', { command: `export GH_TOKEN=${token}` }), 'export GH_TOKEN=<secret>')
+  assert.equal(projector.toolResult(`${token}\n`, false), '<secret>')
+  assert.equal(projector.toolInput('Bash', { command: 'curl -H "Authorization: Bearer abcdefghijklmnopqrstuvwx" https://x' }),
+    'curl -H "Authorization: Bearer <secret>" https://x')
+  assert.equal(projector.line(`key sk-ant-api03-${'x'.repeat(30)} and AKIAABCDEFGHIJKLMNOP`, 300), 'key <secret> and <secret>')
+  assert.equal(projector.line(`jwt eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT4`, 300), 'jwt <secret>')
+  assert.equal(projector.line('DB_PASSWORD="hunter2hunter2" API_KEY: abcdef123', 300), 'DB_PASSWORD=<secret> API_KEY: <secret>')
+  assert.equal(projector.text('-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blbn\n-----END OPENSSH PRIVATE KEY-----', 300), '<secret>')
+  assert.equal(projector.line('uses configured-secret-value; short stays', 300), 'uses <secret>; short stays')
+  assert.equal(projector.line('git status and pnpm test passed', 300), 'git status and pnpm test passed')
+})
+
 test('each event kind keeps its allowlisted fields at their caps, rewritten', () => {
   const projector = createProjector(windows)
   assert.equal(projector.toolInput('Bash', { command: 'cd C:\\Users\\ondre\\Projects\\Nessie && pnpm test', description: 'x' }), 'cd <nessie> && pnpm test')

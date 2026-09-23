@@ -153,7 +153,7 @@ test('codex runs a process per turn, resumes its thread, and reports its failure
 test('no host path and no account data reach any answer', { timeout: 120_000 }, async () => {
   const harness = await createCodingHarness()
   try {
-    const sessionId = await started(harness, { prompt: '#path #deny #test report back' })
+    const sessionId = await started(harness, { prompt: '#path #deny #test #secret report back' })
     await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     const events = await harness.call('session_status', { sessionId, detail: 'events', cursor: '0.0.0' })
     const kinds = (events.body.events as { kind: string }[]).map((event) => event.kind)
@@ -165,7 +165,12 @@ test('no host path and no account data reach any answer', { timeout: 120_000 }, 
     const all = harness.outputs.join('\n')
     assert.match(all, /<work>\/README\.md/)
     assert.match(all, /<host path>/)
-    const forbidden = [harness.root, harness.dir, homedir(), tmpdir(), 'person@example.com', 'Private Org', 'Private Docs']
+    assert.match(all, /GH_TOKEN=<secret>/)
+    const forbidden = [
+      harness.root, harness.dir, homedir(), tmpdir(), 'person@example.com', 'Private Org', 'Private Docs',
+      // A token the agent printed, and a value the configuration set, never leave the host.
+      `ghp_${'Z9y8'.repeat(9)}`, 'from-config',
+    ]
     for (const value of forbidden) {
       for (const spelling of new Set([value, value.replaceAll('\\', '/'), value.replaceAll('\\', '\\\\'), value.toLowerCase()])) {
         assert.equal(all.includes(spelling), false, `an answer carried ${spelling}`)

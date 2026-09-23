@@ -13,8 +13,15 @@ import type { CodingPermissionDenial } from './types.js'
  * Claude Code turn typed the account's e-mail into a `git config` command.
  * So the account's own e-mail and organisation are redactions, held in this
  * process's memory only, and every later string spells them `<account>`.
+ *
+ * Credentials are scrubbed before anything else, and read `<secret>`: the
+ * values the host gave the agent (every `agentEnv.set` value, and every
+ * inherited variable whose name says it is a credential), and anything shaped
+ * like a GitHub, Anthropic, OpenAI, Slack or AWS key, a JWT, a bearer header,
+ * a private key block or a `NAME=value` whose name says credential.
  */
 export const ACCOUNT_PLACEHOLDER = '<account>'
+export const SECRET_PLACEHOLDER = '<secret>'
 export const CODING_EVENT_LIMITS = {
   assistant: 2_000,
   user: 2_000,
@@ -35,9 +42,48 @@ export type Projector = {
   denials: (value: unknown) => CodingPermissionDenial[]
   /** Values every later string spells `<account>`; anything but a string of four or more characters is ignored. */
   redact: (values: readonly unknown[]) => void
+  /** Values every later string spells `<secret>`; anything shorter than eight characters is ignored. */
+  redactSecrets: (values: readonly unknown[]) => void
 }
 
 const MIN_REDACTION_LENGTH = 4
+const MIN_SECRET_LENGTH = 8
+
+/** Environment variable names whose values are credentials by convention. */
+export const SECRET_NAME = /(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIAL)/iu
+
+/**
+ * Token shapes that are credentials wherever they appear. A coding agent runs
+ * `gh auth token`, `printenv` or `cat .env`, or pastes a header into `curl`,
+ * and the command and its output would otherwise land in the events verbatim.
+ */
+const SECRET_PATTERNS: { pattern: RegExp; replace: string }[] = [
+  {
+    pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/gu,
+    replace: SECRET_PLACEHOLDER,
+  },
+  { pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/gu, replace: SECRET_PLACEHOLDER },
+  { pattern: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}/gu, replace: SECRET_PLACEHOLDER },
+  { pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}/gu, replace: SECRET_PLACEHOLDER },
+  { pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/gu, replace: SECRET_PLACEHOLDER },
+  { pattern: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/gu, replace: SECRET_PLACEHOLDER },
+  { pattern: /\b(Bearer|Basic|Token)(\s+)[A-Za-z0-9._~+/=-]{16,}/giu, replace: `$1$2${SECRET_PLACEHOLDER}` },
+  {
+    // NAME=value, NAME: value and "name": "value", where the name says it is a credential.
+    pattern: new RegExp(
+      `\\b([A-Za-z0-9_]*${SECRET_NAME.source}[A-Za-z0-9_]*)(["']?\\s*[=:]\\s*)("[^"\\n]{6,}"|'[^'\\n]{6,}'|[^\\s"',;]{6,})`,
+      'giu',
+    ),
+    replace: `$1$2${SECRET_PLACEHOLDER}`,
+  },
+]
+
+const valuePattern = (values: ReadonlySet<string>): RegExp | undefined => {
+  if (values.size === 0) return undefined
+  // Longest first, so a value that contains another is replaced whole.
+  const alternatives = [...values].sort((left, right) => right.length - left.length).map(escapeRegExp)
+  return new RegExp(alternatives.join('|'), 'giu')
+}
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
 
@@ -87,9 +133,14 @@ const resultText = (content: unknown): string => {
 
 export const createProjector = (rewriter: PathRewriter): Projector => {
   let redactions: RegExp | undefined
-  const scrub = (value: string): string => rewriter.rewrite(
-    redactions ? value.replace(redactions, ACCOUNT_PLACEHOLDER) : value,
-  )
+  let secretValues: RegExp | undefined
+  const secrets = new Set<string>()
+  // Credentials first (known values, then known shapes), then the account, then paths.
+  const scrub = (value: string): string => {
+    let current = secretValues ? value.replace(secretValues, SECRET_PLACEHOLDER) : value
+    for (const { pattern, replace } of SECRET_PATTERNS) current = current.replace(pattern, replace)
+    return rewriter.rewrite(redactions ? current.replace(redactions, ACCOUNT_PLACEHOLDER) : current)
+  }
   const text = (value: unknown, max: number): string => (
     typeof value === 'string' ? clip(scrub(value).trim(), max) : ''
   )
@@ -102,10 +153,14 @@ export const createProjector = (rewriter: PathRewriter): Projector => {
       for (const value of values) {
         if (typeof value === 'string' && value.trim().length >= MIN_REDACTION_LENGTH) redacted.add(value.trim())
       }
-      if (redacted.size === 0) return
       // Longest first, so an organisation named after the e-mail is redacted whole.
-      const alternatives = [...redacted].sort((left, right) => right.length - left.length).map(escapeRegExp)
-      redactions = new RegExp(alternatives.join('|'), 'giu')
+      redactions = valuePattern(redacted)
+    },
+    redactSecrets: (values) => {
+      for (const value of values) {
+        if (typeof value === 'string' && value.trim().length >= MIN_SECRET_LENGTH) secrets.add(value.trim())
+      }
+      secretValues = valuePattern(secrets)
     },
     text,
     line,

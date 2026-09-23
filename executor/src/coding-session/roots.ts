@@ -1,4 +1,4 @@
-import { lstat, realpath } from 'node:fs/promises'
+import { lstat, readdir, realpath } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
@@ -90,8 +90,15 @@ export const resolveCodingRoots = async (loaded: LoadedCodingSessionsConfig): Pr
     roots.push({ name: root.name, declared: root.path, ...(canonical ? { canonical } : {}) })
   }
   const home = homedir()
+  // Every profile beside this one, and the program directories: named outright,
+  // so a spaced name at the end of a path (`C:\Users\Other Person`) is hidden whole.
+  const profiles = await readdir(dirname(home)).then(
+    (names) => names.slice(0, 64).map((name) => join(dirname(home), name)), () => [] as string[],
+  )
+  const programs = ['ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432'].flatMap((name) => process.env[name] ?? [])
   const hidden = [
     home, await realpath(home).catch(() => home), tmpdir(), await canonicalOrDeclared(tmpdir()), ...guarded,
+    ...profiles, ...programs,
   ]
   return {
     roots,

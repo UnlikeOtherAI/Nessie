@@ -79,6 +79,21 @@ test('items become tool, tool_result and assistant events; unknown events are ke
   assert.deepEqual([result.isError, result.subtype, result.text], [false, 'success', 'All done.'])
 })
 
+test('a command or an edit Codex declined is a permission denial on the result', () => {
+  const turn = createCodexTurnState(projector)
+  const declined = turn.accept(line({
+    type: 'item.completed', item: { id: 'i0', type: 'command_execution', command: 'git push --force', status: 'declined' },
+  }))
+  assert.deepEqual(declined.events, [{ kind: 'system', subtype: 'permission_denied', tool: 'shell' }])
+  turn.accept(line({
+    type: 'item.completed', item: { id: 'i1', type: 'file_change', status: 'declined', changes: [{ path: '/etc/hosts', kind: 'update' }] },
+  }))
+  turn.accept(line({ type: 'turn.completed' }))
+  assert.deepEqual(turn.finish({ code: 0, interrupted: false }).permissionDenials, [
+    { tool: 'shell', summary: 'git push --force' }, { tool: 'edit', summary: 'update <host path>' },
+  ])
+})
+
 test('a process that exits without ending its turn, or is killed, says which', () => {
   assert.equal(createCodexTurnState(projector).finish({ code: 1, interrupted: false }).subtype, 'agent_exited')
   assert.equal(createCodexTurnState(projector).finish({ code: null, interrupted: true }).subtype, 'interrupted')

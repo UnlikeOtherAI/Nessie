@@ -11,6 +11,12 @@
  * The generic patterns deliberately match only absolute paths under the
  * directories hosts actually keep files in. An API route like `/api/runs/:id`
  * in an agent's summary is content the supervisor needs, not a host path.
+ *
+ * A directory name may hold spaces (`C:\Program Files\Git`, `C:\Users\Other
+ * Person\…`): a space-separated word that a separator follows is part of the
+ * path, so no tail of another account's name is left in plain text. A spaced
+ * last component cannot be told from prose that way; the roots module names
+ * the neighbouring profile directories outright for that case.
  */
 
 export const HOST_PATH_PLACEHOLDER = '<host path>'
@@ -26,7 +32,9 @@ export type PathRewriter = { rewrite: (text: string) => string }
 
 const SEP = '[\\\\/]+'
 const SEGMENT = '[^\\s"\'`<>|*?\\\\/,;()\\[\\]{}]+'
-const TAIL = `((?:${SEP}${SEGMENT})*)(?:${SEP}(?=$|[^A-Za-z0-9._-]))?`
+/** Space-separated words that a separator follows: still one directory name, not prose. */
+const SPACED = `(?: +${SEGMENT}(?=[\\\\/]))*`
+const TAIL = `((?:${SEP}${SEGMENT}${SPACED})*)(?:${SEP}(?=$|[^A-Za-z0-9._-]))?`
 
 // Top-level directories absolute host paths live under; see the header.
 const POSIX_HOST_DIRECTORIES = [
@@ -84,15 +92,15 @@ export const createPathRewriter = (
   }
   const generic = [
     // Windows drive paths, with or without the long-path prefix.
-    `(?:${SEP}[?.]${SEP})?(?<![A-Za-z0-9])[A-Za-z]:${SEP}(?:${SEGMENT}(?:${SEP}${SEGMENT})*)?`,
+    `(?:${SEP}[?.]${SEP})?(?<![A-Za-z0-9])[A-Za-z]:${SEP}(?:${SEGMENT}${SPACED}(?:${SEP}${SEGMENT}${SPACED})*)?`,
     // UNC shares.
-    `(?<![A-Za-z0-9_\\\\/])\\\\{2}(?![?.][\\\\/])${SEGMENT}(?:${SEP}${SEGMENT})+`,
+    `(?<![A-Za-z0-9_\\\\/])\\\\{2}(?![?.][\\\\/])${SEGMENT}(?:${SEP}${SEGMENT}${SPACED})+`,
     // POSIX absolute paths under a host directory, and MSYS drive paths.
     // A single letter only when a slash follows (`/c/Users`), so `taskkill /T /F` survives.
     `(?<![A-Za-z0-9_.:>~\\\\-])/+(?:(?:${POSIX_HOST_DIRECTORIES.join('|')})(?=$|/|[^A-Za-z0-9._-])|[A-Za-z](?=/))`
-      + `(?:/+${SEGMENT})*`,
+      + `(?:/+${SEGMENT}${SPACED})*`,
     // Home-relative paths.
-    `(?<![A-Za-z0-9_~])~(?:${SEP}${SEGMENT})+`,
+    `(?<![A-Za-z0-9_~])~(?:${SEP}${SEGMENT}${SPACED})+`,
   ]
   for (const source of generic) {
     rules.push({ pattern: new RegExp(source, caseFolding(platform) ? 'gi' : 'g'), replace: () => HOST_PATH_PLACEHOLDER })
