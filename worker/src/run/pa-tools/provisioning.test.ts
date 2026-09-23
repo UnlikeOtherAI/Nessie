@@ -162,6 +162,11 @@ test('channel_create makes the acting user the owner of a channel in the run tea
   })
   assert.match(result.outputPreview, /channelId=4f7d1c00-0e64-4d10-a517-0d0b69c1d009/)
   assert.match(result.outputPreview, /Nessie \/ Core/)
+  // A link the Designer can hand over as it is, beside the id the next call takes.
+  assert.match(
+    result.outputPreview,
+    /\[#[^\]]+\]\(\/channels\/4f7d1c00-0e64-4d10-a517-0d0b69c1d009\)/,
+  )
 })
 
 test('agent_create refuses a tool policy that grants an explicit-grant tool', async () => {

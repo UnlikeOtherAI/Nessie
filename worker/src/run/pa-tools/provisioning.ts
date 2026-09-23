@@ -119,10 +119,12 @@ export const runChannelCreateTool = async (
     throw new Error('That team does not belong to this organisation.')
   }
 
+  // The link is what the person is handed; the ids stay for the calls that
+  // follow (agent_bind_channel), exactly as agent_create's link carries its id.
   return {
     inputSummary: `label="${args.label}"`,
     outputPreview: [
-      `Created ${describeChannel(channel)}`,
+      `Created ${describeChannel(channel)}: ${formatChannelMarkdownLink(channel)}`,
       `channelId=${channel.id} | slug=${channel.slug ?? ''} | visibility=${channel.visibility}`,
       `You are its owner. Bind an agent with agent_bind_channel, or invite people from the channel page.`,
     ].join('\n'),

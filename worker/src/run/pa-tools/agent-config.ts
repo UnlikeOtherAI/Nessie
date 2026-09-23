@@ -542,11 +542,13 @@ export const runAgentAvatarGenerateTool = async (
     throw new Error('Agent not found.')
   }
 
+  // Data, not instructions: what to tell the person about a pinned style is
+  // the Designer prompt's rule, the same as the portrait reason (F9).
   let remembrance = ''
   if (pinned && args.style && args.style !== style) {
     remembrance =
-      ` The style is pinned at the ${remembered.lockedAtScope} level, so the `
-      + 'portrait follows that rather than the one asked for. Say so.'
+      ` style: pinned at the ${remembered.lockedAtScope} level; the requested `
+      + `"${args.style}" was not applied.`
   } else if (args.style && args.style !== remembered.style) {
     try {
       await writeAgentAvatarStyle(context.prisma, { ...target, style: args.style })

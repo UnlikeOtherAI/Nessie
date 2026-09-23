@@ -64,14 +64,20 @@ try {
   // field where a named channel goes — not a missing row and not a room the
   // Designer invented.
   const unplaced = page.getByTestId('unplaced-proposal')
-  await unplaced.getByText('CTO', { exact: true }).waitFor()
+  await unplaced.getByText('Research analyst', { exact: true }).waitFor()
   const placement = unplaced.locator('dl.agent-card-fields')
   await placement.waitFor()
   assert.match(
     (await placement.innerText()).replace(/\s+/g, ' '),
     /Lives in nowhere yet — add it to any channel Who can see it Everyone in the KiloMayo team/,
   )
-  assert.doesNotMatch(await placement.innerText(), /#/, 'no channel is proposed for an unplaced agent')
+  // The whole card, the closed fold included: textContent, not innerText,
+  // which would skip what the fold hides.
+  assert.doesNotMatch(
+    await unplaced.locator('[data-testid="agent-card"]').textContent() ?? '',
+    /#/,
+    'no channel is proposed or named anywhere on an unplaced agent\'s card',
+  )
   await unplaced.getByRole('button', { name: 'Accept', exact: true }).waitFor()
 
   await mkdir(screenshots, { recursive: true })

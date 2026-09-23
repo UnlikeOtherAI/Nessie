@@ -141,7 +141,8 @@ file is the rule**.
   wider — and the reviewed policy and local MCP report stay the administrator's
   read they already were. What it prepares is confirmed from a confirmation
   card in that same DM, never from a link: the card holds only the change's id
-  and its press mints the token for the person pressing it
+  and each press mints a fresh token for the person pressing it, until the
+  change is confirmed, rejected or expires
   ([agent-cards.md](agent-cards.md) → "An executor review card holds an id").
 
 - **A new agent lives where the person puts it, or nowhere yet.** Asked for a
@@ -155,11 +156,18 @@ file is the rule**.
   agent lives: the existing channels the person named, or nowhere yet, and
   the card's "Lives in" field reads exactly "nowhere yet — add it to any
   channel" when none was named. An agent with no binding is finished, not
-  half-built. `channel_create` stays in the Designer's toolset and
-  `identityToolIds` for a person who asks for a channel; it is never a
-  default step. Pinned by `packages/team-admin/test/agent-designer-blueprint.test.ts`,
-  the catalogue test and the proposal-card fixture suite
-  (`admin/e2e/agent-proposal-card`), which renders both placements.
+  half-built — with one exception the persona states: an agent whose work is
+  a project's board is lent its `ticket_*` tools only in a channel of that
+  project it is bound to (`resolveProjectDelegatedToolIds`), so unplaced it
+  holds grants no run ever lends. Such an agent lives in at least one existing
+  channel of that project: the Designer asks which, or says plainly that its
+  board tools do nothing until someone adds it to one. `channel_create` stays
+  in the Designer's toolset and `identityToolIds` for a person who asks for a
+  channel; it is never a default step. Pinned by
+  `packages/team-admin/test/agent-designer-blueprint.test.ts`, the catalogue
+  test and the proposal-card fixture suite (`admin/e2e/agent-proposal-card`),
+  which renders both placements — the unplaced one a researcher, whose job
+  needs no room, with no `#` anywhere on its card.
 - **The Designer hands a person links, and its tools hand it data.**
   `agent_create` and `agent_bind_channel` answer with markdown links —
   `[CTO](/agents/<id>)`, `[#sales](/channels/<id>)`, built by
@@ -168,8 +176,16 @@ file is the rule**.
   "…")`, never `agentId=`/`channelId=` pairs or an instruction addressed to
   the model. It relayed both verbatim: the person read UUIDs and "give them
   this reason word for word". A later call takes the id from the link's last
-  segment; quoting the portrait reason and never showing a raw id are rules
-  in the Designer's own prompt, where instructions belong.
+  segment, and the model is told so — in the Designer's prompt and in
+  `agent_create`'s own description — rather than left to guess; a real-row
+  test parses the id out of `agent_create`'s link and binds with it
+  (`worker/test/db/designer-team-structure.test.ts`). `channel_create`
+  answers with the new room's link beside the `channelId=`/`projectId=` its
+  follow-up calls take, and `agent_avatar_generate` reports a pinned style as
+  `style: pinned at the <scope> level; the requested "…" was not applied`
+  rather than "Say so". Quoting the portrait reason, reporting a pinned style
+  and never showing a raw id are rules in the Designer's own prompt, where
+  instructions belong.
 
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored

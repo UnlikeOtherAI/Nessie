@@ -106,39 +106,45 @@ const card: AgentCardPresenter = {
 
 // F22: an agent nobody named a place for is proposed living nowhere yet —
 // never in a channel the Designer would make for it. The same standard card;
-// its placement field is the part that matters.
+// its placement field is the part that matters. Its job needs no room of its
+// own: an agent that works a project's board has to live in one of that
+// project's channels, so it is never the agent proposed living nowhere.
 const UNPLACED_CARD_ID = '77777777-7777-4777-8777-777777777778'
 
 const unplacedCard: AgentCardPresenter = {
   ...card,
-  blocks: card.blocks.map((block) => {
-    if (block.type === 'fields') {
-      return {
-        ...block,
-        items: [
-          { label: 'Lives in', value: 'nowhere yet — add it to any channel' },
-          { label: 'Who can see it', value: 'Everyone in the KiloMayo team' },
-        ],
-      }
-    }
-    if (block.type === 'text') {
-      return {
-        ...block,
-        markdown:
-          'Owns the Nessie board: turns bug reports into tickets and keeps them moving.\n'
-          + 'Starts coding sessions on your executor and reviews what they changed.\n'
-          + 'Reports progress when somebody asks.',
-      }
-    }
-    return block
-  }),
+  blocks: [
+    {
+      markdown:
+        'Researches a company or a market on the web when you ask.\n'
+        + 'Works on demand — you ask, it looks things up.\n'
+        + 'Answers wherever it was asked, with its sources.',
+      type: 'text',
+    },
+    {
+      items: [
+        { label: 'Lives in', value: 'nowhere yet — add it to any channel' },
+        { label: 'Who can see it', value: 'Everyone in the KiloMayo team' },
+      ],
+      type: 'fields',
+    },
+    card.blocks[2]!,
+    {
+      blocks: [
+        { items: ['web_search', 'web_fetch', 'people_search'], label: 'Tools', type: 'chips' },
+        { markdown: 'No schedule — it runs when somebody asks.', type: 'text' },
+      ],
+      summary: 'What the agent can reach',
+      type: 'details',
+    },
+  ],
   cardId: UNPLACED_CARD_ID,
   message:
-    'Here is the CTO I would build. It lives nowhere yet, so add it to any '
-    + 'channel you want it in. Press Accept, or tell me what to change.',
+    'Here is the researcher I would build. It lives nowhere yet, so add it to '
+    + 'any channel you want it in. Press Accept, or tell me what to change.',
   messageId: '99999999-9999-4999-8999-999999999998',
-  subtitle: 'chief technology officer',
-  title: 'CTO',
+  subtitle: 'market researcher',
+  title: 'Research analyst',
 }
 
 const cards = new Map([[CARD_ID, card], [UNPLACED_CARD_ID, unplacedCard]])

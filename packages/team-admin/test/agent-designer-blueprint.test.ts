@@ -46,3 +46,22 @@ test('it links what it made and never shows a raw id', () => {
   assert.match(prose, /markdown links your tools return, such as \[#sales\]\(\/channels\/…\)/)
   assert.match(prose, /never a raw id/)
 })
+
+// F22 against F11: "nowhere yet" is a finished agent, but board tools are lent
+// only in a channel of the board's own project. A CTO that owns a board and
+// lives nowhere holds `ticket_*` grants no run ever lends it.
+test('an agent that works a board lives in one of that project\'s channels', () => {
+  assert.match(prose, /An agent whose work is a project's board — its tickets — reaches that board only from a channel of that project it lives in/)
+  assert.match(prose, /such an agent lives in at least one existing channel of that project: ask which one/)
+  assert.match(prose, /say plainly that it cannot touch the board until someone adds it to one of that project's channels/)
+})
+
+// F9 took `agentId=` out of agent_create's output, so a later call finds the
+// id in the link. The model is told where; it is not left to guess.
+test('the ids later calls need are named as the links\' last segments', () => {
+  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/… link agent_create returned/)
+})
+
+test('a pinned portrait style is reported because the prompt says so', () => {
+  assert.match(prose, /When a redraw reports its style as pinned, tell them the style they asked for was not used/)
+})
