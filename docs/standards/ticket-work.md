@@ -637,7 +637,9 @@ causes it**:
   `thread_message` wake, a non-editor's refused again at dispatch, and the
   content rules. `worker/test/db/ticket-work-authority.test.ts`: the ticket
   tools acting as the agent through its binding, the refusals, and the run's
-  conversation. `api/test/ticket-work-thread-routes.test.ts`: the posting
+  conversation. `worker/test/db/ticket-work-run.test.ts`: one pickup's run
+  through the real run executor against the mock provider, its comment the
+  agent's. `api/test/ticket-work-thread-routes.test.ts`: the posting
   rule, the stamp and the wake job in place of orchestration, and the feed's
   event rows.
 - `packages/team-admin/test/trigger-type-availability.test.ts`,
