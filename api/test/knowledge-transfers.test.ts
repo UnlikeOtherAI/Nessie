@@ -33,7 +33,13 @@ const dbTest = process.env.DATABASE_URL ? test : test.skip
 
 const publishedPage = async (
   seeded: TransferSeed,
-  input: { spaceId: string; title: string; body: string; parentPageId?: string | null },
+  input: {
+    spaceId: string
+    title: string
+    body: string
+    kind?: 'document' | 'folder'
+    parentPageId?: string | null
+  },
 ): Promise<string> => {
   const provider = createNativeKnowledgeProvider(seeded.prisma)
   const page = await provider.createPage({
@@ -44,6 +50,7 @@ const publishedPage = async (
     authorId: seeded.ownerId,
     authorType: 'user',
     createdBy: seeded.ownerId,
+    kind: input.kind,
     parentPageId: input.parentPageId ?? null,
   })
   await provider.publishPage({ organizationId: seeded.organizationId, pageId: page.id })
@@ -162,6 +169,7 @@ dbTest('move carries a folder\'s children and re-homes their bytes at zero net c
       spaceId: seeded.personalSpaceId,
       title: 'Contracts',
       body: '<p>Contracts folder overview.</p>',
+      kind: 'folder',
     })
     const childId = await publishedPage(seeded, {
       spaceId: seeded.personalSpaceId,
@@ -289,6 +297,7 @@ dbTest('copy makes a new document with one version and its own bytes', async () 
       spaceId: seeded.personalSpaceId,
       title: 'Contracts',
       body: '<p>Contracts folder overview.</p>',
+      kind: 'folder',
     })
     const childId = await publishedPage(seeded, {
       spaceId: seeded.personalSpaceId,
