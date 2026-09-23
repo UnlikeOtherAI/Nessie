@@ -153,7 +153,10 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     description:
       'Create a new channel in the current organization, owned by the user. '
       + 'Pass the projectId and teamId returned by project_list. The name must '
-      + 'be unique within its project. Any member can do this.',
+      + 'be unique within its project. Any member can do this. The result links '
+      + 'the new room as [#label](/channels/<channelId>): the last path segment '
+      + 'of that link is the channelId agent_bind_channel takes to put an agent '
+      + 'in it; people are invited from the channel page.',
     parameters: {
       type: 'object',
       properties: {
@@ -163,7 +166,9 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         projectId: {
           type: 'string',
-          description: 'Project that owns the channel, from project_list.',
+          description:
+            'Project that owns the channel, from project_list — or, for a project '
+            + 'just made, the last path segment of the /projects/… link project_create returned.',
         },
         visibility: {
           type: 'string',

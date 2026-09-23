@@ -16,35 +16,46 @@ import { useOverlay } from '../overlays/useOverlay'
  * row would inherit its ancestors' stacking and overflow contexts (there is no
  * portal anywhere in the admin). `useAttachmentViewer` is the seam — same shape
  * as `useThoughtProcessDialog`, which is how the reply panel gets this for free.
+ *
+ * It takes only what it shows, so a tool call's screenshot — a ref, not an
+ * `AttachmentRecord` — opens in the same viewer. Opened from inside a modal (a
+ * screenshot in the thought-process dialog) it is the sanctioned `blocking`
+ * nesting: above that modal for paint, focus and Back, rather than tied with it
+ * (docs/navigation/overlays.md).
  */
+
+/** What the viewer needs of an attachment: which bytes, their type, a name. */
+export type ViewableAttachment = Pick<AttachmentRecord, 'filename' | 'id' | 'mime'>
 
 // A blob: URL inherits the admin origin, so an uploaded text/html named "x.pdf"
 // would execute in this session if its own content-type were trusted. The type
 // is pinned instead.
 const PDF_MIME = 'application/pdf'
 
-const isViewableImage = (attachment: AttachmentRecord): boolean =>
+const isViewableImage = (attachment: ViewableAttachment): boolean =>
   attachment.mime.startsWith('image/') && attachment.mime !== 'image/svg+xml'
 
-const isViewablePdf = (attachment: AttachmentRecord): boolean => attachment.mime === PDF_MIME
+const isViewablePdf = (attachment: ViewableAttachment): boolean => attachment.mime === PDF_MIME
 
 /** True when opening this attachment full-size shows something meaningful. */
-export const canViewAttachment = (attachment: AttachmentRecord): boolean =>
+export const canViewAttachment = (attachment: ViewableAttachment): boolean =>
   isViewableImage(attachment) || isViewablePdf(attachment)
 
 const AttachmentViewerDialog = ({
   attachment,
+  blocking,
   onClose,
   token,
 }: {
-  attachment: AttachmentRecord
+  attachment: ViewableAttachment
+  blocking: boolean
   onClose: () => void
   token: string | null
 }) => {
   const close = useCallback(() => onClose(), [onClose])
   const overlay = useOverlay({
     id: 'attachment-viewer',
-    kind: 'modal',
+    kind: blocking ? 'blocking' : 'modal',
     label: `Close ${attachment.filename} preview`,
     onClose: close,
     open: true,
@@ -166,12 +177,16 @@ const AttachmentViewerDialog = ({
 
 /**
  * Owns the viewer for a feed. Returns the opener to thread down to message
- * rows and the element to render once at the feed's own level.
+ * rows and the element to render once at the feed's own level. `blocking` is
+ * for an owner that is itself a modal.
  */
-export const useAttachmentViewer = (token: string | null) => {
-  const [attachment, setAttachment] = useState<AttachmentRecord | null>(null)
+export const useAttachmentViewer = (
+  token: string | null,
+  options: { blocking?: boolean } = {},
+) => {
+  const [attachment, setAttachment] = useState<ViewableAttachment | null>(null)
   const openAttachment = useCallback(
-    (next: AttachmentRecord) => setAttachment(next),
+    (next: ViewableAttachment) => setAttachment(next),
     [],
   )
 
@@ -180,6 +195,7 @@ export const useAttachmentViewer = (token: string | null) => {
     attachmentViewer: attachment ? (
       <AttachmentViewerDialog
         attachment={attachment}
+        blocking={options.blocking ?? false}
         token={token}
         onClose={() => setAttachment(null)}
       />

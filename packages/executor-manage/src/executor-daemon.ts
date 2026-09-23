@@ -41,9 +41,22 @@ const machineKey = (encoded: string) => {
   }
 }
 
+/**
+ * The signed domains of an authenticated daemon control call. Each is its own
+ * domain so that no call can be replayed as another: an image upload
+ * (`attachment`) is not a receipt, and a receipt is not a poll.
+ */
+export type ExecutorDaemonControlType =
+  | 'attachment'
+  | 'browser_cookie_import.poll'
+  | 'browser_cookie_import.upload'
+  | 'local_inference.host'
+  | 'poll'
+  | 'receipt'
+
 export const verifyExecutorDaemonSignature = (
   machinePublicKey: string,
-  domain: 'browser_cookie_import.poll' | 'browser_cookie_import.upload' | 'claim' | 'heartbeat' | 'local_inference.host' | 'poll' | 'receipt',
+  domain: ExecutorDaemonControlType | 'claim' | 'heartbeat',
   payload: Record<string, unknown>,
   signature: string,
 ): boolean => {
@@ -358,7 +371,7 @@ export const authorizeExecutorDaemonControlCall = async <Result>(
     observedAt: string
     payload: Record<string, unknown>
     signature: string
-    type: 'browser_cookie_import.poll' | 'browser_cookie_import.upload' | 'local_inference.host' | 'poll' | 'receipt'
+    type: ExecutorDaemonControlType
   },
   action: (tx: Prisma.TransactionClient) => Promise<Result>,
   now = new Date(),

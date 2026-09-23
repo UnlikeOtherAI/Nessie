@@ -30,10 +30,22 @@ arrive.
   receipt through `POST /api/executor-daemon/commands/attachment` (signed
   domain `attachment`: `{connectionEpoch, executorId, attachment:{commandId,
   digest, mimeType, byteLength, occurredAt}}`, body also carrying
-  `dataBase64`). The upload timeout scales with size.
+  `dataBase64`). An upload's deadline is the daemon's ordinary 15 s request
+  deadline plus its bytes' transfer at 2 Mbit/s, never less: a deadline that
+  covered only the transfer timed a busy server out on an image it went on to
+  keep. `EXECUTOR_MCP_UPLOAD_BUDGET_MS` is one result's six images and 8 MiB
+  on that uplink with Nessie's work on each — 50 s, which makes the command
+  TTL 140 s. Each answered upload is journaled as delivered, so a retry sends
+  only what Nessie has not answered for.
 - A 4xx refusal of an upload is **terminal**: the reference becomes the
   placeholder `[image unavailable: <reason>]`, the digest is recomputed, the
   journal rewritten and the receipt sent. A refused upload is never retried.
+- Anything else — a timeout, a 5xx, 408, 429, a lost connection — is retried
+  on the next poll while the command is live, as a failure that does not stop
+  the machine's browser, command and coding sessions. Once the command's
+  `expiresAt` has passed, each image not yet delivered gets one more attempt
+  and a failure withdraws it, so a slow uplink or a lasting storage fault
+  cannot hold the machine's one command lane for good.
 - At daemon start every sidecar directory whose command is not the journal's
   current one is removed; an acknowledged receipt removes its own.
 
@@ -44,7 +56,11 @@ arrive.
   the normal case the sidecars exist for), verifies the signature, the digest
   and the magic bytes, and enforces the same caps server-side plus a rate per
   executor. Authorization runs under the executor connection lock; the file
-  write happens **after** it, outside the lock.
+  write happens **after** it, outside the lock. As built: the route has its own
+  per-IP bucket, applied before its 5.6 MB body is read; the signature is
+  checked before the base64 is decoded or hashed; the executor's rate counts
+  every signed attempt, a repeat of a kept image included; and only an
+  `mcp.call` takes images.
 - Bytes are stored by `FileService.store` as an `Attachment` owned by the
   run's organisation, with `uploaderId` = the command's initiating person (so
   quota and accounting land on them), `kind: 'image'`, a filename like
@@ -57,7 +73,13 @@ arrive.
   viewer may read the run (`canUserReadRunDerivedRecord`) **and** the run's
   disclosure basis admits them (PR 1 §8).
 - Retention follows the command: deleting a run deletes its commands' files
-  through `FileService.delete`.
+  through `FileService.delete`. As built: nothing hard-deletes a run or an
+  executor command today, so there is no delete path to hook yet;
+  `deleteExecutorCommandAttachments` (`@nessie/executor-manage`) is the
+  helper any future one must call first. Result intake frees, the same way,
+  every image of the command its accepted result does not name — one withdrawn
+  after its upload outlived the command, or a result Nessie refused — so no
+  unseen image stays on the person's quota.
 
 ## 3. Into the model — through the one prompt-image loader
 
@@ -86,7 +108,10 @@ arrive.
 ## 4. To the person
 
 - `ToolCallEntrySchema` gains `id` and `attachments: [{attachmentId, mimeType,
-  byteLength}]`; the run thinking log's tool entries carry the same refs.
+  byteLength}]`; the run thinking log's tool entries carry the same refs. As
+  built, `id` is optional and `attachments` defaults to none, so a client
+  reading an older API during a rolling deploy still parses its answer; and a
+  call lists images only once its command's result is accepted.
 - The images are served by the existing attachment routes, authorized by §2.
 - `ThoughtProcessDialog` (the doorway from the thinking bubble) renders
   thumbnails in each tool block; `ToolExecutionLog` on the agent page (the
@@ -116,4 +141,11 @@ arrive.
   non-vision connectors, retention placeholders, checkpoint round trip, the
   400 fallback.
 - Live: Kelpie screenshot of a real site through the executor, described by
-  the production model.
+  the production model. **Not run in this PR.** It is step 7 of the live
+  acceptance run after all PRs merge ([verification.md](verification.md)).
+  Until then the chain is covered only in parts: the connector's
+  `supportsVision` for `openai-compatible` in code, the images turn as a
+  user-turn image part after the tool messages in the worker's suites, and
+  the production model reading a PNG on a user message through
+  Ledger/OpenRouter, checked directly on 2026-09-22 — never all of them
+  together, with a real executor and a real Kelpie.

@@ -137,6 +137,14 @@ Facts not restated there:
   - Task Set processor search binds its own `ollama-search` and is no launch
     in a conversation; it passes no scope, and its results travel under the
     set's classified disclosure.
+  - A program's images are files of their executor command
+    ([file-storage.md](file-storage.md)) and are served to a person only as
+    the run is: `canAccessAttachment` asks the run's conversation through the
+    disclosure-readable thread predicate, then `canUserReadRunDerivedRecord`,
+    and nothing else — not the uploader, not an organisation admin. A surface
+    that lists them (the thought log's tool lines, `ToolCallEntry.attachments`)
+    asks the same run-level question first (`canReadRunExecutorImages`), so a
+    reader who may see the call but not the image is shown no ref at all.
 
   `worker/test/db/executor-host-output-disclosure.test.ts` pins the three
   board outcomes and the sales walkthrough's refusal of a protected planning
@@ -177,9 +185,25 @@ Facts not restated there:
   `isWithinProjectWriteScopes` judges each recalled thought's whole lineage and
   each recalled history message, so a team, channel or user audience or any
   private-conversation source is simply not recalled for that run
-  (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). The gate and
-  every other run are unchanged: a run without write tools recalls exactly as
-  before, and a delegate in its own home is not contained at all. The
+  (`requiresProjectWriteRecallContainment`, `execute/memory.ts`). That
+  judgement runs after the search, so such a run's search goes
+  `PROJECT_WRITE_RECALL_DEPTH` (3) times deeper — 15 thoughts instead of 5, 36
+  history candidates instead of 12 — and keeps what survives, in rank order, up
+  to the normal count; only those enter the basis. Searching at the normal
+  depth, a requester whose best matches had all been fed by a private DM got
+  nothing back while project knowledge sat just below the cut
+  (`worker/test/db/project-write-recall-depth.test.ts`). Only the thoughts it
+  keeps are marked accessed and logged as recalled
+  (`searchAndLogThoughtsInScopes`'s `retain`, `packages/memory/src/search.ts`):
+  `last_accessed_at` feeds the recency term of every later ranking, so bumping
+  the DM-fed thoughts the run refused would keep lifting exactly those — into
+  the next non-write run's basis, and back above the cut of the next
+  project-write one. A history candidate costs no passage read unless its seed
+  is one the run may take and still fits the budget, so the hits the deeper
+  history search passes over cost it no neighbour reads
+  (`retrieveRelevantHistory`, `execute/history-recall.ts`). The gate and every
+  other run are unchanged: a run without write tools recalls exactly as before,
+  at the same depth, and a delegate in its own home is not contained at all. The
   trade-off, accepted: such a run does not remember what the requester said in
   a private DM, nor its own room's channel memories, even where its reply
   alone could have carried them. The alternative — letting the gate accept a

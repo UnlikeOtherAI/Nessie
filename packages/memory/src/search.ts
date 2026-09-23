@@ -318,7 +318,8 @@ export type SearchThoughtsInScopesInput = {
 
 const IN_SCOPES_MODE: ThoughtSearchMode = 'hybrid'
 
-export const searchThoughtsInScopes = async (
+/** The ranked thoughts and their recall entries, before any bookkeeping. */
+const rankThoughtsInScopes = async (
   input: SearchThoughtsInScopesInput,
   config: SearchConfig,
 ): Promise<SearchThoughtsOutput> => {
@@ -387,47 +388,98 @@ export const searchThoughtsInScopes = async (
     retrievalMode: result.retrievalMode,
   }))
 
+  return { results: mappedResults, recalls }
+}
+
+/**
+ * Marks the thoughts a caller took as accessed and attaches their reasoning.
+ * Access feeds the recency term of every later ranking, so only a thought
+ * that is actually handed on may be bumped.
+ */
+const takeThoughts = async (
+  taken: SearchThoughtsOutput,
+  includeReasoning: boolean | undefined,
+  db: Queryable,
+): Promise<SearchThoughtsOutput> => {
   await bumpThoughtAccess(
-    mappedResults.map((result) => result.id),
-    config.pool,
+    taken.results.map((result) => result.id),
+    db,
   )
 
-  if (!input.includeReasoning || mappedResults.length === 0) {
-    return { results: mappedResults, recalls }
+  if (!includeReasoning || taken.results.length === 0) {
+    return taken
   }
 
   const reasoningByThought = await loadReasoningByThought(
-    mappedResults.map((result) => result.id),
-    config.pool,
+    taken.results.map((result) => result.id),
+    db,
   )
 
   return {
-    results: mappedResults.map((result) => ({
+    results: taken.results.map((result) => ({
       ...result,
       reasoning: reasoningByThought.get(result.id),
     })),
-    recalls,
+    recalls: taken.recalls,
   }
 }
 
+export const searchThoughtsInScopes = async (
+  input: SearchThoughtsInScopesInput,
+  config: SearchConfig,
+): Promise<SearchThoughtsOutput> =>
+  takeThoughts(await rankThoughtsInScopes(input, config), input.includeReasoning, config.pool)
+
+/**
+ * Picks, from the ranked results, the ones a caller will actually use — a
+ * subset, in the order it wants them. `db` is the search's own connection, so
+ * a pick that reads does not hold one connection while it waits for another.
+ */
+export type RetainSearchResults = (
+  results: SearchResult[],
+  db: Queryable,
+) => Promise<SearchResult[]>
+
+/**
+ * Searches, then marks accessed and logs as recalled what the caller keeps.
+ *
+ * Without `retain` that is every result. With it, only what `retain` returns:
+ * a caller that searches deeper than it keeps (a project-write recall) must
+ * not refresh, or record as recalled, the thoughts it then threw away — a
+ * fresh access would lift exactly those in every later ranking.
+ */
 export const searchAndLogThoughtsInScopes = async (
   input: SearchThoughtsInScopesInput,
   config: SearchExecutionConfig,
+  retain?: RetainSearchResults,
 ): Promise<SearchResult[]> => {
   const client = await config.pool.connect()
 
   try {
     await client.query('BEGIN')
 
-    const searchResult = await searchThoughtsInScopes(input, {
+    const ranked = await rankThoughtsInScopes(input, {
       ...config,
       pool: client,
     })
-    const loggedRecalls = await logRecalls(searchResult.recalls, client)
+    const kept = retain ? await retain(ranked.results, client) : ranked.results
+    const keptKeys = new Set(
+      kept.map((result) => buildRecallLookupKey(result.id, result.rankPosition)),
+    )
+    const taken = await takeThoughts(
+      {
+        recalls: ranked.recalls.filter((recall) =>
+          keptKeys.has(buildRecallLookupKey(recall.thoughtId, recall.rankPosition))),
+        results: kept,
+      },
+      input.includeReasoning,
+      client,
+    )
+    const loggedRecalls = await logRecalls(taken.recalls, client)
 
     await client.query('COMMIT')
 
-    return attachRecallIds(searchResult.results, loggedRecalls)
+    return attachRecallIds(taken.results, loggedRecalls)
   } catch (error) {
     await client.query('ROLLBACK')
     throw error

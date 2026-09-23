@@ -133,7 +133,9 @@ export const sendAttachmentDownload = (
 // request; it only means this file has no preview until something re-enqueues.
 // Returns the attachment as the caller should serialize it, so the upload
 // response reports `pending` rather than claiming there is no preview coming.
-const enqueueAttachmentThumbnail = async (
+// The executor daemon's image upload asks the same (a GIF, or an organisation
+// opted out of stripping, has no inline preview).
+export const enqueueAttachmentThumbnail = async (
   prisma: RouteDeps['prisma'],
   attachment: Attachment,
 ): Promise<Attachment> => {
@@ -288,6 +290,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         isOrganizationAdmin: isAdminActor(actorContext),
+        uoaIdentity: actorContext.actionContext.uoaIdentity,
       }))
     ) {
       sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
@@ -331,6 +334,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         isOrganizationAdmin: isAdminActor(actorContext),
+        uoaIdentity: actorContext.actionContext.uoaIdentity,
       }))
     ) {
       sendApiError(reply, 404, 'ATTACHMENT_NOT_FOUND', 'Attachment not found')
@@ -362,6 +366,8 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
   // Anything already attached to a message, KB page, logo, avatar, or feedback
   // item is not deletable here (its owning surface deletes it). A file on a
   // ticket is removed through the task's own route, which audits and publishes.
+  // An executor command's image is the command's, although its uploader is
+  // the person the command ran for: a run's result still references it.
   app.delete('/api/attachments/:id', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
@@ -379,6 +385,7 @@ export const registerUploadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         knowledgePageId: null,
         taskId: null,
         taskCommentId: null,
+        executorCommandId: null,
         logoForOrganizations: { none: {} },
         avatarForUsers: { none: {} },
         avatarForAgents: { none: {} },

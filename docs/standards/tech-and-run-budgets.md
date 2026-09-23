@@ -57,7 +57,9 @@ summary and points here; **this file is the rule**.
     chokepoint and capped at 12,000 chars with a "narrower result" hint, its
     images and links reduced to placeholders
     (`worker/src/run/executor-result-presentation.ts`,
-    [executor-local-mcp.md](executor-local-mcp.md)).
+    [executor-local-mcp.md](executor-local-mcp.md)); the images it kept are
+    shown in one turn after the batch, within the prompt's 6-image budget
+    ([file-storage.md](file-storage.md)).
   - **Tool timeouts are per tool.** `executeToolBatch` asks
     `toolTimeoutMsFor(toolName)`: an executor tool gets its command TTL plus
     `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` (10 s), every other tool the budget's
@@ -90,11 +92,11 @@ summary and points here; **this file is the rule**.
     and the agent still has the rest of the run to say where the session
     stands; a wait begun past that point reads once and returns. The command
     TTLs live in `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
-    `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
+    `EXECUTOR_MCP_COMMAND_TTL_MS` (140 s) from `@nessie/schemas`
     `executor-timing.ts`, which must stay ≥ the daemon's worst case for one
     command (a 10 s start + one 60 s call deadline, which also bounds a whole
     `tools/list` walk; the reporter's probe yields to commands) + upload
-    budget (30 s) + lane overhead (20 s); `executor/test/mcp-timing.test.ts`
+    budget (50 s) + lane overhead (20 s); `executor/test/mcp-timing.test.ts`
     pins it against the session manager's
     `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
 
@@ -285,7 +287,11 @@ summary and points here; **this file is the rule**.
     only ever held crash state is deleted, one a stop or suspension has since
     written its note into keeps everything but the crash columns. A transcript
     over 4 MB (inlined images) is not checkpointed at all: the run degrades to
-    replay, and the log line says which run.
+    replay, and the log line says which run. A tool's images never count
+    toward it: the transcript, and a recorded tool result, hold them as
+    attachment refs, and a resumed or re-entered run reads them again from
+    `FileService` when it next builds a provider input
+    ([file-storage.md](file-storage.md)).
   - **Drain.** The queue's per-job `AbortSignal` reaches the loop
     (`worker/src/index.ts` → `executeRunJob` → `runAgenticLoop`). When it fires,
     whatever is in flight gets `NESSIE_RUN_DRAIN_GRACE_MS` (default 5 s) and the

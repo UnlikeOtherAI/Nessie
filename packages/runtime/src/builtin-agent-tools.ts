@@ -47,9 +47,15 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'whenever the user refers to an existing agent ("put Hardware Watch in '
       + '#ops", "give the reporter a daily schedule") — you only already know an '
       + 'id for an agent you created in this same conversation, so never guess '
-      + 'one. Owners see every team-visible agent, including ones sitting '
-      + 'in no channel, plus private agents they own; '
-      + 'everybody else sees the agents working in channels they can see.',
+      + 'one. Each row links the agent as [Name](/agents/<agentId>) and each '
+      + 'channel it works in as [#label](/channels/<channelId>). The last path '
+      + 'segment of the agent\'s link is the agentId that agent_read, agent_update, '
+      + 'agent_bind_channel and agent_trigger_create take. The last path segment of '
+      + 'a channel\'s link is the channelId that agent_bind_channel takes, and '
+      + 'agent_trigger_create\'s targetChannelId; never pass one as the other. '
+      + 'Owners see every team-visible agent, including ones sitting in no channel, '
+      + 'plus private agents they own; everybody else sees the agents working in '
+      + 'channels they can see.',
     parameters: {
       type: 'object',
       properties: {
@@ -400,7 +406,13 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'an event subscription, or a manual button. Organisation owners only, and '
       + 'the agent must already be bound to the target channel. Get the agentId '
       + 'from agent_list when the user named the agent. To schedule '
-      + 'yourself instead, use schedule_task — that needs no owner rights.',
+      + 'yourself instead, use schedule_task — that needs no owner rights. The '
+      + 'result links the trigger as [Name](/agents/triggers/<triggerId>), the '
+      + 'agent it fires as [Name](/agents/<agentId>) and the channel it posts '
+      + 'into as [#label](/channels/<channelId>): the triggerId agent_trigger_update '
+      + 'and agent_trigger_delete take is the last path segment of the trigger\'s '
+      + '/agents/triggers/… link, which is never an agent\'s: an agentId is only '
+      + 'ever read from an /agents/<agentId> link.',
     parameters: {
       type: 'object',
       properties: {

@@ -40,10 +40,13 @@ export const recordToolEnd = async (
     connectorUsage?: ConnectorUsage
     toolCallRecordId?: string
   },
-): Promise<void> => {
+): Promise<string> => {
   const endedAt = new Date()
   const inputSummary = redactDetectedSecrets(input.inputSummary)
   const outputPreview = redactDetectedSecrets(input.outputPreview)
+  // The ToolCall this call is recorded as, returned so the thought log's line
+  // for it can name it.
+  let toolCallId: string
 
   if (input.toolCallRecordId) {
     const updated = await deps.prisma.toolCall.updateMany({
@@ -63,8 +66,9 @@ export const recordToolEnd = async (
     if (updated.count !== 1) {
       throw new Error('Executor ToolCall record is unavailable.')
     }
+    toolCallId = input.toolCallRecordId
   } else {
-    await deps.prisma.toolCall.create({
+    const created = await deps.prisma.toolCall.create({
       data: {
         agentId: context.agent.id,
         durationMs: input.durationMs,
@@ -76,7 +80,9 @@ export const recordToolEnd = async (
         success: input.success,
         toolName: input.toolName,
       },
+      select: { id: true },
     })
+    toolCallId = created.id
   }
 
   await captureDemonstrationToolEnd(deps.prisma, {
@@ -125,4 +131,5 @@ export const recordToolEnd = async (
     },
     event: 'agent.tool.end',
   })
+  return toolCallId
 }

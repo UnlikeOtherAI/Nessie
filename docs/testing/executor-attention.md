@@ -27,7 +27,7 @@ The fixture supplies API responses and does not claim server authorization
 coverage. The executor-management API tests own latest-revision selection and
 caller entitlement.
 
-The Browser Suites workflow enables seven isolated executor preview entries in
+The Browser Suites workflow enables eight isolated executor preview entries in
 its Navigation Transitions job, run together in its executor step:
 
 | Fixture | Build flag |
@@ -39,6 +39,7 @@ its Navigation Transitions job, run together in its executor step:
 | Run launcher | `NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE=1` |
 | Conversation leases | `NESSIE_EXECUTOR_LEASE_E2E_FIXTURE=1` |
 | Coding sessions | `NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE=1` |
+| Tool screenshots | `NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE=1` |
 
 `pnpm --filter @nessie/admin test:e2e:executor-lease` renders the real
 composer, with the lease chip the launcher hook hands it, a reply panel's
@@ -72,6 +73,27 @@ and drops the row; and that a bridge the daemon did not ask shows "Open
 coding sessions have not been checked yet" and asks nothing. Screenshots go
 to `e2e/screenshots/executor-coding-sessions/`. Who may Close, and which agent
 a reader may see, is covered by `api/test/executor-coding-session-routes.test.ts`.
+
+`pnpm --filter @nessie/admin test:e2e:tool-screenshots` renders the real
+thought-process dialog on a live run and the real agent page Activity tab, with
+the screenshot Kelpie really returned on Windows. It pins that a tool line shows
+no thumbnail while its call runs and both once the next thought shows the call
+returned (the dialog reads the full thought log again, once), that each
+thumbnail comes from the thumbnail route when its ref has one and from the
+original otherwise, that a press opens the original in the attachment viewer —
+over the dialog in the blocking layer, where Escape closes only the viewer and
+gives focus back to the thumbnail — and that the tool execution log shows the
+same thumbnails on the call's card and none on the others, at 1280 px and at
+390 px under a finger with no sideways scroll. Screenshots go to
+`e2e/screenshots/tool-screenshots/` and join the executor upload. Which refs a
+viewer is given is `api/test/tool-call-screenshots.test.ts`'s job.
+
+No live run has yet taken a Kelpie screenshot of a real site through a real
+executor and had the production model describe it. That is step 7 of the
+local-apps live acceptance run
+([verification.md](../plans/2026-09-22-executor-local-apps/verification.md)),
+which runs once every chapter has merged; until it has, a screenshot reaching
+the model is proved only in parts, by fixture and scripted-inference suites.
 
 Each flag adds its `admin/e2e/executor-<name>/index.html` as a Vite build input
 and participates in Turbo's admin-build cache key. Ordinary release builds

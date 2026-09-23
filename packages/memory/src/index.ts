@@ -43,6 +43,7 @@ export {
   searchThoughtsInScopes,
   searchAndLogThoughtsInScopes,
   SearchEmbeddingError,
+  type RetainSearchResults,
   type SearchThoughtsInput,
   type SearchThoughtsInScopesInput,
   type SearchThoughtsOutput,

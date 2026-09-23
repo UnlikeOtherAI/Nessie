@@ -4054,12 +4054,16 @@ model RunDocumentChunk {
 }
 
 model RunThinkingChunk {
-  id        BigInt               @id @default(autoincrement())
-  runId     String               @map("run_id") @db.Uuid
-  kind      RunThinkingChunkKind
-  content   String
-  createdAt DateTime             @default(now()) @map("created_at")
-  run       Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id         BigInt               @id @default(autoincrement())
+  runId      String               @map("run_id") @db.Uuid
+  kind       RunThinkingChunkKind
+  content    String
+  /// App-enforced pointer, like `Attachment.messageId`: the `ToolCall` a
+  /// `tool` line became, set once that call ends. The thought log reads a
+  /// call's screenshots through it (ToolCall → ExecutorCommand → Attachment).
+  toolCallId String?              @map("tool_call_id") @db.Uuid
+  createdAt  DateTime             @default(now()) @map("created_at")
+  run        Run                  @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId, id])
   @@map("run_thinking_chunks")
@@ -7133,6 +7137,17 @@ model Attachment {
   removedByAgentId   String?   @map("removed_by_agent_id") @db.Uuid
   /// Free text the remover gave, at most 500 characters; null when none.
   removedReason      String?   @map("removed_reason") @db.Text
+  /// App-enforced pointer, exactly like `messageId`: an image a local program
+  /// returned in this executor command's result, uploaded by the daemon
+  /// before its receipt. Readable by whoever may read the command's run
+  /// (`canAccessAttachment`), and never re-linked to a message or a ticket.
+  executorCommandId  String?   @map("executor_command_id") @db.Uuid
+  /// The bytes as the daemon uploaded them, set exactly with
+  /// `executorCommandId`: the `sha256:<hex>` the result's image reference
+  /// names, and the decoded size the per-command caps count. `sizeBytes` is
+  /// what is stored after metadata stripping re-encoded them.
+  contentDigest      String?   @map("content_digest")
+  contentByteLength  Int?      @map("content_byte_length")
   kind               String
   mime               String
   filename           String
@@ -7168,6 +7183,7 @@ model Attachment {
   @@index([taskId])
   @@index([taskCommentId])
   @@index([organizationId, createdAt])
+  @@unique([executorCommandId, contentDigest])
   @@map("attachments")
 }
 

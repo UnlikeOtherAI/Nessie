@@ -133,6 +133,8 @@ export const linkUploadsToTask = async (
     emailMessageId: null,
     taskId: null,
     taskCommentId: null,
+    // An executor command's image is the run's, never a pending upload.
+    executorCommandId: null,
   }
   const candidates = await tx.attachment.findMany({ where: eligible, select: { id: true } })
   if (candidates.length === 0) return []

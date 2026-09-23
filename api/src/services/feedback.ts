@@ -2,7 +2,7 @@ import type { Feedback, PrismaClient } from '@prisma/client'
 import type { NessieConfig } from '@nessie/config'
 import type { FeedbackRecord } from '@nessie/schemas'
 
-import { canAccessAttachment } from './attachments.js'
+import { canAccessAttachment, isRelinkableAttachment } from './attachments.js'
 import { createGithubIssue } from './github.js'
 
 export type FeedbackOwner = {
@@ -69,8 +69,11 @@ export const createFeedback = async (
     const attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } })
     // Scope to the submitter's own uploads (uploaderId === null covers system
     // attachments) so a member cannot attach another member's file to feedback.
+    // An executor command's image names the person it ran for as its
+    // uploader, but it is the run's, and is never re-linked.
     const ownedBySubmitter =
       attachment !== null
+      && isRelinkableAttachment(attachment)
       && attachment.organizationId === owner.organizationId
       && (attachment.uploaderId === null || attachment.uploaderId === owner.userId)
     const accessible =

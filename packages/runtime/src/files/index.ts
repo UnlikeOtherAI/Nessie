@@ -15,6 +15,7 @@ import {
   type StorageQuotaDecision,
   withStorageAdmission,
 } from '../storage-quota.js'
+import type { AdmissionPrismaClient } from '../admission-lock.js'
 import type { Storage } from '../storage/index.js'
 import {
   createThumbnailOps,
@@ -110,6 +111,15 @@ export type StoreFileInput = {
   // rather than off the compact chat reference message, so chat visibility
   // never becomes an email attachment's authority.
   emailMessageId?: string | null
+  // An image a local program returned in an executor command's result, named
+  // by the digest and decoded size the daemon uploaded it with (the stored
+  // bytes may differ once metadata is stripped).
+  executorCommand?: { id: string; contentDigest: string; contentByteLength: number } | null
+  // The caller's own admission rule, run in the quota's transaction and under
+  // its organisation lock just before the row is written, so a cap across
+  // several concurrent uploads holds exactly. Throwing refuses the upload and
+  // discards its objects.
+  admit?: (tx: AdmissionPrismaClient) => Promise<void>
   width?: number | null
   height?: number | null
   abortSignal?: AbortSignal
@@ -353,6 +363,7 @@ export const createFileService = (deps: {
         scope,
         bytesWritten + thumbnailBytes,
         async (tx) => {
+          await input.admit?.(tx)
           const attachment = await tx.attachment.create({
             data: {
               organizationId: input.organizationId,
@@ -360,6 +371,9 @@ export const createFileService = (deps: {
               messageId: input.messageId ?? null,
               knowledgePageId: input.knowledgePageId ?? null,
               emailMessageId: input.emailMessageId ?? null,
+              executorCommandId: input.executorCommand?.id ?? null,
+              contentDigest: input.executorCommand?.contentDigest ?? null,
+              contentByteLength: input.executorCommand?.contentByteLength ?? null,
               kind: kindFromMime(input.mime),
               mime: input.mime,
               filename: input.filename,

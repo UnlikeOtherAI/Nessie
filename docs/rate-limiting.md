@@ -105,7 +105,8 @@ Which bucket governs a request is decided by `resolveGlobalRateLimitBucket`:
 1. `GET /api/auth/me` → `authMeIp`; `GET /api/auth/landing-teams` → `landingTeamsIp`.
 2. A `POST` whose route pattern is named in the table → that bucket.
 3. A `POST` to one of the executor-daemon session routes →
-   `executorDaemonSessionIp`.
+   `executorDaemonSessionIp`. The daemon's image upload is not one of them: it
+   is named in the table (`executorAttachmentIp`).
 4. Any write under `/api/agents…` → `agentWriteIp`.
 5. Otherwise, **any route declaring `config.public`** → `publicRouteIp`.
 6. Otherwise, no limit.
@@ -161,10 +162,14 @@ Applied by the global hook:
 | `agentEmailInboundIp` | `POST /api/integrations/email/inbound` | `NESSIE_RATE_LIMIT_AGENT_EMAIL_INBOUND_IP_` | 600 / min |
 | `executorDaemonIp` | `POST /api/executor-daemon/challenge` (pairing) | `NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_IP_` | 60 / 10 min |
 | `executorDaemonSessionIp` | daemon claim / heartbeat / descriptor / command poll + receipt, enrollment submit | `NESSIE_RATE_LIMIT_EXECUTOR_DAEMON_SESSION_IP_` | 6 000 / min |
+| `executorAttachmentIp` | `POST /api/executor-daemon/commands/attachment` (a daemon's image upload, body up to ~5.6 MB) | `NESSIE_RATE_LIMIT_EXECUTOR_ATTACHMENT_IP_` | 120 / min |
 | `publicRouteIp` | every other route declaring `config.public` | `NESSIE_RATE_LIMIT_PUBLIC_ROUTE_IP_` | 1 200 / min |
 
-All seven executor-daemon routes pair through this table; none guards itself in
-its handler.
+Every executor-daemon route pairs through this table for its per-IP limit. The
+image upload alone adds a limit of its own, in its handler: 60 signed attempts
+a minute per executor, counted after the signature is checked so an unsigned
+request cannot spend another executor's allowance
+([command-attachments.md](executor-protocol/command-attachments.md)).
 
 ## 4) Per-account lockout DoS tradeoff
 

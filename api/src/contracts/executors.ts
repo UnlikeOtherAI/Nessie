@@ -4,6 +4,8 @@ import {
   ExecutorCreateResponseSchema,
   ExecutorDaemonChallengeResponseSchema,
   ExecutorDaemonClaimRequestSchema,
+  ExecutorDaemonCommandAttachmentRequestSchema,
+  ExecutorDaemonCommandAttachmentResponseSchema,
   ExecutorDaemonCommandPollRequestSchema,
   ExecutorDaemonCommandPollResponseSchema,
   ExecutorDaemonCommandReceiptRequestSchema,
@@ -113,6 +115,10 @@ export type ExecutorDaemonCommandPollBody = z.infer<typeof ExecutorDaemonCommand
 
 export const ExecutorDaemonCommandReceiptBodySchema = ExecutorDaemonCommandReceiptRequestSchema
 export type ExecutorDaemonCommandReceiptBody = z.infer<typeof ExecutorDaemonCommandReceiptBodySchema>
+
+export const ExecutorDaemonCommandAttachmentBodySchema = ExecutorDaemonCommandAttachmentRequestSchema
+export type ExecutorDaemonCommandAttachmentBody = z.infer<typeof ExecutorDaemonCommandAttachmentBodySchema>
+export const ExecutorDaemonCommandAttachmentSchema = ExecutorDaemonCommandAttachmentResponseSchema
 
 export const ExecutorDaemonChallengeSchema = ExecutorDaemonChallengeResponseSchema
 export const ExecutorDaemonConnectionSchema = ExecutorDaemonConnectionResponseSchema

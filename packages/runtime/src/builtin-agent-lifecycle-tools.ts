@@ -2,7 +2,7 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 const LIFECYCLE_TOOL_INPUTS: Array<[string, string, string, string[]]> = [
   ['agent_unbind_channel', 'Unbind Agent', 'Remove an agent from a channel.', ['agentId', 'channelId']],
-  ['agent_trigger_list', 'List Agent Triggers', 'List an agent’s triggers and exact trigger ids.', ['agentId']],
+  ['agent_trigger_list', 'List Agent Triggers', 'List an agent’s triggers, each a link whose last segment is its triggerId.', ['agentId']],
   ['agent_trigger_update', 'Update Agent Trigger', 'Update a trigger’s name, description, or running state.', ['triggerId']],
   ['agent_trigger_delete', 'Delete Agent Trigger', 'Delete a trigger that has no delivery history.', ['triggerId']],
   ['agent_delete', 'Delete Agent', 'Soft-delete an agent and revoke every standing capability.', ['agentId']],

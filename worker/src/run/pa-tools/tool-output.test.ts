@@ -6,6 +6,8 @@ import {
   formatAgentMarkdownLink,
   formatChannelMarkdownLink,
   formatMessageLine,
+  formatProjectMarkdownLink,
+  formatTriggerMarkdownLink,
 } from './tool-output.js'
 
 test('buildChannelLink builds a relative channel path', () => {
@@ -64,6 +66,17 @@ test('a placed agent and its room are markdown links a person can follow', () =>
     '[#sales](/channels/chan-1)',
   )
   assert.equal(formatAgentMarkdownLink({ id: 'agent-1', name: 'CTO' }), '[CTO](/agents/agent-1)')
+})
+
+test('a project and a trigger link to their own admin pages', () => {
+  assert.equal(
+    formatProjectMarkdownLink({ id: 'project-1', name: 'Marketing' }),
+    '[Marketing](/projects/project-1)',
+  )
+  assert.equal(
+    formatTriggerMarkdownLink({ id: 'trigger-1', name: 'Daily digest [UTC]' }),
+    '[Daily digest \\[UTC\\]](/agents/triggers/trigger-1)',
+  )
 })
 
 test('a bracket in a name cannot end the link text early', () => {
