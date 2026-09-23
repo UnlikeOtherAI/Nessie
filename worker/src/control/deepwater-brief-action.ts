@@ -176,7 +176,11 @@ const applySuccess = async (
     const parsed = LedgerResearchTicketSchema.safeParse(structured)
     if (!parsed.success) return malformed(deps, run, payload, 'the launch ticket is outside the contract')
     const outcome = await applyAnswer(deps, payload, async (tx, announce) => {
-      const applied = await applyDeepWaterLaunchTicket(tx, { ...target, ticket: parsed.data, ackActionId: payload.actionId })
+      const applied = await applyDeepWaterLaunchTicket(tx, {
+        ...target,
+        ticket: parsed.data,
+        ackActionId: payload.actionId,
+      })
       // A person's research card is posted when the research starts (§7.7).
       if (applied.applied && applied.run.status === 'running') {
         await ensureDeepWaterResearchCard(tx, announce, target)
@@ -187,7 +191,8 @@ const applySuccess = async (
   }
   const parsed = LedgerResearchStatusDtoSchema.safeParse(structured)
   if (!parsed.success) return malformed(deps, run, payload, 'the cancel answer is outside the contract')
-  const outcome = await applyAnswer(deps, payload, (tx) => applyDeepWaterStatusRead(tx, { ...target, status: parsed.data }))
+  const outcome = await applyAnswer(deps, payload, (tx) =>
+    applyDeepWaterStatusRead(tx, { ...target, status: parsed.data }))
   // A research that finished before the cancel reached it is delivered by the
   // watch, which the read rescheduled; nothing here posts its result.
   log(run, payload, outcome.applied ? `cancel answered ${parsed.data.status}` : `not applied (${outcome.reason})`)
@@ -223,7 +228,8 @@ const refuse = async (
       ? 'identity_unavailable'
       : ledgerCode?.replace(/[^a-z_]/g, '_').slice(0, 64) || 'start_rejected'
     await runDeepWaterTransaction(deps, async (tx, announce) => {
-      if (await failUnstartedDeepWaterBrief(tx, { ...target, failureCode, actionErrorCode: errorCode })) announce.run(run)
+      const failed = await failUnstartedDeepWaterBrief(tx, { ...target, failureCode, actionErrorCode: errorCode })
+      if (failed) announce.run(run)
     })
     return log(run, payload, `opening refused (${ledgerCode ?? errorCode})`)
   }

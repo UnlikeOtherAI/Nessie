@@ -97,7 +97,8 @@ export const withActionFixture = (name: string, body: (fixture: ActionFixture) =
           action: { kind: 'scope_start' },
         }
       },
-      perform: (payload) => runDeepWaterBriefAction(deps, payload, { attempt: 1, enqueuedAt: new Date().toISOString() }),
+      perform: (payload) =>
+        runDeepWaterBriefAction(deps, payload, { attempt: 1, enqueuedAt: new Date().toISOString() }),
     }
     await body(fixture)
   })
