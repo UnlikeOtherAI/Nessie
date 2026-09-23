@@ -178,8 +178,10 @@ export const transitionExecutorLifecycleInTransaction = async (
     })
   }
   // Pausing or revoking the machine closes every coding session on it, not
-  // only those a lease still covered. (A drain lets work finish: only the
-  // leases it ends close their owners' sessions.)
+  // only those a lease still covered. A drain closes fewer, but not none:
+  // the leases it ends above each close their holder's sessions, in-flight
+  // turns included (`lease_ended`), and only sessions no live lease covered
+  // are left running.
   if (input.action === 'pause' || input.action === 'revoke') {
     await closeExecutorCodingSessionsInTransaction(tx, {
       executorId: executor.id, reason: LIFECYCLE_END_REASON[input.action], requestedByUserId: actorUserId,

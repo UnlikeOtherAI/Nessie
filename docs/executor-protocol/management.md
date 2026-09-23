@@ -128,11 +128,13 @@ open on it, and those sessions act as the person who paired it
   open session its last local-MCP report lists, plus `closing` (a close
   request that reaches it is open) and `ownerAgentName`, the agent driving it,
   null unless the ordinary agent entitlement — the Agents tab's rule — shows
-  that agent to the reader. `canClose` is true for the pairing owner only.
+  that agent to the reader. `canClose` is true for the pairing owner of a
+  private machine only.
 - `POST /api/executors/:executorId/coding-sessions/close {ownerKey,
   sessionId}` is that pairing owner's Close: 202 `{closing: true, sessionId}`
   once a `person` close request is written, which the next heartbeat carries.
-  Another administrator gets 403 `EXECUTOR_CODING_SESSIONS_OWNER_ONLY`,
+  Another administrator — on a shared machine, everyone — gets 403
+  `EXECUTOR_CODING_SESSIONS_OWNER_ONLY`,
   anyone else 404 `EXECUTOR_NOT_FOUND`, and a session the last report does not
   list as that owner's and open 404 `EXECUTOR_CODING_SESSION_NOT_FOUND`.
 

@@ -267,6 +267,24 @@ dbTest('Close is refused to everyone but the pairing owner, and for anything the
   })
 })
 
+dbTest('on a shared machine not even the person who paired it may Close: no session there runs as anyone', async () => {
+  await withWorld(async (world) => {
+    const organizationId = (await world.prisma.executor.findUniqueOrThrow({
+      where: { id: world.executorId }, select: { organizationId: true },
+    })).organizationId
+    // An organisation administrator manages an organisation executor.
+    await world.prisma.organizationMember.updateMany({
+      where: { organizationId, userId: world.ownerId }, data: { role: 'admin' },
+    })
+    await world.prisma.executor.update({ where: { id: world.executorId }, data: { scopeKind: 'organization' } })
+    assert.equal((await listed(world, world.ownerId)).canClose, false)
+    const refused = await close(world, world.ownerId, { ownerKey: world.ctoKey, sessionId: world.sessions.cto })
+    assert.equal(refused.statusCode, 403, refused.body)
+    assert.equal((refused.json() as { error: { code: string } }).error.code, 'EXECUTOR_CODING_SESSIONS_OWNER_ONLY')
+    assert.equal(await world.prisma.executorCodingSessionCloseRequest.count({ where: { executorId: world.executorId } }), 0)
+  })
+})
+
 dbTest('a machine that has not asked its bridge lists nothing, and says who may Close', async () => {
   await withWorld(async (world) => {
     await world.prisma.executor.update({

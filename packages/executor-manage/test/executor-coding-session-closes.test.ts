@@ -118,6 +118,38 @@ dbTest('a relaunch in the same conversation withdraws the close its replaced lea
   })
 })
 
+dbTest('a relaunch withdraws only an ended lease’s close, never a revocation’s or a pause’s', async () => {
+  for (const reason of ['access_revoked', 'executor_paused'] as const) {
+    await withWorld({ ...OWNED, agentConversation: true }, async (world) => {
+      await world.prisma.executorCodingSessionCloseRequest.create({ data: {
+        executorId: world.executorId, ownerKey: holderKey(world), reason, requestedByUserId: world.adminId,
+      } })
+      await launchLocalApps(world)
+      await launchLocalApps(world)
+      assert.deepEqual((await openRows(world)).map((row) => row.reason), [reason],
+        'the authority those sessions ran under ended; a new lease does not bring it back')
+    })
+  }
+})
+
+dbTest('a machine that never offered the bridge is asked to close nothing, unless its report lists the bridge', async () => {
+  const bare = { ...OWNED, codingSessions: false }
+  await withWorld(bare, async (world) => {
+    const launch = await launchLocalApps(world)
+    await endExecutorConversationLease(world.prisma, world.holderContext, { leaseId: launch.lease.id })
+    await confirm(world, { kind: 'agent_executor_grant', agentId: world.agentId, state: 'denied' })
+    await transitionExecutorLifecycle(world.prisma, world.adminContext, { executorId: world.executorId, action: 'pause' })
+    assert.equal((await closeRows(world)).length, 0, 'no bridge, nothing a close could reach')
+  })
+  await withWorld(bare, async (world) => {
+    // A daemon still fronting a bridge its review no longer names reports it, and its sessions still close.
+    await listSessions(world, [{ ownerKey: holderKey(world) }])
+    const launch = await launchLocalApps(world)
+    await endExecutorConversationLease(world.prisma, world.holderContext, { leaseId: launch.lease.id })
+    assert.deepEqual((await openRows(world)).map((row) => row.ownerKey), [holderKey(world)])
+  })
+})
+
 dbTest('withdrawing the agent’s access, or the owner’s place on the roster, closes what it reached', async () => {
   await withWorld(OWNED, async (world) => {
     await launchLocalApps(world)
@@ -375,5 +407,16 @@ dbTest('only the pairing owner may Close, and only a session the machine lists a
     }
     assert.equal((await closeRows(world)).length, 0)
     assert.equal((await closeAudits(world)).length, 0)
+  })
+  // On a shared machine not even the person who paired it may: no session there runs as anyone.
+  await withWorld({ codingSessions: true, pairingOwner: 'admin', scope: 'organization' }, async (world) => {
+    const sessionId = randomUUID()
+    const ownerKey = ownerKeyOf(world.executorId, world.agentId, world.adminId)
+    await listSessions(world, [{ ownerKey, sessionId }])
+    await assert.rejects(
+      requestExecutorCodingSessionClose(world.prisma, world.adminContext, { executorId: world.executorId, ownerKey, sessionId }),
+      { code: 'EXECUTOR_CODING_SESSIONS_OWNER_ONLY', message: /this executor is shared/ },
+    )
+    assert.equal((await closeRows(world)).length, 0)
   })
 })

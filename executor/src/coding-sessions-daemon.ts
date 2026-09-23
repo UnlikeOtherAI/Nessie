@@ -53,9 +53,11 @@ import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
  * The heartbeat response's `codingSessionClose` closes named owners' sessions
  * (or one of them). An instruction the bridge could not carry out — a bridge
  * in start-failure backoff, a call that timed out — is kept and tried again
- * on every later heartbeat until it lands, so a revoked lease or a person's
- * Close is never silently dropped. The daemon-only `session_list_all` feeds
- * the local-MCP report.
+ * on every later heartbeat that still lists it, so a revoked lease or a
+ * person's Close is never silently dropped, and one the API no longer lists
+ * (done, a day old, or withdrawn because the owner launched again) is not
+ * retried into the new session. The daemon-only `session_list_all` feeds the
+ * local-MCP report.
  */
 
 export const codingSessionOwnerKey = (executorId: string, owner: ExecutorMcpCallOwner): string => (
@@ -190,9 +192,22 @@ export const createCodingSessionsDaemon = (input: {
     connectionHealthy: () => { failingSince = undefined },
     close: (instructions) => serially(async () => {
       if (!bridge) return
-      const parsed = ExecutorCodingSessionCloseListSchema.safeParse(instructions)
-      for (const entry of parsed.success ? parsed.data as ExecutorCodingSessionClose[] : []) {
-        if (pending.size < PENDING_CLOSE_MAXIMUM) pending.set(`${entry.ownerKey}|${entry.sessionId ?? ''}`, entry)
+      // The heartbeat lists every close the API still has open, and absent
+      // means none. One it no longer lists is done, a day old, or withdrawn by
+      // the owner's relaunch — whose new session a retried owner-wide close
+      // would end — so it is dropped, not retried. A list this daemon cannot
+      // read changes nothing.
+      const parsed = instructions === undefined
+        ? { data: [], success: true as const }
+        : ExecutorCodingSessionCloseListSchema.safeParse(instructions)
+      if (parsed.success) {
+        const listed = new Map((parsed.data as ExecutorCodingSessionClose[]).map((entry): [string, ExecutorCodingSessionClose] => (
+          [`${entry.ownerKey}|${entry.sessionId ?? ''}`, entry]
+        )))
+        for (const key of [...pending.keys()]) if (!listed.has(key)) pending.delete(key)
+        for (const [key, entry] of listed) {
+          if (pending.has(key) || pending.size < PENDING_CLOSE_MAXIMUM) pending.set(key, entry)
+        }
       }
       for (const [key, entry] of pending) {
         const closed = await daemonCall('session_close_all', {

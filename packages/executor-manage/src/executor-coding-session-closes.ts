@@ -15,6 +15,7 @@ import { requireHumanActor } from './executor-access.js'
 import {
   executorCodingSessionOwnerKey,
   executorCodingSessionsAllowed,
+  reviewedCodingSessionsServer,
   type ExecutorCodingSessionOwner,
 } from './executor-coding-session-owner.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
@@ -65,9 +66,32 @@ const writeCloseRequests = async (
 }
 
 /**
+ * Whether the machine can hold coding sessions at all: a revision of it ever
+ * offered the bridge, or its last report lists the bridge. A machine with
+ * neither has no bridge a close could reach, and a request would only ride
+ * every heartbeat for its whole day.
+ */
+const executorMayHoldCodingSessions = async (
+  tx: Prisma.TransactionClient,
+  executorId: string,
+  localMcp: unknown,
+): Promise<boolean> => {
+  const report = ExecutorLocalMcpReportSchema.safeParse(localMcp)
+  if (report.success && report.data.some((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)) {
+    return true
+  }
+  const revisions = await tx.executorCapabilityRevision.findMany({
+    where: { executorId },
+    select: { descriptor: true },
+  })
+  return revisions.some((revision) => reviewedCodingSessionsServer(revision.descriptor) !== null)
+}
+
+/**
  * Close these owners' sessions, each for its own reason. An owner who cannot
  * have driven the bridge — anyone on a shared executor, anyone but its pairing
- * owner on a private one — has none, and gets no request.
+ * owner on a private one — has none, and gets no request; nor does anyone on
+ * a machine that never offered the bridge.
  */
 export const requestExecutorCodingSessionClosesInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -81,16 +105,16 @@ export const requestExecutorCodingSessionClosesInTransaction = async (
   if (closes.length === 0) return
   const executor = await tx.executor.findUnique({
     where: { id: executorId },
-    select: { pairingOwnerUserId: true, scopeKind: true },
+    select: { localMcp: true, pairingOwnerUserId: true, scopeKind: true },
   })
   if (!executor) return
-  await writeCloseRequests(tx, executorId, closes
-    .filter((close) => executorCodingSessionsAllowed(executor, close.owner.actorUserId))
-    .map((close) => ({
-      ownerKey: executorCodingSessionOwnerKey(executorId, close.owner),
-      reason: close.reason,
-      requestedByUserId: close.requestedByUserId,
-    })))
+  const allowed = closes.filter((close) => executorCodingSessionsAllowed(executor, close.owner.actorUserId))
+  if (allowed.length === 0 || !await executorMayHoldCodingSessions(tx, executorId, executor.localMcp)) return
+  await writeCloseRequests(tx, executorId, allowed.map((close) => ({
+    ownerKey: executorCodingSessionOwnerKey(executorId, close.owner),
+    reason: close.reason,
+    requestedByUserId: close.requestedByUserId,
+  })))
 }
 
 /**
@@ -126,7 +150,8 @@ export const executorCodingSessionOwnerAgentIds = async (
  * session on the machine (it was paused or revoked). The agents are those the
  * owner ever bound the local-apps pair for here; a machine-wide close also
  * names every owner its last report listed, which covers a session whose
- * binding went with its run.
+ * binding went with its run. A machine that never offered the bridge gets
+ * none.
  */
 export const closeExecutorCodingSessionsInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -144,6 +169,7 @@ export const closeExecutorCodingSessionsInTransaction = async (
   if (!executor || executor.scopeKind !== 'private') return
   const actorUserId = executor.pairingOwnerUserId
   if (input.only && 'actorUserId' in input.only && input.only.actorUserId !== actorUserId) return
+  if (!await executorMayHoldCodingSessions(tx, input.executorId, executor.localMcp)) return
   const agentIds = input.only && 'agentId' in input.only
     ? [input.only.agentId]
     : await executorCodingSessionOwnerAgentIds(tx, input.executorId, actorUserId)
@@ -159,10 +185,12 @@ export const closeExecutorCodingSessionsInTransaction = async (
 }
 
 /**
- * A new lease for an owner withdraws that owner's open machine-wide requests:
- * the person may drive those sessions again, and a close still waiting for a
- * heartbeat would end what their new run starts. A person's Close on one
- * session stands.
+ * A new lease for an owner withdraws that owner's open request for an ended
+ * lease — the one the lease it replaces asked for a moment ago: the person may
+ * drive those sessions again, and a close still waiting for a heartbeat would
+ * end what their new run starts. Nothing else is withdrawn: a revoked access
+ * or a paused or revoked machine ended the authority those sessions ran
+ * under, and a person's Close on one session stands.
  */
 export const withdrawExecutorCodingSessionClosesInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -172,6 +200,7 @@ export const withdrawExecutorCodingSessionClosesInTransaction = async (
     where: {
       executorId: input.executorId,
       ownerKey: executorCodingSessionOwnerKey(input.executorId, input.owner),
+      reason: 'lease_ended',
       resolvedAt: null,
       sessionId: null,
     },
@@ -181,7 +210,8 @@ export const withdrawExecutorCodingSessionClosesInTransaction = async (
 
 /**
  * A person's Close on one session, from the executor page. Only the person
- * who paired the machine may ask — every session on it acts as them — and
+ * who paired a private machine may ask — every session on it acts as them,
+ * and a shared machine runs none (`executorCodingSessionsAllowed`) — and
  * only for a session its last report lists under that owner key, so no
  * request names a session that is not there. Asking again while one is open
  * adds nothing (the per-session partial unique index) and answers the same;
@@ -199,12 +229,14 @@ export const requestExecutorCodingSessionClose = async (
   return prisma.$transaction(async (tx) => {
     const executor = await tx.executor.findUniqueOrThrow({
       where: { id: input.executorId },
-      select: { localMcp: true, organizationId: true, pairingOwnerUserId: true },
+      select: { localMcp: true, organizationId: true, pairingOwnerUserId: true, scopeKind: true },
     })
-    if (executor.pairingOwnerUserId !== actorUserId) {
+    if (!executorCodingSessionsAllowed(executor, actorUserId)) {
       throw new ExecutorError(
         EXECUTOR_ERROR_CODES.CODING_SESSIONS_OWNER_ONLY,
-        'Coding sessions on this machine act as the person who paired it, so only they can close one.',
+        executor.scopeKind === 'private'
+          ? 'Coding sessions on this machine act as the person who paired it, so only they can close one.'
+          : 'Coding sessions run only on a private executor, as the person who paired it; this executor is shared.',
       )
     }
     const listed = reportedExecutorCodingSessions(executor.localMcp).some((session) => (

@@ -5,6 +5,7 @@ import {
   EXECUTOR_ERROR_CODES,
   executorCodingSessionOwnerAgentIds,
   executorCodingSessionOwnerKey,
+  executorCodingSessionsAllowed,
   getExecutorForManagement,
   reportedExecutorCodingSessions,
 } from '@nessie/executor-manage'
@@ -38,7 +39,8 @@ export const listExecutorCodingSessions = async (
     where: { id: executorId },
     select: { localMcp: true, pairingOwnerUserId: true, scopeKind: true },
   })
-  const canClose = row.pairingOwnerUserId === userId
+  // Every session acts as the person who paired a private machine, and a shared one runs none.
+  const canClose = executorCodingSessionsAllowed(row, userId)
   const sessions = reportedExecutorCodingSessions(row.localMcp).filter((session) => session.status !== 'closed')
   if (sessions.length === 0) return { canClose, sessions: [] }
   const [ownerAgentIds, open] = await Promise.all([

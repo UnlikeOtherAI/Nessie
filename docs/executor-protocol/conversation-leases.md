@@ -171,12 +171,15 @@ an `executor_coding_session_close_requests` row the next heartbeat carries as
 the same agent on the machine: sessions belong to the owner (executor, agent,
 person), not to one conversation, and the other conversation may be driving
 them. A fence says which it was (`access_revoked`, `executor_paused`,
-`executor_revoked`); every other end reads `lease_ended`. A new lease for the
-same owner withdraws that owner's open owner-wide request, so a relaunch —
-`replaced` — keeps the sessions it would otherwise have closed; the pairing
-owner's own Close on one session from the executor page stands. Only a
-private executor's pairing owner can own a session, so nobody else's lease
-end asks for anything
+`executor_revoked`); every other end — a drain's included, so a drain closes
+each live holder's sessions, a turn in flight among them — reads
+`lease_ended`. A new lease for the same owner withdraws that owner's open
+`lease_ended` request, so a relaunch — `replaced` — keeps the sessions it
+would otherwise have closed; a fence's request stands, since the authority
+those sessions ran under ended, and so does the pairing owner's own Close on
+one session from the executor page. Only a private executor's pairing owner
+can own a session, and only a machine that ever offered the bridge can hold
+one, so no other lease end asks for anything
 ([host-coding-sessions.md](host-coding-sessions.md)).
 
 ## 4. Who can see it

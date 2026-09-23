@@ -390,3 +390,11 @@ Known gaps, found in review of PR 3b and left for later:
   wind-down in about a dozen returns. Prompt caching the digest's stable
   prefix, or answering an unchanged wait from the worker without an
   inference, would cut it further.
+- **A close in flight when the owner relaunches can still end the new
+  session.** The daemon retries an owner-wide close only while the heartbeat
+  still lists it, so a request the relaunch withdrew is dropped; one already
+  being carried out when the owner launches again can land after their new
+  session starts. Giving `session_close_all` the request's time, so it closes
+  only sessions started before it, would close the race
+  (`docs/executor-protocol/host-coding-sessions.md` → "Teardown reaches the
+  machine").

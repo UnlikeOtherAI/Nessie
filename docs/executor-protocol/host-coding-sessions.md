@@ -509,10 +509,17 @@ daemon-only `session_close_all {ownerKey?, sessionId?, reason}`:
   fails a heartbeat, and closes each owner's sessions (or the one named)
   beside the heartbeat rather than in it. An instruction the bridge could not
   carry out — a bridge in its start-failure backoff, a call that timed out —
-  is kept (up to 64) and tried again on every later heartbeat until it lands,
-  so a revoked lease or a person's Close is never dropped. The API may repeat
+  is kept (up to 64) and tried again on every later heartbeat that still
+  lists it, so a revoked lease or a person's Close is never dropped. Each
+  heartbeat's list is the API's whole open set (absent is none), so one it no
+  longer lists — done, a day old, or withdrawn because the owner launched
+  again — is dropped rather than retried into the session that relaunch
+  starts; a list the daemon cannot read changes nothing. The API may repeat
   an instruction while the session is still reported open; repeating one that
-  already landed is harmless.
+  already landed is harmless. One narrow race remains: a close already in
+  flight to the bridge when the owner relaunches can still land after their
+  new session starts, since `session_close_all` closes every session the
+  owner has when it runs.
 - **At shutdown**, only when the reviewed configuration sets
   `closeOnDaemonShutdown` — or when the file no longer matches its review,
   which cannot be trusted to have opted out. The call gets five seconds and
@@ -535,7 +542,11 @@ transaction that causes it (`executor-coding-session-closes.ts`):
 
 - a conversation lease's end, for its holder, unless they still hold another
   live lease for the same agent there; a new lease withdraws that owner's
-  open request ([conversation-leases.md](conversation-leases.md) → §3);
+  open `lease_ended` request, never one for revoked access or a paused or
+  revoked machine ([conversation-leases.md](conversation-leases.md) → §3). A
+  drain ends every lease on the machine, so it closes each live holder's
+  sessions this way, a turn in flight included; unlike a pause it leaves
+  sessions no live lease covered;
 - the agent's access withdrawn (a deny of the pair or of the whole suite, or
   its removal from the roster), for that agent and the pairing owner; the
   pairing owner's removal from the roster, for every agent they bound the
@@ -552,9 +563,12 @@ transaction that causes it (`executor-coding-session-closes.ts`):
 
 Owner keys are derived as the daemon derives `_meta['nessie/owner']`
 (`executorCodingSessionOwnerKey`), and only for the one person who can own a
-session — a private executor's pairing owner. The table's partial unique
-indexes keep one open request per owner and one per named session, so a
-pause that ends leases and fences the machine asks once.
+session — a private executor's pairing owner — and only on a machine that can
+hold sessions: one with a revision that ever offered the bridge, or whose
+last report lists it. Any other machine has no bridge a close would reach,
+and its request would only ride every heartbeat for a day. The table's
+partial unique indexes keep one open request per owner and one per named
+session, so a pause that ends leases and fences the machine asks once.
 
 Every heartbeat answers with the executor's open requests, oldest first and at
 most `EXECUTOR_CODING_SESSION_CLOSE_MAXIMUM`, and omits `codingSessionClose`
@@ -588,13 +602,17 @@ who may manage the machine (404 for everyone else), as `{canClose, sessions}`:
   never swept), and names that agent only when the ordinary agent entitlement
   shows it to the reader — the Agents tab's rule. `null` reads "an agent you
   cannot see";
-- `canClose`, true for the pairing owner and nobody else. Every session acts
-  as that person, so managing the machine is not enough to end one: another
-  administrator sees the list without Close, and is told who can.
+- `canClose`, true for the pairing owner of a private machine and nobody else
+  (`executorCodingSessionsAllowed`, the rule that lets them drive it). Every
+  session acts as that person, so managing the machine is not enough to end
+  one: another administrator sees the list without Close, and is told who
+  can; on a shared machine, which runs no session anyone drove, nobody has
+  Close.
 
 Close posts `POST /api/executors/:executorId/coding-sessions/close {ownerKey,
 sessionId}`, the pair exactly as the list gave it. Anyone else who manages the
-machine is refused with `EXECUTOR_CODING_SESSIONS_OWNER_ONLY` (403), anyone
+machine — on a shared machine, everyone — is refused with
+`EXECUTOR_CODING_SESSIONS_OWNER_ONLY` (403), anyone
 who does not with `EXECUTOR_NOT_FOUND`, and a session the last report does
 not list as that owner's and open with `EXECUTOR_CODING_SESSION_NOT_FOUND`
 (404). Otherwise it writes the `person` request above, audits
