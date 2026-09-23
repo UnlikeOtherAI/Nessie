@@ -6,15 +6,9 @@ import {
   releaseSessionsForRun,
   type CloudBrowserDeps,
 } from '@nessie/browser-cloud'
-import type { Prisma } from '@prisma/client'
-import { AgentCardMessageMetadataSchema, type AgentCardSpec } from '@nessie/schemas'
-import { renderAgentCardPlainText } from '@nessie/team-admin'
+import type { AgentCardSpec } from '@nessie/schemas'
 
-import { createAgentMessage } from '../execute/agent-message.js'
-import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
-import { publishMessageCreated } from '../execute/realtime.js'
-import { alertCardRespondents } from '../mention-alerts.js'
-import { buildRealtimeScopesForChannel } from '../pa-tools/message-destination.js'
+import { postAgentCard } from '../pa-tools/agent-card-post.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { releaseCdp } from './session-pool.js'
 
@@ -124,79 +118,32 @@ export const requestBrowserLogin = async (
     actions: [{ key: 'done', label: 'Done', style: 'primary', submits: true }],
   }
 
-  const content = renderAgentCardPlainText(card)
-  const expiresAt = deploymentClampedExpiry()
+  const requestedExpiry = deploymentClampedExpiry()
 
-  const created = await deps.prisma.$transaction(async (tx) => {
-    const message = await createAgentMessage(tx, runContext, {
-      agentId: context.agentId,
-      content,
-      role: 'assistant',
-      threadId: context.run.threadId,
-      ...(runContext.replyRootMessageId
-        ? { rootMessageId: runContext.replyRootMessageId }
-        : {}),
-    })
-    const grant = await createPersonalBrowserAccessGrant(tx, {
-      agentId: context.agentId,
-      expiresAt,
-      organizationId: context.channel.organizationId,
-      origins,
-      runId: context.run.id,
-      threadId: context.run.threadId,
-      userId: requesterId,
-    })
-    const row = await tx.agentCard.create({
-      data: {
+  // The one card door: its message, row and pointer in one transaction with
+  // the grant, then the realtime notice and the requester's bell.
+  const created = await postAgentCard(context, runContext, {
+    browserLogin: async (tx) => {
+      const grant = await createPersonalBrowserAccessGrant(tx, {
         agentId: context.agentId,
-        browserLogin: { grantId: grant.grantId, mode: 'temporary', origins, service } as Prisma.InputJsonValue,
-        channelId: context.channel.id,
+        expiresAt: requestedExpiry,
+        organizationId: context.channel.organizationId,
+        origins,
+        runId: context.run.id,
+        threadId: context.run.threadId,
+        userId: requesterId,
+      })
+      return {
         // The deployment may set a browser TTL below the requested fifteen
         // minutes. The grant is the authority for that ceiling, so the card
         // must not invite a person to a login window that can no longer open.
         expiresAt: browserLoginCardDeadline(grant),
-        messageId: message.id,
-        organizationId: context.channel.organizationId,
-        respondentUserIds: [requesterId],
-        runId: context.run.id,
-        spec: card as unknown as Prisma.InputJsonValue,
-        threadId: context.run.threadId,
-      },
-      select: { id: true },
-    })
-    await tx.message.update({
-      data: {
-        metadata: AgentCardMessageMetadataSchema.parse({
-          agentCard: { cardId: row.id, schemaVersion: 1 },
-        }) as unknown as Prisma.InputJsonValue,
-      },
-      where: { id: message.id },
-    })
-    return { cardId: row.id, expiresAt: grant.expiresAt, message }
-  })
-
-  const reply = runContext.replyRootMessageId
-    ? await applyRunReplyBookkeeping(deps.prisma, runContext, created.message.createdAt)
-    : undefined
-  await publishMessageCreated(context.realtimeTransport, runContext, {
-    content: created.message.content,
-    messageId: created.message.id,
-    role: 'assistant',
-    ...(created.message.basis.length > 0 ? { restricted: true } : {}),
-    ...(reply ? { reply } : {}),
-  })
-  await alertCardRespondents(context, {
-    channelId: context.channel.id,
-    messageCreatedAt: created.message.createdAt,
-    messageId: created.message.id,
-    organizationId: context.channel.organizationId,
-    recipientUserIds: [requesterId],
-    scopes: buildRealtimeScopesForChannel({
-      channelId: context.channel.id,
-      organizationId: context.channel.organizationId,
-      systemChannelType: context.channel.systemChannelType ?? null,
-    }),
-    threadId: context.run.threadId,
+        record: { grantId: grant.grantId, mode: 'temporary', origins, service },
+      }
+    },
+    card,
+    expiresAt: requestedExpiry,
+    respondentUserIds: [requesterId],
   })
 
   return {

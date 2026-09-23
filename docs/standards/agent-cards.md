@@ -210,6 +210,20 @@ this standard, not an exception to it.
     `api/test/agent-card-executor-review.test.ts`,
     `worker/test/db/executor-review-card.test.ts` and the executor-agents
     fixture suite, which closes the review and presses again.
+- **Every card goes through one door.** `postAgentCard`
+  (`worker/src/run/pa-tools/agent-card-post.ts`) is the only place the worker
+  writes an `AgentCard` row: `card_post`, the executor review card and
+  `browser_login_request`'s sign-in card all post through it, so none can
+  exist without its message, its pointer, its realtime notice or its
+  respondents' bell. The sign-in tool used to carry its own copy of all five,
+  which is where two copies drift. Its personal browser grant is written
+  inside the card's own transaction by the door's `browserLogin` step, so
+  neither exists without the other, and the grant's deadline — which the
+  deployment's browser TTL may shorten — is the card's. `card_post` never
+  passes that step, so no model-written card can grant browser access. Pinned
+  by `worker/test/browser-login-request.test.ts` (no second writer) and
+  `worker/test/db/browser-login-card.test.ts` (the card, its grant, and a
+  failed grant taking the card with it).
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the
