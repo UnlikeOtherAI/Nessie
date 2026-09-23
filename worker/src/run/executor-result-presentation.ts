@@ -69,27 +69,42 @@ const FRAME_MARKER_LETTERS = 'UNTRUSTEDEXTERNALDATA'
 export const readsAsFrameMarker = (line: string): boolean =>
   line.normalize('NFKC').toUpperCase().replace(/[^A-Z]/g, '').includes(FRAME_MARKER_LETTERS)
 
+const QUOTE = '> '
+
 /**
- * Output from the machine framed so it cannot close the frame: every line of
- * it that could read as either marker is quoted, which leaves the text
- * readable and makes the real closing line the only one. `lead` is ours and
- * goes above the frame.
+ * Every line of `body` that could read as either marker, quoted: that leaves
+ * the text readable and makes the real closing line the only one.
  */
-export const frameUntrustedOutput = (banner: string, body: string, lead?: string): string => [
+const quoteFrameMarkers = (body: string): string =>
+  body.split('\n').map((line) => (readsAsFrameMarker(line) ? `${QUOTE}${line}` : line)).join('\n')
+
+// A body whose marker lines are already quoted, framed; `lead` is ours and goes above the frame.
+const frameQuoted = (banner: string, quoted: string, lead?: string): string => [
   ...(lead ? [lead] : []),
   FRAME_OPEN,
   banner,
-  body.split('\n').map((line) => (readsAsFrameMarker(line) ? `> ${line}` : line)).join('\n'),
+  quoted,
   FRAME_CLOSE,
 ].join('\n')
 
-const frameProgramOutput = (server: string, body: string, lead?: string): string =>
-  frameUntrustedOutput(programBanner(server), body, lead)
+/** Output from the machine framed so it cannot close the frame. */
+export const frameUntrustedOutput = (banner: string, body: string, lead?: string): string =>
+  frameQuoted(banner, quoteFrameMarkers(body), lead)
 
+// Program output reaches it quoted and bounded (`capProgramOutput`, the catalog).
+const frameProgramOutput = (server: string, quoted: string, lead?: string): string =>
+  frameQuoted(programBanner(server), quoted, lead)
+
+/**
+ * The program's text quoted, then cut to the cap: measured after the quoting,
+ * so a result of short lines that each read as a marker cannot take its `> `
+ * prefixes past the bound.
+ */
 const capProgramOutput = (body: string): string => {
-  if (body.length <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS) return body
-  const shown = cutAt(body, EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS)
-  return `${shown}\n[… ${body.length - shown.length} more characters not shown — ask the program for a narrower result]`
+  const quoted = quoteFrameMarkers(body)
+  if (quoted.length <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS) return quoted
+  const shown = cutAt(quoted, EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS)
+  return `${shown}\n[… ${quoted.length - shown.length} more characters not shown — ask the program for a narrower result]`
 }
 
 // Sized from base64 when a program sent the bytes inline; a reference the
@@ -247,12 +262,13 @@ const namesOnlyLine = (names: readonly string[], room: number): string => {
 /**
  * Each tool's name and first sentence, so a 94-tool program lists in a few KB.
  * A catalog past the cap describes what fits beside the rest's names, and the
- * whole list stays inside the cap.
+ * whole list stays inside the cap. Each line is measured as the model reads
+ * it, quoted when it reads as a frame marker.
  */
 export const presentExecutorMcpCatalog = (server: string, tools: readonly ExecutorMcpTool[]): string => {
   const described = tools.map((tool) => {
     const sentence = firstSentence(tool.description)
-    return `- ${oneLine(tool.name, 128)}${sentence ? `: ${sentence}` : ''}`
+    return quoteFrameMarkers(`- ${oneLine(tool.name, 128)}${sentence ? `: ${sentence}` : ''}`)
   })
   const whole = described.reduce((sum, line) => sum + line.length + 1, 0)
   const budget = whole <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS
@@ -267,7 +283,9 @@ export const presentExecutorMcpCatalog = (server: string, tools: readonly Execut
   }
   if (lines.length < tools.length) {
     const rest = tools.slice(lines.length).map((tool) => oneLine(tool.name, 128))
-    lines.push(namesOnlyLine(rest, EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS - used))
+    // Names run together can spell a marker across their commas, so the line
+    // keeps room for its quote whether or not it needs it.
+    lines.push(quoteFrameMarkers(namesOnlyLine(rest, EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS - used - QUOTE.length)))
   }
   return frameProgramOutput(
     server,
