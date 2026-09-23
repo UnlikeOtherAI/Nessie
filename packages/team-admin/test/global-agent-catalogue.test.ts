@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { AgentEffortSchema, AgentVisibilitySchema } from '@nessie/schemas'
+import { AgentEffortSchema, AgentVisibilitySchema, describeAgentTriggerTypes } from '@nessie/schemas'
 
 import type { GlobalAgentExecutorFacts } from '@nessie/executor-manage'
 
 import { buildGlobalAgentCatalogueBlock } from '../src/global-agent-catalogue.js'
 import { listGlobalAgentBlueprints } from '../src/global-agent-blueprints.js'
+import { RELEASED_TRIGGER_TYPES } from '../src/trigger-type-availability.js'
 import type { AgentToolCatalog } from '../src/agent-tool-catalog.js'
 
 /**
@@ -113,10 +114,33 @@ test('parameter facts render from the contracts that validate them', () => {
   assert.match(rendered, /maxTokens, maxToolCalls, maxIterations, maxWallclockMs, maxCostCents/)
 })
 
-test('the trigger types offered are the ones a create surface accepts', () => {
+test('the trigger types offered are the ones a create surface accepts, with their generated settings', () => {
   const rendered = block()
-  assert.match(rendered, /triggers — manual \| scheduled \| webhook \| event \| interval\./)
-  assert.doesNotMatch(rendered, /ticket_changed|document_changed/)
+  for (const type of RELEASED_TRIGGER_TYPES) {
+    assert.match(rendered, new RegExp(`^- ${type} — `, 'm'), `${type} is offered`)
+  }
+  assert.doesNotMatch(rendered, /document_changed/)
+  // The section is the schema's prose, not a paraphrase of it.
+  for (const line of describeAgentTriggerTypes()) assert.ok(rendered.includes(line), line)
+  assert.match(rendered, /targetChannelId: id — A live, ordinary, public channel of the board's project/)
+  assert.match(rendered, /\{category: in_progress \| review\} — Every column of this category on the board\./)
+  assert.match(rendered, /Scheduled and interval triggers need the creator to have a live SSO identity/)
+  assert.match(rendered, /authorship only: a schedule runs as the person who created it/)
+})
+
+test('the ticket-work facts say what T1 ships, and board tools are no longer a person\'s-turn-only claim', () => {
+  const rendered = block()
+  assert.doesNotMatch(rendered, /bound to, on a person's turn\./)
+  assert.match(rendered, /on a person's turn there, or when a ticket_changed trigger wakes it for a ticket's work/)
+  assert.match(rendered, /Work on a ticket starts only when a person who can edit the board moves it/)
+  assert.match(rendered, /A move or a create by an agent, an API token or a connected board never starts work/)
+  assert.match(rendered, /At most one enabled trigger picks up from a column/)
+  assert.match(rendered, /which is why that channel must be public/)
+  assert.match(rendered, /Limits: 30 model runs per ticket by default \(wakesPerTicket, at most 100\) and 20 tickets/)
+  assert.match(rendered, /Its ticket comments are read by everyone on the project/)
+  assert.match(rendered, /Ticket work runs on no machine yet/)
+  // Nothing from a later PR is promised.
+  assert.doesNotMatch(rendered, /check_back_in|machine access|standing access/i)
 })
 
 test('the never-do facts are stated as facts', () => {
@@ -215,6 +239,12 @@ test('the proposal card places an agent in named channels, or nowhere yet', () =
   assert.match(chat, /it reads exactly "nowhere yet — add it to any channel"/)
   assert.match(chat, /never a channel you would create for the agent/)
   assert.doesNotMatch(chat, /channel it will work in/)
+  // A ticket-driven agent's card says when its work starts, in the same block.
+  assert.match(
+    chat,
+    /When the agent gets a ticket_changed trigger, the same fields block has a third field, "Starts work when"/,
+  )
+  assert.doesNotMatch(chat, /"Runs on"/)
   // The parameter facts agree: no binding is a finished agent.
   assert.match(chat, /An agent needs none to exist: with none it lives nowhere yet/)
 })

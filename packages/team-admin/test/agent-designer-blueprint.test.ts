@@ -81,6 +81,21 @@ test('a project and a trigger are read from their links too', () => {
   assert.match(prose, /the triggerId agent_trigger_update or agent_trigger_delete takes the last segment of the \/agents\/triggers\/… link agent_trigger_create returned/)
 })
 
+// T1 of docs/plans/2026-09-23-ticket-driven-agents: an agent that picks up a
+// board's tickets is set up agent, then a public project channel, then the
+// trigger, from the ids project_structure_read returned, with instructions the
+// Designer drafts. No machine does ticket work yet, so none is promised.
+test('a ticket-driven agent is set up in order, from the project\'s real structure', () => {
+  assert.match(prose, /Set it up in this order: create the agent, bind it to a channel of the board's project that every member can read — a public one — and then create the trigger with that channel as its target/)
+  assert.match(prose, /Read the project with project_structure_read first/)
+  assert.match(prose, /name a column by its name or category rather than by an id you have not seen/)
+  assert.match(prose, /When the trigger is refused, fix the field the refusal names/)
+  assert.match(prose, /A neutral example: general "Read the ticket, its description and its comments before you act/)
+  assert.match(prose, /Ticket work runs on no machine yet, so never promise that the agent will write or run code/)
+  assert.equal(AGENT_DESIGNER_BLUEPRINT.toolPolicy['project_structure_read'], true)
+  assert.ok(AGENT_DESIGNER_BLUEPRINT.identityToolIds.includes('project_structure_read'))
+})
+
 test('a pinned portrait style is reported because the prompt says so', () => {
   assert.match(prose, /When a redraw reports its style as pinned, tell them the style they asked for was not used/)
 })

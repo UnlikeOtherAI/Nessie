@@ -11,7 +11,7 @@ import {
   executorSection,
   type GlobalAgentCatalogueWriteSurface,
 } from './global-agent-executor-catalogue.js'
-import { RELEASED_TRIGGER_TYPES } from './trigger-type-availability.js'
+import { ticketWorkFactsSection, triggerCatalogueSection } from './global-agent-trigger-catalogue.js'
 
 import type {
   AgentToolCatalog,
@@ -237,7 +237,8 @@ const parametersSection = (avatarLineText: string): string[] => [
     + 'project board tools are OFF unless the policy says true. An agent that '
     + 'works a project\'s board needs every board tool it will use set true, '
     + 'and it reaches that board only from the project\'s channels it is bound '
-    + 'to, on a person\'s turn.',
+    + 'to: on a person\'s turn there, or when a ticket_changed trigger wakes it '
+    + 'for a ticket\'s work.',
   ),
   avatarLineText,
   bullet(
@@ -256,13 +257,10 @@ const parametersSection = (avatarLineText: string): string[] => [
     + 'team-visible agent gets their own private conversation with it on '
     + 'demand, and a private agent has exactly one, its owner\'s.',
   ),
-  bullet(
-    // The released types only: an enum value no create surface accepts yet is
-    // not a trigger the Designer can offer.
-    `triggers — ${RELEASED_TRIGGER_TYPES.join(' | ')}. Scheduled and `
-    + 'interval triggers need the creator to have a live SSO identity, because '
-    + 'every future run re-uses it.',
-  ),
+  // Triggers are their own section below, generated from the typed config
+  // union, which holds exactly the released types: an enum value no create
+  // surface accepts yet is not a trigger the Designer can offer.
+  bullet('triggers — what starts the agent\'s work; each type and its settings are under Triggers below.'),
 ]
 
 const neverSection = (
@@ -373,6 +371,12 @@ const proposalCardSection = (): string[] => [
     + 'is the team, or that it is private to them.',
   ),
   bullet(
+    'When the agent gets a ticket_changed trigger, the same fields block has a '
+    + 'third field, "Starts work when": the moment its work starts, in the '
+    + 'person\'s words and naming the board and the column, such as "someone '
+    + 'moves a ticket into In progress on Engineering".',
+  ),
+  bullet(
     'An input block, a select, for the model: a few from the catalogue above '
     + 'with your recommendation as the default. Each option\'s value is the '
     + 'provider and model as one pair, written exactly as the catalogue writes '
@@ -450,6 +454,10 @@ export const buildGlobalAgentCatalogueBlock = (
     'Agent design catalogue (generated from this team, not remembered):',
     '',
     ...parametersSection(avatarLine(facts)),
+    '',
+    ...triggerCatalogueSection(),
+    '',
+    ...ticketWorkFactsSection(),
     '',
     `Tools you can give an agent (${facts.catalogue.togglable.length}), by tool `
     + 'policy key:',
