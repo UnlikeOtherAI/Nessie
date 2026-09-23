@@ -90,7 +90,9 @@ test('nobody but the requester sees a person\'s brief before it is launched', ()
   for (const status of ['queued', 'drafting'] as const) {
     assert.equal(isDeepWaterRunVisible(input({ run: { ...personBrief, status }, viewer: member })), false)
     assert.equal(
-      isDeepWaterRunVisible(input({ run: { ...personBrief, status }, viewerUserId: REQUESTER, viewer: user(REQUESTER, []) })),
+      isDeepWaterRunVisible(input({
+        run: { ...personBrief, status }, viewerUserId: REQUESTER, viewer: user(REQUESTER, []),
+      })),
       true,
     )
   }

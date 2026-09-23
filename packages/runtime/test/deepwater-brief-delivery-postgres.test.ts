@@ -128,9 +128,13 @@ withFixture('a failed research is delivered through the same claim', async (fixt
 
 withFixture('a block is set once, keeps a retryable run open and completes a final one', async (fixture) => {
   const block = (runId: string, reason: 'ledger_unavailable' | 'report_expired') =>
-    fixture.prisma.$transaction((tx) => blockDeepWaterDelivery(tx, { organizationId: fixture.ids.organization, runId, reason }))
+    fixture.prisma.$transaction((tx) => blockDeepWaterDelivery(tx, {
+      organizationId: fixture.ids.organization, runId, reason,
+    }))
   const clear = (runId: string) =>
-    fixture.prisma.$transaction((tx) => clearDeepWaterDeliveryBlock(tx, { organizationId: fixture.ids.organization, runId }))
+    fixture.prisma.$transaction((tx) => clearDeepWaterDeliveryBlock(tx, {
+      organizationId: fixture.ids.organization, runId,
+    }))
 
   const { run: retryable } = await insertBrief(fixture)
   await fixture.pool.query(`UPDATE product_integration_runs SET status = 'running' WHERE id = $1`, [retryable.id])
@@ -249,7 +253,9 @@ withFixture('only an unstarted brief is failed without a research, and the origi
     [randomUUID(), fixture.ids.agent, fixture.ids.channel],
   )
   assert.deepEqual(
-    await loadDeepWaterOriginDestination(fixture.prisma, { organizationId: fixture.ids.organization, threadId: fixture.ids.thread }),
+    await loadDeepWaterOriginDestination(fixture.prisma, {
+      organizationId: fixture.ids.organization, threadId: fixture.ids.thread,
+    }),
     {
       chain: {
         organizationId: fixture.ids.organization,
@@ -261,7 +267,9 @@ withFixture('only an unstarted brief is failed without a research, and the origi
     },
   )
   assert.equal(
-    await loadDeepWaterOriginDestination(fixture.prisma, { organizationId: randomUUID(), threadId: fixture.ids.thread }),
+    await loadDeepWaterOriginDestination(fixture.prisma, {
+      organizationId: randomUUID(), threadId: fixture.ids.thread,
+    }),
     null,
   )
 })

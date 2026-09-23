@@ -139,7 +139,9 @@ withFixture('a watch read that arrives before the ack attaches, and the late ack
 
   const lateAck = await apply(fixture, run.id, scopeResult(rs), (origin as { actionId: string }).actionId)
   assert.equal(lateAck.applied, true)
-  const stored = await readDeepWaterBriefRun(fixture.prisma, { organizationId: fixture.ids.organization, runId: run.id })
+  const stored = await readDeepWaterBriefRun(fixture.prisma, {
+    organizationId: fixture.ids.organization, runId: run.id,
+  })
   assert.equal(stored?.scopeState?.turn?.status, 'failed')
   assert.equal(stored?.scopeState?.pendingAction, null)
 })
@@ -181,7 +183,9 @@ withFixture('concurrent reads of one turn converge on the settled state', async 
   const outcomes = await Promise.all(reads.map((read) => apply(fixture, run.id, read)))
   const settledNow = outcomes.filter((outcome) => outcome.applied && outcome.newlySettledTurn?.id === T2)
   assert.equal(settledNow.length, 1, 'exactly one application settles turn 2')
-  const stored = await readDeepWaterBriefRun(fixture.prisma, { organizationId: fixture.ids.organization, runId: run.id })
+  const stored = await readDeepWaterBriefRun(fixture.prisma, {
+    organizationId: fixture.ids.organization, runId: run.id,
+  })
   assert.deepEqual(
     { id: stored?.scopeState?.turn?.id, status: stored?.scopeState?.turn?.status },
     { id: T2, status: 'failed' },
