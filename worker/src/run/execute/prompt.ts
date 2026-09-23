@@ -39,6 +39,7 @@ import {
   type AgentDocumentsPromptFacts,
 } from './agent-documents.js'
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
+import { buildExecutorReachBlock, type ExecutorReachFacts } from './executor-reach-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 import { originalHumanAuthorId } from './private-conversation-lineage.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
@@ -148,6 +149,11 @@ export const buildModelPrompt = (
     hasCardTool?: boolean
     /** True when `browser_login_request` is in this run's resolved builtin toolset. */
     hasBrowserLoginRequestTool?: boolean
+    /**
+     * What the model can reach on a person's machine this turn, from the
+     * run's bindings and its conversation lease (`loadExecutorReachFacts`).
+     */
+    executorReach?: ExecutorReachFacts | null
     /** The exact active temporary browser handoff for this resumed run. */
     temporaryBrowserAccess?: {
       expiresAt: Date
@@ -316,6 +322,14 @@ export const buildModelPrompt = (
       + 'timezone.',
     role: 'system',
   }, 'prompt_system'))
+
+  // Machine reach rides behind the clock: a carried lease moves its window on
+  // every run, so these facts are the most volatile system text there is and
+  // must never enter the anchor, or every follow-up would miss the cache.
+  const executorReach = buildExecutorReachBlock(options.executorReach ?? null)
+  if (executorReach) {
+    messages.push(coverProviderInputComponent({ content: executorReach, role: 'system' }, 'prompt_system'))
+  }
 
   if (conversation.length > 0) {
     messages.push(

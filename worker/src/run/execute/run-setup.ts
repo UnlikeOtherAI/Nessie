@@ -35,6 +35,7 @@ import {
 } from './history-recall.js'
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
+import { loadExecutorReachFacts } from './executor-reach-facts.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
@@ -359,6 +360,18 @@ export const prepareRunExecution = async (
         })
       : Promise.resolve(null),
   ])
+  // Read from the toolset the model actually holds, so "bound" is never said
+  // of an operation the toolset dropped. A DeepWater handoff turn keeps its
+  // server-authored prompt byte-identical, as it does for the checkpoint.
+  const executorReach = input.isHandoffTurn ? null : await loadExecutorReachFacts(deps.prisma, {
+    agentId: context.agent.id,
+    channelId: context.channel.id,
+    lease: context.executorLease,
+    organizationId: context.channel.organizationId,
+    personUserId: payload.actorContext.actor.actorType === 'user' ? payload.actorContext.actor.actorId : null,
+    runId: context.run.id,
+    toolNames: executorToolset.handledNames,
+  })
 
   const effectiveUserId =
     payload.actorContext.actionContext.effectiveUserId
@@ -493,6 +506,7 @@ export const prepareRunExecution = async (
       approvalInstruction,
       emailConversation: emailContext?.block ?? null,
       checkpointNotes: checkpoint ? buildCheckpointInjection(checkpoint) : null,
+      executorReach,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
         hasResearchTools: mcpToolset.hasManagedResearchTools,
