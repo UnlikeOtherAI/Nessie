@@ -14,6 +14,7 @@ import {
 import { deepWaterWatchDelayMs, isPendingActionInFlight } from './deepwater-brief-registers.js'
 import {
   deepWaterBriefJson,
+  deepWaterMsSinceLastEvent,
   lockDeepWaterBriefRun,
   type DeepWaterBriefDb,
   type DeepWaterBriefRun,
@@ -25,9 +26,6 @@ import {
  * only process that calls Ledger (Water plan contract D10). One action is in
  * flight per brief; `scope_json.pendingAction` is that action.
  */
-
-/** How soon the Ledger watch looks at a brief after a person acted on it (amendments-fable F1). */
-export const DEEP_WATER_ACTIVE_WATCH_DELAY_MS = 5_000
 
 /**
  * How long an action's job keeps retrying a Ledger that cannot be reached,
@@ -166,11 +164,19 @@ export const beginDeepWaterPersonAction = async (
       error: null,
     },
   })
+  // The action in flight brings the watch to its fastest cadence (F1): 5 s,
+  // or 60 s while DeepWater's own events reach the run.
+  const delayMs = deepWaterWatchDelayMs({
+    status: run.status,
+    state,
+    msSinceLastChange: 0,
+    msSinceLastEvent: deepWaterMsSinceLastEvent(run, now),
+  })
   await tx.productIntegrationRun.update({
     where: { id: run.id },
     data: {
       scopeJson: deepWaterBriefJson(state),
-      reconcileAfter: new Date(now.getTime() + DEEP_WATER_ACTIVE_WATCH_DELAY_MS),
+      reconcileAfter: new Date(now.getTime() + delayMs),
     },
   })
   return { kind: 'started', run: { ...run, scopeState: state } }
@@ -246,7 +252,12 @@ export const revertDeepWaterLaunch = async (
     ...scopeState,
     pendingAction: { ...action, error: { code: input.errorCode, at: now.toISOString() } },
   })
-  const delayMs = deepWaterWatchDelayMs({ status: 'drafting', state, msSinceLastChange: 0 })
+  const delayMs = deepWaterWatchDelayMs({
+    status: 'drafting',
+    state,
+    msSinceLastChange: 0,
+    msSinceLastEvent: deepWaterMsSinceLastEvent(run, now),
+  })
   await tx.productIntegrationRun.update({
     where: { id: run.id },
     data: {
@@ -280,7 +291,12 @@ export const revertDeepWaterAgentLaunch = async (
   const action = scopeState.pendingAction
   if (run.status !== 'running' || (isPendingActionInFlight(action) && action.kind === 'launch')) return null
 
-  const delayMs = deepWaterWatchDelayMs({ status: 'drafting', state: scopeState, msSinceLastChange: 0 })
+  const delayMs = deepWaterWatchDelayMs({
+    status: 'drafting',
+    state: scopeState,
+    msSinceLastChange: 0,
+    msSinceLastEvent: deepWaterMsSinceLastEvent(run, now),
+  })
   await tx.productIntegrationRun.update({
     where: { id: run.id },
     data: {

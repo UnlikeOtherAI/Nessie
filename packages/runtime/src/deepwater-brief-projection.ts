@@ -20,6 +20,7 @@ import {
 } from './deepwater-brief-registers.js'
 import {
   deepWaterBriefJson,
+  deepWaterMsSinceLastEvent,
   lockDeepWaterBriefRun,
   type DeepWaterBriefDb,
   type DeepWaterBriefRun,
@@ -275,6 +276,7 @@ const writeProjection = async (
     status: write.awaitingProof ? 'running' : write.status,
     state: write.state,
     msSinceLastChange: now.getTime() - observedAt.getTime(),
+    msSinceLastEvent: deepWaterMsSinceLastEvent(run, now),
   })
   // The move into a launched status is the launch, whichever one Ledger
   // reported; moving between them (an operator's `needs_setup` and its

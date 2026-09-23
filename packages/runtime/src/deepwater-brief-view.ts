@@ -171,6 +171,20 @@ const cancelFailureOf = (run: DeepWaterBriefRun): DeepWaterResearchRunView['canc
   return code === null ? null : { code, message: deepWaterCancelFailureMessage(code) }
 }
 
+/**
+ * DeepWater's latest progress for a research that is starting or running
+ * (amendments-streaming S2). A finished research, a blocked delivery (whose
+ * own words say what it waits for) and a brief still being agreed show none,
+ * so a stale snapshot never outlives the state it described.
+ */
+const progressOf = (
+  run: DeepWaterBriefRun,
+  status: DeepWaterResearchRunViewStatus,
+): DeepWaterResearchRunView['progress'] => {
+  if ((status !== 'running' && status !== 'starting') || run.deliveryBlockedReason !== null) return null
+  return run.scopeState?.progress ?? null
+}
+
 /** The research as a list row, the detail read or the card shows it. */
 export const toDeepWaterResearchRunView = (
   run: DeepWaterBriefRun,
@@ -178,9 +192,10 @@ export const toDeepWaterResearchRunView = (
 ): DeepWaterResearchRunView => {
   const brief = run.scopeState?.brief ?? null
   const delivered = run.deliveredAt !== null
+  const status = viewStatus(run)
   return DeepWaterResearchRunViewSchema.parse({
     id: run.id,
-    status: viewStatus(run),
+    status,
     topic: run.input?.topic ?? run.queryPreview,
     title: run.title,
     pillarCount: brief?.pillars.length ?? run.input?.pillars?.length ?? 0,
@@ -211,6 +226,7 @@ export const toDeepWaterResearchRunView = (
       state: delivered ? 'delivered' : run.deliveryBlockedReason !== null ? 'blocked' : 'pending',
       blockedReason: run.deliveryBlockedReason,
     },
+    progress: progressOf(run, status),
     viewer: deepWaterViewerActions(run, context.viewer, context.now),
   })
 }

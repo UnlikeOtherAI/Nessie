@@ -193,10 +193,29 @@ test('Ledger statuses map onto product-run statuses', () => {
 
 test('the watch reads every 5 s while anything is in flight, 30 s while running, then backs off', () => {
   const open = { ...emptyDeepWaterScopeState(), turn: { ...turn(), errorCode: null } }
-  assert.equal(deepWaterWatchDelayMs({ status: 'drafting', state: open, msSinceLastChange: 0 }), 5_000)
-  assert.equal(deepWaterWatchDelayMs({ status: 'running', state: emptyDeepWaterScopeState(), msSinceLastChange: 0 }), 30_000)
+  const delay = (input: Omit<Parameters<typeof deepWaterWatchDelayMs>[0], 'msSinceLastEvent'>) =>
+    deepWaterWatchDelayMs({ ...input, msSinceLastEvent: null })
+  assert.equal(delay({ status: 'drafting', state: open, msSinceLastChange: 0 }), 5_000)
+  assert.equal(delay({ status: 'running', state: emptyDeepWaterScopeState(), msSinceLastChange: 0 }), 30_000)
   const idle = emptyDeepWaterScopeState()
-  assert.equal(deepWaterWatchDelayMs({ status: 'drafting', state: idle, msSinceLastChange: 60_000 }), 10 * 60_000)
-  assert.equal(deepWaterWatchDelayMs({ status: 'drafting', state: idle, msSinceLastChange: 4 * 3_600_000 }), 2 * 3_600_000)
-  assert.equal(deepWaterWatchDelayMs({ status: 'drafting', state: idle, msSinceLastChange: 48 * 3_600_000 }), 6 * 3_600_000)
+  assert.equal(delay({ status: 'drafting', state: idle, msSinceLastChange: 60_000 }), 10 * 60_000)
+  assert.equal(delay({ status: 'drafting', state: idle, msSinceLastChange: 4 * 3_600_000 }), 2 * 3_600_000)
+  assert.equal(delay({ status: 'drafting', state: idle, msSinceLastChange: 48 * 3_600_000 }), 6 * 3_600_000)
+})
+
+test('while DeepWater\'s events reach a run the watch is the backstop: 60 s, never faster', () => {
+  const open = { ...emptyDeepWaterScopeState(), turn: { ...turn(), errorCode: null } }
+  const idle = emptyDeepWaterScopeState()
+  const delay = (status: 'drafting' | 'running', state: typeof idle, msSinceLastEvent: number | null) =>
+    deepWaterWatchDelayMs({ status, state, msSinceLastChange: 0, msSinceLastEvent })
+  // An event in the last two minutes: the 5 s and 30 s cadences become 60 s.
+  assert.equal(delay('drafting', open, 0), 60_000)
+  assert.equal(delay('running', idle, 119_000), 60_000)
+  assert.equal(delay('running', idle, 120_000), 60_000)
+  // Older than two minutes, or none yet: the watch's own cadence again.
+  assert.equal(delay('running', idle, 120_001), 30_000)
+  assert.equal(delay('drafting', open, 10 * 60_000), 5_000)
+  assert.equal(delay('running', idle, null), 30_000)
+  // A quiet run keeps its longer backoff: an event never makes the watch read more often.
+  assert.equal(delay('drafting', idle, 0), 10 * 60_000)
 })
