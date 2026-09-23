@@ -285,8 +285,12 @@ export const applyDeepWaterScopeResult = async (
     turnAuthor: input.turnAuthor ?? openingAuthor,
   })
 
-  // A revived row starts again from `queued`: its reap is undone by the attach.
-  const from = isRevivable(run) ? 'queued' : run.status
+  // The attach makes the run `drafting` (N1) — a queued row, or one the reap
+  // gave up, whose reap the attach undoes — and Ledger's status moves it on from
+  // there. So an attach that already names a finished research leaves the row
+  // where the watch claims it: a delivery that does not finish now is retried
+  // by the next claim instead of stranding an attached `queued` row.
+  const from: ProductIntegrationRunStatus = attaching ? 'drafting' : run.status
   const step = statusStepForLedger(from, result.status, result.errorCode)
   const finishedByStatus = pendingActionFinishedByStatus(application.state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...application.state, pendingAction: null } : application.state

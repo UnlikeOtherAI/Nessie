@@ -213,3 +213,35 @@ withFixture('a settled turn wakes its agent author once, in order; a person\'s t
   assert.equal((await claim())?.decision.kind, 'none', 'the cap notice is posted once')
   assert.ok((await read(fixture, run.id))?.wakeCapNoticeAt)
 })
+
+withFixture('an attach that names a finished research leaves the run where the next claim reads it again', async (fixture) => {
+  // A queued brief whose first acknowledgement already reports the research finished.
+  const { run: queued } = await insertBrief(fixture, personOrigin())
+  const rsQueued = researchId()
+  const finished = await apply(fixture, queued.id, result(rsQueued, { status: 'complete', turn: turn({ authorKind: 'person' }) }))
+  assert.equal(finished.applied && finished.attached, true)
+  assert.equal(finished.applied && finished.run.status, 'drafting', 'the attach makes it drafting (N1)')
+  assert.equal(finished.applied && finished.run.externalRunId, rsQueued)
+  assert.deepEqual(finished.applied && finished.ledgerTerminal, { status: 'complete', errorCode: null })
+
+  // A reaped brief revived by a read that reports the research failed.
+  const { run: reaped } = await insertBrief(fixture, agentOrigin(fixture))
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET status = 'failed', failure_code = 'start_unconfirmed', completed_at = now() WHERE id = $1`,
+    [reaped.id],
+  )
+  const rsReaped = researchId()
+  const revived = await apply(fixture, reaped.id, result(rsReaped, { status: 'failed', errorCode: 'upstream_failed' }))
+  assert.equal(revived.applied && revived.run.status, 'drafting')
+  assert.equal(revived.applied && revived.run.failureCode, null)
+  assert.deepEqual(revived.applied && revived.ledgerTerminal, { status: 'failed', errorCode: 'upstream_failed' })
+
+  // Neither delivery finished (it threw, or asked to be tried again): the next
+  // claim takes both, so the watch reads them and delivers.
+  for (const run of [queued, reaped]) await makeDue(fixture, run.id)
+  const claimed = (await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 })))
+    .map((claim) => claim.runId)
+  assert.ok(claimed.includes(queued.id), 'the attached run is claimed again')
+  assert.ok(claimed.includes(reaped.id), 'the revived run is claimed again')
+  assert.equal((await read(fixture, queued.id))?.deliveredAt, null)
+})
