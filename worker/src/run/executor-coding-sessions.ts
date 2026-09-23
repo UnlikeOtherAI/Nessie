@@ -18,7 +18,7 @@ import {
   type CodingSessionToolName,
 } from './coding-session-tools.js'
 import { runCodingSessionWait, type CodingWaitOutcome, type CodingWaitTiming } from './coding-session-wait.js'
-import type { ExecutorCommandOutcome } from './executor-command-dispatch.js'
+import type { ExecutorCommandDispatchOptions, ExecutorCommandOutcome } from './executor-command-dispatch.js'
 import { ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { coerceToolArgumentsToSchema } from './tool-argument-coercion.js'
 import type { WatchState } from './tool-loop-detection.js'
@@ -103,12 +103,15 @@ const watchStateOf = (outcome: CodingWaitOutcome): WatchState => {
 }
 
 export const createExecutorCodingSessions = (input: {
-  /** One `mcp.call` through the toolset's dispatch, its command expiring no later than `expiresBy`. */
+  /**
+   * One `mcp.call` through the toolset's dispatch: its command expiring no
+   * later than `expiresBy`, its ToolCall one step of `parentToolCallId`.
+   */
   call: (
     toolName: CodingSessionToolName,
     args: Record<string, unknown>,
     providerToolCallId: string,
-    expiresBy?: Date,
+    options?: ExecutorCommandDispatchOptions,
   ) => Promise<ExecutorCommandOutcome>
   /** Ends a ToolCall row the call's own answer will not end. */
   endRecord: (toolCallRecordId: string, result: AgenticToolResult, durationMs: number) => Promise<void>
@@ -168,7 +171,8 @@ export const createExecutorCodingSessions = (input: {
     const inputSummary = summarizeToolInput(args)
     const call = envelope(toolName, args)
     // The first read's row is the call's own, which the agent loop ends with
-    // the digest; every later read's row is ended here as soon as it answers.
+    // the digest; every later read's row names it as its parent, so the run's
+    // tool-call views show the wait once, and is ended here as it answers.
     let firstRecordId: string | undefined
     const startedAt = Date.now()
     let waited: Awaited<ReturnType<typeof runCodingSessionWait>>
@@ -181,7 +185,11 @@ export const createExecutorCodingSessions = (input: {
         personWrote: input.personWrote,
         poll: async (index, expiresBy) => {
           const pollStartedAt = Date.now()
-          const outcome = await input.call(toolName, call, index === 0 ? providerToolCallId : `${providerToolCallId}:poll-${index}`, expiresBy)
+          const outcome = index === 0
+            ? await input.call(toolName, call, providerToolCallId, { expiresBy })
+            : await input.call(toolName, call, `${providerToolCallId}:poll-${index}`, {
+              expiresBy, ...(firstRecordId ? { parentToolCallId: firstRecordId } : {}),
+            })
           if (outcome.kind === 'expired') {
             const expiredId = outcome.toolCallRecordId
             if (index === 0) firstRecordId = expiredId

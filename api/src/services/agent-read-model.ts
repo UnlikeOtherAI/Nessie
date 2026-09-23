@@ -96,6 +96,7 @@ export const loadAgentStatus = async (
           toolCalls: {
             orderBy: { startedAt: 'desc' },
             take: 1,
+            where: { parentToolCallId: null },
           },
         },
         where: {
@@ -212,6 +213,7 @@ export const loadAgentActivity = async (
           toolCalls: {
             orderBy: { startedAt: 'desc' },
             take: 20,
+            where: { parentToolCallId: null },
           },
         },
         where: runVisibilityWhere,
@@ -430,6 +432,8 @@ export const loadRunToolCalls = async (
   const toolCalls = await prisma.toolCall.findMany({
     where: {
       agentId,
+      // A step of another call (a coding wait's later reads) is shown as that call.
+      parentToolCallId: null,
       runId,
       ...(options?.visibility
         ? { run: buildAccessibleRunWhere(options.visibility) }

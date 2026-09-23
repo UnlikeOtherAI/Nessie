@@ -97,7 +97,11 @@ turn ending. Its tool timeout is 10.5 minutes; every read's command expires no
 later than that less the margin, so only a single read's own TTL can end in an
 unknown outcome, and a late read whose expiry the deadline shortened just ends
 the wait. The first read carries the call's own ToolCall row, which the answer
-ends; every later read's row is ended by the wait.
+ends; every later read's row — each executor command needs one of its own —
+names that row as its `parentToolCallId` and is ended by the wait, and the
+run's tool-call views (the run's list, its count, an agent's current and
+recent calls) leave such steps out, so a ten-minute wait reads as one call
+rather than a hundred and twenty.
 
 The window is long because each return is a full-context inference for the
 agent: a twenty-minute turn is two waits, not five

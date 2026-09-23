@@ -289,13 +289,13 @@ export const buildExecutorToolset = async (
   })
   const codingSessions = codingOffer
     ? createExecutorCodingSessions({
-      call: (toolName, args, providerToolCallId, expiresBy) => dispatchCommand({
+      call: (toolName, args, providerToolCallId, options) => dispatchCommand({
         bindingId: codingOffer.bindingId,
         codingSessionsServer: codingOffer.facts.serverName,
         operationKey: 'mcp.call',
         sessionId: null,
         sessionProfile: null,
-      }, toolName, args, providerToolCallId, expiresBy ? { expiresBy } : {}),
+      }, toolName, args, providerToolCallId, options),
       endRecord: endRecord('A status read of the coding session.'),
       facts: codingOffer.facts,
       ...codingWaitRunChecks(prisma, { agentId: input.agentId, runId: input.runId }),

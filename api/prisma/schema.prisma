@@ -5299,6 +5299,11 @@ model ToolCall {
   endedAt           DateTime?        @map("ended_at")
   durationMs        Int?             @map("duration_ms")
   executorBindingId String?          @map("executor_binding_id") @db.Uuid
+  /// The call a row is one step of: a coding-session wait's later status
+  /// reads each need a ToolCall for their executor command, and name the
+  /// wait's own row here so the run's tool-call views show the wait once.
+  /// App-enforced, no FK; both rows cascade from the run.
+  parentToolCallId  String?          @map("parent_tool_call_id") @db.Uuid
   run               Run              @relation(fields: [runId], references: [id], onDelete: Cascade)
   executorBinding   ExecutorBinding? @relation(fields: [executorBindingId], references: [id], onDelete: SetNull)
   executorCommand   ExecutorCommand?

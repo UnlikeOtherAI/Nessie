@@ -74,13 +74,22 @@ const executorCommandPayload = (
   return { args, ...(bridgeCall ? { owner: binding.owner } : {}), runId }
 }
 
+export type ExecutorCommandDispatchOptions = {
+  /** A deadline the command must expire by, when the caller's is shorter than its TTL. */
+  expiresBy?: Date
+  /**
+   * The ToolCall this command is one step of — a wait's later reads name the
+   * wait's own row — so the run's tool-call views show that call once.
+   */
+  parentToolCallId?: string
+}
+
 export type ExecutorCommandDispatch = (
   target: ExecutorCommandTarget,
   toolName: string,
   args: Record<string, unknown>,
   providerToolCallId: string,
-  /** A deadline the command must expire by, when the caller's is shorter than its TTL. */
-  options?: { expiresBy?: Date },
+  options?: ExecutorCommandDispatchOptions,
 ) => Promise<ExecutorCommandOutcome>
 
 export const createExecutorCommandDispatch = (input: {
@@ -182,6 +191,7 @@ export const createExecutorCommandDispatch = (input: {
         startedAt,
         toolName,
         executorBindingId: target.bindingId,
+        ...(options.parentToolCallId ? { parentToolCallId: options.parentToolCallId } : {}),
       },
       select: { id: true },
     })

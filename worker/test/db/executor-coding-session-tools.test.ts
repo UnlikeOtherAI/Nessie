@@ -125,6 +125,12 @@ runDatabaseTest('start, wait, review and close drive a real bridge, and a wait g
     // Every read's row but the call's own is ended by the wait itself.
     const open = await prisma.toolCall.findMany({ where: { endedAt: null, runId: run.id, toolName: 'coding_session_wait' } })
     assert.deepEqual(open.map((row) => row.id), [waited.toolCallRecordId])
+    // And names the call's own row as its parent, so the tool-call views show the wait once.
+    const steps = await prisma.toolCall.findMany({
+      where: { id: { not: waited.toolCallRecordId }, runId: run.id, toolName: 'coding_session_wait' },
+      select: { parentToolCallId: true },
+    })
+    assert.ok(steps.every((row) => row.parentToolCallId === waited.toolCallRecordId), JSON.stringify(steps))
 
     const review = await tool('coding_session_review', { sessionId })
     assert.equal(review.success, true, review.output)

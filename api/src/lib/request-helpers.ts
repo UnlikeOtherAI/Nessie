@@ -180,6 +180,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
               include: {
                 toolCalls: {
                   orderBy: { startedAt: 'desc' },
+                  where: { parentToolCallId: null },
                   select: {
                     endedAt: true,
                     startedAt: true,

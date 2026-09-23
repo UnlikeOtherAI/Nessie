@@ -53,7 +53,13 @@ test('the tools are offered on a private executor, to its pairing owner, for a r
   assert.equal(await codingSessionsOffer(candidates(OWNER), [binding({ operationKey: 'mcp.tools' })], true), null)
 })
 
-type Sent = { args: Record<string, unknown>; expiresBy?: Date; providerToolCallId: string; toolName: string }
+type Sent = {
+  args: Record<string, unknown>
+  expiresBy?: Date
+  parentToolCallId?: string
+  providerToolCallId: string
+  toolName: string
+}
 
 const answer = (body: Record<string, unknown>, toolCallRecordId: string): ExecutorCommandOutcome => ({
   kind: 'result',
@@ -72,8 +78,8 @@ const harness = (reply: (sent: Sent, index: number) => ExecutorCommandOutcome, c
   const ended: Array<{ id: string; success: boolean }> = []
   let now = 0
   const sessions = createExecutorCodingSessions({
-    call: async (toolName, args, providerToolCallId, expiresBy) => {
-      const call = { args, providerToolCallId, toolName, ...(expiresBy ? { expiresBy } : {}) }
+    call: async (toolName, args, providerToolCallId, options = {}) => {
+      const call = { args, providerToolCallId, toolName, ...options }
       sent.push(call)
       return reply(call, sent.length - 1)
     },
@@ -169,6 +175,8 @@ test('a wait reads every five seconds under the call’s own id first, and ends 
   })
   assert.deepEqual(sent.map((call) => call.providerToolCallId), ['call-2', 'call-2:poll-1', 'call-2:poll-2'])
   assert.ok(sent.every((call) => call.args.tool === 'session_status' && call.expiresBy instanceof Date))
+  // Every later read is recorded as a step of the call's own row, which the tool-call views show once.
+  assert.deepEqual(sent.map((call) => call.parentToolCallId), [undefined, 'row-call-2', 'row-call-2'])
   assert.deepEqual(sent[0]!.args.arguments, { sessionId: SESSION })
   assert.equal(result.toolCallRecordId, 'row-call-2', 'the call’s own row carries the digest')
   assert.deepEqual(ended.map((row) => row.id), ['row-call-2:poll-1', 'row-call-2:poll-2'])
