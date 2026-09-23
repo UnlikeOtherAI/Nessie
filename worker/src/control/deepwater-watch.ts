@@ -1,10 +1,11 @@
-import { Prisma } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import {
   applyDeepWaterScopeResult,
   applyDeepWaterStatusRead,
   blockDeepWaterDelivery,
   failUnstartedDeepWaterBrief,
   holdDeepWaterScopeStartReplay,
+  isDeepWaterActionJobLive,
   readDeepWaterBriefRun,
   retryDeepWaterWatchSoon,
   settleStaleDeepWaterAction,
@@ -14,7 +15,6 @@ import {
 import {
   LedgerResearchStatusDtoSchema,
   LedgerScopeResultSchema,
-  deepWaterBriefActionJobKey,
   deepWaterScopeStartLedgerArgs,
   type DeepWaterRunWatchJobPayload,
 } from '@nessie/schemas'
@@ -123,14 +123,6 @@ const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun)
   })
 }
 
-/** An action's job is live while it is queued or running. */
-const isActionJobLive = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun, actionId: string) => {
-  const rows = await deps.prisma.$queryRaw<Array<{ status: string }>>(Prisma.sql`
-    SELECT "status" FROM "queue_jobs" WHERE "idempotency_key" = ${deepWaterBriefActionJobKey(run.id, actionId)}
-  `)
-  return rows.some((row) => row.status === 'pending' || row.status === 'processing')
-}
-
 /**
  * Apply one Ledger read in its own transaction, announcing the run when a
  * viewer would see the change.
@@ -157,7 +149,7 @@ const followUp = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun, applie
     }))
   }
   const action = next.scopeState?.pendingAction
-  if (action && action.error === null && !await isActionJobLive(deps, next, action.actionId)) {
+  if (action && action.error === null && !await isDeepWaterActionJobLive(deps.prisma, next.id, action.actionId)) {
     const settled = await runDeepWaterTransaction(deps, async (tx, announce) => {
       const outcome = await settleStaleDeepWaterAction(tx, {
         organizationId: next.organizationId,

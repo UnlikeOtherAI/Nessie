@@ -1,8 +1,10 @@
 import { Prisma, type ProductIntegrationRun } from '@prisma/client'
+import { z } from 'zod'
 import {
   DeepWaterBriefInputSchema,
   DeepWaterDeliveryBlockedReasonSchema,
   DeepWaterDisclosureSourcesSchema,
+  DeepWaterPendingActionErrorCodeSchema,
   DeepWaterReportKindSchema,
   DeepWaterRequesterIdentitySchema,
   DeepWaterScopeStateSchema,
@@ -26,6 +28,32 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * through the same schemas, so a malformed stored value fails at the boundary
  * it crossed instead of rendering as something plausible.
  */
+/**
+ * The latest cancel of a launcher run sent through Ledger (`result_json.ledgerCancel`):
+ * `requested` when Nessie accepted it, `failed` with the reason when Ledger
+ * refused it or could not be asked. Latest wins; a confirmed cancel ends the run.
+ */
+export const DeepWaterLauncherLedgerCancelSchema = z.discriminatedUnion('state', [
+  z.object({ actionId: z.string().uuid(), state: z.literal('requested'), code: z.null(), at: z.string().min(1) }).strict(),
+  z.object({
+    actionId: z.string().uuid(),
+    state: z.literal('failed'),
+    code: DeepWaterPendingActionErrorCodeSchema,
+    at: z.string().min(1),
+  }).strict(),
+])
+export type DeepWaterLauncherLedgerCancel = z.infer<typeof DeepWaterLauncherLedgerCancelSchema>
+
+/**
+ * A launcher run's own facts, from its `result_json` (Water plan amendments
+ * N9.6) — whether its handoff recorded a start call, which decides how it can
+ * be cancelled, and its latest cancel through Ledger (`deepwater-legacy-cancel.ts`).
+ */
+export type DeepWaterLauncherFacts = {
+  startRecorded: boolean
+  ledgerCancel: DeepWaterLauncherLedgerCancel | null
+}
+
 export type DeepWaterBriefRun = {
   id: string
   organizationId: string
@@ -48,6 +76,8 @@ export type DeepWaterBriefRun = {
   uoaIdentity: DeepWaterRequesterIdentity | null
   scopeState: DeepWaterScopeState | null
   input: DeepWaterBriefInput | null
+  /** Null on a brief; set on a launcher run from before research briefs. */
+  launcher: DeepWaterLauncherFacts | null
   sourceScopes: DeepWaterSourceScope[]
   disclosureSources: DeepWaterDisclosureSource[]
   failureCode: string | null
@@ -81,6 +111,20 @@ export type DeepWaterBriefDb = Prisma.TransactionClient
 const parseBriefInput = (row: ProductIntegrationRun): DeepWaterBriefInput | null =>
   row.uoaIdentity === null ? null : DeepWaterBriefInputSchema.parse(row.input)
 
+const parseLauncherFacts = (row: ProductIntegrationRun): DeepWaterLauncherFacts | null => {
+  if (row.uoaIdentity !== null) return null
+  const result = row.result !== null && typeof row.result === 'object' && !Array.isArray(row.result)
+    ? row.result as Record<string, unknown>
+    : {}
+  return {
+    // The same test the cancel route makes under the row lock: the key's presence.
+    startRecorded: Object.hasOwn(result, 'startToolCallId'),
+    ledgerCancel: result.ledgerCancel === undefined
+      ? null
+      : DeepWaterLauncherLedgerCancelSchema.parse(result.ledgerCancel),
+  }
+}
+
 const parseOriginKind = (value: string): DeepWaterOriginKind => {
   if (value === 'person' || value === 'agent') return value
   // The column CHECK admits nothing else.
@@ -108,6 +152,7 @@ export const toDeepWaterBriefRun = (row: ProductIntegrationRun): DeepWaterBriefR
   uoaIdentity: row.uoaIdentity === null ? null : DeepWaterRequesterIdentitySchema.parse(row.uoaIdentity),
   scopeState: row.scopeJson === null ? null : DeepWaterScopeStateSchema.parse(row.scopeJson),
   input: parseBriefInput(row),
+  launcher: parseLauncherFacts(row),
   sourceScopes: DeepWaterSourceScopesSchema.parse(row.sourceScopes),
   disclosureSources: DeepWaterDisclosureSourcesSchema.parse(row.disclosureSources),
   failureCode: row.failureCode,
@@ -144,6 +189,27 @@ export const readDeepWaterBriefRun = async (
 ): Promise<DeepWaterBriefRun | null> => {
   const row = await db.productIntegrationRun.findFirst({
     where: { id: input.runId, organizationId: input.organizationId, productSlug: DEEP_WATER_PRODUCT_SLUG },
+  })
+  return row ? toDeepWaterBriefRun(row) : null
+}
+
+/**
+ * The run a Ledger research id is bound to in this organisation and team, or
+ * null — an id the team never opened, or one another team's run holds. One
+ * research binds to at most one run (the `(product_slug, external_run_id)`
+ * unique index), so the answer is unambiguous.
+ */
+export const findDeepWaterBriefRunByResearchId = async (
+  db: DeepWaterBriefDb,
+  input: { organizationId: string; teamId: string; researchId: string },
+): Promise<DeepWaterBriefRun | null> => {
+  const row = await db.productIntegrationRun.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      teamId: input.teamId,
+      productSlug: DEEP_WATER_PRODUCT_SLUG,
+      externalRunId: input.researchId,
+    },
   })
   return row ? toDeepWaterBriefRun(row) : null
 }

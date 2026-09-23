@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { PaginationMetaSchema } from './api.js'
 import {
   DeepWaterBriefContextSchema,
   DeepWaterBriefMessageSchema,
@@ -92,11 +93,36 @@ export const DeepWaterResearchRunViewSchema = z
     /** Present only for a finished public report on research.deepwater.live. */
     publicUrl: z.string().refine(isDeepWaterPublicReportUrl).nullable(),
     failure: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
+    /**
+     * The last cancel of this still-open research that did not go through —
+     * refused by DeepWater, or DeepWater could not be asked — so whoever
+     * cancelled sees why it is still open. Null once a newer cancel is in
+     * flight, and on every run that has ended.
+     */
+    cancelFailure: z
+      .object({ code: DeepWaterPendingActionErrorCodeSchema, message: z.string() })
+      .strict()
+      .nullable(),
     delivery: DeepWaterDeliveryViewSchema,
     viewer: DeepWaterResearchRunViewerSchema,
   })
   .strict()
 export type DeepWaterResearchRunView = z.infer<typeof DeepWaterResearchRunViewSchema>
+
+/**
+ * `GET …/research-runs?cursor&limit` — the runs this viewer may see, newest
+ * first. Rows the viewer may not see are left out, and each request reads a
+ * bounded number of rows, so a page can be shorter than `limit` — even empty —
+ * while `meta.hasMore` is true; `nextCursor` then carries on after the last row
+ * read. Only a page with `hasMore: false` is the last. `total` is not counted.
+ */
+export const DeepWaterResearchRunListSchema = z
+  .object({
+    items: z.array(DeepWaterResearchRunViewSchema),
+    meta: PaginationMetaSchema,
+  })
+  .strict()
+export type DeepWaterResearchRunList = z.infer<typeof DeepWaterResearchRunListSchema>
 
 export const DeepWaterBriefMessageAuthorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('person'), userId: uuid }).strict(),

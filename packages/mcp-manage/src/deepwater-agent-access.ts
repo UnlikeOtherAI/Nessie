@@ -40,7 +40,7 @@ export const DEEP_WATER_AGENT_ACCESS_ERROR_CODES = {
 export class DeepWaterAgentAccessError extends Error {
   override readonly name = 'DeepWaterAgentAccessError'
 
-  constructor(public readonly code: string, message: string) {
+  constructor(public readonly code: string, message: string, public readonly details?: unknown) {
     super(message)
   }
 }

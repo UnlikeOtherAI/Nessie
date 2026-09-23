@@ -124,7 +124,7 @@ export const sendMcpError = (reply: FastifyReply, error: unknown): boolean => {
           || error.code === AGENT_TOOL_POLICY_ERROR_CODES.DEPENDENCY_REQUIRED
           ? 409
         : 400
-    sendApiError(reply, status, error.code, error.message)
+    sendApiError(reply, status, error.code, error.message, undefined, error.details)
     return true
   }
   if (error instanceof McpCatalogError) {

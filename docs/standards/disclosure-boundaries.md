@@ -99,8 +99,13 @@ Facts not restated there:
   the agent or the readers are missing from the channel roster.
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, every
-  executor `mcp.*` result, and an admitted checkpoint — and a checkpoint on
-  resume is a read path too.
+  executor `mcp.*` result, an admitted checkpoint — and a checkpoint on resume
+  is a read path too — and every DeepWater read of a research this team opened
+  (`research_scope_get`, `research_scope_reply`, `research_status`,
+  `research_report`), which first requires that its requester still reaches
+  everything the research was built from and then adds that whole basis and its
+  private-conversation authors ([deepwater.md](deepwater.md) → "Agents and
+  briefs").
 - **Host program output is the launch conversation's.** A local program an
   executor fronts (`mcp.tools` / `mcp.call`) answers from the person's own
   machine — a signed-in browser profile, private repositories — so it is not

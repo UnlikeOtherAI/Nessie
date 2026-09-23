@@ -319,7 +319,14 @@ test('bundle revoke blocks while a linked run is nonterminal', async () => {
     (error: unknown) =>
       error instanceof DeepWaterAgentAccessError
       && error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS
-      && error.message.includes(`/channels/${channelId}`),
+      // The remedy is the app page's Cancel, which the 409 names the run for;
+      // never the run's topic, and no longer a chat to open.
+      && error.message.includes('Cancel it from DeepWater in Apps')
+      && !error.message.includes(`/channels/${channelId}`)
+      // Plain copy: the run is named in `details`, never by its id or stored status.
+      && !error.message.includes(runId)
+      && !error.message.includes('running')
+      && JSON.stringify(error.details).includes('"status"'),
   )
   assert.equal(state.events[0], 'team-lock')
   assert.ok(

@@ -243,6 +243,10 @@ withFixture('one person action is in flight at a time, enqueued with it; a cance
   assert.equal(jobs.rows.length, 1)
   assert.equal(jobs.rows[0].topic, 'deep_water.brief.action')
 
+  // DeepWater named the brief, so a cancel has a research to name.
+  await fixture.pool.query('UPDATE product_integration_runs SET external_run_id = $2, status = $3 WHERE id = $1', [
+    run.id, 'rs_cancelnever1', 'drafting',
+  ])
   const cancel = randomUUID()
   assert.equal((await begin(cancel, { kind: 'cancel' })).kind, 'started')
   assert.equal(await settle(reply, 'busy'), false, 'the replaced reply cannot overwrite the cancel')
@@ -265,10 +269,11 @@ withFixture('an action id is carried out once: a replay after it settled re-arms
     [`deep-water-brief-action:${run.id}:${actionId}`],
   )).rows[0].n)
 
-  // The opening action is still unacknowledged: there is nothing to cancel yet.
+  // Nothing is named in DeepWater yet: a cancel through it has nothing to
+  // name, so an unnamed brief is cancelled by cancelUnopenedDeepWaterBrief.
   const opening = (await read(fixture, run.id))?.scopeState?.pendingAction?.actionId
   assert.ok(opening)
-  assert.equal((await begin(randomUUID(), { kind: 'cancel' })).kind, 'busy')
+  await assert.rejects(begin(randomUUID(), { kind: 'cancel' }), /cancelUnopenedDeepWaterBrief/)
   assert.equal(await settle(opening, null), true)
 
   // A reply that succeeded (cleared), replayed.

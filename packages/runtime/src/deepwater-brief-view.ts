@@ -14,8 +14,11 @@ import {
 
 import { isPendingActionInFlight, isSettledTurnStatus } from './deepwater-brief-registers.js'
 import type { DeepWaterBriefRun } from './deepwater-brief-run-record.js'
+import { deepWaterLauncherCancelRoute } from './deepwater-legacy-cancel.js'
+import { isDeepWaterBriefOpening } from './deepwater-local-cancel.js'
 import {
   DEEP_WATER_NEEDS_OPERATOR_MESSAGE,
+  deepWaterCancelFailureMessage,
   deepWaterFailureSentence,
   deepWaterPendingActionErrorMessage,
   deepWaterPlannerFailureMessage,
@@ -59,11 +62,30 @@ const viewStatus = (run: DeepWaterBriefRun): DeepWaterResearchRunViewStatus => {
 export const deepWaterViewerActions = (
   run: DeepWaterBriefRun,
   viewer: { userId: string; canChangeTeam: boolean },
+  now: Date,
 ): DeepWaterResearchRunView['viewer'] => {
   const isRequester = run.requestedByUserId !== null && run.requestedByUserId === viewer.userId
   const brief = run.scopeState
-  // A launcher run (no brief) is none of the brief API's to act on.
-  if (brief === null) return { canEdit: false, canStart: false, canCancel: false, canRetryDelivery: false }
+  // A launcher run (no brief) has nothing to edit, start or deliver here; a
+  // team owner or admin may cancel one still open, so a disable or a contract
+  // upgrade it blocks can be cleared (amendments N8.5, N9.6) — but only one the
+  // cancel route can act on: a `running` run with no research id may have a
+  // start in flight, and nothing may cancel it until that resolves.
+  if (brief === null) {
+    // No brief means a launcher row (the binding CHECK), which always carries its facts.
+    if (run.launcher === null) throw new Error(`DeepWater run ${run.id} has neither a brief nor launcher facts`)
+    const route = deepWaterLauncherCancelRoute({
+      status: run.status,
+      externalRunId: run.externalRunId,
+      startRecorded: run.launcher.startRecorded,
+    })
+    return {
+      canEdit: false,
+      canStart: false,
+      canCancel: viewer.canChangeTeam && route !== 'not_cancellable',
+      canRetryDelivery: false,
+    }
+  }
   const editable = isRequester
     && run.originKind === 'person'
     && run.status === 'drafting'
@@ -71,7 +93,11 @@ export const deepWaterViewerActions = (
   return {
     canEdit: editable,
     canStart: editable,
-    canCancel: OPEN_STATUSES.has(run.status) && (isRequester || viewer.canChangeTeam),
+    // A brief DeepWater may be opening right now has nothing to cancel yet;
+    // once it opened, or nothing can open it any more, it can be (N8.5).
+    canCancel: OPEN_STATUSES.has(run.status)
+      && (isRequester || viewer.canChangeTeam)
+      && !isDeepWaterBriefOpening(run, now),
     canRetryDelivery: isRequester
       && run.deliveredAt === null
       && run.deliveryBlockedReason !== null
@@ -117,6 +143,8 @@ export type DeepWaterViewContext = {
   viewer: { userId: string; canChangeTeam: boolean }
   /** The Knowledge space of the delivered report page, or null. */
   reportSpaceId: string | null
+  /** When the view is built: whether an opening can still be in flight depends on it. */
+  now: Date
 }
 
 const iso = (value: Date | null): string | null => value?.toISOString() ?? null
@@ -126,6 +154,21 @@ const failureOf = (run: DeepWaterBriefRun): DeepWaterResearchRunView['failure'] 
   if (run.status !== 'failed') return null
   const code = run.failureCode ?? 'failed'
   return { code, message: deepWaterFailureSentence(run.failureCode) }
+}
+
+/**
+ * The last cancel of a still-open run that did not go through: a brief's
+ * cancel action that ended in an error, or a launcher run's latest cancel
+ * through Ledger that failed. A newer action, or the run ending, clears it.
+ */
+const cancelFailureOf = (run: DeepWaterBriefRun): DeepWaterResearchRunView['cancelFailure'] => {
+  if (!OPEN_STATUSES.has(run.status)) return null
+  const action = run.scopeState?.pendingAction ?? null
+  const ledgerCancel = run.launcher?.ledgerCancel ?? null
+  const code = action !== null
+    ? (action.kind === 'cancel' ? action.error?.code ?? null : null)
+    : ledgerCancel?.state === 'failed' ? ledgerCancel.code : null
+  return code === null ? null : { code, message: deepWaterCancelFailureMessage(code) }
 }
 
 /** The research as a list row, the detail read or the card shows it. */
@@ -163,11 +206,12 @@ export const toDeepWaterResearchRunView = (
     artifacts: delivered ? { report: run.reportFileId !== null, sources: run.sourcesFileId !== null } : null,
     publicUrl: run.publicUrl,
     failure: failureOf(run),
+    cancelFailure: cancelFailureOf(run),
     delivery: {
       state: delivered ? 'delivered' : run.deliveryBlockedReason !== null ? 'blocked' : 'pending',
       blockedReason: run.deliveryBlockedReason,
     },
-    viewer: deepWaterViewerActions(run, context.viewer),
+    viewer: deepWaterViewerActions(run, context.viewer, context.now),
   })
 }
 

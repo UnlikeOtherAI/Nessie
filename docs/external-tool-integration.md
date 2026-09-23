@@ -530,10 +530,12 @@ catalog entry (`api/src/services/deepwater-activation.ts`,
 `ensureDeepWaterTeamInstance`), resolves the Ledger-only MCP adapter from the
 manifest-declared **`LEDGER_DEEPWATER_MCP_URL`** env var (canonical hosted
 endpoint `https://ledger.unlikeotherai.com/v1/mcp/deepwater`), installs an
-`{ transport: 'http', url }` bearer transport, and projects `research_start`,
-`research_status`, `research_report`, `research_list`, and `research_cancel`
-into `ToolRegistryEntry`; disabling removes the instance and its tool rows.
-There is deliberately no direct-provider fallback.
+`{ transport: 'http', url }` bearer transport, and projects the brief-first
+contract (manifest 0.3.0: `research_scope_start`, `research_scope_reply`,
+`research_scope_get`, `research_scope_launch`, `research_status`,
+`research_report`, `research_cancel`, `research_list`) into
+`ToolRegistryEntry`; disabling removes the instance and its tool rows. There is
+deliberately no direct-provider fallback.
 
 A research brief — opened by a person or a granted agent — comes back on its
 own, but never from Ledger, which relays nothing. The worker's
@@ -593,104 +595,49 @@ launcher run only.
   generic agent responses even though the locked database row retains them.
   Agent Designer hides the protected switches and links owners to
   Tools/Integrations.
-- **The launcher has a six-entry readiness gate.** The five team projections
-  plus `deep_water_run_update` are managed as one explicit bundle by
-  `GET/PATCH /api/integrations/products/deep-water/agent-access`. Owners can
-  grant or revoke all six for the Personal Assistant or a shared agent; the
-  individual switches remain available at `/agents/tools`. The Personal
-  Assistant grant action bootstraps it first when necessary. The research
-  launcher shows the exact granted count, disables **Run research** until the
-  PA has all six, and the API independently returns
-  `DEEP_WATER_PERSONAL_ASSISTANT_ACCESS_REQUIRED` before creating a durable run
-  if a caller bypasses the UI. The updater counts toward readiness only when
-  its registry row is enabled and active, exactly matching worker exposure; a
-  retained policy allow on a disabled builtin cannot authorize a launch.
-  Members can read only PA readiness; the
-  organization-wide shared-agent list and every mutation remain owner-only.
+- **The bundle is derived, and readiness is not a grant.** The team's
+  projections plus `deep_water_run_update` are managed as one explicit bundle
+  by `GET/PATCH /api/integrations/products/deep-water/agent-access`, its size
+  derived from the manifest, never hard-coded. Owners can grant or revoke the
+  whole bundle for the Personal Assistant or a shared agent; the individual
+  switches remain available at `/agents/tools`. The updater counts only when
+  its registry row is enabled and active, exactly matching worker exposure.
   Bundle grant/revoke takes the team transition lock, re-resolves the current
-  projection generation, then takes the agent-policy lock. Bundle grants carry
-  server-only team provenance. Revoking one team removes
-  every still-linked current-team projection (including a partial or drifted
-  set) but preserves the org-wide updater while another team bundle or a manual
-  updater grant needs it. Accordingly, the updater's individual OFF control is
-  disabled and explained until its dependent projections/bundles are revoked.
-  Readiness callability and cleanup identity are separate: the canonical updater
-  row is always loaded for revocation, even while disabled/inactive, so a later
-  registry re-enable cannot silently revive an agent's old protected allow.
-  Bundle and individual lifecycle-tool revocation return 409 while any linked
-  run is `queued`, `running`, or `needs_setup`; there is no force override that
-  can strand an accepted Ledger job. The error points to the PA channel and
-  `research_cancel` when attached, otherwise to explicit operator recovery.
-  The Integrations link filters Tools by both the exact provisioned instance and
-  its first-party `deep-water` product binding, never by a caller-controlled
-  name alone.
-- **The launcher asks one question and offers one choice.** "What do you want
-  to research?" is the whole ask — no title is collected, because a report's
-  name belongs to Deep Water rather than to whoever typed the prompt. Depth is
-  chosen as **Light · Standard · Heavy · Custom**
-  (`admin/src/components/features/integrations/deep-water-research-options.ts`).
-  Each preset carries a complete set of Ledger/Deep Water-accepted values
-  (depth, chapter detail, output tier, search quality, sections, searches per
-  pillar, recency, destination), so choosing one answers every question the
-  form used to ask; **Custom** reveals the full historical control set
-  unchanged, including the six-way depth grid
-  (`DeepWaterResearchCustomControls.tsx`). Which mode is active is *derived*
-  from the values, never stored, so a chat card whose preset matches a mode
-  exactly opens on that mode and any other preset opens on Custom with its
-  settings visible. `DeepWaterResearchLaunchRequest` no longer carries `title`;
-  a chat card is named by its query, the run history falls back to
-  `queryPreview`, and rows launched before the change keep the title they were
-  launched with. `DeepWaterResearchLauncherPreset` still *tolerates* a `title`
-  key, because that schema is strict and stored card metadata from before the
-  change would otherwise fail to render.
-- **Ledger's MCP `research_start` is the ceiling on what any of this can send.**
-  It accepts exactly `query`, `context`, `depth`
-  (`light|standard|deep|heavy`), and `recency` (`any|recent`); the rich
-  `deepwater.research-config.v1` envelope — which carries a typed `languages`
-  set, `output_language`, `chapter_depth`, `sections`, `searches_per_pillar`,
-  and `search_quality` — exists only on Ledger's REST `POST /v1/research`
-  direct-application path, which Nessie does not use. Every launcher control
-  beyond depth and recency therefore travels as a labelled line inside
-  `context` (`api/src/routes/integrations/handoff-builders.ts`), which Ledger
-  forwards to the research pipeline verbatim. Those lines are also documented in
-  the projected `research_start` tool description
-  (`api/src/services/integration-plugin-manifests/deep-water.ts`), so a granted
-  agent — the Personal Assistant or any shared agent holding the explicit grant
-  — composes the same instructions by hand that the launcher composes for it.
-  Keep the two lists in step. A multi-select **search language** control is
-  deliberately *not* built: until `research_start` accepts the typed set, it
-  would be a control for something the API cannot receive.
-  `DeepWaterResearchCustomControls` is where it lands when that contract
-  arrives. Two known gaps live in the same place: Nessie's `thesis` and
-  `dissertation` depths both collapse to `heavy` at the Ledger boundary (they
-  remain in Custom, but they are not distinct tiers), and the finer
-  `day|week|month|year` recency collapses to `recent` without stating the
-  window.
-- **Launch authorization is one serialized boundary.** The launch transaction
-  takes the org/team transition lock, resolves the exact first-party active
-  instance, then takes the PA policy lock. It repeats the 6/6 check and inserts
-  the durable run before releasing either lock, so a concurrent disable or
-  revoke cannot create an unauthorized or orphaned launch. Disable returns
+  projection generation, then takes the agent-policy lock; a contract upgrade
+  re-grants every agent holding the team's bundle marker. Whether a *person*
+  can start research is separate: the `research` readiness on the
+  `deep-water` products entry (team switch, brief-contract connector, Ledger
+  configuration, the person's linked UOA identity for the team) — the Personal
+  Assistant's grants are not an input. Revocation and disable return 409 while
+  work that needs the grant is open, naming the run by id, status, origin and
+  requester (never its topic) so an owner can cancel it from DeepWater's app
+  page. The Integrations link filters Tools by both the exact provisioned
+  instance and its first-party `deep-water` product binding, never by a
+  caller-controlled name alone.
+- **Every research is agreed as a brief first.** A person opens one from any
+  conversation through the brief API
+  (`/api/integrations/products/deep-water/research-runs`), and the worker
+  carries each action out over the team connector as that person; an agent
+  opens one with `research_scope_start`, and the run binder claims its durable
+  product run before the call leaves. Both talk to DeepWater's research planner
+  in the typed brief vocabulary — pillars plus seven settings (depth, chapter
+  detail, source search, source languages, report language, recency, writing
+  style) — so nothing travels as prose folded into a query, and the launch
+  runs exactly the brief agreed at its revision. Results come back through the
+  worker's watch of every open run, to the conversation the research came
+  from. The rules are in [docs/standards/deepwater.md](standards/deepwater.md).
+- **Brief creation is one serialized boundary.** A brief row is written only
+  inside the org/team transition lock after re-reading the team switch and an
+  active connector on the brief contract (an agent's claim also re-reads its
+  own grant under its policy lock), and it is bound to that connector. A
+  concurrent disable, contract upgrade or revocation therefore either sees the
+  row and waits for it, or the brief is never written. Disable returns
   `LEDGER_DEEPWATER_ACTIVE_RUNS` (409) while a run for that connector is
-  `queued`, `running`, or `needs_setup`. Operators/users must cancel or recover
-  interrupted work, or wait for a terminal state, then retry disable.
-  PA message creation, durable-run attachment, PA run/task creation, and the
-  `run.execute` enqueue commit in one transaction. Product handoffs never pass
-  through model-based chat engagement, so task text such as Swift's
-  `@MainActor` cannot be mistaken for an unresolved agent mention and suppress
-  the launch. The message-and-agent queue key protects one dispatch unit from a
-  duplicate queue insertion; it does not make a repeated HTTP launch request
-  idempotent. A queue-key collision is an error that rolls back that
-  message/run/task unit. If attachment or enqueue fails, the whole unit rolls
-  back and the previously inserted product run is marked failed without
-  leaving a queue job that might call Ledger.
-  Ordinary channel and PA chat messages continue through `orchestrate.decide`.
-  Realtime publication happens after commit and is non-fatal. Ambiguous work
-  remains blocking even when `externalRunId` is null: a worker may already be
-  inside the idempotent
-  `research_start`, so guessing “unaccepted” could orphan accepted Ledger work.
-  The 409 points to an attached chat where PA can invoke `research_cancel`;
-  an interrupted run without a chat requires explicit operator recovery.
+  `queued`, `drafting`, `running`, or `needs_setup`. Research started through
+  the retired launcher keeps its Personal Assistant handoff and its guard until
+  phase E; those rules govern only launcher runs
+  ([docs/standards/deepwater.md](standards/deepwater.md) → "Legacy launcher
+  handoff").
 - **Fail loud and transition atomically.** When
   `LEDGER_DEEPWATER_MCP_URL` is unset the enable route returns
   `LEDGER_DEEPWATER_MCP_URL_UNSET` (503) instead of creating a dead or
@@ -770,8 +717,10 @@ launcher run only.
   so none can shadow the product-bound app API key.
 - **Research retries preserve provider idempotency.** Each DeepWater dispatch
   forwards the model provider's stable `tool_call_id` in the signed context.
-  `research_start` rejects a missing ID, and retrying the same logical tool call
-  reuses the same value instead of generating a new research job.
+  Every DeepWater call rejects a missing ID — the run binder for the brief
+  tools, the launcher handoff for `research_start` — and retrying the same
+  logical tool call reuses the same value, so a retried `research_scope_start`
+  claims the same brief and Ledger replays it instead of opening a second one.
 - **All Nessie inference uses the same Ledger chokepoint.** In hosted
   production, `NESSIE_MODEL_BASE_URL` is
   `https://ledger.unlikeotherai.com/v1/openai` and

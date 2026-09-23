@@ -16,13 +16,35 @@ export class DeepWaterActiveRunRevocationError extends Error {
     requestedByUserId: string | null
     status: string
   }) {
+    // Customer copy: never the topic, the run's id or its stored status. The
+    // run is named in `details` for the Cancel the app page offers, where a
+    // team owner or admin can cancel it (N8.5).
     super(
-      `Deep Water run ${run.id} is still ${run.status}.`
-      + (run.channelId
-        ? ` Open /channels/${run.channelId}, cancel it, and retry after it becomes terminal.`
-        : ' Recover the unattached run before revoking lifecycle tools.'),
+      'A DeepWater research that needs these tools is still open.'
+      + ' Cancel it from DeepWater in Apps, or let it finish, then try again.',
     )
   }
+
+  /**
+   * The open run a Cancel action names — never its topic — the shape the
+   * admin reads as `DeepWaterActiveRunConflict`.
+   */
+  get details(): DeepWaterActiveRunDetails {
+    return {
+      id: this.run.id,
+      status: this.run.status,
+      originKind: this.run.originKind,
+      requestedByUserId: this.run.requestedByUserId,
+    }
+  }
+}
+
+/** What a 409 for an open research carries, so the app page can offer Cancel (N8.5). */
+export type DeepWaterActiveRunDetails = {
+  id: string
+  status: string
+  originKind: string
+  requestedByUserId: string | null
 }
 
 /**

@@ -108,7 +108,10 @@ export class LedgerDeepWaterEnablementPersistenceError extends Error {
 /**
  * A team transition that would strand an open research run: a disable, or a
  * contract upgrade that removes a tool a launcher run may still dispatch. It
- * names the run by id, status, origin and requester only — never its topic.
+ * names the run by id, status, origin and requester only — never its topic —
+ * and the remedy is DeepWater's own app page, where a team owner or admin can
+ * cancel it (Water plan amendments N8.5); `details` names the run for that
+ * Cancel action.
  */
 export class LedgerDeepWaterActiveRunsError extends Error {
   readonly code = 'LEDGER_DEEPWATER_ACTIVE_RUNS'
@@ -124,15 +127,26 @@ export class LedgerDeepWaterActiveRunsError extends Error {
     transition: 'disable' | 'upgrade' = 'disable',
   ) {
     super(
-      `Deep Water run ${run.id} is still ${run.status}`
-      + (transition === 'upgrade'
-        ? '; the team keeps its current Deep Water tools until it finishes'
-        : '')
-      + (run.channelId
-        ? `; open /channels/${run.channelId}, cancel it, and retry after the run becomes terminal.`
-        : '; it has no attached chat, so the connector is retained until an explicit run recovery is performed.'),
+      transition === 'upgrade'
+        ? 'A DeepWater research started before the update is still open, so the team keeps its current'
+          + ' DeepWater tools. Cancel it from DeepWater in Apps, or let it finish, then update again.'
+        : 'A DeepWater research in this team is still open. Cancel it from DeepWater in Apps, or let it'
+          + ' finish, then turn DeepWater off.',
     )
     this.name = 'LedgerDeepWaterActiveRunsError'
+  }
+
+  /**
+   * The open run a Cancel action names — never its topic — the shape the
+   * admin reads as `DeepWaterActiveRunConflict`.
+   */
+  get details(): { id: string; status: string; originKind: string; requestedByUserId: string | null } {
+    return {
+      id: this.run.id,
+      status: this.run.status,
+      originKind: this.run.originKind,
+      requestedByUserId: this.run.requestedByUserId,
+    }
   }
 }
 

@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import {
   DeepWaterAgentAccessResponseSchema,
-  DeepWaterResearchRunRecordSchema,
   IntegratedProductResponseSchema,
   IntegrationPluginManifestSchema,
   SetDeepWaterAgentAccessRequestSchema,
   SetProductTeamEnablementRequestSchema,
+  type AuthorizedActionContext,
+  type DeepWaterResearchReadiness,
 } from '@nessie/schemas'
-import { listDeepWaterResearchRuns } from '@nessie/runtime'
 
 import { createApiResponse, parseInput, sendApiError } from '../../lib/api.js'
 import {
@@ -26,6 +26,7 @@ import {
   LedgerIdentityConfigurationUnsetError,
   setDeepWaterTeamEnablement,
 } from '../../services/deepwater-activation.js'
+import { resolveDeepWaterResearchReadiness } from '../../services/deepwater-research-readiness.js'
 import { getIntegrationPluginManifest } from '../../services/integration-plugin-manifests.js'
 import { listIntegratedProducts, setProductTeamEnablement } from '../../services/integrations.js'
 import { ensurePersonalAssistantBootstrap } from '../../services/personal-assistant.js'
@@ -43,6 +44,24 @@ export const registerIntegrationProductRoutes = (
     requireUserActor,
   } = deps
 
+  /**
+   * The `deep-water` entry carries whether this person can start research in
+   * this team (Water plan nessie.md §7.1 "Readiness"); every other entry is
+   * unchanged. No team context, no research readiness: research lives in a team.
+   */
+  const withResearchReadiness = async <T extends { slug: string }>(
+    products: T[],
+    actorContext: AuthorizedActionContext,
+    teamId: string | null | undefined,
+  ): Promise<Array<T & { research?: DeepWaterResearchReadiness }>> => {
+    if (!teamId || !products.some((product) => product.slug === DEEP_WATER_PRODUCT_SLUG)) return products
+    const research = await resolveDeepWaterResearchReadiness(prisma, actorContext, {
+      teamId,
+      ledgerIdentity: deps.ledgerIdentity,
+    })
+    return products.map((product) => product.slug === DEEP_WATER_PRODUCT_SLUG ? { ...product, research } : product)
+  }
+
   app.get('/api/integrations/products', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
@@ -54,7 +73,9 @@ export const registerIntegrationProductRoutes = (
       userId: actorContext.actor.actorId,
     })
 
-    return createApiResponse(IntegratedProductResponseSchema.array().parse(products))
+    return createApiResponse(IntegratedProductResponseSchema.array().parse(
+      await withResearchReadiness(products, actorContext, actorContext.tenant.teamId),
+    ))
   })
 
   app.get('/api/integrations/products/:productSlug/manifest', async (request, reply) => {
@@ -167,7 +188,7 @@ export const registerIntegrationProductRoutes = (
           error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.AGENT_NOT_FOUND
             ? 404
             : 409
-        sendApiError(reply, status, error.code, error.message)
+        sendApiError(reply, status, error.code, error.message, undefined, error.details)
         return reply
       }
       throw error
@@ -179,32 +200,6 @@ export const registerIntegrationProductRoutes = (
       userId: actorContext.actor.actorId,
     })
     return createApiResponse(DeepWaterAgentAccessResponseSchema.parse(access))
-  })
-
-  app.get('/api/integrations/products/:productSlug/research-runs', async (request, reply) => {
-    const actorContext = requireActorContext(request, reply)
-    if (!actorContext) return reply
-    if (!requireUserActor(actorContext, reply)) return reply
-
-    const params = parseInput(ProductSlugParamsSchema, request.params, reply, 'params')
-    if (!params) return reply
-    if (params.productSlug !== 'deep-water') {
-      sendApiError(reply, 404, 'INTEGRATION_PRODUCT_NOT_FOUND', 'Integration product not found')
-      return reply
-    }
-
-    const teamId = actorContext.tenant.teamId ?? actorContext.actionContext.teamId
-    if (!teamId) {
-      sendApiError(reply, 400, 'TEAM_CONTEXT_REQUIRED', 'A team context is required')
-      return reply
-    }
-
-    const runs = await listDeepWaterResearchRuns(prisma, {
-      organizationId: actorContext.tenant.organizationId,
-      teamId,
-    })
-
-    return createApiResponse(DeepWaterResearchRunRecordSchema.array().parse(runs))
   })
 
   app.patch('/api/integrations/products/:productSlug/team-enablement', async (request, reply) => {
@@ -255,7 +250,7 @@ export const registerIntegrationProductRoutes = (
           return reply
         }
         if (error instanceof LedgerDeepWaterActiveRunsError) {
-          sendApiError(reply, 409, error.code, error.message)
+          sendApiError(reply, 409, error.code, error.message, undefined, error.details)
           return reply
         }
         if (error instanceof LedgerDeepWaterEnablementPersistenceError) {
@@ -290,6 +285,7 @@ export const registerIntegrationProductRoutes = (
       return reply
     }
 
-    return createApiResponse(IntegratedProductResponseSchema.parse(product))
+    const [withReadiness] = await withResearchReadiness([product], actorContext, teamId)
+    return createApiResponse(IntegratedProductResponseSchema.parse(withReadiness))
   })
 }

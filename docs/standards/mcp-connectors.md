@@ -81,17 +81,22 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE`) rather than persisting a dead
   toggle. Everything else — default OFF with explicit per-agent
   `requiresExplicitGrant` grants, the manifest-derived bundle and
-  `/api/integrations/products/deep-water/agent-access`, the team-lock →
-  policy-lock → whole-bundle read → run-insert ordering, handoff enforcement via
-  server-authored `integrationLaunch` metadata with the
-  ambiguity-is-fatal-never-terminal recovery matrix, the
-  no-cost/no-currency rule, identity headers, and the managed-instance
-  lifecycle (`MCP_INSTANCE_MANAGED_BY_INTEGRATION`,
-  `LEDGER_DEEPWATER_ACTIVE_RUNS`) — is stated **in full** in
+  `/api/integrations/products/deep-water/agent-access`, research readiness
+  (team switch, brief-contract connector, Ledger configuration and the
+  person's linked UOA identity — never the Personal Assistant's grants), the
+  person's brief API and the worker that carries its actions out, the run
+  binder that claims an agent's brief before its `research_scope_start`
+  leaves, the one stable `tool_call_id` per logical call, the shared agent's
+  private-conversation boundary, the no-cost/no-currency rule, identity
+  headers, the managed-instance lifecycle
+  (`MCP_INSTANCE_MANAGED_BY_INTEGRATION`, `LEDGER_DEEPWATER_ACTIVE_RUNS` and the
+  run it names for an owner's Cancel), and the legacy launcher handoff that
+  governs only launcher runs until phase E — is stated **in full** in
   [docs/standards/deepwater.md](deepwater.md); read it before
   touching any of this.
   `deep_water_run_update` is **not** PA-only: any granted agent may write back
-  the durable run record (same team + thread). Also:
+  a launcher run's durable record (same team + thread); it refuses every
+  research brief, whose status Ledger owns. Also:
   [docs/external-tool-integration.md](../external-tool-integration.md).
 
 - **DeepWater results come back on their own, through a watch; Ledger never

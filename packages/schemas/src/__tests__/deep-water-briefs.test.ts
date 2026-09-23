@@ -307,6 +307,7 @@ test('a brief action job lets an owner only cancel', () => {
     organizationId: RUN_ID,
     runId: RUN_ID,
     actionId: ACTION_ID,
+    acceptedAt: '2026-09-23T09:00:00.000Z',
     actor: {
       userId: USER_ID,
       role,
@@ -331,6 +332,10 @@ test('a brief action job lets an owner only cancel', () => {
     ).success,
     true,
   )
+  // The retry window runs from when the action was accepted, so a job carries it.
+  const undated: Record<string, unknown> = payload('owner', { kind: 'cancel' })
+  delete undated.acceptedAt
+  assert.equal(DeepWaterBriefActionJobPayloadSchema.safeParse(undated).success, false)
 })
 
 test('a reply job carries base_revision exactly when it edits, as Ledger requires', () => {
@@ -338,6 +343,7 @@ test('a reply job carries base_revision exactly when it edits, as Ledger require
     organizationId: RUN_ID,
     runId: RUN_ID,
     actionId: ACTION_ID,
+    acceptedAt: '2026-09-23T09:00:00.000Z',
     actor: {
       userId: USER_ID,
       role: 'requester',

@@ -388,33 +388,3 @@ export const reconcileDeepWaterResearchRunUsage = async (
 
     return { recorded: true, correlationId }
   })
-
-/**
- * The team's launcher runs, newest first — the legacy list behind
- * `GET /api/integrations/products/:productSlug/research-runs`.
- *
- * Launcher rows only (`uoa_identity IS NULL`, the exact legacy marker). This
- * list has no viewer predicate: every team member reads every row. A research
- * brief carries its requester's topic from the moment it is opened, and a
- * person's brief is theirs alone until it launches, so brief rows are read only
- * through `isDeepWaterRunVisible` in the brief API's own list, which replaces
- * this one at the same path (docs/standards/deepwater.md, "The legacy run list").
- */
-export const listDeepWaterResearchRuns = async (
-  prisma: PrismaClient,
-  input: { limit?: number; organizationId: string; teamId: string },
-): Promise<DeepWaterResearchRunRecord[]> => {
-  const take = Math.max(1, Math.min(50, input.limit ?? 10))
-  const rows = await prisma.$queryRaw<DeepWaterRunRow[]>(Prisma.sql`
-    SELECT ${deepWaterRunReturning}
-    FROM "product_integration_runs"
-    WHERE "organization_id" = CAST(${input.organizationId} AS uuid)
-      AND "team_id" = CAST(${input.teamId} AS uuid)
-      AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
-      AND "uoa_identity" IS NULL
-    ORDER BY "requested_at" DESC, "id" DESC
-    LIMIT ${take}
-  `)
-
-  return rows.map(mapDeepWaterRunRow)
-}

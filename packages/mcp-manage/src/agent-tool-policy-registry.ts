@@ -266,6 +266,7 @@ const translateActiveRunError = (error: unknown): never => {
     throw new AgentToolPolicyError(
       AGENT_TOOL_POLICY_ERROR_CODES.ACTIVE_RUNS,
       error.message,
+      error.details,
     )
   }
   throw error

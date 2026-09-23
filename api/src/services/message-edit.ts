@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { isAgentCardResponseMessage } from '@nessie/schemas'
+import { isAgentCardResponseMessage, isResearchRunRefMessage } from '@nessie/schemas'
 
 import { messageInclude, type MessageWithReactions } from './message-read-model.js'
 
@@ -9,7 +9,7 @@ import { messageInclude, type MessageWithReactions } from './message-read-model.
  *
  * The only two writes in the messaging service that are not a *new* message, so
  * they carry the two rules that apply to a row already in a transcript: an edit
- * is author-only and refused outright on a card press
+ * is author-only and refused outright on a card press or a research card
  * ([docs/standards/agent-cards.md](../../../docs/standards/agent-cards.md)), and
  * a delete blanks the content while keeping the row so pagination keysets and
  * reply anchors stay stable.
@@ -19,7 +19,8 @@ export type UpdateMessageResult =
   | { kind: 'updated'; message: MessageWithReactions }
   | { kind: 'not_found' }
   | { kind: 'forbidden' }
-  | { kind: 'immutable' }
+  /** A card press, or the research card a person's research was started from. */
+  | { kind: 'immutable'; record: 'card_response' | 'research_card' }
 
 export const updateMessage = async (
   prisma: PrismaClient,
@@ -41,7 +42,13 @@ export const updateMessage = async (
   // transcript. Editing it would put a "Deny" beside a card that says "Allow".
   // Deleting stays allowed — a tombstone changes nothing on the card.
   if (isAgentCardResponseMessage(existing.metadata)) {
-    return { kind: 'immutable' }
+    return { kind: 'immutable', record: 'card_response' }
+  }
+  // A research card points at its run, and its words are the topic the
+  // person started it with: edited, it would name a research that is not the
+  // one it shows. Deleting it stays allowed; the research is untouched.
+  if (isResearchRunRefMessage(existing.metadata)) {
+    return { kind: 'immutable', record: 'research_card' }
   }
 
   const message = await prisma.message.update({

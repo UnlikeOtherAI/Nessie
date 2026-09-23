@@ -44,10 +44,12 @@ const briefRun = (
 const revoke = (s: Seed, agentId: string) =>
   setDeepWaterAgentAccess(s.prisma, { ...team(s), agentId, enabled: false })
 
+// The run is named in `details` for the app page's Cancel; the message is plain copy.
 const blockedBy = (runId: string) => (error: unknown) =>
   error instanceof DeepWaterAgentAccessError
   && error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS
-  && error.message.includes(runId)
+  && (error.details as { id?: unknown } | undefined)?.id === runId
+  && !error.message.includes(runId)
 
 withSeed('a disable waits for a brief being agreed and for a launched agent research', async (s) => {
   await briefTeam(s)
@@ -56,7 +58,12 @@ withSeed('a disable waits for a brief being agreed and for a launched agent rese
     error instanceof LedgerDeepWaterActiveRunsError
     && error.run.id === drafting.id
     && error.run.originKind === 'person'
-    && error.run.requestedByUserId === s.userId)
+    && error.run.requestedByUserId === s.userId
+    // The 409 names the run for the app page's Cancel, and never its topic.
+    && JSON.stringify(error.details) === JSON.stringify({
+      id: drafting.id, status: 'drafting', originKind: 'person', requestedByUserId: s.userId,
+    })
+    && !error.message.includes('/channels/'))
   await s.prisma.productIntegrationRun.update({ where: { id: drafting.id }, data: { status: 'cancelled' } })
 
   const running = await briefRun(s, { originKind: 'agent', originAgentId: s.sharedAgentId, status: 'running' })

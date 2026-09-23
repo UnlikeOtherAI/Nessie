@@ -30,6 +30,12 @@ import {
 export const DEEP_WATER_ACTIVE_WATCH_DELAY_MS = 5_000
 
 /**
+ * How long an action's job keeps retrying a Ledger that cannot be reached,
+ * from when Nessie accepted the action (amendments N5); then it gives up.
+ */
+export const DEEP_WATER_ACTION_RETRY_WINDOW_MS = 30 * 60_000
+
+/**
  * Brief actions retry transient Ledger failures with `QueueRetryAfterError`,
  * which does not consume attempts; this bounds genuine handler crashes.
  */
@@ -41,6 +47,9 @@ const ACTION_KIND_FOR_JOB: Record<DeepWaterBriefActionJobPayload['action']['kind
   launch: 'launch',
   cancel: 'cancel',
 }
+
+/** A brief action as a route asks for it; the time it is accepted is stamped under the row lock. */
+export type DeepWaterBriefActionRequest = Omit<DeepWaterBriefActionJobPayload, 'acceptedAt'>
 
 /** Enqueue a brief action inside the caller's transaction; a replayed key is a no-op. */
 export const enqueueDeepWaterBriefAction = async (
@@ -63,17 +72,33 @@ export type DeepWaterPersonActionStart =
    * with an error — so the request is a replay and nothing is re-armed.
    */
   | { kind: 'replay'; run: DeepWaterBriefRun }
-  /** Another action is in flight (or the brief is still opening and cannot be cancelled yet). */
+  /** Another action is in flight. */
   | { kind: 'busy'; run: DeepWaterBriefRun }
   | { kind: 'not_found' }
 
 /** Was this action accepted before? Its queue job key outlives the job. */
-const wasActionAccepted = async (tx: DeepWaterBriefDb, runId: string, actionId: string): Promise<boolean> => {
-  const rows = await tx.$queryRaw<Array<{ accepted: boolean }>>(Prisma.sql`
+export const wasDeepWaterActionAccepted = async (
+  db: DeepWaterBriefDb,
+  runId: string,
+  actionId: string,
+): Promise<boolean> => {
+  const rows = await db.$queryRaw<Array<{ accepted: boolean }>>(Prisma.sql`
     SELECT true AS "accepted" FROM "queue_jobs"
     WHERE "idempotency_key" = ${deepWaterBriefActionJobKey(runId, actionId)}
   `)
   return rows.length > 0
+}
+
+/** Is this action's job still to run, or running — so it may yet call Ledger? */
+export const isDeepWaterActionJobLive = async (
+  db: DeepWaterBriefDb,
+  runId: string,
+  actionId: string,
+): Promise<boolean> => {
+  const rows = await db.$queryRaw<Array<{ status: string }>>(Prisma.sql`
+    SELECT "status" FROM "queue_jobs" WHERE "idempotency_key" = ${deepWaterBriefActionJobKey(runId, actionId)}
+  `)
+  return rows.some((row) => row.status === 'pending' || row.status === 'processing')
 }
 
 /**
@@ -94,34 +119,35 @@ const wasActionAccepted = async (tx: DeepWaterBriefDb, runId: string, actionId: 
  *
  * A cancel is accepted while another action is in flight: stopping a brief
  * must never wait on the planner. It replaces that action, whose own late ack
- * then finds nothing to settle. The one exception is the opening
- * `scope_start` before Ledger acknowledged it: until then there is no research
- * id to cancel, and the brief may be opening in Ledger at that moment, so a
- * cancel accepted then would leave a paid planner turn with nothing to stop
- * it. The cancel is refused as busy for those few seconds.
+ * then finds nothing to settle. A cancel through Ledger needs the research id,
+ * so a brief DeepWater has not named yet is cancelled here instead, by
+ * `cancelUnopenedDeepWaterBrief`; reaching this with one is a caller bug.
+ *
+ * The job's `acceptedAt` is stamped here, from the same clock read as the
+ * action's `since`.
  */
 export const beginDeepWaterPersonAction = async (
   tx: DeepWaterBriefDb,
   input: {
-    job: DeepWaterBriefActionJobPayload
+    job: DeepWaterBriefActionRequest
     precondition?: (run: DeepWaterBriefRun) => void
   },
 ): Promise<DeepWaterPersonActionStart> => {
-  const job = DeepWaterBriefActionJobPayloadSchema.parse(input.job)
-  const locked = await lockDeepWaterBriefRun(tx, { organizationId: job.organizationId, runId: job.runId })
+  const locked = await lockDeepWaterBriefRun(tx, { organizationId: input.job.organizationId, runId: input.job.runId })
   if (!locked) return { kind: 'not_found' }
   const { run, now } = locked
+  const job = DeepWaterBriefActionJobPayloadSchema.parse({ ...input.job, acceptedAt: now.toISOString() })
   if (run.scopeState === null) {
     throw new Error(`DeepWater run ${run.id} is a legacy launcher run, not a research brief`)
   }
   // Under the row lock every acceptance of this run has committed or is still
   // waiting behind us, so the key read here is the whole answer.
-  if (await wasActionAccepted(tx, run.id, job.actionId)) return { kind: 'replay', run }
-  const current = run.scopeState.pendingAction
-  if (isPendingActionInFlight(current)) {
-    if (job.action.kind !== 'cancel') return { kind: 'busy', run }
-    if (current.kind === 'scope_start' && run.externalRunId === null) return { kind: 'busy', run }
+  if (await wasDeepWaterActionAccepted(tx, run.id, job.actionId)) return { kind: 'replay', run }
+  if (job.action.kind === 'cancel' && run.externalRunId === null) {
+    throw new Error(`DeepWater run ${run.id} has no research id to cancel; cancel it with cancelUnopenedDeepWaterBrief`)
   }
+  const current = run.scopeState.pendingAction
+  if (isPendingActionInFlight(current) && job.action.kind !== 'cancel') return { kind: 'busy', run }
   input.precondition?.(run)
 
   if (!await enqueueDeepWaterBriefAction(tx, job)) {
@@ -135,7 +161,7 @@ export const beginDeepWaterPersonAction = async (
     pendingAction: {
       kind: ACTION_KIND_FOR_JOB[job.action.kind],
       actionId: job.actionId,
-      since: now.toISOString(),
+      since: job.acceptedAt,
       turnId: null,
       error: null,
     },
@@ -232,6 +258,39 @@ export const revertDeepWaterLaunch = async (
     },
   })
   return true
+}
+
+/**
+ * The same revert for a launch an agent made with its own
+ * `research_scope_launch` call: that call is not an action in flight here, so
+ * only the binder that got the `scope_*` refusal knows Ledger put the brief
+ * back to drafting. Moving the run back is safe even when Ledger never moved
+ * it: the watch's next read moves it forward again if Ledger shows otherwise.
+ * A person's launch in flight is left to its own job. Null unless the run was
+ * moved back.
+ */
+export const revertDeepWaterAgentLaunch = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string },
+): Promise<DeepWaterBriefRun | null> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  const scopeState = locked?.run.scopeState
+  if (!locked || !scopeState) return null
+  const { run, now } = locked
+  const action = scopeState.pendingAction
+  if (run.status !== 'running' || (isPendingActionInFlight(action) && action.kind === 'launch')) return null
+
+  const delayMs = deepWaterWatchDelayMs({ status: 'drafting', state: scopeState, msSinceLastChange: 0 })
+  await tx.productIntegrationRun.update({
+    where: { id: run.id },
+    data: {
+      status: 'drafting',
+      launchedAt: null,
+      ledgerObservedAt: now,
+      reconcileAfter: new Date(now.getTime() + delayMs),
+    },
+  })
+  return { ...run, status: 'drafting', launchedAt: null }
 }
 
 /**

@@ -77,6 +77,7 @@ for (const [label, seed] of [
     const view = toDeepWaterBriefView(reloaded, {
       viewer: { userId: fixture.ids.requester, canChangeTeam: false },
       reportSpaceId: null,
+      now: new Date(),
       planner: { displayName: 'DeepWater', iconUrl: null },
     })
     assert.equal(view.status, 'drafting')
