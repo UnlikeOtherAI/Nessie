@@ -8,12 +8,19 @@ import {
   ExecutorCapabilityDescriptorSchema,
   ImplementedExecutorOperationKeySchema,
   ExecutorSignedDescriptorSchema,
+  type ExecutorCodingSessionsFacts,
   type ExecutorSignedDescriptor,
 } from '@nessie/schemas'
 
 import { detectExecutorHost, sandboxRemedyForHost, type ExecutorHost } from './host-platform.js'
 
 type LocalDescriptorConfig = {
+  /**
+   * What the built-in coding-sessions bridge may do, including the digest of
+   * its host-local configuration. Part of the digest, so offering or widening
+   * the bridge is a revision a person reviews; absent when it is not offered.
+   */
+  codingSessions?: ExecutorCodingSessionsFacts
   /** The programs `command.run` may start; absent until a policy names one. */
   commandAllowlist?: string[]
   limits: { maxCommandRuntimeSeconds: number; maxResultBytes: number; maxSessions: number }
@@ -81,6 +88,7 @@ export const buildSignedDescriptor = (
     // schema refuses it rather than letting the two readings blur.
     ...(config.commandAllowlist?.length ? { commandAllowlist: config.commandAllowlist } : {}),
     ...(config.mcpServers?.length ? { mcpServers: config.mcpServers } : {}),
+    ...(config.codingSessions ? { codingSessions: config.codingSessions } : {}),
     ...(config.workspaceFolders?.length ? { workspaceFolders: config.workspaceFolders } : {}),
     limits: config.limits,
     localPolicyDigest: policyDigest(config),

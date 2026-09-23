@@ -17,13 +17,16 @@ sha2 = "0.10.9"
 [dev-dependencies]
 tempfile = "3.24.0"
 
-# Only the Win32 surfaces the state-security commands need: token and SID
-# reads, the DACL get/set pair, and the file access mask they grant.
+# Only the Win32 surfaces the helper's commands need: token and SID reads, the
+# DACL get/set pair and the file access mask they grant for state security;
+# the Job Object, the process snapshot and the wait for `job-run`.
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
   "Win32_Security",
   "Win32_Security_Authorization",
   "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_JobObjects",
   "Win32_System_Threading",
 ] }

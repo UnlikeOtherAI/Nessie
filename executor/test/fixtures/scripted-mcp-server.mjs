@@ -140,7 +140,11 @@ const callResult = (request) => {
     return { content: [{ type: 'text', text }], isError: true }
   }
   return {
-    content: [{ type: 'text', text: JSON.stringify({ echoed: request.params?.arguments ?? null }) }],
+    // `meta` is the request's `_meta`, so a suite can prove who the daemon said the call was for.
+    content: [{
+      type: 'text',
+      text: JSON.stringify({ echoed: request.params?.arguments ?? null, meta: request.params?._meta ?? null }),
+    }],
   }
 }
 

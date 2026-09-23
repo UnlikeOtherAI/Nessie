@@ -123,6 +123,28 @@ pub struct StateSecurityResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JobRunStatus {
+    Rejected,
+}
+
+/// `job-run` answers only when it refuses: a program it did start owns stdout
+/// and the exit code, so this line goes to stderr, where the executor keeps
+/// the agent's own diagnostics, and the helper exits with
+/// `JOB_RUN_REFUSED_EXIT_CODE`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct JobRunResponse {
+    pub code: Option<String>,
+    pub status: JobRunStatus,
+}
+
+/// The exit code of a `job-run` that ran nothing, or whose containment failed
+/// before the program could run uncontained. It is the code `env` and
+/// container runtimes use for "the wrapper itself failed".
+pub const JOB_RUN_REFUSED_EXIT_CODE: i32 = 125;
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PromotionResponse {
     pub code: Option<String>,
