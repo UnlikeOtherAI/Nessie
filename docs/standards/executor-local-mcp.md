@@ -160,6 +160,15 @@ answers the probe at once). The session manager states the resulting worst
 case for one command — a cold start plus one call deadline — as
 `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
 
+A server has one cold start at a time. Whoever finds no session — a command,
+the reporter's probe — waits on the start already in flight for that server
+name (`sessionFor`), and `stopAll` lets a start in flight finish before it
+closes the sessions, so the process it opened stops with the rest. A probe and
+a command that met a cold server used to spawn a process each; the later one
+replaced the earlier in the session map, and the earlier was never closed.
+`mcp-session-manager.test.ts` counts the processes the scripted server started
+as under a concurrent probe and call, and stops a manager mid-start.
+
 The worker stamps each `mcp.tools` / `mcp.call` command with
 `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): that worst case + a 30 s upload budget +
 20 s for the lane's own hops (queue claim, daemon poll, receipts, journal

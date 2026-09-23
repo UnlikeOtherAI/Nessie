@@ -166,7 +166,9 @@ const withTimeout = async <T>(work: Promise<T>, timeoutMs: number): Promise<T> =
  * Owns one MCP client session per policy-named server. One session per server
  * — never per call, never per run: stdio is a single duplex that will not
  * tolerate interleaved misuse, so requests for a server serialize on its
- * session's queue while different servers proceed in parallel.
+ * session's queue while different servers proceed in parallel. Its start is
+ * single-flight too: whoever finds no session waits on the one start in
+ * flight rather than spawning a second process.
  */
 export const createExecutorMcpSessionManager = (
   servers: readonly ExecutorLocalMcpServer[],
@@ -189,6 +191,9 @@ export const createExecutorMcpSessionManager = (
   })
   const maxResultBytes = Math.min(limits.maxResultBytes, MCP_RESULT_MAX_BYTES)
   const sessions = new Map<string, ActiveSession>()
+  // The one start in flight per server, which every caller that finds no
+  // session shares (`sessionFor`).
+  const starting = new Map<string, Promise<ActiveSession | ExecutorMcpUnavailableReason>>()
   const startFailures = new Map<string, StartFailure>()
 
   const closeSession = (server: string, session: ActiveSession): void => {
@@ -285,6 +290,25 @@ export const createExecutorMcpSessionManager = (
   }
 
   /**
+   * The server's live session, or the start every caller that found none
+   * shares. The reporter's probe and a command that both arrived at a cold
+   * server once started a process each; the later one replaced the earlier in
+   * `sessions`, and the earlier's idle close then looked itself up, found the
+   * other, and closed nothing — a process per race, running until the daemon
+   * stopped. A shared start also counts one failure, not one per caller.
+   */
+  const sessionFor = (spec: ExecutorLocalMcpServer): Promise<ActiveSession | ExecutorMcpUnavailableReason> => {
+    const live = sessions.get(spec.name)
+    if (live && !live.dead) return Promise.resolve(live)
+    let started = starting.get(spec.name)
+    if (!started) {
+      started = startSession(spec).finally(() => starting.delete(spec.name))
+      starting.set(spec.name, started)
+    }
+    return started
+  }
+
+  /**
    * Runs `work` as the one in-flight request on the server's session. The
    * policy check happens here — before any process starts — so no path to a
    * session can reach a server the reviewed policy did not name.
@@ -305,15 +329,8 @@ export const createExecutorMcpSessionManager = (
     } catch (error) {
       return denied(error as ExecutorMcpServerError)
     }
-    let session = sessions.get(server)
-    if (!session || session.dead) {
-      const started = await startSession(spec)
-      if (typeof started === 'string') {
-        return unavailable(startFailureMessage(server, started), started)
-      }
-      session = started
-    }
-    const active = session
+    const active = await sessionFor(spec)
+    if (typeof active === 'string') return unavailable(startFailureMessage(server, active), active)
     clearTimeout(active.idleTimer)
     active.pending += 1
     const command = options.probe !== true
@@ -517,6 +534,10 @@ export const createExecutorMcpSessionManager = (
       }
     },
     stopAll: async () => {
+      // A start still in flight finishes first — within its start timeout — so
+      // the process it opens is closed with the rest instead of outliving the
+      // stop on an idle timer nobody waits for.
+      await Promise.allSettled([...starting.values()])
       const active = [...sessions.entries()]
       for (const [server, session] of active) closeSession(server, session)
     },
