@@ -225,6 +225,16 @@ summary and points here; **this file is the rule**.
   `.admin-compose[data-expanded]` and one `--compose-line` in `styles.css`.
   Focus is tracked on the `<form>` — a toolbar button blurs the editor, and
   collapsing then would pull it out from under the click.
+  Send and the microphone sit over the right end of that bottom line, so
+  `--compose-send-clearance` is the one width both the collapsed editor and the
+  toolbar keep clear of them; nothing in the toolbar may run under Send. The
+  toolbar is a size container (`compose-bar`), so anything that is more than a
+  glyph decides its form from the room the toolbar actually has, never the
+  window: the holder's executor lease chip ("Minis · local apps · until 21:40 ·
+  End", beside Run on executor) shows where it fits and folds into a dot on Run
+  on executor where it does not, with the launcher dialog carrying the lease
+  and its End. A status like that lives in the toolbar precisely so the
+  composer at rest never grows a line for it.
 - **One dialog shell.** Every centred modal is `components/shared/Dialog.tsx`
   on `useOverlay` (`ConfirmDialog` builds on it); drawers are `Sheet`, menus
   and pickers `Popover`, toasts `Card`. The overlay family, its layer scale,
