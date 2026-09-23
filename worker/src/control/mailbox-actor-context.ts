@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  MAILBOX_DELIVERY_PURPOSE,
   parseAgentId,
   parseChannelId,
   parseOrganizationId,
@@ -50,7 +51,7 @@ export const buildMailboxActorContext = (input: {
       agentId: parseAgentId(input.targetAgentId),
       channelId: parseChannelId(input.channelId),
       correlationId: undefined,
-      purpose: 'mailbox.delivery',
+      purpose: MAILBOX_DELIVERY_PURPOSE,
       requestId: randomUUID(),
       ...(input.taskId ? { taskId: parseTaskId(input.taskId) } : {}),
       ...(carriesRequester
