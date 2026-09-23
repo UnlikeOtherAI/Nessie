@@ -438,6 +438,21 @@ the only way results come back.
   retryable blocks. Every notice names its remedy and carries
   `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks
   with nothing posted, since there is nowhere to post it.
+- **Artifacts.** A delivered research's `report.md` (the exact markdown Ledger
+  returned) and `sources.csv` are retained run output. They are stored with no
+  uploader, message or publication, so the generic attachment route refuses
+  them, and are served only by `GET …/research-runs/:runId/artifacts/report.md`
+  and `…/sources.csv` (downloads under the stored slugged filename, with the
+  attachment download path's caching, ETag and transfer metering) and
+  `…/artifacts/report` (`{markdown, truncated, reportKind}` for Copy markdown,
+  `no-store`, refused with `DEEP_WATER_REPORT_TOO_LARGE_TO_COPY` past the 8 MiB
+  proxy budget, where Download still works). Each reads the run through
+  `loadVisibleDeepWaterRun` (`api/src/services/deepwater-research-run-access.ts`:
+  a fresh live-entitlement viewer, the origin thread's reach, then
+  `isDeepWaterRunVisible`), so a research the viewer may not see answers
+  `DEEP_WATER_RESEARCH_NOT_FOUND` exactly as a missing one does. Until delivery,
+  and for a failed research, there is nothing to serve
+  (`DEEP_WATER_ARTIFACT_NOT_FOUND`), matching the view's `artifacts: null`.
 - **Realtime.** Every DeepWater transaction collects what it owes realtime and
   publishes it only after it commits (`runDeepWaterTransaction`,
   `deepwater-announce.ts`): each card, result and notice (`message.new` /
