@@ -134,7 +134,10 @@ names the machine:
 `executor.run.carry_refused` (§6), so whoever asks why a follow-up lost machine
 tools, or whether someone else tried to reach a holder's lease, has a row to
 read. A lease that has ended is recorded once, by its end, and not again by
-every later turn in its conversation. Writing the row can never fail the run.
+every later turn in its conversation — nor by the turn that was resolving
+when a pause or an End reached it: liveness is read again, under the
+executor lock, before the row is written. Writing the row can never fail the
+run.
 
 **Dispatch checks again.** `assertExecutorCommandBindingCurrent` treats a
 binding whose lease has ended or run out as fenced, so a carried run that
