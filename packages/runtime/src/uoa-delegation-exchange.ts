@@ -10,10 +10,23 @@ import crypto from 'node:crypto'
  * (their credential epoch moved, or they lost the organisation, team or domain
  * role) is an identity change the person has to fix by signing in again; UOA
  * not answering, or answering 408/429/5xx, passes; and a refused client, an
- * unverifiable assertion or an answer outside the contract is a deployment
- * fault no person can fix. Retrying the first or the last in a loop is the
- * failure mode this classification exists to prevent.
+ * unverifiable assertion, a missing or disabled delegation mapping or an answer
+ * outside the contract is a deployment fault no person can fix. Retrying the
+ * first or the last in a loop is the failure mode this classification exists
+ * to prevent, and taking a fault for a person's refusal would block every open
+ * run and tell every requester to sign in again when doing so cannot help.
  */
+
+/**
+ * The one refusal code that proves UOA refused the person rather than Nessie's
+ * deployment. UOA's token exchange answers 403 for both: this code for a moved
+ * epoch or a lost organisation, team or domain role, and
+ * `TOKEN_EXCHANGE_DELEGATION_NOT_ALLOWED` for a missing or disabled delegation
+ * mapping, an inactive client domain, a resource or scope the mapping does not
+ * allow. Its production error body names the code only when the code is on its
+ * public list, so a 403 without this code proves nothing about the person.
+ */
+export const UOA_SUBJECT_FORBIDDEN_CODE = 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN'
 
 const NESSIE_PRODUCT = 'nessie'
 const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange'
@@ -21,8 +34,12 @@ const JWT_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:jwt'
 
 /** What went wrong with one exchange. */
 export type UoaExchangeFailure =
-  /** UOA answered with this non-2xx status. */
-  | { kind: 'refused'; status: number }
+  /**
+   * UOA answered with this non-2xx status, and the error code its body named
+   * (null when the body named none: UOA's production body hides every code
+   * that is not on its public list).
+   */
+  | { kind: 'refused'; status: number; code: string | null }
   /** No answer at all: the request never completed. */
   | { kind: 'unreachable' }
   /** A 2xx answer with no usable token. */
@@ -48,15 +65,19 @@ export class UoaDelegatedIdentityError extends Error {
 /**
  * What a failed exchange means for the person it was for.
  *
- * - `identity`: UOA refused *this person* — 403 is how UOA's token exchange
- *   answers an epoch that moved, a lost domain role, or an organisation or team
- *   they no longer belong to (it keeps which one opaque) — or it issued a token
- *   for another epoch. Only the person signing in again fixes it.
+ * - `identity`: proven to be about *this person* — a 403 naming
+ *   `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` (an epoch that moved, a lost domain
+ *   role, or an organisation or team they no longer belong to; UOA keeps which
+ *   one opaque), or a token issued for another epoch. Only the person signing
+ *   in again fixes it.
  * - `transient`: no answer, or 408, 429 or a 5xx. The same exchange can
  *   succeed shortly.
  * - `fault`: any other refusal (400 bad request or config, 401 client or
- *   assertion not verified), or a 2xx outside the contract. Nothing the person
- *   does fixes it and repeating it changes nothing.
+ *   assertion not verified, and a 403 that does not name the subject code —
+ *   UOA also answers 403 when Nessie's delegation mapping, client domain,
+ *   resource or scope is wrong, and its production body can hide which), or a
+ *   2xx outside the contract. Nothing the person does fixes it and repeating it
+ *   changes nothing, so it is thrown and logged rather than blamed on them.
  */
 export const classifyUoaExchangeFailure = (
   failure: UoaExchangeFailure | null,
@@ -70,10 +91,27 @@ export const classifyUoaExchangeFailure = (
     case 'malformed':
       return 'fault'
     case 'refused':
-      if (failure.status === 403) return 'identity'
+      if (failure.status === 403 && failure.code === UOA_SUBJECT_FORBIDDEN_CODE) return 'identity'
       if (failure.status === 408 || failure.status === 429 || failure.status >= 500) return 'transient'
       return 'fault'
   }
+}
+
+/**
+ * The error code a refusal's body names, if it names one in UOA's code shape
+ * (`{ "error": "...", "code": "SOME_CODE" }`). A body that is not JSON, or names
+ * no code, is not an error of its own: the status still classifies it.
+ */
+const readErrorCode = async (response: Response): Promise<string | null> => {
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    return null
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null
+  const code = (body as { code?: unknown }).code
+  return typeof code === 'string' && /^[A-Z0-9_]+$/.test(code) ? code : null
 }
 
 const exchangeFailed = (message: string, failure: UoaExchangeFailure): UoaDelegatedIdentityError =>
@@ -169,9 +207,10 @@ export const exchangeUoaDelegation = async (
     )
   }
   if (!response.ok) {
+    const code = await readErrorCode(response)
     throw exchangeFailed(
-      `UOA delegation exchange failed with status ${response.status}.`,
-      { kind: 'refused', status: response.status },
+      `UOA delegation exchange failed with status ${response.status}${code ? ` (${code})` : ''}.`,
+      { kind: 'refused', status: response.status, code },
     )
   }
   let body: { access_token?: unknown; expires_in?: unknown }

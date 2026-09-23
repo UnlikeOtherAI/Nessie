@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  UOA_SUBJECT_FORBIDDEN_CODE,
   UoaDelegatedIdentityError,
   classifyUoaExchangeFailure,
   exchangeUoaDelegation,
@@ -51,8 +52,21 @@ test('a delegation bound to the asserted epoch is returned with its own expiry',
 })
 
 test('every failed exchange says what it failed with', async () => {
-  assert.deepEqual(await failureOf(answering(403, { error: 'FORBIDDEN' })), { kind: 'refused', status: 403 })
-  assert.deepEqual(await failureOf(answering(503, {})), { kind: 'refused', status: 503 })
+  // UOA's error body names the code only when it is on its production public
+  // list; a body naming none, or not JSON at all, still carries the status.
+  assert.deepEqual(
+    await failureOf(answering(403, { error: 'Request failed', code: 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN' })),
+    { kind: 'refused', status: 403, code: 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN' },
+  )
+  assert.deepEqual(await failureOf(answering(403, { error: 'Request failed' })), {
+    kind: 'refused', status: 403, code: null,
+  })
+  assert.deepEqual(
+    await failureOf((async () => new Response('<html>', { status: 403 })) as UoaExchangeFetch),
+    { kind: 'refused', status: 403, code: null },
+  )
+  assert.deepEqual(await failureOf(answering(403, { code: 'not a code' })), { kind: 'refused', status: 403, code: null })
+  assert.deepEqual(await failureOf(answering(503, {})), { kind: 'refused', status: 503, code: null })
   assert.deepEqual(
     await failureOf((async () => { throw new TypeError('fetch failed') }) as UoaExchangeFetch),
     { kind: 'unreachable' },
@@ -67,19 +81,27 @@ test('every failed exchange says what it failed with', async () => {
   assert.deepEqual(await failureOf(answering(200, { access_token: token({ tv: 8 }) })), { kind: 'epoch_mismatch' })
 })
 
-test('only a refusal of the person is identity drift; only an outage passes', () => {
+test('only a proven refusal of the person is identity drift; only an outage passes', () => {
+  const refused = (status: number, code: string | null = null): UoaExchangeFailure =>
+    ({ kind: 'refused', status, code })
   const cases: Array<[UoaExchangeFailure | null, ReturnType<typeof classifyUoaExchangeFailure>]> = [
-    [{ kind: 'refused', status: 403 }, 'identity'],
+    [refused(403, UOA_SUBJECT_FORBIDDEN_CODE), 'identity'],
     [{ kind: 'epoch_mismatch' }, 'identity'],
     [{ kind: 'unreachable' }, 'transient'],
-    [{ kind: 'refused', status: 408 }, 'transient'],
-    [{ kind: 'refused', status: 429 }, 'transient'],
-    [{ kind: 'refused', status: 500 }, 'transient'],
-    [{ kind: 'refused', status: 503 }, 'transient'],
+    [refused(408), 'transient'],
+    [refused(429), 'transient'],
+    [refused(500), 'transient'],
+    [refused(503), 'transient'],
     // Nessie's client, its assertion or its request: no person can fix these.
-    [{ kind: 'refused', status: 400 }, 'fault'],
-    [{ kind: 'refused', status: 401 }, 'fault'],
-    [{ kind: 'refused', status: 404 }, 'fault'],
+    [refused(400), 'fault'],
+    [refused(401), 'fault'],
+    [refused(404), 'fault'],
+    // UOA answers 403 for Nessie's own delegation mapping, client domain,
+    // resource or scope too, and its production body can hide which: a 403
+    // that does not name the subject code must never block or notify anyone.
+    [refused(403), 'fault'],
+    [refused(403, 'TOKEN_EXCHANGE_DELEGATION_NOT_ALLOWED'), 'fault'],
+    [refused(401, UOA_SUBJECT_FORBIDDEN_CODE), 'fault'],
     [{ kind: 'malformed' }, 'fault'],
     [null, 'fault'],
   ]

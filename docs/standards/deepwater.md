@@ -393,10 +393,11 @@ the only way results come back.
   (`retryDeepWaterWatchSoon`, which only ever brings the next read earlier); a
   definitive refusal, a malformed answer or a missing connector keeps the
   backoff, and a deployment fault (UOA refusing Nessie's client or assertion
-  with 400 or 401, or answering outside its contract) fails the read, so the
-  job's failure is logged and the backoff stands. An identity that no longer
-  resolves — the link gone or re-teamed, or UOA refusing to delegate the
-  captured identity with 403 or for another sign-in epoch
+  with 400 or 401, any 403 that does not name the person, or an answer outside
+  its contract) fails the read, so the job's failure is logged and the backoff
+  stands. An identity that no longer resolves — the link gone or re-teamed, or
+  UOA refusing to delegate the captured identity with a 403 naming
+  `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN`, or delegating it for another sign-in epoch
   (`classifyUoaExchangeFailure`) — blocks the run with
   `requester_identity_changed` until the requester's next live action (or
   Retry) renews it; it is never retried in a loop. Only a person's own brief is
@@ -404,6 +405,12 @@ the only way results come back.
   tells the requester once that the agent can't carry on (they cannot edit it,
   and the agent is never woken while the watch is stopped), and a launched
   research tells them DeepWater can't check on it — never that it finished.
+  UOA answers 403 for Nessie's own delegation setup too (a missing or disabled
+  mapping, an inactive client domain, a resource or scope the mapping does not
+  allow), and its production body names a code only when the code is on its
+  public list, so a bare 403 is never taken as the person's doing: until UOA
+  lists `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN`, a refused person fails the read as
+  a fault too, and the run is renewed by their next live action as above.
 - **A launch is seen before its result.** A research Ledger shows was launched
   — `complete`, or a brief whose state is `launched` — moves the run to
   `running` (setting `launched_at`) before its result is delivered, even when

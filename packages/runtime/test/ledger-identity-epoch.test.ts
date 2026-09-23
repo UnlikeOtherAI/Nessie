@@ -131,17 +131,21 @@ test('rejects a returned delegation with a missing or different epoch', async ()
   }
 })
 
-test('a refused exchange carries UOA\'s status to the caller', async () => {
+test('a refused exchange carries UOA\'s status and code to the caller', async () => {
   const service = createLedgerIdentityService({
     prisma: linkedPrisma() as never,
     settings,
-    fetchImpl: (async () => new Response('{}', { status: 403 })) as typeof fetch,
+    fetchImpl: (async () => new Response(
+      JSON.stringify({ error: 'Request failed', code: 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN' }),
+      { status: 403 },
+    )) as typeof fetch,
   })
   await assert.rejects(
     service.requestHeaders(attribution, { requireUoaIdentity: true }),
     (error: unknown) =>
       error instanceof LedgerIdentityError
       && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED'
-      && JSON.stringify(error.exchangeFailure) === JSON.stringify({ kind: 'refused', status: 403 }),
+      && JSON.stringify(error.exchangeFailure)
+        === JSON.stringify({ kind: 'refused', status: 403, code: 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN' }),
   )
 })

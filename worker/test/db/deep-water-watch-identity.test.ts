@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import { LedgerIdentityError, type UoaExchangeFailure } from '@nessie/runtime'
+import { LedgerIdentityError, UOA_SUBJECT_FORBIDDEN_CODE, type UoaExchangeFailure } from '@nessie/runtime'
 import { DeepWaterNoticeMessageMetadataSchema } from '@nessie/schemas'
 
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
@@ -12,10 +12,13 @@ import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 /**
  * What the watch does when UOA will not delegate the requester's captured
  * identity (Water plan amendments-fable F4). UOA refusing the person — a moved
- * sign-in epoch, a lost organisation or team — is identity drift: the run is
- * blocked once with `requester_identity_changed` and they are told, instead of
- * being re-read every 30 s for ever with a fresh exchange each time. Only an
- * outage is read again soon; a deployment fault keeps the claim's backoff.
+ * sign-in epoch, a lost organisation or team, which its 403 names as
+ * `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` — is identity drift: the run is blocked
+ * once with `requester_identity_changed` and they are told, instead of being
+ * re-read every 30 s for ever with a fresh exchange each time. Only an outage
+ * is read again soon; a deployment fault — including a 403 that does not name
+ * the person, because UOA answers 403 for Nessie's own delegation setup too —
+ * keeps the claim's backoff and blames nobody.
  */
 
 const withFixture = (name: string, body: (fixture: WatchFixture) => Promise<void>): void => {
@@ -58,7 +61,7 @@ const nextReadIn = async (fixture: WatchFixture, runId: string) =>
 
 withFixture('UOA refusing the requester blocks the research once and tells them, never a 30 s loop', async (fixture) => {
   const run = await claimedResearch(fixture)
-  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403 }))
+  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403, code: UOA_SUBJECT_FORBIDDEN_CODE }))
   await watchDeepWaterRun(fixture.deps, run)
   // A second read, as a person's retry would make before they sign in again.
   await watchDeepWaterRun(fixture.deps, await fixture.read(run.id))
@@ -85,7 +88,7 @@ withFixture('a person\'s own brief refused by UOA waits quietly for them to sign
     id: researchId(), status: 'drafting', errorCode: null, title: null, brief: null,
     turn: { id: randomUUID(), seq: 1, status: 'pending', authorKind: 'person', errorCode: null, retryable: false },
   })
-  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403 }))
+  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403, code: UOA_SUBJECT_FORBIDDEN_CODE }))
   await watchDeepWaterRun(fixture.deps, await fixture.read(brief.id))
   const blocked = await fixture.read(brief.id)
   assert.equal(blocked.deliveryBlockedReason, 'requester_identity_changed')
@@ -95,7 +98,7 @@ withFixture('a person\'s own brief refused by UOA waits quietly for them to sign
 
 withFixture('only an outage at UOA is read again within 30 s', async (fixture) => {
   const run = await claimedResearch(fixture)
-  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 503 }))
+  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 503, code: null }))
   await watchDeepWaterRun(fixture.deps, run)
   const soon = await nextReadIn(fixture, run.id)
   assert.ok(soon > 20_000 && soon <= 30_000, `read again within 30 s (${soon} ms)`)
@@ -103,12 +106,18 @@ withFixture('only an outage at UOA is read again within 30 s', async (fixture) =
   assert.deepEqual(await noticeKinds(fixture, run.id), [])
 })
 
-withFixture('a deployment fault at UOA fails the read, keeps the backoff and blames nobody', async (fixture) => {
-  const run = await claimedResearch(fixture)
-  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 401 }))
-  await assert.rejects(watchDeepWaterRun(fixture.deps, run), LedgerIdentityError)
-  const after = await fixture.read(run.id)
-  assert.equal(after.deliveryBlockedReason, null, 'the requester did nothing wrong')
-  assert.ok(await nextReadIn(fixture, run.id) > 9 * 60_000, 'repeating a fault changes nothing')
-  assert.deepEqual(await noticeKinds(fixture, run.id), [])
-})
+for (const [label, failure] of [
+  ['a refused client', { kind: 'refused', status: 401, code: null }],
+  ['a 403 that does not name the person', { kind: 'refused', status: 403, code: null }],
+  ['a refused delegation mapping', { kind: 'refused', status: 403, code: 'TOKEN_EXCHANGE_DELEGATION_NOT_ALLOWED' }],
+] satisfies Array<[string, UoaExchangeFailure]>) {
+  withFixture(`a deployment fault at UOA (${label}) fails the read, keeps the backoff and blames nobody`, async (fixture) => {
+    const run = await claimedResearch(fixture)
+    fixture.failIdentity(exchangeFailed(failure))
+    await assert.rejects(watchDeepWaterRun(fixture.deps, run), LedgerIdentityError)
+    const after = await fixture.read(run.id)
+    assert.equal(after.deliveryBlockedReason, null, 'the requester did nothing wrong')
+    assert.ok(await nextReadIn(fixture, run.id) > 9 * 60_000, 'repeating a fault changes nothing')
+    assert.deepEqual(await noticeKinds(fixture, run.id), [])
+  })
+}
