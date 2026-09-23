@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { posix } from 'node:path'
 
 /**
@@ -23,7 +23,9 @@ import { posix } from 'node:path'
  * --user` finds the manager, so both are derived from `/run/user/<uid>`. With
  * no reachable manager — a container, WSL without systemd, a machine where
  * nobody enabled lingering — the host falls back to `setsid`, and a daemon
- * restart can then take it down, which the protocol chapter documents.
+ * restart can then take it down, which the protocol chapter documents; with
+ * no cgroup of its own to end the agent, that host starts it through the
+ * agent guard (`agent-guard.ts`).
  */
 
 /** Tells a host it runs in a unit, and which, so it can stop that unit on close. */
@@ -44,6 +46,27 @@ const runUnitTool: UnitRunner = (file, args, env) => new Promise((settle) => {
 })
 
 export const codingSessionUnitName = (sessionId: string): string => `nessie-coding-${sessionId}`
+
+const UNIT_NAME = /^nessie-coding-[0-9a-f-]{36}$/u
+
+const readOwnCgroup = (): string => readFileSync('/proc/self/cgroup', 'utf8')
+
+/**
+ * Whether this host runs in its own session unit: the environment names one
+ * and the kernel agrees that this process is in its cgroup. Only then does
+ * the unit end the agent when the host dies.
+ */
+export const runsInOwnUserUnit = (
+  environment: NodeJS.ProcessEnv = process.env, cgroup: () => string = readOwnCgroup,
+): boolean => {
+  const unit = environment[CODING_SESSION_UNIT_ENV]
+  if (!unit || !UNIT_NAME.test(unit)) return false
+  try {
+    return cgroup().includes(`/${unit}.service`)
+  } catch {
+    return false
+  }
+}
 
 /**
  * The user manager this process can reach, with the two variables `systemctl
@@ -132,7 +155,7 @@ export const stopOwnUserUnit = async (
   environment: NodeJS.ProcessEnv = process.env, run: UnitRunner = runUnitTool,
 ): Promise<boolean> => {
   const unit = environment[CODING_SESSION_UNIT_ENV]
-  if (!unit || !/^nessie-coding-[0-9a-f-]{36}$/u.test(unit)) return false
+  if (!unit || !UNIT_NAME.test(unit)) return false
   const manager = reachableUserManager({ environment })
   if (!manager) return false
   return await run('systemctl', ['--user', 'stop', '--no-block', `${unit}.service`], manager.environment) === true

@@ -1,21 +1,29 @@
 import { win32 } from 'node:path'
 
+import { agentVersionStamp, checkAgentCapabilities, readAgentCapabilities } from './agent-capabilities.js'
 import { runCommand, type CommandRunner } from './agent-env.js'
 import type { CodingAgentConfig } from './config.js'
 import type { CodingAgentName } from './types.js'
 
 /**
  * What a host proves before it starts an agent, each failure with its own
- * name because each sends the person to a different fix: install the CLI, log
- * it in, install git, log `gh` in, or run the executor as a person rather than
- * as the Windows service's virtual account (which has no Claude login and no
- * user profile at all).
+ * name because each sends the person to a different fix: install the CLI,
+ * update it (`agent_outdated`: its `--help` lacks a flag the adapter passes),
+ * try again (`agent_help_unreadable`: its `--help` did not answer in time),
+ * name a permission mode it offers, log it in, install git, log `gh` in, or
+ * run the executor as a person rather than as the Windows service's virtual
+ * account (which has no Claude login and no user profile at all).
  *
- * Only exit codes and the `loggedIn` flag are read. `claude auth status` also
- * prints the account's email and organisation, which never leave this function.
+ * The CLI's capabilities are read before its login, because a CLI too old for
+ * `auth status` would otherwise read as logged out. Only exit codes, the help
+ * text and the `loggedIn` flag are read. `claude auth status` also prints the
+ * account's email and organisation, which never leave this function.
  */
 export type CodingSelfCheckReason =
   | 'agent_missing'
+  | 'agent_outdated'
+  | 'agent_help_unreadable'
+  | 'permission_mode_unsupported'
   | 'agent_not_logged_in'
   | 'git_missing'
   | 'gh_not_authenticated'
@@ -23,7 +31,8 @@ export type CodingSelfCheckReason =
 
 export type CodingSelfCheckOutcome =
   | { ok: true; agentVersion?: string }
-  | { ok: false; reason: CodingSelfCheckReason }
+  /** `missing` names what the CLI's help lacked, for the host's own log only. */
+  | { ok: false; reason: CodingSelfCheckReason; missing?: string[] }
 
 const VERSION_TEXT = /^[\w .()+-]{1,80}$/u
 
@@ -67,6 +76,10 @@ export const runCodingSelfCheck = async (input: {
   config: CodingAgentConfig
   cwd: string
   env: NodeJS.ProcessEnv
+  /** `codingSessions.maxBudgetUsd`, which adds `--max-budget-usd` to what the CLI must offer. */
+  maxBudgetUsd?: number
+  /** Where what each CLI's `--help` offers is cached; without one it is read every time. */
+  helpCacheFile?: string
   platform?: NodeJS.Platform
   /** The host's own environment, where the daemon's supervisor marker arrives. */
   received?: NodeJS.ProcessEnv
@@ -81,14 +94,26 @@ export const runCodingSelfCheck = async (input: {
     return { ok: false, reason: 'unsupported_supervisor' }
   }
   const options = { env: input.env, cwd: input.cwd }
-  const [git, gh] = await Promise.all([
+  const [program, ...prefix] = input.config.command
+  // Read-only probes side by side, so the help read adds no start time; they are judged in order below.
+  const versionRead = run(program!, [...prefix, '--version'], options)
+  const [git, gh, version, capabilities] = await Promise.all([
     run('git', ['--version'], options),
     run('gh', ['auth', 'status'], options),
+    versionRead,
+    readAgentCapabilities({
+      agent: input.agent, command: input.config.command, cwd: input.cwd, env: input.env, run,
+      version: versionRead.then(agentVersionStamp),
+      ...(input.helpCacheFile === undefined ? {} : { cacheFile: input.helpCacheFile }),
+    }),
   ])
   if (git.code !== 0) return { ok: false, reason: 'git_missing' }
-  const [program, ...prefix] = input.config.command
-  const version = await run(program!, [...prefix, '--version'], options)
   if (version.code !== 0) return { ok: false, reason: 'agent_missing' }
+  const offered = checkAgentCapabilities({
+    agent: input.agent, config: input.config, capabilities,
+    ...(input.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: input.maxBudgetUsd }),
+  })
+  if (!offered.ok) return offered
   const login = await run(program!, [...prefix, ...(input.agent === 'claude' ? ['auth', 'status'] : ['login', 'status'])], options)
   if (!loggedIn(input.agent, login)) return { ok: false, reason: 'agent_not_logged_in' }
   // `gh` is optional; a present one that is logged out would make every PR step fail.

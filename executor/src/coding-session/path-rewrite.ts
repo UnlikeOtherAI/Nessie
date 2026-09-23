@@ -1,3 +1,6 @@
+import { createIdentityRewrite, NO_HOST_IDENTITY, type HostIdentity } from './host-identity.js'
+import { ACCOUNT_PLACEHOLDER, SECRET_PLACEHOLDER } from './projection.js'
+
 /**
  * Every host path a coding agent prints, rewritten before it leaves the host.
  *
@@ -17,6 +20,12 @@
  * path, so no tail of another account's name is left in plain text. A spaced
  * last component cannot be told from prose that way; the roots module names
  * the neighbouring profile directories outright for that case.
+ *
+ * Paths first, then the OS user and host names (`host-identity.ts`), which
+ * therefore never break a path apart before its rule has seen it whole.
+ * `rewritePaths` is the path rules alone, for a value that is not prose — an
+ * identifier other code parses, a pull request's URL — which a name that
+ * happens to spell it would otherwise break.
  */
 
 export const HOST_PATH_PLACEHOLDER = '<host path>'
@@ -28,7 +37,12 @@ export type PathRewriteRoot = {
   paths: string[]
 }
 
-export type PathRewriter = { rewrite: (text: string) => string }
+export type PathRewriter = {
+  /** Paths, then the OS user and host names: for text. */
+  rewrite: (text: string) => string
+  /** Paths only. */
+  rewritePaths: (text: string) => string
+}
 
 const SEP = '[\\\\/]+'
 const SEGMENT = '[^\\s"\'`<>|*?\\\\/,;()\\[\\]{}]+'
@@ -72,6 +86,7 @@ const relativeTail = (tail: string): string => tail.split(/[\\/]+/u).filter(Bool
 export const createPathRewriter = (
   roots: readonly PathRewriteRoot[],
   platform: NodeJS.Platform = process.platform,
+  identity: HostIdentity = NO_HOST_IDENTITY,
 ): PathRewriter => {
   const flags = caseFolding(platform) ? 'giu' : 'gu'
   const spelled = roots.flatMap((root) => [...new Set(root.paths)].map((path) => ({ name: root.name, path })))
@@ -105,13 +120,19 @@ export const createPathRewriter = (
   for (const source of generic) {
     rules.push({ pattern: new RegExp(source, caseFolding(platform) ? 'gi' : 'g'), replace: () => HOST_PATH_PLACEHOLDER })
   }
+  const names = createIdentityRewrite(identity, [
+    HOST_PATH_PLACEHOLDER, ACCOUNT_PLACEHOLDER, SECRET_PLACEHOLDER,
+    ...roots.flatMap((root) => (root.name === undefined ? [] : [`<${root.name}>`])),
+  ])
+  const rewritePaths = (text: string): string => {
+    let current = text
+    for (const rule of rules) {
+      current = current.replace(rule.pattern, (_match, tail: unknown) => rule.replace(typeof tail === 'string' ? tail : ''))
+    }
+    return current
+  }
   return {
-    rewrite: (text) => {
-      let current = text
-      for (const rule of rules) {
-        current = current.replace(rule.pattern, (_match, tail: unknown) => rule.replace(typeof tail === 'string' ? tail : ''))
-      }
-      return current
-    },
+    rewrite: (text) => (names ? names(rewritePaths(text)) : rewritePaths(text)),
+    rewritePaths,
   }
 }

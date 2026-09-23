@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createConnection, createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import test from 'node:test'
 
 import type { GuestChannelListener } from '../src/firecracker/index.js'
@@ -73,24 +73,37 @@ const stageSession = async (root: string): Promise<GuestVmBackendStartInput> => 
 /**
  * A named pipe and a Unix socket are the same object to `net`, so the transport
  * seam is exercised over a real socket rather than a mock: the fake guest below
- * dials it exactly as the bridge would.
+ * dials it exactly as the bridge would. Only the name differs — `net` listens
+ * on nothing but a `\\.\pipe\…` name on Windows — and a listen that fails
+ * rejects rather than leaving the start waiting for a guest that never dials.
  */
 const localListener = (directory: string): {
   listen: GuestChannelListener
   pathFor: (port: number) => string
-} => ({
-  listen: async (_prefix, port, onConnection) => {
-    const socketPath = join(directory, `${port}.sock`)
-    const server: Server = createServer({ noDelay: true }, onConnection)
-    server.on('error', () => undefined)
-    await new Promise<void>((resolvePromise) => { server.listen(socketPath, resolvePromise) })
-    return {
-      close: () => new Promise((resolvePromise) => { server.close(() => resolvePromise()) }),
-      socketPath,
-    }
-  },
-  pathFor: (port) => join(directory, `${port}.sock`),
-})
+} => {
+  const pathFor = (port: number): string => (process.platform === 'win32'
+    ? `\\\\.\\pipe\\${basename(directory)}-${port}`
+    : join(directory, `${port}.sock`))
+  return {
+    listen: async (_prefix, port, onConnection) => {
+      const socketPath = pathFor(port)
+      const server: Server = createServer({ noDelay: true }, onConnection)
+      await new Promise<void>((resolvePromise, reject) => {
+        server.once('error', reject)
+        server.listen(socketPath, () => {
+          server.off('error', reject)
+          server.on('error', () => undefined)
+          resolvePromise()
+        })
+      })
+      return {
+        close: () => new Promise((resolvePromise) => { server.close(() => resolvePromise()) }),
+        socketPath,
+      }
+    },
+    pathFor,
+  }
+}
 
 const stageBackend = async (): Promise<{
   calls: ScriptCall[]

@@ -18,6 +18,7 @@ import {
   parseDraftScan,
   type GuestDraftEntry,
 } from '../src/guest-vm-payloads.js'
+import { WINDOWS_SYMLINK_SKIP } from './windows-prerequisites.js'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 
@@ -140,7 +141,7 @@ test('a guest cannot name a path outside the run overlay', async () => {
   }
 })
 
-test('a symbolic link already in the overlay cannot redirect a draft write', async () => {
+test('a symbolic link already in the overlay cannot redirect a draft write', { skip: WINDOWS_SYMLINK_SKIP }, async () => {
   const workspace = await overlay()
   const outside = join(dirname(workspace), 'outside.txt')
   try {

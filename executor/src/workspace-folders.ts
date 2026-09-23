@@ -138,7 +138,10 @@ export const findExecutorWorkspaceFolder = (
 export const splitExecutorWorkspacePath = (value: string | undefined): ExecutorWorkspacePathParts => {
   const raw = value?.trim() ?? ''
   if (raw.includes('\0')) throw new WorkspacePathError('Workspace paths may not contain NUL.')
-  if (raw.startsWith('/') || raw.startsWith('\\')) {
+  // A drive letter is an absolute Windows host path, on either executor: read
+  // as a folder name it was refused only by the name grammar, which told the
+  // agent its folder was called "C:".
+  if (raw.startsWith('/') || raw.startsWith('\\') || /^[A-Za-z]:/u.test(raw)) {
     throw new WorkspacePathError('Workspace paths must be relative.')
   }
   // Both separator spellings are interpreted before any decision is made: a

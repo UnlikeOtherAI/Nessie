@@ -49,13 +49,19 @@ test('the digest is canonical: key order does not matter, any power change does'
   assert.notEqual(codingSessionsConfigDigest(wider), codingSessionsConfigDigest(one))
 })
 
-test('an unknown key, an unknown mode or a Claude-only field on Codex is refused rather than ignored', () => {
+test('an unknown key, a malformed mode or a Claude-only field on Codex is refused rather than ignored', () => {
   const refuses = (input: unknown, pattern: RegExp) => assert.throws(
     () => normalizeCodingSessionsConfig(input),
     (error: unknown) => error instanceof CodingSessionConfigError && pattern.test(error.message),
   )
   refuses(minimal({ permissionPrompts: 'relay' }), /unknown keys: permissionPrompts/u)
-  refuses(minimal({ agents: { claude: { command: ['c'], permissionMode: 'yolo' } } }), /permissionMode must be one of/u)
+  for (const permissionMode of ['--bypass', 'accept edits', '', 7]) {
+    refuses(minimal({ agents: { claude: { command: ['c'], permissionMode } } }), /permissionMode must be a mode name/u)
+  }
+  // Which modes exist is the installed CLI's to say; the host's self-check reads them from its --help.
+  assert.equal(normalizeCodingSessionsConfig(minimal({
+    agents: { claude: { command: ['c'], permissionMode: 'someNewerMode' } },
+  })).agents.claude?.permissionMode, 'someNewerMode')
   refuses(minimal({ agents: { codex: { command: ['c'], allowedTools: ['Bash'] } } }), /unknown keys: allowedTools/u)
   refuses(minimal({ agents: { cursor: { command: ['c'] } } }), /unknown keys: cursor/u)
   refuses(minimal({ agents: {} }), /at least one coding agent/u)

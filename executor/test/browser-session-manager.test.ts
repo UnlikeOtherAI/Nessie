@@ -12,6 +12,7 @@ import { createExecutorBrowserSessionManager } from '../src/browser-session-mana
 import { createDeepTestSourceSnapshot } from '../src/deeptest-source-snapshot.js'
 import type { GuestVmSession } from '../src/guest-vm-session.js'
 import { stopSandboxWorkspace } from '../src/sandbox-workspace.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const runId = '00000000-0000-4000-8000-000000000301'
 const secondRunId = '00000000-0000-4000-8000-000000000306'
@@ -94,7 +95,7 @@ const browserStateFor = (workspaceRoot: string) => ({
   workspaceFolders: [{ name: 'workspace', path: workspaceRoot }],
 })
 
-test('browser sessions use the exact run lease, reject a second launch, and stop before sandbox teardown', async () => {
+test('browser sessions use the exact run lease, reject a second launch, and stop before sandbox teardown', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-manager-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-workspace-'))
   let resolveClosed: (() => void) | undefined
@@ -204,7 +205,7 @@ test('browser sessions use the exact run lease, reject a second launch, and stop
   }
 })
 
-test('browser session startup is cancelled by fencing before it can open a page', async () => {
+test('browser session startup is cancelled by fencing before it can open a page', { skip: WINDOWS_STATE_HELPER_SKIP, timeout: 60_000 }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-fence-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-fence-workspace-'))
   let resolveStart: ((value: GuestVmSession) => void) | undefined
@@ -267,7 +268,7 @@ test('browser session startup is cancelled by fencing before it can open a page'
   }
 })
 
-test('failed browser startup releases the exact COW lease so sandbox.stop can tear it down', async () => {
+test('failed browser startup releases the exact COW lease so sandbox.stop can tear it down', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-lease-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-lease-workspace-'))
   const state = {
@@ -305,7 +306,7 @@ test('failed browser startup releases the exact COW lease so sandbox.stop can te
   }
 })
 
-test('a rejected guest stop cannot strand a startup lease', async () => {
+test('a rejected guest stop cannot strand a startup lease', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-stop-lease-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-stop-lease-workspace-'))
   const state = {
@@ -354,7 +355,7 @@ test('a rejected guest stop cannot strand a startup lease', async () => {
   }
 })
 
-test('browser lease verification admits the real clean COW Git workspace before starting a guest', async () => {
+test('browser lease verification admits the real clean COW Git workspace before starting a guest', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-lease-verify-'))
   const workspaceRoot = await createGitWorkspace()
   let started = 0
@@ -383,7 +384,7 @@ test('browser lease verification admits the real clean COW Git workspace before 
   }
 })
 
-test('browser lease verification rejects a workspace changed after review before any guest starts', async () => {
+test('browser lease verification rejects a workspace changed after review before any guest starts', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-lease-mutation-'))
   const workspaceRoot = await createGitWorkspace()
   let started = 0
@@ -417,7 +418,7 @@ test('browser lease verification rejects a workspace changed after review before
   }
 })
 
-test('cancelling browser lease verification prevents guest startup and releases its COW lease', async () => {
+test('cancelling browser lease verification prevents guest startup and releases its COW lease', { skip: WINDOWS_STATE_HELPER_SKIP, timeout: 60_000 }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-lease-cancel-'))
   const workspaceRoot = await createGitWorkspace()
   let releaseVerification: ((value: boolean) => void) | undefined

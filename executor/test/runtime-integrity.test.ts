@@ -11,6 +11,7 @@ import {
   type ExecutorRuntimeEntryFacts,
   type ExecutorRuntimeFacts,
 } from '../src/runtime-integrity.js'
+import { WINDOWS_SYMLINK_SKIP } from './windows-prerequisites.js'
 
 const NODE_BYTES = 'node-binary'
 const BUNDLE_BYTES = 'executor-bundle'
@@ -235,15 +236,17 @@ test('a bundle executed from outside the verified runtime directory is refused',
     refusal(packagedFacts({ runningBundleRealPath: '/tmp/nessie-executor.cjs' })),
     'the running executor bundle is not the packaged one',
   )
+  // Joined as the verifier joins it: facts are collected on the host that
+  // checks them, so the running path has that host's separators.
   assert.deepEqual(
     verifyExecutorRuntime(packagedFacts({
-      runningBundleRealPath: '/usr/lib/nessie-executor/nessie-executor.cjs',
+      runningBundleRealPath: join('/usr/lib/nessie-executor', 'nessie-executor.cjs'),
     })),
     { ok: true },
   )
 })
 
-test('the filesystem adapter reports real digests, symlinks, and missing files', async () => {
+test('the filesystem adapter reports real digests, symlinks, and missing files', { skip: WINDOWS_SYMLINK_SKIP }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-runtime-'))
   try {
     await writeFile(join(directory, 'node'), NODE_BYTES)

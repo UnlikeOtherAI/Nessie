@@ -19,6 +19,7 @@ import {
 } from './command-attachments.js'
 import { createExecutorCommandRecoveryStore } from './command-recovery.js'
 import { acquireExecutorDaemonLease } from './daemon-lease.js'
+import { stopKelpieDescribes } from './kelpie-detect.js'
 import { createLocalMcpReporter } from './local-mcp-report.js'
 import { startExecutorLocalInferenceSupervisor } from './local-inference-supervisor.js'
 import { createExecutorMcpSessionManager } from './mcp-session-manager.js'
@@ -143,6 +144,8 @@ export const serveExecutor = async (
       ])
       await Promise.allSettled([
         browserSessions.stopAll(), commandSessions.stopAll(), codingSessions.stopAll(),
+        // Describe leads its own process group, which a supervisor's stop of the daemon's group misses.
+        stopKelpieDescribes(),
         // The bridge answers through the MCP session, so it closes before that session stops.
         withinShutdownBudget(codingBridge.shutdown()).then(() => mcpSessions.stopAll()),
       ])

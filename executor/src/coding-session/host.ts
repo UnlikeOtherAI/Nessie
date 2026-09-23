@@ -1,20 +1,23 @@
 import { randomUUID } from 'node:crypto'
 import { unlink } from 'node:fs/promises'
 
-import { AgentStartError, type AgentDriver } from './agent-process.js'
 import { buildAgentEnvironment } from './agent-env.js'
+import { createHostProcessControl } from './agent-guard.js'
+import { AgentStartError, type AgentDriver } from './agent-process.js'
 import { createClaudeDriver } from './claude-driver.js'
 import { codexAccountRedactions, createCodexDriver } from './codex-driver.js'
 import { codingSessionsDigestMatches, loadCodingSessionsConfig, type LoadedCodingSessionsConfig } from './config.js'
 import { ensureCodingSessionHost, executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
 import { stopOwnUserUnit } from './host-unit.js'
-import { createCodingProcessControl, type CodingProcessControl } from './process-control.js'
+import type { CodingProcessControl } from './process-control.js'
+import { resolveProgramPath } from './program-path.js'
 import { createProjector, SECRET_NAME, type Projector } from './projection.js'
 import { gitStartSnapshot } from './review.js'
 import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots.js'
 import { runCodingSelfCheck } from './self-check.js'
 import { openEventLog } from './session-events.js'
 import {
+  codingAgentHelpCache,
   codingSessionPaths,
   createDebouncedJsonWriter,
   readJson,
@@ -147,8 +150,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
   const prepare = async (): Promise<AgentDriver> => {
     if (driver) return driver
     if (!await lock.stillOurs()) throw new AgentStartError('host_superseded')
-    const agent = loaded.config.agents[meta.agent]
-    if (!agent) throw new AgentStartError('agent_unavailable')
+    const configured = loaded.config.agents[meta.agent]
+    if (!configured) throw new AgentStartError('agent_unavailable')
     const folder = await resolveCodingFolder(findCodingRoot(context.roots, meta.rootName), meta.path)
       .catch(() => { throw new AgentStartError('root_unavailable') })
     const env = await buildAgentEnvironment({ config: loaded.config.agentEnv })
@@ -158,8 +161,20 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       ...Object.entries(env).filter(([name]) => SECRET_NAME.test(name)).map(([, value]) => value),
     ])
     if (meta.agent === 'codex') context.projector.redact(await codexAccountRedactions(env))
-    const check = await runCodingSelfCheck({ agent: meta.agent, config: agent, cwd: folder, env })
-    if (!check.ok) throw new AgentStartError(check.reason)
+    // Once, from the absolute PATH entries only: every probe, the help cache and every agent start run this
+    // path, never a program of the same name in the session's folder (`program-path.ts`).
+    const program = await resolveProgramPath(configured.command[0]!, env)
+    if (program === undefined) throw new AgentStartError('agent_missing')
+    const agent = { ...configured, command: [program, ...configured.command.slice(1)] }
+    const check = await runCodingSelfCheck({
+      agent: meta.agent, config: agent, cwd: folder, env, helpCacheFile: codingAgentHelpCache(loaded.stateDir),
+      ...(loaded.config.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: loaded.config.maxBudgetUsd }),
+    })
+    if (!check.ok) {
+      const named = check.missing?.slice(0, 10).join(', ')
+      if (named) log(check.reason === 'agent_help_unreadable' ? `the agent's help did not answer: ${named}` : `the agent's --help does not offer ${named}`)
+      throw new AgentStartError(check.reason)
+    }
     if (check.agentVersion) update({ agentVersion: context.projector.line(check.agentVersion, 80) })
     if (state.baseCommit === undefined && state.worktreesAtStart === undefined) update(await gitStartSnapshot(folder))
     const driverContext = {
@@ -301,12 +316,12 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
   // Roots nobody reviewed are never resolved; a host under a changed file only stops things.
   const roots = await resolveCodingRoots(mayRunAgent ? loaded : { ...loaded, config: { ...loaded.config, roots: [] } })
   if (!mayRunAgent) log('the configuration no longer matches its reviewed digest; agents will not start')
+  const entry = resolveExecutorEntry()
   const context: HostContext = {
-    control: createCodingProcessControl(),
+    control: createHostProcessControl(entry),
     loaded, meta, paths, log, mayRunAgent, roots,
     projector: createProjector(roots.rewriter),
   }
-  const entry = resolveExecutorEntry()
   const runtimeDigest = await executorRuntimeDigest(entry)
   for (;;) {
     const lock = await acquireHostLock(paths.lock, runtimeDigest)

@@ -12,6 +12,7 @@ import {
 import { buildAgentEnvironment } from './agent-env.js'
 import { codingSessionsDigestMatches, type LoadedCodingSessionsConfig } from './config.js'
 import { ensureCodingSessionHost, resolveExecutorEntry } from './host-spawn.js'
+import type { PathRewriter } from './path-rewrite.js'
 import { reviewCodingSession } from './review.js'
 import {
   CodingRootError,
@@ -73,7 +74,8 @@ export type CodingBridgeCallMeta = {
 
 export type CodingBridge = {
   call: (tool: string, args: unknown, meta: CodingBridgeCallMeta) => Promise<Record<string, unknown>>
-  rewrite: (text: string) => string
+  /** What every answer passes through once more on its way out (`bridge-server.ts`). */
+  rewriter: PathRewriter
 }
 
 const OWNER_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/u
@@ -370,7 +372,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   }
 
   return {
-    rewrite: rootSet.rewriter.rewrite,
+    rewriter: rootSet.rewriter,
     call: async (tool, args, meta) => {
       try {
         const commandId = commandIdOf(meta)

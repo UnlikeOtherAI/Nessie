@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFile, readdir } from 'node:fs/promises'
-import { homedir, tmpdir } from 'node:os'
+import { homedir, hostname, tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
+import { identityNames } from '../src/coding-session/host-identity.js'
 import { createCodingProcessControl } from '../src/coding-session/process-control.js'
 import { alive, createCodingHarness, waitUntil, type CodingHarness } from './coding-session-harness.js'
 
@@ -161,10 +162,22 @@ test('codex runs a process per turn, resumes its thread, and reports its failure
   }
 })
 
-test('no host path and no account data reach any answer', { timeout: 120_000 }, async () => {
+test('a CLI whose --help lacks a flag the adapter passes is refused before it starts', { timeout: 120_000 }, async () => {
+  const harness = await createCodingHarness({ agentEnv: { inheritUserSession: false, set: { NESSIE_SCRIPTED_HELP: 'older' } } })
+  try {
+    const sessionId = await started(harness, { prompt: 'anything' })
+    const failed = await harness.waitForStatus(sessionId, (body) => body.status === 'failed')
+    assert.equal(failed.reason, 'agent_outdated')
+    assert.deepEqual((await harness.agents()).filter((entry) => entry.event === 'start'), [], 'no agent process started')
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('no host path, no account data and no OS user or host name reach any answer', { timeout: 120_000 }, async () => {
   const harness = await createCodingHarness()
   try {
-    const sessionId = await started(harness, { prompt: '#path #deny #test #secret report back' })
+    const sessionId = await started(harness, { prompt: '#path #deny #test #secret #identity report back' })
     await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     const events = await harness.call('session_status', { sessionId, detail: 'events', cursor: '0.0.0' })
     const kinds = (events.body.events as { kind: string }[]).map((event) => event.kind)
@@ -177,10 +190,16 @@ test('no host path and no account data reach any answer', { timeout: 120_000 }, 
     assert.match(all, /<work>\/README\.md/)
     assert.match(all, /<host path>/)
     assert.match(all, /GH_TOKEN=<secret>/)
+    const [user] = identityNames([userInfo().username])
+    const [host] = identityNames([hostname()])
+    if (user && host) assert.match(all, /got '<user>@<host>\.\(none\)'/u)
+    const names = [user, host].filter((name): name is string => name !== undefined)
     const forbidden = [
       harness.root, harness.dir, homedir(), tmpdir(), 'person@example.com', 'Private Org', 'Private Docs',
       // A token the agent printed, and a value the configuration set, never leave the host.
       `ghp_${'Z9y8'.repeat(9)}`, 'from-config',
+      // Nor do the OS user and host names git and a shell prompt print (a generic or two-letter one is left alone).
+      ...names,
     ]
     for (const value of forbidden) {
       for (const spelling of new Set([value, value.replaceAll('\\', '/'), value.replaceAll('\\', '\\\\'), value.toLowerCase()])) {

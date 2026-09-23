@@ -40,6 +40,15 @@ const harness = (overrides: Partial<ExecutorServiceEnvironment> = {}): Harness =
   return { commands, environment, output }
 }
 
+/**
+ * The service module runs only on Linux and joins its unit and state paths
+ * with that host's separators, so the cases that compare those paths are
+ * staged only where they would ever be produced. The rest run everywhere.
+ */
+const LINUX_PATHS = process.platform === 'win32'
+  ? 'The systemd unit and XDG state paths are Linux paths, joined with the separators of the host that runs them.'
+  : false
+
 const rejects = async (action: Promise<unknown>): Promise<string> => {
   try {
     await action
@@ -77,7 +86,7 @@ test('the parser accepts the service commands without a state directory', () => 
   assert.throws(() => parseCommand(['disable', '--yes']), /Usage: nessie-executor/)
 })
 
-test('enable verifies pairing and the packaged runtime before touching systemd', async () => {
+test('enable verifies pairing and the packaged runtime before touching systemd', { skip: LINUX_PATHS }, async () => {
   const order: string[] = []
   const { commands, environment } = harness({
     loadPairedState: async (stateDir) => {
@@ -194,7 +203,7 @@ test('disable stops and disables the unit and never touches lingering', async ()
   assert.ok(output.some((line) => line.includes('Lingering is unchanged')))
 })
 
-test('status reports paired executors, unit state, and lingering as plain lines', async () => {
+test('status reports paired executors, unit state, and lingering as plain lines', { skip: LINUX_PATHS }, async () => {
   const { environment, output } = harness({
     listStateDirectories: async (stateRoot) => {
       assert.equal(stateRoot, '/home/person/.local/state/nessie-executor')
@@ -217,7 +226,7 @@ test('status reports paired executors, unit state, and lingering as plain lines'
   ])
 })
 
-test('status says so when nothing is paired, and refuses an unpaired named executor', async () => {
+test('status says so when nothing is paired, and refuses an unpaired named executor', { skip: LINUX_PATHS }, async () => {
   const { environment, output } = harness({
     listStateDirectories: async () => [],
     run: async () => ({ code: 1, stdout: '' }),
@@ -234,6 +243,6 @@ test('status says so when nothing is paired, and refuses an unpaired named execu
   )
 })
 
-test('the service state root is the documented XDG state path', () => {
+test('the service state root is the documented XDG state path', { skip: LINUX_PATHS }, () => {
   assert.equal(executorServiceStateRoot('/home/person'), '/home/person/.local/state/nessie-executor')
 })

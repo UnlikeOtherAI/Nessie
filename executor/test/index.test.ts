@@ -9,6 +9,7 @@ import type { ExecutorHost } from '../src/host-platform.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
 import { deriveExecutorWorkspaceFolderName } from '../src/workspace-folders.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 // The configure path now asks the host what sandbox it can start, so this
 // pins a host with one instead of depending on the machine running the suite.
@@ -228,7 +229,7 @@ test('Codex configuration requires only local owner-controlled sources', () => {
   )
 })
 
-test('local policy configuration proposes only implemented COW operations', async () => {
+test('local policy configuration proposes only implemented COW operations', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-configure-'))
   const replacementWorkspace = await mkdtemp(join(tmpdir(), 'nessie-executor-replacement-workspace-'))
   const blockedWorkspace = await mkdtemp(join(tmpdir(), 'nessie-executor-blocked-workspace-'))

@@ -22,6 +22,16 @@ import {
 } from '../src/guest-vm-backend.js'
 import type { ExecutorHost } from '../src/host-platform.js'
 
+/**
+ * Firecracker runs only on a Linux host, and these cases stage what it meets
+ * there: Unix sockets, POSIX signals and POSIX paths. On Windows a socket
+ * path is not a pipe name, and a listen that never succeeds brought Node down
+ * at exit. The backend seam, the macOS argv and the token run everywhere.
+ */
+const LINUX_HOST_ONLY = process.platform === 'win32'
+  ? 'Firecracker runs on Linux: its vsock is a Unix socket, it stops with SIGTERM then SIGKILL, and its layout is POSIX paths.'
+  : false
+
 const host = (sandboxBackend: ExecutorHost['sandboxBackend'], os: 'linux' | 'macos' | 'windows'): ExecutorHost => ({
   platform: { architecture: os === 'macos' ? 'arm64' : 'x64', os, osMajorVersion: 15 },
   sandboxBackend,
@@ -99,7 +109,7 @@ test('the macOS backend still builds exactly the session argv the signed helper 
   assert.equal(calls[0].argv.includes('token'), false)
 })
 
-test('Firecracker is run by the daemon itself, with default seccomp and no jailer', async () => {
+test('Firecracker is run by the daemon itself, with default seccomp and no jailer', { skip: LINUX_HOST_ONLY }, async () => {
   const layout = firecrackerLayout({ sessionId: 'abc-123', socketDirectory: '/tmp/nex-fc-1' })
   assert.equal(layout.apiSocketPath, '/tmp/nex-fc-1/api.sock')
   assert.equal(layout.vsockPath, '/tmp/nex-fc-1/v.sock')
@@ -139,7 +149,7 @@ test('the guest egress token is the HMAC the guest itself derives', () => {
   assert.throws(() => deriveGuestEgressToken('short'), /bootstrap token is malformed/)
 })
 
-test('a host-initiated vsock connection sends CONNECT and waits for the OK acknowledgement', async () => {
+test('a host-initiated vsock connection sends CONNECT and waits for the OK acknowledgement', { skip: LINUX_HOST_ONLY }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-vsock-'))
   const udsPath = join(directory, 'v.sock')
   const received: string[] = []
@@ -164,7 +174,7 @@ test('a host-initiated vsock connection sends CONNECT and waits for the OK ackno
   }
 })
 
-test('a refused host-initiated vsock connection is an error, never a half-open stream', async () => {
+test('a refused host-initiated vsock connection is an error, never a half-open stream', { skip: LINUX_HOST_ONLY }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-vsock-refuse-'))
   const udsPath = join(directory, 'v.sock')
   const server = createServer((socket: Socket) => {
@@ -180,7 +190,7 @@ test('a refused host-initiated vsock connection is an error, never a half-open s
   }
 })
 
-test('guest-initiated connections arrive on the per-port socket Firecracker forwards to', async () => {
+test('guest-initiated connections arrive on the per-port socket Firecracker forwards to', { skip: LINUX_HOST_ONLY }, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-vsock-listen-'))
   const udsPath = join(directory, 'v.sock')
   let seen: Buffer | undefined
@@ -202,7 +212,7 @@ test('guest-initiated connections arrive on the per-port socket Firecracker forw
   }
 })
 
-test('a process that ignores SIGTERM is killed once the stop window has passed', async () => {
+test('a process that ignores SIGTERM is killed once the stop window has passed', { skip: LINUX_HOST_ONLY }, async () => {
   const { spawn } = await import('node:child_process')
   const child = spawn(process.execPath, [
     '-e',

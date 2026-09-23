@@ -20,6 +20,7 @@ import {
 import { loadExecutorState, loadExecutorStatesFromRoot, saveExecutorState } from '../src/state-store.js'
 import type { ExecutorWorkspaceFolder } from '../src/workspace-folders.js'
 import { listWorkspaceFiles, readWorkspaceFile } from '../src/workspace.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 const hostView = (...folders: ExecutorWorkspaceFolder[]) => ({
   directoryFor: async (folder: ExecutorWorkspaceFolder) => folder.path,
@@ -41,7 +42,7 @@ const commandFor = (
   payload,
 })
 
-test('state storage rejects shared or symbolic paths and preserves owner-only state', async () => {
+test('state storage rejects shared or symbolic paths and preserves owner-only state', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-test-'))
   const shared = join(root, 'shared')
   const safe = join(root, 'safe')
@@ -88,7 +89,7 @@ test('state storage rejects shared or symbolic paths and preserves owner-only st
   }
 })
 
-test('native-host state-root dispatch accepts only protected matching pairing directories', async () => {
+test('native-host state-root dispatch accepts only protected matching pairing directories', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-pairings-'))
   const firstId = '00000000-0000-4000-8000-000000000031'
   if (process.platform === 'win32' && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1') {
@@ -175,7 +176,7 @@ test('the read-only workspace backend keeps every path inside the paired root', 
   }
 })
 
-test('sandbox writes use a daemon-owned COW workspace and never touch the paired root', async () => {
+test('sandbox writes use a daemon-owned COW workspace and never touch the paired root', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-state-'))
   const runId = '00000000-0000-4000-8000-000000000101'
@@ -215,7 +216,7 @@ test('sandbox writes use a daemon-owned COW workspace and never touch the paired
   }
 })
 
-test('sandbox workspace paths exclude the native promotion journal', async () => {
+test('sandbox workspace paths exclude the native promotion journal', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-journal-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-journal-state-'))
   try {
@@ -266,7 +267,7 @@ test('sandbox workspace paths exclude the native promotion journal', async () =>
   }
 })
 
-test('copy-on-write sandbox setup fails closed on symbolic links in the paired root', async (t) => {
+test('copy-on-write sandbox setup fails closed on symbolic links in the paired root', { skip: WINDOWS_STATE_HELPER_SKIP }, async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-state-'))
   const outside = await mkdtemp(join(tmpdir(), 'nessie-executor-cow-link-outside-'))
@@ -295,7 +296,7 @@ test('copy-on-write sandbox setup fails closed on symbolic links in the paired r
   }
 })
 
-test('daemon commands bind COW drafts to one run and never write the paired root', async () => {
+test('daemon commands bind COW drafts to one run and never write the paired root', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-daemon-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-daemon-state-'))
   const runId = '00000000-0000-4000-8000-000000000203'
@@ -370,7 +371,7 @@ test('daemon commands bind COW drafts to one run and never write the paired root
   }
 })
 
-test('promotion remains unavailable without an owner-verified native helper', async () => {
+test('promotion remains unavailable without an owner-verified native helper', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-promotion-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-promotion-state-'))
   const runId = '00000000-0000-4000-8000-000000000207'
@@ -412,7 +413,7 @@ test('promotion remains unavailable without an owner-verified native helper', as
   }
 })
 
-test('a draft review digest binds file hashes even when byte counts do not change', async () => {
+test('a draft review digest binds file hashes even when byte counts do not change', { skip: WINDOWS_STATE_HELPER_SKIP }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'nessie-executor-manifest-source-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-manifest-state-'))
   const runId = '00000000-0000-4000-8000-000000000206'

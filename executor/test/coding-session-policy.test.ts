@@ -21,7 +21,9 @@ import { buildSignedDescriptor } from '../src/descriptor.js'
 import { describeExecutor } from '../src/describe.js'
 import type { ExecutorHost } from '../src/host-platform.js'
 import { configureExecutorLocalPolicy } from '../src/pair.js'
+import { assertOwnerOnlyStatePath } from '../src/state-security.js'
 import { loadExecutorState, saveExecutorState, type ExecutorLocalState } from '../src/state-store.js'
+import { WINDOWS_STATE_HELPER_SKIP } from './windows-prerequisites.js'
 
 /**
  * The executor side of coding-sessions.md §4: the owner's `codingSessions`
@@ -259,8 +261,7 @@ test('the configuration input carries codingSessions as an object, or null to wi
 })
 
 test('configure saves the bridge, the state loads it back, and describe states it', {
-  // Saving executor state on Windows needs the packaged native helper.
-  skip: process.platform === 'win32' ? 'executor state on Windows needs the packaged native helper' : false,
+  skip: WINDOWS_STATE_HELPER_SKIP,
 }, async () => {
   const s = await scratch()
   try {
@@ -282,7 +283,9 @@ test('configure saves the bridge, the state loads it back, and describe states i
     assert.deepEqual(updated.descriptor.mcpServers, ['coding-sessions'])
     assert.equal(updated.descriptor.codingSessions?.rootNames[0], 'nessie')
     const configPath = codingSessionsConfigPath(s.stateDir)
-    assert.equal((await stat(configPath)).mode & 0o077, 0, 'the host-local config is owner-only')
+    // Mode bits on POSIX; on Windows, where Node reports none, the helper reads the file's own DACL.
+    if (process.platform === 'win32') await assertOwnerOnlyStatePath(configPath, 'file')
+    else assert.equal((await stat(configPath)).mode & 0o077, 0, 'the host-local config is owner-only')
     assert.equal((await loadCodingSessionsConfig(configPath)).digest, updated.descriptor.codingSessions?.configDigest)
     const loaded = await loadExecutorState(s.stateDir)
     assert.deepEqual(loaded.descriptor.codingSessions, updated.descriptor.codingSessions)

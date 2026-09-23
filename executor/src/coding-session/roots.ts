@@ -9,6 +9,7 @@ import {
   safeRelativeWorkspacePath,
 } from '../workspace-paths.js'
 import { CodingSessionConfigError, type LoadedCodingSessionsConfig } from './config.js'
+import { readHostIdentity } from './host-identity.js'
 import { createPathRewriter, type PathRewriter } from './path-rewrite.js'
 
 /**
@@ -102,12 +103,14 @@ export const resolveCodingRoots = async (loaded: LoadedCodingSessionsConfig): Pr
   ]
   return {
     roots,
+    // The OS user and host are hidden with the paths, by the same rewriter
+    // every projected event and every answer passes through.
     rewriter: createPathRewriter([
       ...roots.map((root) => ({
         name: root.name, paths: [root.declared, ...(root.canonical ? [root.canonical] : [])],
       })),
       { name: undefined, paths: hidden },
-    ]),
+    ], process.platform, readHostIdentity()),
   }
 }
 

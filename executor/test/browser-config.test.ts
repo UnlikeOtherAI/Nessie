@@ -15,6 +15,7 @@ import {
 import type { ExecutorHost } from '../src/host-platform.js'
 import { ensureOwnerOnlyStateDirectory } from '../src/state-security.js'
 import { loadExecutorState, saveExecutorState } from '../src/state-store.js'
+import { WINDOWS_GUEST_RESOURCES_SKIP } from './windows-prerequisites.js'
 
 const exec = promisify(execFile)
 
@@ -82,7 +83,7 @@ const vmArtifactFixture = (stateDir: string): {
   }
 }
 
-test('Codex configuration stores only an owner-private source path and a pinned runtime', async () => {
+test('Codex configuration stores only an owner-private source path and a pinned runtime', { skip: WINDOWS_GUEST_RESOURCES_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-codex-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')
@@ -166,7 +167,7 @@ test('Codex configuration stores only an owner-private source path and a pinned 
   }
 })
 
-test('browser configuration verifies owner-controlled guest artifacts before enabling the exact browser bundle', async () => {
+test('browser configuration verifies owner-controlled guest artifacts before enabling the exact browser bundle', { skip: WINDOWS_GUEST_RESOURCES_SKIP }, async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-config-'))
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'nessie-executor-browser-workspace-'))
   const runtimeBundlePath = join(stateDir, 'guest-runtime')

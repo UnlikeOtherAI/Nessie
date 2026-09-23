@@ -46,7 +46,9 @@ test('browser egress target requires an approved origin', () => {
   )
 })
 
-test('the daemon gateway is Unix-only and rejects a blocked CONNECT before it dials', async () => {
+test('the daemon gateway is Unix-only and rejects a blocked CONNECT before it dials', {
+  skip: process.platform === 'win32' ? 'The egress gateway is a Unix socket in a directory proved owner-only by mode bits.' : false,
+}, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-executor-egress-'))
   const socketPath = join(directory, 'egress.sock')
   await chmod(directory, 0o700)

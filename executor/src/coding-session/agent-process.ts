@@ -71,9 +71,9 @@ const NOT_LOGGED_IN = new RegExp(
 
 export const agentFailureReason = (lines: readonly string[]): string => {
   const text = lines.join('\n')
-  // The Windows job helper's own refusal: it ran nothing, so nothing ran uncontained.
-  if (text.includes('"code":"EXECUTOR_JOB_SPAWN_FAILED"')) return 'agent_missing'
-  if (/"code":"EXECUTOR_(JOB_CONTAINMENT_FAILED|JOB_PARENT_GONE)"/u.test(text)) return 'containment_failed'
+  // The Windows job helper's and the agent guard's own refusals: either ran nothing, or stopped what it started.
+  if (/"code":"EXECUTOR_(JOB|GUARD)_SPAWN_FAILED"/u.test(text)) return 'agent_missing'
+  if (/"code":"EXECUTOR_(JOB_(CONTAINMENT_FAILED|PARENT_GONE)|GUARD_(CONTAINMENT_FAILED|NO_AGENT|HOST_GONE))"/u.test(text)) return 'containment_failed'
   if (NOT_LOGGED_IN.test(text)) return 'agent_not_logged_in'
   if (/usage limit|quota|rate limit/iu.test(text)) return 'agent_quota_exhausted'
   return 'agent_exited'
@@ -96,7 +96,7 @@ export const startAgentProcess = async (
   // `close` means stdout has been read to the end, so the turn's last line is
   // parsed first. A descendant still holding the pipe would delay it forever,
   // so a second after `exit` is enough.
-  const exited = new Promise<{ code: number | null }>((settle) => {
+  const ended = new Promise<{ code: number | null }>((settle) => {
     child.once('exit', (code) => {
       done = true
       setTimeout(() => settle({ code }), 1_000).unref()
@@ -121,24 +121,40 @@ export const startAgentProcess = async (
       if (tail.length > STDERR_TAIL_LINES) tail.shift()
     }
   })
-  void exited.then(() => log.end())
+  void ended.then(() => log.end())
   child.stdin?.on('error', () => undefined)
   if (child.stdout) createInterface({ input: child.stdout }).on('line', onLine)
-  const identity = await context.control.identify(child.pid)
+  // Through the agent guard this is the agent's own identity, which the guard reports; otherwise the child's.
+  const identity = await (context.control.identifySpawned?.(child) ?? context.control.identify(child.pid))
   if (!identity) {
     // With no start time, no later kill could tell this process from whatever
     // inherits its pid, so it does not keep running. The handle is still ours.
     const exitedOnItsOwn = done || !codingProcessIsAlive(child.pid)
     if (!done) child.kill('SIGKILL')
-    await exited
+    await ended
     throw new AgentStartError(exitedOnItsOwn ? agentFailureReason(tail) : 'containment_failed')
   }
+  // Through the agent guard the process this host started is the guard, not the
+  // agent. A guard that ends while this host lives — killed, or out of memory —
+  // leaves an agent nobody watches (on POSIX it runs on in a group of its own,
+  // mid-turn, its pipes broken), and a host that took its guard's end for the
+  // agent's would forget the one identity that can still stop it. So the agent's
+  // tree is killed, identity-checked, before this host hears that it exited;
+  // an agent that has really gone is not there to kill, and no pid alive under
+  // its number means no table read at all.
+  const exited = context.control.identifySpawned === undefined ? ended : ended.then(async (result) => {
+    if (codingProcessIsAlive(identity.pid)) await context.control.killTree(identity).catch(() => undefined)
+    return result
+  })
   return {
     identity,
     write: (text) => {
       if (!done && child.stdin?.writable) child.stdin.write(text)
     },
-    endInput: () => { child.stdin?.end() },
+    endInput: () => {
+      if (context.control.endInput) context.control.endInput(child)
+      else child.stdin?.end()
+    },
     exited,
     alive: () => !done,
     stderrTail: () => [...tail],

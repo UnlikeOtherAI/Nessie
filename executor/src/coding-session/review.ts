@@ -13,7 +13,13 @@ import type { CodingSessionState } from './types.js'
  * The coding agent usually works in a worktree of its own, so the review looks
  * beyond the session's folder at every worktree created under the root since
  * the session started. `gh pr view` adds each branch's pull request when `gh`
- * is installed. Every path in the answer has been through the rewriter.
+ * is installed. Every string in the answer has been through the rewriter,
+ * branch names and the keys of `pullRequests` included (a branch is often
+ * named after its author, and the bridge's last pass rewrites values, not
+ * keys); `gh` is still asked about each branch by its real name. A pull
+ * request's URL gets the path rules only: its owner is the repository's
+ * (`github.com/ondre/app`), which is often spelled like the OS user, and the
+ * link is the one thing in the review a person follows.
  */
 const REVIEW_BUDGET_MS = 20_000
 const DIFF_STAT_LINES = 60
@@ -73,7 +79,7 @@ const porcelainCounts = (text: string | undefined): { uncommitted: number; untra
 type CheckCounts = Record<string, number>
 
 const pullRequest = async (
-  run: CommandRunner, branch: string, cwd: string, deadline: number, rewrite: (text: string) => string,
+  run: CommandRunner, branch: string, cwd: string, deadline: number, rewriter: PathRewriter,
   env: NodeJS.ProcessEnv,
 ): Promise<Record<string, unknown> | undefined> => {
   const remaining = deadline - Date.now()
@@ -95,7 +101,7 @@ const pullRequest = async (
       checks[key] = (checks[key] ?? 0) + 1
     }
     return {
-      url: typeof parsed.url === 'string' ? rewrite(parsed.url).slice(0, 300) : undefined,
+      url: typeof parsed.url === 'string' ? rewriter.rewritePaths(parsed.url).slice(0, 300) : undefined,
       state: typeof parsed.state === 'string' ? parsed.state.slice(0, 30) : undefined,
       mergeable: typeof parsed.mergeable === 'string' ? parsed.mergeable.slice(0, 30) : undefined,
       checks,
@@ -137,6 +143,7 @@ export const reviewCodingSession = async (input: {
     : false
   const atStart = new Set((input.state?.worktreesAtStart ?? []).map((path) => path.toLowerCase()))
   const worktrees: Record<string, unknown>[] = []
+  const worktreeBranches: string[] = []
   for (const worktree of parseWorktrees(worktreeList ?? '')) {
     const path = await canonical(worktree.path)
     if (atStart.has(path.toLowerCase()) || !isInsideDirectory(input.rootCanonical, path)) continue
@@ -144,24 +151,25 @@ export const reviewCodingSession = async (input: {
       base ? git(['rev-list', '--count', `${base}..HEAD`], path) : undefined,
       git(['status', '--porcelain=v1', '-z'], path),
     ])
+    if (worktree.branch) worktreeBranches.push(worktree.branch)
     worktrees.push({
       path: rewrite(path),
-      ...(worktree.branch ? { branch: worktree.branch } : {}),
+      ...(worktree.branch ? { branch: rewrite(worktree.branch) } : {}),
       ...(ahead?.trim() ? { commitsSinceStart: Number(ahead.trim()) } : {}),
       ...porcelainCounts(counts),
     })
     if (worktrees.length >= 10) break
   }
-  const branches = [...new Set([branch?.trim(), ...worktrees.map((entry) => entry.branch as string | undefined)])]
+  const branches = [...new Set([branch?.trim(), ...worktreeBranches])]
     .filter((name): name is string => !!name && name !== 'HEAD')
   const pullRequests: Record<string, unknown> = {}
   for (const name of branches.slice(0, 5)) {
-    const found = await pullRequest(run, name, input.folder, deadline, rewrite, env)
+    const found = await pullRequest(run, name, input.folder, deadline, input.rewriter, env)
     if (found?.unavailable) break
-    if (found) pullRequests[name] = found
+    if (found) pullRequests[rewrite(name)] = found
   }
   return {
-    branch: branch?.trim() ?? null,
+    branch: branch?.trim() ? rewrite(branch.trim()) : null,
     baseCommit: base ?? null,
     commitsSinceStart: lines(commits, COMMIT_LINES) ?? [],
     diffStat: lines(diffStat, DIFF_STAT_LINES) ?? [],
