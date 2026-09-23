@@ -1174,6 +1174,10 @@ export const ExecutorDescriptorReviewResponseSchema = z.object({
   // which permits none — and never an empty array, because that would be a
   // third reading of a two-state fact.
   commandAllowlist: ExecutorNonEmptyCommandAllowlistSchema.optional(),
+  // The built-in coding bridge's power facts, verbatim: offering it or widening
+  // it is a revision, and a coding agent acts with the machine owner's full
+  // authority. Absent exactly when the descriptor does not offer the bridge.
+  codingSessions: ExecutorCodingSessionsFactsSchema.optional(),
   localPolicyDigest: Sha256DigestSchema,
   // Projected for the same reason as the programs and the folders: naming a
   // local MCP server changes the digest, so it is a revision somebody

@@ -122,6 +122,17 @@ const cases = [
     mustNot: ['none named'],
   },
   {
+    scenario: 'policy-coding-sessions',
+    must: [
+      'Local apps (2):',
+      'Coding agents on this machine: Claude Code (accept edits, 3 pre-allowed commands) in nessie',
+      'Given the variables CLAUDE_CONFIG_DIR.',
+      'They work as this machine’s user, with its files and logins.',
+      'sha256:1a2b3c4d5e6f',
+    ],
+    mustNot: ['none selected'],
+  },
+  {
     scenario: 'policy-none-named',
     must: [
       'Local apps: none selected.',
