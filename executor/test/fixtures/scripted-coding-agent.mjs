@@ -24,12 +24,10 @@
  *
  * NESSIE_SCRIPTED_RECORD_DIR, when set, receives `agents.jsonl` (one line per
  * process start and exit), grandchild pid files and environment dumps.
- * NESSIE_SCRIPTED_WAIT_FOR_RELEASE=1 holds a Claude turn until `release-turn`
- * exists in that record directory, so lifecycle assertions do not race a timer.
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
+import { appendFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -41,9 +39,6 @@ const record = (entry) => {
 }
 const send = (event) => { process.stdout.write(`${JSON.stringify(event)}\n`) }
 const delay = (ms) => new Promise((settle) => { setTimeout(settle, ms) })
-const waitForRelease = async (path, current) => {
-  while (!current.interrupted && !existsSync(path)) await delay(25)
-}
 const option = (name) => {
   const index = argv.indexOf(name)
   return index >= 0 ? argv[index + 1] : undefined
@@ -176,15 +171,11 @@ const runTurn = async (first) => {
     extra.permission_denials = [{ tool_name: 'Bash', tool_use_id: 'toolu_denied', tool_input: { command: 'git push --force' } }]
   }
   const sleep = /#sleep=(\d+)/u.exec(text())
-  const release = process.env.NESSIE_SCRIPTED_WAIT_FOR_RELEASE === '1' && recordDir
-    ? join(recordDir, 'release-turn') : undefined
-  if (sleep || release) {
+  if (sleep) {
     const id = `toolu_${randomUUID().slice(0, 8)}`
-    const command = release ? 'wait-for-test-release' : `sleep ${sleep[1]}`
-    send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } })
+    send({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command: `sleep ${sleep[1]}` } }] } })
     send({ type: 'system', subtype: 'task_started', task_id: 't1', tool_use_id: id, is_backgrounded: false })
-    const completed = release ? waitForRelease(release, current) : delay(Number(sleep[1]))
-    await Promise.race([completed, new Promise((settle) => { current.wake = settle })])
+    await Promise.race([delay(Number(sleep[1])), new Promise((settle) => { current.wake = settle })])
     if (current.interrupted) {
       send({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 1, terminal_reason: 'aborted_tools', session_id: sessionId, total_cost_usd: totalCost, permission_denials: [] })
       for (const message of messages) lifecycle(message.uuid, 'completed')
