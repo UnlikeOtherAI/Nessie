@@ -316,14 +316,29 @@ profile. The MCP SDK's minimal environment drops the marker, so the daemon
 adds its own `NESSIE_EXECUTOR_SUPERVISOR` to the bridge's environment when it
 starts it, and to no other server's.
 
-The Linux unit gets the bridge's environment through `--setenv` (a transient
-unit starts from the manager's environment, not its caller's), its output in
-the session's `host.log`, and `NESSIE_CODING_SESSION_UNIT` naming itself.
+The Linux unit gets the bridge's environment through `--setenv=NAME` (a
+transient unit starts from the manager's environment, not its caller's); only
+names go on `systemd-run`'s command line, which copies its own values, so no
+value is readable in its `/proc/<pid>/cmdline`. Its output goes to the
+session's `host.log`, and `NESSIE_CODING_SESSION_UNIT` names the unit.
 `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, which the MCP SDK strips,
-are derived from `/run/user/<uid>`. When `systemd-run` refuses — no manager,
-an older systemd without `StandardOutput=append:`, a unit of that name still
-loaded — the host starts detached instead, and the lock still decides which
-host serves the session.
+are derived from `/run/user/<uid>`. `systemd-run` gets two seconds; one that
+timed out may have started the unit anyway, so the unit is asked
+(`systemctl --user is-active`) before a second host is started beside it.
+When `systemd-run` refuses — no manager, an older systemd without
+`StandardOutput=append:` or name-only `--setenv`, a unit of that name still
+loaded or deactivating — the host starts detached instead, says so in
+`host.log` (a detached host shares the executor's cgroup, so an executor
+restart can stop it), and the lock still decides which host serves the
+session. The daemon's close-all asks every session's host side by side, so
+many sessions do not add up past the call's budget.
+
+On macOS, and on Linux without a user manager, nothing watches the host the
+way the Windows job helper does: after a host is SIGKILLed or runs out of
+memory, its agent sees its stdin close and finishes the turn it is in —
+editing the worktree unobserved, its result unrecorded — and the next host
+started for the session stops it before doing anything else. A parent-death
+watch there is not built.
 
 Every kill checks the recorded pid and start time, so a reused pid is never
 signalled, and a new host stops a lost host's still-running agent before it

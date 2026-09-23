@@ -328,18 +328,18 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     if (args.sessionId !== undefined && args.ownerKey === undefined) invalidArguments('sessionId needs its ownerKey.')
     const only = args.sessionId === undefined ? undefined : sessionIdArgument(args.sessionId)
     requiredText(args.reason, 'reason', 200)
-    let closing = 0
-    for (const session of await listSessionMetas(stateDir)) {
-      if (args.ownerKey !== undefined && session.ownerKey !== args.ownerKey) continue
-      if (only !== undefined && session.sessionId !== only) continue
+    // Side by side: every host start may take a moment, and many sessions must not add up past the call's budget.
+    const closed = await Promise.all((await listSessionMetas(stateDir)).map(async (session) => {
+      if (args.ownerKey !== undefined && session.ownerKey !== args.ownerKey) return 0
+      if (only !== undefined && session.sessionId !== only) return 0
       const paths = codingSessionPaths(stateDir, session.sessionId)
       const derived = await deriveCodingStatus(paths, await readState(paths))
-      if (derived.status === 'closed') continue
+      if (derived.status === 'closed') return 0
       await writeRequest(paths, { id: `close-all-${commandId}`.slice(0, 128), kind: 'close', at: new Date().toISOString() })
       await ensureHost(paths, session.sessionId, true)
-      closing += 1
-    }
-    return { closing }
+      return 1
+    }))
+    return { closing: closed.reduce((sum: number, count) => sum + count, 0) }
   }
 
   /**

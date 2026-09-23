@@ -29,14 +29,18 @@ import { posix } from 'node:path'
 /** Tells a host it runs in a unit, and which, so it can stop that unit on close. */
 export const CODING_SESSION_UNIT_ENV = 'NESSIE_CODING_SESSION_UNIT'
 
-const UNIT_TOOL_TIMEOUT_MS = 5_000
+/** Short, so a slow D-Bus cannot push a bridge call past its five seconds. */
+const UNIT_TOOL_TIMEOUT_MS = 2_000
 
 export type UserManager = { environment: NodeJS.ProcessEnv }
 
-export type UnitRunner = (file: string, args: string[], env: NodeJS.ProcessEnv) => Promise<boolean>
+/** `true` when the tool succeeded; `'timeout'` when it was stopped before it answered. */
+export type UnitRunner = (file: string, args: string[], env: NodeJS.ProcessEnv) => Promise<boolean | 'timeout'>
 
 const runUnitTool: UnitRunner = (file, args, env) => new Promise((settle) => {
-  execFile(file, args, { env, timeout: UNIT_TOOL_TIMEOUT_MS, windowsHide: true }, (error) => settle(!error))
+  execFile(file, args, { env, timeout: UNIT_TOOL_TIMEOUT_MS, windowsHide: true }, (error) => {
+    settle(!error ? true : (error as { killed?: boolean }).killed ? 'timeout' : false)
+  })
 })
 
 export const codingSessionUnitName = (sessionId: string): string => `nessie-coding-${sessionId}`
@@ -69,10 +73,13 @@ export const reachableUserManager = (input: {
 }
 
 /**
- * `systemd-run`'s argv for one host. The host's environment is spelled out
- * with `--setenv`, because a transient unit starts from the user manager's
+ * `systemd-run`'s argv for one host. The host's environment is passed with
+ * `--setenv`, because a transient unit starts from the user manager's
  * environment rather than its caller's: the packaged-CLI marker and the
- * reviewed config digest would otherwise be lost on the way.
+ * reviewed config digest would otherwise be lost on the way. Only the names
+ * go on the command line — `--setenv=NAME` copies systemd-run's own value,
+ * which is the environment it is started with — so no value is readable in
+ * `/proc/<pid>/cmdline` by another local user while it runs.
  */
 export const systemdRunArguments = (input: {
   argv: readonly string[]
@@ -86,7 +93,7 @@ export const systemdRunArguments = (input: {
   '-p', `WorkingDirectory=${input.cwd}`,
   '-p', `StandardOutput=append:${input.hostLog}`, '-p', `StandardError=append:${input.hostLog}`,
   ...Object.entries(input.environment).flatMap(([name, value]) => (
-    value === undefined || name === CODING_SESSION_UNIT_ENV ? [] : [`--setenv=${name}=${value}`]
+    value === undefined || name === CODING_SESSION_UNIT_ENV ? [] : [`--setenv=${name}`]
   )),
   `--setenv=${CODING_SESSION_UNIT_ENV}=${input.unit}`,
   '--', ...input.argv,
@@ -96,7 +103,9 @@ export const systemdRunArguments = (input: {
  * Starts the host in its unit; `false` means no unit was started and the
  * caller falls back to `setsid`. A unit that is somehow still loaded under the
  * same name refuses the start, which is the same fallback: the lock decides
- * which host serves the session either way.
+ * which host serves the session either way. A `systemd-run` that timed out may
+ * have started the unit anyway, so the unit is asked before a second host is
+ * started beside it.
  */
 export const startHostInUserUnit = async (input: {
   argv: readonly string[]
@@ -104,13 +113,15 @@ export const startHostInUserUnit = async (input: {
   sessionId: string
   manager: UserManager
   run?: UnitRunner
-}): Promise<boolean> => (input.run ?? runUnitTool)('systemd-run', systemdRunArguments({
-  argv: input.argv,
-  cwd: process.cwd(),
-  environment: input.manager.environment,
-  hostLog: input.hostLog,
-  unit: codingSessionUnitName(input.sessionId),
-}), input.manager.environment)
+}): Promise<boolean> => {
+  const run = input.run ?? runUnitTool
+  const unit = codingSessionUnitName(input.sessionId)
+  const started = await run('systemd-run', systemdRunArguments({
+    argv: input.argv, cwd: process.cwd(), environment: input.manager.environment, hostLog: input.hostLog, unit,
+  }), input.manager.environment)
+  if (started !== 'timeout') return started
+  return await run('systemctl', ['--user', 'is-active', '--quiet', `${unit}.service`], input.manager.environment) === true
+}
 
 /**
  * The host's last act when its session closes: stop its own unit, so systemd
@@ -124,5 +135,5 @@ export const stopOwnUserUnit = async (
   if (!unit || !/^nessie-coding-[0-9a-f-]{36}$/u.test(unit)) return false
   const manager = reachableUserManager({ environment })
   if (!manager) return false
-  return run('systemctl', ['--user', 'stop', '--no-block', `${unit}.service`], manager.environment)
+  return await run('systemctl', ['--user', 'stop', '--no-block', `${unit}.service`], manager.environment) === true
 }

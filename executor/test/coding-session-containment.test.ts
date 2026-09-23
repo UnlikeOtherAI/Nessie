@@ -82,8 +82,10 @@ test('the transient unit carries the host\'s environment, its log, and the kill 
     'StandardOutput=append:/s/coding-sessions/sessions/x/host.log']) {
     assert.equal(args[args.indexOf(property) - 1], '-p', property)
   }
-  assert.ok(args.includes('--setenv=NESSIE_EXECUTOR_PACKAGED_CLI=1'))
-  assert.ok(args.includes('--setenv=NESSIE_CODING_SESSIONS_CONFIG_DIGEST=sha256:abc'))
+  // Names only: systemd-run copies its own values, so none is readable in its /proc/<pid>/cmdline.
+  assert.ok(args.includes('--setenv=NESSIE_EXECUTOR_PACKAGED_CLI'))
+  assert.ok(args.includes('--setenv=NESSIE_CODING_SESSIONS_CONFIG_DIGEST'))
+  assert.equal(args.some((arg) => arg.includes('sha256:abc')), false)
   assert.deepEqual(args.filter((arg) => arg.startsWith(`--setenv=${CODING_SESSION_UNIT_ENV}=`)), [
     `--setenv=${CODING_SESSION_UNIT_ENV}=nessie-coding-${SESSION}`,
   ], 'the unit name is the executor\'s, never one the environment brought')
@@ -108,10 +110,20 @@ test('a host starts in its unit when systemd-run takes it, and detached when it 
     assert.ok(existsSync(paths.hostLog), 'the log exists owner-only before systemd opens it')
     assert.equal(existsSync(join(dir, 'ran')), false, 'a started unit is not also spawned')
 
+    // A systemd-run that timed out may have started the unit: the unit is asked before a second host starts.
+    const asked: string[] = []
+    assert.equal(await spawnCodingSessionHost(input, {
+      userManager: () => manager,
+      runUnit: async (file, args) => { asked.push([file, ...args.slice(0, 3)].join(' ')); return file === 'systemd-run' ? 'timeout' : true },
+    }), 'unit')
+    assert.deepEqual(asked.at(-1), 'systemctl --user is-active --quiet')
+    assert.equal(existsSync(join(dir, 'ran')), false)
+
     assert.equal(await spawnCodingSessionHost(input, { userManager: () => manager, runUnit: async () => false }), 'detached')
     const deadline = Date.now() + 20_000
     while (!existsSync(join(dir, 'ran')) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
     assert.equal(await readFile(join(dir, 'ran'), 'utf8'), 'yes', 'the refused unit fell back to a detached host')
+    assert.match(await readFile(paths.hostLog, 'utf8'), /systemd-run refused the unit; starting the host detached/u)
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }

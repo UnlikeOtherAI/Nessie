@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { realpathSync } from 'node:fs'
-import { open, readFile, unlink } from 'node:fs/promises'
+import { appendFile, open, readFile, unlink } from 'node:fs/promises'
 import { basename } from 'node:path'
 
 import { reachableUserManager, startHostInUserUnit, type UnitRunner, type UserManager } from './host-unit.js'
@@ -79,6 +79,9 @@ export const spawnCodingSessionHost = async (input: {
       ...(options.runUnit ? { run: options.runUnit } : {}),
     })
     if (started) return 'unit'
+    // Said in the session's own log: a detached host shares the executor's cgroup, so an executor restart can stop it.
+    await appendFile(input.paths.hostLog, `${new Date().toISOString()} systemd-run refused the unit; starting the host detached\n`)
+      .catch(() => undefined)
     return spawnCodingSessionHost(input, { ...options, userManager: () => undefined })
   }
   try {
