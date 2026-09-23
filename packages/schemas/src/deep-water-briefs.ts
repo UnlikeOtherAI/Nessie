@@ -198,6 +198,14 @@ export type DeepWaterResearchReadinessState = z.infer<typeof DeepWaterResearchRe
 export const DeepWaterResearchReadinessSchema = z
   .object({
     state: DeepWaterResearchReadinessStateSchema,
+    /**
+     * The viewer may turn DeepWater on or off, or update it, for this team:
+     * a team owner, exactly the standing `PATCH …/team-enablement` accepts
+     * (nessie.md §7.7). Admins are not included — the route refuses them — so
+     * no client offers them a control that would. Cancelling someone else's
+     * research is the wider owner-or-admin standing (amendments N8.5), carried
+     * per run as `viewer.canCancel`, never read from here.
+     */
     viewerCanChangeTeam: z.boolean(),
   })
   .strict()

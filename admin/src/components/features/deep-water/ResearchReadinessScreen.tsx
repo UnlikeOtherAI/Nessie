@@ -5,9 +5,11 @@ import { readinessCopy } from './research-presentation'
 
 /**
  * Why research cannot start here yet, and the one way forward (nessie.md
- * §7.7 "the not-ready dialog screen"): an owner or admin is sent to the
- * DeepWater page, where they turn it on or update it for the team; anyone
- * else is told who can; a person whose sign-in is not linked signs in again.
+ * §7.7 "the not-ready dialog screen"): a team owner is sent to the DeepWater
+ * page, where they turn it on or update it for the team — only an owner may
+ * (the readiness verdict's `viewerCanChangeTeam`) — anyone else, admins
+ * included, is told who can; a person whose sign-in is not linked signs in
+ * again.
  * The composer button always opens this rather than hiding, so research is
  * never a feature a person cannot find.
  */

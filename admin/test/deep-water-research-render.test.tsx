@@ -240,7 +240,7 @@ test('not ready: an owner is sent to turn DeepWater on; a member is told who can
   assert.equal(turnOn?.getAttribute('href'), '/apps/deep-water')
   const member = render(createElement(ResearchReadinessScreen, { onClose: () => undefined, state: 'team_off', viewerCanChangeTeam: false }))
   assert.equal(member.querySelector('a'), null)
-  assert.match(member.body.textContent ?? '', /Ask a team owner or admin to turn it on/)
+  assert.match(member.body.textContent ?? '', /Ask a team owner to turn it on/)
   const unlinked = render(createElement(ResearchReadinessScreen, {
     onClose: () => undefined,
     state: 'account_not_linked',

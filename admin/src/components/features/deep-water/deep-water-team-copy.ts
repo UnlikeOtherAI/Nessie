@@ -15,7 +15,14 @@ import { readinessCopy } from './research-presentation'
 
 export type TeamControl = 'turn_on' | 'turn_off' | 'update' | null
 
-/** The one change an owner can make from here, given the verdict and the team switch. */
+/**
+ * The one change a team owner can make from here, given the verdict and the
+ * team switch. `viewerCanChangeTeam` is owner standing — the team-enablement
+ * route refuses anyone else, admins included — so nobody else is offered a
+ * control the server would refuse. Cancelling a research is a wider standing
+ * (owners and admins, amendments N8.5) that each run's `viewer.canCancel`
+ * carries on its own.
+ */
 export const deepWaterTeamControl = (
   state: DeepWaterResearchReadinessState,
   teamEnabled: boolean,

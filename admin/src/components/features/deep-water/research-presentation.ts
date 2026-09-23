@@ -180,6 +180,12 @@ export type ReadinessCopy = {
   title: string
 }
 
+/**
+ * `viewerCanChangeTeam` is the readiness verdict's own field: the viewer is a
+ * team owner, the only standing that may turn DeepWater on, off or update it
+ * (the team-enablement route is owner-only, nessie.md §7.7). An admin reads the
+ * member copy, because the remedy is not theirs to apply.
+ */
 export const readinessCopy = (
   state: Exclude<DeepWaterResearchReadinessState, 'ready'>,
   viewerCanChangeTeam: boolean,
@@ -189,7 +195,7 @@ export const readinessCopy = (
       return {
         message: viewerCanChangeTeam
           ? 'DeepWater is off for this team. Turn it on to start research from any conversation.'
-          : 'DeepWater is off for this team. Ask a team owner or admin to turn it on.',
+          : 'DeepWater is off for this team. Ask a team owner to turn it on.',
         reason: 'it’s off for this team',
         title: 'DeepWater is off',
       }
@@ -197,7 +203,7 @@ export const readinessCopy = (
       return {
         message: viewerCanChangeTeam
           ? 'DeepWater needs updating for this team before research can start. Updating takes a moment.'
-          : 'DeepWater needs updating for this team. Ask a team owner or admin to update it.',
+          : 'DeepWater needs updating for this team. Ask a team owner to update it.',
         reason: 'it needs updating for this team',
         title: 'DeepWater needs updating',
       }

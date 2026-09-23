@@ -98,7 +98,9 @@ test('every not-ready state names its remedy, and the composer button says why',
     }
   }
   assert.match(readinessCopy('team_off', true).message, /Turn it on/)
-  assert.match(readinessCopy('team_off', false).message, /Ask a team owner or admin/)
+  // Only an owner may turn it on (team enablement is owner-only), so an admin is told who can.
+  assert.match(readinessCopy('team_off', false).message, /Ask a team owner to turn it on\./)
+  assert.match(readinessCopy('contract_outdated', false).message, /Ask a team owner to update it\./)
   assert.equal(researchButtonTitle('ready', false), 'Research with DeepWater')
   assert.equal(researchButtonTitle(null, false), 'Research with DeepWater', 'no reason is claimed while loading')
   assert.equal(researchButtonTitle('team_off', false), 'Research with DeepWater — it’s off for this team')
@@ -174,7 +176,7 @@ test('an owner gets the one change there is to make for the team', () => {
   assert.equal(deepWaterTeamControl('team_off', false, true), 'turn_on')
   assert.equal(deepWaterTeamControl('ready', true, true), 'turn_off')
   assert.equal(deepWaterTeamControl('contract_outdated', true, true), 'update')
-  assert.equal(deepWaterTeamControl('ready', true, false), null, 'only an owner or admin changes it')
+  assert.equal(deepWaterTeamControl('ready', true, false), null, 'only a team owner changes it')
   assert.match(deepWaterTeamStatus('ready', true, false), /on for this team/)
   assert.match(deepWaterTeamStatus('account_not_linked', true, false), /^DeepWater is on for this team\. Your sign-in/)
   assert.match(deepWaterTeamStatus('team_off', false, true), /off for this team/)

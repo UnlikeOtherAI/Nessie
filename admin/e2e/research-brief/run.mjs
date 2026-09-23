@@ -199,7 +199,7 @@ try {
   await memberButton.waitFor()
   await memberButton.click()
   const memberReady = member.getByTestId('research-readiness')
-  await memberReady.getByText('Ask a team owner or admin to turn it on.', { exact: false }).waitFor()
+  await memberReady.getByText('Ask a team owner to turn it on.', { exact: false }).waitFor()
   assert.equal(await memberReady.getByRole('link').count(), 0)
   await snap(member, '13-not-ready-member.png')
   await member.close()
