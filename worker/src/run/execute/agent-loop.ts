@@ -27,6 +27,8 @@ import { buildApprovalSuspensionResult, createBuiltinToolExecutor } from './buil
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { createExecutorToolExecution } from './executor-tool-execution.js'
+import { fileServiceFor } from '../file-service.js'
+import { createToolImageInference } from './tool-image-inference.js'
 import { setAgentStatus } from './lifecycle.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
@@ -146,6 +148,12 @@ export const runExecutionAgentLoop = async (
     stubbedBuiltinToolIds: input.stubbedBuiltinToolIds,
   })
   const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset)
+  const toolImages = createToolImageInference({
+    files: fileServiceFor(deps.prisma),
+    organizationId: context.channel.organizationId,
+    prisma: deps.prisma,
+    runId: context.run.id,
+  })
 
   const contextPlan = buildContextPlan({
     model: context.agent.model,
@@ -553,12 +561,13 @@ export const runExecutionAgentLoop = async (
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
     ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
-    runInference: (messages, _captured, options) =>
+    // The run's tool images are read in only here, per call, from references.
+    runInference: (messages, _captured, options) => toolImages.infer((prepareMessages) =>
       input.inference.runMain(
         messages,
         options?.noTools ? [] : [...input.toolDefs, ...mcpView.descriptors],
-        undefined,
-      ),
+        { prepareMessages },
+      )),
     // Executor tools go in call order, on their command TTL plus a margin, and
     // a timeout is the TTL's own fatal unknown outcome, never a retriable one.
     dispatchesInOrder: (name) => input.executorToolset.handledNames.has(normalizeToolName(name)),

@@ -21,10 +21,11 @@ import {
   type StageSubscriptionBinding,
 } from './inference-provider.js'
 import type { ProviderRequestHeadersResolver } from './inference-identity.js'
-import { executeStage } from './inference-stage.js'
+import { executeStage, type PrepareProviderMessages } from './inference-stage.js'
 
 export { resolveStageApiKey } from './inference-provider.js'
 export { buildPromptCacheKey } from './inference-stage.js'
+export type { PrepareProviderMessages } from './inference-stage.js'
 
 type RunInferenceGraphInput = {
   actorContext: AuthorizedActionContext
@@ -51,6 +52,8 @@ type RunInferenceGraphInput = {
   onVisibleTextDelta?: (delta: string) => Promise<void>
   signal?: AbortSignal
   organizationId: string
+  /** See `PrepareProviderMessages`; only the main agent loop passes one. */
+  prepareMessages?: PrepareProviderMessages
   reasoningEffort?: ProviderReasoningEffort
   requestHeadersForProvider?: ProviderRequestHeadersResolver
   /**
@@ -152,6 +155,7 @@ const executeSingleMode = async (
     onVisibleTextDelta?: (delta: string) => Promise<void>
     signal?: AbortSignal
     organizationId: string
+    prepareMessages?: PrepareProviderMessages
     reasoningEffort?: ProviderReasoningEffort
     route: ResolvedRoute
     routeSource: 'direct' | 'routing-profile'
@@ -190,6 +194,7 @@ const executeSingleMode = async (
     onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
+    ...(input.prepareMessages ? { prepareMessages: input.prepareMessages } : {}),
     profileId: input.route.profileId,
     signal: input.signal,
     reasoningEffort: input.reasoningEffort,
@@ -258,6 +263,7 @@ export const runInferenceGraph = async (
     onVisibleReasoningDelta: input.onVisibleReasoningDelta,
     onVisibleTextDelta: input.onVisibleTextDelta,
     organizationId: input.organizationId,
+    ...(input.prepareMessages ? { prepareMessages: input.prepareMessages } : {}),
     reasoningEffort: input.reasoningEffort,
     route,
     signal: input.signal,

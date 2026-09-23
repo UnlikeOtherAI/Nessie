@@ -321,3 +321,47 @@ test('a 400 with no explanatory message classifies as provider_rejected', () => 
 
   assert.equal(classifyError(error), 'provider_rejected')
 })
+
+const providerFailure = (message: string, statusCode: number) => new ProviderInvocationError(
+  message,
+  {
+    finishReason: 'error',
+    invocationId: `invocation-${statusCode}-image`,
+    latencyMs: 1,
+    model: 'meta/muse-spark-1.3-contributor',
+    operationType: 'chat',
+    provider: 'openai-compatible',
+    requestId: `request-${statusCode}-image`,
+    usage: {},
+  },
+  undefined,
+  { statusCode },
+)
+
+test('a request refused because of its images is its own reason, which the call site gets past', () => {
+  for (const message of [
+    'openai-compatible chat request failed with HTTP 400: {"error":{"message":"This model does not support image input"}}',
+    'openai-compatible chat request failed with HTTP 400: Invalid image_url: could not decode base64 data',
+    'openai chat request failed with HTTP 400: Invalid content type. image_url is only supported by certain models.',
+    // OpenRouter's wording, which it answers as a 404.
+    'openai-compatible chat request failed with HTTP 404: No endpoints found that support image input',
+  ]) {
+    assert.equal(classifyError(providerFailure(message, message.includes('HTTP 404') ? 404 : 400)), 'image_rejected', message)
+  }
+  // Once the call site has asked again without images, it is a configuration answer.
+  const recovery = resolveRecovery('image_rejected', 0, { remaining: 6, total: 6 })
+  assert.equal(recovery.action, 'surface_error')
+  assert.match(
+    userMessageForFailureReason('image_rejected', { model: 'meta/muse-spark-1.3-contributor' }),
+    /rejected the images in this request .*meta\/muse-spark-1\.3-contributor.*model configuration/,
+  )
+})
+
+test('other 400s and 404s keep their own reasons', () => {
+  assert.equal(classifyError(providerFailure('openai chat request failed with HTTP 400: invalid parameter', 400)), 'provider_rejected')
+  assert.equal(classifyError(providerFailure('openai-compatible chat request failed with HTTP 404', 404)), 'model_not_found')
+  assert.equal(
+    classifyError(providerFailure('openai chat request failed with HTTP 400: maximum context length exceeded, including images', 400)),
+    'context_overflow',
+  )
+})

@@ -18,6 +18,7 @@ export type FailoverReason =
   | 'billing'
   | 'provider_forbidden'
   | 'provider_rejected'
+  | 'image_rejected'
   | 'context_overflow'
   | 'timeout'
   | 'overloaded'
@@ -55,6 +56,8 @@ export const userMessageForFailureReason = (
       return 'The model provider refused this request: the deployment\'s credential is not permitted to use the configured model. Ask a team owner to check the configured model against what the credential allows, then try again.'
     case 'provider_rejected':
       return `The model provider${context?.provider ? ` (${context.provider})` : ''} rejected this request for the configured model${context?.model ? ` \`${context.model}\`` : ''}. Ask a team owner to check the model configuration.`
+    case 'image_rejected':
+      return `The model provider${context?.provider ? ` (${context.provider})` : ''} rejected the images in this request for the configured model${context?.model ? ` \`${context.model}\`` : ''}. Ask a team owner to check the model configuration.`
     case 'rate_limit':
       return 'The model provider is rate limited. Please try again shortly.'
     case 'credits_exhausted':
@@ -86,6 +89,8 @@ export const userMessageForFailureReason = (
       return 'I could not complete that request because the assistant service encountered an unexpected error. Please try again; if it keeps happening, ask a team owner to check the worker logs.'
   }
 }
+
+const IMAGE_CONTENT = /\bimages?\b|image_url|vision|multimodal|multi-modal/
 
 export const classifyError = (error: unknown): FailoverReason => {
   if (error instanceof PrivateAgentPlacementError) return 'private_agent_placement'
@@ -160,6 +165,15 @@ export const classifyError = (error: unknown): FailoverReason => {
   }
   if (status === 503 || message.includes('overloaded') || message.includes('service unavailable')) {
     return 'overloaded'
+  }
+  // A request refused because of the pictures in it: a model that takes no
+  // image input, or an image it would not decode or accept. Providers answer
+  // it as a 400; OpenRouter says "No endpoints found that support image input"
+  // as a 404, which is why this sits above the not-found arm. It is the one
+  // rejection a run gets past on its own: the call site strips the images and
+  // asks once more (`execute/tool-image-inference.ts`).
+  if ((status === 400 || (status === 404 && message.includes('support'))) && IMAGE_CONTENT.test(message)) {
+    return 'image_rejected'
   }
   // A 404 from a chat/completions endpoint is never a missing route — the route
   // is the provider's own. It means the configured model is not available to
@@ -256,6 +270,8 @@ export const resolveRecovery = (
     case 'auth':
     case 'provider_forbidden':
     case 'provider_rejected':
+    // Reached only once the call site has already asked again without images.
+    case 'image_rejected':
     case 'billing':
     case 'model_not_found':
     case 'content_filter':
