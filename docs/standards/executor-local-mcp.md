@@ -21,6 +21,19 @@ They form their own run bundle (`mcp.tools` + `mcp.call`, exactly), exclusive of
 the browser, connected-browser, coding and command bundles. One run, one kind of
 reach.
 
+A person reaches the bundle from the conversation's executor launcher, as its
+eighth option **Local apps on this machine**
+(`admin/src/components/features/executors/ExecutorRunLauncherDialog.tsx`),
+which binds exactly the pair. The schema's bundle rule, the worker's toolset
+and this option change together; the launcher had no entry for the pair, so
+the bundle the binder, launcher service and worker all accepted could only be
+started through the API. The dialog learns no program names and no executor
+label — availability candidates are opaque, and the resolver's "contains no
+executor id or label" rule is what keeps a machine's identity private — so its
+description says what the owner decided ("Programs this machine’s owner named
+in its reviewed policy…"), never what is installed. With no candidate for the
+pair, the resolver's explanation renders as it does for every bundle.
+
 `mcp.call` passes the tool's `arguments` through **untouched**. That grammar
 belongs to the server, and validating it here would guarantee drift the first
 time the server ships a field — the daemon validates the envelope, never the
@@ -141,8 +154,12 @@ same fatal unknown outcome — never a retriable timeout, because the program ma
 still finish the call. Executor calls in one model batch are dispatched one
 after another, since the machine runs one command at a time and each command's
 TTL starts when the worker creates it; the worker runs four `executor.command`
-subscriptions so one machine's slow call never holds up another's. The full
-rule is in [tech-and-run-budgets.md](tech-and-run-budgets.md).
+subscriptions so one machine's slow call never holds up another's. A person's
+**Stop** (on the thinking bubble or the agent page) is read only after the
+batch settles, so it waits behind these calls, and a call already sent still
+runs to its end on the machine; the control reads "Stopping…" until then.
+The full rule is in
+[tech-and-run-budgets.md](tech-and-run-budgets.md).
 
 ## Failures are counted per program tool
 
@@ -292,7 +309,16 @@ an approved executor MCP binding cannot claim these tools are available.
 pnpm --filter @nessie/executor run test:mcp
 pnpm --filter @nessie/worker run test:unit
 pnpm --filter @nessie/admin test:e2e:executor-local-mcp
+pnpm --filter @nessie/admin test:e2e:executor-run-launcher
 ```
+
+`test:e2e:executor-run-launcher` is a pure fixture suite
+(`NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE`) over the real launcher dialog and
+API client: the eight options in order, the local-apps description, the
+availability request and the launch payload carrying exactly the pair, and the
+explanation when no machine offers it. Browser Suites runs it beside the other
+executor suites; `test:e2e:executor-local-mcp` runs in the project-usability
+lifecycle.
 
 The executor suite drives a **real MCP server subprocess**
 (`executor/test/fixtures/scripted-mcp-server.mjs`), because the JSON-RPC

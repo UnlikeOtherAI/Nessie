@@ -257,10 +257,22 @@ summary and points here; **this file is the rule**.
   `research_cancel`; the
   handoff invariants are never touched. `Run.triggerMessageId` (populated by the
   chat orchestrator + integration handoffs) backs both the guard and the replay.
-  Admin cancel is surfaced on the live document-stream dialog
-  (`useCancelRun`) and Continue on budget-stop notices
-  (`admin/src/components/features/channels/RunStopContinue.tsx`, `useContinueRun`);
-  the standalone Agents → Activity page and its `RunLifecyclePanel` were removed,
+  Admin cancel is surfaced where a person watches a run — a **Stop** icon on
+  every thinking bubble and beside the agent page's status pill
+  (`admin/src/components/shared/RunStopButton.tsx`, `useCancelRun`) — and on
+  the live document-stream dialog; Continue on budget-stop notices
+  (`admin/src/components/features/channels/RunStopContinue.tsx`, `useContinueRun`).
+  Stop is drawn only while its surface already knows the run is live: a bubble
+  exists from `stream.start` to `stream.done` (a `running` run; suspension and
+  cancel both publish the `done`), and the agent status read names a
+  `currentRunId` only for a pending or running run the viewer may read. The
+  press holds "Stopping…" until that surface drops the run, because the flag
+  is read only between iterations and after a tool batch settles — and a
+  batch's executor calls run one after another, each allowed its command TTL
+  plus margin (130 s for `mcp.call`). Stop never adds a line to the composer.
+  `pnpm --filter @nessie/admin test:e2e:run-stop` pins the button, the pending
+  state and the request. The standalone Agents → Activity page and its
+  `RunLifecyclePanel` were removed,
   so the org-wide active-run list and the restart control have no admin surface
   (the `GET /api/runs/active` and `POST /api/runs/:id/restart` endpoints remain,
   API-only).

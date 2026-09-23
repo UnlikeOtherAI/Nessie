@@ -27,8 +27,8 @@ The fixture supplies API responses and does not claim server authorization
 coverage. The executor-management API tests own latest-revision selection and
 caller entitlement.
 
-The Browser Suites workflow enables four isolated executor preview entries in
-its Navigation Transitions job:
+The Browser Suites workflow enables five isolated executor preview entries in
+its Navigation Transitions job, run together in its executor step:
 
 | Fixture | Build flag |
 | --- | --- |
@@ -36,6 +36,7 @@ its Navigation Transitions job:
 | Agent access | `NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE=1` |
 | Machine detail | `NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE=1` |
 | Attention badges | `NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE=1` |
+| Run launcher | `NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE=1` |
 
 Each flag adds its `admin/e2e/executor-<name>/index.html` as a Vite build input
 and participates in Turbo's admin-build cache key. Ordinary release builds

@@ -86,11 +86,14 @@ Facts not restated there:
 - **Host program output is the launch conversation's.** A local program an
   executor fronts (`mcp.tools` / `mcp.call`) answers from the person's own
   machine — a signed-in browser profile, private repositories — so it is not
-  public web. Launching local apps in a conversation is the person's consent
-  to show that machine's program output to that conversation's audience, and
-  nowhere else: every `mcp.*` result stamps the run's sink with the launch
-  conversation's scope before its command is sent
-  (`worker/src/run/executor-host-output.ts`; today the run's own channel).
+  public web. Launching local apps in a conversation — a person-launched
+  executor run in it, from the launcher's **Local apps on this machine** — is
+  the person's consent to show that machine's program output to that
+  conversation's audience, and nowhere else. An agent cannot bind an executor
+  on its own, so the consent is always a person's. Every `mcp.*` result
+  stamps the run's sink with the launch conversation's scope before its
+  command is sent (`worker/src/run/executor-host-output.ts`; today the run's
+  own channel).
   The channel is stamped **even when it is public**, the one exception to the
   public-channel skip above: that room's history is the organisation's to
   read, but the program's output was consented to that room alone.
