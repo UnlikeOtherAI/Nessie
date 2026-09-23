@@ -54,3 +54,52 @@ actionable-state projection and therefore must not be counted as outstanding
 decisions. The summary reveals no policy contents or other people's private
 machines. The existing navigation `badgeCount` and detail `TabBar.count` render
 the summary without fetching every machine's management payload.
+
+## Conversation leases: seeing and ending them
+
+A local-apps launch opens a conversation lease that lets the launching person's
+own follow-ups in that conversation keep the pair
+([conversation-lease plan](../plans/2026-09-22-executor-local-apps/conversation-lease.md)).
+Three routes read and end one; none of them can tell anyone but the holder, or
+the machine's administrators, that a lease exists.
+
+- `GET /api/executor-leases?threadId=` returns **only the viewer's own** live
+  leases in that thread — `{id, agentId, executorLabel, threadId,
+  rootMessageId, launchedAt, expiresAt}`, where `expiresAt` is the earlier of
+  the idle and the absolute window. Everyone else, including the machine's own
+  administrators, gets `[]` rather than a refusal, so the answer never confirms
+  that a lease or a private executor exists in a shared room. A missing or
+  malformed `threadId` is a 400.
+- `POST /api/executor-leases/:leaseId/end` is End: the holder, or anyone who
+  may manage the executor, ends it with reason `person` and themselves as
+  `ended_by_user_id`. Anyone else — and any id that is not a lease — gets 404
+  `EXECUTOR_NOT_FOUND`. A lease that had already ended answers
+  `{ended: false}`; it is not an error.
+- `GET /api/executors/:executorId/leases` lists a machine's live leases for the
+  people who may manage it (404 for everyone else), most recently used first
+  and bounded at 50: `{id, agent: {id, name}, holderUserId, conversation:
+  {channelId, threadId, label}, launchedAt, lastUsedAt, expiresAt}`. Managing
+  the machine widens nothing else: `agent.name` is null unless the ordinary
+  agent entitlement (the Agents tab's rule) shows that agent to the reader, and
+  `conversation.label` is null unless the reader could open that conversation
+  under the participant rule — an owner's all-channels view does not count,
+  because a lease in someone's DM is theirs.
+
+Every change to a lease is announced as `executor.lease.changed {leaseId,
+threadId}` on the **holder's** `user` realtime scope and nowhere else: from the
+launch that opens (or replaces) it, from End, from any confirmed access change
+that ends it (pause, revoke, a narrowed grant, a roster removal, a review that
+drops the pair — `confirmExecutorAccessChange` reports exactly the leases its
+transaction ended, which the route turns into notices after commit), from the
+worker when a follow-up carries it forward and its window moves, and from the
+expiry sweep. The payload is ids only; the client's refetch of the first route
+is the read. A notice that fails to publish is logged and never fails the
+change it follows.
+
+The holder's surface is the composer: a chip beside **Run on executor** —
+"Minis · local apps · until 21:40 · End" — inside the toolbar, so the composer
+at rest stays one line. Where the toolbar has no room for it the chip folds into
+a dot on Run on executor, and the launcher dialog lists the same lease with its
+End. The administrators' surface is the **Activity** tab's *Local apps in use*
+list (agent, conversation, person, last used, End), above the machine's recent
+sessions.

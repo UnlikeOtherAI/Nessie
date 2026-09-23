@@ -11,7 +11,7 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { carryForwardExecutorBindings } from '@nessie/executor-manage'
+import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
@@ -330,7 +330,20 @@ export const prepareRunExecution = async (
       // A person's own follow-up in the conversation they launched local apps
       // in is bound afresh here, immediately before the toolset reads the
       // run's bindings. A refusal is an outcome, never a throw.
-      context.executorLease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+      const lease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+      context.executorLease = lease
+      if (lease.kind === 'carried') {
+        // The carry moved the idle window the holder's composer shows. Only
+        // the holder's own job carries, so the job's actor is the recipient.
+        await publishExecutorLeaseChanges(deps.realtimeTransport, [{
+          actorUserId: payload.actorContext.actor.actorId,
+          id: lease.lease.id,
+          organizationId: context.channel.organizationId,
+          threadId: payload.threadId,
+        }]).catch((error: unknown) => {
+          console.warn('[worker] could not publish the executor lease notice for run', context.run.id, error)
+        })
+      }
       return buildExecutorToolset(deps.prisma, {
         agentId: context.agent.id,
         agentToolPolicy: toolPolicy,
