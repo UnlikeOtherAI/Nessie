@@ -156,7 +156,7 @@ test('a workspace path splits into its folder and the path beneath it', () => {
   for (const path of ['../other/secret', 'nessie/../other/secret', 'nessie/..', '..']) {
     assert.throws(() => splitExecutorWorkspacePath(path), /may not contain "\.\."/)
   }
-  for (const path of ['/etc/passwd', '\\\\etc\\\\passwd']) {
+  for (const path of ['/etc/passwd', '\\\\etc\\\\passwd', 'C:\\\\Users\\\\someone', 'c:/Users/someone', 'D:relative']) {
     assert.throws(() => splitExecutorWorkspacePath(path), /must be relative/)
   }
   assert.throws(() => splitExecutorWorkspacePath('nes\0sie/x'), /NUL/)
