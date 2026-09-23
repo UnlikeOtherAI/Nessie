@@ -221,10 +221,11 @@ const settle = async (
         source: decision.source,
         triggerId,
       })
-      if (decision.kind === 'skip' || !input.act) {
-        await markSkipped(tx, delivery.id, payload, decision.kind === 'skip' ? decision.reason : 'no_longer_applies')
+      if (decision.kind === 'skip') {
+        await markSkipped(tx, delivery.id, payload, decision.reason)
         return
       }
+      if (!input.act) throw new Error('A start or a wake is settled with its work-seam call.')
       const outcome = await input.act(tx, delivery.id)
       if (outcome.outcome === 'refused') {
         const refused = payloadFor(event, { kind: 'skip', source: decision.source, reason: outcome.reason })

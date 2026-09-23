@@ -308,7 +308,14 @@ runDatabaseTest('an agent\'s move, a token\'s move, and agent\'s, token\'s and a
   // The ticket is the platform's own (a system create starts nothing either).
   const moved = await newTask(prisma, s, { kind: 'system' })
   await expectSkip(moved.id, 'created', 'system_origin')
-  await runTicketMoveTool(agentContext(prisma, s), { ticketId: moved.id, columnId: s.columns.inProgress })
+  const moving = agentContext(prisma, s)
+  await runTicketMoveTool(moving, { ticketId: moved.id, columnId: s.columns.inProgress })
+  // The tool stamps the agent and its run; the editor it acted for stays `by`.
+  const agentMove = await latestEvent(prisma, moved.id, 'column_entered')
+  assert.deepEqual((agentMove.payload as { origin?: unknown }).origin, {
+    kind: 'agent', agentId: s.agentId, runId: moving.run.id,
+  })
+  assert.equal((agentMove.payload as { by?: unknown }).by, s.editorId)
   await expectSkip(moved.id, 'column_entered', 'agent_origin')
 
   // 2. An API-token move (what the MCP surface stamps).
