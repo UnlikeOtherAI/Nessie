@@ -219,9 +219,9 @@ or `unsupported_supervisor` (the Windows service's virtual account).
 
 | Host | How the session host runs | Survives a daemon restart | How the tree dies |
 | --- | --- | --- | --- |
-| Windows, desktop companion or hand-run daemon | detached; a packaged runtime starts the agent through the native helper's `job-run`, which holds it in a Job Object with `KILL_ON_JOB_CLOSE` | yes | the helper exits with the agent, and ends the job at once when the host dies; closing or killing the helper kills everything in the job. A development run has no verified helper and uses `taskkill /T /F` by its absolute System32 path |
+| Windows, desktop companion or hand-run daemon | detached; a packaged runtime starts the agent through the native helper's `job-run`, which holds it in a Job Object with `KILL_ON_JOB_CLOSE` | yes | the helper exits with the agent, and ends the job at once when the host dies; closing or killing the helper kills everything in the job. A development run has no verified helper and kills the tree it can see pid by pid with `taskkill /F` by its absolute System32 path; a packaged runtime whose helper is missing starts no agent (`containment_failed`) |
 | Windows service (virtual account) | refused: the session fails with `unsupported_supervisor` | — | — |
-| macOS | detached, its own session | yes | group kill, then a sweep of every descendant in a `ps -A -o pid=,ppid=,pgid=` snapshot taken before signalling |
+| macOS | detached, its own session | yes | group kill, then a sweep of every descendant in a `ps -A -o pid=,ppid=,pgid=,lstart=` snapshot taken before signalling (`/proc` on Linux); SIGTERM first, SIGKILL two seconds later |
 | Linux with a reachable user manager | `systemd-run --user --collect --unit nessie-coding-<sessionId> -p KillMode=control-group -p TimeoutStopSec=10` | yes, and it can never block the executor unit's stop | the unit's cgroup dies with the host; a closing host stops its own unit |
 | Linux without one | detached (`setsid`) | no | as macOS |
 
@@ -253,9 +253,20 @@ host serves the session.
 
 Every kill checks the recorded pid and start time, so a reused pid is never
 signalled, and a new host stops a lost host's still-running agent before it
-resumes the session. A start time that cannot be read while the process is
-alive — PowerShell or `ps` timing out under load — is read again rather than
-taken for "not ours". What the next host needs, the agent's identity and its
+resumes the session. The tree is held to the same rule: descendants are read
+only below a root that is still the recorded process (the children of
+whoever inherited its pid are nobody's this host started), each carries its
+own start time, and each is checked again right before its own signal — never
+`taskkill /T`, which walks parent ids as they are at that moment. An identity
+without a start time is unknown and is never signalled. A start time that
+cannot be read while the process is alive — PowerShell or `ps` timing out
+under load — is read again; an agent whose start time still cannot be read is
+stopped through the host's own handle at once and its start fails with
+`containment_failed`, because nothing could later tell it from a reused pid.
+macOS start times are read in UTC and the C locale, so a laptop that changes
+time zone still recognises its agent. On POSIX a tree gets SIGTERM and two
+seconds before SIGKILL, so a `git` caught mid-commit can remove its
+`index.lock`. What the next host needs, the agent's identity and its
 confirmed session id, skips the 500 ms debounce, and a session id the agent
 never confirmed is dropped: Claude refuses `--session-id` for an id it already
 holds, so the next agent starts afresh rather than failing on every send.

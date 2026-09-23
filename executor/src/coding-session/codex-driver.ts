@@ -76,8 +76,7 @@ export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
     const current = turn
     if (!current) return
     current.interrupted = true
-    const snapshot = await context.control.descendants(current.agent.identity.pid)
-    await context.control.killTree(current.agent.identity, snapshot)
+    await context.control.killTree(current.agent.identity)
     await current.done
   }
 
@@ -96,7 +95,7 @@ export const createCodexDriver = (context: AgentDriverContext): AgentDriver => {
       queue.length = 0
       await killTurn()
       const leftover = context.state().agentIdentity
-      if (leftover) await context.control.killTree(leftover, await context.control.descendants(leftover.pid))
+      if (leftover) await context.control.killTree(leftover)
       context.update({ status: 'closed', reason: undefined, queued: 0, agentIdentity: undefined, turnStartedAt: undefined })
     },
     endIdle: async () => undefined,

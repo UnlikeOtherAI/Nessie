@@ -58,7 +58,11 @@ export type CodingSessionResult = {
   origin?: string
 }
 
-/** A process the host started, identified well enough that a reused pid is never signalled. */
+/**
+ * A process the host started, identified well enough that a reused pid is
+ * never signalled. `startedAt` is a decimal start time in the OS's own unit;
+ * an identity without one is unknown, and nothing ever signals it.
+ */
 export type CodingProcessIdentity = { pid: number; startedAt?: string }
 
 /** Host-written, debounced; never carries raw agent output. */

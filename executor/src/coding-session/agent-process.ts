@@ -2,7 +2,7 @@ import { createWriteStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 import type { CodingAgentConfig } from './config.js'
-import type { CodingProcessControl } from './process-control.js'
+import { codingProcessIsAlive, type CodingProcessControl } from './process-control.js'
 import type { Projector } from './projection.js'
 import { rotateLogIfLarge, type CodingSessionPaths } from './session-files.js'
 import type { CodingEventBody, CodingProcessIdentity, CodingSessionState } from './types.js'
@@ -83,6 +83,7 @@ export const startAgentProcess = async (
   argv: readonly string[],
   onLine: (line: string) => void,
 ): Promise<AgentProcess> => {
+  if (context.control.refusal) throw new AgentStartError(context.control.refusal)
   await rotateLogIfLarge(context.paths.agentStderr, STDERR_LOG_BYTES)
   const child = context.control.spawnAgent(argv[0]!, argv.slice(1), { cwd: context.folder, env: context.env })
   const spawned = await new Promise<boolean>((settle) => {
@@ -122,7 +123,15 @@ export const startAgentProcess = async (
   void exited.then(() => log.end())
   child.stdin?.on('error', () => undefined)
   if (child.stdout) createInterface({ input: child.stdout }).on('line', onLine)
-  const identity = await context.control.identify(child.pid) ?? { pid: child.pid }
+  const identity = await context.control.identify(child.pid)
+  if (!identity) {
+    // With no start time, no later kill could tell this process from whatever
+    // inherits its pid, so it does not keep running. The handle is still ours.
+    const exitedOnItsOwn = done || !codingProcessIsAlive(child.pid)
+    if (!done) child.kill('SIGKILL')
+    await exited
+    throw new AgentStartError(exitedOnItsOwn ? agentFailureReason(tail) : 'containment_failed')
+  }
   return {
     identity,
     write: (text) => {

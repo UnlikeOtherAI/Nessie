@@ -100,7 +100,7 @@ it received (so `NESSIE_EXECUTOR_PACKAGED_CLI` survives), detached, stdio to
 
 | Host | How the session host runs | Survives a daemon restart | How the tree dies |
 |---|---|---|---|
-| Windows, desktop companion or hand-run daemon | detached; the agent runs under the packaged native helper's new `job-run` subcommand, which holds a Job Object with `KILL_ON_JOB_CLOSE` | yes | host death or close kills the whole job; `taskkill /T /F` by absolute `%SystemRoot%\System32` path only as the dev fallback |
+| Windows, desktop companion or hand-run daemon | detached; the agent runs under the packaged native helper's new `job-run` subcommand, which holds a Job Object with `KILL_ON_JOB_CLOSE` | yes | host death or close kills the whole job; `taskkill /F` per verified pid, by absolute `%SystemRoot%\System32` path, only as the dev fallback |
 | Windows service (virtual account) | **refused**: `unsupported_supervisor` — that account has no Claude login and no user profile | — | — |
 | macOS, menu-bar app / desktop / hand-run | `setsid`; own process group | yes | group kill, then a descendant sweep from a `ps -A -o pid=,ppid=,pgid=` snapshot taken before signalling (catches setsid'd grandchildren) |
 | Linux with a user manager (`systemctl --user` reachable; `XDG_RUNTIME_DIR` derived from `/run/user/<uid>`) | `systemd-run --user --collect --unit nessie-coding-<id> -p KillMode=control-group -p TimeoutStopSec=10 -- …` | yes, and it can never block the executor unit's stop/restart | `systemctl --user stop nessie-coding-<id>` |
@@ -108,7 +108,8 @@ it received (so `NESSIE_EXECUTOR_PACKAGED_CLI` survives), detached, stdio to
 
 Every agent and tool spawn passes `windowsHide: true`. Before killing, the host
 checks the recorded agent identity (pid + process start time) so it never
-signals a reused pid. When a new host takes over a session whose previous
+signals a reused pid — and reads the tree only below a root that is still that
+process, checking each descendant's own start time before its signal. When a new host takes over a session whose previous
 agent is still alive, it kills that tree before resuming.
 
 **Teardown reaches the machine.**

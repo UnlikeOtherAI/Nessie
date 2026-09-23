@@ -132,7 +132,7 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
     const identity = current?.identity ?? context.state().agentIdentity
     if (!identity) return
     ending = true
-    const snapshot = await context.control.descendants(identity.pid)
+    const snapshot = await context.control.descendants(identity)
     if (current?.alive()) {
       current.write(claudeControlLine('end_session'))
       current.endInput()

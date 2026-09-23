@@ -119,7 +119,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
   if (state.agentSessionId !== undefined && state.agentSessionStarted !== true) update({ agentSessionId: undefined })
   if (state.agentIdentity) {
     log('stopping the previous host\'s agent')
-    await control.killTree(state.agentIdentity, await control.descendants(state.agentIdentity.pid))
+    await control.killTree(state.agentIdentity)
     update({ agentIdentity: undefined })
   }
 
@@ -186,7 +186,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
       // Another host owns the session now. Stop our agent and leave without writing.
       superseded = true
       const identity = state.agentIdentity
-      if (identity) await control.killTree(identity, await control.descendants(identity.pid))
+      if (identity) await control.killTree(identity)
       process.exit(0)
     })().catch((error: unknown) => log(`heartbeat failed: ${String(error)}`))
   }, HOST_HEARTBEAT_MS)

@@ -16,7 +16,7 @@ import {
   stopOwnUserUnit,
   systemdRunArguments,
 } from '../src/coding-session/host-unit.js'
-import { createCodingProcessControl } from '../src/coding-session/process-control.js'
+import { createCodingProcessControl, parsePsStartTime } from '../src/coding-session/process-control.js'
 import { runCodingSelfCheck, runsAsWindowsServiceAccount } from '../src/coding-session/self-check.js'
 import { codingSessionPaths } from '../src/coding-session/session-files.js'
 
@@ -135,6 +135,60 @@ test('the job helper\'s own refusals read as categorical failure reasons', () =>
   assert.equal(agentFailureReason(['{"code":"EXECUTOR_JOB_PARENT_GONE","status":"rejected"}']), 'containment_failed')
 })
 
+/** A parent that starts two sleeping children and prints their pids: a tree to kill, or to leave alone. */
+const PARENT_WITH_CHILDREN = `
+const { spawn } = require('node:child_process')
+const kids = [0, 1].map(() => spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600000)'], { stdio: 'ignore', windowsHide: true }))
+console.log(kids.map((kid) => kid.pid).join(' '))
+setTimeout(() => {}, 600000)
+`
+
+test('a recorded pid that now names somebody else is never signalled, nor is anything under it', { timeout: 90_000 }, async () => {
+  // No job helper here: this is the tree walk every OS falls back on.
+  const control = createCodingProcessControl(process.platform, {})
+  const parent = control.spawnAgent(process.execPath, ['-e', PARENT_WITH_CHILDREN], { cwd: tmpdir(), env: process.env })
+  const kids = await new Promise<number[]>((settle) => {
+    createInterface({ input: parent.stdout! }).once('line', (line) => settle(line.trim().split(' ').map(Number)))
+  })
+  const everyone = [parent.pid!, ...kids]
+  try {
+    const real = await control.identify(parent.pid!)
+    assert.ok(real?.startedAt)
+    // The process that held this pid before, as a crashed host recorded it.
+    const reused = { pid: parent.pid!, startedAt: String(BigInt(real.startedAt) - 1n) }
+    assert.deepEqual(await control.descendants(reused), [], 'no tree is read below a pid that is not the recorded process')
+    await control.killTree(reused, await control.descendants(reused))
+    await control.killTree({ pid: parent.pid! })
+    const staleChild = { pid: kids[0]!, startedAt: '1' }
+    await control.killTree(reused, [staleChild])
+    await new Promise((settle) => { setTimeout(settle, 1_000) })
+    assert.deepEqual(everyone.map(alive), [true, true, true], 'the reused pid, its children and a stale snapshot entry all survive')
+
+    const tree = await control.descendants(real)
+    // Windows adds each console child's conhost.exe, which is a descendant too.
+    for (const kid of kids) assert.ok(tree.some((entry) => entry.pid === kid), 'the recorded process\'s own children, with start times')
+    assert.ok(tree.every((entry) => entry.startedAt))
+    await control.killTree(real, tree)
+    const deadline = Date.now() + 15_000
+    while (everyone.some(alive) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
+    assert.deepEqual(everyone.map(alive), [false, false, false], 'the recorded process and its tree die')
+  } finally {
+    for (const pid of everyone) if (alive(pid)) process.kill(pid, 'SIGKILL')
+  }
+})
+
+test('macOS start times read the same in any time zone', () => {
+  assert.equal(parsePsStartTime('Tue Sep 23 10:00:00 2026'), String(Date.UTC(2026, 8, 23, 10) / 1_000))
+  assert.equal(parsePsStartTime('Thu Oct  1 09:05:07 2026'), String(Date.UTC(2026, 9, 1, 9, 5, 7) / 1_000))
+  assert.equal(parsePsStartTime('mar. 23 sept. 2026'), undefined)
+})
+
+test('a packaged Windows runtime without its job helper starts no agent', () => {
+  assert.equal(createCodingProcessControl('win32', { packaged: true }).refusal, 'containment_failed')
+  assert.equal(createCodingProcessControl('win32', { packaged: false }).refusal, undefined)
+  assert.equal(createCodingProcessControl('win32', { packaged: true, jobHelper: 'C:\\n\\helper.exe' }).refusal, undefined)
+})
+
 const NATIVE = fileURLToPath(new URL('../native/target/', import.meta.url))
 const builtHelper = ['release', 'debug']
   .map((profile) => join(NATIVE, profile, 'nessie-executor-native.exe'))
@@ -174,7 +228,7 @@ test('Windows: killing the agent through its Job Object takes the orphaned grand
     assert.equal(alive(orphan), true)
     const identity = await control.identify(agent.pid!)
     assert.ok(identity?.startedAt, 'the helper is identified by its start time as well as its pid')
-    await control.killTree(identity!, await control.descendants(agent.pid!))
+    await control.killTree(identity!, await control.descendants(identity!))
     const deadline = Date.now() + 10_000
     while (alive(orphan) && Date.now() < deadline) await new Promise((settle) => { setTimeout(settle, 100) })
     assert.equal(alive(orphan), false, 'the orphan died with the job')
