@@ -23,6 +23,9 @@ import { ACCOUNT_PLACEHOLDER, SECRET_PLACEHOLDER } from './projection.js'
  *
  * Paths first, then the OS user and host names (`host-identity.ts`), which
  * therefore never break a path apart before its rule has seen it whole.
+ * `rewritePaths` is the path rules alone, for a value that is not prose — an
+ * identifier other code parses, a pull request's URL — which a name that
+ * happens to spell it would otherwise break.
  */
 
 export const HOST_PATH_PLACEHOLDER = '<host path>'
@@ -34,7 +37,12 @@ export type PathRewriteRoot = {
   paths: string[]
 }
 
-export type PathRewriter = { rewrite: (text: string) => string }
+export type PathRewriter = {
+  /** Paths, then the OS user and host names: for text. */
+  rewrite: (text: string) => string
+  /** Paths only. */
+  rewritePaths: (text: string) => string
+}
 
 const SEP = '[\\\\/]+'
 const SEGMENT = '[^\\s"\'`<>|*?\\\\/,;()\\[\\]{}]+'
@@ -116,13 +124,15 @@ export const createPathRewriter = (
     HOST_PATH_PLACEHOLDER, ACCOUNT_PLACEHOLDER, SECRET_PLACEHOLDER,
     ...roots.flatMap((root) => (root.name === undefined ? [] : [`<${root.name}>`])),
   ])
+  const rewritePaths = (text: string): string => {
+    let current = text
+    for (const rule of rules) {
+      current = current.replace(rule.pattern, (_match, tail: unknown) => rule.replace(typeof tail === 'string' ? tail : ''))
+    }
+    return current
+  }
   return {
-    rewrite: (text) => {
-      let current = text
-      for (const rule of rules) {
-        current = current.replace(rule.pattern, (_match, tail: unknown) => rule.replace(typeof tail === 'string' ? tail : ''))
-      }
-      return names ? names(current) : current
-    },
+    rewrite: (text) => (names ? names(rewritePaths(text)) : rewritePaths(text)),
+    rewritePaths,
   }
 }

@@ -6,6 +6,7 @@ import { createCodingBridge, type CodingBridgeCallMeta } from './bridge.js'
 import { codingBridgeTools, CodingBridgeError } from './bridge-tools.js'
 import { loadCodingSessionsConfig } from './config.js'
 import { CODING_SESSION_COMMAND_META, CODING_SESSION_DAEMON_CONTROL_META, CODING_SESSION_OWNER_META } from './meta-keys.js'
+import type { PathRewriter } from './path-rewrite.js'
 
 /**
  * `nessie-executor serve-coding-session-mcp --config <abs path>`: the
@@ -32,11 +33,28 @@ export const codingBridgeCallMeta = (meta: unknown): CodingBridgeCallMeta => {
   }
 }
 
-const rewriteStrings = (value: unknown, rewrite: (text: string) => string): unknown => {
-  if (typeof value === 'string') return rewrite(value)
-  if (Array.isArray(value)) return value.map((entry) => rewriteStrings(entry, rewrite))
+/**
+ * Fields whose values are identifiers or fixed values that other code parses,
+ * never prose: the daemon's report drops a session whose `agent`, `root` or
+ * `reason` no longer matches its schema, and a model that reads `root: '<user>'`
+ * cannot start a session there. They get the path rules only, as does a pull
+ * request's `url`, whose owner is a repository's, not this machine's.
+ */
+const FIXED_VALUE_KEYS = new Set([
+  'sessionId', 'ownerKey', 'agent', 'status', 'reason', 'root', 'rootName', 'path', 'createdAt', 'updatedAt', 'at',
+  'baseCommit', 'code', 'nextCursor', 'kind', 'subtype', 'state', 'mergeable', 'url', 'unavailable', 'incomplete',
+])
+
+/** The last pass over an answer: every string value, keyed as above. */
+export const rewriteCodingAnswer = (value: unknown, rewriter: PathRewriter, key?: string): unknown => {
+  if (typeof value === 'string') {
+    return key !== undefined && FIXED_VALUE_KEYS.has(key) ? rewriter.rewritePaths(value) : rewriter.rewrite(value)
+  }
+  if (Array.isArray(value)) return value.map((entry) => rewriteCodingAnswer(entry, rewriter, key))
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, rewriteStrings(entry, rewrite)]))
+    return Object.fromEntries(Object.entries(value).map(([name, entry]) => [
+      name, rewriteCodingAnswer(entry, rewriter, name),
+    ]))
   }
   return value
 }
@@ -51,7 +69,7 @@ export const serveCodingSessionMcp = async (configPath: string): Promise<void> =
     const meta = codingBridgeCallMeta(request.params._meta)
     try {
       const result = await bridge.call(request.params.name, request.params.arguments, meta)
-      return { content: [{ type: 'text', text: JSON.stringify(rewriteStrings(result, bridge.rewrite)) }] }
+      return { content: [{ type: 'text', text: JSON.stringify(rewriteCodingAnswer(result, bridge.rewriter)) }] }
     } catch (error) {
       const known = error instanceof CodingBridgeError
       // The full error stays in the daemon's local log; only a code and fixed text travel.
@@ -60,7 +78,7 @@ export const serveCodingSessionMcp = async (configPath: string): Promise<void> =
         code: known ? error.code : 'coding_session_unavailable',
         message: known ? error.message : 'The coding-sessions bridge could not complete that call.',
       }
-      return { isError: true, content: [{ type: 'text', text: JSON.stringify(rewriteStrings(answer, bridge.rewrite)) }] }
+      return { isError: true, content: [{ type: 'text', text: JSON.stringify(rewriteCodingAnswer(answer, bridge.rewriter)) }] }
     }
   })
   await server.connect(new StdioServerTransport())

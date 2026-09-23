@@ -512,18 +512,45 @@ Windows run git printed `unable to auto-detect email address (got
 names with no path around them. So after the path rules the same rewriter
 spells the user `<user>` and the host `<host>`, as whole words and
 case-insensitively, in every projected field and every answer. The user's
-names are `os.userInfo()`, `USERNAME`, `USER`, `LOGNAME` and the home
-directory's own name; the host's are `os.hostname()` and `COMPUTERNAME`, each
-whole and by its first label, `<short>.<USERDNSDOMAIN>` on a Windows domain,
-and on Windows the NetBIOS form (its first 15 characters). The `os` answers
-matter most: the MCP SDK's minimal environment carries no `COMPUTERNAME`. A
-name shorter than three characters, and one any machine may carry (`root`,
-`user`, `admin`, `administrator`, `guest`, `nobody`, `system`, `localhost`),
-is left alone: it would rewrite ordinary words and hide nobody. So is a name
-inside a word — a user `dan` leaves `redundant` as it is — and the
-placeholders already written and UUIDs (a session id's hex group may spell a
-short host name) are never rewritten again. The rule has a price: a pull
-request URL whose owner is spelled like the OS user reads `<user>` there too.
+names are `os.userInfo()`, `USERNAME`, `USER` and `LOGNAME` — not the home
+directory's own name, which under a container or a service account is
+`/app`, `/workspace` or `/tmp`. The host's are `os.hostname()` and
+`COMPUTERNAME`, each whole and by its first label; on Windows
+`<short>.<USERDNSDOMAIN>` on a domain and the NetBIOS form (its first 15
+characters); elsewhere the FQDN forms the machine states itself, the
+`/etc/hosts` aliases of the short name and `<short>.<domain>` for each
+`/etc/resolv.conf` search domain, so git's `ondre@minis.corp.acme.com` leaves
+no DNS domain behind. The `os` answers matter most: the MCP SDK's minimal
+environment carries no `COMPUTERNAME`.
+
+Some names are left alone. One shorter than three characters, and one any
+machine may carry — `root`, `user`, `admin`, `localhost` and their like, the
+usual defaults of CI runners, containers and cloud images (`runner`,
+`ubuntu`, `node`, `app`, `vscode`, `ec2-user`, `dev`, `api`, `build`, …; the
+list is `GENERIC_NAMES` in `host-identity.ts`), and the coding agents' own
+`claude` and `codex` — would rewrite ordinary words, relative paths and fixed
+values, and hide nobody. So is a name inside a word (a user `dan` leaves
+`redundant` as it is), and a match that is one whole segment of a relative
+path or a URL's path, with a single `/` or `\` before it and one after:
+absolute paths were already rewritten whole, so such a segment is a
+repository's own folder (`src/ondre/x.ts`) or a URL's owner
+(`github.com/ondre/app`), and rewriting it would hand the model a path that
+does not exist. Two separators before a name are a URL's host or a UNC
+server, and are rewritten. The placeholders already written and UUIDs (a
+session id's hex group may spell a short host name) are never rewritten
+again.
+
+The last pass over an answer gives the path rules alone, without the names,
+to the fields other code parses as fixed values — `sessionId`, `ownerKey`,
+`agent`, `status`, `reason`, `root`, `path`, the timestamps, `baseCommit`,
+`code`, `nextCursor`, `kind`, `subtype`, and a pull request's `state`,
+`mergeable` and `url` (`FIXED_VALUE_KEYS` in `bridge-server.ts`). A root
+named after its user would otherwise come back as `root: '<user>'`, which
+`session_start` cannot resolve, and the daemon's report would drop every
+session whose `agent` or `root` no longer passed its schema. A pull
+request's URL keeps its owner for the same reason and because it names the
+repository, not the machine: the link is the one thing in a review a person
+follows.
 
 Credentials are scrubbed before anything else and read `<secret>`. A coding
 agent runs `gh auth token`, `printenv` or `cat .env`, or pastes a header into

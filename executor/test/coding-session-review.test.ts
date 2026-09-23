@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
+import { rewriteCodingAnswer } from '../src/coding-session/bridge-server.js'
 import { createPathRewriter } from '../src/coding-session/path-rewrite.js'
 import { gitStartSnapshot, reviewCodingSession } from '../src/coding-session/review.js'
 import { initialCodingSessionState } from '../src/coding-session/types.js'
@@ -88,6 +89,21 @@ test('branch names and pull-request keys read <user>, while gh is asked by the r
   assert.deepEqual(Object.keys(review.pullRequests as object), ['<user>/fix', '<user>/wip'])
   assert.deepEqual(asked, ['ondre/fix', 'ondre/wip'])
   assert.equal(JSON.stringify(review).toLowerCase().includes('ondre'), false)
+})
+
+test('a pull request\'s URL keeps an owner spelled like the OS user, through the review and the last pass', async () => {
+  const rewriter = createPathRewriter([], process.platform, { users: ['ondre'], hosts: ['Minis'] })
+  const review = await reviewCodingSession({
+    folder: tmpdir(), rootCanonical: tmpdir(), rewriter,
+    state: { ...initialCodingSessionState('2026-09-23T00:00:00.000Z'), baseCommit: 'a'.repeat(40), worktreesAtStart: [] },
+    run: async (file, args) => (file === 'gh'
+      ? { code: 0, missing: false, stdout: JSON.stringify({ url: 'https://github.com/ondre/app/pull/7', state: 'OPEN', statusCheckRollup: [] }) }
+      : { code: 0, missing: false, stdout: args.includes('--abbrev-ref') ? 'ondre-fix\n' : '' }),
+  })
+  type Answer = { branch: string; pullRequests: Record<string, { url: string }> }
+  const answer = rewriteCodingAnswer(review, rewriter) as Answer
+  assert.equal(answer.branch, '<user>-fix')
+  assert.deepEqual(Object.values(answer.pullRequests).map((entry) => entry.url), ['https://github.com/ondre/app/pull/7'])
 })
 
 test('the review runs git and gh in the environment it is given, never the bridge\'s minimal one', async () => {

@@ -1,5 +1,5 @@
-import { homedir, hostname, userInfo } from 'node:os'
-import { basename } from 'node:path'
+import { closeSync, openSync, readSync } from 'node:fs'
+import { hostname, userInfo } from 'node:os'
 
 /**
  * The OS user and host names, which a coding agent's output repeats without
@@ -9,16 +9,28 @@ import { basename } from 'node:path'
  * leaves the machine.
  *
  * Every spelling this process can see is collected: `os.userInfo()`,
- * `USERNAME`, `USER`, `LOGNAME` and the home directory's own name for the
- * user; `os.hostname()` and `COMPUTERNAME`, each whole and by its first label,
- * `<short>.<USERDNSDOMAIN>` on a Windows domain, and the NetBIOS form (the
- * first 15 characters) on Windows for the host. The MCP SDK hands the bridge
- * a minimal environment, so the `os` answers are the ones that always arrive.
+ * `USERNAME`, `USER` and `LOGNAME` for the user; `os.hostname()` and
+ * `COMPUTERNAME`, each whole and by its first label, `<short>.<USERDNSDOMAIN>`
+ * on a Windows domain and the NetBIOS form (the first 15 characters) on
+ * Windows, and elsewhere the FQDN forms the machine states itself —
+ * `/etc/hosts` aliases of the short name and `<short>.<domain>` for each
+ * `/etc/resolv.conf` search domain — so git's `ondre@minis.corp.acme.com`
+ * leaves no DNS domain behind either. The MCP SDK hands the bridge a minimal
+ * environment, so the `os` answers are the ones that always arrive. The home
+ * directory's own name is not one: under a container or a service account it
+ * is `/app`, `/workspace` or `/tmp`, and the account names above already
+ * cover a person's.
  *
  * A name is matched as a whole word and case-insensitively. One shorter than
- * three characters, and one any machine may carry (`root`, `admin`,
- * `localhost`, …), is left alone: it would rewrite ordinary words and hide
- * nobody.
+ * three characters, and one any machine may carry (`root`, `admin`, `node`,
+ * `ubuntu`, `claude`, …: the usual defaults of CI runners, containers, cloud
+ * images and the coding agents themselves), is left alone: it would rewrite
+ * ordinary words and fixed values, and hide nobody. So is a match that is one
+ * whole segment of a relative path (a single `/` or `\` before it, one after):
+ * an absolute path was already rewritten whole by the path rules, so such a
+ * segment is a repository's own folder (`src/api/x.ts`) or a URL's owner
+ * (`github.com/ondre/app`), and rewriting it would hand the model a path that
+ * does not exist.
  */
 export const USER_PLACEHOLDER = '<user>'
 export const HOST_PLACEHOLDER = '<host>'
@@ -28,9 +40,17 @@ export type HostIdentity = { users: readonly string[]; hosts: readonly string[] 
 export const NO_HOST_IDENTITY: HostIdentity = { users: [], hosts: [] }
 
 const MIN_NAME_LENGTH = 3
-const MAX_NAMES = 16
+const MAX_NAMES = 24
 const GENERIC_NAMES = new Set([
   'root', 'user', 'admin', 'administrator', 'guest', 'nobody', 'system', 'localhost', 'localhost.localdomain',
+  // The coding agents, whose names are also fixed values in every answer (`agent: 'claude'`).
+  'claude', 'codex',
+  // CI runners, containers and cloud images.
+  'runner', 'ubuntu', 'debian', 'fedora', 'centos', 'alpine', 'node', 'app', 'vscode', 'codespace', 'codespaces',
+  'git', 'vagrant', 'jenkins', 'docker', 'ec2-user', 'azureuser', 'cloud-user', 'raspberrypi', 'www-data', 'daemon',
+  // Hosts and accounts named for what they do.
+  'dev', 'build', 'test', 'web', 'api', 'server', 'worker', 'mac', 'macbook', 'macbook-pro', 'macbook-air', 'imac',
+  'workspace', 'tmp', 'home', 'default',
 ])
 
 const attempt = (read: () => string): string | undefined => {
@@ -57,8 +77,46 @@ export const identityNames = (values: readonly (string | undefined)[]): string[]
   return names.slice(0, MAX_NAMES)
 }
 
+/** At most the first 256 KiB of a system file, or `undefined`: an ad-blocking `/etc/hosts` runs to megabytes. */
+const readSystemFile = (path: string): string | undefined => {
+  let fd: number | undefined
+  try {
+    fd = openSync(path, 'r')
+    const buffer = Buffer.alloc(256 * 1024)
+    return buffer.subarray(0, readSync(fd, buffer, 0, buffer.length, 0)).toString('utf8')
+  } catch {
+    return undefined
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+const HOST_NAME = /^(?=.{1,253}$)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*$/u
+
+/** What `/etc/hosts` and `/etc/resolv.conf` say this machine is called, fully qualified. */
+const qualifiedNames = (short: string, read: (path: string) => string | undefined): string[] => {
+  const folded = short.toLowerCase()
+  const names: string[] = []
+  for (const line of (read('/etc/hosts') ?? '').split('\n').slice(0, 4_096)) {
+    const aliases = line.replace(/#.*$/u, '').trim().split(/\s+/u).slice(1)
+    if (!aliases.some((alias) => alias.toLowerCase() === folded || alias.toLowerCase().startsWith(`${folded}.`))) continue
+    names.push(...aliases.filter((alias) => alias.toLowerCase().startsWith(`${folded}.`)))
+  }
+  for (const line of (read('/etc/resolv.conf') ?? '').split('\n').slice(0, 256)) {
+    const [keyword, ...domains] = line.trim().split(/\s+/u)
+    if (keyword !== 'search' && keyword !== 'domain') continue
+    for (const domain of domains.slice(0, 6)) {
+      const bare = domain.replace(/\.$/u, '')
+      if (bare && HOST_NAME.test(bare)) names.push(`${short}.${bare}`)
+    }
+  }
+  return names.filter((name) => HOST_NAME.test(name)).slice(0, 8)
+}
+
 export const readHostIdentity = (
-  env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  read: (path: string) => string | undefined = readSystemFile,
 ): HostIdentity => {
   const hosts: string[] = []
   for (const name of [attempt(hostname), env.COMPUTERNAME]) {
@@ -67,11 +125,10 @@ export const readHostIdentity = (
     hosts.push(name, short)
     if (platform === 'win32') hosts.push(short.slice(0, 15))
     if (env.USERDNSDOMAIN) hosts.push(`${short}.${env.USERDNSDOMAIN}`)
+    if (platform !== 'win32') hosts.push(...qualifiedNames(short, read))
   }
   return {
-    users: identityNames([
-      attempt(() => userInfo().username), env.USERNAME, env.USER, env.LOGNAME, attempt(() => basename(homedir())),
-    ]),
+    users: identityNames([attempt(() => userInfo().username), env.USERNAME, env.USER, env.LOGNAME]),
     hosts: identityNames(hosts),
   }
 }
@@ -80,6 +137,16 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 /** A session id, an agent session id: a hex group of one may spell a short host name. */
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+const separator = (character: string | undefined): boolean => character === '/' || character === '\\'
+
+/**
+ * One whole segment of a relative path or a URL's path: one separator before
+ * it (not two, which is a URL's host or a UNC server), and one after.
+ */
+const pathSegment = (text: string, offset: number, length: number): boolean => (
+  separator(text[offset - 1]) && !separator(text[offset - 2]) && separator(text[offset + length])
+)
 
 /**
  * The rewrite itself. `keep` are the placeholders already written (`<host
@@ -104,9 +171,11 @@ export const createIdentityRewrite = (
     `(${[...kept, UUID].join('|')})|(?<![\\p{L}\\p{N}_])(?:${names.map((entry) => `(${escapeRegExp(entry.name)})`).join('|')})(?![\\p{L}\\p{N}_])`,
     'giu',
   )
-  return (text) => text.replace(pattern, (match: string, placeholder: string | undefined, ...groups: unknown[]) => {
+  return (text) => text.replace(pattern, (match: string, placeholder: string | undefined, ...rest: unknown[]) => {
     if (placeholder !== undefined) return match
-    const index = groups.slice(0, names.length).findIndex((group) => group !== undefined)
+    const offset = rest[names.length] as number
+    if (pathSegment(text, offset, match.length)) return match
+    const index = rest.slice(0, names.length).findIndex((group) => group !== undefined)
     return names[index]?.placeholder ?? match
   })
 }

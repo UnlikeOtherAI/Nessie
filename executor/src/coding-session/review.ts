@@ -16,7 +16,10 @@ import type { CodingSessionState } from './types.js'
  * is installed. Every string in the answer has been through the rewriter,
  * branch names and the keys of `pullRequests` included (a branch is often
  * named after its author, and the bridge's last pass rewrites values, not
- * keys); `gh` is still asked about each branch by its real name.
+ * keys); `gh` is still asked about each branch by its real name. A pull
+ * request's URL gets the path rules only: its owner is the repository's
+ * (`github.com/ondre/app`), which is often spelled like the OS user, and the
+ * link is the one thing in the review a person follows.
  */
 const REVIEW_BUDGET_MS = 20_000
 const DIFF_STAT_LINES = 60
@@ -76,7 +79,7 @@ const porcelainCounts = (text: string | undefined): { uncommitted: number; untra
 type CheckCounts = Record<string, number>
 
 const pullRequest = async (
-  run: CommandRunner, branch: string, cwd: string, deadline: number, rewrite: (text: string) => string,
+  run: CommandRunner, branch: string, cwd: string, deadline: number, rewriter: PathRewriter,
   env: NodeJS.ProcessEnv,
 ): Promise<Record<string, unknown> | undefined> => {
   const remaining = deadline - Date.now()
@@ -98,7 +101,7 @@ const pullRequest = async (
       checks[key] = (checks[key] ?? 0) + 1
     }
     return {
-      url: typeof parsed.url === 'string' ? rewrite(parsed.url).slice(0, 300) : undefined,
+      url: typeof parsed.url === 'string' ? rewriter.rewritePaths(parsed.url).slice(0, 300) : undefined,
       state: typeof parsed.state === 'string' ? parsed.state.slice(0, 30) : undefined,
       mergeable: typeof parsed.mergeable === 'string' ? parsed.mergeable.slice(0, 30) : undefined,
       checks,
@@ -161,7 +164,7 @@ export const reviewCodingSession = async (input: {
     .filter((name): name is string => !!name && name !== 'HEAD')
   const pullRequests: Record<string, unknown> = {}
   for (const name of branches.slice(0, 5)) {
-    const found = await pullRequest(run, name, input.folder, deadline, rewrite, env)
+    const found = await pullRequest(run, name, input.folder, deadline, input.rewriter, env)
     if (found?.unavailable) break
     if (found) pullRequests[rewrite(name)] = found
   }

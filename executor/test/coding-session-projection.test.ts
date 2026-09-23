@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { hostname, userInfo } from 'node:os'
 import { test } from 'node:test'
 
+import { ExecutorCodingSessionSummarySchema } from '@nessie/schemas'
+
+import { rewriteCodingAnswer } from '../src/coding-session/bridge-server.js'
 import { identityNames, readHostIdentity } from '../src/coding-session/host-identity.js'
 import { createPathRewriter, HOST_PATH_PLACEHOLDER } from '../src/coding-session/path-rewrite.js'
 import { createProjector, exitCodeFromToolResult, looksLikeTestCommand } from '../src/coding-session/projection.js'
@@ -155,6 +158,54 @@ test('the names come from the OS and the environment, each once, in short and do
   const bare = readHostIdentity({}, 'linux')
   assert.ok(identityNames([userInfo().username]).every((name) => bare.users.includes(name)))
   assert.ok(identityNames([hostname(), hostname().split('.')[0]]).every((name) => bare.hosts.includes(name)))
+})
+
+test('elsewhere the FQDN comes from /etc/hosts and the resolver search domains, so no DNS domain is left over', () => {
+  const files: Record<string, string> = {
+    '/etc/hosts': '127.0.0.1 localhost\n127.0.1.1 minis.corp.acme.com minis # this machine\n10.0.0.2 other.corp.acme.com other\n',
+    '/etc/resolv.conf': 'nameserver 10.0.0.1\nsearch lab.acme.net .\n',
+  }
+  const { hosts } = readHostIdentity({ COMPUTERNAME: 'minis' }, 'linux', (path) => files[path])
+  const folded = hosts.map((name) => name.toLowerCase())
+  for (const name of ['minis', 'minis.corp.acme.com', 'minis.lab.acme.net']) assert.ok(folded.includes(name), name)
+  assert.equal(hosts.some((name) => name.startsWith('other')), false, 'only this machine\'s own names')
+  const rewriter = createPathRewriter([], 'linux', { users: ['ondre'], hosts })
+  assert.equal(rewriter.rewrite("unable to auto-detect email address (got 'ondre@minis.corp.acme.com')"),
+    "unable to auto-detect email address (got '<user>@<host>')")
+  // The home directory's own name is not a user name: under a container it is `app` or `workspace`.
+  const { users } = readHostIdentity({ USER: 'someone-else' }, 'linux', () => undefined)
+  assert.deepEqual(users, identityNames([userInfo().username, 'someone-else']))
+})
+
+test('a name any machine may carry is no one\'s, and a whole relative path segment is a folder, not a name', () => {
+  // The usual CI, container and cloud defaults, and the coding agents' own names.
+  const defaults = createPathRewriter([], 'linux', { users: ['node', 'runner', 'ubuntu', 'claude'], hosts: ['api', 'build', 'web'] })
+  for (const text of ['Read src/api/x.ts', 'node --test a.ts', 'Ubuntu 24.04 on build', 'agent claude via web/api']) {
+    assert.equal(defaults.rewrite(text), text)
+  }
+  const person = createPathRewriter([{ name: 'app', paths: ['/home/ondre/src/app'] }, { name: undefined, paths: ['/home/ondre'] }], 'linux', {
+    users: ['ondre'], hosts: ['minis'],
+  })
+  assert.equal(person.rewrite('Edit src/ondre/x.ts and /home/ondre/src/app/ondre/y.ts'), 'Edit src/ondre/x.ts and <app>/ondre/y.ts')
+  assert.equal(person.rewrite('opened https://github.com/ondre/app/pull/7'), 'opened https://github.com/ondre/app/pull/7')
+  // Two separators are a URL's host or a UNC server; a segment with no separator after it is prose.
+  assert.equal(person.rewrite('http://minis/ondre/x and minis\\ondre from whoami, ondre/wip'), 'http://<host>/ondre/x and <host>\\<user> from whoami, <user>/wip')
+  assert.equal(person.rewritePaths('ondre on minis at /home/ondre/x'), `ondre on minis at ${HOST_PATH_PLACEHOLDER}`, 'the path rules alone')
+})
+
+test('the last pass keeps identifiers whole, so a session named after its user still passes the report schema', () => {
+  const session = {
+    sessionId: '0f0e0d0c-0b0a-4908-8706-050403020100', ownerKey: `sha256:${'a'.repeat(64)}`, title: 'fix the build on minis for ondre',
+    status: 'interrupted', reason: 'agent_exited', agent: 'codex', root: 'ondre', updatedAt: '2026-09-23T10:00:00.000Z',
+  }
+  const rewriter = createPathRewriter([], 'linux', { users: ['ondre', 'codex', 'claude'], hosts: ['minis'] })
+  const answer = rewriteCodingAnswer({ sessions: [session] }, rewriter) as { sessions: unknown[] }
+  const [summary] = answer.sessions
+  assert.deepEqual(summary, { ...session, title: 'fix the build on <host> for <user>' })
+  assert.equal(ExecutorCodingSessionSummarySchema.safeParse(summary).success, true)
+  // A pull request's link keeps its owner; prose beside it does not.
+  assert.deepEqual(rewriteCodingAnswer({ pullRequests: { '<user>/fix': { url: 'https://github.com/ondre/ondre', state: 'OPEN' } }, note: 'ondre' }, rewriter),
+    { pullRequests: { '<user>/fix': { url: 'https://github.com/ondre/ondre', state: 'OPEN' } }, note: '<user>' })
 })
 
 test('a test command is recognised by the program it runs, with its exit code from the tool result', () => {
