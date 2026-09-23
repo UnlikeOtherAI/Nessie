@@ -203,6 +203,9 @@ test('the last pass keeps identifiers whole, so a session named after its user s
   const [summary] = answer.sessions
   assert.deepEqual(summary, { ...session, title: 'fix the build on <host> for <user>' })
   assert.equal(ExecutorCodingSessionSummarySchema.safeParse(summary).success, true)
+  // What session_list offers the model to start a session with comes back as it went in.
+  const offered = { roots: [{ name: 'ondre', available: true }], agents: ['claude', 'codex'] }
+  assert.deepEqual(rewriteCodingAnswer(offered, rewriter), offered)
   // A pull request's link keeps its owner; prose beside it does not.
   assert.deepEqual(rewriteCodingAnswer({ pullRequests: { '<user>/fix': { url: 'https://github.com/ondre/ondre', state: 'OPEN' } }, note: 'ondre' }, rewriter),
     { pullRequests: { '<user>/fix': { url: 'https://github.com/ondre/ondre', state: 'OPEN' } }, note: '<user>' })

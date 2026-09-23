@@ -590,7 +590,8 @@ again.
 
 The last pass over an answer gives the path rules alone, without the names,
 to the fields other code parses as fixed values — `sessionId`, `ownerKey`,
-`agent`, `status`, `reason`, `root`, `path`, the timestamps, `baseCommit`,
+`agent` and `agents`, `status`, `reason`, `root` and a listed root's `name`,
+`path`, the timestamps, `baseCommit`,
 `code`, `nextCursor`, `kind`, `subtype`, and a pull request's `state`,
 `mergeable` and `url` (`FIXED_VALUE_KEYS` in `bridge-server.ts`). A root
 named after its user would otherwise come back as `root: '<user>'`, which
