@@ -363,6 +363,13 @@ when one changes, the same turn updates it, not this section.
   labels and never imports a narrower-audience comment.
   Read [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md)
   before writing code here.
+- **Ticket-driven agent work.** Only a board editor's own session move starts
+  or steers a ticket's work; a `ticket.work` run acts as the agent with no
+  effective user, the machine owner's authority is read only by the
+  standing-policy binder, and teardown is the platform's, in the transaction
+  that causes it.
+  Read [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md)
+  before writing code here.
 - **Provider reasoning ("thinking").** Every OpenAI-shaped stream is read
   for both reasoning spellings, the thinking switch is a per-dialect decision
   made at the transport boundary (DeepSeek `thinking`, DashScope
