@@ -239,9 +239,12 @@ export const reauthorizeAgentTrigger = async (
   const claimed = await prisma.agentTrigger.updateMany({
     data: {
       config: nextConfig as Prisma.InputJsonValue,
+      enabled: true,
       healthDetail: null,
       healthReason: null,
       nextRunAt,
+      schedulerClaimedAt: null,
+      schedulerClaimId: null,
       status: 'active',
     },
     where: { id: trigger.id, status: 'needs_reauthorization' },

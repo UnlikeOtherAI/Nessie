@@ -24,6 +24,7 @@ import {
   TRIGGER_TYPE_ICONS,
   formatTimestamp,
   getScheduleSummary,
+  getTriggerHealthMessage,
   getTriggerTone,
 } from '../triggers/trigger-presentation'
 
@@ -52,6 +53,10 @@ const TriggerRow = ({
   trigger: AgentTriggerRecord
 }) => {
   const { data: history = [] } = useTriggerHistory(trigger.id, 3)
+  const healthMessage =
+    trigger.status === 'error' || trigger.status === 'needs_reauthorization'
+      ? getTriggerHealthMessage(trigger)
+      : null
 
   return (
     <div className="admin-card p-4" data-testid="agent-trigger-row">
@@ -77,23 +82,32 @@ const TriggerRow = ({
             <div className="mt-1 text-sm text-[color:var(--tx2)]">
               {trigger.description ?? getScheduleSummary(trigger)}
             </div>
+            {healthMessage ? (
+              <div className="mt-2 text-sm text-[color:var(--danger-text)]" role="status">
+                {healthMessage}
+              </div>
+            ) : null}
             <div className="mt-2 grid gap-1 text-xs text-[color:var(--tx3)]">
               <div>{getScheduleSummary(trigger)}</div>
-              <div>Next run: {formatTimestamp(trigger.nextRunAt)}</div>
+              {trigger.status === 'active' ? (
+                <div>Next run: {formatTimestamp(trigger.nextRunAt)}</div>
+              ) : null}
               <div>Last fired: {formatTimestamp(trigger.lastFiredAt)}</div>
             </div>
           </div>
         </div>
 
         <div className="flex shrink-0 gap-2">
-          <button
-            className="admin-button admin-button-secondary"
-            onClick={() => onFire(trigger)}
-            type="button"
-          >
-            Run now
-          </button>
-          {trigger.status === 'paused' ? (
+          {trigger.status === 'active' ? (
+            <button
+              className="admin-button admin-button-secondary"
+              onClick={() => onFire(trigger)}
+              type="button"
+            >
+              Run now
+            </button>
+          ) : null}
+          {trigger.status === 'paused' || trigger.status === 'error' ? (
             <button
               className="admin-button admin-button-primary"
               onClick={() => onResume(trigger.id)}
@@ -101,7 +115,7 @@ const TriggerRow = ({
             >
               Resume
             </button>
-          ) : (
+          ) : trigger.status === 'active' ? (
             <button
               className="admin-button admin-button-secondary"
               onClick={() => onPause(trigger.id)}
@@ -109,7 +123,7 @@ const TriggerRow = ({
             >
               Pause
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
