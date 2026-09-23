@@ -170,6 +170,14 @@ them. A restart between an upload and the receipt uploads again from the
 same journal and sidecars; Nessie takes the same command and digest as the
 same attachment.
 
+Nessie keeps each image as a `FileService` file of its command, owned by the
+run's organisation and accounted to the person whose launch the command runs
+under ([file-storage.md](file-storage.md)). It checks the type, the digest and
+the caps again, plus 60 images a minute per executor, and refuses a result
+whose reference names an image it did not keep for that command
+([command-attachments.md](../executor-protocol/command-attachments.md) → "On
+the control plane").
+
 **A refused upload is terminal, never retried.** A 4xx withdraws that image —
 its reference and its markers become
 `[image unavailable: Nessie refused it (<message>)]` — the rewritten result is
@@ -450,7 +458,14 @@ mode answers with the same file through a real session.
 `command-attachments.test.ts` drives the journal on a real disk: the sidecar
 exists when the `result_pending` entry is saved, a restart between upload and
 receipt uploads again, a refusal is withdrawn and never re-sent, a transient
-failure is, and the start sweep keeps only the journal's command.
+failure is, and the start sweep keeps only the journal's command. The control
+plane's half runs on a real database:
+`packages/executor-manage/test/executor-command-attachments.test.ts` covers
+the states, the digest and magic checks, the caps (racing uploads included),
+the rate, the attachment and usage rows and the result intake;
+`api/test/executor-command-attachments.test.ts` covers the route's body limit
+and statuses and who may read a screenshot, with and without a disclosure
+basis.
 
 Kelpie detection runs `describe` as a real process too, against a stand-in
 CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact

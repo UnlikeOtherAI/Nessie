@@ -94,3 +94,37 @@ receipt behind them.
 A restart anywhere between steps 1 and 5 replays from the journal: a result
 still `executing` becomes `EXECUTOR_COMMAND_UNKNOWN_OUTCOME` with no
 references, and a `result_pending` one uploads its images again.
+
+## On the control plane
+
+`recordAuthorizedExecutorCommandAttachment` (`@nessie/executor-manage`
+`executor-command-attachments.ts`) answers the request, in this order:
+
+1. The body is parsed against the schema on the one daemon route with a raised
+   body limit — the largest image's base64 plus a 16 KiB envelope; everything
+   else stays at 1 MiB.
+2. The digest is recomputed over the decoded bytes and their magic checked
+   against `mimeType`. A mismatch is `400 EXECUTOR_COMMAND_ATTACHMENT_INVALID`.
+3. Under the executor's connection lock, as for a poll or a receipt: the
+   `attachment` signature, the live connection epoch and a fresh
+   `occurredAt`. The command must be this executor's (`404
+   EXECUTOR_NOT_FOUND`). An image already kept for the command answers
+   `{recorded: true}` at once, whatever the command's state. A new one needs
+   the command `accepted`, `started` or `unknown_outcome` and the command's
+   caps to hold — 6 images, 8 MiB together — or it is `409
+   EXECUTOR_COMMAND_ATTACHMENT_REFUSED`. Past 60 images a minute from one
+   executor it is `429 EXECUTOR_COMMAND_ATTACHMENT_RATE_LIMITED` with
+   `Retry-After`, which the daemon retries rather than gives up.
+4. After the lock, the bytes are stored through `FileService`, so a 4 MiB
+   write never holds up that executor's polls and receipts. The caps are
+   checked once more inside the store's quota transaction, which is what keeps
+   them exact when uploads race. A full storage quota is a `409` refusal.
+
+What is stored, who it belongs to and who may read it are in
+[file-storage.md](../standards/file-storage.md).
+
+A terminal receipt is refused as `EXECUTOR_COMMAND_RESULT_INVALID` when its
+result carries an `image` content item whose `attachmentDigest` was not kept
+for that same command with the same `mimeType` and `byteLength`, or one that
+does not parse as a reference. The daemon answers that refusal as it answers
+any other: with the small `EXECUTOR_RESULT_REFUSED` result in its place.
