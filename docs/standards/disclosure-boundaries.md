@@ -73,7 +73,10 @@ Facts not restated there:
   `SystemAuthoredMessageInput.basisScopes` / `disclosureSources` go through the
   shared `insertMessageBasis` / `insertMessageDisclosureSources` helpers in the
   row's transaction, with the remainder computed against the destination
-  thread's live chain and bound agents.
+  thread's live chain and bound agents. A notice about a person's DeepWater
+  brief the room was never shown adds the requester's own `user` scope, so
+  the room gets the withheld placeholder, never the topic of a brief only its
+  requester may see ([deepwater.md](deepwater.md) → "Delivery").
 - The run ledger is monotone and is persisted before any run plan, tool
   summary/preview, or crash checkpoint records derived content. A run that has
   not replied yet is therefore still protected at every metadata read path.
