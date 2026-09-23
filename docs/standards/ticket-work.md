@@ -230,9 +230,13 @@ hold these, so no read-then-write race can break them:
   reconnect (`TICKET_WORK_MACHINE_HOLDING_STATUSES`). A dequeue onto a machine
   that just came back therefore cannot take the slot before the ticket that
   was mid-work there resumes, and the pool dispatcher's "free" means no
-  record in either status (from T4 and T5). A `parked` or `queued` record may
-  still name an executor without holding it. `policyId` / `executorId` are
-  written by the dispatcher, never by run setup.
+  record in either status (from T4 and T5). A `waiting_machine` record that
+  waits for machine access rather than for its machine names no executor and
+  holds nothing: a pickup while access is not set up or suspended is never
+  pinned, and suspending access unpins its `active` records in the same
+  transaction (from T4). A `parked` or `queued` record may still name an
+  executor without holding it. `policyId` / `executorId` are written by the
+  dispatcher, never by run setup.
 - `agent_reminders_one_pending_per_work`: one pending reminder per work
   record; a new `check_back_in` replaces it (from T3).
 - `executor_standing_policies_one_binding` and
@@ -261,17 +265,32 @@ causes it**:
   cancelled, its machine is freed and the pool dispatcher is enqueued, all
   inside the move transaction. The agent then gets one machine-less
   `ticket_moved` wake, only to comment. A review-category column outside
-  `endOn` parks the record instead.
+  `endOn` parks the record instead, which keeps its sessions, frees its
+  machine slot and enqueues the dispatcher in the same way.
 - **(from T1) Disabling or deleting the trigger** ends every live record with
-  `trigger_disabled`. **(from T4)** It also ends the trigger's policy, with
-  `trigger_disabled` or `trigger_deleted`, so re-enabling a trigger takes a
-  fresh confirmation.
+  `trigger_disabled`. **(from T4)** Its sessions get close requests
+  (`trigger_changed`), and the trigger's policy ends, with `trigger_disabled`
+  or `trigger_deleted`, so re-enabling a trigger takes a fresh confirmation.
+- **(from T4) Suspending machine access** (either `suspendedReason`) moves
+  every `active` record of that policy to `waiting_machine` with
+  `machine_access_suspended` and unpins it, which frees the machine, pauses
+  the hours clock and stops quiet wakes; its sessions get close requests
+  (`policy_suspended`). A pickup while access is suspended or not yet set up
+  gets one short, unbound pickup wake and then waits the same way, with
+  `machine_access_suspended` or `machine_access_not_set_up`. The transaction
+  that confirms or re-confirms access moves those records to `queued` and
+  enqueues the dispatcher, which resumes them with a `dequeued` wake.
+  **Ending machine access** cancels every live record of the policy with
+  `machine_access_ended`, and its sessions get close requests
+  (`policy_ended`).
 - **(from T4) Sessions are closed by the server.** Session-scoped
   `executorCodingSessionCloseRequest` rows for the record's `sessionIds` are
   written in the same transaction as the ticket leaving the flow
-  (`ticket_left_flow`), a limit (`work_limit`), a policy ending or suspending
-  (`policy_ended`), or the trigger changing. T4 adds those reasons to
-  `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and its CHECK.
+  (`ticket_left_flow`), the trigger being disabled, deleted or edited in a
+  pinned field (`trigger_changed`), the policy suspending
+  (`policy_suspended`) or ending (`policy_ended`), or a limit (`work_limit`).
+  T4 adds those five reasons to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and
+  its CHECK.
 - **(from T4) Limits are enforced by the platform.** A record over
   `wakesPerTicket`, `ticketHours`, `ticketUsd`, `startsPerDay` or `dailyUsd`
   goes to `failed` with its `limit_*` reason and its sessions get close
@@ -310,12 +329,16 @@ causes it**:
 - The queue topics and their payload schemas are in
   `packages/schemas/src/jobs.ts`: `TRIGGER_TICKET_DISPATCH_TOPIC` (from T1),
   `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (from
-  T3, with an optional tick `bucket`), `TICKET_WORK_DISPATCH_TOPIC` (the pool
-  dispatcher's job for an executor that may have come free, from T5) and
-  `TICKET_WORK_SESSION_TOPIC` (from T5, whose `status` is only one that wakes:
-  `waiting_for_input`, `interrupted`, `failed` or `closed`). Nothing
-  subscribes to them yet; each handler parses its payload with its schema
-  when it lands.
+  T3, with an optional idempotency `bucket`) and `TICKET_WORK_SESSION_TOPIC`
+  (from T5, whose `status` is only one that wakes: `waiting_for_input`,
+  `interrupted`, `failed` or `closed`). The sweep is also **the pool
+  dispatcher**: every transaction that may free a machine — a record ending,
+  parking or moving to `waiting_machine`, a session closing, a machine coming
+  online, access being re-confirmed — enqueues it with a short idempotency
+  window, and the periodic tick is only the backstop (from T5). So dispatch is
+  one idempotent job that reads the queue and the pools afresh, and there is
+  no per-executor dispatch topic. Nothing subscribes to these topics yet; each
+  handler parses its payload with its schema when it lands.
 
 ## Tests that hold these rules
 

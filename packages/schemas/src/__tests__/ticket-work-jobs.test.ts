@@ -2,12 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
-  TICKET_WORK_DISPATCH_TOPIC,
   TICKET_WORK_SESSION_TOPIC,
   TICKET_WORK_SWEEP_TOPIC,
   TRIGGER_DOCUMENT_DISPATCH_TOPIC,
   TRIGGER_TICKET_DISPATCH_TOPIC,
-  TicketWorkDispatchJobPayloadSchema,
   TicketWorkSessionJobPayloadSchema,
   TicketWorkSweepJobPayloadSchema,
   TriggerDocumentDispatchJobPayloadSchema,
@@ -29,7 +27,6 @@ test('the ticket-work topics and run purpose keep their wire names', () => {
   assert.equal(TRIGGER_TICKET_DISPATCH_TOPIC, 'trigger.ticket.dispatch')
   assert.equal(TRIGGER_DOCUMENT_DISPATCH_TOPIC, 'trigger.document.dispatch')
   assert.equal(TICKET_WORK_SESSION_TOPIC, 'ticket-work.session')
-  assert.equal(TICKET_WORK_DISPATCH_TOPIC, 'ticket-work.dispatch')
   assert.equal(TICKET_WORK_SWEEP_TOPIC, 'ticket-work.sweep')
   assert.equal(TICKET_WORK_PURPOSE, 'ticket.work')
 })
@@ -79,15 +76,12 @@ test('ticket-work.session carries the turn and only a status that wakes', () => 
   }
 })
 
-test('ticket-work.dispatch names the machine that may have come free', () => {
-  const payload = { organizationId: ORG, executorId: EXECUTOR }
-  assert.deepEqual(TicketWorkDispatchJobPayloadSchema.parse(payload), payload)
-  assert.equal(TicketWorkDispatchJobPayloadSchema.safeParse({ organizationId: ORG }).success, false)
-  assert.equal(TicketWorkDispatchJobPayloadSchema.safeParse({ ...payload, executorId: 'pc' }).success, false)
-})
-
-test('ticket-work.sweep takes only its tick bucket', () => {
+test('ticket-work.sweep takes only its idempotency bucket', () => {
   assert.deepEqual(TicketWorkSweepJobPayloadSchema.parse({}), {})
   assert.deepEqual(TicketWorkSweepJobPayloadSchema.parse({ bucket: '2026-09-23T14:05' }), { bucket: '2026-09-23T14:05' })
   assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ workId: WORK }).success, false)
+  // The sweep is also the pool dispatcher, enqueued when a machine may have
+  // come free. It reads the queue and the pools afresh, so the enqueuer can
+  // never steer it to a record or a machine.
+  assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ executorId: EXECUTOR }).success, false)
 })

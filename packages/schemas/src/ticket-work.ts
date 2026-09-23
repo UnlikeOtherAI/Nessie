@@ -58,9 +58,11 @@ export const TICKET_WORK_TERMINAL_STATUSES = [
 /**
  * The statuses that hold the record's pinned machine: the unique index
  * `agent_ticket_work_one_per_executor`'s WHERE list. A `waiting_machine`
- * record keeps its slot, so a queued ticket is never assigned to the machine
- * while the ticket that was mid-work on it waits for it to reconnect. A
- * `parked` or `queued` record may still name an executor without holding it.
+ * record waiting for its pinned machine to reconnect keeps its slot, so a
+ * queued ticket is never assigned to that machine first. One waiting for
+ * machine access (suspended or not set up) names no executor, so it holds
+ * nothing. A `parked` or `queued` record may still name an executor without
+ * holding it.
  */
 export const TICKET_WORK_MACHINE_HOLDING_STATUSES = [
   'active',

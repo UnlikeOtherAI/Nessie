@@ -587,27 +587,15 @@ export const TicketWorkSessionJobPayloadSchema = z.object({
 export type TicketWorkSessionJobPayload = z.infer<typeof TicketWorkSessionJobPayloadSchema>
 
 /**
- * `ticket-work.dispatch` queue job — a machine may have come free: a work
- * record holding it ended or parked, one of its sessions closed, or it came
- * back online. The pool dispatcher picks, across every policy whose pool
- * includes that executor, the highest-priority, oldest queued record, and
- * re-checks the ticket, the mover and the policy before assigning it. It
- * carries ids only; the queue, the pool and the machine's state are read
- * afresh under the pool rows' locks.
- */
-export const TICKET_WORK_DISPATCH_TOPIC = 'ticket-work.dispatch'
-
-export const TicketWorkDispatchJobPayloadSchema = z.object({
-  organizationId: z.string().uuid(),
-  executorId: z.string().uuid(),
-})
-export type TicketWorkDispatchJobPayload = z.infer<typeof TicketWorkDispatchJobPayloadSchema>
-
-/**
- * `ticket-work.sweep` queue job — the one periodic pass over live work: quiet
- * wakes, limits, dequeue onto free machines, standing-policy re-checks, and a
- * queued record whose job was lost. Everything it needs is in the database;
- * `bucket` is the tick's idempotency key, as on `board-source.sync.sweep`.
+ * `ticket-work.sweep` queue job — the pool dispatcher and the one pass over
+ * live work: dequeue onto free machines, quiet wakes, limits, standing-policy
+ * re-checks, and a queued record whose job was lost. Every transaction that
+ * may free a machine (a record ends, parks or moves to `waiting_machine`, a
+ * session closes, a machine comes online, machine access is re-confirmed)
+ * enqueues it with a short idempotency window, so dispatch is one idempotent
+ * job; a periodic tick is only the backstop. Everything it needs is in the
+ * database; `bucket` is the window's or tick's idempotency key, as on
+ * `board-source.sync.sweep`.
  */
 export const TICKET_WORK_SWEEP_TOPIC = 'ticket-work.sweep'
 

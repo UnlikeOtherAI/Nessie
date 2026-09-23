@@ -21,7 +21,7 @@ Scope:
   `agent_reminders`, plus the trigger scope columns. This includes one binding
   policy and one outstanding card per trigger.
 - Queue payload schemas for `trigger.ticket.dispatch`, `ticket-work.session`,
-  `ticket-work.dispatch`, `ticket-work.sweep` and
+  `ticket-work.sweep` (also the pool dispatcher) and
   `trigger.document.dispatch`.
 - Workflow installations gated by a permanent `WORKFLOW_TRIGGER_TYPES`
   allowlist, so releasing a type for agents never opens it for workflows.
