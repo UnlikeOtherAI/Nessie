@@ -8,10 +8,12 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 import {
   assertBrief,
   assertThreadCards,
+  walkBriefElsewhere,
   walkBriefToStart,
   walkFailedReply,
   walkNewBrief,
   walkReplyThreadBrief,
+  walkStartAgain,
 } from './steps.mjs'
 
 /**
@@ -24,12 +26,13 @@ import {
  * landing, a revision conflict. It walks the person's whole brief (a one-tap
  * answer carrying an unsent pillar and setting edit, the planner's answer, a
  * conflict rebased with "what changed", Start with the publish switch), a new
- * brief from the composer, an agent's read-only brief, a reply the planner
- * could not answer coming back and being sent again, the failed opening turn,
- * the sign-in state, every artifact action including the clipboard fallback,
- * the not-ready doorways for a member and an owner, and the owner's cancel of the
- * research that blocks turning DeepWater off. Every state is screenshotted
- * under e2e/screenshots/research-brief/.
+ * brief from the composer (and from a composer over another conversation), a
+ * failed research started again under its reply thread, an agent's read-only
+ * brief, a reply the planner could not answer coming back and being sent
+ * again, the failed opening turn, the sign-in state, every artifact action
+ * including the clipboard fallback, the not-ready doorways for a member and an
+ * owner, and the owner's cancel of the research that blocks turning DeepWater
+ * off. Every state is screenshotted under e2e/screenshots/research-brief/.
  */
 
 const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/research-brief')
@@ -149,6 +152,12 @@ try {
   const reply = await open(desktop)
   await walkReplyThreadBrief(reply)
   await reply.close()
+  const elsewhere = await open(desktop)
+  await walkBriefElsewhere(elsewhere)
+  await elsewhere.close()
+  const again = await open(desktop)
+  await walkStartAgain(again)
+  await again.close()
 
   // 09 — an agent's brief: read-only for its requester, who may only discard it.
   const agentPage = await open(desktop)

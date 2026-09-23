@@ -28,6 +28,7 @@ import { BriefPillarsEditor } from './BriefPillarsEditor'
 import { BriefSettingsEditor, type SettingChange } from './BriefSettingsEditor'
 import { answerShowsInFlight } from './brief-sent-action'
 import { BriefStartBar } from './BriefStartBar'
+import type { StartAgain } from './research-brief-origin'
 import { isResearchFinished } from './research-presentation'
 import { ResearchRunOutcome } from './ResearchRunOutcome'
 import { useBriefDraft } from './useBriefDraft'
@@ -49,7 +50,7 @@ export const BriefWorkspace = ({
 }: {
   brief: DeepWaterBriefView
   meUserId: string
-  onStartAgain: (topic: string) => void
+  onStartAgain: StartAgain
 }) => {
   const queryClient = useQueryClient()
   const scope = useDeepWaterViewerScope()

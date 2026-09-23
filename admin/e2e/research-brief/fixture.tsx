@@ -14,6 +14,7 @@ import {
 import { AppDetailHero } from '../../src/components/features/apps/AppDetailHero'
 import { ResearchBriefHost } from '../../src/components/features/deep-water/ResearchBriefHost'
 import { ResearchNoticeActions, ResearchRunCard } from '../../src/components/features/deep-water/ResearchRunCard'
+import type { NewBriefPlace } from '../../src/components/features/deep-water/research-brief-origin'
 import { useResearchComposerButton } from '../../src/components/features/deep-water/useResearchComposerButton'
 import { DeepWaterResearchView } from '../../src/components/features/knowledge/DeepWaterResearchView'
 import { invalidateResearchRun } from '../../src/facades/deep-water/events'
@@ -21,7 +22,7 @@ import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
 import {
-  CHANNEL, JANA, ME, PA_AGENT, REPORT_MARKDOWN, RUN, TEAM, THREAD,
+  CHANNEL, DM_CHANNEL, DM_THREAD, JANA, ME, PA_AGENT, REPORT_MARKDOWN, RUN, TEAM, THREAD,
   agentBrief, answeredBrief, createdBrief, draftBrief, listedRuns,
 } from './fixture-data'
 
@@ -246,13 +247,23 @@ const COMPOSER_TEXT = 'Could we look into heat pumps for the Leeds office before
 
 const REPLY_ROOT = '60000000-0000-4000-8000-000000000099'
 
+/** A conversation other than the one on screen: a person's DM drawer, or a Threads inbox card's reply thread. */
+const ELSEWHERE: NewBriefPlace = {
+  origin: { channelId: DM_CHANNEL, kind: 'thread', rootMessageId: REPLY_ROOT, threadId: DM_THREAD },
+}
+
 /**
  * The composer's Research button, as `ChannelComposer` draws it from the same
- * hook — the conversation's, or a reply thread's (`rootMessageId`).
+ * hook — the conversation's, a reply thread's (`rootMessageId`), or one over
+ * another conversation (`ELSEWHERE`).
  */
-const ComposerStrip = ({ rootMessageId, testId }: { rootMessageId?: string; testId: string }) => {
-  const [message, setMessage] = useState(rootMessageId ? 'Compare the three quotes we got' : COMPOSER_TEXT)
-  const button = useResearchComposerButton(message, rootMessageId)
+const ComposerStrip = ({ place, testId, text = COMPOSER_TEXT }: {
+  place?: NewBriefPlace
+  testId: string
+  text?: string
+}) => {
+  const [message, setMessage] = useState(text)
+  const button = useResearchComposerButton(message, place)
   return (
     <div className="flex items-center gap-2 rounded-xl border border-[color:var(--sep)] bg-[color:var(--panel)] p-2">
       <input
@@ -295,7 +306,12 @@ const Thread = () => (
         <ResearchNoticeActions metadata={{ deepWaterNotice: { kind: 'result', runId: RUN.done, schemaVersion: 1 } }} />
       </div>
       <ComposerStrip testId="composer-research-button" />
-      <ComposerStrip rootMessageId={REPLY_ROOT} testId="reply-research-button" />
+      <ComposerStrip
+        place={{ rootMessageId: REPLY_ROOT }}
+        testId="reply-research-button"
+        text="Compare the three quotes we got"
+      />
+      <ComposerStrip place={ELSEWHERE} testId="elsewhere-research-button" text="What do tenants pay to heat a flat?" />
     </div>
   </ResearchBriefHost>
 )

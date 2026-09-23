@@ -206,7 +206,7 @@ export const ThreadReplyPanel = ({
   // Same stick-to-bottom behaviour as the channel feed: the panel opens on the
   // newest reply and follows growing rows until the reader scrolls up.
   // Research started here comes back under this reply thread's root.
-  const researchButton = useResearchComposerButton(message, openRootMessageId ?? undefined)
+  const researchButton = useResearchComposerButton(message, { rootMessageId: openRootMessageId })
   const threadScroll = useStickToBottom(openRootMessageId, true, {
     failed: repliesQuery.isFetchNextPageError,
     hasMore: Boolean(repliesQuery.hasNextPage),

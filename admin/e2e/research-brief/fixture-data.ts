@@ -19,6 +19,9 @@ export const JANA = '20000000-0000-4000-8000-000000000002'
 export const PA_AGENT = '30000000-0000-4000-8000-000000000001'
 export const CHANNEL = '40000000-0000-4000-8000-000000000001'
 export const THREAD = '40000000-0000-4000-8000-000000000002'
+export const DM_CHANNEL = '40000000-0000-4000-8000-000000000003'
+export const DM_THREAD = '40000000-0000-4000-8000-000000000004'
+export const FAILED_ROOT = '60000000-0000-4000-8000-000000000098'
 
 export const RUN = {
   agentDraft: '50000000-0000-4000-8000-000000000002',
@@ -115,6 +118,10 @@ export const listedRuns = (): DeepWaterResearchRunView[] => [
     createdAt: at(10),
     failure: { code: 'failed', message: 'DeepWater couldn’t finish this research. You can start it again.' },
     id: RUN.failed,
+    // Asked in a reply thread: Start again comes back under the same root.
+    origin: {
+      agentId: null, cardMessageId: null, channelId: CHANNEL, kind: 'person', rootMessageId: FAILED_ROOT, threadId: THREAD,
+    },
     status: 'failed',
     topic: 'Noise from air-source heat pumps in terraces',
     viewer: noViewer,

@@ -166,6 +166,40 @@ export const walkReplyThreadBrief = async (page) => {
   })
 }
 
+/** A failed research started from a reply thread starts again under that thread, with its question. */
+export const walkStartAgain = async (page) => {
+  await card(page, RUN.failed).getByRole('button', { name: 'Start again' }).click()
+  const form = page.getByTestId('research-brief-new')
+  assert.equal(await form.getByRole('textbox').first().inputValue(), 'Noise from air-source heat pumps in terraces')
+  await form.getByRole('button', { name: 'Plan with DeepWater' }).click()
+  await page.getByTestId('research-brief-replying').waitFor()
+  const created = await page.evaluate(() => window.__research.calls.find((call) =>
+    call.method === 'POST' && call.path === '/api/integrations/products/deep-water/research-runs'))
+  assert.deepEqual(created.body.origin, {
+    channelId: '40000000-0000-4000-8000-000000000001',
+    kind: 'thread',
+    rootMessageId: '60000000-0000-4000-8000-000000000098',
+    threadId: '40000000-0000-4000-8000-000000000002',
+  })
+}
+
+/** A composer over another conversation (a DM drawer, a Threads inbox card) names it; the brief comes back there. */
+export const walkBriefElsewhere = async (page) => {
+  await page.getByTestId('elsewhere-research-button').click()
+  const form = page.getByTestId('research-brief-new')
+  assert.equal(await form.getByRole('textbox').first().inputValue(), 'What do tenants pay to heat a flat?')
+  await form.getByRole('button', { name: 'Plan with DeepWater' }).click()
+  await page.getByTestId('research-brief-replying').waitFor()
+  const created = await page.evaluate(() => window.__research.calls.find((call) =>
+    call.method === 'POST' && call.path === '/api/integrations/products/deep-water/research-runs'))
+  assert.deepEqual(created.body.origin, {
+    channelId: '40000000-0000-4000-8000-000000000003',
+    kind: 'thread',
+    rootMessageId: '60000000-0000-4000-8000-000000000099',
+    threadId: '40000000-0000-4000-8000-000000000004',
+  })
+}
+
 /**
  * A reply DeepWater's planner could not answer (amendments N2): DeepWater
  * writes no transcript row for it and the action clears without an error, yet

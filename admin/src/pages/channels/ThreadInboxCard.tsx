@@ -19,6 +19,7 @@ import { ChannelMessageFeed } from '../../components/features/channels/ChannelMe
 import { buildFeedItems } from '../../components/features/channels/channel-feed'
 import { useChannelMessageActions } from '../../components/features/channels/useChannelMessageActions'
 import { OversizePasteDialog } from '../../components/shared/OversizePasteDialog'
+import { useResearchComposerButton } from '../../components/features/deep-water/useResearchComposerButton'
 import { mentionableUsers } from '../../components/features/channels/mention-invite'
 import { useChannelMentions } from './useChannelMentions'
 import { splitThreadInboxMessages } from './thread-inbox-presentation'
@@ -93,6 +94,15 @@ export const ThreadInboxCard = ({
     draftKey: replyComposerDraftKey(activity.rootMessageId),
     getSendExtras,
     threadMessages: messages,
+  })
+  // Research started from this card's composer comes back under its reply thread.
+  const researchButton = useResearchComposerButton(composer.message, {
+    origin: {
+      channelId: activity.channelId,
+      kind: 'thread',
+      rootMessageId: activity.rootMessageId,
+      threadId: activity.threadId,
+    },
   })
   const markRead = useMarkThreadRead()
   const messageActions = useChannelMessageActions(activity.threadId)
@@ -282,6 +292,7 @@ export const ThreadInboxCard = ({
             onOversizePaste={composer.setOversizePaste}
             onSubmitForm={(event) => void composer.sendMessageSubmit(event)}
             onSubmitText={(text, agentMentions) => void composer.sendText(text, agentMentions)}
+            researchButton={researchButton}
             secretCapture={composer.secretCapture}
           />
         </>

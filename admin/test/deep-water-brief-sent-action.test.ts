@@ -15,8 +15,9 @@ import {
   type BriefDraft,
   type SentBriefAction,
 } from '../src/components/features/deep-water/brief-sent-action.js'
+import { resolveBriefOrigin, startAgainPlace } from '../src/components/features/deep-water/research-brief-origin.js'
 import { briefWithRunView } from '../src/facades/deep-water/mutations.js'
-import { researchBrief, researchRun } from './deep-water-research-fixtures.js'
+import { CHANNEL, REQUESTER, THREAD, researchBrief, researchRun } from './deep-water-research-fixtures.js'
 
 /**
  * What a person's brief draft does with the action they sent (amendments-fable
@@ -199,6 +200,34 @@ test('the stored draft is revived field by field and never trusted', () => {
   const tampered = reviveBriefDraft({ message: 7, sent: { actionId: ACTION, kind: 'delete' }, unanswered: ['x'] })
   assert.deepEqual(tampered, EMPTY_BRIEF_DRAFT)
   assert.equal(reviveBriefDraft('nope'), null)
+})
+
+test('a brief comes back to the screen\'s conversation, its reply thread, or the place a doorway names', () => {
+  const screen = { channelId: CHANNEL, kind: 'thread' as const, threadId: THREAD }
+  const root = '60000000-0000-4000-8000-000000000099'
+  assert.deepEqual(resolveBriefOrigin(screen, undefined), screen)
+  assert.deepEqual(resolveBriefOrigin(screen, { rootMessageId: root }), { ...screen, rootMessageId: root })
+  assert.deepEqual(resolveBriefOrigin({ kind: 'personal' }, { rootMessageId: root }), { kind: 'personal' })
+  const drawer = { channelId: CHANNEL, kind: 'thread' as const, threadId: '40000000-0000-4000-8000-000000000009' }
+  assert.deepEqual(resolveBriefOrigin(screen, { origin: drawer }), drawer)
+  assert.equal(resolveBriefOrigin(screen, { origin: null }), null, 'a conversation still opening is nowhere yet')
+})
+
+test('Start again restarts where the research was asked, under its reply thread', () => {
+  const root = '60000000-0000-4000-8000-000000000099'
+  const run = researchRun({
+    origin: { agentId: null, cardMessageId: null, channelId: CHANNEL, kind: 'person', rootMessageId: root, threadId: THREAD },
+    requestedByUserId: REQUESTER,
+    status: 'failed',
+  })
+  assert.deepEqual(startAgainPlace(run), {
+    origin: { channelId: CHANNEL, kind: 'thread', rootMessageId: root, threadId: THREAD },
+  })
+  assert.deepEqual(startAgainPlace(researchRun({})), { origin: { channelId: CHANNEL, kind: 'thread', threadId: THREAD } })
+  const nowhere = researchRun({
+    origin: { agentId: null, cardMessageId: null, channelId: null, kind: 'person', rootMessageId: null, threadId: null },
+  })
+  assert.deepEqual(startAgainPlace(nowhere), {})
 })
 
 test('Start\'s answer shows the research starting in the brief at once, and Start no longer offered', () => {

@@ -27,6 +27,7 @@ import { channelComposerDraftKey } from './composer-draft'
 import { useChannelComposer } from './useChannelComposer'
 import { useChannelMessageActions } from './useChannelMessageActions'
 import type { AvatarSources } from '../../shared/UserAvatar'
+import { useResearchComposerButton } from '../deep-water/useResearchComposerButton'
 
 type ChannelAgentInfoDrawerProps = {
   activeChannel: ChannelRecord | null
@@ -213,6 +214,12 @@ export const ChannelAgentInfoDrawer = ({
   // Same stick-to-bottom behaviour as the channel feed: opens on the newest
   // message and follows rows that keep growing (media, thinking tickers).
   const drawerScroll = useStickToBottom(agent?.id, true, threadMessageLoader)
+  // Research started here comes back to the conversation this drawer posts to.
+  const researchButton = useResearchComposerButton(message, {
+    origin: activeChannel && activeThreadId
+      ? { channelId: activeChannel.id, kind: 'thread', threadId: activeThreadId }
+      : null,
+  })
 
   if (!agent || !activeChannel) {
     return null
@@ -401,6 +408,7 @@ export const ChannelAgentInfoDrawer = ({
             inviteErrors={inviteErrors}
             onInvitePendingAgent={(agentId) => void invitePendingAgent(agentId)}
             onDismissPendingAgent={dismissPendingAgent}
+            researchButton={researchButton}
             secretCapture={secretCapture}
           />
         </div>

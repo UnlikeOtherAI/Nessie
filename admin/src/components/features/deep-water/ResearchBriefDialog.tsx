@@ -9,6 +9,7 @@ import { Pill } from '../../primitives/Pill'
 import { Skeleton } from '../../primitives/Skeleton'
 import { Dialog } from '../../shared/Dialog'
 import { BriefWorkspace } from './BriefWorkspace'
+import type { StartAgain } from './research-brief-origin'
 import { STATUS_LABEL, STATUS_TONE, researchName } from './research-presentation'
 import { ResearchBriefNewForm } from './ResearchBriefNewForm'
 import { ResearchReadinessScreen } from './ResearchReadinessScreen'
@@ -33,7 +34,7 @@ export const ResearchBriefDialog = ({
   initialTopic: string
   onClose: () => void
   onCreated: (runId: string) => void
-  onStartAgain: (topic: string) => void
+  onStartAgain: StartAgain
   origin: DeepWaterBriefOriginRequest | null
   runId: string | null
 }) => {

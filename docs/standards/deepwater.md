@@ -473,10 +473,15 @@ question.
   choose" hands one back), the planner's assessment with its suggested depth,
   the person-only "Publish on research.deepwater.live" switch (off by default)
   and Start, pinned to the foot of the dialog. `ResearchBriefHost` mounts it on
-  a conversation (origin: that thread) and on Knowledge › Research (origin: the
-  person's Personal Assistant conversation) and owns `?research=<runId>`, which
-  is declared linkable state on the conversation routes and Knowledge views; a
-  question a doorway hands over travels in router state, never in the address.
+  a conversation (origin: that thread), on the Threads inbox (no origin of its
+  own: each card's composer names its reply thread) and on Knowledge › Research
+  (origin: the person's Personal Assistant conversation) and owns
+  `?research=<runId>`, which is declared linkable state on the conversation and
+  reply-thread routes, the Threads inbox and the Knowledge views; a question a
+  doorway hands over travels in router state, never in the address. A doorway
+  over another conversation than the screen's names that conversation
+  (`NewBriefPlace`, `research-brief-origin.ts`), and "Start again" restarts a
+  research where it was asked, reply thread included.
 - **Edits are local until they ride on an action** (contract D4,
   amendments-fable F8). A setting is sent only when it differs from what
   DeepWater holds, because every key sent is a lock; pillars ride as a whole
@@ -492,9 +497,11 @@ question.
   it; a finished research offers Retry import only where `canRetryDelivery`
   says so. A brief whose sign-in no longer resolves shows "Sign in again to
   continue this brief" (F4).
-- **The composer's Research button is always there** — the conversation's, and
-  a reply thread's, whose brief carries the thread's `rootMessageId` so the
-  research card and its result land under that root. When the viewer cannot
+- **Every composer's Research button is always there** — the conversation's; a
+  reply thread's and a Threads inbox card's, whose brief carries the thread's
+  `rootMessageId` so the research card and its result land under that root; and
+  the agent and person drawers', whose brief comes back to the conversation that
+  drawer posts to. When the viewer cannot
   start research it says why in its label and opens `ResearchReadinessScreen`
   instead of a brief: an owner or admin is sent to `/apps/deep-water` to turn
   DeepWater on or update it, anyone else is told who can, and an unlinked

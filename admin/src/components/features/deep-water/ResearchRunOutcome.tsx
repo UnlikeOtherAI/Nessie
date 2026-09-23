@@ -11,6 +11,7 @@ import {
   sourcesLabel,
 } from './research-presentation'
 import { ResearchArtifactActions } from './ResearchArtifactActions'
+import { startAgainPlace, type StartAgain } from './research-brief-origin'
 import { useIntentActionId } from './useIntentActionId'
 
 /**
@@ -37,8 +38,11 @@ export const ResearchRunOutcome = ({
    */
   actionsOnly?: boolean
   meUserId: string | null
-  /** A new brief pre-filled with this research's question; null where none can open. */
-  onStartAgain: ((topic: string) => void) | null
+  /**
+   * A new brief pre-filled with this research's question, coming back where
+   * it was asked (its reply thread included); null where none can open.
+   */
+  onStartAgain: StartAgain | null
   run: DeepWaterResearchRunView
 }) => {
   const retry = useRetryResearchDelivery()
@@ -121,7 +125,7 @@ export const ResearchRunOutcome = ({
         <div>
           <button
             className="admin-button admin-button-secondary admin-button-compact"
-            onClick={() => onStartAgain(run.topic)}
+            onClick={() => onStartAgain(run.topic, startAgainPlace(run))}
             type="button"
           >
             Start again

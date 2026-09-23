@@ -70,8 +70,9 @@ registry row lists what its route reads beyond the path under `intent`
   `view`, `filter`, `scope`, `status`, `search`, `query`, `mode`, `parentId`,
   `executorId`, `accessChange`, `promotion`, `research`, …). They stay in the
   URL and read through `useTabParam` (§1) or `useSearchParams`, written with
-  `replace`. `?research=<runId>` is the DeepWater brief a conversation or a
-  Knowledge view shows over itself (`ResearchBriefHost`); the question a new
+  `replace`. `?research=<runId>` is the DeepWater brief a conversation, a
+  reply thread, the Threads inbox or a Knowledge view shows over itself
+  (`ResearchBriefHost`); the question a new
   brief starts from travels in router state instead, never in the address.
   A project ticket uses `?task=` this way: the project host re-reads the
   entitled ticket, chooses its current board and opens the board's existing
