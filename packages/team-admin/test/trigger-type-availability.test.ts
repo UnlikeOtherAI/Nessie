@@ -11,6 +11,8 @@ import {
   RELEASED_TRIGGER_TYPES,
   UNRELEASED_TRIGGER_TYPES,
   unreleasedTriggerTypeRefusal,
+  WORKFLOW_TRIGGER_TYPES,
+  workflowTriggerTypeRefusal,
 } from '../src/trigger-type-availability.js'
 import { createWorkflowTrigger } from '../src/workflow-trigger-create.js'
 
@@ -18,8 +20,13 @@ import { createWorkflowTrigger } from '../src/workflow-trigger-create.js'
  * `ticket_changed` and `document_changed` are in the enum before anything may
  * create one (Rule zero: nothing half-exposed). These pin the refusal at the
  * service floor, where no surface can route around it, and that no tool
- * definition a model reads offers either type.
+ * definition a model reads offers either type. Workflows are gated by their
+ * own permanent allowlist, so releasing a type for agents never opens it for a
+ * workflow installation.
  */
+
+/** The two types that wake an agent's ticket or document work. */
+const AGENT_ONLY_TYPES = ['ticket_changed', 'document_changed']
 
 /** A client that fails the test the moment anything reads or writes. */
 const untouchable = new Proxy({}, {
@@ -63,21 +70,44 @@ test('createAgentTrigger refuses each unreleased type before touching the databa
   }
 })
 
-test('createWorkflowTrigger refuses each unreleased type before touching the database', async () => {
-  for (const type of UNRELEASED_TRIGGER_TYPES) {
-    assert.equal(await createWorkflowTrigger(untouchable, randomUUID(), { type }), null, `${type} is refused`)
+test('a workflow may be started only by the five general types, released or not', () => {
+  assert.deepEqual([...WORKFLOW_TRIGGER_TYPES], ['manual', 'scheduled', 'webhook', 'event', 'interval'])
+  for (const type of AgentTriggerTypeSchema.options) {
+    const agentOnly = AGENT_ONLY_TYPES.includes(type)
+    assert.equal(WORKFLOW_TRIGGER_TYPES.includes(type), !agentOnly, type)
+    assert.equal(
+      workflowTriggerTypeRefusal(type),
+      agentOnly
+        ? `${type} triggers start an agent's work, not a workflow. Use one of: manual, scheduled, webhook, event, interval.`
+        : null,
+    )
   }
 })
 
-test('no trigger-creating tool offers an unreleased type to a model', () => {
-  const definitions = new Map(BUILTIN_TOOL_DEFINITIONS.map((definition) => [definition.id, definition]))
-  for (const id of ['agent_trigger_create', 'workflow_trigger_create']) {
-    const type = definitions.get(id)?.parameters.properties?.['type'] as { enum?: unknown[] } | undefined
-    assert.ok(type?.enum, `${id} declares a type enum`)
-    assert.deepEqual(
-      [...type.enum].sort(),
-      [...RELEASED_TRIGGER_TYPES].sort(),
-      `${id} offers exactly the released types`,
-    )
+test('createWorkflowTrigger refuses each agent-only type before touching the database', async () => {
+  for (const type of AGENT_ONLY_TYPES) {
+    const parsed = AgentTriggerTypeSchema.parse(type)
+    assert.equal(await createWorkflowTrigger(untouchable, randomUUID(), { type: parsed }), null, `${type} is refused`)
   }
+})
+
+/** The `type` enum a builtin tool definition offers a model. */
+const offeredTypes = (id: string): unknown[] => {
+  const definition = BUILTIN_TOOL_DEFINITIONS.find((candidate) => candidate.id === id)
+  const type = definition?.parameters.properties?.['type'] as { enum?: unknown[] } | undefined
+  assert.ok(type?.enum, `${id} declares a type enum`)
+  return [...type.enum].sort()
+}
+
+test('no trigger-creating tool offers a type its surface refuses', () => {
+  assert.deepEqual(
+    offeredTypes('agent_trigger_create'),
+    [...RELEASED_TRIGGER_TYPES].sort(),
+    'agent_trigger_create offers exactly the released types',
+  )
+  assert.deepEqual(
+    offeredTypes('workflow_trigger_create'),
+    [...WORKFLOW_TRIGGER_TYPES].sort(),
+    'workflow_trigger_create offers exactly the workflow types',
+  )
 })

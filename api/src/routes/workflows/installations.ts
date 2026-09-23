@@ -1,7 +1,7 @@
 import {
   auditWorkflowMutation,
-  unreleasedTriggerTypeRefusal,
   WorkflowRunOverlapError,
+  workflowTriggerTypeRefusal,
 } from '@nessie/team-admin'
 import type { FastifyInstance } from 'fastify'
 
@@ -432,9 +432,9 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
     if (!body) {
       return reply
     }
-    const unreleased = unreleasedTriggerTypeRefusal(body.type)
-    if (unreleased) {
-      sendApiError(reply, 400, 'TRIGGER_TYPE_UNAVAILABLE', unreleased)
+    const agentOnly = workflowTriggerTypeRefusal(body.type)
+    if (agentOnly) {
+      sendApiError(reply, 400, 'TRIGGER_TYPE_UNAVAILABLE', agentOnly)
       return reply
     }
 
