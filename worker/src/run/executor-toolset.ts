@@ -16,6 +16,7 @@ import {
   ExecutorUnknownOutcomeError,
 } from './executor-command-timing.js'
 import { isCorrectableExecutorFailure } from './executor-correctable-failures.js'
+import { HOST_OUTPUT_OPERATION_KEYS, type ExecutorHostOutputDisclosure } from './executor-host-output.js'
 import { createExecutorMcpCatalogs, type ExecutorMcpCatalogAnswer } from './executor-mcp-catalog.js'
 import { descriptorFor, executorToolName } from './executor-tool-descriptors.js'
 import { shapeExecutorToolArguments } from './executor-tool-arguments.js'
@@ -80,6 +81,12 @@ export const buildExecutorToolset = async (
     agentToolPolicy: Record<string, boolean> | null
     agentId: string
     encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput | undefined
+    /**
+     * Where a local program's output may be shown (`executor-host-output.ts`).
+     * Required so every caller decides: null only for a caller that is not a
+     * person's launch in a conversation, and that caller says why.
+     */
+    hostOutput: ExecutorHostOutputDisclosure | null
     organizationId: string
     runId: string
   },
@@ -219,6 +226,21 @@ export const buildExecutorToolset = async (
     }]
   }).sort((left, right) => compareToolName(left.toolName, right.toolName))
   const entryByName = new Map(entries.map((entry) => [entry.toolName, entry]))
+  const recordHostOutput = (): void => {
+    if (input.hostOutput) input.hostOutput.sink.add(input.hostOutput.launchScope)
+  }
+  // A run resumed after its worker died replays the program answers it already
+  // had into its window, so a call an earlier execution made on the pair
+  // counts as read before this one calls anything.
+  const hostOutputBindingIds = bindings
+    .filter((binding) => HOST_OUTPUT_OPERATION_KEYS.has(binding.operationKey))
+    .map((binding) => binding.id)
+  if (input.hostOutput && hostOutputBindingIds.length > 0) {
+    const earlier = await prisma.toolCall.count({
+      where: { executorBindingId: { in: hostOutputBindingIds }, runId: input.runId },
+    })
+    if (earlier > 0) recordHostOutput()
+  }
   const catalogs = createExecutorMcpCatalogs({
     endPage: async (toolCallRecordId, result, durationMs) => {
       await prisma.toolCall.updateMany({
@@ -241,6 +263,9 @@ export const buildExecutorToolset = async (
       modelArgs,
       catalogs.inputSchemaOf,
     )
+    // Before the command exists: whatever the program answers, a failure
+    // included, is its output, and a catalog page is as much a read as a call.
+    if (HOST_OUTPUT_OPERATION_KEYS.has(entry.operationKey)) recordHostOutput()
     const startedAt = new Date()
     const commandId = randomUUID()
     const created = await prisma.$transaction(async (tx) => {

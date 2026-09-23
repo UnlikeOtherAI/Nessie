@@ -89,6 +89,24 @@ shaped afterwards, on the agent loop's authorized-tool path only
 
 The `mcp.tools` listing and a tool's schema are framed the same way.
 
+## Program output is the launch conversation's
+
+A named program answers from the person's own machine, so its output is not
+public web and enters the disclosure basis like any privileged read.
+Launching local apps in a conversation is the person's consent to show that
+machine's program output to that conversation's audience, and nowhere else:
+every `mcp.tools` and `mcp.call` dispatch stamps the run's sink with the
+launch conversation's scope before its command is sent — today the run's own
+channel, stamped even when the channel is public
+(`worker/src/run/executor-host-output.ts`). Replies into that conversation
+are unaffected; a ticket or board write is allowed only into the project
+whose public channel the launch was made in; everything else is contained by
+the basis. The full rule, its consequences and its one known gap are in
+[disclosure-boundaries.md](disclosure-boundaries.md) → "Host program output
+is the launch conversation's". `buildExecutorToolset` takes the scope as a
+required `hostOutput`, so a caller has to decide: Task Set search passes
+`null` and says why.
+
 ## A result the lane cannot carry is stated, never retried
 
 The daemon measures an `mcp.call` result as the exact document it returns —
@@ -301,3 +319,7 @@ the same lane through real queued, encrypted commands and receipts
 (`DATABASE_URL=… pnpm --filter @nessie/worker test:db`): the enum from the
 bound revision, one command and one ended ToolCall per catalog page, and the
 shaped arguments in the payload the daemon receives.
+`worker/test/db/executor-host-output-disclosure.test.ts` drives the same lane
+(`executor-lane-fixture.ts`) into real ticket tools: a program answer read in
+a public project channel reaches that project's board, one read in a
+protected channel or bound for another project's board is refused.

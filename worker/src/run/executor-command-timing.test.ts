@@ -74,6 +74,7 @@ test('the toolset times its own tools by their command and answers nothing for o
     agentId: '00000000-0000-4000-8000-000000000002',
     agentToolPolicy: { 'executor.mcp.call': true, 'executor.mcp.tools': true },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId: '00000000-0000-4000-8000-000000000001',
     runId: '00000000-0000-4000-8000-000000000003',
   })
@@ -96,6 +97,7 @@ test('a run with no executor transport times nothing as an executor tool', async
     agentId: '00000000-0000-4000-8000-000000000002',
     agentToolPolicy: null,
     encryptionSecret: undefined,
+    hostOutput: null,
     organizationId: '00000000-0000-4000-8000-000000000001',
     runId: '00000000-0000-4000-8000-000000000003',
   })

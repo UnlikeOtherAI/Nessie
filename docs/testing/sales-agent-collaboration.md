@@ -196,6 +196,9 @@ showed successful reads of all three records and the default General board.
 `ticket_board_create` then failed with **I cannot copy restricted research into
 this shared project**. The channel-scoped MCP source does not authorize copying
 its results into the wider project audience; this denial must remain enforced.
+`worker/test/db/executor-host-output-disclosure.test.ts` pins it: research
+read in a protected planning channel is refused on that channel's own project
+board, with or without host program output from a public channel beside it.
 The intended sales project still needs its proper team/channel relationship and
 a connector audience consistent with the board destination.
 

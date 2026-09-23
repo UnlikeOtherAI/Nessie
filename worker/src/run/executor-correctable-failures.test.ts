@@ -74,6 +74,7 @@ test('a tool name the executor toolset does not offer is a correctable failure',
     agentId: '00000000-0000-4000-8000-000000000002',
     agentToolPolicy: {},
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId: '00000000-0000-4000-8000-000000000001',
     runId: '00000000-0000-4000-8000-000000000003',
   })

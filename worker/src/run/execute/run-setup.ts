@@ -13,6 +13,7 @@ import {
 } from '@nessie/runtime'
 import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
+import { launchConversationScope } from '../executor-host-output.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
@@ -329,6 +330,11 @@ export const prepareRunExecution = async (
       agentId: context.agent.id,
       agentToolPolicy: toolPolicy,
       encryptionSecret: deps.executorCommandEncryptionSecret,
+      // A person launches local apps for this run in its own conversation.
+      hostOutput: {
+        launchScope: launchConversationScope(context.channel.id),
+        sink: context.consumedSources,
+      },
       organizationId: context.channel.organizationId,
       runId: context.run.id,
     }),

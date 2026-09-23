@@ -29,6 +29,7 @@ test('only operations already bound to this run and explicitly granted to its ag
     agentId,
     agentToolPolicy: { 'executor.sandbox.stop': true },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -80,6 +81,7 @@ test('the bounded backend exposes only an exact session-bound browser bundle and
       'executor.sandbox.stop': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -157,6 +159,7 @@ test('browser operations are withheld when their session bundle is incomplete or
       'executor.sandbox.stop': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -207,6 +210,7 @@ test('a stopped browser session exposes no residual browser or stop tool', async
       'executor.sandbox.stop': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -245,6 +249,7 @@ test('a connected browser session cannot surface through the isolated browser bu
       'executor.sandbox.stop': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -280,6 +285,7 @@ test('command operations require their isolated review-and-stop bundle and an ex
       'executor.workspace.review': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -295,6 +301,7 @@ test('command operations require their isolated review-and-stop bundle and an ex
       'executor.workspace.review': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -337,6 +344,7 @@ test('the bounded backend exposes coding only through its exact session bundle',
       'executor.workspace.review': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -389,6 +397,7 @@ test('coding operations are withheld when their session is mixed with another ex
       'executor.workspace.review': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -427,6 +436,7 @@ test('an exited coding session keeps review and teardown but cannot relaunch Cod
       'executor.workspace.review': true,
     },
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -460,6 +470,7 @@ test('the local-apps tools offer exactly the programs the bound revision names',
     agentId,
     agentToolPolicy: localAppsPolicy,
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })
@@ -477,6 +488,7 @@ test('a bound revision that names no program offers no local-apps tool', async (
       agentId,
       agentToolPolicy: localAppsPolicy,
       encryptionSecret: 'test-secret',
+      hostOutput: null,
       organizationId,
       runId,
     })
@@ -491,6 +503,7 @@ test('the catalog of a program the revision does not name is refused without a c
     agentId,
     agentToolPolicy: localAppsPolicy,
     encryptionSecret: 'test-secret',
+    hostOutput: null,
     organizationId,
     runId,
   })

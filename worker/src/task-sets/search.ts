@@ -74,6 +74,10 @@ export const buildTaskSetSearchTools = async (
   const toolset = await buildExecutorToolset(deps.prisma, {
     agentId: context.agent.id, agentToolPolicy: agent.toolPolicy as Record<string, boolean> | null,
     encryptionSecret: deps.executorCommandEncryptionSecret,
+    // Not a person's launch in a conversation: the set binds its own
+    // `ollama-search` for public-web research through its owner's account,
+    // and every result travels under the set's own classified disclosure.
+    hostOutput: null,
     organizationId: claim.set.organizationId, runId: claim.attempt.runId,
   })
   if (!toolset.handledNames.has(executorToolName('mcp.tools')) || !toolset.handledNames.has(executorToolName('mcp.call'))) {
