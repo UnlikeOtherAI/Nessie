@@ -69,7 +69,12 @@ withBriefApi('a person\'s brief is theirs alone until it launches', async (fixtu
   assert.equal((await fixture.request('GET', `${RUNS}/${runId}`)).statusCode, 404)
   assert.equal((await fixture.request('GET', `${RUNS}/${runId}/brief`)).statusCode, 404)
 
-  await fixture.prisma.productIntegrationRun.update({ where: { id: runId }, data: { status: 'running' } })
+  // Launched as the projection writes it: the status and `launched_at`, the
+  // fact the viewer predicate reads (`isDeepWaterPersonBriefUnlaunched`).
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: runId },
+    data: { status: 'running', launchedAt: new Date() },
+  })
   const launched = await fixture.request('GET', `${RUNS}/${runId}`)
   assert.equal(launched.statusCode, 200)
   assert.equal(launched.body.data?.status, 'running')

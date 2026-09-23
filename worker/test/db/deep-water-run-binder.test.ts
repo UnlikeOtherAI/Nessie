@@ -206,26 +206,42 @@ withBinderFixture('a research list feeds what each listed run was built from, an
   assert.deepEqual(fixture.sink.privateConversationSources(), [author])
 })
 
-withBinderFixture('a launch Ledger refused after a read saw it starting goes back to drafting, and the agent is told', async (fixture) => {
+withBinderFixture('a launch Ledger refused stays or goes back to drafting, and the agent is told', async (fixture) => {
   const rs = researchId()
   fixture.answer(wireScope({ id: rs, revision: 1, turn: { id: randomUUID(), seq: 1, status: 'complete', author_kind: 'agent' } }))
   await fixture.binder.dispatch('research_scope_start', 'call_open', scopeArgs, fixture.send)
   const [run] = await agentRuns(fixture)
   assert.ok(run)
   // While the launch was at Ledger, a watch read saw the research starting.
+  // A bare `running` is no proof of launch (`statusStepForLedger`), so the
+  // brief stays being agreed.
   fixture.onSend(async () => {
     await fixture.attach(run.id, LedgerScopeResultSchema.parse(wireScope({ id: rs, status: 'starting', revision: 1 })))
-    assert.equal((await fixture.read(run.id)).status, 'running')
+    assert.equal((await fixture.read(run.id)).status, 'drafting')
   })
   fixture.answer({ error: 'scope_revision_conflict', status_code: 409, current_revision: 2 }, false)
-  const announced = fixture.realtime.published.length
 
   const refused = await fixture.binder.dispatch('research_scope_launch', 'call_launch', { id: rs, revision: 1 }, fixture.send)
 
   assert.equal(refused.result.success, false)
   assert.match(refused.result.output, /scope_revision_conflict/, 'the agent reads Ledger\'s own refusal')
   assert.match(refused.result.output, /did not start this research/)
-  const stored = await fixture.read(run.id)
+  let stored = await fixture.read(run.id)
+  assert.equal(stored.status, 'drafting')
+  assert.equal(stored.launchedAt, null)
+
+  // A run an earlier build moved to `running` on a bare read is put back when
+  // Ledger refuses the launch, and viewers are told.
+  fixture.onSend(null)
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: run.id },
+    data: { status: 'running', launchedAt: new Date() },
+  })
+  fixture.answer({ error: 'scope_revision_conflict', status_code: 409, current_revision: 2 }, false)
+  const announced = fixture.realtime.published.length
+  const reverted = await fixture.binder.dispatch('research_scope_launch', 'call_launch_legacy', { id: rs, revision: 1 }, fixture.send)
+  assert.match(reverted.result.output, /did not start this research/)
+  stored = await fixture.read(run.id)
   assert.equal(stored.status, 'drafting')
   assert.equal(stored.launchedAt, null)
   assert.ok(
@@ -233,9 +249,12 @@ withBinderFixture('a launch Ledger refused after a read saw it starting goes bac
     'viewers are told the research is being agreed again',
   )
 
-  // A refusal that is not Ledger putting the brief back leaves the run where the reads put it.
+  // A refusal that is not Ledger putting the brief back leaves the run where
+  // the reads put it: here a read that proved the launch.
   fixture.onSend(async () => {
-    await fixture.attach(run.id, LedgerScopeResultSchema.parse(wireScope({ id: rs, status: 'running', revision: 2 })))
+    await fixture.attach(run.id, LedgerScopeResultSchema.parse(
+      wireScope({ id: rs, status: 'running', revision: 2, briefState: 'launched' }),
+    ))
   })
   fixture.answer({ error: 'not_drafting', status_code: 409 }, false)
   const late = await fixture.binder.dispatch('research_scope_launch', 'call_again', { id: rs, revision: 2 }, fixture.send)

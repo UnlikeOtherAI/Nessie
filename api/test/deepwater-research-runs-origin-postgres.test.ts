@@ -114,7 +114,10 @@ withBriefApi('only the requester retries a blocked delivery, once per actionId',
   const deliver = (actionId: string = randomUUID()) =>
     fixture.request('POST', `${RUNS}/${runId}/deliver`, { actionId })
 
-  await fixture.prisma.productIntegrationRun.update({ where: { id: runId }, data: { status: 'running' } })
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: runId },
+    data: { status: 'running', launchedAt: new Date() },
+  })
   const unblocked = await deliver()
   assert.equal(unblocked.statusCode, 409)
   assert.equal(unblocked.body.error?.code, 'DEEP_WATER_DELIVERY_NOT_BLOCKED')
