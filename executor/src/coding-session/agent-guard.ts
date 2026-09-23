@@ -22,8 +22,11 @@ import type { CodingProcessIdentity } from './types.js'
  * agent's pid and start time back on that pipe, and only then relays stdin,
  * stdout and stderr. When the pipe closes the host is gone, however it went:
  * the guard kills the agent's group and tree — SIGTERM, then SIGKILL three
- * seconds later on POSIX, `taskkill /F` pid by pid on Windows, each checked
- * by its start time as every kill is — and exits.
+ * seconds later on POSIX, pid by pid on Windows, each checked by its start
+ * time as every kill is — and exits. On Windows that kill is a PowerShell the
+ * guard starts as soon as the agent has an identity and holds ready (it
+ * exits with the guard), because a cold one took most of the five seconds on
+ * a loaded machine.
  *
  * Otherwise it is transparent. The recorded identity is the agent's own, so
  * every kill the host makes reaches the agent as before and never the guard;
@@ -151,7 +154,8 @@ export const runCodingAgentGuard = async (): Promise<void> => {
   if (!send) throw new Error(AGENT_GUARD_USAGE)
   const control = createCodingProcessControl(process.platform, { termGraceMs: HOST_GONE_GRACE_MS })
   let agent: ChildProcess | undefined
-  let identity: CodingProcessIdentity | undefined
+  /** Kills the identified agent's tree; unset until the agent has a start time. */
+  let kill: (() => Promise<void>) | undefined
   let hostGone = false
   for (const stream of [process.stdin, process.stdout, process.stderr]) stream.on('error', () => undefined)
 
@@ -159,7 +163,7 @@ export const runCodingAgentGuard = async (): Promise<void> => {
   process.once('disconnect', () => {
     hostGone = true
     void (async () => {
-      if (identity) await control.killTree(identity).catch(() => undefined)
+      if (kill) await kill().catch(() => undefined)
       else agent?.kill('SIGKILL')
       process.exit(1)
     })()
@@ -215,7 +219,8 @@ export const runCodingAgentGuard = async (): Promise<void> => {
   // An agent with no start time could never be told from whatever inherits its pid, so it does not keep running.
   const unidentified = !found && !agentExited
   if (found) {
-    identity = found
+    // Made ready before the host can die: a dead host's agent has five seconds, and a cold kill can take most of them.
+    kill = control.standbyKill?.(found) ?? (() => control.killTree(found))
     send({ kind: 'agent', pid: found.pid, startedAt: found.startedAt }, () => undefined)
   } else if (unidentified) {
     child.kill('SIGKILL')

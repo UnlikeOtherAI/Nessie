@@ -73,14 +73,13 @@ const describeTree = createCodingProcessControl(process.platform, {})
  * below describe and each member is checked by its start time right before
  * its own signal: pid by pid on Windows, never `taskkill /T`, which follows
  * parent ids that a reused pid makes somebody else's; describe's own process
- * group and its descendants on POSIX, SIGTERM and then SIGKILL. A describe
- * whose start time cannot be read is still this process's own child, so its
- * handle ends it, and only it.
+ * group and its descendants on POSIX, SIGTERM and then SIGKILL. Describe is
+ * this process's own unreaped child, so its start time comes from the same
+ * table as its tree, in one read. A describe whose start time cannot be read
+ * is still that child, so its handle ends it, and only it.
  */
 const stopDescribeTree = async (child: ChildProcess): Promise<void> => {
-  const identity = child.pid === undefined ? undefined : await describeTree.identify(child.pid)
-  if (identity) await describeTree.killTree(identity)
-  else child.kill()
+  if (!await describeTree.killChildTree(child)) child.kill()
 }
 
 /**

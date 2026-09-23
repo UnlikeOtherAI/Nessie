@@ -229,6 +229,17 @@ A heavily loaded machine slows the coding-session bridge suite down. It
 passed in 86 s when run alone. With another worktree's full suite running
 beside it, it took 220 s and two of its 30 s status waits ran out.
 
+The same load broke two teardown bounds until the Windows kill changed. The
+agent guard's stand-in host test must see the agent and its grandchild gone
+within 5 s, and it failed in two of three full runs. A Kelpie describe
+stopped for its budget must answer within 10 s, and it failed in one. The
+kill then cost two PowerShell
+table reads and a `taskkill` per process, and under load one table read
+took 1–3.5 s. Now a kill is one PowerShell. The guard starts its kill's
+PowerShell as soon as its agent has an identity, and a describe's start time
+comes from the same table as its tree. In the full suite the guard's kill
+now takes 0.5–0.8 s, where it took 1.5–2.1 s cold.
+
 ## Discovered versus executed coverage
 
 | Capability | Status |

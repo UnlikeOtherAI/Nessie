@@ -373,10 +373,12 @@ failure to `handshake_failed`; the fix and the test that pins it are in
   reason now costs only that server's inventory (`local-mcp-report.ts`). A
   describe stopped for its budget or an oversized answer is stopped as a
   whole tree before detection answers, with the coding-session host's
-  identity-checked `killTree` (`coding-session/process-control.ts`): pid by
-  pid on Windows, each member checked by its start time and never through
-  `taskkill /T`, and describe's own process group on POSIX, where it leads
-  one. A shim's `cmd.exe` killed on its own left the Kelpie under it running,
+  identity-checked kill (`killChildTree` in
+  `coding-session/process-control.ts`): pid by pid on Windows, each member
+  checked by its start time and never through `taskkill /T`, and describe's
+  own process group on POSIX, where it leads one. Describe is detection's own
+  unreaped child, so its start time comes from the same table read as its
+  tree: one PowerShell on Windows, not an `identify` and then a kill. A shim's `cmd.exe` killed on its own left the Kelpie under it running,
   one more orphan per sweep, and a process Kelpie itself started outlived a
   kill of Kelpie on every OS.
 - **A Kelpie whose mDNS browse failed reports absence, not an empty network.**
