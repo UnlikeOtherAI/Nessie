@@ -23,6 +23,7 @@ import {
 } from '@nessie/team-admin'
 
 import type { DeepWaterAnnouncements } from './deepwater-announce.js'
+import { noticePushBody } from './deepwater-copy.js'
 
 /**
  * The messages DeepWater writes into the thread a research belongs to: the
@@ -154,14 +155,16 @@ const pushSnippet = (content: string): string =>
 
 /**
  * Ring the person a notice is addressed to (amendments N3 B.4), queued in the
- * notice's own transaction so neither commits alone. The dispatcher rechecks
- * their access, preferences and devices; a notice built from sources the room
- * does not imply says only that something is ready.
+ * notice's own transaction so neither commits alone, framed as a mention of
+ * them. The dispatcher rechecks their access, preferences and devices; a
+ * notice built from sources the room does not imply says only what kind of
+ * news it is (`noticePushBody`), still as a mention.
  */
 const enqueueNoticePush = async (
   tx: Tx,
   input: {
     run: DeepWaterBriefRun
+    kind: DeepWaterNoticeKind
     messageId: string
     channelId: string
     threadId: string
@@ -178,7 +181,7 @@ const enqueueNoticePush = async (
       authorName: 'DeepWater',
       channelId: input.channelId,
       contentSnippet: pushSnippet(input.content),
-      ...(input.restricted ? { contentVisibility: 'generic' } : {}),
+      ...(input.restricted ? { contentVisibility: 'generic', genericBody: noticePushBody(input.kind) } : {}),
       mentionUserIds: input.recipientUserIds,
       messageId: input.messageId,
       organizationId: input.run.organizationId,
@@ -302,6 +305,7 @@ export const postDeepWaterNotice = async (
   const restricted = basis.length > 0 || run.disclosureSources.length > 0
   await enqueueNoticePush(tx, {
     run,
+    kind: input.kind,
     messageId: message.id,
     channelId: target.channelId,
     threadId: target.threadId,

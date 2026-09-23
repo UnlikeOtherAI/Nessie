@@ -142,6 +142,31 @@ withFixture('a finished research comes back as one result reply under the card, 
   assert.ok(runEvents.some((event) => event.scopes.some((scope) => scope.kind === 'channel' && scope.channelId === fixture.ids.channel)))
 })
 
+withFixture('a result drawn on a private conversation rings its requester as a mention, without its words', async (fixture) => {
+  const { run, rs } = await launched(fixture)
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: run.id },
+    data: {
+      sourceScopes: [{ scopeType: 'channel', scopeId: fixture.ids.assistantChannel }],
+      disclosureSources: [{ sourceChannelId: fixture.ids.assistantChannel, sourceAuthorUserId: fixture.ids.requester }],
+    },
+  })
+  fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })
+  fixture.ledger.answer('research_report', report)
+  await watch(fixture, run.id)
+
+  const [reply] = await notices(fixture, run.id)
+  assert.equal(reply?.kind, 'result')
+  const [job] = await fixture.prisma.queueJob.findMany({
+    where: { topic: 'push.dispatch', payload: { path: ['messageId'], equals: reply?.id ?? '' } },
+  })
+  const push = PushDispatchJobPayloadSchema.parse(job?.payload)
+  assert.equal(push.contentVisibility, 'generic')
+  assert.equal(push.genericBody, 'Your DeepWater research has finished.')
+  assert.deepEqual(push.mentionUserIds, [fixture.ids.requester], 'still a mention of the person it is for')
+  assert.deepEqual(push.recipientUserIds, [fixture.ids.requester])
+})
+
 withFixture('a realtime outage never undoes a delivery: the rows are the record', async (fixture) => {
   const { run, rs } = await launched(fixture)
   fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })

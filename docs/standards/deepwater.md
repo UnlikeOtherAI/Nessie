@@ -521,9 +521,13 @@ the only way results come back.
   A publish failure is logged and never undoes the change; nothing polls.
   Every result and notice also queues one `push.dispatch` job in its own
   transaction, keyed `push:<messageId>`, addressed to the requester alone and
-  framed as a mention by DeepWater (`generic` when the notice carries a
-  disclosure basis); the dispatcher rechecks their access, preferences and
-  devices, and rings them in an open room they read without joining.
+  framed as a mention by DeepWater, so their mention preference applies; the
+  dispatcher rechecks their access, preferences and devices, and rings them in
+  an open room they read without joining. A notice that carries a disclosure
+  basis is `generic`: it stays a mention, but the lock screen shows only
+  `genericBody`, DeepWater's words for the kind of news (`noticePushBody`:
+  "Your DeepWater research has finished."), never the topic or the agent-reply
+  wording.
 - **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
   confirmed within a day (`failed/start_unconfirmed`), telling the agent once
   (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,

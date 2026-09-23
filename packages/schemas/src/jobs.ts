@@ -127,11 +127,13 @@ export type OrchestrateDecideJobPayload = z.infer<typeof OrchestrateDecideJobPay
  * agent as a user author and accidentally excluding that person. Ids are plain
  * uuids (not branded) so the worker can use them directly against Prisma.
  * `contentSnippet` is the already-truncated notification body. A generic reply
- * body intentionally replaces it at delivery time when the reply drew on
- * restricted sources; live entitlement is rechecked then. `mentionUserIds`
- * carries the resolved @mention user ids. All recipients see the durable
- * sender as the title and the channel as the destination subtitle; the alert
- * and preference paths retain the distinct mention semantics.
+ * body (`genericBody`, or the agent-reply wording) intentionally replaces it
+ * at delivery time when the reply drew on restricted sources; live
+ * entitlement is rechecked then. `mentionUserIds` carries the resolved
+ * @mention user ids, and an addressed mention keeps its framing even when its
+ * content is withheld. All recipients see the durable sender as the title and
+ * the channel as the destination subtitle; the alert and preference paths
+ * retain the distinct mention semantics.
  *
  * Every enqueue carries a deterministic idempotency key — `push:<messageId>`
  * from the api, `push:reply:<runId>` from a run's interactive reply — and the
@@ -158,6 +160,12 @@ export const PushDispatchJobPayloadSchema = z.object({
    * it sends even that generic notification.
    */
   contentVisibility: z.enum(['full', 'generic']).optional(),
+  /**
+   * What a generic notification says in place of its content, when the
+   * sender is not an agent reply (a DeepWater notice says its research has
+   * news). It names no content either; absent means the agent-reply wording.
+   */
+  genericBody: z.string().trim().min(1).max(140).optional(),
   mentionUserIds: z.array(z.string().uuid()),
 }).superRefine((payload, context) => {
   if (payload.authorUserId === undefined && payload.recipientUserIds === undefined) {
@@ -170,6 +178,13 @@ export const PushDispatchJobPayloadSchema = z.object({
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'A generic reply notification needs explicit recipients.',
+    })
+  }
+  if (payload.genericBody !== undefined && payload.contentVisibility !== 'generic') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Only a generic notification replaces its content.',
+      path: ['genericBody'],
     })
   }
 })

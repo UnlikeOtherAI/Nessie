@@ -214,7 +214,10 @@ export const handlePushDispatch = async (
     ?? replyMessage?.agent?.name
     ?? replyMessage?.user?.displayName
     ?? 'Nessie'
-  const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
+  // A mention keeps its framing — and its preference class — when its content
+  // is withheld: the framing says who it is for, never what it says, and the
+  // recipient set above already holds only people the message addresses.
+  const mentionUserIds = new Set(payload.mentionUserIds)
   const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
@@ -233,7 +236,7 @@ export const handlePushDispatch = async (
     title: authorName,
     subtitle,
     body: protectedReply
-      ? genericReplyBody
+      ? payload.genericBody ?? genericReplyBody
       : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
     data: {
       channelId: payload.channelId,

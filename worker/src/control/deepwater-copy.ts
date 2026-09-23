@@ -1,6 +1,7 @@
 import { deepWaterFailureMessage } from '@nessie/runtime'
 import type {
   DeepWaterDeliveryBlockedReason,
+  DeepWaterNoticeKind,
   DeepWaterReportKind,
   DeepWaterTurnRegister,
 } from '@nessie/schemas'
@@ -138,3 +139,19 @@ export const wakeUnreachableNotice = (input: { topic: string; finished: boolean;
 export const wakeCapNotice = (topic: string): string =>
   `The agent working on your DeepWater research brief ${quoted(topic)} has gone back and forth with `
   + 'the research planner many times without starting the research. Ask it to start or stop the brief.'
+
+const NOTICE_PUSH_BODY: Record<DeepWaterNoticeKind, string> = {
+  result: 'Your DeepWater research has finished.',
+  failed: 'Your DeepWater research didn\'t finish.',
+  blocked: 'Your DeepWater research needs you before it can be saved.',
+  start_unconfirmed: 'DeepWater didn\'t confirm your research brief.',
+  wake_unreachable: 'There\'s news about your DeepWater research.',
+  wake_cap: 'Your DeepWater research brief needs you.',
+}
+
+/**
+ * What a lock screen shows for a notice whose words it may not show (one
+ * drawn on sources the room does not imply): what kind of news it is, never
+ * the topic or anything from the research.
+ */
+export const noticePushBody = (kind: DeepWaterNoticeKind): string => NOTICE_PUSH_BODY[kind]
