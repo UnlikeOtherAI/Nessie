@@ -420,9 +420,10 @@ the only way results come back.
   logged, the claim's backoff grows to 6 hours, the run is not blocked, nobody
   is told, and Retry is not offered (it needs a block). No live action renews a
   launched or finished research. Such a run is caught only once Nessie can see
-  the change itself — the requester signs in to Nessie again (their link then
-  records the new epoch) or loses the link or team — when its next read blocks
-  it and tells them as above. A requester who never signs in again, or who
+  the change itself — the requester signs in to Nessie again (an ordinary
+  sign-in records the new epoch on their DeepWater link; an account-recovery
+  sign-in refreshes only the Nessie link) or loses the link or team — when its
+  next read blocks it and tells them as above. A requester who never signs in again, or who
   loses an organisation, team or domain role only at UOA, strands the run: a
   finished research is never delivered and nobody is told. **Rollout gate:**
   UOA must list `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` as a public production code
