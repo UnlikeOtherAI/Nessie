@@ -186,19 +186,28 @@ file is the rule**.
   which renders both placements — the unplaced one a researcher, whose job
   needs no room, with no `#` anywhere on its card.
 - **The Designer hands a person links, and its tools hand it data.**
-  `agent_create` and `agent_bind_channel` answer with markdown links —
-  `[CTO](/agents/<id>)`, `[#sales](/channels/<id>)`, built by
-  `formatAgentMarkdownLink`/`formatChannelMarkdownLink` in
-  `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none (reason:
-  "…")`, never `agentId=`/`channelId=` pairs or an instruction addressed to
-  the model. It relayed both verbatim: the person read UUIDs and "give them
-  this reason word for word". A later call takes the id from the link's last
-  segment, and the model is told so — in the Designer's prompt and in
-  `agent_create`'s own description — rather than left to guess; a real-row
-  test parses the id out of `agent_create`'s link and binds with it
-  (`worker/test/db/designer-team-structure.test.ts`). `channel_create`
-  answers with the new room's link beside the `channelId=`/`projectId=` its
-  follow-up calls take, and `agent_avatar_generate` reports a pinned style as
+  `agent_create`, `agent_bind_channel`, `agent_list`, `project_create` and
+  `agent_trigger_create` answer with markdown links — `[CTO](/agents/<id>)`,
+  `[#sales](/channels/<id>)`, `[Marketing](/projects/<id>)`,
+  `[Daily digest](/agents/triggers/<id>)`, built by the `format…MarkdownLink`
+  helpers in `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none
+  (reason: "…")`, never `agentId=`/`channelId=`/`projectId=`/`triggerId=`
+  pairs or an instruction addressed to the model. It relayed both verbatim:
+  the person read UUIDs and "give them this reason word for word". A later
+  call takes the id from the link's last segment, and the model is told so —
+  in the Designer's prompt and in each of those tools' own descriptions —
+  rather than left to guess; every tool that takes one of those ids takes it
+  exactly as before. Real-row tests parse the id out of a link and make the
+  next call with it: `agent_create` → `agent_bind_channel`, `project_create`
+  → `channel_create`, `agent_list` → `agent_update` and
+  `agent_trigger_create` → `agent_trigger_update`
+  (`worker/test/db/designer-team-structure.test.ts`). `project_create`'s
+  "no second channel unless asked" is its description's rule and the
+  prompt's, no longer a line in its result. `agent_bind_channel` and
+  `agent_trigger_create` read the names they link, so each stamps those names
+  exactly as `agent_list` stamps them. `channel_create` answers with the new
+  room's link beside the `channelId=` its follow-up calls take, and
+  `agent_avatar_generate` reports a pinned style as
   `style: pinned at the <scope> level; the requested "…" was not applied`
   rather than "Say so". Quoting the portrait reason, reporting a pinned style
   and never showing a raw id are rules in the Designer's own prompt, where

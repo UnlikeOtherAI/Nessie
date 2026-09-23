@@ -133,7 +133,12 @@ nothing in it may be a secret or an instruction addressed to the model.
   reason word for word", "report a pinned portrait style" and "link what you
   made, never a raw id" moved into the Designer's persona
   (`global-agent-blueprints.ts`); `agent_avatar_generate`'s "Say so." became
-  the data line `style: pinned at the <scope> level; …`.
+  the data line `style: pinned at the <scope> level; …`. `project_create`,
+  `agent_list` and `agent_trigger_create` followed: `[Name](/projects/<id>)`,
+  one `[Name](/agents/<id>)` row per agent with its rooms as channel links,
+  and the trigger as `[Name](/agents/triggers/<id>)` beside the agent it
+  fires and the room it posts into. The persona names the link each
+  `projectId`, `agentId` and `triggerId` is read from.
 - **An executor grant is confirmed from a card, not a link (F6).**
   `executor_agent_grant_prepare` answered with
   `/agents/executors?accessChange=<id>#confirmationToken=<token>`. The secret

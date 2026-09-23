@@ -10,7 +10,7 @@ import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
-import { formatSection } from './tool-output.js'
+import { formatProjectMarkdownLink, formatSection } from './tool-output.js'
 
 /**
  * Projects and the teams inside them — the containers a channel needs.
@@ -150,15 +150,18 @@ export const runProjectCreateTool = async (
     throw error
   }
 
+  // Data a person can be handed as it is, like agent_create's: a raw
+  // `projectId=<uuid>` is copied into the reply as it stands. The id a later
+  // call takes (channel_create, team_create) is the link's last segment, and
+  // the teamId is the one this call was given. Not creating a second channel
+  // unasked is a rule in the tool's description and the Designer's prompt,
+  // not an instruction inside its result.
   return {
     inputSummary: `name="${args.name}" teamId=${args.teamId}`,
     outputPreview: [
-      `Created project "${project.name}"`,
-      `projectId=${project.id}`,
+      `Created project ${formatProjectMarkdownLink(project)}`,
       'You are its only member — nobody else was added. Anyone you add later has the same rights in it as you.',
-      `It belongs to teamId=${args.teamId}.`,
-      'It already has its own #general channel. Do not create any other channel '
-      + 'for it unless the person asked for one; if they did, pass both ids to channel_create.',
+      'It already has its own #general channel.',
     ].join('\n'),
     toolName: 'project_create',
   }

@@ -59,7 +59,15 @@ test('an agent that works a board lives in one of that project\'s channels', () 
 // F9 took `agentId=` out of agent_create's output, so a later call finds the
 // id in the link. The model is told where; it is not left to guess.
 test('the ids later calls need are named as the links\' last segments', () => {
-  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/… link agent_create returned/)
+  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/… link agent_create or agent_list returned/)
+})
+
+// project_create, agent_list and agent_trigger_create stopped printing
+// `projectId=`/`agentId=`/`triggerId=` too (agent_list is in the test above),
+// so each is named with the link a later call reads its id from.
+test('a project and a trigger are read from their links too', () => {
+  assert.match(prose, /the projectId channel_create or team_create takes the last segment of the \/projects\/… link project_create returned/)
+  assert.match(prose, /the triggerId agent_trigger_update or agent_trigger_delete takes the last segment of the \/agents\/triggers\/… link agent_trigger_create returned/)
 })
 
 test('a pinned portrait style is reported because the prompt says so', () => {

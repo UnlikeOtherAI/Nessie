@@ -163,7 +163,9 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         },
         projectId: {
           type: 'string',
-          description: 'Project that owns the channel, from project_list.',
+          description:
+            'Project that owns the channel, from project_list — or, for a project '
+            + 'just made, the last path segment of the /projects/… link project_create returned.',
         },
         visibility: {
           type: 'string',

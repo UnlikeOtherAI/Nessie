@@ -8,9 +8,13 @@ import {
   ensureGlobalAgentBootstrap,
 } from '@nessie/team-admin'
 
+import { runAgentUpdateTool } from '../../src/run/pa-tools/agent-config.js'
+import { runAgentTriggerUpdateTool } from '../../src/run/pa-tools/agent-lifecycle.js'
 import {
   runAgentBindChannelTool,
   runAgentCreateTool,
+  runAgentListTool,
+  runAgentTriggerCreateTool,
   runChannelCreateTool,
 } from '../../src/run/pa-tools/provisioning.js'
 import {
@@ -165,6 +169,14 @@ const idFrom = (output: string, key: string): string => {
   return match[1] as string
 }
 
+// Where the Designer is told to read an id: the last path segment of a
+// markdown link its tool returned, e.g. `[Marketing](/projects/<id>)`.
+const idFromLink = (output: string, path: string): string => {
+  const match = new RegExp(`\\]\\(/${path}/([0-9a-f-]{36})\\)`).exec(output)
+  assert.ok(match, `expected a /${path}/… link in:\n${output}`)
+  return match[1] as string
+}
+
 const refusal = async (promise: Promise<unknown>): Promise<string> => {
   try {
     await promise
@@ -184,7 +196,7 @@ runDatabaseTest('the Designer stands up a project and a channel in its team', as
     name: 'Marketing',
     teamId: team.teamId,
   })
-  const projectId = idFrom(projectResult.outputPreview, 'projectId')
+  const projectId = idFromLink(projectResult.outputPreview, 'projects')
 
   // Deliberately no `visibility`: what the model omits must not publish a room
   // to the whole organisation.
@@ -281,7 +293,7 @@ runDatabaseTest('a plain member creates a project and a channel in it; team_crea
   // only member (`createProjectForUser`, the same function `POST /api/projects`
   // calls).
   const projectResult = await runProjectCreateTool(context, { name: 'Marketing', teamId: team.teamId })
-  const memberProjectId = idFrom(projectResult.outputPreview, 'projectId')
+  const memberProjectId = idFromLink(projectResult.outputPreview, 'projects')
   assert.deepEqual(
     await prisma.projectMember.findMany({ where: { projectId: memberProjectId }, select: { userId: true } }),
     [{ userId: team.memberId }],
@@ -376,12 +388,12 @@ runDatabaseTest('project_list is scoped to the caller and their organisation', a
   t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
 
   const ownerContext = buildContext(prisma, team, team.ownerId)
-  const ownerProject = idFrom(
+  const ownerProject = idFromLink(
     (await runProjectCreateTool(ownerContext, {
       name: 'Owner only',
       teamId: team.teamId,
     })).outputPreview,
-    'projectId',
+    'projects',
   )
 
   // A project is created `public`, and a public project is readable by every
@@ -453,7 +465,7 @@ runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', 
   const projectResult = await runProjectCreateTool(base, { name: 'Night work', teamId: team.teamId })
   const channelResult = await runChannelCreateTool(base, {
     label: 'Launch plan',
-    projectId: idFrom(projectResult.outputPreview, 'projectId'),
+    projectId: idFromLink(projectResult.outputPreview, 'projects'),
     teamId: team.teamId,
   })
   const channelId = idFrom(channelResult.outputPreview, 'channelId')
@@ -485,4 +497,72 @@ runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', 
     + 'It now answers in that channel.',
   )
   assert.equal(await prisma.agentBinding.count({ where: { agentId: teamAgentId, channelId } }), 1)
+})
+
+// The same for the three tools that still printed `projectId=`, `agentId=` and
+// `triggerId=`: project_create, agent_list and agent_trigger_create answer with
+// links, and each id the next call takes is read out of a link exactly as the
+// Designer is told to — and that call accepts it, against real rows.
+runDatabaseTest('project_create, agent_list and agent_trigger_create hand back links the next call reads', async (t) => {
+  const prisma = new PrismaClient()
+  const team = await seed(prisma)
+  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const context = {
+    ...buildContext(prisma, team, team.ownerId),
+    // agent_trigger_update announces the agent it changed.
+    realtimeTransport: { publishWs: async () => undefined },
+  } as unknown as BuiltinToolRuntimeContext
+
+  // project_create → channel_create, with the projectId from the link.
+  const projectResult = await runProjectCreateTool(context, { name: 'Night work', teamId: team.teamId })
+  const projectId = idFromLink(projectResult.outputPreview, 'projects')
+  assert.equal(projectResult.outputPreview.split('\n')[0], `Created project [Night work](/projects/${projectId})`)
+  assert.doesNotMatch(projectResult.outputPreview, /projectId=|teamId=/)
+  const channelResult = await runChannelCreateTool(context, {
+    label: 'Night desk',
+    projectId,
+    teamId: team.teamId,
+  })
+  const channelId = idFrom(channelResult.outputPreview, 'channelId')
+  const channel = await prisma.channel.findUniqueOrThrow({
+    where: { id: channelId },
+    select: { label: true, projectId: true },
+  })
+  assert.equal(channel.projectId, projectId, 'the id read from the link is the project that was made')
+
+  // agent_list → agent_update, with the agentId from the row's link.
+  const agent = await prisma.agent.create({
+    data: { name: 'Night Watch', organizationId: team.organizationId, role: 'monitor', teamId: team.teamId },
+  })
+  await prisma.agentBinding.create({ data: { agentId: agent.id, channelId } })
+  const listed = await runAgentListTool(context, { query: 'night watch' })
+  const row = listed.outputPreview.split('\n').find((line) => line.includes('Night Watch')) ?? ''
+  assert.equal(row, `- [Night Watch](/agents/${agent.id}) | role=monitor | [#${channel.label}](/channels/${channelId})`)
+  assert.doesNotMatch(listed.outputPreview, /agentId=|channelId=/)
+  const updated = await runAgentUpdateTool(context, { agentId: idFromLink(row, 'agents'), role: 'night monitor' })
+  assert.match(updated.outputPreview, /^Updated agent "Night Watch" \(night monitor\)$/m)
+  assert.equal(
+    (await prisma.agent.findUniqueOrThrow({ where: { id: agent.id }, select: { role: true } })).role,
+    'night monitor',
+  )
+
+  // agent_trigger_create → agent_trigger_update, with the triggerId from the link.
+  const armed = await runAgentTriggerCreateTool(context, {
+    agentId: agent.id,
+    config: { prompt: 'Check the night queue' },
+    name: 'Night sweep',
+    targetChannelId: channelId,
+    type: 'manual',
+  })
+  const trigger = await prisma.agentTrigger.findFirstOrThrow({ where: { agentId: agent.id }, select: { id: true } })
+  assert.equal(
+    armed.outputPreview,
+    `Created manual trigger [Night sweep](/agents/triggers/${trigger.id}) for [Night Watch](/agents/${agent.id})\n`
+    + `status=active | posts into [#${channel.label}](/channels/${channelId})`,
+  )
+  await runAgentTriggerUpdateTool(context, { enabled: false, triggerId: idFromLink(armed.outputPreview, 'agents/triggers') })
+  assert.equal(
+    (await prisma.agentTrigger.findUniqueOrThrow({ where: { id: trigger.id }, select: { enabled: true } })).enabled,
+    false,
+  )
 })

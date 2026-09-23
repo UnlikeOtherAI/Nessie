@@ -31,10 +31,14 @@ const makeContext = (
       findUnique: async () => ({
         agentKind: 'shared',
         id: AGENT_ID,
+        name: 'Release Reporter',
         organizationId: ORGANIZATION_ID,
         systemSlug: null,
+        visibility: 'team',
       }),
     },
+    // The room each trigger posts into, which its output links.
+    channel: { findUnique: async () => ({ label: 'releases', type: 'standard', visibility: 'public' }) },
     agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
     agentTrigger: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -121,7 +125,11 @@ test('agent_trigger_create creates every non-workflow trigger type with executab
       type: trigger.type,
     })
     assert.equal(result.toolName, 'agent_trigger_create')
-    assert.match(result.outputPreview, new RegExp(`Created ${trigger.type} trigger`))
+    assert.match(
+      result.outputPreview,
+      new RegExp(`^Created ${trigger.type} trigger \\[${trigger.name}\\]\\(/agents/triggers/[0-9a-f-]{36}\\) for \\[Release Reporter\\]\\(/agents/${AGENT_ID}\\)$`, 'm'),
+    )
+    assert.match(result.outputPreview, new RegExp(`posts into \\[#releases\\]\\(/channels/${CHANNEL_ID}\\)$`, 'm'))
   }
 
   assert.equal(created.length, cases.length)

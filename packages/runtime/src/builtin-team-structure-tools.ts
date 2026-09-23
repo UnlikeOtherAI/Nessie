@@ -58,7 +58,10 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'only member; nobody else is added. Any member may create one in a team '
       + 'they belong to. Resolve an existing team with project_list and pass its '
       + 'teamId. The project starts with its own #general channel; do not create '
-      + 'another channel for it unless the person asked for one.',
+      + 'another channel for it unless the person asked for one. The result links '
+      + 'the new project as [Name](/projects/<projectId>): the last path segment '
+      + 'of that link is the projectId channel_create and team_create take, and '
+      + 'channel_create takes the same teamId you passed here.',
     parameters: {
       type: 'object',
       properties: {
@@ -85,7 +88,9 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       'Create a team inside a project. The user becomes its only member and its '
       + 'owner; nobody else is added. Organisation owners only. Channels attach '
       + 'to a team, so this is what makes a project able to hold one — pass the '
-      + 'returned teamId to channel_create. Resolve projectId with project_list.',
+      + 'returned teamId to channel_create. Resolve projectId with project_list, '
+      + 'or read it from the /projects/… link project_create returned (its last '
+      + 'path segment).',
     parameters: {
       type: 'object',
       properties: {

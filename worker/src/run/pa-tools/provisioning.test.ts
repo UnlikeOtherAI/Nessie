@@ -412,10 +412,14 @@ test('agent_list gives a member the agents they may see, with the ids bind and t
     'a member must not get the owner-only unbound branch',
   )
 
+  // Each row is links a person can be handed; the ids bind and trigger take
+  // are their last segments, and no raw `key=<uuid>` is left.
   assert.match(result.outputPreview, /Agents \(1\)/)
-  assert.match(result.outputPreview, /"Hardware Watch" \| role=monitor/)
-  assert.match(result.outputPreview, new RegExp(`agentId=${AGENT_ID}`))
-  assert.match(result.outputPreview, new RegExp(`#ops \\(channelId=${TARGET_CHANNEL_ID}\\)`))
+  assert.equal(
+    result.outputPreview.split('\n')[1],
+    `- [Hardware Watch](/agents/${AGENT_ID}) | role=monitor | [#ops](/channels/${TARGET_CHANNEL_ID})`,
+  )
+  assert.doesNotMatch(result.outputPreview, /agentId=|channelId=/)
 })
 
 test('agent_list gives an owner unbound agents too, and narrows on a named one', async () => {
@@ -466,9 +470,11 @@ test('agent_list gives an owner unbound agents too, and narrows on a named one',
   )
 
   assert.match(result.outputPreview, /Agents \(1\)/)
-  assert.match(result.outputPreview, new RegExp(`agentId=${AGENT_ID}`))
+  assert.match(
+    result.outputPreview,
+    new RegExp(`^- \\[Hardware Watch\\]\\(/agents/${AGENT_ID}\\) \\| role=monitor \\| not in any channel yet$`, 'm'),
+  )
   assert.doesNotMatch(result.outputPreview, /Release Reporter/)
-  assert.match(result.outputPreview, /not in any channel yet/)
 })
 
 test('agent_bind_channel refuses a non-owner and never writes a binding', async () => {
@@ -613,14 +619,19 @@ test('agent_trigger_create stamps launchOrigin with the creator and their UOA te
     {
       agent: {
         count: async () => 1,
+        // One superset row: `createAgentTrigger` selects `systemSlug` to
+        // refuse a global-agent target, the output names the agent.
         findUnique: async () => ({
           id: AGENT_ID,
           agentKind: 'shared',
+          name: 'Hardware Watch',
           organizationId: ORG_ID,
-          // `createAgentTrigger` selects this to refuse a global-agent target.
           systemSlug: null,
+          visibility: 'team',
         }),
       },
+      // The room the trigger posts into, named in the output.
+      channel: { findUnique: async () => ({ label: 'ops', type: 'standard', visibility: 'public' }) },
       team: { findFirst: async () => ({ id: TEAM_ID }) },
       agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
       thread: { findFirst: async () => ({ id: THREAD_ID }) },
@@ -669,7 +680,71 @@ test('agent_trigger_create stamps launchOrigin with the creator and their UOA te
     userId: USER_ID,
   })
   assert.ok(created[0]?.nextRunAt instanceof Date)
-  assert.match(result.outputPreview, /triggerId=4f7d1c00-0e64-4d10-a517-0d0b69c1d010/)
+  // The trigger, the agent it fires and the room it posts into, as links; the
+  // triggerId agent_trigger_update takes is the first link's last segment.
+  const [headline, detail] = result.outputPreview.split('\n')
+  assert.equal(
+    headline,
+    'Created scheduled trigger [Daily digest](/agents/triggers/4f7d1c00-0e64-4d10-a517-0d0b69c1d010)'
+    + ` for [Hardware Watch](/agents/${AGENT_ID})`,
+  )
+  assert.match(
+    detail ?? '',
+    new RegExp(`^status=active \\| next run .+ \\| posts into \\[#ops\\]\\(/channels/${TARGET_CHANNEL_ID}\\)$`),
+  )
+  assert.doesNotMatch(result.outputPreview, /triggerId=|channelId=|agentId=/)
+})
+
+test('agent_trigger_create links a trigger without a name by its type', async () => {
+  const context = buildContext('owner', {
+    agent: {
+      count: async () => 1,
+      findUnique: async () => ({
+        agentKind: 'shared',
+        id: AGENT_ID,
+        name: 'Hardware Watch',
+        organizationId: ORG_ID,
+        systemSlug: null,
+        visibility: 'team',
+      }),
+    },
+    channel: { findUnique: async () => ({ label: 'ops', type: 'standard', visibility: 'public' }) },
+    agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
+    thread: { findFirst: async () => ({ id: THREAD_ID }) },
+    agentTrigger: {
+      create: async (input: { data: Record<string, unknown> }) => ({
+        agentId: AGENT_ID,
+        config: input.data.config,
+        createdAt: new Date('2026-01-01T00:00:00Z'),
+        description: null,
+        enabled: true,
+        id: '4f7d1c00-0e64-4d10-a517-0d0b69c1d013',
+        lastFiredAt: null,
+        name: null,
+        nextRunAt: null,
+        status: 'active',
+        targetChannelId: TARGET_CHANNEL_ID,
+        targetThreadId: THREAD_ID,
+        type: 'manual',
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+        workflowInstallationId: null,
+      }),
+    },
+  })
+
+  const result = await runAgentTriggerCreateTool(context, {
+    agentId: AGENT_ID,
+    type: 'manual',
+    targetChannelId: TARGET_CHANNEL_ID,
+    config: { prompt: 'Do the thing' },
+  })
+
+  assert.equal(
+    result.outputPreview,
+    'Created [manual trigger](/agents/triggers/4f7d1c00-0e64-4d10-a517-0d0b69c1d013)'
+    + ` for [Hardware Watch](/agents/${AGENT_ID})\n`
+    + `status=active | posts into [#ops](/channels/${TARGET_CHANNEL_ID})`,
+  )
 })
 
 test('agent_trigger_create keeps a caller-supplied launchOrigin out of the stored config', async () => {
@@ -680,10 +755,13 @@ test('agent_trigger_create keeps a caller-supplied launchOrigin out of the store
       findUnique: async () => ({
         id: AGENT_ID,
         agentKind: 'shared',
+        name: 'Hardware Watch',
         organizationId: ORG_ID,
         systemSlug: null,
+        visibility: 'team',
       }),
     },
+    channel: { findUnique: async () => ({ label: 'ops', type: 'standard', visibility: 'public' }) },
     agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
     thread: { findFirst: async () => ({ id: THREAD_ID }) },
     agentTrigger: {
