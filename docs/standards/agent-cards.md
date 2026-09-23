@@ -214,17 +214,23 @@ this standard, not an exception to it.
   (`worker/src/run/pa-tools/agent-card-post.ts`) is the only place the worker
   writes an `AgentCard` row: `card_post`, the executor review card and
   `browser_login_request`'s sign-in card all post through it, so none can
-  exist without its message, its pointer, its realtime notice or its
-  respondents' bell. The sign-in tool used to carry its own copy of all five,
-  which is where two copies drift. Its personal browser grant is written
-  inside the card's own transaction by the door's `browserLogin` step, so
-  neither exists without the other, and the grant's deadline — which the
-  deployment's browser TTL may shorten — is the card's. `card_post` never
-  passes that step, so no model-written card can grant browser access. Pinned
-  by `worker/test/browser-login-request.test.ts` (no second writer) and
+  exist without its message and its pointer, and each gets the same reply
+  bookkeeping, realtime notice and respondents' bell. The sign-in tool used to
+  carry its own copy of all five, which is where two copies drift. Those three
+  follow the commit and are best-effort, as a press's announcements are: the
+  card is durable and answerable by then, so a step that fails is logged and
+  the post still answers with the card. Throwing there failed the tool call
+  beside a live card, which the model could only take for a post to try
+  again. The sign-in card's personal browser grant is written inside the
+  card's own transaction by the door's `browserLogin` step, so neither exists
+  without the other, and the grant's deadline — which the deployment's
+  browser TTL may shorten — is the card's. `card_post` never passes that step,
+  so no model-written card can grant browser access. Pinned by
+  `worker/test/browser-login-request.test.ts` (no second writer) and
   `worker/test/db/browser-login-card.test.ts` (the card, its grant, the
-  requester's bell, the tool result that parks the run on the card, and a
-  failed grant taking the card with it).
+  requester's bell, the tool result that parks the run on the card, a failed
+  grant taking the card with it, and a failed notice or reply bookkeeping
+  after the commit leaving the card and its answer standing).
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),
   checkpoints, and parks the run in `waiting_input`: non-terminal, holding the
