@@ -12,6 +12,7 @@ import {
   requireHumanActor,
   resolveExecutorHumanAccess,
 } from './executor-access.js'
+import { closeExecutorCodingSessionsInTransaction } from './executor-coding-session-closes.js'
 import {
   EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
   endExecutorConversationLeasesInTransaction,
@@ -99,17 +100,24 @@ const nextAuthorizationRevision = async (
   return executor.authorizationRevision
 }
 
-/** Withdrawn or narrowed access ends the leases it covered, with the fence. */
+/**
+ * Withdrawn or narrowed access ends the leases it covered, with the fence, and
+ * closes the coding sessions it reached on the machine.
+ */
 const endLeasesForRevokedAccess = async (
   tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   where: { executorId: string } & ({ agentId: string } | { actorUserId: string }),
 ): Promise<void> => {
+  const { executorId, ...only } = where
   await endExecutorConversationLeasesInTransaction(tx, {
     actor: executorLeaseAuditActor(actorContext),
     endedByUserId: requireHumanActor(actorContext),
     reason: 'access_revoked',
     where,
+  })
+  await closeExecutorCodingSessionsInTransaction(tx, {
+    executorId, only, reason: 'access_revoked', requestedByUserId: requireHumanActor(actorContext),
   })
 }
 

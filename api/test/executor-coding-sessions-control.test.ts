@@ -3,6 +3,7 @@ import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
+import Fastify from 'fastify'
 import {
   canonicalExecutorPayload,
   getExecutorAccessView,
@@ -17,11 +18,14 @@ import {
 } from '@nessie/schemas'
 
 import { ExecutorAccessViewSchema } from '../src/contracts/executors.js'
+import { registerExecutorDaemonRoutes } from '../src/routes/executor-daemon-routes.js'
+import type { RouteDeps } from '../src/routes/types.js'
 
 /**
  * The control plane's coding-sessions surfaces over real rows: the bridge's
  * power facts travel from a signed descriptor through the strict access
- * contract the review screen parses.
+ * contract the review screen parses, and the heartbeat route answers with the
+ * machine's open close requests through its own response contract.
  */
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -103,3 +107,36 @@ dbTest('the bridge’s power facts reach the review projection verbatim, and onl
   })
 })
 
+dbTest('the heartbeat route answers with the machine’s open close requests', async () => {
+  await withExecutor(async ({ executorId, prisma }) => {
+    const ownerKey = `sha256:${'a'.repeat(64)}`
+    const sessionId = randomUUID()
+    await prisma.executorCodingSessionCloseRequest.createMany({ data: [
+      { createdAt: new Date(Date.now() - 2_000), executorId, ownerKey, reason: 'lease_ended' },
+      { createdAt: new Date(Date.now() - 1_000), executorId, ownerKey, reason: 'person', sessionId },
+    ] })
+    const app = Fastify()
+    registerExecutorDaemonRoutes(app, { prisma } as unknown as RouteDeps)
+    await app.ready()
+    try {
+      const signed = { connectionEpoch: '1', executorId, observedAt: new Date().toISOString() }
+      const signature = sign(
+        null, Buffer.from(canonicalExecutorPayload('nessie.executor.daemon.heartbeat.v1', signed)), keys.privateKey,
+      ).toString('base64url')
+      const response = await app.inject({
+        method: 'POST', payload: { ...signed, signature }, url: '/api/executor-daemon/heartbeat',
+      })
+      assert.equal(response.statusCode, 200, response.body)
+      assert.deepEqual((response.json() as { data: unknown }).data, {
+        codingSessionClose: [
+          { ownerKey, reason: 'lease_ended' },
+          { ownerKey, reason: 'person', sessionId },
+        ],
+        connectionEpoch: '1',
+        status: 'online',
+      })
+    } finally {
+      await app.close()
+    }
+  })
+})

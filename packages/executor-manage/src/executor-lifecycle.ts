@@ -10,6 +10,7 @@ import {
   lockExecutorMutation,
   requireManagedExecutor,
 } from './executor-access-mutations.js'
+import { closeExecutorCodingSessionsInTransaction } from './executor-coding-session-closes.js'
 import {
   EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
   endExecutorConversationLeasesInTransaction,
@@ -174,6 +175,14 @@ export const transitionExecutorLifecycleInTransaction = async (
       endedByUserId: actorUserId,
       reason: LIFECYCLE_END_REASON[input.action],
       where: { executorId: executor.id },
+    })
+  }
+  // Pausing or revoking the machine closes every coding session on it, not
+  // only those a lease still covered. (A drain lets work finish: only the
+  // leases it ends close their owners' sessions.)
+  if (input.action === 'pause' || input.action === 'revoke') {
+    await closeExecutorCodingSessionsInTransaction(tx, {
+      executorId: executor.id, reason: LIFECYCLE_END_REASON[input.action], requestedByUserId: actorUserId,
     })
   }
   return updated

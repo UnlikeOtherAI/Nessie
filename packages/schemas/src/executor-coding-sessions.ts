@@ -133,6 +133,29 @@ export const ExecutorCodingSessionCloseSchema = z
   .strict()
 export type ExecutorCodingSessionClose = z.infer<typeof ExecutorCodingSessionCloseSchema>
 
+/**
+ * Why the control plane asks for a close — the vocabulary of the stored close
+ * requests, which a CHECK pins. The wire field stays the open categorical
+ * grammar above, so a daemon never refuses a reason it has not met yet.
+ *
+ * - `lease_ended`: the owner's last live conversation lease on the machine
+ *   ended — its holder or a machine administrator pressed End, it expired,
+ *   the executor drained, or a review dropped the local-apps pair;
+ * - `access_revoked`: the agent's access to the machine, or the owner's place
+ *   on its roster, was withdrawn;
+ * - `executor_paused`, `executor_revoked`: the machine itself was fenced;
+ * - `person`: a person pressed Close on one session.
+ */
+export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
+  'lease_ended',
+  'access_revoked',
+  'executor_paused',
+  'executor_revoked',
+  'person',
+] as const
+export const ExecutorCodingSessionCloseReasonSchema = z.enum(EXECUTOR_CODING_SESSION_CLOSE_REASONS)
+export type ExecutorCodingSessionCloseReason = z.infer<typeof ExecutorCodingSessionCloseReasonSchema>
+
 export const EXECUTOR_CODING_SESSION_CLOSE_MAXIMUM = 64
 
 export const ExecutorCodingSessionCloseListSchema = z
