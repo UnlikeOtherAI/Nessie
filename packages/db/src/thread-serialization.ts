@@ -33,11 +33,11 @@ import { enqueueRunExecution } from './queue.js'
 // mailbox deliveries (peer-delegated briefs, task-set deliveries, plan and
 // workflow step mail), global-agent briefs and ticket-work wakes — drain one
 // at a time, each as its own follow-up run under its own actor context,
-// principal and reply root. No message is lost across a worker crash: the row is the pending
-// marker, and the periodic `sweepPendingThreadMessages` re-poll enqueues the
-// follow-up for any pair whose run disappeared without draining (crash between
-// terminal update and drain, or an API-side queued cancel that never reached
-// the worker).
+// principal and reply root. No message is lost across a worker crash: the row
+// is the pending marker, and the periodic `sweepPendingThreadMessages` re-poll
+// enqueues the follow-up for any pair whose run disappeared without draining
+// (crash between terminal update and drain, or an API-side queued cancel that
+// never reached the worker).
 //
 // Race freedom comes from a transaction-scoped advisory lock keyed on
 // (agentId, principalUserId, threadId) taken by BOTH the claim side (orchestrate.decide reply,
