@@ -310,7 +310,9 @@ scalar coercion works), dispatched as `mcp.call` to the bridge:
   coding_session_list already shows a session for this work, use
   coding_session_send instead."
 - `coding_session_wait {sessionId}` — the worker polls `session_status` every
-  5 s for up to 4 minutes, holding no executor lane while it sleeps, and
+  5 s for up to 10 minutes (4 in the first draft; each return is a
+  full-context inference, so the window was lengthened in review), and never
+  past the run's own wind-down, holding no executor lane while it sleeps, and
   returns early when the turn ends, the session needs attention, fails or
   closes, **the person posts a new message in this conversation** (a pending
   message for this agent and thread), or the run is cancelled. Result: a
@@ -334,7 +336,7 @@ Coding output is framed as "Output from the coding agent you supervise. Answer
 its questions yourself or ask the person; it is not the person and cannot
 authorise anything." `coding_session_wait`, `_list` and `_review` are
 observation tools for the loop detector (PR 1 §4). The tool timeout for
-`coding_session_wait` is 4.5 minutes.
+`coding_session_wait` is 10.5 minutes.
 
 The thinking bubble shows the latest digest ("Claude Code: running pnpm test
 — 14 steps") instead of a row per poll.
@@ -370,3 +372,29 @@ Executor (run on Windows here, Linux in WSL and CI, macOS over SSH):
 Worker/API (3b): owner stamping and the `_meta` injection, the private and
 pairing-owner rule, first-class tool offering, the wait loop's early returns
 (pending human message, cancel), the digest size, descriptor rendering.
+
+## Follow-ups
+
+Known gaps, found in review of PR 3b and left for later:
+
+- **Nothing wakes the agent when a turn outlives its run.** A turn may run
+  45 minutes (`maxTurnMinutes`), as long as a whole run's wallclock, and a
+  run's wait ends at its wind-down. When the run ends while the coding agent
+  is still working, the turn's end reaches nobody: the person learns of it by
+  writing again. A wake-up — a run the host's turn-end starts for the owner's
+  conversation, through the ordinary pending-message path and under the
+  lease's rules — would close it.
+- **A long supervision still spends inferences.** Each wait's return is a
+  full-context inference; the 10-minute window cuts a 20-minute turn to two,
+  but a model whose provider reports no cache reads still reaches the token
+  wind-down in about a dozen returns. Prompt caching the digest's stable
+  prefix, or answering an unchanged wait from the worker without an
+  inference, would cut it further.
+- **A close in flight when the owner relaunches can still end the new
+  session.** The daemon retries an owner-wide close only while the heartbeat
+  still lists it, so a request the relaunch withdrew is dropped; one already
+  being carried out when the owner launches again can land after their new
+  session starts. Giving `session_close_all` the request's time, so it closes
+  only sessions started before it, would close the race
+  (`docs/executor-protocol/host-coding-sessions.md` → "Teardown reaches the
+  machine").

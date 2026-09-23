@@ -127,16 +127,17 @@ const carried = (executorId: string): ExecutorLeaseCarryOutcome => ({
 runDatabaseTest('a carried pair names its servers in a shared room and the machine only in the holder’s DM', async () => {
   await withWorld(async (world, prisma) => {
     const inRoom = await loadExecutorReachFacts(prisma, {
-      agentId: world.agentId, channelId: world.roomId, lease: carried(world.minis.executorId),
+      agentId: world.agentId, channelId: world.roomId, hostOutput: null, lease: carried(world.minis.executorId),
       organizationId: world.organizationId, personUserId: world.holderId,
       runId: await world.bindRun(world.roomId), toolNames: LOCAL_APPS,
     })
-    assert.deepEqual(inRoom?.kind === 'bound' && inRoom.servers, ['kelpie', 'coding-sessions'])
+    // The reserved bridge name is never the pair's to reach.
+    assert.deepEqual(inRoom?.kind === 'bound' && inRoom.servers, ['kelpie'])
     assert.equal(inRoom?.kind === 'bound' && inRoom.executorLabel, null)
     assert.doesNotMatch(buildExecutorReachBlock(inRoom) ?? '', /Minis/)
 
     const inDm = await loadExecutorReachFacts(prisma, {
-      agentId: world.agentId, channelId: world.dmId, lease: carried(world.minis.executorId),
+      agentId: world.agentId, channelId: world.dmId, hostOutput: null, lease: carried(world.minis.executorId),
       organizationId: world.organizationId, personUserId: world.holderId,
       runId: await world.bindRun(world.dmId), toolNames: LOCAL_APPS,
     })
@@ -148,7 +149,7 @@ runDatabaseTest('a carried pair names its servers in a shared room and the machi
 runDatabaseTest('only both halves allowed on one live machine tell an unbound agent how to start local apps', async () => {
   await withWorld(async (world, prisma) => {
     const load = () => loadExecutorReachFacts(prisma, {
-      agentId: world.agentId, channelId: world.roomId, lease: { kind: 'no_lease' },
+      agentId: world.agentId, channelId: world.roomId, hostOutput: null, lease: { kind: 'no_lease' },
       organizationId: world.organizationId, personUserId: world.holderId, runId: randomUUID(), toolNames: new Set(),
     })
     assert.equal(await load(), null, 'no grant, nothing to say')

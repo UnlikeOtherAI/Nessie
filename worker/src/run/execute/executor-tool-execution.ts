@@ -1,5 +1,7 @@
 import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS, type AuthorizedActionContext } from '@nessie/schemas'
 
+import { isCodingSessionToolName } from '../coding-session-tools.js'
+import type { CodingSessionHooks } from '../executor-coding-sessions.js'
 import { executorToolName, type ExecutorToolset } from '../executor-toolset.js'
 import {
   presentExecutorMcpCatalogAnswer,
@@ -19,18 +21,24 @@ const operationKeyOf = (toolName: string): string | undefined =>
  * program), audited when it acts, and shaped for the model last — with the
  * images a local program returned resolved to their attachments on the way.
  * The shaping is the only difference from `dispatch`, which stays the raw
- * document for every other caller.
+ * document for every other caller. A coding-session tool is shaped by its own
+ * module and gets the loop's hooks: the drain signal, and the thought-process
+ * line a wait keeps current.
  */
 export const createExecutorToolExecution = (
   deps: ExecutionDependencies,
   context: RunContext,
   toolset: ExecutorToolset,
+  hooks: CodingSessionHooks = {},
 ) => async (
   toolName: string,
   args: Record<string, unknown>,
   toolCallId: string,
   toolActorContext: AuthorizedActionContext,
 ): Promise<AgenticToolResult> => {
+  if (toolset.codingSessions && isCodingSessionToolName(toolName)) {
+    return toolset.codingSessions.execute(toolName, args, toolCallId, hooks)
+  }
   if (toolName === executorToolName('mcp.tools')) {
     const server = typeof args.server === 'string' ? args.server : ''
     return presentExecutorMcpCatalogAnswer(args, await toolset.mcpCatalog(server, toolCallId))

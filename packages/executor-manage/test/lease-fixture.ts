@@ -21,8 +21,9 @@ import {
  * One organisation with an online, organisation-scoped executor whose reviewed
  * policy offers the local-apps pair, an agent granted it and bound to one
  * channel, and three people: the holder who launches, another member, and an
- * owner who manages the executor. Every id is fresh, so suites sharing the
- * database never see each other's rows.
+ * owner who manages the executor. `LeaseWorldOptions` scope it to the project
+ * or make it private, have the holder pair it, and offer the coding bridge.
+ * Every id is fresh, so suites sharing the database never see each other's rows.
  */
 export type LeaseWorld = {
   adminContext: AuthorizedActionContext
@@ -38,6 +39,8 @@ export type LeaseWorld = {
   memberId: string
   organizationId: string
   prisma: PrismaClient
+  projectId: string
+  scope: 'organization' | 'project' | 'private'
   threadId: string
 }
 
@@ -58,17 +61,38 @@ export const leaseTestPrisma = (): PrismaClient => {
   return new PrismaClient({ datasources: { db: { url: url.toString() } } })
 }
 
-export const localAppsDescriptor = (revision: number, operationKeys: string[] = LOCAL_APPS) =>
+/** The built-in coding bridge's power facts, as a descriptor that offers it states them. */
+export const CODING_SESSIONS_FACTS = {
+  agents: ['claude'], allowedToolCount: 3, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
+  permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
+} as const
+
+export const localAppsDescriptor = (
+  revision: number,
+  operationKeys: string[] = LOCAL_APPS,
+  extra: Record<string, unknown> = {},
+) =>
   ExecutorCapabilityDescriptorSchema.parse({
+    ...extra,
     protocolVersion: 1, revision, profiles: ['workspace_sandbox'], operationKeys,
     platform: { architecture: 'x64', os: 'windows', osMajorVersion: 26100 },
     supervisor: 'service', sandboxBackend: 'none', localPolicyDigest: `sha256:${String(revision).repeat(64).slice(0, 64)}`,
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 2 },
   })
 
+export type LeaseWorldOptions = {
+  agentConversation?: boolean
+  /** The reviewed descriptor also offers the coding-sessions bridge, beside `kelpie`. */
+  codingSessions?: boolean
+  /** Who paired the machine: its owner (the default) or the holder who launches. */
+  pairingOwner?: 'admin' | 'holder'
+  /** The executor's scope (organisation by default); a private one rosters the owner, the holder and the agent. */
+  scope?: 'organization' | 'project' | 'private'
+}
+
 export const seedLeaseWorld = async (
   prisma: PrismaClient,
-  options: { agentConversation?: boolean } = {},
+  options: LeaseWorldOptions = {},
 ): Promise<LeaseWorld> => {
   const organizationId = randomUUID()
   const [holderId, memberId, adminId] = [randomUUID(), randomUUID(), randomUUID()]
@@ -101,13 +125,31 @@ export const seedLeaseWorld = async (
   const thread = await prisma.thread.create({
     data: { channelId: channel.id, ...(options.agentConversation ? { agentId, startedByUserId: holderId } : {}) },
   })
+  const scope = options.scope ?? 'organization'
+  const pairingOwnerUserId = options.pairingOwner === 'holder' ? holderId : adminId
+  if (scope === 'project') {
+    await prisma.projectMember.createMany({ data: [
+      { projectId: project.id, userId: holderId, role: 'member' },
+      { projectId: project.id, userId: adminId, role: 'owner' },
+    ] })
+  }
   await prisma.executor.create({
     data: {
-      id: executorId, organizationId, pairingOwnerUserId: adminId, label: 'Minis', scopeKind: 'organization',
+      id: executorId, organizationId, pairingOwnerUserId, label: 'Minis', scopeKind: scope,
       status: 'online', lastSeenAt: new Date(), profiles: ['workspace_sandbox'],
+      ...(scope === 'project' ? { projectId: project.id } : {}),
+      ...(scope === 'private'
+        ? { privateAssignments: { create: [
+            { principalKind: 'user' as const, role: 'admin' as const, userId: adminId },
+            { principalKind: 'user' as const, role: pairingOwnerUserId === holderId ? 'admin' as const : 'use' as const, userId: holderId },
+            { agentId, principalKind: 'agent' as const, role: 'use' as const },
+          ] } }
+        : {}),
     },
   })
-  const descriptor = localAppsDescriptor(1)
+  const descriptor = localAppsDescriptor(1, LOCAL_APPS, options.codingSessions
+    ? { codingSessions: CODING_SESSIONS_FACTS, mcpServers: ['coding-sessions', 'kelpie'] }
+    : {})
   await prisma.executorCapabilityRevision.create({
     data: {
       executorId, revision: 1, descriptor, signature: 'reviewed-test-descriptor',
@@ -146,7 +188,7 @@ export const seedLeaseWorld = async (
   return {
     adminContext: contextFor(adminId), adminId, agentId, channelId: channel.id, cleanup, contextFor,
     executorId, holderContext: contextFor(holderId), holderId, memberContext: contextFor(memberId), memberId,
-    organizationId, prisma, threadId: thread.id,
+    organizationId, prisma, projectId: project.id, scope, threadId: thread.id,
   }
 }
 
@@ -164,6 +206,8 @@ export const launchLocalApps = async (world: LeaseWorld) => {
   })
   const availability = await resolveExecutorAvailabilityCandidates(prisma, world.holderContext, {
     agentId: world.agentId, operationKeys: LOCAL_APPS as never,
+    // A project executor is offered only to a launch in its own project.
+    ...(world.scope === 'project' ? { projectId: world.projectId } : {}),
   })
   const candidate = availability.candidates[0]
   if (!candidate) throw new Error(`No local-apps candidate: ${JSON.stringify(availability.explanations)}`)

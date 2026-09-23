@@ -150,8 +150,13 @@ test('status is derived at read time and fits 8 KB with status and nextCursor fi
     const delivered = JSON.parse(await readFile(paths.delivered, 'utf8')) as { cursor: string }
     assert.equal(delivered.cursor, events.nextCursor, 'the bridge remembers what it delivered')
     const summary = await composeCodingStatus({ paths, meta, state, derived: live, detail: 'summary' })
-    const counts = (summary.summary as { toolCounts: Record<string, number>; newEvents: number })
+    const counts = (summary.summary as {
+      lastTool?: { name: string; summary: string }; newEvents: number; toolCounts: Record<string, number>
+    })
     assert.equal(counts.newEvents, 40 - (events.events as unknown[]).length, 'a summary picks up where the last read stopped')
+    // What the agent is doing now: its latest tool call, as projected.
+    assert.equal(counts.lastTool?.name, 'Edit')
+    assert.match(counts.lastTool?.summary ?? '', /^step 39 /)
     const quiet = await composeCodingStatus({ paths, meta, state, derived: live, detail: 'summary' })
     assert.equal((quiet.summary as { newEvents: number }).newEvents, 0)
     assert.ok(Buffer.byteLength(JSON.stringify(quiet)) < 600, 'a poll with nothing new stays small')

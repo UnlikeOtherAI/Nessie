@@ -68,7 +68,7 @@ export const buildSnapshotForScopes = async (
         take: 1,
       },
       runs: {
-        include: { toolCalls: { orderBy: { startedAt: 'desc' }, take: 1 } },
+        include: { toolCalls: { orderBy: { startedAt: 'desc' }, take: 1, where: { parentToolCallId: null } } },
         // Every live status, as the status read and the live `agent.status`
         // events report it: a suspended run is still the agent's current run.
         where: { ...runVisibilityWhere, status: { in: ACTIVE_RUN_STATUSES } },

@@ -38,16 +38,19 @@ arbitrary local-network proxy.
 | Nessie control plane | Resolve availability, bind a run, lease commands, retain redacted audit facts, and send policy narrowing. | Dial a machine, widen local policy, access host credentials, or treat terminal text as an authorization/outcome. |
 | Executor daemon | Enforce local policy, pair outward, run the VM/gateway, and acknowledge commands. | Expand scope, accept stale/replayed work, expose host team/credentials directly, or send raw local data to audit. |
 | Guest VM / guest coding CLI | Work in a COW sandbox through the gateway. | Reach host files/credentials, direct network/DNS, or promote a host change. |
+| Owner-named host-local coding bridge (`coding-sessions`) | Act with the host OS user's full authority: their files, git and SSH credentials and coding-agent login; take follow-ups; write host files directly. Private executor, pairing owner only. | Be driven by anyone but the private executor's pairing owner (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), learn its caller from the model, or run a configuration nobody reviewed. |
 
-The last row is the guest `coding.*` lane. The owner-named host-local coding
-bridge (`coding-sessions`) is not a guest principal: a coding agent it runs
-acts with the host OS user's full authority — their files, their git and SSH
-credentials, their Claude or ChatGPT login — takes follow-ups through a prompt
-channel, and writes host files directly rather than by promotion. Its own
-contract, and why it exists at all, are in
-[host-coding-sessions.md](host-coding-sessions.md); its row in this table
-lands with the control-plane rule that offers it only on a private executor
-to that executor's pairing owner.
+The guest-coding row is the guest `coding.*` lane, and the sentences below
+that keep the coding CLI away from host files and credentials, give it no
+prompt channel and write the host only by promotion are about it. The
+host-local coding bridge is not a guest principal, and it is the one
+exception to them: a coding agent it runs acts as the machine's own user,
+takes follow-ups through a prompt channel, and writes host files directly.
+So it is offered only on a **private** executor and only to runs whose
+binding was made for that executor's **pairing owner**; the control plane
+refuses any other `mcp.call` to it where the command is created and again
+where the daemon collects it. Its own contract, and why it exists at all, are
+in [host-coding-sessions.md](host-coding-sessions.md).
 
 A descriptor signed by an executor key proves that paired key made the claim;
 it does not prove the host is uncompromised. That limitation is deliberate and

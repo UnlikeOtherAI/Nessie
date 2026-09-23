@@ -1,4 +1,5 @@
 import type { ExecutorDescriptorRevisionView } from '../../../facades/executors/local-mcp'
+import { ExecutorCodingAgents } from './ExecutorCodingAgents'
 import { ExecutorMcpServers } from './ExecutorMcpServers'
 import { ExecutorPermittedPrograms } from './ExecutorPermittedPrograms'
 import { ExecutorReachableFolders } from './ExecutorReachableFolders'
@@ -59,6 +60,7 @@ export const ExecutorPermissionDetails = ({ revision }: { revision: ExecutorDesc
         mcpServers={revision.mcpServers}
         operationKeys={revision.operationKeys}
       />
+      <ExecutorCodingAgents codingSessions={revision.codingSessions} />
       <ExecutorPermittedPrograms
         commandAllowlist={revision.commandAllowlist}
         operationKeys={revision.operationKeys}

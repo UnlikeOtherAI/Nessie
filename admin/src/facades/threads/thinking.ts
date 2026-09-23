@@ -100,14 +100,20 @@ export const toThinkingEntries = (entries: ThinkingLogEntry[] | undefined): Thin
   }))
 
 // Append a live chunk, ignoring one already present (a bootstrap fetch and the
-// SSE stream overlap by design). Returns the same array when nothing changed.
+// SSE stream overlap by design). A tool line the worker rewrites in place — a
+// coding-session wait keeping its one line current — arrives again under the
+// same id with new content, and replaces its entry where it stands. Returns
+// the same array when nothing changed.
 export const appendThinkingEntry = (
   entries: ThinkingEntry[],
   entry: ThinkingEntry,
-): ThinkingEntry[] =>
-  entry.id && entries.some((existing) => existing.id === entry.id)
-    ? entries
-    : [...entries, entry]
+): ThinkingEntry[] => {
+  const at = entry.id ? entries.findIndex((existing) => existing.id === entry.id) : -1
+  if (at < 0) return [...entries, entry]
+  const existing = entries[at]!
+  if (existing.kind !== 'tool' || entry.kind !== 'tool' || existing.content === entry.content) return entries
+  return entries.map((current, index) => (index === at ? { ...current, content: entry.content } : current))
+}
 
 /**
  * Merge two views of one run's thought process. `base` is the view whose order

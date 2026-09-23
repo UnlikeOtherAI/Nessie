@@ -162,8 +162,25 @@ transition that ends it.
 Anyone else pressing End, and any id that is not a lease, gets 404
 `EXECUTOR_NOT_FOUND`. A review that keeps both keys leaves the leases alone:
 their existing bindings are fenced by the revision check, and the next carry
-binds the new revision afresh. Ending a lease stops future reach only; closing
-the holder's coding sessions on the machine comes with the host coding bridge.
+binds the new revision afresh.
+
+Every end also asks the machine to close the holder's coding sessions on it,
+in the same transaction (`endExecutorConversationLeasesInTransaction` writes
+an `executor_coding_session_close_requests` row the next heartbeat carries as
+`codingSessionClose`) — unless that person still holds another live lease for
+the same agent on the machine: sessions belong to the owner (executor, agent,
+person), not to one conversation, and the other conversation may be driving
+them. A fence says which it was (`access_revoked`, `executor_paused`,
+`executor_revoked`); every other end — a drain's included, so a drain closes
+each live holder's sessions, a turn in flight among them — reads
+`lease_ended`. A new lease for the same owner withdraws that owner's open
+`lease_ended` request, so a relaunch — `replaced` — keeps the sessions it
+would otherwise have closed; a fence's request stands, since the authority
+those sessions ran under ended, and so does the pairing owner's own Close on
+one session from the executor page. Only a private executor's pairing owner
+can own a session, and only a machine that ever offered the bridge can hold
+one, so no other lease end asks for anything
+([host-coding-sessions.md](host-coding-sessions.md)).
 
 ## 4. Who can see it
 
@@ -202,11 +219,30 @@ its server-authored prompt stays byte-identical. The fact is one of:
 - **Bound.** Said only when the built toolset really holds both
   `executor_mcp_tools` and `executor_mcp_call`, never merely because bindings
   exist: "This turn you can use programs on the person's machine through
-  `executor_mcp_tools` / `executor_mcp_call` (servers: kelpie,
-  coding-sessions). The person who started this session can keep using it in
-  this conversation until 2026-09-23 21:40 UTC or until they end it." The
-  servers are the ones the bound revision's reviewed policy names; the second
-  sentence appears only under a live lease.
+  `executor_mcp_tools` / `executor_mcp_call` (servers: kelpie). The person
+  can keep using this machine in this conversation until 2026-09-23 21:40 UTC
+  or until they end it." The servers are the ones the bound revision's
+  reviewed policy names, less the coding bridge (the reserved name and the one
+  its reviewed facts give), which the pair never reaches; the second sentence
+  appears only under a live lease, and says "this machine" because beside
+  coding sessions "this session" would read as one of them. When the toolset
+  also holds the first-class coding tools
+  ([host-coding-sessions.md](host-coding-sessions.md) → "The agent's tools"),
+  a sentence names them: "You can have a coding agent on that machine (Claude
+  Code, in the folders nessie) do coding work through the `coding_session_*`
+  tools: you brief it, follow it, and review what it changed; you never write
+  the code yourself." It goes on to list the open sessions this agent holds
+  there for the person — at most five, from the local-MCP report the
+  machine's last heartbeat carried and filtered by their owner key — or says
+  they hold none; a report that listed no sessions at all adds nothing.
+  Sessions belong to an owner, not to a lease, so these are the person's
+  sessions with this agent on that machine, wherever they began. So a title,
+  the first line of a task the person may have written in another
+  conversation, is listed only in their own DM, the one place the machine's
+  label is also named, and a block that lists one stamps the run's
+  disclosure basis with the launch conversation as a coding tool's answer
+  does; anywhere else a session is its id and status alone. A machine that
+  names only the bridge is told as the coding sentence alone.
 - **A lease exists and did not carry.** "You have no machine tools this turn."
   and one line for the refusal reason — for example "Machine tools only come
   with messages from the person who started the session", "The session ended",

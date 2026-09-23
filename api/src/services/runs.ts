@@ -60,7 +60,8 @@ export const listActiveRuns = async (
       threadId: true,
       thread: { select: { channelId: true } },
       agent: { select: { name: true } },
-      _count: { select: { toolCalls: true } },
+      // A step of another call (a coding wait's later reads) is that call, counted once.
+      _count: { select: { toolCalls: { where: { parentToolCallId: null } } } },
     },
   })
 
@@ -122,7 +123,8 @@ export const listRestartableRuns = async (
       agent: { select: { name: true } },
       triggerMessage: { select: { metadata: true } },
       checkpoint: { select: { id: true, consumedByRunId: true } },
-      _count: { select: { toolCalls: true } },
+      // A step of another call (a coding wait's later reads) is that call, counted once.
+      _count: { select: { toolCalls: { where: { parentToolCallId: null } } } },
     },
   })
 

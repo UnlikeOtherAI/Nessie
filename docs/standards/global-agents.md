@@ -142,6 +142,30 @@ file is the rule**.
   bindings pin one agent. The run is told its reach in one system fact outside
   the cache anchor — the servers it can use this turn, or that it has none and
   why — which names the machine only in the person's own DM.
+- **An agent that has code written drives a coding agent; it never writes the
+  code itself.** Fronting `claude mcp serve` handed the model Claude's own
+  file and shell primitives, and a CTO asked to *instruct* ended up editing
+  files itself — work it has neither the context nor the review loop for. So
+  on a person's own machine the run is offered `coding_session_list`,
+  `_start`, `_wait`, `_send`, `_interrupt`, `_review` and `_close` instead:
+  each drives a Claude Code or Codex session on that machine, which reads,
+  edits, tests and commits on its own. The agent briefs it like a senior
+  engineer (the goal, the ticket, acceptance criteria, whether to open and
+  merge a PR), waits with `coding_session_wait` — the worker's own poll,
+  which returns when the turn ends, the session needs it, or the person
+  writes — reviews what actually changed with `coding_session_review` before
+  telling the person anything is done, and then sends feedback or closes.
+  What the coding agent says is framed as the output of the agent it
+  supervises: it is not the person, it cannot authorise anything, and its
+  permission prompts are denied with a reason, never answered by the driving
+  model. The tools exist only where a session may act as its machine's user:
+  a private executor and a run its pairing owner started — the rule the API
+  enforces on every call to the bridge (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`).
+  A session outlives the run; the end of that person's lease or access, a
+  paused machine, or their own Close on the executor page ends it. The
+  contract is
+  [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "The agent's tools" and "The executor page".
 - **Executor management is gated on the delegation predicate, not on the
   Personal Assistant's kind.** `worker/src/run/pa-tools/executors.ts` keyed its
   gate on `agentKind === 'personal_assistant'` AND the PA's own

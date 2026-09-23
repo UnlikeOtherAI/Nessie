@@ -281,6 +281,9 @@ export const AuditActionSchema = z.enum([
   'executor.lease.created',
   'executor.run.carried',
   'executor.lease.ended',
+  // A person pressed Close on one coding session on their own machine.
+  // `resourceId` is the session id; nothing it said or did is recorded.
+  'executor.coding_session.close_requested',
   'executor.browser.action.dispatched',
   'executor.command.run.dispatched',
   'approval.created',
