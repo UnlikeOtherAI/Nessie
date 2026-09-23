@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
   AuthorizedActionContextSchema,
+  DEEP_WATER_DELIVERY_PURPOSE,
   parseAgentId,
   parseChannelId,
   parseRunId,
@@ -20,8 +21,9 @@ import { enqueueRunExecution } from './queue.js'
 // `RunThreadPendingMessage` row instead of spawning a concurrent run; when the
 // in-flight run reaches a terminal state (completed, cancelled, failed —
 // including the budget-gate block), the terminal path batches ordinary pending
-// rows in arrival order. Peer-delegated hidden briefs drain one at a time so
-// each keeps its original human authority and disclosure lineage. No message is lost across
+// rows in arrival order. Peer-delegated hidden briefs and DeepWater delivery
+// wakes drain one at a time so each keeps its original human authority and
+// disclosure lineage. No message is lost across
 // a worker crash: the row is the pending marker, and the periodic
 // `sweepPendingThreadMessages` re-poll enqueues the follow-up for any pair
 // whose run disappeared without draining (crash between terminal update and
@@ -49,7 +51,18 @@ import { enqueueRunExecution } from './queue.js'
 // `system`-role messages. Ordinary scheduled kickoffs therefore coalesce to
 // the latest self-contained "check for work" directive. A peer-delegation
 // brief is different: it drains alone with its durable hidden message and
-// original human authority, so it never inherits another brief's lineage.
+// original human authority, so it never inherits another brief's lineage. A
+// DeepWater delivery wake is the same: each wakes the agent for one research,
+// under the identity of the person who asked for it, so two wakes (or a wake
+// and another person's message) are never coalesced into one run.
+
+// Pending rows whose action purpose makes them drain alone. The purpose is
+// already in the row's stored actor context; `promptOverride` also drains
+// alone, but it means pinned classifier instructions, not a wake.
+const DRAINS_ALONE_PURPOSES: ReadonlySet<string> = new Set([
+  'agent.peer_delegation',
+  DEEP_WATER_DELIVERY_PURPOSE,
+])
 
 // Statuses that count as "a run is in flight for this (agent, thread)".
 // `waiting_approval` is in-flight: the run resumes after the approval, so new
@@ -200,8 +213,9 @@ export const isThreadRunSlotBusy = async (
 }
 
 // Drain ordinary pending messages for (agent, thread) into ONE batched
-// follow-up. A peer-delegation marker drains individually so its hidden
-// message, disclosure basis, and requesting human remain inseparable. The
+// follow-up. A peer-delegation marker or a DeepWater delivery wake drains
+// individually so its hidden message, disclosure basis, and requesting human
+// remain inseparable. The
 // latest message of an ordinary batch drives the run's prompt, triggerMessageId
 // (restart replay), interactivity (budget
 // exemption), actor context, and — when it came from a trigger fire — the
@@ -239,12 +253,14 @@ export const drainPendingThreadMessages = async (
     if (pendings.length === 0) {
       return null
     }
-    const firstPeerIndex = pendings.findIndex((pending) => pending.promptOverride
-      || AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose === 'agent.peer_delegation')
-    // Preserve arrival order. Drain ordinary work before the first peer as its
-    // usual batch; drain a first peer alone. Later markers remain durable for
-    // the next terminal drain, rather than being silently coalesced under a
-    // different brief's authority.
+    const firstPeerIndex = pendings.findIndex((pending) => {
+      const purpose = AuthorizedActionContextSchema.parse(pending.actorContext).actionContext.purpose
+      return Boolean(pending.promptOverride) || (purpose !== undefined && DRAINS_ALONE_PURPOSES.has(purpose))
+    })
+    // Preserve arrival order. Drain ordinary work before the first row that
+    // drains alone as its usual batch; drain such a first row alone. Later
+    // markers remain durable for the next terminal drain, rather than being
+    // silently coalesced under a different brief's authority.
     const pendingBatch = firstPeerIndex < 0
       ? pendings
       : firstPeerIndex === 0

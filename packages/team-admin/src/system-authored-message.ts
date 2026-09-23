@@ -2,6 +2,10 @@ import type { Prisma } from '@prisma/client'
 import {
   applyReplyBookkeeping,
   followReplyThread,
+  insertMessageBasis,
+  insertMessageDisclosureSources,
+  type BasisScopeRow,
+  type MessagePrivateConversationSource,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
 import type { MessageRole } from '@nessie/schemas'
@@ -23,7 +27,16 @@ import { messageInclude, type MessageWithReactions } from './message-include.js'
 /** The fields a server-authored message row is written from. */
 export type SystemAuthoredMessageInput = {
   agentId?: string | null
+  /**
+   * The disclosure the content needs, stamped on the row in this transaction:
+   * the basis scopes it may be shown under, and the private conversations it
+   * carries words from. A server-authored message that relays gathered content
+   * (a DeepWater research result, its wake kickoff) must never be readable by
+   * anyone its sources are not; one that relays nothing leaves both empty.
+   */
+  basisScopes?: readonly BasisScopeRow[]
   content: string
+  disclosureSources?: readonly MessagePrivateConversationSource[]
   /** Backdated only when mirroring history that already happened elsewhere. */
   createdAt?: Date
   followedByUserIds: string[]
@@ -35,11 +48,11 @@ export type SystemAuthoredMessageInput = {
   userId?: string | null
 }
 
-const writeSystemAuthoredRow = (
+const writeSystemAuthoredRow = async (
   tx: Prisma.TransactionClient,
   input: SystemAuthoredMessageInput & { rootMessageId?: string },
-): Promise<MessageWithReactions> =>
-  tx.message.create({
+): Promise<MessageWithReactions> => {
+  const created = await tx.message.create({
     data: {
       content: input.content,
       role: input.role,
@@ -53,6 +66,18 @@ const writeSystemAuthoredRow = (
     },
     include: messageInclude,
   })
+  const basis = input.basisScopes ?? []
+  const sources = input.disclosureSources ?? []
+  if (basis.length === 0 && sources.length === 0) return created
+  const { organizationId } = await tx.thread.findUniqueOrThrow({
+    where: { id: input.threadId },
+    select: { channel: { select: { organizationId: true } } },
+  }).then((thread) => thread.channel)
+  await insertMessageBasis(tx, { messageId: created.id, organizationId, basis })
+  await insertMessageDisclosureSources(tx, { messageId: created.id, organizationId, sources })
+  // Re-read so the returned row carries the basis it was written with.
+  return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude })
+}
 
 /**
  * A message the server authors on someone's behalf — a product handoff prompt,

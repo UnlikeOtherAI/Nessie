@@ -34,6 +34,15 @@ export const isResearchRunRefMessage = (metadata: unknown): boolean =>
     (metadata as { researchRunRef?: unknown } | null | undefined)?.researchRunRef,
   ).success
 
+/**
+ * The action-context purpose of a run woken by a DeepWater delivery. Such a
+ * wake drains alone from the per-(agent, thread) pending queue, like a peer
+ * delegation, so it keeps its own requester's identity and lineage, and its
+ * failure is announced in the thread, because the person who asked is
+ * waiting for the answer.
+ */
+export const DEEP_WATER_DELIVERY_PURPOSE = 'deep_water.delivery'
+
 export const DeepWaterDeliveryKindSchema = z.enum([
   'turn',
   'completed',

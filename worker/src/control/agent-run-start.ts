@@ -21,10 +21,12 @@ import { enqueueRunExecution } from '../queue.js'
 /**
  * Starting one agent run from a kickoff message that already exists.
  *
- * The run, its task and the execution job are one act, and two callers now make
- * it: a trigger firing, and a board watcher being told a ticket moved. Only the
- * provenance differs — a trigger carries its delivery, a watcher carries
- * nothing — so that is the only thing this takes as an option.
+ * The run, its task and the execution job are one act, and three callers make
+ * it: a trigger firing, a board watcher being told a ticket moved, and a
+ * DeepWater delivery waking the agent that asked for a research. Only the
+ * provenance differs — a trigger carries its delivery, a watcher nothing, a
+ * wake the principal its Personal Assistant presence speaks for — so that is
+ * all this takes as options.
  *
  * The caller owns everything before this: the kickoff message and the
  * per-(agent, thread) claim. This runs only on `claimed`.
@@ -92,6 +94,12 @@ export const startAgentRun = async (
     channelId: string
     messageId: string
     organizationId: string
+    /**
+     * The person a Personal Assistant presence speaks for in a shared room —
+     * the same principal the caller claimed the (agent, principal, thread)
+     * slot with. Omitted for an ordinary binding or a PA DM.
+     */
+    principalUserId?: string
     /** What the task is for, in a person's words. Truncated for the row. */
     purpose: string
     threadId: string
@@ -102,14 +110,21 @@ export const startAgentRun = async (
   const run = await tx.run.create({
     data: {
       agentId: input.agentId,
+      ...(input.principalUserId ? { principalUserId: input.principalUserId } : {}),
       // A fire is a standalone contribution to the room, not an answer owed to
       // whoever last spoke. Stamped structurally from the fact that nobody
       // asked, never judged from content. This must stay paired with a
       // `system` kickoff: a hidden root plus default-thread placement would
       // bury the run under an invisible message and drop it out of the feed.
+      // A kickoff that is itself a reply (a DeepWater wake under its research
+      // card) still answers in that reply thread: placement follows the
+      // kickoff's root first (`resolveReplyRootMessageId`).
       replyPlacement: 'channel',
       status: 'pending',
       threadId: input.threadId,
+      // The kickoff is this run's trigger, as on the drained path, so a
+      // redelivered claim for the same kickoff is recognised as a duplicate.
+      triggerMessageId: input.messageId,
       ...(input.triggerDeliveryId ? { triggerDeliveryId: input.triggerDeliveryId } : {}),
       ...(input.triggerId ? { triggerId: input.triggerId } : {}),
     },
@@ -132,6 +147,7 @@ export const startAgentRun = async (
     {
       actorContext: withActionContext(input.actorContext, { taskId: parseTaskId(task.id) }),
       agentId: parseAgentId(input.agentId),
+      ...(input.principalUserId ? { principalUserId: input.principalUserId } : {}),
       messageId: input.messageId,
       runId: parseRunId(run.id),
       taskId: parseTaskId(task.id),
