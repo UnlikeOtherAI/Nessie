@@ -159,7 +159,9 @@ summary and points here; **this file is the rule**.
       that is normal. Wait again, or tell the person where things stand and
       end your turn." after the batch instead of a refusal.
     - **Needs the model** — the turn ended, or the session was interrupted,
-      failed or closed. The wait's own answer says what to do, and a second
+      failed or closed. (A turn that ended with background tasks still
+      running counts as watching: a task finishing starts a turn of its
+      own.) The wait's own answer says what to do, and a second
       wait would return the same answer at once, so the same wait again is
       refused ("Not run: your last wait on this session already returned
       because it needs you…") until a call that is not an observation — a

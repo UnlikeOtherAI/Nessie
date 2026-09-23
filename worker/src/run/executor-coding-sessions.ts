@@ -94,11 +94,15 @@ export const codingSessionsOffer = async (
 /**
  * Why a wait stopped, as the loop detector reads it: an ended turn or a
  * session that failed or closed needs the model, which a second wait would
- * only report again; the person writing, stopping the run or the run's time
- * running low ends the turn; anything else was still watching.
+ * only report again — unless background tasks the agent left running may
+ * start a turn of their own, which is worth waiting for; the person writing,
+ * stopping the run or the run's time running low ends the turn; anything else
+ * was still watching.
  */
-const watchStateOf = (outcome: CodingWaitOutcome): WatchState => {
-  if (outcome === 'attention') return 'needs_model'
+const watchStateOf = (outcome: CodingWaitOutcome, last: Record<string, unknown>): WatchState => {
+  if (outcome === 'attention') {
+    return typeof last.backgroundTasks === 'number' && last.backgroundTasks > 0 ? 'watching' : 'needs_model'
+  }
   return outcome === 'person_wrote' || outcome === 'cancelled' || outcome === 'run_ending' ? 'end_turn' : 'watching'
 }
 
@@ -240,7 +244,7 @@ export const createExecutorCodingSessions = (input: {
       output: presentCodingWait(waited),
       success: true,
       ...recordIdField,
-      watch: { progressed, state: watchStateOf(outcome) },
+      watch: { progressed, state: watchStateOf(outcome, last) },
     }
   }
 

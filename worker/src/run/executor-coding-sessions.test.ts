@@ -257,6 +257,14 @@ test('a review is framed as the coding agent’s work', async () => {
   assert.match(review.output, /Output from the coding agent you supervise\./)
 })
 
+test('a turn that ended with background tasks still running is worth waiting on again', async () => {
+  const body = { agent: 'claude', backgroundTasks: 1, sessionId: SESSION, status: 'waiting_for_input', turn: 1 }
+  const { sessions } = harness((call) => answer({ ...body, summary: { newEvents: 1, toolCounts: {} } }, `row-${call.providerToolCallId}`))
+  const result = await sessions.execute(CODING_SESSION_TOOL_NAMES.wait, { sessionId: SESSION }, 'call-bg')
+  // A task finishing starts a turn of its own, so a second wait is not refused as pointless.
+  assert.deepEqual(result.watch, { progressed: true, state: 'watching' })
+})
+
 test('a wait the person’s message ended tells the loop the turn is over', async () => {
   const working = { agent: 'claude', sessionId: SESSION, status: 'working', summary: { newEvents: 1, toolCounts: {} }, turn: 1 }
   const { sessions } = harness((call) => answer(working, `row-${call.providerToolCallId}`), {
