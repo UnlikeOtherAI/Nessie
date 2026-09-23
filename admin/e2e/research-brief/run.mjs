@@ -19,6 +19,7 @@ import {
   walkResearchPages,
   walkStartAgain,
 } from './steps.mjs'
+import { walkAgentBriefSignIn, walkLostNewBrief, walkNotReadyNewBrief, walkOutdatedTeam } from './steps-recovery.mjs'
 
 /**
  * DeepWater research in the admin, rendered (Water plan nessie.md §7.7, §7.9;
@@ -35,11 +36,14 @@ import {
  * action opening a brief under its own reply thread, an agent's read-only
  * brief discarded (the discard in flight, then done), a reply the planner
  * could not answer coming back and being sent again, the failed opening turn,
- * the sign-in state, every artifact action including the clipboard fallback,
- * the not-ready doorways for a member, an admin (who is offered no team
- * control) and an owner, the owner's cancel of the research that blocks
- * turning DeepWater off (requested, still refusing, then stopped), and
- * Knowledge › Research with a research from before briefs and a second page.
+ * the sign-in state (a person's brief, and an agent's brief for its
+ * requester), a new brief whose answer was lost resent under its key, every
+ * artifact action including the clipboard fallback, the not-ready doorways for
+ * a member, an admin (who is offered no team control) and an owner, a new
+ * brief refused as not ready, an owner updating a team that needs it, the
+ * owner's cancel of the research that blocks turning DeepWater off (requested,
+ * still refusing, then stopped), and Knowledge › Research with a research from
+ * before briefs and a second page.
  * Every state is screenshotted under e2e/screenshots/research-brief/.
  */
 
@@ -163,6 +167,10 @@ try {
   const composer = await open(desktop)
   await walkNewBrief(composer, snap)
   await composer.close()
+  // 07b — the answer to opening a brief is lost after the brief was opened: the same key opens the same brief.
+  const lostAnswer = await open(desktop, 'create=lost-once')
+  await walkLostNewBrief(lostAnswer, snap)
+  await lostAnswer.close()
   const reply = await open(desktop)
   await walkReplyThreadBrief(reply)
   await reply.close()
@@ -211,6 +219,10 @@ try {
   await signIn.getByRole('button', { name: 'Sign in again' }).waitFor()
   await snap(signIn, '11-brief-sign-in.png')
   await signIn.close()
+  // 11b — the same for the requester of an agent's brief, who has the card's Retry in the brief too.
+  const agentSignIn = await open(desktop, 'agent=sign-in')
+  await walkAgentBriefSignIn(agentSignIn, snap)
+  await agentSignIn.close()
 
   // 12 — Copy markdown where the browser will not copy: the report, selected.
   const noClipboard = await browser.newContext({ viewport: { height: 1000, width: 1440 } })
@@ -257,6 +269,11 @@ try {
   await snap(adminHero, '13b-not-ready-admin-hero.png')
   await adminHero.close()
 
+  // 13c — DeepWater turned off after the form was opened: an owner is refused as an owner, and shown the way back.
+  const refused = await open(desktop, 'create=not-ready&owner=1')
+  await walkNotReadyNewBrief(refused, snap)
+  await refused.close()
+
   // 14 — not ready, an owner: the doorway to the DeepWater page, and turning it on there.
   const ownerPage = await open(desktop, 'readiness=team_off&owner=1')
   await ownerPage.getByTestId('composer-research-button').click()
@@ -267,6 +284,10 @@ try {
   await controls.getByRole('button', { name: 'Turn off DeepWater' }).waitFor()
   await snap(ownerPage, '14-owner-turned-on.png')
   await ownerPage.close()
+  // 14b — a team that needs updating: update it, or turn it off without updating first.
+  const outdated = await open(desktop, 'readiness=contract_outdated&owner=1&at=/apps/deep-water')
+  await walkOutdatedTeam(outdated, snap)
+  await outdated.close()
 
   // 15–17 — turning it off is refused by an open research, which the owner cancels here.
   const hero = await open(desktop, 'owner=1&at=/apps/deep-water')

@@ -42,8 +42,15 @@ import {
  * viewer's role (the runner's `/api/auth/me` answers with it) and so the
  * verdict's cancel standing; `?brief=` picks the
  * person's brief (`drafting`, `opening-failed` — the planner could not answer
- * the question that opened it — or `sign-in`); `?many=1` adds enough older
- * research for a second page of Knowledge › Research at ten a page.
+ * the question that opened it — or `sign-in`); `?agent=sign-in` blocks the
+ * agent's brief on its requester's changed sign-in; `?create=` makes opening a
+ * brief lose its first answer (`lost-once`, after the brief was opened) or be
+ * refused because DeepWater was turned off meanwhile (`not-ready`); `?many=1`
+ * adds enough older research for a second page of Knowledge › Research at ten
+ * a page.
+ *
+ * Opening a brief is idempotent by its `actionId`, as the API is: the same key
+ * again answers with the brief it already opened.
  *
  * A cancel is answered as the API answers it: accepted (202) with the research
  * still open and the cancel in flight; the runner settles it later
@@ -55,6 +62,8 @@ const readiness = (params.get('readiness') ?? 'ready') as DeepWaterResearchReadi
 const owner = params.get('owner') === '1'
 const admin = params.get('admin') === '1'
 const briefVariant = params.get('brief') ?? 'drafting'
+const agentVariant = params.get('agent')
+const createVariant = params.get('create')
 const many = params.get('many') === '1'
 try {
   window.localStorage.clear()
@@ -84,11 +93,22 @@ const personBrief = (): DeepWaterBriefView => {
   return draftBrief()
 }
 
-const briefs = new Map<string, DeepWaterBriefView>([[RUN.draft, personBrief()], [RUN.agentDraft, agentBrief()]])
+const agentsBrief = (): DeepWaterBriefView => {
+  const brief = agentBrief()
+  return agentVariant === 'sign-in'
+    ? { ...brief, delivery: { blockedReason: 'requester_identity_changed', state: 'blocked' },
+      viewer: { ...brief.viewer, canRetryDelivery: true } }
+    : brief
+}
+
+const briefs = new Map<string, DeepWaterBriefView>([[RUN.draft, personBrief()], [RUN.agentDraft, agentsBrief()]])
 const runs = new Map<string, DeepWaterResearchRunView>(
   [...listedRuns(), ...(many ? olderLauncherRuns(8) : [])].map((entry) => [entry.id, entry]),
 )
-const store = { conflictNext: false, teamEnabled: readiness !== 'team_off' }
+const store = { conflictNext: false, createLost: createVariant === 'lost-once', teamEnabled: readiness !== 'team_off',
+  upgraded: false }
+/** The brief each opening key opened: the same key again is answered with it. */
+const opened = new Map<string, DeepWaterBriefView>()
 const calls: { body?: unknown; method: string; path: string }[] = []
 
 const runView = (id: string): DeepWaterResearchRunView | null => {
@@ -99,9 +119,9 @@ const notFound = () => new ApiClientError('Not found', 'DEEP_WATER_RESEARCH_NOT_
 
 const product = () => ({
   capabilities: [], category: 'research', id: '90000000-0000-4000-8000-000000000001', name: 'DeepWater',
-  // Turned on here, a team that started off is ready; otherwise the verdict the run asked for.
+  // Turned on (or updated) here, a team is ready; otherwise the verdict the run asked for.
   research: {
-    state: store.teamEnabled ? (readiness === 'team_off' ? 'ready' : readiness) : 'team_off',
+    state: !store.teamEnabled ? 'team_off' : readiness === 'team_off' || store.upgraded ? 'ready' : readiness,
     // The cancel standing: owners and admins (amendments N8.5).
     viewerCanChangeTeam: owner || admin,
   },
@@ -158,8 +178,22 @@ const post = async (path: string, body?: Record<string, unknown>): Promise<unkno
   calls.push({ body, method: 'POST', path })
   const route = new URL(path, location.origin).pathname
   if (route === RUNS) {
+    const key = String(body?.actionId)
+    const replay = opened.get(key)
+    if (replay) return briefs.get(replay.id) ?? replay
+    if (createVariant === 'not-ready') {
+      // DeepWater was turned off for the team after the products list was read.
+      store.teamEnabled = false
+      throw new ApiClientError('DeepWater is off', 'DEEP_WATER_NOT_READY', 409, { reason: 'team_off' })
+    }
     const created = createdBrief(String(body?.topic))
     briefs.set(created.id, created)
+    opened.set(key, created)
+    if (store.createLost) {
+      // Opened, but the answer never came back.
+      store.createLost = false
+      throw new TypeError('Failed to fetch')
+    }
     return created
   }
   const match = new RegExp(`^${RUNS}/([^/]+)/(messages|start|cancel|deliver)$`).exec(route)
@@ -210,6 +244,8 @@ const patch = async (path: string, body?: Record<string, unknown>): Promise<unkn
     })
   }
   store.teamEnabled = body?.enabled === true
+  // Turning it on installs the current research tools, which is how a team is updated.
+  if (store.teamEnabled) store.upgraded = true
   return product()
 }
 
@@ -242,6 +278,8 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 Object.assign(window, {
   __research: {
     calls,
+    /** How many briefs opening a brief has opened: a replayed key opens none. */
+    openedBriefs: () => opened.size,
     /** DeepWater stops a research whose cancel was accepted. */
     cancelSettles: (id: string) => {
       if (briefs.has(id)) {
