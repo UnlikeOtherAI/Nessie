@@ -395,22 +395,42 @@ the only way results come back.
   backoff, and a deployment fault (UOA refusing Nessie's client or assertion
   with 400 or 401, any 403 that does not name the person, or an answer outside
   its contract) fails the read, so the job's failure is logged and the backoff
-  stands. An identity that no longer resolves — the link gone or re-teamed, or
-  UOA refusing to delegate the captured identity with a 403 naming
-  `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN`, or delegating it for another sign-in epoch
-  (`classifyUoaExchangeFailure`) — blocks the run with
-  `requester_identity_changed` until the requester's next live action (or
-  Retry) renews it; it is never retried in a loop. Only a person's own brief is
-  blocked quietly, because its dialog says "Sign in again"; an agent's brief
-  tells the requester once that the agent can't carry on (they cannot edit it,
-  and the agent is never woken while the watch is stopped), and a launched
-  research tells them DeepWater can't check on it — never that it finished.
-  UOA answers 403 for Nessie's own delegation setup too (a missing or disabled
-  mapping, an inactive client domain, a resource or scope the mapping does not
-  allow), and its production body names a code only when the code is on its
-  public list, so a bare 403 is never taken as the person's doing: until UOA
-  lists `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN`, a refused person fails the read as
-  a fault too, and the run is renewed by their next live action as above.
+  stands. An identity that no longer resolves — the link gone or re-teamed,
+  the link recording a newer sign-in epoch than the one captured (the person
+  signed in to Nessie again), or UOA refusing to delegate the captured
+  identity with a 403 naming `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN`, or delegating
+  it for another sign-in epoch (`classifyUoaExchangeFailure`) — blocks the run
+  with `requester_identity_changed` until the requester's Retry renews it (on
+  their own brief, their next action there does too); it is never retried in a
+  loop. Only a person's own brief is blocked quietly, because its dialog says
+  "Sign in again"; everyone else is told once, as an `identity_changed` notice:
+  an agent's brief that the agent can't carry on (they cannot edit it, and the
+  agent is never woken while the watch is stopped), and a launched research
+  that DeepWater can't check on it — never that it finished, nor that it is
+  waiting to be saved.
+- **Identity drift and UOA's rollout gate.** UOA answers 403 for Nessie's own
+  delegation setup too (a missing or disabled mapping, an inactive client
+  domain, a resource or scope the mapping does not allow), and its production
+  body names a code only when the code is on its public list
+  (`PRODUCTION_PUBLIC_ERROR_CODES`), so a bare 403 is never taken as the
+  person's doing. `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` is not on that list yet
+  (UnlikeOtherAuthenticator main 2e7fb24; the bodies are pinned in
+  `packages/runtime/test/uoa-token-exchange-production-bodies.ts`), so **today
+  a person UOA refuses fails the read as a fault**: the job's failure is
+  logged, the claim's backoff grows to 6 hours, the run is not blocked, nobody
+  is told, and Retry is not offered (it needs a block). No live action renews a
+  launched or finished research. Such a run is caught only once Nessie can see
+  the change itself — the requester signs in to Nessie again (their link then
+  records the new epoch) or loses the link or team — when its next read blocks
+  it and tells them as above. A requester who never signs in again, or who
+  loses an organisation, team or domain role only at UOA, strands the run: a
+  finished research is never delivered and nobody is told. **Rollout gate:**
+  UOA must list `TOKEN_EXCHANGE_SUBJECT_FORBIDDEN` as a public production code
+  and give its configuration refusal (an active team with organisation
+  features off under a team policy other than `all_active_memberships`) a code
+  of its own, which stays a Nessie fault; until both ship, identity drift is
+  this known limitation (`docs/known-limitations.md` L25), and flipping the
+  pinned fixture is how the change is taken up.
 - **A launch is seen before its result.** A research Ledger shows was launched
   — `complete`, or a brief whose state is `launched` — moves the run to
   `running` (setting `launched_at`) before its result is delivered, even when

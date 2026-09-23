@@ -9,6 +9,12 @@ import {
   type UoaExchangeFailure,
   type UoaExchangeFetch,
 } from '../src/uoa-delegation-exchange.js'
+import {
+  delegationNotAllowedToday,
+  movedEpochOnceGated,
+  movedEpochToday,
+  type UoaProductionRefusal,
+} from './uoa-token-exchange-production-bodies.js'
 
 const settings = {
   authBaseUrl: 'https://authentication.unlikeotherai.com',
@@ -108,4 +114,19 @@ test('only a proven refusal of the person is identity drift; only an outage pass
   for (const [failure, expected] of cases) {
     assert.equal(classifyUoaExchangeFailure(failure), expected, JSON.stringify(failure))
   }
+})
+
+const classifyProduction = async (refusal: UoaProductionRefusal) =>
+  classifyUoaExchangeFailure(await failureOf(answering(refusal.status, refusal.body)))
+
+test('UOA\'s production body for a moved sign-in names nobody until UOA lists the subject code', async () => {
+  // Today a refused person and Nessie's own delegation fault are the same bare
+  // 403, so neither may be blamed on the person: identity drift behind it
+  // strands the run until UOA ships the gated body (docs/standards/deepwater.md).
+  assert.deepEqual(movedEpochToday, delegationNotAllowedToday)
+  assert.equal(await classifyProduction(movedEpochToday), 'fault')
+  assert.equal(await classifyProduction(delegationNotAllowedToday), 'fault')
+  // The rollout gate: once UOA's production body names the code, the same
+  // refusal is the person's own, and the run is blocked and they are told.
+  assert.equal(await classifyProduction(movedEpochOnceGated), 'identity')
 })

@@ -25,6 +25,11 @@ import crypto from 'node:crypto'
  * mapping, an inactive client domain, a resource or scope the mapping does not
  * allow. Its production error body names the code only when the code is on its
  * public list, so a 403 without this code proves nothing about the person.
+ *
+ * This code is not on that list yet, so in production a refused person is a
+ * bare 403 and classifies as a fault: identity drift behind it strands a run
+ * until UOA lists it (the DeepWater rollout gate, docs/standards/deepwater.md
+ * "Identity drift and UOA's rollout gate"; known limitation L25).
  */
 export const UOA_SUBJECT_FORBIDDEN_CODE = 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN'
 
