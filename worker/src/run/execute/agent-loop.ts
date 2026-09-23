@@ -12,7 +12,7 @@ import { buildContextPlan } from '../context-window.js'
 import { runContextCompaction } from '../context-compaction.js'
 import { estimateToolSchemaTokens } from '../context-management.js'
 import { runDelegate } from '../delegate.js'
-import { executorToolName, type ExecutorToolset } from '../executor-toolset.js'
+import type { ExecutorToolset } from '../executor-toolset.js'
 import { createDelegateGate } from '../run-budget.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
@@ -26,8 +26,8 @@ import { authorizeToolExecution, type ToolAuthorizationDecision } from './tool-a
 import { buildApprovalSuspensionResult, createBuiltinToolExecutor } from './builtin-runtime-context.js'
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
+import { createExecutorToolExecution } from './executor-tool-execution.js'
 import { setAgentStatus } from './lifecycle.js'
-import { emitWorkerAuditEvent } from './policy.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
@@ -145,6 +145,7 @@ export const runExecutionAgentLoop = async (
     payload,
     stubbedBuiltinToolIds: input.stubbedBuiltinToolIds,
   })
+  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset)
 
   const contextPlan = buildContextPlan({
     model: context.agent.model,
@@ -312,31 +313,7 @@ export const runExecutionAgentLoop = async (
       return mcpView.dispatch(toolName, args, toolCallId)
     }
     if (input.executorToolset.handledNames.has(toolName)) {
-      const result = await input.executorToolset.dispatch(toolName, args, toolCallId)
-      if (toolName === executorToolName('browser.act') || toolName === executorToolName('command.run')) {
-        const metadata = toolName === executorToolName('browser.act')
-          ? {
-              action: typeof args.action === 'string' ? args.action : 'unknown',
-              ...(typeof args.nodeId === 'number' ? { nodeId: args.nodeId } : {}),
-              runId: context.run.id,
-              toolCallId,
-            }
-          : {
-              program: typeof args.program === 'string' ? args.program : 'unknown',
-              runId: context.run.id,
-              toolCallId,
-            }
-        await emitWorkerAuditEvent(deps.prisma, authorization.toolActorContext, {
-          action: toolName === executorToolName('browser.act')
-            ? 'executor.browser.action.dispatched'
-            : 'executor.command.run.dispatched',
-          metadata,
-          outcome: result.success ? 'success' : 'error',
-          resourceId: result.toolCallRecordId,
-          resourceType: 'executor_command',
-        })
-      }
-      return result
+      return executeExecutorTool(toolName, args, toolCallId, authorization.toolActorContext)
     }
     return builtinToolExecutor.executeAuthorized(toolName, args, toolCallId, authorization)
   }

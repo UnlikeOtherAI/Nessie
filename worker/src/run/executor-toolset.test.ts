@@ -437,3 +437,65 @@ test('an exited coding session keeps review and teardown but cannot relaunch Cod
     'executor_workspace_review',
   ])
 })
+
+const localAppsPrisma = (descriptor: unknown) => ({
+  executorBinding: {
+    findMany: async () => [
+      { capabilityRevision: { descriptor }, id: '00000000-0000-4000-8000-000000000021', operationKey: 'mcp.tools', session: null },
+      { capabilityRevision: { descriptor }, id: '00000000-0000-4000-8000-000000000022', operationKey: 'mcp.call', session: null },
+    ],
+  },
+  toolRegistryEntry: {
+    deleteMany: async () => ({ count: 0 }),
+    upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+      id: where.organizationId_scopeKey_toolId.toolId,
+    }),
+  },
+}) as unknown as PrismaClient
+
+const localAppsPolicy = { 'executor.mcp.call': true, 'executor.mcp.tools': true }
+
+test('the local-apps tools offer exactly the programs the bound revision names', async () => {
+  const toolset = await buildExecutorToolset(localAppsPrisma({ mcpServers: ['kelpie', 'ollama-search'] }), {
+    agentId,
+    agentToolPolicy: localAppsPolicy,
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+  assert.deepEqual(toolset.descriptors.map((descriptor) => descriptor.toolName), ['executor_mcp_call', 'executor_mcp_tools'])
+  for (const descriptor of toolset.descriptors) {
+    const server = (descriptor.inputSchema as { properties: { server: { enum: string[] } } }).properties.server
+    assert.deepEqual(server.enum, ['kelpie', 'ollama-search'])
+    assert.match(descriptor.description, /- kelpie: a real browser on that machine/)
+  }
+})
+
+test('a bound revision that names no program offers no local-apps tool', async () => {
+  for (const descriptor of [{}, { mcpServers: [] }, null, { mcpServers: ['Not A Name'] }]) {
+    const toolset = await buildExecutorToolset(localAppsPrisma(descriptor), {
+      agentId,
+      agentToolPolicy: localAppsPolicy,
+      encryptionSecret: 'test-secret',
+      organizationId,
+      runId,
+    })
+    assert.deepEqual(toolset.descriptors, [], JSON.stringify(descriptor))
+    assert.deepEqual([...toolset.handledNames], [])
+  }
+})
+
+test('the catalog of a program the revision does not name is refused without a command', async () => {
+  // The fake has no transaction: reaching dispatch would throw.
+  const toolset = await buildExecutorToolset(localAppsPrisma({ mcpServers: ['kelpie'] }), {
+    agentId,
+    agentToolPolicy: localAppsPolicy,
+    encryptionSecret: 'test-secret',
+    organizationId,
+    runId,
+  })
+  const answer = await toolset.mcpCatalog('ollama-search', 'call-1')
+  assert.ok('failure' in answer)
+  assert.equal(answer.failure.correctable, true)
+  assert.match(answer.failure.output, /Its programs: kelpie\./)
+})

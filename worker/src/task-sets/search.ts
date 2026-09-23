@@ -1,6 +1,7 @@
 import {
   bindExecutorCandidateBundleInTransaction, resolveExecutorAvailabilityCandidates,
 } from '@nessie/executor-manage'
+import type { ToolSchemaDescriptor } from '@nessie/runtime'
 import { AuthorizedActionContextSchema, ExecutorMcpToolCatalogSchema, TaskSetProcessorSchema } from '@nessie/schemas'
 import { buildExecutorToolset, executorToolName } from '../run/executor-toolset.js'
 import { currentExecutorToken } from '../run/execute/lifecycle.js'
@@ -20,6 +21,21 @@ export const taskSetSearchFailure = (output: string): string => {
     if (code && known.includes(code)) return code
   } catch { /* Only structured protocol reason codes are eligible for display. */ }
   return 'processor_search_unavailable'
+}
+
+const TASK_SET_SEARCH_TOOLS = ['ollama_web_search', 'ollama_web_fetch']
+
+/**
+ * The two research tools, read from `ollama-search`'s catalog exactly as the
+ * executor toolset's `dispatch` returned it: the raw result document, never
+ * the agent loop's presentation of it.
+ */
+export const taskSetSearchDescriptors = (listingOutput: string): ToolSchemaDescriptor[] => {
+  const envelope = JSON.parse(listingOutput) as { catalog?: unknown }
+  const catalog = ExecutorMcpToolCatalogSchema.parse(envelope.catalog)
+  const tools = catalog.tools.filter((tool) => TASK_SET_SEARCH_TOOLS.includes(tool.name))
+  if (tools.length !== 2 || catalog.nextCursor) throw new TaskSetBlocked('processor_search_setup_required')
+  return tools.map((tool) => ({ toolName: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema }))
 }
 
 /** Research uses only the selected local processor's approved Ollama server. */
@@ -70,15 +86,10 @@ export const buildTaskSetSearchTools = async (
     execute: () => toolset.dispatch(executorToolName('mcp.tools'), { server: 'ollama-search' }, `${claim.attempt.id}:search-catalog`),
   })
   if (!listed.success) throw new TaskSetBlocked('processor_search_setup_required')
-  const envelope = JSON.parse(listed.output) as { catalog?: unknown }
-  const catalog = ExecutorMcpToolCatalogSchema.parse(envelope.catalog)
-  const allowed = ['ollama_web_search', 'ollama_web_fetch']
-  const tools = catalog.tools.filter((tool) => allowed.includes(tool.name))
-  if (tools.length !== 2 || catalog.nextCursor) throw new TaskSetBlocked('processor_search_setup_required')
   return {
-    descriptors: tools.map((tool) => ({ toolName: tool.name, description: tool.description ?? '', inputSchema: tool.inputSchema })),
+    descriptors: taskSetSearchDescriptors(listed.output),
     call: async (name, args, callId) => {
-      if (!allowed.includes(name)) throw new TaskSetBlocked('processor_unapproved_tool')
+      if (!TASK_SET_SEARCH_TOOLS.includes(name)) throw new TaskSetBlocked('processor_unapproved_tool')
       const result = await toolset.dispatch(executorToolName('mcp.call'), { server: 'ollama-search', tool: name, arguments: args }, callId)
       if (!result.success) throw new TaskSetBlocked(taskSetSearchFailure(result.output))
       return result.output

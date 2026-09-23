@@ -35,7 +35,9 @@ const DELIBERATELY_UNREACHABLE: Record<string, string> = {
 test('every implemented operation a run can bind is reachable by a model', () => {
   const modelFacing = IMPLEMENTED_EXECUTOR_OPERATION_KEYS
     .filter((key) => !(key in DELIBERATELY_UNREACHABLE))
-  const unreachable = modelFacing.filter((key) => descriptorFor(key) === null)
+  // A run binds the local-apps pair only on a revision that names a program,
+  // so the descriptors are asked with one, as the toolset asks them.
+  const unreachable = modelFacing.filter((key) => descriptorFor(key, { mcpServers: ['kelpie'] }) === null)
   assert.deepEqual(
     unreachable,
     [],
@@ -43,28 +45,49 @@ test('every implemented operation a run can bind is reachable by a model', () =>
   )
 })
 
-test('mcp.tools takes a server and an optional cursor', () => {
-  const descriptor = descriptorFor('mcp.tools')
+test('mcp.tools takes one of the named programs and an optional tool, never a cursor', () => {
+  // The worker walks the program's catalog pages itself and answers from the
+  // whole catalog, so the model is never handed a cursor to thread back.
+  const descriptor = descriptorFor('mcp.tools', { mcpServers: ['kelpie', 'ollama-search'] })
   assert.ok(descriptor)
   const schema = descriptor.inputSchema as {
-    properties: Record<string, unknown>
+    properties: Record<string, { enum?: string[] }>
     required: string[]
   }
   assert.deepEqual(schema.required, ['server'])
-  assert.ok('cursor' in schema.properties, 'a paged catalog needs a cursor')
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['server', 'tool'])
+  assert.deepEqual(schema.properties.server?.enum, ['kelpie', 'ollama-search'])
 })
 
 test('mcp.call leaves the tool’s own arguments unconstrained', () => {
   // Mirroring a server's argument grammar here would drift the first time
   // that server ships a field; the daemon passes them through untouched.
-  const descriptor = descriptorFor('mcp.call')
+  const descriptor = descriptorFor('mcp.call', { mcpServers: ['kelpie'] })
   assert.ok(descriptor)
   const schema = descriptor.inputSchema as {
-    properties: { arguments?: Record<string, unknown> }
+    properties: { arguments?: Record<string, unknown>; server?: { enum?: string[] } }
     required: string[]
   }
   assert.deepEqual(schema.required.sort(), ['server', 'tool'])
   assert.deepEqual(schema.properties.arguments, { type: 'object' })
+  assert.deepEqual(schema.properties.server?.enum, ['kelpie'])
+})
+
+test('the mcp descriptions list the programs, with a line for the ones this release knows', () => {
+  for (const operationKey of ['mcp.tools', 'mcp.call']) {
+    const descriptor = descriptorFor(operationKey, { mcpServers: ['kelpie', 'ollama-search', 'label-printer'] })
+    assert.ok(descriptor)
+    const lines = descriptor.description.split('\n')
+    assert.ok(lines.includes('- kelpie: a real browser on that machine'), descriptor.description)
+    assert.ok(lines.includes('- ollama-search: web search through the owner\'s Ollama account'))
+    // Any other named program is its name and nothing more.
+    assert.ok(lines.includes('- label-printer'))
+  }
+})
+
+test('a revision that names no program offers neither mcp tool', () => {
+  assert.equal(descriptorFor('mcp.tools'), null)
+  assert.equal(descriptorFor('mcp.call', { mcpServers: [] }), null)
 })
 
 test('an operation with no backend stays unreachable', () => {

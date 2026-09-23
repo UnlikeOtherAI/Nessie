@@ -53,11 +53,13 @@ test('an unknown outcome aborts the run instead of becoming a retriable failure'
 })
 
 test('the toolset times its own tools by their command and answers nothing for other names', async () => {
+  const capabilityRevision = { descriptor: { mcpServers: ['kelpie'] } }
   const prisma = {
     executorBinding: {
       findMany: async () => [
-        { id: '00000000-0000-4000-8000-000000000004', operationKey: 'mcp.tools', session: null },
-        { id: '00000000-0000-4000-8000-000000000005', operationKey: 'mcp.call', session: null },
+        // The mcp pair is offered only on a revision that names a program.
+        { capabilityRevision, id: '00000000-0000-4000-8000-000000000004', operationKey: 'mcp.tools', session: null },
+        { capabilityRevision, id: '00000000-0000-4000-8000-000000000005', operationKey: 'mcp.call', session: null },
       ],
     },
     toolRegistryEntry: {
