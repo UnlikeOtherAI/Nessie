@@ -7,6 +7,7 @@ import {
   executorLeaseIdleExpiry,
   expireExecutorConversationLease,
   isExecutorLeaseLive,
+  lockExecutorForLease,
   writeExecutorLeaseAudit,
 } from './executor-conversation-lease.js'
 import { ExecutorError } from './executor-errors.js'
@@ -131,9 +132,11 @@ class LeaseEndedDuringCarry extends Error {}
  * A refusal of a live lease leaves a durable row, so whoever asks why a
  * follow-up lost machine tools, or whether someone else tried to reach a
  * holder's lease, has something to read. A lease that has ended is recorded
- * once, by its end, not again by every later turn in its conversation. The
- * row names the lease, never the machine's label, and writing it can never
- * fail the run it describes.
+ * once, by its end, not again by every later turn in its conversation — nor
+ * by this one, when a pause or an End ended it while this run was resolving:
+ * the lease read at the start is stale by then, so liveness is read again
+ * under the executor lock every end takes. The row names the lease, never the
+ * machine's label, and writing it can never fail the run it describes.
  */
 const recordRefusal = async (
   prisma: PrismaClient,
@@ -149,31 +152,39 @@ const recordRefusal = async (
   const { job, lease } = input
   if (input.reason === 'lease_ended' || !isExecutorLeaseLive(lease, input.now)) return
   try {
-    await prisma.$transaction((tx) => writeExecutorLeaseAudit(tx, {
-      action: 'executor.run.carry_refused',
-      actor: {
-        actorId: job.actorContext.actor.actorId,
-        actorType: job.actorContext.actor.actorType,
-        requestId: job.actorContext.actionContext.requestId,
-      },
-      metadata: {
-        agentId: lease.agentId,
-        executorId: lease.executorId,
-        holderUserId: lease.actorUserId,
-        leaseId: lease.id,
+    await prisma.$transaction(async (tx) => {
+      await lockExecutorForLease(tx, lease.executorId)
+      const current = await tx.executorConversationLease.findUnique({
+        where: { id: lease.id },
+        select: { absoluteExpiresAt: true, endedAt: true, idleExpiresAt: true },
+      })
+      if (!current || !isExecutorLeaseLive(current, input.now)) return
+      await writeExecutorLeaseAudit(tx, {
+        action: 'executor.run.carry_refused',
+        actor: {
+          actorId: job.actorContext.actor.actorId,
+          actorType: job.actorContext.actor.actorType,
+          requestId: job.actorContext.actionContext.requestId,
+        },
+        metadata: {
+          agentId: lease.agentId,
+          executorId: lease.executorId,
+          holderUserId: lease.actorUserId,
+          leaseId: lease.id,
+          reason: input.reason,
+          // A card or approval resume acts as the parked run's actor; the press
+          // behind it may be someone else's, and that is who tried.
+          resumedByUserId: job.resumedByUserId ?? null,
+          runId: input.runId,
+          triggerMessageId: input.triggerMessageId,
+        },
+        organizationId: lease.organizationId,
+        outcome: 'denied',
         reason: input.reason,
-        // A card or approval resume acts as the parked run's actor; the press
-        // behind it may be someone else's, and that is who tried.
-        resumedByUserId: job.resumedByUserId ?? null,
-        runId: input.runId,
-        triggerMessageId: input.triggerMessageId,
-      },
-      organizationId: lease.organizationId,
-      outcome: 'denied',
-      reason: input.reason,
-      resourceId: input.runId,
-      resourceType: 'executor_run',
-    }))
+        resourceId: input.runId,
+        resourceType: 'executor_run',
+      })
+    })
   } catch (error) {
     console.warn('[executor-lease] could not record the carry refusal for run', input.runId, error)
   }

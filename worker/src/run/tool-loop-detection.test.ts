@@ -190,6 +190,63 @@ test('a wait that stopped because the model must act is not repeated until an ac
   assert.equal(countToolCall(counts, wait, args), null)
 })
 
+test('a settled wait is the session it names, however the rest of its arguments are written', () => {
+  const counts = new Map<string, number>()
+  const wait = CODING_SESSION_TOOL_NAMES.wait
+  // Every one of these reaches the same session_status call on the machine:
+  // execution parses a double-encoded object and leaves a key the tool does
+  // not define behind.
+  const sameSession = [
+    { sessionId: 'a' },
+    { extra: 1, sessionId: 'a' },
+    { sessionId: 'a', extra: '1' },
+    '{ "sessionId": "a" }' as unknown as Record<string, unknown>,
+  ]
+  countToolCall(counts, wait, sameSession[1]!)
+  noteWatchProgress(counts, wait, sameSession[1]!, { progressed: true, state: 'needs_model' })
+  for (const args of sameSession) {
+    assert.equal(countToolCall(counts, wait, args)?.nudge, CODING_WAIT_NEEDS_YOU_NUDGE, JSON.stringify(args))
+  }
+  // Another session is another wait, whichever way it is written.
+  assert.equal(countToolCall(counts, wait, { extra: 1, sessionId: 'b' }), null)
+  assert.equal(countToolCall(counts, wait, '{"sessionId":"b"}' as unknown as Record<string, unknown>), null)
+})
+
+test('a stall streak is the session it waits on, however each wait’s arguments are written', () => {
+  const counts = new Map<string, number>()
+  const wait = CODING_SESSION_TOOL_NAMES.wait
+  const stalled = (args: Record<string, unknown>): string | null => {
+    countToolCall(counts, wait, args)
+    return noteWatchProgress(counts, wait, args, watching(false))
+  }
+  assert.equal(stalled({ sessionId: 'a' }), null)
+  assert.equal(stalled({ extra: 1, sessionId: 'a' }), null)
+  assert.equal(stalled('{ "sessionId": "a" }' as unknown as Record<string, unknown>), CODING_NO_PROGRESS_NUDGE,
+    'three stalled waits on one session in a row')
+  // A wait on another session is another streak, and ends this one.
+  assert.equal(stalled({ sessionId: 'a' }), null)
+  assert.equal(stalled({ sessionId: 'b' }), null)
+  assert.equal(stalled({ sessionId: 'a', timeout: 5 }), null)
+  assert.equal(stalled({ sessionId: 'a' }), null)
+  assert.equal(stalled({ extra: true, sessionId: 'a' }), CODING_NO_PROGRESS_NUDGE)
+})
+
+test('a wait settled under the old key, by its whole arguments, stays settled across a resume', () => {
+  const wait = CODING_SESSION_TOOL_NAMES.wait
+  const restored = restoreLoopCounts({
+    [`#settled:${wait}:${JSON.stringify({ sessionId: 'a' })}`]: 1,
+    [`#observe:${wait}:${JSON.stringify({ sessionId: 'a' })}`]: 0,
+  })
+  assert.deepEqual([...restored.keys()].sort(), [`#observe:${wait}:"a"`, `#settled:${wait}:"a"`])
+  assert.equal(countToolCall(restored, wait, { sessionId: 'a' })?.nudge, CODING_WAIT_NEEDS_YOU_NUDGE)
+  assert.equal(countToolCall(restored, wait, { sessionId: 'b' }), null)
+  // Keys already written by session come back as they were.
+  const current = new Map<string, number>()
+  countToolCall(current, wait, { sessionId: 'a' })
+  noteWatchProgress(current, wait, { sessionId: 'a' }, { progressed: true, state: 'needs_model' })
+  assert.deepEqual(restoreLoopCounts(Object.fromEntries(current)), current)
+})
+
 test('once the person has written, every later wait in the run is refused with “end your turn”', () => {
   const counts = new Map<string, number>()
   const wait = CODING_SESSION_TOOL_NAMES.wait

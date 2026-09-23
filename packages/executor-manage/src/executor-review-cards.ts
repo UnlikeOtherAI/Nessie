@@ -75,15 +75,27 @@ export const issueExecutorWorkspacePromotionConfirmationToken = (
 
 export type ExecutorReviewOutcome = 'confirmed' | 'expired' | 'rejected'
 
+/** A review card a close just ended, for the `card.updated` its caller sends once that commits. */
+export type ClosedExecutorReviewCard = {
+  channelId: string
+  id: string
+  messageId: string
+  organizationId: string
+  status: 'cancelled' | 'expired' | 'resolved'
+  threadId: string
+}
+
 /**
  * Close every open review card of one change: resolved by its actor when the
  * change was confirmed, cancelled when rejected, expired when it lapsed.
+ * Returns the cards this call closed — none that were already closed — so
+ * every screen still showing one open can be told after the commit.
  */
 export const closeExecutorReviewCards = async (
   tx: Prisma.TransactionClient,
   input: { actorUserId: string; continuationId: string; outcome: ExecutorReviewOutcome },
-): Promise<void> => {
-  await tx.agentCard.updateMany({
+): Promise<ClosedExecutorReviewCard[]> => {
+  const closed = await tx.agentCard.updateManyAndReturn({
     where: {
       OR: [
         { executorAccessChangeId: input.continuationId },
@@ -99,7 +111,9 @@ export const closeExecutorReviewCards = async (
           status: 'resolved',
         }
       : { status: input.outcome === 'rejected' ? 'cancelled' : 'expired' },
+    select: { channelId: true, id: true, messageId: true, organizationId: true, status: true, threadId: true },
   })
+  return closed.map((card) => ({ ...card, status: card.status as ClosedExecutorReviewCard['status'] }))
 }
 
 /**

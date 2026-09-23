@@ -114,10 +114,19 @@ test('a start is the bridge’s session_start: task becomes prompt, and the agen
   assert.doesNotMatch(result.output, /Output of the program/)
 })
 
-test('a blank path or title is left out of a start rather than sent to be refused', async () => {
+test('a blank path or title is left out of a start and a blank agent gets the default, rather than sent to be refused', async () => {
   const { sent, sessions } = harness(() => answer({ sessionId: SESSION, status: 'starting' }, 'row-1'))
   await sessions.execute(CODING_SESSION_TOOL_NAMES.start, { path: ' ', root: 'nessie', task: 'Fix it.', title: '' }, 'call-1')
   assert.deepEqual((sent[0]!.args as { arguments: unknown }).arguments, { agent: 'claude', prompt: 'Fix it.', root: 'nessie' })
+  // The bridge's agent is an enum it requires, so a blank one gets the default agent.
+  for (const agent of ['', '  ']) {
+    await sessions.execute(CODING_SESSION_TOOL_NAMES.start, { agent, root: 'nessie', task: 'Fix it.' }, 'call-blank')
+    assert.deepEqual((sent.at(-1)!.args as { arguments: unknown }).arguments, {
+      agent: 'claude', prompt: 'Fix it.', root: 'nessie',
+    }, JSON.stringify(agent))
+  }
+  await sessions.execute(CODING_SESSION_TOOL_NAMES.start, { agent: 'codex', root: 'nessie', task: 'Fix it.' }, 'call-codex')
+  assert.equal((sent.at(-1)!.args as { arguments: { agent: unknown } }).arguments.agent, 'codex')
 })
 
 test('a send in a run that never read the session still owes the next turn, from the turn the send reports', async () => {

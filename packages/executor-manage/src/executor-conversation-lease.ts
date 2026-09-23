@@ -216,6 +216,12 @@ type EndedLeaseOwner = {
  * same transaction — unless that person still holds a live lease for the same
  * agent there: the sessions are that owner's (executor, agent, person), not one
  * conversation's, and another conversation may be driving them.
+ *
+ * One request per owner, so when one transition ends several of an owner's
+ * leases, its own end speaks for them over an `expired` it found on the way:
+ * the request names the fence and who pressed it, not a lease that ran out.
+ * The leases come back in no promised order, and the table keeps the first
+ * open request per owner, so the fence's own close afterwards is dropped.
  */
 const closeCodingSessionsOfEndedLeases = async (
   tx: Prisma.TransactionClient,
@@ -223,17 +229,21 @@ const closeCodingSessionsOfEndedLeases = async (
   endings: readonly EndedLeaseOwner[],
   now: Date,
 ): Promise<void> => {
-  const closes = new Map<string, EndedLeaseOwner>()
+  const byOwner = new Map<string, EndedLeaseOwner>()
   for (const ending of endings) {
     const owner = `${ending.agentId}|${ending.actorUserId}`
-    if (closes.has(owner)) continue
+    const chosen = byOwner.get(owner)
+    if (!chosen || (chosen.reason === 'expired' && ending.reason !== 'expired')) byOwner.set(owner, ending)
+  }
+  const closes: EndedLeaseOwner[] = []
+  for (const ending of byOwner.values()) {
     const others = await tx.executorConversationLease.findMany({
       where: { actorUserId: ending.actorUserId, agentId: ending.agentId, endedAt: null, executorId },
       select: { absoluteExpiresAt: true, endedAt: true, idleExpiresAt: true },
     })
-    if (!others.some((lease) => isExecutorLeaseLive(lease, now))) closes.set(owner, ending)
+    if (!others.some((lease) => isExecutorLeaseLive(lease, now))) closes.push(ending)
   }
-  await requestExecutorCodingSessionClosesInTransaction(tx, executorId, [...closes.values()].map((ending) => ({
+  await requestExecutorCodingSessionClosesInTransaction(tx, executorId, closes.map((ending) => ({
     owner: { actorUserId: ending.actorUserId, agentId: ending.agentId },
     reason: CODING_SESSION_CLOSE_REASON[ending.reason],
     requestedByUserId: ending.endedByUserId,

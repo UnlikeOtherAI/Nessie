@@ -24,7 +24,7 @@ import { getExecutorForManagement } from './executor-records.js'
 
 /**
  * The control plane's half of coding-session teardown
- * (docs/executor-protocol/host-coding-sessions.md → "Teardown reaches the
+ * (docs/executor-protocol/host-coding-sessions-containment.md → "Teardown reaches the
  * machine"). Sessions outlive runs, so when an owner's authority to drive
  * them ends — their last lease on the machine, the agent's access, the
  * machine itself — a close request is written in the transaction that ends

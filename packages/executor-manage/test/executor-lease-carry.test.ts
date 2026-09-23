@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import type { PrismaClient } from '@prisma/client'
 
-import { carryForwardExecutorBindings } from '../src/index.js'
+import { carryForwardExecutorBindings, transitionExecutorLifecycle } from '../src/index.js'
 import {
   auditRows,
   createRun,
@@ -295,6 +296,37 @@ dbTest('a re-driven job is a no-op, not a conflict and not a second binding', as
       job: jobFor(world, { messageId: launch.message.id, runId: launch.run.id }), runId: launch.run.id,
     })
     assert.equal(launchRun.kind, 'already_bound')
+  })
+})
+
+dbTest('a lease a pause ends while the carry resolves is recorded by its end, not refused again', async () => {
+  await withWorld(async (world) => {
+    const launch = await launchLocalApps(world)
+    const reply = await postMessage(world, { rootMessageId: launch.message.id })
+    const run = await createRun(world, { triggerMessageId: reply.id })
+    // The lease is read live; a manager pauses the machine between that read
+    // and the binding, so the fresh resolution then finds nothing to bind.
+    const pausedMidCarry = new Proxy(world.prisma, {
+      get: (target, property) => {
+        if (property !== 'agentBinding') {
+          const value = Reflect.get(target, property) as unknown
+          return typeof value === 'function' ? value.bind(target) : value
+        }
+        return {
+          findFirst: async (args: Parameters<PrismaClient['agentBinding']['findFirst']>[0]) => {
+            await transitionExecutorLifecycle(target, world.adminContext, { executorId: world.executorId, action: 'pause' })
+            return target.agentBinding.findFirst(args)
+          },
+        }
+      },
+    })
+    assert.deepEqual(await carryForwardExecutorBindings(pausedMidCarry, {
+      job: jobFor(world, { messageId: reply.id, runId: run.id }), runId: run.id,
+    }), { kind: 'refused', leaseId: launch.lease.id, reason: 'executor_unavailable' })
+    assert.equal((await leaseRow(world, launch.lease.id)).endedReason, 'executor_paused')
+    assert.equal((await auditRows(world, 'executor.lease.ended')).length, 1)
+    assert.deepEqual(await auditRows(world, 'executor.run.carry_refused'), [],
+      'the end is the lease’s record; a refusal of it after the end is noise')
   })
 })
 

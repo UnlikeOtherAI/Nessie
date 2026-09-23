@@ -37,10 +37,16 @@ const programBanner = (server: string): string =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
+/** At most `length` UTF-16 units of `value`, never half of a surrogate pair at the cut. */
+const cutAt = (value: string, length: number): string => {
+  const last = value.charCodeAt(length - 1)
+  return value.slice(0, last >= 0xd800 && last <= 0xdbff ? length - 1 : length)
+}
+
 /** A program-supplied label on one line, bounded, so it cannot forge a line of its own. */
 const oneLine = (value: unknown, maxLength: number): string => {
   const flat = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
-  return flat.length <= maxLength ? flat : `${flat.slice(0, maxLength - 1)}…`
+  return flat.length <= maxLength ? flat : `${cutAt(flat, maxLength - 1)}…`
 }
 
 // A server name reaches here from the model's own arguments; only a legal
@@ -63,30 +69,42 @@ const FRAME_MARKER_LETTERS = 'UNTRUSTEDEXTERNALDATA'
 export const readsAsFrameMarker = (line: string): boolean =>
   line.normalize('NFKC').toUpperCase().replace(/[^A-Z]/g, '').includes(FRAME_MARKER_LETTERS)
 
+const QUOTE = '> '
+
 /**
- * Output from the machine framed so it cannot close the frame: every line of
- * it that could read as either marker is quoted, which leaves the text
- * readable and makes the real closing line the only one. `lead` is ours and
- * goes above the frame.
+ * Every line of `body` that could read as either marker, quoted: that leaves
+ * the text readable and makes the real closing line the only one.
  */
-export const frameUntrustedOutput = (banner: string, body: string, lead?: string): string => [
+const quoteFrameMarkers = (body: string): string =>
+  body.split('\n').map((line) => (readsAsFrameMarker(line) ? `${QUOTE}${line}` : line)).join('\n')
+
+// A body whose marker lines are already quoted, framed; `lead` is ours and goes above the frame.
+const frameQuoted = (banner: string, quoted: string, lead?: string): string => [
   ...(lead ? [lead] : []),
   FRAME_OPEN,
   banner,
-  body.split('\n').map((line) => (readsAsFrameMarker(line) ? `> ${line}` : line)).join('\n'),
+  quoted,
   FRAME_CLOSE,
 ].join('\n')
 
-const frameProgramOutput = (server: string, body: string, lead?: string): string =>
-  frameUntrustedOutput(programBanner(server), body, lead)
+/** Output from the machine framed so it cannot close the frame. */
+export const frameUntrustedOutput = (banner: string, body: string, lead?: string): string =>
+  frameQuoted(banner, quoteFrameMarkers(body), lead)
 
+// Program output reaches it quoted and bounded (`capProgramOutput`, the catalog).
+const frameProgramOutput = (server: string, quoted: string, lead?: string): string =>
+  frameQuoted(programBanner(server), quoted, lead)
+
+/**
+ * The program's text quoted, then cut to the cap: measured after the quoting,
+ * so a result of short lines that each read as a marker cannot take its `> `
+ * prefixes past the bound.
+ */
 const capProgramOutput = (body: string): string => {
-  if (body.length <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS) return body
-  let cut = EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS
-  // Never leave half of a surrogate pair at the cut.
-  const last = body.charCodeAt(cut - 1)
-  if (last >= 0xd800 && last <= 0xdbff) cut -= 1
-  return `${body.slice(0, cut)}\n[… ${body.length - cut} more characters not shown — ask the program for a narrower result]`
+  const quoted = quoteFrameMarkers(body)
+  if (quoted.length <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS) return quoted
+  const shown = cutAt(quoted, EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS)
+  return `${shown}\n[… ${quoted.length - shown.length} more characters not shown — ask the program for a narrower result]`
 }
 
 // Sized from base64 when a program sent the bytes inline; a reference the
@@ -219,21 +237,55 @@ const firstSentence = (description: string | undefined): string => {
   return oneLine(sentence, 160)
 }
 
-/** Each tool's name and first sentence, so a 94-tool program lists in a few KB. */
+// What a catalog too long to describe whole keeps, at least, for naming the rest.
+const CATALOG_NAMES_MIN_CHARS = 2_000
+
+/**
+ * The tools a catalog does not describe, by name, in `room` characters. The
+ * schema allows 512 names of 128 characters, so the ones that do not fit are
+ * counted instead.
+ */
+const namesOnlyLine = (names: readonly string[], room: number): string => {
+  const more = (count: number): string => ` …and ${count} more not named here — ask for one by its exact name`
+  const reserve = more(names.length).length
+  let line = 'More tools, by name only: '
+  let named = 0
+  for (const name of names) {
+    const next = `${named === 0 ? '' : ', '}${name}`
+    if (line.length + next.length + (named === names.length - 1 ? 0 : reserve) > room) break
+    line += next
+    named += 1
+  }
+  return named === names.length ? line : `${line}${more(names.length - named)}`
+}
+
+/**
+ * Each tool's name and first sentence, so a 94-tool program lists in a few KB.
+ * A catalog past the cap describes what fits beside the rest's names, and the
+ * whole list stays inside the cap. Each line is measured as the model reads
+ * it, quoted when it reads as a frame marker.
+ */
 export const presentExecutorMcpCatalog = (server: string, tools: readonly ExecutorMcpTool[]): string => {
+  const described = tools.map((tool) => {
+    const sentence = firstSentence(tool.description)
+    return quoteFrameMarkers(`- ${oneLine(tool.name, 128)}${sentence ? `: ${sentence}` : ''}`)
+  })
+  const whole = described.reduce((sum, line) => sum + line.length + 1, 0)
+  const budget = whole <= EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS
+    ? EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS
+    : EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS - CATALOG_NAMES_MIN_CHARS
   const lines: string[] = []
   let used = 0
-  let shown = 0
-  for (const tool of tools) {
-    const sentence = firstSentence(tool.description)
-    const line = `- ${oneLine(tool.name, 128)}${sentence ? `: ${sentence}` : ''}`
-    if (used + line.length + 1 > EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS) break
+  for (const line of described) {
+    if (used + line.length + 1 > budget) break
     lines.push(line)
     used += line.length + 1
-    shown += 1
   }
-  if (shown < tools.length) {
-    lines.push(`More tools, by name only: ${tools.slice(shown).map((tool) => oneLine(tool.name, 128)).join(', ')}`)
+  if (lines.length < tools.length) {
+    const rest = tools.slice(lines.length).map((tool) => oneLine(tool.name, 128))
+    // Names run together can spell a marker across their commas, so the line
+    // keeps room for its quote whether or not it needs it.
+    lines.push(quoteFrameMarkers(namesOnlyLine(rest, EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS - used - QUOTE.length)))
   }
   return frameProgramOutput(
     server,
