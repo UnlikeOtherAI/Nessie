@@ -39,7 +39,10 @@ const designerHome: DelegatedRunFacts = {
 }
 
 const IDENTITY_TOOL = 'agent_create'
-const NON_IDENTITY_PA_TOOL = 'authored_message_search'
+// The Designer holds the full act-as-user set (owner decision, 2026-09-23);
+// the only PA-only verbs outside it are the ones whose handlers refuse every
+// face but the PA's own DM. This one moves the PA presence itself.
+const NON_IDENTITY_PA_TOOL = 'pa_join_channel'
 
 /** Moved to the Agent Designer in phase 4 — the PA hands off instead. */
 const DESIGNER_RESERVED_TOOLS = [
@@ -371,7 +374,7 @@ test('toolset assembly OMITS the identity tools when the conditions do not hold'
 // is part of building that agent: without these the conversation could design
 // an agent around Sales Portal and then have to send the person to the Apps
 // page to finish it, which is the "explain the inner workings" defect.
-test('the Designer can connect an app on its home DM, but never uninstall one', () => {
+test('the Designer holds the full connector surface on its home DM', () => {
   const CONNECTOR_TOOLS = [
     'connector_authorize',
     'connector_discover',
@@ -390,9 +393,12 @@ test('the Designer can connect an app on its home DM, but never uninstall one', 
     assert.equal(authorize(toolId, 'shared').allowed, false)
   }
 
-  // Designing an agent is never a reason to take an app away from everyone
-  // else using it, so the destructive verb stays with the Personal Assistant.
-  assert.ok(!admitted.has('connector_uninstall'))
-  assert.equal(authorize('connector_uninstall', 'shared', admitted).allowed, false)
+  // `connector_uninstall` was deliberately withheld ("designing an agent is
+  // never a reason to take an app away"); the owner's 2026-09-23 rule — the
+  // Designer acts with the person's full reach — supersedes that stance. The
+  // handler's own scope checks stay the boundary, exactly as on the Apps page.
+  assert.ok(admitted.has('connector_uninstall'))
+  assert.deepEqual(authorize('connector_uninstall', 'shared', admitted), { allowed: true })
+  assert.equal(authorize('connector_uninstall', 'shared').allowed, false)
   assert.equal(authorize('connector_uninstall', 'personal_assistant').allowed, true)
 })

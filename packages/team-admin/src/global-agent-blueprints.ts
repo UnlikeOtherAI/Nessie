@@ -1,4 +1,5 @@
 import { AGENT_DESIGNER_SLUG, type AgentEffort, type AgentRunLimits } from '@nessie/schemas'
+import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 
 /**
  * Global agents — app-provided, instantiated per organisation.
@@ -232,6 +233,47 @@ export { AGENT_DESIGNER_SLUG }
 
 export const DASHBOARD_DESIGNER_SLUG = 'dashboard-designer'
 
+/**
+ * The Personal-Assistant-only verbs whose handlers refuse every face but the
+ * PA's own DM, by their own deliberate gate — so delegating them here would
+ * offer a tool that always errors:
+ *
+ * - `pa_join_channel` moves the person's PA *presence* into a room; the
+ *   handler requires the PA in its own conversation
+ *   (`worker/src/run/pa-tools/presence.ts`), because the verb is about that
+ *   agent, not about the person's own reach.
+ * - `app_connect_request` requires the requesting user's live PA conversation
+ *   (`worker/src/run/pa-tools/app-setup.ts` — its offer cards live there).
+ *
+ * Widening either is that handler's own change, and removing an id from this
+ * set the moment its handler learns the delegated surface is the whole edit.
+ */
+const PA_DM_ONLY_HANDLER_TOOL_IDS = new Set(['pa_join_channel', 'app_connect_request'])
+
+/**
+ * The Designer acts with the FULL reach of the person asking (owner decision,
+ * 2026-09-23): every act-as-user verb the person's own delegate holds is
+ * identity-delegated to the Designer's home DM, so "set it up" covers anything
+ * the person themselves could click. Derived from the definitions rather than
+ * enumerated, so a verb the Personal Assistant gains reaches the Designer in
+ * the same deploy — the previous curated list is how the Designer spent three
+ * days telling people executor grants were somebody else's job while the
+ * machinery below was ready. Every surface condition is unchanged: own home
+ * DM, interactive turn, live human requester, and each handler still mirrors
+ * its route's authorization, so this widens nothing beyond what the person
+ * asking could already do.
+ */
+const DESIGNER_ACT_AS_USER_TOOL_IDS: readonly string[] = BUILTIN_TOOL_DEFINITIONS
+  .filter((tool) => tool.personalAssistantOnly === true
+    // An explicit-grant verb is not part of anyone's default reach — the
+    // authorization gate checks the grant AFTER the identity arm, precisely so
+    // delegation can never stand in for an owner's per-agent allow. Declaring
+    // one here would offer-then-deny it, which the toolset never does.
+    && tool.requiresExplicitGrant !== true
+    && !PA_DM_ONLY_HANDLER_TOOL_IDS.has(tool.id))
+  .map((tool) => tool.id)
+  .sort()
+
 export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   slug: AGENT_DESIGNER_SLUG,
   name: 'Agent Designer',
@@ -299,59 +341,12 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
     delegate: false,
     spawn_subtask: false,
   },
-  // The identity-delegated set (D3): each is `personalAssistantOnly`, each
-  // mirrors one route's authorization exactly, and each acts as the sole member
-  // of the home DM this agent is running in. The gate arm that reads this
-  // widens `personalAssistantOnly` structurally rather than forking
-  // designer-only copies of the tools.
-  identityToolIds: [
-    'agent_avatar_generate',
-    'agent_avatar_update',
-    'agent_bind_channel',
-    'agent_create',
-    'agent_list',
-    'agent_read',
-    'agent_tool_catalog',
-    'agent_tool_access_set',
-    'agent_tool_access_inspect',
-    'agent_deepwater_access_set',
-    'agent_unbind_channel',
-    'agent_trigger_list',
-    'agent_trigger_update',
-    'agent_trigger_delete',
-    'agent_delete',
-    'email_account_list',
-    'email_account_agent_access',
-    'agent_trigger_create',
-    'agent_update',
-    'channel_create',
-    // Connector management, so "give it access to Sales Portal" is something
-    // this conversation finishes rather than describes. The handlers resolve
-    // the acting member and re-check every scope against the database, so the
-    // person's own install rights are the whole boundary — the same ones the
-    // Apps page applies to them.
-    'connector_authorize',
-    'connector_discover',
-    'connector_install',
-    'connector_library_search',
-    'connector_list',
-    'connector_set_secret',
-    'connector_test',
-    // Executors: the two reads that let this conversation name a real machine,
-    // and the one prepared change that gives an agent the whole suite on it.
-    // The handlers act as the sole member of this home DM, so visibility is
-    // exactly `listVisibleExecutors`' — the person's own entitlement — and
-    // administering one still requires that they can administer it.
-    'executor_agent_grant_prepare',
-    'executor_inspect',
-    'executor_list',
-    // The containers a channel needs, plus the read that resolves a project or
-    // team NAME to its id. Both writes are organisation-owner actions and say
-    // so to anybody else, exactly as their routes do.
-    'project_create',
-    'project_list',
-    'team_create',
-  ],
+  // The identity-delegated set (D3): every entry is `personalAssistantOnly`,
+  // mirrors one route's authorization exactly, and acts as the sole member of
+  // the home DM this agent is running in. The gate arm that reads this widens
+  // `personalAssistantOnly` structurally rather than forking designer-only
+  // copies of the tools.
+  identityToolIds: DESIGNER_ACT_AS_USER_TOOL_IDS,
   provider: null,
   model: null,
   effort: 'medium',
