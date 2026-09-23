@@ -101,6 +101,8 @@ export const ProductMcpInstallationRecordSchema = z.object({
 export type ProductMcpInstallationRecord =
   z.infer<typeof ProductMcpInstallationRecordSchema>
 
+// `drafting` and `cancelled` belong to DeepWater briefs: a brief being agreed
+// with DeepWater's planner, and a brief or research that was cancelled.
 export const ProductIntegrationRunStatusSchema = z.enum([
   'queued',
   'running',
@@ -108,6 +110,8 @@ export const ProductIntegrationRunStatusSchema = z.enum([
   'completed',
   'failed',
   'warning',
+  'drafting',
+  'cancelled',
 ])
 export type ProductIntegrationRunStatus =
   z.infer<typeof ProductIntegrationRunStatusSchema>

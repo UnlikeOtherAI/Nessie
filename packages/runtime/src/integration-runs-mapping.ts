@@ -43,6 +43,7 @@ export const TERMINAL_STATUSES: ProductIntegrationRunStatus[] = [
   'completed',
   'failed',
   'warning',
+  'cancelled',
 ]
 
 const QUERY_PREVIEW_MAX = 240

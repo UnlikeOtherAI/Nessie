@@ -1,0 +1,271 @@
+import { z } from 'zod'
+
+import {
+  DeepWaterBriefContextSchema,
+  DeepWaterBriefMessageSchema,
+  DeepWaterBriefPillarsSchema,
+  DeepWaterBriefSettingKeySchema,
+  DeepWaterBriefSettingsEditSchema,
+  DeepWaterBriefSettingsSchema,
+  DeepWaterBriefSettingsSeedSchema,
+  DeepWaterBriefTopicSchema,
+} from './deep-water-brief-vocabulary.js'
+import {
+  DeepWaterBriefAnalysisSchema,
+  DeepWaterDeliveryBlockedReasonSchema,
+  DeepWaterOpenQuestionSchema,
+  DeepWaterOriginKindSchema,
+  DeepWaterPendingActionErrorCodeSchema,
+  DeepWaterReportKindSchema,
+} from './deep-water-run-state.js'
+
+/**
+ * The research-brief views and requests of the Nessie DeepWater API
+ * (`/api/integrations/products/deep-water/research-runs`, Water plan nessie.md
+ * §7.1–7.2 and §7.9 as amended). A view names a research by Nessie's product
+ * run id, never by Ledger's id, and carries no model, vendor, price or
+ * infrastructure vocabulary.
+ */
+
+const uuid = z.string().uuid()
+const timestamp = z.string().min(1)
+
+/** `starting` is the view of a drafting run whose launch is in flight. */
+export const DeepWaterResearchRunViewStatusSchema = z.enum([
+  'drafting',
+  'starting',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+])
+export type DeepWaterResearchRunViewStatus = z.infer<typeof DeepWaterResearchRunViewStatusSchema>
+
+export const DeepWaterResearchRunOriginViewSchema = z
+  .object({
+    kind: DeepWaterOriginKindSchema,
+    agentId: uuid.nullable(),
+    channelId: uuid.nullable(),
+    threadId: uuid.nullable(),
+    rootMessageId: uuid.nullable(),
+    cardMessageId: uuid.nullable(),
+  })
+  .strict()
+
+export const DeepWaterDeliveryViewSchema = z
+  .object({
+    state: z.enum(['pending', 'delivered', 'blocked']),
+    blockedReason: DeepWaterDeliveryBlockedReasonSchema.nullable(),
+  })
+  .strict()
+
+/** What the viewer may do — decided by the server, never inferred by a client. */
+export const DeepWaterResearchRunViewerSchema = z
+  .object({
+    canEdit: z.boolean(),
+    canStart: z.boolean(),
+    canCancel: z.boolean(),
+    canRetryDelivery: z.boolean(),
+  })
+  .strict()
+
+export const DeepWaterResearchRunViewSchema = z
+  .object({
+    id: uuid,
+    status: DeepWaterResearchRunViewStatusSchema,
+    topic: z.string(),
+    title: z.string().nullable(),
+    pillarCount: z.number().int().nonnegative(),
+    settings: DeepWaterBriefSettingsSchema.nullable(),
+    origin: DeepWaterResearchRunOriginViewSchema,
+    requestedByUserId: uuid.nullable(),
+    createdAt: timestamp,
+    startedAt: timestamp.nullable(),
+    completedAt: timestamp.nullable(),
+    sourceCount: z.number().int().nonnegative().nullable(),
+    report: z.object({ spaceId: uuid, pageId: uuid }).strict().nullable(),
+    reportKind: DeepWaterReportKindSchema.nullable(),
+    truncated: z.boolean(),
+    /** Which stored artifacts exist; null until the result is delivered. */
+    artifacts: z.object({ report: z.boolean(), sources: z.boolean() }).strict().nullable(),
+    /** Present only for a finished public report on research.deepwater.live. */
+    publicUrl: z.string().url().nullable(),
+    failure: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
+    delivery: DeepWaterDeliveryViewSchema,
+    viewer: DeepWaterResearchRunViewerSchema,
+  })
+  .strict()
+export type DeepWaterResearchRunView = z.infer<typeof DeepWaterResearchRunViewSchema>
+
+export const DeepWaterBriefMessageAuthorSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('person'), userId: uuid }).strict(),
+  z.object({ kind: z.literal('agent'), agentId: uuid }).strict(),
+  z.object({ kind: z.literal('planner') }).strict(),
+  z.object({ kind: z.literal('event') }).strict(),
+])
+export type DeepWaterBriefMessageAuthor = z.infer<typeof DeepWaterBriefMessageAuthorSchema>
+
+export const DeepWaterBriefMessageViewSchema = z
+  .object({
+    id: uuid,
+    author: DeepWaterBriefMessageAuthorSchema,
+    content: z.string(),
+    createdAt: timestamp,
+  })
+  .strict()
+export type DeepWaterBriefMessageView = z.infer<typeof DeepWaterBriefMessageViewSchema>
+
+/**
+ * The planner's side of the conversation, derived from register (b) with the
+ * action id of a matching pending action. `message` is Nessie's own copy for
+ * the failure, never the planner's or DeepWater's error text.
+ */
+export const DeepWaterPlannerTurnViewSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('idle') }).strict(),
+  z
+    .object({ status: z.literal('replying'), actionId: uuid.nullable(), since: timestamp.nullable() })
+    .strict(),
+  z
+    .object({
+      status: z.literal('failed'),
+      actionId: uuid.nullable(),
+      retryable: z.boolean(),
+      message: z.string(),
+    })
+    .strict(),
+])
+export type DeepWaterPlannerTurnView = z.infer<typeof DeepWaterPlannerTurnViewSchema>
+
+export const DeepWaterPendingActionViewSchema = z
+  .object({
+    kind: z.enum(['scope_start', 'reply', 'launch', 'cancel']),
+    actionId: uuid,
+    since: timestamp,
+    error: z.object({ code: DeepWaterPendingActionErrorCodeSchema, message: z.string() }).strict().nullable(),
+  })
+  .strict()
+
+export const DeepWaterBriefViewSchema = DeepWaterResearchRunViewSchema.extend({
+  /** Null until DeepWater's planner has first answered for this brief. */
+  revision: z.number().int().nonnegative().nullable(),
+  pillars: z.array(z.string()),
+  lockedSettings: z.array(DeepWaterBriefSettingKeySchema),
+  ready: z.boolean(),
+  openQuestions: z.array(DeepWaterOpenQuestionSchema),
+  analysis: DeepWaterBriefAnalysisSchema.nullable(),
+  messages: z.array(DeepWaterBriefMessageViewSchema),
+  plannerTurn: DeepWaterPlannerTurnViewSchema,
+  pendingAction: DeepWaterPendingActionViewSchema.nullable(),
+  planner: z.object({ displayName: z.string(), iconUrl: z.string().nullable() }).strict(),
+}).strict()
+export type DeepWaterBriefView = z.infer<typeof DeepWaterBriefViewSchema>
+
+/** `GET …/research-runs/:runId/artifacts/report` — the stored markdown for Copy markdown. */
+export const DeepWaterReportArtifactResponseSchema = z
+  .object({
+    markdown: z.string(),
+    truncated: z.boolean(),
+    reportKind: DeepWaterReportKindSchema.nullable(),
+  })
+  .strict()
+export type DeepWaterReportArtifactResponse = z.infer<typeof DeepWaterReportArtifactResponseSchema>
+
+/** Readiness on the `deep-water` entry of `GET /api/integrations/products`. */
+export const DeepWaterResearchReadinessStateSchema = z.enum([
+  'ready',
+  'team_off',
+  'contract_outdated',
+  'account_not_linked',
+  'unavailable',
+])
+export type DeepWaterResearchReadinessState = z.infer<typeof DeepWaterResearchReadinessStateSchema>
+
+export const DeepWaterResearchReadinessSchema = z
+  .object({
+    state: DeepWaterResearchReadinessStateSchema,
+    viewerCanChangeTeam: z.boolean(),
+  })
+  .strict()
+export type DeepWaterResearchReadiness = z.infer<typeof DeepWaterResearchReadinessSchema>
+
+// ── Requests ────────────────────────────────────────────────────────────────
+
+/** `personal` resolves on the server to the requester's Personal Assistant DM. */
+export const DeepWaterBriefOriginRequestSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('thread'),
+      channelId: uuid,
+      threadId: uuid,
+      rootMessageId: uuid.optional(),
+    })
+    .strict(),
+  z.object({ kind: z.literal('personal') }).strict(),
+])
+export type DeepWaterBriefOriginRequest = z.infer<typeof DeepWaterBriefOriginRequestSchema>
+
+/** `POST …/research-runs` — open a brief. Replaying an `actionId` returns the same run. */
+export const CreateDeepWaterBriefRequestSchema = z
+  .object({
+    actionId: uuid,
+    origin: DeepWaterBriefOriginRequestSchema,
+    topic: DeepWaterBriefTopicSchema,
+    context: DeepWaterBriefContextSchema.optional(),
+    pillars: DeepWaterBriefPillarsSchema.optional(),
+    settings: DeepWaterBriefSettingsSeedSchema.optional(),
+  })
+  .strict()
+export type CreateDeepWaterBriefRequest = z.infer<typeof CreateDeepWaterBriefRequestSchema>
+
+const hasEdits = (body: { pillars?: unknown; settings?: unknown }): boolean =>
+  body.pillars !== undefined || body.settings !== undefined
+
+/** `POST …/:runId/messages` — reply to the planner; `baseRevision` is required with edits. */
+export const DeepWaterBriefReplyRequestSchema = z
+  .object({
+    actionId: uuid,
+    message: DeepWaterBriefMessageSchema,
+    baseRevision: z.number().int().nonnegative().optional(),
+    pillars: DeepWaterBriefPillarsSchema.optional(),
+    settings: DeepWaterBriefSettingsEditSchema.optional(),
+  })
+  .strict()
+  .refine((body) => !hasEdits(body) || body.baseRevision !== undefined, {
+    message: 'baseRevision is required when pillars or settings are edited.',
+    path: ['baseRevision'],
+  })
+export type DeepWaterBriefReplyRequest = z.infer<typeof DeepWaterBriefReplyRequestSchema>
+
+/**
+ * `POST …/:runId/start` — launch the agreed brief at `revision`. `public` is a
+ * person-only choice (an agent-started brief is always private).
+ */
+export const StartDeepWaterBriefRequestSchema = z
+  .object({
+    actionId: uuid,
+    revision: z.number().int().nonnegative(),
+    pillars: DeepWaterBriefPillarsSchema.optional(),
+    settings: DeepWaterBriefSettingsEditSchema.optional(),
+    public: z.boolean().optional(),
+  })
+  .strict()
+export type StartDeepWaterBriefRequest = z.infer<typeof StartDeepWaterBriefRequestSchema>
+
+/** `POST …/:runId/cancel` and `…/:runId/deliver`. */
+export const DeepWaterResearchRunActionRequestSchema = z.object({ actionId: uuid }).strict()
+export type DeepWaterResearchRunActionRequest = z.infer<typeof DeepWaterResearchRunActionRequestSchema>
+
+/** Synchronous error codes of the brief API. */
+export const DEEP_WATER_BRIEF_ERROR_CODES = {
+  BRIEF_BUSY: 'DEEP_WATER_BRIEF_BUSY',
+  BRIEF_INCOMPLETE: 'DEEP_WATER_BRIEF_INCOMPLETE',
+  BRIEF_NOT_EDITABLE: 'DEEP_WATER_BRIEF_NOT_EDITABLE',
+  BRIEF_REVISION_CONFLICT: 'DEEP_WATER_BRIEF_REVISION_CONFLICT',
+  BRIEF_THREAD_FORBIDDEN: 'DEEP_WATER_BRIEF_THREAD_FORBIDDEN',
+  DELIVERY_NOT_BLOCKED: 'DEEP_WATER_DELIVERY_NOT_BLOCKED',
+  NOT_READY: 'DEEP_WATER_NOT_READY',
+  RESEARCH_NOT_FOUND: 'DEEP_WATER_RESEARCH_NOT_FOUND',
+  RUN_NOT_CANCELLABLE: 'DEEP_WATER_RUN_NOT_CANCELLABLE',
+  SOURCE_ACCESS: 'DEEP_WATER_SOURCE_ACCESS',
+  TEAM_MISMATCH: 'DEEP_WATER_TEAM_MISMATCH',
+} as const

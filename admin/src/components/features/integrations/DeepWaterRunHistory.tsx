@@ -7,7 +7,9 @@ import { Pill, type PillTone } from '../../primitives/Pill'
 import { EmptyState } from '../../shared/EmptyState'
 
 const statusLabels: Record<ProductIntegrationRunStatus, string> = {
+  cancelled: 'Cancelled',
   completed: 'Completed',
+  drafting: 'Agreeing the brief',
   failed: 'Failed',
   needs_setup: 'Needs setup',
   queued: 'Queued',
@@ -16,7 +18,9 @@ const statusLabels: Record<ProductIntegrationRunStatus, string> = {
 }
 
 const statusTone: Record<ProductIntegrationRunStatus, PillTone> = {
+  cancelled: 'muted',
   completed: 'success',
+  drafting: 'accent',
   failed: 'danger',
   needs_setup: 'warning',
   queued: 'accent',
