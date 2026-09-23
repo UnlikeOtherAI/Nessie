@@ -22,8 +22,9 @@ import {
  * before the result's receipt (`command-attachments.ts`). The same base64
  * anywhere else in the result — Kelpie repeats its screenshot inside the text
  * item's JSON and in `structuredContent` — becomes a short marker, which is
- * what removes Kelpie's triplication without touching Kelpie. An image that is
- * not kept becomes a text placeholder saying why, and so do its copies.
+ * what removes Kelpie's triplication without touching Kelpie; so does a copy
+ * another server wrapped at line ends or JSON-escaped. An image that is not
+ * kept becomes a text placeholder saying why, and so do its copies.
  */
 
 /** One image taken out of a result. */
@@ -41,9 +42,10 @@ export type ExecutorMcpImage = {
  */
 export type ExecutorMcpImageSink = (images: readonly ExecutorMcpImage[]) => Promise<void>
 
-// Copies elsewhere in the result are matched as exact substrings. A real image
-// is never this short, and replacing every occurrence of a short string would
-// rewrite program text that merely happens to contain it.
+// Copies elsewhere in the result are matched as substrings, exactly or with
+// line breaks and JSON escapes set aside. A real image is never this short,
+// and replacing every occurrence of a short string would rewrite program text
+// that merely happens to contain it.
 const MIN_COPY_LENGTH = 64
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/
@@ -94,20 +96,79 @@ const referenceTo = (image: ExecutorMcpImage): ExecutorImageReference => ({
   byteLength: image.bytes.length,
 })
 
-/** Every string in `value`, with each key of `copies` replaced by its value. */
-const replaceCopies = (value: unknown, copies: ReadonlyMap<string, string>): unknown => {
-  if (typeof value === 'string') {
-    let text = value
-    for (const [copy, replacement] of copies) {
-      if (text.length >= copy.length && text.includes(copy)) text = text.split(copy).join(replacement)
+/**
+ * A stretch of base64 as another encoder may have spelled it: wrapped at line
+ * ends (MIME, PEM), or inside JSON text with its `/`, and the line breaks it
+ * was wrapped at, escaped.
+ */
+const SPELLED_RUN = /[A-Za-z0-9+/=](?:[A-Za-z0-9+/=\r\n]|\\[/nr])*/g
+const SPELLING = /\r|\n|\\[nr]/g
+
+/** Where each character of `run`'s plain spelling stands in `run`: a `\/` at its backslash. */
+const spelledOrigins = (run: string, length: number): Int32Array => {
+  const origins = new Int32Array(length)
+  let next = 0
+  for (let at = 0; at < run.length; at += 1) {
+    if (run[at] === '\r' || run[at] === '\n') continue
+    if (run[at] === '\\') {
+      // Inside a run a backslash is always `\/`, `\n` or `\r`; only the first stands for a character.
+      if (run[at + 1] === '/') origins[next++] = at
+      at += 1
+      continue
     }
-    return text
+    origins[next++] = at
   }
-  if (Array.isArray(value)) return value.map((entry) => replaceCopies(entry, copies))
-  if (isRecord(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, replaceCopies(entry, copies)]))
+  return origins
+}
+
+/** `run` with each base64 copy it spells, line breaks and escapes aside, replaced. */
+const replaceSpelled = (run: string, copies: ReadonlyMap<string, string>): string => {
+  const plain = run.replace(SPELLING, '').replaceAll('\\/', '/')
+  const spans: { start: number; end: number; replacement: string }[] = []
+  let origins: Int32Array | undefined
+  for (const [copy, replacement] of copies) {
+    for (let found = plain.indexOf(copy); found >= 0; found = plain.indexOf(copy, found + copy.length)) {
+      origins ??= spelledOrigins(run, plain.length)
+      const last = origins[found + copy.length - 1]!
+      spans.push({ start: origins[found]!, end: last + (run[last] === '\\' ? 2 : 1), replacement })
+    }
   }
-  return value
+  if (spans.length === 0) return run
+  let rebuilt = ''
+  let written = 0
+  for (const span of spans.sort((left, right) => left.start - right.start)) {
+    if (span.start < written) continue
+    rebuilt += run.slice(written, span.start) + span.replacement
+    written = span.end
+  }
+  return rebuilt + run.slice(written)
+}
+
+/**
+ * Every string in `value`, with each key of `copies` replaced by its value —
+ * and a key that is base64 also where a line break or a JSON escape interrupts
+ * it, since only a server whose copy is byte for byte the image item's gets
+ * its result shrunk otherwise.
+ */
+const replaceCopies = (value: unknown, copies: ReadonlyMap<string, string>): unknown => {
+  const encoded = new Map([...copies].filter(([copy]) => BASE64.test(copy)))
+  const shortest = Math.min(...[...encoded.keys()].map((copy) => copy.length))
+  const walk = (entry: unknown): unknown => {
+    if (typeof entry === 'string') {
+      let text = entry
+      for (const [copy, replacement] of copies) {
+        if (text.length >= copy.length && text.includes(copy)) text = text.split(copy).join(replacement)
+      }
+      if (encoded.size === 0 || text.length < shortest || !/[\r\n\\]/.test(text)) return text
+      return text.replace(SPELLED_RUN, (run) => (
+        run.length >= shortest && /[\r\n\\]/.test(run) ? replaceSpelled(run, encoded) : run
+      ))
+    }
+    if (Array.isArray(entry)) return entry.map(walk)
+    if (isRecord(entry)) return Object.fromEntries(Object.entries(entry).map(([key, item]) => [key, walk(item)]))
+    return entry
+  }
+  return walk(value)
 }
 
 /**
