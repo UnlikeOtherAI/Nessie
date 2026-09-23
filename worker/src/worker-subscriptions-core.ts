@@ -28,6 +28,8 @@ import {
   KnowledgeExtractJobPayloadSchema,
   MESSAGE_EMBED_TOPIC,
   MessageEmbedJobPayloadSchema,
+  TASK_EMBED_TOPIC,
+  TaskEmbedJobPayloadSchema,
   OrchestrateDecideJobPayloadSchema,
   PushDispatchJobPayloadSchema,
   RUN_COMPLETION_FOLLOWUP_TOPIC,
@@ -56,6 +58,7 @@ import { executeKnowledgeEmbedJob } from './control/knowledge-embed.js'
 import { executeKnowledgeExtractJob } from './control/knowledge-extract.js'
 import { executeKnowledgeTransferJob } from './control/knowledge-transfer.js'
 import { executeMessageEmbedJob } from './control/message-embed.js'
+import { executeTaskEmbedJob } from './control/task-embed.js'
 import { handlePushDispatch } from './control/push-dispatch.js'
 import { handleBudgetAlertDispatch } from './control/budget-alert-dispatch.js'
 import { handleTriggerHealthAlert } from './control/trigger-health-dispatch.js'
@@ -67,8 +70,7 @@ import { executeRunJob } from './run/execute.js'
 import { executeRunCompletionFollowup } from './run/execute/completion-followup.js'
 import { executeRunMemoryConsolidationJob } from './run/memory-consolidation.js'
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
-import { executeExecutorCommandJob } from './control/executor-commands.js'
-import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
+import { executeExecutorCommandJob, subscribeExecutorCommandLanes } from './control/executor-commands.js'
 import { handleCallRingDispatch, handleCallRingCancel } from './control/call-ring-dispatch.js'
 import { handleCallRingTimeout } from './control/call-lifecycle.js'
 import {
@@ -202,8 +204,8 @@ subscribe(
   },
   { signal: abortSignal },
 )
-subscribe(
-  EXECUTOR_COMMAND_TOPIC,
+subscribeExecutorCommandLanes(
+  subscribe,
   async (job) => {
     await executeExecutorCommandJob(prisma, encryptionKeyRing, job.payload)
   },
@@ -517,6 +519,14 @@ subscribe(
   async (job) => {
     const payload = MessageEmbedJobPayloadSchema.parse(job.payload)
     await executeMessageEmbedJob({ ledgerSigningConfigured, modelClient, prisma }, payload)
+  },
+  { signal: abortSignal },
+)
+subscribe(
+  TASK_EMBED_TOPIC,
+  async (job) => {
+    const payload = TaskEmbedJobPayloadSchema.parse(job.payload)
+    await executeTaskEmbedJob({ ledgerSigningConfigured, modelClient, prisma }, payload)
   },
   { signal: abortSignal },
 )

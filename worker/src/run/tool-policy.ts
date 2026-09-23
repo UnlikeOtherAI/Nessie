@@ -187,12 +187,20 @@ export const resolveAgentTools = (
   options: ToolAuthorizationOptions & {
     inlineToolLimit?: number
     isPersonalAssistantPresence?: boolean
+    /**
+     * Tools this run withholds whatever the policy says — to-dos on an agent
+     * that has them off, `delegate` on a DeepWater launch turn. Removed before
+     * the deferred view is built, so a withheld tool can neither spend the
+     * promotion budget nor count as a stub that keeps `tool_spec` offered.
+     */
+    withheldToolIds?: ReadonlySet<string>
   } = {},
 ): ResolvedToolSet => {
   const allowedIds = new Set<string>()
   for (const tool of allToolDefinitions) {
     if (
-      !(options.isPersonalAssistantPresence && isWithheldFromPersonalAssistantPresence(tool))
+      !options.withheldToolIds?.has(tool.id)
+      && !(options.isPersonalAssistantPresence && isWithheldFromPersonalAssistantPresence(tool))
       &&
       // The same resolved answer the per-call gate uses, so an identity tool
       // the run may not exercise is OMITTED from the model's schema array
@@ -216,9 +224,20 @@ export const resolveAgentTools = (
   }
 
   const allowedDefinitions = allToolDefinitions.filter((tool) => allowedIds.has(tool.id))
+  // What this agent was deliberately given arrives with its schema rather
+  // than as a stub: the project tools this run was lent first (a board turn
+  // opens with them), then every other tool its policy sets `true`. Both in
+  // definition order so the array is byte-stable; the view caps how much this
+  // may add (`BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS`).
+  const lent = options.projectDelegatedToolIds
+  const promotedIds = [
+    ...allowedDefinitions.filter((tool) => lent?.has(tool.id)),
+    ...allowedDefinitions.filter((tool) => !lent?.has(tool.id) && agentToolPolicy?.[tool.id] === true),
+  ].map((tool) => tool.id)
   const view = buildBuiltinToolsetView(
     allowedDefinitions,
     options.inlineToolLimit ?? resolveBuiltinInlineToolLimit(),
+    { promotedIds },
   )
 
   return {

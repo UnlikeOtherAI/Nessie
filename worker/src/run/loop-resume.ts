@@ -43,6 +43,8 @@ export class RunDrainedError extends Error {
 
 /** One tool call that already ran, so a resumed batch does not run it again. */
 export type RecordedToolResult = {
+  /** Kept so a replayed result is accounted by the breaker as it was the first time. */
+  correctable?: true
   inputSummary: string
   output: string
   success: boolean
@@ -95,7 +97,11 @@ export type LoopResumeState = {
    * gets six fresh attempts from every worker that touches it.
    */
   retriesUsed: number
-  /** Loop-detection counters, so a resumed run does not restart its patience. */
+  /**
+   * Loop-detection counters, so a resumed run does not restart its patience.
+   * Keyed by `tool-loop-detection.ts`; keys from before its prefixes are
+   * dropped on resume.
+   */
   signatureCounts: Record<string, number>
   toolCallsUsed: number
   /**
@@ -187,6 +193,7 @@ export const createToolExecutionRecorder = (input: {
     // would make the resumed run skip the approval it is waiting for.
     if (result.pendingApproval || result.pendingInput) return result
     results.set(toolCallId, {
+      ...(result.correctable ? { correctable: true as const } : {}),
       inputSummary: result.inputSummary,
       output: result.output,
       success: result.success,

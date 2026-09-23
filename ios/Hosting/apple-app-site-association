@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["59S95D279D.com.unlikeotherai.deepwater"],
+        "components": [{ "/": "/auth/callback" }]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["59S95D279D.com.unlikeotherai.deepwater"]
+  }
+}

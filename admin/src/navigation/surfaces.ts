@@ -383,6 +383,30 @@ export const SURFACES: Surface[] = [
     type: 'detail',
   },
   {
+    depth: 1,
+    identityOf: () => 'virtual:agents',
+    intent: KNOWLEDGE_INTENT,
+    parentOf: toKnowledge,
+    pattern: /^\/knowledge-base\/agents$/,
+    root: KNOWLEDGE_ROOT,
+    section: 'knowledge',
+    type: 'detail',
+  },
+  {
+    depth: 2,
+    identityOf: (match) => `agent-documents:${match[1]}`,
+    keyScope: () => 'agent-documents',
+    intent: KNOWLEDGE_INTENT,
+    parentOf: () => ({
+      label: 'Back to Agents',
+      pathname: '/knowledge-base/agents',
+    }),
+    pattern: /^\/knowledge-base\/agents\/([^/]+)$/,
+    root: KNOWLEDGE_ROOT,
+    section: 'knowledge',
+    type: 'nested',
+  },
+  {
     // A Knowledge space keeps one screen identity across spaces: the mounted
     // team swaps its selection rather than remounting the route page.
     depth: 1,

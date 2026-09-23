@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import { Prisma, PrismaClient } from '@prisma/client'
+import { createFileService, getStorage } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
 
@@ -27,6 +31,7 @@ type Seed = {
   otherAgentId: string
   organizationId: string
   otherOrganizationId: string
+  projectId: string
   userId: string
 }
 
@@ -50,6 +55,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   const agentId = randomUUID()
   const otherAgentId = randomUUID()
   const avatarAttachmentId = randomUUID()
+  const projectId = randomUUID()
   const userId = randomUUID()
 
   await prisma.organization.createMany({
@@ -67,6 +73,9 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
   })
   await prisma.organizationMember.create({
     data: { organizationId, role: 'owner', userId },
+  })
+  await prisma.project.create({
+    data: { id: projectId, name: 'Agent to-dos storage', organizationId },
   })
   await prisma.attachment.create({
     data: {
@@ -93,6 +102,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     organizationId,
     otherAgentId,
     otherOrganizationId,
+    projectId,
     userId,
   }
 }
@@ -104,6 +114,7 @@ const cleanup = async (prisma: PrismaClient, value: Seed) => {
   await prisma.agentTodoTemplate.deleteMany({
     where: { organizationId: { in: [value.organizationId, value.otherOrganizationId] } },
   })
+  await prisma.knowledgeSpace.deleteMany({ where: { organizationId: value.organizationId } })
   await prisma.agent.deleteMany({ where: { id: { in: [value.agentId, value.otherAgentId] } } })
   await prisma.organization.deleteMany({
     where: { id: { in: [value.organizationId, value.otherOrganizationId] } },
@@ -138,15 +149,21 @@ const isTemplateVersionPinViolation = (error: unknown) =>
 
 dbTest('POST /api/agents persists todosEnabled through the route', async () => {
   await withDatabase(async (prisma, value) => {
+    const storagePath = await mkdtemp(join(tmpdir(), 'nessie-agent-todos-'))
     const actorContext: AuthorizedActionContext = {
       actionContext: { requestId: `agent-todos-create-${value.agentId}` },
       actor: { actorId: value.userId, actorType: 'user', roles: ['owner'] },
-      tenant: { organizationId: value.organizationId },
+      tenant: { organizationId: value.organizationId, projectId: value.projectId },
     }
     const app = Fastify({ logger: false })
     registerAgentRoutes(app, {
       config: { model: {} },
       createAgentVisibilityScope: () => ({}),
+      fileService: createFileService({
+        maxUploadBytes: 1024 * 1024,
+        prisma,
+        storage: getStorage({ localPath: storagePath, provider: 'filesystem' }),
+      }),
       getChannelIfMember: async () => null,
       isAgentAccessibleToActor: async () => false,
       prisma,
@@ -175,6 +192,7 @@ dbTest('POST /api/agents persists todosEnabled through the route', async () => {
       assert.equal(row?.todosEnabled, true)
     } finally {
       await app.close()
+      await rm(storagePath, { force: true, recursive: true })
     }
   })
 })

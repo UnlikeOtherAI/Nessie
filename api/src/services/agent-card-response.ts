@@ -2,13 +2,12 @@ import { Prisma } from "@prisma/client";
 import { adoptPersonalBrowserAccessGrant, CONTROL_CLAIM_TTL_MS, releaseSessionControl, type CloudBrowserConnectionProbeDeps } from "@nessie/browser-cloud";
 import type { CredentialStore } from "@nessie/dashboard";
 import { enqueueOrchestrateDecide } from "@nessie/db";
-import { forgetMessageThoughts } from "@nessie/memory";
 import { createPgSecretStore } from "@nessie/mcp-manage";
 import {
+  type AgentCardRespondResult,
   type AuthorizedActionContext,
   AgentCardSpecSchema,
   detectSecrets,
-  parseThreadId,
 } from "@nessie/schemas";
 import type { ReplyRootMetadata } from "@nessie/runtime";
 import {
@@ -16,7 +15,6 @@ import {
   inheritAgentCardResponseBasis,
 } from "@nessie/team-admin";
 import { toInputJson } from "../db/prisma-json.js";
-import { emitAuditEvent } from "./audit.js";
 import {
   AgentCardResumeStateSchema,
   AgentCardValueError,
@@ -35,8 +33,9 @@ import {
   storeAgentCardSecrets,
   type AgentCardSecretPlacements,
 } from "./agent-card-secret-placement.js";
+import { announceAgentCardResponse } from "./agent-card-response-announce.js";
+import { executorReviewOf, pressExecutorReviewCard } from "./agent-card-executor-review.js";
 import { completeBrowserLoginHandover } from "./browser-login-handover.js";
-import { publishMessageReply } from "./message-delivery.js";
 import { ResumeRollback, resumeSuspendedRun } from "./run-resume-core.js";
 import type { RouteDeps } from "../routes/types.js";
 type ResponseDeps = Pick<
@@ -186,11 +185,7 @@ export const respondToAgentCard = async (
     secrets?: Record<string, string>;
     values?: Record<string, unknown>;
   },
-): Promise<{
-  cardId: string;
-  responseMessageId: string;
-  status: "resolved";
-}> => {
+): Promise<AgentCardRespondResult> => {
   const userId = input.actorContext.actor.actorId;
   const prepared = await prepareResponse(deps, {
     actionKey: input.actionKey,
@@ -200,6 +195,18 @@ export const respondToAgentCard = async (
     userId,
     values: input.values ?? {},
   });
+  // A review card is pressed, never answered: each press mints a token and
+  // resolves nothing (agent-card-executor-review.ts).
+  if (executorReviewOf(prepared.card)) {
+    const pressed = await pressExecutorReviewCard(deps.prisma, {
+      actorContext: input.actorContext,
+      card: prepared.card,
+      userId,
+    });
+    if ("refused" in pressed)
+      throw new AgentCardResponseError(409, pressed.refused.code, pressed.refused.message);
+    return pressed.result;
+  }
   let outcome: {
     responseMessageId: string;
     responseRestricted: boolean;
@@ -329,6 +336,8 @@ export const respondToAgentCard = async (
             organizationId: prepared.card.organizationId,
             queueKeyPrefix: "run:card",
             resumeActorContext: resumeState.data.actorContext,
+            // The respondent, who need not be whoever the parked run acted as.
+            resumedByUserId: userId,
             runId: prepared.card.waitRunId,
             suspendedStatus: "waiting_input",
             triggerMessageId: resumeState.data.messageId,
@@ -396,102 +405,21 @@ export const respondToAgentCard = async (
       );
     throw error;
   }
-  await emitAuditEvent(deps.prisma, {
-    action: "agent_card.responded",
+  // Committed: the card is resolved, its reply written, its run resumed. What
+  // follows only announces that, so it can fail without failing the press.
+  await announceAgentCardResponse(deps, {
+    actionKey: prepared.actionKey,
     actorContext: input.actorContext,
-    metadata: {
-      actionKey: prepared.actionKey,
-      secretKeys: prepared.secretKeys,
-      valueKeys: Object.keys(prepared.values),
-    },
-    outcome: "success",
-    resourceId: prepared.card.id,
-    resourceType: "agent_card",
+    card: prepared.card,
+    content: prepared.content,
+    responseMessageId: outcome.responseMessageId,
+    responseRestricted: outcome.responseRestricted,
+    rootMessageId: outcome.rootMessageId,
+    secretKeys: prepared.secretKeys,
+    secretOutcomes: outcome.secretOutcomes,
+    userId,
+    valueKeys: Object.keys(prepared.values),
   });
-  const scopes = deps.buildChannelRealtimeScopes({
-    channelId: prepared.card.channelId,
-    organizationId: prepared.card.organizationId,
-    systemChannelType: prepared.card.channel.systemChannelType,
-    visibility: prepared.card.channel.visibility,
-  });
-  for (const [key, value] of Object.entries(outcome.secretOutcomes)) {
-    const stored = value as {
-      kind?: string;
-      redactedMessageId?: string;
-      reference?: string;
-      scopeType?: string;
-    };
-    if (stored.kind !== "vault_secret") continue;
-    await emitAuditEvent(deps.prisma, {
-      action: "secret.created",
-      actorContext: input.actorContext,
-      metadata: {
-        cardId: prepared.card.id,
-        fieldKey: key,
-        scopeType: stored.scopeType,
-      },
-      outcome: "success",
-      resourceId: stored.reference ?? prepared.card.id,
-      resourceType: "secret",
-    });
-    if (!stored.redactedMessageId) continue;
-    if (deps.messageMemoryCaptureConfig)
-      await forgetMessageThoughts(
-        {
-          messageId: stored.redactedMessageId,
-          organizationId: prepared.card.organizationId,
-        },
-        deps.messageMemoryCaptureConfig.pool,
-      ).catch(() => undefined);
-    await emitAuditEvent(deps.prisma, {
-      action: "message.redacted",
-      actorContext: input.actorContext,
-      metadata: { cardId: prepared.card.id, fieldKey: key },
-      outcome: "success",
-      resourceId: stored.redactedMessageId,
-      resourceType: "message",
-    });
-    await deps.realtimeHub.publishWs(scopes, {
-      data: {
-        editedAt: new Date().toISOString(),
-        messageId: stored.redactedMessageId,
-        threadId: parseThreadId(prepared.card.threadId),
-      },
-      event: "message.updated",
-    });
-  }
-  await deps.realtimeHub.publishWs(scopes, {
-    data: {
-      cardId: prepared.card.id,
-      messageId: prepared.card.messageId,
-      status: "resolved" as const,
-      threadId: parseThreadId(prepared.card.threadId),
-    },
-    event: "card.updated",
-  });
-  await publishMessageReply(
-    {
-      buildChannelRealtimeScopes: deps.buildChannelRealtimeScopes,
-      realtimeHub: deps.realtimeHub,
-    },
-    {
-      channel: {
-        id: prepared.card.channelId,
-        organizationId: prepared.card.organizationId,
-        systemChannelType: prepared.card.channel.systemChannelType,
-        visibility: prepared.card.channel.visibility,
-      },
-      message: {
-        content: prepared.content,
-        id: outcome.responseMessageId,
-        ...(outcome.responseRestricted ? { restricted: true } : {}),
-        role: "user",
-        userId,
-      },
-      rootMessageId: outcome.rootMessageId,
-      threadId: prepared.card.threadId,
-    },
-  );
   return {
     cardId: prepared.card.id,
     responseMessageId: outcome.responseMessageId,

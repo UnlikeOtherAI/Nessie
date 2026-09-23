@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { PrismaClient } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
+import { EMBEDDING_DIMENSIONS } from '@nessie/schemas'
 
 import { searchMessages } from '../src/services/message-search.js'
 
@@ -19,6 +20,7 @@ type Seed = {
   adminId: string
   canary: string
   memberId: string
+  messageIdsByLabel: Record<string, string>
   organizationId: string
   ownerId: string
   privateChannelId: string
@@ -105,6 +107,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     ],
   })
 
+  const messageIdsByLabel: Record<string, string> = {}
   for (const [channel, label] of [
     [publicChannel, 'public'],
     [privateChannel, 'private'],
@@ -113,15 +116,17 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     [systemRoom, 'system'],
   ] as const) {
     const thread = await prisma.thread.create({ data: { channelId: channel.id, title: 'General' } })
-    await prisma.message.create({
+    const message = await prisma.message.create({
       data: { content: `${label} ${canary} note`, role: 'user', threadId: thread.id, userId: alice.id },
     })
+    messageIdsByLabel[label] = message.id
   }
 
   return {
     adminId: admin.id,
     canary,
     memberId: member.id,
+    messageIdsByLabel,
     organizationId: organization.id,
     ownerId: owner.id,
     privateChannelId: privateChannel.id,
@@ -191,6 +196,49 @@ runDatabaseTest('a participant still finds their own private, direct and system 
     `public ${s.canary} note`,
     `system ${s.canary} note`,
   ])
+})
+
+runDatabaseTest('semantic message search adds meaning matches without widening channel reach', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(async () => {
+    await prisma.organization.deleteMany({ where: { id: s.organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: s.userIds } } })
+    await prisma.$disconnect()
+  })
+
+  const vector = Array.from(
+    { length: EMBEDDING_DIMENSIONS },
+    (_value, index) => index === 0 ? 1 : 0,
+  )
+  const literal = `[${vector.join(',')}]`
+  await prisma.$executeRaw(Prisma.sql`
+    INSERT INTO message_embeddings (
+      id, message_id, content_hash, embedding, embedding_model, dims, status,
+      created_at, updated_at
+    ) VALUES
+      (
+        gen_random_uuid(), ${s.messageIdsByLabel['public']}::uuid, ${'a'.repeat(64)},
+        ${literal}::vector, 'test-message-search', ${EMBEDDING_DIMENSIONS},
+        'indexed', now(), now()
+      ),
+      (
+        gen_random_uuid(), ${s.messageIdsByLabel['private']}::uuid, ${'b'.repeat(64)},
+        ${literal}::vector, 'test-message-search', ${EMBEDDING_DIMENSIONS},
+        'indexed', now(), now()
+      )
+  `)
+
+  const results = await searchMessages(prisma, {
+    embeddingModel: 'test-message-search',
+    mode: 'semantic',
+    organizationId: s.organizationId,
+    query: 'ocean',
+    queryEmbedding: vector,
+    userId: s.memberId,
+  })
+  assert.deepEqual(results.map((result) => result.channelId), [s.publicChannelId])
+  assert.equal(results[0]?.id, s.messageIdsByLabel['public'])
 })
 
 // Deleting a channel (or its project) is a soft delete: `deletedAt` is stamped

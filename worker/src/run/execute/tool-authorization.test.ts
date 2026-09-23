@@ -13,6 +13,7 @@ import type { Pool } from 'pg'
 import { createConsumedSourceSink } from './disclosure-basis.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
+import type { ExecutorMcpCatalogAnswer } from '../executor-mcp-catalog.js'
 import type { ExecutorToolset } from '../executor-toolset.js'
 import type { McpToolset } from '../mcp-toolset.js'
 import type { AgenticToolResult } from '../tools.js'
@@ -263,8 +264,10 @@ const finalTurn = (outputText = 'Done.'): InferenceResult => ({
 })
 
 type LoopHarness = {
+  catalogRequests: string[]
   dispatchedMcp: string[]
   dispatchedExecutor: string[]
+  executorTimeoutLookups: string[]
   fake: FakePrisma
   invocationSink: InvocationRecord[]
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
@@ -276,6 +279,7 @@ const runLoop = async (input: {
   allowBuiltinExec?: boolean
   builtinName?: string
   mcpTools?: Record<string, AgenticToolResult>
+  executorCatalog?: ExecutorMcpCatalogAnswer
   executorTools?: Record<string, AgenticToolResult>
   reviewer?: 'allow' | 'deny' | 'unavailable' | 'unparseable' | 'require_approval'
   restricted?: boolean
@@ -300,6 +304,8 @@ const runLoop = async (input: {
   }
   const dispatchedMcp: string[] = []
   const dispatchedExecutor: string[] = []
+  const executorTimeoutLookups: string[] = []
+  const catalogRequests: string[] = []
   const mcpEntries = input.mcpTools ?? {}
   const executorEntries = input.executorTools ?? {}
 
@@ -326,6 +332,15 @@ const runLoop = async (input: {
       return executorEntries[name]
     },
     handledNames: new Set(Object.keys(executorEntries)),
+    mcpCatalog: async (server: string) => {
+      catalogRequests.push(server)
+      return input.executorCatalog ?? { failure: { inputSummary: '', output: 'no catalog scripted', success: false } }
+    },
+    timeoutErrorFor: () => null,
+    timeoutMsFor: (name: string) => {
+      executorTimeoutLookups.push(name)
+      return undefined
+    },
   } as unknown as ExecutorToolset
 
   const builtinName = input.builtinName ?? 'kb_search'
@@ -423,8 +438,10 @@ const runLoop = async (input: {
     },
   )
   return {
+    catalogRequests,
     dispatchedExecutor,
     dispatchedMcp,
+    executorTimeoutLookups,
     fake,
     invocationSink,
     result,
@@ -756,6 +773,63 @@ test('main executor: command run audits only the argv program, never its argumen
     runId: RUN_ID,
     toolCallId: 'call-1',
   })
+})
+
+test('main executor: an executor call is timed by the executor toolset', async () => {
+  // The toolset answers with the command TTL plus a margin; without the
+  // lookup the call would fall back to the ordinary timeout.
+  const harness = await runLoop({
+    executorTools: {
+      'executor_mcp_call': { inputSummary: 'call', output: '{"success":true}', success: true },
+    },
+    toolArgs: { server: 'kelpie', tool: 'navigate' },
+    toolName: 'executor_mcp_call',
+  })
+  assert.deepEqual(harness.dispatchedExecutor, ['executor_mcp_call'])
+  assert.deepEqual(harness.executorTimeoutLookups, ['executor_mcp_call'])
+})
+
+const toolMessage = (result: LoopHarness['result'], marker: string): string => {
+  const contents = result.messages.map((message) => (typeof message.content === 'string' ? message.content : ''))
+  const found = contents.find((content) => content.includes(marker))
+  assert.ok(found, `expected a tool result containing ${marker}; got: ${JSON.stringify(contents)}`)
+  return found
+}
+
+test('main executor: an mcp.call answer reaches the model as the program’s output, not its envelope', async () => {
+  const harness = await runLoop({
+    executorTools: {
+      'executor_mcp_call': {
+        inputSummary: 'call',
+        output: JSON.stringify({ content: [{ text: 'Page loaded: Example Domain', type: 'text' }], success: true }),
+        success: true,
+      },
+    },
+    toolArgs: { server: 'kelpie', tool: 'navigate' },
+    toolName: 'executor_mcp_call',
+  })
+  const seen = toolMessage(harness.result, 'Page loaded: Example Domain')
+  assert.match(seen, /Output of the program `kelpie` on the person's machine\./)
+  assert.doesNotMatch(seen, /"content"/)
+  assert.doesNotMatch(seen, /isolated browser/)
+})
+
+test('main executor: executor_mcp_tools answers from the run’s catalog and never dispatches the model’s arguments', async () => {
+  const harness = await runLoop({
+    executorCatalog: {
+      server: 'kelpie',
+      tools: [{ description: 'Open a URL. Then wait.', inputSchema: { type: 'object' }, name: 'navigate' }],
+    },
+    executorTools: {
+      'executor_mcp_tools': { inputSummary: 'tools', output: 'dispatch must not run', success: true },
+    },
+    toolArgs: { server: 'kelpie' },
+    toolName: 'executor_mcp_tools',
+  })
+  assert.deepEqual(harness.catalogRequests, ['kelpie'])
+  assert.deepEqual(harness.dispatchedExecutor, [])
+  const seen = toolMessage(harness.result, '- navigate: Open a URL.')
+  assert.match(seen, /offers 1 tool\./)
 })
 
 // --- delegated paths: the model calls delegate; the sub-agent then calls the

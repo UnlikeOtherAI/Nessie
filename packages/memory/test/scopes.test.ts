@@ -3,6 +3,8 @@ import test from 'node:test'
 import type { Pool } from 'pg'
 import {
   constrainScopesToDestination,
+  constrainScopesToProjectWrite,
+  isWithinProjectWriteScopes,
   resolveAccessibleScopes,
   type AccessibleScopes,
   type DestinationScopeChain,
@@ -340,4 +342,56 @@ test('containment keeps audienceTypes and audienceIds index-aligned', () => {
     ['team', 'team-1'],
     ['organization', ORG],
   ])
+})
+
+// --- Project-write containment ----------------------------------------------
+// A contained run that can write into its project recalls only what every
+// project reader already has, because the project write gate refuses a team or
+// channel source — the destination's own channel included.
+
+test('project-write containment keeps only the organisation and the destination project', () => {
+  const result = constrainScopesToProjectWrite(
+    scopesOf([
+      ['organization', ORG],
+      ['project', 'project-1'],
+      ['team', 'team-1'],
+      ['channel', 'channel-1'],
+      ['project', 'project-2'],
+      ['user', USER],
+    ], ['channel-1', 'channel-2']),
+    DESTINATION,
+  )
+
+  assert.deepEqual(pairsOf(result), [
+    ['organization', ORG],
+    ['project', 'project-1'],
+  ])
+  // Past-conversation reach is the destination containment's, unchanged.
+  assert.deepEqual(result.channelIds, ['channel-1'])
+})
+
+test('project-write containment is never wider than destination containment', () => {
+  const reach = scopesOf([
+    ['organization', 'other-org'],
+    ['project', 'team-1'],
+    ['team', 'team-1'],
+  ])
+  assert.deepEqual(pairsOf(constrainScopesToProjectWrite(reach, DESTINATION)), [])
+  assert.deepEqual(pairsOf(constrainScopesToDestination(reach, DESTINATION)), [['team', 'team-1']])
+})
+
+test('a recalled lineage is within a project write only when every scope is', () => {
+  const destination = { organizationId: ORG, projectId: 'project-1' }
+  assert.equal(isWithinProjectWriteScopes([], destination), true)
+  assert.equal(isWithinProjectWriteScopes([
+    { scopeId: ORG, scopeType: 'organization' },
+    { scopeId: 'project-1', scopeType: 'project' },
+  ], destination), true)
+  // A project-audience memory captured from a private DM is still outside.
+  assert.equal(isWithinProjectWriteScopes([
+    { scopeId: 'project-1', scopeType: 'project' },
+    { scopeId: 'dm-1', scopeType: 'channel' },
+  ], destination), false)
+  assert.equal(isWithinProjectWriteScopes([{ scopeId: 'team-1', scopeType: 'team' }], destination), false)
+  assert.equal(isWithinProjectWriteScopes([{ scopeId: 'project-2', scopeType: 'project' }], destination), false)
 })

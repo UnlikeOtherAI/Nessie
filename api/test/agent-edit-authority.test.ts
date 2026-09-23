@@ -552,11 +552,16 @@ dbTest('the avatar service follows the same rule as the rest of the configuratio
 dbTest('cloning a private agent preserves privacy and provisions the clone home atomically', async () => {
   await withDb(async (prisma) => {
     const source = await createPrivateAgent(prisma)
+    await prisma.agent.update({
+      where: { id: source.id },
+      data: { speakingStyle: 'Dry, candid, and concise.' },
+    })
     const clone = await cloneAgentRecord(prisma, source.id, orgId, otherMemberUserId)
 
     assert.ok(clone)
     assert.equal(clone.visibility, 'private')
     assert.equal(clone.ownerUserId, otherMemberUserId)
+    assert.equal(clone.speakingStyle, 'Dry, candid, and concise.')
 
     const home = await prisma.agentBinding.findFirst({
       where: { agentId: clone.id },

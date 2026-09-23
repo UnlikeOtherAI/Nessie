@@ -4,6 +4,7 @@ import {
   faClockRotateLeft,
   faHouse,
   faLayerGroup,
+  faRobot,
   faShareNodes,
 } from '@fortawesome/free-solid-svg-icons'
 import type { KnowledgeRoot, KnowledgeRootSpace } from '@nessie/schemas'
@@ -28,14 +29,14 @@ import type {
  * The root column (browser-ui.md §3): the first column of the browser, and
  * what replaced the navy `KnowledgeSidebarNav`.
  *
- * Latest, Shared with me, My Documents and one row per project as one
- * continuous group, a hairline, the labelled Agents section, a hairline, the
- * shared folders, a hairline, and any product views.
+ * Latest, Shared with me, My Documents, projects and one Agents doorway form
+ * the first group; shared folders and product views follow as separate groups.
  * A group with nothing in it omits itself *and* its separator — an empty
  * group with a rule over it is a heading for nothing.
  */
 
 export type FinderRootRow =
+  | { kind: 'agents'; id: 'virtual:agents' }
   | { kind: 'latest'; id: 'virtual:latest' }
   | { kind: 'shared-with-me'; id: 'virtual:shared'; count: number }
   | { kind: 'space'; id: string; space: KnowledgeRootSpace; role: 'personal' | 'project' | 'agent' | 'shared' }
@@ -75,22 +76,15 @@ export const finderRootGroups = (root: KnowledgeRoot | undefined): FinderRootGro
       role: 'project',
       space: project.space,
     })),
+    { id: 'virtual:agents', kind: 'agents' },
   ]
-  // Agent document homes are their own labelled section, never mixed into the
-  // shared folders: an agent is not a folder somebody shared with you, and the
-  // mixed group answered "whose workspace is this?" with a shrug.
-  const agents: FinderRootRow[] = root.shared
-    .filter((space) => space.ownerAgentId !== null)
-    .map((space) => ({ id: space.spaceId, kind: 'space', role: 'agent', space }))
-  const shared: FinderRootRow[] = root.shared
-    .filter((space) => space.ownerAgentId === null)
-    .map((space) => ({
+  const shared: FinderRootRow[] = root.shared.map((space) => ({
       id: space.spaceId,
       kind: 'space',
       role: 'shared',
       space,
     }))
-  return [{ rows: mine }, { label: 'Agents', rows: agents }, { rows: shared }]
+  return [{ rows: mine }, { rows: shared }]
 }
 
 type FinderRootColumnProps = {
@@ -162,6 +156,7 @@ export const FinderRootColumn = ({
   // landing: an unwarmed row is a screen that arrives empty after the slide.
   const destination = (row: FinderRootRow): string | null => {
     switch (row.kind) {
+      case 'agents': return '/knowledge-base/agents'
       case 'latest': return '/knowledge-base/latest'
       case 'shared-with-me': return '/knowledge-base/shared-with-me'
       case 'space': return `/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`
@@ -198,6 +193,17 @@ export const FinderRootColumn = ({
     }
 
     switch (row.kind) {
+      case 'agents':
+        return (
+          <FinderRow
+            {...shared}
+            icon={faRobot}
+            iconTone="--accent"
+            key={row.id}
+            kind="virtual"
+            title="Agents"
+          />
+        )
       case 'latest':
         return (
           <FinderRow

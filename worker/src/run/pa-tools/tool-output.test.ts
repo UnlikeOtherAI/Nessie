@@ -3,6 +3,8 @@ import test from 'node:test'
 import {
   buildChannelLink,
   buildMessageLink,
+  formatAgentMarkdownLink,
+  formatChannelMarkdownLink,
   formatMessageLine,
 } from './tool-output.js'
 
@@ -54,4 +56,19 @@ test('formatMessageLine includes a ready-made link line the model can quote verb
     /^ {2}link=\/channels\/chan-1\/threads\/thread-1\/replies\/msg-root$/m,
   )
   assert.match(line, /the shortlist we discussed$/m)
+})
+
+test('a placed agent and its room are markdown links a person can follow', () => {
+  assert.equal(
+    formatChannelMarkdownLink({ id: 'chan-1', label: 'sales' }),
+    '[#sales](/channels/chan-1)',
+  )
+  assert.equal(formatAgentMarkdownLink({ id: 'agent-1', name: 'CTO' }), '[CTO](/agents/agent-1)')
+})
+
+test('a bracket in a name cannot end the link text early', () => {
+  assert.equal(
+    formatAgentMarkdownLink({ id: 'agent-1', name: 'Ops [beta]' }),
+    '[Ops \\[beta\\]](/agents/agent-1)',
+  )
 })

@@ -7,6 +7,7 @@ import {
 } from '@nessie/runtime'
 
 import {
+  BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS,
   BUILTIN_STUB_INPUT_SCHEMA,
   BUILTIN_HOT_TOOL_IDS,
   BUILTIN_TOOL_SPEC_NAME,
@@ -105,6 +106,136 @@ test('the fixed hot set is fully specified and every other builtin uses its cura
       assert.deepEqual(descriptor.inputSchema, BUILTIN_STUB_INPUT_SCHEMA)
     }
   }
+})
+
+const promotedDefinitions = [
+  definition('web_search'),
+  definition('ticket_list'),
+  definition('ticket_create'),
+  definition('send_message'),
+  definition('kb_list'),
+]
+
+const fullIds = (view: ReturnType<typeof buildBuiltinToolsetView>): string[] =>
+  view.descriptors
+    .filter((tool) => tool.inputSchema !== BUILTIN_STUB_INPUT_SCHEMA && tool.toolName !== BUILTIN_TOOL_SPEC_NAME)
+    .map((tool) => tool.toolName)
+
+test('a run\'s own grants arrive in full while every other tool stays a stub', () => {
+  const view = buildBuiltinToolsetView(promotedDefinitions, 2, {
+    promotedIds: ['ticket_create', 'ticket_list', 'not_allowed'],
+  })
+
+  // Definition order, not promotion order: the array stays byte-stable.
+  assert.deepEqual(view.descriptors.map((tool) => tool.toolName), [
+    'web_search', 'ticket_list', 'ticket_create', 'send_message', 'kb_list', BUILTIN_TOOL_SPEC_NAME,
+  ])
+  assert.deepEqual(fullIds(view), ['web_search', 'ticket_list', 'ticket_create'])
+  assert.deepEqual([...view.stubbedIds].sort(), ['kb_list', 'send_message'])
+  // An id the run is not allowed is never conjured into the array.
+  assert.equal(view.descriptors.some((tool) => tool.toolName === 'not_allowed'), false)
+})
+
+test('promotion stops at its budget, in priority order, and skips what does not fit', () => {
+  const size = (id: string): number => {
+    const tool = promotedDefinitions.find((candidate) => candidate.id === id)!
+    return JSON.stringify({ toolName: tool.id, description: tool.description, inputSchema: tool.parameters }).length
+  }
+  // Room for exactly two: the first two in priority order win.
+  const two = buildBuiltinToolsetView(promotedDefinitions, 2, {
+    promotedIds: ['send_message', 'ticket_create', 'ticket_list'],
+    promotedSchemaBudgetChars: size('send_message') + size('ticket_create'),
+  })
+  assert.deepEqual(fullIds(two), ['web_search', 'ticket_create', 'send_message'])
+  assert.ok(two.stubbedIds.has('ticket_list'))
+
+  // A tool larger than what is left stays a stub; a smaller one after it fits.
+  const large = definition('ticket_update')
+  large.description = 'x'.repeat(2_000)
+  const withLarge = [...promotedDefinitions, large]
+  const skipped = buildBuiltinToolsetView(withLarge, 2, {
+    promotedIds: ['ticket_update', 'kb_list'],
+    promotedSchemaBudgetChars: size('kb_list'),
+  })
+  assert.deepEqual(fullIds(skipped), ['web_search', 'kb_list'])
+  assert.ok(skipped.stubbedIds.has('ticket_update'))
+
+  const none = buildBuiltinToolsetView(promotedDefinitions, 2, {
+    promotedIds: ['ticket_create'],
+    promotedSchemaBudgetChars: 0,
+  })
+  assert.deepEqual(fullIds(none), ['web_search'])
+})
+
+test('tool_spec is offered only while something is still a stub', () => {
+  const everything = buildBuiltinToolsetView(promotedDefinitions, 2, {
+    promotedIds: promotedDefinitions.map((tool) => tool.id),
+  })
+  assert.equal(everything.toolSpecEnabled, false)
+  assert.equal(everything.stubbedIds.size, 0)
+  assert.equal(everything.descriptors.some((tool) => tool.toolName === BUILTIN_TOOL_SPEC_NAME), false)
+})
+
+test('promoting every builtin adds no more than the budget to the prompt', () => {
+  const view = buildBuiltinToolsetView(BUILTIN_TOOL_DEFINITIONS, 0, {
+    promotedIds: BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id),
+  })
+  const hotIds = new Set<string>(BUILTIN_HOT_TOOL_IDS)
+  const promotedChars = view.descriptors
+    .filter((tool) => !hotIds.has(tool.toolName) && !view.stubbedIds.has(tool.toolName)
+      && tool.toolName !== BUILTIN_TOOL_SPEC_NAME)
+    .reduce((total, tool) => total + JSON.stringify(tool).length, 0)
+  assert.ok(promotedChars > 0)
+  assert.ok(promotedChars <= BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS, `${promotedChars} chars promoted`)
+  assert.ok(view.stubbedIds.size > 0, 'the rest stays deferred')
+})
+
+// F15 through the resolver: a board-owning shared agent's lent ticket tools and
+// its other explicit grants arrive with schemas, so its first real action is
+// not preceded by a tool_spec for each.
+test('a shared agent\'s lent project tools and explicit grants are resolved in full', () => {
+  const enabledIds = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))
+  const lent = new Set(['ticket_list', 'ticket_create', 'ticket_move'])
+  const resolved = resolveAgentTools(
+    enabledIds,
+    BUILTIN_TOOL_DEFINITIONS,
+    {
+      ticket_list: true,
+      ticket_create: true,
+      ticket_move: true,
+      // An ordinary builtin named on purpose, and an explicit grant.
+      http_fetch: true,
+      send_message: true,
+      channel_update: true,
+    },
+    null,
+    'shared',
+    { inlineToolLimit: 20, projectDelegatedToolIds: lent },
+  )
+  const full = new Set(
+    resolved.descriptors
+      .filter((tool) => tool.inputSchema !== BUILTIN_STUB_INPUT_SCHEMA)
+      .map((tool) => tool.toolName),
+  )
+  for (const id of [...lent, 'http_fetch', 'send_message']) {
+    assert.ok(full.has(id), `${id} arrives with its schema`)
+    assert.equal(resolved.stubbedIds.has(id), false)
+  }
+  // An ordinary builtin nobody named is still deferred.
+  assert.ok(resolved.stubbedIds.has('kb_list'))
+  // `true` never widens authorization: a PA-only tool stays out altogether.
+  assert.equal(resolved.allowedIds.has('channel_update'), false)
+  assert.equal(resolved.descriptors.some((tool) => tool.toolName === 'channel_update'), false)
+  // Without the run's lending, a policy `true` on a board tool admits nothing.
+  const unlent = resolveAgentTools(
+    enabledIds,
+    BUILTIN_TOOL_DEFINITIONS,
+    { ticket_create: true },
+    null,
+    'shared',
+    { inlineToolLimit: 20 },
+  )
+  assert.equal(unlent.allowedIds.has('ticket_create'), false)
 })
 
 test('tool_spec returns allowed full schemas and corrects unknown names', () => {

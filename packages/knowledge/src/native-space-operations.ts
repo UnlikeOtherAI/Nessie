@@ -69,6 +69,13 @@ export const archiveSpace = async (
   organizationId: string,
   spaceId: string,
 ): Promise<KnowledgeSpaceRecord | null> => {
+  const existing = await prisma.knowledgeSpace.findFirst({
+    where: { id: spaceId, organizationId, deletedAt: null },
+    select: { ownerAgentId: true },
+  })
+  if (existing?.ownerAgentId) {
+    throw new KnowledgeConflictError('An agent document home cannot be archived')
+  }
   const result = await prisma.knowledgeSpace.updateMany({
     where: { id: spaceId, organizationId, deletedAt: null },
     data: { deletedAt: new Date() },
@@ -144,6 +151,8 @@ export const listSpaces = async (
     : null
   const scopeFilters: Prisma.KnowledgeSpaceWhereInput[] = [
     ...(input.projectId ? [{ projectId: input.projectId }] : []),
+    ...(input.agentOwnedOnly ? [{ ownerAgentId: { not: null } }] : []),
+    ...(input.excludeAgentOwned ? [{ ownerAgentId: null }] : []),
     ...(!input.includePersonal && typeof input.viewer?.userId === 'string'
       ? [{ OR: [{ userId: null }, { userId: { not: input.viewer.userId } }] }]
       : []),

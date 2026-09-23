@@ -64,10 +64,14 @@ const makeApp = (role: 'member' | 'owner') => {
     agentCoreDocumentMigration: { findUnique: async () => null },
     channelMember: { findMany: async () => [] },
     knowledgeSpace: {
-      findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000040' }),
+      findFirst: async () => ({
+        id: '00000000-0000-4000-8000-000000000040',
+        projectId,
+      }),
     },
     knowledgeSpaceMember: { findMany: async () => [] },
     organization: { findUnique: async () => ({ externalOrgId: null }) },
+    project: { findFirst: async () => ({ id: projectId }) },
     projectMember: { findMany: async () => [{ projectId }] },
     teamMember: { findMany: async () => [] },
     attachment: {
@@ -111,11 +115,19 @@ const makeApp = (role: 'member' | 'owner') => {
     createAgentVisibilityScope: () => ({}),
     getChannelIfMember: async () => null,
     isAgentAccessibleToActor: async () => false,
-    // A created agent with no instructions stages no files; the provider
-    // records the empty core migration for its documents home.
+    // A created agent always stages the required Markdown pair, including
+    // when both initial documents are empty.
+    fileService: {
+      delete: async () => true,
+      store: async (input: { filename: string }) => ({
+        attachment: { id: `attachment-${input.filename}` },
+        bytesWritten: 0,
+      }),
+    },
     knowledgeProvider: {
       getSpace: async () => null,
       migrateAgentCoreDocuments: async () => ({ kind: 'migrated', pageIds: [] }),
+      updateAgentCoreDocuments: async () => ({ kind: 'updated', pageIds: [] }),
     },
     prisma,
     requireActorContext: () => actorContext,

@@ -24,7 +24,7 @@ import {
   listAgentsForUser,
   resolveAgentAvatarStyleSafely,
 } from '@nessie/team-admin'
-import { writeCanonicalAgentCore } from '@nessie/knowledge'
+import { ensureCanonicalAgentCore } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
@@ -33,7 +33,11 @@ import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
-import { formatSection } from './tool-output.js'
+import {
+  formatAgentMarkdownLink,
+  formatChannelMarkdownLink,
+  formatSection,
+} from './tool-output.js'
 
 /**
  * Team provisioning from chat: list the agents you can see, create a
@@ -115,10 +119,12 @@ export const runChannelCreateTool = async (
     throw new Error('That team does not belong to this organisation.')
   }
 
+  // The link is what the person is handed; the ids stay for the calls that
+  // follow (agent_bind_channel), exactly as agent_create's link carries its id.
   return {
     inputSummary: `label="${args.label}"`,
     outputPreview: [
-      `Created ${describeChannel(channel)}`,
+      `Created ${describeChannel(channel)}: ${formatChannelMarkdownLink(channel)}`,
       `channelId=${channel.id} | slug=${channel.slug ?? ''} | visibility=${channel.visibility}`,
       `You are its owner. Bind an agent with agent_bind_channel, or invite people from the channel page.`,
     ].join('\n'),
@@ -244,48 +250,39 @@ export const runAgentCreateTool = async (
     visibility: args.visibility,
   })
 
-  const created = await context.prisma.agent.findFirst({
-    where: { id: agent.id, organizationId: member.organizationId },
-    select: { projectId: true },
-  })
-  if (created?.projectId) {
-    await writeCanonicalAgentCore(
-      context.prisma,
-      createWorkerKnowledgeProvider(context),
-      fileServiceFor(context.prisma),
-      {
-        actor: {
-          organizationId: member.organizationId,
-          uoaIdentity: context.actorContext.actionContext.uoaIdentity,
-          userId: member.userId,
-        },
-        agentId: agent.id,
-        attribution: attributionFromActorContext(context.actorContext),
-        organizationId: member.organizationId,
-        projectId: created.projectId,
-        userId: member.userId,
-      },
-    )
-  }
+  await ensureCanonicalAgentCore(
+    context.prisma,
+    createWorkerKnowledgeProvider(context),
+    fileServiceFor(context.prisma),
+    {
+      agentId: agent.id,
+      attribution: attributionFromActorContext(context.actorContext),
+      authorId: member.userId,
+      authorType: 'user',
+      organizationId: member.organizationId,
+      provisionOnly: true,
+      uploaderId: member.userId,
+    },
+  )
 
+  // Data, not instructions. This text is what the Designer relays, and it
+  // relayed it closely: raw `agentId=`/`channelId=` UUIDs and a "give them
+  // this reason word for word" meant for itself both reached the person. The
+  // agent and its home are links it can hand over as they are (the id is the
+  // link's last segment for the calls that need one), and quoting the portrait
+  // reason is a rule in the Designer's own prompt.
   return {
     inputSummary: `name="${args.name}"`,
     outputPreview: [
-      `Created agent "${agent.name}" (${agent.role})`,
-      `agentId=${agent.id}`
+      `Created agent ${formatAgentMarkdownLink(agent)} (${agent.role})`
       + (agent.model ? ` | model=${agent.provider ?? '?'}/${agent.model}` : ' | model=deployment default'),
       agent.homeChannelId
-        ? `Its private home is channelId=${agent.homeChannelId}.`
-        : 'It is not in any channel yet — an owner can bind it with agent_bind_channel.',
+        // A private agent's home is created beside it, under its name.
+        ? `Lives in: its private home, ${formatChannelMarkdownLink({ id: agent.homeChannelId, label: agent.name })}.`
+        : 'Lives in: nowhere yet — add it to any channel.',
       generatedAvatar
-        ? 'It has a generated portrait. agent_avatar_generate redraws it in a '
-          + 'style they name.'
-        // The reason is the useful part and it is the part that gets lost:
-        // paraphrased to "the picture could not be drawn", nobody — person or
-        // operator — learns anything. Quote it.
-        : 'It has NO portrait, only a tile colour. Tell them so, and give them '
-          + 'this reason word for word rather than a paraphrase of it: '
-          + `"${avatarFailure ?? 'unknown error'}"`,
+        ? 'portrait: generated'
+        : `portrait: none (reason: "${avatarFailure ?? 'unknown error'}")`,
     ].join('\n'),
     toolName: 'agent_create',
   }
@@ -315,10 +312,11 @@ const resolveBoundChannelLabels = async (
       id: { in: [...new Set(channelIds)] },
       organizationId: context.channel.organizationId,
     },
-    select: { id: true, label: true, visibility: true },
+    select: { id: true, label: true, type: true, visibility: true },
   })
   // The bindings were already filtered to channels this person can reach, so a
-  // non-public label here is material they see through their own membership.
+  // non-public label here is material they see through their own membership —
+  // a DM's label excepted (message-search-basis.ts).
   recordChannelDirectoryRead(context, channels)
   return new Map(channels.map((channel) => [channel.id, channel.label]))
 }
@@ -449,10 +447,20 @@ export const runAgentBindChannelTool = async (
     )
   }
 
+  // The room's name, for the link the model hands on. The membership read
+  // above established the caller can see it; a non-public room's name is still
+  // its members' alone, so it stamps like any directory read.
+  const placed = await context.prisma.channel.findUnique({
+    where: { id: args.channelId },
+    select: { label: true, type: true, visibility: true },
+  })
+  if (placed) recordChannelDirectoryRead(context, [{ ...placed, id: args.channelId }])
+
   return {
     inputSummary: `agentId=${args.agentId} channelId=${args.channelId}`,
     outputPreview:
-      `Bound agent "${agent.name}" to channelId=${args.channelId}. `
+      `Bound ${formatAgentMarkdownLink(agent)} to `
+      + `${formatChannelMarkdownLink({ id: args.channelId, label: placed?.label ?? 'channel' })}. `
       + 'It now answers in that channel.',
     toolName: 'agent_bind_channel',
   }

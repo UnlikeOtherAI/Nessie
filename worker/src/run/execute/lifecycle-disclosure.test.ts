@@ -5,9 +5,10 @@ import type { PrismaClient } from '@prisma/client'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 import { loadRunContext } from './lifecycle.js'
 
-// Core-instruction admission runs inside `loadRunContext`: an agent with no
-// typed core mapping and no migration marker admits nothing, records an empty
-// snapshot, and continues. These suites cover bindings and mailboxes only.
+// Core-instruction admission runs inside `loadRunContext`: these fixtures are
+// code-managed agents, so their read-only projected files bypass tenant core
+// mappings and record an empty durable snapshot. These suites cover bindings
+// and mailboxes only.
 const coreDocumentAdmissionDelegates = {
   agentCoreDocument: { findMany: async () => [] },
   agentCoreDocumentMigration: { findUnique: async () => null },
@@ -52,6 +53,7 @@ test('loadRunContext resolves bindings and the active demonstration once', async
           parentAgentId: null,
           provider: null,
           runLimits: null,
+          systemManaged: true,
           systemPrompt: null,
         },
         createdAt: new Date('2026-08-31T00:00:00.000Z'),
@@ -135,6 +137,7 @@ test('loadRunContext carries the mailbox when the thread is an email conversatio
           parentAgentId: null,
           provider: null,
           runLimits: null,
+          systemManaged: true,
           systemPrompt: null,
         },
         createdAt: new Date('2026-09-02T00:00:00.000Z'),
@@ -183,6 +186,7 @@ test('an ordinary thread carries no mailbox, so nothing extra is implied', async
           parentAgentId: null,
           provider: null,
           runLimits: null,
+          systemManaged: true,
           systemPrompt: null,
         },
         createdAt: new Date('2026-09-02T00:00:00.000Z'),

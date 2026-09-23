@@ -453,6 +453,7 @@ export const ChannelConversationSurface = ({
           onConfirmSecretCapture={composer.confirmSecretCapture}
           onOpenDeepWaterResearch={deepWaterLauncher.open}
           onOpenExecutorRun={executorLauncher.open}
+          executorLeaseIndicator={executorLauncher.leaseIndicator}
           onOversizePaste={composer.setOversizePaste}
           onSubmitForm={(event) => {
             feedScroll.pinToBottom()

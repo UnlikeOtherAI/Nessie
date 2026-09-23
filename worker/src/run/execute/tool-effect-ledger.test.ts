@@ -505,6 +505,10 @@ const createSubtaskWorld = () => {
         return row
       },
     },
+    runCoreDocumentSnapshot: {
+      createMany: async () => ({ count: 0 }),
+      findMany: async () => [],
+    },
     task: {
       create: async () => {
         const row = { id: randomUUID() }
@@ -623,4 +627,20 @@ test('a resumed run answers a completed `spawn_subtask` from its row — no seco
     TOOL_EFFECT_STATES.completed,
     '`spawn_subtask` is claimed like any other tool whose effects outlive the run',
   )
+})
+
+test('a replayed correctable failure keeps its flag, so the breaker counts it the same', async () => {
+  const store = createEffectStore()
+  let executions = 0
+  const ledger = ledgerOver(store.prisma, new Set(['executor_mcp_call']), async (toolName) => {
+    executions += 1
+    return { ...reportedFailure(toolName, 'arguments invalid'), correctable: true }
+  })
+
+  await ledger.executeTool('executor_mcp_call', {}, 'call-1')
+  const replayed = await ledger.executeTool('executor_mcp_call', {}, 'call-1')
+
+  assert.equal(executions, 1, 'the claimed call is answered from its row, not run again')
+  assert.equal(store.row(RUN_ID, 'call-1')?.state, TOOL_EFFECT_STATES.failed)
+  assert.equal(replayed.correctable, true)
 })

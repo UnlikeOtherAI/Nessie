@@ -5,6 +5,7 @@ import {
   detectSecrets,
   parseAgentId,
   parseUserId,
+  PERSON_MESSAGE_AUTHORSHIP,
 } from '@nessie/schemas'
 import { CreateThreadMessageBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
@@ -105,6 +106,10 @@ export const registerCreateThreadMessageRoute = (
         : undefined)
 
     const result = await createThreadMessage(prisma, {
+      // A signed-in session's composer send — the web admin, the desktop shell
+      // and the iOS/Android WebView all post here. Session tokens only: agent
+      // and voice credentials are refused on this route by the auth hook.
+      authorship: PERSON_MESSAGE_AUTHORSHIP,
       content,
       threadId: thread.id,
       userId: actorContext.actor.actorId,

@@ -121,8 +121,13 @@ export const clickChannelRow = async (page, label) => {
 
 export const clickBackTo = async (page, label) => {
   const selector = `button[aria-label="${label}"]`
-  await page.waitForSelector(selector, { timeout: 30_000 })
-  await page.click(selector)
+  // Retained route/stage layers may carry an older button with the same
+  // destination. Act in the current layer so Playwright never waits on the
+  // first hidden copy while the visible doorway is already ready.
+  const current = '[data-phone-navigation-layer="current"]'
+  const target = await page.$(current) ? `${current} ${selector}` : selector
+  await page.waitForSelector(target, { timeout: 30_000 })
+  await page.click(target)
 }
 
 export const clickChannelTab = (page, label) => clickTab(page, 'Channel sections', label)

@@ -8,7 +8,11 @@ import {
   recordEmptyFireSkip,
   triggerOptsIntoEmptySkip,
 } from './trigger-empty-skip.js'
-import { queueTriggerRun } from './trigger-run.js'
+import {
+  preflightScheduledTriggerRun,
+  queueTriggerRun,
+  recordScheduledTriggerAdmissionFailure,
+} from './trigger-run.js'
 import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
 const DEFAULT_SCHEDULER_LEASE_MS = 60_000
@@ -206,9 +210,7 @@ export const sweepDueScheduledTriggers = async (
   const now = input.now ?? new Date()
   const claimedTriggers = await claimDueScheduledTriggers(prisma, input)
 
-  if (claimedTriggers.length === 0) {
-    return
-  }
+  if (claimedTriggers.length === 0) return
 
   // Batch-load the related agent/workflowInstallation rows for every claimed
   // trigger in one query instead of re-fetching per trigger inside the loop.
@@ -312,33 +314,87 @@ export const sweepDueScheduledTriggers = async (
       continue
     }
 
-    if (!trigger.targetChannelId || !trigger.targetThreadId || !trigger.agentId) {
-      await finalizeScheduledTriggerClaim(prisma, {
-        claimId: trigger.schedulerClaimId,
-        nextRunAt: trigger.nextRunAt,
-        status: 'error',
-        triggerId: trigger.id,
-      })
-      continue
-    }
-
-    if (!relation?.agent) {
-      await finalizeScheduledTriggerClaim(prisma, {
-        claimId: trigger.schedulerClaimId,
-        nextRunAt: trigger.nextRunAt,
-        status: 'error',
-        triggerId: trigger.id,
-      })
-      continue
-    }
-
-    const targetChannelId = trigger.targetChannelId
-    const targetThreadId = trigger.targetThreadId
-    const agentId = trigger.agentId
-    const agent = relation.agent
     const dedupeKey = `scheduled:${trigger.id}:${trigger.nextRunAt.toISOString()}`
+    const payload = {
+      scheduledFor: trigger.nextRunAt.toISOString(),
+      triggerId: trigger.id,
+    }
 
     try {
+      if (!trigger.targetChannelId || !trigger.targetThreadId || !trigger.agentId) {
+        await recordScheduledTriggerAdmissionFailure(prisma, {
+          dedupeKey,
+          detail: 'its saved agent or target channel is missing',
+          payload,
+          source: 'scheduler',
+          triggerId: trigger.id,
+        })
+        await settleDeliveryOwnedScheduledClaim(prisma, {
+          claimId: trigger.schedulerClaimId,
+          config: trigger.config,
+          from: trigger.nextRunAt,
+          now,
+          triggerId: trigger.id,
+          type: trigger.type,
+        })
+        continue
+      }
+
+      if (!relation?.agent) {
+        await recordScheduledTriggerAdmissionFailure(prisma, {
+          dedupeKey,
+          detail: 'its saved agent no longer exists',
+          payload,
+          source: 'scheduler',
+          triggerId: trigger.id,
+        })
+        await settleDeliveryOwnedScheduledClaim(prisma, {
+          claimId: trigger.schedulerClaimId,
+          config: trigger.config,
+          from: trigger.nextRunAt,
+          now,
+          triggerId: trigger.id,
+          type: trigger.type,
+        })
+        continue
+      }
+
+      const targetChannelId = trigger.targetChannelId
+      const targetThreadId = trigger.targetThreadId
+      const agentId = trigger.agentId
+      const agent = relation.agent
+
+      // Authority comes before the optional empty-work optimisation. Otherwise
+      // a quiet schedule whose agent or saved human was removed would keep
+      // recording harmless-looking skips forever and never become unhealthy.
+      // The delivery lookup inside this preflight runs first, so reclaiming an
+      // already-owned occurrence cannot rewrite its terminal outcome.
+      const preflight = await preflightScheduledTriggerRun(prisma, {
+        dedupeKey,
+        payload,
+        source: 'scheduler',
+        trigger: {
+          agent,
+          agentId,
+          config: trigger.config,
+          id: trigger.id,
+          targetChannelId,
+          targetThreadId,
+          type: trigger.type,
+        },
+      })
+      if (preflight === 'handled') {
+        await settleDeliveryOwnedScheduledClaim(prisma, {
+          claimId: trigger.schedulerClaimId,
+          config: trigger.config,
+          from: trigger.nextRunAt,
+          now,
+          triggerId: trigger.id,
+          type: trigger.type,
+        })
+        continue
+      }
+
       // Empty-fire skip: an opted-in schedule whose target thread has seen no
       // new work since the last run records a `skipped` delivery and advances
       // the schedule without enqueueing a run, so it never burns tokens on a
@@ -383,11 +439,9 @@ export const sweepDueScheduledTriggers = async (
       }
 
       await queueTriggerRun(prisma, {
+        admissionPolicy: 'scheduled_fail_closed',
         dedupeKey,
-        payload: {
-          scheduledFor: trigger.nextRunAt.toISOString(),
-          triggerId: trigger.id,
-        },
+        payload,
         source: 'scheduler',
         trigger: {
           agent,

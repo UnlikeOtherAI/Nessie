@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import type { LedgerAttribution, ModelClient } from '@nessie/runtime'
-import { getQueryEmbedding } from '../src/services/knowledge-query-embedding.js'
+import { getQueryEmbedding } from '../src/services/search-query-embedding.js'
 
 const usage: LedgerAttribution = {
   organizationId: '00000000-0000-4000-8000-000000000001',
@@ -38,6 +38,27 @@ test('getQueryEmbedding calls embed once and caches by normalized query', async 
 
   assert.deepEqual(first, [0.1, 0.2, 0.3])
   assert.deepEqual(second, [0.1, 0.2, 0.3])
+  assert.equal(calls, 1)
+})
+
+test('getQueryEmbedding coalesces concurrent provider searches', async () => {
+  let calls = 0
+  let release: (() => void) | undefined
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const client = fakeModelClient(async () => {
+    calls += 1
+    await gate
+    return [0.4, 0.5]
+  })
+
+  const messages = getQueryEmbedding(client, 'shared autocomplete query', usage)
+  const tickets = getQueryEmbedding(client, 'Shared Autocomplete Query', usage)
+  release?.()
+
+  assert.deepEqual(await messages, [0.4, 0.5])
+  assert.deepEqual(await tickets, [0.4, 0.5])
   assert.equal(calls, 1)
 })
 

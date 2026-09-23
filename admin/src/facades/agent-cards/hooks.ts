@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { AgentCardPresenter } from '@nessie/schemas'
+import type { AgentCardPresenter, AgentCardRespondResult } from '@nessie/schemas'
 
 import { threadKeys } from '../threads/keys'
 import { agentCardKeys } from './keys'
@@ -15,6 +15,18 @@ export const useAgentCard = (cardId: string | undefined) => {
     queryFn: () => apiClient.get(`/api/agent-cards/${cardId}`),
     queryKey: agentCardKeys.card(cardId),
   })
+}
+
+/**
+ * Re-read one card. An executor review card is closed by the server when its
+ * change is confirmed or rejected, which is not a press, so the renderer asks
+ * for the card again when the review it opened closes.
+ */
+export const useRefreshAgentCard = () => {
+  const queryClient = useQueryClient()
+  return (cardId: string) => {
+    void queryClient.invalidateQueries({ queryKey: agentCardKeys.card(cardId) })
+  }
 }
 
 export type RespondToAgentCardInput = {
@@ -38,7 +50,7 @@ export const useRespondToAgentCard = () => {
 
   return useMutation({
     mutationFn: (input: RespondToAgentCardInput) =>
-      apiClient.post<{ cardId: string; responseMessageId: string; status: string }>(
+      apiClient.post<AgentCardRespondResult>(
         `/api/agent-cards/${input.cardId}/respond`,
         {
           actionKey: input.actionKey,
@@ -47,10 +59,14 @@ export const useRespondToAgentCard = () => {
           ...(input.handoverSessionId ? { handoverSessionId: input.handoverSessionId } : {}),
         },
       ),
-    onSuccess: (_result, input) => {
+    // On settle, not on success: a press can fail after the server resolved
+    // the card (a dropped connection, or another door winning the claim), and
+    // refreshing only on success left a resolved card looking pressable.
+    onSettled: (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: agentCardKeys.card(input.cardId) })
-      // The press wrote a real reply, so the feed and the reply panel refresh
-      // through the path they already use for any other message.
+      // An answer wrote a real reply, so the feed and the reply panel refresh
+      // through the path they already use for any other message. (A review
+      // card's press writes none; the refresh is merely redundant there.)
       void queryClient.invalidateQueries({ queryKey: threadKeys.messages(input.threadId) })
     },
   })

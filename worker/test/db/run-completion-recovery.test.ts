@@ -46,6 +46,16 @@ runDatabaseTest('completion commit survives a follow-up fault and replays withou
       teamId: team.id,
     },
   })
+  const actorUser = await prisma.user.create({
+    data: {
+      displayName: 'Completion Actor',
+      email: `completion-actor-${randomUUID()}@example.test`,
+      id: ids.user,
+    },
+  })
+  await prisma.organizationMember.create({
+    data: { organizationId: organization.id, role: 'owner', userId: actorUser.id },
+  })
   const mentionedUser = await prisma.user.create({
     data: {
       displayName: 'Mentioned One',
@@ -57,7 +67,14 @@ runDatabaseTest('completion commit survives a follow-up fault and replays withou
   })
   const thread = await prisma.thread.create({ data: { channelId: channel.id } })
   const agent = await prisma.agent.create({
-    data: { name: 'Completer', organizationId: organization.id, status: 'executing' },
+    data: {
+      name: 'Completer',
+      organizationId: organization.id,
+      ownerUserId: actorUser.id,
+      projectId: project.id,
+      status: 'executing',
+      teamId: team.id,
+    },
   })
   const run = await prisma.run.create({
     data: { agentId: agent.id, status: 'pending', threadId: thread.id },
@@ -446,7 +463,7 @@ runDatabaseTest('completion commit survives a follow-up fault and replays withou
   } finally {
     await realtime.close()
     await prisma.organization.delete({ where: { id: organization.id } })
-    await prisma.user.delete({ where: { id: mentionedUser.id } })
+    await prisma.user.deleteMany({ where: { id: { in: [actorUser.id, mentionedUser.id] } } })
     await pool.end()
     await prisma.$disconnect()
   }

@@ -1,6 +1,7 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
-import { ToolCircuitBreaker } from './circuit-breaker.js'
+import { circuitBreakerKey, ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
+import { countToolCall, strongerNudge } from './tool-loop-detection.js'
 import { summarizeToolInput } from './tool-util.js'
 
 export type ToolApprovalSuspension = {
@@ -16,6 +17,8 @@ export type AgentCardSuspension = {
 export type ExecutedToolResult = {
   acknowledgeDelivery?: () => void
   connectorUsage?: ConnectorUsage
+  /** See `AgenticToolResult.correctable`: never counted by the circuit breaker. */
+  correctable?: true
   deliveredToConversation?: boolean
   inputSummary: string
   output: string
@@ -80,7 +83,9 @@ export type PrepareToolFn = (
 ) => Promise<PreparedToolExecution>
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30_000
-const LOOP_DETECTION_THRESHOLD = 3
+
+/** What an in-order call answers when the person stopped the run before it was sent. */
+export const STOPPED_BEFORE_DISPATCH_OUTPUT = 'Not run: the person stopped this run before this call was sent.'
 
 const withTimeout = async <T>(
   promise: Promise<T>,
@@ -112,56 +117,81 @@ const withTimeout = async <T>(
   }
 }
 
-const toolCallSignature = (name: string, args: Record<string, unknown>): string =>
-  `${name}:${JSON.stringify(args)}`
-
 type RunnableToolCall = {
   index: number
   toolCall: ProviderToolCall
 }
 
+type PreparedToolCall = RunnableToolCall & {
+  execute: (signal?: AbortSignal) => Promise<ExecutedToolResult>
+}
+
 export const executeToolBatch = async (input: {
   callbacks: ToolBatchCallbacks
   circuitBreaker: ToolCircuitBreaker
+  /**
+   * Tools dispatched one after another, in call order, rather than beside the
+   * rest of the batch. Executor commands share their machine's one command
+   * lane, and each one's expiry runs from the moment it is created, so a batch
+   * that dispatched three at once spent its own TTLs queueing behind itself.
+   */
+  dispatchesInOrder?: (toolName: string) => boolean
   executeTool: ExecuteToolFn
+  /**
+   * The name a call is counted under by the circuit breaker and the loop
+   * detector: the offered tool, with any provider namespace prefix
+   * (`default.`, `functions.`) dropped, as the loop resolves it for dispatch.
+   */
+  normalizeToolName?: (toolName: string) => string
   prepareTool?: PrepareToolFn
+  /** The run's loop-detection counts (`tool-loop-detection.ts`), mutated in call order. */
   signatureCounts: Map<string, number>
+  /**
+   * Asked before each in-order call is sent. A batch of executor calls runs
+   * one after another, each allowed its command TTL, and the loop reads a
+   * person's Stop only after the batch; without this a Stop behind five calls
+   * waited out all five. A call already sent still runs to its end.
+   */
+  stopRequested?: () => Promise<boolean>
   toolCalls: ProviderToolCall[]
-  toolTimeoutError?: (toolName: string) => Error | null
-  toolTimeoutMs?: number
+  /** The error a timed-out call answers with; given the provider's call id. */
+  toolTimeoutError?: (toolName: string, toolCallId: string) => Error | null
+  /** Each tool's own timeout; undefined keeps the batch default. */
+  toolTimeoutMsFor?: (toolName: string) => number | undefined
 }): Promise<{
   deliveredToConversation: boolean
-  loopDetected: boolean
+  /** What to tell the model when a call was refused as a loop; null when none was. */
+  loopNudge: string | null
   pendingApproval: ToolApprovalSuspension | null
   pendingInput: AgentCardSuspension | null
   results: ExecutedToolResult[]
   toolMs: number
 }> => {
-  let loopDetected = false
+  let loopNudge: string | null = null
   let toolMs = 0
   const resultSlots: Array<ExecutedToolResult | undefined> = []
   const runnable: RunnableToolCall[] = []
+  const countedName = (toolCall: ProviderToolCall): string =>
+    input.normalizeToolName?.(toolCall.toolName) ?? toolCall.toolName
 
   for (const [index, toolCall] of input.toolCalls.entries()) {
-    const signature = toolCallSignature(toolCall.toolName, toolCall.arguments)
-    const count = (input.signatureCounts.get(signature) ?? 0) + 1
-    input.signatureCounts.set(signature, count)
-
-    if (count >= LOOP_DETECTION_THRESHOLD) {
-      loopDetected = true
+    const loop = countToolCall(input.signatureCounts, countedName(toolCall), toolCall.arguments)
+    if (loop) {
+      loopNudge = strongerNudge(loopNudge, loop)
       resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
-        output: 'Tool call loop detected — this exact call has been repeated too many times. Try a different approach.',
+        output: loop.output,
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
       }
       continue
     }
-    if (input.circuitBreaker.isTripped(toolCall.toolName)) {
+    const breakerKey = circuitBreakerKey(countedName(toolCall), toolCall.arguments)
+    if (input.circuitBreaker.isTripped(breakerKey)) {
       resultSlots[index] = {
         inputSummary: summarizeToolInput(toolCall.arguments),
-        output: input.circuitBreaker.trippedErrorMessage(toolCall.toolName),
+        output: input.circuitBreaker.trippedErrorMessage(breakerKey),
         success: false,
         toolCallId: toolCall.toolCallId,
         toolName: toolCall.toolName,
@@ -172,7 +202,7 @@ export const executeToolBatch = async (input: {
     runnable.push({ index, toolCall })
   }
 
-  const prepared: Array<RunnableToolCall & { execute: (signal?: AbortSignal) => Promise<ExecutedToolResult> }> = []
+  const prepared: PreparedToolCall[] = []
   for (const call of runnable) {
     let preparation: PreparedToolExecution
     try {
@@ -205,7 +235,7 @@ export const executeToolBatch = async (input: {
       }
       return {
         deliveredToConversation: false,
-        loopDetected,
+        loopNudge,
         pendingApproval: preparation.approval,
         pendingInput: null,
         results: resultSlots.filter((result): result is ExecutedToolResult => result !== undefined),
@@ -215,7 +245,9 @@ export const executeToolBatch = async (input: {
     prepared.push({ ...call, execute: preparation.execute })
   }
 
-  const settled = await Promise.allSettled(prepared.map(async ({ execute, toolCall }) => {
+  const runPrepared = async ({ execute, toolCall }: PreparedToolCall): Promise<ExecutedToolResult> => {
+    const timeoutMs = input.toolTimeoutMsFor?.(toolCall.toolName) ?? DEFAULT_TOOL_TIMEOUT_MS
+    const breakerKey = circuitBreakerKey(countedName(toolCall), toolCall.arguments)
     await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
     const startedAt = new Date()
     // One controller per call: the timeout arm aborts it, so a stalled
@@ -227,18 +259,20 @@ export const executeToolBatch = async (input: {
     try {
       const result = await withTimeout(
         execute(controller.signal),
-        input.toolTimeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS,
+        timeoutMs,
         toolCall.toolName,
-        () => input.toolTimeoutError?.(toolCall.toolName) ?? null,
+        () => input.toolTimeoutError?.(toolCall.toolName, toolCall.toolCallId) ?? null,
         () => controller.abort(),
       )
       const durationMs = Date.now() - startedAt.getTime()
       toolMs += durationMs
+      // A correctable failure says nothing about whether the tool works, so
+      // it neither counts toward the breaker nor clears what is counted.
       if (!result.pendingApproval) {
         if (result.success) {
-          input.circuitBreaker.recordSuccess(toolCall.toolName)
-        } else {
-          input.circuitBreaker.recordError(toolCall.toolName)
+          input.circuitBreaker.recordSuccess(breakerKey)
+        } else if (!result.correctable) {
+          input.circuitBreaker.recordError(breakerKey)
         }
       }
       await input.callbacks.onToolCallEnd(
@@ -258,7 +292,7 @@ export const executeToolBatch = async (input: {
       const output = fatal
         ? 'Tool execution could not be confirmed; retrying safely.'
         : error instanceof Error ? error.message : 'Tool execution failed'
-      input.circuitBreaker.recordError(toolCall.toolName)
+      input.circuitBreaker.recordError(breakerKey)
       const durationMs = Date.now() - startedAt.getTime()
       toolMs += durationMs
       try {
@@ -287,6 +321,32 @@ export const executeToolBatch = async (input: {
         toolName: toolCall.toolName,
       }
     }
+  }
+
+  // Only a fatal error or a failed callback rejects `runPrepared`, and either
+  // one throws this batch. The in-order calls behind it are then never
+  // dispatched: `then` passes the rejection along without running them, and a
+  // replay dispatches them afresh because nothing ever claimed them.
+  //
+  // A Stop requested while they wait turns each unsent one into a stopped
+  // answer; a probe that cannot read the flag is no Stop.
+  const stoppedBeforeDispatch = ({ toolCall }: PreparedToolCall): ExecutedToolResult => ({
+    inputSummary: summarizeToolInput(toolCall.arguments),
+    output: STOPPED_BEFORE_DISPATCH_OUTPUT,
+    success: false,
+    toolCallId: toolCall.toolCallId,
+    toolName: toolCall.toolName,
+  })
+  let inOrder: Promise<unknown> = Promise.resolve()
+  const settled = await Promise.allSettled(prepared.map((call) => {
+    if (!input.dispatchesInOrder?.(call.toolCall.toolName)) return runPrepared(call)
+    const queued = inOrder.then(async () => (
+      await input.stopRequested?.().catch(() => false)
+        ? stoppedBeforeDispatch(call)
+        : runPrepared(call)
+    ))
+    inOrder = queued
+    return queued
   }))
 
   const fatalRejection = settled.find(
@@ -308,7 +368,7 @@ export const executeToolBatch = async (input: {
   const pendingInput = results.find((result) => result.pendingInput)?.pendingInput ?? null
   return {
     deliveredToConversation: results.some((result) => result.deliveredToConversation === true),
-    loopDetected,
+    loopNudge,
     pendingApproval: pending,
     pendingInput,
     results,

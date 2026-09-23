@@ -14,6 +14,7 @@ import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { FormError } from '../../shared/FormActions'
 import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
+import { ExecutorLeaseLauncherNotice } from './ExecutorLeaseIndicator'
 
 type ExecutorRunLauncherDialogProps = {
   agents: AgentRecord[]
@@ -76,6 +77,15 @@ const operationOptions: OperationOption[] = [
     label: 'Work in a managed Codex session',
     operationKeys: ['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'],
     value: 'coding.launch+coding.observe+workspace.review+sandbox.stop',
+  },
+  {
+    // The pair is a transport onto whatever programs the reviewed policy
+    // names. The dialog never learns those names: candidates are opaque, so
+    // the copy says what the owner decided rather than what is installed.
+    description: 'Programs this machine’s owner named in its reviewed policy — for example a local browser or a coding agent. The agent sees each program’s own tools.',
+    label: 'Local apps on this machine',
+    operationKeys: ['mcp.tools', 'mcp.call'],
+    value: 'mcp.tools+mcp.call',
   },
 ]
 
@@ -191,6 +201,7 @@ export const ExecutorRunLauncherDialog = ({
       title="Run on an executor"
     >
       <div className="grid gap-4">
+        {threadId ? <ExecutorLeaseLauncherNotice agents={agents} threadId={threadId} /> : null}
         <label className="grid gap-1 text-sm">
           <span className="font-semibold text-[var(--tx2)]">Agent</span>
           <select

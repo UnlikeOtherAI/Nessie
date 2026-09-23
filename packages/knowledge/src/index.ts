@@ -1,12 +1,20 @@
 export {
   CORE_DOCUMENT_ROLES,
   CoreDocumentIntegrityError,
+  coreDocumentFilename,
   isAgentCoreDocumentPage,
   loadActiveAgentCoreDocuments,
 } from './agent-core-documents.js'
+export { CORE_DOCUMENT_FILENAMES } from './agent-core-contract.js'
 export { migrateAgentCoreDocuments, updateAgentCoreDocuments } from './agent-core-migration.js'
-export { readCanonicalAgentCore, writeCanonicalAgentCore } from './agent-core-write.js'
-export type { CanonicalAgentCore } from './agent-core-write.js'
+export {
+  agentCoreTokenBudget,
+  ensureCanonicalAgentCore,
+  estimateAgentCoreTokens,
+  readCanonicalAgentCore,
+  writeCanonicalAgentCore,
+} from './agent-core-write.js'
+export type { CanonicalAgentCore, EnsureCanonicalAgentCoreInput } from './agent-core-write.js'
 export type {
   ActiveCoreDocument,
   CoreDocumentRole,
@@ -150,6 +158,7 @@ export {
   ensureMyDocsSpace,
   ensureProjectDocumentsSpace,
   ensureTaskFolder,
+  resolveAgentDocumentProjectId,
 } from './provisioning.js'
 export type { EnsureSpaceResult, TaskFolderTask } from './provisioning.js'
 export {

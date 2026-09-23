@@ -65,3 +65,39 @@ export const AgentCardRespondBodySchema = z
   })
   .strict()
 export type AgentCardRespondBody = z.infer<typeof AgentCardRespondBodySchema>
+
+/**
+ * What a press answers, to the presser alone.
+ *
+ * An ordinary card is answered: it resolves and its response message exists.
+ * A system-authored executor review card is only pressed: it stays `open`
+ * while its change is pending, and each press answers with a confirmation
+ * token minted for this presser at that moment — for an access change or a
+ * workspace promotion — so the review it opens can confirm. The token lives in
+ * this response and in the presser's memory, never in the card row, the
+ * message, realtime, an address or a model's context; pressing again mints a
+ * new one and the old one dies.
+ */
+export const AgentCardExecutorReviewSchema = z.union([
+  z.object({ accessChangeId: z.string().uuid(), confirmationToken: z.string().min(1) }).strict(),
+  z.object({ promotionId: z.string().uuid(), confirmationToken: z.string().min(1) }).strict(),
+])
+export type AgentCardExecutorReview = z.infer<typeof AgentCardExecutorReviewSchema>
+
+export const AgentCardRespondResultSchema = z.discriminatedUnion('status', [
+  z
+    .object({
+      cardId: z.string().uuid(),
+      responseMessageId: z.string().uuid(),
+      status: z.literal('resolved'),
+    })
+    .strict(),
+  z
+    .object({
+      cardId: z.string().uuid(),
+      executorReview: AgentCardExecutorReviewSchema,
+      status: z.literal('open'),
+    })
+    .strict(),
+])
+export type AgentCardRespondResult = z.infer<typeof AgentCardRespondResultSchema>

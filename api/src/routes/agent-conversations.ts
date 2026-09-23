@@ -6,6 +6,7 @@ import {
   CHAT_MESSAGE_MAX_CHARS,
   detectSecrets,
   isAdminActor,
+  PERSON_MESSAGE_AUTHORSHIP,
   RenameThreadBodySchema,
   StartAgentConversationBodySchema,
   ThreadIdSchema,
@@ -322,6 +323,8 @@ const postOpeningMessage = async (input: {
   if (!thread) return null
 
   const result = await createThreadMessage(deps.prisma, {
+    // The opening line is typed into the "New conversation" composer.
+    authorship: PERSON_MESSAGE_AUTHORSHIP,
     content: body.message,
     threadId: thread.id,
     userId: actorContext.actor.actorId,

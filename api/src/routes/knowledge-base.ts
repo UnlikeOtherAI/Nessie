@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify'
 import {
   KnowledgePageRevisionConflictError,
   buildNativeSourceRef,
+  coreDocumentFilename,
+  isAgentCoreDocumentPage,
   restoreSpreadsheetVersion,
   type KnowledgePageRecord,
   type KnowledgeSpaceRecord,
@@ -24,7 +26,7 @@ import {
   sendRevisionConflict,
 } from '../lib/if-match.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { getQueryEmbedding } from '../services/knowledge-query-embedding.js'
+import { getQueryEmbedding } from '../services/search-query-embedding.js'
 import {
   actorAuthorType,
   attachPageEnvelope,
@@ -259,6 +261,18 @@ export const registerKnowledgeBaseRoutes = (
     const { spaceId } = request.params as { spaceId: string }
     const viewer = await buildViewer(actorContext)
     if (!(await accessSpace(actorContext, spaceId, viewer, 'write', reply))) return reply
+    const requiredHome = await prisma.knowledgeSpace.findFirst({
+      where: { id: spaceId, organizationId: actorContext.tenant.organizationId },
+      select: { ownerAgentId: true },
+    })
+    if (requiredHome?.ownerAgentId) {
+      return sendApiError(
+        reply,
+        409,
+        'AGENT_DOCUMENT_HOME_REQUIRED',
+        'An agent document home cannot be archived',
+      )
+    }
     const space = await provider.archiveSpace(actorContext.tenant.organizationId, spaceId)
     if (!space) return sendApiError(reply, 404, 'KNOWLEDGE_SPACE_NOT_FOUND', 'Space not found')
     await emitAuditEvent(prisma, {
@@ -480,6 +494,23 @@ export const registerKnowledgeBaseRoutes = (
     const viewer = await buildViewer(actorContext)
     if (!(await accessPageSpace(actorContext, existingPage, viewer, 'write', reply))) return reply
     if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
+    const core = await isAgentCoreDocumentPage(prisma, pageId)
+    if (core && body.title !== undefined && body.title !== coreDocumentFilename(core.role)) {
+      return sendApiError(
+        reply,
+        409,
+        'AGENT_CORE_FILENAME_REQUIRED',
+        `Required agent instructions must keep the filename ${coreDocumentFilename(core.role)}`,
+      )
+    }
+    if (core && (body.visibility !== undefined || body.sensitivityTier !== undefined)) {
+      return sendApiError(
+        reply,
+        409,
+        'AGENT_CORE_SCOPE_REQUIRED',
+        'Required agent instructions inherit the document home access scope',
+      )
+    }
     // The auto-saving editor states the revision it edited; a stale save is
     // refused so the client can offer the choice in place, never resolved by
     // taking the last write (docs/navigation/overview.md → "Drafts").
@@ -535,6 +566,14 @@ export const registerKnowledgeBaseRoutes = (
     // generously they shared the page.
     if (!(await requirePageOwnerWrite(actorContext, existingPage, viewer, reply))) return reply
     if (!(await requireAgentCoreDocumentEditAuthority(deps, actorContext, pageId, reply))) return reply
+    if (await isAgentCoreDocumentPage(prisma, pageId)) {
+      return sendApiError(
+        reply,
+        409,
+        'AGENT_CORE_DOCUMENT_REQUIRED',
+        'Required agent instructions cannot be archived',
+      )
+    }
     // Free the page's stored files (file-node versions + drawer attachments) and
     // decrement storage usage before archiving, so deletion always updates usage.
     await deps.fileService.purgeKnowledgePageFiles(

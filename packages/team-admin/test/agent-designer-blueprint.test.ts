@@ -1,0 +1,67 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+
+import { AGENT_DESIGNER_BLUEPRINT } from '../src/global-agent-blueprints.js'
+
+/**
+ * The Agent Designer's persona, pinned where it was wrong on 2026-09-22.
+ *
+ * Asked for a CTO, it made a channel for the CTO nobody had asked for,
+ * because the prompt told it to "find or create" the channels the work happens
+ * in and to create "the channel it works in". A new agent lives in the
+ * channels the person names, or nowhere yet; `channel_create` stays for a
+ * person who asks for a channel.
+ */
+
+const prompt = AGENT_DESIGNER_BLUEPRINT.buildSystemPrompt({ organizationId: 'org-1' })
+// The persona is written as wrapped lines; a rule is read across them.
+const prose = prompt.replace(/\s+/g, ' ')
+
+test('a new agent lives in the channels named, or nowhere yet', () => {
+  assert.match(prose, /in the existing channels they named, or nowhere yet/)
+  assert.match(prose, /that is a finished agent — people add it to any channel/)
+  assert.match(prose, /never make a channel for it/)
+  assert.doesNotMatch(prose, /find or create/)
+  assert.doesNotMatch(prose, /the channel it works in/)
+  assert.doesNotMatch(AGENT_DESIGNER_BLUEPRINT.handoffSummary, /the channel it works in/)
+  assert.match(AGENT_DESIGNER_BLUEPRINT.handoffSummary, /where it lives/)
+})
+
+test('a channel is made only when a person asks for one', () => {
+  assert.match(prose, /When they ask for a new channel/)
+  assert.match(prose, /creating a channel is never a step in building an agent/)
+  // Still a tool it holds: a person who does ask is served in this chat.
+  assert.equal(AGENT_DESIGNER_BLUEPRINT.toolPolicy.channel_create, true)
+  assert.ok(AGENT_DESIGNER_BLUEPRINT.identityToolIds.includes('channel_create'))
+})
+
+// F9. The rules the Designer follows about its own words are the prompt's,
+// not text inside a tool result, where it relayed "give them this reason word
+// for word" to the person as it stood.
+test('the portrait reason is quoted because the prompt says so', () => {
+  assert.match(prose, /give the reason agent_create reported word for word/)
+})
+
+test('it links what it made and never shows a raw id', () => {
+  assert.match(prose, /markdown links your tools return, such as \[#sales\]\(\/channels\/…\)/)
+  assert.match(prose, /never a raw id/)
+})
+
+// F22 against F11: "nowhere yet" is a finished agent, but board tools are lent
+// only in a channel of the board's own project. A CTO that owns a board and
+// lives nowhere holds `ticket_*` grants no run ever lends it.
+test('an agent that works a board lives in one of that project\'s channels', () => {
+  assert.match(prose, /An agent whose work is a project's board — its tickets — reaches that board only from a channel of that project it lives in/)
+  assert.match(prose, /such an agent lives in at least one existing channel of that project: ask which one/)
+  assert.match(prose, /say plainly that it cannot touch the board until someone adds it to one of that project's channels/)
+})
+
+// F9 took `agentId=` out of agent_create's output, so a later call finds the
+// id in the link. The model is told where; it is not left to guess.
+test('the ids later calls need are named as the links\' last segments', () => {
+  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/… link agent_create returned/)
+})
+
+test('a pinned portrait style is reported because the prompt says so', () => {
+  assert.match(prose, /When a redraw reports its style as pinned, tell them the style they asked for was not used/)
+})

@@ -101,7 +101,9 @@ export const recordPrivateConversationMessageRead = (
 }
 
 /**
- * The same rule for a channel *directory* read (`channel_list`, `channel_find`).
+ * The same rule for a channel *directory* read: `channel_list`, `channel_find`,
+ * the channel labels `agent_list` and `agent_bind_channel` name, and the
+ * record `channel_update` echoes.
  *
  * Not only message bodies are scoped material: a private channel's existence,
  * label and topic are visible to its members alone, and a delegated run
@@ -110,10 +112,22 @@ export const recordPrivateConversationMessageRead = (
  * reply is disclosing them, so the read owes the sink its scopes — the
  * AGENTS.md rule that the obligation sits on the read, not on the reply.
  *
- * Deliberately the same implementation rather than a second mapping beside it:
- * the public-channel skip is identical and is the part most easily got wrong.
+ * One exemption, and only one: a direct message named by its label alone. A
+ * directory read reaches a DM only through the person's own membership of it,
+ * and stamping every DM a list returned put each of their conversations with
+ * their assistants into the run's basis — the project write gate then refused
+ * every ticket write for the rest of the run, although no word of those rooms
+ * had been read. A DM row that prints free text its members wrote (a topic)
+ * still stamps, and a private or protected team channel stamps as it always
+ * did. The trade-off is in `docs/standards/disclosure-boundaries.md`.
  */
-export const recordChannelDirectoryRead = recordMessageChannelRead
+export const recordChannelDirectoryRead = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  channels: readonly { id: string; topic?: string | null; type: string; visibility: string }[],
+): void => recordMessageChannelRead(
+  context,
+  channels.filter((channel) => channel.type !== 'dm' || Boolean(channel.topic)),
+)
 
 /**
  * Provenance for an agent-directory read (`agent_list`).

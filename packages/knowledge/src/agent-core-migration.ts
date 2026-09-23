@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { KnowledgeConflictError } from './errors.js'
 import { markdownProjectionForAttachment, indexVersionChunks, type NativeKnowledgeProviderOptions } from './native-version-writer.js'
 import { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
+import { CORE_DOCUMENT_ROLES, coreDocumentFilename } from './agent-core-contract.js'
 import type {
   AgentCoreDocumentUpdateInput,
   AgentCoreDocumentUpdateResult,
@@ -11,7 +12,7 @@ import type {
   AgentCoreMigrationResult,
 } from './types.js'
 
-const REQUIRED_ROLES = ['identity', 'working_rules'] as const
+const REQUIRED_ROLES = CORE_DOCUMENT_ROLES
 
 const sourceHash = (identity: string, workingRules: string): string =>
   createHash('sha256').update(JSON.stringify([identity, workingRules])).digest('hex')
@@ -21,7 +22,7 @@ const contentHash = (value: string): string => createHash('sha256').update(value
 const assertCompleteRoles = (roles: readonly string[]): void => {
   if (roles.length !== REQUIRED_ROLES.length || new Set(roles).size !== REQUIRED_ROLES.length
     || !REQUIRED_ROLES.every((role) => roles.includes(role))) {
-    throw new KnowledgeConflictError('Core instructions must contain one Identity and one Working style document')
+    throw new KnowledgeConflictError('Core instructions must contain one AGENTS.md and one personality.md document')
   }
 }
 
@@ -47,12 +48,18 @@ export const migrateAgentCoreDocuments = async (
     await tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(hashtext(${input.agentId}), hashtext('agent_core_migration'))
     `)
-    const agent = await tx.agent.findFirst({
-      where: { id: input.agentId, organizationId: input.organizationId, systemManaged: false },
-      select: { id: true, projectId: true, speakingStyle: true, systemPrompt: true },
-    })
-    if (!agent || agent.projectId !== input.projectId) {
-      throw new KnowledgeConflictError('Agent is not in this document project')
+    const [agent, documentProject] = await Promise.all([
+      tx.agent.findFirst({
+        where: { id: input.agentId, organizationId: input.organizationId, systemManaged: false },
+        select: { id: true, speakingStyle: true, systemPrompt: true },
+      }),
+      tx.project.findFirst({
+        where: { id: input.projectId, organizationId: input.organizationId },
+        select: { id: true },
+      }),
+    ])
+    if (!agent || !documentProject) {
+      throw new KnowledgeConflictError('Agent document project is outside its organization')
     }
     const marker = await tx.agentCoreDocumentMigration.findUnique({
       where: { agentId: input.agentId }, select: { id: true },
@@ -81,29 +88,6 @@ export const migrateAgentCoreDocuments = async (
     }
     const identity = agent.systemPrompt ?? ''
     const workingRules = agent.speakingStyle ?? ''
-    const hasLegacyCore = identity.length > 0 || workingRules.length > 0
-    if (!hasLegacyCore) {
-      if (projections.length !== 0) return { kind: 'stale' }
-      const cutover = await tx.agent.updateMany({
-        where: {
-          id: input.agentId,
-          organizationId: input.organizationId,
-          speakingStyle: agent.speakingStyle,
-          systemPrompt: agent.systemPrompt,
-        },
-        data: { speakingStyle: null, systemPrompt: null },
-      })
-      if (cutover.count !== 1) throw new KnowledgeConflictError('Agent instructions changed during migration')
-      await tx.agentCoreDocumentMigration.create({
-        data: {
-          agentId: input.agentId,
-          documentCount: 0,
-          organizationId: input.organizationId,
-          sourceHash: sourceHash(identity, workingRules),
-        },
-      })
-      return { kind: 'migrated', pageIds: [] }
-    }
     assertCompleteRoles(projections.map((draft) => draft.role))
     const expectedHash = new Map([
       ['identity', contentHash(identity)],
@@ -138,7 +122,7 @@ export const migrateAgentCoreDocuments = async (
           sensitivityTier: space.sensitivityTier,
           spaceId: input.spaceId,
           teamId: space.teamId,
-          title: draft.role === 'identity' ? 'Identity.md' : 'Working style.md',
+          title: coreDocumentFilename(draft.role),
           visibility: space.visibility,
         },
       })
@@ -146,7 +130,7 @@ export const migrateAgentCoreDocuments = async (
         data: {
           attachmentId: draft.attachmentId,
           authorId: input.authorId,
-          authorType: 'user',
+          authorType: input.authorType,
           body: draft.projection.body,
           origin: 'legacy_migration',
           pageId: page.id,
@@ -156,7 +140,9 @@ export const migrateAgentCoreDocuments = async (
         },
       })
       await persistVersionDisclosure(tx, {
-        disclosure: {}, organizationId: input.organizationId, versionId: version.id,
+        disclosure: draft,
+        organizationId: input.organizationId,
+        versionId: version.id,
       })
       await tx.knowledgePage.update({
         where: { id: page.id }, data: { publishedVersionId: version.id, status: 'published' },
@@ -173,7 +159,7 @@ export const migrateAgentCoreDocuments = async (
       await indexVersionChunks(tx, options, page, version)
       if (options.onPagePublished) {
         await options.onPagePublished(tx, {
-          actorUserId: input.authorId,
+          actorUserId: input.authorType === 'user' ? input.authorId : null,
           organizationId: input.organizationId,
           pageId: page.id,
           projectId: input.projectId,
@@ -228,12 +214,18 @@ export const updateAgentCoreDocuments = async (
     await tx.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(hashtext(${input.agentId}), hashtext('agent_core_migration'))
     `)
-    const agent = await tx.agent.findFirst({
-      where: { id: input.agentId, organizationId: input.organizationId, systemManaged: false },
-      select: { id: true, projectId: true, speakingStyle: true, systemPrompt: true },
-    })
-    if (!agent || agent.projectId !== input.projectId) {
-      throw new KnowledgeConflictError('Agent is not in this document project')
+    const [agent, documentProject] = await Promise.all([
+      tx.agent.findFirst({
+        where: { id: input.agentId, organizationId: input.organizationId, systemManaged: false },
+        select: { id: true, speakingStyle: true, systemPrompt: true },
+      }),
+      tx.project.findFirst({
+        where: { id: input.projectId, organizationId: input.organizationId },
+        select: { id: true },
+      }),
+    ])
+    if (!agent || !documentProject) {
+      throw new KnowledgeConflictError('Agent document project is outside its organization')
     }
     if (agent.systemPrompt !== null || agent.speakingStyle !== null) {
       throw new KnowledgeConflictError('Agent core migration is not complete')
@@ -278,23 +270,23 @@ export const updateAgentCoreDocuments = async (
             sensitivityTier: space.sensitivityTier,
             spaceId: input.spaceId,
             teamId: space.teamId,
-            title: draft.role === 'identity' ? 'Identity.md' : 'Working style.md',
+            title: coreDocumentFilename(draft.role),
             visibility: space.visibility,
           },
         })
         const version = await tx.knowledgePageVersion.create({ data: {
           attachmentId: draft.attachmentId,
           authorId: input.authorId,
-          authorType: 'user',
+          authorType: input.authorType,
           body: draft.projection.body,
-          origin: 'user_authored',
+          origin: input.authorType === 'agent' ? 'agent_authored' : 'user_authored',
           pageId: page.id,
           sourceContentHash: draft.projection.sourceContentHash,
-          trust: 'explicitly_confirmed',
+          trust: input.authorType === 'agent' ? 'inferred' : 'explicitly_confirmed',
           versionNumber: 1,
         } })
         await persistVersionDisclosure(tx, {
-          disclosure: {}, organizationId: input.organizationId, versionId: version.id,
+          disclosure: draft, organizationId: input.organizationId, versionId: version.id,
         })
         await tx.knowledgePage.update({
           where: { id: page.id }, data: { publishedVersionId: version.id, status: 'published' },
@@ -311,7 +303,8 @@ export const updateAgentCoreDocuments = async (
         await indexVersionChunks(tx, options, page, version)
         if (options.onPagePublished) {
           await options.onPagePublished(tx, {
-            actorUserId: input.authorId, organizationId: input.organizationId, pageId: page.id,
+            actorUserId: input.authorType === 'user' ? input.authorId : null,
+            organizationId: input.organizationId, pageId: page.id,
             projectId: input.projectId, spaceId: input.spaceId, versionId: version.id,
           })
         }
@@ -326,21 +319,34 @@ export const updateAgentCoreDocuments = async (
     if (marker.documentCount !== mappings.length) {
       throw new KnowledgeConflictError('Agent core instructions are incomplete')
     }
-    const pageIds: string[] = []
-    for (const draft of projections) {
+    if (new Set(projections.map((draft) => draft.role)).size !== projections.length) {
+      throw new KnowledgeConflictError('A core instruction role may be updated only once per operation')
+    }
+    // Validate every compare-and-swap before appending anything. Returning
+    // `stale` after the first role advanced would otherwise commit half of a
+    // two-file update and let the caller delete an attachment that the first
+    // new published version now referenced.
+    const prepared = projections.map((draft) => {
       const mapping = mappedByRole.get(draft.role)
       const previous = mapping?.page.publishedVersion
       if (!mapping || mapping.page.deletedAt || !previous || !draft.expectedPublishedVersionId
-        || previous.id !== draft.expectedPublishedVersionId) return { kind: 'stale' }
+        || previous.id !== draft.expectedPublishedVersionId) return null
+      return { draft, mapping, previous }
+    })
+    if (prepared.some((entry) => entry === null)) return { kind: 'stale' }
+    const pageIds: string[] = []
+    for (const entry of prepared) {
+      if (!entry) continue
+      const { draft, mapping, previous } = entry
       const version = await tx.knowledgePageVersion.create({ data: {
         attachmentId: draft.attachmentId,
         authorId: input.authorId,
-        authorType: 'user',
+        authorType: input.authorType,
         body: draft.projection.body,
-        origin: 'user_authored',
+        origin: input.authorType === 'agent' ? 'agent_authored' : 'user_authored',
         pageId: mapping.pageId,
         sourceContentHash: draft.projection.sourceContentHash,
-        trust: 'explicitly_confirmed',
+        trust: input.authorType === 'agent' ? 'inferred' : 'explicitly_confirmed',
         versionNumber: previous.versionNumber + 1,
       } })
       await persistVersionDisclosure(tx, {
@@ -356,7 +362,7 @@ export const updateAgentCoreDocuments = async (
       await indexVersionChunks(tx, options, mapping.page, version)
       if (options.onPagePublished) {
         await options.onPagePublished(tx, {
-          actorUserId: input.authorId,
+          actorUserId: input.authorType === 'user' ? input.authorId : null,
           organizationId: input.organizationId,
           pageId: mapping.pageId,
           projectId: input.projectId,

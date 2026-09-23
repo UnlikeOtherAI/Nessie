@@ -192,8 +192,11 @@ test('the channel list and the Finder columns carry a stable scroll-memory key',
   // Knowledge's scroll memory moved with its sidebar: each Finder column is a
   // scroll region of its own, keyed by which folder it is showing, so
   // returning to the section lands every column where it was left.
+  const finderRoot = source(
+    '../src/components/features/knowledge/finder/FinderRootBrowserColumn.tsx',
+  )
+  assert.match(finderRoot, /scrollKey="finder:root"/)
   const finder = source('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
-  assert.match(finder, /scrollKey="finder:root"/)
   assert.match(finder, /scrollKey=\{`finder:\$\{level\.key\}`\}/)
 })
 

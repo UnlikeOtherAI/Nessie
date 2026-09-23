@@ -22,7 +22,12 @@ const TASK_PROMPT_ID = '30000000-0000-4000-8000-00000000000b'
 
 test('spawn_subtask inherits private visibility from its parent', async () => {
   let childData: Prisma.AgentCreateInput | null = null
-  let childRunData: { principalUserId?: string | null; triggerMessageId?: string } | null = null
+  let childRunData: {
+    coreDocumentCount?: number
+    coreDocumentsAdmittedAt?: Date
+    principalUserId?: string | null
+    triggerMessageId?: string
+  } | null = null
   const consumedSources = createConsumedSourceSink()
   consumedSources.addPrivateConversationSource({
     sourceAuthorUserId: OWNER_USER_ID,
@@ -43,10 +48,19 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
     messageBasisScope: { createMany: async () => ({ count: 1 }) },
     messageDisclosureSource: { createMany: async () => ({ count: 1 }) },
     run: {
-      create: async ({ data }: { data: { principalUserId?: string | null; triggerMessageId?: string } }) => {
+      create: async ({ data }: { data: {
+        coreDocumentCount?: number
+        coreDocumentsAdmittedAt?: Date
+        principalUserId?: string | null
+        triggerMessageId?: string
+      } }) => {
         childRunData = data
         return { id: CHILD_RUN_ID, threadId: THREAD_ID }
       },
+    },
+    runCoreDocumentSnapshot: {
+      createMany: async () => ({ count: 0 }),
+      findMany: async () => [],
     },
     task: {
       create: async () => ({ id: TASK_ID }),
@@ -99,11 +113,14 @@ test('spawn_subtask inherits private visibility from its parent', async () => {
   assert.equal(childData.parentAgentId, PARENT_AGENT_ID)
   assert.deepEqual(childRunData, {
     agentId: CHILD_AGENT_ID,
+    coreDocumentCount: 0,
+    coreDocumentsAdmittedAt: childRunData?.coreDocumentsAdmittedAt,
     principalUserId: OWNER_USER_ID,
     status: 'pending',
     threadId: THREAD_ID,
     triggerMessageId: TASK_PROMPT_ID,
   })
+  assert.ok(childRunData?.coreDocumentsAdmittedAt instanceof Date)
 })
 
 test('a shared child carrying a PA-presence principal keeps the reduced toolset', () => {

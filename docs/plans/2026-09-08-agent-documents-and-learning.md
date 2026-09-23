@@ -1,10 +1,11 @@
 # Agent documents, conversation recall and learning from work
 
-Status: implementation in progress, 2026-09-08. Product direction requested by
-Ondrej. Canonical Markdown storage and editing have landed in Nessie. The shared
-learning helpers and procedure-artifact guards have landed in deep.agent.
-Document disclosure, core instructions, conversation recall and automatic
-learning remain in progress. This document covers both repositories.
+Status: implementation in progress, updated 2026-09-23. Product direction
+requested by Ondrej. Canonical Markdown storage/editing, document disclosure,
+the two-file core instruction snapshot, on-demand file reading and the shared
+Knowledge doorway have landed in Nessie. The shared learning helpers and
+procedure-artifact guards have landed in deep.agent. Conversation recall and
+automatic learning remain in progress. This document covers both repositories.
 
 ### Implementation record
 
@@ -76,7 +77,7 @@ verified here, and are not dependencies of this plan.
 | Research pattern | Nessie decision |
 | --- | --- |
 | Separate persona, semantic knowledge, episodes and procedures | Typed document roles plus the existing conversation store; one visible Documents surface |
-| Small always-present persona/memory files | Bounded core instruction documents loaded by role, not by a magic filename |
+| Small always-present persona/memory files | Typed `identity`/`working_rules` mappings with the human-facing canonical names `AGENTS.md` and `personality.md` |
 | Raw episodes behind distilled memories | Preserve canonical Message/Run evidence and exact source-version links |
 | Progressive skill/document loading | Search descriptors and passages, then load relevant document sections with source IDs |
 | Background reflection | Metered, durable learning jobs proposing evidence-grounded document revisions |
@@ -126,8 +127,8 @@ Rich-text and other file types retain their existing formats and ingestion.
 
 | Role | Example name, editable by the person | Use in a run |
 | --- | --- | --- |
-| Identity | Identity.md | Role, attitude, voice; core instruction snapshot |
-| Working rules | Working style.md | Durable working preferences and explicit constraints; core snapshot |
+| Identity | AGENTS.md | Role, purpose and durable operating instructions; core instruction snapshot |
+| Working rules | personality.md | Voice, temperament and working preferences; core snapshot |
 | Knowledge | Product decisions.md | Distilled scoped claims, reasons and qualifications; retrieved |
 | Template | Templates/Follow-up email.md | Reusable structure, variables and tone; retrieved |
 | Example | Examples/Accepted proposal.md | Evidence-backed worked output with context; retrieved |
@@ -464,12 +465,12 @@ per-tenant bounds, content-hash deduplication and accounting. Backfill eligible
 conversation passages in the same fashion. Do not backfill ownership or invent
 missing private author lineage; unknown evidence stays unverified/restricted.
 
-Preflight existing agent prompts against the configured core-token budget before
-migrating their instruction authority. An oversized agent remains on its current
-single canonical configuration until an authorized editor resolves it or raises
-the valid budget; do not unexpectedly disable it or silently summarize its rules.
-Its migration marker prevents concurrent old/new instruction writers. The
-oversized-core failure state applies to edits after a successful cutover.
+Migrate existing instructions into the complete canonical file pair even when
+they exceed the configured core-token budget; the files must still exist and be
+inspectable. Mark that core oversized and refuse new/resumed inference until an
+authorized editor shortens it or raises the valid budget. Never unexpectedly
+summarize or truncate its rules. The migration marker prevents concurrent
+old/new instruction writers, and the same limit applies to later edits.
 
 For agent knowledge, Thoughts become a migration input rather than a competing
 future authoring store. Preserve source IDs, original scopes, reasoning and

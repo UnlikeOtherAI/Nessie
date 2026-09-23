@@ -60,7 +60,11 @@ export type AgenticLoopInput = {
   }) => Promise<ProviderMessage[] | null>
   /** Model-window plan; the loop compacts before retained context crowds out output. */
   contextPlan?: ContextPlan
+  /** Tools a batch dispatches one after another; see `executeToolBatch`. */
+  dispatchesInOrder?: (toolName: string) => boolean
   executeTool: ExecuteToolFn
+  /** The offered name a call is counted under; see `executeToolBatch`. */
+  normalizeToolName?: (toolName: string) => string
   prepareTool?: PrepareToolFn
   initialMessages: ProviderMessage[]
   invocationSink?: InvocationRecord[]
@@ -69,7 +73,9 @@ export type AgenticLoopInput = {
     captured?: { toolResults: ExecutedToolResult[] },
     options?: { maxOutputTokens?: number; noTools?: boolean },
   ) => Promise<InferenceResult>
-  toolTimeoutError?: (toolName: string) => Error | null
+  toolTimeoutError?: (toolName: string, toolCallId: string) => Error | null
+  /** A tool's own timeout; undefined keeps `budget.toolTimeoutMs`. */
+  toolTimeoutMsFor?: (toolName: string) => number | undefined
   tools: ToolSchemaDescriptor[]
   windDownInstruction?: string
   onWindDown?: () => void

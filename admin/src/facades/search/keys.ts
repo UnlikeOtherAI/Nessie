@@ -4,8 +4,12 @@
 // test/query-key-invariants.test.ts.
 
 export const searchKeys = {
-  tasks: (query: string) =>
-    ['search', 'tasks', query] as const,
+  channels: (query: string) =>
+    ['search', 'channels', query] as const,
+  projects: (query: string) =>
+    ['search', 'projects', query] as const,
+  tasks: (query: string, mode: string) =>
+    ['search', 'tasks', query, mode] as const,
   knowledge: (query: string, mode: string) =>
     ['search', 'knowledge', query, mode] as const,
   messages: (query: string, mode: string) =>

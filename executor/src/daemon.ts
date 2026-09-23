@@ -369,7 +369,11 @@ export const executeExecutorCommand = async (
     }
   }
   if (command.operationKey === 'mcp.tools' || command.operationKey === 'mcp.call') {
-    return executeExecutorMcpCommand(command, dependencies.mcpSessions, dependencies.codingBridge)
+    return executeExecutorMcpCommand(command.operationKey, command.payload.args, dependencies.mcpSessions, {
+      codingBridge: dependencies.codingBridge,
+      commandId: command.commandId,
+      owner: command.payload.owner,
+    })
   }
   // Other declared-only operations remain unavailable.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
@@ -402,6 +406,13 @@ export const pollAndExecuteCommand = async (
       commandSessions,
       ...(codingBridge ? { codingBridge } : {}),
     }),
+    // The result itself stays on this machine: it can quote program output.
+    onResultRefused: (command) => {
+      console.error(
+        `[nessie-executor] Nessie refused the result of ${command.operationKey} command ${command.commandId}; `
+        + 'it was reported as EXECUTOR_RESULT_REFUSED instead.',
+      )
+    },
     store,
     transport: {
       poll: async () => {

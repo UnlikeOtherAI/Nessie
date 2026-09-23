@@ -348,3 +348,75 @@ test('searchAndLogThoughts skips embeddings for lexical mode', async () => {
     ),
   )
 })
+
+test('searchAndLogThoughts reuses a supplied query embedding', async () => {
+  let embedCalled = false
+  const pool = createPoolStub((sql, params) => {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] }
+    if (sql.includes('match_thoughts_hybrid')) {
+      assert.equal(params?.[0], '[0.25,0.5,0.75]')
+      return { rows: [] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  const results = await searchAndLogThoughts(
+    {
+      mode: 'hybrid',
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      outputAudienceId: '77777777-7777-7777-7777-777777777777',
+      outputAudienceType: 'user',
+      query: 'shared global search query',
+      queryEmbedding: [0.25, 0.5, 0.75],
+      userId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    },
+    {
+      modelClient: {
+        embed: async () => {
+          embedCalled = true
+          return [1]
+        },
+      },
+      pool,
+    },
+  )
+
+  assert.equal(embedCalled, false)
+  assert.deepEqual(results, [])
+})
+
+test('searchAndLogThoughts keeps hybrid lexical search when inference is unavailable', async () => {
+  let embedCalled = false
+  const pool = createPoolStub((sql, params) => {
+    if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [] }
+    if (sql.includes('match_thoughts_hybrid')) {
+      assert.equal(params?.[0], null)
+      return { rows: [] }
+    }
+    throw new Error(`Unexpected query: ${sql}`)
+  })
+
+  const results = await searchAndLogThoughts(
+    {
+      mode: 'hybrid',
+      organizationId: '33333333-3333-3333-3333-333333333333',
+      outputAudienceId: '77777777-7777-7777-7777-777777777777',
+      outputAudienceType: 'user',
+      query: 'lexical fallback',
+      queryEmbedding: null,
+      userId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    },
+    {
+      modelClient: {
+        embed: async () => {
+          embedCalled = true
+          return [1]
+        },
+      },
+      pool,
+    },
+  )
+
+  assert.equal(embedCalled, false)
+  assert.deepEqual(results, [])
+})

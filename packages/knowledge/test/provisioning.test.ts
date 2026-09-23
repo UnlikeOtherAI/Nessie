@@ -9,6 +9,7 @@ import {
   ensureAgentDocsSpace,
   ensureProjectDocumentsSpace,
   ensureTaskFolder,
+  resolveAgentDocumentProjectId,
 } from '../src/provisioning.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -108,6 +109,50 @@ dbTest('ensureAgentDocsSpace refuses a system-managed agent', async (t) => {
       where: { organizationId: organization.id, ownerAgentId: agent.id },
     }),
     0,
+  )
+})
+
+dbTest('a projectless legacy agent uses the invisible organization root for its home', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  const organization = await prisma.organization.create({
+    data: { name: `projectless-agent-doc-${suffix}` },
+  })
+  const ordinaryProject = await prisma.project.create({
+    data: { name: `Visible project ${suffix}`, organizationId: organization.id },
+  })
+  const rootProject = await prisma.project.create({
+    data: {
+      channelRoot: true,
+      name: `Invisible root ${suffix}`,
+      organizationId: organization.id,
+    },
+  })
+  const agent = await prisma.agent.create({
+    data: { name: `Legacy agent ${suffix}`, organizationId: organization.id },
+  })
+  t.after(async () => {
+    await prisma.organization.delete({ where: { id: organization.id } })
+    await prisma.$disconnect()
+  })
+
+  const projectId = await resolveAgentDocumentProjectId(prisma, {
+    agentId: agent.id,
+    organizationId: organization.id,
+    preferredProjectId: null,
+  })
+  assert.equal(projectId, rootProject.id)
+  assert.notEqual(projectId, ordinaryProject.id)
+
+  const home = await ensureAgentDocsSpace(prisma, {
+    agentId: agent.id,
+    agentName: agent.name,
+    organizationId: organization.id,
+    projectId,
+  })
+  assert.equal(
+    (await prisma.knowledgeSpace.findUniqueOrThrow({ where: { id: home.spaceId } })).projectId,
+    rootProject.id,
   )
 })
 

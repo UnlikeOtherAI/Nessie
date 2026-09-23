@@ -1,6 +1,7 @@
 import type { ChannelSystemType, PrismaClient, RunReplyPlacement } from '@prisma/client'
 import type { AgentEffort, AgentRunLimits } from '@nessie/schemas'
 import type { CloudBrowserDeps } from '@nessie/browser-cloud'
+import type { ExecutorLeaseCarryOutcome } from '@nessie/executor-manage'
 import type { SecretResolver, SecretStore } from '@nessie/mcp-manage'
 import type { SubscriptionSecretStore } from '@nessie/model-subscriptions'
 import type { SearchExecutionConfig, SearchResult } from '@nessie/memory'
@@ -16,6 +17,9 @@ import type {
   QueueProvider,
   ReplyRootMetadata,
 } from '@nessie/runtime'
+
+/** The facts step's view of `RunContext.executorLease`. */
+export type { ExecutorLeaseCarryOutcome, ExecutorLeaseRefusalReason } from '@nessie/executor-manage'
 
 export type ExecutionDependencies = {
   /** Dedicated deployment ring for every durable secret a builtin reads or writes. */
@@ -146,8 +150,20 @@ export type RunContext = {
    * Additive only — see `disclosure-basis.ts`.
    */
   consumedSources: ConsumedSourceSink
+  /**
+   * What run setup found for the executor conversation lease, set once,
+   * immediately before the executor toolset is built: carried, already bound,
+   * no lease in this conversation, or refused with its reason. Read by the
+   * prompt facts that tell the model what machine reach it has this turn.
+   * Absent until setup has run.
+   */
+  executorLease?: ExecutorLeaseCarryOutcome
   run: {
     id: string
+    /** Durable trigger identity for last-moment scheduled-run admission. */
+    triggerId?: string | null
+    /** Delivery to mark failed when queued authority is revoked before start. */
+    triggerDeliveryId?: string | null
     // Present only for a shared-channel PA presence. This is carried from the
     // durable Run row to every message/reaction write chokepoint.
     principalUserId?: string | null

@@ -125,6 +125,23 @@ file is the rule**.
   agent may do is issue that pick, because one confirmation per operation key
   is how an ordinary "let the researcher use my Mac" became a dozen reviews.
   `docs/global-agents.md`.
+- **A grant is standing; reach is per run, and only a person opens it.** The
+  whole suite lets an agent *use* an executor, never bind one. Executor tools
+  reach a run only after a person binds that exact run: by launching it from
+  the composer's **Run on executor**, or — for the local-apps pair only — by a
+  later message of their own in the same conversation while their
+  conversation lease is live. "That person started this run" is structural:
+  the job's actor is the holder and nobody else, a continuation's press (the
+  job's `resumedByUserId` — a card answer or an approval resumes as the parked
+  run's actor, whoever pressed) is the holder's too, the run passes the
+  interactive predicate above, and the trigger and every message of a drained
+  batch carry the person-composer marker; the full definition is in
+  [conversation-leases.md](../executor-protocol/conversation-leases.md). No
+  agent binds itself, the PA and the Designer included, and a handoff, peer
+  delegation or subtask never carries a lease, because a lease and its
+  bindings pin one agent. The run is told its reach in one system fact outside
+  the cache anchor — the servers it can use this turn, or that it has none and
+  why — which names the machine only in the person's own DM.
 - **Executor management is gated on the delegation predicate, not on the
   Personal Assistant's kind.** `worker/src/run/pa-tools/executors.ts` keyed its
   gate on `agentKind === 'personal_assistant'` AND the PA's own
@@ -139,7 +156,53 @@ file is the rule**.
   one. A run with no loaded conversation fails closed. What the Designer reads
   through it is `listVisibleExecutors`' own entitlement — the person's, never
   wider — and the reviewed policy and local MCP report stay the administrator's
-  read they already were.
+  read they already were. What it prepares is confirmed from a confirmation
+  card in that same DM, never from a link: the card holds only the change's id
+  and each press mints a fresh token for the person pressing it, until the
+  change is confirmed, rejected or expires
+  ([agent-cards.md](agent-cards.md) → "An executor review card holds an id").
+
+- **A new agent lives where the person puts it, or nowhere yet.** Asked for a
+  CTO, the Designer made a channel for it that nobody had asked for: its
+  prompt said to "find or create" the channels the work happens in, the
+  handoff summary named "the channel it works in", and the proposal card
+  required "the channel it will work in" — so Accept, which builds exactly
+  what the card says, built a room. The persona
+  (`global-agent-blueprints.ts`) and the card section
+  (`proposalCardSection` in `global-agent-catalogue.ts`) now say where an
+  agent lives: the existing channels the person named, or nowhere yet, and
+  the card's "Lives in" field reads exactly "nowhere yet — add it to any
+  channel" when none was named. An agent with no binding is finished, not
+  half-built — with one exception the persona states: an agent whose work is
+  a project's board is lent its `ticket_*` tools only in a channel of that
+  project it is bound to (`resolveProjectDelegatedToolIds`), so unplaced it
+  holds grants no run ever lends. Such an agent lives in at least one existing
+  channel of that project: the Designer asks which, or says plainly that its
+  board tools do nothing until someone adds it to one. `channel_create` stays
+  in the Designer's toolset and `identityToolIds` for a person who asks for a
+  channel; it is never a default step. Pinned by
+  `packages/team-admin/test/agent-designer-blueprint.test.ts`, the catalogue
+  test and the proposal-card fixture suite (`admin/e2e/agent-proposal-card`),
+  which renders both placements — the unplaced one a researcher, whose job
+  needs no room, with no `#` anywhere on its card.
+- **The Designer hands a person links, and its tools hand it data.**
+  `agent_create` and `agent_bind_channel` answer with markdown links —
+  `[CTO](/agents/<id>)`, `[#sales](/channels/<id>)`, built by
+  `formatAgentMarkdownLink`/`formatChannelMarkdownLink` in
+  `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none (reason:
+  "…")`, never `agentId=`/`channelId=` pairs or an instruction addressed to
+  the model. It relayed both verbatim: the person read UUIDs and "give them
+  this reason word for word". A later call takes the id from the link's last
+  segment, and the model is told so — in the Designer's prompt and in
+  `agent_create`'s own description — rather than left to guess; a real-row
+  test parses the id out of `agent_create`'s link and binds with it
+  (`worker/test/db/designer-team-structure.test.ts`). `channel_create`
+  answers with the new room's link beside the `channelId=`/`projectId=` its
+  follow-up calls take, and `agent_avatar_generate` reports a pinned style as
+  `style: pinned at the <scope> level; the requested "…" was not applied`
+  rather than "Say so". Quoting the portrait reason, reporting a pinned style
+  and never showing a raw id are rules in the Designer's own prompt, where
+  instructions belong.
 
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored
@@ -210,6 +273,40 @@ but not comment edit/delete or file removal. The full ticket tool list is in
 [`docs/global-agents.md`](../global-agents.md) → "Project tickets from the
 Personal Assistant"; the comment, file and label invariants are in
 [ticket-activity.md](ticket-activity.md).
+
+A lent tool is one the agent's policy sets `true`
+(`resolveProjectDelegatedToolIds`); an absent key lends nothing. So every
+catalogue that tells an author how to grant a tool treats a
+`projectDelegatedOnly` builtin as allow-mode, off by default, exactly like an
+explicit grant: the Agent Designer page's own catalogue
+(`admin/src/facades/designer/tool-catalog.ts`) and the member-safe projection
+the Designer's prompt and `agent_tool_catalog` render
+(`loadAgentToolCatalog`, which also marks each one `projectChannelOnly`). A
+catalogue that derived the mode from `requiresExplicitGrant` alone told the
+Designer these tools were "on by default", and it built a board-owning agent
+without a single ticket tool. Only `ticket_board_create` is also
+`requiresExplicitGrant`, so it alone stays with the owner grant verbs; the rest
+are ordinary policy keys `agent_create` and `agent_update` accept.
+
+A lent tool that takes a `projectId` does not require one: omitted, it is the
+channel's project (`ticketProjectIdFor` in
+`worker/src/run/pa-tools/ticket-context.ts`), which is the only project
+`projectFor` lets a shared agent touch anyway. The agent holds no
+`project_list`, so no refusal it can receive points there — a named project
+elsewhere is refused with "omit projectId", and a requester who cannot open the
+project is told exactly that. Do not "fix" a missing id by having the agent
+call `channel_list`: it names a channel's project, never its id. (Listing
+channels does not stamp the run's disclosure basis; reading a channel's content
+does, and that stamp blocks the project write.) The Personal Assistant works
+across projects and still names one.
+
+A run lent any of these tools that writes recalls memory under project-write
+containment: only organisation and same-project material, never a thought fed
+by a private conversation (`requiresProjectWriteRecallContainment`,
+`worker/src/run/execute/memory.ts`). Otherwise a memory of the requester's DM
+put that DM in the run's basis before its first action and the write gate then
+refused every ticket write. The rule and its trade-off are in
+[disclosure-boundaries.md](disclosure-boundaries.md).
 
 Moved verbatim out of [`CLAUDE.md`](../../CLAUDE.md) → "Global agents — one blueprint, one row per organisation".
 

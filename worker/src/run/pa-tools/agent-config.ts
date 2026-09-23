@@ -24,7 +24,11 @@ import {
   type AgentToolCatalogEntry,
   type AgentToolCatalogRestrictedEntry,
 } from '@nessie/team-admin'
-import { readCanonicalAgentCore, writeCanonicalAgentCore } from '@nessie/knowledge'
+import {
+  canReadKnowledgePageVersion,
+  readCanonicalAgentCore,
+  writeCanonicalAgentCore,
+} from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import { z } from 'zod'
 
@@ -33,6 +37,8 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-typ
 import { resolveActingMember } from './access.js'
 import { formatSection } from './tool-output.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
+import { resolveKnowledgeAccessViewers } from './knowledge.js'
+import { recordKnowledgeVersionRead } from './knowledge-basis.js'
 
 /**
  * Reading and rewriting an agent's configuration from chat.
@@ -121,8 +127,15 @@ export const runAgentReadTool = async (
   // predicate, so the person who just read it satisfies it by construction.
   context.consumedSources?.add({ scopeId: args.agentId, scopeType: 'agent' })
 
+  const { disclosureViewer } = await resolveKnowledgeAccessViewers(context)
   const core = await readCanonicalAgentCore(context.prisma, fileServiceFor(context.prisma), {
     agentId: args.agentId,
+    authorize: async (document) => {
+      if (!canReadKnowledgePageVersion(document, disclosureViewer)) {
+        throw new Error('The agent instructions retain a source you can no longer read.')
+      }
+      recordKnowledgeVersionRead(context, document)
+    },
     organizationId: member.organizationId,
   })
   const lines = describeConfig(result.config, core)
@@ -244,11 +257,6 @@ export const runAgentUpdateTool = async (
 
   let canonicalCore: Awaited<ReturnType<typeof writeCanonicalAgentCore>> | null = null
   if (patch.systemPrompt !== undefined || patch.speakingStyle !== undefined) {
-    const target = await context.prisma.agent.findFirst({
-      where: { id: agentId, organizationId: member.organizationId },
-      select: { projectId: true },
-    })
-    if (!target?.projectId) throw new Error('Agent has no document project.')
     canonicalCore = await writeCanonicalAgentCore(
       context.prisma,
       createWorkerKnowledgeProvider(context),
@@ -262,7 +270,6 @@ export const runAgentUpdateTool = async (
         agentId,
         attribution: attributionFromActorContext(context.actorContext),
         organizationId: member.organizationId,
-        projectId: target.projectId,
         ...(patch.speakingStyle === undefined ? {} : { speakingStyle: patch.speakingStyle }),
         ...(patch.systemPrompt === undefined ? {} : { systemPrompt: patch.systemPrompt }),
         userId: member.userId,
@@ -319,6 +326,7 @@ const AgentToolCatalogInputSchema = z.object({
 
 const describeCatalogEntry = (entry: AgentToolCatalogEntry): string =>
   `- ${entry.label} | key=${entry.key} | ${entry.allowMode ? 'off by default, set true to enable' : 'on by default, set false to disable'}`
+  + (entry.projectChannelOnly ? ' | works only in the project channels it is bound to' : '')
   + (entry.requiresTodos ? ' | needs to-dos enabled' : '')
   + `\n  ${entry.summary}`
 
@@ -541,11 +549,13 @@ export const runAgentAvatarGenerateTool = async (
     throw new Error('Agent not found.')
   }
 
+  // Data, not instructions: what to tell the person about a pinned style is
+  // the Designer prompt's rule, the same as the portrait reason (F9).
   let remembrance = ''
   if (pinned && args.style && args.style !== style) {
     remembrance =
-      ` The style is pinned at the ${remembered.lockedAtScope} level, so the `
-      + 'portrait follows that rather than the one asked for. Say so.'
+      ` style: pinned at the ${remembered.lockedAtScope} level; the requested `
+      + `"${args.style}" was not applied.`
   } else if (args.style && args.style !== remembered.style) {
     try {
       await writeAgentAvatarStyle(context.prisma, { ...target, style: args.style })

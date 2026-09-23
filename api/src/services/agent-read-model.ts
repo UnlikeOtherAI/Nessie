@@ -25,6 +25,7 @@ import {
   buildDisclosureReadableThreadWhere,
   toTimestamp,
 } from './agent-read-primitives.js'
+import { ACTIVE_RUN_STATUSES } from './run-access.js'
 import { canUserReadRunDerivedRecord } from './run-derived-read.js'
 
 const mapToolCall = (toolCall: {
@@ -99,8 +100,11 @@ export const loadAgentStatus = async (
         },
         where: {
           ...runVisibilityWhere,
+          // Every live status, the two suspensions included: a run parked on
+          // a person's approval or answer is still the agent's current run,
+          // and the agent header offers its Stop from this read.
           status: {
-            in: ['pending', 'running'],
+            in: ACTIVE_RUN_STATUSES,
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -135,6 +139,9 @@ export const loadAgentStatus = async (
     && latestRun.status !== 'completed'
     && latestRun.status !== 'failed'
     && latestRun.status !== 'cancelled'
+  // A suspended run is waiting on a person, not using a tool — the same as the
+  // live `agent.status` event a suspension publishes, which names no tool.
+  const isToolActive = isActiveRun && (latestRun.status === 'pending' || latestRun.status === 'running')
   const lastActivityAt =
     latestToolCall?.startedAt
     ?? latestMessage?.createdAt
@@ -147,11 +154,11 @@ export const loadAgentStatus = async (
     since: agent.updatedAt.toISOString(),
     currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
     currentToolName:
-      isActiveRun && latestToolCall?.endedAt === null
+      isToolActive && latestToolCall?.endedAt === null
         ? latestToolCall.toolName
         : undefined,
     currentToolStartedAt:
-      isActiveRun && latestToolCall?.endedAt === null
+      isToolActive && latestToolCall?.endedAt === null
         ? toTimestamp(latestToolCall.startedAt)
         : undefined,
     activeSubAgents: readableActiveSubAgents

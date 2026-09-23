@@ -1,26 +1,33 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiClientError } from '@nessie/client-core'
+import {
+  ChannelDirectoryEntrySchema,
+  ProjectDirectoryEntrySchema,
+  type AgentRecord,
+  type AppSummaryRecord,
+  type ChannelDirectoryEntry,
+  type ProjectDirectoryEntry,
+} from '@nessie/schemas'
 import type {
-  ChannelRecord,
   MessageSearchResult,
-  ProjectRecord,
   UserRecord,
 } from '../../lib/api-client'
 import type { TaskRecord } from '../tasks/hooks'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { searchKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
-import { useChannels } from '../channels/hooks'
-import { useProjects } from '../projects/hooks'
 import { useUsers } from '../users/hooks'
+import { useAgents } from '../agents/queries'
+import { useApps } from '../apps/hooks'
 import { usePagedList, usePagedListReset, type PagedList } from '../pagination/usePagedList'
 
 const MIN_QUERY_LENGTH = 2
+const MAX_QUERY_LENGTH = 200
 const DEBOUNCE_MS = 250
 const SEARCH_MODE_STORAGE_KEY = 'nessie.search.mode'
 
-export const GLOBAL_SEARCH_MODES = ['text', 'semantic'] as const
+export const GLOBAL_SEARCH_MODES = ['fulltext', 'semantic'] as const
 
 export type GlobalSearchMode = (typeof GLOBAL_SEARCH_MODES)[number]
 
@@ -64,9 +71,12 @@ export interface ThoughtSearchHit {
 }
 
 export interface GlobalSearchResults {
-  channels: ChannelRecord[]
+  appliedQuery: string
+  agents: AgentRecord[]
+  apps: AppSummaryRecord[]
+  channels: ChannelDirectoryEntry[]
   people: UserRecord[]
-  projects: ProjectRecord[]
+  projects: ProjectDirectoryEntry[]
   messages: MessageSearchResult[]
   knowledge: KnowledgeSearchHit[]
   thoughts: ThoughtSearchHit[]
@@ -82,15 +92,19 @@ const includesQuery = (haystack: string | null | undefined, needle: string): boo
   (haystack ?? '').toLowerCase().includes(needle)
 
 export const parseGlobalSearchMode = (value: string | null): GlobalSearchMode | null =>
-  value === 'semantic' || value === 'text' ? value : null
+  value === 'semantic' || value === 'fulltext'
+    ? value
+    // Device storage and old deep links used `text`; preserve the preference
+    // while giving the mode the precise name shown in the UI.
+    : value === 'text' ? 'fulltext' : null
 
 // The mode a reader last chose on this device. It is the *default* the two
 // search surfaces start from — the full page then lets `?mode=` override it.
 export const readStoredSearchMode = (): GlobalSearchMode => {
   if (typeof window === 'undefined') {
-    return 'text'
+    return 'fulltext'
   }
-  return parseGlobalSearchMode(window.localStorage.getItem(SEARCH_MODE_STORAGE_KEY)) ?? 'text'
+  return parseGlobalSearchMode(window.localStorage.getItem(SEARCH_MODE_STORAGE_KEY)) ?? 'fulltext'
 }
 
 export const writeStoredSearchMode = (nextMode: GlobalSearchMode): void => {
@@ -120,83 +134,97 @@ export const isInvalidTaskSearchCursor = (error: unknown): boolean =>
   error instanceof ApiClientError && error.code === 'TASK_SEARCH_CURSOR_INVALID'
 
 /**
- * Global search across channels, people, projects (filtered client-side from
- * already-loaded data), messages and knowledge pages in text mode, and memory
- * thoughts in semantic mode. The query is debounced internally; queries shorter
- * than two characters return empty results without touching the API.
+ * One entitled corpus in two ranking modes. Structural records remain literal
+ * in both; prose-heavy messages, tickets, documents and memory add their vector
+ * arm in semantic mode. Queries shorter than two characters touch no search
+ * endpoint.
  */
 export const useGlobalSearch = (
   query: string,
-  mode: GlobalSearchMode = 'text',
+  mode: GlobalSearchMode = 'fulltext',
 ): GlobalSearchResults => {
   const apiClient = useApiClient()
 
   const debounced = useDebouncedValue(query, DEBOUNCE_MS)
-  const trimmed = debounced.trim()
+  const requested = query.trim().slice(0, MAX_QUERY_LENGTH)
+  const trimmed = debounced.trim().slice(0, MAX_QUERY_LENGTH)
   const needle = trimmed.toLowerCase()
   const active = trimmed.length >= MIN_QUERY_LENGTH
-  const textMode = mode === 'text'
-  const semanticMode = mode === 'semantic'
+  const current = requested === trimmed
+  const requestedActive = requested.length >= MIN_QUERY_LENGTH
+  const fulltextMode = mode === 'fulltext'
 
-  const { data: channels = [] } = useChannels()
-  const { data: users = [] } = useUsers()
-  const { data: projects = [] } = useProjects()
-
-  const filteredChannels = useMemo(
-    () =>
-      active && textMode
-        ? channels.filter(
-            (channel) => channel.type !== 'dm' && includesQuery(channel.label, needle),
-          )
-        : [],
-    [active, channels, needle, textMode],
-  )
+  const usersQuery = useUsers(active)
+  const agentsQuery = useAgents({ enabled: active, scope: 'all' })
+  const appsQuery = useApps({ query: active ? trimmed : undefined }, active)
 
   const filteredPeople = useMemo(
     () =>
-      active && textMode
-        ? users.filter(
+      active
+        ? (usersQuery.data ?? []).filter(
             (user) =>
               includesQuery(user.displayName, needle) || includesQuery(user.email, needle),
           )
         : [],
-    [active, users, needle, textMode],
+    [active, needle, usersQuery.data],
   )
 
-  const filteredProjects = useMemo(
+  const filteredAgents = useMemo(
     () =>
-      active && textMode
-        ? projects.filter((project) => includesQuery(project.name, needle))
+      active
+        ? (agentsQuery.data ?? []).filter((agent) =>
+            includesQuery(agent.name, needle) || includesQuery(agent.role, needle))
         : [],
-    [active, needle, projects, textMode],
+    [active, agentsQuery.data, needle],
   )
+
+  const channelsQuery = useQuery({
+    queryKey: searchKeys.channels(trimmed),
+    queryFn: () => apiClient.get(
+      `/api/channels/search?query=${encodeURIComponent(trimmed)}&limit=20`,
+      ChannelDirectoryEntrySchema.array(),
+    ),
+    enabled: active,
+  })
+
+  const projectsQuery = useQuery({
+    queryKey: searchKeys.projects(trimmed),
+    queryFn: () => apiClient.get(
+      `/api/projects/search?query=${encodeURIComponent(trimmed)}&limit=20`,
+      ProjectDirectoryEntrySchema.array(),
+    ),
+    enabled: active,
+  })
 
   const messagesQuery = useQuery<MessageSearchResult[]>({
     queryKey: searchKeys.messages(trimmed, mode),
     queryFn: () =>
-      apiClient.get(`/api/messages/search?query=${encodeURIComponent(trimmed)}&limit=20`),
-    enabled: active && textMode,
+      apiClient.get(
+        `/api/messages/search?query=${encodeURIComponent(trimmed)}`
+          + `&mode=${mode}&limit=20`,
+      ),
+    enabled: active,
   })
 
   const taskPagination = usePagedList<TaskRecord>({
-    enabled: active && textMode,
-    params: { query: trimmed },
+    enabled: active,
+    params: { mode, query: trimmed },
     paramPrefix: 'tasks-',
     path: '/api/tasks/search',
-    queryKey: searchKeys.tasks(trimmed),
-    scope: `task-search:${trimmed}`,
+    queryKey: searchKeys.tasks(trimmed, mode),
+    scope: `task-search:${mode}:${trimmed}`,
   })
   const restartTaskSearch = usePagedListReset('tasks-')
   const invalidTaskCursor = isInvalidTaskSearchCursor(taskPagination.query.error)
 
-  // Text mode uses keyword search; semantic mode uses hybrid search so
-  // knowledge results (with highlighted passages) surface alongside thoughts.
+  // Full text is provider-owned deterministic search. Semantic is hybrid, not
+  // vector-only: exact document matches remain in the fused result set.
   const knowledgeQuery = useQuery<KnowledgeSearchHit[]>({
     queryKey: searchKeys.knowledge(trimmed, mode),
     queryFn: () =>
       apiClient.post<KnowledgeSearchHit[]>('/api/knowledge-base/search', {
         query: trimmed,
-        mode: textMode ? 'keyword' : 'hybrid',
+        mode: fulltextMode ? 'keyword' : 'hybrid',
         limit: 20,
       }),
     enabled: active,
@@ -207,33 +235,55 @@ export const useGlobalSearch = (
     queryFn: () =>
       apiClient.post<ThoughtSearchHit[]>('/api/thoughts/search', {
         limit: 20,
-        mode: 'semantic',
+        mode: fulltextMode ? 'lexical' : 'hybrid',
         query: trimmed,
       }),
-    enabled: active && semanticMode,
+    enabled: active,
   })
 
+  const appliedAppQuery = appsQuery.data?.applied.query?.trim() ?? ''
+
   return {
-    channels: filteredChannels,
-    people: filteredPeople,
-    projects: filteredProjects,
-    messages: active && textMode ? messagesQuery.data ?? [] : [],
-    tasks: active && textMode ? taskPagination.items : [],
+    appliedQuery: trimmed,
+    agents: current ? filteredAgents : [],
+    apps: active && current && appliedAppQuery === trimmed
+      ? appsQuery.data?.response.apps ?? []
+      : [],
+    channels: active && current ? channelsQuery.data ?? [] : [],
+    people: current ? filteredPeople : [],
+    projects: active && current ? projectsQuery.data ?? [] : [],
+    messages: active && current ? messagesQuery.data ?? [] : [],
+    tasks: active && current ? taskPagination.items : [],
     taskPagination,
     invalidTaskCursor,
     restartTaskSearch,
-    knowledge: active ? knowledgeQuery.data ?? [] : [],
-    thoughts: active && semanticMode ? thoughtsQuery.data ?? [] : [],
+    knowledge: active && current ? knowledgeQuery.data ?? [] : [],
+    thoughts: active && current ? thoughtsQuery.data ?? [] : [],
     isLoading:
-      active &&
-      (textMode
-        ? messagesQuery.isFetching || taskPagination.query.isFetching || knowledgeQuery.isFetching
-        : thoughtsQuery.isFetching || knowledgeQuery.isFetching),
-    errorMessage: active
-      ? queryErrorMessage(messagesQuery.error)
+      requestedActive && (
+        !current
+        || (
+          agentsQuery.isFetching
+          || appsQuery.isFetching
+          || channelsQuery.isFetching
+          || knowledgeQuery.isFetching
+          || messagesQuery.isFetching
+          || projectsQuery.isFetching
+          || taskPagination.query.isFetching
+          || thoughtsQuery.isFetching
+          || usersQuery.isFetching
+        )
+      ),
+    errorMessage: active && current
+      ? queryErrorMessage(channelsQuery.error)
+        ?? queryErrorMessage(projectsQuery.error)
+        ?? queryErrorMessage(messagesQuery.error)
         ?? queryErrorMessage(taskPagination.query.error)
         ?? queryErrorMessage(knowledgeQuery.error)
         ?? queryErrorMessage(thoughtsQuery.error)
+        ?? queryErrorMessage(agentsQuery.error)
+        ?? queryErrorMessage(appsQuery.error)
+        ?? queryErrorMessage(usersQuery.error)
       : null,
   }
 }

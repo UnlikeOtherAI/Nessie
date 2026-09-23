@@ -11,6 +11,7 @@ import {
   buildDisclosureReadableThreadWhere,
   toTimestamp,
 } from './agent-read-primitives.js'
+import { ACTIVE_RUN_STATUSES } from './run-access.js'
 
 export const buildSnapshotForScopes = async (
   prisma: PrismaClient,
@@ -68,7 +69,9 @@ export const buildSnapshotForScopes = async (
       },
       runs: {
         include: { toolCalls: { orderBy: { startedAt: 'desc' }, take: 1 } },
-        where: { ...runVisibilityWhere, status: { in: ['pending', 'running'] } },
+        // Every live status, as the status read and the live `agent.status`
+        // events report it: a suspended run is still the agent's current run.
+        where: { ...runVisibilityWhere, status: { in: ACTIVE_RUN_STATUSES } },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -86,15 +89,16 @@ export const buildSnapshotForScopes = async (
           && latestRun.status !== 'completed'
           && latestRun.status !== 'failed'
           && latestRun.status !== 'cancelled'
+        const isToolActive = isActiveRun && (latestRun.status === 'pending' || latestRun.status === 'running')
         return {
           agentId: parseAgentId(agent.id),
           status: agent.status,
           since: agent.updatedAt.toISOString(),
           currentRunId: isActiveRun ? parseRunId(latestRun.id) : undefined,
-          currentToolName: isActiveRun && latestToolCall?.endedAt === null
+          currentToolName: isToolActive && latestToolCall?.endedAt === null
             ? latestToolCall.toolName
             : undefined,
-          currentToolStartedAt: isActiveRun && latestToolCall?.endedAt === null
+          currentToolStartedAt: isToolActive && latestToolCall?.endedAt === null
             ? toTimestamp(latestToolCall.startedAt)
             : undefined,
         }

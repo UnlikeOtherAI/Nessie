@@ -39,6 +39,7 @@ import {
   type AgentDocumentsPromptFacts,
 } from './agent-documents.js'
 import { buildAgentTodoFactsBlock } from './agent-todo-facts.js'
+import { buildExecutorReachBlock, type ExecutorReachFacts } from './executor-reach-facts.js'
 import type { AgentTodoPromptFacts } from '@nessie/team-admin'
 import { originalHumanAuthorId } from './private-conversation-lineage.js'
 import type { RunContext, StoredConversationMessage } from './types.js'
@@ -52,15 +53,25 @@ export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
 const coreInstructionBlock = (context: RunContext): string => {
   const coreDocuments = context.coreDocuments ?? []
   if (coreDocuments.length === 0) {
+    const systemPrompt = context.agent.systemPrompt?.trim() ?? ''
+    const speakingStyle = buildSpeakingStyleBlock(context.agent.speakingStyle) ?? ''
     return [
-      context.agent.systemPrompt?.trim() ?? '',
-      buildSpeakingStyleBlock(context.agent.speakingStyle) ?? '',
+      systemPrompt ? `AGENTS.md:\n${systemPrompt}` : '',
+      speakingStyle ? `personality.md:\n${speakingStyle}` : '',
     ].filter(Boolean).join('\n\n')
   }
-  return coreDocuments.map((document) => {
-    const label = document.role === 'identity' ? 'Identity' : 'Working rules'
-    return `${label}:\n${document.markdown}`
-  }).join('\n\n')
+  const documentInstructions = coreDocuments.map((document) => {
+    const filename = document.role === 'identity' ? 'AGENTS.md' : 'personality.md'
+    return `${filename}:\n${document.markdown}`
+  })
+  return [
+    // A delegated child keeps its immutable server-authored assignment beside
+    // the exact parent core snapshot inherited at spawn. Ordinary migrated
+    // agents have null legacy columns, while code-owned built-ins use this
+    // same fallback as their read-only AGENTS.md projection.
+    context.agent.parentAgentId ? context.agent.systemPrompt?.trim() ?? '' : '',
+    ...documentInstructions,
+  ].filter(Boolean).join('\n\n')
 }
 
 // A turn's text as the model sees it: what was written, plus the inventory of
@@ -148,6 +159,11 @@ export const buildModelPrompt = (
     hasCardTool?: boolean
     /** True when `browser_login_request` is in this run's resolved builtin toolset. */
     hasBrowserLoginRequestTool?: boolean
+    /**
+     * What the model can reach on a person's machine this turn, from the
+     * run's bindings and its conversation lease (`loadExecutorReachFacts`).
+     */
+    executorReach?: ExecutorReachFacts | null
     /** The exact active temporary browser handoff for this resumed run. */
     temporaryBrowserAccess?: {
       expiresAt: Date
@@ -171,9 +187,12 @@ export const buildModelPrompt = (
       'earlier replies appear with no prefix. Never attribute another agent\'s',
       'message to yourself, and do not add a name prefix to your own reply.',
     ].join(' '),
-    coreInstructionBlock(context),
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
+    // Said outright because the failure it answers was a claim, not a call: an
+    // agent told a person it had started work on their machine when no tool
+    // call had run at all.
+    'Report only what your tool calls returned. Never say you started, ran or finished something you did not.',
     AGENT_SECRET_SAFETY_INSTRUCTION,
     'When you need an id for a channel, person, or thread you only know by name, '
       + 'resolve it yourself with the lookup tools (channel_find, people_search) — '
@@ -238,6 +257,7 @@ export const buildModelPrompt = (
       ].join(' '),
       '- Match the register of the message you are replying to. Short casual question → short casual answer.',
     ].join('\n'),
+    coreInstructionBlock(context),
     options.routing ? buildResearchRoutingBlock(options.routing) ?? '' : '',
     options.mailbox ? buildMailboxRoutingBlock(options.mailbox) ?? '' : '',
     options.handoff ? buildHandoffRoutingBlock(options.handoff) ?? '' : '',
@@ -312,6 +332,14 @@ export const buildModelPrompt = (
       + 'timezone.',
     role: 'system',
   }, 'prompt_system'))
+
+  // Machine reach rides behind the clock: a carried lease moves its window on
+  // every run, so these facts are the most volatile system text there is and
+  // must never enter the anchor, or every follow-up would miss the cache.
+  const executorReach = buildExecutorReachBlock(options.executorReach ?? null)
+  if (executorReach) {
+    messages.push(coverProviderInputComponent({ content: executorReach, role: 'system' }, 'prompt_system'))
+  }
 
   if (conversation.length > 0) {
     messages.push(

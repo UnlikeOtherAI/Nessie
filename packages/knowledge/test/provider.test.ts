@@ -155,6 +155,105 @@ test('native provider rejects publishing archived pages', async () => {
   )
 })
 
+test('native provider refuses to archive a required agent instruction', async () => {
+  let pageUpdates = 0
+  const prisma = {
+    agentCoreDocument: {
+      findUnique: async () => ({ role: 'identity' }),
+    },
+    knowledgePage: {
+      updateMany: async () => {
+        pageUpdates += 1
+        return { count: 1 }
+      },
+    },
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.archivePage(organizationId, pageId),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'Required agent instructions cannot be archived; edit AGENTS.md instead',
+  )
+  assert.equal(pageUpdates, 0)
+})
+
+test('native provider keeps required agent instructions at their canonical name and location', async () => {
+  const corePage = {
+    channelId: null,
+    coreDocumentFor: { role: 'identity' as const },
+    documentRole: 'identity',
+    id: pageId,
+    kind: 'file',
+    organizationId,
+    parentPageId: null,
+    privateToAgentId: null,
+    projectId,
+    publishedVersionId: 'version-1',
+    revision: 4,
+    sensitivityTier: 'normal',
+    spaceId,
+    status: 'published',
+    taskId: null,
+    teamId: null,
+    threadId: null,
+    title: 'AGENTS.md',
+    userId: null,
+    visibility: 'private',
+  }
+  let pageUpdates = 0
+  const tx = {
+    knowledgePage: {
+      findFirst: async () => corePage,
+      updateMany: async () => {
+        pageUpdates += 1
+        return { count: 1 }
+      },
+    },
+  }
+  const prisma = {
+    $transaction: async <T>(callback: (client: typeof tx) => Promise<T>) => callback(tx),
+  } as unknown as PrismaClient
+  const provider = createNativeKnowledgeProvider(prisma)
+
+  await assert.rejects(
+    provider.movePage({ organizationId, pageId, parentPageId, position: 1 }),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'Required agent instructions must remain at the top level as AGENTS.md',
+  )
+  await assert.rejects(
+    provider.updatePage(pageId, {
+      authorId: 'user-1',
+      authorType: 'user',
+      organizationId,
+      title: 'prompt.md',
+    }),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'Required agent instructions must keep the filename AGENTS.md',
+  )
+  await assert.rejects(
+    provider.updatePage(pageId, {
+      authorId: 'user-1',
+      authorType: 'user',
+      organizationId,
+      visibility: 'organization',
+    }),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'Required agent instructions inherit the document home access scope',
+  )
+  await assert.rejects(
+    provider.updatePage(pageId, {
+      authorId: 'agent-1',
+      authorType: 'agent',
+      labels: ['self-authored'],
+      organizationId,
+    }),
+    (error) => error instanceof KnowledgeConflictError
+      && error.message === 'Only an authorized person may edit required agent instructions',
+  )
+  assert.equal(pageUpdates, 0)
+})
+
 test('native provider rejects a body-only revision for a file node', async () => {
   const tx = {
     knowledgePage: {

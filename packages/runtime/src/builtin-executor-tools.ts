@@ -57,8 +57,8 @@ const lifecycleTool = (
   summary,
   label,
   description:
-    `Prepare a ${action} action for an executor. The user must review and confirm the exact action in Executors; `
-    + 'this assistant cannot apply it.',
+    `Prepare a ${action} action for an executor. It posts a confirmation card in this conversation; `
+    + 'the user reviews and confirms the exact action from it. This assistant cannot apply it.',
   parameters: {
     type: 'object',
     properties: { executorId: UUID },
@@ -94,7 +94,8 @@ export const EXECUTOR_DESCRIPTOR_REVIEW_PREPARE_TOOL_DEFINITION: BuiltinToolDefi
   label: 'Prepare Executor Local Policy Review',
   description:
     'Prepare activation or disablement of one signed local executor-policy revision. The requesting '
-    + 'user must inspect and confirm it in Executors; activation requires fresh verification and this assistant cannot apply it.',
+    + 'user inspects and confirms it from the confirmation card it posts in this conversation; '
+    + 'activation requires fresh verification and this assistant cannot apply it.',
   parameters: {
     type: 'object',
     properties: {
@@ -114,8 +115,9 @@ export const EXECUTOR_AGENT_ACCESS_PREPARE_TOOL_DEFINITION: BuiltinToolDefinitio
   summary: 'Prepare an executor operation allow or deny for confirmation.',
   label: 'Prepare Executor Agent Access',
   description:
-    'Prepare one exact allow or deny for one agent and executor operation. The user must review and '
-    + 'confirm it; an agent can never grant executor access to itself or another agent.',
+    'Prepare one exact allow or deny for one agent and executor operation. The user reviews and '
+    + 'confirms it from the confirmation card it posts in this conversation; an agent can never grant '
+    + 'executor access to itself or another agent.',
   parameters: {
     type: 'object',
     properties: {
@@ -142,9 +144,9 @@ export const EXECUTOR_AGENT_GRANT_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition
     'Prepare one allow or deny covering the WHOLE suite an executor offers one named agent: every '
     + 'operation its active reviewed policy names, except workspace.promote, which only a person can '
     + 'issue. There is no per-operation pick here — access to an executor is access to everything on '
-    + 'it. The requesting person still reviews and confirms the exact change in Executors, and an '
-    + 'allow requires fresh account verification; an agent can never grant executor access to itself '
-    + 'or to another agent.',
+    + 'it. It posts a confirmation card in this conversation, where the requesting person reviews and '
+    + 'confirms the exact change, and an allow requires fresh account verification; an agent can '
+    + 'never grant executor access to itself or to another agent.',
   parameters: {
     type: 'object',
     properties: {
@@ -164,8 +166,9 @@ export const EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION: BuiltinToolDef
   summary: 'Prepare a private executor assignment change for confirmation.',
   label: 'Prepare Private Executor Assignment',
   description:
-    'Prepare an exact private-executor assignment change for one named user or agent. The user must '
-    + 'review and confirm it with fresh verification; agents never administer this roster.',
+    'Prepare an exact private-executor assignment change for one named user or agent. The user '
+    + 'reviews and confirms it with fresh verification from the confirmation card it posts in this '
+    + 'conversation; agents never administer this roster.',
   parameters: {
     type: 'object',
     properties: {
@@ -188,7 +191,8 @@ export const EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinit
   label: 'Prepare Reviewed Team Promotion',
   description:
     'Prepare the requesting user’s own reviewed executor draft for a host-team promotion. '
-    + 'The user must inspect and password-confirm the exact manifest in Executors; this assistant cannot write the host team.',
+    + 'It posts a confirmation card in this conversation, where the user inspects and '
+    + 'password-confirms the exact manifest; this assistant cannot write the host team.',
   parameters: {
     type: 'object',
     properties: { reviewCommandId: UUID },

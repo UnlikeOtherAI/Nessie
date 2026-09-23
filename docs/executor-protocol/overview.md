@@ -12,6 +12,7 @@ this document.
 
 - [Protocol and threat model](#1-scope-and-non-goals)
 - [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
+- [Conversation leases](conversation-leases.md) — how a person's own follow-ups keep local apps
 - [Host coding sessions: the `coding-sessions` bridge](host-coding-sessions.md)
 
 ## 1. Scope and non-goals
@@ -247,7 +248,8 @@ and explicitly confirm the review. Activating a revision requires fresh human
 verification. Neither an agent nor the Personal Assistant can activate a
 proposal, and no direct descriptor-review endpoint bypasses this confirmation
 path. The Personal Assistant can inspect the same signature-free proposal
-summary for a manager and prepare a review link, but it cannot submit the
+summary for a manager and prepare the review — a confirmation card in the
+conversation whose press opens it for that person — but it cannot submit the
 confirmation on the person's behalf.
 
 The local file boundary is deliberately **one canonical workspace root**, not
@@ -427,6 +429,11 @@ accepted, started, or terminal transition; it never polls past pending local
 recovery. If the process died after local execution began but before its result
 was durable, the replacement daemon returns
 `EXECUTOR_COMMAND_UNKNOWN_OUTCOME` and does not run the side effect again.
+A terminal result the server refuses as `EXECUTOR_COMMAND_RESULT_INVALID`
+would be refused on every retry and hold the machine's only command lane, so
+the daemon journals the small terminal failure `EXECUTOR_RESULT_REFUSED` in
+its place and sends that, with its own digest; a lost response replays the
+replacement, never the refused result.
 
 The initial local backend has `file.list`, `file.read`, `file.write`,
 `team.review`, and `sandbox.stop`. It can execute a server-authored
@@ -469,7 +476,11 @@ promotion primitive remains unavailable until the separate user-confirmation
 and server-command flow can bind it to the exact review.
 
 Before the worker adds an executor logical schema to a model request, a human
-must bind one opaque candidate to the exact run. The user-facing launch endpoint
+must bind one opaque candidate to the exact run — either by launching it, or,
+for the local-apps pair only, by a later message of their own in the same
+conversation while their lease is live, under the structural definition in
+[conversation-leases.md](conversation-leases.md). Each such run is bound afresh
+and every check runs again. The user-facing launch endpoint
 `POST /api/threads/:threadId/executor-runs` creates the human message, pending
 run, task, bindings, and `run.execute` job in one transaction for one selected
 bound channel agent. It accepts an agent id, one opaque candidate handle,
@@ -477,8 +488,9 @@ content, and a small exact operation bundle—but never an executor id. Every
 operation is independently rechecked and bound before the candidate is
 consumed, so a failed member rolls back the complete bundle. The older
 `POST /api/runs/:runId/executor-bind` route is limited to binding one
-already-created non-browser run operation. Both paths use the same fenced binding helper
-and the schema carries no executor id; dispatch only sees that binding.
+already-created non-browser run operation. Both paths, and a lease's carry, use the same
+fenced binding helper; the schema carries no executor id (a carry takes its machine from
+the lease row, never from a request), and dispatch only sees that binding.
 The worker creates the regular `ToolCall` before command dispatch and completes
 that same row when the terminal receipt returns. It also creates the existing
 `executor.command` queue job; its worker subscription holds the ordinary queue
@@ -944,7 +956,7 @@ EXECUTOR_BINDING_FENCED          EXECUTOR_COMMAND_REPLAY
 EXECUTOR_COMMAND_UNKNOWN_OUTCOME EXECUTOR_APPROVAL_STALE
 EXECUTOR_CANDIDATE_INVALID       EXECUTOR_PROMOTION_CONFLICT
 EXECUTOR_PROMOTION_UNSAFE_PATH   EXECUTOR_EGRESS_DENIED
-EXECUTOR_CREDENTIAL_REVOKED
+EXECUTOR_CREDENTIAL_REVOKED      EXECUTOR_RESULT_REFUSED
 EXECUTOR_VM_GUEST_HANDSHAKE_FAILED
 ```
 

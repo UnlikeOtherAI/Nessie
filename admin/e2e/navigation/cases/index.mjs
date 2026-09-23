@@ -7,6 +7,7 @@ import { desktopSelect, tabletSelect } from './wide-select.mjs'
 import { desktopSplitPush, tabletSplitPush } from './split-push.mjs'
 import { phoneColdStart } from './phone-cold-start.mjs'
 import { phoneIntentStrip } from './phone-intent-strip.mjs'
+import { phoneKnowledgeAgentsDirectory } from './phone-knowledge-agents-directory.mjs'
 import { desktopChatHistory } from './desktop-chat-history.mjs'
 import { desktopBrowserPushTenant } from './desktop-browser-push-tenant.mjs'
 import { desktopAgentMessageHistory } from './desktop-agent-message-history.mjs'
@@ -15,6 +16,7 @@ import { desktopKnowledgeCrossNavigation } from './desktop-knowledge-cross-navig
 import { desktopDashboardLiveWorkspace } from './desktop-dashboard-live-workspace.mjs'
 import { desktopWorkflowFailureAlert } from './desktop-workflow-failure-alert.mjs'
 import { desktopTriggerHealthAlert } from './desktop-trigger-health-alert.mjs'
+import { desktopTriggerMembershipError } from './desktop-trigger-membership-error.mjs'
 
 export const CASES = [
   phonePush,
@@ -28,6 +30,7 @@ export const CASES = [
   desktopSplitPush,
   phoneColdStart,
   phoneIntentStrip,
+  phoneKnowledgeAgentsDirectory,
   desktopChatHistory,
   desktopBrowserPushTenant,
   desktopAgentMessageHistory,
@@ -36,4 +39,5 @@ export const CASES = [
   desktopDashboardLiveWorkspace,
   desktopWorkflowFailureAlert,
   desktopTriggerHealthAlert,
+  desktopTriggerMembershipError,
 ]

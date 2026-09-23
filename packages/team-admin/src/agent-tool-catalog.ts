@@ -53,6 +53,12 @@ export type AgentToolCatalogEntry = {
   key: string
   kind: 'builtin' | 'connector'
   label: string
+  /**
+   * `projectDelegatedOnly` — a project board tool. A grant works only on a
+   * person's turn in a project channel the agent is bound to, and only for
+   * that channel's project; everywhere else the tool is simply absent.
+   */
+  projectChannelOnly?: boolean
   /** True only while the agent's `todosEnabled` is on. */
   requiresTodos?: boolean
   summary: string
@@ -154,13 +160,22 @@ export const loadAgentToolCatalog = async (
 
   for (const tool of BUILTIN_TOOL_DEFINITIONS) {
     if (disabledBuiltinIds.has(tool.id)) continue
+    // A project board tool is lent to a run only when the policy says `true`
+    // (`resolveProjectDelegatedToolIds`), so it is allow-mode like an
+    // explicit grant. Deriving this from `requiresExplicitGrant` alone had the
+    // Designer promise board work "on by default" and build an agent with no
+    // ticket tools. Same rule as the Agent Designer page's own catalogue
+    // (`admin/src/facades/designer/tool-catalog.ts`).
+    const offUntilGranted = tool.requiresExplicitGrant === true
+      || tool.projectDelegatedOnly === true
     const entry: AgentToolCatalogEntry = {
-      allowMode: tool.requiresExplicitGrant === true,
-      defaultEnabled: tool.requiresExplicitGrant !== true,
+      allowMode: offUntilGranted,
+      defaultEnabled: !offUntilGranted,
       group: groupForBuiltin(tool.category),
       key: tool.id,
       kind: 'builtin',
       label: tool.label,
+      ...(tool.projectDelegatedOnly === true ? { projectChannelOnly: true } : {}),
       ...(TODO_GATED_TOOL_IDS.has(tool.id) ? { requiresTodos: true } : {}),
       summary: summarise(tool.summary),
     }

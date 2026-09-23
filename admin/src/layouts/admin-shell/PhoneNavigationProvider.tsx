@@ -164,7 +164,11 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
       const target = pathname ?? current
       return resolveBack({
         pathname: target,
-        owners: stateRef.current.localBack,
+        // `localBack` is this render's snapshot. Reading it through stateRef
+        // here lagged one layout effect behind: the doorway re-rendered for a
+        // new stage while the ref still named the column underneath it, then
+        // received no second render to correct the label.
+        owners: localBack,
         ledger: target === current ? currentLedger() : null,
       })
     }
@@ -201,7 +205,7 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
         canBack: canGoBack(ledger),
         canForward: canGoForward(ledger),
         goBack: () => {
-          const owner = stateRef.current.localBack?.active ?? null
+          const owner = localBack?.active ?? null
           if (owner) {
             owner.onBack()
             return
@@ -216,7 +220,7 @@ export const PhoneNavigationProvider = ({ children }: { children: ReactNode }) =
       pressActiveTab: () => apply(resolvePhoneTabPress(currentLedger())),
       selectTab: (tabRoot) => apply(resolvePhoneTabSelect(currentLedger(), tabRoot)),
     }
-  }, [ledger, redirect])
+  }, [ledger, localBack, redirect])
 
   return (
     <PhoneNavigationContext.Provider value={value}>

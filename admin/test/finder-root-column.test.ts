@@ -36,6 +36,8 @@ const space = (overrides: Partial<KnowledgeRootSpace> & { spaceId: string; name:
 })
 
 const root = (overrides: Partial<KnowledgeRoot> = {}): KnowledgeRoot => ({
+  agentHomes: [],
+  agentHomesTruncated: false,
   myDocuments: space({ name: 'My Docs', spaceId: 'me' }),
   projects: [],
   shared: [],
@@ -51,8 +53,7 @@ test('the first group is continuous: virtual folders, My Documents and projects,
   }))
 
   assert.deepEqual(groups.map((group) => group.rows.map((row) => row.kind)), [
-    ['latest', 'shared-with-me', 'space', 'space'],
-    [],
+    ['latest', 'shared-with-me', 'space', 'space', 'agents'],
     ['space'],
   ])
   // My Documents always follows the two virtual rows, before any project: it
@@ -74,19 +75,21 @@ test('every project row is its Documents folder — the read provisions, so none
   assert.doesNotMatch(source, /project-unopened/)
 })
 
-test('agent homes are their own labelled section between mine and the shared folders', () => {
+test('agent homes sit behind one Agents doorway instead of consuming root rows', () => {
   const groups = finderRootGroups(root({
+    agentHomes: [
+      space({ name: 'Ada — Documents', ownerAgentId: 'a-ada', spaceId: 's-ada' }),
+    ],
     shared: [
       space({ name: 'Marketing', spaceId: 's-mkt' }),
-      space({ name: 'Ada — Documents', ownerAgentId: 'a-ada', spaceId: 's-ada' }),
     ],
   }))
 
-  assert.deepEqual(groups.map((group) => group.label ?? null), [null, 'Agents', null])
-  assert.deepEqual(groups[1]?.rows.map((row) => row.id), ['s-ada'])
-  assert.deepEqual(groups[2]?.rows.map((row) => row.id), ['s-mkt'])
-  const agentRow = groups[1]?.rows[0]
-  assert.equal(agentRow?.kind === 'space' ? agentRow.role : null, 'agent')
+  assert.deepEqual(groups.flatMap((group) => group.rows).filter((row) => row.kind === 'agents'), [
+    { id: 'virtual:agents', kind: 'agents' },
+  ])
+  assert.equal(groups.flatMap((group) => group.rows).some((row) => row.id === 's-ada'), false)
+  assert.deepEqual(groups[1]?.rows.map((row) => row.id), ['s-mkt'])
 })
 
 test('an agent home displays as the agent’s name, without the space’s suffix', () => {
@@ -102,7 +105,7 @@ test('an agent home displays as the agent’s name, without the space’s suffix
 
 test('an empty group is omitted, and takes its separator with it', () => {
   const groups = finderRootGroups(root())
-  assert.deepEqual(groups.map((group) => group.rows.length), [3, 0, 0])
+  assert.deepEqual(groups.map((group) => group.rows.length), [4, 0])
   // The column renders only the non-empty ones, so a hairline never floats
   // over nothing.
   assert.deepEqual(groups.filter((group) => group.rows.length > 0).length, 1)

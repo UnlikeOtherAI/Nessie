@@ -127,6 +127,7 @@ const asRecorded = (
   toolName: string,
   result: ExecutedToolResult,
 ): RecordedToolResult => ({
+  ...(result.correctable ? { correctable: true as const } : {}),
   inputSummary: result.inputSummary,
   output: result.output,
   success: result.success,

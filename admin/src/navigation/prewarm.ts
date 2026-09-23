@@ -31,7 +31,7 @@ import { executorKeys } from '../facades/executors/keys'
 import { knowledgeKeys } from '../facades/knowledge/keys'
 import { projectKeys } from '../facades/projects/keys'
 import { useApiClient } from '../providers/ApiClientProvider'
-import { fetchAgentStatus } from '../facades/agents/queries'
+import { fetchAgentDocuments, fetchAgentStatus } from '../facades/agents/queries'
 import { fetchApp } from '../facades/apps/hooks'
 import { fetchProjectBoards } from '../facades/boards/hooks'
 import { fetchDashboard } from '../facades/dashboards/hooks'
@@ -152,6 +152,13 @@ export const PREWARM_REGISTRY: PrewarmEntry[] = [
     run: (dashboardId, context) => {
       prefetch(context, dashboardKeys.detail(dashboardId), () =>
         fetchDashboard(context.apiClient, dashboardId))
+    },
+  },
+  {
+    pattern: /^\/knowledge-base\/agents\/([^/]+)$/,
+    run: (agentId, context) => {
+      prefetch(context, agentKeys.documents(agentId), () =>
+        fetchAgentDocuments(context.apiClient, agentId))
     },
   },
   {

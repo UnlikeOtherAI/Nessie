@@ -81,7 +81,7 @@ export const RestrictedMessageCard = ({
       <p className="m-0">
         {mode === 'withheld'
           ? 'This reply used sources you don’t have access to, so it isn’t shown.'
-          : 'This reply used sources that aren’t shared with everyone in this channel.'}
+          : 'This reply used sources that aren’t available to everyone who can read this channel.'}
       </p>
 
       {mode === 'shareable' ? (

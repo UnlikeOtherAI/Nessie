@@ -45,6 +45,8 @@ const prismaWith = (input: {
       input.queries?.push(arg)
       return input.row
     },
+    // The checkpoints the writing run had itself consumed: none here.
+    findMany: async () => [],
     updateMany: async (arg: UpdateManyArg) => {
       input.updates?.push(arg)
       return { count: input.updateCount }
@@ -52,6 +54,8 @@ const prismaWith = (input: {
   },
   runBasisScope: { findMany: async () => input.runBasis ?? [] },
   runCheckpointDisclosureSource: { findMany: async () => input.disclosureSources ?? [] },
+  // The writing run's local-program calls: none here.
+  toolCall: { findMany: async () => [] },
 } as unknown as PrismaClient)
 
 test('an unconsumed checkpoint is claimed by a single conditional update', async () => {
@@ -102,6 +106,7 @@ test('the injected block is explicitly untrusted and lists sources verbatim', ()
   const injection = buildCheckpointInjection({
     basisScopes: [],
     disclosureSources: [],
+    hostOutputScopes: [],
     createdAt: new Date(),
     generation: 2,
     id: 'checkpoint-1',

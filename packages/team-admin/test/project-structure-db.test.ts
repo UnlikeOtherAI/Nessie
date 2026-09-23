@@ -8,6 +8,7 @@ import {
   createChannelForUser,
   createProjectForUser,
   createTeamForUser,
+  listProjectDirectory,
   listProjectsForUser,
   listTeamsForOrganization,
 } from '../src/index.js'
@@ -363,4 +364,60 @@ runDatabaseTest('the project list is scoped by entitlement and by organisation',
     })).map((row) => row.id),
     [seeded.teamId],
   )
+})
+
+runDatabaseTest('explicit project search returns only a protected project limited card', async (t) => {
+  const prisma = new PrismaClient()
+  const seeded = await seed(prisma)
+  t.after(() => cleanup(prisma, seeded).then(() => prisma.$disconnect()))
+
+  const protectedProject = await createProjectForUser(prisma, {
+    name: 'Zebra launch road',
+    organizationId: seeded.organizationId,
+    teamId: seeded.teamId,
+    userId: seeded.ownerId,
+  })
+  await prisma.project.update({
+    where: { id: protectedProject.id },
+    data: { description: 'A protected search canary', visibility: 'protected' },
+  })
+
+  const viewer = {
+    isOrganizationAdmin: false,
+    organizationId: seeded.organizationId,
+    userId: seeded.memberId,
+  }
+  const browse = await listProjectDirectory(prisma, viewer)
+  assert.ok(!browse.some((entry) => entry.id === protectedProject.id))
+
+  const matches = await listProjectDirectory(prisma, viewer, {
+    includeProtectedMatches: true,
+    query: 'zebra launch',
+  })
+  const match = matches.find((entry) => entry.id === protectedProject.id)
+  assert.equal(match?.access, 'limited')
+  assert.deepEqual(match && Object.keys(match).sort(), [
+    'access',
+    'description',
+    'id',
+    'members',
+    'name',
+    'visibility',
+  ])
+
+  assert.ok(!(
+    await listProjectDirectory(prisma, viewer, {
+      includeProtectedMatches: true,
+      query: 'does-not-match',
+    })
+  ).some((entry) => entry.id === protectedProject.id))
+  assert.ok(!(
+    await listProjectDirectory(prisma, {
+      ...viewer,
+      organizationId: seeded.otherOrganizationId,
+    }, {
+      includeProtectedMatches: true,
+      query: 'zebra launch',
+    })
+  ).some((entry) => entry.id === protectedProject.id))
 })

@@ -31,7 +31,7 @@ person's own follow-ups keep the same reach until they end it.
 | [conversation-lease.md](conversation-lease.md) | PR 2 | How a person's own follow-ups keep the executor, structurally, without letting anyone or anything else borrow it |
 | [coding-sessions.md](coding-sessions.md) | PR 3a (executor) and 3b (control plane) | The `coding-sessions` bridge, its session host, containment and teardown per OS, owner isolation, the reviewed descriptor, the agent's first-class tools |
 | [screenshots.md](screenshots.md) | PR 4 | Images from local apps stored through `FileService`, shown to the model through the one prompt-image loader, and to the person in the thought-process view |
-| [setup-flow.md](setup-flow.md) | PR 5 | The agent-building problems met on the way: ticket tools, project id, recalled memory blocking writes, a channel per agent, the grant link, portraits, voice |
+| [setup-flow.md](setup-flow.md) | PR 5 | The agent-building problems met on the way: ticket tools, project id, recalled memory blocking writes, a channel per agent, the grant link, portraits, the Designer's voice (ids and instructions in its replies) |
 | [verification.md](verification.md) | all | Test matrix per OS, CI additions, and the live acceptance script |
 
 PR 1 and PR 5 are independent. PR 2 builds on PR 1's launcher. PR 3a is

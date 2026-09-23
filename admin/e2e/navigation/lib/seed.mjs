@@ -218,7 +218,7 @@ export const seedWorkflowFailureAlert = async (seed) => {
  * navigation fixture owns the person-facing bell -> exact recovery control
  * journey, so it seeds that already-failed state directly.
  */
-const seedTriggerOwner = async (seed, suffix) => {
+export const seedTriggerOwner = async (seed, suffix) => {
   const email = `navigation-trigger-owner-${suffix}@example.com`
   const password = `navigation-trigger-owner-${suffix}`
   const me = await call('/api/auth/me', { token: seed.token })
