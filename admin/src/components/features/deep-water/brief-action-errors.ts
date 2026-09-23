@@ -70,6 +70,15 @@ export const briefActionFailure = (error: unknown): BriefActionFailure => {
       return refuse('That looks like it contains a password or key. Remove it, then send again.')
     case 'THREAD_NOT_FOUND':
       return refuse('This conversation isn’t available any more.')
+    case 'INVALID_RESPONSE':
+      // The server took the action but its answer could not be read. Sending
+      // the same thing again reuses its key, so it is answered as a replay,
+      // never done twice; the fresh read shows where it stands.
+      return {
+        message: 'Nessie took that, but its answer couldn’t be read. Here is where it stands now.',
+        refetch: true,
+        retrySameAction: true,
+      }
     default:
       return error.status >= 500
         ? { message: 'Nessie couldn’t take that just now. Try again.', refetch: false, retrySameAction: true }

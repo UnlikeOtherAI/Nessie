@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ApiClientError } from '@nessie/client-core'
 import {
   DeepWaterBriefViewSchema,
+  DeepWaterResearchRunListSchema,
   DeepWaterResearchRunViewSchema,
   type DeepWaterBriefView,
   type DeepWaterResearchReadiness,
@@ -85,7 +86,8 @@ const listMeta = (list: DeepWaterResearchRunList) => list.meta
 /**
  * Knowledge › Research: every research this viewer may see, newest first,
  * paged. The list's data is `{items, meta}` (nessie.md §7.1), so its cursors
- * are read from inside it.
+ * are read from inside it, and every page is read through its schema: a body
+ * of any other shape is the list's error, never rows.
  */
 export const useResearchRunList = () => {
   const scope = useDeepWaterViewerScope()
@@ -95,6 +97,7 @@ export const useResearchRunList = () => {
     meta: listMeta,
     path: RESEARCH_RUNS_PATH,
     queryKey: scope ? deepWaterKeys.list(scope) : deepWaterKeys.lists,
+    schema: DeepWaterResearchRunListSchema,
   })
 }
 

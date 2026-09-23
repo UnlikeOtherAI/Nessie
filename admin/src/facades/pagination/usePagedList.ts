@@ -7,6 +7,7 @@ import {
   resolvePageSize,
   type PaginationMeta,
 } from '@nessie/schemas'
+import type { ApiResponseDataSchema } from '@nessie/client-core'
 import { paginationKeys } from '../../lib/query-keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
@@ -68,6 +69,12 @@ type UsePagedListOptions<TData, TItem> = {
   scope?: string
   /** Path without a query string, e.g. `/api/audit`. */
   path: string
+  /**
+   * The page's `data` contract. A body that does not match fails as the
+   * query's error (`INVALID_RESPONSE`) instead of reaching the rows, which
+   * would otherwise render whatever arrived as if it were the list.
+   */
+  schema?: ApiResponseDataSchema<TData>
   /** React Query key. The resolved query string is appended automatically. */
   queryKey: readonly unknown[]
 }
@@ -113,6 +120,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
   scope,
   path,
   queryKey,
+  schema,
 }: UsePagedListOptions<TData, TItem>): PagedList<TItem, TData> => {
   const api = useApiClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -137,7 +145,7 @@ export const usePagedList = <TItem, TData = TItem[]>({
 
   const query = useQuery({
     enabled,
-    queryFn: () => api.getPage<TData>(`${path}${buildSearch({ ...params, direction }, cursor, limit)}`),
+    queryFn: () => api.getPage<TData>(`${path}${buildSearch({ ...params, direction }, cursor, limit)}`, schema),
     queryKey: paginationKeys.page(queryKey, paramsKey, cursor, direction, limit),
   })
 

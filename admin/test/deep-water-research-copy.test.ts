@@ -153,6 +153,13 @@ test('a synchronous refusal of a brief action reads as its remedy', () => {
   assert.equal(lost.retrySameAction, true, 'a lost request is retried under the same key')
   assert.equal(briefActionFailure(apiError('INTERNAL', 503)).retrySameAction, true)
   assert.equal(briefActionFailure(apiError('SOMETHING_ELSE', 400)).retrySameAction, false)
+  // Accepted, but the answer broke the contract: never "check your connection"; a
+  // retry is a replay under the same key, and the brief is read again.
+  const unreadable = briefActionFailure(apiError('INVALID_RESPONSE', 202))
+  assert.equal(unreadable.refetch, true)
+  assert.equal(unreadable.retrySameAction, true)
+  assert.doesNotMatch(unreadable.message, /connection/i)
+  assert.doesNotMatch(unreadable.message, FORBIDDEN)
 })
 
 test('an owner gets the one change there is to make for the team', () => {

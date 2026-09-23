@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { ApiClientError } from '@nessie/client-core'
 import {
   DeepWaterBriefViewSchema,
   DeepWaterResearchRunViewSchema,
@@ -24,12 +25,22 @@ import { deepWaterKeys } from './keys'
  * ambiguous failure, which the server answers as a replay rather than a second
  * planner turn. A new intent — including "send it again" after the planner
  * failed — is a new id.
+ *
+ * Every answer is read through its schema by the client itself, so an answer
+ * that does not match the contract fails as `INVALID_RESPONSE` — an action the
+ * server accepted, whose answer could not be read — never as a lost
+ * connection, and the drift is logged.
  */
 
 /** A fresh idempotency key for one person action. */
 export const newResearchActionId = (): string => crypto.randomUUID()
 
-const parse = <T>(schema: { parse: (value: unknown) => T }, value: unknown): T => schema.parse(value)
+/** The server accepted the action but its answer broke the contract: say so where it can be investigated. */
+const reportUnreadableAnswer = (error: unknown): void => {
+  if (error instanceof ApiClientError && error.code === 'INVALID_RESPONSE') {
+    console.error('[deep-water] a research action was accepted but its answer did not match the contract', error.details)
+  }
+}
 
 /**
  * Start's answer is the research view, a subset of the brief view: laid over
@@ -44,8 +55,9 @@ export const useCreateResearchBrief = () => {
   const queryClient = useQueryClient()
   const scope = useDeepWaterViewerScope()
   return useMutation({
-    mutationFn: async (input: CreateDeepWaterBriefRequest): Promise<DeepWaterBriefView> =>
-      parse(DeepWaterBriefViewSchema, await api.post(RESEARCH_RUNS_PATH, input)),
+    mutationFn: (input: CreateDeepWaterBriefRequest): Promise<DeepWaterBriefView> =>
+      api.post(RESEARCH_RUNS_PATH, input, undefined, DeepWaterBriefViewSchema),
+    onError: reportUnreadableAnswer,
     onSuccess: (brief) => {
       if (scope) queryClient.setQueryData(deepWaterKeys.brief(brief.id, scope), brief)
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.lists })
@@ -59,8 +71,9 @@ export const useReplyToResearchBrief = (runId: string) => {
   const queryClient = useQueryClient()
   const scope = useDeepWaterViewerScope()
   return useMutation({
-    mutationFn: async (input: DeepWaterBriefReplyRequest): Promise<DeepWaterBriefView> =>
-      parse(DeepWaterBriefViewSchema, await api.post(`${researchRunPath(runId)}/messages`, input)),
+    mutationFn: (input: DeepWaterBriefReplyRequest): Promise<DeepWaterBriefView> =>
+      api.post(`${researchRunPath(runId)}/messages`, input, undefined, DeepWaterBriefViewSchema),
+    onError: reportUnreadableAnswer,
     onSuccess: (brief) => {
       if (scope) queryClient.setQueryData(deepWaterKeys.brief(runId, scope), brief)
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(runId) })
@@ -74,8 +87,9 @@ export const useStartResearchBrief = (runId: string) => {
   const queryClient = useQueryClient()
   const scope = useDeepWaterViewerScope()
   return useMutation({
-    mutationFn: async (input: StartDeepWaterBriefRequest): Promise<DeepWaterResearchRunView> =>
-      parse(DeepWaterResearchRunViewSchema, await api.post(`${researchRunPath(runId)}/start`, input)),
+    mutationFn: (input: StartDeepWaterBriefRequest): Promise<DeepWaterResearchRunView> =>
+      api.post(`${researchRunPath(runId)}/start`, input, undefined, DeepWaterResearchRunViewSchema),
+    onError: reportUnreadableAnswer,
     onSuccess: (run) => {
       if (!scope) return
       queryClient.setQueryData<DeepWaterBriefView>(
@@ -99,6 +113,8 @@ export const useCancelResearchRun = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
+    // A viewer who may not read the run is answered with its id and status
+    // only, so the answer is not read as a view; the refetch shows the rest.
     mutationFn: (input: { actionId: string; runId: string }) =>
       api.post<unknown>(`${researchRunPath(input.runId)}/cancel`, { actionId: input.actionId }),
     onSettled: (_result, _error, input) => {
@@ -113,11 +129,14 @@ export const useRetryResearchDelivery = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (input: { actionId: string; runId: string }): Promise<DeepWaterResearchRunView> =>
-      parse(
+    mutationFn: (input: { actionId: string; runId: string }): Promise<DeepWaterResearchRunView> =>
+      api.post(
+        `${researchRunPath(input.runId)}/deliver`,
+        { actionId: input.actionId },
+        undefined,
         DeepWaterResearchRunViewSchema,
-        await api.post(`${researchRunPath(input.runId)}/deliver`, { actionId: input.actionId }),
       ),
+    onError: reportUnreadableAnswer,
     onSettled: (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(input.runId) })
     },
