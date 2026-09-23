@@ -16,7 +16,9 @@ import { resolveProgramPath } from './program-path.js'
  *
  * - Windows: the string values of the machine then user `Environment`
  *   registry keys (user wins, `Path` is machine;user), each key's plain values
- *   set before its expandable ones are expanded, plus `PATHEXT`, `ComSpec`,
+ *   set before its expandable ones are expanded, those against each other
+ *   until nothing changes, so the order a key lists them in makes no
+ *   difference, plus `PATHEXT`, `ComSpec`,
  *   `windir`, `ProgramData` and `TMP` where those are still missing.
  * - macOS: `launchctl getenv` for `SSH_AUTH_SOCK` and `TMPDIR`, then the login
  *   shell's `env -0`.
@@ -182,6 +184,9 @@ const expandWindows = (value: string, lookup: (name: string) => string | undefin
   value.replace(/%([^%]+)%/gu, (match, name: string) => lookup(name) ?? match)
 )
 
+/** The most characters Windows lets one environment variable hold. */
+const MAX_WINDOWS_VALUE = 32_767
+
 const captureWindows = async (received: NodeJS.ProcessEnv, run: CommandRunner): Promise<Record<string, string>> => {
   const env = environmentMap('win32', received)
   const systemRoot = env.get('SystemRoot') ?? 'C:\\Windows'
@@ -197,11 +202,19 @@ const captureWindows = async (received: NodeJS.ProcessEnv, run: CommandRunner): 
     const kept = entries.filter((entry) => (entry.type === 'REG_SZ' || entry.type === 'REG_EXPAND_SZ')
       && !(scope === 'machine' && entry.name.toUpperCase() === 'USERNAME'))
     for (const entry of kept) if (entry.type === 'REG_SZ' && !isPath(entry)) env.set(entry.name, entry.value)
-    // Each expandable value against the key's plain ones and what came before, none against another: the order a
-    // key lists its values in is when each was written, not what each needs.
-    const expanded = kept.filter((entry) => entry.type === 'REG_EXPAND_SZ' && !isPath(entry))
-      .map((entry) => [entry.name, valueOf(entry)] as const)
-    for (const [name, value] of expanded) env.set(name, value)
+    // The expandable ones after the plain ones, all of them in rounds against what the last round set, until a
+    // round changes nothing: `GOBIN=%GOPATH%\bin` resolves wherever the key lists the two, since the order a key
+    // lists its values in is when each was written, not what each needs. A value naming itself reads what came
+    // before this key. A cycle ends within one round per value, none longer than Windows lets a variable be.
+    const expandable = kept.filter((entry) => entry.type === 'REG_EXPAND_SZ' && !isPath(entry))
+    const before = new Map(expandable.map((entry) => [entry.name.toUpperCase(), env.get(entry.name)]))
+    for (let round = 0; round <= expandable.length; round += 1) {
+      const next = expandable.map((entry) => [entry.name, expandWindows(entry.value, (name) => (
+        name.toUpperCase() === entry.name.toUpperCase() ? before.get(name.toUpperCase()) : env.get(name)
+      )).slice(0, MAX_WINDOWS_VALUE)] as const)
+      if (next.every(([name, value]) => env.get(name) === value)) break
+      for (const [name, value] of next) env.set(name, value)
+    }
     const path = kept.find(isPath)
     if (path) paths.push(valueOf(path))
   }

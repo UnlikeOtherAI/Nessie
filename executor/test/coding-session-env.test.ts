@@ -112,8 +112,20 @@ test('Windows: an expandable value reads the same whatever order its key lists i
   assert.equal(listed.TOOLS, 'C:\\devkit\\bin\\tools', 'the machine key is merged before the user key expands')
   assert.equal(listed.PATH, 'C:\\Windows\\system32;C:\\devkit\\bin;C:\\Users\\ondre\\.pyenv\\bin;C:\\Users\\ondre\\go\\bin',
     'each half of Path is expanded once its own key is merged')
-  assert.equal(listed.CACHE, '%GOPATH%\\cache', 'an expandable value never reads another of its own key')
+  assert.equal(listed.CACHE, 'C:\\Users\\ondre\\go\\cache', 'an expandable value reads another of its own key, listed after it')
   assert.deepEqual(await captureRegistry({ machine: [...machine].reverse(), user: [...user].reverse() }), listed)
+})
+
+test('Windows: an expandable value naming itself reads what came before its key, and a cycle ends', async () => {
+  const env = await captureRegistry({
+    machine: [['PSModulePath', 'ExpandString', '%SystemRoot%\\modules']],
+    user: [
+      ['PSModulePath', 'ExpandString', '%PSModulePath%;%USERPROFILE%\\modules'],
+      ['PING', 'ExpandString', '%PONG%%PONG%'], ['PONG', 'ExpandString', '%PING%%PING%'],
+    ],
+  })
+  assert.equal(env.PSModulePath, 'C:\\Windows\\modules;C:\\Users\\ondre\\modules', 'once, not once per round')
+  assert.ok(env.PING!.length <= 32_767 && env.PONG!.length <= 32_767, 'no longer than Windows lets a variable be')
 })
 
 test('macOS: launchctl supplies the agent socket, the login shell the rest, past a noisy profile', async () => {
