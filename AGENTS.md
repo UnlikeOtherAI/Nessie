@@ -204,6 +204,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - **Admin** (`admin/`, default port 5455) — full product interface for operators and knowledge workers
 - **Desktop** (`desktop/`) — Tauri shell for the hosted admin. Developer ID releases include the local executor; the sandboxed Mac App Store/TestFlight variant deliberately does not. Signing policy and build recipes: [docs/standards/build-and-release.md](docs/standards/build-and-release.md).
 - **Web** (`web/`) — public landing page only
+- **DeepWater iOS** (`ios/`) — standalone SwiftUI research client for iPhone, iPad and Mac Catalyst; build, OAuth hosting and native tests: [docs/deepwater-ios.md](docs/deepwater-ios.md).
 - **Packages** (`packages/`) — shared runtime, scheduling, policy, and type libraries
 - **Guardrails** ([docs/architecture.md](docs/architecture.md)) — things to avoid when creating files, organizing code, sharing logic, and preserving security/testability boundaries
 
