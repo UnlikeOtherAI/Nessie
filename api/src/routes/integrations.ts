@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 
 import { registerDeepWaterArtifactRoutes } from './integrations/deep-water-artifacts.js'
+import { registerDeepWaterEventRoutes } from './integrations/deep-water-events.js'
 import { registerExternalAgentProductRoutes } from './integrations/external-agent.js'
 import { registerIntegrationHandoffRoutes } from './integrations/handoffs.js'
 import { registerIntegrationProductRoutes } from './integrations/products.js'
@@ -11,6 +12,7 @@ export const registerIntegrationRoutes = (app: FastifyInstance, deps: RouteDeps)
   registerIntegrationProductRoutes(app, deps)
   registerDeepWaterArtifactRoutes(app, deps)
   registerResearchRunRoutes(app, deps)
+  registerDeepWaterEventRoutes(app, deps)
   registerIntegrationHandoffRoutes(app, deps)
   registerExternalAgentProductRoutes(app, deps)
 }
