@@ -168,7 +168,7 @@ dbTest('move carries a folder\'s children and re-homes their bytes at zero net c
     const folderId = await publishedPage(seeded, {
       spaceId: seeded.personalSpaceId,
       title: 'Contracts',
-      body: '<p>Contracts folder overview.</p>',
+      body: '',
       kind: 'folder',
     })
     const childId = await publishedPage(seeded, {
@@ -296,7 +296,7 @@ dbTest('copy makes a new document with one version and its own bytes', async () 
     const folderId = await publishedPage(seeded, {
       spaceId: seeded.personalSpaceId,
       title: 'Contracts',
-      body: '<p>Contracts folder overview.</p>',
+      body: '',
       kind: 'folder',
     })
     const childId = await publishedPage(seeded, {
