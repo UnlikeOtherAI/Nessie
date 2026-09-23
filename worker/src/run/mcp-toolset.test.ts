@@ -555,6 +555,7 @@ test('suppressed handoff calls do not record connector usage without a transport
     { organizationId: 'org-1', actorId: 'agent-1' },
     {
       deepWaterHandoffGuard: {
+        bound: true,
         assertCompletion: () => undefined,
         dispatchDeepWater: async () => ({
           deliveryToken: null,
@@ -598,6 +599,7 @@ test('pre-transport fatal handoff errors do not record connector usage', async (
     { organizationId: 'org-1', actorId: 'agent-1' },
     {
       deepWaterHandoffGuard: {
+        bound: true,
         assertCompletion: () => undefined,
         dispatchDeepWater: async () => {
           throw new DeepWaterHandoffInvariantError('handoff-run-1')

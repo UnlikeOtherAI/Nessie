@@ -224,6 +224,7 @@ const deps = (
 })
 
 const quietGuard = () => ({
+  bound: false,
   assertCompletion: () => undefined,
   dispatchDeepWater: async () => {
     throw new Error('not used')

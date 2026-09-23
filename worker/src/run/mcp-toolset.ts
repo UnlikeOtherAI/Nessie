@@ -24,6 +24,7 @@ import {
   type McpToolsetView,
 } from './mcp-toolset-deferred.js'
 import type { DeepWaterHandoffGuard } from './deepwater-handoff-guard.js'
+import type { DeepWaterRunBinder } from './deepwater-run-binder.js'
 import {
   addDeepWaterIdentityHeaders,
   isManagedDeepWaterCatalog,
@@ -165,6 +166,8 @@ export const buildMcpToolset = async (
     /** Test seam for the one worker-side transport call. */
     dispatchMcpTool?: typeof dispatchTool
     deepWaterHandoffGuard?: DeepWaterHandoffGuard
+    /** Binds every DeepWater call outside a launcher handoff turn to its product run. */
+    deepWaterRunBinder?: DeepWaterRunBinder
     ledgerIdentity?: LedgerIdentityService | null
     secretResolver?: SecretResolver
     inlineToolLimit?: number
@@ -381,18 +384,29 @@ export const buildMcpToolset = async (
           secret: null,
         })
       }
-      const guarded = target.deepWater && options.deepWaterHandoffGuard
+      // A launcher handoff turn belongs to its guard; every other DeepWater
+      // call to the run binder (N9.2). The two never see the same call.
+      const guarded = target.deepWater && options.deepWaterHandoffGuard?.bound
         ? await options.deepWaterHandoffGuard.dispatchDeepWater(
             target.originalToolName,
             toolCallId,
             args,
             dispatchTarget,
           )
-        : {
-            deliveryToken: null,
-            result: await dispatchTarget(toolCallId, args),
-            transportInvoked: true,
-      }
+        : target.deepWater && options.deepWaterRunBinder
+          ? {
+              deliveryToken: null,
+              result: (await options.deepWaterRunBinder.dispatch(
+                target.originalToolName,
+                toolCallId,
+                args,
+                dispatchTarget,
+              )).result,
+            }
+          : {
+              deliveryToken: null,
+              result: await dispatchTarget(toolCallId, args),
+            }
       const { deliveryToken, result } = guarded
       // A user-specific credential can make its tool result private even when
       // the agent and destination are shared. Record this immediately before

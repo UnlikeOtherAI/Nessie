@@ -15,6 +15,7 @@ import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
+import { createRunDeepWaterBinder } from '../deepwater-run-binder.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
 import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../tool-policy.js'
 import {
@@ -321,6 +322,7 @@ export const prepareRunExecution = async (
       {
         consumedSources: context.consumedSources,
         deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+        deepWaterRunBinder: createRunDeepWaterBinder(deps, context, payload.actorContext),
         ledgerIdentity: deps.ledgerIdentity,
         secretResolver: deps.mcpSecrets?.resolver,
       },
