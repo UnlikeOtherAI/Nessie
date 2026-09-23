@@ -47,7 +47,6 @@ import {
   loadTicketWorkRunFacts,
   TICKET_WORK_PERSON_TOOL_IDS,
   TICKET_WORK_PROJECT_TOOL_IDS,
-  ticketWorkDisclosureViewer,
 } from './ticket-work-setup.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -414,12 +413,12 @@ export const prepareRunExecution = async (
       userId: effectiveUserId,
     })
     : undefined
-  const viewer = ticketWorkDisclosureViewer(await resolveDisclosureViewer(
+  const viewer = await resolveDisclosureViewer(
     deps.prisma,
     payload,
     context.channel.organizationId,
     liveEntitlements,
-  ), ticketWork)
+  )
   const conversation = await loadConversation(deps.prisma, {
     consumedSources: context.consumedSources,
     files: fileServiceFor(deps.prisma),
@@ -429,8 +428,8 @@ export const prepareRunExecution = async (
     ...(ticketWorkRun ? { ticketWorkAgentId: context.agent.id } : {}),
     viewer,
   })
-  // Every kickoff is built from the ticket, so everything the run writes
-  // carries the ticket's project basis.
+  // Every kickoff is built from the ticket: the run has read its project, so
+  // what it writes outside that project's audience carries the project's basis.
   if (ticketWork) context.consumedSources.add({ scopeId: ticketWork.projectId, scopeType: 'project' })
   // Mail is not a Message row, so a run woken by email would otherwise see only
   // the one-line reference. This is also where its disclosure scope is fed.

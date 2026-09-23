@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import type { DisclosureViewer } from '@nessie/runtime'
 import {
   TICKET_WORK_PURPOSE,
   TICKET_WORK_STEER_METADATA_KEY,
@@ -22,8 +21,9 @@ import {
  * - its conversation is the agent's own replies and the messages people who
  *   can edit the board wrote in the thread (stamped `ticketWorkSteer`), never
  *   anything else a room might hold;
- * - everything it writes carries its ticket's project basis, because every
- *   kickoff is built from that ticket.
+ * - it starts having read its ticket's project, because every kickoff is built
+ *   from that ticket: what it writes outside that project's audience carries
+ *   the project's basis.
  */
 
 /**
@@ -93,21 +93,6 @@ export const loadTicketWorkRunFacts = async (
   })
   return work ? { workId, ...work } : null
 }
-
-/**
- * A `ticket.work` run reads as its agent, whose own scopes are its bindings
- * and hierarchy. It is admitted to its ticket's project through its binding —
- * its tools read that project's tickets, and everything it writes carries the
- * project's basis — so it may re-read what it derived from that project, its
- * own earlier replies in the work thread first. Nothing else widens.
- */
-export const ticketWorkDisclosureViewer = (
-  viewer: DisclosureViewer,
-  facts: TicketWorkRunFacts | null,
-): DisclosureViewer =>
-  facts && viewer.kind === 'agent'
-    ? { ...viewer, scopes: [...viewer.scopes, { scopeId: facts.projectId, scopeType: 'project' }] }
-    : viewer
 
 /**
  * The messages a `ticket.work` run's conversation admits: the agent's own
