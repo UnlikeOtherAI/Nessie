@@ -36,6 +36,7 @@ import {
   MAX_COMPACTIONS_PER_RUN,
 } from './context-window.js'
 import { ToolCircuitBreaker } from './circuit-breaker.js'
+import { buildToolImagesMessage } from './tool-images.js'
 import { truncateToolResult } from './tool-util.js'
 import { restoreLoopCounts } from './tool-loop-detection.js'
 import {
@@ -507,6 +508,10 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       }, 'tool_result'))
       tr.acknowledgeDelivery?.()
     }
+    // The batch's pictures, as references, in the one turn a provider takes
+    // them on. Its bytes are read in only when a provider input is built.
+    const toolImages = buildToolImagesMessage(toolResults)
+    if (toolImages) messages.push(coverProviderInputComponent(toolImages, 'tool_images'))
     // The batch is closed: every result is in the transcript, so from here a
     // snapshot resumes at the next iteration rather than re-entering this one.
     markDispatchBoundary(null)

@@ -1,6 +1,7 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
 import { circuitBreakerKey, ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
+import type { ToolImageRef } from './tool-images.js'
 import { countToolCall, strongerNudge } from './tool-loop-detection.js'
 import { summarizeToolInput } from './tool-util.js'
 
@@ -20,6 +21,8 @@ export type ExecutedToolResult = {
   /** See `AgenticToolResult.correctable`: never counted by the circuit breaker. */
   correctable?: true
   deliveredToConversation?: boolean
+  /** See `AgenticToolResult.imageRefs`. */
+  imageRefs?: ToolImageRef[]
   inputSummary: string
   output: string
   pendingApproval?: ToolApprovalSuspension

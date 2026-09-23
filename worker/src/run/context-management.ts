@@ -1,5 +1,7 @@
 import type { ProviderMessage, ToolSchemaDescriptor } from '@nessie/runtime'
 
+import { isToolImagesMessage, TOOL_IMAGE_TURNS_SHOWN } from './tool-images.js'
+
 export const estimateTokens = (text: string): number =>
   Math.ceil(text.length / 4)
 
@@ -15,7 +17,10 @@ export const estimateToolSchemaTokens = (tools: ToolSchemaDescriptor[]): number 
 // thread full of photos triggers compaction instead of overflowing the model.
 const IMAGE_TOKEN_ESTIMATE = 1500
 
-export const estimateMessageTokens = (msg: ProviderMessage): number => {
+// A tool-images turn holds references, and its pictures are read in when the
+// provider input is built (`tool-images.ts`), so they are counted from the
+// references — unless the turn is one too old to carry them any more.
+export const estimateMessageTokens = (msg: ProviderMessage, toolImagesShown = true): number => {
   let content = ''
   let imageTokens = 0
   if (msg.role === 'assistant') {
@@ -27,17 +32,24 @@ export const estimateMessageTokens = (msg: ProviderMessage): number => {
     content = msg.content
     if (msg.role === 'user' && msg.images) {
       imageTokens = msg.images.length * IMAGE_TOKEN_ESTIMATE
+    } else if (isToolImagesMessage(msg) && toolImagesShown) {
+      imageTokens = msg.toolImages.length * IMAGE_TOKEN_ESTIMATE
     }
   }
   return estimateTokens(content) + imageTokens + 4
 }
 
-export const estimateMessagesTokens = (messages: ProviderMessage[]): number =>
-  messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0)
+export const estimateMessagesTokens = (messages: ProviderMessage[]): number => {
+  const shown = new Set<ProviderMessage>(
+    messages.filter((msg) => isToolImagesMessage(msg)).slice(-TOOL_IMAGE_TURNS_SHOWN),
+  )
+  return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg, shown.has(msg)), 0)
+}
 
 // Closed units of context: an assistant turn that requested tool calls stays
-// glued to its tool results. Every context operation (trim, compaction) works
-// on groups so a tool result can never be orphaned from its call.
+// glued to its tool results, and to the turn carrying their images. Every
+// context operation (trim, compaction) works on groups so a tool result can
+// never be orphaned from its call.
 export const groupMessages = (messages: ProviderMessage[]): ProviderMessage[][] => {
   const groups: ProviderMessage[][] = []
   let i = 0
@@ -56,6 +68,10 @@ export const groupMessages = (messages: ProviderMessage[]): ProviderMessage[][] 
         } else {
           break
         }
+      }
+      if (j > i + 1 && j < messages.length && isToolImagesMessage(messages[j]!)) {
+        group.push(messages[j]!)
+        j++
       }
       groups.push(group)
       i = j
