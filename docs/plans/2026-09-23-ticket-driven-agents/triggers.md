@@ -49,11 +49,13 @@ did not start. A person who can edit the board can start it."* Tests pin
 three cases, each starting nothing: an agent's `ticket_move` into the column,
 an API-token move, and an agent's `ticket_create` straight into the column.
 
-A **follow** wake follows the same rule. It fires only for events authored by
-a person (origin `session`) who can edit the board. The people who can steer
-work are exactly the people who can start it. An event from an agent, a token,
-a source or an external provider never wakes the work. The agent still sees
-that event when it reads the ticket, labelled as untrusted (see
+A **follow** wake follows the same rule. It fires for events authored by a
+person (origin `session`) who can edit the board and, only when the trigger
+sets `follow.includeSourceEvents` (see [Board watchers](#board-watchers)), for
+source-origin events. An event from an agent, a token, an external provider or
+a source the trigger did not opt in never wakes the work, and a source event
+never picks it up. The agent still sees that event when it reads the ticket,
+labelled as untrusted (see
 [ticket-work.md](ticket-work.md#what-every-wake-says)).
 
 ## `ticket_changed`
@@ -78,6 +80,7 @@ not hand-written in `builtin-agent-tools.ts`. The shape:
     kinds: Array<'comment' | 'description' | 'moved' | 'thread_message' | 'document'
                | 'priority' | 'labels' | 'assignee'>,
     // default: comment, description, moved, thread_message, document
+    includeSourceEvents?: boolean, // default false; see Board watchers
   },
   endOn: Array<{ category: 'todo' | 'done' } | { id }>,   // default: every todo- and done-category column
   quietWakeMinutes: number | null, // default 30; see ticket-work.md
