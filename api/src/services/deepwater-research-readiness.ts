@@ -59,19 +59,30 @@ export const resolveDeepWaterRequesterIdentity = async (
 export const isLedgerConfiguredForDeepWater = (ledgerIdentity: LedgerIdentityService | null): boolean =>
   Boolean(process.env[NESSIE_LEDGER_APP_API_KEY_ENV]?.trim()) && ledgerIdentity !== null
 
-export const resolveDeepWaterResearchState = async (
+/** Readiness, with the identity a brief would capture when it is ready. */
+export type DeepWaterResearchAccess =
+  | { state: 'ready'; identity: DeepWaterRequesterIdentity }
+  | { state: Exclude<DeepWaterResearchReadinessState, 'ready'>; identity: null }
+
+/**
+ * The one order every doorway and the brief API decide readiness in: the
+ * team's switch and connector, then Nessie's own Ledger configuration, then
+ * the person's identity — so a person is always told the remedy that comes
+ * first, whichever surface they ask from.
+ */
+export const resolveDeepWaterResearchAccess = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: { teamId: string; ledgerIdentity: LedgerIdentityService | null },
-): Promise<DeepWaterResearchReadinessState> => {
+): Promise<DeepWaterResearchAccess> => {
   const connector = await readDeepWaterTeamConnector(prisma, {
     organizationId: actorContext.tenant.organizationId,
     teamId: input.teamId,
   })
-  if (connector.state !== 'ready') return connector.state
-  if (!isLedgerConfiguredForDeepWater(input.ledgerIdentity)) return 'unavailable'
+  if (connector.state !== 'ready') return { state: connector.state, identity: null }
+  if (!isLedgerConfiguredForDeepWater(input.ledgerIdentity)) return { state: 'unavailable', identity: null }
   const identity = await resolveDeepWaterRequesterIdentity(prisma, actorContext, input.teamId)
-  return identity ? 'ready' : 'account_not_linked'
+  return identity ? { state: 'ready', identity } : { state: 'account_not_linked', identity: null }
 }
 
 export const resolveDeepWaterResearchReadiness = async (
@@ -79,7 +90,7 @@ export const resolveDeepWaterResearchReadiness = async (
   actorContext: AuthorizedActionContext,
   input: { teamId: string; ledgerIdentity: LedgerIdentityService | null },
 ): Promise<DeepWaterResearchReadiness> => ({
-  state: await resolveDeepWaterResearchState(prisma, actorContext, input),
+  state: (await resolveDeepWaterResearchAccess(prisma, actorContext, input)).state,
   // Turning DeepWater on or off for the team is owner-only (the team-enablement
   // route), so this is the owner role, not owner-or-admin.
   viewerCanChangeTeam: actorContext.actor.roles?.includes('owner') ?? false,

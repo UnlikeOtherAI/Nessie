@@ -414,7 +414,12 @@ connector, and the same projection applies every answer.
   `deep_water.brief.action` job (`/deliver`: `deep_water.run.deliver`) in the
   same transaction, which also brings the watch's next read to 5 s, and is
   answered 202. The job carries the acting person's live UOA identity from the
-  request and the instant Nessie accepted it (`acceptedAt`). A reply is judged against the revision Nessie last saw
+  request and the instant Nessie accepted it (`acceptedAt`). A person opens a
+  brief only when the team is ready, decided in the order readiness shows it
+  (`resolveDeepWaterResearchAccess`: the team's switch and connector, Nessie's
+  Ledger configuration, then the person's own link), so every surface names
+  the same first remedy; the switch and connector are read again under the
+  transition lock. A reply is judged against the revision Nessie last saw
   (`DEEP_WATER_BRIEF_REVISION_CONFLICT` with `currentRevision`); Start counts
   the pillars it carries, so hand-written pillars launch even after the planner
   failed (`DEEP_WATER_BRIEF_INCOMPLETE` only when neither has one). Words sent

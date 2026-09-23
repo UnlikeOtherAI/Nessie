@@ -30,7 +30,7 @@ import {
   toDeepWaterResearchRunViews,
   type DeepWaterResearchViewer,
 } from '../../services/deepwater-research-access.js'
-import { isLedgerConfiguredForDeepWater } from '../../services/deepwater-research-readiness.js'
+import { resolveDeepWaterResearchAccess } from '../../services/deepwater-research-readiness.js'
 import type { RouteDeps } from '../types.js'
 import { registerResearchRunCancelRoute } from './research-run-cancel.js'
 import { resolveBriefOrigin } from './research-run-origin.js'
@@ -148,9 +148,16 @@ export const registerResearchRunActionRoutes = (app: FastifyInstance, deps: Rout
       if (replayed) return sendBrief(reply, viewer, replayed, 200)
 
       assertNoSecrets([body.topic, body.context, ...(body.pillars ?? [])])
+      // Readiness in the order every doorway shows it, before the origin is
+      // resolved (which may set up the person's Personal Assistant); the team
+      // switch and connector are checked again under the transition lock.
+      const access = await resolveDeepWaterResearchAccess(prisma, actorContext, {
+        teamId,
+        ledgerIdentity: deps.ledgerIdentity,
+      })
+      if (access.state !== 'ready') throw notReady(access.state)
+      const { identity } = access
       const origin = await resolveBriefOrigin(deps, actorContext, teamId, body.origin)
-      const identity = await requireRequesterIdentity(prisma, actorContext, teamId)
-      if (!isLedgerConfiguredForDeepWater(deps.ledgerIdentity)) throw notReady('unavailable')
       const context = body.context?.trim() ?? ''
       let created
       try {
