@@ -31,9 +31,10 @@ A person's local-apps launch opens a **conversation lease**. While it is live,
 that person's own later messages in the same conversation bind each new run to
 the same executor's pair again — afresh, through the launch's own binder, with
 every check re-run. Nothing else carries it: not another member's message, not
-Continue or Restart pressed by someone else, not a relayed, workflow or trigger
-post. It lasts two hours idle and twelve at most, and ends when the person or a
-machine administrator presses End, the executor is paused or revoked, the
+a Continue, Restart, card answer or approval pressed by someone else, not a
+relayed, workflow or trigger post. It lasts two hours idle and twelve at most,
+and ends when the person or a machine administrator presses End, the executor
+is paused, drained or revoked (pairing the machine again included), the
 agent's access to the pair is withdrawn, or a review drops either key. The
 browser, coding and command bundles never carry, because each holds a session
 no second run may inherit.

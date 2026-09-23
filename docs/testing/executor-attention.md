@@ -39,13 +39,17 @@ its Navigation Transitions job:
 | Conversation leases | `NESSIE_EXECUTOR_LEASE_E2E_FIXTURE=1` |
 
 `pnpm --filter @nessie/admin test:e2e:executor-lease` renders the real
-composer, with the lease chip the launcher hook hands it, and the machine
+composer, with the lease chip the launcher hook hands it, a reply panel's
+composer with the chip scoped to its root (`?view=reply&root=`), and the machine
 detail page's Activity tab, over runner-supplied API answers. It pins that the
 holder sees "Minis · local apps · until HH:MM · End" beside Run on executor
 only once the composer opens (its at-rest height is the member's), that
 another member asking about the same thread sees nothing, that End posts for
 that lease and the chip goes, that a phone folds the chip into a dot and the
-launcher dialog carries the lease and its End, and that the machine's
+launcher dialog carries the lease and its End, that a room's launch — which
+carries only in its own reply thread — puts no chip and no dot on the room's
+composer but a chip with a whole End in that reply panel's composer at desktop
+and phone width, and none in another reply thread's, and that the machine's
 *Local apps in use* list names agent, conversation, person and last use — or
 says it may not — with End on screen at phone width. Screenshots go to
 `e2e/screenshots/executor-lease/`. Who gets which answer is the API's job and

@@ -233,8 +233,12 @@ summary and points here; **this file is the rule**.
   window: the holder's executor lease chip ("Minis · local apps · until 21:40 ·
   End", beside Run on executor) shows where it fits and folds into a dot on Run
   on executor where it does not, with the launcher dialog carrying the lease
-  and its End. A status like that lives in the toolbar precisely so the
-  composer at rest never grows a line for it.
+  and its End. A toolbar with no Run on executor to fold into — a reply
+  panel's — keeps the chip at every width and lets its label give way instead,
+  End always whole. A status like that lives in the toolbar precisely so the
+  composer at rest never grows a line for it, and only in the toolbar of a
+  composer it is true of: a lease chip stands beside the composer whose
+  messages would carry the lease, never beside one whose would not.
 - **One dialog shell.** Every centred modal is `components/shared/Dialog.tsx`
   on `useOverlay` (`ConfirmDialog` builds on it); drawers are `Sheet`, menus
   and pickers `Popover`, toasts `Card`. The overlay family, its layer scale,

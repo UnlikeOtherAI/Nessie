@@ -131,7 +131,9 @@ file is the rule**.
   the composer's **Run on executor**, or — for the local-apps pair only — by a
   later message of their own in the same conversation while their
   conversation lease is live. "That person started this run" is structural:
-  the job's actor is the holder and nobody else, the run passes the
+  the job's actor is the holder and nobody else, a continuation's press (the
+  job's `resumedByUserId` — a card answer or an approval resumes as the parked
+  run's actor, whoever pressed) is the holder's too, the run passes the
   interactive predicate above, and the trigger and every message of a drained
   batch carry the person-composer marker; the full definition is in
   [conversation-leases.md](../executor-protocol/conversation-leases.md). No

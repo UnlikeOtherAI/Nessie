@@ -29,7 +29,7 @@ and never carry: no second run inherits their session
 | `organization_id`, `executor_id`, `agent_id`, `actor_user_id` | the machine, the agent, and the launching person — the holder |
 | `thread_id`, `root_message_id` | the conversation: the launch message is the root the lease covers |
 | `launch_run_id` | the run the launch created |
-| `operation_keys` | CHECK: exactly `{mcp.tools, mcp.call}` |
+| `operation_keys` | CHECK: exactly `{mcp.tools, mcp.call}`, and never NULL (every array operator is NULL on a NULL array, which a CHECK would pass) |
 | `created_at`, `last_used_at` | |
 | `idle_expires_at` | `last_used_at + 2 h`, moved on every carry and every executor command sent under the lease |
 | `absolute_expires_at` | `created_at + 12 h`; it never moves, and launching again creates a new lease |
@@ -63,10 +63,14 @@ holds**, and otherwise binds nothing and returns a reason:
    workflow sends, inbound email, integrations, trigger fires and
    system-authored messages never carry it. This is an allowlist, not a list
    of exclusions to keep in sync.
-5. For a drained batch, **every** message in it satisfies 4 (the drain passes
-   the batch's message ids; a mixed batch carries nothing and says so).
-6. For Continue, Restart and approval resume, the job's actor (the presser,
-   per `run-policy-replay.ts`) satisfies 2; the replayed trigger satisfies 4.
+5. For a drained batch, **every** message in it satisfies 4 and 7 (the drain
+   passes the batch's message ids; a mixed batch carries nothing and says so).
+6. For Continue and Restart the job's actor is the presser (per
+   `run-policy-replay.ts`) and satisfies 2. A card answer or an approval
+   resumes as the **parked run's own actor**, whoever pressed, so every
+   continuation must also name its presser — the job's `resumedByUserId`,
+   which only `resumeSuspendedRun` sets, from the server-side press — and that
+   must be the holder. The replayed trigger satisfies 4 in every case.
 7. The new run's conversation root equals the lease's `root_message_id` —
    replies in the launch's reply thread, or the same agent conversation. A
    top-level post elsewhere in the channel starts no carried run.
@@ -81,6 +85,10 @@ implementation — `resolveExecutorAvailabilityCandidates` with the internal
 `executorId` pin, consumed through `bindExecutorCandidateBundleInTransaction` —
 and task-set search binds its processor's machine through the same function.
 Refusals are `ExecutorError`s caught there; run setup never throws for them.
+The carry runs on every agent's every turn, so run setup also catches anything
+else it throws — a lost database connection — logs it, and goes on with the
+bindings the run already has and no reach facts, rather than failing a turn
+that never needed the machine.
 
 How the code holds the conditions that are easy to get wrong:
 
@@ -96,7 +104,16 @@ How the code holds the conditions that are easy to get wrong:
   written in the same transaction by that person's launch, attests it.
 - **The batch (5).** When a run picks up messages that queued while another was
   running, the drain in `packages/db/src/thread-serialization.ts` lists every
-  one of their ids in the job's `batchMessageIds`.
+  one of their ids in the job's `batchMessageIds`. The drain batches the
+  agent's whole container thread across reply roots, so outside a conversation
+  with the agent each batched message must also sit in the lease's reply
+  thread: the holder's own top-level post elsewhere in the room would otherwise
+  ride along into a carried run.
+- **The press (6).** `resumeSuspendedRun` (`api/src/services/run-resume-core.ts`)
+  takes a required `resumedByUserId` and stamps it on the continuation's job:
+  the Continue presser, the card's respondent, the approval's resolver. Only a
+  uuid is stamped; a continuation with none — the worker's own auto-continue,
+  which is not interactive anyway — is nobody's press and carries nothing.
 - **The conversation (7).** In a thread that is a conversation with this agent,
   the whole thread is the conversation; anywhere else the new run's root is its
   trigger's `rootMessageId`, or the trigger itself.
@@ -106,12 +123,18 @@ names the machine:
 
 | reason | conditions |
 |---|---|
-| `actor_not_holder` | 2 and 6 — someone else acts, or pressed Continue or Restart |
+| `actor_not_holder` | 2 and 6 — someone else acts, or pressed the Continue, Restart, card answer or approval |
 | `not_interactive` | 3 |
 | `trigger_not_person` | 4, including a replayed trigger |
-| `batch_not_person` | 5 |
+| `batch_not_person` | 5 — a batched message that is not the holder's own, or not in this conversation |
 | `lease_ended` | 8 — ended, or past either window (an expiry found here is recorded) |
 | `executor_unavailable` | the fresh resolution or binding was refused, or the agent is no longer in the room |
+
+**A refusal of a live lease is recorded.** It is written to the audit chain as
+`executor.run.carry_refused` (§6), so whoever asks why a follow-up lost machine
+tools, or whether someone else tried to reach a holder's lease, has a row to
+read. A lease that has ended is recorded once, by its end, and not again by
+every later turn in its conversation. Writing the row can never fail the run.
 
 **Dispatch checks again.** `assertExecutorCommandBindingCurrent` treats a
 binding whose lease has ended or run out as fenced, so a carried run that
@@ -127,8 +150,10 @@ transition that ends it.
 | what happens | `ended_reason` | where |
 |---|---|---|
 | The holder, or someone who manages the executor, presses End | `person` | `endExecutorConversationLease`, `POST /api/executor-leases/:leaseId/end` |
-| The executor is paused, drained or resumed | `executor_paused` | `executor-lifecycle.ts` — resuming does not bring a lease back |
+| The executor is paused | `executor_paused` | `executor-lifecycle.ts` — resuming ends nothing and brings no lease back |
+| The executor is drained | `executor_drained` | `executor-lifecycle.ts` |
 | The executor is revoked | `executor_revoked` | `executor-lifecycle.ts` |
+| The machine pairs again, a pairing is cancelled or rejected on the machine, or a pairing code expires — each revokes the executor row | `executor_revoked`, by the system actor `executor-pairing` | `revokePairingExecutor` (`executor-code-proof.ts`); only pairing again can reach a row that ever connected, and `POST /api/executor-pairing/start` tells those holders after commit |
 | A whole-suite deny, a deny of `mcp.tools` or `mcp.call`, or removal from a private executor's roster | `access_revoked` | `executor-access-mutations.ts` |
 | A descriptor review leaves the machine without both `mcp.*` keys | `descriptor_narrowed` | `reviewExecutorDescriptorInTransaction` |
 | The same person launches local apps again for the same agent and conversation | `replaced` | `createExecutorConversationLeaseInTransaction` |
@@ -146,9 +171,15 @@ The lease exists for its holder and for the people who manage the machine, and
 for nobody else.
 
 - The holder sees their own live leases in a thread — agent, executor label,
-  launched at, expires at — as a chip beside **Run on executor** in the
-  composer. Every other reader gets an empty list, so a shared room never
-  learns that a lease or a private executor exists.
+  launched at, expires at — as a chip in the toolbar of the composer whose
+  messages would carry the lease, and of no other: a chip beside a composer
+  that does not carry would promise reach the agent will not have. Inside a
+  conversation with the agent the record says `wholeThread` and the chip sits
+  beside **Run on executor** in the main composer. A launch in an ordinary room
+  carries only in its own reply thread, so its chip is in that reply panel's
+  composer and the room's composer shows nothing. Every other reader gets an
+  empty list, so a shared room never learns that a lease or a private executor
+  exists.
 - The executor's administrators see its live leases on the executor page's
   **Activity** tab, with End. The agent's name and the conversation's label are
   shown only where their ordinary visibility rules already would.
@@ -198,13 +229,15 @@ started, ran or finished something you did not."*
 
 ## 6. Audit
 
-Three actions join `executor.run.launched` in the audit chain, each written
-inside the transaction it records:
+Four actions join `executor.run.launched` in the audit chain. The first three
+are written inside the transaction they record; a refused carry binds nothing,
+so its row is written on its own and outcome `denied`, with the refusal reason:
 
 | action | resource | metadata |
 |---|---|---|
 | `executor.lease.created` | the lease | agent, executor, launch run, launch bindings, root message, thread |
 | `executor.run.carried` | the new run | lease, predecessor run, new run, binding ids, trigger message, holder, agent |
+| `executor.run.carry_refused` | the new run | lease, reason, holder, the press behind a continuation (`resumedByUserId`), trigger message, agent, executor — never its label |
 | `executor.lease.ended` | the lease | reason, who ended it, holder, agent, executor, thread |
 
 The predecessor of a carried run is the run it continues or restarts, otherwise
@@ -217,7 +250,8 @@ it.
 ```bash
 DATABASE_URL=… pnpm --filter @nessie/executor-manage test
 DATABASE_URL=… pnpm --filter @nessie/api exec node --test --import tsx \
-  test/executor-conversation-lease-postgres.test.ts test/executor-lease-routes.test.ts
+  test/executor-conversation-lease-postgres.test.ts test/executor-lease-routes.test.ts \
+  test/executor-lease-resume-paths.test.ts
 pnpm --filter @nessie/worker exec node --test --import tsx \
   src/run/execute/executor-reach-facts.test.ts src/run/execute/prompt.test.ts
 DATABASE_URL=… pnpm --filter @nessie/worker exec node --test --import tsx \
@@ -225,8 +259,12 @@ DATABASE_URL=… pnpm --filter @nessie/worker exec node --test --import tsx \
 pnpm --filter @nessie/admin test:e2e:executor-lease
 ```
 
-`executor-lease-carry.test.ts` and `executor-lease-ending.test.ts` drive every
-carry, refusal and end against a real database. The worker's facts suites pin
-every variant and that none of them enters the cache anchor; its database
-suite pins where the machine's name may appear. The fixture suite pins the
-holder's chip, its absence for everyone else, and End.
+`executor-lease-carry.test.ts`, `executor-lease-ending.test.ts` and
+`executor-lease-pairing.test.ts` drive every carry, refusal and end against a
+real database. `executor-lease-resume-paths.test.ts` drives Continue, Restart,
+an approval and a card answer through their real services with another member
+pressing, and hands the job each one enqueued to the carry. The worker's facts
+suites pin every variant and that none of them enters the cache anchor; its
+database suite pins where the machine's name may appear. The fixture suite pins
+the holder's chip in the composer that carries it and nowhere else, its absence
+for everyone else, and End.

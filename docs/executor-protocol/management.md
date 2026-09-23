@@ -65,8 +65,11 @@ the machine's administrators, that a lease exists.
 
 - `GET /api/executor-leases?threadId=` returns **only the viewer's own** live
   leases in that thread — `{id, agentId, executorLabel, threadId,
-  rootMessageId, launchedAt, expiresAt}`, where `expiresAt` is the earlier of
-  the idle and the absolute window. Everyone else, including the machine's own
+  rootMessageId, wholeThread, launchedAt, expiresAt}`, where `expiresAt` is the
+  earlier of the idle and the absolute window, and `wholeThread` is true inside
+  a conversation with the lease's agent, where everything the holder sends in
+  the thread carries it; otherwise only replies under `rootMessageId` do.
+  Everyone else, including the machine's own
   administrators, gets `[]` rather than a refusal, so the answer never confirms
   that a lease or a private executor exists in a shared room. A missing or
   malformed `threadId` is a 400.
@@ -78,28 +81,38 @@ the machine's administrators, that a lease exists.
 - `GET /api/executors/:executorId/leases` lists a machine's live leases for the
   people who may manage it (404 for everyone else), most recently used first
   and bounded at 50: `{id, agent: {id, name}, holderUserId, conversation:
-  {channelId, threadId, label}, launchedAt, lastUsedAt, expiresAt}`. Managing
-  the machine widens nothing else: `agent.name` is null unless the ordinary
-  agent entitlement (the Agents tab's rule) shows that agent to the reader, and
-  `conversation.label` is null unless the reader could open that conversation
-  under the participant rule — an owner's all-channels view does not count,
-  because a lease in someone's DM is theirs.
+  {channelId, threadId, label} | null, launchedAt, lastUsedAt, expiresAt}`.
+  Managing the machine widens nothing else: `agent.name` is null unless the
+  ordinary agent entitlement (the Agents tab's rule) shows that agent to the
+  reader, and `conversation` is null — not its label, not its channel or thread
+  id either — unless the reader could open that conversation under the
+  participant rule. An owner's all-channels view does not count, because a
+  lease in someone's DM is theirs, and even the id of a private room is more
+  than the rule lets them know.
 
 Every change to a lease is announced as `executor.lease.changed {leaseId,
 threadId}` on the **holder's** `user` realtime scope and nowhere else: from the
 launch that opens (or replaces) it, from End, from any confirmed access change
 that ends it (pause, revoke, a narrowed grant, a roster removal, a review that
 drops the pair — `confirmExecutorAccessChange` reports exactly the leases its
-transaction ended, which the route turns into notices after commit), from the
+transaction ended, which the route turns into notices after commit), from a
+machine pairing again (`POST /api/executor-pairing/start` revokes its previous
+executor row and tells the holders of the leases that ended with it), from the
 worker when a follow-up carries it forward and its window moves, and from the
 expiry sweep. The payload is ids only; the client's refetch of the first route
 is the read. A notice that fails to publish is logged and never fails the
 change it follows.
 
-The holder's surface is the composer: a chip beside **Run on executor** —
-"Minis · local apps · until 21:40 · End" — inside the toolbar, so the composer
-at rest stays one line. Where the toolbar has no room for it the chip folds into
-a dot on Run on executor, and the launcher dialog lists the same lease with its
-End. The administrators' surface is the **Activity** tab's *Local apps in use*
-list (agent, conversation, person, last used, End), above the machine's recent
+The holder's surface is the composer whose messages would carry the lease, and
+no other: a chip — "Minis · local apps · until 21:40 · End" — inside the
+toolbar, so the composer at rest stays one line. In a conversation with the
+agent (`wholeThread`) that is the main composer, beside **Run on executor**;
+where its toolbar has no room the chip folds into a dot on Run on executor. A
+launch in an ordinary room carries only in its own reply thread, so its chip is
+in that reply panel's composer, which has no Run on executor and keeps the chip
+at every width, its label giving way first; the room's main composer shows
+nothing, since a top-level post would not carry it. The launcher dialog lists
+every one of the holder's leases in the thread with its End. The
+administrators' surface is the **Activity** tab's *Local apps in use* list
+(agent, conversation, person, last used, End), above the machine's recent
 sessions.

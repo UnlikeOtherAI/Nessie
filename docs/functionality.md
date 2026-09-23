@@ -318,20 +318,23 @@ Root app layout:
   agent and conversation. While it is live, that person's own later messages
   there — replies in the launch's reply thread, or the same agent conversation
   — bind each new run to the same executor afresh, with every check re-run.
-  Another member's message, Continue or Restart pressed by someone else, a
-  drained batch holding anyone else's message, and relayed, workflow, email,
-  integration or trigger posts never carry it. No other executor bundle
-  carries at all.
+  Another member's message; a Continue, Restart, card answer or approval
+  pressed by someone else; a drained batch holding anyone else's message or a
+  post from elsewhere in the room; and relayed, workflow, email, integration
+  or trigger posts never carry it. No other executor bundle carries at all.
 - A lease lasts two hours idle and twelve at most. It ends when the holder or a
-  machine administrator presses End, when the executor is paused, drained,
-  resumed or revoked, when the agent's access to the pair is withdrawn, when a
-  review drops either key, when the person launches again, or when it runs
-  out. Each end is audited as `executor.lease.ended` with its reason, beside
-  `executor.lease.created` and `executor.run.carried`.
-- The holder sees their lease as a chip beside Run on executor ("Minis · local
-  apps · until 21:40 · End"); nobody else in the room sees that it exists. The
-  executor page's Activity tab lists the machine's live leases, with End, for
-  the people who manage it.
+  machine administrator presses End, when the executor is paused, drained or
+  revoked (a machine that pairs again revokes its previous executor), when the
+  agent's access to the pair is withdrawn, when a review drops either key,
+  when the person launches again, or when it runs out. Each end is audited as
+  `executor.lease.ended` with its reason, beside `executor.lease.created`,
+  `executor.run.carried` and — for a live lease that did not carry —
+  `executor.run.carry_refused`.
+- The holder sees their lease as a chip ("Minis · local apps · until 21:40 ·
+  End") in the composer whose messages carry it: beside Run on executor in a
+  conversation with the agent, and in the launch's reply thread in a room.
+  Nobody else in the room sees that it exists. The executor page's Activity
+  tab lists the machine's live leases, with End, for the people who manage it.
 - The agent is told its reach each turn in one system fact outside the cache
   anchor: the servers it can use, or that it has no machine tools and why, or
   how a person starts them. It names the machine only in the person's own DM.
