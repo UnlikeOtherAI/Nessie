@@ -9,11 +9,13 @@ import { TicketWorkWakeReasonSchema, type TicketWorkWakeReason } from './ticket-
  *
  * The stored configuration is the **resolved** form the server writes: the
  * board and the pickup columns by id, whatever name or category a person or
- * the Designer used to name them. The typed input union the Triggers editor
- * and `agent_trigger_create` accept extends this schema rather than defining
- * a second one, so the dispatcher and the writer can never read two shapes.
- * Unknown keys pass through: instructions, limits and the wake timings are
- * the editor's, and dispatch does not read them.
+ * the Designer used to name them. The typed input the Triggers editor and
+ * `agent_trigger_create` accept (`TicketChangedTriggerConfigSchema`,
+ * `trigger-configs.ts`) reuses this schema's follow and endOn fields rather
+ * than defining second ones, so the dispatcher and the writer can never read
+ * two shapes. Unknown keys pass through: limits and instructions are typed by
+ * `TicketChangedWorkConfigSchema` for the readers that need them, and dispatch
+ * does not read them.
  */
 const uuid = z.string().uuid()
 
@@ -105,6 +107,12 @@ export const DEFAULT_TICKET_END_ON: readonly TicketEndOn[] = [
   { category: 'done' },
 ]
 
+/** Shared by the stored config and the typed input (`trigger-configs.ts`). */
+export const TicketAssignOnPickupSchema = z
+  .boolean()
+  .default(true)
+  .describe('Assign an unassigned ticket to the agent when a person starts its work.')
+
 export const TicketChangedStoredConfigSchema = z
   .object({
     boardId: uuid.describe('The board whose tickets this trigger reacts to.'),
@@ -114,10 +122,7 @@ export const TicketChangedStoredConfigSchema = z
           .array(uuid)
           .min(1)
           .describe('Start-work columns: a person moving a ticket into one starts work.'),
-        assignOnPickup: z
-          .boolean()
-          .default(true)
-          .describe('Assign an unassigned ticket to the agent when a person starts its work.'),
+        assignOnPickup: TicketAssignOnPickupSchema,
       })
       .strict()
       .nullable()

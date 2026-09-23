@@ -89,8 +89,9 @@ export const AgentTriggerTypeSchema = z.enum([
   'webhook',
   'event',
   'interval',
-  // Known to the schema before anything may create one: every create surface
-  // refuses both until their typed configuration and dispatch ship
+  // `ticket_changed` has its typed configuration (`trigger-configs.ts`) and
+  // dispatch. `document_changed` is known to the schema before anything may
+  // create one: every create surface refuses it until its own ship
   // (`UNRELEASED_TRIGGER_TYPES` in @nessie/team-admin).
   'ticket_changed',
   'document_changed',
