@@ -1,4 +1,5 @@
-import { realpath } from 'node:fs/promises'
+import { access, realpath } from 'node:fs/promises'
+import { resolve } from 'node:path'
 
 import { isInsideDirectory } from '../workspace-paths.js'
 import { runCommand, type CommandRunner } from './agent-env.js'
@@ -122,13 +123,18 @@ export const reviewCodingSession = async (input: {
     ? undefined
     : text.split(/\r?\n/u).filter((line) => line.trim()).slice(0, max).map((line) => rewrite(line).slice(0, 200))
   const base = input.state?.baseCommit
-  const [branch, commits, diffStat, status, worktreeList] = await Promise.all([
+  const [branch, commits, diffStat, status, worktreeList, indexLock] = await Promise.all([
     git(['rev-parse', '--abbrev-ref', 'HEAD'], input.folder),
     base ? git(['log', '--oneline', '--no-decorate', `-n${COMMIT_LINES}`, `${base}..HEAD`], input.folder) : undefined,
     base ? git(['diff', '--stat', base], input.folder) : git(['diff', '--stat'], input.folder),
     git(['status', '--porcelain=v1', '-z', '--untracked-files=normal'], input.folder),
     git(['worktree', 'list', '--porcelain'], input.folder),
+    git(['rev-parse', '--git-path', 'index.lock'], input.folder),
   ])
+  // A git the agent's tree was killed in mid-commit leaves index.lock behind, and every later git command fails on it.
+  const indexLocked = indexLock?.trim()
+    ? await access(resolve(input.folder, indexLock.trim())).then(() => true, () => false)
+    : false
   const atStart = new Set((input.state?.worktreesAtStart ?? []).map((path) => path.toLowerCase()))
   const worktrees: Record<string, unknown>[] = []
   for (const worktree of parseWorktrees(worktreeList ?? '')) {
@@ -163,6 +169,7 @@ export const reviewCodingSession = async (input: {
     worktreesCreatedSinceStart: worktrees,
     pullRequests,
     lastTest: input.state?.lastTest ?? null,
+    ...(indexLocked ? { staleIndexLock: true } : {}),
     ...(Date.now() > deadline ? { incomplete: 'review_budget_exhausted' } : {}),
   }
 }

@@ -451,7 +451,9 @@ the session's folder within 20 s, in the same login-like environment the
 agents get (the MCP SDK's minimal `PATH` finds no Homebrew `gh` on macOS): branch, the base commit recorded at start,
 commits since, `git diff --stat`, uncommitted and untracked counts, worktrees
 created under the root since the start, `gh pr view` per branch when `gh` is
-installed, and the last test command with its exit code.
+installed, the last test command with its exit code, and `staleIndexLock` when a
+git killed mid-commit left `index.lock` behind, which every later git command
+would fail on.
 
 ## Verifying
 

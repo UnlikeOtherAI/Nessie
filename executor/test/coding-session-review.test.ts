@@ -51,6 +51,13 @@ test('the review reports commits, diff, uncommitted work and the worktrees creat
     }])
     assert.deepEqual(review.lastTest, { command: 'pnpm test', exitCode: 0 })
     assert.equal(JSON.stringify(review).includes(dir), false)
+    assert.equal(review.staleIndexLock, undefined)
+    // A git killed mid-commit leaves index.lock behind; the review says so, since every later git fails on it.
+    await writeFile(join(root, '.git', 'index.lock'), '')
+    const locked = await reviewCodingSession({
+      folder: root, rootCanonical: root, state, rewriter: createPathRewriter([{ name: 'repo', paths: [root] }]),
+    })
+    assert.equal(locked.staleIndexLock, true)
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
