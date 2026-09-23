@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 import {
-  DEEP_WATER_START_UNCONFIRMED,
+  DEEP_WATER_REAPED_FAILURE_CODES,
   DeepWaterScopeStateSchema,
   type DeepWaterScopeState,
   type DeepWaterTurnAuthor,
@@ -110,8 +110,9 @@ const TERMINAL_RUN_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set(
   'warning',
 ])
 
+/** A brief the reap gave up, never refused: a late confirmation still attaches it. */
 const isRevivable = (run: DeepWaterBriefRun): boolean =>
-  run.status === 'failed' && run.failureCode === DEEP_WATER_START_UNCONFIRMED
+  run.status === 'failed' && run.failureCode !== null && DEEP_WATER_REAPED_FAILURE_CODES.has(run.failureCode)
 
 /** N1: a run takes its Ledger research id only while nothing else could have. */
 const isAttachable = (run: DeepWaterBriefRun): boolean =>

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
+import { DeepWaterActiveRunRevocationError, guardDeepWaterPolicyRevocation } from '@nessie/mcp-manage'
 import { LedgerIdentityError, UOA_SUBJECT_FORBIDDEN_CODE, type UoaExchangeFailure } from '@nessie/runtime'
 import { DeepWaterNoticeMessageMetadataSchema, PushDispatchJobPayloadSchema } from '@nessie/schemas'
 
@@ -147,7 +148,8 @@ for (const [label, failure] of [
   })
 }
 
-withFixture('a lost agent scope start UOA refuses to replay is blocked and told, never reaped as unconfirmed', async (fixture) => {
+/** An agent's brief whose scope start was lost and whose replay UOA refused: blocked and told once. */
+const blockedAgentStart = async (fixture: WatchFixture) => {
   const brief = await fixture.insert('agent')
   fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403, code: UOA_SUBJECT_FORBIDDEN_CODE }))
   await watchDeepWaterRun(fixture.deps, brief)
@@ -161,17 +163,17 @@ withFixture('a lost agent scope start UOA refuses to replay is blocked and told,
   const [notice] = await fixture.prisma.message.findMany({ where: { threadId: fixture.ids.thread, role: 'assistant' } })
   assert.match(notice?.content ?? '', /agent working on your DeepWater research brief/)
   assert.match(notice?.content ?? '', /Sign in again, then choose Retry/)
+  return blocked
+}
 
-  // Past the confirm window it is still the requester's to renew, not DeepWater's failure.
-  await fixture.prisma.productIntegrationRun.update({
-    where: { id: brief.id },
-    data: { createdAt: new Date(Date.now() - 25 * 3_600_000) },
-  })
+withFixture('a lost agent scope start UOA refuses to replay is blocked and told, and their Retry replays it', async (fixture) => {
+  const brief = await blockedAgentStart(fixture)
+
+  // Inside the confirm window it is still the requester's to renew, not DeepWater's failure.
   await reapUnconfirmedDeepWaterBriefs(fixture.deps)
   const waiting = await fixture.read(brief.id)
   assert.equal(waiting.status, 'queued')
   assert.equal(waiting.failureCode, null)
-  assert.deepEqual(await noticeKinds(fixture, brief.id), ['identity_changed'])
 
   // Their Retry renews the identity and replays the call, which attaches it.
   fixture.failIdentity(false)
@@ -189,4 +191,58 @@ withFixture('a lost agent scope start UOA refuses to replay is blocked and told,
   assert.equal(resumed.deliveryBlockedReason, null)
   assert.equal(resumed.externalRunId, rs)
   assert.equal(resumed.status, 'drafting')
+})
+
+/** The open runs the team's DeepWater disable waits for (`removeDeepWaterTeamInstanceInTransaction`). */
+const holdsTeamConnector = async (fixture: WatchFixture) =>
+  (await fixture.prisma.productIntegrationRun.count({
+    where: {
+      connectorId: fixture.ids.connector,
+      organizationId: fixture.ids.organization,
+      productSlug: 'deep-water',
+      status: { in: ['queued', 'drafting', 'running', 'needs_setup'] },
+      teamId: fixture.ids.team,
+    },
+  })) > 0
+
+const guardAgentRevocation = (fixture: WatchFixture) => fixture.prisma.$transaction((tx) =>
+  guardDeepWaterPolicyRevocation(tx, {
+    organizationId: fixture.ids.organization,
+    teamId: fixture.ids.team,
+    mode: { kind: 'agent', agentId: fixture.ids.agent },
+  }))
+
+withFixture('a blocked agent brief nobody renews is closed after the window, told in its own words, and holds nothing open', async (fixture) => {
+  const brief = await blockedAgentStart(fixture)
+  assert.ok(await holdsTeamConnector(fixture), 'an open brief holds the team connector')
+  await assert.rejects(guardAgentRevocation(fixture), DeepWaterActiveRunRevocationError)
+
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: brief.id },
+    data: { createdAt: new Date(Date.now() - 25 * 3_600_000) },
+  })
+  await reapUnconfirmedDeepWaterBriefs(fixture.deps)
+  await reapUnconfirmedDeepWaterBriefs(fixture.deps)
+
+  const closed = await fixture.read(brief.id)
+  assert.equal(closed.status, 'failed')
+  assert.equal(closed.failureCode, 'start_identity_changed')
+  assert.equal(closed.deliveryBlockedReason, null, 'an ended brief offers no Retry')
+  assert.equal(closed.deliveredAt, null, 'a late confirmation can still attach it')
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['identity_changed', 'start_identity_changed'], 'told once more')
+  const [, notice] = await fixture.prisma.message.findMany({
+    where: { threadId: fixture.ids.thread, role: 'assistant' },
+    orderBy: { createdAt: 'asc' },
+  })
+  assert.match(notice?.content ?? '', /couldn't open it because your sign-in has changed, so it has been closed/)
+  assert.doesNotMatch(notice?.content ?? '', /didn't confirm/)
+  assert.deepEqual(
+    await fixture.prisma.message.findMany({ where: { threadId: fixture.ids.thread, role: 'system' } }),
+    [],
+    'the agent is not woken to act with a sign-in UOA refused',
+  )
+  assert.equal(fixture.ledger.calls.length, 0)
+
+  assert.equal(await holdsTeamConnector(fixture), false, 'the team can turn DeepWater off')
+  await guardAgentRevocation(fixture)
 })

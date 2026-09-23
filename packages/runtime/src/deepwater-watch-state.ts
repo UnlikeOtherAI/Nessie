@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
 import {
   DEEP_WATER_RUN_WATCH_TOPIC,
+  DEEP_WATER_START_IDENTITY_CHANGED,
   DEEP_WATER_START_UNCONFIRMED,
   DeepWaterRunWatchJobPayloadSchema,
   DeepWaterScopeStateSchema,
@@ -49,9 +50,9 @@ export type DeepWaterWatchClaim = { runId: string; organizationId: string; recon
  * transaction: attached briefs and researches still open, and agent-origin
  * briefs whose `research_scope_start` result was lost (no research id yet),
  * which the watch replays with the agent's own stable tool-call id until the
- * reap gives them up. A blocked run waits for its requester's Retry. Each
- * job is keyed by the claim's sequence and runs once; the next claim is the
- * retry.
+ * reap gives them up. A blocked run waits for its requester's Retry — an
+ * unattached one only until the reap ends it. Each job is keyed by the claim's
+ * sequence and runs once; the next claim is the retry.
  */
 export const claimDueDeepWaterWatchRuns = async (
   tx: DeepWaterBriefDb,
@@ -162,10 +163,11 @@ export const holdDeepWaterScopeStartReplay = async (
 }
 
 /**
- * Briefs Ledger never confirmed within the window, oldest first (N5a). A brief
- * blocked because its requester's sign-in changed is not one of them: its
- * replay stopped on the requester, not on DeepWater, so it waits for their
- * Retry instead of being given up as unconfirmed (F4).
+ * Briefs Ledger never confirmed within the window, oldest first (N5a) — blocked
+ * ones included. A brief blocked because its requester's sign-in changed waits
+ * for their Retry only while the window is open: the reap is what ends every
+ * unlaunched brief, and an open one holds the team's DeepWater connector and
+ * its agent's DeepWater tools (N8.3, N8.4) for as long as it stays `queued`.
  */
 export const findUnconfirmedDeepWaterBriefs = async (
   db: DeepWaterBriefDb,
@@ -178,7 +180,6 @@ export const findUnconfirmedDeepWaterBriefs = async (
       AND "uoa_identity" IS NOT NULL
       AND "external_run_id" IS NULL
       AND "status" = 'queued'
-      AND "delivery_blocked_reason" IS NULL
       AND "created_at" < now() - ${CONFIRM_WINDOW}
     ORDER BY "created_at"
     LIMIT ${input.limit}
@@ -187,12 +188,15 @@ export const findUnconfirmedDeepWaterBriefs = async (
 }
 
 /**
- * Give up a brief Ledger never confirmed: `failed/start_unconfirmed`, with a
- * person's opening action ended as unavailable. Null unless this call reaped
- * it — the caller then posts the one notice or wake in this transaction.
- * `delivered_at` stays unset and the attach rule still admits the row (N1),
- * so an acknowledgement that does arrive later attaches and delivers it; the
- * watch itself no longer replays it.
+ * Give up a brief Ledger never confirmed, with a person's opening action ended
+ * as unavailable: `failed/start_unconfirmed`, or `failed/start_identity_changed`
+ * when its requester's changed sign-in stopped it and they did not renew it in
+ * time — then what stopped it was their sign-in, not DeepWater, and the caller
+ * says so. The block goes with it: an ended brief has nothing left to retry. Null
+ * unless this call reaped it — the caller then posts the one notice or wake in
+ * this transaction. `delivered_at` stays unset and the attach rule still
+ * admits the row (N1), so an acknowledgement that does arrive later attaches
+ * and delivers it; the watch itself no longer replays it.
  */
 export const reapUnconfirmedDeepWaterBrief = async (
   tx: DeepWaterBriefDb,
@@ -203,14 +207,12 @@ export const reapUnconfirmedDeepWaterBrief = async (
   if (!locked || !state) return null
   const { run, now } = locked
   const cutoff = now.getTime() - DEEP_WATER_START_CONFIRM_WINDOW_HOURS * 3_600_000
-  if (
-    run.status !== 'queued'
-    || run.externalRunId !== null
-    || run.deliveryBlockedReason !== null
-    || run.createdAt.getTime() >= cutoff
-  ) {
+  if (run.status !== 'queued' || run.externalRunId !== null || run.createdAt.getTime() >= cutoff) {
     return null
   }
+  const failureCode = run.deliveryBlockedReason === 'requester_identity_changed'
+    ? DEEP_WATER_START_IDENTITY_CHANGED
+    : DEEP_WATER_START_UNCONFIRMED
   const action = state.pendingAction
   const scopeState = DeepWaterScopeStateSchema.parse({
     ...state,
@@ -222,12 +224,13 @@ export const reapUnconfirmedDeepWaterBrief = async (
     where: { id: run.id },
     data: {
       status: 'failed',
-      failureCode: DEEP_WATER_START_UNCONFIRMED,
+      failureCode,
       completedAt: now,
+      deliveryBlockedReason: null,
       scopeJson: deepWaterBriefJson(scopeState),
     },
   })
-  return { ...run, status: 'failed', failureCode: DEEP_WATER_START_UNCONFIRMED, completedAt: now, scopeState }
+  return { ...run, status: 'failed', failureCode, completedAt: now, deliveryBlockedReason: null, scopeState }
 }
 
 export type DeepWaterStaleActionOutcome =

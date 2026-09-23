@@ -134,10 +134,10 @@ withFixture('a claim takes due open runs and lost agent starts once, with one wa
   assert.deepEqual(mine(await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 }))), [])
 })
 
-withFixture('a brief DeepWater never confirmed is reaped once, after a day, and stays attachable', async (fixture) => {
+withFixture('a brief DeepWater never confirmed is reaped once, after a day, blocked or not, and stays attachable', async (fixture) => {
   const { run: young } = await insertBrief(fixture, personOrigin())
   const { run: old } = await insertBrief(fixture, personOrigin())
-  // Stopped on its requester's changed sign-in, not on DeepWater: it waits for them.
+  // Stopped on its requester's changed sign-in and never renewed: ended too, as that.
   const { run: blocked } = await insertBrief(fixture, agentOrigin(fixture))
   await fixture.pool.query(
     `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = ANY($1::uuid[])`,
@@ -154,10 +154,18 @@ withFixture('a brief DeepWater never confirmed is reaped once, after a day, and 
   const due = await findUnconfirmedDeepWaterBriefs(fixture.prisma, { limit: 500 })
   assert.ok(due.some((target) => target.runId === old.id))
   assert.ok(!due.some((target) => target.runId === young.id))
-  assert.ok(!due.some((target) => target.runId === blocked.id))
+  assert.ok(due.some((target) => target.runId === blocked.id), 'a block never keeps a brief open past its window')
 
   assert.equal(await reap(young.id), null)
-  assert.equal(await reap(blocked.id), null)
+  const closed = await reap(blocked.id)
+  assert.equal(closed?.status, 'failed')
+  assert.equal(closed?.failureCode, 'start_identity_changed')
+  assert.equal(closed?.deliveryBlockedReason, null, 'nothing is left to retry')
+  assert.equal((await read(fixture, blocked.id))?.deliveryBlockedReason, null)
+  assert.equal(await reap(blocked.id), null, 'reaped once')
+  const lateBlocked = await apply(fixture, blocked.id, result(researchId()))
+  assert.equal(lateBlocked.applied && lateBlocked.run.status, 'drafting', 'a late confirmation still attaches it')
+
   const reaped = await reap(old.id)
   assert.equal(reaped?.status, 'failed')
   assert.equal(reaped?.failureCode, 'start_unconfirmed')

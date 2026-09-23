@@ -12,13 +12,14 @@ import {
 import {
   DEEP_WATER_RUN_DELIVER_TOPIC,
   DEEP_WATER_RUN_WATCH_TOPIC,
+  DEEP_WATER_START_IDENTITY_CHANGED,
   DeepWaterRunDeliverJobPayloadSchema,
   DeepWaterRunWatchJobPayloadSchema,
   type DeepWaterRunDeliverJobPayload,
 } from '@nessie/schemas'
 
 import { runDeepWaterTransaction, type DeepWaterRealtime } from './deepwater-announce.js'
-import { startUnconfirmedKickoff, startUnconfirmedNotice } from './deepwater-copy.js'
+import { startIdentityChangedNotice, startUnconfirmedKickoff, startUnconfirmedNotice } from './deepwater-copy.js'
 import { renewDeepWaterIdentity } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, postDeepWaterNotice } from './deepwater-messages.js'
 import { restoreDeepWaterReportPage } from './deepwater-report-import.js'
@@ -55,7 +56,9 @@ export type DeepWaterWorkerDeps = {
 /**
  * Give up one brief Ledger never confirmed, telling whoever asked: the agent,
  * woken once, or the person (and the agent's person when the agent cannot be
- * reached). Everything commits with the reap.
+ * reached). A brief its requester's changed sign-in stopped is told to them
+ * alone, as that: waking the agent would run it with the sign-in UOA refused.
+ * Everything commits with the reap.
  */
 const reapOne = async (deps: DeepWaterWatchDeps, target: { organizationId: string; runId: string }): Promise<void> => {
   await runDeepWaterTransaction(deps, async (tx, announce) => {
@@ -63,6 +66,14 @@ const reapOne = async (deps: DeepWaterWatchDeps, target: { organizationId: strin
     if (!run) return
     announce.run(run)
     const topic = deepWaterTopicPreview(run)
+    if (run.failureCode === DEEP_WATER_START_IDENTITY_CHANGED) {
+      const told = await postDeepWaterNotice(tx, announce, run, {
+        kind: 'start_identity_changed',
+        content: startIdentityChangedNotice({ topic, agentOrigin: run.originKind === 'agent' }),
+      })
+      if (!told) console.warn(`[deep-water] reaped run ${run.id}: nowhere left to tell its requester`)
+      return
+    }
     if (run.originKind === 'agent' && run.originAgentId) {
       const wake = await wakeDeepWaterAgent(tx, run, {
         agentId: run.originAgentId,

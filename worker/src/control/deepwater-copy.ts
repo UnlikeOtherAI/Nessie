@@ -92,6 +92,21 @@ export const startUnconfirmedNotice = (topic: string): string =>
   `DeepWater didn't confirm your research brief for ${quoted(topic)}. Open a new brief if you still `
   + 'need this research.'
 
+/**
+ * A brief the requester's changed sign-in stopped from opening, closed by the
+ * reap because they did not renew it in time (amendments-fable F4, N5a).
+ * What stopped it was their sign-in, not DeepWater, so it is never told as
+ * unconfirmed; and the agent is not woken to say it, since it could only act
+ * with the sign-in UOA refused.
+ */
+export const startIdentityChangedNotice = (input: { topic: string; agentOrigin: boolean }): string =>
+  (input.agentOrigin
+    ? `The agent working on your DeepWater research brief ${quoted(input.topic)} couldn't open it `
+    : `Your DeepWater research brief ${quoted(input.topic)} couldn't be opened `)
+  + 'because your sign-in has changed, so it has been closed. Sign in again, then '
+  + (input.agentOrigin ? 'ask the agent to open a new brief' : 'open a new brief')
+  + ' if you still need this research.'
+
 const BLOCKED_REMEDY: Record<DeepWaterDeliveryBlockedReason, string> = {
   requester_identity_changed:
     'your sign-in has changed since you asked for it. Sign in again, then choose Retry import on the research',
@@ -165,6 +180,7 @@ const NOTICE_PUSH_BODY: Record<DeepWaterNoticeKind, string> = {
   blocked: 'Your DeepWater research needs you before it can be saved.',
   identity_changed: 'Sign in again so your DeepWater research can carry on.',
   start_unconfirmed: 'DeepWater didn\'t confirm your research brief.',
+  start_identity_changed: 'Your DeepWater research brief was closed because your sign-in has changed.',
   wake_unreachable: 'There\'s news about your DeepWater research.',
   wake_cap: 'Your DeepWater research brief needs you.',
 }

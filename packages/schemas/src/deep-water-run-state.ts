@@ -268,7 +268,26 @@ export const DEEP_WATER_RETRYABLE_DELIVERY_BLOCKS: ReadonlySet<DeepWaterDelivery
 export const DeepWaterReportKindSchema = z.enum(['full', 'summary'])
 export type DeepWaterReportKind = z.infer<typeof DeepWaterReportKindSchema>
 
-/** `failure_code`: Ledger's job error code, or one of Nessie's own (`start_unconfirmed`). */
+/**
+ * `failure_code`: Ledger's job error code, or one of Nessie's own
+ * (`start_unconfirmed`, `start_identity_changed`).
+ */
 export const DeepWaterFailureCodeSchema = z.string().regex(/^[a-z_]{1,64}$/)
 
+/** The reap gave up a brief DeepWater never confirmed within its window. */
 export const DEEP_WATER_START_UNCONFIRMED = 'start_unconfirmed'
+
+/**
+ * The reap gave up a brief whose opening was stopped by its requester's
+ * changed sign-in, and which they did not renew within the window.
+ */
+export const DEEP_WATER_START_IDENTITY_CHANGED = 'start_identity_changed'
+
+/**
+ * Nessie's own codes for a brief the reap gave up. A confirmation that arrives
+ * later still attaches such a brief (N1): it was never refused.
+ */
+export const DEEP_WATER_REAPED_FAILURE_CODES: ReadonlySet<string> = new Set([
+  DEEP_WATER_START_UNCONFIRMED,
+  DEEP_WATER_START_IDENTITY_CHANGED,
+])

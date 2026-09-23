@@ -348,7 +348,8 @@ const replayAgentScopeStart = async (
     return log(run, `scope start refused (${read.error.code})`)
   }
   // Replayed as the requester, so a changed sign-in stops it here too (F4):
-  // blocked and told, never replayed until the reap blames DeepWater for it.
+  // blocked and told, and replayed again only once their Retry renews it. Past
+  // the confirm window the reap ends it, in words that blame the sign-in.
   if (read.outcome === 'identity') return blockOnIdentity(deps, run)
   if (read.outcome !== 'ok') return retryLater(deps, run, read)
   const parsed = LedgerScopeResultSchema.safeParse(read.structured)

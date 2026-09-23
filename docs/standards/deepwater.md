@@ -443,8 +443,9 @@ the only way results come back.
   attach posts the agent's research card
   (`ensureDeepWaterResearchCard`, once per run under the row lock). The replay
   signs as the requester, so a changed sign-in blocks it and tells them once,
-  exactly as a read does; the blocked brief is neither claimed nor reaped until
-  their Retry renews the identity and replays it. A person's
+  exactly as a read does; the blocked brief is not claimed again until their
+  Retry renews the identity and replays it, and if they have not by the time
+  its confirm window closes, the reap ends it. A person's
   lost opening is retried by its own brief-action job, never replayed by the
   watch.
 - **Stale actions.** An in-flight action whose job is no longer queued or
@@ -549,7 +550,14 @@ the only way results come back.
   `identity_changed` ("Sign in again so your DeepWater research can carry on.").
 - **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
   confirmed within a day (`failed/start_unconfirmed`), telling the agent once
-  (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,
-  so a confirmation that does arrive later still attaches. A brief blocked on
-  its requester's changed sign-in is not reaped: DeepWater was never asked, so
-  it is never told as unconfirmed.
+  (a `start_unconfirmed` wake) or the person once. A brief blocked on its
+  requester's changed sign-in is reaped too, because the reap is the only thing
+  that ends an unlaunched brief, and an open one keeps the team from turning
+  DeepWater off and the agent's DeepWater tools from being revoked. What
+  stopped it was the sign-in, not DeepWater, so it is never told as
+  unconfirmed: it ends as `failed/start_identity_changed`, its block is cleared
+  (an ended brief has nothing to retry), and the requester alone is told once
+  (`start_identity_changed`: the brief was closed because their sign-in
+  changed) — the agent is not woken, since it could act only with the sign-in
+  UOA refused. `delivered_at` stays unset either way, so a confirmation that
+  does arrive later still attaches.
