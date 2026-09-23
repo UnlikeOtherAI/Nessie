@@ -409,18 +409,13 @@ The MCP SDK gives the bridge a minimal environment, so with
 `Environment` registry keys on Windows (read through PowerShell as UTF-8 —
 `reg query` writes a redirected answer in the console's OEM code page, which
 garbles a profile such as `C:\Users\Ondřej` and every path under it), taking
-only `REG_SZ` and `REG_EXPAND_SZ` values as a logon does: machine then user,
-each key's plain values first, then its expandable ones against that map and
-each other, round after round until a round changes nothing, so
-`GOBIN=%GOPATH%\bin` resolves wherever the key lists the two (a key lists
-values in the order they were written, not in the order they need each
-other). A value that names itself (`PSModulePath=%PSModulePath%;…`) reads
-what came before its key; a cycle ends within one round per value, and no
-value grows past the 32,767 characters Windows allows a variable. `Path` is
-machine;user, each half expanded once its key is merged. On macOS,
-`launchctl getenv` and the login shell's `env -0`; on Linux,
-`systemctl --user show-environment` and the login shell. It strips only
-`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
+only `REG_SZ` and `REG_EXPAND_SZ` values, machine then user: a key's plain
+values first, then its expandable ones in rounds until nothing changes, so
+`GOBIN=%GOPATH%\bin` resolves in any listing order (a value naming itself
+reads what came before its key; a cycle stops after one round per value, at
+32,767 characters), and `Path` is machine;user. On macOS, `launchctl getenv`
+and the login shell's `env -0`; on Linux, `systemctl --user show-environment`
+and the login shell. It strips only `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_MESSAGING_SOCKET`,
 `CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH` and the executor's own markers
 (`NESSIE_EXECUTOR_PACKAGED_CLI`, `NESSIE_CODING_SESSIONS_CONFIG_DIGEST`,
@@ -465,15 +460,10 @@ gains is required with it:
   the owner's `args`. A configured `permissionMode` must be one of the
   `(choices: …)` that `--permission-mode` lists (2.1.280: `acceptEdits`,
   `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan` — no `default`),
-  or the start fails with `permission_mode_unsupported`. A help that prints
-  no `(choices: …)` for the flag at all refuses the mode the same way:
-  commander prints the list exactly when the CLI checks the value itself, so
-  without one a mode the CLI lacks — a restrictive `plan`, say — would be
-  ignored rather than refused. A list the host cannot read (commander
-  double-quotes each value; a later CLI might print them another way) leaves
-  the mode unchecked and the host log says so: that CLI still refuses a mode
-  its list lacks, and the owner is not told to change a mode it may well
-  offer.
+  or the start fails with `permission_mode_unsupported`, as it does with no
+  list at all (commander prints one exactly when the CLI checks the value).
+  A list it cannot read (unquoted) leaves the mode unchecked, as the host
+  log says; that CLI still checks it.
 - Codex (`codex exec --help` and `codex exec resume --help`): each help's
   `Usage:` line must name its subcommand (a codex without `exec resume`
   answers that help with the `exec` one); `-C` and `--json` on `exec`,
@@ -554,42 +544,31 @@ own start time, and each is checked again right before its own signal — never
 `taskkill /T`, which walks parent ids as they are at that moment. On Windows
 that check and the kill share one handle, so not even the moment between
 them can hand the pid on, and the whole kill is one PowerShell: the table,
-then the root, then each member, then a closing line; one ended before that
-line (out of its ten seconds under load) has not done the kill, so the guard's
-ready-held kill is followed by a cold one. That cold kill goes by the members
-the ready-held one's table showed: the likeliest stop is right after the root,
-and a root already gone leaves no tree to walk down from, so a detached
-grandchild would be out of its reach. An identity without a start time is
-unknown and is never signalled. A start time that cannot be read while the
-process is alive — PowerShell or `ps` timing out under load — is read again;
-an agent whose start time still cannot be read is stopped through the host's
-own handle at once and its start fails with `containment_failed`, because
-nothing could later tell it from a reused pid. macOS start times are read in
-UTC and the C locale, so a laptop that changes time zone still recognises its
-agent. On POSIX a tree gets SIGTERM and two seconds before SIGKILL, so a `git`
-caught mid-commit can remove its `index.lock`. A failed table read then (`ps`
-timing out on a loaded Mac) is not an empty table, which would end the grace
-early and let a `setsid` grandchild that ignores SIGTERM go without its
-SIGKILL: the grace goes on by the last good table, each read in it capped at
-what is left, and a fresh read with the full ten seconds follows a failed last
-one; if that fails too, nothing more is signalled — not even the group, whose
-id a stranger may lead by then if every member has exited — and the host log
-says so (`no process table after the grace: SIGKILL skipped for …`), since a
-member that ignores SIGTERM may still be running. What the next host needs,
-the agent's identity and its
-confirmed session id, skips the 500 ms debounce, and a session id the agent
-never confirmed is dropped: Claude refuses `--session-id` for an id it already
-holds, so the next agent starts afresh rather than failing on every send.
+then the root, then each member, then a closing line. One ended before that
+line (its ten seconds out under load) has not done the kill, so the guard's
+ready-held kill is followed by a cold one, by the members its table showed:
+the root it killed first leaves no tree to walk down from. An identity
+without a start time is unknown and is never signalled. A start time that
+cannot be read while the process is alive — PowerShell or `ps` timing out
+under load — is read again; an agent whose start time still cannot be read is
+stopped through the host's own handle at once and its start fails with
+`containment_failed`, because nothing could later tell it from a reused pid.
+macOS start times are read in UTC and the C locale, so a laptop that changes
+time zone still recognises its agent. On POSIX a tree gets SIGTERM and two
+seconds before SIGKILL, so a `git` caught mid-commit can remove its
+`index.lock`. A failed table read then (`ps` timing out) is no reading, not
+an empty table: the grace goes on by the last good one, each read capped at
+what is left, and a failed last read gets one more with the full ten seconds;
+if that fails too, no SIGKILL is sent, not even to the group (a stranger may
+lead its id once every member exited), and the host log says so. What the
+next host needs, the agent's identity and its confirmed session id, skips the
+500 ms debounce, and a session id the agent never confirmed is dropped: Claude
+refuses `--session-id` for an id it already holds, so the next agent starts
+afresh rather than failing on every send.
 Every message sent until the agent confirms its session or answers a turn
-stays in `session.json` (`firstPrompt`, the messages joined by blank lines),
-so an agent lost before then — its host killed after the start left the
-inbox, or the agent exiting before its init — does not take the task with
-it: when no agent that had them is running any more, the next message the
-owner sends carries them first, and that message joins them, so a second
-agent lost the same way hands all of it to a third. A start its host died
-still holding (Claude slow to answer `initialize`, the start still in the
-inbox) is delivered again as the start, once: it is that first message, and
-nothing is put in front of it.
+stays in `session.json` (`firstPrompt`): the next send that finds no agent
+that had them running carries them first and joins them, and a start
+redelivered because its host died holding it is sent once.
 
 ### The agent guard: no agent outlives its host
 
@@ -615,10 +594,9 @@ agree) does not.
   start time, and reports `{pid, startedAt}` on the pipe before it relays
   anything. That is the identity the host records, so every kill the host
   makes goes to the agent and never to the guard; an agent whose start time
-  cannot be read is stopped at once with its tree, by one table read that
-  needs no identity (`killChildTree`), else by the group it leads on POSIX
-  (it is the guard's own unreaped child). A host waits 60 s for that report (a
-  guard's start and three table reads fit well inside it); after that it
+  cannot be read is stopped at once, tree and all (`killChildTree`, else its
+  POSIX group: it is the guard's unreaped child). A host waits 60 s for the
+  report (a guard's start and three table reads fit well inside it); then it
   closes the guard's pipe, which the guard reads as its host dying, gives it
   ten seconds to end what it started and exit, then kills it, and only once
   the guard has exited does the start fail with `containment_failed`.
@@ -665,14 +643,11 @@ stops it before doing anything else.
 Sessions outlive runs and daemon restarts, so the daemon ends them itself
 (`executor/src/coding-sessions-daemon.ts`), always through the bridge's
 daemon-only `session_close_all {ownerKey?, sessionId?, reason}`. The reason
-is a category in the control plane's grammar (`^[a-z][a-z0-9_]{0,63}$`; free
-text is refused), checked by the control plane's own schema
-(`ExecutorCodingSessionCloseSchema`'s `reason`) so the bridge never refuses a
-reason the heartbeat's close instruction allows, and becomes each closed
-session's own `reason`, in
-`session_status`, `session_list` and the `status` event that records the
-close, so a close forced by a lease's end or a revocation reads differently
-on the machine from one the owner asked for, which carries none:
+is a category (`ExecutorCodingSessionCloseSchema`'s own `reason`,
+`^[a-z][a-z0-9_]{0,63}$`; free text is refused) and becomes each closed
+session's `reason` in `session_status`, `session_list` and the closing
+`status` event, so a close forced by a lease's end or a revocation reads
+differently from one the owner asked for, which carries none:
 
 - **When the daemon's authority provably ends.** A failed command poll or
   heartbeat alone closes nothing: sessions are built to outlive a dropped
@@ -858,39 +833,23 @@ path or a URL's path, with a single `/` or `\` before it and one after: such
 a segment is a repository's own folder (`src/ondre/x.ts`), a URL's owner
 (`github.com/ondre/app`) or a folder under a root (`<app>/ondre/y.ts`), and
 rewriting it would hand the model a path that does not exist. A segment of an
-absolute path is not left alone: the path rules rewrite only the host
-directories they name, so `/data/ondre/x`, `/home2/ondre`,
-`//server/share/ondre` and `~other/ondre` reach the names with the name still
-in them. A path is absolute when it starts — after whitespace, a quote, a
-bracket, `=`, `,`, `;`, `|`, or a `:` that is not a URL's `://`, and past
-what may stand in front of one: a redirection (`>/data/ondre/log`, `2>>`,
-`&>`, `<`), `@` (`curl -d @/data/ondre/body`), `*` (`**/data/ondre/x**`) or
-a one-letter option (`-o/data/ondre/bin`, `-I…`) — with `/`, `\`, `~`, a
-drive letter or `file:` (`host-identity.ts`). A path that goes on from a
-closing bracket (`$(pwd)/ondre/x`, `${ROOT}/ondre/x`) is relative to what
-that expands to, and a glob or a scoped package inside a relative path
-(`src/**/ondre/x.ts`, `node_modules/@types/ondre`) stays relative. Three
-trade-offs follow from reading a path by its first characters alone: a
-route or a URL path with no host in front of it (`/api/ondre/runs`,
-`gh api /repos/ondre/app`) cannot be told from an absolute path, so its name
-is rewritten — the name stays hidden, at the cost of a route the model can
-no longer repeat; a drive letter and a colon start an absolute path even
-with no separator after them (Windows' drive-relative `D:data\ondre\x`, but
-also an `a:src/ondre/x` that is none); and a directory with a space in its
-name (`/data/My Files/ondre/in.csv`) ends the path at the space, so what
-follows reads as relative and keeps its name. Each name is found by one
-pass over the text, however long a token and however many names it holds:
-scanning back to the start of the token for every name made a 60 KB line of
-`ondre/ondre/…` cost seconds of the host's event loop, heartbeat included.
-Two separators before a name are a URL's host or a UNC server, and are
-rewritten. A branch, in `session_review`'s `branch`, a worktree's `branch`
-and the keys of `pullRequests`, is a name and not a path the model resolves,
-so every segment of it is rewritten (`feature/ondre/fix` reads
-`feature/<user>/fix`). A branch named in prose is not one of those: a commit
-subject in `commitsSinceStart` (`Merge branch 'feature/ondre/fix'`) or an
-agent's `git push -u origin feature/ondre/fix` reads as a relative path and
-keeps its name. The placeholders already written and UUIDs (a session id's
-hex group may spell a short host name) are never rewritten again.
+absolute path is not left alone, since the path rules rewrite only the host
+directories they name (`/data/ondre/x`, `//server/share/ondre`,
+`~other/ondre`). A path is absolute when it starts — after whitespace, a
+quote, a bracket, `=`, `,`, `;`, `|` or a `:` that is not `://`, and past a
+redirection (`>`, `2>>`, `<`), `@`, `*` or a one-letter option (`-o`, `-I`)
+— with `/`, `\`, `~`, a drive letter or `file:`; one that goes on from a
+closing bracket (`$(pwd)/ondre/x`) is relative. So a route with no host
+(`/api/ondre/runs`) has its name rewritten, a letter and a colon read as a
+drive (`a:src/ondre/x`), and a directory with a space in its name
+(`/data/My Files/ondre`) ends the path at the space and keeps the name. Two
+separators before a name are a URL's host or a UNC server, and are
+rewritten. A branch (`session_review`'s `branch`, a worktree's `branch`, the
+keys of `pullRequests`) is a name, not a path: every segment is rewritten
+(`feature/<user>/fix`), but one named in prose (a commit subject, `git push
+origin feature/ondre/fix`) reads as a relative path and keeps its name. The
+placeholders already written and UUIDs (a session id's hex group may spell a
+short host name) are never rewritten again.
 
 The last pass over an answer gives the path rules alone, without the names,
 to the fields other code parses as fixed values — `sessionId`, `ownerKey`,
@@ -970,11 +929,9 @@ Object is proved twice:
 `executor/native/tests/job_run.rs` drives the built helper (exit code, stdio,
 an orphaned grandchild dying with the job, the job dying with its parent), and
 `coding-session-containment.test.ts` kills an agent's orphaning tree through
-the helper whenever `executor/native/target` holds a build; it also fails
-chosen `ps` reads under the macOS kill (over Linux's `/bin/ps` in CI: no
-macOS runner runs this suite), checks the Windows kill's last line, and stops a
-Windows standby right after it killed the agent to see its cold kill still
-end the agent's detached child.
+the helper whenever `executor/native/target` holds a build; it fails chosen
+`ps` reads under the macOS kill (on Linux's `/bin/ps`: no macOS runner runs
+it) and cuts a Windows kill and a standby short partway through.
 `coding-session-guard.test.ts` runs the real agent guard: the agent's own
 identity, environment, output and exit code through it, its refusal when the
 agent cannot start, which hosts use it, and a host killed with -9
@@ -986,8 +943,7 @@ kills a guard outright while its host lives (the agent, and on POSIX its
 grandchild, gone by the time the host hears it exited), closes a guard's pipe
 right after the agent starts (on Windows that is before the report, so the
 identity-free kill runs), stands in a guard that never reports (asked to stop,
-then killed) and one that cannot identify its agent
-(`fixtures/agent-guard-unidentified.ts`: the tree goes, or with no table its
+then killed) and one that cannot identify its agent (its tree goes, or its
 group), and has a descendant write for longer than the drain after its agent
 exited (every line reaches the host).
 `coding-session-systemd.test.ts` restarts a stand-in executor unit with the
