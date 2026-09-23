@@ -185,6 +185,12 @@ export const deliverDeepWaterResearch = async (
   if (read.outcome === 'refused') {
     if (read.error.statusCode === 410 || read.error.code === 'expired') return block(deps, run, 'report_expired')
     if (isTransientLedgerRefusal(read.error)) return 'retry'
+    if (read.error.code === 'not_ready') {
+      // The status said finished and a finished research never un-finishes, so
+      // this is Ledger catching up with itself (nessie.md §7.5): read again.
+      console.warn(`[deep-water] research_report not ready yet for finished run ${run.id}; the watch reads again`)
+      return 'retry'
+    }
     console.error(`[deep-water] research_report refused (${read.error.code}) for run ${run.id}`)
     return block(deps, run, 'ledger_unavailable')
   }

@@ -237,3 +237,25 @@ withFixture('a read that fails while Ledger restarts is tried again within 30 s;
     [`watch:${run.id}:${claimed.reconcileSeq}`, `watch:${run.id}:${claimed.reconcileSeq + 1}`],
   )
 })
+
+withFixture('a report Ledger has not caught up with yet is read again, never blocked', async (fixture) => {
+  const { run, rs } = await launched(fixture)
+  fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })
+  fixture.ledger.answer('research_report', {
+    error: 'not_ready',
+    error_description: 'Research report is not ready',
+    status_code: 409,
+  }, false)
+  await watch(fixture, run.id)
+
+  const waiting = await fixture.read(run.id)
+  assert.equal(waiting.status, 'running')
+  assert.equal(waiting.deliveryBlockedReason, null)
+  assert.equal(waiting.deliveredAt, null)
+  assert.deepEqual(await notices(fixture, run.id), [])
+
+  fixture.ledger.answer('research_report', report)
+  await watch(fixture, run.id)
+  assert.equal((await fixture.read(run.id)).status, 'completed')
+  assert.deepEqual((await notices(fixture, run.id)).map((notice) => notice.kind), ['result'])
+})
