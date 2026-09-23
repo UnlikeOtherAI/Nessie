@@ -88,7 +88,9 @@ export const TaskAttachmentsSection = ({ canEdit, taskId }: { canEdit: boolean; 
   const attachmentsQuery = useTaskAttachments(taskId)
   const startUpload = useStartTaskUpload()
   const removeAttachment = useRemoveTaskAttachment(taskId)
-  const { attachmentViewer, openAttachment } = useAttachmentViewer(token)
+  // The ticket dialog is itself a modal, so its viewer is the blocking nesting:
+  // a second modal would tie with it and Back would close the dialog beneath.
+  const { attachmentViewer, openAttachment } = useAttachmentViewer(token, { blocking: true })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState<Uploading[]>([])
   const [confirming, setConfirming] = useState<TaskAttachmentRecord | null>(null)

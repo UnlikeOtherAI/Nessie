@@ -171,7 +171,10 @@ sentence changes only if the invariant itself did.
   field on the right — plus the label keyboard, the read-only mirror and
   viewer states, the phone stack, the board's own Labels tab, and removing an
   attachment with a reason: the confirm (shot 12) and the removed row that
-  still shows its uploader, remover, reason and Download (shot 13). The
+  still shows its uploader, remover, reason and Download (shot 13), and the
+  full-size viewer opened from the ticket's Attachments or a comment's file
+  sitting on the blocking layer and owning Back, so Back closes it and leaves
+  the ticket open (shots 14 and 15, phone). The
   real-stack half — a label following a ticket to another board by name, a
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
