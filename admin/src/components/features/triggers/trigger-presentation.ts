@@ -1,8 +1,10 @@
 import {
   faBolt,
   faClock,
+  faFileLines,
   faHandPointer,
   faRotate,
+  faTableColumns,
   faTowerBroadcast,
   type IconDefinition,
 } from '@fortawesome/free-solid-svg-icons'
@@ -122,10 +124,12 @@ export const getDeliveryStatusColor = (status: AgentTriggerDeliveryRecord['statu
   TONE_DOT_COLOR[getDeliveryTone(status)]
 
 export const TRIGGER_TYPE_ICONS: Record<AgentTriggerRecord['type'], IconDefinition> = {
+  document_changed: faFileLines,
   event: faTowerBroadcast,
   interval: faRotate,
   manual: faHandPointer,
   scheduled: faClock,
+  ticket_changed: faTableColumns,
   webhook: faBolt,
 }
 
@@ -139,6 +143,8 @@ export const getTriggerTypeLabel = (trigger: AgentTriggerRecord): string => {
   if (trigger.type === 'interval') return 'Repeating interval'
   if (trigger.type === 'webhook') return 'Webhook'
   if (trigger.type === 'event') return 'System event'
+  if (trigger.type === 'ticket_changed') return 'Ticket change'
+  if (trigger.type === 'document_changed') return 'Document change'
 
   return getCronExpression(trigger.config ?? {}) ? 'Cron schedule' : 'One-off schedule'
 }
@@ -151,6 +157,8 @@ export const getScheduleSummary = (trigger: AgentTriggerRecord): string => {
 
   if (trigger.type === 'manual') return 'Fires only when started manually'
   if (trigger.type === 'webhook') return 'Fires on incoming webhook calls'
+  if (trigger.type === 'ticket_changed') return 'Fires when a ticket on its board changes'
+  if (trigger.type === 'document_changed') return 'Fires when a watched document changes'
 
   if (trigger.type === 'event') {
     const events = Array.isArray(config.events)

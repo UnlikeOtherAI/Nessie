@@ -9,6 +9,7 @@ import {
   listWorkflowTemplatesForOrganization,
   startWorkflowRunForActor,
   updateWorkflowTemplateForActor,
+  workflowTriggerTypeRefusal,
 } from '@nessie/team-admin'
 import {
   AgentTriggerTypeSchema,
@@ -220,6 +221,8 @@ export const runWorkflowTriggerCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = WorkflowTriggerInputSchema.parse(input)
+  const agentOnly = workflowTriggerTypeRefusal(args.type)
+  if (agentOnly) throw new Error(agentOnly)
   const member = await resolveActingMember(context)
   requireOwnerMember(member, 'create a workflow trigger')
 

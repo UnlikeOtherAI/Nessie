@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { AuthorizedActionContextSchema, UoaSessionIdentitySchema } from './access-context.js'
+import { ExecutorCodingSessionStatusSchema } from './executor-coding-sessions.js'
 import {
   AgentIdSchema,
   ChannelIdSchema,
@@ -523,6 +524,83 @@ export const TriggerWebhookDispatchJobPayloadSchema = z.object({
 })
 export type TriggerWebhookDispatchJobPayload =
   z.infer<typeof TriggerWebhookDispatchJobPayloadSchema>
+
+/**
+ * `trigger.ticket.dispatch` queue job — one `TaskEvent` for the
+ * `ticket_changed` dispatcher to decide on
+ * (docs/plans/2026-09-23-ticket-driven-agents/triggers.md, "Dispatch").
+ *
+ * It is enqueued in the same transaction that writes the event, so an event
+ * cannot commit without a recoverable dispatch. It carries ids only: the
+ * dispatcher reads the event, its origin and the board's triggers afresh, and
+ * records each trigger's outcome as an `agent_trigger_deliveries` row with
+ * dedupe key `ticket:<triggerId>:<taskEventId>`.
+ */
+export const TRIGGER_TICKET_DISPATCH_TOPIC = 'trigger.ticket.dispatch'
+
+export const TriggerTicketDispatchJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  taskEventId: z.string().uuid(),
+})
+export type TriggerTicketDispatchJobPayload =
+  z.infer<typeof TriggerTicketDispatchJobPayloadSchema>
+
+/**
+ * `trigger.document.dispatch` queue job — the end of one `document_changed`
+ * trigger's quiet window for one page. Saves inside the window coalesce into
+ * one job, so it carries no version: the handler reads the page's latest
+ * version when it fires, and dedupes the delivery on
+ * `doc:<triggerId>:<pageId>:<toVersionId>`.
+ */
+export const TRIGGER_DOCUMENT_DISPATCH_TOPIC = 'trigger.document.dispatch'
+
+export const TriggerDocumentDispatchJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  pageId: z.string().uuid(),
+  triggerId: z.string().uuid(),
+})
+export type TriggerDocumentDispatchJobPayload =
+  z.infer<typeof TriggerDocumentDispatchJobPayloadSchema>
+
+/**
+ * `ticket-work.session` queue job — a coding session named by a live work
+ * record ended a turn, was interrupted, failed or went missing from its
+ * machine's report (which counts as `closed`). The heartbeat intake enqueues
+ * it inside the heartbeat transaction with idempotency key
+ * `session:<sessionId>:<turn>:<status>`, so a report repeated by the next
+ * heartbeat wakes nothing twice. `turn` is the session's turn number as the
+ * report stated it; the handler skips a wake at or below the work record's
+ * `lastObservedTurn`.
+ *
+ * `status` is only a status that wakes: a session that is `starting` or
+ * `working` never does, so the payload cannot carry one.
+ */
+export const TICKET_WORK_SESSION_TOPIC = 'ticket-work.session'
+
+export const TicketWorkSessionJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  workId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  turn: z.number().int().nonnegative(),
+  status: ExecutorCodingSessionStatusSchema.extract(['waiting_for_input', 'interrupted', 'failed', 'closed']),
+})
+export type TicketWorkSessionJobPayload = z.infer<typeof TicketWorkSessionJobPayloadSchema>
+
+/**
+ * `ticket-work.sweep` queue job — the pool dispatcher and the one pass over
+ * live work: dequeue onto free machines, quiet wakes, limits, standing-policy
+ * re-checks, and a queued record whose job was lost. Every transaction that
+ * may free a machine (a record ends, parks or moves to `waiting_machine`, a
+ * session closes, a machine comes online, machine access is re-confirmed)
+ * enqueues it with a short idempotency window, so dispatch is one idempotent
+ * job; a periodic tick is only the backstop. Everything it needs is in the
+ * database; `bucket` is the window's or tick's idempotency key, as on
+ * `board-source.sync.sweep`.
+ */
+export const TICKET_WORK_SWEEP_TOPIC = 'ticket-work.sweep'
+
+export const TicketWorkSweepJobPayloadSchema = z.object({ bucket: z.string().optional() }).strict()
+export type TicketWorkSweepJobPayload = z.infer<typeof TicketWorkSweepJobPayloadSchema>
 
 /**
  * Automatic team access after sign-in

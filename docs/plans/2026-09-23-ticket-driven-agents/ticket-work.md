@@ -13,13 +13,13 @@ the state; it is never asked to manage it.
 | `id`, `organizationId`, `triggerId`, `agentId`, `taskId`, `projectId` | `triggerId` is `onDelete: SetNull`, so the record and its audit outlive a deleted trigger. The trigger delete service ends the record first |
 | `threadId` | The ticket's work thread (see below) |
 | `status` | `queued`, `active`, `parked`, `waiting_machine`, `done`, `cancelled` or `failed`, with a CHECK |
-| `stateReason` | Closed vocabulary with a CHECK: `queued_no_free_machine`, `queued_machines_offline`, `machine_access_not_set_up`, `machine_access_suspended`, `machine_access_ended`, `machine_offline`, `limit_wakes`, `limit_hours`, `limit_cost`, `limit_daily`, `left_flow`, `merged`, `mover_lost_access`, `trigger_disabled` |
-| `policyId?`, `executorId?` | Set by the pool dispatcher, never by run setup. A partial unique index on `executor_id WHERE status = 'active'` enforces one ticket per machine |
+| `stateReason` | Closed vocabulary with a CHECK: `queued_no_free_machine`, `queued_machines_offline`, `machine_access_not_set_up`, `machine_access_suspended`, `machine_access_ended`, `machine_offline`, `limit_wakes`, `limit_hours`, `limit_cost`, `limit_daily`, `left_flow`, `merged`, `mover_lost_access`, `trigger_disabled`, `identity_unverifiable` |
+| `policyId?`, `executorId?` | Set by the pool dispatcher, never by run setup. A partial unique index on `executor_id WHERE status IN ('active', 'waiting_machine')` enforces one ticket per machine, so a record waiting for its pinned machine keeps the slot. One waiting for machine access is unpinned, and holds none |
 | `startedByUserId`, `startedByEventId` | The person whose move started it, and the TaskEvent |
 | `queuePosition?`, `enqueuedAt?` | The queue is ordered by ticket priority, then `enqueuedAt` |
 | `sessionIds[]`, `lastObservedTurn` (JSON per session) | Written by the worker in the same step as `coding_session_start` returns |
 | `pullRequestUrl?`, `lastPrState?`, `lastChecks?`, `prSeenAt?` | See [Done means merged](machine-access.md#done-means-merged) |
-| `wakeCount`, `activeMs`, `costUsd`, `lastWakeAt`, `lastWakeReason` | Limits and the chip. `activeMs` pauses while the record is `queued` or `waiting_machine`, and while an open question waits for a person (see [Quiet wake](#quiet-wake-and-the-sweep-t3)) |
+| `wakeCount`, `activeMs`, `costUsd`, `lastWakeAt`, `lastWakeReason` | Limits and the chip. `activeMs` (a `BIGINT`) pauses while the record is `queued` or `waiting_machine`, and while an open question waits for a person (see [Quiet wake](#quiet-wake-and-the-sweep-t3)) |
 | `startedAt`, `endedAt`, `endedReason`, `endedBy` | |
 
 There is at most one live record (`queued`, `active`, `parked` or
@@ -91,7 +91,8 @@ the plan or the state.
 
 1. **Why you were woken**: one reason code and a one-line detail. The codes
    are `pickup`, `dequeued`, `queued`, `ticket_commented`,
-   `ticket_description_changed`, `ticket_priority_changed`, `ticket_moved`,
+   `ticket_description_changed`, `ticket_priority_changed`,
+   `ticket_labels_changed`, `ticket_assignee_changed`, `ticket_moved`,
    `thread_message`, `document_changed`, `session_turn_ended`,
    `session_interrupted`, `session_failed`, `session_closed`, `reminder`,
    `quiet`, `machine_back_online`. They are configuration vocabulary, not
@@ -149,8 +150,9 @@ itself moves a ticket to Done, the loop guard would suppress its own wake.
   requests with reason `trigger_changed`.
 - **Machine access suspended** (any `suspendedReason`) moves every `active`
   record of that policy to `waiting_machine`, with `stateReason:
-  machine_access_suspended`, in the suspending transaction. That frees the
-  machine slot, pauses the hours clock and stops quiet wakes. Its sessions get
+  machine_access_suspended`, in the suspending transaction, and unpins its
+  executor. That frees the machine slot, pauses the hours clock and stops
+  quiet wakes. Its sessions get
   close requests with reason `policy_suspended`. When the author re-confirms,
   the confirming transaction moves those records back to `queued` and
   enqueues the dispatcher, which resumes them with a `dequeued` wake. `queued`

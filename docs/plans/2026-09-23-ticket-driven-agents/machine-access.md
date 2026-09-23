@@ -28,6 +28,10 @@ Every pool machine must be **private**, and its **pairing owner** must be the
 author. The author must be a live member of the project who can edit the
 board. These are the coding-sessions rule, unchanged.
 
+Per trigger, at most one policy is `live` or `suspended` and at most one is
+`preparing`, each a partial unique index. A confirm ends the policy it
+replaces in its own transaction, and a new prepare ends the card it replaces.
+
 ## The host profile
 
 A session started under a policy runs as the author, with the author's files,
@@ -216,8 +220,9 @@ The policy ends in the same transaction as each of these, reusing the
 - the author is removed from the project, or loses board-edit rights;
 - `uoa-roles` deactivation;
 - the agent is unbound from the target channel;
+- the target channel is archived, made non-public or leaves the project;
 - the project, board or pickup column is archived;
-- the trigger is deleted.
+- the trigger is disabled or deleted.
 
 UOA has no removal feed, so two more checks cover the author leaving the
 organisation. Binding re-checks UOA live (above). `ticket-work.sweep` ends

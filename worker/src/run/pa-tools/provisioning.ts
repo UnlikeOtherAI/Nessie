@@ -23,6 +23,7 @@ import {
   ledgerAgentModelCatalogRequestHeaders,
   listAgentsForUser,
   resolveAgentAvatarStyleSafely,
+  unreleasedTriggerTypeRefusal,
 } from '@nessie/team-admin'
 import { ensureCanonicalAgentCore } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
@@ -485,6 +486,8 @@ export const runAgentTriggerCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const { agentId, ...body } = AgentTriggerCreateInputSchema.parse(input)
+  const unreleased = unreleasedTriggerTypeRefusal(body.type)
+  if (unreleased) throw new Error(unreleased)
   const member = await resolveActingMember(context)
 
   requireOwnerMember(member, 'create a trigger on an agent')

@@ -1,7 +1,6 @@
 import {
   AgentEffortSchema,
   AgentRunLimitsSchema,
-  AgentTriggerTypeSchema,
   AgentVisibilitySchema,
   type AgentModelOption,
 } from '@nessie/schemas'
@@ -12,6 +11,7 @@ import {
   executorSection,
   type GlobalAgentCatalogueWriteSurface,
 } from './global-agent-executor-catalogue.js'
+import { RELEASED_TRIGGER_TYPES } from './trigger-type-availability.js'
 
 import type {
   AgentToolCatalog,
@@ -257,7 +257,9 @@ const parametersSection = (avatarLineText: string): string[] => [
     + 'demand, and a private agent has exactly one, its owner\'s.',
   ),
   bullet(
-    `triggers — ${AgentTriggerTypeSchema.options.join(' | ')}. Scheduled and `
+    // The released types only: an enum value no create surface accepts yet is
+    // not a trigger the Designer can offer.
+    `triggers — ${RELEASED_TRIGGER_TYPES.join(' | ')}. Scheduled and `
     + 'interval triggers need the creator to have a live SSO identity, because '
     + 'every future run re-uses it.',
   ),

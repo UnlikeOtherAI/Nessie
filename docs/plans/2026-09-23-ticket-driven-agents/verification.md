@@ -18,9 +18,13 @@ Scope:
   until T1.
 - Tables with CHECKs and partial unique indexes: `agent_ticket_work`,
   `executor_standing_policies`, `executor_standing_policy_executors` and
-  `agent_reminders`, plus the trigger scope columns.
+  `agent_reminders`, plus the trigger scope columns. This includes one binding
+  policy and one outstanding card per trigger.
 - Queue payload schemas for `trigger.ticket.dispatch`, `ticket-work.session`,
-  `ticket-work.sweep` and `trigger.document.dispatch`.
+  `ticket-work.sweep` (also the pool dispatcher) and
+  `trigger.document.dispatch`.
+- Workflow installations gated by a permanent `WORKFLOW_TRIGGER_TYPES`
+  allowlist, so releasing a type for agents never opens it for workflows.
 - The TaskEvent origin shape.
 - `docs/standards/ticket-work.md` and its `AGENTS.md` routing sentence.
 - The `agent-triggers` browser fixture scaffold. Its three edits (vite input,
@@ -29,7 +33,9 @@ Scope:
 The migration's timestamp sorts after every migration on 3b's branch, so
 the two can land in either order.
 
-Tests: migration up/down on the upgrade path; CHECK and partial-index
+Tests: the migration applies on the upgrade path (CI's Upgrade Path job; the
+repo has no down migrations, and this one is additive); the vocabularies
+against the latest SQL and the migrated database; CHECK and partial-index
 behaviour.
 
 ### T1: ticket triggers

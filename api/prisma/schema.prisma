@@ -140,6 +140,12 @@ enum AgentTriggerType {
   webhook
   event
   interval
+  // Ticket and document triggers (docs/plans/2026-09-23-ticket-driven-agents).
+  // The values exist before their dispatch does so the work, policy and
+  // reminder tables can name them; every create surface refuses both until
+  // their configuration, dispatch and editor ship.
+  ticket_changed
+  document_changed
 }
 
 enum AgentTriggerStatus {
@@ -1206,6 +1212,10 @@ model User {
 
   taskCommentsAuthored TaskComment[] @relation("TaskCommentAuthor")
 
+  startedTicketWork        AgentTicketWork[]        @relation("AgentTicketWorkStartedBy")
+  authoredStandingPolicies ExecutorStandingPolicy[] @relation("ExecutorStandingPolicyAuthor")
+  endedStandingPolicies    ExecutorStandingPolicy[] @relation("ExecutorStandingPolicyEndedBy")
+
   @@map("users")
 }
 
@@ -1465,6 +1475,8 @@ model Organization {
   commsEvents                      CommsEvent[]
   executors                        Executor[]
   executorConversationLeases       ExecutorConversationLease[]
+  executorStandingPolicies         ExecutorStandingPolicy[]
+  agentTicketWork                  AgentTicketWork[]
   agentTodoTemplates               AgentTodoTemplate[]
   agentTodos                       AgentTodo[]
   demonstrations                   Demonstration[]
@@ -1703,6 +1715,8 @@ model Project {
   executors                Executor[]
   resourceShares           ResourceShare[]
   boardSharePublications   BoardSharePublication[]
+  scopedTriggers           AgentTrigger[]            @relation("AgentTriggerScopeProject")
+  ticketWork               AgentTicketWork[]
   avatarAttachment         Attachment?               @relation("ProjectAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   taskLabels TaskLabel[]
@@ -1785,6 +1799,7 @@ model Board {
   resourceShares   ResourceShare[]
   sharePublication BoardSharePublication?
   labels           TaskLabel[]
+  scopedTriggers   AgentTrigger[]         @relation("AgentTriggerScopeBoard")
 
   @@unique([id, projectId, organizationId])
   // The composite target of TaskLabel.board — Prisma needs the exact tuple.
@@ -2603,6 +2618,8 @@ model Thread {
   emailConversation          EmailConversation?
   agentHandoffRequests       AgentHandoffRequest[]
   executorConversationLeases ExecutorConversationLease[]
+  ticketWork                 AgentTicketWork[]
+  agentReminders             AgentReminder[]
 
   agentCards AgentCard[]
 
@@ -3366,6 +3383,9 @@ model Agent {
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   executorConversationLeases     ExecutorConversationLease[]
+  executorStandingPolicies       ExecutorStandingPolicy[]
+  ticketWork                     AgentTicketWork[]
+  reminders                      AgentReminder[]
   knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
   coreDocuments                  AgentCoreDocument[]
@@ -3646,6 +3666,7 @@ model Run {
   executorSessions                    ExecutorSession[]
   executorBindings                    ExecutorBinding[]
   executorConversationLeases          ExecutorConversationLease[]     @relation("ExecutorConversationLeaseLaunch")
+  createdReminders                    AgentReminder[]                 @relation("AgentReminderCreatedByRun")
   proposedAgentTodoTemplates          AgentTodoTemplate[]             @relation("AgentTodoTemplateProposedByRun")
   activeAgentTodos                    AgentTodo[]                     @relation("AgentTodoActiveRun")
   demonstrationSteps                  DemonstrationStep[]
@@ -4158,18 +4179,30 @@ model AgentTrigger {
   healthRevision           Int                       @default(0) @map("health_revision")
   lastFiredAt              DateTime?                 @map("last_fired_at")
   nextRunAt                DateTime?                 @map("next_run_at")
+  // The resolved project and board of a `ticket_changed` or `document_changed`
+  // trigger, so its dispatcher looks triggers up by board instead of loading
+  // every event trigger in the organisation and matching config JSON in
+  // memory. Written by the server from the typed config; null for every other
+  // type. SetNull like the target channel: a trigger whose board is gone
+  // matches nothing rather than vanishing with it.
+  scopeProjectId           String?                   @map("scope_project_id") @db.Uuid
+  scopeBoardId             String?                   @map("scope_board_id") @db.Uuid
   createdAt                DateTime                  @default(now()) @map("created_at")
   updatedAt                DateTime                  @updatedAt @map("updated_at")
   agent                    Agent?                    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   workflowInstallation     WorkflowInstallation?     @relation(fields: [workflowInstallationId], references: [id], onDelete: Cascade)
   targetChannel            Channel?                  @relation("TriggerTargetChannel", fields: [targetChannelId], references: [id], onDelete: SetNull)
   targetThread             Thread?                   @relation("TriggerTargetThread", fields: [targetThreadId], references: [id], onDelete: SetNull)
+  scopeProject             Project?                  @relation("AgentTriggerScopeProject", fields: [scopeProjectId], references: [id], onDelete: SetNull)
+  scopeBoard               Board?                    @relation("AgentTriggerScopeBoard", fields: [scopeBoardId], references: [id], onDelete: SetNull)
   deliveries               AgentTriggerDelivery[]
   runs                     Run[]
   workflowRuns             WorkflowRun[]
   runThreadPendingMessages RunThreadPendingMessage[]
   healthAlerts             UserAlert[]               @relation("TriggerHealthAlert")
   agentTodos               AgentTodo[]
+  ticketWork               AgentTicketWork[]
+  standingPolicies         ExecutorStandingPolicy[]
 
   @@index([agentId, createdAt])
   @@index([agentId, enabled, status])
@@ -4177,6 +4210,8 @@ model AgentTrigger {
   @@index([workflowInstallationId, enabled, status])
   @@index([targetChannelId])
   @@index([targetThreadId])
+  @@index([scopeBoardId])
+  @@index([scopeProjectId])
   // The 4-col (type, enabled, status, nextRunAt) index was dropped in
   // 20260530170400_trigger_index_prune — it is a strict prefix of the 5-col
   // index below, which already serves every query the shorter one could.
@@ -4209,6 +4244,135 @@ model AgentTriggerDelivery {
   // Retry poller scan: find failed deliveries due for re-attempt (sp-webhook).
   @@index([status, nextRetryAt])
   @@map("agent_trigger_deliveries")
+}
+
+/// One ticket's work under one `ticket_changed` trigger. A pickup creates it
+/// and every later wake for that ticket goes through it; the platform owns its
+/// state, and the agent is told that state rather than asked to manage it
+/// (docs/standards/ticket-work.md).
+///
+/// Enforced in the migration, because Prisma cannot express them: `status`,
+/// `state_reason`, `ended_reason`, `last_wake_reason` and `last_pr_state` are
+/// the closed vocabularies in `packages/schemas/src/ticket-work.ts`; `ended_at`
+/// and `ended_reason` are set exactly when the status is terminal; the partial
+/// unique index `agent_ticket_work_one_live` allows one live record (queued,
+/// active, parked or waiting_machine) per (trigger, ticket); and
+/// `agent_ticket_work_one_per_executor` lets one record hold each machine (the
+/// active one, or the one waiting_machine for it).
+model AgentTicketWork {
+  id               String                  @id @default(uuid()) @db.Uuid
+  organizationId   String                  @map("organization_id") @db.Uuid
+  /// SetNull, so the record and its audit outlive a deleted trigger. The
+  /// trigger delete service ends the record first.
+  triggerId        String?                 @map("trigger_id") @db.Uuid
+  agentId          String                  @map("agent_id") @db.Uuid
+  taskId           String                  @map("task_id") @db.Uuid
+  projectId        String                  @map("project_id") @db.Uuid
+  /// The ticket's work thread: one per (trigger, ticket), reused when the
+  /// ticket comes back after its work ended.
+  threadId         String                  @map("thread_id") @db.Uuid
+  /// queued | active | parked | waiting_machine | done | cancelled | failed
+  status           String
+  /// Why the record is in its status, for the chip and the wake facts.
+  stateReason      String?                 @map("state_reason")
+  /// Set by the pool dispatcher, never by run setup.
+  policyId         String?                 @map("policy_id") @db.Uuid
+  executorId       String?                 @map("executor_id") @db.Uuid
+  /// The person whose move started the work, and the TaskEvent of that move.
+  startedByUserId  String?                 @map("started_by_user_id") @db.Uuid
+  startedByEventId String?                 @map("started_by_event_id") @db.Uuid
+  /// The queue is ordered by ticket priority, then `enqueuedAt`.
+  queuePosition    Int?                    @map("queue_position")
+  enqueuedAt       DateTime?               @map("enqueued_at")
+  /// The coding sessions this ticket started, appended by the worker in the
+  /// same step as `coding_session_start` returns.
+  sessionIds       String[]                @default([]) @map("session_ids")
+  /// `{ "<sessionId>": <turn> }`: the newest turn end a `ticket.work` run has
+  /// already seen, so a session wake at or below it is skipped.
+  lastObservedTurn Json                    @default("{}") @map("last_observed_turn")
+  pullRequestUrl   String?                 @map("pull_request_url")
+  /// As `gh pr view` reports it: OPEN, CLOSED or MERGED
+  /// (`TicketWorkPullRequestStateSchema`).
+  lastPrState      String?                 @map("last_pr_state")
+  /// `{ passed, failed, pending }` from the last pull-request read.
+  lastChecks       Json?                   @map("last_checks")
+  prSeenAt         DateTime?               @map("pr_seen_at")
+  wakeCount        Int                     @default(0) @map("wake_count")
+  /// Paused while the record is `waiting_machine` or waiting on a person.
+  /// BigInt: an Int of milliseconds overflows at about 596 hours.
+  activeMs         BigInt                  @default(0) @map("active_ms")
+  /// Coding cost deltas plus the Nessie run cost, at the ledger's precision.
+  costUsd          Decimal                 @default(0) @map("cost_usd") @db.Decimal(20, 8)
+  lastWakeAt       DateTime?               @map("last_wake_at")
+  lastWakeReason   String?                 @map("last_wake_reason")
+  startedAt        DateTime                @default(now()) @map("started_at")
+  endedAt          DateTime?               @map("ended_at")
+  endedReason      String?                 @map("ended_reason")
+  /// Who ended it, as a `TaskEvent.by`: a user id, `agent:<id>`, or `system`.
+  endedBy          String?                 @map("ended_by")
+  createdAt        DateTime                @default(now()) @map("created_at")
+  updatedAt        DateTime                @updatedAt @map("updated_at")
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  trigger          AgentTrigger?           @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  agent            Agent                   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  task             Task                    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  project          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  thread           Thread                  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  policy           ExecutorStandingPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  executor         Executor?               @relation(fields: [executorId], references: [id], onDelete: SetNull)
+  startedBy        User?                   @relation("AgentTicketWorkStartedBy", fields: [startedByUserId], references: [id], onDelete: SetNull)
+  startedByEvent   TaskEvent?              @relation(fields: [startedByEventId], references: [id], onDelete: SetNull)
+  reminders        AgentReminder[]
+
+  @@index([triggerId, taskId])
+  @@index([taskId, status])
+  @@index([agentId, status])
+  @@index([threadId])
+  @@index([policyId, status])
+  @@index([executorId, status])
+  @@index([status, enqueuedAt])
+  @@index([startedByUserId])
+  @@index([startedByEventId])
+  @@map("agent_ticket_work")
+}
+
+/// A one-off "check back in N minutes" wake an agent sets for itself
+/// (`check_back_in`). Its own row rather than a `schedule_task` trigger: those
+/// run as their creator, count against the creator's schedule cap and fire
+/// without the `ticket.work` purpose.
+///
+/// Enforced in the migration: `status` is pending | fired | cancelled,
+/// `fired_at` is set exactly when fired, `cancelled_reason` exactly when
+/// cancelled and from its closed vocabulary, and the partial unique index
+/// `agent_reminders_one_pending_per_work` allows one pending reminder per work
+/// record.
+model AgentReminder {
+  id              String           @id @default(uuid()) @db.Uuid
+  agentId         String           @map("agent_id") @db.Uuid
+  threadId        String           @map("thread_id") @db.Uuid
+  /// Set in ticket work: the reminder fires as a `ticket.work` wake of this
+  /// record and is cancelled with it.
+  workId          String?          @map("work_id") @db.Uuid
+  dueAt           DateTime         @map("due_at")
+  note            String
+  createdByRunId  String?          @map("created_by_run_id") @db.Uuid
+  status          String           @default("pending")
+  firedAt         DateTime?        @map("fired_at")
+  /// replaced | work_ended | person
+  cancelledReason String?          @map("cancelled_reason")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  agent           Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  thread          Thread           @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  work            AgentTicketWork? @relation(fields: [workId], references: [id], onDelete: Cascade)
+  createdByRun    Run?             @relation("AgentReminderCreatedByRun", fields: [createdByRunId], references: [id], onDelete: SetNull)
+
+  // The scheduler tick claims due pending reminders in due order.
+  @@index([status, dueAt])
+  @@index([threadId, status])
+  @@index([agentId, createdAt])
+  @@index([workId])
+  @@index([createdByRunId])
+  @@map("agent_reminders")
 }
 
 model Plan {
@@ -5205,6 +5369,7 @@ model Task {
   comments                TaskComment[]
   externalAssets          TaskExternalAsset[]
   embedding               TaskEmbedding?
+  agentWork               AgentTicketWork[]
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -5280,12 +5445,13 @@ model TaskChecklistStep {
 }
 
 model TaskEvent {
-  id        String   @id @default(uuid()) @db.Uuid
-  taskId    String   @map("task_id") @db.Uuid
-  eventType String   @map("event_type")
-  payload   Json     @default("{}")
-  createdAt DateTime @default(now()) @map("created_at")
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id                String            @id @default(uuid()) @db.Uuid
+  taskId            String            @map("task_id") @db.Uuid
+  eventType         String            @map("event_type")
+  payload           Json              @default("{}")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  task              Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  startedTicketWork AgentTicketWork[]
 
   @@index([taskId, createdAt])
   @@map("task_events")
@@ -5392,6 +5558,8 @@ model Executor {
   operationGrants        ExecutorAgentOperationGrant[]
   sessions               ExecutorSession[]
   bindings               ExecutorBinding[]
+  standingPolicyPools    ExecutorStandingPolicyExecutor[]
+  ticketWork             AgentTicketWork[]
   continuations          ExecutorContinuation[]
   daemonChallenges       ExecutorDaemonChallenge[]
   availabilityCandidates ExecutorAvailabilityCandidate[]
@@ -5663,6 +5831,84 @@ model ExecutorAvailabilityCandidate {
   @@index([executorId, expiresAt])
   @@index([runId])
   @@map("executor_availability_candidates")
+}
+
+/// Standing machine access: the third way an executor's local-apps pair is
+/// bound to a run, beside a person's launch and a conversation lease. The
+/// machines' owner (the author) confirms it once with fresh verification; it
+/// names exactly what they agreed to, and every `ticket.work` wake is bound
+/// afresh against it (docs/standards/ticket-work.md).
+///
+/// Enforced in the migration: `status`, `suspended_reason` and `ended_reason`
+/// are the closed vocabularies in `packages/schemas/src/ticket-work.ts`;
+/// `suspended_reason` is set exactly when suspended, `ended_at` and
+/// `ended_reason` exactly when ended; a live or suspended policy has been
+/// confirmed and carries the author's origin; and per trigger at most one
+/// policy is live or suspended (`executor_standing_policies_one_binding`) and
+/// at most one is preparing (`executor_standing_policies_one_preparing`).
+model ExecutorStandingPolicy {
+  id              String                           @id @default(uuid()) @db.Uuid
+  organizationId  String                           @map("organization_id") @db.Uuid
+  /// The pairing owner of every executor in the pool.
+  authorUserId    String                           @map("author_user_id") @db.Uuid
+  /// SetNull, so the policy and its audit outlive a deleted trigger. The
+  /// trigger delete service ends the policy first.
+  triggerId       String?                          @map("trigger_id") @db.Uuid
+  agentId         String                           @map("agent_id") @db.Uuid
+  /// preparing | live | suspended | ended
+  status          String                           @default("preparing")
+  suspendedReason String?                          @map("suspended_reason")
+  endedReason     String?                          @map("ended_reason")
+  /// The reviewed unattended host profile the card showed and every start
+  /// checks: permission mode, allowed root names, per-turn budget.
+  hostProfile     Json                             @map("host_profile")
+  /// Digest of the trigger's security-relevant fields at confirmation. A
+  /// trigger edit that changes it suspends the policy.
+  triggerDigest   String                           @map("trigger_digest")
+  /// Organisation, team and UOA identity captured at confirm, in the
+  /// `ScheduledTriggerLaunchOriginSchema` shape.
+  authorOrigin    Json?                            @map("author_origin")
+  confirmedAt     DateTime?                        @map("confirmed_at")
+  endedAt         DateTime?                        @map("ended_at")
+  endedByUserId   String?                          @map("ended_by_user_id") @db.Uuid
+  createdAt       DateTime                         @default(now()) @map("created_at")
+  updatedAt       DateTime                         @updatedAt @map("updated_at")
+  organization    Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author          User                             @relation("ExecutorStandingPolicyAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  trigger         AgentTrigger?                    @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+  agent           Agent                            @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  endedBy         User?                            @relation("ExecutorStandingPolicyEndedBy", fields: [endedByUserId], references: [id], onDelete: SetNull)
+  executors       ExecutorStandingPolicyExecutor[]
+  ticketWork      AgentTicketWork[]
+
+  @@index([triggerId, status])
+  @@index([authorUserId, status])
+  @@index([agentId, status])
+  @@map("executor_standing_policies")
+}
+
+/// A standing policy's pool: one or two machines, each with the descriptor
+/// digests pinned at confirmation. A child table rather than a JSON array,
+/// because an array cannot hold a foreign key. `position` is 0 or 1 (a CHECK
+/// in the migration) and unique within the policy.
+model ExecutorStandingPolicyExecutor {
+  policyId               String                 @map("policy_id") @db.Uuid
+  executorId             String                 @map("executor_id") @db.Uuid
+  position               Int
+  /// The machine's reviewed codingSessions config digest.
+  descriptorConfigDigest String                 @map("descriptor_config_digest")
+  localPolicyDigest      String                 @map("local_policy_digest")
+  createdAt              DateTime               @default(now()) @map("created_at")
+  policy                 ExecutorStandingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  /// Cascade, not Restrict: nothing hard-deletes an executor but its
+  /// organisation's own deletion, which a Restrict key here would refuse.
+  /// Revoking a machine is a status change and a fence that ends the policy.
+  executor               Executor               @relation(fields: [executorId], references: [id], onDelete: Cascade)
+
+  @@id([policyId, executorId])
+  @@unique([policyId, position])
+  @@index([executorId])
+  @@map("executor_standing_policy_executors")
 }
 
 model ExecutorCommand {

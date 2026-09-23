@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
+import { TICKET_WORK_PURPOSE } from '@nessie/schemas'
 
 import { createConsumedSourceSink } from '../src/run/execute/disclosure-basis.js'
 import {
@@ -96,6 +97,26 @@ test('the peer subset admits ticket_comment_add in a project channel and refuses
     actorType: 'agent',
     interactive: false,
   }), false)
+})
+
+test('a ticket.work run is never lent project tools through a person-started arm', () => {
+  // It acts as the agent with no person behind it, so even an actor context
+  // that looks person-started must not admit it. Its own arm admits nothing
+  // until the ticket-work tools ship (docs/standards/ticket-work.md).
+  for (const actorType of ['user', 'agent']) {
+    for (const interactive of [true, false]) {
+      const run = {
+        agentKind: 'shared',
+        channelProjectId: randomUUID(),
+        actorType,
+        interactive,
+        purpose: TICKET_WORK_PURPOSE,
+      }
+      assert.equal(isProjectDelegatedRun(run), false, `${actorType}, interactive ${interactive}`)
+      const policy = Object.fromEntries([...PEER_PROJECT_TOOL_IDS].map((id) => [id, true]))
+      assert.equal(resolveProjectDelegatedToolIds(isProjectDelegatedRun(run), policy).size, 0)
+    }
+  }
 })
 
 test('a removed file\'s line names who removed it, when, and why', () => {
