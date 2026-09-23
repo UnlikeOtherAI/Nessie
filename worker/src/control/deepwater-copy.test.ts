@@ -6,6 +6,7 @@ import {
   completedKickoff,
   deepWaterFailureMessage,
   failedNotice,
+  identityChangedWhileRunningNotice,
   resultNotice,
   startUnconfirmedNotice,
   turnKickoff,
@@ -29,6 +30,7 @@ test('person-facing notices use plain words and never the plumbing', () => {
     startUnconfirmedNotice('Heat pumps'),
     wakeUnreachableNotice({ topic: 'Heat pumps', finished: false, link: null }),
     wakeCapNotice('Heat pumps'),
+    identityChangedWhileRunningNotice('Heat pumps'),
     ...(['requester_identity_changed', 'ledger_unavailable', 'knowledge_destination_unavailable',
       'report_expired', 'report_malformed'] as const)
       .map((reason) => blockedNotice({ topic: 'Heat pumps', reason })),
@@ -67,4 +69,12 @@ test('failure reasons are plain and never the raw code', () => {
   assert.equal(deepWaterFailureMessage('scope_limit'), 'too many research briefs are open at once')
   assert.equal(deepWaterFailureMessage('something_new'), 'DeepWater stopped before the research finished')
   assert.equal(deepWaterFailureMessage(null), 'DeepWater stopped before the research finished')
+})
+
+test('a changed sign-in says a running research is still running, and a blocked one that it finished', () => {
+  const running = identityChangedWhileRunningNotice('Heat pumps')
+  assert.match(running, /can't check on your research “Heat pumps”/)
+  assert.doesNotMatch(running, /finished|saved to Documents/)
+  const finished = blockedNotice({ topic: 'Heat pumps', reason: 'requester_identity_changed' })
+  assert.match(finished, /has finished, but it couldn't be saved to Documents/)
 })

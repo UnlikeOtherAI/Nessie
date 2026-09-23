@@ -114,9 +114,19 @@ const BLOCKED_REMEDY: Record<DeepWaterDeliveryBlockedReason, string> = {
   report_malformed: 'the report couldn\'t be read',
 }
 
+/** A finished research that could not be delivered: what happened and the one remedy. */
 export const blockedNotice = (input: { topic: string; reason: DeepWaterDeliveryBlockedReason }): string =>
   `Your DeepWater research ${quoted(input.topic)} has finished, but it couldn't be saved to Documents: `
   + `${BLOCKED_REMEDY[input.reason]}.`
+
+/**
+ * The requester's sign-in changed while their research is still running
+ * (amendments-fable F4): nothing has finished or failed to save yet, DeepWater
+ * just can no longer be asked about it for them until they act again.
+ */
+export const identityChangedWhileRunningNotice = (topic: string): string =>
+  `DeepWater can't check on your research ${quoted(topic)} because your sign-in has changed. `
+  + 'Sign in again, then choose Retry on the research, so its result still comes back here.'
 
 export const wakeUnreachableNotice = (input: { topic: string; finished: boolean; link: string | null }): string =>
   input.finished && input.link

@@ -24,7 +24,7 @@ import {
   isTransientLedgerRefusal,
   type DeepWaterLedgerOutcome,
 } from '../run/deepwater-ledger-call.js'
-import { blockedNotice, failedKickoff, failedNotice } from './deepwater-copy.js'
+import { failedKickoff, failedNotice, identityChangedWhileRunningNotice } from './deepwater-copy.js'
 import { deliverDeepWaterResearch, type DeepWaterDeliveryDeps } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, ensureDeepWaterResearchCard, postDeepWaterNotice } from './deepwater-messages.js'
 import { handleDeepWaterTurnWake } from './deepwater-turn-wake.js'
@@ -71,7 +71,8 @@ const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutc
 
 /**
  * The requester's captured identity no longer resolves (F4). A brief waits for
- * their next live action, which renews it; a launched research also tells them.
+ * their next live action, which renews it; a launched research, still running,
+ * also tells them — as still running, never as finished.
  */
 const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun): Promise<void> => {
   await deps.prisma.$transaction(async (tx) => {
@@ -83,7 +84,7 @@ const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun)
     if (!blocked || run.status === 'drafting') return
     await postDeepWaterNotice(tx, run, {
       kind: 'blocked',
-      content: blockedNotice({ topic: deepWaterTopicPreview(run), reason: 'requester_identity_changed' }),
+      content: identityChangedWhileRunningNotice(deepWaterTopicPreview(run)),
       alertKey: `deep-water-identity:${run.id}:${run.reconcileSeq}`,
     })
   })
