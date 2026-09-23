@@ -90,11 +90,46 @@ const environmentMap = (platform: NodeJS.Platform, from: NodeJS.ProcessEnv = {})
 
 export type RegistryValue = { name: string; type: string; value: string }
 
-/** `reg query` prints `    <name>    <type>    <value>` per value, four spaces apart. */
-export const parseRegistryEnvironment = (text: string): RegistryValue[] => text.split(/\r?\n/u).flatMap((line) => {
-  const match = /^ {4}(.+?) {4}(REG_[A-Z_]+)(?: {4}(.*))?$/u.exec(line)
-  return match ? [{ name: match[1]!, type: match[2]!, value: match[3] ?? '' }] : []
-})
+/**
+ * Both `Environment` keys, read through PowerShell as UTF-8 JSON. `reg query`
+ * writes in the console's OEM code page when its output is redirected (CP852
+ * on a Czech system), which garbled every non-ASCII value — a profile like
+ * `C:\Users\Ondřej`, and with it the agent's PATH and TEMP. Values come back
+ * unexpanded, with their kinds, so `%USERPROFILE%` is expanded here the same
+ * way for both keys.
+ */
+const REGISTRY_SCRIPT = [
+  '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)',
+  '$out = [ordered]@{}',
+  "foreach ($pair in @(@('machine', 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'),"
+  + " @('user', 'HKCU:\\Environment'))) {",
+  '  $key = Get-Item -LiteralPath $pair[1] -ErrorAction SilentlyContinue; $values = @()',
+  '  if ($key) { foreach ($name in $key.GetValueNames()) {',
+  "    $values += ,@($name, [string]$key.GetValueKind($name), [string]$key.GetValue($name, '', 'DoNotExpandEnvironmentNames'))",
+  '  } }',
+  '  $out[$pair[0]] = $values',
+  '}',
+  'ConvertTo-Json -InputObject $out -Compress -Depth 4',
+].join('\n')
+
+const REGISTRY_KINDS: Record<string, string> = { String: 'REG_SZ', ExpandString: 'REG_EXPAND_SZ', MultiString: 'REG_MULTI_SZ' }
+
+/** The script's `{machine: [[name, kind, value], …], user: […]}`, with kinds named as `reg` names them. */
+export const parseRegistryJson = (text: string): { machine: RegistryValue[]; user: RegistryValue[] } => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { machine: [], user: [] }
+  }
+  const values = (entries: unknown): RegistryValue[] => (Array.isArray(entries) ? entries : []).flatMap((entry) => {
+    if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !entry[0]) return []
+    const kind = typeof entry[1] === 'string' ? entry[1] : ''
+    return [{ name: entry[0], type: REGISTRY_KINDS[kind] ?? kind, value: typeof entry[2] === 'string' ? entry[2] : '' }]
+  })
+  const record = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
+  return { machine: values(record.machine), user: values(record.user) }
+}
 
 /** `env -0` after our marker: NUL-separated `NAME=value`, immune to a noisy shell profile. */
 export const parseLoginEnvironment = (text: string): Record<string, string> => {
@@ -135,11 +170,10 @@ const expandWindows = (value: string, lookup: (name: string) => string | undefin
 const captureWindows = async (received: NodeJS.ProcessEnv, run: CommandRunner): Promise<Record<string, string>> => {
   const env = environmentMap('win32', received)
   const systemRoot = env.get('SystemRoot') ?? 'C:\\Windows'
-  const reg = join(systemRoot, 'System32', 'reg.exe')
-  const machine = parseRegistryEnvironment((await run(reg, [
-    'query', 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+  const powershell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const { machine, user } = parseRegistryJson((await run(powershell, [
+    '-NoProfile', '-NonInteractive', '-Command', REGISTRY_SCRIPT,
   ])).stdout)
-  const user = parseRegistryEnvironment((await run(reg, ['query', 'HKCU\\Environment'])).stdout)
   const valueOf = (entry: RegistryValue): string => (entry.type === 'REG_EXPAND_SZ' ? expandWindows(entry.value, env.get) : entry.value)
   const paths: string[] = []
   for (const [scope, entries] of [['machine', machine], ['user', user]] as const) {

@@ -5,7 +5,7 @@ import {
   buildAgentEnvironment,
   captureUserSessionEnvironment,
   parseLoginEnvironment,
-  parseRegistryEnvironment,
+  parseRegistryJson,
   parseSystemdEnvironment,
   type CommandRunner,
 } from '../src/coding-session/agent-env.js'
@@ -17,25 +17,25 @@ import { runCodingSelfCheck } from '../src/coding-session/self-check.js'
  * real capture on the machine it runs on.
  */
 
-const MACHINE = [
-  'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
-  '    ComSpec    REG_EXPAND_SZ    %SystemRoot%\\system32\\cmd.exe',
-  '    Path    REG_EXPAND_SZ    %SystemRoot%\\system32;C:\\Program Files\\Git\\cmd',
-  '    PATHEXT    REG_SZ    .COM;.EXE;.BAT;.CMD',
-  '    TEMP    REG_EXPAND_SZ    %SystemRoot%\\TEMP',
-  '    USERNAME    REG_SZ    SYSTEM',
-  '    windir    REG_EXPAND_SZ    %SystemRoot%',
-  '    EMPTY    REG_SZ    ',
-  '',
-].join('\r\n')
-const USER = [
-  'HKEY_CURRENT_USER\\Environment',
-  '    Path    REG_EXPAND_SZ    %USERPROFILE%\\AppData\\Roaming\\npm',
-  '    TEMP    REG_EXPAND_SZ    %USERPROFILE%\\AppData\\Local\\Temp',
-  '    TMP    REG_EXPAND_SZ    %USERPROFILE%\\AppData\\Local\\Temp',
-  '    GOPATH    REG_EXPAND_SZ    %USERPROFILE%\\go',
-  '',
-].join('\r\n')
+/** What the registry script prints: both keys, each value's name, kind and unexpanded text. */
+const REGISTRY = JSON.stringify({
+  machine: [
+    ['ComSpec', 'ExpandString', '%SystemRoot%\\system32\\cmd.exe'],
+    ['Path', 'ExpandString', '%SystemRoot%\\system32;C:\\Program Files\\Git\\cmd'],
+    ['PATHEXT', 'String', '.COM;.EXE;.BAT;.CMD'],
+    ['TEMP', 'ExpandString', '%SystemRoot%\\TEMP'],
+    ['USERNAME', 'String', 'SYSTEM'],
+    ['windir', 'ExpandString', '%SystemRoot%'],
+    ['EMPTY', 'String', ''],
+  ],
+  user: [
+    ['Path', 'ExpandString', '%USERPROFILE%\\AppData\\Roaming\\npm'],
+    ['TEMP', 'ExpandString', '%USERPROFILE%\\AppData\\Local\\Temp'],
+    ['TMP', 'ExpandString', '%USERPROFILE%\\AppData\\Local\\Temp'],
+    ['GOPATH', 'ExpandString', '%USERPROFILE%\\go'],
+    ['ONEDRIVE', 'String', 'C:\\Users\\Ondřej\\OneDrive'],
+  ],
+})
 
 type Answer = { code?: number | null; missing?: boolean; stdout?: string }
 
@@ -47,18 +47,20 @@ const runner = (answers: Record<string, Answer>): CommandRunner => (
   }
 )
 
-test('registry values are read with their types, including empty ones', () => {
-  assert.deepEqual(parseRegistryEnvironment(MACHINE).slice(0, 2), [
+test('registry values are read with their kinds, including empty ones, and anything else reads as none', () => {
+  const { machine } = parseRegistryJson(REGISTRY)
+  assert.deepEqual(machine.slice(0, 2), [
     { name: 'ComSpec', type: 'REG_EXPAND_SZ', value: '%SystemRoot%\\system32\\cmd.exe' },
     { name: 'Path', type: 'REG_EXPAND_SZ', value: '%SystemRoot%\\system32;C:\\Program Files\\Git\\cmd' },
   ])
-  assert.deepEqual(parseRegistryEnvironment(MACHINE).find((entry) => entry.name === 'EMPTY'), { name: 'EMPTY', type: 'REG_SZ', value: '' })
+  assert.deepEqual(machine.find((entry) => entry.name === 'EMPTY'), { name: 'EMPTY', type: 'REG_SZ', value: '' })
+  assert.deepEqual(parseRegistryJson('not json'), { machine: [], user: [] })
 })
 
 test('Windows: machine then user, Path joined, the logon\'s USERNAME kept, names case-insensitive', async () => {
   const env = await captureUserSessionEnvironment('win32', {
     SystemRoot: 'C:\\Windows', USERPROFILE: 'C:\\Users\\ondre', USERNAME: 'ondre', PATH: 'C:\\minimal', SystemDrive: 'C:',
-  }, runner({ 'reg.exe query HKLM': { stdout: MACHINE }, 'reg.exe query HKCU': { stdout: USER } }))
+  }, runner({ 'powershell.exe -NoProfile': { stdout: REGISTRY } }))
   assert.equal(env.ComSpec, 'C:\\Windows\\system32\\cmd.exe')
   assert.equal(env.PATH, 'C:\\Windows\\system32;C:\\Program Files\\Git\\cmd;C:\\Users\\ondre\\AppData\\Roaming\\npm')
   assert.equal(Object.keys(env).filter((name) => name.toUpperCase() === 'PATH').length, 1)
@@ -67,6 +69,7 @@ test('Windows: machine then user, Path joined, the logon\'s USERNAME kept, names
   assert.equal(env.GOPATH, 'C:\\Users\\ondre\\go')
   assert.equal(env.windir, 'C:\\Windows')
   assert.equal(env.ProgramData, 'C:\\ProgramData')
+  assert.equal(env.ONEDRIVE, 'C:\\Users\\Ondřej\\OneDrive', 'read as UTF-8, not the console code page')
 })
 
 test('macOS: launchctl supplies the agent socket, the login shell the rest, past a noisy profile', async () => {

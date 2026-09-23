@@ -276,7 +276,10 @@ their type.
 
 The MCP SDK gives the bridge a minimal environment, so with
 `inheritUserSession` the host rebuilds a login-like one: the machine and user
-`Environment` registry keys on Windows; `launchctl getenv` and the login
+`Environment` registry keys on Windows (read through PowerShell as UTF-8 —
+`reg query` writes a redirected answer in the console's OEM code page, which
+garbles a profile such as `C:\Users\Ondřej` and every path under it);
+`launchctl getenv` and the login
 shell's `env -0` on macOS; `systemctl --user show-environment` and the login
 shell on Linux. It strips only `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 `CLAUDE_CODE_SSE_PORT`, `CLAUDE_CODE_MESSAGING_SOCKET`,
