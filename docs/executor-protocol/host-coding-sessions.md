@@ -77,7 +77,9 @@ coercion works. Each is an `mcp.call` through the same toolset dispatch as
 host-output disclosure stamp, the command TTL and the ToolCall row are all
 that dispatch's. A key a tool does not define is left behind rather than sent
 for the bridge to refuse, so nothing the model adds — an `owner`, a `_meta` —
-reaches the payload.
+reaches the payload. A blank optional argument — the `""` a model fills an
+optional field with — counts as absent: a blank `path` is the root, a blank
+`title` is taken from the task, and a blank `agent` is the default agent.
 
 **The wait is the worker's.** `coding_session_wait`
 (`worker/src/run/coding-session-wait.ts`) reads `session_status` every 5 s for
