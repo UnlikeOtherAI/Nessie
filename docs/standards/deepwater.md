@@ -543,7 +543,10 @@ the only way results come back.
   basis is `generic`: it stays a mention, but the lock screen shows only
   `genericBody`, DeepWater's words for the kind of news (`noticePushBody`:
   "Your DeepWater research has finished."), never the topic or the agent-reply
-  wording.
+  wording. Each kind says only what is true of every notice of that kind: only
+  a finished research's blocked delivery (`blocked`) "needs you before it can
+  be saved"; a changed sign-in on a brief or a running research is
+  `identity_changed` ("Sign in again so your DeepWater research can carry on.").
 - **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
   confirmed within a day (`failed/start_unconfirmed`), telling the agent once
   (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,

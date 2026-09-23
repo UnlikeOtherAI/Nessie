@@ -328,7 +328,7 @@ withFixture('an agent\'s brief whose requester\'s sign-in changed tells them onc
   assert.equal(fixture.ledger.calls.length, 0, 'nothing reaches Ledger without the identity')
   assert.deepEqual(await kickoffs(fixture), [], 'the agent cannot be woken as someone who is not signed in')
   // The person cannot edit an agent's brief and the agent is not woken again, so they are told — once.
-  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'])
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['identity_changed'])
   const [notice] = await fixture.prisma.message.findMany({
     where: { threadId: fixture.ids.thread, role: 'assistant', agentId: null },
   })

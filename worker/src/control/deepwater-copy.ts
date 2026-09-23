@@ -160,7 +160,10 @@ export const wakeCapNotice = (topic: string): string =>
 const NOTICE_PUSH_BODY: Record<DeepWaterNoticeKind, string> = {
   result: 'Your DeepWater research has finished.',
   failed: 'Your DeepWater research didn\'t finish.',
+  // Only a finished research's delivery is blocked; a changed sign-in on a
+  // brief or a running research is `identity_changed`.
   blocked: 'Your DeepWater research needs you before it can be saved.',
+  identity_changed: 'Sign in again so your DeepWater research can carry on.',
   start_unconfirmed: 'DeepWater didn\'t confirm your research brief.',
   wake_unreachable: 'There\'s news about your DeepWater research.',
   wake_cap: 'Your DeepWater research brief needs you.',

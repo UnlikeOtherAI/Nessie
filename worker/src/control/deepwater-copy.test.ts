@@ -8,6 +8,7 @@ import {
   failedNotice,
   identityChangedOnAgentBriefNotice,
   identityChangedWhileRunningNotice,
+  noticePushBody,
   resultNotice,
   startUnconfirmedNotice,
   turnKickoff,
@@ -86,4 +87,10 @@ test('a changed sign-in on an agent\'s brief names the remedy and never a result
   assert.match(notice, /agent working on your DeepWater research brief “Heat pumps” can't carry on/)
   assert.match(notice, /Sign in again, then choose Retry/)
   assert.doesNotMatch(notice, /finished|saved to Documents/)
+})
+
+test('a lock screen says only a finished research is waiting to be saved', () => {
+  assert.match(noticePushBody('blocked'), /before it can be saved/)
+  assert.doesNotMatch(noticePushBody('identity_changed'), /saved|finished/)
+  assert.match(noticePushBody('identity_changed'), /Sign in again/)
 })

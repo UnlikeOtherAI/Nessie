@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
 import { LedgerIdentityError, UOA_SUBJECT_FORBIDDEN_CODE, type UoaExchangeFailure } from '@nessie/runtime'
-import { DeepWaterNoticeMessageMetadataSchema } from '@nessie/schemas'
+import { DeepWaterNoticeMessageMetadataSchema, PushDispatchJobPayloadSchema } from '@nessie/schemas'
 
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
 import { reapUnconfirmedDeepWaterBriefs, retryDeepWaterDelivery } from '../../src/control/deepwater-worker.js'
@@ -19,7 +19,9 @@ import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
  * re-read every 30 s for ever with a fresh exchange each time. Only an outage
  * is read again soon; a deployment fault — including a 403 that does not name
  * the person, because UOA answers 403 for Nessie's own delegation setup too —
- * keeps the claim's backoff and blames nobody.
+ * keeps the claim's backoff and blames nobody. A notice about a changed sign-in
+ * is its own kind (`identity_changed`), so a lock screen never calls a research
+ * that is still running one waiting to be saved.
  */
 
 const withFixture = (name: string, body: (fixture: WatchFixture) => Promise<void>): void => {
@@ -71,8 +73,30 @@ withFixture('UOA refusing the requester blocks the research once and tells them,
   assert.equal(blocked.deliveryBlockedReason, 'requester_identity_changed')
   assert.equal(blocked.status, 'running', 'kept open so a retry can deliver it')
   assert.ok(await nextReadIn(fixture, run.id) > 9 * 60_000, 'no fast retry for a refused person')
-  assert.deepEqual(await noticeKinds(fixture, run.id), ['blocked'])
+  assert.deepEqual(await noticeKinds(fixture, run.id), ['identity_changed'])
   assert.equal(fixture.ledger.calls.length, 0, 'nothing reaches Ledger without a delegation')
+})
+
+withFixture('a research drawn on a private conversation is never called one waiting to be saved on the lock screen', async (fixture) => {
+  const run = await claimedResearch(fixture)
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: run.id },
+    data: {
+      sourceScopes: [{ scopeType: 'channel', scopeId: fixture.ids.assistantChannel }],
+      disclosureSources: [{ sourceChannelId: fixture.ids.assistantChannel, sourceAuthorUserId: fixture.ids.requester }],
+    },
+  })
+  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403, code: UOA_SUBJECT_FORBIDDEN_CODE }))
+  await watchDeepWaterRun(fixture.deps, await fixture.read(run.id))
+
+  const [notice] = await fixture.prisma.message.findMany({ where: { threadId: fixture.ids.thread, role: 'assistant' } })
+  const [job] = await fixture.prisma.queueJob.findMany({
+    where: { topic: 'push.dispatch', payload: { path: ['messageId'], equals: notice?.id ?? '' } },
+  })
+  const push = PushDispatchJobPayloadSchema.parse(job?.payload)
+  assert.equal(push.contentVisibility, 'generic')
+  assert.equal(push.genericBody, 'Sign in again so your DeepWater research can carry on.')
+  assert.deepEqual(push.mentionUserIds, [fixture.ids.requester])
 })
 
 withFixture('a token for another sign-in epoch is the same drift', async (fixture) => {
@@ -80,7 +104,7 @@ withFixture('a token for another sign-in epoch is the same drift', async (fixtur
   fixture.failIdentity(exchangeFailed({ kind: 'epoch_mismatch' }))
   await watchDeepWaterRun(fixture.deps, run)
   assert.equal((await fixture.read(run.id)).deliveryBlockedReason, 'requester_identity_changed')
-  assert.deepEqual(await noticeKinds(fixture, run.id), ['blocked'])
+  assert.deepEqual(await noticeKinds(fixture, run.id), ['identity_changed'])
 })
 
 withFixture('a person\'s own brief refused by UOA waits quietly for them to sign in again', async (fixture) => {
@@ -133,7 +157,7 @@ withFixture('a lost agent scope start UOA refuses to replay is blocked and told,
   assert.equal(blocked.deliveryBlockedReason, 'requester_identity_changed')
   assert.equal(blocked.status, 'queued')
   assert.equal(fixture.ledger.calls.length, 0, 'nothing reaches Ledger without a delegation')
-  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'], 'told once')
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['identity_changed'], 'told once')
   const [notice] = await fixture.prisma.message.findMany({ where: { threadId: fixture.ids.thread, role: 'assistant' } })
   assert.match(notice?.content ?? '', /agent working on your DeepWater research brief/)
   assert.match(notice?.content ?? '', /Sign in again, then choose Retry/)
@@ -147,7 +171,7 @@ withFixture('a lost agent scope start UOA refuses to replay is blocked and told,
   const waiting = await fixture.read(brief.id)
   assert.equal(waiting.status, 'queued')
   assert.equal(waiting.failureCode, null)
-  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'])
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['identity_changed'])
 
   // Their Retry renews the identity and replays the call, which attaches it.
   fixture.failIdentity(false)

@@ -94,12 +94,14 @@ const retryLater = async (
 
 /**
  * The requester's captured identity no longer resolves (F4). The block stops
- * the watch until their next live action (or Retry) renews it. A person's own
- * brief says "Sign in again" in its dialog, from the run itself, so it needs
- * no notice. Everyone else is told once, because nothing else would tell them:
- * an agent's brief — being agreed, or opened and not yet confirmed — waits on
- * a person who cannot edit it and an agent that is never woken again, and a
- * launched research is still running — never told as finished.
+ * the watch until their Retry renews it — or, on their own brief, their next
+ * action there. A person's own brief says "Sign in again" in its dialog, from
+ * the run itself, so it needs no notice. Everyone else is told once
+ * (`identity_changed`), because nothing else would tell them: an agent's brief
+ * — being agreed, or opened and not yet confirmed — waits on a person who
+ * cannot edit it and an agent that is never woken again, and a launched
+ * research is still running — never told as finished, nor as one waiting to be
+ * saved.
  */
 const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun): Promise<void> => {
   await runDeepWaterTransaction(deps, async (tx, announce) => {
@@ -114,7 +116,7 @@ const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun)
     if (brief && run.originKind === 'person') return
     const topic = deepWaterTopicPreview(run)
     await postDeepWaterNotice(tx, announce, run, {
-      kind: 'blocked',
+      kind: 'identity_changed',
       content: brief ? identityChangedOnAgentBriefNotice(topic) : identityChangedWhileRunningNotice(topic),
       alertKey: `deep-water-identity:${run.id}:${run.reconcileSeq}`,
     })

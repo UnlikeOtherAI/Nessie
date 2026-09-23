@@ -214,7 +214,7 @@ withFixture('a changed sign-in stops a brief quietly and tells a launched resear
   assert.equal((await fixture.read(research.id)).deliveryBlockedReason, 'requester_identity_changed')
   assert.equal((await fixture.read(research.id)).status, 'running', 'kept open so a retry can deliver it')
   const told = await notices(fixture, research.id)
-  assert.deepEqual(told.map((notice) => notice.kind), ['blocked'])
+  assert.deepEqual(told.map((notice) => notice.kind), ['identity_changed'])
   // Still running: nothing finished and nothing failed to save.
   assert.match(told[0]?.content ?? '', /can't check on your research/)
   assert.match(told[0]?.content ?? '', /sign-in has changed/)
