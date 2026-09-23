@@ -266,6 +266,66 @@ withFixture('a person\'s brief the room never saw is told to them alone, in thei
   assert.deepEqual(await basisOf(fixture, roomNotice?.id ?? ''), [])
 })
 
+withFixture('a brief that finished before the watch saw it run is shown to the room before its result', async (fixture) => {
+  // The launch ack was lost and the research finished between two reads: the
+  // watch's first sight of it is complete while the run still says drafting.
+  const brief = await fixture.insert('person')
+  const rs = researchId()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
+  })
+  fixture.ledger.answer('research_scope_get', { ...wireScope({ id: rs, revision: 2 }), status: 'complete', title: 'Heat pumps' })
+  fixture.ledger.answer('research_report', report)
+  await watch(fixture, brief.id)
+
+  const delivered = await fixture.read(brief.id)
+  assert.equal(delivered.status, 'completed')
+  assert.ok(delivered.launchedAt, 'a finished research was launched')
+  assert.ok(delivered.cardMessageId, 'the room is shown the research first')
+  const [result, ...others] = await noticesAnywhere(fixture, brief.id)
+  assert.equal(others.length, 0)
+  assert.equal(result?.kind, 'result')
+  assert.equal(result?.threadId, fixture.ids.thread)
+  assert.equal(result?.rootMessageId, delivered.cardMessageId, 'the result lands under the card')
+  assert.deepEqual(await basisOf(fixture, result?.id ?? ''), [])
+})
+
+withFixture('a brief refused before launch never counts as launched, whatever its status', async (fixture) => {
+  const brief = await fixture.insert('person')
+  const rs = researchId()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
+  })
+  // A bare failure can be a refusal before launch: no card, nothing for the room.
+  fixture.ledger.answer('research_scope_get', { ...wireScope({ id: rs, revision: 1 }), status: 'failed', error_code: 'upstream_failed' })
+  await watch(fixture, brief.id)
+  const failed = await fixture.read(brief.id)
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.launchedAt, null)
+  assert.equal(failed.cardMessageId, null)
+
+  // One Ledger reports as launched before it failed is the room's.
+  const launchedBrief = await fixture.insert('person')
+  const launchedRs = researchId()
+  await fixture.attach(launchedBrief.id, {
+    id: launchedRs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
+  })
+  const wire = wireScope({ id: launchedRs, revision: 1 }) as { brief: Record<string, unknown> }
+  fixture.ledger.answer('research_scope_get', {
+    ...wire, brief: { ...wire.brief, state: 'launched' }, status: 'failed', error_code: 'upstream_failed',
+  })
+  await watch(fixture, launchedBrief.id)
+  const told = await fixture.read(launchedBrief.id)
+  assert.equal(told.status, 'failed')
+  assert.ok(told.launchedAt && told.cardMessageId)
+  const [notice] = await noticesAnywhere(fixture, launchedBrief.id)
+  assert.equal(notice?.threadId, fixture.ids.thread)
+  assert.equal(notice?.rootMessageId, told.cardMessageId)
+})
+
 withFixture('a read that fails while Ledger restarts is tried again within 30 s; a refusal waits', async (fixture) => {
   const { run } = await launched(fixture)
   // What the watch claim does to this run alone (a global claim here could take

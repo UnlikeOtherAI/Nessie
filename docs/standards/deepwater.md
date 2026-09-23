@@ -404,6 +404,14 @@ the only way results come back.
   tells the requester once that the agent can't carry on (they cannot edit it,
   and the agent is never woken while the watch is stopped), and a launched
   research tells them DeepWater can't check on it — never that it finished.
+- **A launch is seen before its result.** A research Ledger shows was launched
+  — `complete`, or a brief whose state is `launched` — moves the run to
+  `running` (setting `launched_at`) before its result is delivered, even when
+  the watch never saw it run (a launch acknowledgement lost, or a research
+  that finished between two reads), so a person's card is posted and the room
+  is shown the research before the result lands under that card. A bare
+  `failed` on a brief is never taken as a launch: it can be a refusal before
+  one.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind, provider tool-call id and stored arguments — which Ledger answers
   with the one brief it keyed to that call, or opens now. The attach posts the

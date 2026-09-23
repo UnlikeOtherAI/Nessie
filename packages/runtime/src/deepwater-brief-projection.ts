@@ -45,7 +45,9 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * - non-terminal Ledger statuses move the run forward; `cancelled` is written
  *   directly; a finished research (`complete`, `failed`, `timed_out`) is
  *   reported back as `ledgerTerminal` and written only by the delivery claim,
- *   so `completed` and `delivered_at` always land in one transaction;
+ *   so `completed` and `delivered_at` always land in one transaction — after
+ *   moving a brief Ledger shows was launched to `running`, so its launch is
+ *   seen before its result;
  * - the title is captured as soon as Ledger reports it;
  * - the watch is rescheduled from the new state.
  */
@@ -143,14 +145,28 @@ const STATUS_RANK: Record<ProductIntegrationRunStatus, number> = {
   warning: 3,
 }
 
-/** What a Ledger status does to a live run's product status (contract §2.4); never backwards. */
+/**
+ * What a Ledger status does to a live run's product status (contract §2.4);
+ * never backwards. A finished research is written by the delivery claim, but
+ * one Ledger shows was launched moves to `running` first when Nessie never saw
+ * it run (a launch ack lost, or a research that finished between two reads):
+ * the launch is what posts a person's card and opens the run to its room, and
+ * a result must never be delivered to a room that was not shown the research.
+ * `launched` is known for `complete` (Ledger finishes only launched research),
+ * a brief Ledger reports as launched, and a launch ticket — never for a bare
+ * `failed`, which can be a refusal before launch.
+ */
 const statusStepForLedger = (
   current: ProductIntegrationRunStatus,
   ledger: LedgerResearchStatus,
   errorCode: string | null,
+  launched: boolean,
 ): StatusStep => {
   if (ledger === 'complete' || ledger === 'failed' || ledger === 'timed_out') {
-    return { status: current, ledgerTerminal: { status: ledger, errorCode } }
+    const status = (launched || ledger === 'complete') && STATUS_RANK[current] < STATUS_RANK.running
+      ? 'running'
+      : current
+    return { status, ledgerTerminal: { status: ledger, errorCode } }
   }
   const next = productRunStatusForLedger(ledger)
   return { status: STATUS_RANK[next] < STATUS_RANK[current] ? current : next, ledgerTerminal: null }
@@ -291,7 +307,7 @@ export const applyDeepWaterScopeResult = async (
   // where the watch claims it: a delivery that does not finish now is retried
   // by the next claim instead of stranding an attached `queued` row.
   const from: ProductIntegrationRunStatus = attaching ? 'drafting' : run.status
-  const step = statusStepForLedger(from, result.status, result.errorCode)
+  const step = statusStepForLedger(from, result.status, result.errorCode, result.brief?.state === 'launched')
   const finishedByStatus = pendingActionFinishedByStatus(application.state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...application.state, pendingAction: null } : application.state
 
@@ -329,7 +345,7 @@ export const applyDeepWaterStatusRead = async (
   assertBoundTo(run, input.status.id)
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
 
-  const step = statusStepForLedger(run.status, input.status.status, input.status.errorCode)
+  const step = statusStepForLedger(run.status, input.status.status, input.status.errorCode, false)
   const finishedByStatus = pendingActionFinishedByStatus(state, step.status, step.ledgerTerminal)
   const nextState = finishedByStatus ? { ...state, pendingAction: null } : state
   const written = await writeProjection(tx, {
@@ -370,7 +386,8 @@ export const applyDeepWaterLaunchTicket = async (
   assertBoundTo(run, input.ticket.id)
   if (TERMINAL_RUN_STATUSES.has(run.status)) return { applied: false, reason: 'terminal' }
 
-  const step = statusStepForLedger(run.status, input.ticket.status, null)
+  // A ticket is Ledger's answer to a launch: the research was launched.
+  const step = statusStepForLedger(run.status, input.ticket.status, null, true)
   const action = state.pendingAction
   const acked = isPendingActionInFlight(action)
     && action.kind === 'launch'
