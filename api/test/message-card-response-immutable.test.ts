@@ -66,8 +66,21 @@ test('the edit service selects metadata, so the guard has something to read', as
 test('editing a card-press message is refused and writes nothing', async () => {
   const { calls, prisma } = makePrisma({ metadata: cardResponseMetadata })
   const result = await updateMessage(prisma, { ...input, content: 'Deny' })
-  assert.equal(result.kind, 'immutable')
+  assert.deepEqual(result, { kind: 'immutable', record: 'card_response' })
   assert.equal(calls.update.length, 0)
+})
+
+test('editing a research card is refused and writes nothing; deleting it stays allowed', async () => {
+  const researchCard = { researchRunRef: { runId: CARD_ID, schemaVersion: 1 } }
+  const { calls, prisma } = makePrisma({ metadata: researchCard })
+  const result = await updateMessage(prisma, { ...input, content: 'Another topic' })
+  assert.deepEqual(result, { kind: 'immutable', record: 'research_card' })
+  assert.equal(calls.update.length, 0)
+  const deleted = await softDeleteMessage(prisma, { messageId: input.messageId, threadId: input.threadId, userId: AUTHOR })
+  assert.equal(deleted.kind, 'deleted')
+  // Its author is the only one who could edit it, so anyone else is still told 403 first.
+  const other = makePrisma({ metadata: researchCard, userId: '00000000-0000-4000-8000-000000000002' })
+  assert.equal((await updateMessage(other.prisma, input)).kind, 'forbidden')
 })
 
 test('the author may still edit an ordinary message, and one carrying the card itself', async () => {

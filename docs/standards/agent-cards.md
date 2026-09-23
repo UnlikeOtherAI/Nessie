@@ -90,6 +90,19 @@ this standard, not an exception to it.
   [`reply-threads.md`](reply-threads.md) → "Container threads as conversations".
   `AgentHandoffDoorway` stays separate for now — it points at a DM rather than a
   thread — and folding the two is named in the plan's "Later".
+- **A research is a third pointer, and it is live too.** The research card —
+  `metadata.researchRunRef` (`packages/schemas/src/deep-water-message-metadata.ts`,
+  `{schemaVersion, runId}`, `.strict()`, written **only** by the server when a
+  DeepWater research starts, never from a client or model text) — renders
+  `GET /api/integrations/products/deep-water/research-runs/:runId` for the
+  viewer, so its status, report and actions are never a snapshot. Its actions
+  navigate, download or copy; none is a press, so none claims one. It is not a
+  card kind either. Its content is the plain topic for models and search. An
+  edit is refused (`updateMessage` → `409 MESSAGE_IMMUTABLE_RESEARCH_CARD`,
+  through the one `isResearchRunRefMessage` predicate the admin shares): a card
+  whose words no longer match the research it shows would lie about it.
+  Deleting it stays allowed; the research itself is untouched. The rules of
+  the research itself are in [`deepwater.md`](deepwater.md).
 - **An action may be a same-app doorway.** An action with `href` is an internal
   router path. It claims the card before navigation, so a draft cannot remain
   open for a stale second choice. A normal `submits: true` action validates the

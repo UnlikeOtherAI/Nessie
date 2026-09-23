@@ -321,6 +321,15 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       sendApiError(reply, 403, 'FORBIDDEN', 'Only the author can edit this message')
       return reply
     }
+    if (result.kind === 'immutable' && result.record === 'research_card') {
+      sendApiError(
+        reply,
+        409,
+        'MESSAGE_IMMUTABLE_RESEARCH_CARD',
+        'This message shows a research and cannot be edited. Delete it instead, or start a new research.',
+      )
+      return reply
+    }
     if (result.kind === 'immutable') {
       sendApiError(
         reply,
