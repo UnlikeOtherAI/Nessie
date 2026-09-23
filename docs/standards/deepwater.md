@@ -489,9 +489,14 @@ question.
   the revision they were sent against. When the brief moves on under unsent
   edits — the planner answered, or a reply or Start was refused as a revision
   conflict and the brief was fetched again — the edits are kept on top and the
-  dialog says what DeepWater changed. A refused action puts its words and edits
-  back. Every action carries an `actionId` that is reused only to retry the
-  same body after a lost answer (`createIntentActionIds`).
+  dialog says what DeepWater changed. The browser that sent an action holds it
+  in that brief's stored draft until the brief says how it ended: a refusal
+  lays its edits back under anything changed since and returns its words only
+  to an empty reply box; a reply the planner could not answer returns its words
+  to the box, and they are what Send again sends. Another browser, or a
+  cleared draft, has nothing to put back. Every action carries an `actionId`
+  that is reused only to retry the same body after a lost answer
+  (`createIntentActionIds`).
 - **Who may do what is the server's.** The dialog reads `viewer` from the view:
   an agent's brief is read-only for people, and its requester may only discard
   it; a finished research offers Retry import only where `canRetryDelivery`
