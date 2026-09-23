@@ -22,6 +22,7 @@ jobs:
   simulator:
     name: DeepWater ${{ matrix.device }}
     runs-on: macos-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -49,6 +50,9 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as handle:
               handle.write('SIMULATOR_ID=' + candidates[0]['udid'] + '\n')
           PY
+      - name: Boot simulator
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Run native tests
         working-directory: ios
         run: |

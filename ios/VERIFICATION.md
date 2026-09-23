@@ -26,6 +26,12 @@ split navigation, portrait iPhone layout, sheets, text fields, error recovery
 and sign-in were visually inspected. Mac verification is compilation only;
 no unsigned Mac application was installed or run.
 
+CI explicitly completes simulator boot before starting Xcode tests, and UI
+assertions allow for accessibility snapshot latency on shared runners. A
+first cold iPad runner timed out launching the app; its later offline-screen
+failure attachment showed the expected retry button already rendered. Both
+failures remain in that run's result bundle rather than being ignored.
+
 ## Reproduction and limits
 
 Use the test commands in [README](README.md). The `DeepWater Native` workflow

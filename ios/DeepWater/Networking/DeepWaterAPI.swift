@@ -82,7 +82,23 @@ final class DeepWaterAPI {
         if let idempotencyKey {
             request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
         }
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            if error.code == .cancelled { throw CancellationError() }
+            let message: String
+            switch error.code {
+            case .notConnectedToInternet:
+                message = "You’re offline. Check your connection and try again."
+            case .timedOut:
+                message = "DeepWater took too long to respond. Please try again."
+            default:
+                message = "DeepWater couldn’t be reached. Check your connection and try again."
+            }
+            throw ServiceError(status: 0, message: message)
+        }
         guard let http = response as? HTTPURLResponse else { throw ServiceError.invalidResponse }
         if http.statusCode == 204 { return .null }
         let value = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .null
