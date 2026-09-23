@@ -14,12 +14,14 @@ import {
   DEEP_WATER_RUN_WATCH_TOPIC,
   DeepWaterRunDeliverJobPayloadSchema,
   DeepWaterRunWatchJobPayloadSchema,
+  type DeepWaterRunDeliverJobPayload,
 } from '@nessie/schemas'
 
 import { runDeepWaterTransaction, type DeepWaterRealtime } from './deepwater-announce.js'
 import { startUnconfirmedKickoff, startUnconfirmedNotice } from './deepwater-copy.js'
 import { renewDeepWaterIdentity } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, postDeepWaterNotice } from './deepwater-messages.js'
+import { restoreDeepWaterReportPage } from './deepwater-report-import.js'
 import { wakeDeepWaterAgent } from './deepwater-wake.js'
 import { runDeepWaterWatch, watchDeepWaterRun, type DeepWaterWatchDeps } from './deepwater-watch.js'
 
@@ -75,6 +77,28 @@ const reapOne = async (deps: DeepWaterWatchDeps, target: { organizationId: strin
   })
 }
 
+/**
+ * A person retrying a blocked delivery (`deep_water.run.deliver`): renew the
+ * captured identity from their live session (same person, organisation and
+ * team only), put back the run's own report page if it was deleted or changed
+ * in Documents — the one block the retry itself must undo — then read the
+ * research and deliver it as the watch would.
+ */
+export const retryDeepWaterDelivery = async (
+  deps: DeepWaterWatchDeps,
+  payload: DeepWaterRunDeliverJobPayload,
+): Promise<void> => {
+  const { identity } = payload
+  if (identity) {
+    await renewDeepWaterIdentity(deps, { organizationId: payload.organizationId, runId: payload.runId, identity })
+  }
+  const run = await readDeepWaterBriefRun(deps.prisma, payload)
+  if (!run) return
+  // Only a person's own retry puts a page back; the watch never undoes a deletion.
+  if (identity) await restoreDeepWaterReportPage(deps.prisma, run)
+  await watchDeepWaterRun(deps, run)
+}
+
 /** One pass of the reap: every brief DeepWater never confirmed within the window. */
 export const reapUnconfirmedDeepWaterBriefs = async (deps: DeepWaterWatchDeps, limit = CLAIM_BATCH): Promise<void> => {
   for (const target of await findUnconfirmedDeepWaterBriefs(deps.prisma, { limit })) {
@@ -97,24 +121,9 @@ export const startDeepWaterWorker = (deps: DeepWaterWorkerDeps): { stop: () => v
     { signal: deps.abortSignal },
   )
 
-  // A person retrying a blocked delivery: renew the captured identity from
-  // their live session (same person, organisation and team only), then read
-  // the research and deliver it as the watch would.
   deps.subscribe(
     DEEP_WATER_RUN_DELIVER_TOPIC,
-    async (job) => {
-      const payload = DeepWaterRunDeliverJobPayloadSchema.parse(job.payload)
-      const identity = payload.identity
-      if (identity) {
-        await renewDeepWaterIdentity(callDeps, {
-          organizationId: payload.organizationId,
-          runId: payload.runId,
-          identity,
-        })
-      }
-      const run = await readDeepWaterBriefRun(deps.prisma, payload)
-      if (run) await watchDeepWaterRun(callDeps, run)
-    },
+    async (job) => retryDeepWaterDelivery(callDeps, DeepWaterRunDeliverJobPayloadSchema.parse(job.payload)),
     { signal: deps.abortSignal },
   )
 

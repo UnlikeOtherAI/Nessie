@@ -95,8 +95,12 @@ const BLOCKED_REMEDY: Record<DeepWaterDeliveryBlockedReason, string> = {
   requester_identity_changed:
     'your sign-in has changed since you asked for it. Sign in again, then choose Retry import on the research',
   ledger_unavailable: 'DeepWater couldn\'t hand the report over just now. Choose Retry import on the research',
+  // Posted only while the conversation is there to hold it (a conversation that
+  // is gone cannot be told anything), so the cause is always the page itself,
+  // and Retry import restores it (`restoreDeepWaterReportPage`).
   knowledge_destination_unavailable:
-    'its page in Documents was moved or deleted. Choose Retry import on the research to save it again',
+    'its page there was deleted or changed before the result could be shared here. Choose Retry import on '
+    + 'the research to put the page back',
   report_expired: 'the report is no longer available to import',
   report_malformed: 'the report couldn\'t be read',
 }

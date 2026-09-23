@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
 import {
   createNativeKnowledgeProvider,
@@ -176,11 +176,67 @@ const reportNotes = (report: LedgerResearchReport): string[] => [
 
 type PageMetadata = { deepWaterReport?: { runId?: unknown; reportFileId?: unknown } } | null
 
+type ReportPageRow = { deletedAt: Date | null; status: string; metadata: unknown }
+
+/**
+ * Is the run's page still its report page? Deleting a page in Documents
+ * archives it (the Knowledge delete route), so an archived page counts as
+ * deleted, as it does for every Knowledge read; and its marker must still name
+ * this run and its stored report.
+ */
+const reportPageProblem = (page: ReportPageRow, runId: string, reportFileId: string): 'deleted' | 'changed' | null => {
+  if (page.deletedAt !== null || page.status === 'archived') return 'deleted'
+  const marker = (page.metadata as PageMetadata)?.deepWaterReport
+  return marker?.runId === runId && marker.reportFileId === reportFileId ? null : 'changed'
+}
+
+/**
+ * A person's Retry import puts the run's own report page back. Its id is fixed
+ * by the run, so a page deleted (or re-labelled) in Documents before the
+ * result was shared can never be created again, and without this every retry
+ * would block on it for good. Only that page is touched — undeleted, and its
+ * marker rewritten to the run's stored report, which is what the page was made
+ * from — and only for an undelivered run whose report is stored. True when it
+ * restored something.
+ */
+export const restoreDeepWaterReportPage = async (
+  prisma: PrismaClient,
+  run: DeepWaterBriefRun,
+): Promise<boolean> => {
+  if (run.deliveredAt !== null || run.reportFileId === null) return false
+  const pageId = deepWaterReportPageId(run.organizationId, run.id)
+  const page = await prisma.knowledgePage.findFirst({
+    where: { id: pageId, organizationId: run.organizationId },
+    select: { deletedAt: true, status: true, metadata: true },
+  })
+  if (!page) return false
+  const problem = reportPageProblem(page, run.id, run.reportFileId)
+  if (!problem) return false
+  const metadata = page.metadata && typeof page.metadata === 'object' && !Array.isArray(page.metadata)
+    ? page.metadata as Record<string, unknown>
+    : {}
+  await prisma.knowledgePage.update({
+    where: { id: pageId },
+    data: {
+      deletedAt: null,
+      // Created as a draft, which is what an archive took it from.
+      ...(page.status === 'archived' ? { status: 'draft' as const } : {}),
+      metadata: {
+        ...metadata,
+        deepWaterReport: { runId: run.id, reportFileId: run.reportFileId },
+      } as Prisma.InputJsonValue,
+    },
+  })
+  console.info(`[deep-water] run ${run.id}: Retry import restored its report page (${problem})`)
+  return true
+}
+
 /**
  * Ensure the run's report page: create it once with a fixed id, or accept the
  * page an earlier attempt created — wherever a person has since moved it —
  * only while it is still the page for this run and this stored report. A page
- * that was deleted or replaced blocks delivery; it is never overwritten.
+ * that was deleted or changed blocks delivery; it is never overwritten here
+ * (`restoreDeepWaterReportPage` puts it back on the person's Retry).
  */
 export const ensureDeepWaterReportPage = async (
   deps: DeepWaterImportDeps,
@@ -196,13 +252,13 @@ export const ensureDeepWaterReportPage = async (
   const verify = async () => {
     const existing = await deps.prisma.knowledgePage.findFirst({
       where: { id: pageId, organizationId: run.organizationId },
-      select: { deletedAt: true, metadata: true, spaceId: true },
+      select: { deletedAt: true, status: true, metadata: true, spaceId: true },
     })
     if (!existing) return null
-    const marker = (existing.metadata as PageMetadata)?.deepWaterReport
-    return !existing.deletedAt && marker?.runId === run.id && marker.reportFileId === input.reportFileId
-      ? { kind: 'ok' as const, pageId, spaceId: existing.spaceId }
-      : { kind: 'blocked' as const }
+    const problem = reportPageProblem(existing, run.id, input.reportFileId)
+    if (problem === null) return { kind: 'ok' as const, pageId, spaceId: existing.spaceId }
+    console.warn(`[deep-water] run ${run.id}: its report page was ${problem} before delivery; Retry import restores it`)
+    return { kind: 'blocked' as const }
   }
   const found = await verify()
   if (found) return found

@@ -419,14 +419,18 @@ the only way results come back.
   the first), imports the report to a page whose id is fixed by the run (the
   requester's My Docs for a DM or Personal Assistant conversation, otherwise the
   project's Project Documents; notes for a summary or a truncated report lead
-  the page; a page that was deleted or replaced blocks rather than being
-  overwritten), and then, in the claim's transaction, posts the person's result
-  reply under the card with an alert keyed `deep-water-result:<runId>`, or wakes
-  the agent that asked. A failed research is delivered the same way with a
+  the page; a page deleted in Documents — which archives it — or whose marker
+  no longer names this run's stored report blocks rather than being
+  overwritten, and the person's Retry import, `retryDeepWaterDelivery`, puts
+  that same page back with `restoreDeepWaterReportPage` before delivering; the
+  watch never undoes what was done to a page), and then, in the claim's
+  transaction, posts the person's result reply under the card with an alert
+  keyed `deep-water-result:<runId>`, or wakes the agent that asked. A failed research is delivered the same way with a
   notice or a `failed` wake. An expired or unreadable report is a final block;
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
-  `metadata.deepWaterNotice`.
+  `metadata.deepWaterNotice`; a delivery whose conversation is gone blocks
+  with nothing posted, since there is nowhere to post it.
 - **Realtime.** Every DeepWater transaction collects what it owes realtime and
   publishes it only after it commits (`runDeepWaterTransaction`,
   `deepwater-announce.ts`): each card, result and notice (`message.new` /
