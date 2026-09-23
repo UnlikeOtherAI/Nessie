@@ -154,7 +154,7 @@ const seedRun = async (s: Seed, shape: RunShape) => {
     body: shape.report === undefined ? Buffer.from(REPORT) : shape.report,
   })
   const sources = await storeArtifact(s, {
-    filename: 'heat-pumps-in-older-houses-sources.csv',
+    filename: 'heat-pumps-in-older-houses.csv',
     mime: 'text/csv',
     body: Buffer.from(SOURCES),
   })
@@ -232,7 +232,7 @@ dbTest('the requester downloads the exact report and sources, and copies the mar
   const sources = await app.inject({ method: 'GET', url: path(runId, 'sources.csv') })
   assert.equal(sources.statusCode, 200)
   assert.equal(sources.body, SOURCES)
-  assert.equal(sources.headers['content-disposition'], 'attachment; filename="heat-pumps-in-older-houses-sources.csv"')
+  assert.equal(sources.headers['content-disposition'], 'attachment; filename="heat-pumps-in-older-houses.csv"')
 
   const copy = await app.inject({ method: 'GET', url: path(runId, 'report') })
   assert.equal(copy.statusCode, 200)

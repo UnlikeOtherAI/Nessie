@@ -131,7 +131,7 @@ withFixture('a finished research is imported to Documents and wakes the agent to
     started_at: '2026-09-23T09:00:00.000Z',
     completed_at: '2026-09-23T09:30:00.000Z',
     truncated: false,
-    title: 'Heat pumps',
+    title: 'Tepelná čerpadla ve starých domech',
     report_kind: 'full',
     full_report_error_code: null,
     public_url: null,
@@ -141,6 +141,7 @@ withFixture('a finished research is imported to Documents and wakes the agent to
 
   const delivered = await fixture.read(run.id)
   assert.equal(delivered.status, 'completed')
+  assert.equal(delivered.title, 'Tepelná čerpadla ve starých domech', 'the report\'s own title is kept')
   assert.ok(delivered.deliveredAt)
   assert.equal(delivered.sourceCount, 1)
   assert.equal(delivered.reportKind, 'full')
@@ -154,6 +155,18 @@ withFixture('a finished research is imported to Documents and wakes the agent to
   assert.equal(
     Buffer.concat(chunks).toString('utf8'),
     'title,url,accessed_at\r\n"Study, ""A""",https://example.org/a,2026-09-23T09:00:00.000Z\r\n',
+  )
+  // Stored under the names the admin downloads them as, accents folded, never split.
+  const files = await fixture.prisma.attachment.findMany({
+    where: { id: { in: [delivered.reportFileId, delivered.sourcesFileId] } },
+    select: { id: true, filename: true, mime: true },
+  })
+  assert.deepEqual(
+    files.map((file) => [file.id === delivered.reportFileId ? 'report' : 'sources', file.filename, file.mime]).sort(),
+    [
+      ['report', 'tepelna-cerpadla-ve-starych-domech.md', 'text/markdown'],
+      ['sources', 'tepelna-cerpadla-ve-starych-domech.csv', 'text/csv'],
+    ],
   )
   assert.equal(fixture.ledger.calls.filter((call) => call.toolName === 'research_report').length, 1)
   const terminal = await kickoffs(fixture)

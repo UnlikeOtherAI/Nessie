@@ -198,10 +198,11 @@ export const deliverDeepWaterResearch = async (
   if (!parsed.success) return block(deps, run, 'report_malformed')
   const report = parsed.data
 
-  const title = run.title ?? report.title ?? run.input?.topic ?? run.queryPreview
+  // The title the run shows once delivered: the claim keeps Ledger's when it has one.
+  const title = report.title ?? run.title ?? run.input?.topic ?? run.queryPreview
   const destination = await resolveDeepWaterReportDestination(deps.prisma, run)
   if (!destination) return block(deps, run, 'knowledge_destination_unavailable')
-  const files = await storeDeepWaterArtifacts(deps, run, { report, title, projectId: destination.projectId })
+  const files = await storeDeepWaterArtifacts(deps, run, { report, projectId: destination.projectId })
   const page = await ensureDeepWaterReportPage(deps, run, {
     destination,
     reportFileId: files.reportFileId,

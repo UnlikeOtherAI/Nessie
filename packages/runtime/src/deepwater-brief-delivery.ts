@@ -5,6 +5,7 @@ import {
   DeepWaterDeliveryBlockedReasonSchema,
   DeepWaterFailureCodeSchema,
   isDeepWaterPublicReportUrl,
+  type DeepWaterArtifactKind,
   type DeepWaterDeliveryBlockedReason,
   type DeepWaterReportKind,
 } from '@nessie/schemas'
@@ -25,8 +26,6 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * `delivered_at` means "the terminal outcome was delivered", for a completed
  * and a failed research alike.
  */
-
-export type DeepWaterArtifactKind = 'report' | 'sources'
 
 const ARTIFACT_COLUMN: Record<DeepWaterArtifactKind, Prisma.Sql> = {
   report: Prisma.sql`"report_file_id"`,

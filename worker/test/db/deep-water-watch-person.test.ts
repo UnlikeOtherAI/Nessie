@@ -108,6 +108,9 @@ withFixture('a finished research comes back as one result reply under the card, 
     include: { versions: true },
   })
   assert.match(page.versions[0]?.body ?? '', /^> DeepWater could not write the full report/)
+  // A summary never downloads under the full report's name.
+  const reportFile = await fixture.prisma.attachment.findUniqueOrThrow({ where: { id: delivered.reportFileId ?? '' } })
+  assert.equal(reportFile.filename, 'heat-pumps-summary.md')
 
   // Announced after commit (nessie.md §7.7, C3): the card, the reply under it,
   // the requester's alert, and the run on the requester's and the room's lanes.

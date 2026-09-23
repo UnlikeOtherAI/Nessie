@@ -12,13 +12,14 @@ import {
 import {
   completeLedgerAttribution,
   recordDeepWaterArtifactFile,
-  type DeepWaterArtifactKind,
   type DeepWaterBriefRun,
   type FileService,
   type LedgerAttribution,
 } from '@nessie/runtime'
 import {
   KNOWLEDGE_EMBED_TOPIC,
+  deepWaterArtifactFileName,
+  type DeepWaterArtifactKind,
   type KnowledgeInferenceOrigin,
   type LedgerResearchReference,
   type LedgerResearchReport,
@@ -74,9 +75,6 @@ export const deepWaterSourcesCsv = (references: readonly LedgerResearchReference
     [reference.title, reference.url, reference.accessedAt].map(csvField).join(','))]
     .join('\r\n') + '\r\n'
 
-const fileSlug = (title: string): string =>
-  title.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'research'
-
 const RUN_COLUMN: Record<DeepWaterArtifactKind, 'reportFileId' | 'sourcesFileId'> = {
   report: 'reportFileId',
   sources: 'sourcesFileId',
@@ -88,21 +86,35 @@ const RUN_COLUMN: Record<DeepWaterArtifactKind, 'reportFileId' | 'sourcesFileId'
  * the winner's. A crash between the store and the receipt leaves one orphan
  * attachment — the residual task-set artifacts accept for the same reason: a
  * receipt cannot be written in the object store's transaction.
+ *
+ * Each is stored under the name it downloads as (`deepWaterArtifactFileName`,
+ * the one function the admin names its downloads with too), from the title
+ * and report kind the run shows once delivered — the delivery claim keeps
+ * Ledger's title when it has one — so a signed-URL download and a proxied one
+ * carry the same name as the button that started it.
  */
 export const storeDeepWaterArtifacts = async (
   deps: DeepWaterImportDeps,
   run: DeepWaterBriefRun,
-  input: { report: LedgerResearchReport; title: string; projectId: string },
+  input: { report: LedgerResearchReport; projectId: string },
 ): Promise<{ reportFileId: string; sourcesFileId: string }> => {
   const attribution = deepWaterDeliveryAttribution(run)
-  const slug = fileSlug(input.title)
+  const named = {
+    title: input.report.title ?? run.title,
+    topic: run.input?.topic ?? run.queryPreview,
+    reportKind: input.report.reportKind,
+  }
   const files: Record<DeepWaterArtifactKind, { filename: string; mime: string; body: string }> = {
     report: {
-      filename: input.report.reportKind === 'summary' ? `${slug}-summary.md` : `${slug}.md`,
+      filename: deepWaterArtifactFileName(named, 'report'),
       mime: 'text/markdown',
       body: input.report.reportMarkdown,
     },
-    sources: { filename: `${slug}-sources.csv`, mime: 'text/csv', body: deepWaterSourcesCsv(input.report.references) },
+    sources: {
+      filename: deepWaterArtifactFileName(named, 'sources'),
+      mime: 'text/csv',
+      body: deepWaterSourcesCsv(input.report.references),
+    },
   }
   const stored: Partial<Record<DeepWaterArtifactKind, string>> = {}
   for (const kind of ['report', 'sources'] as const) {

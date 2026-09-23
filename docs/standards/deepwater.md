@@ -447,7 +447,9 @@ the only way results come back.
   returned) and `sources.csv` are retained run output. They are stored with no
   uploader, message or publication, so the generic attachment route refuses
   them, and are served only by `GET …/research-runs/:runId/artifacts/report.md`
-  and `…/sources.csv` (downloads under the stored slugged filename, with the
+  and `…/sources.csv` (downloads under the name they were stored with,
+  `deepWaterArtifactFileName` in `@nessie/schemas` — the same function the
+  admin names the download with — with the
   attachment download path's caching, ETag and transfer metering) and
   `…/artifacts/report` (`{markdown, truncated, reportKind}` for Copy markdown,
   `no-store`, refused with `DEEP_WATER_REPORT_TOO_LARGE_TO_COPY` past the 8 MiB

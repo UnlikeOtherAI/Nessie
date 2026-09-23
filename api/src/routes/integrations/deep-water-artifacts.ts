@@ -98,8 +98,9 @@ export const registerDeepWaterArtifactRoutes = (app: FastifyInstance, deps: Deep
     const { actorContext, run, fileId } = resolved
     const opened = await fileService.openDownload(fileId, run.organizationId)
     if (!opened) return bytesMissing(reply, run, fileId)
-    // The stored filename is the slugged title (`<slug>.md`, `<slug>-summary.md`
-    // for a summary, `<slug>-sources.csv`); markdown and CSV always download.
+    // Stored under `deepWaterArtifactFileName` — the name the admin gives the
+    // same download — so a proxied and a signed-URL download agree; markdown
+    // and CSV always download rather than open.
     return sendAttachmentDownload(request, reply, opened, {
       attribution: attributionFromActorContext(actorContext),
       prisma,
