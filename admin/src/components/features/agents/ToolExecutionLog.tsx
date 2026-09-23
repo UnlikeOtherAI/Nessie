@@ -30,8 +30,9 @@ export const ToolExecutionLog = ({ entries }: ToolExecutionLogProps) => {
       {entries.length === 0 ? (
         <EmptyState>No tool calls recorded for this agent yet.</EmptyState>
       ) : (
-        entries.map((entry) => (
-          <Card key={entry.id}>
+        entries.map((entry, index) => (
+          // An API from before the screenshots sends no id.
+          <Card key={entry.id ?? `${entry.runId}:${entry.startedAt}:${index}`}>
             <div className="flex items-center justify-between gap-3">
               <div className="font-mono text-sm text-[var(--thinking)]">{entry.toolName}</div>
               <Pill tone={toolCallOutcomeTone(entry.success)}>

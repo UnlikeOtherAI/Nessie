@@ -24,8 +24,11 @@ export const ToolCallAttachmentSchema = z.object({
 })
 export type ToolCallAttachment = z.infer<typeof ToolCallAttachmentSchema>
 
+// `id` and `attachments` arrived with the screenshots. Until every API that
+// answers these reads sends them, an entry without them still parses: no
+// id (a surface keys the entry another way) and no images.
 export const ToolCallEntrySchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().uuid().optional(),
   toolName: NonEmptyStringSchema,
   runId: RunIdSchema,
   startedAt: TimestampSchema,
@@ -34,7 +37,7 @@ export const ToolCallEntrySchema = z.object({
   success: z.boolean().optional(),
   inputSummary: z.string(),
   outputPreview: z.string().optional(),
-  attachments: z.array(ToolCallAttachmentSchema),
+  attachments: z.array(ToolCallAttachmentSchema).default([]),
 })
 export type ToolCallEntry = z.infer<typeof ToolCallEntrySchema>
 

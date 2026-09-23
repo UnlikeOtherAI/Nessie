@@ -75,12 +75,13 @@ export const ToolScreenshots = ({
   onOpen,
   token,
 }: {
-  attachments: ToolCallAttachment[]
+  /** Absent from an API that predates the screenshots: nothing to draw. */
+  attachments?: readonly ToolCallAttachment[]
   className?: string
   onOpen: (attachment: ViewableAttachment) => void
   token: string | null
 }) => {
-  if (attachments.length === 0) return null
+  if (!attachments || attachments.length === 0) return null
   return (
     <ul
       aria-label={attachments.length === 1 ? 'Screenshot' : `${attachments.length} screenshots`}
