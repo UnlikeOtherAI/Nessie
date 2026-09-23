@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type { EncryptionKeyRingInput } from '@nessie/runtime'
-import { type AuthorizedActionContext, isAdminActor } from '@nessie/schemas'
+import { type AuthorizedActionContext, isAdminActor, type TaskEventOrigin } from '@nessie/schemas'
 import {
   createBoardSourceWriteBack,
   setTaskLabels as setTaskLabelsShared,
@@ -18,11 +18,19 @@ export {
   updateBoardLabel,
 } from '@nessie/team-admin'
 
-/** The acting member a route hands the shared ticket functions. */
-export const taskActorFromContext = (actorContext: AuthorizedActionContext): TaskActor => ({
+/**
+ * The acting member a route hands the shared ticket functions. `origin` is the
+ * credential the request authenticated with (`taskEventOriginFor`), or the MCP
+ * credential; absent, the events it writes are `system` and start nothing.
+ */
+export const taskActorFromContext = (
+  actorContext: AuthorizedActionContext,
+  origin?: TaskEventOrigin,
+): TaskActor => ({
   organizationId: actorContext.tenant.organizationId,
   userId: actorContext.actor.actorId,
   isOrganizationAdmin: isAdminActor(actorContext),
+  ...(origin ? { origin } : {}),
 })
 
 export const setTaskLabels = (

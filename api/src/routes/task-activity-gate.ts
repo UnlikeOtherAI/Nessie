@@ -4,6 +4,7 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 import type { TaskActor } from '@nessie/team-admin'
 
 import { sendApiError } from '../lib/api.js'
+import { taskEventOriginFor } from '../lib/task-event-origin.js'
 import { taskActorFromContext } from '../services/task-labels.js'
 import { getTask } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
@@ -40,7 +41,7 @@ export const createTaskActivityGate = (deps: RouteDeps) => async (
     sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
     return null
   }
-  return { actorContext, actor: taskActorFromContext(actorContext) }
+  return { actorContext, actor: taskActorFromContext(actorContext, taskEventOriginFor(request)) }
 }
 
 const MESSAGES: Record<string, [number, string]> = {

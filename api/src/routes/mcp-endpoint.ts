@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { createKnowledgeAccess } from './knowledge-base-access.js'
 import { sendApiError } from '../lib/api.js'
+import { taskEventOriginFor } from '../lib/task-event-origin.js'
 import { buildNessieMcpServer } from '../mcp/server.js'
 import { checkPolicy } from '../services/policy.js'
 import { getTask } from '../services/tasks.js'
@@ -132,6 +133,7 @@ export const registerMcpEndpointRoutes = (
         realtime: deps.realtimeHub,
         scopes: credential.scopes,
         spreadsheet: spreadsheetContext?.service ?? null,
+        taskEventOrigin: taskEventOriginFor(request),
       })
 
       const transport = new StreamableHTTPServerTransport({

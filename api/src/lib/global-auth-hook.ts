@@ -161,6 +161,11 @@ export const registerGlobalAuthHook = (
       return
     }
 
-    await authenticateRequest(request, reply)
+    // A person's own session token, verified: the one credential whose ticket
+    // changes may start or steer an agent's work. Voice and agent credentials
+    // returned above and never reach this line.
+    if (await authenticateRequest(request, reply)) {
+      request.authenticatedWith = 'session'
+    }
   })
 }

@@ -234,7 +234,7 @@ export const boardTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const files = await listTaskAttachments(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         { taskId: task.id },
       )
       return {
@@ -284,6 +284,7 @@ export const boardTools = (): McpToolDefinition[] => [
         ...(input.priority ? { priority: input.priority as 'low' } : {}),
         ...(input.purpose ? { purpose: input.purpose as string } : {}),
         ...(input.labelIds ? { labelIds: input.labelIds as string[] } : {}),
+        ...(context.taskEventOrigin ? { origin: context.taskEventOrigin } : {}),
       } as Parameters<typeof createHumanTask>[1])
 
       if ('error' in result) return describeWriteFailure(result)
@@ -333,6 +334,7 @@ export const boardTools = (): McpToolDefinition[] => [
           fields,
           organizationId: context.actorContext.tenant.organizationId,
           taskId: input.taskId as string,
+          ...(context.taskEventOrigin ? { origin: context.taskEventOrigin } : {}),
         } as Parameters<typeof updateTask>[1],
         context.encryptionKeyRing,
       )
@@ -372,6 +374,7 @@ export const boardTools = (): McpToolDefinition[] => [
           organizationId: context.actorContext.tenant.organizationId,
           taskId: input.taskId as string,
           ...(input.position !== undefined ? { position: input.position as number } : {}),
+          ...(context.taskEventOrigin ? { origin: context.taskEventOrigin } : {}),
         } as Parameters<typeof moveTaskToColumn>[1],
         context.encryptionKeyRing,
       )
