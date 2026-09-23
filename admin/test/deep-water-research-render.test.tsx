@@ -235,17 +235,17 @@ test('the planner\'s assessment offers its suggested depth with one tap, only wh
 })
 
 test('not ready: an owner is sent to turn DeepWater on; a member is told who can', () => {
-  const owner = render(createElement(ResearchReadinessScreen, { onClose: () => undefined, state: 'team_off', viewerCanChangeTeam: true }))
+  const owner = render(createElement(ResearchReadinessScreen, { onClose: () => undefined, state: 'team_off', viewerIsOwner: true }))
   const turnOn = owner.querySelector('a')
   assert.equal(turnOn?.textContent, 'Turn on DeepWater')
   assert.equal(turnOn?.getAttribute('href'), '/apps/deep-water')
-  const member = render(createElement(ResearchReadinessScreen, { onClose: () => undefined, state: 'team_off', viewerCanChangeTeam: false }))
+  const member = render(createElement(ResearchReadinessScreen, { onClose: () => undefined, state: 'team_off', viewerIsOwner: false }))
   assert.equal(member.querySelector('a'), null)
   assert.match(member.body.textContent ?? '', /Ask a team owner to turn it on/)
   const unlinked = render(createElement(ResearchReadinessScreen, {
     onClose: () => undefined,
     state: 'account_not_linked',
-    viewerCanChangeTeam: false,
+    viewerIsOwner: false,
   }))
   assert.ok(texts(unlinked, 'button').includes('Sign in again'))
 })

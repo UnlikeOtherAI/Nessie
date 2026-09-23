@@ -30,9 +30,10 @@ import {
  * failed research started again under its reply thread, an agent's read-only
  * brief, a reply the planner could not answer coming back and being sent
  * again, the failed opening turn, the sign-in state, every artifact action
- * including the clipboard fallback, the not-ready doorways for a member and an
- * owner, and the owner's cancel of the research that blocks turning DeepWater
- * off. Every state is screenshotted under e2e/screenshots/research-brief/.
+ * including the clipboard fallback, the not-ready doorways for a member, an
+ * admin (who is offered no team control) and an owner, and the owner's cancel
+ * of the research that blocks turning DeepWater off. Every state is
+ * screenshotted under e2e/screenshots/research-brief/.
  */
 
 const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/research-brief')
@@ -45,11 +46,16 @@ const RUN_DONE = '50000000-0000-4000-8000-000000000003'
 const RUN_SUMMARY = '50000000-0000-4000-8000-000000000004'
 const RUNS = '/api/integrations/products/deep-water/research-runs'
 
-const me = {
-  auth: { autoRedirectToSso: false, providerId: 'local', providerType: 'local' },
-  context: { bootstrapMode: false, channelId: null, organizationId: ORG, projectId: null, teamId: TEAM },
-  session: { issuedAt: '2026-09-23T09:00:00.000Z', sessionId: '90000000-0000-4000-8000-000000000001' },
-  user: { displayName: 'Ondřej Rafaj', email: 'ondrej@example.test', id: ME, roleIds: ['member'] },
+/** The session, with the role the page asked for (`?owner=1`, `?admin=1`); a member otherwise. */
+const me = (pageUrl) => {
+  const query = new URL(pageUrl).searchParams
+  const role = query.get('owner') === '1' ? 'owner' : query.get('admin') === '1' ? 'admin' : 'member'
+  return {
+    auth: { autoRedirectToSso: false, providerId: 'local', providerType: 'local' },
+    context: { bootstrapMode: false, channelId: null, organizationId: ORG, projectId: null, teamId: TEAM },
+    session: { issuedAt: '2026-09-23T09:00:00.000Z', sessionId: '90000000-0000-4000-8000-000000000001' },
+    user: { displayName: 'Ondřej Rafaj', email: 'ondrej@example.test', id: ME, roleIds: [role] },
+  }
 }
 
 const REPORT_BYTES = '# Heat pumps in Victorian terraced houses\n'
@@ -60,7 +66,8 @@ const routeServer = async (context) => {
   await context.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname === '/api/auth/me') {
-      await route.fulfill({ body: JSON.stringify({ data: me }), contentType: 'application/json', status: 200 })
+      const data = me(route.request().frame().url())
+      await route.fulfill({ body: JSON.stringify({ data }), contentType: 'application/json', status: 200 })
       return
     }
     const artifact = new RegExp(`^${RUNS}/([^/]+)/artifacts/(report\\.md|sources\\.csv)$`).exec(url.pathname)
@@ -224,6 +231,20 @@ try {
   assert.equal(await memberReady.getByRole('link').count(), 0)
   await snap(member, '13-not-ready-member.png')
   await member.close()
+
+  // 13b — an admin may cancel research, but turning DeepWater on is a team owner's: nothing offers it.
+  const adminPage = await open(desktop, 'readiness=team_off&admin=1')
+  await adminPage.getByTestId('composer-research-button').click()
+  const adminReady = adminPage.getByTestId('research-readiness')
+  await adminReady.getByText('Ask a team owner to turn it on.', { exact: false }).waitFor()
+  assert.equal(await adminReady.getByRole('link').count(), 0)
+  await adminPage.close()
+  const adminHero = await open(desktop, 'readiness=team_off&admin=1&at=/apps/deep-water')
+  const adminControls = adminHero.getByTestId('deep-water-team-controls')
+  await adminControls.getByText('Ask a team owner to turn it on.', { exact: false }).waitFor()
+  assert.equal(await adminControls.getByRole('button').count(), 0, 'an admin is offered no team control')
+  await snap(adminHero, '13b-not-ready-admin-hero.png')
+  await adminHero.close()
 
   // 14 — not ready, an owner: the doorway to the DeepWater page, and turning it on there.
   const ownerPage = await open(desktop, 'readiness=team_off&owner=1')

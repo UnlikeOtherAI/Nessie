@@ -199,12 +199,12 @@ export const DeepWaterResearchReadinessSchema = z
   .object({
     state: DeepWaterResearchReadinessStateSchema,
     /**
-     * The viewer may turn DeepWater on or off, or update it, for this team:
-     * a team owner, exactly the standing `PATCH …/team-enablement` accepts
-     * (nessie.md §7.7). Admins are not included — the route refuses them — so
-     * no client offers them a control that would. Cancelling someone else's
-     * research is the wider owner-or-admin standing (amendments N8.5), carried
-     * per run as `viewer.canCancel`, never read from here.
+     * The viewer is a team owner or admin: the standing that may cancel any
+     * open research in the team (amendments N8.5). It is the cancel standing
+     * only. Turning DeepWater on or off, or updating it, is owner-only —
+     * exactly what `PATCH …/team-enablement` accepts — so a client gates those
+     * on the session's owner role, never on this field, and offers an admin
+     * no control the route would refuse.
      */
     viewerCanChangeTeam: z.boolean(),
   })

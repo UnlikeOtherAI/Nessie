@@ -181,19 +181,19 @@ export type ReadinessCopy = {
 }
 
 /**
- * `viewerCanChangeTeam` is the readiness verdict's own field: the viewer is a
- * team owner, the only standing that may turn DeepWater on, off or update it
- * (the team-enablement route is owner-only, nessie.md §7.7). An admin reads the
- * member copy, because the remedy is not theirs to apply.
+ * `viewerIsOwner`: the viewer holds the owner role, the only standing that may
+ * turn DeepWater on, off or update it (the team-enablement route is
+ * owner-only, nessie.md §7.7). An admin reads the member copy, because the
+ * remedy is not theirs to apply.
  */
 export const readinessCopy = (
   state: Exclude<DeepWaterResearchReadinessState, 'ready'>,
-  viewerCanChangeTeam: boolean,
+  viewerIsOwner: boolean,
 ): ReadinessCopy => {
   switch (state) {
     case 'team_off':
       return {
-        message: viewerCanChangeTeam
+        message: viewerIsOwner
           ? 'DeepWater is off for this team. Turn it on to start research from any conversation.'
           : 'DeepWater is off for this team. Ask a team owner to turn it on.',
         reason: 'it’s off for this team',
@@ -201,7 +201,7 @@ export const readinessCopy = (
       }
     case 'contract_outdated':
       return {
-        message: viewerCanChangeTeam
+        message: viewerIsOwner
           ? 'DeepWater needs updating for this team before research can start. Updating takes a moment.'
           : 'DeepWater needs updating for this team. Ask a team owner to update it.',
         reason: 'it needs updating for this team',
@@ -229,11 +229,11 @@ export const readinessCopy = (
  */
 export const researchButtonTitle = (
   state: DeepWaterResearchReadinessState | null,
-  viewerCanChangeTeam: boolean,
+  viewerIsOwner: boolean,
 ): string =>
   state === null || state === 'ready'
     ? 'Research with DeepWater'
-    : `Research with DeepWater — ${readinessCopy(state, viewerCanChangeTeam).reason}`
+    : `Research with DeepWater — ${readinessCopy(state, viewerIsOwner).reason}`
 
 // ── Time ─────────────────────────────────────────────────────────────────────
 

@@ -17,18 +17,18 @@ export type TeamControl = 'turn_on' | 'turn_off' | 'update' | null
 
 /**
  * The one change a team owner can make from here, given the verdict and the
- * team switch. `viewerCanChangeTeam` is owner standing — the team-enablement
- * route refuses anyone else, admins included — so nobody else is offered a
- * control the server would refuse. Cancelling a research is a wider standing
- * (owners and admins, amendments N8.5) that each run's `viewer.canCancel`
- * carries on its own.
+ * team switch. `viewerIsOwner` is the session's owner role — the
+ * team-enablement route refuses anyone else, admins included — so nobody else
+ * is offered a control the server would refuse. Cancelling a research is the
+ * wider owner-or-admin standing (amendments N8.5): the verdict's
+ * `viewerCanChangeTeam` here, and each run's own `viewer.canCancel` elsewhere.
  */
 export const deepWaterTeamControl = (
   state: DeepWaterResearchReadinessState,
   teamEnabled: boolean,
-  viewerCanChangeTeam: boolean,
+  viewerIsOwner: boolean,
 ): TeamControl => {
-  if (!viewerCanChangeTeam) return null
+  if (!viewerIsOwner) return null
   if (state === 'contract_outdated') return 'update'
   return teamEnabled ? 'turn_off' : 'turn_on'
 }
@@ -43,16 +43,16 @@ export const TEAM_CONTROL_LABEL: Record<Exclude<TeamControl, null>, string> = {
 export const deepWaterTeamStatus = (
   state: DeepWaterResearchReadinessState,
   teamEnabled: boolean,
-  viewerCanChangeTeam: boolean,
+  viewerIsOwner: boolean,
 ): string => {
   if (state === 'ready') {
     return 'DeepWater is on for this team. Anyone who can post in a conversation can start research from its '
       + 'Research button, and agents you give it to can research for you.'
   }
   if (state === 'account_not_linked' && teamEnabled) {
-    return `DeepWater is on for this team. ${readinessCopy(state, viewerCanChangeTeam).message}`
+    return `DeepWater is on for this team. ${readinessCopy(state, viewerIsOwner).message}`
   }
-  return readinessCopy(state, viewerCanChangeTeam).message
+  return readinessCopy(state, viewerIsOwner).message
 }
 
 export type TeamChangeFailure =
@@ -98,12 +98,23 @@ const OPEN_STATUS_WORDS: Record<string, string> = {
   running: 'being researched',
 }
 
-/** "A research started by Jana is still being researched." */
-export const openResearchSentence = (run: DeepWaterActiveRunConflict, requesterName: string | null): string => {
+/**
+ * "A research started by Jana is still being researched." Cancel is offered
+ * only with the cancel standing (`viewerCanChangeTeam`, owners and admins), so
+ * without it the sentence does not point at a Cancel that is not there.
+ */
+export const openResearchSentence = (
+  run: DeepWaterActiveRunConflict,
+  requesterName: string | null,
+  canCancel: boolean,
+): string => {
   const who = run.originKind === 'agent'
     ? 'an agent'
     : requesterName ?? 'someone in this team'
   const where = OPEN_STATUS_WORDS[run.status] ?? 'still open'
-  return `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — cancel it `
-    + 'here, or let it finish, then try again.'
+  return canCancel
+    ? `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — cancel it `
+      + 'here, or let it finish, then try again.'
+    : `A research started by ${who} is ${where}. It keeps DeepWater as it is until it ends — try again once `
+      + 'it has finished.'
 }

@@ -7,9 +7,9 @@ import { readinessCopy } from './research-presentation'
  * Why research cannot start here yet, and the one way forward (nessie.md
  * §7.7 "the not-ready dialog screen"): a team owner is sent to the DeepWater
  * page, where they turn it on or update it for the team — only an owner may
- * (the readiness verdict's `viewerCanChangeTeam`) — anyone else, admins
- * included, is told who can; a person whose sign-in is not linked signs in
- * again.
+ * (`viewerIsOwner`, the team-enablement route's own standing) — anyone else,
+ * admins included, is told who can; a person whose sign-in is not linked signs
+ * in again.
  * The composer button always opens this rather than hiding, so research is
  * never a feature a person cannot find.
  */
@@ -19,15 +19,15 @@ export const DEEP_WATER_APP_PATH = '/apps/deep-water'
 export const ResearchReadinessScreen = ({
   onClose,
   state,
-  viewerCanChangeTeam,
+  viewerIsOwner,
 }: {
   onClose: () => void
   state: Exclude<DeepWaterResearchReadinessState, 'ready'>
-  viewerCanChangeTeam: boolean
+  viewerIsOwner: boolean
 }) => {
   const { logout } = useAuthSession()
-  const copy = readinessCopy(state, viewerCanChangeTeam)
-  const ownerAction = viewerCanChangeTeam && (state === 'team_off' || state === 'contract_outdated')
+  const copy = readinessCopy(state, viewerIsOwner)
+  const ownerAction = viewerIsOwner && (state === 'team_off' || state === 'contract_outdated')
     ? state === 'team_off' ? 'Turn on DeepWater' : 'Update DeepWater'
     : null
 

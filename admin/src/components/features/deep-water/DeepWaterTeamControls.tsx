@@ -32,7 +32,7 @@ export const DeepWaterTeamControls = () => {
   const [confirmingOff, setConfirmingOff] = useState(false)
   const [failure, setFailure] = useState<TeamChangeFailure | null>(null)
   const teamEnabled = readiness.product?.teamEnablement?.enabled === true
-  const control = deepWaterTeamControl(readiness.state, teamEnabled, readiness.viewerCanChangeTeam)
+  const control = deepWaterTeamControl(readiness.state, teamEnabled, readiness.viewerIsOwner)
 
   if (readiness.isLoading) return null
 
@@ -49,7 +49,7 @@ export const DeepWaterTeamControls = () => {
   return (
     <div className="flex max-w-2xl flex-col gap-3" data-state={readiness.state} data-testid="deep-water-team-controls">
       <p className="text-sm text-[color:var(--tx2)]">
-        {deepWaterTeamStatus(readiness.state, teamEnabled, readiness.viewerCanChangeTeam)}
+        {deepWaterTeamStatus(readiness.state, teamEnabled, readiness.viewerIsOwner)}
       </p>
       {control ? (
         <div>
@@ -68,7 +68,11 @@ export const DeepWaterTeamControls = () => {
         <p className="text-sm text-[color:var(--danger-text)]" role="alert">{failure.message}</p>
       ) : null}
       {failure?.kind === 'open_research' ? (
-        <OpenResearch onCancelled={() => setFailure(null)} run={failure.run} />
+        <OpenResearch
+          canCancel={readiness.viewerCanChangeTeam}
+          onCancelled={() => setFailure(null)}
+          run={failure.run}
+        />
       ) : null}
       <ConfirmDialog
         body={(
@@ -92,11 +96,17 @@ export const DeepWaterTeamControls = () => {
 }
 
 /**
- * The research that stopped the change, and an owner's Cancel for it. The
- * cancel is the owner's own action (amendments-fable F3); an owner who may not
- * read the research learns only that it is cancelled.
+ * The research that stopped the change, and an owner's Cancel for it — offered
+ * on the verdict's cancel standing (`viewerCanChangeTeam`, owners and admins,
+ * amendments N8.5). The cancel is the owner's own action (amendments-fable
+ * F3); an owner who may not read the research learns only that it is
+ * cancelled.
  */
-const OpenResearch = ({ onCancelled, run }: { onCancelled: () => void; run: DeepWaterActiveRunConflict }) => {
+const OpenResearch = ({ canCancel, onCancelled, run }: {
+  canCancel: boolean
+  onCancelled: () => void
+  run: DeepWaterActiveRunConflict
+}) => {
   const resolveActor = useActorNames()
   const cancel = useCancelResearchRun()
   const actionId = useIntentActionId()
@@ -126,18 +136,20 @@ const OpenResearch = ({ onCancelled, run }: { onCancelled: () => void; run: Deep
       role="alert"
     >
       <p className="text-sm text-[color:var(--tx)]">
-        {openResearchSentence(run, requester?.named ? requester.name : null)}
+        {openResearchSentence(run, requester?.named ? requester.name : null, canCancel)}
       </p>
-      <div>
-        <button
-          className="admin-button admin-button-secondary admin-button-danger admin-button-compact"
-          disabled={cancel.isPending}
-          onClick={cancelRun}
-          type="button"
-        >
-          {cancel.isPending ? 'Cancelling…' : 'Cancel this research'}
-        </button>
-      </div>
+      {canCancel ? (
+        <div>
+          <button
+            className="admin-button admin-button-secondary admin-button-danger admin-button-compact"
+            disabled={cancel.isPending}
+            onClick={cancelRun}
+            type="button"
+          >
+            {cancel.isPending ? 'Cancelling…' : 'Cancel this research'}
+          </button>
+        </div>
+      ) : null}
       {error ? <p className="text-xs text-[color:var(--danger-text)]">{error}</p> : null}
     </div>
   )

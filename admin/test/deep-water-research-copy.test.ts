@@ -183,11 +183,18 @@ test('an open research that blocks a change is named by who and where, never its
   // Anything more the refusal names about the run (its chat) is not read.
   assert.deepEqual(failure, { kind: 'open_research', run })
   assert.equal(
-    openResearchSentence(run, 'Jana'),
+    openResearchSentence(run, 'Jana', true),
     'A research started by Jana is having its brief agreed. It keeps DeepWater as it is until it ends — cancel it '
       + 'here, or let it finish, then try again.',
   )
-  assert.match(openResearchSentence({ ...run, originKind: 'agent', status: 'running' }, null), /^A research started by an agent is being researched\./)
+  assert.match(
+    openResearchSentence({ ...run, originKind: 'agent', status: 'running' }, null, true),
+    /^A research started by an agent is being researched\./,
+  )
+  // Without the cancel standing there is no Cancel beside it, so none is pointed at.
+  const noCancel = openResearchSentence(run, 'Jana', false)
+  assert.doesNotMatch(noCancel, /cancel/i)
+  assert.match(noCancel, /try again once it has finished\.$/)
   const unnamed = teamChangeFailure(apiError('LEDGER_DEEPWATER_ACTIVE_RUNS', 409))
   assert.equal(unnamed.kind, 'message')
   assert.equal(teamChangeFailure(apiError('LEDGER_DEEPWATER_MCP_URL_UNSET', 503)).kind, 'message')

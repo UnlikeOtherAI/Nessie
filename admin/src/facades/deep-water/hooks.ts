@@ -13,6 +13,7 @@ import {
 } from '@nessie/schemas'
 import { useApiClient } from '../../providers/ApiClientProvider'
 import { useAuthSession } from '../../providers/AuthSessionProvider'
+import { useIsOwner } from '../auth/hooks'
 import { useIntegratedProducts } from '../integrations/hooks'
 import { usePagedList } from '../pagination/usePagedList'
 import { deepWaterKeys, type DeepWaterViewerScope } from './keys'
@@ -105,6 +106,13 @@ export type DeepWaterReadiness = DeepWaterResearchReadiness & {
   isLoading: boolean
   /** The deep-water products entry, for the owner's team controls. */
   product: IntegratedProductResponse | null
+  /**
+   * The viewer holds the owner role: the only standing `PATCH
+   * …/team-enablement` accepts, so turning DeepWater on, off or updating it —
+   * and the not-ready screen's way to do that — is offered on this alone.
+   * `viewerCanChangeTeam` (owners and admins) is the cancel standing only.
+   */
+  viewerIsOwner: boolean
 }
 
 /**
@@ -115,6 +123,7 @@ export type DeepWaterReadiness = DeepWaterResearchReadiness & {
  */
 export const useDeepWaterReadiness = (): DeepWaterReadiness => {
   const products = useIntegratedProducts()
+  const viewerIsOwner = useIsOwner()
   return useMemo(() => {
     const product = products.data?.find((entry) => entry.slug === DEEP_WATER_PRODUCT_SLUG) ?? null
     const verdict = product?.research ?? null
@@ -123,6 +132,7 @@ export const useDeepWaterReadiness = (): DeepWaterReadiness => {
       product,
       state: verdict?.state ?? 'unavailable',
       viewerCanChangeTeam: verdict?.viewerCanChangeTeam ?? false,
+      viewerIsOwner,
     }
-  }, [products.data, products.isPending])
+  }, [products.data, products.isPending, viewerIsOwner])
 }

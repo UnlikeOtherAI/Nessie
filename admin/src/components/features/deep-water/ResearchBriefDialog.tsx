@@ -63,7 +63,7 @@ export const ResearchBriefDialog = ({
           <ResearchReadinessScreen
             onClose={onClose}
             state={readiness.state}
-            viewerCanChangeTeam={readiness.viewerCanChangeTeam}
+            viewerIsOwner={readiness.viewerIsOwner}
           />
         )
       }

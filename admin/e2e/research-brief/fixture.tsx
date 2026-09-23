@@ -35,8 +35,10 @@ import {
  * conflict — and each change reaches the screen the way a realtime
  * `integration.run.updated` does, through `invalidateResearchRun`.
  *
- * `?at=` is the address the memory router starts at; `?readiness=` and
- * `?owner=1` set the server's verdict on the products list; `?brief=` picks the
+ * `?at=` is the address the memory router starts at; `?readiness=` sets the
+ * server's verdict on the products list, and `?owner=1` or `?admin=1` the
+ * viewer's role (the runner's `/api/auth/me` answers with it) and so the
+ * verdict's cancel standing; `?brief=` picks the
  * person's brief (`drafting`, `opening-failed` — the planner could not answer
  * the question that opened it — or `sign-in`).
  */
@@ -44,6 +46,7 @@ import {
 const params = new URLSearchParams(location.search)
 const readiness = (params.get('readiness') ?? 'ready') as DeepWaterResearchReadinessState
 const owner = params.get('owner') === '1'
+const admin = params.get('admin') === '1'
 const briefVariant = params.get('brief') ?? 'drafting'
 try {
   window.localStorage.clear()
@@ -89,7 +92,8 @@ const product = () => ({
   // Turned on here, a team that started off is ready; otherwise the verdict the run asked for.
   research: {
     state: store.teamEnabled ? (readiness === 'team_off' ? 'ready' : readiness) : 'team_off',
-    viewerCanChangeTeam: owner,
+    // The cancel standing: owners and admins (amendments N8.5).
+    viewerCanChangeTeam: owner || admin,
   },
   slug: 'deep-water', summary: 'Deep research, agreed first.',
   teamEnablement: { enabled: store.teamEnabled, teamId: TEAM },

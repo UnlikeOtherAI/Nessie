@@ -503,13 +503,17 @@ question.
   the agent and person drawers', whose brief comes back to the conversation that
   drawer posts to. When the viewer cannot
   start research it says why in its label and opens `ResearchReadinessScreen`
-  instead of a brief: an owner or admin is sent to `/apps/deep-water` to turn
-  DeepWater on or update it, anyone else is told who can, and an unlinked
-  sign-in is asked to sign in again. The verdict is the products list's
-  `research` readiness; the admin never re-derives it.
+  instead of a brief: a team owner is sent to `/apps/deep-water` to turn
+  DeepWater on or update it, anyone else — admins included — is told to ask a
+  team owner, and an unlinked sign-in is asked to sign in again. The verdict is
+  the products list's `research` readiness; the admin never re-derives it.
 - **The owner's controls live on the `/apps/deep-water` hero**
   (`DeepWaterTeamControls`): turn DeepWater on, off (confirmed) or update it to
-  the brief tools. A refusal because a research is still open
+  the brief tools. They, and the readiness screen's way to them, are offered on
+  the session's owner role alone (`viewerIsOwner`), because `PATCH
+  …/team-enablement` accepts only owners; the verdict's `viewerCanChangeTeam`
+  is owners and admins, the cancel standing (amendments N8.5), and gates
+  nothing but Cancel. A refusal because a research is still open
   (`LEDGER_DEEPWATER_ACTIVE_RUNS`, whose `details` name the run by id, status,
   origin and requester — `DeepWaterActiveRunConflictSchema`) shows that research
   by who started it and where it stands, never its question, with "Cancel this
