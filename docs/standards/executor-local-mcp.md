@@ -7,8 +7,9 @@ in the reviewed local policy, and the daemon proxies exactly two operations to
 it.
 
 The first such server is [Kelpie](https://github.com/UnlikeOtherAI/kelpie), an
-LLM-first browser whose CLI exposes 145 MCP tools across every Kelpie instance
-it can find.
+LLM-first browser whose CLI exposes 157 MCP tools across every Kelpie instance
+it can find, and 94 when pinned with `--browser <alias>` to one Windows
+browser, whose catalogue it filters to what that browser supports.
 
 ## The two operations are a transport, not a capability
 
@@ -223,10 +224,23 @@ failure to `handshake_failed`; the fix and the test that pins it are in
   instance picks its own port. The inventory is what the daemon last
   *observed*, and a caller that treats a stale entry as reachable is the
   caller's bug — which is why every entry states its own `lastSeenAt`.
-- **Detection asks Kelpie to describe itself** (`kelpie describe --json`),
-  through the same program the policy already named for that server. The
-  executor never goes looking for a `kelpie` binary of its own: running a
-  program the policy did not name is what the policy exists to prevent.
+- **Detection asks Kelpie to describe itself**, through the command the
+  policy already named for that server with its trailing `mcp` replaced by
+  `describe --json --scan-timeout 5000` (`kelpieDescribeCommand`). Everything
+  before `mcp` stays — the program, a `node …/kelpie.js` script, global flags
+  such as `--browser <alias>` — so describe asks the same Kelpie, pinned to the
+  same alias, that the session drives. A command that does not end in `mcp`
+  is not described: its inventory is absent, never guessed. The executor never
+  goes looking for a `kelpie` binary of its own: running a program the policy
+  did not name is what the policy exists to prevent.
+- **Describe starts exactly as the session does**: through `cross-spawn`, as
+  the MCP SDK's stdio transport starts the server, so a `kelpie.cmd` shim runs
+  on Windows (plain `execFile` refuses one with `EINVAL`), and with the SDK's
+  `getDefaultEnvironment()` plus the policy's `env`, so describe sees the
+  session's `KELPIE_HOME` and `PATH` rather than the daemon's. Detection once
+  ran `command[0]` alone — `node describe` for a script entry — and a shim's
+  synchronous throw rejected the whole sweep; a describe that fails for any
+  reason now costs only that server's inventory (`local-mcp-report.ts`).
 - **A Kelpie whose mDNS browse failed reports absence, not an empty network.**
   It has not found nothing, it has not looked, and "there are no browsers on
   this network" is the one thing it cannot know.
@@ -270,6 +284,13 @@ prove. It runs with `--test-force-exit` for one pinned upstream reason: on
 leaves the parent's stdin referenced, so a process that probes a server which is
 not installed never exits. A test asserts that leak, and starts failing when the
 SDK fixes it — that is the signal to drop the flag.
+
+Kelpie detection runs `describe` as a real process too, against a stand-in
+CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact
+describe arguments: a `node <script> mcp` command, the alias-pinned
+`--browser <alias> mcp` shape, the environment describe is given, and a
+`kelpie.cmd` shim — that last one only on Windows, and skipped elsewhere with
+the reason.
 
 The worker's own half runs against the same fixture through the daemon's
 operation: `worker/test/executor-local-apps-subprocess.test.ts` for the

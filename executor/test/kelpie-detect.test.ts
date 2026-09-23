@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import {
   describeKelpie,
+  kelpieDescribeCommand,
   kelpieDescriptionFromJson,
   kelpieDeviceFromDescribeEntry,
 } from '../src/kelpie-detect.js'
@@ -156,12 +161,12 @@ test('a network of more Kelpies than the wire carries truncates here', () => {
 })
 
 test('describe runs the program the policy named, never a kelpie of its own', async () => {
-  const seen: string[] = []
+  const seen: Array<readonly string[]> = []
   await describeKelpie(
     { command: ['/opt/kelpie/bin/kelpie', 'mcp'], name: 'kelpie' },
     {
-      run: async (program) => {
-        seen.push(program)
+      run: async (command) => {
+        seen.push(command)
         return {
           ok: true,
           stdout: JSON.stringify({ discovery: { devices: [], mdns: 'ok' }, schemaVersion: 1 }),
@@ -169,7 +174,119 @@ test('describe runs the program the policy named, never a kelpie of its own', as
       },
     },
   )
-  assert.deepEqual(seen, ['/opt/kelpie/bin/kelpie'])
+  assert.deepEqual(seen, [['/opt/kelpie/bin/kelpie', 'describe', '--json', '--scan-timeout', '5000']])
+})
+
+test('describe is the policy’s own command with its trailing mcp replaced', () => {
+  assert.deepEqual(kelpieDescribeCommand(['kelpie', 'mcp']), ['kelpie', 'describe', '--json', '--scan-timeout', '5000'])
+  // A `node <script>` command keeps its script: describing `node` itself is
+  // what detection used to do, and `node describe` is not Kelpie.
+  assert.deepEqual(
+    kelpieDescribeCommand(['node', 'C:/kelpie/packages/cli/bin/kelpie.js', 'mcp']),
+    ['node', 'C:/kelpie/packages/cli/bin/kelpie.js', 'describe', '--json', '--scan-timeout', '5000'],
+  )
+  // Global flags stay, so an alias-pinned policy describes the same browser
+  // its MCP session drives.
+  assert.deepEqual(
+    kelpieDescribeCommand(['node', 'kelpie.js', '--browser', 'probe', 'mcp']),
+    ['node', 'kelpie.js', '--browser', 'probe', 'describe', '--json', '--scan-timeout', '5000'],
+  )
+})
+
+test('a command that does not end in mcp is not described, and says nothing about instances', async () => {
+  assert.equal(kelpieDescribeCommand(['kelpie', 'mcp', '--http']), undefined)
+  assert.equal(kelpieDescribeCommand(['kelpie-mcp']), undefined)
+  assert.equal(kelpieDescribeCommand(['mcp']), undefined)
+  let ran = false
+  const description = await describeKelpie(
+    { command: ['kelpie-mcp'], name: 'kelpie' },
+    { run: async () => { ran = true; return { ok: false } } },
+  )
+  assert.equal(description, undefined)
+  assert.equal(ran, false, 'nothing is spawned for a command whose grammar is unknown')
+})
+
+// The real process runs below: the command shapes a policy actually names,
+// through the same program resolution and environment the MCP session uses.
+const FAKE_KELPIE = fileURLToPath(new URL('./fixtures/fake-kelpie-cli.mjs', import.meta.url))
+
+test('a `node <script> mcp` command is described through its script', async () => {
+  const description = await describeKelpie({ command: [process.execPath, FAKE_KELPIE, 'mcp'], name: 'kelpie' })
+  assert.equal(description?.cliVersion, '0.1.12')
+  assert.deepEqual(description?.devices.map((device) => device.id), ['kelpie-mac-1'])
+})
+
+test('an alias-pinned command describes that alias’s browser', async () => {
+  const description = await describeKelpie({
+    command: [process.execPath, FAKE_KELPIE, '--browser', 'probe', 'mcp'],
+    name: 'kelpie',
+  })
+  // What Kelpie reports for a Windows browser today: found only through its
+  // loopback probe, no display size, and never paired.
+  assert.deepEqual(description?.devices, [{
+    address: '127.0.0.1',
+    display: { height: 0, width: 0 },
+    id: 'local:127.0.0.1:8420',
+    lastSeenAt: '2026-09-22T21:37:56.146Z',
+    model: 'home=unset leak=unset',
+    name: 'probe',
+    paired: false,
+    platform: 'windows',
+    port: 8420,
+    version: '0.1.1',
+  }])
+})
+
+test('describe sees the environment the MCP session sees, not the daemon’s', async () => {
+  const previous = process.env.NESSIE_TEST_DAEMON_ONLY
+  process.env.NESSIE_TEST_DAEMON_ONLY = 'leaked'
+  try {
+    const description = await describeKelpie({
+      command: [process.execPath, FAKE_KELPIE, 'mcp'],
+      env: { KELPIE_HOME: 'alias-store' },
+      name: 'kelpie',
+    })
+    assert.equal(description?.devices[0]?.model, 'home=alias-store leak=unset')
+  } finally {
+    if (previous === undefined) delete process.env.NESSIE_TEST_DAEMON_ONLY
+    else process.env.NESSIE_TEST_DAEMON_ONLY = previous
+  }
+})
+
+test('a program that is not installed yields absence rather than a throw', async () => {
+  const description = await describeKelpie({
+    command: [join(tmpdir(), `no-such-kelpie-${process.pid}`), 'mcp'],
+    name: 'kelpie',
+  })
+  assert.equal(description, undefined)
+})
+
+test('a describe that outlives its budget is stopped and yields absence', async () => {
+  const started = Date.now()
+  const description = await describeKelpie(
+    { command: [process.execPath, '-e', 'setTimeout(() => undefined, 30000)', 'mcp'], name: 'kelpie' },
+    { timeoutMs: 300 },
+  )
+  assert.equal(description, undefined)
+  assert.ok(Date.now() - started < 10_000, 'the budget, not the program, decides when detection gives up')
+})
+
+test('a kelpie.cmd shim is described on Windows', {
+  skip: process.platform === 'win32'
+    ? false
+    : 'A .cmd shim only runs through cmd.exe, which exists only on Windows.',
+}, async () => {
+  // npm installs a global CLI on Windows as exactly this kind of shim, and
+  // `execFile` refuses one outright (EINVAL on Node 24).
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-shim-'))
+  try {
+    const shim = join(directory, 'kelpie.cmd')
+    await writeFile(shim, `@"${process.execPath}" "${FAKE_KELPIE}" %*\r\n`)
+    const description = await describeKelpie({ command: [shim, '--browser', 'probe', 'mcp'], name: 'kelpie' })
+    assert.deepEqual(description?.devices.map((device) => [device.id, device.name]), [['local:127.0.0.1:8420', 'probe']])
+  } finally {
+    await rm(directory, { force: true, recursive: true })
+  }
 })
 
 test('a Kelpie too old to describe itself yields absence rather than an empty inventory', async () => {

@@ -17,10 +17,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nessie/local-inference-host": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@nessie/local-inference-host": "workspace:*",
     "@nessie/runtime": "workspace:*",
-    "@nessie/schemas": "workspace:*"
+    "@nessie/schemas": "workspace:*",
+    "cross-spawn": "^7.0.6"
   },
   "devDependencies": {
     "@types/node": "^20.19.24"

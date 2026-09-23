@@ -1,5 +1,7 @@
-import { execFile } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 
+import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js'
+import spawn from 'cross-spawn'
 import {
   EXECUTOR_KELPIE_DEVICE_MAXIMUM,
   KelpieDeviceSchema,
@@ -38,32 +40,75 @@ export type KelpieDescription = {
 
 type RunResult = { ok: true; stdout: string } | { ok: false }
 
+const KELPIE_DESCRIBE_ARGUMENTS = ['describe', '--json', '--scan-timeout', String(KELPIE_DISCOVERY_TIMEOUT_MS)]
+
+/**
+ * The policy's own command for the server, with its trailing `mcp` subcommand
+ * replaced by `describe`. Everything before it stays — the program, the script
+ * it runs (`node …/kelpie.js`), global flags such as `--browser <alias>` —
+ * because describe has to ask the same Kelpie, pinned to the same alias, that
+ * the MCP session drives. A command that does not end in `mcp` is not one
+ * whose grammar this knows, so it is not described at all: guessing which of
+ * its arguments are Kelpie's would run an invocation nobody wrote.
+ */
+export const kelpieDescribeCommand = (command: readonly string[]): string[] | undefined => {
+  if (command.length < 2 || command.at(-1) !== 'mcp') return undefined
+  return [...command.slice(0, -1), ...KELPIE_DESCRIBE_ARGUMENTS]
+}
+
+/**
+ * Started exactly as the MCP session starts the same server: through
+ * cross-spawn, which is how the SDK's stdio transport resolves a program, so a
+ * `kelpie.cmd` shim runs on Windows (plain `execFile` refuses it with EINVAL),
+ * and with the SDK's default environment plus the policy's own, so describe
+ * sees the `KELPIE_HOME` and `PATH` the session sees rather than the daemon's.
+ */
 const runKelpieDescribe = async (
-  program: string,
+  command: readonly string[],
   spec: ExecutorLocalMcpServer,
   timeoutMs: number,
 ): Promise<RunResult> => new Promise((resolve) => {
-  execFile(
-    program,
-    ['describe', '--json', '--scan-timeout', String(KELPIE_DISCOVERY_TIMEOUT_MS)],
-    {
+  // Every failure is the same answer here — Kelpie could not describe itself —
+  // and the reason why is decided by the MCP probe, which knows whether the
+  // program exists at all. Nothing from an error may travel: it carries the
+  // argv and a host path.
+  let timer: NodeJS.Timeout | undefined
+  let child: ChildProcess | undefined
+  let settled = false
+  const settle = (result: RunResult): void => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    if (!result.ok) child?.kill()
+    resolve(result)
+  }
+  try {
+    child = spawn(command[0]!, command.slice(1), {
       ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
-      ...(spec.env === undefined ? {} : { env: { ...process.env, ...spec.env } }),
-      maxBuffer: KELPIE_DESCRIBE_MAX_BYTES,
-      timeout: timeoutMs,
-    },
-    (error, stdout) => {
-      // Every failure is the same answer here — Kelpie could not describe
-      // itself — and the reason why is decided by the MCP probe, which knows
-      // whether the program exists at all. Nothing from `error` may travel:
-      // it carries the argv and a host path.
-      if (error) {
-        resolve({ ok: false })
-        return
-      }
-      resolve({ ok: true, stdout })
-    },
-  )
+      env: { ...getDefaultEnvironment(), ...spec.env },
+      shell: false,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    })
+  } catch {
+    settle({ ok: false })
+    return
+  }
+  const chunks: Buffer[] = []
+  let bytes = 0
+  timer = setTimeout(() => settle({ ok: false }), timeoutMs)
+  child.stdout?.on('data', (chunk: Buffer) => {
+    bytes += chunk.length
+    if (bytes > KELPIE_DESCRIBE_MAX_BYTES) {
+      settle({ ok: false })
+      return
+    }
+    chunks.push(chunk)
+  })
+  child.once('error', () => settle({ ok: false }))
+  child.once('close', (code) => {
+    settle(code === 0 ? { ok: true, stdout: Buffer.concat(chunks).toString('utf8') } : { ok: false })
+  })
 })
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -171,22 +216,22 @@ export const kelpieDescriptionFromJson = (
 /**
  * Ask the Kelpie behind a named MCP server to describe itself.
  *
- * The program is the one the reviewed policy already named for that server —
- * the executor never goes looking for a `kelpie` binary of its own, because
- * running a program the policy did not name is the thing the policy exists to
- * prevent.
+ * The command is the one the reviewed policy already named for that server
+ * (`kelpieDescribeCommand`) — the executor never goes looking for a `kelpie`
+ * binary of its own, because running a program the policy did not name is the
+ * thing the policy exists to prevent.
  */
 export const describeKelpie = async (
   spec: ExecutorLocalMcpServer,
   options: {
-    run?: (program: string, spec: ExecutorLocalMcpServer, timeoutMs: number) => Promise<RunResult>
+    run?: (command: readonly string[], spec: ExecutorLocalMcpServer, timeoutMs: number) => Promise<RunResult>
     timeoutMs?: number
   } = {},
 ): Promise<KelpieDescription | undefined> => {
-  const program = spec.command[0]
-  if (!program) return undefined
+  const command = kelpieDescribeCommand(spec.command)
+  if (!command) return undefined
   const run = options.run ?? runKelpieDescribe
-  const result = await run(program, spec, options.timeoutMs ?? KELPIE_DESCRIBE_TIMEOUT_MS)
+  const result = await run(command, spec, options.timeoutMs ?? KELPIE_DESCRIBE_TIMEOUT_MS)
   if (!result.ok) return undefined
   return kelpieDescriptionFromJson(result.stdout, new Date().toISOString())
 }
