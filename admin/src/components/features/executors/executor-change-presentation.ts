@@ -11,6 +11,7 @@ export const executorChangePresentation = (
       pause: ['Pause executor', 'Stops current work and prevents new work until you resume this machine.'],
       resume: ['Resume executor', 'Allows new work on this machine. Stopped sessions will not restart.'],
       revoke: ['Disconnect executor', 'Stops all work and revokes this pairing. Pair the machine again to use it. Its history stays in Nessie.'],
+      remove: ['Delete executor', 'Stops all work, revokes this pairing and removes the machine from Executors. Pair it again to use it. Its history stays in Nessie.'],
       drain: ['Stop accepting work', 'Stops current sessions and prevents new work. This state cannot be resumed.'],
     }
     const value = typeof change.action === 'string' ? states[change.action] : undefined

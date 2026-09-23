@@ -47,7 +47,7 @@ export const requireManagedExecutor = async (
   const actorUserId = requireHumanActor(actorContext)
   const executor = actorUserId
     ? await prisma.executor.findFirst({
-        where: { id: executorId, organizationId: actorContext.tenant.organizationId },
+        where: { id: executorId, organizationId: actorContext.tenant.organizationId, removedAt: null },
         select: {
           authorizationRevision: true,
           id: true,

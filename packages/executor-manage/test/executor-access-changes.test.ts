@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { requiresFreshExecutorVerification } from '../src/index.js'
 
-test('private assignment changes, grants, descriptor activation, and revocation require fresh human verification', () => {
+test('private assignment changes, grants and descriptor activation require fresh human verification', () => {
   assert.equal(requiresFreshExecutorVerification({
     kind: 'private_assignment',
     action: 'set',
@@ -16,14 +16,17 @@ test('private assignment changes, grants, descriptor activation, and revocation 
     state: 'allowed',
   }), true)
   assert.equal(requiresFreshExecutorVerification({
-    kind: 'lifecycle',
-    action: 'revoke',
-  }), true)
-  assert.equal(requiresFreshExecutorVerification({
     kind: 'descriptor_review',
     revision: 2,
     status: 'active',
   }), true)
+})
+
+// A sign-in with no fresh factor (every SSO account today) must still be able
+// to cut a machine off: both changes only take access away.
+test('disconnecting or deleting an executor needs no fresh verification', () => {
+  assert.equal(requiresFreshExecutorVerification({ kind: 'lifecycle', action: 'revoke' }), false)
+  assert.equal(requiresFreshExecutorVerification({ kind: 'lifecycle', action: 'remove' }), false)
 })
 
 test('low-risk denial and pause changes still require structural user confirmation', () => {

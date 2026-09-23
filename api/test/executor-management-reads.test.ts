@@ -54,7 +54,7 @@ dbTest('executor agent pages preserve privacy, count filtered rows and page the 
       privateAssignments: { create: { principalKind: 'user', userId, role: 'admin' } },
     } })
     const prepared = await prepareExecutorAccessChange(prisma, actor, {
-      executorId, change: { kind: 'lifecycle', action: 'revoke' },
+      executorId, change: { kind: 'descriptor_review', revision: 1, status: 'active' },
     })
     const reviewUrl = `/api/executor-access-changes/${prepared.accessChangeId}`
     const unavailable = await app.inject({ method: 'GET', url: reviewUrl })
