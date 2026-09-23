@@ -13,7 +13,7 @@
     "start": "tsx src/index.ts",
     "smoke:local-ollama": "tsx scripts/local-ollama-smoke.ts",
     "test": "node --test --test-force-exit --import tsx test/**/*.test.ts",
-    "test:mcp": "node --test --test-force-exit --import tsx test/mcp-session-manager.test.ts test/kelpie-detect.test.ts test/local-mcp-report.test.ts",
+    "test:mcp": "node --test --test-force-exit --import tsx test/mcp-session-manager.test.ts test/mcp-dispatch.test.ts test/kelpie-detect.test.ts test/local-mcp-report.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
