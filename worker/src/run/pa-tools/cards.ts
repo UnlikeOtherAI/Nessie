@@ -1,18 +1,11 @@
-import { Prisma } from '@prisma/client'
 import {
-  AgentCardMessageMetadataSchema,
   CardPostToolInputSchema,
   CardPostToolOutputSchema,
   type AgentCardSpec,
 } from '@nessie/schemas'
-import { renderAgentCardPlainText } from '@nessie/team-admin'
 
-import { createAgentMessage } from '../execute/agent-message.js'
-import { applyRunReplyBookkeeping } from '../execute/lifecycle.js'
-import { publishMessageCreated } from '../execute/realtime.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { alertCardRespondents } from '../mention-alerts.js'
-import { buildRealtimeScopesForChannel } from './message-destination.js'
+import { postAgentCard } from './agent-card-post.js'
 import { assertCardSecretDestinations } from './card-secrets.js'
 
 /**
@@ -139,81 +132,19 @@ export const runCardPostTool = async (
   const secretDestinations = await assertCardSecretDestinations(context, args.card)
 
   const respondentUserIds = await resolveRespondentUserIds(context, args.respondents)
-  const content = renderAgentCardPlainText(args.card)
   const expiresAt = args.expiresIn
     ? new Date(Date.now() + args.expiresIn * 1000)
     : null
 
-  const created = await context.prisma.$transaction(async (tx) => {
-    const message = await createAgentMessage(tx, runContext, {
-      agentId: context.agentId,
-      content,
-      role: 'assistant',
-      threadId: context.run.threadId,
-      ...(runContext.replyRootMessageId
-        ? { rootMessageId: runContext.replyRootMessageId }
-        : {}),
-    })
-    const card = await tx.agentCard.create({
-      data: {
-        agentId: context.agentId,
-        channelId: context.channel.id,
-        expiresAt,
-        messageId: message.id,
-        organizationId: context.channel.organizationId,
-        respondentUserIds,
-        runId: context.run.id,
-        spec: args.card as unknown as Prisma.InputJsonValue,
-        threadId: context.run.threadId,
-      },
-      select: { id: true },
-    })
-    // The pointer is written after the row exists, so a client can never read
-    // a card id that resolves to nothing.
-    await tx.message.update({
-      data: {
-        metadata: AgentCardMessageMetadataSchema.parse({
-          agentCard: { cardId: card.id, schemaVersion: 1 },
-        }) as unknown as Prisma.InputJsonValue,
-      },
-      where: { id: message.id },
-    })
-    return { cardId: card.id, message }
+  const created = await postAgentCard(context, runContext, {
+    card: args.card,
+    expiresAt,
+    respondentUserIds,
   })
-
-  const reply = runContext.replyRootMessageId
-    ? await applyRunReplyBookkeeping(context.prisma, runContext, created.message.createdAt)
-    : undefined
-  await publishMessageCreated(context.realtimeTransport, runContext, {
-    content: created.message.content,
-    messageId: created.message.id,
-    role: 'assistant',
-    ...(created.message.basis.length > 0 ? { restricted: true } : {}),
-    ...(reply ? { reply } : {}),
-  })
-
-  // Named respondents are being asked for something, so they get the ordinary
-  // mention bell and push. A thread-wide card alerts nobody: it is read like
-  // any other channel message.
-  if (respondentUserIds.length > 0) {
-    await alertCardRespondents(context, {
-      channelId: context.channel.id,
-      messageCreatedAt: created.message.createdAt,
-      messageId: created.message.id,
-      organizationId: context.channel.organizationId,
-      recipientUserIds: respondentUserIds,
-      scopes: buildRealtimeScopesForChannel({
-        channelId: context.channel.id,
-        organizationId: context.channel.organizationId,
-        systemChannelType: context.channel.systemChannelType ?? null,
-      }),
-      threadId: context.run.threadId,
-    })
-  }
 
   const output = CardPostToolOutputSchema.parse({
     cardId: created.cardId,
-    messageId: created.message.id,
+    messageId: created.messageId,
     status: 'open' as const,
   })
 

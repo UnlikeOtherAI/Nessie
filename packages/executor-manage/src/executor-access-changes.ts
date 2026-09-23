@@ -21,6 +21,7 @@ import {
   hashExecutorContinuationValue,
 } from './executor-continuation-security.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { closeExecutorReviewCards } from './executor-review-cards.js'
 import { setExecutorAgentAccessInTransaction } from './executor-agent-access.js'
 import {
   reviewExecutorDescriptorInTransaction,
@@ -381,6 +382,12 @@ export const confirmExecutorAccessChange = async (
     if (claimed.count !== 1) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
     }
+    // Whichever door confirmed it, the chat card that opened its review is done.
+    await closeExecutorReviewCards(tx, {
+      actorUserId: continuation.actorUserId,
+      continuationId: continuation.id,
+      outcome: 'confirmed',
+    })
     // Route-owned policy effects share this validated continuation transaction;
     // invalid tokens, stale authority or a failed access mutation write nothing.
     await applyPolicy?.(tx, { executorId: executor.id, change: stored.change })
@@ -428,5 +435,10 @@ export const rejectExecutorAccessChange = async (
   if (rejected.count !== 1) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is no longer pending.')
   }
+  await closeExecutorReviewCards(tx, {
+    actorUserId: continuation.actorUserId,
+    continuationId: continuation.id,
+    outcome: 'rejected',
+  })
   return { executorId: continuation.executorId }
 })

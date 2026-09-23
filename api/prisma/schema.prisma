@@ -3723,6 +3723,14 @@ model AgentCard {
   /// human-only session, so a person who signs in and presses Done is
   /// recorded even if the resumed run then fails.
   browserLogin      Json?           @map("browser_login")
+  /// The prepared executor access change a system-authored review card opens.
+  /// Only the id: the confirmation token is minted for the presser when the
+  /// card is pressed and never stored, so neither the model nor the message
+  /// ever holds one.
+  executorAccessChangeId String?      @map("executor_access_change_id") @db.Uuid
+  /// The prepared workspace promotion a system-authored review card opens —
+  /// the same rule: only the id, and the token is minted at the press.
+  executorWorkspacePromotionId String? @map("executor_workspace_promotion_id") @db.Uuid
   resumedByRunId    String?         @unique @map("resumed_by_run_id") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at")
   updatedAt         DateTime        @updatedAt @map("updated_at")
@@ -3737,10 +3745,14 @@ model AgentCard {
   waitRun         Run?         @relation("AgentCardWaitRun", fields: [waitRunId], references: [id], onDelete: SetNull)
   resumedByRun    Run?         @relation("AgentCardResumedByRun", fields: [resumedByRunId], references: [id], onDelete: SetNull)
   resolvedBy      User?        @relation("AgentCardResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  executorAccessChange ExecutorContinuation? @relation("AgentCardExecutorAccessChange", fields: [executorAccessChangeId], references: [id], onDelete: SetNull)
+  executorWorkspacePromotion ExecutorContinuation? @relation("AgentCardExecutorWorkspacePromotion", fields: [executorWorkspacePromotionId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, expiresAt])
   @@index([threadId, status])
   @@index([agentId, status])
+  @@index([executorAccessChangeId])
+  @@index([executorWorkspacePromotionId])
   @@map("agent_cards")
 }
 
@@ -5584,6 +5596,8 @@ model ExecutorContinuation {
   executor                Executor                    @relation(fields: [executorId], references: [id], onDelete: Cascade)
   binding                 ExecutorBinding?            @relation(fields: [bindingId], references: [id], onDelete: SetNull)
   actor                   User                        @relation("ExecutorContinuationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  reviewCards             AgentCard[]                 @relation("AgentCardExecutorAccessChange")
+  promotionReviewCards    AgentCard[]                 @relation("AgentCardExecutorWorkspacePromotion")
 
   @@index([executorId, status, expiresAt])
   @@index([actorUserId, status])

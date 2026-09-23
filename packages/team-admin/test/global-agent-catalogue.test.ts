@@ -200,6 +200,19 @@ test('the standard proposal card is described for the chat face and nowhere else
   }
 })
 
+// F22. The card used to promise "the channel it will work in", so the
+// Designer made one for every agent and Accept built a room nobody asked for.
+test('the proposal card places an agent in named channels, or nowhere yet', () => {
+  const chat = block()
+  assert.match(chat, /A fields block with "Lives in" and "Who can see it"/)
+  assert.match(chat, /the existing channels the person named/)
+  assert.match(chat, /it reads exactly "nowhere yet — add it to any channel"/)
+  assert.match(chat, /never a channel you would create for the agent/)
+  assert.doesNotMatch(chat, /channel it will work in/)
+  // The parameter facts agree: no binding is a finished agent.
+  assert.match(chat, /An agent needs none to exist: with none it lives nowhere yet/)
+})
+
 // The Designer once offered to make an agent "at home in the Sales project,
 // not just a channel". It cannot: `AgentBinding` is (agentId, channelId) and
 // every reach check in the API and the worker reads exactly that pair. The

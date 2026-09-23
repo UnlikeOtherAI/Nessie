@@ -76,7 +76,9 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'gets an owner-only home conversation when private; a team agent starts '
       + 'in no channel and an owner puts it to work with agent_bind_channel. '
       + 'Any member can do this. Explicit-grant tools (research, DeepWater) cannot '
-      + 'be granted here; they are owner controls.',
+      + 'be granted here; they are owner controls. The result links the new agent '
+      + 'as [Name](/agents/<agentId>): the last path segment of that link is the '
+      + 'agentId agent_bind_channel, agent_update and agent_trigger_create take.',
     parameters: {
       type: 'object',
       properties: {

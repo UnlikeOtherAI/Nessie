@@ -8,7 +8,11 @@ import {
   ensureGlobalAgentBootstrap,
 } from '@nessie/team-admin'
 
-import { runChannelCreateTool } from '../../src/run/pa-tools/provisioning.js'
+import {
+  runAgentBindChannelTool,
+  runAgentCreateTool,
+  runChannelCreateTool,
+} from '../../src/run/pa-tools/provisioning.js'
 import {
   runProjectCreateTool,
   runProjectListTool,
@@ -408,4 +412,77 @@ runDatabaseTest('project_list is scoped to the caller and their organisation', a
     !asOwner.outputPreview.includes(team.otherProjectId),
     'never another organisation',
   )
+})
+
+// F9: the Designer relays these outputs closely. It used to print
+// `agentId=<uuid>` and `Its private home is channelId=<uuid>`, and the person
+// read the UUIDs back in the reply. Against real rows: the links name the
+// agent and the rooms the tools actually wrote, and no raw key=id is left.
+runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', async (t) => {
+  const prisma = new PrismaClient()
+  const team = await seed(prisma)
+  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const base = buildContext(prisma, team, team.ownerId)
+  // No project on the run's tenant: an agent homed in a project also writes
+  // its canonical core document, which is not what this case is about.
+  const context = {
+    ...base,
+    actorContext: {
+      ...base.actorContext,
+      tenant: { organizationId: team.organizationId, teamId: team.teamId },
+    },
+  } as BuiltinToolRuntimeContext
+  const warn = console.warn
+  console.warn = () => undefined
+  t.after(() => { console.warn = warn })
+
+  const privateResult = await runAgentCreateTool(context, { name: 'Night Owl', visibility: 'private' })
+  const privateAgent = await prisma.agent.findFirstOrThrow({
+    where: { name: 'Night Owl', organizationId: team.organizationId },
+    select: { bindings: { select: { channelId: true } }, id: true },
+  })
+  const homeId = privateAgent.bindings[0]?.channelId
+  assert.ok(homeId, 'a private agent is created with its home')
+  const lines = privateResult.outputPreview.split('\n')
+  assert.equal(lines[0], `Created agent [Night Owl](/agents/${privateAgent.id}) (assistant) | model=deployment default`)
+  assert.equal(lines[1], `Lives in: its private home, [#Night Owl](/channels/${homeId}).`)
+  // No model client on this run, so no picture — and the reason is data.
+  assert.equal(lines[2], 'portrait: none (reason: "The model service is not configured.")')
+  assert.doesNotMatch(privateResult.outputPreview, /agentId=|channelId=/)
+
+  const projectResult = await runProjectCreateTool(base, { name: 'Night work', teamId: team.teamId })
+  const channelResult = await runChannelCreateTool(base, {
+    label: 'Launch plan',
+    projectId: idFrom(projectResult.outputPreview, 'projectId'),
+    teamId: team.teamId,
+  })
+  const channelId = idFrom(channelResult.outputPreview, 'channelId')
+  const teamResult = await runAgentCreateTool(context, { name: 'Night Shift' })
+  assert.match(teamResult.outputPreview, /^Lives in: nowhere yet — add it to any channel\.$/m)
+  const teamAgentId = /\/agents\/([0-9a-f-]{36})\)/.exec(teamResult.outputPreview)?.[1]
+  assert.ok(teamAgentId, 'the id a later call needs is the link\'s last segment')
+
+  // The default an organisation is provisioned with: owners may bind agents.
+  await prisma.policyRule.create({
+    data: {
+      action: 'bind',
+      bindings: { create: { actorId: 'owner', actorType: 'role' } },
+      createdBy: team.ownerId,
+      effect: 'allow',
+      organizationId: team.organizationId,
+      priority: 10,
+      resourceType: 'agent',
+      scope: 'organization',
+      scopeId: team.organizationId,
+    },
+  })
+  const bound = await runAgentBindChannelTool(context, { agentId: teamAgentId, channelId })
+  // The room's stored name, which is the slugged label a person sees.
+  const { label } = await prisma.channel.findUniqueOrThrow({ where: { id: channelId }, select: { label: true } })
+  assert.equal(
+    bound.outputPreview,
+    `Bound [Night Shift](/agents/${teamAgentId}) to [#${label}](/channels/${channelId}). `
+    + 'It now answers in that channel.',
+  )
+  assert.equal(await prisma.agentBinding.count({ where: { agentId: teamAgentId, channelId } }), 1)
 })

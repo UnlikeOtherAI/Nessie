@@ -55,6 +55,8 @@ export const loadReadableCard = async (
       // whole organisation (docs/standards/disclosure-boundaries.md).
       channel: { select: { systemChannelType: true, visibility: true } },
       channelId: true,
+      executorAccessChangeId: true,
+      executorWorkspacePromotionId: true,
       expiresAt: true,
       id: true,
       message: {
