@@ -85,6 +85,19 @@ test('images become sized placeholders and resource links lose their URI', () =>
   assert.equal(output.includes(data.slice(0, 64)), false)
 })
 
+test('an image the daemon kept is sized from its reference, which carries no bytes', () => {
+  const output = presentExecutorMcpCallResult('kelpie', {
+    content: [
+      { text: '{"format":"png","image":"[image: attachment sha256:aa]"}', type: 'text' },
+      { attachmentDigest: `sha256:${'a'.repeat(64)}`, byteLength: 13_715, mimeType: 'image/png', type: 'image' },
+      { text: '[image unavailable: more than 6 images in one result]', type: 'text' },
+    ],
+    success: true,
+  })
+  assert.ok(lines(output).includes('[image 1: image/png, 13 KB]'))
+  assert.ok(lines(output).includes('[image unavailable: more than 6 images in one result]'))
+})
+
 test('the whole answer is capped with a paging hint that counts what was left out', () => {
   const text = 'a'.repeat(EXECUTOR_PROGRAM_OUTPUT_MAX_CHARS + 500)
   const output = presentExecutorMcpCallResult('kelpie', { content: [{ text, type: 'text' }], success: true })

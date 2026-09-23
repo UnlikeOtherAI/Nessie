@@ -3,6 +3,7 @@ import {
   ExecutorMcpToolsArgumentsSchema,
 } from '@nessie/schemas'
 
+import type { ExecutorMcpImageSink } from './mcp-images.js'
 import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
 
 // A refusal is part of a terminal result, which the control plane caps; the
@@ -58,11 +59,15 @@ const invalidArguments = (
  * build that cannot front a local server says so rather than failing at the
  * first call. The policy check itself is the session manager's, and it happens
  * before any process starts.
+ *
+ * `images` is where an `mcp.call`'s images are kept — the daemon writes them
+ * as the command's sidecars (`command-attachments.ts`).
  */
 export const executeExecutorMcpCommand = async (
   operationKey: 'mcp.tools' | 'mcp.call',
   args: unknown,
   sessions: ExecutorMcpSessionManager | undefined,
+  images?: ExecutorMcpImageSink,
 ): Promise<Record<string, unknown>> => {
   if (!sessions) return { code: 'EXECUTOR_MCP_UNAVAILABLE', success: false }
   if (operationKey === 'mcp.tools') {
@@ -75,5 +80,5 @@ export const executeExecutorMcpCommand = async (
   // `arguments` is passed through untouched: the tool's own grammar belongs to
   // the server, and validating it here would guarantee drift the first time
   // that server ships a new field.
-  return sessions.callTool(parsed.data.server, parsed.data.tool, parsed.data.arguments)
+  return sessions.callTool(parsed.data.server, parsed.data.tool, parsed.data.arguments, images)
 }

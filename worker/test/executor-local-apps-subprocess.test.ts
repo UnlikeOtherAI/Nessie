@@ -52,14 +52,21 @@ const lane = (mode = 'local-apps', maxResultBytes = 65_536) => {
     mcpServers: () => ['kelpie'],
   })
   const mcpCall = descriptorFor('mcp.call', { mcpServers: ['kelpie'] })!.inputSchema
+  // The daemon keeps a call's images as sidecars; here they are only counted.
+  const keptImages: number[] = []
   // What the agent loop runs for executor_mcp_call: the envelope shaping, the
   // daemon operation, the raw document, then the model's presentation.
   const call = async (args: Record<string, unknown>) => {
     const shaped = shapeExecutorToolArguments('mcp.call', mcpCall, args, catalogs.inputSchemaOf)
-    const raw = { inputSummary: '', ...executorDispatchResult(await executeExecutorMcpCommand('mcp.call', shaped, sessions)) }
+    const raw = {
+      inputSummary: '',
+      ...executorDispatchResult(await executeExecutorMcpCommand('mcp.call', shaped, sessions, async (images) => {
+        keptImages.push(...images.map((image) => image.bytes.length))
+      })),
+    }
     return { presented: presentExecutorResultForModel('mcp.call', args, raw), raw }
   }
-  return { call, catalogs, ended, pages, sessions }
+  return { call, catalogs, ended, keptImages, pages, sessions }
 }
 
 type NavigateEcho = { arguments: Record<string, unknown>; types: Record<string, string> }
@@ -94,11 +101,14 @@ test('once the run has listed the program, a string scalar reaches it as the typ
 })
 
 test('a real screenshot answer reads as text and placeholders, never as base64 or a host path', async () => {
-  const { call, sessions } = lane()
+  const { call, keptImages, sessions } = lane()
   try {
     const { presented, raw } = await call({ server: 'kelpie', tool: 'screenshot' })
     assert.equal(raw.success, true)
     assert.match(raw.output, /"type":"image"/, 'dispatch still answers the raw document')
+    // The daemon took the bytes out and left a reference to them.
+    assert.match(raw.output, /"attachmentDigest":"sha256:[0-9a-f]{64}"/)
+    assert.deepEqual(keptImages, [3_000])
     const lines = presented.output.split('\n')
     assert.equal(lines[0], 'BEGIN UNTRUSTED EXTERNAL DATA')
     assert.match(lines[1]!, /^Output of the program `kelpie` on the person's machine\./)

@@ -79,14 +79,18 @@ const capProgramOutput = (body: string): string => {
   return `${body.slice(0, cut)}\n[… ${body.length - cut} more characters not shown — ask the program for a narrower result]`
 }
 
-const base64Size = (data: unknown): string | null => {
-  if (typeof data !== 'string') return null
-  const bytes = Math.floor((data.replace(/=+$/, '').length * 3) / 4)
+// An image the daemon kept arrives as a reference with its `byteLength` and no
+// data (executor/src/mcp-images.ts); anything else is sized from its base64.
+const itemSize = (item: Record<string, unknown>, data: unknown): string | null => {
+  let bytes: number
+  if (typeof item.byteLength === 'number' && Number.isFinite(item.byteLength)) bytes = item.byteLength
+  else if (typeof data === 'string') bytes = Math.floor((data.replace(/=+$/, '').length * 3) / 4)
+  else return null
   return `${Math.max(1, Math.round(bytes / 1_024))} KB`
 }
 
 const binaryLabel = (kind: string, item: Record<string, unknown>, data: unknown): string => {
-  const size = base64Size(data)
+  const size = itemSize(item, data)
   const mimeType = oneLine(item.mimeType, 100) || 'unknown type'
   return `[${kind}: ${mimeType}${size ? `, ${size}` : ''}]`
 }
