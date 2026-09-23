@@ -96,7 +96,9 @@ export const requiresFreshExecutorVerification = (change: ExecutorAccessChange):
   // agent may reach on somebody's machine is the moment to re-prove the human.
   || (change.kind === 'agent_executor_grant' && change.state === 'allowed')
   || (change.kind === 'agent_executor_access' && change.state === 'allowed')
-  || (change.kind === 'lifecycle' && change.action === 'revoke')
+  // Disconnecting or deleting a machine is deliberately absent: it only takes
+  // access away, the daemon's next connection is refused, and the machine can
+  // pair again. A kill switch must never be harder to reach than what it stops.
   || (change.kind === 'descriptor_review' && change.status === 'active')
 
 const isPrincipal = (value: unknown): value is { principalKind: 'user'; userId: string } | {
@@ -149,7 +151,7 @@ const parseStoredAccessChange = (value: unknown): StoredAccessChange | null => {
   }
   if (
     change.kind === 'lifecycle'
-    && ['pause', 'resume', 'drain', 'revoke'].includes(change.action)
+    && ['pause', 'resume', 'drain', 'revoke', 'remove'].includes(change.action)
   ) {
     return stored as StoredAccessChange
   }

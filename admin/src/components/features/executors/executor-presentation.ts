@@ -16,7 +16,7 @@ export const EXECUTOR_STATUS_LABELS: Record<ExecutorStatus, string> = {
   online: 'Online',
   paused: 'Paused',
   pending_pairing: 'Pending pairing',
-  revoked: 'Revoked',
+  revoked: 'Disconnected',
 }
 
 export const executorStatusTone = (status: ExecutorStatus): PillTone => {

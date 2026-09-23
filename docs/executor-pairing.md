@@ -47,7 +47,9 @@ agent access. The selected team limit does not limit the number of agents.
 
 **SSO access-change blocker:** allowing an agent, changing private assignments
 and activating a capability revision currently require the control plane's
-fresh local-password verification. UOA-only accounts cannot complete these
+fresh local-password verification. Disconnecting and deleting a machine do
+not: they only take access away, so they need the same management right as
+Pause and nothing more. UOA-only accounts cannot complete these
 changes until a shared UOA-backed fresh-verification flow exists. The
 many-agent model is supported, but those grants are not yet usable by SSO-only
 accounts. An ordinary login or refreshed session is not a substitute for
@@ -74,19 +76,22 @@ remain in the protocol and audit records.
 **Activity** shows the 20 most recent sessions and links to their conversations
 only when the viewer can open them. It has no per-session disconnect button:
 disconnecting revokes the whole executor. The **Machine** menu owns
-Pause/Resume, Disconnect, private-machine people, local models when connected,
-and local Desktop controls when available. Drain stays an operator API action;
-it is not a graceful finish-and-resume operation.
+Pause/Resume, Disconnect, Delete, private-machine people, local models when
+connected, and local Desktop controls when available. Drain stays an operator
+API action; it is not a graceful finish-and-resume operation.
 
-**Older records without their machine key:** the current control plane keeps
-executor records and audit history after revocation; it has no delete/archive
-operation. Its existing access-change revocation requires fresh local-password
-verification and has no UOA step-up verifier, so SSO-only accounts cannot yet
-retire those records through that flow. This is a separate known blocker. The
-remedy is shared, UOA-backed fresh verification bound to the exact access-change
-continuation, followed by an authorized retirement control. Do not add a local
-password or bypass fresh verification. Code-based replacement uses proof from
-the existing machine key and does not depend on that unavailable flow.
+**Disconnect and Delete** are both confirmed lifecycle changes that anyone who
+manages the machine can apply without a fresh identity check. Disconnect
+(`revoke`) ends the pairing: work stops, the daemon's next connection is
+refused, and the machine stays listed as Disconnected. Delete (`remove`) does
+the same and also sets `removedAt`, which hides the executor from the list,
+its detail page and every further change; it works from any state, including
+a pairing that never completed. The row itself is kept, because run bindings,
+leases and the audit trail point at it, and a removed executor is always
+revoked, so every revoked-status guard still refuses its daemon. Either way
+the machine can pair again: a new pairing mints a new machine key, and the
+code-based replacement path retires the previous record by proof from its old
+key.
 
 ## Platform operation
 

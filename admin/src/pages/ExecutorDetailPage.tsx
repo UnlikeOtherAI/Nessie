@@ -39,7 +39,7 @@ export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
   const [panel, setPanel] = useState<'people' | 'models' | 'device' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const backToList = () => void navigate('/agents/executors')
-  const lifecycle = async (action: 'pause' | 'resume' | 'revoke') => {
+  const lifecycle = async (action: 'pause' | 'resume' | 'revoke' | 'remove') => {
     if (!executorId) return
     setError(null)
     try { setPrepared(await prepare.mutateAsync({ executorId, change: { kind: 'lifecycle', action } })) }
@@ -67,6 +67,9 @@ export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
     if (!['revoked', 'pending_pairing'].includes(executor.status)) {
       menu.push({ id: 'disconnect', label: 'Disconnect executor', disabled: prepare.isPending, onSelect: () => void lifecycle('revoke') })
     }
+    // Any state, pending pairing and already disconnected included: it is the
+    // only way a machine leaves this list.
+    menu.push({ id: 'delete', label: 'Delete executor', disabled: prepare.isPending, onSelect: () => void lifecycle('remove') })
   }
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -98,7 +101,9 @@ export const ExecutorDetailContent = ({ token }: { token: string | null }) => {
         accessChangeId={prepared.accessChangeId} confirmationToken={prepared.confirmationToken}
         {...(prepared.executorId === access?.executorId && access.descriptorRevisions
           ? { descriptorRevisions: access.descriptorRevisions } : {})}
-        onClose={() => setPrepared(null)} open /> : null}
+        onClose={() => setPrepared(null)}
+        onConfirmed={(change) => { if (change.kind === 'lifecycle' && change.action === 'remove') backToList() }}
+        open /> : null}
     </div>
   )
 }

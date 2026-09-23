@@ -21,12 +21,13 @@ only that agent's assignment and grants, in one confirmed transaction.
 | Sessions | Find recent work and its conversation | Rename Activity; shared table, latest 20 sessions, links only to authorized conversations |
 | Session revocation button | Actually disconnects the whole machine | Remove from session rows; Disconnect executor lives in the Machine menu |
 | Pause, Resume, Disconnect | Control the machine | Machine menu; review states the consequence before confirmation |
+| Delete | Take a machine off the list for good | Machine menu in every state, pending pairing included; the review names the consequence and confirming returns to Executors |
 | Private-machine people | Add, change or remove human access | Machine menu opens the shared dialog shell; agent access stays in its own table |
 | Local models | Manage a separately connected local-model host | Machine menu item only when that connection exists; disconnection explicitly preserves executor pairing |
 | Local Desktop controls | Manage this computer's folders and executor | Desktop-only menu doorway; no permanent browser panel |
 | Local apps and nearby devices | Identify an unavailable app or a device needing pairing | Keep names, availability, observed age and remedies; remove tool counts, versions, addresses, display sizes and runtime details |
 | Default security paragraphs | No decision on a routine status page | Move relevant consequences into the permission or destructive-action review |
-| Fresh identity check | Authorize a protected change | Password only where the server supports it; SSO-only users see the missing provider capability and cannot submit |
+| Fresh identity check | Authorize a change that widens access | Password only where the server supports it; SSO-only users see the missing provider capability and cannot submit. Disconnect and Delete never ask for it |
 
 ## Browser verification
 

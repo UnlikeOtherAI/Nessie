@@ -19,13 +19,18 @@ import {
 } from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
-export type ExecutorLifecycleAction = 'pause' | 'resume' | 'drain' | 'revoke'
+export type ExecutorLifecycleAction = 'pause' | 'resume' | 'drain' | 'revoke' | 'remove'
+
+/** Both end the pairing; `remove` also hides the executor from people. */
+const endsPairing = (action: ExecutorLifecycleAction): action is 'revoke' | 'remove' =>
+  action === 'revoke' || action === 'remove'
 
 /** What each fencing transition records on the leases it ends. */
 const LIFECYCLE_END_REASON = {
   drain: 'executor_drained',
   pause: 'executor_paused',
   revoke: 'executor_revoked',
+  remove: 'executor_revoked',
 } as const satisfies Record<Exclude<ExecutorLifecycleAction, 'resume'>, ExecutorLeaseEndReason>
 
 const canBreakGlassRevoke = async (
@@ -37,7 +42,7 @@ const canBreakGlassRevoke = async (
   if (!actorUserId) return false
   const [executor, membership] = await Promise.all([
     prisma.executor.findFirst({
-      where: { id: executorId, organizationId: actorContext.tenant.organizationId },
+      where: { id: executorId, organizationId: actorContext.tenant.organizationId, removedAt: null },
       select: { id: true },
     }),
     prisma.organizationMember.findUnique({
@@ -57,7 +62,7 @@ export const nextExecutorLifecycleStatus = (
   current: 'pending_pairing' | 'online' | 'offline' | 'paused' | 'draining' | 'revoked' | 'error',
   action: ExecutorLifecycleAction,
 ): 'offline' | 'paused' | 'draining' | 'revoked' => {
-  if (action === 'revoke') return 'revoked'
+  if (endsPairing(action)) return 'revoked'
   if (current === 'pending_pairing' || current === 'revoked' || current === 'draining') {
     throw new ExecutorError(
       EXECUTOR_ERROR_CODES.STATE_TRANSITION_INVALID,
@@ -95,7 +100,7 @@ export const transitionExecutorLifecycleInTransaction = async (
   actorContext: AuthorizedActionContext,
   input: { executorId: string; action: ExecutorLifecycleAction },
 ): Promise<{ status: string; authorizationRevision: number }> => {
-  const breakGlassRevoke = input.action === 'revoke'
+  const breakGlassRevoke = endsPairing(input.action)
     && await canBreakGlassRevoke(tx, actorContext, input.executorId)
   if (!breakGlassRevoke) {
     const managed = await requireManagedExecutor(tx, actorContext, input.executorId)
@@ -106,7 +111,7 @@ export const transitionExecutorLifecycleInTransaction = async (
   const actorUserId = requireHumanActor(actorContext)
   const executor = actorUserId
     ? await tx.executor.findFirst({
-        where: { id: input.executorId, organizationId: actorContext.tenant.organizationId },
+        where: { id: input.executorId, organizationId: actorContext.tenant.organizationId, removedAt: null },
       })
     : null
   if (!executor || !actorUserId) {
@@ -147,7 +152,7 @@ export const transitionExecutorLifecycleInTransaction = async (
     where: { id: executor.id },
     data: {
       status,
-      statusDetail: input.action === 'revoke'
+      statusDetail: endsPairing(input.action)
         ? 'Executor access was revoked.'
         : input.action === 'drain'
           ? 'Executor is draining active work.'
@@ -158,6 +163,7 @@ export const transitionExecutorLifecycleInTransaction = async (
       // Pause, drain, revoke, and resume are all session-fencing transitions.
       // A daemon with an existing VM must stop it before it can reconnect.
       activeConnectionEpoch: { increment: 1 },
+      ...(input.action === 'remove' ? { removedAt: new Date() } : {}),
     },
     select: { authorizationRevision: true, status: true },
   })
@@ -182,7 +188,7 @@ export const transitionExecutorLifecycleInTransaction = async (
   // the leases it ends above each close their holder's sessions, in-flight
   // turns included (`lease_ended`), and only sessions no live lease covered
   // are left running.
-  if (input.action === 'pause' || input.action === 'revoke') {
+  if (input.action === 'pause' || endsPairing(input.action)) {
     await closeExecutorCodingSessionsInTransaction(tx, {
       executorId: executor.id, reason: LIFECYCLE_END_REASON[input.action], requestedByUserId: actorUserId,
     })
