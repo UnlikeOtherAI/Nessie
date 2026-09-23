@@ -71,6 +71,18 @@ export type CodingProcessControl = {
    * process exits.
    */
   standbyKill?: (identity: CodingProcessIdentity) => () => Promise<void>
+  /**
+   * POSIX only: kills what is left of the process group `leader` led, once
+   * the leader itself has exited and been reaped — a process it started that
+   * still holds its stdout, say. A pid that names a live process group is never
+   * handed out again, so while any member lives the group is still the
+   * leader's; each member must also have started no earlier than the leader,
+   * and none is signalled once a process of the leader's pid exists again.
+   * False when nothing of the group was left. Windows has no such group, and
+   * a descendant of an exited process is out of reach there without a Job
+   * Object.
+   */
+  killExitedGroup?: (leader: CodingProcessIdentity) => Promise<boolean>
 }
 
 const TOOL_TIMEOUT_MS = 10_000
@@ -480,6 +492,29 @@ const posixControl = (platform: NodeJS.Platform, termGraceMs: number): CodingPro
       const root = ownChild(child, before)
       if (root) await killFrom(before, root, [])
       return root !== undefined
+    },
+    killExitedGroup: async (leader) => {
+      const before = await table()
+      if (!recorded(leader) || before.has(leader.pid)) return false
+      const members = new Map<number, string>()
+      for (const [pid, row] of before) {
+        if (row.pgid === leader.pid && notEarlier(row.started, leader.startedAt)) members.set(pid, row.started)
+      }
+      const signal = (current: ProcessTable, name: NodeJS.Signals): boolean => {
+        const pending = current.has(leader.pid) ? [] : stillThere(members, current)
+        if (pending.length > 0) send(-leader.pid, name)
+        for (const pid of pending) send(pid, name)
+        return pending.length > 0
+      }
+      if (!signal(before, 'SIGTERM')) return false
+      const deadline = Date.now() + termGraceMs
+      let current = before
+      do {
+        await delay(100)
+        current = await table()
+      } while (Date.now() < deadline && stillThere(members, current).length > 0)
+      signal(current, 'SIGKILL')
+      return true
     },
   }
 }

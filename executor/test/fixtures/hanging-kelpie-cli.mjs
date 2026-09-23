@@ -7,7 +7,9 @@
  *
  * With NESSIE_TEST_CHILD_PID_FILE it also starts a sleeping process of its
  * own that holds describe's stdout, as a helper Kelpie started would, and
- * writes that pid there before its own.
+ * writes that pid there before its own. With NESSIE_TEST_EXIT_EARLY as well,
+ * Kelpie itself then exits, and that process alone holds describe's stdout,
+ * so its pipes never close.
  */
 import { spawn } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
@@ -20,4 +22,5 @@ if (process.env.NESSIE_TEST_CHILD_PID_FILE) {
   writeFileSync(process.env.NESSIE_TEST_CHILD_PID_FILE, String(child.pid))
 }
 if (process.env.NESSIE_TEST_PID_FILE) writeFileSync(process.env.NESSIE_TEST_PID_FILE, String(process.pid))
+if (process.env.NESSIE_TEST_EXIT_EARLY) process.exit(0)
 setInterval(() => undefined, 60_000)

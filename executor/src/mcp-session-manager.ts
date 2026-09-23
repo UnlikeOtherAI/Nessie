@@ -194,6 +194,8 @@ export const createExecutorMcpSessionManager = (
   // The one start in flight per server, which every caller that finds no
   // session shares (`sessionFor`).
   const starting = new Map<string, Promise<ActiveSession | ExecutorMcpUnavailableReason>>()
+  // Set by `stopAll`: a start it did not see would outlive it, so none begins after.
+  let stopping = false
   const startFailures = new Map<string, StartFailure>()
 
   const closeSession = (server: string, session: ActiveSession): void => {
@@ -329,6 +331,7 @@ export const createExecutorMcpSessionManager = (
     } catch (error) {
       return denied(error as ExecutorMcpServerError)
     }
+    if (stopping) return unavailable(`The MCP server "${server}" is not started: the executor is stopping.`, 'not_probed')
     const active = await sessionFor(spec)
     if (typeof active === 'string') return unavailable(startFailureMessage(server, active), active)
     clearTimeout(active.idleTimer)
@@ -534,10 +537,12 @@ export const createExecutorMcpSessionManager = (
       }
     },
     stopAll: async () => {
-      // A start still in flight finishes first — within its start timeout — so
-      // the process it opens is closed with the rest instead of outliving the
-      // stop on an idle timer nobody waits for.
-      await Promise.allSettled([...starting.values()])
+      // Nothing starts once a stop has begun, and a start already in flight
+      // finishes first — within its start timeout — so the process it opens is
+      // closed with the rest instead of outliving the stop on an idle timer
+      // nobody waits for.
+      stopping = true
+      while (starting.size > 0) await Promise.allSettled([...starting.values()])
       const active = [...sessions.entries()]
       for (const [server, session] of active) closeSession(server, session)
     },

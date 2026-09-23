@@ -162,12 +162,16 @@ case for one command — a cold start plus one call deadline — as
 
 A server has one cold start at a time. Whoever finds no session — a command,
 the reporter's probe — waits on the start already in flight for that server
-name (`sessionFor`), and `stopAll` lets a start in flight finish before it
-closes the sessions, so the process it opened stops with the rest. A probe and
-a command that met a cold server used to spawn a process each; the later one
-replaced the earlier in the session map, and the earlier was never closed.
+name (`sessionFor`). `stopAll` refuses every start once it has begun (a call
+then answers `EXECUTOR_MCP_UNAVAILABLE`, a probe `not_probed`) and lets the
+starts already in flight finish before it closes the sessions, so the process
+each opened stops with the rest; a call to another server arriving during
+that wait once started a process the stop never saw. A probe and a command
+that met a cold server used to spawn a process each; the later one replaced
+the earlier in the session map, and the earlier was never closed.
 `mcp-session-manager.test.ts` counts the processes the scripted server started
-as under a concurrent probe and call, and stops a manager mid-start.
+as under a concurrent probe and call, stops a manager mid-start, and calls a
+second server while the stop waits.
 
 The worker stamps each `mcp.tools` / `mcp.call` command with
 `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): that worst case + a 30 s upload budget +
@@ -378,9 +382,20 @@ failure to `handshake_failed`; the fix and the test that pins it are in
   checked by its start time and never through `taskkill /T`, and describe's
   own process group on POSIX, where it leads one. Describe is detection's own
   unreaped child, so its start time comes from the same table read as its
-  tree: one PowerShell on Windows, not an `identify` and then a kill. A shim's `cmd.exe` killed on its own left the Kelpie under it running,
-  one more orphan per sweep, and a process Kelpie itself started outlived a
-  kill of Kelpie on every OS.
+  tree: one PowerShell on Windows, not an `identify` and then a kill. A shim's
+  `cmd.exe` killed on its own left the Kelpie under it running, one more
+  orphan per sweep, and a process Kelpie itself started outlived a kill of
+  Kelpie on every OS. A describe that already exited while a process it
+  started still holds its stdout (so its pipes never closed and the budget
+  ran out) has what is left of its process group killed on POSIX
+  (`killExitedGroup`), by the start time read when it began: a live group's
+  id is never handed out again, and each member must have started after
+  describe. On Windows such a descendant is out of reach without a Job
+  Object. Because describe leads its own group, a supervisor's signal to the
+  daemon's group (launchd stopping the job) no longer reaches it, so the
+  daemon's shutdown stops every describe still in flight
+  (`stopKelpieDescribes`); a daemon killed outright leaves a POSIX describe to
+  finish on its own.
 - **A Kelpie whose mDNS browse failed reports absence, not an empty network.**
   It has not found nothing, it has not looked, and "there are no browsers on
   this network" is the one thing it cannot know.
@@ -479,7 +494,11 @@ describe arguments: a `node <script> mcp` command, the alias-pinned
 `kelpie.cmd` shim — that last one only on Windows, and skipped elsewhere with
 the reason. A hanging stand-in (`hanging-kelpie-cli.mjs`) that starts a
 sleeping process of its own proves a stopped describe leaves neither behind,
-through a `.cmd` shim on Windows and as `node <script> mcp` on every OS.
+through a `.cmd` shim on Windows and as `node <script> mcp` on every OS; with
+`NESSIE_TEST_EXIT_EARLY` Kelpie exits and leaves that process holding its
+stdout, whose group is then stopped on POSIX (skipped on Windows with the
+reason), and a describe still in flight is stopped by `stopKelpieDescribes`
+long before its own budget.
 
 The worker's own half runs against the same fixture through the daemon's
 operation: `worker/test/executor-local-apps-subprocess.test.ts` for the

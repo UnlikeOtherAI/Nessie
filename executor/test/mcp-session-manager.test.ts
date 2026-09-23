@@ -391,6 +391,35 @@ test('a start still in flight when the manager stops is closed, not left running
   }
 })
 
+test('a stopping manager starts no server, even one nothing was starting when the stop began', async () => {
+  // The stop waits on the slow server's start; a call to another server arriving
+  // meanwhile once started a process of its own, which the stop never saw.
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-mcp-stopping-'))
+  const slowLog = join(directory, 'slow.log')
+  const otherLog = join(directory, 'other.log')
+  const sessions = managerFor([
+    { ...loggedServer(slowLog, 1_500), name: 'slow' },
+    { ...loggedServer(otherLog, 0), name: 'other' },
+  ])
+  try {
+    const calling = sessions.callTool('slow', 'echo', { value: 'first' })
+    await until(async () => (await startedPids(slowLog)).length > 0, 'the slow server to start')
+    const stopping = sessions.stopAll()
+    const late = await sessions.callTool('other', 'echo', { value: 'late' })
+    assert.equal(late.success, false)
+    assert.equal(late.code, 'EXECUTOR_MCP_UNAVAILABLE')
+    assert.deepEqual(await sessions.probe('other'), { available: false, reason: 'not_probed' })
+    await stopping
+    await calling
+    assert.deepEqual(await startedPids(otherLog), [], 'nothing started once the stop had begun')
+    const [slow] = await startedPids(slowLog)
+    await until(async () => !isRunning(slow!), 'the slow server to stop with the manager', 5_000)
+  } finally {
+    await sessions.stopAll()
+    await rm(directory, { force: true, recursive: true })
+  }
+})
+
 test('PINNED UPSTREAM: a failed spawn leaves the SDK holding stdin', async () => {
   // Not our leak and not a rule we want — it is the reason this file needs
   // `--test-force-exit`. When this assertion fails, @modelcontextprotocol/sdk

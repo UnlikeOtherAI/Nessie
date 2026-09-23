@@ -10,6 +10,7 @@ import {
   kelpieDescribeCommand,
   kelpieDescriptionFromJson,
   kelpieDeviceFromDescribeEntry,
+  stopKelpieDescribes,
 } from '../src/kelpie-detect.js'
 
 const OBSERVED = '2026-09-17T10:00:00.000Z'
@@ -307,6 +308,7 @@ const isRunning = (pid: number): boolean => {
  */
 const describeHangingTree = async (
   command: (directory: string) => Promise<string[]>,
+  env: Record<string, string> = {},
 ): Promise<{ description: unknown; running: number[]; started: number[] }> => {
   const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-hang-'))
   const pidFile = join(directory, 'kelpie.pid')
@@ -316,7 +318,7 @@ const describeHangingTree = async (
     const description = await describeKelpie(
       {
         command: await command(directory),
-        env: { NESSIE_TEST_CHILD_PID_FILE: childPidFile, NESSIE_TEST_PID_FILE: pidFile },
+        env: { ...env, NESSIE_TEST_CHILD_PID_FILE: childPidFile, NESSIE_TEST_PID_FILE: pidFile },
         name: 'kelpie',
       },
       { timeoutMs: 5_000 },
@@ -359,6 +361,51 @@ test('a describe stopped for its budget ends the process Kelpie started too', { 
   const { description, running } = await describeHangingTree(async () => [process.execPath, HANGING_KELPIE, 'mcp'])
   assert.equal(description, undefined)
   assert.deepEqual(running, [], 'Kelpie and the process it started were both stopped')
+})
+
+test('a describe that exited while a process it started holds its output has that process stopped too', {
+  skip: process.platform === 'win32'
+    ? 'On Windows a descendant of an exited describe is out of reach without a Job Object.'
+    : false,
+  timeout: 60_000,
+}, async () => {
+  // Describe's pipes never close, so the budget runs out on a describe that has
+  // already exited: its own pid is gone, but its process group is not.
+  const { description, running } = await describeHangingTree(
+    async () => [process.execPath, HANGING_KELPIE, 'mcp'], { NESSIE_TEST_EXIT_EARLY: '1' },
+  )
+  assert.equal(description, undefined)
+  assert.deepEqual(running, [], 'what was left of describe\'s group was stopped')
+})
+
+test('the daemon\'s shutdown stops a describe still in flight, tree and all', { timeout: 60_000 }, async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'nessie-kelpie-shutdown-'))
+  const pidFiles = [join(directory, 'kelpie.pid'), join(directory, 'child.pid')]
+  const started: number[] = []
+  try {
+    const describing = describeKelpie({
+      command: [process.execPath, HANGING_KELPIE, 'mcp'],
+      env: { NESSIE_TEST_PID_FILE: pidFiles[0]!, NESSIE_TEST_CHILD_PID_FILE: pidFiles[1]! },
+      name: 'kelpie',
+    }, { timeoutMs: 60_000 })
+    const deadline = Date.now() + 20_000
+    while (started.length < 2 && Date.now() < deadline) {
+      await new Promise((resolve) => { setTimeout(resolve, 100) })
+      const read = await Promise.all(pidFiles.map((file) => readFile(file, 'utf8').catch(() => '')))
+      if (read.every(Boolean)) started.push(...read.map((text) => Number.parseInt(text, 10)))
+    }
+    assert.equal(started.length, 2, 'the hanging Kelpie and its child both started')
+    const stoppedAt = Date.now()
+    await stopKelpieDescribes()
+    assert.equal(await describing, undefined)
+    assert.ok(Date.now() - stoppedAt < 15_000, 'long before its own budget')
+    const gone = Date.now() + 2_000
+    while (started.some(isRunning) && Date.now() < gone) await new Promise((resolve) => { setTimeout(resolve, 100) })
+    assert.deepEqual(started.filter(isRunning), [])
+  } finally {
+    for (const pid of started) if (isRunning(pid)) process.kill(pid)
+    await rm(directory, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 })
+  }
 })
 
 test('a Kelpie too old to describe itself yields absence rather than an empty inventory', async () => {

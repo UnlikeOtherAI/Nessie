@@ -9,6 +9,7 @@ import {
 } from '@nessie/schemas'
 
 import { createCodingProcessControl } from './coding-session/process-control.js'
+import type { CodingProcessIdentity } from './coding-session/types.js'
 import type { ExecutorLocalMcpServer } from './mcp-servers.js'
 
 /**
@@ -64,6 +65,12 @@ export const kelpieDescribeCommand = (command: readonly string[]): string[] | un
  */
 const describeTree = createCodingProcessControl(process.platform, {})
 
+/** A describe in flight: its handle, and on POSIX its identity, read while it runs. */
+type LiveDescribe = { child: ChildProcess; leader: Promise<CodingProcessIdentity | undefined> }
+
+/** Every describe still running, which the daemon's shutdown stops (`stopKelpieDescribes`). */
+const inFlight = new Set<LiveDescribe>()
+
 /**
  * Stops describe and everything it started. On Windows a `.cmd` shim runs as
  * `cmd.exe /d /s /c …`, so killing the child ends only cmd.exe and leaves the
@@ -77,9 +84,35 @@ const describeTree = createCodingProcessControl(process.platform, {})
  * this process's own unreaped child, so its start time comes from the same
  * table as its tree, in one read. A describe whose start time cannot be read
  * is still that child, so its handle ends it, and only it.
+ *
+ * A describe that has already exited while something it started still holds
+ * its stdout (so its pipes never closed) is past that: on POSIX what is left
+ * of its process group is killed by the start time read when it began
+ * (`killExitedGroup`); on Windows such a descendant is out of reach without a
+ * Job Object.
  */
-const stopDescribeTree = async (child: ChildProcess): Promise<void> => {
-  if (!await describeTree.killChildTree(child)) child.kill()
+const stopDescribeTree = async ({ child, leader }: LiveDescribe): Promise<void> => {
+  const running = (): boolean => child.exitCode === null && child.signalCode === null
+  if (running() && await describeTree.killChildTree(child)) return
+  if (running()) {
+    child.kill()
+    return
+  }
+  const identity = await leader
+  if (identity) await describeTree.killExitedGroup?.(identity)
+}
+
+/**
+ * Stops every describe still in flight, whole tree. The daemon's shutdown
+ * calls this: on POSIX describe leads a process group of its own, so the
+ * signal launchd sends the daemon's group when it stops the job no longer
+ * reaches it, and a hung mDNS sweep would outlive a daemon that is no longer
+ * there to enforce its budget. (A systemd unit's cgroup and the Windows
+ * daemon's kill-on-close job end describe with the daemon either way; a
+ * daemon killed outright leaves a POSIX describe to finish on its own.)
+ */
+export const stopKelpieDescribes = async (): Promise<void> => {
+  await Promise.allSettled([...inFlight].map(stopDescribeTree))
 }
 
 /**
@@ -114,6 +147,13 @@ const runKelpieDescribe = async (
   } catch {
     return { ok: false }
   }
+  // Read while describe runs, for its group should it exit and leave that group behind.
+  const leader = process.platform === 'win32' || child.pid === undefined
+    ? Promise.resolve(undefined)
+    : describeTree.identify(child.pid).catch(() => undefined)
+  const live: LiveDescribe = { child, leader }
+  inFlight.add(live)
+  let closed = false
   const result = await new Promise<RunResult>((resolve) => {
     let settled = false
     let timer: NodeJS.Timeout | undefined
@@ -136,11 +176,16 @@ const runKelpieDescribe = async (
     })
     child.once('error', () => settle({ ok: false }))
     child.once('close', (code) => {
+      closed = true
       settle(code === 0 ? { ok: true, stdout: Buffer.concat(chunks).toString('utf8') } : { ok: false })
     })
   })
-  // A describe that already exited has nothing left to stop.
-  if (!result.ok && child.exitCode === null && child.signalCode === null) await stopDescribeTree(child)
+  // A describe whose pipes closed left nothing holding them; one that did not is stopped, whatever is left of it.
+  try {
+    if (!result.ok && !closed) await stopDescribeTree(live)
+  } finally {
+    inFlight.delete(live)
+  }
   return result
 }
 
