@@ -142,6 +142,14 @@ The executor then:
   unset); Codex's is the stance its reviewed `args` take
   (`bypassApprovalsAndSandbox`, `fullAuto`, `sandbox:<mode>` or `default`).
 
+On Windows, Claude Code 2.1.280 also runs commands through its own
+`PowerShell` tool, which a `Bash(…)` rule does not cover: live, a
+`git worktree add` it chose to run there was denied under `Bash(git *)` and
+reported in `permissionDenials`, and the model redid it through Bash. A
+`PowerShell(git *)` prefix rule did not pre-allow `git status --short` on that
+machine either (the CLI reported its PowerShell parse failing); only a bare
+`PowerShell` rule did, and that allows every PowerShell command.
+
 `codingSessionsConfigDigest` hashes the normalised form, defaults included, so
 `configDigest` covers even what no fact names. When the file on disk hashes to
 anything else, the bridge refuses `session_start` and `session_send`, and a
@@ -318,9 +326,10 @@ cargo test --manifest-path executor/native/Cargo.toml
 
 `scripted-coding-agent.mjs` speaks both protocols as the real CLIs printed
 them, and the subprocess suites drive a real bridge through the daemon's own
-MCP session manager; they run on Windows and Linux alike. On Linux with a
-reachable user manager those hosts run in their own `systemd-run --user`
-units, so the same suites cover that start. The Job Object is proved twice:
+MCP session manager; they run on Windows, Linux and macOS alike. On Linux
+with a reachable user manager those hosts run in their own
+`systemd-run --user` units, so the same suites cover that start. The Job
+Object is proved twice:
 `executor/native/tests/job_run.rs` drives the built helper (exit code, stdio,
 an orphaned grandchild dying with the job, the job dying with its parent), and
 `coding-session-containment.test.ts` kills an agent's orphaning tree through
@@ -330,3 +339,17 @@ executor state needs the packaged helper. The live cycle — start, follow-up, a
 denied `git push`, review and close against a logged-in Claude Code, and a
 Codex turn — needs real subscriptions and is not automated, and neither is a
 `systemctl --user restart` of the executor unit around a live session.
+
+Both were last run by hand on 2026-09-23. On Windows an MCP client started the
+built bridge with the daemon's own generated argv and environment, stamped an
+owner in `_meta`, and drove Claude Code (haiku, `acceptEdits`, `Bash(git *)`)
+through a task, a correction, a review showing both commits and a close, once
+in a development run and once packaged — the agent under `job-run`, with
+`PowerShell(git *)` added;
+the Codex start ended in its usage-limit result. No answer carried a host path
+or any value of the logged-in account, and nothing was left running. On Linux
+(WSL2, user manager running) a stand-in executor unit with the real unit's
+`KillMode` was stopped mid-turn: the host's own unit and its agent lived on,
+the turn finished, a new executor life sent a follow-up to the same agent, and
+the close stopped the unit. Claude cannot log in over SSH on the macOS test
+machine, so macOS ran the suites only.
