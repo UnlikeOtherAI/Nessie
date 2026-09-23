@@ -27,8 +27,11 @@
 -- * Every agent row is then deleted. People watchers are untouched.
 --
 -- Nobody is notified. Each row is named, with the trigger it became or why it
--- became none, in a NOTICE line that `prisma migrate deploy` and the database
--- log print. The triggers themselves list on the Triggers page, paused.
+-- became none, in a WARNING line: WARNING rather than NOTICE because
+-- Postgres's default `log_min_messages` is `warning`, so these lines land in
+-- the database server's log where an operator can read them afterwards. The
+-- triggers themselves list on the Triggers page, paused, each description
+-- naming the person who added the watcher.
 
 DO $$
 DECLARE
@@ -54,7 +57,7 @@ BEGIN
      ORDER BY w.created_at, w.id
   LOOP
     IF NOT watcher.eligible THEN
-      RAISE NOTICE 'board watcher % (agent "%" %, board "%" %) was not wakeable and became no trigger',
+      RAISE WARNING 'board watcher % (agent "%" %, board "%" %) was not wakeable and became no trigger',
         watcher.id, watcher.agent_name, watcher.agent_id, watcher.board_name, watcher.board_id;
       CONTINUE;
     END IF;
@@ -107,7 +110,7 @@ BEGIN
     )
     RETURNING id INTO created;
 
-    RAISE NOTICE 'board watcher % (agent "%" %, board "%" %) became disabled ticket trigger % "Board watcher: %"%',
+    RAISE WARNING 'board watcher % (agent "%" %, board "%" %) became disabled ticket trigger % "Board watcher: %"%',
       watcher.id, watcher.agent_name, watcher.agent_id, watcher.board_name, watcher.board_id,
       created, watcher.board_name,
       CASE WHEN channel IS NULL THEN ' with no channel yet' ELSE '' END;

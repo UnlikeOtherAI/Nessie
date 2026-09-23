@@ -461,7 +461,7 @@ routes, and none of it names a machine.
   `20260924000000_board_agent_watchers_to_ticket_triggers` turned every agent
   row of a wakeable agent into a paused, disabled, follow-only trigger
   ("Board watcher: <board>", no start-work columns and no instructions until
-  a person adds them), naming each row in a NOTICE line
+  a person adds them), naming each row in a WARNING line of the database log
   ([board watchers §11](../plans/2026-09-06-board-watchers.md)). On a
   mirrored project both the editor and the agent tools' answer
   (`describeMirroredSources`) say that a move on the connected board never

@@ -383,8 +383,9 @@ longer exists.
   trigger named "Board watcher: <board>": follow-only, no start-work columns,
   no instructions, authored by the adder, aimed at the agent's oldest public
   channel of the board's project or at none. Nobody is notified; the
-  migration names each row in a NOTICE line. A person reviews it on the
-  Triggers page, adds start-work columns and instructions, and enables it.
+  migration names each row in a WARNING line of the database log. A person
+  reviews it on the Triggers page, adds start-work columns and instructions,
+  and enables it.
   Every agent row is then deleted.
 - **The wake path is gone.** `worker/src/control/board-watch-wake.ts` and the
   agent branch of `resolveBoardWatchRecipients` are deleted; a legacy agent row
