@@ -62,8 +62,17 @@ export const deepWaterViewerActions = (
 ): DeepWaterResearchRunView['viewer'] => {
   const isRequester = run.requestedByUserId !== null && run.requestedByUserId === viewer.userId
   const brief = run.scopeState
-  // A launcher run (no brief) is none of the brief API's to act on.
-  if (brief === null) return { canEdit: false, canStart: false, canCancel: false, canRetryDelivery: false }
+  // A launcher run (no brief) has nothing to edit, start or deliver here; a
+  // team owner or admin may cancel one still open, so a disable or a contract
+  // upgrade it blocks can be cleared (amendments N8.5, N9.6).
+  if (brief === null) {
+    return {
+      canEdit: false,
+      canStart: false,
+      canCancel: OPEN_STATUSES.has(run.status) && viewer.canChangeTeam,
+      canRetryDelivery: false,
+    }
+  }
   const editable = isRequester
     && run.originKind === 'person'
     && run.status === 'drafting'

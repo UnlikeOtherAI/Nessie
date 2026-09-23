@@ -149,6 +149,27 @@ export const readDeepWaterBriefRun = async (
 }
 
 /**
+ * The run a Ledger research id is bound to in this organisation and team, or
+ * null — an id the team never opened, or one another team's run holds. One
+ * research binds to at most one run (the `(product_slug, external_run_id)`
+ * unique index), so the answer is unambiguous.
+ */
+export const findDeepWaterBriefRunByResearchId = async (
+  db: DeepWaterBriefDb,
+  input: { organizationId: string; teamId: string; researchId: string },
+): Promise<DeepWaterBriefRun | null> => {
+  const row = await db.productIntegrationRun.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      teamId: input.teamId,
+      productSlug: DEEP_WATER_PRODUCT_SLUG,
+      externalRunId: input.researchId,
+    },
+  })
+  return row ? toDeepWaterBriefRun(row) : null
+}
+
+/**
  * Take the row lock every brief mutation serialises on, and read the
  * database clock with it so schedules are computed on one clock. Null when the
  * run is not a deep-water run of this organisation.

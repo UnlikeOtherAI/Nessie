@@ -139,6 +139,16 @@ test('only the requester edits a person\'s brief, and an owner may cancel any op
   assert.equal(deepWaterViewerActions(final, { userId: REQUESTER, canChangeTeam: true }).canCancel, false)
 })
 
+test('a launcher run is cancellable only by a team owner or admin while it is open', () => {
+  const launcher = run({ scopeState: null, uoaIdentity: null, input: null, status: 'running' })
+  assert.deepEqual(deepWaterViewerActions(launcher, { userId: REQUESTER, canChangeTeam: false }), {
+    canEdit: false, canStart: false, canCancel: false, canRetryDelivery: false,
+  })
+  assert.equal(deepWaterViewerActions(launcher, { userId: OTHER, canChangeTeam: true }).canCancel, true)
+  const ended = run({ scopeState: null, uoaIdentity: null, input: null, status: 'completed' })
+  assert.equal(deepWaterViewerActions(ended, { userId: OTHER, canChangeTeam: true }).canCancel, false)
+})
+
 test('transcript authors come from Nessie\'s own turn record, never from the wire', () => {
   const view = toDeepWaterBriefView(run({
     scopeState: state({
