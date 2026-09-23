@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import type { CodingSessionsConfig } from './config.js'
+import { resolveProgramPath } from './program-path.js'
 
 /**
  * The environment a coding agent runs in.
@@ -53,8 +54,7 @@ export type CommandRunner = (
   options?: { env?: NodeJS.ProcessEnv; cwd?: string; timeoutMs?: number; maxBytes?: number },
 ) => Promise<CommandOutcome>
 
-/** A command that outlives `timeoutMs` or prints more than `maxBytes` is killed and answers with code `null`. */
-export const runCommand: CommandRunner = (file, args, options = {}) => new Promise((settle) => {
+const runResolved: CommandRunner = (file, args, options = {}) => new Promise((settle) => {
   execFile(file, args, {
     ...(options.env ? { env: options.env } : {}),
     ...(options.cwd ? { cwd: options.cwd } : {}),
@@ -70,6 +70,18 @@ export const runCommand: CommandRunner = (file, args, options = {}) => new Promi
     })
   })
 })
+
+/**
+ * A command that outlives `timeoutMs` or prints more than `maxBytes` is killed
+ * and answers with code `null`. A bare program name is found on the absolute
+ * entries of its environment's `PATH` only, never in `cwd` — which is a
+ * session's repository (`program-path.ts`) — and one found nowhere is missing.
+ */
+export const runCommand: CommandRunner = async (file, args, options = {}) => {
+  const program = await resolveProgramPath(file, options.env ?? process.env)
+  if (program === undefined) return { code: null, missing: true, stdout: '' }
+  return runResolved(program, args, options)
+}
 
 /** An environment whose names compare the way the OS compares them. */
 const environmentMap = (platform: NodeJS.Platform, from: NodeJS.ProcessEnv = {}) => {

@@ -10,6 +10,7 @@ import { codingSessionsDigestMatches, loadCodingSessionsConfig, type LoadedCodin
 import { ensureCodingSessionHost, executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
 import { stopOwnUserUnit } from './host-unit.js'
 import type { CodingProcessControl } from './process-control.js'
+import { resolveProgramPath } from './program-path.js'
 import { createProjector, SECRET_NAME, type Projector } from './projection.js'
 import { gitStartSnapshot } from './review.js'
 import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots.js'
@@ -149,8 +150,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
   const prepare = async (): Promise<AgentDriver> => {
     if (driver) return driver
     if (!await lock.stillOurs()) throw new AgentStartError('host_superseded')
-    const agent = loaded.config.agents[meta.agent]
-    if (!agent) throw new AgentStartError('agent_unavailable')
+    const configured = loaded.config.agents[meta.agent]
+    if (!configured) throw new AgentStartError('agent_unavailable')
     const folder = await resolveCodingFolder(findCodingRoot(context.roots, meta.rootName), meta.path)
       .catch(() => { throw new AgentStartError('root_unavailable') })
     const env = await buildAgentEnvironment({ config: loaded.config.agentEnv })
@@ -160,6 +161,11 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       ...Object.entries(env).filter(([name]) => SECRET_NAME.test(name)).map(([, value]) => value),
     ])
     if (meta.agent === 'codex') context.projector.redact(await codexAccountRedactions(env))
+    // Once, from the absolute PATH entries only: every probe, the help cache and every agent start run this
+    // path, never a program of the same name in the session's folder (`program-path.ts`).
+    const program = await resolveProgramPath(configured.command[0]!, env)
+    if (program === undefined) throw new AgentStartError('agent_missing')
+    const agent = { ...configured, command: [program, ...configured.command.slice(1)] }
     const check = await runCodingSelfCheck({
       agent: meta.agent, config: agent, cwd: folder, env, helpCacheFile: codingAgentHelpCache(loaded.stateDir),
       ...(loaded.config.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: loaded.config.maxBudgetUsd }),

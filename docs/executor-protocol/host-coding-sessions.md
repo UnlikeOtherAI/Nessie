@@ -304,6 +304,20 @@ read-only probes run side by side and are judged in that order; the login is
 asked only after the help, because a CLI too old for `auth status` would
 otherwise read as logged out.
 
+Every program the host runs by a bare name is found on the absolute entries
+of its environment's `PATH` and nowhere else (`program-path.ts`). Left to
+itself, Windows looks in the child's working directory first — libuv's
+search for `execFile` and `spawn`, and `CreateProcessW`'s inside the job
+helper — and that directory is the session's folder, a repository the agent
+edits; POSIX `execvp` honours a relative `PATH` entry, relative to the same
+folder. A `claude.exe` committed there, or written by the agent during a turn,
+would otherwise be what the next start ran. So the host resolves the agent's
+`command[0]` once, before anything runs it, and passes that absolute path to
+`--version`, `--help`, the login check, the help cache's key and the agent's
+own start, through the agent guard or the job helper alike; a name it cannot
+resolve fails the start with `agent_missing`. `git` and `gh`, in the
+self-check and the review, are resolved the same way.
+
 The help check proves the installed CLI accepts every flag the adapter will
 pass, so an outdated CLI is refused with `agent_outdated` before it starts
 rather than dying on its first message with an argument error. The flags
@@ -330,8 +344,7 @@ Only option lines are read — a flag a description merely mentions (2.1.280
 names `--permission-prompt-tool` only inside `--permission-prompts`'s text)
 does not count. Each help gets 15 s and 256 KiB. What it offers is cached in
 `agent-help.json` per agent and per real path, size and modification time of
-each file in the agent's `command` (a bare name is found on the agent
-environment's `PATH`), so an updated CLI is read afresh and an unchanged one
+each file in the agent's `command` (its program as resolved above), so an updated CLI is read afresh and an unchanged one
 once; a help that could not be read is not cached. The host log names what
 was missing; the session carries only the categorical reason.
 

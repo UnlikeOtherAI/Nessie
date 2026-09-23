@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -8,8 +12,10 @@ import {
   parseLoginEnvironment,
   parseRegistryJson,
   parseSystemdEnvironment,
+  runCommand,
   type CommandRunner,
 } from '../src/coding-session/agent-env.js'
+import { resolveProgramPath } from '../src/coding-session/program-path.js'
 import { runCodingSelfCheck } from '../src/coding-session/self-check.js'
 
 /**
@@ -162,3 +168,60 @@ test('the self-check names each failure, reads only the login flag, and treats g
   })
   assert.deepEqual(codex, { ok: false, reason: 'agent_not_logged_in' })
 })
+
+const windows = process.platform === 'win32'
+const system32 = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32')
+
+/**
+ * A program planted in a session's folder, the way each OS would find it
+ * there by a bare name: a copy of `whoami.exe` on Windows, where libuv tries
+ * the child's working directory before PATH (unless this process carries
+ * `NoDefaultCurrentDirectoryInExePath`), and a shell script behind a relative
+ * PATH entry elsewhere, which `execvp` honours.
+ */
+const plantProgram = async (directory: string, name: string): Promise<string> => {
+  const path = join(directory, windows ? `${name}.exe` : name)
+  if (windows) await copyFile(join(system32, 'whoami.exe'), path)
+  else await writeFile(path, '#!/bin/sh\necho planted\n', { mode: 0o755 })
+  return path
+}
+
+type RawOptions = { cwd: string; env: NodeJS.ProcessEnv }
+
+const rawExitCode = (file: string, args: string[], options: RawOptions): Promise<unknown> => new Promise((settle) => {
+  execFile(file, args, options, (error) => settle(error ? error.code : 0))
+})
+
+test('a bare program name is found on the absolute PATH entries only, never in the session folder', async () => {
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'nessie-program-path-')))
+  // What makes Windows skip the working directory is read from this process's own environment.
+  const skipCwd = process.env.NoDefaultCurrentDirectoryInExePath
+  delete process.env.NoDefaultCurrentDirectoryInExePath
+  try {
+    const repo = join(dir, 'repo')
+    const bin = join(dir, 'bin')
+    await mkdir(repo)
+    await mkdir(bin)
+    const planted = await plantProgram(repo, 'nessie-probe')
+    const args = windows ? ['/?'] : []
+    // Windows searches the folder on its own; POSIX through the relative entry.
+    const env = windows ? { PATH: system32, SystemRoot: process.env.SystemRoot } : { PATH: `.:/usr/bin:/bin` }
+    assert.equal(await rawExitCode('nessie-probe', args, { cwd: repo, env }), 0, 'left to the OS, the planted program runs')
+    assert.equal(await resolveProgramPath('nessie-probe', env), undefined)
+    assert.deepEqual(await runCommand('nessie-probe', args, { cwd: repo, env }), { code: null, missing: true, stdout: '' },
+      'nothing in the session folder runs')
+    // A relative entry naming the folder, and a directory in the name, are relative to it too.
+    assert.equal(await resolveProgramPath('nessie-probe', { PATH: ['repo', ''].join(delimiter) }), undefined)
+    assert.equal(await resolveProgramPath(join('repo', 'nessie-probe'), env), undefined)
+    assert.equal(await resolveProgramPath(planted, {}), planted, 'an absolute path is taken as it is')
+    // An absolute entry that holds the program is where it is found, however PATH is spelled.
+    const installed = await plantProgram(bin, 'nessie-probe')
+    const found = windows ? { Path: `repo;${bin}`, SystemRoot: process.env.SystemRoot } : { PATH: `repo:${bin}` }
+    assert.equal(await resolveProgramPath('nessie-probe', found), installed)
+    assert.equal((await runCommand('nessie-probe', args, { cwd: repo, env: found })).code, 0)
+  } finally {
+    if (skipCwd !== undefined) process.env.NoDefaultCurrentDirectoryInExePath = skipCwd
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+

@@ -1,10 +1,11 @@
 import { realpath, stat } from 'node:fs/promises'
-import { delimiter, extname, isAbsolute, join } from 'node:path'
+import { isAbsolute } from 'node:path'
 
 import type { CommandRunner } from './agent-env.js'
 import { claudeArguments } from './claude-adapter.js'
 import { codexArguments } from './codex-adapter.js'
 import type { CodingAgentConfig } from './config.js'
+import { resolveProgramPath } from './program-path.js'
 import { readJson, writeJsonAtomic } from './session-files.js'
 import type { CodingAgentName } from './types.js'
 
@@ -141,23 +142,6 @@ export const checkAgentCapabilities = (input: {
   return { ok: true }
 }
 
-/** Where the agent's spawn finds a bare program name: the agent environment's PATH. */
-const locateProgram = async (program: string, env: NodeJS.ProcessEnv): Promise<string | undefined> => {
-  if (isAbsolute(program)) return program
-  if (/[\\/]/u.test(program)) return undefined
-  const windows = process.platform === 'win32'
-  const path = Object.entries(env).find(([name]) => (windows ? name.toUpperCase() === 'PATH' : name === 'PATH'))?.[1] ?? ''
-  const extensions = windows && !extname(program) ? ['.com', '.exe'] : ['']
-  for (const directory of path.split(delimiter)) {
-    if (!isAbsolute(directory)) continue
-    for (const extension of extensions) {
-      const candidate = join(directory, `${program}${extension}`)
-      if (await stat(candidate).then((info) => info.isFile(), () => false)) return candidate
-    }
-  }
-  return undefined
-}
-
 const stamp = async (path: string): Promise<string | undefined> => {
   const real = await realpath(path).catch(() => path)
   const info = await stat(real).catch(() => undefined)
@@ -169,7 +153,8 @@ const programFingerprint = async (
   agent: CodingAgentName, command: readonly string[], env: NodeJS.ProcessEnv,
 ): Promise<string | undefined> => {
   const [program, ...prefix] = command
-  const located = program === undefined ? undefined : await locateProgram(program, env)
+  // The host passes it resolved already; a bare name is found as `program-path.ts` finds one.
+  const located = program === undefined ? undefined : await resolveProgramPath(program, env)
   const programStamp = located === undefined ? undefined : await stamp(located)
   if (programStamp === undefined) return undefined
   const rest = await Promise.all(prefix.map(async (part) => (isAbsolute(part) ? await stamp(part) ?? part : part)))
