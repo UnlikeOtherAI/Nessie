@@ -70,8 +70,26 @@ test('a flag the CLI does not list refuses the start as agent_outdated, naming w
     ok: false, reason: 'agent_outdated', missing: ['--frobnicate'],
   })
   assert.deepEqual(checkAgentCapabilities({ agent: 'claude', config: agent(), capabilities: {} }), {
-    ok: false, reason: 'agent_outdated', missing: ['--help'],
+    ok: false, reason: 'agent_help_unreadable', missing: ['--help'],
+  }, 'a help that could not be read is not an old CLI')
+  // A help that was read and lacks a flag still proves one, whatever else could not be read.
+  assert.deepEqual(checkAgentCapabilities({ agent: 'codex', config: agent({ command: ['codex'], args: ['--full-auto'] }), capabilities: { exec: CODEX.exec } }), {
+    ok: false, reason: 'agent_outdated', missing: ['--full-auto'],
   })
+})
+
+test('an argv is read as the CLI reads it: combined short flags, and a value that starts with a dash', () => {
+  const check = (args: string[]) => checkAgentCapabilities({ agent: 'claude', config: agent({ args }), capabilities: { '': CLAUDE } })
+  // `-d` is --debug in 2.1.280; there is no `-q`, so a group that hides one is refused for it.
+  assert.deepEqual(check(['-d']), { ok: true })
+  assert.deepEqual(check(['-dq']), { ok: false, reason: 'agent_outdated', missing: ['-q'] })
+  // `--effort <level>` takes a value, so what follows it is that value, even `-x`.
+  assert.deepEqual(check(['--effort', '-x']), { ok: true })
+  assert.deepEqual(check(['--effort=high', '-x']), { ok: false, reason: 'agent_outdated', missing: ['-x'] })
+  // A short flag's value may be attached, or be the next token.
+  const codex = (args: string[]) => checkAgentCapabilities({ agent: 'codex', config: agent({ command: ['codex'], args }), capabilities: CODEX })
+  assert.deepEqual(codex(['-s', '-weird-but-a-value']), { ok: true })
+  assert.deepEqual(codex(['-sworkspace-write']), { ok: true })
 })
 
 test('the permission mode is checked against the choices this CLI lists, not a list of our own', () => {
@@ -106,7 +124,7 @@ test('help is read once per program path and modification time, and a failed rea
   const dir = await mkdtemp(join(tmpdir(), 'nessie-agent-help-'))
   try {
     // Found through the agent's PATH the way its spawn finds it: `claude` on POSIX, `claude.exe` on Windows.
-    await writeFile(join(dir, 'claude'), 'x')
+    await writeFile(join(dir, 'claude'), 'x', { mode: 0o755 })
     await writeFile(join(dir, 'claude.exe'), 'x')
     const cacheFile = join(dir, 'agent-help.json')
     const calls: { args: string[]; timeoutMs: number | undefined; maxBytes: number | undefined }[] = []
@@ -115,7 +133,10 @@ test('help is read once per program path and modification time, and a failed rea
       calls.push({ args, timeoutMs: options?.timeoutMs, maxBytes: options?.maxBytes })
       return answer
     }
-    const read = () => readAgentCapabilities({ agent: 'claude', command: ['claude'], cwd: dir, env: { PATH: dir }, run, cacheFile })
+    let version: string | undefined = '2.1.280 (Claude Code)'
+    const read = () => readAgentCapabilities({
+      agent: 'claude', command: ['claude'], cwd: dir, env: { PATH: dir }, run, cacheFile, version: Promise.resolve(version),
+    })
     assert.deepEqual((await read())['']?.choices['--permission-mode']?.length, 6)
     assert.deepEqual(calls, [{ args: ['--help'], timeoutMs: 15_000, maxBytes: 262_144 }], 'bounded in time and size')
     await read()
@@ -132,6 +153,18 @@ test('help is read once per program path and modification time, and a failed rea
     assert.equal(calls.length, 3)
     const cached = JSON.parse(await readFile(cacheFile, 'utf8')) as { entries: unknown[] }
     assert.equal(cached.entries.length, 2, 'one entry per program stamp')
+    // A shim that stays put while the CLI behind it changes: the version it answers is part of the key.
+    version = '2.0.0 (Claude Code)'
+    answer = { code: 0, missing: false, stdout: helpText('claude-2.1.280.txt') }
+    assert.equal((await read())['']?.flags.includes('--permission-prompts'), true, 'a changed version is read afresh')
+    assert.equal(calls.length, 4)
+    await read()
+    assert.equal(calls.length, 4)
+    // Without a version to compare, nothing is trusted from the cache and nothing is written to it.
+    version = undefined
+    await read()
+    await read()
+    assert.equal(calls.length, 6)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

@@ -171,7 +171,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       ...(loaded.config.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: loaded.config.maxBudgetUsd }),
     })
     if (!check.ok) {
-      if (check.missing?.length) log(`the agent's --help does not offer ${check.missing.slice(0, 10).join(', ')}`)
+      const named = check.missing?.slice(0, 10).join(', ')
+      if (named) log(check.reason === 'agent_help_unreadable' ? `the agent's help did not answer: ${named}` : `the agent's --help does not offer ${named}`)
       throw new AgentStartError(check.reason)
     }
     if (check.agentVersion) update({ agentVersion: context.projector.line(check.agentVersion, 80) })

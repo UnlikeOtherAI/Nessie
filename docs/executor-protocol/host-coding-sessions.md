@@ -47,7 +47,8 @@ looking at the inbox once more.
 <config dir>/coding-sessions/
   commands/<commandId>.json   first outcome of each executor command
   agent-help.json             what each installed CLI's --help offers, per
-                              program path, size and modification time
+                              program path, size, modification time and
+                              --version answer
   sessions/<id>/meta.json     bridge-written once: owner, agent, root, path, title
   sessions/<id>/session.json  host-written, at most one write per 500 ms; the
                               agent's identity and session id are written at once
@@ -298,8 +299,9 @@ shell on Linux. It strips only `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`,
 `git --version`, the agent's `--version`, what the agent's `--help` offers, its
 login status, and `gh auth status` when `gh` is installed; a failure makes the
 session `failed` with `git_missing`, `agent_missing`, `agent_outdated`,
-`permission_mode_unsupported`, `agent_not_logged_in`, `gh_not_authenticated`,
-or `unsupported_supervisor` (the Windows service's virtual account). The
+`agent_help_unreadable`, `permission_mode_unsupported`, `agent_not_logged_in`,
+`gh_not_authenticated`, or `unsupported_supervisor` (the Windows service's
+virtual account). The
 read-only probes run side by side and are judged in that order; the login is
 asked only after the help, because a CLI too old for `auth status` would
 otherwise read as logged out.
@@ -307,7 +309,8 @@ otherwise read as logged out.
 Every program the host runs by a bare name is found on the absolute entries
 of its environment's `PATH` and nowhere else (`program-path.ts`). Left to
 itself, Windows looks in the child's working directory first — libuv's
-search for `execFile` and `spawn`, and `CreateProcessW`'s inside the job
+search for `execFile` and `spawn` (unless the parent carries
+`NoDefaultCurrentDirectoryInExePath`), and `CreateProcessW`'s inside the job
 helper — and that directory is the session's folder, a repository the agent
 edits; POSIX `execvp` honours a relative `PATH` entry, relative to the same
 folder. A `claude.exe` committed there, or written by the agent during a turn,
@@ -342,11 +345,23 @@ gains is required with it:
 
 Only option lines are read — a flag a description merely mentions (2.1.280
 names `--permission-prompt-tool` only inside `--permission-prompts`'s text)
-does not count. Each help gets 15 s and 256 KiB. What it offers is cached in
-`agent-help.json` per agent and per real path, size and modification time of
-each file in the agent's `command` (its program as resolved above), so an updated CLI is read afresh and an unchanged one
-once; a help that could not be read is not cached. The host log names what
-was missing; the session carries only the categorical reason.
+does not count. An argv is read as the CLI reads it: each letter of a
+combined short group is a flag of its own (`-dv` needs `-d` and `-v`), and the
+token after a flag whose option line takes a value (`<value>`) is that value
+even when it starts with a dash, so neither hides a flag nor invents one.
+
+Each help gets 15 s and 256 KiB. A help that did not answer — a timeout on a
+busy machine, a non-zero exit — fails the start as `agent_help_unreadable`,
+not `agent_outdated`: it proves nothing about the CLI's age, and the person
+should not be sent to update a current one. What a help offers is cached in
+`agent-help.json` per agent, per real path, size and modification time of
+each file in the agent's `command` (its program as resolved above), and per
+the CLI's own `--version` answer, which the self-check reads beside it: a
+version manager's shim (volta, asdf, mise, a Homebrew wrapper) stays put while
+the CLI behind it changes. So an updated CLI is read afresh and an unchanged
+one once; a help that could not be read, or a version that could not, is not
+cached. The host log names what was missing; the session carries only the
+categorical reason.
 
 ## Containment and teardown, per supervisor
 

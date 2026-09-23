@@ -1,6 +1,6 @@
 import { win32 } from 'node:path'
 
-import { checkAgentCapabilities, readAgentCapabilities } from './agent-capabilities.js'
+import { agentVersionStamp, checkAgentCapabilities, readAgentCapabilities } from './agent-capabilities.js'
 import { runCommand, type CommandRunner } from './agent-env.js'
 import type { CodingAgentConfig } from './config.js'
 import type { CodingAgentName } from './types.js'
@@ -9,6 +9,7 @@ import type { CodingAgentName } from './types.js'
  * What a host proves before it starts an agent, each failure with its own
  * name because each sends the person to a different fix: install the CLI,
  * update it (`agent_outdated`: its `--help` lacks a flag the adapter passes),
+ * try again (`agent_help_unreadable`: its `--help` did not answer in time),
  * name a permission mode it offers, log it in, install git, log `gh` in, or
  * run the executor as a person rather than as the Windows service's virtual
  * account (which has no Claude login and no user profile at all).
@@ -21,6 +22,7 @@ import type { CodingAgentName } from './types.js'
 export type CodingSelfCheckReason =
   | 'agent_missing'
   | 'agent_outdated'
+  | 'agent_help_unreadable'
   | 'permission_mode_unsupported'
   | 'agent_not_logged_in'
   | 'git_missing'
@@ -94,12 +96,14 @@ export const runCodingSelfCheck = async (input: {
   const options = { env: input.env, cwd: input.cwd }
   const [program, ...prefix] = input.config.command
   // Read-only probes side by side, so the help read adds no start time; they are judged in order below.
+  const versionRead = run(program!, [...prefix, '--version'], options)
   const [git, gh, version, capabilities] = await Promise.all([
     run('git', ['--version'], options),
     run('gh', ['auth', 'status'], options),
-    run(program!, [...prefix, '--version'], options),
+    versionRead,
     readAgentCapabilities({
       agent: input.agent, command: input.config.command, cwd: input.cwd, env: input.env, run,
+      version: versionRead.then(agentVersionStamp),
       ...(input.helpCacheFile === undefined ? {} : { cacheFile: input.helpCacheFile }),
     }),
   ])

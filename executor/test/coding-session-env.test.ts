@@ -149,7 +149,8 @@ test('the self-check names each failure, reads only the login flag, and treats g
   assert.deepEqual(await check({ 'claude --help': { stdout: helpText('claude-older.txt') }, 'claude auth': { code: 1 } }), {
     ok: false, reason: 'agent_outdated', missing: ['--permission-prompts'],
   })
-  assert.deepEqual(await check({ 'claude --help': { code: null } }), { ok: false, reason: 'agent_outdated', missing: ['--help'] })
+  // A help that did not answer proves nothing about the CLI's age.
+  assert.deepEqual(await check({ 'claude --help': { code: null } }), { ok: false, reason: 'agent_help_unreadable', missing: ['--help'] })
   assert.deepEqual(await check({ 'gh auth': { missing: true }, 'claude auth': loggedIn }, {
     config: { ...claude, permissionMode: 'default' },
   }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode default'] })
