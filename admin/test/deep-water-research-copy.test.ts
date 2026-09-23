@@ -11,7 +11,7 @@ import {
   teamChangeFailure,
 } from '../src/components/features/deep-water/deep-water-team-copy.js'
 import {
-  BLOCKED_REASON_COPY,
+  blockedReasonCopy,
   briefDoorwayLabel,
   downloadReportLabel,
   formatElapsed,
@@ -109,10 +109,30 @@ test('every not-ready state names its remedy, and the composer button says why',
   assert.equal(researchButtonTitle('team_off', false), 'Research with DeepWater — it’s off for this team')
 })
 
-test('every blocked delivery names one remedy, in plain words', () => {
-  for (const [reason, copy] of Object.entries(BLOCKED_REASON_COPY)) {
-    assert.doesNotMatch(copy, FORBIDDEN, reason)
+test('a blocked delivery names its remedy to the requester, and only what happened to anyone else', () => {
+  const reasons = [
+    'knowledge_destination_unavailable', 'ledger_unavailable', 'report_expired', 'report_malformed',
+    'requester_identity_changed',
+  ] as const
+  const viewer = (canRetryDelivery: boolean) =>
+    ({ canCancel: false, canEdit: false, canRetryDelivery, canStart: false })
+  const requesters = { requestedByUserId: PERSON, viewer: viewer(true) }
+  const others = { requestedByUserId: PERSON, viewer: viewer(false) }
+  for (const reason of reasons) {
+    const mine = blockedReasonCopy(reason, requesters, PERSON)
+    const theirs = blockedReasonCopy(reason, others, OTHER)
+    assert.doesNotMatch(`${mine} ${theirs}`, FORBIDDEN, reason)
+    // Nobody but the requester is told to press Retry or to sign in again.
+    assert.doesNotMatch(theirs, /\bRetry\b|Sign in again/, reason)
+    assert.doesNotMatch(theirs, /\byou\b|\byour\b/i, reason)
+    // A requester is told their remedy even where the server offers no button for it.
+    assert.equal(blockedReasonCopy(reason, { requestedByUserId: PERSON, viewer: viewer(false) }, PERSON), mine)
   }
+  assert.match(blockedReasonCopy('requester_identity_changed', requesters, PERSON), /Sign in again, then choose Retry/)
+  assert.equal(blockedReasonCopy('requester_identity_changed', others, OTHER),
+    'This research is waiting for the person who asked for it to sign in again.')
+  assert.equal(blockedReasonCopy('knowledge_destination_unavailable', others, null),
+    'The result couldn’t be saved to Documents yet. The person who asked for it can retry.')
   assert.equal(retryDeliveryLabel('requester_identity_changed'), 'Retry')
   assert.equal(retryDeliveryLabel('knowledge_destination_unavailable'), 'Retry import')
 })
@@ -173,45 +193,57 @@ const apiError = (code: string, status: number, details?: unknown) =>
   new ApiClientError('refused', code, status, details)
 
 test('a synchronous refusal of a brief action reads as its remedy', () => {
-  const conflict = briefActionFailure(apiError('DEEP_WATER_BRIEF_REVISION_CONFLICT', 409, { currentRevision: 4 }), 'reply')
+  const conflict = briefActionFailure(apiError('DEEP_WATER_BRIEF_REVISION_CONFLICT', 409, { currentRevision: 4 }), 'reply', false)
   assert.equal(conflict.refetch, true, 'a revision conflict rebases the unsent edits onto the new brief')
   assert.equal(conflict.retrySameAction, false)
-  assert.equal(briefActionFailure(apiError('DEEP_WATER_BRIEF_INCOMPLETE', 422), 'start').message,
+  assert.equal(briefActionFailure(apiError('DEEP_WATER_BRIEF_INCOMPLETE', 422), 'start', false).message,
     'Add at least one pillar before you start the research.')
-  assert.equal(
-    briefActionFailure(apiError('DEEP_WATER_NOT_READY', 409, { reason: 'team_off' }), 'reply').message,
-    readinessCopy('team_off', false).message,
-  )
-  const lost = briefActionFailure(new TypeError('fetch failed'), 'reply')
+  const lost = briefActionFailure(new TypeError('fetch failed'), 'reply', false)
   assert.equal(lost.retrySameAction, true, 'a lost request is retried under the same key')
   // It may still have arrived and been recorded: nothing says it did not.
   assert.doesNotMatch(lost.message, /didn’t reach|never|wasn’t sent/i)
   assert.match(lost.message, /^Nessie didn’t answer\./)
-  assert.equal(briefActionFailure(apiError('INTERNAL', 503), 'start').retrySameAction, true)
-  assert.equal(briefActionFailure(apiError('SOMETHING_ELSE', 400), 'start').retrySameAction, false)
+  assert.equal(briefActionFailure(apiError('INTERNAL', 503), 'start', false).retrySameAction, true)
+  assert.equal(briefActionFailure(apiError('SOMETHING_ELSE', 400), 'start', false).retrySameAction, false)
   // Accepted, but the answer broke the contract: never "check your connection"; a
   // retry is a replay under the same key, and the brief is read again.
-  const unreadable = briefActionFailure(apiError('INVALID_RESPONSE', 202), 'reply')
+  const unreadable = briefActionFailure(apiError('INVALID_RESPONSE', 202), 'reply', false)
   assert.equal(unreadable.refetch, true)
   assert.equal(unreadable.retrySameAction, true)
   assert.doesNotMatch(unreadable.message, /connection/i)
   assert.doesNotMatch(unreadable.message, FORBIDDEN)
-  // A new brief whose answer could not be read has nothing on screen to point at:
-  // pressing Plan again replays the same key and opens it.
-  const unreadableNew = newBriefFailure(apiError('INVALID_RESPONSE', 202))
+  // A new brief whose answer could not be read, or never came, has nothing on
+  // screen to point at: pressing Plan again replays the same key and opens it.
+  const unreadableNew = newBriefFailure(apiError('INVALID_RESPONSE', 202), false)
   assert.equal(unreadableNew.retrySameAction, true)
   assert.doesNotMatch(unreadableNew.message, /where it stands/i)
   assert.match(unreadableNew.message, /Plan with DeepWater again/)
-  const lostNew = newBriefFailure(new TypeError('fetch failed'))
+  const lostNew = newBriefFailure(new TypeError('fetch failed'), false)
   assert.equal(lostNew.retrySameAction, true)
   assert.match(lostNew.message, /press Plan with DeepWater again — if your brief was already opened, that same/)
   assert.doesNotMatch(lostNew.message, /didn’t reach/)
-  assert.deepEqual(newBriefFailure(apiError('INTERNAL', 503)), briefActionFailure(apiError('INTERNAL', 503), 'create'))
+  assert.deepEqual(newBriefFailure(apiError('INTERNAL', 503), false),
+    briefActionFailure(apiError('INTERNAL', 503), 'create', false))
+})
+
+test('a not-ready refusal names the remedy for this viewer\'s role', () => {
+  const notReady = (reason: string, owner: boolean) =>
+    briefActionFailure(apiError('DEEP_WATER_NOT_READY', 409, { reason }), 'create', owner)
+  // Only an owner may turn DeepWater on or update it, so only an owner is told to.
+  assert.equal(notReady('team_off', true).message, readinessCopy('team_off', true).message)
+  assert.equal(notReady('team_off', false).message, readinessCopy('team_off', false).message)
+  assert.doesNotMatch(notReady('team_off', true).message, /Ask a team owner/)
+  assert.match(notReady('contract_outdated', false).message, /Ask a team owner to update it\./)
+  assert.equal(notReady('account_not_linked', true).message, readinessCopy('account_not_linked', true).message)
+  assert.equal(notReady('team_off', true).retrySameAction, false)
+  assert.equal(notReady('ready', true).message, 'DeepWater isn’t ready for your team right now.')
+  assert.equal(newBriefFailure(apiError('DEEP_WATER_NOT_READY', 409, { reason: 'team_off' }), true).message,
+    readinessCopy('team_off', true).message)
 })
 
 test('a busy refusal says what the refused action is waiting for', () => {
   const busy = (action: Parameters<typeof briefActionFailure>[1]) =>
-    briefActionFailure(apiError('DEEP_WATER_BRIEF_BUSY', 409), action)
+    briefActionFailure(apiError('DEEP_WATER_BRIEF_BUSY', 409), action, false)
   // A reply or Start waits for DeepWater to finish with the last change.
   assert.match(busy('reply').message, /still working on the last change to this brief/)
   assert.equal(busy('start').message, busy('reply').message)

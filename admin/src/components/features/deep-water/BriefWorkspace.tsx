@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { DeepWaterBriefView } from '@nessie/schemas'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { useDeepWaterViewerScope } from '../../../facades/deep-water/hooks'
 import { deepWaterKeys } from '../../../facades/deep-water/keys'
 import {
@@ -60,6 +61,7 @@ export const BriefWorkspace = ({
   const start = useStartResearchBrief(brief.id)
   const cancel = useCancelResearchRun()
   const cancelId = useIntentActionId()
+  const viewerIsOwner = useIsOwner()
   const {
     changed,
     dismissChanged,
@@ -126,7 +128,7 @@ export const BriefWorkspace = ({
       typed: text === draft.message.trim() }
     reply.mutate({ actionId, ...body }, {
       onError: (error) => {
-        const failure = briefActionFailure(error, 'reply')
+        const failure = briefActionFailure(error, 'reply', viewerIsOwner)
         replyId.settle(failure.retrySameAction)
         setReplyError(failure.message)
         if (failure.refetch) refetchBrief()
@@ -151,7 +153,7 @@ export const BriefWorkspace = ({
     const sent = { actionId, edits, kind: 'start' as const, message: '', revision: brief.revision, typed: false }
     start.mutate({ actionId, ...body }, {
       onError: (error) => {
-        const failure = briefActionFailure(error, 'start')
+        const failure = briefActionFailure(error, 'start', viewerIsOwner)
         startId.settle(failure.retrySameAction)
         setStartError(failure.message)
         if (failure.refetch) refetchBrief()
@@ -168,7 +170,7 @@ export const BriefWorkspace = ({
     const actionId = cancelId.take({ cancel: brief.id })
     cancel.mutate({ actionId, runId: brief.id }, {
       onError: (error) => {
-        const failure = briefActionFailure(error, 'cancel')
+        const failure = briefActionFailure(error, 'cancel', viewerIsOwner)
         cancelId.settle(failure.retrySameAction)
         setStartError(failure.message)
       },
@@ -189,7 +191,7 @@ export const BriefWorkspace = ({
 
   return (
     <div className="flex flex-col gap-4" data-testid="research-brief-workspace">
-      <BriefIdentityNotice brief={brief} ownBrief={ownBrief} />
+      <BriefIdentityNotice brief={brief} meUserId={meUserId} />
       {changed.length > 0 ? (
         <Notice size="sm" tone="info">
           <span>

@@ -4,6 +4,7 @@ import {
   DeepWaterBriefTopicSchema,
   type DeepWaterBriefOriginRequest,
 } from '@nessie/schemas'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import { useDeepWaterViewerScope } from '../../../facades/deep-water/hooks'
 import { useCreateResearchBrief } from '../../../facades/deep-water/mutations'
 import { draftKey, useDraft } from '../../../navigation/useDraft'
@@ -58,6 +59,7 @@ export const ResearchBriefNewForm = ({
 }) => {
   const create = useCreateResearchBrief()
   const scope = useDeepWaterViewerScope()
+  const viewerIsOwner = useIsOwner()
   const [error, setError] = useState<string | null>(null)
   // A doorway's question (the composer's text, "Start again") is the form's
   // baseline: it fills an empty form, but a draft the person already wrote
@@ -90,7 +92,7 @@ export const ResearchBriefNewForm = ({
     const id = actionId.take(body)
     create.mutate({ actionId: id, ...body }, {
       onError: (failure) => {
-        const read = newBriefFailure(failure)
+        const read = newBriefFailure(failure, viewerIsOwner)
         actionId.settle(read.retrySameAction)
         setError(read.message)
       },

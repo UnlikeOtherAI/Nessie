@@ -85,6 +85,7 @@ export const DeepWaterTeamControls = () => {
           key={failure.run.id}
           onCancelRequested={() => setCancelRequested((current) => new Set(current).add(failure.run.id))}
           run={failure.run}
+          viewerIsOwner={readiness.viewerIsOwner}
         />
       ) : null}
       <ConfirmDialog
@@ -117,11 +118,12 @@ export const DeepWaterTeamControls = () => {
  * read the research sees it stop here (its view is refreshed by the realtime
  * update); one who may not learns it from trying the change again.
  */
-const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run }: {
+const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run, viewerIsOwner }: {
   canCancel: boolean
   cancelRequested: boolean
   onCancelRequested: () => void
   run: DeepWaterActiveRunConflict
+  viewerIsOwner: boolean
 }) => {
   const resolveActor = useActorNames()
   const cancel = useCancelResearchRun()
@@ -144,7 +146,7 @@ const OpenResearch = ({ canCancel, cancelRequested, onCancelRequested, run }: {
     const id = actionId.take({ cancel: run.id })
     cancel.mutate({ actionId: id, runId: run.id }, {
       onError: (failure) => {
-        const read = briefActionFailure(failure, 'cancel')
+        const read = briefActionFailure(failure, 'cancel', viewerIsOwner)
         actionId.settle(read.retrySameAction)
         setError(read.message)
       },

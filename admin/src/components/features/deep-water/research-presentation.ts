@@ -76,15 +76,43 @@ export const SUMMARY_NOTE = 'Research summary (the full report could not be writ
 export const sourcesLabel = (count: number | null): string | null =>
   count === null ? null : `${count} source${count === 1 ? '' : 's'}`
 
-/** Why a finished research could not be saved to Documents, and what to do about it. */
-export const BLOCKED_REASON_COPY: Record<DeepWaterDeliveryBlockedReason, string> = {
+/**
+ * Why a research's result could not be saved to Documents, and what to do
+ * about it — said to the person who asked for it, whose remedy it is.
+ */
+const BLOCKED_REASON_COPY_FOR_REQUESTER: Record<DeepWaterDeliveryBlockedReason, string> = {
   knowledge_destination_unavailable:
     'Its page in Documents was deleted or changed before the result could be saved. Retry import puts it back.',
   ledger_unavailable: 'DeepWater couldn’t hand the report over just now. Retry import to try again.',
   report_expired: 'The report is no longer available to import.',
   report_malformed: 'The report couldn’t be read.',
   requester_identity_changed:
-    'Your sign-in has changed since you asked for this research. Sign in again, then choose Retry.',
+    'Your sign-in has changed since this research was asked for. Sign in again, then choose Retry.',
+}
+
+/**
+ * The same, for everyone else who can see the research: the server tells every
+ * viewer why, but the remedy — Retry, signing in again — is only the
+ * requester's, so nobody else is told to do it.
+ */
+const BLOCKED_REASON_COPY_FOR_OTHERS: Record<DeepWaterDeliveryBlockedReason, string> = {
+  knowledge_destination_unavailable:
+    'The result couldn’t be saved to Documents yet. The person who asked for it can retry.',
+  ledger_unavailable: 'The result couldn’t be saved to Documents yet. The person who asked for it can retry.',
+  report_expired: 'The report is no longer available to import.',
+  report_malformed: 'The report couldn’t be read.',
+  requester_identity_changed: 'This research is waiting for the person who asked for it to sign in again.',
+}
+
+/** A blocked delivery, in the words for this viewer: the remedy for its requester, a plain account for anyone else. */
+export const blockedReasonCopy = (
+  reason: DeepWaterDeliveryBlockedReason,
+  run: Pick<DeepWaterResearchRunView, 'requestedByUserId' | 'viewer'>,
+  meUserId: string | null,
+): string => {
+  const requester = run.viewer.canRetryDelivery
+    || (run.requestedByUserId !== null && run.requestedByUserId === meUserId)
+  return (requester ? BLOCKED_REASON_COPY_FOR_REQUESTER : BLOCKED_REASON_COPY_FOR_OTHERS)[reason]
 }
 
 /** The one remedy a retryable block names, as its button. */

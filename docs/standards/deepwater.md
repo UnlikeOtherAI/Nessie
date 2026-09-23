@@ -394,7 +394,8 @@ the only way results come back.
   Retry) renews it. Only a person's own brief is blocked quietly, because its
   dialog says "Sign in again"; an agent's brief tells the requester once that
   the agent can't carry on (they cannot edit it, and the agent is never woken
-  while the watch is stopped), and a launched research tells them DeepWater
+  while the watch is stopped) — the brief they open from there says the same
+  and offers the same Retry — and a launched research tells them DeepWater
   can't check on it — never that it finished.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind, provider tool-call id and stored arguments — which Ledger answers
@@ -521,8 +522,13 @@ the screen it goes to that conversation, which opens the brief itself.
 - **Who may do what is the server's.** The dialog reads `viewer` from the view:
   an agent's brief is read-only for people, and its requester may only discard
   it; a finished research offers Retry import only where `canRetryDelivery`
-  says so. A brief whose sign-in no longer resolves shows "Sign in again to
-  continue this brief" (F4).
+  says so. A blocked delivery's remedy ("Retry import puts it back", "Sign in
+  again, then choose Retry") is said only to the requester; everyone else who
+  can see the research reads what happened and that the person who asked can
+  retry (`blockedReasonCopy`). A drafting brief whose sign-in no longer
+  resolves shows its requester "Sign in again to continue this brief" (F4) —
+  on an agent's brief too, where the agent can't carry on until they do — with
+  Retry where `canRetryDelivery` says so.
 - **A cancel is a state of its own.** `POST …/cancel` answers 202 once the
   cancel is recorded for the worker; the research stays open, with
   `pendingAction.kind === 'cancel'`, until DeepWater has stopped it. From the
@@ -532,8 +538,11 @@ the screen it goes to that conversation, which opens the brief itself.
   The cancel mutation settles only once the run has been read again, so the
   cancel never reappears in between; a cancel DeepWater refused comes back with
   its error and can be pressed again. A refusal reads by the action refused
-  (`briefActionFailure(error, action)`): `DEEP_WATER_BRIEF_BUSY` on a cancel
-  means the brief is still being opened, never that the planner is answering.
+  (`briefActionFailure(error, action, viewerIsOwner)`): `DEEP_WATER_BRIEF_BUSY`
+  on a cancel means the brief is still being opened, never that the planner is
+  answering, and `DEEP_WATER_NOT_READY` names the readiness remedy for the
+  viewer's role and refetches the products list, so a dialog holding a stale
+  "ready" verdict gives way to `ResearchReadinessScreen`.
 - **Every composer's Research button is always there** — the conversation's; a
   reply thread's and a Threads inbox card's, whose brief carries the thread's
   `rootMessageId` so the research card and its result land under that root; and

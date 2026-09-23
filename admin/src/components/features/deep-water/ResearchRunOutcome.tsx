@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom'
 import type { DeepWaterResearchRunView } from '@nessie/schemas'
 import { useRetryResearchDelivery } from '../../../facades/deep-water/mutations'
 import { briefActionFailure } from './brief-action-errors'
+import { useIsOwner } from '../../../facades/auth/hooks'
 import {
-  BLOCKED_REASON_COPY,
   SUMMARY_NOTE,
+  blockedReasonCopy,
   reportNoun,
   retryDeliveryLabel,
   sourcesLabel,
@@ -19,7 +20,8 @@ import { useIntentActionId } from './useIntentActionId'
  * one block the research card, a Knowledge › Research row and the brief dialog
  * all show (Rule zero: one component, never a second rendering). It never
  * calls a summary the full report (amendments N10), names a blocked delivery's
- * one remedy, and offers the artifacts once the result is delivered.
+ * one remedy to the person whose remedy it is — everyone else is told only
+ * what happened — and offers the artifacts once the result is delivered.
  */
 
 const RESULT_COMES_BACK: Record<ResearchShownIn, string> = {
@@ -54,6 +56,7 @@ export const ResearchRunOutcome = ({
 }) => {
   const retry = useRetryResearchDelivery()
   const actionId = useIntentActionId()
+  const viewerIsOwner = useIsOwner()
   const [retryError, setRetryError] = useState<string | null>(null)
   const ownPersonResearch = run.origin.kind === 'person' && run.requestedByUserId !== null
     && run.requestedByUserId === meUserId
@@ -63,7 +66,7 @@ export const ResearchRunOutcome = ({
     const id = actionId.take({ deliver: run.id })
     retry.mutate({ actionId: id, runId: run.id }, {
       onError: (error) => {
-        const failure = briefActionFailure(error, 'deliver')
+        const failure = briefActionFailure(error, 'deliver', viewerIsOwner)
         actionId.settle(failure.retrySameAction)
         setRetryError(failure.message)
       },
@@ -105,7 +108,7 @@ export const ResearchRunOutcome = ({
       {blocked ? (
         <div className="flex flex-wrap items-center gap-2">
           {actionsOnly ? null : (
-            <p className="text-sm text-[color:var(--warning-text)]">{BLOCKED_REASON_COPY[blocked]}</p>
+            <p className="text-sm text-[color:var(--warning-text)]">{blockedReasonCopy(blocked, run, meUserId)}</p>
           )}
           {run.viewer.canRetryDelivery ? (
             <button

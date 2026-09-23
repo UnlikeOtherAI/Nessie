@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 import { ApiClientError } from '@nessie/client-core'
 import {
+  DEEP_WATER_BRIEF_ERROR_CODES,
   DeepWaterBriefViewSchema,
   DeepWaterResearchRunViewSchema,
   type CreateDeepWaterBriefRequest,
@@ -36,10 +37,25 @@ import { deepWaterKeys } from './keys'
 /** A fresh idempotency key for one person action. */
 export const newResearchActionId = (): string => crypto.randomUUID()
 
-/** The server accepted the action but its answer broke the contract: say so where it can be investigated. */
-const reportUnreadableAnswer = (error: unknown): void => {
-  if (error instanceof ApiClientError && error.code === 'INVALID_RESPONSE') {
-    console.error('[deep-water] a research action was accepted but its answer did not match the contract', error.details)
+/**
+ * What every research action does with a failure before the control reads it:
+ * - an answer that broke the contract was still an accepted action, so it is
+ *   logged where it can be investigated;
+ * - a not-ready refusal means the products list's readiness verdict is stale,
+ *   so it is read again, and every doorway — the composer's button, a new
+ *   brief's form — shows the readiness screen and its way forward instead of
+ *   offering research the server will refuse.
+ */
+const useDeepWaterActionError = () => {
+  const queryClient = useQueryClient()
+  return (error: unknown): void => {
+    if (!(error instanceof ApiClientError)) return
+    if (error.code === 'INVALID_RESPONSE') {
+      console.error('[deep-water] a research action was accepted but its answer did not match the contract', error.details)
+    }
+    if (error.code === DEEP_WATER_BRIEF_ERROR_CODES.NOT_READY) {
+      void queryClient.invalidateQueries({ queryKey: integratedProductsKeyPrefix })
+    }
   }
 }
 
@@ -54,11 +70,12 @@ export const briefWithRunView = (brief: DeepWaterBriefView, run: DeepWaterResear
 export const useCreateResearchBrief = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
+  const onError = useDeepWaterActionError()
   const scope = useDeepWaterViewerScope()
   return useMutation({
     mutationFn: (input: CreateDeepWaterBriefRequest): Promise<DeepWaterBriefView> =>
       api.post(RESEARCH_RUNS_PATH, input, undefined, DeepWaterBriefViewSchema),
-    onError: reportUnreadableAnswer,
+    onError,
     onSuccess: (brief) => {
       if (scope) queryClient.setQueryData(deepWaterKeys.brief(brief.id, scope), brief)
     },
@@ -73,11 +90,12 @@ export const useCreateResearchBrief = () => {
 export const useReplyToResearchBrief = (runId: string) => {
   const api = useApiClient()
   const queryClient = useQueryClient()
+  const onError = useDeepWaterActionError()
   const scope = useDeepWaterViewerScope()
   return useMutation({
     mutationFn: (input: DeepWaterBriefReplyRequest): Promise<DeepWaterBriefView> =>
       api.post(`${researchRunPath(runId)}/messages`, input, undefined, DeepWaterBriefViewSchema),
-    onError: reportUnreadableAnswer,
+    onError,
     onSuccess: (brief) => {
       if (scope) queryClient.setQueryData(deepWaterKeys.brief(runId, scope), brief)
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(runId) })
@@ -89,11 +107,12 @@ export const useReplyToResearchBrief = (runId: string) => {
 export const useStartResearchBrief = (runId: string) => {
   const api = useApiClient()
   const queryClient = useQueryClient()
+  const onError = useDeepWaterActionError()
   const scope = useDeepWaterViewerScope()
   return useMutation({
     mutationFn: (input: StartDeepWaterBriefRequest): Promise<DeepWaterResearchRunView> =>
       api.post(`${researchRunPath(runId)}/start`, input, undefined, DeepWaterResearchRunViewSchema),
-    onError: reportUnreadableAnswer,
+    onError,
     onSuccess: (run) => {
       if (!scope) return
       queryClient.setQueryData<DeepWaterBriefView>(
@@ -141,11 +160,12 @@ export const hasResearchStopped = (answer: Pick<ResearchCancelAnswer, 'status'>)
 export const useCancelResearchRun = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
+  const onError = useDeepWaterActionError()
   return useMutation({
     mutationFn: (input: { actionId: string; runId: string }): Promise<ResearchCancelAnswer> =>
       api.post(`${researchRunPath(input.runId)}/cancel`, { actionId: input.actionId }, undefined,
         ResearchCancelAnswerSchema),
-    onError: reportUnreadableAnswer,
+    onError,
     onSettled: async (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.lists })
       await queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(input.runId) })
@@ -157,6 +177,7 @@ export const useCancelResearchRun = () => {
 export const useRetryResearchDelivery = () => {
   const api = useApiClient()
   const queryClient = useQueryClient()
+  const onError = useDeepWaterActionError()
   return useMutation({
     mutationFn: (input: { actionId: string; runId: string }): Promise<DeepWaterResearchRunView> =>
       api.post(
@@ -165,7 +186,7 @@ export const useRetryResearchDelivery = () => {
         undefined,
         DeepWaterResearchRunViewSchema,
       ),
-    onError: reportUnreadableAnswer,
+    onError,
     onSettled: (_result, _error, input) => {
       void queryClient.invalidateQueries({ queryKey: deepWaterKeys.run(input.runId) })
     },

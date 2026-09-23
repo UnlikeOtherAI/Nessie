@@ -28,10 +28,17 @@ export type BriefActionFailure = {
 
 const codes = DEEP_WATER_BRIEF_ERROR_CODES
 
-const readinessReason = (details: unknown): string | null => {
+/**
+ * Why DeepWater refused as not ready, in the words the readiness screen uses
+ * for this viewer: a team owner is told to turn it on or update it, anyone
+ * else to ask a team owner. The refusal also refetches the products list
+ * (the facades' `onDeepWaterActionError`), so a dialog still holding a stale
+ * "ready" verdict gives way to the readiness screen and its way forward.
+ */
+const readinessReason = (details: unknown, viewerIsOwner: boolean): string | null => {
   const reason = (details as { reason?: unknown } | null | undefined)?.reason
   const parsed = DeepWaterResearchReadinessStateSchema.safeParse(reason)
-  return parsed.success && parsed.data !== 'ready' ? readinessCopy(parsed.data, false).message : null
+  return parsed.success && parsed.data !== 'ready' ? readinessCopy(parsed.data, viewerIsOwner).message : null
 }
 
 /**
@@ -55,7 +62,12 @@ const BUSY_COPY: Record<BriefAction, string> = {
   start: 'DeepWater is still working on the last change to this brief. Try again once it has answered.',
 }
 
-export const briefActionFailure = (error: unknown, action: BriefAction): BriefActionFailure => {
+/** `viewerIsOwner`: the session's owner role, which decides a not-ready refusal's remedy. */
+export const briefActionFailure = (
+  error: unknown,
+  action: BriefAction,
+  viewerIsOwner: boolean,
+): BriefActionFailure => {
   if (!(error instanceof ApiClientError)) {
     return { message: NO_ANSWER, refetch: false, retrySameAction: true }
   }
@@ -79,7 +91,7 @@ export const briefActionFailure = (error: unknown, action: BriefAction): BriefAc
     case codes.TEAM_MISMATCH:
       return refuse('This conversation belongs to another team. Switch to that team to start research here.')
     case codes.NOT_READY:
-      return refuse(readinessReason(error.details) ?? 'DeepWater isn’t ready for your team right now.')
+      return refuse(readinessReason(error.details, viewerIsOwner) ?? 'DeepWater isn’t ready for your team right now.')
     case codes.RESEARCH_NOT_FOUND:
       return refuse('This research isn’t available to you any more.', true)
     case codes.RUN_NOT_CANCELLABLE:
@@ -113,8 +125,8 @@ export const briefActionFailure = (error: unknown, action: BriefAction): BriefAc
  * — kept in the form's draft, so closing the dialog or reloading keeps it too —
  * and the same brief answers.
  */
-export const newBriefFailure = (error: unknown): BriefActionFailure => {
-  const read = briefActionFailure(error, 'create')
+export const newBriefFailure = (error: unknown, viewerIsOwner: boolean): BriefActionFailure => {
+  const read = briefActionFailure(error, 'create', viewerIsOwner)
   if (!(error instanceof ApiClientError)) {
     return {
       ...read,

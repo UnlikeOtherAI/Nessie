@@ -11,6 +11,7 @@ import { MemoryRouter } from 'react-router-dom'
 
 import { BriefAnalysisSummary } from '../src/components/features/deep-water/BriefAnalysisSummary.js'
 import { BriefConversation } from '../src/components/features/deep-water/BriefConversation.js'
+import { BriefIdentityNotice } from '../src/components/features/deep-water/BriefIdentityNotice.js'
 import { BriefOpenQuestions } from '../src/components/features/deep-water/BriefOpenQuestions.js'
 import { BriefSettingsEditor } from '../src/components/features/deep-water/BriefSettingsEditor.js'
 import { BriefStartBar } from '../src/components/features/deep-water/BriefStartBar.js'
@@ -18,7 +19,7 @@ import { ResearchArtifactActions } from '../src/components/features/deep-water/R
 import { ResearchReadinessScreen } from '../src/components/features/deep-water/ResearchReadinessScreen.js'
 import { ResearchRunOutcome } from '../src/components/features/deep-water/ResearchRunOutcome.js'
 import { AuthSessionProvider } from '../src/providers/AuthSessionProvider.js'
-import { REQUESTER, completedRun, researchBrief, researchRun } from './deep-water-research-fixtures.js'
+import { AGENT, COLLEAGUE, REQUESTER, completedRun, researchBrief, researchRun } from './deep-water-research-fixtures.js'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -125,10 +126,64 @@ test('a blocked delivery names its remedy, and only the requester gets Retry imp
   }))
   assert.match(own.body.textContent ?? '', /Retry import puts it back/)
   assert.ok(texts(own, 'button').includes('Retry import'))
+  // Someone else in the room reads what happened, never a remedy that is not theirs.
   const theirs = render(createElement(ResearchRunOutcome, {
-    meUserId: null, onStartAgain: null, run: blocked(false), shownIn: 'its_conversation',
+    meUserId: COLLEAGUE, onStartAgain: null, run: blocked(false), shownIn: 'its_conversation',
   }))
   assert.equal(texts(theirs, 'button').includes('Retry import'), false)
+  assert.ok(texts(theirs, 'p').includes(
+    'The result couldn’t be saved to Documents yet. The person who asked for it can retry.',
+  ))
+  assert.doesNotMatch(theirs.body.textContent ?? '', /Retry import puts it back/)
+})
+
+test('a sign-in that changed is the requester\'s to fix: nobody else is told to sign in again', () => {
+  const identity = (canRetryDelivery: boolean) => researchRun({
+    delivery: { blockedReason: 'requester_identity_changed', state: 'blocked' },
+    status: 'running',
+    viewer: { canCancel: false, canEdit: false, canRetryDelivery, canStart: false },
+  })
+  const own = render(createElement(ResearchRunOutcome, {
+    meUserId: REQUESTER, onStartAgain: null, run: identity(true), shownIn: 'its_conversation',
+  }))
+  assert.ok(texts(own, 'p').includes(
+    'Your sign-in has changed since this research was asked for. Sign in again, then choose Retry.',
+  ))
+  assert.ok(texts(own, 'button').includes('Retry'))
+  const theirs = render(createElement(ResearchRunOutcome, {
+    meUserId: COLLEAGUE, onStartAgain: null, run: identity(false), shownIn: 'its_conversation',
+  }))
+  assert.deepEqual(texts(theirs, '[data-testid="research-run-outcome"] p'),
+    ['This research is waiting for the person who asked for it to sign in again.'])
+  assert.equal(theirs.querySelectorAll('button').length, 0)
+})
+
+test('the requester of a brief whose sign-in changed is asked to sign in again, an agent\'s brief too', () => {
+  const blocked = { delivery: { blockedReason: 'requester_identity_changed' as const, state: 'blocked' as const } }
+  const viewer = { canCancel: true, canEdit: false, canRetryDelivery: true, canStart: false }
+  const agentOrigin = { ...researchRun().origin, agentId: AGENT, kind: 'agent' as const }
+  const notice = (brief: ReturnType<typeof researchBrief>, meUserId = REQUESTER) =>
+    render(createElement(BriefIdentityNotice, { brief, meUserId }))
+      .querySelector('[data-testid="research-brief-sign-in"]')
+
+  const own = notice(researchBrief({ ...blocked, viewer }))
+  assert.match(own?.textContent ?? '', /Sign in again to continue this brief\./)
+  const agents = notice(researchBrief({ ...blocked, origin: agentOrigin, viewer }))
+  assert.match(agents?.textContent ?? '', /the agent can’t carry on with this brief/)
+  assert.deepEqual(texts(agents!.ownerDocument, 'button'), ['Sign in again', 'I’ve signed in again — retry'])
+  // Not the requester: not theirs to fix.
+  assert.equal(notice(researchBrief({ ...blocked, origin: agentOrigin, viewer }), COLLEAGUE), null)
+  // An agent's own action refused for its sign-in is the agent's to redo, not the person's.
+  const agentActionRefused = researchBrief({
+    origin: agentOrigin,
+    pendingAction: {
+      actionId: '80000000-0000-4000-8000-000000000001',
+      error: { code: 'identity_required', message: 'Sign in again to continue this brief.' },
+      kind: 'reply',
+      since: '2026-09-23T09:05:00.000Z',
+    },
+  })
+  assert.equal(notice(agentActionRefused), null)
 })
 
 test('a failed research of your own offers Start again with its question', () => {
