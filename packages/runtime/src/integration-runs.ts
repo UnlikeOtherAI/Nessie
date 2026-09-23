@@ -7,6 +7,7 @@ import {
 import { ConnectorUsageMetadataSchema } from './connector-usage.js'
 import type { LedgerAttribution } from './ledger.js'
 import {
+  DeepWaterBriefRunUpdateRefusedError,
   assertImmutableDeepWaterUpdate,
   type DeepWaterImmutableRunState,
 } from './deepwater-run-update-guards.js'
@@ -24,6 +25,7 @@ import {
 } from './integration-runs-mapping.js'
 
 export {
+  DeepWaterBriefRunUpdateRefusedError,
   DeepWaterResearchRunConflictError,
   type DeepWaterResearchRunConflictField,
 } from './deepwater-run-update-guards.js'
@@ -223,11 +225,12 @@ export const updateDeepWaterResearchRun = async (
     // READ COMMITTED default, a concurrent waiter sees the committed winner
     // after acquiring this lock and therefore validates against the durable
     // terminal/external-id values rather than a stale snapshot.
-    const stateRows = await tx.$queryRaw<DeepWaterImmutableRunState[]>(Prisma.sql`
+    const stateRows = await tx.$queryRaw<Array<DeepWaterImmutableRunState & { is_brief?: boolean }>>(Prisma.sql`
       SELECT
         "external_run_id",
         "status"::text AS "status",
-        "result_json"
+        "result_json",
+        "uoa_identity" IS NOT NULL AS "is_brief"
       FROM "product_integration_runs"
       WHERE "id" = CAST(${input.runId} AS uuid)
         AND "organization_id" = CAST(${input.organizationId} AS uuid)
@@ -239,6 +242,12 @@ export const updateDeepWaterResearchRun = async (
     const current = stateRows[0]
     if (!current) {
       throw new Error('Deep Water run was not returned by the database')
+    }
+    // A research brief's status and research id are Ledger's (contract §2.3
+    // invariant 6): the watch applies them and delivers the result, and a
+    // value written here would stop it. Only launcher runs take agent updates.
+    if (current.is_brief === true) {
+      throw new DeepWaterBriefRunUpdateRefusedError()
     }
     assertImmutableDeepWaterUpdate(current, {
       externalRunId,
@@ -272,6 +281,7 @@ export const updateDeepWaterResearchRun = async (
         AND "team_id" = CAST(${teamId} AS uuid)
         AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
         AND "thread_id" = CAST(${threadId} AS uuid)
+        AND "uoa_identity" IS NULL
       RETURNING ${deepWaterRunReturning}
     `)
 
