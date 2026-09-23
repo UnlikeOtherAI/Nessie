@@ -23,7 +23,13 @@ import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigat
  * 3. End posts to the lease's own route and the indicator goes.
  * 4. On a phone the toolbar has no room: the chip folds into a dot on Run on
  *    executor, and the launcher dialog carries the lease and its End.
- * 5. The machine's detail page lists its live leases (agent, conversation,
+ * 5. A chip stands only beside a composer whose messages would carry it. A
+ *    launch in a conversation with the agent covers the whole thread, so the
+ *    main composer shows it (1–4). A launch in an ordinary room covers only
+ *    its own reply thread: the room's composer shows nothing, that reply
+ *    thread's composer shows the chip — at a phone's width too, since it has
+ *    no Run on executor to fold into — and any other reply thread nothing.
+ * 6. The machine's detail page lists its live leases (agent, conversation,
  *    person, last used) with End, and says so where it may not name one.
  *
  * Every API answer is the runner's, so this pins what is drawn for each
@@ -40,9 +46,18 @@ const channelId = '55555555-5555-4555-8555-555555555555'
 const now = Date.now()
 const iso = (offsetMs) => new Date(now + offsetMs).toISOString()
 
+// Launched in a conversation with the agent, where the whole thread carries
+// it — so the main composer is where it belongs.
 const ownLease = ExecutorConversationLeaseRecordSchema.parse({
   id: '99999999-9999-4999-8999-999999999991', agentId, executorLabel: 'Minis', threadId,
-  rootMessageId: '99999999-9999-4999-8999-999999999990', launchedAt: iso(-30 * 60_000), expiresAt: iso(95 * 60_000),
+  rootMessageId: '99999999-9999-4999-8999-999999999990', wholeThread: true,
+  launchedAt: iso(-30 * 60_000), expiresAt: iso(95 * 60_000),
+})
+// Launched in an ordinary room: only replies under the launch message carry
+// it, so it belongs to that reply thread's composer and to no other.
+const launchRootId = '99999999-9999-4999-8999-999999999993'
+const roomLease = ExecutorConversationLeaseRecordSchema.parse({
+  ...ownLease, id: '99999999-9999-4999-8999-999999999994', rootMessageId: launchRootId, wholeThread: false,
 })
 const machineLeases = [
   ExecutorMachineLeaseRecordSchema.parse({
@@ -53,7 +68,7 @@ const machineLeases = [
   ExecutorMachineLeaseRecordSchema.parse({
     id: '99999999-9999-4999-8999-999999999992', agent: { id: '77777777-7777-4777-8777-777777777778', name: null },
     holderUserId: otherHolderId,
-    conversation: { channelId: '55555555-5555-4555-8555-555555555556', threadId: '66666666-6666-4666-8666-666666666667', label: null },
+    conversation: null,
     launchedAt: iso(-2 * 60 * 60_000), lastUsedAt: iso(-40 * 60_000), expiresAt: iso(80 * 60_000),
   }),
 ]
@@ -76,12 +91,12 @@ const users = [
 const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-lease')
 
 /**
- * One browser context whose API is this closure. `holds` decides the answer
- * to the composer's lease read — the only thing that differs between the
- * holder and another member.
+ * One browser context whose API is this closure. `leases` is the answer to
+ * the composer's lease read — the only thing that differs between the holder
+ * and another member.
  */
-const openContext = async (browser, { holds, width }) => {
-  const state = { leases: holds ? [ownLease] : [], machine: [...machineLeases], ended: [], leaseReads: [] }
+const openContext = async (browser, { leases, width }) => {
+  const state = { leases: [...leases], machine: [...machineLeases], ended: [], leaseReads: [] }
   const unexpected = []
   const context = await browser.newContext({ hasTouch: width < 768, viewport: { width, height: 820 } })
   await context.route('**/api/**', async (route) => {
@@ -136,7 +151,7 @@ try {
   const composerUrl = `${ADMIN_URL}/e2e/executor-lease/index.html?view=composer`
 
   // Another member of the room: the same thread, an empty answer, no chip.
-  const member = await openContext(browser, { holds: false, width: 1280 })
+  const member = await openContext(browser, { leases: [], width: 1280 })
   await member.page.goto(composerUrl)
   await member.page.locator('form.admin-compose').waitFor()
   await settle(member.page)
@@ -151,7 +166,7 @@ try {
   await member.context.close()
 
   // The holder, on a desktop.
-  const holder = await openContext(browser, { holds: true, width: 1280 })
+  const holder = await openContext(browser, { leases: [ownLease], width: 1280 })
   await holder.page.goto(composerUrl)
   await holder.page.locator('form.admin-compose').waitFor()
   await settle(holder.page)
@@ -179,7 +194,7 @@ try {
 
   // The holder, on a phone: no room for the chip, a dot instead, and the
   // launcher carries the lease and its End.
-  const phone = await openContext(browser, { holds: true, width: 390 })
+  const phone = await openContext(browser, { leases: [ownLease], width: 390 })
   await phone.page.goto(composerUrl)
   await phone.page.locator('form.admin-compose').waitFor()
   await settle(phone.page)
@@ -202,9 +217,60 @@ try {
   assert.deepEqual(phone.unexpected, [])
   await phone.context.close()
 
+  // A launch in an ordinary room carries only in its own reply thread: the
+  // room's composer, whose posts are top-level, shows nothing — not a chip on
+  // a desktop, not a dot on a phone — and the reply thread's composer carries
+  // the chip and its End. Another reply thread shows nothing either.
+  for (const width of [1280, 390]) {
+    const room = await openContext(browser, { leases: [roomLease], width })
+    await room.page.goto(composerUrl)
+    await room.page.locator('form.admin-compose').waitFor()
+    await settle(room.page)
+    await expandComposer(room.page)
+    await room.page.getByRole('button', { name: 'Run on executor' }).waitFor()
+    assert.equal(await room.page.getByTestId('executor-lease-indicator').count(), 0,
+      'a top-level post would not carry the lease, so the room composer does not claim it')
+    const roomDot = await room.page.locator('.admin-compose-executor').evaluate((button) => getComputedStyle(button, '::after').content)
+    assert.ok(roomDot === 'none' || roomDot === 'normal', `no dot either (${roomDot})`)
+    await room.page.screenshot({ animations: 'disabled', path: resolve(output, `room-composer-no-indicator-${width}.png`) })
+
+    await room.page.goto(`${ADMIN_URL}/e2e/executor-lease/index.html?view=reply&root=99999999-9999-4999-8999-999999999995`)
+    await room.page.locator('form.admin-compose').waitFor()
+    await settle(room.page)
+    await expandComposer(room.page)
+    assert.equal(await room.page.getByTestId('executor-lease-indicator').count(), 0, 'another reply thread shows nothing')
+
+    await room.page.goto(`${ADMIN_URL}/e2e/executor-lease/index.html?view=reply&root=${launchRootId}`)
+    await room.page.locator('form.admin-compose').waitFor()
+    await settle(room.page)
+    const replyIndicator = room.page.getByTestId('executor-lease-indicator')
+    assert.equal(await replyIndicator.isVisible(), false, 'the reply composer at rest shows no chip')
+    await expandComposer(room.page)
+    await replyIndicator.waitFor({ state: 'visible' })
+    assert.equal(await room.page.getByRole('button', { name: 'Run on executor' }).count(), 0)
+    const replyChip = await replyIndicator.boundingBox()
+    const replySend = await room.page.getByRole('button', { name: 'Send message' }).boundingBox()
+    const replyEnd = await room.page.getByRole('button', { name: 'End local apps on Minis' }).boundingBox()
+    const panel = await room.page.getByTestId('reply-panel').boundingBox()
+    assert.ok(replyChip && replySend && replyEnd && panel)
+    assert.ok(replyChip.x + replyChip.width <= replySend.x, 'the chip never runs under Send')
+    assert.ok(replyEnd.x >= panel.x && replyEnd.x + replyEnd.width <= replyChip.x + replyChip.width,
+      'End is inside the chip and on screen, however much of the label gives way')
+    assert.match(await replyIndicator.getAttribute('title') ?? '', /^CTO can use local apps on Minis for your own messages/,
+      'where the label is cut, the title still says it all')
+    await room.page.screenshot({ animations: 'disabled', path: resolve(output, `room-reply-indicator-${width}.png`) })
+    await room.page.getByRole('button', { name: 'End local apps on Minis' }).click()
+    await replyIndicator.waitFor({ state: 'detached' })
+    assert.deepEqual(room.state.ended, [roomLease.id])
+    assert.ok(await room.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'No page overflow')
+    assert.deepEqual(room.errors, [])
+    assert.deepEqual(room.unexpected, [])
+    await room.context.close()
+  }
+
   // The machine's own page, for someone who manages it.
   for (const width of [1280, 390]) {
-    const machine = await openContext(browser, { holds: false, width })
+    const machine = await openContext(browser, { leases: [], width })
     await machine.page.goto(`${ADMIN_URL}/e2e/executor-lease/index.html?view=executor`)
     await machine.page.getByRole('heading', { name: 'Minis' }).waitFor()
     const table = machine.page.getByRole('table', { name: 'Local apps in use' })

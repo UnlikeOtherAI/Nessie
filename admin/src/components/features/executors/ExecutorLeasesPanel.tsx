@@ -12,7 +12,7 @@ import { executorLeaseUntil } from './executor-lease-presentation'
 /** Mirrors the API's bound (`MACHINE_LEASE_LIMIT`), so a full list says so. */
 const MACHINE_LEASE_LIMIT = 50
 
-const Conversation = ({ lease }: { lease: ExecutorMachineLeaseRecord }) => lease.conversation.label
+const Conversation = ({ lease }: { lease: ExecutorMachineLeaseRecord }) => lease.conversation
   ? <Link className="underline-offset-2 hover:underline" to={`/channels/${lease.conversation.channelId}`}>{lease.conversation.label}</Link>
   : <span className="text-[color:var(--tx3)]">A conversation you are not in</span>
 

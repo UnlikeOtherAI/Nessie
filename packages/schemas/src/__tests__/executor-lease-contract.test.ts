@@ -24,7 +24,7 @@ test('executor.lease.changed rides the unchanged envelope, with ids only', () =>
 
 test('the holder’s record names the machine; the machine’s record may name neither agent nor room', () => {
   const own = {
-    id: leaseId, agentId: leaseId, executorLabel: 'Minis', threadId, rootMessageId: leaseId,
+    id: leaseId, agentId: leaseId, executorLabel: 'Minis', threadId, rootMessageId: leaseId, wholeThread: false,
     launchedAt: '2026-09-23T19:00:00.000Z', expiresAt: '2026-09-23T21:00:00.000Z',
   }
   assert.equal(ExecutorConversationLeaseRecordSchema.safeParse(own).success, true)
@@ -33,11 +33,18 @@ test('the holder’s record names the machine; the machine’s record may name n
     false,
     'strict: nothing else rides along',
   )
-  assert.equal(ExecutorMachineLeaseRecordSchema.safeParse({
+  const machine = {
     id: leaseId, agent: { id: leaseId, name: null }, holderUserId: leaseId,
-    conversation: { channelId: leaseId, threadId, label: null },
+    conversation: null,
     launchedAt: own.launchedAt, lastUsedAt: own.launchedAt, expiresAt: own.expiresAt,
+  }
+  assert.equal(ExecutorMachineLeaseRecordSchema.safeParse(machine).success, true)
+  assert.equal(ExecutorMachineLeaseRecordSchema.safeParse({
+    ...machine, conversation: { channelId: leaseId, threadId, label: 'launch' },
   }).success, true)
+  assert.equal(ExecutorMachineLeaseRecordSchema.safeParse({
+    ...machine, conversation: { channelId: leaseId, threadId, label: null },
+  }).success, false, 'an unreadable conversation gives no ids either: it is null as a whole')
   assert.equal(ExecutorLeaseListQuerySchema.safeParse({}).success, false)
   assert.equal(ExecutorLeaseListQuerySchema.safeParse({ threadId: 'x' }).success, false)
 })

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import {
   executorLeaseDescription,
   executorLeaseLabel,
+  executorLeasesCarriedFrom,
   executorLeaseUntil,
 } from '../src/components/features/executors/executor-lease-presentation'
 import {
@@ -54,6 +55,26 @@ test('only a well-formed executor.lease.changed frame invalidates, and a bad one
     data: JSON.stringify({ type: 'event', event: 'executor.lease.changed', ts: 'x', data: { leaseId: 'nope' } }),
     event: 'executor.lease.changed', id: '1',
   }), null)
+})
+
+test('a composer shows only the leases a message sent from it would carry', () => {
+  const room = { id: 'room', rootMessageId: 'launch', wholeThread: false }
+  const conversation = { id: 'conversation', rootMessageId: 'opening', wholeThread: true }
+  const leases = [room, conversation]
+  assert.deepEqual(executorLeasesCarriedFrom(leases, null), [conversation],
+    'a top-level post carries only a lease covering the whole thread')
+  assert.deepEqual(executorLeasesCarriedFrom(leases, 'launch'), [room, conversation],
+    'a reply under the launch carries its lease')
+  assert.deepEqual(executorLeasesCarriedFrom(leases, 'elsewhere'), [conversation],
+    'a reply under anything else does not')
+})
+
+test('the reply panel hands its own root to the indicator, and the main composer none', () => {
+  const panel = readSource('../src/components/features/channels/thread-panel/ThreadReplyPanel.tsx')
+  assert.match(panel, /<ExecutorLeaseIndicator[^>]*rootMessageId=\{openRootMessageId\}/)
+  assert.match(panel, /executorLeaseIndicator=\{executorLeaseIndicator\}/)
+  const launcher = readSource('../src/pages/channels/useExecutorRunLauncher.tsx')
+  assert.match(launcher, /<ExecutorLeaseIndicator[^>]*rootMessageId=\{null\}/)
 })
 
 test('the indicator lives in the composer toolbar, beside Run on executor, never at rest', () => {

@@ -53,7 +53,7 @@ export const listOwnExecutorConversationLeases = async (
     orderBy: { createdAt: 'desc' },
     select: {
       absoluteExpiresAt: true, agentId: true, createdAt: true, endedAt: true, executor: { select: { label: true } },
-      id: true, idleExpiresAt: true, rootMessageId: true, threadId: true,
+      id: true, idleExpiresAt: true, rootMessageId: true, thread: { select: { agentId: true } }, threadId: true,
     },
     take: OWN_LEASE_LIMIT,
   })
@@ -65,6 +65,9 @@ export const listOwnExecutorConversationLeases = async (
     launchedAt: row.createdAt.toISOString(),
     rootMessageId: row.rootMessageId,
     threadId: row.threadId,
+    // The carry's own rule (condition 7): a thread that is a conversation
+    // with this agent is one conversation; anywhere else, the launch's replies.
+    wholeThread: row.thread.agentId === row.agentId,
   }))
 }
 
@@ -128,13 +131,13 @@ export const listExecutorMachineLeases = async (
   const readable = new Set(readableThreads.map((thread) => thread.id))
   return rows.map((row) => ({
     agent: { id: row.agentId, name: agentNames.get(row.agentId) ?? null },
-    conversation: {
-      channelId: row.thread.channel.id,
-      label: readable.has(row.thread.id)
-        ? row.thread.title ? `${row.thread.channel.label} · ${row.thread.title}` : row.thread.channel.label
-        : null,
-      threadId: row.thread.id,
-    },
+    conversation: readable.has(row.thread.id)
+      ? {
+          channelId: row.thread.channel.id,
+          label: row.thread.title ? `${row.thread.channel.label} · ${row.thread.title}` : row.thread.channel.label,
+          threadId: row.thread.id,
+        }
+      : null,
     expiresAt: executorLeaseExpiresAt(row).toISOString(),
     holderUserId: row.actorUserId,
     id: row.id,

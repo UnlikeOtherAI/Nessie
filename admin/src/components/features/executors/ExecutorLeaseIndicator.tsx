@@ -4,7 +4,7 @@ import { useEndExecutorLease, useOwnExecutorLeases } from '../../../facades/exec
 import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Pill } from '../../primitives/Pill'
 import { FormError } from '../../shared/FormActions'
-import { executorLeaseDescription, executorLeaseLabel } from './executor-lease-presentation'
+import { executorLeaseDescription, executorLeaseLabel, executorLeasesCarriedFrom } from './executor-lease-presentation'
 
 type ExecutorLeaseProps = {
   agents: readonly Pick<AgentRecord, 'id' | 'name'>[]
@@ -42,12 +42,19 @@ const useEndLease = () => {
  *
  * It sits in the toolbar, so the composer at rest stays one line; and it
  * renders only what `GET /api/executor-leases` returned, which for anyone but
- * the holder is nothing. Where the toolbar has no room for it (a phone), the
- * stylesheet folds it into a dot on Run on executor, and the launcher dialog
- * carries the same lease with its End.
+ * the holder is nothing — and of that, only the leases a message sent from
+ * this composer would carry (`rootMessageId`: the reply panel's root, or null
+ * for the main composer). Where the main toolbar has no room for it (a
+ * phone), the stylesheet folds it into a dot on Run on executor, and the
+ * launcher dialog carries the same lease with its End.
  */
-export const ExecutorLeaseIndicator = ({ agents, threadId }: ExecutorLeaseProps) => {
-  const { data: leases = [] } = useOwnExecutorLeases(threadId)
+export const ExecutorLeaseIndicator = ({
+  agents,
+  rootMessageId,
+  threadId,
+}: ExecutorLeaseProps & { rootMessageId: string | null }) => {
+  const { data: threadLeases = [] } = useOwnExecutorLeases(threadId)
+  const leases = executorLeasesCarriedFrom(threadLeases, rootMessageId)
   const { end, failureFor, pending } = useEndLease()
   const severalAgents = new Set(leases.map((lease) => lease.agentId)).size > 1
   return (
@@ -86,9 +93,11 @@ export const ExecutorLeaseIndicator = ({ agents, threadId }: ExecutorLeaseProps)
 }
 
 /**
- * The same leases at the top of the launcher, where a person who starts local
- * apps again is about to replace one — and the one place a phone, whose
- * toolbar has no room for the indicator, can read and end it.
+ * Every one of the holder's leases in this thread, at the top of the
+ * launcher: where a person about to start local apps again sees what they
+ * already hold (a lease in a reply thread included, which this composer does
+ * not carry), and the one place a phone, whose toolbar has no room for the
+ * indicator, can read and end it.
  */
 export const ExecutorLeaseLauncherNotice = ({ agents, threadId }: ExecutorLeaseProps) => {
   const { data: leases = [] } = useOwnExecutorLeases(threadId)

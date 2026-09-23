@@ -24,8 +24,16 @@ export const ExecutorConversationLeaseRecordSchema = z.object({
   agentId: z.string().uuid(),
   executorLabel: z.string().min(1),
   threadId: z.string().uuid(),
-  /** The launch message: replies under it, or the whole agent conversation, carry. */
+  /** The launch message: replies under it carry. */
   rootMessageId: z.string().uuid(),
+  /**
+   * True inside a conversation with the lease's agent, where anything the
+   * holder sends in the thread carries it — the main composer included.
+   * False elsewhere: only a reply under `rootMessageId` does, and a top-level
+   * post in the room never. A composer shows the lease only where sending
+   * would carry it.
+   */
+  wholeThread: z.boolean(),
   launchedAt: TimestampSchema,
   /** The earlier of the idle and the absolute window; it moves with use. */
   expiresAt: TimestampSchema,
@@ -42,12 +50,16 @@ export const ExecutorMachineLeaseRecordSchema = z.object({
   id: z.string().uuid(),
   agent: z.object({ id: z.string().uuid(), name: z.string().nullable() }).strict(),
   holderUserId: z.string().uuid(),
+  /**
+   * Null when the reader could not open that conversation themselves — then
+   * not even its ids are given, since a private room's or a DM's id is
+   * already more than the participant rule lets them know.
+   */
   conversation: z.object({
     channelId: z.string().uuid(),
     threadId: z.string().uuid(),
-    /** Null when the reader could not open that conversation themselves. */
-    label: z.string().nullable(),
-  }).strict(),
+    label: z.string(),
+  }).strict().nullable(),
   launchedAt: TimestampSchema,
   lastUsedAt: TimestampSchema,
   expiresAt: TimestampSchema,

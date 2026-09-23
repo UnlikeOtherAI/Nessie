@@ -1,5 +1,18 @@
 import type { ExecutorConversationLeaseRecord } from '@nessie/schemas'
 
+/**
+ * The leases a message sent from this composer would carry, which are the
+ * only ones it may show: a lease claims reach, and a chip beside a composer
+ * whose messages would not carry it tells the person the agent can reach the
+ * machine when it cannot. The main composer posts at the top level
+ * (`rootMessageId` null), which carries only a lease covering the whole
+ * thread; a reply panel also carries the lease launched at its root.
+ */
+export const executorLeasesCarriedFrom = <Lease extends Pick<ExecutorConversationLeaseRecord, 'rootMessageId' | 'wholeThread'>>(
+  leases: readonly Lease[],
+  rootMessageId: string | null,
+): Lease[] => leases.filter((lease) => lease.wholeThread || lease.rootMessageId === rootMessageId)
+
 /** "21:40" in the reader's own clock; a lease never outlives twelve hours. */
 export const executorLeaseUntil = (expiresAt: string): string =>
   new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

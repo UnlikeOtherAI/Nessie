@@ -39,8 +39,11 @@ export const useExecutorRunLauncher = ({
     // What a launch of local apps leaves behind in this conversation, for the
     // person who launched it; the server answers everyone else with nothing.
     // Asked only where the launcher itself is offered, since only it opens one.
+    // This is the main composer, whose posts are top-level: it shows only a
+    // lease covering the whole thread. A room's launch carries in its own
+    // reply thread, and the reply panel shows that one.
     leaseIndicator: agents.length > 0 && threadId
-      ? <ExecutorLeaseIndicator agents={agents} threadId={threadId} />
+      ? <ExecutorLeaseIndicator agents={agents} rootMessageId={null} threadId={threadId} />
       : null,
     open: agents.length > 0 && threadId
       ? () => {

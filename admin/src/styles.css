@@ -3586,6 +3586,13 @@ html[data-desktop-platform='linux'] #root {
   }
 }
 
+/* A toolbar without Run on executor — a reply panel's, where a room's launch
+   carries — has two glyphs fewer and no dot to fold into, so its chip stays
+   at every width and only its label gives way. */
+.admin-compose-actions:not(:has(.admin-compose-executor)) .admin-compose-lease {
+  display: inline-flex;
+}
+
 @container compose-bar (max-width: 25.99rem) {
   .admin-compose-actions:has(.admin-compose-lease) .admin-compose-executor {
     position: relative;

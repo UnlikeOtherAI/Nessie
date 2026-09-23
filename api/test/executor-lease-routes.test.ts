@@ -205,6 +205,7 @@ dbTest('the conversation read answers only the viewer’s own lease, and End is 
     assert.equal(lease.id, leaseId)
     assert.equal(lease.agentId, world.agentId)
     assert.equal(lease.executorLabel, 'Minis', 'the holder sees the machine they launched on')
+    assert.equal(lease.wholeThread, false, 'in a room, only the launch’s own replies carry it')
     const row = await world.prisma.executorConversationLease.findUniqueOrThrow({ where: { id: leaseId } })
     assert.equal(lease.launchedAt, row.createdAt.toISOString())
     assert.equal(lease.expiresAt, row.idleExpiresAt.toISOString(), 'the idle window runs out first')
@@ -273,17 +274,15 @@ dbTest('the machine list is for its administrators, who may End a lease the hold
     assert.equal(row.id, leaseId)
     assert.deepEqual(row.agent, { id: world.agentId, name: 'CTO' })
     assert.equal(row.holderUserId, world.holderId)
-    assert.equal(row.conversation.threadId, world.threadId)
-    assert.equal(row.conversation.label, null, 'the owner is not in the private room, so it goes unnamed')
+    assert.equal(row.conversation, null, 'the owner is not in the private room: not its name, not even its ids')
 
-    // A member of the room would be told its name, if they managed the machine.
-    await world.prisma.channelMember.create({
-      data: {
-        channelId: (await world.prisma.thread.findUniqueOrThrow({ where: { id: world.threadId } })).channelId,
-        userId: world.adminId,
-      },
-    })
-    assert.equal((await world.app.inject({ method: 'GET', url })).json().data[0].conversation.label, 'launch-room')
+    // A member of the room would be told where it is, if they managed the machine.
+    const channelId = (await world.prisma.thread.findUniqueOrThrow({ where: { id: world.threadId } })).channelId
+    await world.prisma.channelMember.create({ data: { channelId, userId: world.adminId } })
+    assert.deepEqual(
+      (await world.app.inject({ method: 'GET', url })).json().data[0].conversation,
+      { channelId, label: 'launch-room', threadId: world.threadId },
+    )
 
     const ended = await world.app.inject({ method: 'POST', url: `/api/executor-leases/${leaseId}/end` })
     assert.equal(ended.statusCode, 200, ended.body)
