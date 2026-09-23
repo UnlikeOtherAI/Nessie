@@ -37,15 +37,25 @@ import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
  * the command id that makes a replay a no-op. The model's `arguments` are
  * passed on untouched.
  *
- * Teardown. The daemon keeps the owner keys it has dispatched for, and calls
- * the bridge's daemon-only `session_close_all` wherever it already stops its
- * other sessions — a failed command poll or heartbeat — and at shutdown when
- * the reviewed configuration opts in. Sessions from an earlier daemon life may
- * exist too, so the first teardown after start closes everything; once one has
- * succeeded, a teardown with no owner dispatched since is skipped rather than
- * starting a bridge process to close nothing. The heartbeat response's
- * `codingSessionClose` closes named owners' sessions (or one of them) the
- * same way. The daemon-only `session_list_all` feeds the local-MCP report.
+ * Teardown. Coding sessions are built to outlive a bridge, a daemon restart
+ * and a dropped connection, so a failed poll or heartbeat alone closes
+ * nothing: a network blip or an API deploy must not end every 45-minute turn
+ * on the machine for good. Sessions close through the bridge's daemon-only
+ * `session_close_all` when the daemon's authority has provably ended — the API
+ * answers that the executor is unknown or revoked, or refuses its proof — or
+ * once no heartbeat has succeeded for `DISCONNECT_CLOSE_MS`, and at shutdown
+ * when the reviewed configuration opts in. The daemon keeps the owner keys it
+ * has dispatched for; sessions from an earlier daemon life may exist too, so
+ * the first teardown after start closes everything, and once one has
+ * succeeded a teardown with no owner dispatched since is skipped rather than
+ * starting a bridge process to close nothing.
+ *
+ * The heartbeat response's `codingSessionClose` closes named owners' sessions
+ * (or one of them). An instruction the bridge could not carry out — a bridge
+ * in start-failure backoff, a call that timed out — is kept and tried again
+ * on every later heartbeat until it lands, so a revoked lease or a person's
+ * Close is never silently dropped. The daemon-only `session_list_all` feeds
+ * the local-MCP report.
  */
 
 export const codingSessionOwnerKey = (executorId: string, owner: ExecutorMcpCallOwner): string => (
@@ -67,6 +77,14 @@ export const withDaemonSupervisor = (
     : server))
 }
 
+/** How long the daemon may go without a successful heartbeat before it closes every coding session. */
+export const DISCONNECT_CLOSE_MS = 10 * 60_000
+
+/** API answers that end this daemon's authority for good: the executor is gone, or its key no longer proves it. */
+const DEFINITIVE_FAILURES = new Set(['EXECUTOR_NOT_FOUND', 'EXECUTOR_DAEMON_PROOF_INVALID'])
+
+const PENDING_CLOSE_MAXIMUM = 64
+
 export type CodingSessionsDaemon = {
   /** The reserved `_meta` for one call: defined only for the built-in bridge. */
   callMeta: (
@@ -74,7 +92,14 @@ export type CodingSessionsDaemon = {
   ) => Record<string, unknown> | undefined
   /** Every session on this machine, as the daemon's authority ends. */
   closeAll: (reason: string) => Promise<void>
-  /** The control plane's instructions from a heartbeat response; anything malformed is ignored. */
+  /** A failed poll, heartbeat or claim: closes only when the failure is definitive or has lasted. */
+  connectionFailed: (reason: string, error: unknown) => Promise<void>
+  /** A heartbeat the API accepted. */
+  connectionHealthy: () => void
+  /**
+   * The control plane's instructions from a heartbeat response, plus any an
+   * earlier heartbeat could not carry out; anything malformed is ignored.
+   */
   close: (instructions: unknown) => Promise<void>
   /** At shutdown, when the reviewed configuration opts in. */
   shutdown: () => Promise<void>
@@ -101,12 +126,16 @@ export const createCodingSessionsDaemon = (input: {
   servers: readonly ExecutorLocalMcpServer[]
   sessions: ExecutorMcpSessionManager
   log?: (message: string) => void
+  now?: () => number
 }): CodingSessionsDaemon => {
   const bridge = codingSessionsPolicyOf(input.facts, input.servers)?.server
   const log = input.log ?? ((message: string) => { console.error(`[nessie-executor] ${message}`) })
   const owners = new Set<string>()
   let earlierSessionsMayExist = bridge !== undefined
   let queue: Promise<unknown> = Promise.resolve()
+  const now = input.now ?? Date.now
+  let failingSince: number | undefined
+  const pending = new Map<string, ExecutorCodingSessionClose>()
 
   // Serialised, so a poll failure and a heartbeat failure in the same second
   // do not both find the registry non-empty and close everything twice.
@@ -129,6 +158,15 @@ export const createCodingSessionsDaemon = (input: {
     return answer
   }
 
+  const closeAll = (reason: string): Promise<void> => serially(async () => {
+    if (!bridge || (!earlierSessionsMayExist && owners.size === 0)) return
+    const dispatched = [...owners]
+    if (await daemonCall('session_close_all', { reason })) {
+      earlierSessionsMayExist = false
+      for (const owner of dispatched) owners.delete(owner)
+    }
+  })
+
   return {
     callMeta: (server, call) => {
       if (!bridge || server !== bridge.name) return undefined
@@ -139,22 +177,30 @@ export const createCodingSessionsDaemon = (input: {
         ...(ownerKey ? { [CODING_SESSION_OWNER_META]: ownerKey } : {}),
       }
     },
-    closeAll: (reason) => serially(async () => {
-      if (!bridge || (!earlierSessionsMayExist && owners.size === 0)) return
-      const dispatched = [...owners]
-      if (await daemonCall('session_close_all', { reason })) {
-        earlierSessionsMayExist = false
-        for (const owner of dispatched) owners.delete(owner)
+    closeAll,
+    connectionFailed: async (reason, error) => {
+      const code = (error as { code?: unknown } | undefined)?.code
+      failingSince ??= now()
+      if (typeof code === 'string' && DEFINITIVE_FAILURES.has(code)) {
+        await closeAll(reason)
+      } else if (now() - failingSince >= DISCONNECT_CLOSE_MS) {
+        await closeAll('connection_lost')
       }
-    }),
+    },
+    connectionHealthy: () => { failingSince = undefined },
     close: (instructions) => serially(async () => {
+      if (!bridge) return
       const parsed = ExecutorCodingSessionCloseListSchema.safeParse(instructions)
-      if (!bridge || !parsed.success) return
-      for (const entry of parsed.data as ExecutorCodingSessionClose[]) {
+      for (const entry of parsed.success ? parsed.data as ExecutorCodingSessionClose[] : []) {
+        if (pending.size < PENDING_CLOSE_MAXIMUM) pending.set(`${entry.ownerKey}|${entry.sessionId ?? ''}`, entry)
+      }
+      for (const [key, entry] of pending) {
         const closed = await daemonCall('session_close_all', {
           ownerKey: entry.ownerKey, reason: entry.reason, ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
         })
-        if (closed && !entry.sessionId) owners.delete(entry.ownerKey)
+        if (!closed) continue
+        pending.delete(key)
+        if (!entry.sessionId) owners.delete(entry.ownerKey)
       }
     }),
     shutdown: async () => {

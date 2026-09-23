@@ -64,24 +64,28 @@ export const serveExecutor = async (
       await browserSessions.stopAll()
       await commandSessions.stopAll()
       await codingSessions.stopAll()
-      await codingBridge.closeAll('command_poll_failed').catch(() => undefined)
+      // Host coding sessions outlive a failed poll; only a definitive or lasting failure closes them.
+      await codingBridge.connectionFailed('command_poll_failed', error).catch(() => undefined)
       console.error('[nessie-executor] command poll failed:', error instanceof Error ? error.message : String(error))
     }))
     const heartbeat = createNonOverlappingExecutorTask(async () => {
       try {
-        // Closing never delays the next heartbeat: it runs beside it, serialised on its own.
+        // Closing never delays the next heartbeat: it runs beside it, serialised on its own,
+        // and every heartbeat retries whatever an earlier one could not carry out.
         const close = await heartbeatExecutor(live, localMcp.current())
+        codingBridge.connectionHealthy()
         void codingBridge.close(close).catch(() => undefined)
       } catch (error) {
         await browserSessions.stopAll()
         await commandSessions.stopAll()
         await codingSessions.stopAll()
-        await codingBridge.closeAll('heartbeat_failed').catch(() => undefined)
+        await codingBridge.connectionFailed('heartbeat_failed', error).catch(() => undefined)
         if (!shuttingDown) {
           try {
             live = await claimExecutor(stateDir, live)
             live = await localInference.supervisor.reconnect(live)
           } catch (claimError) {
+            await codingBridge.connectionFailed('claim_failed', claimError).catch(() => undefined)
             console.error('[nessie-executor] reconnect failed:', claimError instanceof Error ? claimError.message : String(claimError))
           }
         }

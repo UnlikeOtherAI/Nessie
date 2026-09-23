@@ -318,12 +318,19 @@ Sessions outlive runs and daemon restarts, so the daemon ends them itself
 (`executor/src/coding-sessions-daemon.ts`), always through the bridge's
 daemon-only `session_close_all {ownerKey?, sessionId?, reason}`:
 
-- **Wherever it already stops its other sessions** — a failed command poll or
-  heartbeat, which is also how a fence reaches it — every session on the
-  machine closes (`command_poll_failed`, `heartbeat_failed`). The daemon keeps
-  the owner keys it has dispatched for; sessions from an earlier daemon life
-  may exist, so the first such teardown after start closes everything, and
-  after one has succeeded a teardown with no owner dispatched since is skipped
+- **When the daemon's authority provably ends.** A failed command poll or
+  heartbeat alone closes nothing: sessions are built to outlive a dropped
+  connection, and a network blip, an API deploy or the reclaim after a fence
+  must not end every long turn on the machine for good. Every session closes
+  when the API answers that the executor is unknown or revoked
+  (`EXECUTOR_NOT_FOUND`) or refuses its proof (`EXECUTOR_DAEMON_PROOF_INVALID`)
+  — to a poll, a heartbeat or the reclaim, with that call's reason
+  (`command_poll_failed`, `heartbeat_failed`, `claim_failed`) — and when no
+  heartbeat has succeeded for ten minutes (`connection_lost`). The daemon
+  stops its other, run-bound sessions on every failure as before. It keeps the
+  owner keys it has dispatched for; sessions from an earlier daemon life may
+  exist, so the first such teardown after start closes everything, and after
+  one has succeeded a teardown with no owner dispatched since is skipped
   rather than starting a bridge to close nothing.
 - **On the heartbeat's instruction.** The heartbeat response
   (`ExecutorDaemonHeartbeatResponseSchema`) may carry
@@ -331,7 +338,12 @@ daemon-only `session_close_all {ownerKey?, sessionId?, reason}`:
   ends, access is revoked, the executor is paused or a person presses Close.
   The daemon validates the list itself, so a field it does not know never
   fails a heartbeat, and closes each owner's sessions (or the one named)
-  beside the heartbeat rather than in it.
+  beside the heartbeat rather than in it. An instruction the bridge could not
+  carry out — a bridge in its start-failure backoff, a call that timed out —
+  is kept (up to 64) and tried again on every later heartbeat until it lands,
+  so a revoked lease or a person's Close is never dropped. The API may repeat
+  an instruction while the session is still reported open; repeating one that
+  already landed is harmless.
 - **At shutdown**, only when the reviewed configuration sets
   `closeOnDaemonShutdown` — or when the file no longer matches its review,
   which cannot be trusted to have opted out. The call gets five seconds and

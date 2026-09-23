@@ -12,9 +12,14 @@ import {
   type ExecutorCommandEnvelope,
 } from '@nessie/schemas'
 
-import { executorApi } from '../src/api-client.js'
+import { ExecutorApiError, executorApi } from '../src/api-client.js'
 import { CODING_SESSIONS_CONFIG_DIGEST_ENV, codingSessionsConfigDigest, normalizeCodingSessionsConfig } from '../src/coding-session/config.js'
-import { codingSessionOwnerKey, createCodingSessionsDaemon, withDaemonSupervisor } from '../src/coding-sessions-daemon.js'
+import {
+  codingSessionOwnerKey,
+  createCodingSessionsDaemon,
+  DISCONNECT_CLOSE_MS,
+  withDaemonSupervisor,
+} from '../src/coding-sessions-daemon.js'
 import { executeExecutorCommand, heartbeatExecutor } from '../src/daemon.js'
 import { createLocalMcpReporter } from '../src/local-mcp-report.js'
 import type { ExecutorLocalMcpServer } from '../src/mcp-servers.js'
@@ -259,4 +264,46 @@ test('the local-MCP report lists the bridge\'s open sessions, and drops anything
   } finally {
     reporter.stop()
   }
+})
+
+test('a failed poll or heartbeat closes no coding session unless the failure is definitive or lasts', async () => {
+  const { calls, sessions } = recording()
+  let clock = 1_000_000
+  const daemon = createCodingSessionsDaemon({
+    executorId, facts, servers: [bridgeSpec()], sessions, log: () => undefined, now: () => clock,
+  })
+  const blip = new ExecutorApiError('Executor API request timed out.', { code: 'EXECUTOR_API_TIMEOUT' })
+  await daemon.connectionFailed('heartbeat_failed', blip)
+  await daemon.connectionFailed('command_poll_failed', new Error('fetch failed'))
+  await daemon.connectionFailed('heartbeat_failed', new ExecutorApiError('fenced', { code: 'EXECUTOR_CONNECTION_FENCED' }))
+  clock += DISCONNECT_CLOSE_MS - 1
+  await daemon.connectionFailed('heartbeat_failed', blip)
+  assert.equal(calls.length, 0, 'a blip, an API deploy or a reclaim ends no 45-minute turn')
+  daemon.connectionHealthy()
+  clock += DISCONNECT_CLOSE_MS
+  await daemon.connectionFailed('heartbeat_failed', blip)
+  assert.equal(calls.length, 0, 'a heartbeat that got through starts the count again')
+  clock += DISCONNECT_CLOSE_MS
+  await daemon.connectionFailed('heartbeat_failed', blip)
+  assert.deepEqual(calls.map((call) => call.args), [{ reason: 'connection_lost' }])
+
+  const revoked = recording()
+  await createCodingSessionsDaemon({ executorId, facts, servers: [bridgeSpec()], sessions: revoked.sessions, log: () => undefined })
+    .connectionFailed('heartbeat_failed', new ExecutorApiError('Executor is unavailable.', { code: 'EXECUTOR_NOT_FOUND', status: 404 }))
+  assert.deepEqual(revoked.calls.map((call) => call.args), [{ reason: 'heartbeat_failed' }], 'a revoked executor closes at once')
+})
+
+test('a close the bridge could not carry out is tried again on the next heartbeat until it lands', async () => {
+  const { calls, sessions, fail, recover } = recording()
+  const daemon = createCodingSessionsDaemon({ executorId, facts, servers: [bridgeSpec()], sessions, log: () => undefined })
+  const ownerKey = codingSessionOwnerKey(executorId, { agentId, actorUserId })
+  fail()
+  await daemon.close([{ ownerKey, reason: 'lease_ended' }])
+  await daemon.close(undefined)
+  assert.equal(calls.length, 2, 'a bridge still failing is asked again on each heartbeat')
+  recover()
+  await daemon.close(undefined)
+  assert.deepEqual(calls.map((call) => call.args), Array(3).fill({ ownerKey, reason: 'lease_ended' }))
+  await daemon.close(undefined)
+  assert.equal(calls.length, 3, 'once it landed it is not sent again')
 })

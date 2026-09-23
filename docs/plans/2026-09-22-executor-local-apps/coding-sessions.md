@@ -118,11 +118,16 @@ that tree before resuming.
 - The daemon keeps a registry of bridge-owned sessions by owner key and calls
   the reserved bridge tool `session_close_all {ownerKey?, reason}` (accepted
   only with `_meta['nessie/daemon-control']`, which only the daemon's own calls
-  carry) wherever it already calls `codingSessions.stopAll()` — claim or
-  heartbeat failure, fence — and at shutdown when the policy opts in.
+  carry) when the daemon's authority provably ends — the API answers that the
+  executor is unknown or revoked, or refuses its proof — or no heartbeat has
+  succeeded for ten minutes, and at shutdown when the policy opts in. A
+  transient poll or heartbeat failure, and the reclaim after a fence, close
+  nothing: these sessions are built to outlive a dropped connection, and
+  closing on every blip would end every long turn on the machine for good.
 - The heartbeat response gains `codingSessionClose: [{ownerKey, reason}]`,
   produced when a lease ends, access is revoked or the executor is paused; the
-  daemon closes those owners' sessions.
+  daemon closes those owners' sessions, and retries on every later heartbeat
+  an instruction the bridge could not carry out.
 - A person's **Close** on a session in the admin (§8) travels the same way.
 - Hard limits from config: `maxTurnMinutes` (default 45) interrupts a runaway
   turn, and ends its agent process when an interrupt is ignored for 30 s;
