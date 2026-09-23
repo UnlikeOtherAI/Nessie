@@ -72,7 +72,7 @@ const ResearchList = () => {
               </EmptyState>
             </div>
           ) : (
-            <div className="mx-auto w-full max-w-3xl px-[var(--page-gutter)] pb-8" data-testid="research-list">
+            <div className="mx-auto w-full max-w-3xl px-[var(--page-gutter)] pb-8 pt-4" data-testid="research-list">
               <RowList label="Research">
                 {list.items.map((run) => (
                   <Row

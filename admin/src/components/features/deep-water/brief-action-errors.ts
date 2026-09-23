@@ -46,7 +46,8 @@ export const briefActionFailure = (error: unknown): BriefActionFailure => {
   })
   switch (error.code) {
     case codes.BRIEF_REVISION_CONFLICT:
-      return refuse('The brief changed while you were editing it. Your unsent changes are kept on top of the new version — check it, then try again.', true)
+      // The rebase notice says what DeepWater changed; this says only what to do.
+      return refuse('The brief changed just before you sent that. Check it, then try again.', true)
     case codes.BRIEF_BUSY:
       return refuse('DeepWater’s research planner is still answering. Try again once it has replied.', true)
     case codes.BRIEF_NOT_EDITABLE:

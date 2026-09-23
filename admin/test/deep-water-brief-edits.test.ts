@@ -5,9 +5,11 @@ import { DEEP_WATER_DEFAULT_BRIEF_SETTINGS, type DeepWaterBriefSettings } from '
 
 import {
   NO_EDITS,
+  briefAfterEdits,
   editsPayload,
   effectiveBrief,
   hasLocalEdits,
+  layerEdits,
   payloadHasEdits,
   pillarCountForStart,
   pillarsProblem,
@@ -135,4 +137,23 @@ test('a stored draft is untrusted: unknown keys and stale values are dropped', (
     { settings: { outputLanguage: null, recency: 'week' } },
   )
   assert.deepEqual(reviveBriefEdits({ pillars: ['A', 'B'] }), { pillars: ['A', 'B'] })
+})
+
+test('an action\'s edits stay on screen under the person\'s newer unsent ones', () => {
+  const sent = withSettingEdit(brief, withPillarsEdit(brief, NO_EDITS, ['Costs', 'Grants']), 'recency', 'year')
+  const unsent = withSettingEdit(brief, NO_EDITS, 'recency', 'month')
+  assert.deepEqual(layerEdits(sent, unsent), { pillars: ['Costs', 'Grants'], settings: { recency: 'month' } })
+  assert.deepEqual(layerEdits(NO_EDITS, NO_EDITS), {})
+})
+
+test('what the person already sent is not reported as DeepWater\'s change', () => {
+  const sent = withSettingEdit(brief, withPillarsEdit(brief, NO_EDITS, ['Costs', ' Grants ', '']), 'recency', 'year')
+  const applied = briefAfterEdits(brief, sent)
+  assert.deepEqual(applied.pillars, ['Costs', 'Grants'])
+  assert.equal(applied.settings!.recency, 'year')
+  assert.ok(applied.lockedSettings.includes('recency'))
+  // DeepWater applied exactly those edits: nothing it changed is left to report.
+  const next = { ...applied, settings: applied.settings }
+  const unsent = withSettingEdit(brief, NO_EDITS, 'writingStyle', 'plain')
+  assert.deepEqual(rebaseEdits(applied, next, unsent).changed, [])
 })

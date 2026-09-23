@@ -66,6 +66,7 @@ export const BriefPillarsEditor = ({
               </span>
               <Input
                 aria-label={`Pillar ${index + 1}`}
+                className="min-w-0 flex-1"
                 maxLength={PILLAR_MAX_LENGTH}
                 onChange={(event) =>
                   onChange(pillars.map((entry, at) => (at === index ? event.target.value : entry)))}

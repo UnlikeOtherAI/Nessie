@@ -173,6 +173,26 @@ export const rebaseEdits = (previous: BriefState, next: BriefState, edits: Brief
   return { changed, edits: rebased }
 }
 
+/** The brief as it stands once these edits are applied — for comparing against a newer brief. */
+export const briefAfterEdits = (brief: BriefState, edits: BriefEdits): BriefState => {
+  const effective = effectiveBrief(brief, edits)
+  return {
+    lockedSettings: [...effective.locked],
+    pillars: edits.pillars !== undefined ? cleanPillars(edits.pillars) : brief.pillars,
+    settings: effective.settings,
+  }
+}
+
+/** Edits laid over other edits: `over`'s pillars and settings win key by key. */
+export const layerEdits = (under: BriefEdits, over: BriefEdits): BriefEdits => {
+  const settings = { ...under.settings, ...over.settings }
+  const pillars = over.pillars ?? under.pillars
+  return {
+    ...(pillars !== undefined ? { pillars } : {}),
+    ...(Object.keys(settings).length > 0 ? { settings } : {}),
+  }
+}
+
 export const hasLocalEdits = (edits: BriefEdits): boolean =>
   edits.pillars !== undefined || Object.keys(edits.settings ?? {}).length > 0
 

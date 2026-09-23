@@ -43,7 +43,16 @@ export const BriefStartBar = ({
   const cancelWord = drafting ? 'Discard brief' : 'Cancel research'
 
   return (
-    <div className="flex flex-col gap-3 border-t border-[color:var(--sep)] pt-3" data-testid="research-brief-start">
+    // Pinned to the foot of the dialog's scrolling panel, so Start and the
+    // publish choice stay in reach however long the conversation grows. The
+    // negative margins meet the panel's own 24px padding.
+    <div
+      className={[
+        'sticky -bottom-6 -mx-6 -mb-6 flex flex-col gap-3 border-t border-[color:var(--sep)]',
+        'bg-[color:var(--panel)] px-6 pb-6 pt-3',
+      ].join(' ')}
+      data-testid="research-brief-start"
+    >
       {canOfferStart ? (
         <div className="flex items-start gap-3">
           <Switch checked={publish} label="Publish on research.deepwater.live" onChange={onPublishChange} />

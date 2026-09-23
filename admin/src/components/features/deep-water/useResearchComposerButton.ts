@@ -22,6 +22,6 @@ export const useResearchComposerButton = (message: string): ResearchComposerButt
   if (!openNew) return undefined
   return {
     onOpen: () => openNew(message.trim()),
-    title: researchButtonTitle(readiness.state, readiness.viewerCanChangeTeam),
+    title: researchButtonTitle(readiness.isLoading ? null : readiness.state, readiness.viewerCanChangeTeam),
   }
 }

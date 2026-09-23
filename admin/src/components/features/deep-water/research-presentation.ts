@@ -217,12 +217,15 @@ export const readinessCopy = (
   }
 }
 
-/** The composer button always shows; its label says why it would not open a brief. */
+/**
+ * The composer button always shows; its label says why it would not open a
+ * brief. Null while the verdict is still loading: no reason is claimed yet.
+ */
 export const researchButtonTitle = (
-  state: DeepWaterResearchReadinessState,
+  state: DeepWaterResearchReadinessState | null,
   viewerCanChangeTeam: boolean,
 ): string =>
-  state === 'ready'
+  state === null || state === 'ready'
     ? 'Research with DeepWater'
     : `Research with DeepWater — ${readinessCopy(state, viewerCanChangeTeam).reason}`
 

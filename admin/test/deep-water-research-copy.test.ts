@@ -100,6 +100,7 @@ test('every not-ready state names its remedy, and the composer button says why',
   assert.match(readinessCopy('team_off', true).message, /Turn it on/)
   assert.match(readinessCopy('team_off', false).message, /Ask a team owner or admin/)
   assert.equal(researchButtonTitle('ready', false), 'Research with DeepWater')
+  assert.equal(researchButtonTitle(null, false), 'Research with DeepWater', 'no reason is claimed while loading')
   assert.equal(researchButtonTitle('team_off', false), 'Research with DeepWater — it’s off for this team')
 })
 

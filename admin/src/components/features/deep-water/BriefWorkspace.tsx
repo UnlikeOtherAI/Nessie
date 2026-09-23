@@ -14,6 +14,7 @@ import {
   NO_EDITS,
   editsPayload,
   effectiveBrief,
+  layerEdits,
   payloadHasEdits,
   pillarCountForStart,
   pillarsProblem,
@@ -57,7 +58,7 @@ export const BriefWorkspace = ({
   const replyId = useIntentActionId()
   const startId = useIntentActionId()
   const cancelId = useIntentActionId()
-  const { changed, dismissChanged, draft, markSent, setEdits, setMessage } = useBriefDraft(brief)
+  const { changed, dismissChanged, draft, inFlightEdits, markSent, setEdits, setMessage } = useBriefDraft(brief)
   const [publish, setPublish] = useState(false)
   const [replyError, setReplyError] = useState<string | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
@@ -68,7 +69,11 @@ export const BriefWorkspace = ({
   // decides whether a reply or Start is accepted right now.
   const canEditLocally = ownBrief && drafting && brief.revision !== null
   const edits = canEditLocally ? draft.edits : NO_EDITS
-  const effective = effectiveBrief(brief, edits)
+  // What the person sees: DeepWater's brief, the edits of an action still in
+  // flight, then their unsent edits on top. Only the unsent ones read "Not
+  // sent yet" and ride on the next action.
+  const effective = effectiveBrief(brief, layerEdits(inFlightEdits, edits))
+  const unsent = effectiveBrief(brief, edits)
   const replying = brief.plannerTurn.status === 'replying'
 
   const refetchBrief = () => {
@@ -192,14 +197,14 @@ export const BriefWorkspace = ({
         <div className="flex min-w-0 flex-col gap-6">
           <BriefPillarsEditor
             editable={canEditLocally}
-            edited={effective.pillarsEdited}
+            edited={unsent.pillarsEdited}
             onChange={(pillars) => setEdits((current) => withPillarsEdit(brief, current, pillars))}
             onReset={() => setEdits((current) => withPillarsEdit(brief, current, brief.pillars))}
             pillars={effective.pillars}
           />
           <BriefSettingsEditor
             editable={canEditLocally}
-            editedKeys={effective.editedKeys}
+            editedKeys={unsent.editedKeys}
             locked={effective.locked}
             onChange={onSettingChange}
             settings={effective.settings}
