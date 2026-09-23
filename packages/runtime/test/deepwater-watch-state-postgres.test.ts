@@ -97,16 +97,22 @@ withFixture('a claim takes due open runs and lost agent starts once, with one wa
     `UPDATE product_integration_runs SET delivery_blocked_reason = 'requester_identity_changed' WHERE id = $1`,
     [blocked.id],
   )
+  // A lost agent start whose requester's sign-in changed waits for their Retry.
+  const { run: blockedAgentStart } = await insertBrief(fixture, agentOrigin(fixture))
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET delivery_blocked_reason = 'requester_identity_changed' WHERE id = $1`,
+    [blockedAgentStart.id],
+  )
   const { run: staleAgentStart } = await insertBrief(fixture, agentOrigin(fixture))
   await fixture.pool.query(
     `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = $1`,
     [staleAgentStart.id],
   )
-  for (const run of [drafting, lostAgentStart, unattachedPerson, blocked, staleAgentStart]) await makeDue(fixture, run.id)
+  const all = [drafting, lostAgentStart, unattachedPerson, blocked, blockedAgentStart, staleAgentStart]
+  for (const run of all) await makeDue(fixture, run.id)
 
   const mine = (claims: Array<{ runId: string; reconcileSeq: number }>) =>
-    claims.filter((claim) => [drafting, lostAgentStart, unattachedPerson, blocked, staleAgentStart]
-      .some((run) => run.id === claim.runId))
+    claims.filter((claim) => all.some((run) => run.id === claim.runId))
   const first = mine(await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 })))
   assert.deepEqual(
     first.map((claim) => claim.runId).sort(),
@@ -131,9 +137,15 @@ withFixture('a claim takes due open runs and lost agent starts once, with one wa
 withFixture('a brief DeepWater never confirmed is reaped once, after a day, and stays attachable', async (fixture) => {
   const { run: young } = await insertBrief(fixture, personOrigin())
   const { run: old } = await insertBrief(fixture, personOrigin())
+  // Stopped on its requester's changed sign-in, not on DeepWater: it waits for them.
+  const { run: blocked } = await insertBrief(fixture, agentOrigin(fixture))
   await fixture.pool.query(
-    `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = $1`,
-    [old.id],
+    `UPDATE product_integration_runs SET created_at = now() - interval '25 hours' WHERE id = ANY($1::uuid[])`,
+    [[old.id, blocked.id]],
+  )
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET delivery_blocked_reason = 'requester_identity_changed' WHERE id = $1`,
+    [blocked.id],
   )
   const reap = (runId: string) => fixture.prisma.$transaction((tx) => reapUnconfirmedDeepWaterBrief(tx, {
     organizationId: fixture.ids.organization,
@@ -142,8 +154,10 @@ withFixture('a brief DeepWater never confirmed is reaped once, after a day, and 
   const due = await findUnconfirmedDeepWaterBriefs(fixture.prisma, { limit: 500 })
   assert.ok(due.some((target) => target.runId === old.id))
   assert.ok(!due.some((target) => target.runId === young.id))
+  assert.ok(!due.some((target) => target.runId === blocked.id))
 
   assert.equal(await reap(young.id), null)
+  assert.equal(await reap(blocked.id), null)
   const reaped = await reap(old.id)
   assert.equal(reaped?.status, 'failed')
   assert.equal(reaped?.failureCode, 'start_unconfirmed')

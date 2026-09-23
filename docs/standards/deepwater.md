@@ -439,7 +439,10 @@ the only way results come back.
   (`holdDeepWaterScopeStartReplay`: its next read falls due as its confirm
   window closes, so it is never replayed again), never failed as refused. The
   attach posts the agent's research card
-  (`ensureDeepWaterResearchCard`, once per run under the row lock). A person's
+  (`ensureDeepWaterResearchCard`, once per run under the row lock). The replay
+  signs as the requester, so a changed sign-in blocks it and tells them once,
+  exactly as a read does; the blocked brief is neither claimed nor reaped until
+  their Retry renews the identity and replays it. A person's
   lost opening is retried by its own brief-action job, never replayed by the
   watch.
 - **Stale actions.** An in-flight action whose job is no longer queued or
@@ -524,4 +527,6 @@ the only way results come back.
 - **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
   confirmed within a day (`failed/start_unconfirmed`), telling the agent once
   (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,
-  so a confirmation that does arrive later still attaches.
+  so a confirmation that does arrive later still attaches. A brief blocked on
+  its requester's changed sign-in is not reaped: DeepWater was never asked, so
+  it is never told as unconfirmed.

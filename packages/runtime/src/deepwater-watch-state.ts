@@ -49,7 +49,7 @@ export type DeepWaterWatchClaim = { runId: string; organizationId: string; recon
  * transaction: attached briefs and researches still open, and agent-origin
  * briefs whose `research_scope_start` result was lost (no research id yet),
  * which the watch replays with the agent's own stable tool-call id until the
- * reap gives them up. Each job is keyed by the claim's sequence and runs once;
+ * reap gives them up. A blocked run waits for its requester's Retry. Each job is keyed by the claim's sequence and runs once;
  * the next claim is the retry.
  */
 export const claimDueDeepWaterWatchRuns = async (
@@ -85,6 +85,7 @@ export const claimDueDeepWaterWatchRuns = async (
       AND "status" = 'queued'
       AND "origin_kind" = 'agent'
       AND "origin_run_id" IS NOT NULL
+      AND "delivery_blocked_reason" IS NULL
       AND "created_at" > now() - ${CONFIRM_WINDOW}
       AND "reconcile_after" <= now()
     ORDER BY "reconcile_after"
@@ -159,7 +160,12 @@ export const holdDeepWaterScopeStartReplay = async (
   return true
 }
 
-/** Briefs Ledger never confirmed within the window, oldest first (N5a). */
+/**
+ * Briefs Ledger never confirmed within the window, oldest first (N5a). A brief
+ * blocked because its requester's sign-in changed is not one of them: its
+ * replay stopped on the requester, not on DeepWater, so it waits for their
+ * Retry instead of being given up as unconfirmed (F4).
+ */
 export const findUnconfirmedDeepWaterBriefs = async (
   db: DeepWaterBriefDb,
   input: { limit: number },
@@ -171,6 +177,7 @@ export const findUnconfirmedDeepWaterBriefs = async (
       AND "uoa_identity" IS NOT NULL
       AND "external_run_id" IS NULL
       AND "status" = 'queued'
+      AND "delivery_blocked_reason" IS NULL
       AND "created_at" < now() - ${CONFIRM_WINDOW}
     ORDER BY "created_at"
     LIMIT ${input.limit}
@@ -195,7 +202,12 @@ export const reapUnconfirmedDeepWaterBrief = async (
   if (!locked || !state) return null
   const { run, now } = locked
   const cutoff = now.getTime() - DEEP_WATER_START_CONFIRM_WINDOW_HOURS * 3_600_000
-  if (run.status !== 'queued' || run.externalRunId !== null || run.createdAt.getTime() >= cutoff) {
+  if (
+    run.status !== 'queued'
+    || run.externalRunId !== null
+    || run.deliveryBlockedReason !== null
+    || run.createdAt.getTime() >= cutoff
+  ) {
     return null
   }
   const action = state.pendingAction

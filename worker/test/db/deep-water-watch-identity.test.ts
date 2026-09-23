@@ -6,7 +6,8 @@ import { LedgerIdentityError, UOA_SUBJECT_FORBIDDEN_CODE, type UoaExchangeFailur
 import { DeepWaterNoticeMessageMetadataSchema } from '@nessie/schemas'
 
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
-import { launchedBrief, researchId, seedWatchFixture, type WatchFixture } from './deep-water-watch-fixture.js'
+import { reapUnconfirmedDeepWaterBriefs, retryDeepWaterDelivery } from '../../src/control/deepwater-worker.js'
+import { launchedBrief, researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 
 /**
@@ -121,3 +122,47 @@ for (const [label, failure] of [
     assert.deepEqual(await noticeKinds(fixture, run.id), [])
   })
 }
+
+withFixture('a lost agent scope start UOA refuses to replay is blocked and told, never reaped as unconfirmed', async (fixture) => {
+  const brief = await fixture.insert('agent')
+  fixture.failIdentity(exchangeFailed({ kind: 'refused', status: 403, code: UOA_SUBJECT_FORBIDDEN_CODE }))
+  await watchDeepWaterRun(fixture.deps, brief)
+  await watchDeepWaterRun(fixture.deps, await fixture.read(brief.id))
+
+  const blocked = await fixture.read(brief.id)
+  assert.equal(blocked.deliveryBlockedReason, 'requester_identity_changed')
+  assert.equal(blocked.status, 'queued')
+  assert.equal(fixture.ledger.calls.length, 0, 'nothing reaches Ledger without a delegation')
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'], 'told once')
+  const [notice] = await fixture.prisma.message.findMany({ where: { threadId: fixture.ids.thread, role: 'assistant' } })
+  assert.match(notice?.content ?? '', /agent working on your DeepWater research brief/)
+  assert.match(notice?.content ?? '', /Sign in again, then choose Retry/)
+
+  // Past the confirm window it is still the requester's to renew, not DeepWater's failure.
+  await fixture.prisma.productIntegrationRun.update({
+    where: { id: brief.id },
+    data: { createdAt: new Date(Date.now() - 25 * 3_600_000) },
+  })
+  await reapUnconfirmedDeepWaterBriefs(fixture.deps)
+  const waiting = await fixture.read(brief.id)
+  assert.equal(waiting.status, 'queued')
+  assert.equal(waiting.failureCode, null)
+  assert.deepEqual(await noticeKinds(fixture, brief.id), ['blocked'])
+
+  // Their Retry renews the identity and replays the call, which attaches it.
+  fixture.failIdentity(false)
+  const rs = researchId()
+  fixture.ledger.answer('research_scope_start', wireScope({
+    id: rs, turn: { id: randomUUID(), seq: 1, status: 'pending', author_kind: 'agent' },
+  }))
+  await retryDeepWaterDelivery(fixture.deps, {
+    organizationId: fixture.ids.organization,
+    runId: brief.id,
+    actionId: randomUUID(),
+    identity: { ...fixture.identity, tokenVersion: fixture.identity.tokenVersion + 1 },
+  })
+  const resumed = await fixture.read(brief.id)
+  assert.equal(resumed.deliveryBlockedReason, null)
+  assert.equal(resumed.externalRunId, rs)
+  assert.equal(resumed.status, 'drafting')
+})
