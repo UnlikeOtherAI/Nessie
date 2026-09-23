@@ -1,19 +1,25 @@
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
   EXECUTOR_CODING_SESSION_CLOSE_MAXIMUM,
   EXECUTOR_CODING_SESSION_REPORT_MAXIMUM,
   EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
   ExecutorLocalMcpReportSchema,
+  type AuthorizedActionContext,
   type ExecutorCodingSessionCloseReason,
+  type ExecutorCodingSessionSummary,
   type ExecutorLocalMcpReport,
 } from '@nessie/schemas'
 
+import { requireHumanActor } from './executor-access.js'
 import {
   executorCodingSessionOwnerKey,
   executorCodingSessionsAllowed,
   type ExecutorCodingSessionOwner,
 } from './executor-coding-session-owner.js'
+import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import { EXECUTOR_HEARTBEAT_FRESHNESS_MS } from './executor-liveness.js'
+import { getExecutorForManagement } from './executor-records.js'
 
 /**
  * The control plane's half of coding-session teardown
@@ -87,11 +93,32 @@ export const requestExecutorCodingSessionClosesInTransaction = async (
     })))
 }
 
-const reportedCodingSessions = (stored: unknown) => {
+/**
+ * The sessions the machine's stored local-MCP report lists for its bridge,
+ * or none when it lists none, has not asked the bridge, or cannot be read.
+ */
+export const reportedExecutorCodingSessions = (stored: unknown): ExecutorCodingSessionSummary[] => {
   const report = ExecutorLocalMcpReportSchema.safeParse(stored)
   if (!report.success) return []
   return report.data.find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)?.codingSessions ?? []
 }
+
+/**
+ * The agents a person could own sessions for on this machine: those they ever
+ * bound the local-apps pair for here. A consumed candidate is a binding's
+ * durable provenance and is never swept, so the list does not shrink as runs
+ * end. Only the pairing owner of a private executor can ever have driven the
+ * bridge, which is the only person a caller should ask about.
+ */
+export const executorCodingSessionOwnerAgentIds = async (
+  client: Prisma.TransactionClient | Pick<PrismaClient, 'executorAvailabilityCandidate'>,
+  executorId: string,
+  actorUserId: string,
+): Promise<string[]> => (await client.executorAvailabilityCandidate.findMany({
+  where: { actorUserId, consumedAt: { not: null }, executorId, operationKeys: { has: 'mcp.call' } },
+  distinct: ['agentId'],
+  select: { agentId: true },
+})).map((candidate) => candidate.agentId)
 
 /**
  * Close the coding sessions a withdrawal reaches: one agent's (its access to
@@ -119,18 +146,12 @@ export const closeExecutorCodingSessionsInTransaction = async (
   if (input.only && 'actorUserId' in input.only && input.only.actorUserId !== actorUserId) return
   const agentIds = input.only && 'agentId' in input.only
     ? [input.only.agentId]
-    : (await tx.executorAvailabilityCandidate.findMany({
-        where: {
-          actorUserId, consumedAt: { not: null }, executorId: input.executorId, operationKeys: { has: 'mcp.call' },
-        },
-        distinct: ['agentId'],
-        select: { agentId: true },
-      })).map((candidate) => candidate.agentId)
+    : await executorCodingSessionOwnerAgentIds(tx, input.executorId, actorUserId)
   const ownerKeys = new Set(agentIds.map((agentId) => (
     executorCodingSessionOwnerKey(input.executorId, { actorUserId, agentId })
   )))
   if (!input.only || 'actorUserId' in input.only) {
-    for (const session of reportedCodingSessions(executor.localMcp)) ownerKeys.add(session.ownerKey)
+    for (const session of reportedExecutorCodingSessions(executor.localMcp)) ownerKeys.add(session.ownerKey)
   }
   await writeCloseRequests(tx, input.executorId, [...ownerKeys].map((ownerKey) => ({
     ownerKey, reason: input.reason, requestedByUserId: input.requestedByUserId,
@@ -155,6 +176,67 @@ export const withdrawExecutorCodingSessionClosesInTransaction = async (
       sessionId: null,
     },
     data: { resolvedAt: input.now },
+  })
+}
+
+/**
+ * A person's Close on one session, from the executor page. Only the person
+ * who paired the machine may ask — every session on it acts as them — and
+ * only for a session its last report lists under that owner key, so no
+ * request names a session that is not there. Asking again while one is open
+ * adds nothing (the per-session partial unique index) and answers the same;
+ * a new lease never withdraws it. Anyone who may not manage the machine is
+ * told it does not exist, as every other management call tells them.
+ */
+export const requestExecutorCodingSessionClose = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: { executorId: string; ownerKey: string; sessionId: string },
+): Promise<{ created: boolean }> => {
+  const actorUserId = requireHumanActor(actorContext)
+  const managed = actorUserId ? await getExecutorForManagement(prisma, actorContext, input.executorId) : null
+  if (!managed || !actorUserId) throw new ExecutorError(EXECUTOR_ERROR_CODES.NOT_FOUND, 'Executor not found.')
+  return prisma.$transaction(async (tx) => {
+    const executor = await tx.executor.findUniqueOrThrow({
+      where: { id: input.executorId },
+      select: { localMcp: true, organizationId: true, pairingOwnerUserId: true },
+    })
+    if (executor.pairingOwnerUserId !== actorUserId) {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.CODING_SESSIONS_OWNER_ONLY,
+        'Coding sessions on this machine act as the person who paired it, so only they can close one.',
+      )
+    }
+    const listed = reportedExecutorCodingSessions(executor.localMcp).some((session) => (
+      session.status !== 'closed' && session.sessionId === input.sessionId && session.ownerKey === input.ownerKey
+    ))
+    if (!listed) {
+      throw new ExecutorError(
+        EXECUTOR_ERROR_CODES.CODING_SESSION_NOT_FOUND,
+        'That coding session is no longer open on this machine.',
+      )
+    }
+    const written = await tx.executorCodingSessionCloseRequest.createMany({
+      data: [{
+        executorId: input.executorId, ownerKey: input.ownerKey, reason: 'person',
+        requestedByUserId: actorUserId, sessionId: input.sessionId,
+      }],
+      skipDuplicates: true,
+    })
+    if (written.count > 0) {
+      await writeAuditEntryInTransaction(tx, {
+        action: 'executor.coding_session.close_requested',
+        actorId: actorUserId,
+        actorType: 'user',
+        metadata: { executorId: input.executorId, reason: 'person' },
+        organizationId: executor.organizationId,
+        outcome: 'success',
+        requestId: actorContext.actionContext.requestId,
+        resourceId: input.sessionId,
+        resourceType: 'executor_coding_session',
+      })
+    }
+    return { created: written.count > 0 }
   })
 }
 

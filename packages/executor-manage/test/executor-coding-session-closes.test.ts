@@ -12,6 +12,7 @@ import {
   prepareExecutorAccessChange,
   removePrivateAssignment,
   reportExecutorHeartbeat,
+  requestExecutorCodingSessionClose,
   transitionExecutorLifecycle,
   type ExecutorAccessChange,
 } from '../src/index.js'
@@ -303,5 +304,76 @@ dbTest('a daemon that fronts no bridge settles every request; a day settles any;
 
     await ask(world, { createdAt: new Date(now.getTime() - 25 * 60 * 60 * 1_000), ownerKey: holderKey(world) })
     assert.equal((await heartbeat(world, key, { now })).codingSessionClose, undefined, 'a day-old request is settled')
+  })
+})
+
+/* -------------------------------------------------------------------------- */
+/* A person's Close                                                            */
+/* -------------------------------------------------------------------------- */
+
+const listSessions = async (world: LeaseWorld, sessions: Listed[], observedAt = new Date()) => {
+  await world.prisma.executor.update({
+    where: { id: world.executorId },
+    data: { localMcp: reportListing(sessions, observedAt) as unknown as Prisma.InputJsonValue },
+  })
+}
+
+const closeAudits = (world: LeaseWorld) => world.prisma.auditLog.findMany({
+  where: { action: 'executor.coding_session.close_requested', organizationId: world.organizationId },
+})
+
+dbTest('the pairing owner’s Close asks the machine to close that one session, once', async () => {
+  await withWorld(OWNED, async (world) => {
+    const key = await pairMachine(world)
+    const [sessionId, other] = [randomUUID(), randomUUID()]
+    await listSessions(world, [
+      { ownerKey: holderKey(world), sessionId }, { ownerKey: holderKey(world), sessionId: other },
+    ])
+    const input = { executorId: world.executorId, ownerKey: holderKey(world), sessionId }
+    const press = () => requestExecutorCodingSessionClose(world.prisma, world.holderContext, input)
+    assert.deepEqual(await press(), { created: true })
+    assert.deepEqual(await press(), { created: false }, 'a second press while the first is open adds nothing')
+    const rows = await openRows(world)
+    assert.deepEqual(rows.map((row) => [row.ownerKey, row.sessionId, row.reason, row.requestedByUserId]), [
+      [holderKey(world), sessionId, 'person', world.holderId],
+    ])
+    const [audit, ...moreAudits] = await closeAudits(world)
+    assert.equal(moreAudits.length, 0)
+    assert.equal(audit?.resourceId, sessionId)
+    assert.equal(audit?.actorId, world.holderId)
+    assert.deepEqual(audit?.metadata, { executorId: world.executorId, reason: 'person' })
+
+    // A new lease withdraws the owner-wide asks, never a person's Close.
+    await launchLocalApps(world)
+    assert.equal((await openRows(world)).length, 1)
+    const answer = await heartbeat(world, key, { now: new Date() })
+    assert.deepEqual(answer.codingSessionClose, [{ ownerKey: holderKey(world), reason: 'person', sessionId }])
+  })
+})
+
+dbTest('only the pairing owner may Close, and only a session the machine lists as theirs and open', async () => {
+  await withWorld(OWNED, async (world) => {
+    const sessionId = randomUUID()
+    const stranger = `sha256:${'e'.repeat(64)}`
+    const closedId = randomUUID()
+    await listSessions(world, [
+      { ownerKey: holderKey(world), sessionId },
+      { ownerKey: holderKey(world), sessionId: closedId, status: 'closed' },
+    ])
+    const input = { executorId: world.executorId, ownerKey: holderKey(world), sessionId }
+    await assert.rejects(requestExecutorCodingSessionClose(world.prisma, world.adminContext, input),
+      { code: 'EXECUTOR_CODING_SESSIONS_OWNER_ONLY' }, 'another administrator of the machine')
+    await assert.rejects(requestExecutorCodingSessionClose(world.prisma, world.memberContext, input),
+      { code: 'EXECUTOR_NOT_FOUND' }, 'someone who may not manage the machine is told nothing')
+    for (const unlisted of [
+      { ...input, sessionId: randomUUID() },
+      { ...input, ownerKey: stranger },
+      { ...input, sessionId: closedId },
+    ]) {
+      await assert.rejects(requestExecutorCodingSessionClose(world.prisma, world.holderContext, unlisted),
+        { code: 'EXECUTOR_CODING_SESSION_NOT_FOUND' })
+    }
+    assert.equal((await closeRows(world)).length, 0)
+    assert.equal((await closeAudits(world)).length, 0)
   })
 })

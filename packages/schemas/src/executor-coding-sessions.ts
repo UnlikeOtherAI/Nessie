@@ -193,3 +193,53 @@ export const ExecutorCodingSessionSummarySchema = z
 export type ExecutorCodingSessionSummary = z.infer<typeof ExecutorCodingSessionSummarySchema>
 
 export const EXECUTOR_CODING_SESSION_REPORT_MAXIMUM = 32
+
+/**
+ * One open session as the executor page lists it, for the people who manage
+ * the machine: what the local-MCP report said, plus two answers only the
+ * control plane has. The agent driving it is named only when the reader could
+ * see that agent themselves — the Agents tab's own rule — so `null` is a
+ * boundary, not a gap. `closing` says a close request for it is open: the
+ * machine has been told, and its next report has not yet dropped the session.
+ */
+export const ExecutorCodingSessionRecordSchema = ExecutorCodingSessionSummarySchema
+  .extend({
+    closing: z.boolean(),
+    ownerAgentName: z.string().min(1).nullable(),
+  })
+  .strict()
+export type ExecutorCodingSessionRecord = z.infer<typeof ExecutorCodingSessionRecordSchema>
+
+export const ExecutorCodingSessionListResponseSchema = z
+  .object({
+    /**
+     * Whether this reader may press Close: the person who paired the machine,
+     * whom every session on it acts as, and nobody else who manages it.
+     */
+    canClose: z.boolean(),
+    sessions: z.array(ExecutorCodingSessionRecordSchema).max(EXECUTOR_CODING_SESSION_REPORT_MAXIMUM),
+  })
+  .strict()
+export type ExecutorCodingSessionListResponse = z.infer<typeof ExecutorCodingSessionListResponseSchema>
+
+/** A person's Close on one session, named exactly as the list named it. */
+export const ExecutorCodingSessionCloseBodySchema = z
+  .object({
+    ownerKey: ExecutorCodingSessionOwnerKeySchema,
+    sessionId: z.string().uuid(),
+  })
+  .strict()
+export type ExecutorCodingSessionCloseBody = z.infer<typeof ExecutorCodingSessionCloseBodySchema>
+
+/**
+ * Accepted, not done: the request rides the machine's next heartbeat as
+ * `codingSessionClose`, and the list reads "Closing…" until a report no
+ * longer carries the session.
+ */
+export const ExecutorCodingSessionCloseAcceptedSchema = z
+  .object({
+    closing: z.literal(true),
+    sessionId: z.string().uuid(),
+  })
+  .strict()
+export type ExecutorCodingSessionCloseAccepted = z.infer<typeof ExecutorCodingSessionCloseAcceptedSchema>

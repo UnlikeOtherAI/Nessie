@@ -58,7 +58,12 @@ export {
   reviewedCodingSessionsServer,
   type ExecutorCodingSessionOwner,
 } from './executor-coding-session-owner.js'
-export { EXECUTOR_CODING_SESSION_CLOSE_TTL_MS } from './executor-coding-session-closes.js'
+export {
+  EXECUTOR_CODING_SESSION_CLOSE_TTL_MS,
+  executorCodingSessionOwnerAgentIds,
+  reportedExecutorCodingSessions,
+  requestExecutorCodingSessionClose,
+} from './executor-coding-session-closes.js'
 export {
   markExecutorCommandUnknownOutcome,
   readExecutorCommandResult,

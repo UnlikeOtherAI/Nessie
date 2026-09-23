@@ -6,6 +6,7 @@ import { sendApiError } from '../lib/api.js'
 export const sendExecutorError = (reply: FastifyReply, error: unknown): boolean => {
   if (!(error instanceof ExecutorError)) return false
   const status = error.code === 'EXECUTOR_NOT_FOUND'
+    || error.code === 'EXECUTOR_CODING_SESSION_NOT_FOUND'
     || error.code === 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND'
     || error.code === 'EXECUTOR_PROMOTION_NOT_FOUND'
     || error.code === 'EXECUTOR_PROMOTION_REVIEW_NOT_FOUND'
