@@ -1,6 +1,6 @@
 import { IntegrationUiCardSchema, type IntegrationUiCard } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
-import { deepWaterResearchLauncherNavigationState } from '../../../facades/integrations/deep-water-research-launcher-navigation'
+import { researchBriefPrefillState } from '../../../facades/deep-water/navigation'
 import { Pill, type PillTone } from '../../primitives/Pill'
 import { AgentActivityTimeline } from './AgentActivityTimeline'
 
@@ -62,7 +62,14 @@ const LaunchIcon = () => (
   </svg>
 )
 
-const DeepWaterResearchLauncherAction = ({
+/**
+ * An older DeepWater card's "open the launcher" action. The launcher is gone:
+ * every research is agreed as a brief first, so the action opens a new brief
+ * on this conversation, pre-filled with the card's question and nothing else.
+ * The card's other presets (depth, sections, output) were launcher settings a
+ * brief negotiates with DeepWater's planner instead.
+ */
+const DeepWaterResearchBriefAction = ({
   action,
 }: {
   action: IntegrationUiCardAction
@@ -72,12 +79,8 @@ const DeepWaterResearchLauncherAction = ({
   return (
     <button
       className={`${actionClass(action.variant)} gap-1.5`}
-      data-testid="deep-water-research-launcher-card-action"
-      onClick={() =>
-        navigate('.', {
-          state: deepWaterResearchLauncherNavigationState(action.preset),
-        })
-      }
+      data-testid="deep-water-research-brief-card-action"
+      onClick={() => void navigate('.', { state: researchBriefPrefillState(action.preset?.query) })}
       type="button"
     >
       {action.label}
@@ -115,7 +118,7 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
       <div className="mt-3 flex flex-wrap gap-2">
         {card.actions.map((action) =>
           action.type === 'open_deep_water_research_launcher' ? (
-            <DeepWaterResearchLauncherAction action={action} key={action.label} />
+            <DeepWaterResearchBriefAction action={action} key={action.label} />
           ) : action.href ? (
             <a
               className={`${actionClass(action.variant)} gap-1.5`}

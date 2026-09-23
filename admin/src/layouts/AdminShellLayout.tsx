@@ -55,6 +55,7 @@ import { TeamSwitcher } from './admin-shell/TeamSwitcher';
 import { useAttentionSummary } from '../facades/alerts/hooks';
 import { useThreadActivity, useThreadActivityEvents } from '../facades/threads/activity-hooks';
 import { useRealtimeGapRecovery } from '../facades/realtime/realtime-gap';
+import { useDeepWaterRunEvents } from '../facades/deep-water/events';
 import { useUnreadDirectMessages } from '../facades/threads/unread-direct-messages';
 import { useFocusMode } from '../providers/FocusModeProvider';
 
@@ -129,6 +130,9 @@ const AuthenticatedAdminShellLayout = () => {
   // connection's replay was cut short, and the answer is one REST bootstrap for
   // every surface reading from it, not one per subscriber.
   useRealtimeGapRecovery();
+  // Once for the whole shell: a DeepWater research changed, so every card,
+  // list row and brief showing it re-reads it for this viewer. Nothing polls.
+  useDeepWaterRunEvents();
   const attentionCountByProjectId = new Map<string, number>();
   for (const [projectId, count] of Object.entries(attention.data?.assignedWork.projects ?? {})) {
     attentionCountByProjectId.set(projectId, count);

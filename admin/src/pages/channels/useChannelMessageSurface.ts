@@ -29,7 +29,6 @@ import { useThreadReadMarker } from './useThreadReadMarker'
 import { useReportChannelPushSurface } from './useReportChannelPushSurface'
 import { useChannelMentions } from './useChannelMentions'
 import { useAlertMessageHighlight, useChannelMessageSearch } from './useChannelMessageSearch'
-import { useDeepWaterResearchLauncher } from './useDeepWaterResearchLauncher'
 import { useExecutorRunLauncher } from './useExecutorRunLauncher'
 
 type ChannelMessageSurfaceInput = {
@@ -147,7 +146,6 @@ export const useChannelMessageSurface = ({
     draftKey: channelComposerDraftKey(inConversation ? threadId : activeChannel?.id),
   })
   const chatDrop = useFileDrop(composer.attachments.addFiles)
-  const deepWaterLauncher = useDeepWaterResearchLauncher(composer.message)
   const messageActions = useChannelMessageActions(activeThreadId)
   const cancelEdit = messageActions.cancelEdit
   const shareRestricted = useShareRestrictedMessage(activeThreadId)
@@ -244,7 +242,6 @@ export const useChannelMessageSurface = ({
     channelLiveness,
     chatDrop,
     composer,
-    deepWaterLauncher,
     documentSessions,
     documentStore,
     executorLauncher,
