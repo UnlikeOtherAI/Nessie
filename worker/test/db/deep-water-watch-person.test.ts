@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
-import { DeepWaterNoticeMessageMetadataSchema } from '@nessie/schemas'
+import { DeepWaterNoticeMessageMetadataSchema, PushDispatchJobPayloadSchema } from '@nessie/schemas'
 
 import { reapUnconfirmedDeepWaterBriefs } from '../../src/control/deepwater-worker.js'
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
@@ -87,6 +87,22 @@ withFixture('a finished research comes back as one result reply under the card, 
   assert.match(reply?.content ?? '', /end of it is missing/)
   const alerts = await fixture.prisma.userAlert.findMany({ where: { messageId: reply?.id } })
   assert.deepEqual(alerts.map((alert) => [alert.userId, alert.eventKey]), [[fixture.ids.requester, `deep-water-result:${run.id}`]])
+  // Their devices ring too, queued with the reply: addressed to them alone, as a mention.
+  const pushes = await fixture.prisma.queueJob.findMany({
+    where: { topic: 'push.dispatch', payload: { path: ['messageId'], equals: reply?.id ?? '' } },
+  })
+  assert.equal(pushes.length, 1)
+  assert.equal(pushes[0]?.idempotencyKey, `push:${reply?.id}`)
+  const push = PushDispatchJobPayloadSchema.parse(pushes[0]?.payload)
+  assert.deepEqual(push.recipientUserIds, [fixture.ids.requester])
+  assert.deepEqual(push.mentionUserIds, [fixture.ids.requester])
+  assert.equal(push.rootMessageId, card.id)
+  assert.equal(push.authorName, 'DeepWater')
+  assert.equal(push.contentVisibility, undefined, 'a public room with no private sources shows the words')
+  // The notice's own words, without a link target, cut to a lock screen's length.
+  assert.ok((reply?.content ?? '').replace(/\]\([^)]*\)/g, '').replace(/\[/g, '').startsWith(push.contentSnippet))
+  assert.equal(push.contentSnippet.length, 140)
+  assert.doesNotMatch(push.contentSnippet, /knowledge-base|\]\(/)
   const page = await fixture.prisma.knowledgePage.findUniqueOrThrow({
     where: { id: delivered.knowledgePageId ?? '' },
     include: { versions: true },

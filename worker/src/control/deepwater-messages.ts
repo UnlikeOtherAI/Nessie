@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client'
+import { enqueueQueueJob } from '@nessie/db'
 import {
   computeReplyBasis,
   createMentionUserAlerts,
@@ -9,6 +10,7 @@ import {
 } from '@nessie/runtime'
 import {
   DeepWaterNoticeMessageMetadataSchema,
+  PushDispatchJobPayloadSchema,
   ResearchRunRefMessageMetadataSchema,
   type DeepWaterNoticeKind,
 } from '@nessie/schemas'
@@ -138,10 +140,53 @@ export const ensureDeepWaterResearchCard = async (
   return { messageId: message.id, created: true }
 }
 
+/** A notice as a lock screen shows it: its words, without markdown link targets. */
+const pushSnippet = (content: string): string =>
+  content.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim().slice(0, 140)
+
+/**
+ * Ring the person a notice is addressed to (amendments N3 B.4), queued in the
+ * notice's own transaction so neither commits alone. The dispatcher rechecks
+ * their access, preferences and devices; a notice built from sources the room
+ * does not imply says only that something is ready.
+ */
+const enqueueNoticePush = async (
+  tx: Tx,
+  input: {
+    run: DeepWaterBriefRun
+    messageId: string
+    channelId: string
+    threadId: string
+    rootMessageId: string | null
+    content: string
+    restricted: boolean
+    recipientUserIds: string[]
+  },
+): Promise<void> => {
+  if (input.recipientUserIds.length === 0) return
+  await enqueueQueueJob(tx, {
+    idempotencyKey: `push:${input.messageId}`,
+    payload: PushDispatchJobPayloadSchema.parse({
+      authorName: 'DeepWater',
+      channelId: input.channelId,
+      contentSnippet: pushSnippet(input.content),
+      ...(input.restricted ? { contentVisibility: 'generic' } : {}),
+      mentionUserIds: input.recipientUserIds,
+      messageId: input.messageId,
+      organizationId: input.run.organizationId,
+      recipientUserIds: input.recipientUserIds,
+      ...(input.rootMessageId ? { rootMessageId: input.rootMessageId } : {}),
+      threadId: input.threadId,
+    }),
+    topic: 'push.dispatch',
+  })
+}
+
 /**
  * Post a result or notice addressed to the person who asked, under the card,
  * stamped for the thread, with a durable alert keyed to the run and kind so a
- * replay never alerts twice. Null when the origin thread is gone.
+ * replay never alerts twice, and a push to their devices. Null when the origin
+ * thread is gone.
  */
 export const postDeepWaterNotice = async (
   tx: Tx,
@@ -179,6 +224,17 @@ export const postDeepWaterNotice = async (
     mentionedUserIds: [run.requestedByUserId],
     eventKey,
   })
+  const restricted = thread.basis.length > 0 || run.disclosureSources.length > 0
+  await enqueueNoticePush(tx, {
+    run,
+    messageId: message.id,
+    channelId: thread.channelId,
+    threadId: run.threadId,
+    rootMessageId: root,
+    content: message.content,
+    restricted,
+    recipientUserIds: alerted,
+  })
   announce.message({
     channelId: thread.channelId,
     threadId: run.threadId,
@@ -188,7 +244,7 @@ export const postDeepWaterNotice = async (
     agentId: null,
     userId: null,
     createdAt: message.createdAt,
-    restricted: thread.basis.length > 0 || run.disclosureSources.length > 0,
+    restricted,
     reply: root && posted.replyMetadata ? { rootMessageId: root, ...posted.replyMetadata } : null,
   })
   announce.alert({
