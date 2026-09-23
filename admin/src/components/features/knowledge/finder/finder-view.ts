@@ -195,7 +195,6 @@ export const finderBarTitle = ({
   return deepestFolderTitle ?? spaceName ?? 'Documents'
 }
 
-
 // ── Column widths ───────────────────────────────────────────────────────────
 //
 // The other half of "what the browser is showing". Every separator is
