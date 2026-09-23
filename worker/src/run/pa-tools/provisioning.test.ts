@@ -208,7 +208,19 @@ test('a Designer-built agent that works a board is created holding the board too
           ...input.data,
         }
       },
-      findFirst: async () => ({ projectId: null }),
+      findFirst: async () => ({
+        id: AGENT_ID,
+        name: 'CTO',
+        projectId: PROJECT_ID,
+        speakingStyle: null,
+        systemManaged: false,
+        systemPrompt: null,
+      }),
+    },
+    agentCoreDocumentMigration: {
+      // Core provisioning is covered by its own suites; this catalogue test
+      // starts from an already-complete required document pair.
+      findUnique: async () => ({ documentCount: 2 }),
     },
     toolRegistryEntry: { findMany: async () => [] },
   })
