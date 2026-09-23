@@ -24,7 +24,8 @@ rule that refuses anyone but a private executor's pairing owner
 producing `codingSessionClose`, and the review and admin rendering of the
 facts and sessions below. Until the worker stamps an owner every session tool
 refuses, so the bridge cannot be driven through a plain `mcp.call`. The
-trust-table row for this bridge lands with the control-plane rule.
+overview's trust table already says that its guest-coding row does not cover
+this bridge; the bridge's own row lands with the control-plane rule.
 
 ## Two processes: a stateless bridge and one host per session
 
