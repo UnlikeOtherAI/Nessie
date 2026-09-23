@@ -3,6 +3,7 @@ import type { McpToolDescriptor } from '@nessie/mcp-client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import {
   createInstance,
+  isCurrentDeepWaterToolContract,
   projectMcpToolDescriptors,
   runWithDeepWaterTransitionLock,
   type McpInstanceRow,
@@ -202,29 +203,6 @@ const findTeamInstance = async (
   })
 
 /**
- * A previously probed Ledger adapter may carry richer schemas than the
- * deterministic manifest. Preserve those schemas only when its tool-name set
- * exactly matches the current Ledger contract. Legacy direct-provider contracts
- * are replaced so old tools can never be dispatched to the Ledger endpoint.
- */
-const hasCurrentLedgerToolContract = (
-  instance: McpInstanceRow,
-  descriptors: McpToolDescriptor[],
-): boolean => {
-  if (!Array.isArray(instance.discoveredTools)) return false
-  const discoveredNames = instance.discoveredTools
-    .map((tool) =>
-      tool && typeof tool === 'object' && typeof (tool as { name?: unknown }).name === 'string'
-        ? (tool as { name: string }).name
-        : null)
-    .filter((name): name is string => name !== null)
-    .sort()
-  const manifestNames = descriptors.map((descriptor) => descriptor.name).sort()
-  return discoveredNames.length === manifestNames.length
-    && discoveredNames.every((name, index) => name === manifestNames[index])
-}
-
-/**
  * Idempotently ensure a team-scoped DeepWater instance whose manifest tools are
  * projected, `active`, and flagged `requiresExplicitGrant`. Missing first-party
  * catalog linkage and a missing Ledger endpoint both fail loudly; enablement is
@@ -261,8 +239,12 @@ const ensureDeepWaterTeamInstanceInTransaction = async (
 
   const provisioned = instance
   const descriptors = manifestToolDescriptors()
+  // A previously probed Ledger adapter may carry richer schemas than the
+  // deterministic manifest. Preserve those only when its tool-name set is the
+  // current contract; legacy direct-provider contracts are replaced so old
+  // tools can never be dispatched to the Ledger endpoint.
   const preserveProbedSchemas =
-    Boolean(existing) && hasCurrentLedgerToolContract(provisioned, descriptors)
+    Boolean(existing) && isCurrentDeepWaterToolContract(provisioned.discoveredTools)
 
   if (preserveProbedSchemas) {
     // Keep a current Ledger adapter's richer discovered schemas, but always
