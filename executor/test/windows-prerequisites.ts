@@ -18,13 +18,17 @@ import { packagedNativeHelperPath } from '../src/state-security.js'
  * desktop-windows.yml runs `control-plane-e2e.test.ts`: under the installed
  * package's `node.exe`, or a copy of `node.exe` placed beside a helper built
  * with `cargo build --release` in `executor/native`, with the marker set.
+ * `pnpm --filter @nessie/executor test` (`scripts/run-tests.mjs`) does the
+ * latter by itself whenever that helper is built, for every file that names
+ * `WINDOWS_STATE_HELPER_SKIP`, after the ordinary run in which they skip.
  */
 const packagedRuntime = process.platform === 'win32'
   && process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1'
   && existsSync(packagedNativeHelperPath())
 
 export const WINDOWS_STATE_HELPER_SKIP: string | false = process.platform === 'win32' && !packagedRuntime
-  ? 'Windows executor state needs the packaged native helper beside node.exe and NESSIE_EXECUTOR_PACKAGED_CLI=1 (test/windows-prerequisites.ts).'
+  ? 'Windows executor state needs the native helper beside node.exe and NESSIE_EXECUTOR_PACKAGED_CLI=1;'
+    + ' the package test script reruns this under executor/native/target/release when a helper is built there.'
   : false
 
 /**
