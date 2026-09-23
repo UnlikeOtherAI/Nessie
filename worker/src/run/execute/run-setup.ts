@@ -277,6 +277,11 @@ export const prepareRunExecution = async (
     })
     : null
 
+  // A person launched local apps in this run's own conversation: the launch
+  // itself, or a lease carried from it, which only ever carries within the
+  // conversation the launch opened. What the machine answers — a program's
+  // output, a coding session's title in the reach facts — is shown there.
+  const hostOutput = { launchScope: launchConversationScope(context.channel.id), sink: context.consumedSources }
   const [mcpToolset, executorToolset, todoFacts] = await Promise.all([
     buildMcpToolset(
       deps.prisma,
@@ -334,13 +339,7 @@ export const prepareRunExecution = async (
         agentId: context.agent.id,
         agentToolPolicy: toolPolicy,
         encryptionSecret: deps.executorCommandEncryptionSecret,
-        // A person launched local apps in this run's own conversation: the
-        // launch itself, or a lease carried from it, which only ever carries
-        // within the conversation the launch opened.
-        hostOutput: {
-          launchScope: launchConversationScope(context.channel.id),
-          sink: context.consumedSources,
-        },
+        hostOutput,
         organizationId: context.channel.organizationId,
         runId: context.run.id,
       })
@@ -358,6 +357,7 @@ export const prepareRunExecution = async (
   const executorReach = input.isHandoffTurn ? null : await loadExecutorReachFacts(deps.prisma, {
     agentId: context.agent.id,
     channelId: context.channel.id,
+    hostOutput,
     lease: context.executorLease,
     organizationId: context.channel.organizationId,
     personUserId: payload.actorContext.actor.actorType === 'user' ? payload.actorContext.actor.actorId : null,

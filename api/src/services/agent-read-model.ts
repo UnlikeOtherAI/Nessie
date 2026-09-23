@@ -27,17 +27,40 @@ import {
 } from './agent-read-primitives.js'
 import { ACTIVE_RUN_STATUSES } from './run-access.js'
 import { canUserReadRunDerivedRecord } from './run-derived-read.js'
+import { loadToolCallAttachments } from './tool-call-attachments.js'
 
-const mapToolCall = (toolCall: {
+type ToolCallRow = {
   durationMs: number | null
   endedAt: Date | null
+  id: string
   inputSummary: string
   outputPreview: string | null
   runId: string
   startedAt: Date
   success: boolean | null
   toolName: string
-}): ToolCallEntry => ({
+}
+
+/**
+ * Lists of tool calls as a person reads them, each call with the images it
+ * returned (`tool-call-attachments.ts`): refs only, and only those the viewer
+ * may open. The lists share one lookup, since they overlap.
+ */
+const mapToolCalls = async (
+  prisma: PrismaClient,
+  lists: ReadonlyArray<readonly ToolCallRow[]>,
+  visibility: DisclosureAgentVisibilityScope | undefined,
+): Promise<ToolCallEntry[][]> => {
+  const attachments = await loadToolCallAttachments(prisma, lists.flat(), visibility)
+  return lists.map((toolCalls) =>
+    toolCalls.map((toolCall) => mapToolCall(toolCall, attachments.get(toolCall.id) ?? [])))
+}
+
+const mapToolCall = (
+  toolCall: ToolCallRow,
+  attachments: ToolCallEntry['attachments'],
+): ToolCallEntry => ({
+  id: toolCall.id,
   toolName: toolCall.toolName,
   runId: parseRunId(toolCall.runId),
   startedAt: toolCall.startedAt.toISOString(),
@@ -46,6 +69,7 @@ const mapToolCall = (toolCall: {
   success: toolCall.success ?? undefined,
   inputSummary: toolCall.inputSummary,
   outputPreview: toolCall.outputPreview?.slice(0, 200) ?? undefined,
+  attachments,
 })
 
 export const loadAgentStatus = async (
@@ -96,6 +120,7 @@ export const loadAgentStatus = async (
           toolCalls: {
             orderBy: { startedAt: 'desc' },
             take: 1,
+            where: { parentToolCallId: null },
           },
         },
         where: {
@@ -212,6 +237,7 @@ export const loadAgentActivity = async (
           toolCalls: {
             orderBy: { startedAt: 'desc' },
             take: 20,
+            where: { parentToolCallId: null },
           },
         },
         where: runVisibilityWhere,
@@ -238,6 +264,18 @@ export const loadAgentActivity = async (
     }))) return null
     return { childAgent, childTask }
   }))
+  const recentToolCalls = readableRuns
+    .flatMap((run) => run.toolCalls)
+    .sort(
+      (left, right) =>
+        right.startedAt.getTime() - left.startedAt.getTime(),
+    )
+    .slice(0, 20)
+  const [currentToolCalls, recentEntries] = await mapToolCalls(
+    prisma,
+    [currentRun?.toolCalls ?? [], recentToolCalls],
+    options?.visibility,
+  )
 
   return {
     agentId: parseAgentId(agent.id),
@@ -249,17 +287,10 @@ export const loadAgentActivity = async (
           startedAt: (
             currentRun.startedAt ?? currentRun.createdAt
           ).toISOString(),
-          toolCalls: currentRun.toolCalls.map(mapToolCall),
+          toolCalls: currentToolCalls ?? [],
         }
       : undefined,
-    recentToolCalls: readableRuns
-      .flatMap((run) => run.toolCalls)
-      .sort(
-        (left, right) =>
-          right.startedAt.getTime() - left.startedAt.getTime(),
-      )
-      .slice(0, 20)
-      .map(mapToolCall),
+    recentToolCalls: recentEntries ?? [],
     subAgents: readableChildTasks
       .map((entry) => {
         if (!entry) return null
@@ -430,6 +461,8 @@ export const loadRunToolCalls = async (
   const toolCalls = await prisma.toolCall.findMany({
     where: {
       agentId,
+      // A step of another call (a coding wait's later reads) is shown as that call.
+      parentToolCallId: null,
       runId,
       ...(options?.visibility
         ? { run: buildAccessibleRunWhere(options.visibility) }
@@ -438,5 +471,6 @@ export const loadRunToolCalls = async (
     orderBy: { startedAt: 'asc' },
   })
 
-  return toolCalls.map(mapToolCall)
+  const [entries] = await mapToolCalls(prisma, [toolCalls], options?.visibility)
+  return entries ?? []
 }

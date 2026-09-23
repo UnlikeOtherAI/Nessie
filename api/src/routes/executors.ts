@@ -46,6 +46,7 @@ import { applyExecutorAgentPolicyChange } from '../services/executor-agent-acces
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
+import { registerExecutorCodingSessionRoutes } from './executor-coding-sessions.js'
 import { registerExecutorDaemonRoutes } from './executor-daemon-routes.js'
 import { notifyExecutorLeaseChanges, registerExecutorLeaseRoutes } from './executor-leases.js'
 import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
@@ -63,6 +64,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   registerExecutorManagementReadRoutes(app, deps)
   registerExecutorWorkspacePromotionRoutes(app, deps)
   registerExecutorLeaseRoutes(app, deps)
+  registerExecutorCodingSessionRoutes(app, deps)
   const {
     buildChannelRealtimeScopes,
     config,

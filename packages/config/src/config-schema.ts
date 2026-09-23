@@ -270,6 +270,11 @@ export const NessieConfigSchema = z.object({
       // legitimately produce a high steady rate and this is a flood ceiling,
       // not a per-daemon budget.
       executorDaemonSessionIp: RateLimitRuleSchema.default({ max: 6_000, windowMs: 60_000 }),
+      // The daemon's image upload, the one daemon route whose body is raised
+      // past 1 MiB. Twice one executor's own attempt rate (60 a minute,
+      // `EXECUTOR_ATTACHMENT_RATE_MAXIMUM`), so two daemons behind one NAT
+      // upload at full rate and an unsigned flood is bounded before it is read.
+      executorAttachmentIp: RateLimitRuleSchema.default({ max: 120, windowMs: 60_000 }),
       // Coverage-by-default floor for every route declaring `config.public`
       // that does not name a bucket above, so a new public route is limited
       // from the moment it exists instead of when somebody remembers

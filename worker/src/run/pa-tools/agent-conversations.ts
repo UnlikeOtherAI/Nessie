@@ -53,7 +53,8 @@ import { formatSection } from './tool-output.js'
  *   through `createAgentMessage` with a computed disclosure basis) and the run
  *   it claims for the target.
  * - `agent_conversations_list` — the read that turns an agent's name into the
- *   thread ids the other two take, exactly as `agent_list` does for agent ids.
+ *   thread ids the other two take, as `agent_list` turns one into the agent
+ *   link whose last segment is the agentId.
  * - `conversation_reference` — put a live card for a conversation into this
  *   chat. Not PA-only: showing a conversation is a better-shaped message, and
  *   what a viewer then sees is decided per viewer by the card's own read.
@@ -209,7 +210,7 @@ const listAddressableAgents = async (
 const agentNotFound = (needle: string): Error =>
   new Error(
     `I can't find an agent called "${needle}" that you can reach. `
-    + 'Call agent_list to see the agents you can see, then pass its agentId.',
+    + 'Call agent_list, then pass the last path segment of its /agents/<agentId> link.',
   )
 
 const resolveAddressableAgent = async (

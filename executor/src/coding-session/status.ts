@@ -96,9 +96,12 @@ const summarise = (events: readonly CodingSessionEvent[]): Record<string, unknow
   const toolCounts: Record<string, number> = {}
   const filesTouched = new Set<string>()
   let lastAssistant: string | undefined
+  // What the agent is doing now: its latest tool call, as projected.
+  let lastTool: { name: string; summary: string } | undefined
   for (const event of events) {
     if (event.kind === 'tool') {
       toolCounts[event.name] = (toolCounts[event.name] ?? 0) + 1
+      lastTool = { name: event.name, summary: event.summary }
       if (['Write', 'Edit', 'MultiEdit', 'NotebookEdit'].includes(event.name) && event.summary) filesTouched.add(event.summary)
       if (event.name === 'edit' && event.summary) for (const file of event.summary.split(', ')) filesTouched.add(file)
     }
@@ -109,6 +112,7 @@ const summarise = (events: readonly CodingSessionEvent[]): Record<string, unknow
     toolCounts,
     filesTouched: [...filesTouched].slice(-10),
     ...(lastAssistant ? { lastAssistant: lastAssistant.slice(0, 600) } : {}),
+    ...(lastTool ? { lastTool } : {}),
   }
 }
 

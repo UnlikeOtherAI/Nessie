@@ -1,18 +1,23 @@
 import {
   claimExecutorConnection,
   pollAuthorizedExecutorCommand,
+  recordAuthorizedExecutorCommandAttachment,
   recordAuthorizedExecutorCommandReceipt,
   recordExecutorDaemonChallenge,
+  releaseUnreferencedExecutorCommandAttachments,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
   submitExecutorEnrollment,
 } from '@nessie/executor-manage'
+import { EXECUTOR_RESULT_IMAGE_MAX_BASE64_LENGTH } from '@nessie/schemas'
 import type { FastifyInstance } from 'fastify'
 
 import {
   ExecutorDaemonChallengeBodySchema,
   ExecutorDaemonChallengeSchema,
   ExecutorDaemonClaimBodySchema,
+  ExecutorDaemonCommandAttachmentBodySchema,
+  ExecutorDaemonCommandAttachmentSchema,
   ExecutorDaemonConnectionSchema,
   ExecutorDaemonDescriptorBodySchema,
   ExecutorDaemonDescriptorSchema,
@@ -20,6 +25,7 @@ import {
   ExecutorDaemonCommandPollSchema,
   ExecutorDaemonCommandReceiptBodySchema,
   ExecutorDaemonHeartbeatBodySchema,
+  ExecutorDaemonHeartbeatSchema,
   PendingExecutorEnrollmentSchema,
   SubmitExecutorEnrollmentBodySchema,
 } from '../contracts/executors.js'
@@ -27,6 +33,11 @@ import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { issueExecutorDaemonChallenge, verifyExecutorDaemonChallenge } from '../services/executor-daemon-auth.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import type { RouteDeps } from './types.js'
+import { enqueueAttachmentThumbnail } from './uploads.js'
+
+// The signed description, ids, epoch and signature beside the base64: well
+// under this, which leaves no room for a second image.
+const ATTACHMENT_ENVELOPE_BYTES = 16 * 1024
 
 /** Public daemon handoff routes, isolated from browser-side executor management. */
 export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -77,8 +88,9 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       const body = parseInput(ExecutorDaemonHeartbeatBodySchema, request.body, reply)
       if (!body) return reply
       try {
-        const connection = await reportExecutorHeartbeat(prisma, body)
-        return createApiResponse(ExecutorDaemonConnectionSchema.parse(connection))
+        // The connection, and the coding sessions the daemon must close.
+        const heartbeat = await reportExecutorHeartbeat(prisma, body)
+        return createApiResponse(ExecutorDaemonHeartbeatSchema.parse(heartbeat))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
         throw error
@@ -126,7 +138,43 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       if (!body) return reply
       try {
         await recordAuthorizedExecutorCommandReceipt(prisma, deps.encryptionKeyRing, body)
+        // The images the accepted result does not name were never delivered
+        // (docs/executor-protocol/command-attachments.md). A failure here
+        // fails the receipt, and the daemon's retry of the same receipt is
+        // taken as recorded and frees them then.
+        if (body.receipt.state === 'result_acknowledged') {
+          await releaseUnreferencedExecutorCommandAttachments(
+            prisma, deps.fileService, body.receipt.commandId, body.result,
+          )
+        }
         return createApiResponse({ recorded: true })
+      } catch (error) {
+        if (sendExecutorError(reply, error)) return reply
+        throw error
+      }
+    },
+  )
+
+  // One image a local program returned, uploaded before its command's receipt
+  // (docs/executor-protocol/command-attachments.md). The only daemon route
+  // that carries bytes, so the only one past the global 1 MiB body limit: the
+  // largest image's padded base64 plus its small signed envelope.
+  app.post(
+    '/api/executor-daemon/commands/attachment',
+    {
+      bodyLimit: EXECUTOR_RESULT_IMAGE_MAX_BASE64_LENGTH + ATTACHMENT_ENVELOPE_BYTES,
+      config: { public: true },
+    },
+    async (request, reply) => {
+      const body = parseInput(ExecutorDaemonCommandAttachmentBodySchema, request.body, reply)
+      if (!body) return reply
+      try {
+        const stored = await recordAuthorizedExecutorCommandAttachment(prisma, {
+          encryptionSecret: deps.encryptionKeyRing,
+          fileService: deps.fileService,
+        }, body)
+        if (stored) await enqueueAttachmentThumbnail(prisma, stored)
+        return createApiResponse(ExecutorDaemonCommandAttachmentSchema.parse({ recorded: true }))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
         throw error

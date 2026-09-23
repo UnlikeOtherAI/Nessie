@@ -143,7 +143,17 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
       return reply
     }
 
-    const log = await loadRunThinkingLog(prisma, { runId, threadId: thread.id })
+    const log = await loadRunThinkingLog(prisma, {
+      runId,
+      threadId: thread.id,
+      // A tool line's screenshots are listed only for a viewer the attachment
+      // routes would serve them to.
+      viewer: {
+        organizationId: actorContext.tenant.organizationId,
+        uoaIdentity: actorContext.actionContext.uoaIdentity,
+        userId: actorContext.actor.actorId,
+      },
+    })
     if (!log) {
       sendApiError(reply, 404, 'RUN_NOT_FOUND', 'Run not found')
       return reply

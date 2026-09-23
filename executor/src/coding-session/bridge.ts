@@ -268,7 +268,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     return {
       sessionId: meta.sessionId,
       status: kind === 'close' ? 'closing' : derived.status,
-      ...(kind === 'send' ? { queued: true } : {}),
+      // The turn the message was sent at: to a session that is not working it
+      // starts the next one, so a caller knows which answer is still owed.
+      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0 } : {}),
       ...(kind === 'interrupt' ? { interrupted: true } : {}),
     }
   }

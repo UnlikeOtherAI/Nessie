@@ -299,7 +299,32 @@ test('a failed poll or heartbeat closes no coding session unless the failure is 
   assert.deepEqual(revoked.calls.map((call) => call.args), [{ reason: 'heartbeat_failed' }], 'a revoked executor closes at once')
 })
 
-test('a close the bridge could not carry out is tried again on the next heartbeat until it lands', async () => {
+test('a close the bridge could not carry out is tried again while the heartbeat still lists it', async () => {
+  const { calls, sessions, fail, recover } = recording()
+  const daemon = createCodingSessionsDaemon({
+    executorId, facts, servers: [bridgeSpec()], sessions, log: () => undefined,
+  })
+  const ownerKey = codingSessionOwnerKey(executorId, { agentId, actorUserId })
+  const other = codingSessionOwnerKey(executorId, { agentId, actorUserId: runId })
+  const listed = [{ ownerKey, reason: 'lease_ended' }]
+  fail()
+  await daemon.close(listed)
+  await daemon.close(listed)
+  assert.equal(calls.length, 2, 'a bridge still failing is asked again on each heartbeat that lists it')
+  // A list this daemon cannot read changes nothing: the failed close is still owed.
+  await daemon.close('close everything')
+  assert.equal(calls.length, 3)
+  recover()
+  // The next heartbeat lists another owner beside it, the API having more to say.
+  await daemon.close([...listed, { ownerKey: other, reason: 'access_revoked' }])
+  assert.deepEqual(calls.slice(3).map((call) => call.args), [
+    { ownerKey, reason: 'lease_ended' }, { ownerKey: other, reason: 'access_revoked' },
+  ])
+  await daemon.close(undefined)
+  assert.equal(calls.length, 5, 'once it landed it is not sent again')
+})
+
+test('a close the heartbeat no longer lists is dropped, not retried into the owner’s new session', async () => {
   const { calls, sessions, fail, recover } = recording()
   const daemon = createCodingSessionsDaemon({
     executorId, facts, servers: [bridgeSpec()], sessions, log: () => undefined,
@@ -307,11 +332,9 @@ test('a close the bridge could not carry out is tried again on the next heartbea
   const ownerKey = codingSessionOwnerKey(executorId, { agentId, actorUserId })
   fail()
   await daemon.close([{ ownerKey, reason: 'lease_ended' }])
-  await daemon.close(undefined)
-  assert.equal(calls.length, 2, 'a bridge still failing is asked again on each heartbeat')
+  assert.equal(calls.length, 1)
+  // The owner launched again: the API withdrew the request, and says nothing more.
   recover()
   await daemon.close(undefined)
-  assert.deepEqual(calls.map((call) => call.args), Array(3).fill({ ownerKey, reason: 'lease_ended' }))
-  await daemon.close(undefined)
-  assert.equal(calls.length, 3, 'once it landed it is not sent again')
+  assert.equal(calls.length, 1, 'a withdrawn close would end the session the relaunch starts')
 })

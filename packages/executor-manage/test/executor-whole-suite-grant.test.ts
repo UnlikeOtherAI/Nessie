@@ -56,7 +56,8 @@ const transactionFake = (input: {
   let bumps = 0
   const tx = {
     // A deny also ends the agent's conversation leases on this executor,
-    // under the executor lock; this fake holds none.
+    // under the executor lock, and closes the coding sessions it reached;
+    // this fake holds no lease, and a shared executor has no coding session.
     $executeRaw: async () => 1,
     executorConversationLease: { findMany: async () => [] },
     executor: {
@@ -67,6 +68,7 @@ const transactionFake = (input: {
         projectId: null,
         scopeKind: 'organization',
       }),
+      findUnique: async () => ({ localMcp: null, pairingOwnerUserId: USER, scopeKind: 'organization' }),
       update: async () => {
         bumps += 1
         return { authorizationRevision: 5 }

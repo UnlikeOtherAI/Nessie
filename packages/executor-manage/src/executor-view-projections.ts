@@ -45,6 +45,11 @@ export const descriptorRevisionViews = (
             ...(descriptor.data.mcpServers
               ? { mcpServers: descriptor.data.mcpServers }
               : {}),
+            // And once more: absent is how a descriptor that does not offer
+            // the coding bridge says so.
+            ...(descriptor.data.codingSessions
+              ? { codingSessions: descriptor.data.codingSessions }
+              : {}),
           }]
         : []
     })

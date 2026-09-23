@@ -446,6 +446,19 @@ shared-credential blast radius that persistence implies.
   contract). If desired, they are a follow-up with the same schema/descriptor/
   daemon/guest quartet — flagged, not bundled.
 
+**Decision, 2026-09-23: the host-local coding bridge.** §7's case against
+retained, credentialed state and §8's "no host actuation" are about the guest
+lane, and they stand for it. A host with no VM backend still needs an agent
+to *instruct* a coding agent, so the executor ships one exception, the
+owner-named `coding-sessions` bridge: long-lived Claude Code or Codex sessions
+on the host, acting with the host OS user's full authority, driven by
+conversation. It is offered only on a private executor and only to runs whose
+binding was made for that executor's pairing owner, its power facts are part
+of the reviewed descriptor, sessions are isolated per owner, and what ends
+the owner's authority closes them. The contract is
+[host-coding-sessions.md](../executor-protocol/host-coding-sessions.md); the
+plan is [2026-09-22-executor-local-apps/coding-sessions.md](2026-09-22-executor-local-apps/coding-sessions.md).
+
 ## 9. Disclosure, audit, and untrusted-framing
 
 - **Audit hash-chain.** Executor lifecycle already emits `emitAuditEvent`

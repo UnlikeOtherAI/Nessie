@@ -17,13 +17,17 @@
  *                   shapes, without its network account
  *   slow-pages    - its own tools/list paginated one tool a page, each page
  *                   answered after NESSIE_TEST_MCP_PAGE_DELAY_MS (200 ms)
+ *   kelpie        - Kelpie's screenshot answer as the real Kelpie sent it on
+ *                   Windows (kelpie-screenshot-result.json: the base64 in the
+ *                   text JSON, an image item and structuredContent), and the
+ *                   same shape around a 200 KB PNG
  *
  * In any mode, NESSIE_TEST_MCP_START_LOG names a file each process appends its
  * pid to as it starts, so a suite can count the processes a server ran as, and
  * NESSIE_TEST_MCP_INIT_DELAY_MS holds the handshake's answer that long, so a
  * start can be caught still in flight.
  */
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 const mode = process.env.NESSIE_TEST_MCP_MODE ?? 'ok'
@@ -32,8 +36,30 @@ if (process.env.NESSIE_TEST_MCP_START_LOG) appendFileSync(process.env.NESSIE_TES
 
 if (mode === 'never-start') process.exit(3)
 
-// 3 000 bytes of PNG-looking payload, so a presentation can state its size.
-const IMAGE_BASE64 = Buffer.alloc(3_000, 7).toString('base64')
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const pngOf = (bytes, fill) => Buffer.concat([PNG_SIGNATURE, Buffer.alloc(bytes - PNG_SIGNATURE.length, fill)])
+
+// 3 000 bytes that start as a PNG does, so the daemon keeps the image and a
+// presentation can state its size.
+const IMAGE_BASE64 = pngOf(3_000, 7).toString('base64')
+
+// kelpie_screenshot answers with the captured result verbatim; the large one
+// rebuilds the same three copies around bigger bytes (Kelpie's server.ts
+// puts the metadata and the base64 in the text JSON and structuredContent).
+const kelpieScreenshot = mode === 'kelpie'
+  ? JSON.parse(readFileSync(new URL('./kelpie-screenshot-result.json', import.meta.url), 'utf8'))
+  : undefined
+const kelpieShapeAround = (base64) => {
+  const metadata = { format: 'png', height: 957, image: base64, success: true, tab: {}, width: 1918, mimeType: 'image/png' }
+  return {
+    content: [{ type: 'text', text: JSON.stringify(metadata) }, { type: 'image', data: base64, mimeType: 'image/png' }],
+    structuredContent: metadata,
+  }
+}
+const kelpieTools = [
+  { name: 'kelpie_screenshot', description: 'Take a screenshot.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'kelpie_screenshot_large', description: 'A larger page.', inputSchema: { type: 'object', properties: {} } },
+]
 
 const localAppsTools = [
   {
@@ -83,6 +109,7 @@ const tools = mode === 'many-tools'
   }))
   : mode === 'local-apps' ? localAppsTools
   : mode === 'ollama-search' ? ollamaSearchTools
+  : mode === 'kelpie' ? kelpieTools
   : [
     {
       name: 'echo',
@@ -137,6 +164,9 @@ const callResult = (request) => {
     process.exit(7)
   }
   if (mode === 'local-apps') return localAppsResult(name, request.params?.arguments ?? {})
+  if (mode === 'kelpie') {
+    return name === 'kelpie_screenshot' ? kelpieScreenshot : kelpieShapeAround(pngOf(200_000, 3).toString('base64'))
+  }
   if (mode === 'ollama-search') return ollamaSearchResult(name, request.params?.arguments ?? {})
   if (mode === 'huge') {
     return { content: [{ type: 'text', text: 'x'.repeat(200_000) }] }

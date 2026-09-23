@@ -1,8 +1,16 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
-import type { AuthorizedActionContext, ImplementedExecutorOperationKey } from '@nessie/schemas'
+import type {
+  AuthorizedActionContext,
+  ExecutorCodingSessionCloseReason,
+  ImplementedExecutorOperationKey,
+} from '@nessie/schemas'
 
 import { canManageExecutor, requireHumanActor, resolveExecutorHumanAccess } from './executor-access.js'
+import {
+  requestExecutorCodingSessionClosesInTransaction,
+  withdrawExecutorCodingSessionClosesInTransaction,
+} from './executor-coding-session-closes.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
 /**
@@ -34,6 +42,21 @@ export type ExecutorLeaseEndReason =
   | 'descriptor_narrowed'
   | 'expired'
   | 'replaced'
+
+/**
+ * What a lease's end tells the machine when it closes the holder's coding
+ * sessions: a fence says which one it was, and every other end is the lease's.
+ */
+const CODING_SESSION_CLOSE_REASON = {
+  access_revoked: 'access_revoked',
+  descriptor_narrowed: 'lease_ended',
+  executor_drained: 'lease_ended',
+  executor_paused: 'executor_paused',
+  executor_revoked: 'executor_revoked',
+  expired: 'lease_ended',
+  person: 'lease_ended',
+  replaced: 'lease_ended',
+} as const satisfies Record<ExecutorLeaseEndReason, ExecutorCodingSessionCloseReason>
 
 /** Who a lease transition is recorded as in the audit chain. */
 export type ExecutorLeaseAuditActor = {
@@ -146,6 +169,7 @@ export const endExecutorConversationLeasesInTransaction = async (
     },
   })
   const endedLeases: ExecutorLeaseRef[] = []
+  const endings: EndedLeaseOwner[] = []
   for (const lease of live) {
     const expired = executorLeasePastExpiry(lease, now)
     const reason = expired ? 'expired' : input.reason
@@ -158,6 +182,7 @@ export const endExecutorConversationLeasesInTransaction = async (
     endedLeases.push({
       actorUserId: lease.actorUserId, id: lease.id, organizationId: lease.organizationId, threadId: lease.threadId,
     })
+    endings.push({ agentId: lease.agentId, actorUserId: lease.actorUserId, endedByUserId, reason })
     await writeExecutorLeaseAudit(tx, {
       action: 'executor.lease.ended',
       actor: expired ? expiryAuditActor(lease.id) : input.actor,
@@ -175,7 +200,44 @@ export const endExecutorConversationLeasesInTransaction = async (
       resourceType: 'executor_conversation_lease',
     })
   }
+  await closeCodingSessionsOfEndedLeases(tx, input.where.executorId, endings, now)
   return endedLeases
+}
+
+type EndedLeaseOwner = {
+  actorUserId: string
+  agentId: string
+  endedByUserId: string | null
+  reason: ExecutorLeaseEndReason
+}
+
+/**
+ * A lease's end closes its holder's coding sessions on the machine, in the
+ * same transaction — unless that person still holds a live lease for the same
+ * agent there: the sessions are that owner's (executor, agent, person), not one
+ * conversation's, and another conversation may be driving them.
+ */
+const closeCodingSessionsOfEndedLeases = async (
+  tx: Prisma.TransactionClient,
+  executorId: string,
+  endings: readonly EndedLeaseOwner[],
+  now: Date,
+): Promise<void> => {
+  const closes = new Map<string, EndedLeaseOwner>()
+  for (const ending of endings) {
+    const owner = `${ending.agentId}|${ending.actorUserId}`
+    if (closes.has(owner)) continue
+    const others = await tx.executorConversationLease.findMany({
+      where: { actorUserId: ending.actorUserId, agentId: ending.agentId, endedAt: null, executorId },
+      select: { absoluteExpiresAt: true, endedAt: true, idleExpiresAt: true },
+    })
+    if (!others.some((lease) => isExecutorLeaseLive(lease, now))) closes.set(owner, ending)
+  }
+  await requestExecutorCodingSessionClosesInTransaction(tx, executorId, [...closes.values()].map((ending) => ({
+    owner: { actorUserId: ending.actorUserId, agentId: ending.agentId },
+    reason: CODING_SESSION_CLOSE_REASON[ending.reason],
+    requestedByUserId: ending.endedByUserId,
+  })))
 }
 
 /**
@@ -256,6 +318,12 @@ export const createExecutorConversationLeaseInTransaction = async (
   await tx.executorBinding.updateMany({
     where: { id: { in: input.bindingIds } },
     data: { leaseId: lease.id },
+  })
+  // The owner may drive the machine's coding sessions again, so a close an
+  // earlier end asked for — the lease this one replaces did, a moment ago —
+  // must not end what this launch starts while it waits for a heartbeat.
+  await withdrawExecutorCodingSessionClosesInTransaction(tx, {
+    executorId: input.executorId, now, owner: { actorUserId, agentId: input.agentId },
   })
   await writeExecutorLeaseAudit(tx, {
     action: 'executor.lease.created',

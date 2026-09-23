@@ -171,11 +171,21 @@ sentence changes only if the invariant itself did.
   field on the right — plus the label keyboard, the read-only mirror and
   viewer states, the phone stack, the board's own Labels tab, and removing an
   attachment with a reason: the confirm (shot 12) and the removed row that
-  still shows its uploader, remover, reason and Download (shot 13). The
+  still shows its uploader, remover, reason and Download (shot 13), and the
+  full-size viewer opened from the ticket's Attachments or a comment's file
+  sitting on the blocking layer and owning Back, so Back closes it and leaves
+  the ticket open (shots 14 and 15, phone). The
   real-stack half — a label following a ticket to another board by name, a
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
   [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
+- **Tool screenshot coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:tool-screenshots`. A pure fixture suite
+  (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`) in Browser Suites' executor step: a
+  local program's screenshots as thumbnails in the thought-process dialog and
+  the agent page's tool execution log, the original in the attachment viewer
+  (over the dialog in the blocking layer), at 1280 and 390 px. The rules are in
+  [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md).
 - **Overlay layer coverage:** run
   `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
   over the real navigation stack, in the same lifecycle after the task-dialog

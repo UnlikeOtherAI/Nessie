@@ -143,7 +143,9 @@ test('codex runs a process per turn, resumes its thread, and reports its failure
     const sessionId = await started(harness, { agent: 'codex', prompt: 'first change' })
     const first = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     assert.match(lastResultText(first), /Codex done: first change/)
-    await harness.call('session_send', { sessionId, message: 'second change' })
+    const sent = await harness.call('session_send', { sessionId, message: 'second change' })
+    // The turn it was sent at, so a caller that never read the session knows turn 2 is the answer.
+    assert.deepEqual([sent.body.status, sent.body.turn], ['waiting_for_input', 1])
     const second = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input' && body.turn === 2)
     assert.match(lastResultText(second), /Codex done: second change/)
     const starts = (await harness.agents()).filter((entry) => entry.agent === 'codex' && entry.event === 'start')

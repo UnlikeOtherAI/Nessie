@@ -104,6 +104,9 @@ test('send_message links the acting user\'s pending image upload to its new mess
     where: {
       id: { in: [ATTACHMENT_ID] },
       messageId: null,
+      // An executor command's image names its person as uploader but is never
+      // theirs to post: it is the run's.
+      executorCommandId: null,
       organizationId: ORGANIZATION_ID,
       uploaderId: USER_ID,
     },

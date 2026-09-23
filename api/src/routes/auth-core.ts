@@ -32,7 +32,7 @@ import {
   listAuthProviders,
   resolveConfiguredAuthProvider,
 } from '../services/auth.js'
-import { canAccessAttachment } from '../services/attachments.js'
+import { canAccessAttachment, isRelinkableAttachment } from '../services/attachments.js'
 import { buildExternalAuthAuthorizeUrl } from '../services/external-auth.js'
 import { attemptPersonalAssistantAvatar } from '../services/personal-assistant-avatar.js'
 import { ensurePersonalAssistantBootstrap } from '../services/personal-assistant.js'
@@ -221,6 +221,7 @@ export const registerAuthCoreRoutes = (
       const organizationId = authenticatedState.actorContext.tenant.organizationId
       if (
         !attachment
+        || !isRelinkableAttachment(attachment)
         || !(await canAccessAttachment(prisma, attachment, {
           organizationId,
           userId: authenticatedState.actorContext.actor.actorId,

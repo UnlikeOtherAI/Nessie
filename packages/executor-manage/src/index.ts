@@ -49,8 +49,21 @@ export {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   pollExecutorCommand,
+  type ExecutorCommandBindingFacts,
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
+export {
+  executorCodingSessionOwnerKey,
+  executorCodingSessionsAllowed,
+  reviewedCodingSessionsServer,
+  type ExecutorCodingSessionOwner,
+} from './executor-coding-session-owner.js'
+export {
+  EXECUTOR_CODING_SESSION_CLOSE_TTL_MS,
+  executorCodingSessionOwnerAgentIds,
+  reportedExecutorCodingSessions,
+  requestExecutorCodingSessionClose,
+} from './executor-coding-session-closes.js'
 export {
   markExecutorCommandUnknownOutcome,
   readExecutorCommandResult,
@@ -62,6 +75,15 @@ export {
   recordAuthorizedExecutorCommandReceipt,
 } from './executor-daemon-control.js'
 export {
+  deleteExecutorCommandAttachments,
+  EXECUTOR_ATTACHMENT_RATE_BUCKET,
+  EXECUTOR_ATTACHMENT_RATE_MAXIMUM,
+  EXECUTOR_ATTACHMENT_RATE_WINDOW_MS,
+  executorResultImageReferences,
+  recordAuthorizedExecutorCommandAttachment,
+  releaseUnreferencedExecutorCommandAttachments,
+} from './executor-command-attachments.js'
+export {
   ensureExecutorLogicalTools,
   executorLogicalToolDefinitions,
   executorLogicalToolId,
@@ -69,6 +91,7 @@ export {
 export {
   claimExecutorConnection,
   authorizeExecutorDaemonControlCall,
+  type ExecutorDaemonControlType,
   recordExecutorDaemonChallenge,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,

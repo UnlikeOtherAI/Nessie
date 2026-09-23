@@ -12,6 +12,7 @@ import type { InvocationRecord, ProviderMessage, ProviderToolCall } from '@nessi
 import type { CompactionGovernor } from './context-window.js'
 import type { ExecuteToolFn, ExecutedToolResult, PrepareToolFn } from './tool-batch.js'
 import type { OutputFinalizationReason } from './output-finalization.js'
+import type { ToolImageRef } from './tool-images.js'
 
 export type { OutputFinalizationReason } from './output-finalization.js'
 
@@ -45,6 +46,11 @@ export class RunDrainedError extends Error {
 export type RecordedToolResult = {
   /** Kept so a replayed result is accounted by the breaker as it was the first time. */
   correctable?: true
+  /**
+   * The call's images, as references: a re-entered batch shows the model the
+   * same pictures, read again from `FileService`, and no bytes are recorded.
+   */
+  imageRefs?: ToolImageRef[]
   inputSummary: string
   output: string
   success: boolean
@@ -194,6 +200,7 @@ export const createToolExecutionRecorder = (input: {
     if (result.pendingApproval || result.pendingInput) return result
     results.set(toolCallId, {
       ...(result.correctable ? { correctable: true as const } : {}),
+      ...(result.imageRefs?.length ? { imageRefs: result.imageRefs } : {}),
       inputSummary: result.inputSummary,
       output: result.output,
       success: result.success,

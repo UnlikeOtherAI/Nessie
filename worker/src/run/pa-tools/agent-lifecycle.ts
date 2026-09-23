@@ -14,8 +14,15 @@ import { z } from 'zod'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { emitWorkerAuditEvent } from '../execute/policy.js'
+import { formatTriggerMarkdownLink } from './tool-output.js'
 
 const Id = z.string().uuid()
+
+// A trigger as agent_trigger_create links it: the triggerId agent_trigger_update
+// and agent_trigger_delete take is the link's last segment, and a person can
+// follow it. A raw `triggerId=<uuid>` was copied into the reply as it stood.
+const triggerLink = (trigger: { id: string; name?: string | null; type: string }): string =>
+  formatTriggerMarkdownLink({ id: trigger.id, name: trigger.name ?? `${trigger.type} trigger` })
 
 const requireAccessibleAgent = async (context: BuiltinToolRuntimeContext, agentId: string) => {
   const member = await resolveActingMember(context)
@@ -38,7 +45,7 @@ export const runAgentTriggerListTool = async (
     outputPreview: triggers.length === 0
       ? 'This agent has no triggers.'
       : triggers.map((trigger) =>
-        `- ${trigger.name ?? trigger.type} | triggerId=${trigger.id} | type=${trigger.type} | status=${trigger.status} | enabled=${trigger.enabled}`,
+        `- ${triggerLink(trigger)} | type=${trigger.type} | status=${trigger.status} | enabled=${trigger.enabled}`,
       ).join('\n'),
     toolName: 'agent_trigger_list',
   }
@@ -97,7 +104,7 @@ export const runAgentTriggerUpdateTool = async (
   })
   return {
     inputSummary: `triggerId=${args.triggerId}`,
-    outputPreview: `Updated triggerId=${updated.id} | status=${updated.status} | enabled=${updated.enabled}`,
+    outputPreview: `Updated ${triggerLink(updated)} | status=${updated.status} | enabled=${updated.enabled}`,
     toolName: 'agent_trigger_update',
   }
 }

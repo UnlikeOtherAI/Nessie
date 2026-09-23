@@ -16,10 +16,10 @@ import { buildRealtimeScopesForChannel } from './message-destination.js'
  * the respondents' bell.
  *
  * `card_post` posts the card a model wrote; a tool that posts a card the
- * server wrote — the executor review card — goes through the same door, so a
- * card can never exist without its message, its notice or its alert, and the
- * pointer is written only after the row exists, so a client never reads a
- * card id that resolves to nothing.
+ * server wrote — the executor review card, the browser sign-in card — goes
+ * through the same door, so a card can never exist without its message, its
+ * notice or its alert, and the pointer is written only after the row exists,
+ * so a client never reads a card id that resolves to nothing.
  *
  * Design: docs/plans/2026-09-01-agent-chat-cards.md
  */
@@ -33,6 +33,17 @@ export const postAgentCard = async (
     executorAccessChangeId?: string
     /** A prepared workspace promotion the card opens a review of. */
     executorWorkspacePromotionId?: string
+    /**
+     * The personal browser sign-in the card hands over (`browser_login_request`;
+     * `card_post` never passes it, so no model-written card can grant browser
+     * access). The grant is written inside the card's own transaction, so
+     * neither exists without the other, and its deadline — which the
+     * deployment's browser TTL may shorten — replaces `expiresAt`.
+     */
+    browserLogin?: (tx: Prisma.TransactionClient) => Promise<{
+      expiresAt: Date
+      record: { grantId: string; mode: 'temporary'; origins: string[]; service: string }
+    }>
     respondentUserIds: string[]
   },
 ): Promise<{ cardId: string; messageId: string }> => {
@@ -46,9 +57,11 @@ export const postAgentCard = async (
         ? { rootMessageId: runContext.replyRootMessageId }
         : {}),
     })
+    const browserLogin = input.browserLogin ? await input.browserLogin(tx) : null
     const card = await tx.agentCard.create({
       data: {
         agentId: context.agentId,
+        ...(browserLogin ? { browserLogin: browserLogin.record } : {}),
         channelId: context.channel.id,
         ...(input.executorAccessChangeId
           ? { executorAccessChangeId: input.executorAccessChangeId }
@@ -56,7 +69,7 @@ export const postAgentCard = async (
         ...(input.executorWorkspacePromotionId
           ? { executorWorkspacePromotionId: input.executorWorkspacePromotionId }
           : {}),
-        expiresAt: input.expiresAt,
+        expiresAt: browserLogin?.expiresAt ?? input.expiresAt,
         messageId: message.id,
         organizationId: context.channel.organizationId,
         respondentUserIds: input.respondentUserIds,

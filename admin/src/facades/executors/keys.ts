@@ -12,6 +12,8 @@ export const executorKeys = {
   accessChange: (accessChangeId?: string) =>
     ['executors', 'access-change', accessChangeId ?? 'none'] as const,
   agents: (executorId: string) => ['executors', executorId, 'agents'] as const,
+  /** The coding sessions open on one machine, for its administrators. */
+  codingSessions: (executorId: string) => ['executors', executorId, 'coding-sessions'] as const,
   /** The viewer's own conversation leases in one thread (the composer indicator). */
   conversationLeases: (threadId?: string) =>
     ['executors', 'conversation-leases', threadId ?? 'none'] as const,

@@ -49,12 +49,15 @@ export default defineConfig(({ command, mode }) => {
     env.NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE === '1'
   const includeRunStopFixture = env.NESSIE_RUN_STOP_E2E_FIXTURE === '1'
   const includeExecutorLeaseFixture = env.NESSIE_EXECUTOR_LEASE_E2E_FIXTURE === '1'
+  const includeExecutorCodingSessionsFixture =
+    env.NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE === '1'
   const includeLocalOllamaAgentsFixture = env.NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE === '1'
   const includeVisibilityAffordancesFixture =
     env.NESSIE_VISIBILITY_AFFORDANCES_E2E_FIXTURE === '1'
   const includeTaskSetsFixture = env.NESSIE_TASK_SETS_E2E_FIXTURE === '1'
   const includeTaskDialogFixture = env.NESSIE_TASK_DIALOG_E2E_FIXTURE === '1'
   const includeOverlayLayerFixture = env.NESSIE_OVERLAY_LAYER_E2E_FIXTURE === '1'
+  const includeToolScreenshotsFixture = env.NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE === '1'
 
   return {
     ...(executorApiPublicUrl ? {
@@ -74,6 +77,7 @@ export default defineConfig(({ command, mode }) => {
     || includeTaskSetsFixture
     || includeTaskDialogFixture
     || includeOverlayLayerFixture
+    || includeToolScreenshotsFixture
     || includeExecutorLocalMcpFixture
     || includeExecutorPairingFixture
     || includeExecutorAgentsFixture
@@ -82,6 +86,7 @@ export default defineConfig(({ command, mode }) => {
     || includeExecutorRunLauncherFixture
     || includeRunStopFixture
     || includeExecutorLeaseFixture
+    || includeExecutorCodingSessionsFixture
     || includeLocalOllamaAgentsFixture ? {
     build: {
       rollupOptions: {
@@ -114,6 +119,9 @@ export default defineConfig(({ command, mode }) => {
           ...(includeOverlayLayerFixture ? {
             overlayLayer: resolve(__dirname, 'e2e/overlay-layer/index.html'),
           } : {}),
+          ...(includeToolScreenshotsFixture ? {
+            toolScreenshots: resolve(__dirname, 'e2e/tool-screenshots/index.html'),
+          } : {}),
           ...(includeExecutorLocalMcpFixture ? {
             executorLocalMcp: resolve(__dirname, 'e2e/executor-local-mcp/index.html'),
           } : {}),
@@ -137,6 +145,9 @@ export default defineConfig(({ command, mode }) => {
           } : {}),
           ...(includeExecutorLeaseFixture ? {
             executorLease: resolve(__dirname, 'e2e/executor-lease/index.html'),
+          } : {}),
+          ...(includeExecutorCodingSessionsFixture ? {
+            executorCodingSessions: resolve(__dirname, 'e2e/executor-coding-sessions/index.html'),
           } : {}),
           ...(includeLocalOllamaAgentsFixture ? {
             localOllamaAgents: resolve(__dirname, 'e2e/local-ollama-agents/index.html'),

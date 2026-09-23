@@ -67,6 +67,7 @@ export const KnowledgeWorkspace = ({
     closeSpaceSettings,
     updateSpace,
     updateSpacePending,
+    browseTo,
   } = useKnowledge()
   // The stack's presence — never a breakpoint — decides whether the stages are
   // layers over this route or panes composed in place.
@@ -80,6 +81,17 @@ export const KnowledgeWorkspace = ({
   const breadcrumbPages = knowledgePageAncestors(current, pageById)
   const depth = current ? pathPages.findIndex((page) => page.id === current.id) : -1
   const historyPage = historyPageId ? pageById(historyPageId) : undefined
+  const parentPage = depth > 0 ? pathPages[depth - 1] : undefined
+
+  // A folder is a browser location, not a document detail. Closing a document
+  // from one must remove only the open page and leave its folder column in
+  // place; a real parent document still uses the shared parent-detail Back.
+  const closeDocument = parentPage?.kind === 'folder'
+    ? () => browseTo(pagePath.slice(0, -1))
+    : () => popTo(depth)
+  const documentBackLabel = parentPage?.kind === 'folder'
+    ? 'Back to folder'
+    : depth > 0 ? 'Back to parent page' : 'Back to space'
 
   const canWrite = selectedSpace?.canWrite ?? false
   const canManageAccess = selectedSpace?.canManageAccess ?? false
@@ -154,7 +166,7 @@ export const KnowledgeWorkspace = ({
       canWrite={canWrite}
       depth={depth}
       fullPage={fullPage}
-      onBack={stacked ? undefined : () => popTo(depth)}
+      onBack={stacked ? undefined : closeDocument}
       page={current}
       selectedSpaceId={selectedSpaceId}
       spaceName={selectedSpace?.name ?? 'Documents'}
@@ -244,8 +256,8 @@ export const KnowledgeWorkspace = ({
       <NestedStage
         active={stacked && documentOpen}
         id="knowledge:document"
-        label={depth > 0 ? 'Back to parent page' : 'Back to space'}
-        onBack={() => popTo(depth)}
+        label={documentBackLabel}
+        onBack={closeDocument}
         priority={LOCAL_BACK_PRIORITY.knowledgeDocument}
       >
         {documentPane}

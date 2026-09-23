@@ -6,6 +6,7 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import { WIND_DOWN_FRACTION } from '../loop-budget.js'
 import type { LoopResumeState } from '../loop-resume.js'
 import type { CrashCheckpointWriter } from './crash-checkpoint.js'
 import { buildContextPlan } from '../context-window.js'
@@ -27,6 +28,8 @@ import { buildApprovalSuspensionResult, createBuiltinToolExecutor } from './buil
 import { reviewProposedToolAction } from './auto-review.js'
 import { buildScopes } from './scopes.js'
 import { createExecutorToolExecution } from './executor-tool-execution.js'
+import { fileServiceFor } from '../file-service.js'
+import { createToolImageInference } from './tool-image-inference.js'
 import { setAgentStatus } from './lifecycle.js'
 import { publishAgentStatus } from './realtime.js'
 import type { RunInference } from './run-inference.js'
@@ -145,7 +148,21 @@ export const runExecutionAgentLoop = async (
     payload,
     stubbedBuiltinToolIds: input.stubbedBuiltinToolIds,
   })
-  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset)
+  // A coding-session wait watches for the worker's drain between its reads,
+  // keeps its one line in the thought process current instead of adding a
+  // line per read, and ends where the run's own wallclock enters its
+  // wind-down, so the agent still has time to say where the session stands.
+  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset, {
+    onProgress: (toolName, line) => input.thinkingRecorder.replaceToolLine(toolName, line),
+    runWindDownAt: Date.now() - (input.resumeState?.elapsedMs ?? 0) + input.budget.maxWallclockMs * WIND_DOWN_FRACTION,
+    ...(input.drainSignal ? { signal: input.drainSignal } : {}),
+  })
+  const toolImages = createToolImageInference({
+    files: fileServiceFor(deps.prisma),
+    organizationId: context.channel.organizationId,
+    prisma: deps.prisma,
+    runId: context.run.id,
+  })
 
   const contextPlan = buildContextPlan({
     model: context.agent.model,
@@ -464,10 +481,17 @@ export const runExecutionAgentLoop = async (
           event: 'agent.iteration',
         })
       },
-      onToolCallStart: async (toolName, _args) => {
+      onToolCallStart: async (toolName, _args, providerCallId) => {
         const startedAt = new Date()
         // Tool activity is part of the thought process, not a separate feed.
-        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args))
+        // The line goes under the offered name, the one a watching call
+        // rewrites it by, whatever prefix the provider put on the call, and
+        // is keyed by the provider's call id, the one its ToolCall links by.
+        await input.thinkingRecorder.appendToolLine(
+          normalizeToolName(toolName),
+          summarizeToolInput(_args),
+          providerCallId,
+        )
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
@@ -506,12 +530,13 @@ export const runExecutionAgentLoop = async (
         startedAt,
         connectorUsage,
         toolCallRecordId,
+        providerCallId,
       ) => {
         // A read tool may have just added source provenance to the live sink.
         // Tool summaries and previews are durable, so record that provenance
         // before making either one observable through the activity APIs.
         await persistCurrentRunBasis(deps.prisma, context)
-        await recordToolEnd(deps, context, payload.actorContext, {
+        const recordedId = await recordToolEnd(deps, context, payload.actorContext, {
           argumentsValue,
           durationMs,
           inputSummary,
@@ -522,6 +547,9 @@ export const runExecutionAgentLoop = async (
           connectorUsage,
           toolCallRecordId,
         })
+        // The thought log's line for this call names its ToolCall, which is
+        // how the thought-process dialog finds the call's screenshots.
+        await input.thinkingRecorder.linkToolCall(providerCallId, recordedId)
         await setAgentStatus(deps.prisma, context.agent.id, 'thinking')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,
@@ -558,12 +586,13 @@ export const runExecutionAgentLoop = async (
     initialMessages: input.initialMessages,
     invocationSink: input.invocationSink,
     ...(effects.prepareTool ? { prepareTool: effects.prepareTool } : {}),
-    runInference: (messages, _captured, options) =>
+    // The run's tool images are read in only here, per call, from references.
+    runInference: (messages, _captured, options) => toolImages.infer((prepareMessages) =>
       input.inference.runMain(
         messages,
         options?.noTools ? [] : [...input.toolDefs, ...mcpView.descriptors],
-        undefined,
-      ),
+        { prepareMessages },
+      )),
     // Executor tools go in call order, on their command TTL plus a margin, and
     // a timeout is the TTL's own fatal unknown outcome, never a retriable one.
     dispatchesInOrder: (name) => input.executorToolset.handledNames.has(normalizeToolName(name)),

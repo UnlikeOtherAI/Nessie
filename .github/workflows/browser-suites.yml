@@ -73,7 +73,9 @@ jobs:
       NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE: '1'
       NESSIE_RUN_STOP_E2E_FIXTURE: '1'
+      NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE: '1'
       NESSIE_EXECUTOR_LEASE_E2E_FIXTURE: '1'
+      NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE: '1'
       NESSIE_LOCAL_OLLAMA_AGENTS_E2E_FIXTURE: '1'
       NESSIE_TASK_SETS_E2E_FIXTURE: '1'
 
@@ -234,6 +236,8 @@ jobs:
           pnpm --filter @nessie/admin test:e2e:executor-attention
           pnpm --filter @nessie/admin test:e2e:executor-run-launcher
           pnpm --filter @nessie/admin test:e2e:executor-lease
+          pnpm --filter @nessie/admin test:e2e:executor-coding-sessions
+          pnpm --filter @nessie/admin test:e2e:tool-screenshots
 
       # Stop on the thinking bubbles and the agent page's status pill: the
       # cancel request, and "Stopping…" held until the run leaves its live
@@ -255,7 +259,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: executor-screenshots
-          path: e2e/screenshots/executor-*
+          path: |
+            e2e/screenshots/executor-*
+            e2e/screenshots/tool-screenshots
           if-no-files-found: error
 
       # Two Chromium contexts on one spreadsheet: a batch from one pane landing

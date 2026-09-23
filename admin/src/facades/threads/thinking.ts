@@ -2,12 +2,17 @@
 // pure merge, dedupe and tail-extraction helpers used by the thread stream hook
 // and the channel feed. Deliberately React-free so it is unit-testable.
 
+import type { ToolCallAttachment } from '@nessie/schemas'
+
 export type ThinkingEntryKind = 'reasoning' | 'tool'
 
 // One coalesced flush of an agent's thought process. `id` is the durable
 // `run_thinking_chunks` id (a stringified BigInt); it is absent only for an
 // event published without one.
 export type ThinkingEntry = {
+  // A tool line's screenshots: only the full log (`RunThinkingLog`) carries
+  // them, since a live line is published before its call has returned anything.
+  attachments?: ToolCallAttachment[]
   content: string
   id?: string
   kind: ThinkingEntryKind
@@ -28,6 +33,7 @@ export type PendingStreamMessage = {
 }
 
 type ThinkingLogEntry = {
+  attachments?: ToolCallAttachment[]
   content: string
   createdAt: string
   id: string
@@ -64,6 +70,7 @@ export type RunThinkingLog = {
 // A coalesced unit of thought: consecutive reasoning flushes read as one
 // passage, each tool call as its own line.
 export type ThinkingBlock = {
+  attachments?: ToolCallAttachment[]
   key: string
   kind: ThinkingEntryKind
   text: string
@@ -85,24 +92,37 @@ export const compareChunkIds = (left: string, right: string): number => {
 }
 
 export const toThinkingEntries = (entries: ThinkingLogEntry[] | undefined): ThinkingEntry[] =>
-  (entries ?? []).map((entry) => ({ content: entry.content, id: entry.id, kind: entry.kind }))
+  (entries ?? []).map((entry) => ({
+    ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
+    content: entry.content,
+    id: entry.id,
+    kind: entry.kind,
+  }))
 
 // Append a live chunk, ignoring one already present (a bootstrap fetch and the
-// SSE stream overlap by design). Returns the same array when nothing changed.
+// SSE stream overlap by design). A tool line the worker rewrites in place — a
+// coding-session wait keeping its one line current — arrives again under the
+// same id with new content, and replaces its entry where it stands. Returns
+// the same array when nothing changed.
 export const appendThinkingEntry = (
   entries: ThinkingEntry[],
   entry: ThinkingEntry,
-): ThinkingEntry[] =>
-  entry.id && entries.some((existing) => existing.id === entry.id)
-    ? entries
-    : [...entries, entry]
+): ThinkingEntry[] => {
+  const at = entry.id ? entries.findIndex((existing) => existing.id === entry.id) : -1
+  if (at < 0) return [...entries, entry]
+  const existing = entries[at]!
+  if (existing.kind !== 'tool' || entry.kind !== 'tool' || existing.content === entry.content) return entries
+  return entries.map((current, index) => (index === at ? { ...current, content: entry.content } : current))
+}
 
 /**
  * Merge two views of one run's thought process. `base` is the view whose order
  * is trusted (the locally accumulated log); `incoming` contributes only chunks
  * `base` does not already have. Once every chunk carries an id the merged log
  * is restored to durable chunk order, so a fetched history window and live
- * events cannot interleave wrongly.
+ * events cannot interleave wrongly. A chunk both views hold keeps `base`'s
+ * place but takes screenshots only `incoming` has: a live tool line never
+ * carries them, the full log read once its call returned does.
  */
 export const mergeThinkingEntries = (
   base: ThinkingEntry[],
@@ -111,7 +131,13 @@ export const mergeThinkingEntries = (
   const seen = new Set(
     base.map((entry) => entry.id).filter((id): id is string => Boolean(id)),
   )
-  const merged = [...base]
+  const screenshots = new Map(
+    incoming.flatMap((entry) => (entry.id && entry.attachments ? [[entry.id, entry.attachments] as const] : [])),
+  )
+  const merged = base.map((entry) => {
+    const attachments = entry.id && !entry.attachments ? screenshots.get(entry.id) : undefined
+    return attachments ? { ...entry, attachments } : entry
+  })
 
   for (const entry of incoming) {
     if (entry.id) {
@@ -156,13 +182,31 @@ export const toThinkingBlocks = (entries: ThinkingEntry[]): ThinkingBlock[] => {
     flushReasoning()
     const text = entry.content.trim()
     if (text) {
-      blocks.push({ key: `tool-${key}`, kind: 'tool', text })
+      blocks.push({
+        ...(entry.attachments?.length ? { attachments: entry.attachments } : {}),
+        key: `tool-${key}`,
+        kind: 'tool',
+        text,
+      })
     }
   })
   flushReasoning()
 
   return blocks
 }
+
+/**
+ * How many of a run's tool lines have something recorded after them, or all
+ * of them once the run is no longer streaming. A call's line is written as it
+ * starts; whatever follows the last line of a batch — the next reasoning, the
+ * next batch's first line — is written only after every call in it returned,
+ * and a local program's screenshots are kept before its call returns. So the
+ * thought-process dialog reads the full log again whenever this grows —
+ * sometimes early, beside a call of the same batch still running, but never
+ * too late.
+ */
+export const countSettledToolLines = (blocks: ThinkingBlock[], streaming: boolean): number =>
+  blocks.filter((block, index) => block.kind === 'tool' && (!streaming || index < blocks.length - 1)).length
 
 // The bubble's ticker is lossy on purpose: only the tail of the thought process
 // is kept in the DOM, and the viewport clips whatever no longer fits.

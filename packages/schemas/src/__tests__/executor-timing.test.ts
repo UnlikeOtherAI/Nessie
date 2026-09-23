@@ -28,7 +28,7 @@ test('the local-MCP lane keeps the timing its standards state', () => {
     margin: 10_000,
     overhead: 20_000,
     start: 10_000,
-    ttl: 120_000,
-    upload: 30_000,
+    ttl: 140_000,
+    upload: 50_000,
   })
 })

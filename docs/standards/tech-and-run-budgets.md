@@ -57,7 +57,9 @@ summary and points here; **this file is the rule**.
     chokepoint and capped at 12,000 chars with a "narrower result" hint, its
     images and links reduced to placeholders
     (`worker/src/run/executor-result-presentation.ts`,
-    [executor-local-mcp.md](executor-local-mcp.md)).
+    [executor-local-mcp.md](executor-local-mcp.md)); the images it kept are
+    shown in one turn after the batch, within the prompt's 6-image budget
+    ([file-storage.md](file-storage.md)).
   - **Tool timeouts are per tool.** `executeToolBatch` asks
     `toolTimeoutMsFor(toolName)`: an executor tool gets its command TTL plus
     `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` (10 s), every other tool the budget's
@@ -75,15 +77,43 @@ summary and points here; **this file is the rule**.
     command's ToolCall id before creating it, so the backstop's unknown outcome
     names that row and the batch ends it instead of opening a second one; a
     walk that throws also ends its first page's row, which its answer would
-    have ended. The command TTLs live in
-    `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
-    `EXECUTOR_MCP_COMMAND_TTL_MS` (120 s) from `@nessie/schemas`
+    have ended. `coding_session_wait` is the other: a worker-side wait of
+    `session_status` reads every 5 s for up to 10 minutes
+    (`CODING_WAIT_WINDOW_MS`, `worker/src/run/coding-session-wait.ts`), whose
+    timeout is `CODING_WAIT_TOOL_TIMEOUT_MS` (10.5 min). Each read's command
+    expires no later than the wait's own deadline, that timeout less the
+    margin, so the backstop never fires on a wait that was only sleeping; a
+    read whose own TTL runs out is an unknown outcome like any command, and a
+    late read whose expiry the deadline shortened just ends the wait with what
+    it has. Nothing is outstanding on the machine's lane between reads. The
+    window also ends where the run's own wallclock enters its wind-down
+    (`WIND_DOWN_FRACTION` of `maxWallclockMs`, passed by the agent loop as
+    `runWindDownAt`): the wait then answers "This run is nearly out of time…"
+    and the agent still has the rest of the run to say where the session
+    stands; a wait begun past that point reads once and returns. The command
+    TTLs live in `worker/src/run/executor-command-timing.ts`; `mcp.tools`/`mcp.call` use
+    `EXECUTOR_MCP_COMMAND_TTL_MS` (140 s) from `@nessie/schemas`
     `executor-timing.ts`, which must stay ≥ the daemon's worst case for one
     command (a 10 s start + one 60 s call deadline, which also bounds a whole
     `tools/list` walk; the reporter's probe yields to commands) + upload
-    budget (30 s) + lane overhead (20 s); `executor/test/mcp-timing.test.ts`
+    budget (50 s) + lane overhead (20 s); `executor/test/mcp-timing.test.ts`
     pins it against the session manager's
     `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
+
+    **What a coding wait costs.** Its reads cost nothing against the run's
+    budgets; each time a wait *returns*, the model reads the whole context
+    again — one full-context inference per return, which counts the run's
+    context size against the 500 000-token backstop every time (an uncached
+    30–40 k-token CTO context reaches the 80 % wind-down in ten to thirteen
+    inferences). The window is long for that reason: a twenty-minute coding
+    turn is two waits, not five, so start → turn → review → correction →
+    second turn → review → reply is about nine inferences where a four-minute
+    window took thirteen. A turn longer than what is left of the run
+    (`maxTurnMinutes` defaults to 45, as does the wallclock backstop) outlives
+    it; nothing wakes the agent when that turn ends, and the person learns of
+    it by writing again — a known gap, recorded as a follow-up in
+    [the plan](../plans/2026-09-22-executor-local-apps/coding-sessions.md) →
+    "Follow-ups".
   - **Executor calls in one batch run in call order**, one after another; the
     batch's other tools still run in parallel beside them. A fatal executor
     call stops the ones queued behind it from dispatching (nothing claimed
@@ -103,18 +133,50 @@ summary and points here; **this file is the rule**.
     call: `EXECUTOR_COMMAND_ARGUMENTS_INVALID`, `EXECUTOR_MCP_RESULT_TOO_LARGE`,
     `EXECUTOR_MCP_CURSOR_INVALID`, an executor tool name the run does not
     offer, or an MCP server refusing an unknown tool or arguments that fail its
-    input schema — goes back to the model and neither counts nor clears a
+    input schema, and the coding-sessions bridge's own refusals of a session
+    or an argument (`coding_session_not_found`, `…_closed`, `…_failed`,
+    `…_quota_exceeded`, `…_invalid_arguments`, a root or path it does not
+    know) — goes back to the model and neither counts nor clears a
     count; replays keep the flag.
   - **Loop detection** (`worker/src/run/tool-loop-detection.ts`) is decided
     before dispatch. The third identical name+arguments call anywhere in the
     run is refused and the model told to stop and answer. Observation tools
-    (`OBSERVATION_TOOL_NAMES`, today `executor_mcp_tools`) are exempt from
+    (`OBSERVATION_TOOL_NAMES`: `executor_mcp_tools`, `coding_session_list`,
+    `coding_session_review`, `coding_session_wait`) are exempt from
     that rule: only consecutive identical calls count, any other call resets
     the streak, and the fourth in a row is refused with "The result has not
     changed. Wait with a different call, or tell the person where things
-    stand and end your turn." Counts are checkpointed under `#repeat:` /
-    `#observe:` keys; unprefixed counts from an earlier deploy are dropped on
-    resume.
+    stand and end your turn." — for the two coding ones, with "The coding
+    session's answer has not changed. If it is working, call
+    coding_session_wait; if it is waiting for you, send it feedback or close
+    it; otherwise tell the person where things stand and end your turn." A
+    wait (`WATCH_TOOL_NAMES`) reports after it ran whether the session moved
+    and why it stopped (`AgenticToolResult.watch`: `progressed`, and a state
+    of `watching`, `needs_model` or `end_turn`), and is judged by that:
+    - **Watching** — the session was still working, or the machine did not
+      answer in time. Waiting again is the tool working, so it is never
+      refused; its streak counts only the waits that saw nothing move, and
+      the third such wait in a row gets "The coding agent is still working;
+      that is normal. Wait again, or tell the person where things stand and
+      end your turn." after the batch instead of a refusal.
+    - **Needs the model** — the turn ended, or the session was interrupted,
+      failed or closed. (A turn that ended with background tasks still
+      running counts as watching: a task finishing starts a turn of its
+      own.) The wait's own answer says what to do, and a second
+      wait would return the same answer at once, so the same wait again is
+      refused ("Not run: your last wait on this session already returned
+      because it needs you…") until a call that is not an observation — a
+      send, an interrupt, a close, a start, or anything else that can change
+      what the wait would see — ends it.
+    - **End the turn** — the person wrote in the conversation or stopped the
+      run, or the run's wallclock entered its wind-down. Every later wait in
+      the run would stop for the same reason, so every one of them is refused
+      with "Stop waiting and end your turn now with one line saying where the
+      coding session stands…".
+
+    Counts are checkpointed under `#repeat:` / `#observe:` keys, and the two
+    wait markers under `#settled:` / `#ended:`; unprefixed counts from an
+    earlier deploy are dropped on resume.
   - A provider `finish_reason: length` gets one bounded recovery. Partial prose
     uses a no-tools finalisation from completed evidence. Empty reasoning-only
     output retains tools to finish the already authorized work; a truncated tool
@@ -225,7 +287,11 @@ summary and points here; **this file is the rule**.
     only ever held crash state is deleted, one a stop or suspension has since
     written its note into keeps everything but the crash columns. A transcript
     over 4 MB (inlined images) is not checkpointed at all: the run degrades to
-    replay, and the log line says which run.
+    replay, and the log line says which run. A tool's images never count
+    toward it: the transcript, and a recorded tool result, hold them as
+    attachment refs, and a resumed or re-entered run reads them again from
+    `FileService` when it next builds a provider input
+    ([file-storage.md](file-storage.md)).
   - **Drain.** The queue's per-job `AbortSignal` reaches the loop
     (`worker/src/index.ts` → `executeRunJob` → `runAgenticLoop`). When it fires,
     whatever is in flight gets `NESSIE_RUN_DRAIN_GRACE_MS` (default 5 s) and the

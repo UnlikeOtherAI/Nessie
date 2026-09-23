@@ -1,7 +1,8 @@
 import type { ConnectorUsage, ProviderToolCall } from '@nessie/runtime'
 import { circuitBreakerKey, ToolCircuitBreaker } from './circuit-breaker.js'
 import { isFatalToolExecutionError } from './tool-execution-errors.js'
-import { countToolCall, strongerNudge } from './tool-loop-detection.js'
+import type { ToolImageRef } from './tool-images.js'
+import { countToolCall, noteWatchProgress, strongerNudge, type WatchReport } from './tool-loop-detection.js'
 import { summarizeToolInput } from './tool-util.js'
 
 export type ToolApprovalSuspension = {
@@ -20,6 +21,8 @@ export type ExecutedToolResult = {
   /** See `AgenticToolResult.correctable`: never counted by the circuit breaker. */
   correctable?: true
   deliveredToConversation?: boolean
+  /** See `AgenticToolResult.imageRefs`. */
+  imageRefs?: ToolImageRef[]
   inputSummary: string
   output: string
   pendingApproval?: ToolApprovalSuspension
@@ -28,10 +31,14 @@ export type ExecutedToolResult = {
   toolCallId?: string
   toolCallRecordId?: string
   toolName?: string
+  /** See `AgenticToolResult.watch`: read by the loop detector after the call. */
+  watch?: WatchReport
 }
 
+// Both callbacks end with the provider's id for the call, which is what pairs
+// one call's start with its end while other calls of the batch run beside it.
 export type ToolBatchCallbacks = {
-  onToolCallStart: (toolName: string, args: Record<string, unknown>) => Promise<void>
+  onToolCallStart: (toolName: string, args: Record<string, unknown>, toolCallId: string) => Promise<void>
   onToolCallEnd: (
     toolName: string,
     args: Record<string, unknown>,
@@ -40,8 +47,9 @@ export type ToolBatchCallbacks = {
     success: boolean,
     inputSummary: string,
     startedAt: Date,
-    connectorUsage?: ConnectorUsage,
-    toolCallRecordId?: string,
+    connectorUsage: ConnectorUsage | undefined,
+    toolCallRecordId: string | undefined,
+    toolCallId: string,
   ) => Promise<void>
 }
 
@@ -248,7 +256,7 @@ export const executeToolBatch = async (input: {
   const runPrepared = async ({ execute, toolCall }: PreparedToolCall): Promise<ExecutedToolResult> => {
     const timeoutMs = input.toolTimeoutMsFor?.(toolCall.toolName) ?? DEFAULT_TOOL_TIMEOUT_MS
     const breakerKey = circuitBreakerKey(countedName(toolCall), toolCall.arguments)
-    await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments)
+    await input.callbacks.onToolCallStart(toolCall.toolName, toolCall.arguments, toolCall.toolCallId)
     const startedAt = new Date()
     // One controller per call: the timeout arm aborts it, so a stalled
     // execution is cancelled rather than merely out-raced. A bare
@@ -275,6 +283,14 @@ export const executeToolBatch = async (input: {
           input.circuitBreaker.recordError(breakerKey)
         }
       }
+      // A wait says, once it ran, whether what it watched moved and why it
+      // stopped; a replayed result says nothing and counts for nothing.
+      if (result.watch !== undefined) {
+        const stalled = noteWatchProgress(
+          input.signatureCounts, countedName(toolCall), toolCall.arguments, result.watch,
+        )
+        if (stalled) loopNudge = strongerNudge(loopNudge, stalled)
+      }
       await input.callbacks.onToolCallEnd(
         toolCall.toolName,
         toolCall.arguments,
@@ -285,6 +301,7 @@ export const executeToolBatch = async (input: {
         startedAt,
         result.connectorUsage,
         result.toolCallRecordId,
+        toolCall.toolCallId,
       )
       return { ...result, toolCallId: toolCall.toolCallId, toolName: toolCall.toolName }
     } catch (error) {
@@ -308,6 +325,7 @@ export const executeToolBatch = async (input: {
           error instanceof Error && typeof (error as Error & { toolCallRecordId?: unknown }).toolCallRecordId === 'string'
             ? (error as Error & { toolCallRecordId: string }).toolCallRecordId
             : undefined,
+          toolCall.toolCallId,
         )
       } catch (callbackError) {
         if (!fatal) throw callbackError

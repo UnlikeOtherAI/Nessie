@@ -5,6 +5,7 @@ import type { CaptureConfig } from '@nessie/memory'
 import type { ConsumedSourceSink } from './execute/disclosure-basis.js'
 import type { DocumentStreamRecorder } from './execute/document-stream.js'
 import type { RunContext } from './execute/types.js'
+import type { ToolImageRef } from './tool-images.js'
 import type {
   ConnectorUsage,
   EncryptionKeyRingInput,
@@ -13,6 +14,7 @@ import type {
   PgRealtimeTransport,
 } from '@nessie/runtime'
 import type { RunExecuteJobPayload } from '@nessie/schemas'
+import type { WatchReport } from './tool-loop-detection.js'
 
 export type ToolExecutionUsage = Omit<ConnectorUsage, 'latencyMs' | 'success'>
 
@@ -59,9 +61,22 @@ export type AgenticToolResult = {
   pendingInput?: AgentCardSuspension
   /** Present only when the tool rejected its structured arguments. */
   failureKind?: 'invalid_arguments'
+  /**
+   * The images the call returned, as the attachments that hold them — refs,
+   * never bytes. The loop shows them to the model in one turn after the batch
+   * (`tool-images.ts`); `output` names each one.
+   */
+  imageRefs?: ToolImageRef[]
   success: boolean
   /** A pre-created durable ToolCall used by an executor command. */
   toolCallRecordId?: string
+  /**
+   * Set by a watch tool (`WATCH_TOOL_NAMES` in `tool-loop-detection.ts`):
+   * whether what it waited on moved while it waited, and why it stopped.
+   * Waits in a row that saw nothing move earn the loop's no-progress nudge;
+   * a repeat of a wait that stopped because the model must act is refused.
+   */
+  watch?: WatchReport
 }
 
 export type BuiltinToolRuntimeContext = {

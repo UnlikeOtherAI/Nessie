@@ -29,11 +29,21 @@ import {
   admitPrivateConversationLineage,
   originalHumanAuthorId,
 } from './private-conversation-lineage.js'
-import { requiresProjectWriteRecallContainment } from './memory.js'
+import {
+  PROJECT_WRITE_RECALL_DEPTH,
+  requiresProjectWriteRecallContainment,
+} from './memory.js'
 
 export const RETRIEVED_CONTEXT_TOKEN_BUDGET = 4_000
 const MAX_NEIGHBORS = 2
 const MAX_PASSAGES_PER_THREAD = 2
+/**
+ * The candidate search's normal depth (`searchMessageCandidates`' default),
+ * and so the most passages one recall admits. A project-write run searches
+ * `PROJECT_WRITE_RECALL_DEPTH` times deeper, because its lineage filter runs
+ * on the passages, and still admits no more than this.
+ */
+const MAX_HISTORY_CANDIDATES = 12
 
 type HistoryMessage = {
   agentId: string | null
@@ -309,6 +319,14 @@ export const retrieveRelevantHistory = async (
     select: { agentId: true },
     where: { id: context.run.threadId },
   })
+  // Recalled history is recalled memory too: a run that can write into its
+  // project takes no message whose lineage the project write gate would then
+  // refuse, the same narrowing thought recall applies — and, like it, searches
+  // deeper so that filter does not leave the recall short.
+  const projectWrite = requiresProjectWriteRecallContainment(
+    delegationFactsFor(context),
+    input.holdsProjectWriteTools === true,
+  )
   const candidates = await searchMessageCandidates({
     channelIds: scopes.channelIds,
     embeddingModel: deps.modelClient.embeddingModel,
@@ -318,6 +336,7 @@ export const retrieveRelevantHistory = async (
     runningAgentId: context.agent.id,
     scopeIds: scopes.audienceIds,
     scopeTypes: scopes.audienceTypes,
+    take: projectWrite ? MAX_HISTORY_CANDIDATES * PROJECT_WRITE_RECALL_DEPTH : MAX_HISTORY_CANDIDATES,
     ...(conversationThread?.agentId ? { threadIds: [context.run.threadId] } : {}),
   }, deps.searchConfig.pool)
   const candidateIds = candidates.map((candidate) => candidate.id)
@@ -333,45 +352,57 @@ export const retrieveRelevantHistory = async (
     select: historyMessageSelect,
   })
   const byId = new Map(loaded.map((message) => [message.id, message as HistoryMessage]))
-  // Recalled history is recalled memory too: a run that can write into its
-  // project takes no message whose lineage the project write gate would then
-  // refuse, the same narrowing thought recall applies.
-  const projectWrite = requiresProjectWriteRecallContainment(
-    delegationFactsFor(context),
-    input.holdsProjectWriteTools === true,
-  )
   const threadCounts = new Map<string, number>()
   const blocks: string[] = []
   const messageIds: string[] = []
   let tokenCount = 0
 
+  // The lineage a message brings into the run, or null when the run may not
+  // take it: a stale projection, a viewer who cannot read it, or — for a run
+  // lent a project write — anything outside what every project reader has.
+  const admissibleLineage = async (
+    message: HistoryMessage,
+  ): Promise<NonNullable<ReturnType<typeof sourceLineage>> | null> => {
+    if (!isCurrentProjection(message, deps.modelClient.embeddingModel)) return null
+    const access = await readableMessage(
+      deps.prisma,
+      message,
+      context.channel.organizationId,
+      input.viewer,
+    )
+    if (!access.readable || !access.lineage) return null
+    if (projectWrite && !isWithinProjectWriteScopes(lineageScopes(access.lineage), context.channel)) {
+      return null
+    }
+    return access.lineage
+  }
+
   for (const candidate of candidates) {
+    if (blocks.length >= MAX_HISTORY_CANDIDATES) break
     const seed = byId.get(candidate.id)
     if (
       !seed
-      || !isCurrentProjection(seed, deps.modelClient.embeddingModel)
       || (threadCounts.get(seed.threadId) ?? 0) >= MAX_PASSAGES_PER_THREAD
+      // Every passage carries its seed, so a seed that alone overruns what is
+      // left of the budget cannot be admitted, whatever its neighbours are.
+      || tokenCount + estimateTokens(formatPassage([seed])) > tokenBudget
     ) continue
+
+    // A passage is admitted only with its seed, so the seed is judged before
+    // its neighbours are read: a project-write run, searching three times as
+    // deep past private hits, spends no passage read on a hit it refuses.
+    const seedLineage = await admissibleLineage(seed)
+    if (!seedLineage) continue
 
     const passage = await loadPassage(deps.prisma, seed)
     const allowed: HistoryMessage[] = []
     const lineages: NonNullable<ReturnType<typeof sourceLineage>>[] = []
     for (const message of passage) {
-      if (!isCurrentProjection(message, deps.modelClient.embeddingModel)) continue
-      const access = await readableMessage(
-        deps.prisma,
-        message,
-        context.channel.organizationId,
-        input.viewer,
-      )
-      if (!access.readable || !access.lineage) continue
-      if (projectWrite && !isWithinProjectWriteScopes(lineageScopes(access.lineage), context.channel)) {
-        continue
-      }
+      const lineage = message.id === seed.id ? seedLineage : await admissibleLineage(message)
+      if (!lineage) continue
       allowed.push(message)
-      lineages.push(access.lineage)
+      lineages.push(lineage)
     }
-    if (allowed.length === 0 || !allowed.some((message) => message.id === seed.id)) continue
 
     const block = formatPassage(allowed)
     const blockTokens = estimateTokens(block)

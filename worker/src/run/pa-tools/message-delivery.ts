@@ -117,6 +117,8 @@ export const runSendMessageTool = async (
         where: {
           id: { in: attachmentIds },
           messageId: null,
+          // An executor command's image is the run's, not a pending upload.
+          executorCommandId: null,
           organizationId: context.channel.organizationId,
           uploaderId: userId,
         },

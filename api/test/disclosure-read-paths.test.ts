@@ -307,13 +307,25 @@ runDatabaseTest('agent history and tool activity use the same live disclosure ga
   const publicRun = await prisma.run.create({
     data: { agentId: s.agentId, status: 'completed', threadId: s.threadId },
   })
-  await prisma.toolCall.create({
+  const publicCall = await prisma.toolCall.create({
     data: {
       agentId: s.agentId,
       inputSummary: 'public input',
       outputPreview: 'public output',
       runId: publicRun.id,
       startedAt: new Date(),
+      toolName: 'status',
+    },
+  })
+  // A step of that call — a coding wait's later read — is not a call of its own.
+  await prisma.toolCall.create({
+    data: {
+      agentId: s.agentId,
+      inputSummary: 'a later read',
+      outputPreview: 'A status read of the coding session.',
+      parentToolCallId: publicCall.id,
+      runId: publicRun.id,
+      startedAt: new Date(Date.now() + 5_000),
       toolName: 'status',
     },
   })
@@ -324,4 +336,5 @@ runDatabaseTest('agent history and tool activity use the same live disclosure ga
     { visibility: outsiderVisibility },
   )
   assert.equal(publicTools[0]?.outputPreview, 'public output')
+  assert.equal(publicTools.length, 1, 'the call once, not a row per step')
 })

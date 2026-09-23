@@ -7,6 +7,7 @@ import {
 } from '@nessie/schemas'
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
+import { takeExecutorCodingSessionClosesInTransaction } from './executor-coding-session-closes.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
   EXECUTOR_HEARTBEAT_FRESHNESS_MS,
@@ -40,9 +41,22 @@ const machineKey = (encoded: string) => {
   }
 }
 
+/**
+ * The signed domains of an authenticated daemon control call. Each is its own
+ * domain so that no call can be replayed as another: an image upload
+ * (`attachment`) is not a receipt, and a receipt is not a poll.
+ */
+export type ExecutorDaemonControlType =
+  | 'attachment'
+  | 'browser_cookie_import.poll'
+  | 'browser_cookie_import.upload'
+  | 'local_inference.host'
+  | 'poll'
+  | 'receipt'
+
 export const verifyExecutorDaemonSignature = (
   machinePublicKey: string,
-  domain: 'browser_cookie_import.poll' | 'browser_cookie_import.upload' | 'claim' | 'heartbeat' | 'local_inference.host' | 'poll' | 'receipt',
+  domain: ExecutorDaemonControlType | 'claim' | 'heartbeat',
   payload: Record<string, unknown>,
   signature: string,
 ): boolean => {
@@ -193,6 +207,11 @@ export const claimExecutorConnection = async (
   return { connectionEpoch: updated.activeConnectionEpoch.toString(), status: updated.status }
 })
 
+/**
+ * A heartbeat stores the daemon's local-MCP report and answers with the
+ * coding sessions it must close (`codingSessionClose`, absent when there are
+ * none): the report it carried settles the requests it shows done first.
+ */
 export const reportExecutorHeartbeat = async (
   prisma: PrismaClient,
   input: {
@@ -203,7 +222,11 @@ export const reportExecutorHeartbeat = async (
     signature: string
   },
   now = new Date(),
-): Promise<{ connectionEpoch: string; status: string }> => {
+): Promise<{
+  codingSessionClose?: Array<{ ownerKey: string; reason: string; sessionId?: string }>
+  connectionEpoch: string
+  status: string
+}> => {
   const observedAt = new Date(input.observedAt)
   if (
     Number.isNaN(observedAt.getTime())
@@ -252,7 +275,14 @@ export const reportExecutorHeartbeat = async (
       },
       select: { activeConnectionEpoch: true, status: true },
     })
-    return { connectionEpoch: updated.activeConnectionEpoch.toString(), status: updated.status }
+    const codingSessionClose = await takeExecutorCodingSessionClosesInTransaction(tx, {
+      executorId: executor.id, ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }), now,
+    })
+    return {
+      ...(codingSessionClose.length > 0 ? { codingSessionClose } : {}),
+      connectionEpoch: updated.activeConnectionEpoch.toString(),
+      status: updated.status,
+    }
   })
 }
 
@@ -341,7 +371,7 @@ export const authorizeExecutorDaemonControlCall = async <Result>(
     observedAt: string
     payload: Record<string, unknown>
     signature: string
-    type: 'browser_cookie_import.poll' | 'browser_cookie_import.upload' | 'local_inference.host' | 'poll' | 'receipt'
+    type: ExecutorDaemonControlType
   },
   action: (tx: Prisma.TransactionClient) => Promise<Result>,
   now = new Date(),
