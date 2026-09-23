@@ -5,6 +5,7 @@ import {
   blockDeepWaterDelivery,
   failUnstartedDeepWaterBrief,
   readDeepWaterBriefRun,
+  retryDeepWaterWatchSoon,
   settleStaleDeepWaterAction,
   type DeepWaterBriefRun,
   type DeepWaterProjectionOutcome,
@@ -56,8 +57,17 @@ const log = (run: DeepWaterBriefRun, what: string): void => {
   console.info(`[deep-water] watch ${run.id}: ${what}`)
 }
 
-/** Did Ledger's refusal or silence leave nothing to do but read again later? */
-const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutcome, { outcome: 'ok' }>): void => {
+/**
+ * Ledger's refusal or silence left nothing to do but read again later. A
+ * definitive refusal, a malformed answer or a missing connector keeps the
+ * claim's backoff; a failure that passes is tried again soon while the run
+ * moves fast (`retryDeepWaterWatchSoon`).
+ */
+const retryLater = async (
+  deps: DeepWaterWatchDeps,
+  run: DeepWaterBriefRun,
+  outcome: Exclude<DeepWaterLedgerOutcome, { outcome: 'ok' }>,
+): Promise<void> => {
   if (outcome.outcome === 'refused' && !isTransientLedgerRefusal(outcome.error)) {
     console.error(`[deep-water] watch ${run.id}: Ledger refused the read (${outcome.error.code})`)
     return
@@ -72,7 +82,12 @@ const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutc
     console.warn(`[deep-water] watch ${run.id}: the team's DeepWater connector is not active`)
     return
   }
-  log(run, `read deferred (${outcome.outcome})`)
+  const soon = await deps.prisma.$transaction((tx) => retryDeepWaterWatchSoon(tx, {
+    organizationId: run.organizationId,
+    runId: run.id,
+    reconcileSeq: run.reconcileSeq,
+  }))
+  log(run, `read deferred (${outcome.outcome})${soon ? '; reading again within 30 s' : ''}`)
 }
 
 /**
@@ -193,12 +208,12 @@ const readBrief = async (
       return null
     }
     if (answer.outcome !== 'ok') {
-      retryLater(run, answer)
+      await retryLater(deps, run, answer)
       return null
     }
     const parsed = LedgerScopeResultSchema.safeParse(answer.structured)
     if (!parsed.success) {
-      retryLater(run, { outcome: 'malformed', reason: 'research_scope_get answered outside the contract' })
+      await retryLater(deps, run, { outcome: 'malformed', reason: 'research_scope_get answered outside the contract' })
       return null
     }
     return applyRead(deps, (tx) => applyDeepWaterScopeResult(tx, {
@@ -242,9 +257,9 @@ const readResearch = async (
     args: { id: run.externalRunId },
   })
   if (read.outcome === 'identity') return blockOnIdentity(deps, run)
-  if (read.outcome !== 'ok') return retryLater(run, read)
+  if (read.outcome !== 'ok') return retryLater(deps, run, read)
   const parsed = LedgerResearchStatusDtoSchema.safeParse(read.structured)
-  if (!parsed.success) return retryLater(run, { outcome: 'malformed', reason: 'research_status answered outside the contract' })
+  if (!parsed.success) return retryLater(deps, run, { outcome: 'malformed', reason: 'research_status answered outside the contract' })
   const applied = await applyRead(deps, (tx) => applyDeepWaterStatusRead(tx, {
     organizationId: run.organizationId,
     runId: run.id,
@@ -315,9 +330,9 @@ const replayAgentScopeStart = async (
     })
     return log(run, `scope start refused (${read.error.code})`)
   }
-  if (read.outcome !== 'ok') return retryLater(run, read)
+  if (read.outcome !== 'ok') return retryLater(deps, run, read)
   const parsed = LedgerScopeResultSchema.safeParse(read.structured)
-  if (!parsed.success) return retryLater(run, { outcome: 'malformed', reason: 'research_scope_start answered outside the contract' })
+  if (!parsed.success) return retryLater(deps, run, { outcome: 'malformed', reason: 'research_scope_start answered outside the contract' })
   const applied = await runDeepWaterTransaction(deps, async (tx, announce) => {
     const outcome = await applyDeepWaterScopeResult(tx, {
       organizationId: run.organizationId,

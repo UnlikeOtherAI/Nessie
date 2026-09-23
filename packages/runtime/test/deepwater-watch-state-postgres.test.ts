@@ -12,6 +12,7 @@ import {
   findUnconfirmedDeepWaterBriefs,
   reapUnconfirmedDeepWaterBrief,
   recordDeepWaterAgentWake,
+  retryDeepWaterWatchSoon,
   settleStaleDeepWaterAction,
 } from '../src/deepwater-watch-state.js'
 import {
@@ -244,4 +245,46 @@ withFixture('an attach that names a finished research leaves the run where the n
   assert.ok(claimed.includes(queued.id), 'the attached run is claimed again')
   assert.ok(claimed.includes(reaped.id), 'the revived run is claimed again')
   assert.equal((await read(fixture, queued.id))?.deliveredAt, null)
+})
+
+withFixture('a read that failed for a passing reason is tried again soon only while the run moves fast', async (fixture) => {
+  const claimOf = async (runId: string) => {
+    await makeDue(fixture, runId)
+    const claims = await fixture.prisma.$transaction((tx) => claimDueDeepWaterWatchRuns(tx, { limit: 50 }))
+    const claim = claims.find((entry) => entry.runId === runId)
+    assert.ok(claim, 'the run was claimed')
+    return claim
+  }
+  const retry = (runId: string, reconcileSeq: number) => fixture.prisma.$transaction((tx) =>
+    retryDeepWaterWatchSoon(tx, { organizationId: fixture.ids.organization, runId, reconcileSeq }))
+  const scheduledIn = async (runId: string) =>
+    ((await read(fixture, runId))?.reconcileAfter.getTime() ?? 0) - Date.now()
+
+  // A research that is running: the claim backed it off; the failed read brings it back within 30 s.
+  const { run: research } = await insertBrief(fixture, personOrigin())
+  await apply(fixture, research.id, result(researchId(), { status: 'running' }))
+  const researchClaim = await claimOf(research.id)
+  assert.ok(await scheduledIn(research.id) > 9 * 60_000)
+  assert.equal(await retry(research.id, researchClaim.reconcileSeq - 1), false, 'an older claim owns nothing')
+  assert.equal(await retry(research.id, researchClaim.reconcileSeq), true)
+  const soon = await scheduledIn(research.id)
+  assert.ok(soon > 20_000 && soon <= 30_000, `read again within 30 s (${soon} ms)`)
+  assert.equal(await retry(research.id, researchClaim.reconcileSeq), false, 'never later, never twice')
+
+  // A quiet brief — nothing in flight — keeps the claim's backoff.
+  const { run: quiet } = await insertBrief(fixture, personOrigin())
+  await apply(fixture, quiet.id, result(researchId()))
+  await fixture.pool.query(
+    `UPDATE product_integration_runs SET scope_json = jsonb_set(scope_json, '{pendingAction}', 'null'::jsonb) WHERE id = $1`,
+    [quiet.id],
+  )
+  const quietClaim = await claimOf(quiet.id)
+  assert.equal(await retry(quiet.id, quietClaim.reconcileSeq), false)
+  assert.ok(await scheduledIn(quiet.id) > 9 * 60_000)
+
+  // A planner turn in flight is fast too.
+  const { run: talking } = await insertBrief(fixture, personOrigin())
+  await apply(fixture, talking.id, result(researchId(), { turn: turn({ status: 'pending', authorKind: 'person' }) }))
+  const talkingClaim = await claimOf(talking.id)
+  assert.equal(await retry(talking.id, talkingClaim.reconcileSeq), true)
 })

@@ -205,3 +205,35 @@ withFixture('a failed research and a brief never confirmed are each told once', 
   assert.equal((await fixture.read(unconfirmed.id)).failureCode, 'start_unconfirmed')
   assert.deepEqual((await notices(fixture, unconfirmed.id)).map((notice) => notice.kind), ['start_unconfirmed'])
 })
+
+withFixture('a read that fails while Ledger restarts is tried again within 30 s; a refusal waits', async (fixture) => {
+  const { run } = await launched(fixture)
+  // What the watch claim does to this run alone (a global claim here could take
+  // another suite's due rows): the next sequence, backed off ten minutes.
+  const claimNow = async () => {
+    await fixture.prisma.productIntegrationRun.update({
+      where: { id: run.id },
+      data: { reconcileSeq: { increment: 1 }, reconcileAfter: new Date(Date.now() + 10 * 60_000) },
+    })
+    return fixture.read(run.id)
+  }
+  const nextReadIn = async () => (await fixture.read(run.id)).reconcileAfter.getTime() - Date.now()
+
+  const claimed = await claimNow()
+  assert.ok(claimed.reconcileAfter.getTime() - Date.now() > 9 * 60_000, 'the claim backs off')
+  fixture.ledger.answer('research_status', { error: 'upstream_unavailable', status_code: 503 }, false)
+  await watchDeepWaterRun(fixture.deps, claimed)
+  const soon = await nextReadIn()
+  assert.ok(soon > 20_000 && soon <= 30_000, `read again within 30 s (${soon} ms)`)
+
+  await claimNow()
+  fixture.ledger.answer('research_status', { error: 'forbidden', status_code: 403 }, false)
+  await watchDeepWaterRun(fixture.deps, await fixture.read(run.id))
+  assert.ok(await nextReadIn() > 9 * 60_000, 'a definitive refusal keeps the backoff')
+  assert.equal((await fixture.read(run.id)).status, 'running')
+  assert.equal(fixture.ledger.calls.filter((call) => call.toolName === 'research_status').length, 2)
+  assert.deepEqual(
+    fixture.ledger.calls.map((call) => call.toolCallId),
+    [`watch:${run.id}:${claimed.reconcileSeq}`, `watch:${run.id}:${claimed.reconcileSeq + 1}`],
+  )
+})

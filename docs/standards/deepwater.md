@@ -386,7 +386,12 @@ the only way results come back.
   `watch:<runId>:<seq>`. A brief is read with `research_scope_get` (with its
   transcript only once a planner turn has settled since the transcript was
   captured), a research with `research_status`; the answer goes through the
-  same projection the tool acks use. A transient failure changes nothing; an
+  same projection the tool acks use. A failure that passes (Ledger restarting,
+  a timeout, a transient refusal) is read again within 30 s while the run
+  moves fast — a turn or action in flight, a research running — instead of
+  waiting out the claim's backoff (`retryDeepWaterWatchSoon`, which only ever
+  brings the next read earlier); a definitive refusal, a malformed answer or a
+  missing connector keeps the backoff. An
   identity that no longer resolves blocks the run with
   `requester_identity_changed` until the requester's next live action (or
   Retry) renews it. Only a person's own brief is blocked quietly, because its

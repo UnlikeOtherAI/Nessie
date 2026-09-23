@@ -9,7 +9,11 @@ import {
   type DeepWaterTurnRegister,
 } from '@nessie/schemas'
 
-import { isPendingActionInFlight, isSettledTurnStatus } from './deepwater-brief-registers.js'
+import {
+  deepWaterWatchDelayMs,
+  isPendingActionInFlight,
+  isSettledTurnStatus,
+} from './deepwater-brief-registers.js'
 import {
   deepWaterBriefJson,
   lockDeepWaterBriefRun,
@@ -101,6 +105,38 @@ export const claimDueDeepWaterWatchRuns = async (
     })
   }
   return claims
+}
+
+/** How soon a read that failed for a passing reason is tried again while the run moves fast. */
+export const DEEP_WATER_TRANSIENT_RETRY_MS = 30_000
+
+/**
+ * A watch read failed for a reason that passes — Ledger restarting, a timeout,
+ * a transient refusal. The claim already backed the run off by at least ten
+ * minutes, which is right for a quiet brief but would leave a person watching
+ * a planner turn, or a research that just finished, waiting that long for a
+ * blip. So a run whose own cadence is fast (a turn or action in flight, a
+ * research running) is read again within 30 s; a quiet one keeps the backoff.
+ * Only the claim that issued the read may do this, and it only ever brings the
+ * next read earlier. True when it rescheduled.
+ */
+export const retryDeepWaterWatchSoon = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string; reconcileSeq: number },
+): Promise<boolean> => {
+  const locked = await lockDeepWaterBriefRun(tx, input)
+  if (!locked || locked.run.reconcileSeq !== input.reconcileSeq) return false
+  const { run, now } = locked
+  const cadence = deepWaterWatchDelayMs({
+    status: run.status,
+    state: run.scopeState,
+    msSinceLastChange: now.getTime() - run.ledgerObservedAt.getTime(),
+  })
+  if (cadence > DEEP_WATER_TRANSIENT_RETRY_MS) return false
+  const retryAt = new Date(now.getTime() + DEEP_WATER_TRANSIENT_RETRY_MS)
+  if (run.reconcileAfter.getTime() <= retryAt.getTime()) return false
+  await tx.productIntegrationRun.update({ where: { id: run.id }, data: { reconcileAfter: retryAt } })
+  return true
 }
 
 /** Briefs Ledger never confirmed within the window, oldest first (N5a). */
