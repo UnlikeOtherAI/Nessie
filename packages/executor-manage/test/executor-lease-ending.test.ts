@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { Prisma, PrismaClient } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 import {
   assertExecutorCommandBindingCurrent,
@@ -20,6 +20,7 @@ import {
   jobFor,
   launchLocalApps,
   leaseRow,
+  leaseTestPrisma,
   localAppsDescriptor,
   postMessage,
   seedLeaseWorld,
@@ -37,7 +38,7 @@ const dbTest = process.env.DATABASE_URL ? test : test.skip
 const secret = 'lease-test-command-secret'
 
 const withWorld = async (run: (world: LeaseWorld) => Promise<void>): Promise<void> => {
-  const prisma = new PrismaClient()
+  const prisma = leaseTestPrisma()
   const world = await seedLeaseWorld(prisma)
   try {
     await run(world)
@@ -284,7 +285,7 @@ dbTest('every executor command dispatched under a live lease moves its idle wind
 })
 
 dbTest('relaunching in the same conversation with the agent replaces the earlier lease', async () => {
-  const prisma = new PrismaClient()
+  const prisma = leaseTestPrisma()
   const world = await seedLeaseWorld(prisma, { agentConversation: true })
   try {
     const first = await launchLocalApps(world)

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PrismaClient } from '@prisma/client'
 
 import { carryForwardExecutorBindings } from '../src/index.js'
 import {
@@ -9,6 +8,7 @@ import {
   jobFor,
   launchLocalApps,
   leaseRow,
+  leaseTestPrisma,
   postMessage,
   seedLeaseWorld,
   type LeaseWorld,
@@ -27,7 +27,7 @@ const withWorld = async (
   run: (world: LeaseWorld) => Promise<void>,
   options: { agentConversation?: boolean } = {},
 ): Promise<void> => {
-  const prisma = new PrismaClient()
+  const prisma = leaseTestPrisma()
   const world = await seedLeaseWorld(prisma, options)
   try {
     await run(world)

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Prisma, PrismaClient } from '@prisma/client'
+import { PrismaClient, type Prisma } from '@prisma/client'
 import {
   AuthorizedActionContextSchema,
   ExecutorCapabilityDescriptorSchema,
@@ -42,6 +42,21 @@ export type LeaseWorld = {
 }
 
 export const LOCAL_APPS = [...EXECUTOR_LOCAL_APPS_OPERATION_KEYS]
+
+/**
+ * A client on a bounded pool. Node's runner runs this package's suites side by
+ * side and each lease test opens its own client; at Prisma's default pool
+ * (`num_cpus * 2 + 1`) the package reached 85 of a local Postgres's 100
+ * connections on a 16-core machine, and a neighbouring worktree's suite on the
+ * same server then failed the lease tests with "too many clients". None of
+ * them runs more than one transaction at a time, so four connections are
+ * plenty.
+ */
+export const leaseTestPrisma = (): PrismaClient => {
+  const url = new URL(process.env.DATABASE_URL as string)
+  url.searchParams.set('connection_limit', '4')
+  return new PrismaClient({ datasources: { db: { url: url.toString() } } })
+}
 
 export const localAppsDescriptor = (revision: number, operationKeys: string[] = LOCAL_APPS) =>
   ExecutorCapabilityDescriptorSchema.parse({

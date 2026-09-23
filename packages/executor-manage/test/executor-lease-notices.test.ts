@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PrismaClient } from '@prisma/client'
 
 import {
   confirmExecutorAccessChange,
@@ -9,7 +8,9 @@ import {
   publishExecutorLeaseChanges,
   type ExecutorAccessChange,
 } from '../src/index.js'
-import { launchLocalApps, localAppsDescriptor, seedLeaseWorld, type LeaseWorld } from './lease-fixture.js'
+import {
+  launchLocalApps, leaseTestPrisma, localAppsDescriptor, seedLeaseWorld, type LeaseWorld,
+} from './lease-fixture.js'
 
 /**
  * What a lease's holder is told, and when (conversation-lease.md §4): every
@@ -21,7 +22,7 @@ import { launchLocalApps, localAppsDescriptor, seedLeaseWorld, type LeaseWorld }
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
 const withWorld = async (run: (world: LeaseWorld) => Promise<void>): Promise<void> => {
-  const prisma = new PrismaClient()
+  const prisma = leaseTestPrisma()
   const world = await seedLeaseWorld(prisma)
   try {
     await run(world)

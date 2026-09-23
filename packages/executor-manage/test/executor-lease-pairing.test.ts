@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { generateKeyPairSync, randomUUID, sign, type KeyObject } from 'node:crypto'
 import test from 'node:test'
-import { PrismaClient } from '@prisma/client'
 import { ExecutorPairingStartRequestSchema } from '@nessie/schemas'
 
 import {
@@ -20,6 +19,7 @@ import {
   jobFor,
   launchLocalApps,
   leaseRow,
+  leaseTestPrisma,
   postMessage,
   seedLeaseWorld,
   type LeaseWorld,
@@ -66,7 +66,7 @@ const replacementRequest = (replacesExecutorId: string, previousKey: KeyObject) 
 }
 
 const withWorld = async (run: (world: LeaseWorld, pairingIds: string[]) => Promise<void>): Promise<void> => {
-  const prisma = new PrismaClient()
+  const prisma = leaseTestPrisma()
   const world = await seedLeaseWorld(prisma)
   const pairingIds: string[] = []
   try {
