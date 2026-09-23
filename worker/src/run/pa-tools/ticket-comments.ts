@@ -12,7 +12,7 @@ import { TASK_COMMENT_MAX_CHARS, type TaskCommentAuthor, type TaskCommentRecord 
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { resolveActingMember, type ActingMember } from './access.js'
+import { resolveActingMember, resolveEffectiveUserId, type ActingMember } from './access.js'
 import {
   assertProjectWriteDestination,
   IdSchema,
@@ -33,16 +33,37 @@ import {
  * delegate and writes as them.
  */
 
+/**
+ * How a ticket write from this run names itself in the ticket's history. The
+ * origin is always `agent` with this run: a Personal Assistant's or a shared
+ * agent's write is never a person's own, so it can never start or steer an
+ * agent's ticket work (docs/standards/ticket-work.md). `unattended` — no
+ * person behind the run at all — makes the author `agent:<id>` rather than a
+ * person it never acted for.
+ */
+export const ticketEventAuthorFor = (
+  context: BuiltinToolRuntimeContext,
+): Required<Pick<TaskActor, 'agentId' | 'unattended' | 'origin'>> => ({
+  agentId: context.agentId,
+  unattended: resolveEffectiveUserId(context) === null,
+  origin: { kind: 'agent', agentId: context.agentId, runId: context.run.id },
+})
+
 /** The actor the shared ticket functions take, for this run. */
 export const ticketActorFor = (
   context: BuiltinToolRuntimeContext,
   member: ActingMember,
-): TaskActor => ({
-  organizationId: member.organizationId,
-  userId: member.userId,
-  isOrganizationAdmin: member.isOrganizationAdmin,
-  ...(context.agentKind === 'shared' ? { agentId: context.agentId } : {}),
-})
+): TaskActor => {
+  const { unattended, origin } = ticketEventAuthorFor(context)
+  return {
+    organizationId: member.organizationId,
+    userId: member.userId,
+    isOrganizationAdmin: member.isOrganizationAdmin,
+    unattended,
+    origin,
+    ...(context.agentKind === 'shared' ? { agentId: context.agentId } : {}),
+  }
+}
 
 /**
  * The comment write-back collaborator, built by the one shared builder the

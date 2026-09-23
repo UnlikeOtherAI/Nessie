@@ -28,6 +28,7 @@ import {
   runTicketCommentDeleteTool,
   runTicketCommentListTool,
   runTicketCommentUpdateTool,
+  ticketEventAuthorFor,
 } from './ticket-comments.js'
 import { runTicketLabelCreateTool, runTicketLabelsReadTool } from './ticket-labels.js'
 import {
@@ -213,6 +214,7 @@ export const runTicketCreateTool = async (
     organizationId: member.organizationId,
     createdByUserId: member.userId,
     assignmentAttention: createProjectTaskAssignmentAttention,
+    ...ticketEventAuthorFor(context),
     ...(context.modelClient
       ? {
           embedding: {
@@ -280,6 +282,7 @@ export const runTicketUpdateTool = async (
       organizationId: member.organizationId,
       fields,
       actorId: member.userId,
+      ...ticketEventAuthorFor(context),
       ...(context.modelClient
         ? {
             embedding: {
@@ -373,6 +376,7 @@ export const runTicketAssignTool = async (
       organizationId: member.organizationId,
       actorContext: member.actorContext,
       assignmentAttention: createProjectTaskAssignmentAttention,
+      ...ticketEventAuthorFor(context),
     },
     writeBackFor(context),
   )
@@ -408,6 +412,7 @@ export const runTicketMoveTool = async (
       position: args.position,
       organizationId: member.organizationId,
       actorId: member.userId,
+      ...ticketEventAuthorFor(context),
     },
     writeBackFor(context),
   )
@@ -442,6 +447,7 @@ export const runTicketTransitionTool = async (
     status: args.status,
     organizationId: member.organizationId,
     actorId: member.userId,
+    ...ticketEventAuthorFor(context),
   })
   if ('error' in changed) {
     if (changed.error === 'NOT_FOUND') throw new Error('Ticket not found.')
