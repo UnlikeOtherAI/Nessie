@@ -12,6 +12,8 @@ import {
 } from '@nessie/schemas'
 
 import { AppDetailHero } from '../../src/components/features/apps/AppDetailHero'
+import { FeedConversationContext } from '../../src/components/features/channels/feed-conversation'
+import { MessageUiCards } from '../../src/components/features/channels/MessageUiCards'
 import { ResearchBriefHost } from '../../src/components/features/deep-water/ResearchBriefHost'
 import { ResearchNoticeActions, ResearchRunCard } from '../../src/components/features/deep-water/ResearchRunCard'
 import type { NewBriefPlace } from '../../src/components/features/deep-water/research-brief-origin'
@@ -308,6 +310,19 @@ const ComposerStrip = ({ place, testId, text = COMPOSER_TEXT }: {
 
 const CARDS = [RUN.draft, RUN.agentDraft, RUN.running, RUN.done, RUN.summary, RUN.failed, RUN.hidden]
 
+const OLD_CARD_ROOT = '60000000-0000-4000-8000-000000000097'
+
+/** An older DeepWater card, from before briefs, in a reply thread of another conversation (a drawer, an inbox card). */
+const OLDER_CARD = {
+  uiCards: [{
+    actions: [{
+      label: 'Run again', preset: { query: 'Heat pump grants for landlords' },
+      type: 'open_deep_water_research_launcher', variant: 'primary',
+    }],
+    kind: 'deep_research', productSlug: 'deep-water', status: 'completed', title: 'Heat pump grants for landlords',
+  }],
+}
+
 const Thread = () => (
   <ResearchBriefHost origin={{ channelId: CHANNEL, kind: 'thread', threadId: THREAD }}>
     <div className="mx-auto flex max-w-3xl flex-col gap-4 p-6" data-testid="research-thread">
@@ -330,6 +345,11 @@ const Thread = () => (
         text="Compare the three quotes we got"
       />
       <ComposerStrip place={ELSEWHERE} testId="elsewhere-research-button" text="What do tenants pay to heat a flat?" />
+      <FeedConversationContext.Provider value={{ channelId: DM_CHANNEL }}>
+        <div data-testid="older-card">
+          <MessageUiCards metadata={OLDER_CARD} place={{ rootMessageId: OLD_CARD_ROOT, threadId: DM_THREAD }} />
+        </div>
+      </FeedConversationContext.Provider>
     </div>
   </ResearchBriefHost>
 )

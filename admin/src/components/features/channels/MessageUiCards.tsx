@@ -1,8 +1,10 @@
 import { IntegrationUiCardSchema, type IntegrationUiCard } from '@nessie/schemas'
 import { useNavigate } from 'react-router-dom'
-import { researchBriefPrefillState } from '../../../facades/deep-water/navigation'
+import { researchBriefPrefillState, researchConversationHref } from '../../../facades/deep-water/navigation'
 import { Pill, type PillTone } from '../../primitives/Pill'
+import { useResearchBriefDoorway } from '../deep-water/ResearchBriefHost'
 import { AgentActivityTimeline } from './AgentActivityTimeline'
+import { useFeedConversation } from './feed-conversation'
 
 type IntegrationUiCardAction = NonNullable<IntegrationUiCard['actions']>[number]
 
@@ -62,25 +64,58 @@ const LaunchIcon = () => (
   </svg>
 )
 
+/** Where a card's message sits: its thread, and the reply thread's root when it is a reply. */
+export type MessagePlace = { rootMessageId: string | null; threadId: string }
+
 /**
  * An older DeepWater card's "open the launcher" action. The launcher is gone:
  * every research is agreed as a brief first, so the action opens a new brief
- * on this conversation, pre-filled with the card's question and nothing else.
- * The card's other presets (depth, sections, output) were launcher settings a
- * brief negotiates with DeepWater's planner instead.
+ * pre-filled with the card's question and nothing else, coming back where the
+ * card is — its conversation (from the feed it sits in, which may be a drawer
+ * or a Threads inbox card over another screen), its thread and its reply
+ * thread. The card's other presets (depth, sections, output) were launcher
+ * settings a brief negotiates with DeepWater's planner instead.
  */
 const DeepWaterResearchBriefAction = ({
   action,
+  place,
 }: {
   action: IntegrationUiCardAction
+  place: MessagePlace
 }) => {
+  const conversation = useFeedConversation()
+  const doorway = useResearchBriefDoorway()
   const navigate = useNavigate()
+
+  const open = () => {
+    const topic = action.preset?.query ?? ''
+    const origin = conversation
+      ? {
+        channelId: conversation.channelId,
+        kind: 'thread' as const,
+        threadId: place.threadId,
+        ...(place.rootMessageId ? { rootMessageId: place.rootMessageId } : {}),
+      }
+      : null
+    if (doorway.openNew) {
+      // With no conversation named (a surface still opening), the screen's own
+      // conversation is the place, narrowed to this card's reply thread.
+      doorway.openNew(topic, origin ? { origin } : { rootMessageId: place.rootMessageId })
+      return
+    }
+    if (!origin) {
+      console.error('[deep-water] an older research card has no conversation to open a brief on')
+      return
+    }
+    // No brief host here: the card's conversation opens the brief itself.
+    void navigate(researchConversationHref(origin), { state: researchBriefPrefillState(topic, place.rootMessageId) })
+  }
 
   return (
     <button
       className={`${actionClass(action.variant)} gap-1.5`}
       data-testid="deep-water-research-brief-card-action"
-      onClick={() => void navigate('.', { state: researchBriefPrefillState(action.preset?.query) })}
+      onClick={open}
       type="button"
     >
       {action.label}
@@ -88,7 +123,7 @@ const DeepWaterResearchBriefAction = ({
   )
 }
 
-const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
+const MessageUiCard = ({ card, place }: { card: IntegrationUiCard; place: MessagePlace }) => (
   <div className="rounded-lg border border-[var(--sep)] bg-[var(--panel)] p-3">
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-[11px] font-semibold uppercase text-[var(--tx3)]">
@@ -118,7 +153,7 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
       <div className="mt-3 flex flex-wrap gap-2">
         {card.actions.map((action) =>
           action.type === 'open_deep_water_research_launcher' ? (
-            <DeepWaterResearchBriefAction action={action} key={action.label} />
+            <DeepWaterResearchBriefAction action={action} key={action.label} place={place} />
           ) : action.href ? (
             <a
               className={`${actionClass(action.variant)} gap-1.5`}
@@ -146,12 +181,15 @@ const MessageUiCard = ({ card }: { card: IntegrationUiCard }) => (
 
 export const MessageUiCards = ({
   metadata,
+  place,
   // External-agent assistant turns render their `role: 'activity'` cards as a
   // collapsed plan/timeline (the reasoning view); result cards stay flat. For
   // every other surface all cards render flat, exactly as before.
   isExternalAgent = false,
 }: {
   metadata: Record<string, unknown> | undefined
+  /** Where the message carrying these cards sits. */
+  place: MessagePlace
   isExternalAgent?: boolean
 }) => {
   const cards = readIntegrationCards(metadata)
@@ -172,7 +210,7 @@ export const MessageUiCards = ({
       {flatCards.length > 0 ? (
         <div className="mt-2 grid max-w-2xl gap-2">
           {flatCards.map((card, index) => (
-            <MessageUiCard card={card} key={`${card.kind}:${card.title}:${index}`} />
+            <MessageUiCard card={card} key={`${card.kind}:${card.title}:${index}`} place={place} />
           ))}
         </div>
       ) : null}

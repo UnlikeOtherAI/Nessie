@@ -302,6 +302,7 @@ export const ThreadReplyPanel = ({
                   </div>
                 ) : null}
                 <ChannelMessageFeed
+                  channelId={activeChannel.id}
                   agentById={agentMap}
                   agentMap={agentMap}
                   channelUsers={channelUsers}

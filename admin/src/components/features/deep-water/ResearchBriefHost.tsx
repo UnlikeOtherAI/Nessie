@@ -81,13 +81,17 @@ export const ResearchBriefHost = ({
     setNewBrief({ place, topic: topic ?? '' })
   }, [runId, writeRunId])
 
-  // A doorway elsewhere handed over a question to start from. It is taken
-  // once and the router state is dropped, so Back and a reload land on the
-  // conversation, never on a half-filled form.
-  const prefillTopic = readResearchBriefPrefill(location.state)?.topic ?? null
+  // A doorway elsewhere handed over a question to start from, and perhaps the
+  // reply thread it comes back under. It is taken once and the router state is
+  // dropped, so Back and a reload land on the conversation, never on a
+  // half-filled form.
+  const prefill = readResearchBriefPrefill(location.state)
   useEffect(() => {
-    if (prefillTopic === null) return
-    setNewBrief({ place: undefined, topic: prefillTopic })
+    if (prefill === null) return
+    setNewBrief({
+      place: prefill.rootMessageId ? { rootMessageId: prefill.rootMessageId } : undefined,
+      topic: prefill.topic,
+    })
     redirect({ hash: location.hash, pathname: location.pathname, search: location.search })
     // Once per arrival: the entry's key names the arrival that carried the
     // question, and the redirect that drops it is a new entry.

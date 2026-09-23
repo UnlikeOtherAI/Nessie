@@ -350,6 +350,7 @@ export const ChannelAgentInfoDrawer = ({
           >
             <div ref={drawerScroll.contentRef}>
               <ChannelMessageFeed
+                channelId={activeChannel.id}
                 agentById={agentMap}
                 agentMap={agentMap}
                 editingContent={editingContent}

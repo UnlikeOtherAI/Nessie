@@ -248,6 +248,7 @@ export const ChannelUserInfoDrawer = ({
               ) : null}
               {dmChannel ? (
                 <ChannelMessageFeed
+                  channelId={dmChannel.id}
                   agentById={agentMap}
                   agentMap={agentMap}
                   editingContent={editingContent}

@@ -182,6 +182,7 @@ export const ChannelMessageBody = ({
         <MessageUiCards
           isExternalAgent={isExternalAgentConversation && message.role === 'assistant'}
           metadata={message.metadata}
+          place={{ rootMessageId: message.rootMessageId ?? null, threadId: message.threadId }}
         />
       ) : null}
       {!isEditingMessage

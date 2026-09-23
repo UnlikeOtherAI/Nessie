@@ -24,12 +24,30 @@ export const researchBriefHref = (run: { id: string; origin: { channelId: string
     : `${KNOWLEDGE_RESEARCH_VIEW_PATH}${search}`
 }
 
+/**
+ * A conversation's address, opened at the reply thread a brief comes back
+ * under when there is one — where a doorway with no brief host on its screen
+ * sends a new brief's question, for that screen's host to open.
+ */
+export const researchConversationHref = (place: {
+  channelId: string
+  threadId: string
+  rootMessageId?: string | null
+}): string => {
+  const thread = `/channels/${encodeURIComponent(place.channelId)}/threads/${encodeURIComponent(place.threadId)}`
+  return place.rootMessageId ? `${thread}/replies/${encodeURIComponent(place.rootMessageId)}` : thread
+}
+
 const PREFILL_STATE_KEY = 'deepWaterResearchBrief'
 
-export type ResearchBriefPrefill = { topic: string }
+/** A new brief's question, and the reply thread of the conversation it comes back under, if any. */
+export type ResearchBriefPrefill = { rootMessageId: string | null; topic: string }
 
-export const researchBriefPrefillState = (topic: string | undefined): Record<string, unknown> => ({
-  [PREFILL_STATE_KEY]: { topic: topic ?? '' },
+export const researchBriefPrefillState = (
+  topic: string | undefined,
+  rootMessageId: string | null = null,
+): Record<string, unknown> => ({
+  [PREFILL_STATE_KEY]: { topic: topic ?? '', ...(rootMessageId ? { rootMessageId } : {}) },
 })
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -39,5 +57,8 @@ export const readResearchBriefPrefill = (state: unknown): ResearchBriefPrefill |
   if (!isRecord(state)) return null
   const prefill = state[PREFILL_STATE_KEY]
   if (!isRecord(prefill)) return null
-  return { topic: typeof prefill.topic === 'string' ? prefill.topic : '' }
+  return {
+    rootMessageId: typeof prefill.rootMessageId === 'string' && prefill.rootMessageId ? prefill.rootMessageId : null,
+    topic: typeof prefill.topic === 'string' ? prefill.topic : '',
+  }
 }

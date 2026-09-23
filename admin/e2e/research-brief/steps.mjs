@@ -52,6 +52,7 @@ export const assertThreadCards = async (page) => {
   // The result reply's own actions: the same artifacts, read live from the run.
   const notice = page.locator(`[data-notice="${RUN.done}"]`)
   await notice.getByTestId('research-notice-actions').getByRole('button', { name: 'Copy markdown' }).waitFor()
+  await page.getByTestId('older-card').getByRole('button', { name: 'Run again' }).waitFor()
 }
 
 export const assertBrief = async (page) => {
@@ -227,6 +228,27 @@ export const walkFailedReply = async (page, snap) => {
   assert.equal(resend.body.message, words)
   await dialog.getByTestId('research-brief-replying').waitFor()
   assert.equal(await box.inputValue(), '', 'the resent words leave the box again')
+}
+
+/**
+ * An older DeepWater card, from before briefs, in a reply thread of another
+ * conversation than the screen's: its action opens a new brief with the card's
+ * question, coming back under that card's own reply thread.
+ */
+export const walkOlderCard = async (page) => {
+  await page.getByTestId('older-card').getByRole('button', { name: 'Run again' }).click()
+  const form = page.getByTestId('research-brief-new')
+  assert.equal(await form.getByRole('textbox').first().inputValue(), 'Heat pump grants for landlords')
+  await form.getByRole('button', { name: 'Plan with DeepWater' }).click()
+  await page.getByTestId('research-brief-replying').waitFor()
+  const created = await page.evaluate(() => window.__research.calls.find((call) =>
+    call.method === 'POST' && call.path === '/api/integrations/products/deep-water/research-runs'))
+  assert.deepEqual(created.body.origin, {
+    channelId: '40000000-0000-4000-8000-000000000003',
+    kind: 'thread',
+    rootMessageId: '60000000-0000-4000-8000-000000000097',
+    threadId: '40000000-0000-4000-8000-000000000004',
+  })
 }
 
 /** Knowledge › Research pages forwards on the server, and Previous walks back along the address. */

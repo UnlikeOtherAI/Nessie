@@ -183,6 +183,7 @@ export const ThreadInboxCard = ({
       {!isLoading && !hasFailed ? (
         <>
           <ChannelMessageFeed
+            channelId={activity.channelId}
             agentById={agentMap}
             agentMap={agentMap}
             channelUsers={channelUsers}
@@ -235,6 +236,7 @@ export const ThreadInboxCard = ({
             </button>
           ) : null}
           <ChannelMessageFeed
+            channelId={activity.channelId}
             agentById={agentMap}
             agentMap={agentMap}
             channelUsers={channelUsers}

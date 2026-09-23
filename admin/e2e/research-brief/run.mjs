@@ -12,6 +12,7 @@ import {
   walkBriefToStart,
   walkFailedReply,
   walkNewBrief,
+  walkOlderCard,
   walkReplyThreadBrief,
   walkResearchPages,
   walkStartAgain,
@@ -28,7 +29,8 @@ import {
  * answer carrying an unsent pillar and setting edit, the planner's answer, a
  * conflict rebased with "what changed", Start with the publish switch), a new
  * brief from the composer (and from a composer over another conversation), a
- * failed research started again under its reply thread, an agent's read-only
+ * failed research started again under its reply thread, an older card's
+ * action opening a brief under its own reply thread, an agent's read-only
  * brief, a reply the planner could not answer coming back and being sent
  * again, the failed opening turn, the sign-in state, every artifact action
  * including the clipboard fallback, the not-ready doorways for a member, an
@@ -167,6 +169,9 @@ try {
   const again = await open(desktop)
   await walkStartAgain(again)
   await again.close()
+  const older = await open(desktop)
+  await walkOlderCard(older)
+  await older.close()
 
   // 09 — an agent's brief: read-only for its requester, who may only discard it.
   const agentPage = await open(desktop)

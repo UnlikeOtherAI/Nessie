@@ -15,6 +15,7 @@ import {
   readResearchBriefPrefill,
   researchBriefHref,
   researchBriefPrefillState,
+  researchConversationHref,
 } from '../src/facades/deep-water/navigation.js'
 import { readResearchRunRef } from '../src/components/features/deep-water/ResearchRunCard.js'
 
@@ -94,11 +95,27 @@ test('a brief opens over the conversation it belongs to, else over Knowledge ›
 
 test('a question handed to a new brief travels in router state, never in the address', () => {
   const state = researchBriefPrefillState('Heat pumps')
-  assert.deepEqual(readResearchBriefPrefill(state), { topic: 'Heat pumps' })
-  assert.deepEqual(readResearchBriefPrefill(researchBriefPrefillState(undefined)), { topic: '' })
+  assert.deepEqual(readResearchBriefPrefill(state), { rootMessageId: null, topic: 'Heat pumps' })
+  assert.deepEqual(readResearchBriefPrefill(researchBriefPrefillState(undefined)), { rootMessageId: null, topic: '' })
   assert.equal(readResearchBriefPrefill(null), null)
   assert.equal(readResearchBriefPrefill({ somethingElse: true }), null)
-  assert.deepEqual(readResearchBriefPrefill({ deepWaterResearchBrief: { topic: 7 } }), { topic: '' })
+  assert.deepEqual(
+    readResearchBriefPrefill({ deepWaterResearchBrief: { rootMessageId: 7, topic: 7 } }),
+    { rootMessageId: null, topic: '' },
+  )
+  // A question from a reply thread keeps the thread it comes back under.
+  assert.deepEqual(
+    readResearchBriefPrefill(researchBriefPrefillState('Heat pumps', 'root-1')),
+    { rootMessageId: 'root-1', topic: 'Heat pumps' },
+  )
+})
+
+test('a conversation is addressed at its reply thread when the brief comes back under one', () => {
+  assert.equal(researchConversationHref({ channelId: 'c/1', threadId: 't1' }), '/channels/c%2F1/threads/t1')
+  assert.equal(
+    researchConversationHref({ channelId: 'c1', rootMessageId: 'r1', threadId: 't1' }),
+    '/channels/c1/threads/t1/replies/r1',
+  )
 })
 
 test('a card renders only from a server-written, well-formed pointer', () => {

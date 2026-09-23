@@ -461,7 +461,10 @@ opens the same surfaces (`admin/src/components/features/deep-water/`, facades in
 `admin/src/facades/deep-water/`). The launcher form, its mode selector and
 custom controls, and the chat card that opened it are gone; an older chat
 card's `open_deep_water_research_launcher` action opens a new brief with its
-question.
+question, coming back where that card sits — its conversation, read from the
+message feed it is in (`feed-conversation.ts`, so a drawer or a Threads inbox
+card names its own), its thread and its reply thread. With no brief host on
+the screen it goes to that conversation, which opens the brief itself.
 
 - **One brief dialog, one host per screen.** `ResearchBriefDialog` is the only
   surface for agreeing, starting and following a research: the question and

@@ -342,6 +342,7 @@ export const ChannelConversationSurface = ({
         <div ref={feedScroll.contentRef}>
           {visibleActiveTab === 'messages' ? (
             <ChannelMessageFeed
+              channelId={activeChannel?.id ?? null}
               documentSessions={documentSessions}
               documentStore={documentStore}
               agentById={agentMap}
