@@ -59,24 +59,44 @@ export const wakeDeepWaterAgent = async (
 ): Promise<DeepWaterWakeOutcome> => {
   if (!run.threadId || !run.channelId) return unreachable('no origin thread')
   if (!run.requestedByUserId || !run.uoaIdentity) return unreachable('no requester identity')
-  const [thread, agent, membership] = await Promise.all([
+  const [thread, agent, membership, binding, channelMember] = await Promise.all([
     tx.thread.findFirst({
       where: {
         id: run.threadId,
         channelId: run.channelId,
         channel: { organizationId: run.organizationId, deletedAt: null },
       },
-      select: { channel: { select: { projectId: true } } },
+      select: { channel: { select: { projectId: true, visibility: true } } },
     }),
-    tx.agent.findFirst({ where: { id: input.agentId, organizationId: run.organizationId }, select: { id: true } }),
+    tx.agent.findFirst({
+      where: { id: input.agentId, organizationId: run.organizationId },
+      select: { agentKind: true },
+    }),
     tx.organizationMember.findFirst({
       where: { organizationId: run.organizationId, userId: run.requestedByUserId, deactivatedAt: null },
+      select: { id: true },
+    }),
+    tx.agentBinding.findFirst({
+      where: { agentId: input.agentId, channelId: run.channelId },
+      select: { id: true },
+    }),
+    tx.channelMember.findFirst({
+      where: { channelId: run.channelId, userId: run.requestedByUserId },
       select: { id: true },
     }),
   ])
   if (!thread) return unreachable('origin thread gone')
   if (!agent) return unreachable('agent gone')
   if (!membership) return unreachable('requester inactive')
+  // The same two gates a trigger fire applies (`trigger-run.ts`): a shared
+  // agent answers only where it is still bound — the Personal Assistant is its
+  // owner's delegate, placed by presence, which the run itself re-checks — and
+  // a wake acts as the requester, so it reaches a private room only while they
+  // still belong to it.
+  if (agent.agentKind !== 'personal_assistant' && !binding) return unreachable('agent unbound')
+  if (thread.channel.visibility !== 'public' && !channelMember) {
+    return unreachable('requester lost channel access')
+  }
 
   const kickoffId = deepWaterWakeKickoffId(run.id, input.kind, input.turnId)
   const root = await deepWaterReplyRoot(tx, run)

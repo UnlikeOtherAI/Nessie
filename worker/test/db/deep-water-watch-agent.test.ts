@@ -169,3 +169,73 @@ withFixture('a brief DeepWater never confirmed wakes its agent once to say so', 
   const kickoff = await kickoffs(fixture)
   assert.deepEqual(kickoff.map((message) => message.id), [deepWaterWakeKickoffId(run.id, 'start_unconfirmed', null)])
 })
+
+const finishResearch = async (fixture: WatchFixture) => {
+  const run = await fixture.insert('agent')
+  const rs = researchId()
+  await fixture.attach(run.id, {
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'agent', errorCode: null, retryable: false },
+  })
+  fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })
+  fixture.ledger.answer('research_report', {
+    report_markdown: '# Heat pumps\n\nThey work.',
+    references: [],
+    depth: 'light',
+    started_at: '2026-09-23T09:00:00.000Z',
+    completed_at: '2026-09-23T09:30:00.000Z',
+    truncated: false,
+    title: 'Heat pumps',
+    report_kind: 'full',
+  })
+  return run
+}
+
+const noticeKinds = async (fixture: WatchFixture, runId: string) =>
+  (await fixture.prisma.message.findMany({ where: { threadId: fixture.ids.thread }, orderBy: { createdAt: 'asc' } }))
+    .flatMap((message) => {
+      const notice = (message.metadata as { deepWaterNotice?: { runId: string; kind: string } } | null)?.deepWaterNotice
+      return notice?.runId === runId ? [notice.kind] : []
+    })
+
+withFixture('an agent no longer bound to the room is not woken; the person is told instead', async (fixture) => {
+  const run = await finishResearch(fixture)
+  await fixture.prisma.agentBinding.deleteMany({ where: { agentId: fixture.ids.agent, channelId: fixture.ids.channel } })
+  await watch(fixture, run.id)
+
+  const delivered = await fixture.read(run.id)
+  assert.equal(delivered.status, 'completed')
+  assert.equal(delivered.wakeMessageId, null, 'no kickoff for an unbound agent')
+  assert.ok(delivered.resultMessageId, 'the person\'s notice is the delivery')
+  assert.deepEqual(await kickoffs(fixture), [])
+  assert.equal(await fixture.prisma.run.count({ where: { agentId: fixture.ids.agent, status: 'pending' } }), 0)
+  assert.deepEqual(await noticeKinds(fixture, run.id), ['wake_unreachable'])
+})
+
+withFixture('a requester who left a private room is not acted for there; they are told instead', async (fixture) => {
+  const run = await finishResearch(fixture)
+  await fixture.prisma.channel.update({ where: { id: fixture.ids.channel }, data: { visibility: 'private' } })
+  await watch(fixture, run.id)
+
+  const delivered = await fixture.read(run.id)
+  assert.equal(delivered.status, 'completed')
+  assert.equal(delivered.wakeMessageId, null, 'no run acts as someone who can no longer open the room')
+  assert.deepEqual(await kickoffs(fixture), [])
+  assert.deepEqual(await noticeKinds(fixture, run.id), ['wake_unreachable'])
+
+  // Back in the room, a planner turn wakes the agent again.
+  await fixture.prisma.channelMember.create({ data: { channelId: fixture.ids.channel, userId: fixture.ids.requester } })
+  const brief = await fixture.insert('agent')
+  const rs = researchId()
+  const turnId = randomUUID()
+  await fixture.attach(brief.id, {
+    id: rs, status: 'drafting', errorCode: null, title: null, brief: null,
+    turn: { id: turnId, seq: 1, status: 'pending', authorKind: 'agent', errorCode: null, retryable: false },
+  })
+  fixture.ledger.answer('research_scope_get', wireScope({
+    id: rs, turn: { id: turnId, seq: 1, status: 'complete', author_kind: 'agent' }, revision: 1, withTranscript: true,
+  }))
+  await watch(fixture, brief.id)
+  assert.equal((await fixture.read(brief.id)).agentWakeCount, 1)
+  assert.deepEqual((await kickoffs(fixture)).map((message) => message.id), [deepWaterWakeKickoffId(brief.id, 'turn', turnId)])
+})
