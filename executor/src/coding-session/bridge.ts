@@ -9,6 +9,7 @@ import {
   requiredText,
   sessionIdArgument,
 } from './bridge-tools.js'
+import { buildAgentEnvironment } from './agent-env.js'
 import { codingSessionsDigestMatches, type LoadedCodingSessionsConfig } from './config.js'
 import { ensureCodingSessionHost, resolveExecutorEntry } from './host-spawn.js'
 import { reviewCodingSession } from './review.js'
@@ -58,6 +59,11 @@ import {
  * reserved `_meta['nessie/owner']`, which the model cannot reach; a call
  * without one is refused, `session_list` shows only the caller's sessions,
  * and every other tool answers "No such session" for somebody else's.
+ *
+ * A configuration that no longer matches its reviewed digest changes nothing
+ * until a person reviews it: its roots are never resolved, and every tool but
+ * the ones that only stop or report things (close, interrupt, and the
+ * daemon's close-all and list-all) answers `coding_session_config_changed`.
  */
 export type CodingBridgeCallMeta = {
   ownerKey?: string
@@ -72,13 +78,32 @@ export type CodingBridge = {
 
 const OWNER_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/u
 
+/** What a changed, unreviewed configuration still allows: stopping things, and the daemon's report. */
+const ALLOWED_UNREVIEWED = new Set(['session_close', 'session_interrupt', 'session_close_all', 'session_list_all'])
+
+/** The report's own limit; a title a rewrite lengthened is clipped rather than dropped from the report. */
+const TITLE_MAX = 120
+
+const clipTitle = (title: string): string => (title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title)
+
 const titleFrom = (prompt: string): string => {
   const first = prompt.split(/\r?\n/u).find((line) => line.trim())?.trim() ?? 'Coding session'
   return first.length > 80 ? `${first.slice(0, 79)}…` : first
 }
 
 export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Promise<CodingBridge> => {
-  const rootSet: CodingRootSet = await resolveCodingRoots(loaded)
+  const reviewed = codingSessionsDigestMatches(loaded)
+  const rootSet: CodingRootSet = await resolveCodingRoots(
+    reviewed ? loaded : { ...loaded, config: { ...loaded.config, roots: [] } },
+  )
+  // review runs git and gh as the person does: the MCP SDK's minimal PATH
+  // finds no Homebrew gh on macOS, while the host's self-check, which uses the
+  // rebuilt login environment, finds it. Built once, when first needed.
+  let reviewEnvironment: Promise<NodeJS.ProcessEnv> | undefined
+  const reviewEnv = (): Promise<NodeJS.ProcessEnv> => {
+    reviewEnvironment ??= buildAgentEnvironment({ config: loaded.config.agentEnv }).catch(() => process.env)
+    return reviewEnvironment
+  }
   await ensureCodingStateDir(loaded.stateDir)
   await ensurePrivateDir(codingSessionsDir(loaded.stateDir))
   await ensurePrivateDir(codingCommandsDir(loaded.stateDir))
@@ -276,7 +301,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     return {
       sessionId: meta.sessionId,
       ...await briefStatus(paths),
-      ...await reviewCodingSession({ folder, rootCanonical: root.canonical!, rewriter: rootSet.rewriter, state }),
+      ...await reviewCodingSession({
+        folder, rootCanonical: root.canonical!, rewriter: rootSet.rewriter, state, env: await reviewEnv(),
+      }),
     }
   }
 
@@ -330,7 +357,8 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       const derived = await deriveCodingStatus(paths, state)
       if (derived.status === 'closed') continue
       sessions.push({
-        sessionId: session.sessionId, ownerKey: session.ownerKey, title: session.title, status: derived.status,
+        sessionId: session.sessionId, ownerKey: session.ownerKey,
+        title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
         ...(derived.reason ? { reason: derived.reason } : {}),
         agent: session.agent, root: session.rootName, updatedAt: state?.updatedAt ?? session.createdAt,
       })
@@ -344,6 +372,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     call: async (tool, args, meta) => {
       try {
         const commandId = commandIdOf(meta)
+        if (!reviewed && !ALLOWED_UNREVIEWED.has(tool)) requireReviewedConfig()
         if (tool === 'session_close_all') return await closeAll(args, meta, commandId)
         if (tool === 'session_list_all') return await listAll(args, meta)
         const ownerKey = owner(meta)

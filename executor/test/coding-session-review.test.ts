@@ -55,3 +55,22 @@ test('the review reports commits, diff, uncommitted work and the worktrees creat
     await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
   }
 })
+
+test('the review runs git and gh in the environment it is given, never the bridge\'s minimal one', async () => {
+  const seen: { file: string; env?: NodeJS.ProcessEnv }[] = []
+  await reviewCodingSession({
+    folder: tmpdir(), rootCanonical: tmpdir(), state: undefined,
+    rewriter: createPathRewriter([]),
+    env: { PATH: '/opt/homebrew/bin:/usr/bin', HOME: '/Users/person' },
+    run: async (file, args, options) => {
+      seen.push({ file, ...(options?.env ? { env: options.env } : {}) })
+      return { code: 0, missing: false, stdout: file === 'git' && args.includes('--abbrev-ref') ? 'feature\n' : '' }
+    },
+  })
+  const git = seen.find((call) => call.file === 'git')!
+  assert.equal(git.env?.PATH, '/opt/homebrew/bin:/usr/bin')
+  assert.deepEqual([git.env?.GIT_OPTIONAL_LOCKS, git.env?.GIT_TERMINAL_PROMPT], ['0', '0'])
+  const gh = seen.find((call) => call.file === 'gh')!
+  assert.equal(gh.env?.PATH, '/opt/homebrew/bin:/usr/bin', 'Homebrew\'s gh is found the way the person finds it')
+  assert.equal(gh.env?.GH_PROMPT_DISABLED, '1')
+})

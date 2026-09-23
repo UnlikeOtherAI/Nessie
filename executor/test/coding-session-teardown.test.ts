@@ -77,6 +77,17 @@ test('a heartbeat close ends one owner\'s sessions, or one session, and the repo
     assert.equal(other.body.status, 'waiting_for_input', 'another owner\'s session keeps running')
     const after = await daemon.report()
     assert.deepEqual(after?.map((session) => session.sessionId), [b1], 'closed sessions leave the report')
+
+    // A title the path rewrite lengthens past the report's limit is clipped, not dropped from the report.
+    const titled = await harness.call('session_start', {
+      agent: 'claude', root: 'work', prompt: 'titled', title: `${'x'.repeat(112)} /tmp/a`,
+    }, { owner: OWNER_B })
+    const titledId = titled.body.sessionId as string
+    await harness.waitForStatus(titledId, (body) => body.status === 'waiting_for_input', OWNER_B)
+    const entry = (await daemon.report())?.find((session) => session.sessionId === titledId)
+    assert.ok(entry, 'still reported, so a person can still close it')
+    assert.equal(entry.title.length, 120)
+    assert.ok(entry.title.endsWith('…'))
   } finally {
     await harness.cleanup()
   }

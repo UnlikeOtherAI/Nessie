@@ -206,9 +206,12 @@ machine either (the CLI reported its PowerShell parse failing); only a bare
 
 `codingSessionsConfigDigest` hashes the normalised form, defaults included, so
 `configDigest` covers even what no fact names. When the file on disk hashes to
-anything else, the bridge refuses `session_start` and `session_send`, and a
-host starts or resumes no agent — it still carries out interrupts and closes,
-which only stop things. A state file whose facts and generated entry disagree
+anything else, neither the bridge nor a host resolves the roots it names, the
+bridge answers every tool but `session_close`, `session_interrupt` and the
+daemon's `session_close_all` and `session_list_all` with
+`coding_session_config_changed` — so no listing, status or review reaches a
+folder nobody reviewed — and a host starts or resumes no agent. Interrupts
+and closes, which only stop things, still work. A state file whose facts and generated entry disagree
 is malformed and refuses to load. `describe` shows the facts and the config
 file's path.
 
@@ -425,7 +428,8 @@ words.
 
 `session_status` never waits and answers at most 8 KB, `status`,
 `nextCursor` and `pendingNotice` first. `session_review` runs read-only git in
-the session's folder within 20 s: branch, the base commit recorded at start,
+the session's folder within 20 s, in the same login-like environment the
+agents get (the MCP SDK's minimal `PATH` finds no Homebrew `gh` on macOS): branch, the base commit recorded at start,
 commits since, `git diff --stat`, uncommitted and untracked counts, worktrees
 created under the root since the start, `gh pr view` per branch when `gh` is
 installed, and the last test command with its exit code.

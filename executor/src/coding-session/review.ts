@@ -20,12 +20,14 @@ const COMMIT_LINES = 30
 
 type Git = (args: string[], cwd: string) => Promise<string | undefined>
 
-const gitRunner = (run: CommandRunner, deadline: number): Git => async (args, cwd) => {
+const gitRunner = (
+  run: CommandRunner, deadline: number, env: NodeJS.ProcessEnv = process.env,
+): Git => async (args, cwd) => {
   const remaining = deadline - Date.now()
   if (remaining <= 0) return undefined
   const outcome = await run('git', ['--no-pager', ...args], {
     cwd, timeoutMs: Math.min(remaining, 10_000),
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
+    env: { ...env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
   })
   return outcome.code === 0 ? outcome.stdout : undefined
 }
@@ -71,11 +73,13 @@ type CheckCounts = Record<string, number>
 
 const pullRequest = async (
   run: CommandRunner, branch: string, cwd: string, deadline: number, rewrite: (text: string) => string,
+  env: NodeJS.ProcessEnv,
 ): Promise<Record<string, unknown> | undefined> => {
   const remaining = deadline - Date.now()
   if (remaining <= 0) return undefined
   const outcome = await run('gh', ['pr', 'view', branch, '--json', 'url,state,mergeable,statusCheckRollup'], {
-    cwd, timeoutMs: Math.min(remaining, 10_000), env: { ...process.env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1' },
+    cwd, timeoutMs: Math.min(remaining, 10_000),
+    env: { ...env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1', GIT_TERMINAL_PROMPT: '0' },
   })
   if (outcome.missing) return { unavailable: 'gh_missing' }
   if (outcome.code !== 0) return undefined
@@ -105,11 +109,14 @@ export const reviewCodingSession = async (input: {
   rootCanonical: string
   rewriter: PathRewriter
   state: CodingSessionState | undefined
+  /** The person's login-like environment, so `git` and `gh` are the ones they use. */
+  env?: NodeJS.ProcessEnv
   run?: CommandRunner
 }): Promise<Record<string, unknown>> => {
   const run = input.run ?? runCommand
+  const env = input.env ?? process.env
   const deadline = Date.now() + REVIEW_BUDGET_MS
-  const git = gitRunner(run, deadline)
+  const git = gitRunner(run, deadline, env)
   const rewrite = (text: string): string => input.rewriter.rewrite(text)
   const lines = (text: string | undefined, max: number): string[] | undefined => text === undefined
     ? undefined
@@ -143,7 +150,7 @@ export const reviewCodingSession = async (input: {
     .filter((name): name is string => !!name && name !== 'HEAD')
   const pullRequests: Record<string, unknown> = {}
   for (const name of branches.slice(0, 5)) {
-    const found = await pullRequest(run, name, input.folder, deadline, rewrite)
+    const found = await pullRequest(run, name, input.folder, deadline, rewrite, env)
     if (found?.unavailable) break
     if (found) pullRequests[name] = found
   }
