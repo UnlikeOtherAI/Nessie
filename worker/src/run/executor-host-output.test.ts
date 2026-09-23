@@ -63,6 +63,8 @@ test('a local program’s answer belongs to the launch conversation before its c
     assert.deepEqual(sink.list(), [], 'a fresh run has read nothing yet')
     await assert.rejects(toolset.dispatch(toolName, args, 'call-1'), new RegExp(STOPPED))
     assert.deepEqual(sink.list(), [{ scopeId: channelId, scopeType: 'channel' }], toolName)
+    // Kept apart as host output: the one channel stamp a project write may imply.
+    assert.deepEqual(sink.hostOutputScopes(), [{ scopeId: channelId, scopeType: 'channel' }], toolName)
   }
 })
 
@@ -86,6 +88,7 @@ test('a run resumed after its worker died holds the stamp before it calls anythi
     hostOutput: { launchScope: launchConversationScope(channelId), sink: resumed }, organizationId, runId,
   })
   assert.deepEqual(resumed.list(), [{ scopeId: channelId, scopeType: 'channel' }])
+  assert.deepEqual(resumed.hostOutputScopes(), [{ scopeId: channelId, scopeType: 'channel' }])
   assert.deepEqual(earlier.counted, [{
     where: { executorBindingId: { in: localApps.map((binding) => binding.id) }, runId },
   }])

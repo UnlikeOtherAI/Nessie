@@ -17,7 +17,9 @@ const context = (overrides: Partial<BuiltinToolRuntimeContext> = {}): BuiltinToo
   consumedSources: {
     add: () => undefined,
     addAll: () => undefined,
+    addHostOutputScope: () => undefined,
     addPrivateConversationSource: () => undefined,
+    hostOutputScopes: () => [],
     list: () => [],
     privateConversationSources: () => [],
     size: () => 0,
@@ -71,7 +73,9 @@ test('peer delegation preserves known and unknown private-source authors for the
     consumedSources: {
       add: () => undefined,
       addAll: () => undefined,
+      addHostOutputScope: () => undefined,
       addPrivateConversationSource: () => undefined,
+      hostOutputScopes: () => [],
       list: () => basis,
       privateConversationSources: () => disclosureSources,
       size: () => 1,

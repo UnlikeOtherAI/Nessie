@@ -119,7 +119,7 @@ const channelContext = (channels: FakeChannel[]) => {
   }
 }
 
-test('a public channel of the destination project is implied by its board; no other channel is', async () => {
+test('a public channel of the destination project that local apps were launched in is implied by its board', async () => {
   const channels = [
     channelRow('public-room'),
     channelRow('protected-room', { visibility: 'protected' }),
@@ -131,13 +131,13 @@ test('a public channel of the destination project is implied by its board; no ot
   const write = { organizationId: member.organizationId, projectId: PROJECT_ID }
 
   const allowed = channelContext(channels)
-  allowed.consumedSources.add({ scopeId: 'public-room', scopeType: 'channel' })
+  allowed.consumedSources.addHostOutputScope({ scopeId: 'public-room', scopeType: 'channel' })
   await assertProjectWriteDestination(allowed.context, write)
 
   for (const refused of channels.slice(1).map(({ id }) => id)) {
     const attempt = channelContext(channels)
-    attempt.consumedSources.add({ scopeId: 'public-room', scopeType: 'channel' })
-    attempt.consumedSources.add({ scopeId: refused, scopeType: 'channel' })
+    attempt.consumedSources.addHostOutputScope({ scopeId: 'public-room', scopeType: 'channel' })
+    attempt.consumedSources.addHostOutputScope({ scopeId: refused, scopeType: 'channel' })
     await assert.rejects(
       assertProjectWriteDestination(attempt.context, write),
       /restricted research into this shared project/,
@@ -149,12 +149,25 @@ test('a public channel of the destination project is implied by its board; no ot
 test('a public channel carrying private-conversation lineage is still refused', async () => {
   // Its authors decide export, whatever the room has become since they spoke.
   const lineage = channelContext([channelRow('public-room')])
+  lineage.consumedSources.addHostOutputScope({ scopeId: 'public-room', scopeType: 'channel' })
   lineage.consumedSources.addPrivateConversationSource({
     sourceAuthorUserId: member.userId,
     sourceChannelId: 'public-room',
   })
   await assert.rejects(
     assertProjectWriteDestination(lineage.context, { organizationId: member.organizationId, projectId: PROJECT_ID }),
+    /restricted research into this shared project/,
+  )
+})
+
+test('the same public channel from any other source is not implied', async () => {
+  // A memory recalled because the viewer is a member of that public channel
+  // stamps its channel audience. That is not a launch of local apps, and the
+  // board stays closed to it as it was before host output had a rule.
+  const recalled = channelContext([channelRow('public-room')])
+  recalled.consumedSources.add({ scopeId: 'public-room', scopeType: 'channel' })
+  await assert.rejects(
+    assertProjectWriteDestination(recalled.context, { organizationId: member.organizationId, projectId: PROJECT_ID }),
     /restricted research into this shared project/,
   )
 })

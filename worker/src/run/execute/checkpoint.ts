@@ -1,7 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { loadCheckpointHostOutputScopes } from '../executor-host-output.js'
 import { CRASH_CHECKPOINT_REASON } from './crash-checkpoint.js'
 import { persistRunBasis } from './agent-message.js'
-import type { BasisScope, PrivateConversationSource } from './disclosure-basis.js'
+import type { BasisScope, ConsumedSourceSink, PrivateConversationSource } from './disclosure-basis.js'
+import { admitPrivateConversationLineage } from './private-conversation-lineage.js'
 import { persistablePrivateConversationSources } from './private-conversation-source-storage.js'
 import type { RunEndReason } from './budget-stop.js'
 
@@ -38,6 +40,13 @@ export type LoadedRunCheckpoint = {
   basisScopes: BasisScope[]
   /** Original authors for private material in this checkpoint; absent on legacy rows. */
   disclosureSources: PrivateConversationSource[]
+  /**
+   * The launch conversations whose local program output this note may quote
+   * (`loadCheckpointHostOutputScopes`). They are not in `basisScopes`: the
+   * writing run's reply basis subtracts its own channel, which is exactly the
+   * stamp, and the resuming run adds them to its sink as host output.
+   */
+  hostOutputScopes: BasisScope[]
 }
 
 const CHECKPOINT_INJECTION_HEADER = [
@@ -112,7 +121,7 @@ export const loadRunCheckpointForRun = async (
   // `RunBasisScope` is already the per-run provenance ledger and a checkpoint
   // belongs to exactly one run, so the writing run's own rows are the
   // checkpoint's basis — no second table, and no way for the two to disagree.
-  const [basisScopes, disclosureSources] = await Promise.all([
+  const [basisScopes, disclosureSources, hostOutputScopes] = await Promise.all([
     prisma.runBasisScope.findMany({
       where: { runId: row.runId },
       select: { scopeId: true, scopeType: true },
@@ -121,11 +130,13 @@ export const loadRunCheckpointForRun = async (
       where: { checkpointId: row.id },
       select: { sourceAuthorUserId: true, sourceChannelId: true },
     }),
+    loadCheckpointHostOutputScopes(prisma, row.runId),
   ])
 
   return {
     basisScopes,
     disclosureSources,
+    hostOutputScopes,
     createdAt: row.createdAt,
     generation: row.generation,
     id: row.id,
@@ -133,6 +144,22 @@ export const loadRunCheckpointForRun = async (
     reason: row.reason,
     sources: parseSources(row.sources),
   }
+}
+
+/**
+ * What a run resuming from an admitted checkpoint inherits into its sink: the
+ * writing run's basis and private-conversation authors, and the local program
+ * output its note may quote, stamped with its launch conversation. The viewer
+ * check that admits the checkpoint reads `basisScopes` alone on purpose: the
+ * person resuming is in the conversation that output was consented to.
+ */
+export const admitRunCheckpoint = async (
+  prisma: PrismaClient,
+  sink: ConsumedSourceSink,
+  checkpoint: LoadedRunCheckpoint,
+): Promise<void> => {
+  await admitPrivateConversationLineage(prisma, sink, checkpoint)
+  for (const scope of checkpoint.hostOutputScopes) sink.addHostOutputScope(scope)
 }
 
 /** Claim an unconsumed checkpoint for a run. Returns false on a lost race. */

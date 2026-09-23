@@ -101,24 +101,40 @@ Facts not restated there:
     implies its own channel.
   - A write onto a project board is allowed when the launch conversation is a
     live, ordinary, public channel of that very project, because every project
-    reader can already read it: `assertProjectWriteDestination` treats exactly
-    that channel scope as implied, and still refuses one that carries
-    private-conversation lineage. A protected channel's or a DM's host output
-    never lands on a board.
+    reader can already read it: `assertProjectWriteDestination` treats that
+    channel scope as implied only as a host-output stamp — the sink keeps
+    those apart (`addHostOutputScope` / `hostOutputScopes`) — and still
+    refuses one that carries private-conversation lineage. The same public
+    channel scope from any other source, such as a recalled memory's channel
+    audience, stays refused as before. A protected channel's or a DM's host
+    output never lands on a board.
   - Anything else — another channel, a DM to someone else, another project's
     board — is restricted by the basis like any other privileged source.
   - A run resumed after its worker died is stamped when its toolset is built
     if the pair already has ToolCalls, because its window replays those
-    answers. A checkpoint continuation does not yet re-inherit the stamp:
-    implied by the run's own destination, it never reaches the persisted run
-    basis a checkpoint carries.
+    answers.
+  - A checkpoint continuation ("keep going", an auto-continuation, a resume
+    after an approval) inherits the stamp, because the note may quote program
+    output verbatim. The checkpoint's persisted basis cannot carry it — the
+    writing run's reply basis subtracts its own channel, which is the stamp —
+    and persisting the channel into `RunBasisScope` would withhold a public
+    room's own run records from the people who can read the room. So
+    `loadRunCheckpointForRun` re-derives it structurally
+    (`loadCheckpointHostOutputScopes`): the writing run, and every run whose
+    checkpoint it consumed back along the chain, stamps its own channel if it
+    has a ToolCall on an `mcp.*` operation, and `admitRunCheckpoint` adds
+    those to the resuming run's sink as host output. The viewer check that
+    admits the checkpoint reads its basis alone: the person resuming is in
+    the conversation the output was consented to.
   - Task Set processor search binds its own `ollama-search` and is no launch
     in a conversation; it passes no scope, and its results travel under the
     set's classified disclosure.
 
   `worker/test/db/executor-host-output-disclosure.test.ts` pins the three
   board outcomes and the sales walkthrough's refusal of a protected planning
-  channel's research.
+  channel's research; `executor-host-output-checkpoint.test.ts` pins that a
+  continuation, and the one after it, still restricts another room and
+  refuses another project's board.
 - **Document versions retain their source boundary.** A `KnowledgePageVersion`
   stores its own basis scopes and private-conversation source authors. A reader
   first passes the document home's ordinary entitlement, then must satisfy the

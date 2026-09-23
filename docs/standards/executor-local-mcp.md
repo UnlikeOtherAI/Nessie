@@ -120,7 +120,8 @@ channel, stamped even when the channel is public
 (`worker/src/run/executor-host-output.ts`). Replies into that conversation
 are unaffected; a ticket or board write is allowed only into the project
 whose public channel the launch was made in; everything else is contained by
-the basis. The full rule, its consequences and its one known gap are in
+the basis; a checkpoint continuation re-derives the stamp from the runs
+behind its note. The full rule and its consequences are in
 [disclosure-boundaries.md](disclosure-boundaries.md) → "Host program output
 is the launch conversation's". `buildExecutorToolset` takes the scope as a
 required `hostOutput`, so a caller has to decide: Task Set search passes

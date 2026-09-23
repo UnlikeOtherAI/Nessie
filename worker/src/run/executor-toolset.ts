@@ -234,7 +234,7 @@ export const buildExecutorToolset = async (
   // the row it opened. A catalog walk's first page carries the call's own id.
   const recordIdByProviderCall = new Map<string, string>()
   const recordHostOutput = (): void => {
-    if (input.hostOutput) input.hostOutput.sink.add(input.hostOutput.launchScope)
+    if (input.hostOutput) input.hostOutput.sink.addHostOutputScope(input.hostOutput.launchScope)
   }
   // A run resumed after its worker died replays the program answers it already
   // had into its window, so a call an earlier execution made on the pair

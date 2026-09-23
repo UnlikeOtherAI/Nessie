@@ -82,19 +82,26 @@ export const recordProjectRead = (
 }
 
 /**
- * The channel scopes among `scopes` that every reader of this project can
- * already read: a live, ordinary, public channel of this very project.
+ * The host-output launch channels among `scopes` that every reader of this
+ * project can already read: a live, ordinary, public channel of this very
+ * project.
+ *
+ * Only a host-output stamp is a candidate (`addHostOutputScope`): launching
+ * local apps in a public project channel is consent to show the program's
+ * output to that room, whose audience contains the board's. The same channel
+ * scope from any other source — a recalled memory's channel audience, say —
+ * stays refused, as it was before host output existed.
  *
  * Structural, like the rest of the disclosure machinery: a public standard
  * channel is readable by every active organisation member
- * (`buildAccessibleChannelWhere`), and every project reader is one, so its
- * audience contains the board's. A protected channel is read by its members
- * alone, a private one is a DM or a system room, and a channel of another
- * project says nothing about this one — all stay refused. So does a channel
- * that carries private-conversation lineage: its authors decide its export,
- * whatever the channel has become since.
+ * (`buildAccessibleChannelWhere`), and every project reader is one. A
+ * protected channel is read by its members alone, a private one is a DM or a
+ * system room, and a channel of another project says nothing about this one
+ * — all stay refused. So does a channel that carries private-conversation
+ * lineage: its authors decide its export, whatever the channel has become
+ * since.
  */
-const projectWideChannelIds = async (
+const projectWideLaunchChannelIds = async (
   context: BuiltinToolRuntimeContext,
   input: { organizationId: string; projectId: string },
   scopes: readonly { scopeId: string; scopeType: string }[],
@@ -126,9 +133,10 @@ const projectWideChannelIds = async (
  * Keep this at the shared ticket-write chokepoint so private sources cannot be
  * copied into a task, checklist, or board.
  *
- * One channel scope is implied: a public channel of this project, which is
- * how a local program's output, stamped with the channel it was launched in,
- * reaches that project's board (`executor-host-output.ts`).
+ * One channel scope is implied: the channel local apps were launched in, as a
+ * host-output stamp, when it is a public channel of this project. That is how
+ * a local program's output reaches that project's board
+ * (`executor-host-output.ts`).
  */
 export const assertProjectWriteDestination = async (
   context: BuiltinToolRuntimeContext,
@@ -162,11 +170,15 @@ export const assertProjectWriteDestination = async (
     return !visible.includes(false)
   }
   const consumed = context.consumedSources?.list() ?? []
-  const projectWideChannels = await projectWideChannelIds(context, input, consumed)
+  const launchChannels = await projectWideLaunchChannelIds(
+    context,
+    input,
+    context.consumedSources?.hostOutputScopes() ?? [],
+  )
   for (const scope of consumed) {
     const implied = (scope.scopeType === 'organization' && scope.scopeId === input.organizationId)
       || (scope.scopeType === 'project' && scope.scopeId === input.projectId)
-      || (scope.scopeType === 'channel' && projectWideChannels.has(scope.scopeId))
+      || (scope.scopeType === 'channel' && launchChannels.has(scope.scopeId))
       || (scope.scopeType === 'agent' && await audienceCanSeeAgent(scope.scopeId))
     if (!implied) throw new Error('I cannot copy restricted research into this shared project.')
   }

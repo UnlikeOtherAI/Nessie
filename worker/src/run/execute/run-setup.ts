@@ -24,6 +24,7 @@ import {
 } from '../delegated-identity.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
+  admitRunCheckpoint,
   buildCheckpointInjection,
   loadRunCheckpointForRun,
   type LoadedRunCheckpoint,
@@ -39,7 +40,6 @@ import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
-import { admitPrivateConversationLineage } from './private-conversation-lineage.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -440,8 +440,10 @@ export const prepareRunExecution = async (
     && !viewerSatisfiesBasis(loadedCheckpoint.basisScopes, viewer)
     ? null
     : loadedCheckpoint
+  // Its note may also quote local program output, which its basis cannot say
+  // (`loadCheckpointHostOutputScopes`); admitting it re-stamps that too.
   if (checkpoint) {
-    await admitPrivateConversationLineage(deps.prisma, context.consumedSources, checkpoint)
+    await admitRunCheckpoint(deps.prisma, context.consumedSources, checkpoint)
   }
 
   // Tool names are structural registry ids, not model-provided prose. The

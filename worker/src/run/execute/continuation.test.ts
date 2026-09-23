@@ -168,11 +168,15 @@ test('peer continuations retain channel placement and the original requester', a
           sources: [{ title: 'Source', url: 'https://example.test/source' }],
         }
       },
+      // The writing run consumed no checkpoint of its own.
+      findMany: async () => [],
       updateMany: async () => ({ count: 0 }),
     },
     runCheckpointDisclosureSource: {
       findMany: async () => [{ sourceAuthorUserId: ids.human, sourceChannelId: ids.channel }],
     },
+    // Nor did it call a local program.
+    toolCall: { findMany: async () => [] },
   } as never, {
     rootMessageId: resolveReplyRootMessageId(
       { id: ids.trigger, rootMessageId: null },
