@@ -19,17 +19,16 @@ import crypto from 'node:crypto'
 
 /**
  * The one refusal code that proves UOA refused the person rather than Nessie's
- * deployment. UOA's token exchange answers 403 for both: this code for a moved
- * epoch or a lost organisation, team or domain role, and
- * `TOKEN_EXCHANGE_DELEGATION_NOT_ALLOWED` for a missing or disabled delegation
- * mapping, an inactive client domain, a resource or scope the mapping does not
- * allow. Its production error body names the code only when the code is on its
- * public list, so a 403 without this code proves nothing about the person.
- *
- * This code is not on that list yet, so in production a refused person is a
- * bare 403 and classifies as a fault: identity drift behind it strands a run
- * until UOA lists it (the DeepWater rollout gate, docs/standards/deepwater.md
- * "Identity drift and UOA's rollout gate"; known limitation L25).
+ * deployment. UOA's token exchange answers 403 for both: this code for
+ * anything about the person's own current state — a moved epoch, an unknown
+ * user, a lost domain role, an organisation or team no longer available to
+ * them — and its own codes for the product's configuration (a missing or
+ * disabled delegation mapping, an inactive client domain, a resource or scope
+ * the mapping does not allow, a team context the product requires or does not
+ * support). Its production error body names a code only when the code is on
+ * its public list: this one is (UnlikeOtherAuthenticator #52), the
+ * configuration codes are not, so a 403 without this code proves nothing about
+ * the person and is a fault (docs/standards/deepwater.md, "Identity drift").
  */
 export const UOA_SUBJECT_FORBIDDEN_CODE = 'TOKEN_EXCHANGE_SUBJECT_FORBIDDEN'
 
