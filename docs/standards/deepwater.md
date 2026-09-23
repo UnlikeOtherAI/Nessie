@@ -16,9 +16,19 @@ file is the rule**.
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE` when the linked first-party catalog is
   missing), installs a bearer HTTP transport using `LEDGER_PROXY_TOKEN` as
   Nessie's one deployment-wide, product-bound Ledger app API key (never a
-  per-user credential), and projects
-  `research_start`, `research_status`, `research_report`, `research_list`, and
-  `research_cancel` as active `mcp_research_*` tools. Each sibling product must
+  per-user credential), and projects the manifest's tools —
+  `research_scope_start`, `research_scope_reply`, `research_scope_get`,
+  `research_scope_launch`, `research_status`, `research_report`,
+  `research_cancel` and `research_list` (manifest 0.3.0) — as active
+  `mcp_research_*` tools. Their input schemas equal Ledger's `tools/list`
+  exactly: `@nessie/mcp-manage` builds them from the shared brief vocabulary
+  and a contract test deep-equals them against the committed Ledger fixture
+  `deep-water.ledger-contract.json`. `research_start` is no longer projected,
+  because every research Nessie starts is agreed with DeepWater's planner first;
+  it stays in the worker's managed tool names only while legacy launcher runs
+  may still dispatch it, and leaves with the launcher handoff. A team whose
+  connector still carries an older tool-name set is `contract_outdated` and
+  cannot open a brief until it is upgraded. Each sibling product must
   use its own app API key; app keys are never reused as webhook signing secrets.
   Transport authentication and caller identity are separate: every call carries
   a short-lived `X-Nessie-Context` RS256 JWT with non-null
@@ -96,9 +106,11 @@ file is the rule**.
   the agent lock. Its minimal target list
   includes the Personal Assistant without exposing PA bindings/activity through
   `/api/agents`. The DeepWater launcher and
-  `/api/integrations/products/deep-water/agent-access` manage/read the five MCP
-  projections plus `deep_water_run_update` as an exact six-entry bundle. Launch
-  stays disabled and the API rejects before run creation until the PA has 6/6;
+  `/api/integrations/products/deep-water/agent-access` manage/read the
+  manifest's MCP projections plus `deep_water_run_update` as one exact bundle
+  whose size is derived from the manifest, never hard-coded. Launch stays
+  disabled and the API rejects before run creation until the PA holds the whole
+  bundle;
   the updater counts only while its registry row is enabled and active, matching
   worker exposure, so a disabled builtin cannot authorize metered work;
   the final enablement/instance/policy reads and run insert are linearized under
@@ -141,9 +153,11 @@ file is the rule**.
   queue retries, using the exact persisted id and arguments. A validated
   matching `rs_...` `id`/`job_id` plus exact Ledger status is persisted before
   success is returned; a retry then replays that ticket and status locally
-  without another Ledger call. Managed DeepWater owns the canonical five
-  `mcp_research_*` names even when private connectors collide or the grant is
-  absent, so the server-authored prompt can never dispatch a foreign connector.
+  without another Ledger call. Managed DeepWater owns the canonical
+  `mcp_research_*` names — derived from the manifest, plus `mcp_research_start`
+  while legacy handoffs exist — even when private connectors collide or the
+  grant is absent, so the server-authored prompt can never dispatch a foreign
+  connector.
   Same-batch status/report/cancel calls are pinned
   to that persisted id; `research_list` and delegation stay blocked for the
   launch turn so result delivery cannot be hidden inside a timed-out sub-agent.
@@ -214,3 +228,49 @@ file is the rule**.
   Re-enable preserves richer probed schemas only
   when tool names exactly match the current Ledger contract; legacy
   direct-provider projections are replaced and must be explicitly re-granted.
+
+## Research briefs — the product-run binding
+
+Every research Nessie starts is agreed with DeepWater's planner first, as a
+brief that lives on one `product_integration_runs` row from the first message
+to the delivered result. These rules hold for every brief row; the brief API,
+worker and card are built on them.
+
+- **Two creators, one lock.** A brief row is written only by
+  `createPersonDeepWaterBrief` (a person, keyed by the request's `actionId`) or
+  `claimAgentOriginRun` (an agent's `research_scope_start`, keyed by the calling
+  Run and its provider tool-call id), both in `@nessie/mcp-manage`. Both run
+  inside the team transition lock and re-read the team switch and its active,
+  current-contract connector there, binding the row to that connector; the
+  agent path also re-reads its `research_scope_start` grant under its policy
+  lock. So a brief either exists before a disable or revocation looks for open
+  runs, or is never written. Both are idempotent on their key.
+- **The legacy marker is exact.** Both creators write the captured
+  `uoa_identity` and `scope_json` together, and launcher rows and other
+  products write neither; the `product_integration_runs_brief_binding_shape`
+  CHECK makes `uoa_identity IS NULL` the exact legacy marker.
+- **Stable UOA ids only.** `uoa_identity` is `{subject, organizationId, teamId,
+  tokenVersion}` — never an email or a name. `refreshDeepWaterRunIdentity`
+  renews it from a live action by the same subject, organisation and team, never
+  to an older epoch, and clears a `requester_identity_changed` block in the same
+  statement.
+- **One research, one run.** A Ledger research id binds to at most one product
+  run (partial unique index on `(product_slug, external_run_id)`). It attaches
+  once, from whichever Ledger read names it first — a tool's ack or the watch —
+  and a later read naming another id is a contract violation, not a race.
+- **The projection only advances.** Ledger reads apply under the row lock
+  (`applyDeepWaterScopeResult`, `applyDeepWaterStatusRead`,
+  `applyDeepWaterLaunchTicket`). The brief content moves only on a strictly
+  greater revision, the planner turn only on a greater `(seq, status rank)`, and
+  a person's in-flight action is cleared only by its own turn or outcome.
+  `cancelled` is written directly; a finished research is written only by the
+  delivery claim.
+- **Delivery happens once.** `claimDeepWaterDelivery` writes the terminal
+  status with `delivered_at` in one conditional statement; the reply or wake is
+  written in the same transaction. A block (`blockDeepWaterDelivery`) is set
+  once, with its one notice; a retryable block keeps the run `running` so its
+  connector stays for the retry.
+- **Who may see a run** is `isDeepWaterRunVisible` in `@nessie/runtime`, the
+  one predicate for lists, detail, the card and artifacts: the origin thread's
+  live chain for anyone in it, the full source basis for the requester's
+  portable reach, and a person's brief stays private until it is launched.

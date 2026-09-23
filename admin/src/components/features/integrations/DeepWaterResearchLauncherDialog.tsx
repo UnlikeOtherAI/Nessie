@@ -26,7 +26,7 @@ const readinessMessage = ({
   if (!teamReady) return 'An organization owner must enable Deep Water for this team first.'
   if (!connectorReady) return 'The team’s Ledger MCP connector is not active yet.'
   if (!personalAssistantReady) {
-    return 'An organization owner must grant the Personal Assistant all six Deep Water tools.'
+    return 'An organisation owner must grant the Personal Assistant every Deep Water tool.'
   }
   return undefined
 }

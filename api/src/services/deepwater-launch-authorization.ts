@@ -95,7 +95,7 @@ export const runWithAuthorizedDeepWaterLaunch = <T>(
     if (!personalAssistant) {
       throw new DeepWaterLaunchAuthorizationError(
         DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES.ACCESS_REQUIRED,
-        'Grant all six Deep Water tools to the Personal Assistant before launching research.',
+        'Grant every Deep Water tool to the Personal Assistant before launching research.',
       )
     }
 
@@ -114,7 +114,7 @@ export const runWithAuthorizedDeepWaterLaunch = <T>(
     ) {
       throw new DeepWaterLaunchAuthorizationError(
         DEEP_WATER_LAUNCH_AUTHORIZATION_ERROR_CODES.ACCESS_REQUIRED,
-        'Grant all six Deep Water tools to the Personal Assistant before launching research.',
+        'Grant every Deep Water tool to the Personal Assistant before launching research.',
       )
     }
 

@@ -342,7 +342,7 @@ export const setDeepWaterAgentAccess = async (
       if (input.enabled && !access.configured) {
         throw new DeepWaterAgentAccessError(
           DEEP_WATER_AGENT_ACCESS_ERROR_CODES.TOOLS_UNAVAILABLE,
-          'Deep Water must be enabled with all six explicit-grant tools before agent access can change.',
+          'Deep Water must be enabled with every one of its explicit-grant tools before agent access can change.',
         )
       }
 
