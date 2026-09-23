@@ -94,9 +94,10 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   the durable run record (same team + thread). Also:
   [docs/external-tool-integration.md](../external-tool-integration.md).
 
-- **DeepWater results come back on their own, through a watch, never a push.**
-  Nothing reaches Nessie from Ledger unasked: the worker's `deep-water-watch`
-  sweep reads every open brief and research through Ledger over the run's own
+- **DeepWater results come back on their own, through a watch; Ledger never
+  pushes.** Nothing reaches Nessie from Ledger unasked: the worker's
+  `deep-water-watch` sweep reads every open brief and research through Ledger
+  over the run's own
   team connector, as cost-free control-plane calls signed as the requester
   with their captured UOA identity (5 s while a planner turn or action is in
   flight, 30 s while research runs, then backing off). A finished research is

@@ -54,7 +54,8 @@ sentence changes only if the invariant itself did.
   [`docs/plans/2026-09-07-private-browser-access-and-import.md`](docs/plans/2026-09-07-private-browser-access-and-import.md).
 - **Conversational Agent Designer grants** act as the live requesting member;
   protected policy keys stay closed to generic updates, and DeepWater remains
-  an atomic bundle. Read
+  an atomic bundle whose revocation waits for that agent's unlaunched briefs
+  and any open launcher run. Read
   [`docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md`](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md).
 
 ## Notes specific to Claude Code
