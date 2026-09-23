@@ -110,6 +110,34 @@ test('every named server is probed, and one slow server does not hide another', 
   }
 })
 
+test('a Kelpie whose describe throws costs only its own inventory, never the sweep', async () => {
+  const reporter = createLocalMcpReporter(
+    [
+      { command: ['kelpie.cmd', 'mcp'], name: 'kelpie' },
+      { command: ['other'], name: 'other' },
+    ],
+    sessionsAnswering({
+      kelpie: { available: true, catalogDigest: `sha256:${'b'.repeat(64)}`, toolCount: 94 },
+      other: { available: false, reason: 'handshake_failed' },
+    }),
+    {
+      // What `execFile` did with a `.cmd` shim on Node 24: throw before any
+      // process started, which rejected the whole sweep for every server.
+      describe: () => { throw Object.assign(new Error('spawn EINVAL'), { code: 'EINVAL' }) },
+    },
+  )
+  try {
+    const report = await reporter.refresh()
+    const kelpie = report.find((status) => status.server === 'kelpie')
+    assert.equal(kelpie?.available, true)
+    assert.equal(kelpie?.toolCount, 94)
+    assert.equal(kelpie?.kelpieDevices, undefined, 'not probed for instances, never an empty network')
+    assert.equal(report.find((status) => status.server === 'other')?.reason, 'handshake_failed')
+  } finally {
+    reporter.stop()
+  }
+})
+
 test('two refreshes at once join one sweep rather than racing probes', async () => {
   let probes = 0
   const reporter = createLocalMcpReporter(

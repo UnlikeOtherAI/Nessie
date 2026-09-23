@@ -53,6 +53,16 @@ export type ConsumedSourceSink = {
   privateConversationSources: () => PrivateConversationSource[]
   /** Records one human turn from a non-public conversation. */
   addPrivateConversationSource: (source: PrivateConversationSource) => void
+  /**
+   * Records a local program's output under the scope of the conversation
+   * local apps were launched in (`executor-host-output.ts`). The scope enters
+   * the sink like any other; it is also kept apart as host output, because a
+   * project write treats a public channel of its project as implied for that
+   * stamp alone — the same scope from a recalled memory is not.
+   */
+  addHostOutputScope: (scope: BasisScope) => void
+  /** The launch-conversation scopes host program output stamped, de-duplicated. */
+  hostOutputScopes: () => BasisScope[]
 }
 
 const scopeKey = (scope: BasisScope): string => `${scope.scopeType}:${scope.scopeId}`
@@ -60,6 +70,7 @@ const scopeKey = (scope: BasisScope): string => `${scope.scopeType}:${scope.scop
 export const createConsumedSourceSink = (): ConsumedSourceSink => {
   const seen = new Map<string, BasisScope>()
   const privateConversationSources = new Map<string, PrivateConversationSource>()
+  const hostOutput = new Map<string, BasisScope>()
 
   const add = (scope: BasisScope): void => {
     if (!scope.scopeType || !scope.scopeId) {
@@ -89,6 +100,13 @@ export const createConsumedSourceSink = (): ConsumedSourceSink => {
         privateConversationSources.set(key, source)
       }
     },
+    addHostOutputScope: (scope) => {
+      if (!scope.scopeType || !scope.scopeId) return
+      add(scope)
+      const key = scopeKey(scope)
+      if (!hostOutput.has(key)) hostOutput.set(key, { scopeId: scope.scopeId, scopeType: scope.scopeType })
+    },
+    hostOutputScopes: () => [...hostOutput.values()],
   }
 }
 

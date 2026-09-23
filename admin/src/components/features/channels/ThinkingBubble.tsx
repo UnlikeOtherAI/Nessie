@@ -5,6 +5,7 @@ import {
   type PendingStreamMessage,
 } from '../../../facades/threads/thinking'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { RunStopButton } from '../../shared/RunStopButton'
 
 // The ticker is lossy: only this many trailing lines stay in the DOM, and the
 // viewport clips whatever no longer fits. The full record lives in the dialog.
@@ -23,18 +24,30 @@ type ThinkingBubbleProps = {
 
 const containerClass = (variant: ThinkingBubbleProps['variant']): string =>
   [
-    'my-1 cursor-pointer rounded-xl border border-dashed border-[color:var(--sep)]',
+    'my-1 flex rounded-xl border border-dashed border-[color:var(--sep)]',
     'bg-[var(--overlay-weak)] transition-colors hover:bg-[color:var(--main-hover)]',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
     // Compact sits under a root row, indented to the message text; full spans
     // the feed like a message row does.
-    variant === 'compact'
-      ? 'ml-16 mr-5 flex items-center gap-2 px-2.5 py-1'
-      : 'mx-5 px-3 py-2',
+    variant === 'compact' ? 'ml-16 mr-5 items-center' : 'mx-5 items-start',
+  ].join(' ')
+
+// The open affordance fills the bubble, so the padding is its own and a click
+// anywhere but Stop still opens the thought process.
+const openClass = (variant: ThinkingBubbleProps['variant']): string =>
+  [
+    'min-w-0 flex-1 cursor-pointer rounded-xl',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
+    variant === 'compact' ? 'flex items-center gap-2 px-2.5 py-1' : 'px-3 py-2',
   ].join(' ')
 
 // "A reply is coming": a dashed, full-width bubble — never a message row — that
 // shows the tail of an agent's live thought process while its run is in flight.
+//
+// It carries the run's Stop. The bubble exists exactly while the run streams
+// (`stream.start` to `stream.done`, which a suspension and a cancel both
+// publish), so its presence is the live state Stop needs and its removal is
+// what ends "Stopping…". Stop is a sibling of the open affordance rather than
+// inside it: a button nested in a `role="button"` is two controls in one.
 export const ThinkingBubble = ({
   agent,
   agentName,
@@ -77,31 +90,34 @@ export const ThinkingBubble = ({
   )
 
   return (
-    <div
-      aria-label={`View ${agentName}’s thought process`}
-      className={containerClass(variant)}
-      data-testid="thinking-bubble"
-      data-variant={variant}
-      onClick={open}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          open(event)
-        }
-      }}
-      role="button"
-      tabIndex={0}
-    >
-      <div className={compact ? 'flex flex-shrink-0 items-center gap-2' : 'flex items-center gap-2'}>
-        <AgentAvatar agent={agent} size="xs" token={token} />
-        <span className="text-xs font-semibold text-[var(--tx2)]">{agentName}</span>
-        <span className="thinking-dots" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
+    <div className={containerClass(variant)} data-testid="thinking-bubble" data-variant={variant}>
+      <div
+        aria-label={`View ${agentName}’s thought process`}
+        className={openClass(variant)}
+        onClick={open}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            open(event)
+          }
+        }}
+        role="button"
+        tabIndex={0}
+      >
+        <div className={compact ? 'flex flex-shrink-0 items-center gap-2' : 'flex items-center gap-2'}>
+          <AgentAvatar agent={agent} size="xs" token={token} />
+          <span className="text-xs font-semibold text-[var(--tx2)]">{agentName}</span>
+          <span className="thinking-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+        </div>
+        {ticker}
       </div>
-      {ticker}
+      <div className={compact ? 'pr-1' : 'pr-1.5 pt-1.5'}>
+        <RunStopButton agentName={agentName} runId={entry.runId} />
+      </div>
     </div>
   )
 }

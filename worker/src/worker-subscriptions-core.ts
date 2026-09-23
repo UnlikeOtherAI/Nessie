@@ -70,8 +70,7 @@ import { executeRunJob } from './run/execute.js'
 import { executeRunCompletionFollowup } from './run/execute/completion-followup.js'
 import { executeRunMemoryConsolidationJob } from './run/memory-consolidation.js'
 import { executeOrchestrateDecideJob } from './run/orchestrate.js'
-import { executeExecutorCommandJob } from './control/executor-commands.js'
-import { EXECUTOR_COMMAND_TOPIC } from './run/executor-toolset.js'
+import { executeExecutorCommandJob, subscribeExecutorCommandLanes } from './control/executor-commands.js'
 import { handleCallRingDispatch, handleCallRingCancel } from './control/call-ring-dispatch.js'
 import { handleCallRingTimeout } from './control/call-lifecycle.js'
 import {
@@ -205,8 +204,8 @@ subscribe(
   },
   { signal: abortSignal },
 )
-subscribe(
-  EXECUTOR_COMMAND_TOPIC,
+subscribeExecutorCommandLanes(
+  subscribe,
   async (job) => {
     await executeExecutorCommandJob(prisma, encryptionKeyRing, job.payload)
   },

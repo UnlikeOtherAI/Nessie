@@ -29,9 +29,12 @@ export type LocalMcpReporter = {
   stop: () => void
 }
 
+type DescribeKelpie = typeof describeKelpie
+
 const statusForServer = async (
   spec: ExecutorLocalMcpServer,
   sessions: ExecutorMcpSessionManager,
+  describe: DescribeKelpie,
 ): Promise<ExecutorLocalMcpStatus> => {
   const observedAt = new Date().toISOString()
   const probe = await sessions.probe(spec.name)
@@ -51,7 +54,16 @@ const statusForServer = async (
   // is on the network. A Kelpie too old to answer `describe` leaves the field
   // absent, which the wire contract reads as "not probed for instances" —
   // never as "no instances".
-  const description = await describeKelpie(spec)
+  //
+  // A describe that throws — a program that cannot even be spawned — is this
+  // server's problem alone: the sweep reports every server together, so one
+  // uncaught throw here used to cost every other server its report.
+  let description: Awaited<ReturnType<DescribeKelpie>>
+  try {
+    description = await describe(spec)
+  } catch {
+    description = undefined
+  }
   if (!description) return base
   return {
     ...base,
@@ -63,8 +75,9 @@ const statusForServer = async (
 export const createLocalMcpReporter = (
   servers: readonly ExecutorLocalMcpServer[],
   sessions: ExecutorMcpSessionManager,
-  options: { intervalMs?: number; now?: () => number } = {},
+  options: { describe?: DescribeKelpie; intervalMs?: number; now?: () => number } = {},
 ): LocalMcpReporter => {
+  const describe = options.describe ?? describeKelpie
   let last: ExecutorLocalMcpReport | undefined
   let timer: NodeJS.Timeout | undefined
   let inFlight: Promise<ExecutorLocalMcpReport> | undefined
@@ -73,7 +86,7 @@ export const createLocalMcpReporter = (
     // Servers are probed in parallel: one Kelpie taking its full discovery
     // timeout must not delay the answer about an unrelated server.
     const statuses = await Promise.all(
-      servers.map(async (spec) => statusForServer(spec, sessions)),
+      servers.map(async (spec) => statusForServer(spec, sessions, describe)),
     )
     const report = ExecutorLocalMcpReportSchema.parse(statuses)
     last = report

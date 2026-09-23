@@ -26,7 +26,9 @@ claims, machine permissions and the explicit mailbox provenance discriminator.
   `visibility` + chain are one fact in two shapes; record a channel scope only
   when the channel is **not public**, because viewer channel scopes come from
   `ChannelMember` rows alone and stamping a public channel withholds the reply
-  from people entitled to read the source; and make search **fail closed**
+  from people entitled to read the source (host program output, whose source
+  is not the room's history, is the one exception — see "Detail"); and make
+  search **fail closed**
   (exclude anything carrying a basis) rather than withhold, because a snippet
   list has nowhere to render a placeholder. On the read side every path asks the
   one predicate — list, single message, and the durable thought log alike, since
@@ -86,8 +88,61 @@ Facts not restated there:
   available to everyone who can read the channel — rather than claiming that
   the agent or the readers are missing from the channel roster.
 - Sink writers today: the transcript window (transitive), memory recall, every
-  knowledge-base read, the conversation searches, attachment reads, and an
-  admitted checkpoint — and a checkpoint on resume is a read path too.
+  knowledge-base read, the conversation searches, attachment reads, every
+  executor `mcp.*` result, and an admitted checkpoint — and a checkpoint on
+  resume is a read path too.
+- **Host program output is the launch conversation's.** A local program an
+  executor fronts (`mcp.tools` / `mcp.call`) answers from the person's own
+  machine — a signed-in browser profile, private repositories — so it is not
+  public web. Launching local apps in a conversation — a person-launched
+  executor run in it, from the launcher's **Local apps on this machine** — is
+  the person's consent to show that machine's program output to that
+  conversation's audience, and nowhere else. An agent cannot bind an executor
+  on its own, so the consent is always a person's. Every `mcp.*` result
+  stamps the run's sink with the launch conversation's scope before its
+  command is sent (`worker/src/run/executor-host-output.ts`; today the run's
+  own channel).
+  The channel is stamped **even when it is public**, the one exception to the
+  public-channel skip above: that room's history is the organisation's to
+  read, but the program's output was consented to that room alone.
+  - A reply into the same conversation is unaffected: the destination
+    implies its own channel.
+  - A write onto a project board is allowed when the launch conversation is a
+    live, ordinary, public channel of that very project, because every project
+    reader can already read it: `assertProjectWriteDestination` treats that
+    channel scope as implied only as a host-output stamp — the sink keeps
+    those apart (`addHostOutputScope` / `hostOutputScopes`) — and still
+    refuses one that carries private-conversation lineage. The same public
+    channel scope from any other source, such as a recalled memory's channel
+    audience, stays refused as before. A protected channel's or a DM's host
+    output never lands on a board.
+  - Anything else — another channel, a DM to someone else, another project's
+    board — is restricted by the basis like any other privileged source.
+  - A run resumed after its worker died is stamped when its toolset is built
+    if the pair already has ToolCalls, because its window replays those
+    answers.
+  - A checkpoint continuation ("keep going", an auto-continuation, a resume
+    after an approval) inherits the stamp, because the note may quote program
+    output verbatim. The checkpoint's persisted basis cannot carry it — the
+    writing run's reply basis subtracts its own channel, which is the stamp —
+    and persisting the channel into `RunBasisScope` would withhold a public
+    room's own run records from the people who can read the room. So
+    `loadRunCheckpointForRun` re-derives it structurally
+    (`loadCheckpointHostOutputScopes`): the writing run, and every run whose
+    checkpoint it consumed back along the chain, stamps its own channel if it
+    has a ToolCall on an `mcp.*` operation, and `admitRunCheckpoint` adds
+    those to the resuming run's sink as host output. The viewer check that
+    admits the checkpoint reads its basis alone: the person resuming is in
+    the conversation the output was consented to.
+  - Task Set processor search binds its own `ollama-search` and is no launch
+    in a conversation; it passes no scope, and its results travel under the
+    set's classified disclosure.
+
+  `worker/test/db/executor-host-output-disclosure.test.ts` pins the three
+  board outcomes and the sales walkthrough's refusal of a protected planning
+  channel's research; `executor-host-output-checkpoint.test.ts` pins that a
+  continuation, and the one after it, still restricts another room and
+  refuses another project's board.
 - **A channel directory read stamps its non-public rooms — except a DM named
   by its label alone.** `channel_list`, `channel_find`, the channel labels
   `agent_list` names, the room `agent_bind_channel` links and the record

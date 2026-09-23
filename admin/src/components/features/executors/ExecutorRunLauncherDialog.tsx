@@ -78,6 +78,15 @@ const operationOptions: OperationOption[] = [
     operationKeys: ['coding.launch', 'coding.observe', 'workspace.review', 'sandbox.stop'],
     value: 'coding.launch+coding.observe+workspace.review+sandbox.stop',
   },
+  {
+    // The pair is a transport onto whatever programs the reviewed policy
+    // names. The dialog never learns those names: candidates are opaque, so
+    // the copy says what the owner decided rather than what is installed.
+    description: 'Programs this machine’s owner named in its reviewed policy — for example a local browser or a coding agent. The agent sees each program’s own tools.',
+    label: 'Local apps on this machine',
+    operationKeys: ['mcp.tools', 'mcp.call'],
+    value: 'mcp.tools+mcp.call',
+  },
 ]
 
 const scopeLabel = (scopeKind: ExecutorAvailabilityCandidate['scopeKind']): string => {

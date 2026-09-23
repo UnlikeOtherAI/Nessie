@@ -14,6 +14,7 @@ import {
 import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
+import { launchConversationScope } from '../executor-host-output.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
@@ -24,6 +25,7 @@ import {
 } from '../delegated-identity.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
+  admitRunCheckpoint,
   buildCheckpointInjection,
   loadRunCheckpointForRun,
   type LoadedRunCheckpoint,
@@ -40,7 +42,6 @@ import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
-import { admitPrivateConversationLineage } from './private-conversation-lineage.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -333,6 +334,13 @@ export const prepareRunExecution = async (
         agentId: context.agent.id,
         agentToolPolicy: toolPolicy,
         encryptionSecret: deps.executorCommandEncryptionSecret,
+        // A person launched local apps in this run's own conversation: the
+        // launch itself, or a lease carried from it, which only ever carries
+        // within the conversation the launch opened.
+        hostOutput: {
+          launchScope: launchConversationScope(context.channel.id),
+          sink: context.consumedSources,
+        },
         organizationId: context.channel.organizationId,
         runId: context.run.id,
       })
@@ -456,8 +464,10 @@ export const prepareRunExecution = async (
     && !viewerSatisfiesBasis(loadedCheckpoint.basisScopes, viewer)
     ? null
     : loadedCheckpoint
+  // Its note may also quote local program output, which its basis cannot say
+  // (`loadCheckpointHostOutputScopes`); admitting it re-stamps that too.
   if (checkpoint) {
-    await admitPrivateConversationLineage(deps.prisma, context.consumedSources, checkpoint)
+    await admitRunCheckpoint(deps.prisma, context.consumedSources, checkpoint)
   }
 
   // Tool names are structural registry ids, not model-provided prose. The
