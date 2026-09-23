@@ -438,8 +438,9 @@ that acts as the machine's own user, and these rules follow from that:
   "The agent's tools".
 - **What ends a person's authority closes their sessions.** A lease's end, an
   access withdrawal and a paused or revoked executor write a close request in
-  their own transaction, and the heartbeat carries it as `codingSessionClose`
-  until a later report shows it done
+  their own transaction — as does the pairing owner's Close on one session —
+  and the heartbeat carries it as `codingSessionClose` until a later report
+  shows it done
   ([host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
   "Close requests").
 - **Its report carries its open sessions.** The local-MCP status for
@@ -447,6 +448,19 @@ that acts as the machine's own user, and these rules follow from that:
   owner key, title, status, agent, root name and `updatedAt` — never what it
   said or did. Absent means the bridge was not asked; only that server may
   carry the field.
+- **The executor page lists them, and only the pairing owner closes one.**
+  Under the bridge's status in Local apps (`ExecutorCodingSessions`), the
+  people who manage the machine see each open session from that report,
+  through `GET /api/executors/:executorId/coding-sessions`, which adds what
+  the report cannot say: the agent driving it — the owner key derived again
+  for the pairing owner's own bindings, and the agent named only when the
+  reader could see it — and whether a close is already on its way. Close is
+  the pairing owner's alone, because the sessions act as them:
+  `POST …/coding-sessions/close {ownerKey, sessionId}` writes a `person` close
+  request for a session the report lists as theirs and answers 202, and the
+  row reads "Closing…" until a later report drops it
+  ([host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "The executor page").
 
 Both built-in servers are dispatched by `executor/src/builtin-mcp-cli.ts`.
 
@@ -457,6 +471,7 @@ pnpm --filter @nessie/executor run test:mcp
 pnpm --filter @nessie/worker run test:unit
 pnpm --filter @nessie/admin test:e2e:executor-local-mcp
 pnpm --filter @nessie/admin test:e2e:executor-run-launcher
+pnpm --filter @nessie/admin test:e2e:executor-coding-sessions
 ```
 
 `test:e2e:executor-run-launcher` is a pure fixture suite
@@ -465,7 +480,12 @@ API client: the eight options in order, the local-apps description, the
 availability request and the launch payload carrying exactly the pair, and the
 explanation when no machine offers it. Browser Suites runs it beside the other
 executor suites; `test:e2e:executor-local-mcp` runs in the project-usability
-lifecycle.
+lifecycle. `test:e2e:executor-coding-sessions`
+(`NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE`) drives the real executor page
+over runner-supplied answers: the open sessions, the pairing owner's Close
+and "Closing…" until the report drops the row, another administrator
+without Close, and the phone width; which answer a person gets is
+`api/test/executor-coding-session-routes.test.ts`.
 
 The executor suite drives a **real MCP server subprocess**
 (`executor/test/fixtures/scripted-mcp-server.mjs`), because the JSON-RPC

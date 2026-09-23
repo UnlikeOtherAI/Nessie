@@ -172,9 +172,11 @@ the same agent on the machine: sessions belong to the owner (executor, agent,
 person), not to one conversation, and the other conversation may be driving
 them. A fence says which it was (`access_revoked`, `executor_paused`,
 `executor_revoked`); every other end reads `lease_ended`. A new lease for the
-same owner withdraws that owner's open request, so a relaunch — `replaced` —
-keeps the sessions it would otherwise have closed. Only a private executor's
-pairing owner can own a session, so nobody else's lease end asks for anything
+same owner withdraws that owner's open owner-wide request, so a relaunch —
+`replaced` — keeps the sessions it would otherwise have closed; the pairing
+owner's own Close on one session from the executor page stands. Only a
+private executor's pairing owner can own a session, so nobody else's lease
+end asks for anything
 ([host-coding-sessions.md](host-coding-sessions.md)).
 
 ## 4. Who can see it

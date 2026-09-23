@@ -116,3 +116,27 @@ every one of the holder's leases in the thread with its End. The
 administrators' surface is the **Activity** tab's *Local apps in use* list
 (agent, conversation, person, last used, End), above the machine's recent
 sessions.
+
+## Coding sessions: seeing and closing them
+
+A private executor that offers the built-in coding bridge reports the sessions
+open on it, and those sessions act as the person who paired it
+([host-coding-sessions.md](host-coding-sessions.md) → "The executor page").
+
+- `GET /api/executors/:executorId/coding-sessions` answers the people who may
+  manage the machine (404 for everyone else) with `{canClose, sessions}`: each
+  open session its last local-MCP report lists, plus `closing` (a close
+  request that reaches it is open) and `ownerAgentName`, the agent driving it,
+  null unless the ordinary agent entitlement — the Agents tab's rule — shows
+  that agent to the reader. `canClose` is true for the pairing owner only.
+- `POST /api/executors/:executorId/coding-sessions/close {ownerKey,
+  sessionId}` is that pairing owner's Close: 202 `{closing: true, sessionId}`
+  once a `person` close request is written, which the next heartbeat carries.
+  Another administrator gets 403 `EXECUTOR_CODING_SESSIONS_OWNER_ONLY`,
+  anyone else 404 `EXECUTOR_NOT_FOUND`, and a session the last report does not
+  list as that owner's and open 404 `EXECUTOR_CODING_SESSION_NOT_FOUND`.
+
+The surface is the coding bridge's entry in the **Permissions** tab's *Local
+apps* section: the rows, with Close for the pairing owner, "Closing…" until a
+later report drops the row, and for anyone else the sentence saying who may
+close them.

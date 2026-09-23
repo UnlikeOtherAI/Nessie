@@ -20,10 +20,11 @@ signed descriptor, the reserved `_meta` the daemon stamps, and the daemon's
 teardown. Of the control plane's half, the worker stamps `owner` on a call to
 the bridge, the rule below refuses anyone but a private executor's pairing
 owner, the API writes and sends `codingSessionClose`, a review renders the
-power facts, and the agent drives the bridge through first-class tools of
-its own ("Who may drive it", "Close requests" and "The agent's tools"
-below). The admin's session list with its Close is not written yet. The
-bridge's row in the overview's trust table states the rule.
+power facts, the agent drives the bridge through first-class tools of its
+own, and the executor page lists the open sessions with a Close for the
+pairing owner ("Who may drive it", "The agent's tools", "Close requests" and
+"The executor page" below). The bridge's row in the overview's trust table
+states the rule.
 
 ## Who may drive it
 
@@ -515,7 +516,11 @@ transaction that causes it (`executor-coding-session-closes.ts`):
   agent the pairing owner bound the pair for there and every owner key the
   machine's last report listed. A revoked executor's heartbeat is refused,
   and that refusal is what closes its sessions (`EXECUTOR_NOT_FOUND` above);
-  its rows record the intent.
+  its rows record the intent;
+- the pairing owner's **Close** on one session from the executor page, with
+  reason `person`, that session's id and the owner as requester
+  (`requestExecutorCodingSessionClose`, "The executor page" below). A new
+  lease withdraws only owner-wide requests, never this one.
 
 Owner keys are derived as the daemon derives `_meta['nessie/owner']`
 (`executorCodingSessionOwnerKey`), and only for the one person who can own a
@@ -533,6 +538,46 @@ cut at its 32-session maximum; by any report from a daemon that fronts no
 bridge, whose close would do nothing; and by any heartbeat once it is a day
 old. A status without `codingSessions` settles nothing, because the bridge was
 not asked.
+
+## The executor page
+
+A person sees what is running on their machine, and ends it, under the coding
+bridge's status in the executor page's **Local apps** section (Permissions tab;
+`ExecutorLocalMcpPanel` → `ExecutorCodingSessions`). It reads
+`GET /api/executors/:executorId/coding-sessions`, answered only to the people
+who may manage the machine (404 for everyone else), as `{canClose, sessions}`:
+
+- each open session the machine's last report lists, a `closed` one left out:
+  its id, owner key, title, status and categorical reason, coding agent, root
+  name and `updatedAt` — never anything it said or did, which the report does
+  not carry;
+- `closing`, true while a close request that reaches it — owner-wide or naming
+  it, for any reason, under a day old — is open;
+- `ownerAgentName`, the agent driving it. The report names an owner only by
+  its hashed key, so the API derives the key again for the pairing owner and
+  each agent they bound the local-apps pair for there
+  (`executorCodingSessionOwnerAgentIds`, from consumed candidates, which are
+  never swept), and names that agent only when the ordinary agent entitlement
+  shows it to the reader — the Agents tab's rule. `null` reads "an agent you
+  cannot see";
+- `canClose`, true for the pairing owner and nobody else. Every session acts
+  as that person, so managing the machine is not enough to end one: another
+  administrator sees the list without Close, and is told who can.
+
+Close posts `POST /api/executors/:executorId/coding-sessions/close {ownerKey,
+sessionId}`, the pair exactly as the list gave it. Anyone else who manages the
+machine is refused with `EXECUTOR_CODING_SESSIONS_OWNER_ONLY` (403), anyone
+who does not with `EXECUTOR_NOT_FOUND`, and a session the last report does
+not list as that owner's and open with `EXECUTOR_CODING_SESSION_NOT_FOUND`
+(404). Otherwise it writes the `person` request above, audits
+`executor.coding_session.close_requested` (the session id, nothing it did),
+and answers 202 `{closing: true, sessionId}` — accepted, not done; a second
+press while it is open adds nothing. The row reads "Closing…" from the press.
+While any row is closing the list is read again every 20 s, the heartbeat's
+pace, and the row goes once a report no longer carries the session, which
+takes up to the report's two-minute refresh. A report whose bridge status has
+no `codingSessions` says "Open coding sessions have not been checked yet" and
+asks the API nothing.
 
 ## What the bridge reports
 
@@ -618,3 +663,26 @@ or any value of the logged-in account, and nothing was left running. On Linux
 the turn finished, a new executor life sent a follow-up to the same agent, and
 the close stopped the unit. Claude cannot log in over SSH on the macOS test
 machine, so macOS ran the suites only.
+
+The control plane's half runs against real rows (`DATABASE_URL=…`):
+`packages/executor-manage/test/executor-coding-session-owner.test.ts` and
+`executor-coding-session-closes.test.ts` for the owner rule, every close
+request, the heartbeat and a person's Close;
+`api/test/executor-coding-sessions-control.test.ts` and
+`executor-coding-session-routes.test.ts` for the review projection, the
+heartbeat route and the executor page's list and Close; and
+`worker/test/db/executor-coding-session-owner.test.ts` and
+`executor-coding-session-tools.test.ts` for the owner stamp and the agent's
+tools through the real encrypted lane. The executor page itself is a pure
+fixture suite over the real page and API client:
+
+```bash
+pnpm --filter @nessie/admin test:e2e:executor-coding-sessions
+```
+
+It pins the list, the pairing owner's Close posting `{ownerKey, sessionId}`
+and "Closing…" until a later report drops the row, another administrator's
+list without Close, the phone width with a Close the API refuses, and a
+bridge that was not asked. Browser Suites runs it in its executor step
+(`NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE`,
+[docs/testing/executor-attention.md](../testing/executor-attention.md)).
