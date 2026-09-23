@@ -118,7 +118,10 @@ test('createAgentTrigger cannot persist forged launch identity', async () => {
   }, { launchOrigin })
 
   assert.ok(created)
+  // `authorUserId` is the server's authorship stamp, from the trusted launch
+  // origin like the rest; the caller's forged keys were stripped first.
   assert.deepEqual(persistedConfig, {
+    authorUserId: launchOrigin.userId,
     createdByUserId: launchOrigin.userId,
     interval_minutes: 60,
     launchOrigin,
