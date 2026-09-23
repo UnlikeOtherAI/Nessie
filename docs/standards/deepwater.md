@@ -322,6 +322,15 @@ worker and card are built on them.
   written in the same transaction. A block (`blockDeepWaterDelivery`) is set
   once, with its one notice; a retryable block keeps the run `running` so its
   connector stays for the retry.
+- **One view of a run.** `toDeepWaterResearchRunView` and `toDeepWaterBriefView`
+  (`@nessie/runtime`) build every research view from its row: the status of
+  contract §2.4 (`starting` while a launch is in flight, `needs_setup` as a
+  `needs_operator` failure), the planner's side from register (b) and the
+  person's matching action (`deepWaterPlannerTurnView` — a planner failure is
+  never a person's action error), transcript authors from Nessie's own
+  `turnAuthors`, and the viewer's actions (`deepWaterViewerActions`). The words
+  for a failure, a planner failure and an action error come from one table
+  (`deepwater-brief-view-copy.ts`) that the worker's notices share.
 - **Who may see a run** is `isDeepWaterRunVisible` in `@nessie/runtime`, the
   one predicate for lists, detail, the card and artifacts: the origin thread's
   live chain for anyone in it, the full source basis for the requester's

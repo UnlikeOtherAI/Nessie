@@ -1,8 +1,12 @@
+import { deepWaterFailureMessage } from '@nessie/runtime'
 import type {
   DeepWaterDeliveryBlockedReason,
   DeepWaterReportKind,
   DeepWaterTurnRegister,
 } from '@nessie/schemas'
+
+// One table of failure reasons for the views and the notices (`@nessie/runtime`).
+export { deepWaterFailureMessage }
 
 /**
  * The words DeepWater's delivery uses: the hidden kickoffs that wake an agent
@@ -13,23 +17,6 @@ import type {
  */
 
 const quoted = (topic: string): string => `“${topic}”`
-
-/** A person-readable reason a research did not finish, from Ledger's job error code. */
-export const deepWaterFailureMessage = (failureCode: string | null): string => {
-  switch (failureCode) {
-    case 'scope_limit':
-      return 'too many research briefs are open at once'
-    case 'scope_rejected':
-    case 'start_rejected':
-      return 'DeepWater could not accept the research brief'
-    case 'identity_unavailable':
-      return 'your sign-in could not be confirmed'
-    case 'start_timeout':
-      return 'DeepWater did not start the research'
-    default:
-      return 'DeepWater stopped before the research finished'
-  }
-}
 
 const reportWord = (kind: DeepWaterReportKind | null): string =>
   kind === 'full' ? 'full report' : kind === 'summary' ? 'research summary' : 'report'
