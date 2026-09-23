@@ -25,6 +25,7 @@
     "@nessie/executor-manage": "workspace:*",
     "@nessie/knowledge": "workspace:*",
     "@nessie/model-subscriptions": "workspace:*",
+    "@nessie/retrieval": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
     "@prisma/client": "^6.17.1",

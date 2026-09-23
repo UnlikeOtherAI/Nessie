@@ -40,6 +40,7 @@ const dbStub = [
   '}',
   'export const enqueueQueueJob = async () => {}',
   'export const writeAuditEntryInTransaction = async () => {}',
+  'export const claimTaskEmbeddingInTransaction = async () => {}',
   // Reached only because services/audit.ts pulls in @nessie/mcp-manage, whose
   // tool-registry projection imports @nessie/team-admin, whose access checks
   // import these. None of them run here; the stub only has to satisfy the

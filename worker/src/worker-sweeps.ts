@@ -45,6 +45,10 @@ import {
   reapDeletedMessageEmbeddings,
   sweepMessageEmbeddings,
 } from './control/message-embedding-sweep.js'
+import {
+  reapDeletedTaskEmbeddings,
+  sweepTaskEmbeddings,
+} from './control/task-embedding-sweep.js'
 import { sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import type { WorkerSweepDeps } from './worker-runtime-types.js'
 import { startTaskSetSweep } from './task-sets/register.js'
@@ -472,12 +476,21 @@ const registrySyncSweepInterval = setInterval(() => {
   })
 }, registrySyncSweepMs)
 
-const messageEmbeddingSweepInterval = setInterval(() => {
-  void withSweepLock(pool, 'message-embedding-sweep', async () => {
+const searchEmbeddingSweepInterval = setInterval(() => {
+  void withSweepLock(pool, 'search-embedding-sweep', async () => {
     await reapDeletedMessageEmbeddings(prisma)
-    return sweepMessageEmbeddings(prisma, { embeddingModel: modelClient.embeddingModel })
+    await reapDeletedTaskEmbeddings(prisma)
+    const messages = await sweepMessageEmbeddings(
+      prisma,
+      { embeddingModel: modelClient.embeddingModel },
+    )
+    const tasks = await sweepTaskEmbeddings(
+      prisma,
+      { embeddingModel: modelClient.embeddingModel },
+    )
+    return messages + tasks
   }).catch((error: unknown) => {
-    console.error('[worker.message-embedding-sweep] failed', error)
+    console.error('[worker.search-embedding-sweep] failed', error)
   })
 }, 60_000)
 
@@ -504,7 +517,7 @@ const messageEmbeddingSweepInterval = setInterval(() => {
       clearInterval(commsRenewInterval)
       clearInterval(commsIncrementalSweepInterval)
       clearInterval(registrySyncSweepInterval)
-      clearInterval(messageEmbeddingSweepInterval)
+      clearInterval(searchEmbeddingSweepInterval)
     },
   }
 }

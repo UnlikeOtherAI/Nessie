@@ -5173,6 +5173,7 @@ model Task {
   labels                  TaskLabelLink[]
   comments                TaskComment[]
   externalAssets          TaskExternalAsset[]
+  embedding               TaskEmbedding?
 
   @@index([agentId, status])
   @@index([organizationId, status])
@@ -5184,6 +5185,27 @@ model Task {
   @@index([ownerUserId, status])
   @@index([runId])
   @@map("tasks")
+}
+
+/// Semantic projection of the ticket's title, purpose and detail. Canonical
+/// ticket text remains on Task; this row is replaced whenever that text hash
+/// or the configured embedding model changes.
+model TaskEmbedding {
+  id             String                 @id @default(uuid()) @db.Uuid
+  taskId         String                 @unique @map("task_id") @db.Uuid
+  contentHash    String                 @map("content_hash")
+  embedding      Unsupported("vector")?
+  embeddingModel String?                @map("embedding_model")
+  dims           Int?
+  status         String                 @default("pending")
+  lastError      String?                @map("last_error")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+  task           Task                   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([embeddingModel, dims])
+  @@index([status])
+  @@map("task_embeddings")
 }
 
 /// A task-owned snapshot of an agent-authored reusable checklist. Its source

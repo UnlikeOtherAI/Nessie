@@ -24,6 +24,13 @@ export {
   type MessageEmbeddingClaimInput,
 } from './message-embedding-claim.js'
 export {
+  claimTaskEmbeddingInTransaction,
+  taskContentHash,
+  taskSearchContent,
+  type TaskEmbeddingClaimInput,
+  type TaskSearchText,
+} from './task-embedding-claim.js'
+export {
   buildAgentVisibilityWhere,
   buildOwnedAgentWhere,
   buildVisibleAgentWhere,

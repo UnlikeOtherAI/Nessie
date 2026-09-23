@@ -12,6 +12,7 @@ import {
   listBoardTasks,
   listProjectTasks,
   searchProjectTasks,
+  searchProjectTasksHybrid,
   moveProjectTaskToColumn,
   projectTaskVisibilityWhere,
   resolveProjectTaskDetailPlacement,
@@ -20,6 +21,7 @@ import {
   updateProjectTask,
   type CreateProjectTaskInput,
   type ProjectTaskUpdateFields,
+  type ProjectTaskRecord,
   type ProjectTaskVisibility,
   type TicketSearchFilters,
 } from '@nessie/team-admin'
@@ -129,20 +131,40 @@ export const searchTasksForUser = async (
   cursorSecret: string,
   userId: string,
   uoaIdentity: UoaSessionIdentity | undefined,
+  searchMode: {
+    embeddingModel: string | null
+    mode: 'fulltext' | 'semantic'
+    queryEmbedding: number[] | null
+  } = { embeddingModel: null, mode: 'fulltext', queryEmbedding: null },
 ) => {
-  return searchProjectTasks(prisma, organizationId, filters, {
+  const options = {
     ...(accessibleProjectIds === 'all' ? {} : { projectIds: accessibleProjectIds }),
     continuation: { secret: cursorSecret, userId },
-      isReadable: async (task) => (
-        await runIsSearchSafe(prisma, task.runId)
-        && canUserReadRunDerivedRecord(prisma, {
-          organizationId,
-          runId: task.runId,
-          uoaIdentity,
-          userId,
-        })
-      ),
-  })
+    isReadable: async (task: ProjectTaskRecord) => (
+      await runIsSearchSafe(prisma, task.runId)
+      && canUserReadRunDerivedRecord(prisma, {
+        organizationId,
+        runId: task.runId,
+        uoaIdentity,
+        userId,
+      })
+    ),
+  }
+  if (searchMode.mode === 'semantic') {
+    return searchProjectTasksHybrid(
+      prisma,
+      {
+        embeddingModel: searchMode.embeddingModel,
+        limit: filters.limit,
+        organizationId,
+        ...(accessibleProjectIds === 'all' ? {} : { projectIds: accessibleProjectIds }),
+        query: filters.text ?? '',
+        queryEmbedding: searchMode.queryEmbedding,
+      },
+      { isReadable: options.isReadable },
+    )
+  }
+  return searchProjectTasks(prisma, organizationId, filters, options)
 }
 export const listAssignableUsers = listAssignableProjectTaskUsers
 export const isValidTransition = isProjectTaskTransitionValid

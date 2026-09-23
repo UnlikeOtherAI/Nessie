@@ -208,6 +208,21 @@ export const runTicketCreateTool = async (
     organizationId: member.organizationId,
     createdByUserId: member.userId,
     assignmentAttention: createProjectTaskAssignmentAttention,
+    ...(context.modelClient
+      ? {
+          embedding: {
+            model: context.modelClient.embeddingModel,
+            ...(member.actorContext.actionContext.uoaIdentity
+              ? {
+                  origin: {
+                    userId: member.userId,
+                    uoaIdentity: member.actorContext.actionContext.uoaIdentity,
+                  },
+                }
+              : {}),
+          },
+        }
+      : {}),
   })
   if ('error' in created) {
     throwIfLabelRefused(created)
@@ -255,7 +270,27 @@ export const runTicketUpdateTool = async (
   })
   const updated = await updateProjectTask(
     context.prisma,
-    { taskId: ticketId, organizationId: member.organizationId, fields, actorId: member.userId },
+    {
+      taskId: ticketId,
+      organizationId: member.organizationId,
+      fields,
+      actorId: member.userId,
+      ...(context.modelClient
+        ? {
+            embedding: {
+              model: context.modelClient.embeddingModel,
+              ...(member.actorContext.actionContext.uoaIdentity
+                ? {
+                    origin: {
+                      userId: member.userId,
+                      uoaIdentity: member.actorContext.actionContext.uoaIdentity,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
+    },
     writeBackFor(context),
   )
   if ('error' in updated) {
