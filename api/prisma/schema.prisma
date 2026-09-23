@@ -1188,7 +1188,7 @@ model User {
   executorAvailabilityCandidates        ExecutorAvailabilityCandidate[]        @relation("ExecutorAvailabilityCandidateActor")
   executorConversationLeases            ExecutorConversationLease[]            @relation("ExecutorConversationLeaseActor")
   endedExecutorConversationLeases       ExecutorConversationLease[]            @relation("ExecutorConversationLeaseEndedBy")
-  createdAgentTodoTemplates            AgentTodoTemplate[]                    @relation("AgentTodoTemplateCreatedBy")
+  createdAgentTodoTemplates             AgentTodoTemplate[]                    @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                     AgentTodo[]                            @relation("AgentTodoCreatedBy")
   createdTaskChecklists                 TaskChecklist[]                        @relation("TaskChecklistCreatedBy")
   startedDemonstrations                 Demonstration[]                        @relation("DemonstrationStartedBy")
@@ -3365,7 +3365,7 @@ model Agent {
   executorOperationGrants        ExecutorAgentOperationGrant[]
   executorAvailabilityCandidates ExecutorAvailabilityCandidate[]
   executorConversationLeases     ExecutorConversationLease[]
-  knowledgeSpaceMemberships     KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
+  knowledgeSpaceMemberships      KnowledgeSpaceMember[]          @relation("KnowledgeSpaceAgentMembers")
   docsSpaces                     KnowledgeSpace[]                @relation("AgentDocsSpaces")
   coreDocuments                  AgentCoreDocument[]
   coreDocumentMigration          AgentCoreDocumentMigration?
@@ -5537,8 +5537,8 @@ model ExecutorConversationLease {
   /// `created_at` + 12 h; never moves. Relaunching creates a new lease.
   absoluteExpiresAt DateTime          @map("absolute_expires_at")
   endedAt           DateTime?         @map("ended_at")
-  /// person | access_revoked | executor_paused | executor_revoked |
-  /// descriptor_narrowed | expired | replaced
+  /// person | access_revoked | executor_paused | executor_drained |
+  /// executor_revoked | descriptor_narrowed | expired | replaced
   endedReason       String?           @map("ended_reason")
   endedByUserId     String?           @map("ended_by_user_id") @db.Uuid
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)

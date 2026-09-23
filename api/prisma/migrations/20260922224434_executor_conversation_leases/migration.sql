@@ -28,9 +28,13 @@ CREATE TABLE "executor_conversation_leases" (
     -- command bundles never do (full-actuation §7), so the set is pinned to
     -- exactly those two keys rather than to a subset of the implemented list
     -- (the pattern of 20260922190000_executor_availability_known_operation_keys).
+    -- Prisma declares a scalar list column nullable, and `@>`, `<@` and
+    -- cardinality() are all NULL for a NULL array, so without the explicit
+    -- IS NOT NULL a NULL set would pass the CHECK.
     CONSTRAINT "executor_conversation_leases_operation_keys_local_apps"
       CHECK (
-        "operation_keys" @> ARRAY['mcp.tools', 'mcp.call']::TEXT[]
+        "operation_keys" IS NOT NULL
+        AND "operation_keys" @> ARRAY['mcp.tools', 'mcp.call']::TEXT[]
         AND "operation_keys" <@ ARRAY['mcp.tools', 'mcp.call']::TEXT[]
         AND cardinality("operation_keys") = 2
       ),
@@ -44,8 +48,8 @@ CREATE TABLE "executor_conversation_leases" (
           "ended_at" IS NOT NULL
           AND "ended_reason" IS NOT NULL
           AND "ended_reason" IN (
-            'person', 'access_revoked', 'executor_paused', 'executor_revoked',
-            'descriptor_narrowed', 'expired', 'replaced'
+            'person', 'access_revoked', 'executor_paused', 'executor_drained',
+            'executor_revoked', 'descriptor_narrowed', 'expired', 'replaced'
           )
         )
       )

@@ -103,7 +103,7 @@ const nextAuthorizationRevision = async (
 const endLeasesForRevokedAccess = async (
   tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
-  where: { executorId: string; agentId?: string; actorUserId?: string },
+  where: { executorId: string } & ({ agentId: string } | { actorUserId: string }),
 ): Promise<void> => {
   await endExecutorConversationLeasesInTransaction(tx, {
     actor: executorLeaseAuditActor(actorContext),
@@ -276,9 +276,13 @@ export const removePrivateAssignmentInTransaction = async (
   }
   await tx.executorPrivateAssignment.delete({ where: { id: existing.id } })
   // Removing a person or an agent from the roster ends the leases it held.
-  await endLeasesForRevokedAccess(tx, actorContext, existing.principalKind === 'agent'
-    ? { executorId: executor.id, agentId: existing.agentId ?? undefined }
-    : { executorId: executor.id, actorUserId: existing.userId ?? undefined })
+  // Only ever filtered by a principal that is really there: a missing id must
+  // not widen the filter to every lease on the machine. The table's shape
+  // CHECK makes that row impossible; this does not rely on it.
+  const principal = existing.principalKind === 'agent'
+    ? existing.agentId && { agentId: existing.agentId }
+    : existing.userId && { actorUserId: existing.userId }
+  if (principal) await endLeasesForRevokedAccess(tx, actorContext, { executorId: executor.id, ...principal })
   return nextAuthorizationRevision(tx, executor.id)
 }
 

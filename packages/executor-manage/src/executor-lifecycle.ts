@@ -14,10 +14,18 @@ import {
   EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
   endExecutorConversationLeasesInTransaction,
   executorLeaseAuditActor,
+  type ExecutorLeaseEndReason,
 } from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
 export type ExecutorLifecycleAction = 'pause' | 'resume' | 'drain' | 'revoke'
+
+/** What each fencing transition records on the leases it ends. */
+const LIFECYCLE_END_REASON = {
+  drain: 'executor_drained',
+  pause: 'executor_paused',
+  revoke: 'executor_revoked',
+} as const satisfies Record<Exclude<ExecutorLifecycleAction, 'resume'>, ExecutorLeaseEndReason>
 
 const canBreakGlassRevoke = async (
   prisma: PrismaClient | Prisma.TransactionClient,
@@ -157,14 +165,17 @@ export const transitionExecutorLifecycleInTransaction = async (
     data: { status: 'stopped' },
   })
   // The same fence ends every conversation lease on the machine: a paused,
-  // draining or revoked executor carries nobody's follow-ups, and resuming
-  // does not bring a lease back — the person launches again.
-  await endExecutorConversationLeasesInTransaction(tx, {
-    actor: executorLeaseAuditActor(actorContext),
-    endedByUserId: actorUserId,
-    reason: input.action === 'revoke' ? 'executor_revoked' : 'executor_paused',
-    where: { executorId: executor.id },
-  })
+  // draining or revoked executor carries nobody's follow-ups. Resuming ends
+  // nothing — pausing already ended them all, and it does not bring one back:
+  // the person launches again.
+  if (input.action !== 'resume') {
+    await endExecutorConversationLeasesInTransaction(tx, {
+      actor: executorLeaseAuditActor(actorContext),
+      endedByUserId: actorUserId,
+      reason: LIFECYCLE_END_REASON[input.action],
+      where: { executorId: executor.id },
+    })
+  }
   return updated
 }
 

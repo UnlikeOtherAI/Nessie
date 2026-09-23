@@ -169,7 +169,7 @@ dbTest('revoking the agent’s access ends its leases in the same transaction', 
   })
 })
 
-dbTest('pausing or revoking the executor ends every lease on it', async () => {
+dbTest('pausing, draining or revoking the executor ends every lease on it; resuming ends none', async () => {
   await withWorld(async (world) => {
     const { binding, launch } = await carriedWorld(world)
     await transitionExecutorLifecycle(world.prisma, world.adminContext, { executorId: world.executorId, action: 'pause' })
@@ -180,6 +180,22 @@ dbTest('pausing or revoking the executor ends every lease on it', async () => {
     const { launch } = await carriedWorld(world)
     await transitionExecutorLifecycle(world.prisma, world.adminContext, { executorId: world.executorId, action: 'revoke' })
     await assertEnded(world, launch.lease.id, { endedByUserId: world.adminId, reason: 'executor_revoked' })
+  })
+  await withWorld(async (world) => {
+    // A drain is recorded as a drain, not as a pause.
+    const { binding, launch } = await carriedWorld(world)
+    await transitionExecutorLifecycle(world.prisma, world.adminContext, { executorId: world.executorId, action: 'drain' })
+    await assertEnded(world, launch.lease.id, { endedByUserId: world.adminId, reason: 'executor_drained' })
+    await assertFenced(world, binding.id)
+  })
+  await withWorld(async (world) => {
+    // Resuming ends nothing: a lease that somehow outlived the pause keeps
+    // its own record rather than gaining a second, wrong one.
+    const { launch } = await carriedWorld(world)
+    await world.prisma.executor.update({ where: { id: world.executorId }, data: { status: 'paused' } })
+    await transitionExecutorLifecycle(world.prisma, world.adminContext, { executorId: world.executorId, action: 'resume' })
+    assert.equal((await leaseRow(world, launch.lease.id)).endedAt, null)
+    assert.equal((await auditRows(world, 'executor.lease.ended')).length, 0)
   })
 })
 
@@ -303,5 +319,11 @@ dbTest('the table refuses a second live lease, another bundle, or an unknown end
     ]) {
       await assert.rejects(world.prisma.executorConversationLease.create({ data }), /23514|check constraint/i)
     }
+    // Prisma cannot write a NULL list, and a raw writer must not either: every
+    // array operator is NULL on NULL, which a CHECK would otherwise pass.
+    await assert.rejects(
+      world.prisma.$executeRaw`UPDATE executor_conversation_leases SET operation_keys = NULL WHERE id = ${launch.lease.id}::uuid`,
+      /23514|check constraint/i,
+    )
   })
 })
