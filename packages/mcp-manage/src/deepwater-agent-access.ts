@@ -6,7 +6,7 @@ import {
   type DeepWaterAgentAccessResponse,
   type DeepWaterAgentAccessTarget,
 } from '@nessie/schemas'
-import { ensureBuiltinToolsRegistered, listAgentToolPolicyTargets } from '@nessie/team-admin'
+import { ensureBuiltinToolRegistered, listAgentToolPolicyTargets } from '@nessie/team-admin'
 import {
   DEEP_WATER_RUN_UPDATE_TOOL_ID,
   deepWaterBundleMarkerKey,
@@ -141,10 +141,11 @@ export const loadDeepWaterPolicyKeys = async (
   },
 ): Promise<DeepWaterTeamAccess> => {
   const contractToolNames = input.contractToolNames ?? REQUIRED_MCP_TOOL_NAMES
-  await ensureBuiltinToolsRegistered(
-    prisma,
-    input.organizationId,
-  )
+  // Only the updater this read looks up. Grant, revoke and the contract upgrade
+  // call this inside the team transition lock's transaction, where registering
+  // every builtin (200+ upserts on one connection) outran the transaction's
+  // timeout under load.
+  await ensureBuiltinToolRegistered(prisma, input.organizationId, DEEP_WATER_RUN_UPDATE_TOOL_ID)
 
   const instance = await prisma.mcpServerInstance.findFirst({
     where: {
