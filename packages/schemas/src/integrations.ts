@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { DeepWaterResearchReadinessSchema } from './deep-water-briefs.js'
 import {
   McpServerLifecycleStateSchema,
   McpServerScopeTypeSchema,
@@ -209,6 +210,12 @@ export const IntegratedProductResponseSchema = z.object({
   summary: z.string(),
   teamEnablement: ProductTeamEnablementRecordSchema.nullable(),
   updatedAt: TimestampSchema,
+  /**
+   * Whether the viewer can start DeepWater research in this team, and why not
+   * (Water plan nessie.md §7.1 "Readiness"). Present only on the `deep-water`
+   * entry; every research doorway reads it instead of re-deriving it.
+   */
+  research: DeepWaterResearchReadinessSchema.optional(),
 })
 export type IntegratedProductResponse = z.infer<typeof IntegratedProductResponseSchema>
 
