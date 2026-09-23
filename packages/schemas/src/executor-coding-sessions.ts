@@ -101,7 +101,7 @@ export type ExecutorMcpCallOwner = z.infer<typeof ExecutorMcpCallOwnerSchema>
  */
 export const executorCodingSessionOwnerKeyInput = (
   executorId: string,
-  owner: Pick<ExecutorMcpCallOwner, 'agentId' | 'actorUserId'>,
+  owner: { agentId: string; actorUserId: string },
 ): string => `${executorId}|${owner.agentId}|${owner.actorUserId}`
 
 export const ExecutorCodingSessionOwnerKeySchema = Sha256DigestSchema
