@@ -1,4 +1,3 @@
-import type { DestinationScopeChain } from '@nessie/memory'
 import { z } from 'zod'
 
 /**
@@ -92,86 +91,14 @@ export const createConsumedSourceSink = (): ConsumedSourceSink => {
   }
 }
 
-/** Subtract scopes already implied by a destination or another exact audience. */
-export const subtractImpliedScopes = (
-  consumed: readonly BasisScope[],
-  impliedScopes: readonly BasisScope[],
-): BasisScope[] => {
-  const implied = new Set(impliedScopes.map(scopeKey))
-  const basis: BasisScope[] = []
-  const seen = new Set<string>()
-
-  for (const scope of consumed) {
-    const key = scopeKey(scope)
-    if (implied.has(key) || seen.has(key)) {
-      continue
-    }
-    seen.add(key)
-    basis.push(scope)
-  }
-
-  return basis
-}
-
 /**
- * The scopes a destination surface implies by its own chain and agent bindings.
- * A source at one of these is not privileged *here* — everyone who can see this
- * room can already reach it — so it never enters a basis.
+ * The pure reply-basis computation lives in `@nessie/runtime` so the API (the
+ * DeepWater research-run viewer predicate) and the worker derive "what this
+ * destination already implies" from one implementation.
  */
-const impliedByDestination = (
-  destination: DestinationScopeChain,
-  boundAgentIds: readonly string[],
-  /**
-   * A hosted mailbox whose backing channel this destination *is*. Reading the
-   * conversation an agent is answering is not privileged in the room that
-   * exists to discuss it — without this, every email run would be restricted
-   * relative to its own operations thread, which would suppress its live
-   * stream and force an approval on every single reply.
-   */
-  impliedEmailMailboxId?: string | null,
-): BasisScope[] => [
-  { scopeId: destination.organizationId, scopeType: 'organization' },
-  { scopeId: destination.projectId, scopeType: 'project' },
-  { scopeId: destination.teamId, scopeType: 'team' },
-  { scopeId: destination.channelId, scopeType: 'channel' },
-  ...boundAgentIds.map((scopeId) => ({ scopeId, scopeType: 'agent' })),
-  ...(impliedEmailMailboxId
-    ? [{ scopeId: impliedEmailMailboxId, scopeType: EMAIL_SCOPE_TYPE }]
-    : []),
-]
-
-/**
- * Scope type for a hosted agent mailbox. A read of stored mail stamps
- * `email:{mailboxId}` so the send gate can tell "answered from this
- * correspondence" apart from "answered from a private space and then mailed it
- * outside".
- */
-export const EMAIL_SCOPE_TYPE = 'email'
-
-export const emailMailboxScope = (mailboxId: string): BasisScope => ({
-  scopeId: mailboxId,
-  scopeType: EMAIL_SCOPE_TYPE,
-})
-
-/**
- * The disclosure basis of a reply: the consumed sources the destination does not
- * already imply.
- *
- * Empty for the overwhelming majority of runs — an agent answering from
- * organization knowledge in an organization channel consumed nothing the room
- * lacks — and an empty basis means the reply is unrestricted and costs nothing
- * to store or evaluate.
- *
- * Structural: it compares scope identifiers, never message content.
- */
-export const computeReplyBasis = (
-  consumed: readonly BasisScope[],
-  destination: DestinationScopeChain,
-  boundAgentIds: readonly string[],
-  impliedEmailMailboxId?: string | null,
-): BasisScope[] => {
-  return subtractImpliedScopes(
-    consumed,
-    impliedByDestination(destination, boundAgentIds, impliedEmailMailboxId),
-  )
-}
+export {
+  computeReplyBasis,
+  EMAIL_SCOPE_TYPE,
+  emailMailboxScope,
+  subtractImpliedScopes,
+} from '@nessie/runtime'
