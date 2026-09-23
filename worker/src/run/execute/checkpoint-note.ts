@@ -1,4 +1,5 @@
 import type { ProviderMessage } from '@nessie/runtime'
+import { isToolImagesMessage } from '../tool-images.js'
 import type { CheckpointSource } from './checkpoint.js'
 
 // The checkpoint note is produced by ONE bounded model call made from the
@@ -24,6 +25,8 @@ const renderTranscript = (messages: ProviderMessage[]): string =>
           : ''
         return `[assistant]\n${message.content ?? ''}${called}`
       }
+      // Tool output on a user turn, never something the person said.
+      if (isToolImagesMessage(message)) return `[tool images]\n${message.content}`
       return `[${message.role}]\n${message.content}`
     })
     .join('\n\n')

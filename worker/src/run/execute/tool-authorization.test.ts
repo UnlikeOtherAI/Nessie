@@ -193,7 +193,7 @@ const fakePrisma = (): FakePrisma => {
       },
     },
     toolCall: {
-      create: async () => ({}),
+      create: async () => ({ id: 'recorded-tool-call' }),
       updateMany: async () => ({ count: 1 }),
     },
   }
@@ -270,6 +270,8 @@ type LoopHarness = {
   executorTimeoutLookups: string[]
   fake: FakePrisma
   invocationSink: InvocationRecord[]
+  // What the thought log was told about each call: [provider call id, ToolCall].
+  linkedToolLines: Array<[string, string]>
   result: Awaited<ReturnType<typeof runExecutionAgentLoop>>
   wsEvents: PublishedWsEvent[]
   subAgentToolResults: Array<{ output: string; toolName: string }>
@@ -344,6 +346,7 @@ const runLoop = async (input: {
   } as unknown as ExecutorToolset
 
   const builtinName = input.builtinName ?? 'kb_search'
+  const linkedToolLines: Array<[string, string]> = []
   const subAgentToolResults: Array<{ output: string; toolName: string }> = []
   const invocationSink: InvocationRecord[] = []
   let mainTurn = 0
@@ -419,6 +422,9 @@ const runLoop = async (input: {
         appendReasoning: async () => undefined,
         appendToolLine: async () => undefined,
         close: async () => undefined,
+        linkToolCall: async (callId: string, toolCallId: string) => {
+          linkedToolLines.push([callId, toolCallId])
+        },
       },
       toolDefs: [
         {
@@ -444,6 +450,7 @@ const runLoop = async (input: {
     executorTimeoutLookups,
     fake,
     invocationSink,
+    linkedToolLines,
     result,
     subAgentToolResults,
     wsEvents,
@@ -925,4 +932,25 @@ test('delegated MCP: an approval-required allow intercepts the nested call', asy
   assert.deepEqual(harness.dispatchedMcp, [])
   const parsed = delegatedDeniedOutput(harness, 'mcp_fetch')
   assert.equal(parsed['reason'], 'approval_required')
+})
+
+// The thought log's line for a call names the ToolCall it became, which is how
+// the thought-process dialog finds that call's screenshots.
+test('a call\'s thought-log line is linked to the ToolCall it was recorded as', async () => {
+  const builtin = await runLoop({ allowBuiltinExec: true, toolName: 'kb_search' })
+  assert.deepEqual(builtin.linkedToolLines, [['call-1', 'recorded-tool-call']])
+
+  const executor = await runLoop({
+    executorTools: {
+      'executor_mcp_call': {
+        inputSummary: 'call',
+        output: '{"success":true}',
+        success: true,
+        toolCallRecordId: 'executor-tool-call',
+      },
+    },
+    toolArgs: { server: 'kelpie', tool: 'screenshot' },
+    toolName: 'executor_mcp_call',
+  })
+  assert.deepEqual(executor.linkedToolLines, [['call-1', 'executor-tool-call']])
 })

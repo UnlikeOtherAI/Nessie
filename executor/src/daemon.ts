@@ -20,13 +20,20 @@ import {
   type ExecutorLocalMcpReport,
 } from '@nessie/schemas'
 
-import { executorApi } from './api-client.js'
+import { executorApi, type ExecutorApiClient } from './api-client.js'
 import { signExecutorDaemonPayload } from './daemon-signature.js'
 import type { ExecutorBrowserSessionManager } from './browser-session-manager.js'
 import type { ExecutorConnectedBrowserSessionManager } from './connected-browser-session-manager.js'
 import type { ExecutorCodingSessionManager } from './coding-session-manager.js'
 import type { CodingSessionsDaemon } from './coding-sessions-daemon.js'
 import type { ExecutorCommandSessionManager } from './command-session-manager.js'
+import {
+  createExecutorCommandAttachmentStore,
+  deliverExecutorCommandAttachments,
+  executorAttachmentUploadTimeoutMs,
+  type ExecutorAttachmentUpload,
+  type ExecutorCommandAttachmentStore,
+} from './command-attachments.js'
 import {
   createExecutorCommandRecoveryStore,
   recoverOrPollExecutorCommand,
@@ -139,6 +146,34 @@ const receipt = async (
 }
 
 /**
+ * One image of a result, under its own signed `attachment` domain. The
+ * signature covers the digest, not the bytes: the control plane recomputes the
+ * digest from the bytes it receives.
+ */
+export const uploadExecutorCommandAttachment = (
+  state: ExecutorLocalState,
+  api: Pick<ExecutorApiClient, 'uploadCommandAttachment'> = executorApi,
+): ExecutorAttachmentUpload => async (image) => {
+  if (!state.connectionEpoch) throw new Error('Executor has not claimed a live daemon connection.')
+  const payload = {
+    attachment: {
+      byteLength: image.bytes.length,
+      commandId: image.commandId,
+      digest: image.digest,
+      mimeType: image.mimeType,
+      occurredAt: new Date().toISOString(),
+    },
+    connectionEpoch: state.connectionEpoch,
+    executorId: state.executorId,
+  }
+  await api.uploadCommandAttachment(state.apiBaseUrl, {
+    ...payload,
+    dataBase64: image.bytes.toString('base64'),
+    signature: signExecutorDaemonPayload(state.machinePrivateKey, 'attachment', payload),
+  }, { timeoutMs: executorAttachmentUploadTimeoutMs(image.bytes.length) })
+}
+
+/**
  * A guest VM mounts one workspace. Until the guest protocol in
  * `executor/guest/*.go` can bind several, an executor that exposes more than one
  * folder refuses to start a guest session here — at the dispatch a person reads
@@ -163,6 +198,8 @@ export const executeExecutorCommand = async (
   state: ExecutorLocalState,
   command: ExecutorCommandEnvelope,
   dependencies: {
+    /** Where an `mcp.call`'s images are kept until they are delivered. */
+    attachments?: Pick<ExecutorCommandAttachmentStore, 'write'>
     browserSessions?: ExecutorBrowserSessionManager
     connectedBrowserSessions?: ExecutorConnectedBrowserSessionManager
     commandSessions?: ExecutorCommandSessionManager
@@ -369,11 +406,12 @@ export const executeExecutorCommand = async (
     }
   }
   if (command.operationKey === 'mcp.tools' || command.operationKey === 'mcp.call') {
+    const { attachments } = dependencies
     return executeExecutorMcpCommand(command.operationKey, command.payload.args, dependencies.mcpSessions, {
       codingBridge: dependencies.codingBridge,
       commandId: command.commandId,
       payload: command.payload,
-    })
+    }, attachments && ((images) => attachments.write(command.commandId, images)))
   }
   // Other declared-only operations remain unavailable.
   return { code: 'EXECUTOR_BACKEND_UNAVAILABLE', success: false }
@@ -384,7 +422,8 @@ export const executeExecutorCommand = async (
  * to be built here, once per poll, which rebuilt the owner-only proof of the
  * runtime directory every second — two native-helper process spawns per poll on
  * Windows. The journal it fronts is per-`stateDir` state, and `stateDir` does
- * not change across a daemon's life, so one store is the honest lifetime.
+ * not change across a daemon's life, so one store is the honest lifetime. The
+ * sidecar store beside it is the caller's for the same reason.
  */
 export const pollAndExecuteCommand = async (
   stateDir: string,
@@ -395,11 +434,31 @@ export const pollAndExecuteCommand = async (
   mcpSessions: ExecutorMcpSessionManager,
   store: ExecutorCommandRecoveryStore = createExecutorCommandRecoveryStore(stateDir),
   codingBridge?: Pick<CodingSessionsDaemon, 'callMeta'>,
+  sidecars: ExecutorCommandAttachmentStore = createExecutorCommandAttachmentStore(stateDir),
 ): Promise<void> => {
   const connectionEpoch = state.connectionEpoch
   if (!connectionEpoch) return
   await recoverOrPollExecutorCommand({
+    attachments: {
+      deliver: ({ command, delivered, journal, result }) => deliverExecutorCommandAttachments({
+        command,
+        delivered,
+        journal,
+        // The reason names only Nessie's own refusal; the image stays here.
+        onWithdrawn: (reference, reason) => {
+          console.error(
+            `[nessie-executor] image ${reference.attachmentDigest} of command ${command.commandId} `
+            + `was not delivered: ${reason}`,
+          )
+        },
+        result,
+        sidecars,
+        upload: uploadExecutorCommandAttachment(state),
+      }),
+      release: (commandId) => sidecars.remove(commandId),
+    },
     execute: (command) => executeExecutorCommand(stateDir, state, command, {
+      attachments: sidecars,
       browserSessions,
       codingSessions,
       mcpSessions,

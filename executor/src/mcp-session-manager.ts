@@ -13,6 +13,7 @@ import {
   type ExecutorMcpUnavailableReason,
 } from '@nessie/schemas'
 
+import { settleExecutorMcpImages, type ExecutorMcpImageSink } from './mcp-images.js'
 import {
   ExecutorMcpServerError,
   findExecutorLocalMcpServer,
@@ -44,11 +45,12 @@ const MCP_SESSION_IDLE_TIMEOUT_MS = 60_000
 const MCP_START_FAILURE_THRESHOLD = 3
 const MCP_START_FAILURE_COOLDOWN_MS = 60_000
 // The control plane caps a terminal command result at 64 KiB
-// (executor-command-results.ts MAX_RESULT_BYTES). A Kelpie full-page
-// screenshot is a base64 PNG, typically 0.5–3 MiB, so it can never fit: an
-// oversize result is refused with a named code and its size rather than
-// truncated, because truncated base64 decodes as a corrupt image that looks
-// like a server bug instead of a stated limit.
+// (executor-command-results.ts MAX_RESULT_BYTES). Images are out of the result
+// before it is measured (`mcp-images.ts`): a Kelpie screenshot, three base64
+// copies of up to a megabyte, used to be refused here every time. What is
+// still over the cap is refused with a named code and its size rather than
+// truncated, because truncated program output reads as a program bug instead
+// of a stated limit.
 const MCP_RESULT_MAX_BYTES = 65_536
 // How many times one probe steps back for a command before it waits its turn.
 const MCP_PROBE_MAX_YIELDS = 10
@@ -87,9 +89,14 @@ export type ExecutorMcpSessionManager = {
   /**
    * `meta` becomes the request's `_meta`. Only the daemon sets it, and only
    * with the reserved keys a built-in bridge reads; a model never reaches it.
+   * `images` keeps the call's images; without it they become placeholders.
    */
   callTool: (
-    server: string, tool: string, args?: Record<string, unknown>, meta?: Record<string, unknown>,
+    server: string,
+    tool: string,
+    args?: Record<string, unknown>,
+    meta?: Record<string, unknown>,
+    images?: ExecutorMcpImageSink,
   ) => Promise<Record<string, unknown>>
   probe: (server: string) => Promise<ExecutorMcpProbeOutcome>
   stopAll: () => Promise<void>
@@ -441,7 +448,7 @@ export const createExecutorMcpSessionManager = (
       if ('code' in catalog) return catalog
       return catalogPage(catalog, cursor)
     }),
-    callTool: (server, tool, args, meta) => withSession(server, async (session) => {
+    callTool: (server, tool, args, meta, images) => withSession(server, async (session) => {
       let result
       try {
         result = await session.client.callTool(
@@ -464,9 +471,12 @@ export const createExecutorMcpSessionManager = (
           `The MCP server "${server}" refused the call to "${tool}".`,
         )
       }
-      const document: Record<string, unknown> = (result as { isError?: boolean }).isError === true
-        ? { ...result, code: 'EXECUTOR_MCP_CALL_FAILED', success: false }
-        : { ...result, success: true }
+      // The images leave first, into the sink's keeping, so what is measured
+      // below is the result that will be journaled and sent.
+      const settled = await settleExecutorMcpImages(result as Record<string, unknown>, images, log)
+      const document: Record<string, unknown> = settled.isError === true
+        ? { ...settled, code: 'EXECUTOR_MCP_CALL_FAILED', success: false }
+        : { ...settled, success: true }
       // Measured as it is returned, `code` and `success` included. An isError
       // result measured before its code was added could pass here, be refused
       // by the control plane's own cap, and leave the receipt nowhere to go.

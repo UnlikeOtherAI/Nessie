@@ -26,7 +26,7 @@ import {
 import { CHAT_MESSAGE_MAX_CHARS } from './messaging.js'
 import { createUuidBrandSchema, TimestampSchema } from './schema-primitives.js'
 
-const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
+export const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 /**
  * How many operations one descriptor may advertise. It was 16 while the
  * catalog held 15; the two MCP proxy operations took it past that, so the cap
@@ -34,7 +34,7 @@ const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
  */
 export const EXECUTOR_DESCRIPTOR_OPERATION_MAXIMUM = 24
 const Base64UrlSchema = z.string().regex(/^[A-Za-z0-9_-]+$/)
-const ExecutorDaemonSignatureSchema = Base64UrlSchema.min(64).max(256)
+export const ExecutorDaemonSignatureSchema = Base64UrlSchema.min(64).max(256)
 // The daemon challenge is a compact signed token: two base64url segments with
 // one literal separator. It is intentionally distinct from a single
 // base64url field so the API can return and accept the value it issues.

@@ -128,6 +128,8 @@ const asRecorded = (
   result: ExecutedToolResult,
 ): RecordedToolResult => ({
   ...(result.correctable ? { correctable: true as const } : {}),
+  // References only; `buildToolImagesMessage` re-checks their shape on replay.
+  ...(result.imageRefs?.length ? { imageRefs: result.imageRefs } : {}),
   inputSummary: result.inputSummary,
   output: result.output,
   success: result.success,

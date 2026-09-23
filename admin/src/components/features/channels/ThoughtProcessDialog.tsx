@@ -10,6 +10,7 @@ import {
 import type { AgentIdentity } from '../../shared/agent-identity'
 import { useRunThinkingLog } from '../../../facades/threads/hooks'
 import {
+  countSettledToolLines,
   mergeThinkingEntries,
   toThinkingBlocks,
   toThinkingEntries,
@@ -18,6 +19,8 @@ import {
 import { OverlayPortal } from '../../overlays/OverlayPortal'
 import { useOverlay } from '../../overlays/useOverlay'
 import { AgentAvatar } from '../../shared/AgentAvatar'
+import { useAttachmentViewer, type ViewableAttachment } from '../../shared/AttachmentViewer'
+import { ToolScreenshots } from '../../shared/ToolScreenshots'
 
 type ThoughtProcessDialogProps = {
   agent: AgentIdentity | null
@@ -55,13 +58,22 @@ export const ThoughtProcessDialog = ({
     open: true,
   })
 
-  // A bubble seeded from the bootstrap only holds a tail of the log, so the
-  // full record is read from the API and merged under the live chunks.
-  const logQuery = useRunThinkingLog(
-    threadId,
-    entry.runId,
-    Boolean(entry.seededFromBootstrap),
-  )
+  // The full record is read from the API and merged under the live chunks:
+  // a bubble seeded from the bootstrap only holds a tail of the log, and only
+  // the full log carries a tool line's screenshots — a live line is published
+  // before its call has returned anything. So it is read again each time
+  // another line is known to have returned (`countSettledToolLines`).
+  const logQuery = useRunThinkingLog(threadId, entry.runId)
+  const { refetch } = logQuery
+  const settledToolLines = countSettledToolLines(toThinkingBlocks(entry.thinking), streaming)
+  const settledRead = useRef(settledToolLines)
+  useEffect(() => {
+    if (settledToolLines <= settledRead.current) return
+    settledRead.current = settledToolLines
+    void refetch()
+  }, [refetch, settledToolLines])
+  // Opened from inside this modal, so the viewer takes the blocking layer.
+  const { attachmentViewer, openAttachment } = useAttachmentViewer(token, { blocking: true })
   const blocks = useMemo(
     () =>
       toThinkingBlocks(
@@ -80,104 +92,111 @@ export const ThoughtProcessDialog = ({
   }, [blocks.length, pinned, tailLength])
 
   return (
-    <OverlayPortal>
-      // Not the shared `Dialog`: a fixed-header + independently-scrolling log +
-      // fixed-footer flex column at `max-w-3xl` with a `text-base` heading —
-      // none of the shell's four panel geometries express that split, and a
-      // scrim that stops Escape from also closing the reply panel underneath.
-      // `useOverlay` still gives it the Back registration, focus trap,
-      // drag-safe scrim and layer every other overlay gets
-      // (docs/navigation/overview.md §7).
-      <div
-        {...overlay.scrimProps}
-        className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
-        onKeyDown={(event) => {
-          // The dialog can be opened from inside the reply panel, which closes
-          // itself on a window-level Escape. Its own Escape must not close both.
-          if (event.key === 'Escape') {
-            event.stopPropagation()
-          }
-        }}
-        style={overlay.layerStyle}
-      >
+    <>
+      <OverlayPortal>
+        // Not the shared `Dialog`: a fixed-header + independently-scrolling log +
+        // fixed-footer flex column at `max-w-3xl` with a `text-base` heading —
+        // none of the shell's four panel geometries express that split, and a
+        // scrim that stops Escape from also closing the reply panel underneath.
+        // `useOverlay` still gives it the Back registration, focus trap,
+        // drag-safe scrim and layer every other overlay gets
+        // (docs/navigation/overview.md §7).
         <div
-          aria-labelledby="thought-process-title"
-          aria-modal="true"
-          className={[
-            'flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden',
-            'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
-          ].join(' ')}
-          data-testid="thought-process-dialog"
-          ref={overlay.panelRef}
-          role="dialog"
-          tabIndex={-1}
+          {...overlay.scrimProps}
+          className="fixed inset-0 flex items-center justify-center bg-[var(--scrim-strong)] p-4 backdrop-blur-sm"
+          onKeyDown={(event) => {
+            // The dialog can be opened from inside the reply panel, which closes
+            // itself on a window-level Escape. Its own Escape must not close both.
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+            }
+          }}
+          style={overlay.layerStyle}
         >
-          <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[var(--sep)] px-5 py-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <AgentAvatar agent={agent} size="sm" token={token} />
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold text-[var(--tx)]" id="thought-process-title">
-                  {agentName}
-                </h2>
-                <p className="text-xs text-[color:var(--tx3)]">Thought process</p>
-              </div>
-            </div>
-            <button
-              aria-label="Close thought process"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]"
-              onClick={close}
-              type="button"
-            >
-              ×
-            </button>
-          </header>
-
           <div
-            className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
-            data-testid="thought-process-log"
-            onScroll={() => {
-              const container = scrollRef.current
-              if (!container) {
-                return
-              }
-              const distance =
-                container.scrollHeight - container.scrollTop - container.clientHeight
-              setPinned(distance <= PIN_THRESHOLD_PX)
-            }}
-            ref={scrollRef}
+            aria-labelledby="thought-process-title"
+            aria-modal="true"
+            className={[
+              'flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden',
+              'rounded-xl border border-[var(--sep)] bg-[var(--panel)] shadow-2xl',
+            ].join(' ')}
+            data-testid="thought-process-dialog"
+            ref={overlay.panelRef}
+            role="dialog"
+            tabIndex={-1}
           >
-            {logQuery.data?.truncated ? (
-              <p className="mb-3 rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
-                Earlier thinking was trimmed from this log.
-              </p>
-            ) : null}
-            <ThoughtProcessBody blocks={blocks} />
-          </div>
+            <header className="flex flex-shrink-0 items-center justify-between gap-4 border-b border-[var(--sep)] px-5 py-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <AgentAvatar agent={agent} size="sm" token={token} />
+                <div className="min-w-0">
+                  <h2 className="truncate text-base font-semibold text-[var(--tx)]" id="thought-process-title">
+                    {agentName}
+                  </h2>
+                  <p className="text-xs text-[color:var(--tx3)]">Thought process</p>
+                </div>
+              </div>
+              <button
+                aria-label="Close thought process"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--tx3)] hover:bg-[var(--overlay)] hover:text-[var(--tx)]"
+                onClick={close}
+                type="button"
+              >
+                ×
+              </button>
+            </header>
 
-          <footer className="flex flex-shrink-0 items-center gap-2 border-t border-[var(--sep)] px-5 py-3 text-xs text-[color:var(--tx3)]">
-            {streaming ? (
-              <>
-                <span className="thinking-dots" aria-hidden="true">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-                Still thinking — this updates live.
-              </>
-            ) : (
-              <>Reply posted. This is the complete record for that run.</>
-            )}
-          </footer>
+            <div
+              className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+              data-testid="thought-process-log"
+              onScroll={() => {
+                const container = scrollRef.current
+                if (!container) {
+                  return
+                }
+                const distance =
+                  container.scrollHeight - container.scrollTop - container.clientHeight
+                setPinned(distance <= PIN_THRESHOLD_PX)
+              }}
+              ref={scrollRef}
+            >
+              {logQuery.data?.truncated ? (
+                <p className="mb-3 rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
+                  Earlier thinking was trimmed from this log.
+                </p>
+              ) : null}
+              <ThoughtProcessBody blocks={blocks} onOpenScreenshot={openAttachment} token={token} />
+            </div>
+
+            <footer className="flex flex-shrink-0 items-center gap-2 border-t border-[var(--sep)] px-5 py-3 text-xs text-[color:var(--tx3)]">
+              {streaming ? (
+                <>
+                  <span className="thinking-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                  Still thinking — this updates live.
+                </>
+              ) : (
+                <>Reply posted. This is the complete record for that run.</>
+              )}
+            </footer>
+          </div>
         </div>
-      </div>
-    </OverlayPortal>
+      </OverlayPortal>
+      {attachmentViewer}
+    </>
   )
 }
 
 const ThoughtProcessBody = ({
   blocks,
+  onOpenScreenshot,
+  token,
 }: {
   blocks: ReturnType<typeof toThinkingBlocks>
+  onOpenScreenshot: (attachment: ViewableAttachment) => void
+  token: string | null
 }): ReactNode => {
   if (blocks.length === 0) {
     return (
@@ -190,11 +209,23 @@ const ThoughtProcessBody = ({
       {blocks.map((block) =>
         block.kind === 'tool' ? (
           <div
-            className="mt-2 flex items-start gap-2 rounded-lg bg-[var(--overlay-weak)] px-3 py-1.5 text-xs text-[color:var(--tx2)]"
+            className="mt-2 rounded-lg bg-[var(--overlay-weak)] px-3 py-1.5 text-xs text-[color:var(--tx2)]"
+            data-testid="thought-process-tool"
             key={block.key}
           >
-            <span aria-hidden="true">⚙</span>
-            <span className="min-w-0 break-words">{block.text}</span>
+            <div className="flex items-start gap-2">
+              <span aria-hidden="true">⚙</span>
+              <span className="min-w-0 break-words">{block.text}</span>
+            </div>
+            {block.attachments ? (
+              // What the call returned, under the line that made it.
+              <ToolScreenshots
+                attachments={block.attachments}
+                className="mb-1 mt-2 pl-5"
+                onOpen={onOpenScreenshot}
+                token={token}
+              />
+            ) : null}
           </div>
         ) : (
           <p

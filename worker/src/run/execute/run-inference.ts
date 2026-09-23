@@ -12,7 +12,7 @@ import {
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
 import { KB_DOCUMENT_COMPOSE_TOOL_ID } from '@nessie/runtime'
-import { runInferenceGraph } from '../inference.js'
+import { runInferenceGraph, type PrepareProviderMessages } from '../inference.js'
 import {
   startCancellationPoll,
 } from './document-cancel-poll.js'
@@ -47,7 +47,13 @@ export type RunInference = {
   runMain: (
     messages: ProviderMessage[],
     tools: ToolSchemaDescriptor[],
-    options?: { maxOutputTokens?: number; stream?: boolean; signal?: AbortSignal },
+    options?: {
+      maxOutputTokens?: number
+      /** Run once the call's model is known; see `PrepareProviderMessages`. */
+      prepareMessages?: PrepareProviderMessages
+      stream?: boolean
+      signal?: AbortSignal
+    },
   ) => Promise<InferenceResult>
   /**
    * Silent, non-streaming inference on the pinned utility model (falling back
@@ -105,6 +111,7 @@ export const createRunInference = (
     streaming: boolean,
     maxOutputTokens?: number,
     signal?: AbortSignal,
+    prepareMessages?: PrepareProviderMessages,
   ): Promise<InferenceResult> => {
     if (options.local) {
       let localTextReceived = false
@@ -133,7 +140,11 @@ export const createRunInference = (
           localTextReceived = true
           await publishSafeLocalText(content)
         },
-        providerInput: finalizeProvenancedProviderInput(messages),
+        // A local host's request carries no images (`LocalInferenceMessageSchema`),
+        // so its model is one that cannot see them.
+        providerInput: finalizeProvenancedProviderInput(
+          prepareMessages ? await prepareMessages(messages, { supportsVision: false }) : messages,
+        ),
         runFence: options.local.runFence, signal,
         thinking: streaming && reasoningEffort !== 'none',
         tools,
@@ -215,6 +226,7 @@ export const createRunInference = (
           })
         },
         organizationId: context.channel.organizationId,
+        ...(prepareMessages ? { prepareMessages } : {}),
         reasoningEffort,
         requestHeadersForProvider,
         signal: signal && controller ? AbortSignal.any([signal, controller.signal]) : controller?.signal ?? signal,
@@ -260,7 +272,7 @@ export const createRunInference = (
       currentTurnStreamed = false
       return call(
         messages, tools, runModel, true, callOptions?.stream !== false,
-        callOptions?.maxOutputTokens, callOptions?.signal,
+        callOptions?.maxOutputTokens, callOptions?.signal, callOptions?.prepareMessages,
       )
     },
     runUtility: (messages, tools) =>

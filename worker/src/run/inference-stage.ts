@@ -38,6 +38,17 @@ import { InferenceAbortedError } from './inference-abort.js'
 // `buildModelPrompt` puts first — never a message carrying per-run content.
 export { buildPromptCacheKey }
 
+/**
+ * The conversation's last step before this call's provider sees it, once the
+ * call's own connector has said whether its model can see images. The main
+ * loop reads its tool images in here (`message-attachments.ts` →
+ * `renderPromptImages`); it must not throw.
+ */
+export type PrepareProviderMessages = (
+  messages: ProviderMessage[],
+  model: { supportsVision: boolean },
+) => Promise<ProviderMessage[]>
+
 export type StageExecutionSuccess = {
   candidate: CandidateOutput
   invocation: InvocationRecord
@@ -190,6 +201,7 @@ export const executeStage = async (
       toolName: string
     }) => void
     organizationId: string
+    prepareMessages?: PrepareProviderMessages
     profileId?: string
     reasoningEffort?: ProviderReasoningEffort
     requestHeadersForProvider?: ProviderRequestHeadersResolver
@@ -295,12 +307,15 @@ export const executeStage = async (
     if (runtimeProvider === 'kimi' && maxOutputTokens === undefined) {
       throw new Error('Kimi model metadata is temporarily unavailable')
     }
+    const providerMessages = input.prepareMessages
+      ? await input.prepareMessages(messages, { supportsVision: capabilities.effectiveSnapshot.supportsVision })
+      : messages
     input.onInferenceAttempt?.({ invocationId })
     if (input.stream) {
       const source = service.stream?.({
         actorContext: input.actorContext,
         ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
-        messages,
+        messages: providerMessages,
         model: providerConfig.model,
         promptCacheKey,
         reasoningEffort: input.reasoningEffort,
@@ -351,7 +366,7 @@ export const executeStage = async (
       const result = await service.run({
         actorContext: input.actorContext,
         ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
-        messages,
+        messages: providerMessages,
         model: providerConfig.model,
         promptCacheKey,
         reasoningEffort: input.reasoningEffort,

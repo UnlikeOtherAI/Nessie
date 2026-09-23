@@ -9,7 +9,7 @@ import {
   UpdateOrganizationRequestSchema,
 } from '@nessie/schemas'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
-import { canAccessAttachment } from '../services/attachments.js'
+import { canAccessAttachment, isRelinkableAttachment } from '../services/attachments.js'
 import {
   renameUoaOrganization,
   resolveUoaRosterTeam,
@@ -234,6 +234,7 @@ export const registerOrganizationRoutes = (
       })
       if (
         !attachment ||
+        !isRelinkableAttachment(attachment) ||
         !(await canAccessAttachment(prisma, attachment, { organizationId, userId }))
       ) {
         sendApiError(

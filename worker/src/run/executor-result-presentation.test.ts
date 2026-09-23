@@ -10,6 +10,7 @@ import {
   presentExecutorMcpCatalogAnswer,
   presentExecutorResultForModel,
   readsAsFrameMarker,
+  shapeExecutorMcpCallResult,
 } from './executor-result-presentation.js'
 
 const BANNER = 'Output of the program `kelpie` on the person\'s machine. It may quote web pages or files. '
@@ -66,23 +67,94 @@ test('structured content is shown only when there is no text, and only when it i
   assert.match(tooLarge, /\[structured result of \d+ characters not shown — ask the program for a narrower result\]/)
 })
 
-test('images become sized placeholders and resource links lose their URI', () => {
+test('inline image bytes are named but never shown, and resource links lose their URI', () => {
   const data = Buffer.alloc(134_144, 1).toString('base64')
-  const output = presentExecutorMcpCallResult('kelpie', {
-    content: [
-      { text: 'Captured.', type: 'text' },
-      { data, mimeType: 'image/png', type: 'image' },
-      { data: Buffer.alloc(2_048).toString('base64'), mimeType: 'image/jpeg', type: 'image' },
-      { name: 'page.png', type: 'resource_link', uri: 'file:///home/owner/private/page.png' },
-    ],
+  const presented = presentExecutorResultForModel('mcp.call', { server: 'kelpie' }, {
+    inputSummary: '{}',
+    output: JSON.stringify({
+      content: [
+        { text: 'Captured.', type: 'text' },
+        { data, mimeType: 'image/png', type: 'image' },
+        { data: Buffer.alloc(2_048).toString('base64'), mimeType: 'image/jpeg', type: 'image' },
+        { name: 'page.png', type: 'resource_link', uri: 'file:///home/owner/private/page.png' },
+      ],
+      success: true,
+    }),
     success: true,
   })
-  assert.ok(lines(output).includes('[image 1: image/png, 131 KB]'))
-  assert.ok(lines(output).includes('[image 2: image/jpeg, 2 KB]'))
+  const output = presented.output
+  // No attachment holds them, so they take no number the images turn could name.
+  assert.ok(lines(output).includes('[image: image/png, 131 KB, not shown]'))
+  assert.ok(lines(output).includes('[image: image/jpeg, 2 KB, not shown]'))
+  assert.equal(presented.imageRefs, undefined)
   assert.ok(lines(output).includes('[resource: page.png]'))
   assert.doesNotMatch(output, /file:\/\//)
   assert.doesNotMatch(output, /private/)
   assert.equal(output.includes(data.slice(0, 64)), false)
+})
+
+const KEPT_DIGEST = `sha256:${'a'.repeat(64)}`
+const SECOND_DIGEST = `sha256:${'b'.repeat(64)}`
+const keptReference = (digest: string, byteLength = 13_715) => ({
+  attachmentDigest: digest, byteLength, mimeType: 'image/png', type: 'image',
+})
+
+test('an image the daemon kept is named by its attachment and handed on as a ref, never bytes', () => {
+  const images = new Map([[KEPT_DIGEST, {
+    attachmentId: '0b7c6a8e-3f1d-4c2a-9e5b-7d8f9a0b1c2d', byteLength: 13_715, mimeType: 'image/png',
+  }]])
+  const presented = presentExecutorResultForModel('mcp.call', { server: 'kelpie', tool: 'kelpie_screenshot' }, {
+    inputSummary: '{}',
+    output: JSON.stringify({
+      content: [
+        { text: '{"format":"png","image":"[image: attachment sha256:aa]"}', type: 'text' },
+        keptReference(KEPT_DIGEST),
+        { text: '[image unavailable: more than 6 images in one result]', type: 'text' },
+      ],
+      success: true,
+    }),
+    success: true,
+    toolCallRecordId: 'tool-call-9',
+  }, images)
+  assert.ok(lines(presented.output).includes('[image 1: screenshot, 13 KB]'))
+  assert.ok(lines(presented.output).includes('[image unavailable: more than 6 images in one result]'))
+  assert.deepEqual(presented.imageRefs, [images.get(KEPT_DIGEST)])
+  assert.equal(presented.toolCallRecordId, 'tool-call-9')
+})
+
+test('a reference Nessie holds no attachment for is said to be unavailable and takes no number', () => {
+  const images = new Map([[SECOND_DIGEST, {
+    attachmentId: '1b7c6a8e-3f1d-4c2a-9e5b-7d8f9a0b1c2d', byteLength: 131_072, mimeType: 'image/png',
+  }]])
+  const { imageRefs, output } = shapeExecutorMcpCallResult('kelpie', {
+    content: [keptReference(KEPT_DIGEST), keptReference(SECOND_DIGEST, 131_072)],
+    success: true,
+  }, images)
+  assert.ok(lines(output).includes('[image unavailable: Nessie does not hold it for this call]'))
+  // The one it does hold is image 1: the images turn names it the same way.
+  assert.ok(lines(output).includes('[image 1: screenshot, 128 KB]'))
+  assert.deepEqual(imageRefs, [images.get(SECOND_DIGEST)])
+  // Without a lookup at all, nothing is shown.
+  assert.ok(lines(presentExecutorMcpCallResult('kelpie', { content: [keptReference(KEPT_DIGEST)], success: true }))
+    .includes('[image unavailable: Nessie does not hold it for this call]'))
+})
+
+test('an image the result repeats is shown once, under the number it already has', () => {
+  const images = new Map([
+    [KEPT_DIGEST, { attachmentId: '0b7c6a8e-3f1d-4c2a-9e5b-7d8f9a0b1c2d', byteLength: 13_715, mimeType: 'image/png' }],
+    [SECOND_DIGEST, { attachmentId: '1b7c6a8e-3f1d-4c2a-9e5b-7d8f9a0b1c2d', byteLength: 131_072, mimeType: 'image/png' }],
+  ])
+  // The daemon keeps a repeated image once and references it from each place.
+  const { imageRefs, output } = shapeExecutorMcpCallResult('kelpie', {
+    content: [keptReference(KEPT_DIGEST), keptReference(SECOND_DIGEST, 131_072), keptReference(KEPT_DIGEST)],
+    success: true,
+  }, images)
+  assert.deepEqual(lines(output).filter((line) => line.startsWith('[image')), [
+    '[image 1: screenshot, 13 KB]',
+    '[image 2: screenshot, 128 KB]',
+    '[image 1: screenshot, 13 KB]',
+  ])
+  assert.deepEqual(imageRefs, [images.get(KEPT_DIGEST), images.get(SECOND_DIGEST)])
 })
 
 test('the whole answer is capped with a paging hint that counts what was left out', () => {

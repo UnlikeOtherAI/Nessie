@@ -8,7 +8,10 @@ rules, and the sanctioned carve-outs.
 
 An overlay is one of four kinds — **Modal**, **Sheet**, **Popover**, **Card**
 — plus the one sanctioned nesting, **blocking** (a confirm over an open
-modal). Each kind has one layer, one Back precedence and one motion, declared
+modal, or the attachment viewer opened from inside one — a screenshot in the
+thought-process dialog, `useAttachmentViewer(token, { blocking: true })` —
+since two modals tie on layer and Back and the one beneath would win). Each
+kind has one layer, one Back precedence and one motion, declared
 once in `navigation/overlay.ts` and mirrored as tokens:
 
 | kind | layer token | Back | motion |

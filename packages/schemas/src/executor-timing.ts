@@ -20,13 +20,17 @@ export const EXECUTOR_MCP_START_TIMEOUT_MS = 10_000
  */
 export const EXECUTOR_MCP_CALL_TIMEOUT_MS = 60_000
 
-/** Room for up to 8 MiB of a result's attachment uploads on a slow uplink. */
-export const EXECUTOR_MCP_UPLOAD_BUDGET_MS = 30_000
+/**
+ * Room for one result's attachment uploads — up to six images, 8 MiB — on a
+ * 2 Mbit/s uplink, with Nessie's own work on each image (the daemon's
+ * `executor/test/mcp-timing.test.ts` pins the sum).
+ */
+export const EXECUTOR_MCP_UPLOAD_BUDGET_MS = 50_000
 
 /** Queue claim, daemon poll, three receipts, journal fsyncs. */
 export const EXECUTOR_COMMAND_OVERHEAD_MS = 20_000
 
-/** The expiry of an `mcp.tools` or `mcp.call` command: 120 s. */
+/** The expiry of an `mcp.tools` or `mcp.call` command: 140 s. */
 export const EXECUTOR_MCP_COMMAND_TTL_MS =
   EXECUTOR_MCP_START_TIMEOUT_MS
   + EXECUTOR_MCP_CALL_TIMEOUT_MS

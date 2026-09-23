@@ -9,6 +9,7 @@ import {
   RunIdSchema,
   RunStatusSchema,
   ThreadIdSchema,
+  ToolCallAttachmentSchema,
 } from '@nessie/schemas'
 import { z } from 'zod'
 
@@ -188,6 +189,9 @@ export const RunThinkingEntrySchema = z.object({
   kind: z.enum(['reasoning', 'tool']),
   content: z.string(),
   createdAt: TimestampSchema,
+  // A tool line's screenshots, on the full log only: the images the call it
+  // became returned, as refs the attachment routes serve. Absent when none.
+  attachments: ToolCallAttachmentSchema.array().optional(),
 })
 export type RunThinkingEntry = z.infer<typeof RunThinkingEntrySchema>
 

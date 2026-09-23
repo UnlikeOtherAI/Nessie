@@ -21,7 +21,7 @@ import { canReadSpace, readCanonicalAgentCore, writeCanonicalAgentCore } from '@
 import { attributionFromActorContext } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { canAccessAttachment } from '../services/attachments.js'
+import { canAccessAttachment, isRelinkableAttachment } from '../services/attachments.js'
 import {
   cloneAgentRecord,
   createAgentRecord,
@@ -99,6 +99,7 @@ const validateAgentAvatarAttachment = async (input: {
   })
   if (
     !attachment
+    || !isRelinkableAttachment(attachment)
     || !(await canAccessAttachment(input.deps.prisma, attachment, {
       organizationId: input.actorContext.tenant.organizationId,
       userId: input.actorContext.actor.actorId,
