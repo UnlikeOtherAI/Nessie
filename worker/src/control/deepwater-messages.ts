@@ -14,12 +14,15 @@ import {
 } from '@nessie/schemas'
 import { createSystemAuthoredMessage, createSystemAuthoredReply } from '@nessie/team-admin'
 
+import type { DeepWaterAnnouncements } from './deepwater-announce.js'
+
 /**
  * The messages DeepWater writes into the thread a research belongs to: the
  * research card (Water plan amendments N1), and the results and notices
  * addressed to the person who asked (N3, N4, N5). Every one is written inside
  * the caller's transaction, stamped with the disclosure its run carries into
- * that thread (N6), and placed under the card once there is one.
+ * that thread (N6), placed under the card once there is one, and announced
+ * through the caller's collector once that transaction commits.
  */
 
 type Tx = Prisma.TransactionClient
@@ -85,6 +88,7 @@ export const deepWaterThreadBasis = async (
  */
 export const ensureDeepWaterResearchCard = async (
   tx: Tx,
+  announce: DeepWaterAnnouncements,
   input: { organizationId: string; runId: string },
 ): Promise<{ messageId: string; created: boolean } | null> => {
   const locked = await lockDeepWaterBriefRun(tx, input)
@@ -109,14 +113,28 @@ export const ensureDeepWaterResearchCard = async (
       ? { agentId: run.originAgentId, onBehalfOfUserId: run.principalUserId, role: 'assistant' as const }
       : { role: 'user' as const, userId: run.requestedByUserId }),
   }
-  const message = root
-    ? (await createSystemAuthoredReply(tx, {
+  const posted = root
+    ? await createSystemAuthoredReply(tx, {
         ...card,
         authorId: agentAuthored ? run.originAgentId : run.requestedByUserId,
         rootMessageId: root,
-      })).message
-    : await createSystemAuthoredMessage(tx, card)
+      })
+    : { message: await createSystemAuthoredMessage(tx, card), replyMetadata: null }
+  const { message } = posted
   await tx.productIntegrationRun.update({ where: { id: run.id }, data: { messageId: message.id } })
+  announce.message({
+    channelId: thread.channelId,
+    threadId: run.threadId,
+    id: message.id,
+    content: message.content,
+    role: agentAuthored ? 'assistant' : 'user',
+    agentId: agentAuthored ? run.originAgentId : null,
+    userId: agentAuthored ? null : run.requestedByUserId,
+    createdAt: message.createdAt,
+    restricted: thread.basis.length > 0 || run.disclosureSources.length > 0,
+    reply: root && posted.replyMetadata ? { rootMessageId: root, ...posted.replyMetadata } : null,
+  })
+  announce.run({ ...run, cardMessageId: message.id })
   return { messageId: message.id, created: true }
 }
 
@@ -127,6 +145,7 @@ export const ensureDeepWaterResearchCard = async (
  */
 export const postDeepWaterNotice = async (
   tx: Tx,
+  announce: DeepWaterAnnouncements,
   run: DeepWaterBriefRun,
   input: { kind: DeepWaterNoticeKind; content: string; alertKey?: string },
 ): Promise<{ messageId: string } | null> => {
@@ -145,10 +164,12 @@ export const postDeepWaterNotice = async (
     role: 'assistant' as const,
     threadId: run.threadId,
   }
-  const message = root
-    ? (await createSystemAuthoredReply(tx, { ...notice, authorId: null, rootMessageId: root })).message
-    : await createSystemAuthoredMessage(tx, notice)
-  await createMentionUserAlerts(tx, {
+  const posted = root
+    ? await createSystemAuthoredReply(tx, { ...notice, authorId: null, rootMessageId: root })
+    : { message: await createSystemAuthoredMessage(tx, notice), replyMetadata: null }
+  const { message } = posted
+  const eventKey = input.alertKey ?? `deep-water-${input.kind}:${run.id}`
+  const alerted = await createMentionUserAlerts(tx, {
     organizationId: run.organizationId,
     messageId: message.id,
     threadId: run.threadId,
@@ -156,7 +177,27 @@ export const postDeepWaterNotice = async (
     actorUserId: null,
     actorAgentId: null,
     mentionedUserIds: [run.requestedByUserId],
-    eventKey: input.alertKey ?? `deep-water-${input.kind}:${run.id}`,
+    eventKey,
+  })
+  announce.message({
+    channelId: thread.channelId,
+    threadId: run.threadId,
+    id: message.id,
+    content: message.content,
+    role: 'assistant',
+    agentId: null,
+    userId: null,
+    createdAt: message.createdAt,
+    restricted: thread.basis.length > 0 || run.disclosureSources.length > 0,
+    reply: root && posted.replyMetadata ? { rootMessageId: root, ...posted.replyMetadata } : null,
+  })
+  announce.alert({
+    channelId: thread.channelId,
+    threadId: run.threadId,
+    messageId: message.id,
+    createdAt: message.createdAt,
+    userIds: alerted,
+    eventKey,
   })
   return { messageId: message.id }
 }

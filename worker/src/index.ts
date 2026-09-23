@@ -235,6 +235,7 @@ export const startWorker = async (
     ledgerIdentity,
     pool,
     prisma,
+    realtime: realtimeTransport,
     subscribe,
   })
 

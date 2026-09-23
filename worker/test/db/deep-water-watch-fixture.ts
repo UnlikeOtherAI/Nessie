@@ -11,7 +11,7 @@ import {
   type DeepWaterBriefRunOrigin,
   type LedgerIdentityService,
 } from '@nessie/runtime'
-import type { LedgerScopeResult } from '@nessie/schemas'
+import type { LedgerScopeResult, WsScope } from '@nessie/schemas'
 
 import type { DeepWaterWatchDeps } from '../../src/control/deepwater-watch.js'
 import type { dispatchTool } from '../../src/run/tool-dispatch.js'
@@ -31,10 +31,20 @@ export type ScriptedLedger = {
   answer: (toolName: string, structured: Answer, success?: boolean) => void
 }
 
+/** One realtime publish, as the transport received it. */
+export type RecordedPublish = { scopes: WsScope[]; event: string; data: unknown; idempotencyKey?: string }
+
+export type RecordedRealtime = {
+  published: RecordedPublish[]
+  /** Every publish throws while set, as a transport outage would. */
+  failPublishes: (fail: boolean) => void
+}
+
 export type WatchFixture = {
   prisma: PrismaClient
   deps: DeepWaterWatchDeps
   ledger: ScriptedLedger
+  realtime: RecordedRealtime
   ids: Record<'organization' | 'project' | 'team' | 'channel' | 'thread' | 'requester' | 'agent' | 'originRun' | 'connector', string>
   identity: { subject: string; organizationId: string; teamId: string; tokenVersion: number }
   failIdentity: (fail: boolean) => void
@@ -154,6 +164,21 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     },
   }
 
+  const published: RecordedPublish[] = []
+  let publishesFail = false
+  const realtime: DeepWaterWatchDeps['realtime'] = {
+    publishWs: async (scopes, input) => {
+      if (publishesFail) throw new Error('realtime transport down')
+      published.push({
+        scopes,
+        event: input.event,
+        data: input.data,
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      })
+      return { type: 'event', event: input.event, data: input.data, ts: input.ts ?? new Date().toISOString() } as never
+    },
+  }
+
   const identity = {
     subject: `uoa|${requester.id}`,
     organizationId: `uoa-org-${organization.id}`,
@@ -178,8 +203,9 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
   }
   return {
     prisma,
-    deps: { prisma, ledgerIdentity, dispatchMcpTool, fileService, embeddingModel: 'test-embedding' },
+    deps: { prisma, ledgerIdentity, dispatchMcpTool, fileService, embeddingModel: 'test-embedding', realtime },
     ledger,
+    realtime: { published, failPublishes: (fail) => { publishesFail = fail } },
     ids,
     identity,
     failIdentity: (fail) => { identityFails = fail },

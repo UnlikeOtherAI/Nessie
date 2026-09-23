@@ -5,6 +5,7 @@ import {
   type DeepWaterBriefRun,
 } from '@nessie/runtime'
 
+import type { DeepWaterAnnouncements } from './deepwater-announce.js'
 import { turnKickoff, wakeCapNotice, wakeUnreachableNotice } from './deepwater-copy.js'
 import { deepWaterTopicPreview, postDeepWaterNotice } from './deepwater-messages.js'
 import { wakeDeepWaterAgent } from './deepwater-wake.js'
@@ -16,13 +17,17 @@ import { wakeDeepWaterAgent } from './deepwater-wake.js'
  * instead, and a wake that cannot reach anyone becomes a notice to them.
  * Acks never wake: only the watch, after the projection advanced.
  */
-export const handleDeepWaterTurnWake = async (tx: Prisma.TransactionClient, run: DeepWaterBriefRun): Promise<void> => {
+export const handleDeepWaterTurnWake = async (
+  tx: Prisma.TransactionClient,
+  announce: DeepWaterAnnouncements,
+  run: DeepWaterBriefRun,
+): Promise<void> => {
   const claimed = await claimDeepWaterTurnWake(tx, { organizationId: run.organizationId, runId: run.id })
   if (!claimed) return
   const { decision } = claimed
   const topic = deepWaterTopicPreview(claimed.run)
   if (decision.kind === 'cap_notice') {
-    await postDeepWaterNotice(tx, claimed.run, { kind: 'wake_cap', content: wakeCapNotice(topic) })
+    await postDeepWaterNotice(tx, announce, claimed.run, { kind: 'wake_cap', content: wakeCapNotice(topic) })
     return
   }
   if (decision.kind !== 'wake' || !claimed.run.externalRunId) return
@@ -39,7 +44,7 @@ export const handleDeepWaterTurnWake = async (tx: Prisma.TransactionClient, run:
   }
   if (wake.kind === 'unreachable') {
     console.warn(`[deep-water] wake unreachable (${wake.reason}) for run ${run.id}, turn ${decision.turn.seq}`)
-    await postDeepWaterNotice(tx, claimed.run, {
+    await postDeepWaterNotice(tx, announce, claimed.run, {
       kind: 'wake_unreachable',
       content: wakeUnreachableNotice({ topic, finished: false, link: null }),
       alertKey: `deep-water-wake-unreachable:${run.id}:${decision.turn.seq}`,

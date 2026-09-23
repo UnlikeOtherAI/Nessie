@@ -92,6 +92,37 @@ withFixture('a finished research comes back as one result reply under the card, 
     include: { versions: true },
   })
   assert.match(page.versions[0]?.body ?? '', /^> DeepWater could not write the full report/)
+
+  // Announced after commit (nessie.md §7.7, C3): the card, the reply under it,
+  // the requester's alert, and the run on the requester's and the room's lanes.
+  const events = fixture.realtime.published
+  const cardEvent = events.find((event) => event.event === 'message.new' && (event.data as { messageId: string }).messageId === card.id)
+  assert.ok(cardEvent, 'the card appears without a reload')
+  const replyEvent = events.find((event) => event.event === 'message.reply')
+  assert.equal((replyEvent?.data as { messageId?: string } | undefined)?.messageId, reply?.id)
+  assert.equal((replyEvent?.data as { rootMessageId?: string } | undefined)?.rootMessageId, card.id)
+  assert.equal(replyEvent?.idempotencyKey, `deep-water:message:${reply?.id}`)
+  assert.ok(events.some((event) => event.event === 'message.reply.meta'))
+  const alertEvents = events.filter((event) => event.event === 'alert.created')
+  assert.deepEqual(alertEvents.map((event) => event.idempotencyKey), [`deep-water-result:${run.id}:${fixture.ids.requester}`])
+  const runEvents = events.filter((event) => event.event === 'integration.run.updated')
+  assert.ok(runEvents.every((event) => JSON.stringify(event.data) === JSON.stringify({ productSlug: 'deep-water', runId: run.id })))
+  assert.ok(runEvents.some((event) => event.scopes.some((scope) => scope.kind === 'user' && scope.userId === fixture.ids.requester)))
+  assert.ok(runEvents.some((event) => event.scopes.some((scope) => scope.kind === 'channel' && scope.channelId === fixture.ids.channel)))
+})
+
+withFixture('a realtime outage never undoes a delivery: the rows are the record', async (fixture) => {
+  const { run, rs } = await launched(fixture)
+  fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })
+  fixture.ledger.answer('research_report', report)
+  fixture.realtime.failPublishes(true)
+  await watch(fixture, run.id)
+
+  const delivered = await fixture.read(run.id)
+  assert.equal(delivered.status, 'completed')
+  assert.ok(delivered.deliveredAt && delivered.resultMessageId)
+  assert.equal(fixture.realtime.published.length, 0)
+  assert.deepEqual((await notices(fixture, run.id)).map((notice) => notice.kind), ['result'])
 })
 
 withFixture('a report that expired blocks delivery once, with one notice naming the remedy', async (fixture) => {

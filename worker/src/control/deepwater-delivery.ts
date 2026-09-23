@@ -24,6 +24,7 @@ import {
   isTransientLedgerRefusal,
   type DeepWaterLedgerCallDeps,
 } from '../run/deepwater-ledger-call.js'
+import { runDeepWaterTransaction, type DeepWaterAnnounceDeps } from './deepwater-announce.js'
 import {
   blockedNotice,
   completedKickoff,
@@ -51,9 +52,25 @@ import { wakeDeepWaterAgent } from './deepwater-wake.js'
  * tries again.
  */
 
-export type DeepWaterDeliveryDeps = DeepWaterLedgerCallDeps & DeepWaterImportDeps
+export type DeepWaterDeliveryDeps = DeepWaterLedgerCallDeps & DeepWaterImportDeps & DeepWaterAnnounceDeps
 
 export type DeepWaterDeliveryResult = 'delivered' | 'already' | 'blocked' | 'retry'
+
+/**
+ * Renew the captured identity from a person's live one (same person,
+ * organisation and team only, amendments-fable F4). Clearing an identity block
+ * changes what the run shows, so that is announced.
+ */
+export const renewDeepWaterIdentity = (
+  deps: DeepWaterAnnounceDeps,
+  input: { organizationId: string; runId: string; identity: DeepWaterRequesterIdentity },
+): Promise<void> =>
+  runDeepWaterTransaction(deps, async (tx, announce) => {
+    const renewed = await refreshDeepWaterRunIdentity(tx, input)
+    if (!renewed.unblocked) return
+    const run = await readDeepWaterBriefRun(tx, input)
+    if (run) announce.run(run)
+  })
 
 /** Record the message the claimed delivery wrote: the person's reply, or the agent's wake kickoff. */
 const recordMessage = (
@@ -67,10 +84,11 @@ const block = async (
   run: DeepWaterBriefRun,
   reason: DeepWaterDeliveryBlockedReason,
 ): Promise<DeepWaterDeliveryResult> => {
-  await deps.prisma.$transaction(async (tx) => {
+  await runDeepWaterTransaction(deps, async (tx, announce) => {
     if (!await blockDeepWaterDelivery(tx, { organizationId: run.organizationId, runId: run.id, reason })) return
+    announce.run(run)
     // One notice per blocked attempt: the block is claimed once per attempt.
-    await postDeepWaterNotice(tx, run, {
+    await postDeepWaterNotice(tx, announce, run, {
       kind: 'blocked',
       content: blockedNotice({ topic: deepWaterTopicPreview(run), reason }),
       alertKey: `deep-water-blocked:${run.id}:${randomUUID()}`,
@@ -86,13 +104,14 @@ const deliverFailure = async (
 ): Promise<DeepWaterDeliveryResult> => {
   const failureCode = terminal.errorCode ?? terminal.status
   const topic = deepWaterTopicPreview(run)
-  return deps.prisma.$transaction(async (tx) => {
+  return runDeepWaterTransaction(deps, async (tx, announce) => {
     const claimed = await claimDeepWaterDelivery(tx, {
       organizationId: run.organizationId,
       runId: run.id,
       outcome: { kind: 'failed', failureCode },
     })
     if (!claimed) return 'already'
+    announce.run(run)
     if (run.originKind === 'agent' && run.originAgentId) {
       const wake = await wakeDeepWaterAgent(tx, run, {
         agentId: run.originAgentId,
@@ -106,7 +125,7 @@ const deliverFailure = async (
       }
       console.warn(`[deep-water] wake unreachable (${wake.reason}) for run ${run.id}`)
     }
-    const notice = await postDeepWaterNotice(tx, run, {
+    const notice = await postDeepWaterNotice(tx, announce, run, {
       kind: 'failed',
       content: failedNotice({ topic, failureCode }),
     })
@@ -132,13 +151,7 @@ export const deliverDeepWaterResearch = async (
   },
 ): Promise<DeepWaterDeliveryResult> => {
   const liveIdentity = input.identity
-  if (liveIdentity) {
-    await deps.prisma.$transaction((tx) => refreshDeepWaterRunIdentity(tx, {
-      organizationId: input.organizationId,
-      runId: input.runId,
-      identity: liveIdentity,
-    }))
-  }
+  if (liveIdentity) await renewDeepWaterIdentity(deps, { ...input, identity: liveIdentity })
   const run = await readDeepWaterBriefRun(deps.prisma, input)
   // Launcher runs (no captured identity) are delivered by their own handoff.
   if (!run?.uoaIdentity || !run.externalRunId || run.deliveredAt || run.deliveryBlockedReason) return 'already'
@@ -193,7 +206,7 @@ export const deliverDeepWaterResearch = async (
 
   const topic = deepWaterTopicPreview(run)
   const sourceCount = report.references.length
-  return deps.prisma.$transaction(async (tx) => {
+  return runDeepWaterTransaction(deps, async (tx, announce) => {
     const claimed = await claimDeepWaterDelivery(tx, {
       organizationId: run.organizationId,
       runId: run.id,
@@ -208,6 +221,7 @@ export const deliverDeepWaterResearch = async (
       },
     })
     if (!claimed) return 'already'
+    announce.run(run)
     const link = `/knowledge-base?spaceId=${page.spaceId}&pageId=${page.pageId}`
     if (run.originKind === 'agent' && run.originAgentId) {
       const wake = await wakeDeepWaterAgent(tx, run, {
@@ -221,7 +235,7 @@ export const deliverDeepWaterResearch = async (
         return 'delivered'
       }
       console.warn(`[deep-water] wake unreachable (${wake.reason}) for run ${run.id}`)
-      const notice = await postDeepWaterNotice(tx, run, {
+      const notice = await postDeepWaterNotice(tx, announce, run, {
         kind: 'wake_unreachable',
         content: wakeUnreachableNotice({ topic, finished: true, link }),
       })
@@ -230,7 +244,7 @@ export const deliverDeepWaterResearch = async (
       }
       return 'delivered'
     }
-    const reply = await postDeepWaterNotice(tx, run, {
+    const reply = await postDeepWaterNotice(tx, announce, run, {
       kind: 'result',
       content: resultNotice({
         topic,

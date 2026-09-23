@@ -5,7 +5,6 @@ import {
   findUnconfirmedDeepWaterBriefs,
   readDeepWaterBriefRun,
   reapUnconfirmedDeepWaterBrief,
-  refreshDeepWaterRunIdentity,
   type FileService,
   type LedgerIdentityService,
   type PgQueueProvider,
@@ -17,7 +16,9 @@ import {
   DeepWaterRunWatchJobPayloadSchema,
 } from '@nessie/schemas'
 
+import { runDeepWaterTransaction, type DeepWaterRealtime } from './deepwater-announce.js'
 import { startUnconfirmedKickoff, startUnconfirmedNotice } from './deepwater-copy.js'
+import { renewDeepWaterIdentity } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, postDeepWaterNotice } from './deepwater-messages.js'
 import { wakeDeepWaterAgent } from './deepwater-wake.js'
 import { runDeepWaterWatch, watchDeepWaterRun, type DeepWaterWatchDeps } from './deepwater-watch.js'
@@ -45,6 +46,7 @@ export type DeepWaterWorkerDeps = {
   embeddingModel: string | null
   pool: SweepLockPool
   prisma: PrismaClient
+  realtime: DeepWaterRealtime
   subscribe: PgQueueProvider['subscribe']
 }
 
@@ -54,9 +56,10 @@ export type DeepWaterWorkerDeps = {
  * reached). Everything commits with the reap.
  */
 const reapOne = async (deps: DeepWaterWatchDeps, target: { organizationId: string; runId: string }): Promise<void> => {
-  await deps.prisma.$transaction(async (tx) => {
+  await runDeepWaterTransaction(deps, async (tx, announce) => {
     const run = await reapUnconfirmedDeepWaterBrief(tx, target)
     if (!run) return
+    announce.run(run)
     const topic = deepWaterTopicPreview(run)
     if (run.originKind === 'agent' && run.originAgentId) {
       const wake = await wakeDeepWaterAgent(tx, run, {
@@ -68,7 +71,7 @@ const reapOne = async (deps: DeepWaterWatchDeps, target: { organizationId: strin
       if (wake.kind !== 'unreachable') return
       console.warn(`[deep-water] wake unreachable (${wake.reason}) for reaped run ${run.id}`)
     }
-    await postDeepWaterNotice(tx, run, { kind: 'start_unconfirmed', content: startUnconfirmedNotice(topic) })
+    await postDeepWaterNotice(tx, announce, run, { kind: 'start_unconfirmed', content: startUnconfirmedNotice(topic) })
   })
 }
 
@@ -85,6 +88,7 @@ export const startDeepWaterWorker = (deps: DeepWaterWorkerDeps): { stop: () => v
     ledgerIdentity: deps.ledgerIdentity,
     fileService: deps.fileService,
     embeddingModel: deps.embeddingModel,
+    realtime: deps.realtime,
   }
 
   deps.subscribe(
@@ -102,11 +106,11 @@ export const startDeepWaterWorker = (deps: DeepWaterWorkerDeps): { stop: () => v
       const payload = DeepWaterRunDeliverJobPayloadSchema.parse(job.payload)
       const identity = payload.identity
       if (identity) {
-        await deps.prisma.$transaction((tx) => refreshDeepWaterRunIdentity(tx, {
+        await renewDeepWaterIdentity(callDeps, {
           organizationId: payload.organizationId,
           runId: payload.runId,
           identity,
-        }))
+        })
       }
       const run = await readDeepWaterBriefRun(deps.prisma, payload)
       if (run) await watchDeepWaterRun(callDeps, run)

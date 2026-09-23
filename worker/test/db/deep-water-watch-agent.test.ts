@@ -106,6 +106,13 @@ withFixture('a settled planner turn wakes its agent once, under the card, as the
   assert.equal(job?.payload.actorContext.actionContext.effectiveUserId, fixture.ids.requester)
   assert.deepEqual(job?.payload.actorContext.actionContext.uoaIdentity, fixture.identity)
   assert.notEqual(job?.payload.interactive, true, 'nobody is at the keyboard')
+
+  // The brief the agent opened changed: its requester and its room hear so, with no content.
+  const runEvents = fixture.realtime.published.filter((event) => event.event === 'integration.run.updated')
+  assert.ok(runEvents.length > 0)
+  assert.ok(runEvents.every((event) => JSON.stringify(event.data) === JSON.stringify({ productSlug: 'deep-water', runId: run.id })))
+  assert.ok(runEvents.some((event) => event.scopes.some((scope) => scope.kind === 'channel')))
+  assert.ok(runEvents.some((event) => event.scopes.some((scope) => scope.kind === 'user')))
 })
 
 withFixture('a finished research is imported to Documents and wakes the agent to answer, once', async (fixture) => {

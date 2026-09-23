@@ -280,7 +280,14 @@ worker and card are built on them.
 - **One research, one run.** A Ledger research id binds to at most one product
   run (partial unique index on `(product_slug, external_run_id)`). It attaches
   once, from whichever Ledger read names it first — a tool's ack or the watch —
-  and a later read naming another id is a contract violation, not a race.
+  and a later read naming another id is a contract violation, not a race. The
+  attach always makes the run `drafting`, even when that first read already
+  reports the research finished, so the watch keeps claiming it until the
+  delivery lands.
+- **Ledger owns a brief's status.** `deep_water_run_update`, the launcher's
+  agent updater, refuses every brief row (`DEEP_WATER_BRIEF_RUN_LEDGER_OWNED`)
+  and only ever matches `uoa_identity IS NULL`: a status or research id an
+  agent wrote would end the watch before the research was delivered.
 - **The projection only advances.** Ledger reads apply under the row lock
   (`applyDeepWaterScopeResult`, `applyDeepWaterStatusRead`,
   `applyDeepWaterLaunchTicket`). The brief content moves only on a strictly
@@ -335,8 +342,9 @@ the only way results come back.
   captured), a research with `research_status`; the answer goes through the
   same projection the tool acks use. A transient failure changes nothing; an
   identity that no longer resolves blocks the run with
-  `requester_identity_changed` (quietly for a brief, with a notice for a
-  launched research) until the requester's next live action renews it.
+  `requester_identity_changed` (quietly for a brief, and for a launched
+  research with a notice that DeepWater can't check on it — never that it
+  finished) until the requester's next live action renews it.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind, provider tool-call id and stored arguments — which Ledger answers
   with the one brief it keyed to that call, or opens now. The attach posts the
@@ -358,8 +366,11 @@ the only way results come back.
   per-thread claim, with purpose `deep_water.delivery`, the requester as
   effective user and the captured identity. Such a pending wake drains alone,
   its failure is announced in the thread, and a replay is a `duplicate`. A wake
-  that cannot reach anyone (thread, agent or requester gone) becomes a notice to
-  the person.
+  passes the gates a trigger fire does: a shared agent must still be bound to
+  the origin channel (the Personal Assistant is placed by presence, which its
+  run re-checks), and in a non-public channel the requester must still be a
+  member. A wake that cannot reach anyone (thread or agent gone, agent unbound,
+  requester inactive or out of the room) becomes a notice to the person.
 - **Delivery** (`deliverDeepWaterResearch`) reads `research_report` once per
   attempt (`delivery:<runId>:report`), stores the exact `report.md` and an RFC
   4180 `sources.csv` through `FileService` (`recordDeepWaterArtifactFile` keeps
@@ -374,6 +385,15 @@ the only way results come back.
   a changed identity, a destination that went away and any other refusal are
   retryable blocks. Every notice names its remedy and carries
   `metadata.deepWaterNotice`.
+- **Realtime.** Every DeepWater transaction collects what it owes realtime and
+  publishes it only after it commits (`runDeepWaterTransaction`,
+  `deepwater-announce.ts`): each card, result and notice (`message.new` /
+  `message.reply`, content-free when the message carries a disclosure basis),
+  the requester's `alert.created` keyed `<eventKey>:<userId>`, and
+  `integration.run.updated {productSlug, runId}` — content-free, on the
+  requester's user lane and, once the run has a card there or an agent opened
+  it, the origin channel's lane — whenever a viewer would see the run change.
+  A publish failure is logged and never undoes the change; nothing polls.
 - **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
   confirmed within a day (`failed/start_unconfirmed`), telling the agent once
   (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,

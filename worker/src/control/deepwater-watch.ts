@@ -24,6 +24,7 @@ import {
   isTransientLedgerRefusal,
   type DeepWaterLedgerOutcome,
 } from '../run/deepwater-ledger-call.js'
+import { runDeepWaterTransaction } from './deepwater-announce.js'
 import { failedKickoff, failedNotice, identityChangedWhileRunningNotice } from './deepwater-copy.js'
 import { deliverDeepWaterResearch, type DeepWaterDeliveryDeps } from './deepwater-delivery.js'
 import { deepWaterTopicPreview, ensureDeepWaterResearchCard, postDeepWaterNotice } from './deepwater-messages.js'
@@ -75,14 +76,17 @@ const retryLater = (run: DeepWaterBriefRun, outcome: Exclude<DeepWaterLedgerOutc
  * also tells them — as still running, never as finished.
  */
 const blockOnIdentity = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun): Promise<void> => {
-  await deps.prisma.$transaction(async (tx) => {
+  await runDeepWaterTransaction(deps, async (tx, announce) => {
     const blocked = await blockDeepWaterDelivery(tx, {
       organizationId: run.organizationId,
       runId: run.id,
       reason: 'requester_identity_changed',
     })
-    if (!blocked || run.status === 'drafting') return
-    await postDeepWaterNotice(tx, run, {
+    if (!blocked) return
+    // The brief dialog shows "Sign in again" from the run itself.
+    announce.run(run)
+    if (run.status === 'drafting') return
+    await postDeepWaterNotice(tx, announce, run, {
       kind: 'blocked',
       content: identityChangedWhileRunningNotice(deepWaterTopicPreview(run)),
       alertKey: `deep-water-identity:${run.id}:${run.reconcileSeq}`,
@@ -98,24 +102,42 @@ const isActionJobLive = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun,
   return rows.some((row) => row.status === 'pending' || row.status === 'processing')
 }
 
+/**
+ * Apply one Ledger read in its own transaction, announcing the run when a
+ * viewer would see the change.
+ */
+const applyRead = (
+  deps: DeepWaterWatchDeps,
+  apply: (tx: Prisma.TransactionClient) => Promise<DeepWaterProjectionOutcome>,
+): Promise<DeepWaterProjectionOutcome> =>
+  runDeepWaterTransaction(deps, async (tx, announce) => {
+    const outcome = await apply(tx)
+    if (outcome.applied && outcome.changed) announce.run(outcome.run)
+    return outcome
+  })
+
 /** What an applied read owes, done in one transaction per effect. */
 const followUp = async (deps: DeepWaterWatchDeps, run: DeepWaterBriefRun, applied: DeepWaterProjectionOutcome) => {
   if (!applied.applied) return
   const next = applied.run
-  await deps.prisma.$transaction((tx) => handleDeepWaterTurnWake(tx, next))
+  await runDeepWaterTransaction(deps, (tx, announce) => handleDeepWaterTurnWake(tx, announce, next))
   if (applied.launched || next.status === 'running') {
-    await deps.prisma.$transaction((tx) => ensureDeepWaterResearchCard(tx, {
+    await runDeepWaterTransaction(deps, (tx, announce) => ensureDeepWaterResearchCard(tx, announce, {
       organizationId: next.organizationId,
       runId: next.id,
     }))
   }
   const action = next.scopeState?.pendingAction
   if (action && action.error === null && !await isActionJobLive(deps, next, action.actionId)) {
-    const settled = await deps.prisma.$transaction((tx) => settleStaleDeepWaterAction(tx, {
-      organizationId: next.organizationId,
-      runId: next.id,
-      actionId: action.actionId,
-    }))
+    const settled = await runDeepWaterTransaction(deps, async (tx, announce) => {
+      const outcome = await settleStaleDeepWaterAction(tx, {
+        organizationId: next.organizationId,
+        runId: next.id,
+        actionId: action.actionId,
+      })
+      if (outcome !== 'none' && outcome !== 'kept') announce.run(next)
+      return outcome
+    })
     if (settled !== 'none' && settled !== 'kept') log(run, `stale ${action.kind} action ${settled}`)
   }
   if (applied.ledgerTerminal) {
@@ -169,7 +191,7 @@ const readBrief = async (
       retryLater(run, { outcome: 'malformed', reason: 'research_scope_get answered outside the contract' })
       return null
     }
-    return deps.prisma.$transaction((tx) => applyDeepWaterScopeResult(tx, {
+    return applyRead(deps, (tx) => applyDeepWaterScopeResult(tx, {
       organizationId: run.organizationId,
       runId: run.id,
       result: parsed.data,
@@ -213,7 +235,7 @@ const readResearch = async (
   if (read.outcome !== 'ok') return retryLater(run, read)
   const parsed = LedgerResearchStatusDtoSchema.safeParse(read.structured)
   if (!parsed.success) return retryLater(run, { outcome: 'malformed', reason: 'research_status answered outside the contract' })
-  const applied = await deps.prisma.$transaction((tx) => applyDeepWaterStatusRead(tx, {
+  const applied = await applyRead(deps, (tx) => applyDeepWaterStatusRead(tx, {
     organizationId: run.organizationId,
     runId: run.id,
     status: parsed.data,
@@ -261,13 +283,14 @@ const replayAgentScopeStart = async (
   if (read.outcome === 'refused' && !isTransientLedgerRefusal(read.error)) {
     const topic = deepWaterTopicPreview(run)
     const failureCode = read.error.code.replace(/[^a-z_]/g, '_').slice(0, 64) || 'start_rejected'
-    await deps.prisma.$transaction(async (tx) => {
+    await runDeepWaterTransaction(deps, async (tx, announce) => {
       const failed = await failUnstartedDeepWaterBrief(tx, {
         organizationId: run.organizationId,
         runId: run.id,
         failureCode,
       })
       if (!failed) return
+      announce.run(run)
       const wake = await wakeDeepWaterAgent(tx, run, {
         agentId,
         kind: 'failed',
@@ -275,7 +298,7 @@ const replayAgentScopeStart = async (
         content: failedKickoff({ topic, failureCode }),
       })
       if (wake.kind === 'unreachable') {
-        await postDeepWaterNotice(tx, run, { kind: 'failed', content: failedNotice({ topic, failureCode }) })
+        await postDeepWaterNotice(tx, announce, run, { kind: 'failed', content: failedNotice({ topic, failureCode }) })
       }
     })
     return log(run, `scope start refused (${read.error.code})`)
@@ -283,15 +306,16 @@ const replayAgentScopeStart = async (
   if (read.outcome !== 'ok') return retryLater(run, read)
   const parsed = LedgerScopeResultSchema.safeParse(read.structured)
   if (!parsed.success) return retryLater(run, { outcome: 'malformed', reason: 'research_scope_start answered outside the contract' })
-  const applied = await deps.prisma.$transaction(async (tx) => {
+  const applied = await runDeepWaterTransaction(deps, async (tx, announce) => {
     const outcome = await applyDeepWaterScopeResult(tx, {
       organizationId: run.organizationId,
       runId: run.id,
       result: parsed.data,
     })
+    if (outcome.applied && outcome.changed) announce.run(outcome.run)
     // N1: the agent's research card is posted with the attach.
     if (outcome.applied && outcome.attached) {
-      await ensureDeepWaterResearchCard(tx, { organizationId: run.organizationId, runId: run.id })
+      await ensureDeepWaterResearchCard(tx, announce, { organizationId: run.organizationId, runId: run.id })
     }
     return outcome
   })

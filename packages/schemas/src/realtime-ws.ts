@@ -23,6 +23,10 @@ import {
   type RunStatus,
   type TaskStatus,
 } from './lifecycle.js'
+import {
+  IntegrationRunUpdatedEventSchema,
+  type IntegrationRunUpdatedEvent,
+} from './integration-run-events.js'
 import { MessageRoleSchema, type MessageRole } from './messaging.js'
 import { MessageReactionEventSchema } from './realtime-sse.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
@@ -214,6 +218,8 @@ export type WsEventMap = {
   'dashboard.updated': { dashboardId: string; revision: number }
   /** Content-free: a ticket's comments, attachments or labels changed. */
   'task.activity': { taskId: TaskId; projectId: string }
+  /** Content-free: a product integration run (a DeepWater research) changed. */
+  'integration.run.updated': IntegrationRunUpdatedEvent
 }
 
 export const AgentStatusEventSchema = z.object({
@@ -499,6 +505,7 @@ export const WsEventNameSchema = z.enum([
   'dashboard.updated',
   'board.updated',
   'task.activity',
+  'integration.run.updated',
 ])
 
 export const WsScopeSchema = z.union([
@@ -753,6 +760,12 @@ export const WsEventSchema = z.union([
     type: z.literal('event'),
     event: z.literal('task.activity'),
     data: TaskActivityEventSchema,
+    ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'),
+    event: z.literal('integration.run.updated'),
+    data: IntegrationRunUpdatedEventSchema,
     ts: TimestampSchema,
   }),
 ])
