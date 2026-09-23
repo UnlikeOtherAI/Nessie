@@ -11,7 +11,7 @@ import {
   type CodingWaitActivity,
   type CodingWaitDone,
 } from './coding-session-wait.js'
-import { describeRefusal, frameUntrustedOutput, presentExecutorMcpCallResult } from './executor-result-presentation.js'
+import { describeRefusal, frameUntrustedOutput } from './executor-result-presentation.js'
 import type { AgenticToolResult } from './tools.js'
 
 /**
@@ -122,21 +122,22 @@ const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>)
   }
 }
 
-/** Every coding tool but the wait, once the bridge answered. */
+/**
+ * Every coding tool but the wait, once the bridge answered. Whatever the
+ * bridge says of a session — a title that is the first line of a task, a
+ * status, a review's branches and commit subjects — comes from the coding
+ * agent's work, so every answer goes inside the coding agent's banner.
+ */
 export const presentCodingCall = (
   toolName: CodingSessionToolName,
-  server: string,
   parsed: ParsedBridgeResult,
   result: AgenticToolResult,
 ): AgenticToolResult => {
   if (parsed.kind !== 'answer') return presentCodingFailure(parsed, result)
-  const lead = leadFor(toolName, parsed.body)
-  // A review is the coding agent's work — its branches, its commit subjects;
-  // the rest is the bridge's own bookkeeping, framed as the program it is.
-  const output = toolName === CODING_SESSION_TOOL_NAMES.review
-    ? frameUntrustedOutput(CODING_AGENT_BANNER, JSON.stringify(parsed.body), lead)
-    : `${lead}\n${presentExecutorMcpCallResult(server, parsed.document)}`
-  return { ...result, output }
+  return {
+    ...result,
+    output: frameUntrustedOutput(CODING_AGENT_BANNER, JSON.stringify(parsed.body), leadFor(toolName, parsed.body)),
+  }
 }
 
 const statusWords: Record<string, string> = {
@@ -155,11 +156,17 @@ const agentLabel = (body: CodingStatusBody): string =>
 
 /**
  * The one line the thought-process bubble shows for a wait, rewritten in
- * place as it goes: "Claude Code: working — 14 steps (Bash 7, Edit 3)". Only
- * the status, counts and tool names — nothing the coding agent wrote.
+ * place as it goes: "Claude Code: Bash pnpm test — turn 2, 14 steps (Bash 7,
+ * Edit 3)". While the agent works it leads with what it is doing now — its
+ * latest tool call, as the bridge projected it (paths rewritten, one line)
+ * — so a long test run reads apart from a stall; otherwise with the status.
+ * Never what the coding agent said.
  */
 export const codingProgressLine = (body: CodingStatusBody, activity: CodingWaitActivity): string => {
   const status = typeof body.status === 'string' ? statusWords[body.status] ?? oneLine(body.status, 32) : 'unknown'
+  const doing = body.status === 'working' && activity.lastTool
+    ? oneLine(`${oneLine(activity.lastTool.name, 24)} ${activity.lastTool.summary}`, 72)
+    : status
   const steps = codingSteps(activity)
   const top = [...activity.toolCounts.entries()]
     .sort((left, right) => right[1] - left[1])
@@ -167,7 +174,7 @@ export const codingProgressLine = (body: CodingStatusBody, activity: CodingWaitA
     .map(([name, count]) => `${oneLine(name, 24)} ${count}`)
   const turn = typeof body.turn === 'number' && body.turn > 0 ? `turn ${body.turn}, ` : ''
   return oneLine(
-    `${agentLabel(body)}: ${status} — ${turn}${steps} step${steps === 1 ? '' : 's'}${top.length > 0 ? ` (${top.join(', ')})` : ''}`,
+    `${agentLabel(body)}: ${doing} — ${turn}${steps} step${steps === 1 ? '' : 's'}${top.length > 0 ? ` (${top.join(', ')})` : ''}`,
     160,
   )
 }

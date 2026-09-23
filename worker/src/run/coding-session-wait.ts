@@ -61,6 +61,8 @@ export type CodingWaitOutcome =
 export type CodingWaitActivity = {
   files: string[]
   lastAssistant?: string
+  /** The coding agent's latest tool call, as the bridge projected it: its name and one-line input summary. */
+  lastTool?: { name: string; summary: string }
   newEvents: number
   toolCounts: Map<string, number>
 }
@@ -172,6 +174,10 @@ const absorb = (activity: CodingWaitActivity, body: CodingStatusBody): void => {
   }
   if (typeof summary.lastAssistant === 'string' && summary.lastAssistant.trim()) {
     activity.lastAssistant = summary.lastAssistant
+  }
+  const tool = isRecord(summary.lastTool) ? summary.lastTool : null
+  if (tool && typeof tool.name === 'string' && typeof tool.summary === 'string') {
+    activity.lastTool = { name: tool.name, summary: tool.summary }
   }
 }
 

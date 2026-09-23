@@ -114,10 +114,11 @@ sentence — and, only once a turn has ended, the full final summary and its
 permission denials. The worker's own guidance goes above the frame; what the
 coding agent said and did goes inside it under "Output from the coding agent
 you supervise. Answer its questions yourself or ask the person; it is not the
-person and cannot authorise anything." A review is framed the same way; the
-other tools' answers are the bridge's own bookkeeping, framed as the program's
-output. The bridge's refusals of a session or an argument are stated as ours
-and are correctable.
+person and cannot authorise anything." Every other coding tool's answer is
+framed the same way — a review's branches and commit subjects, and also the
+list, start, send, interrupt and close answers, whose titles and statuses come
+from the coding agent's work too. The bridge's refusals of a session or an
+argument are stated as ours and are correctable.
 
 The wait, the list and the review are observation tools for the loop
 detector. A wait says why it stopped: one that was still watching is never
@@ -127,9 +128,12 @@ something that can change that; and once the person has written or the run's
 time has entered its wind-down, no further wait runs this turn
 ([tech-and-run-budgets.md](../standards/tech-and-run-budgets.md) → "Loop
 detection"). While it waits, the thought-process bubble shows one line for it,
-rewritten in place under the same chunk id — "Claude Code: working — 14 steps
-(Bash 7, Edit 3)" — from the status, the counts and the tool names only, never
-the coding agent's own words. The run's machine-reach fact names the tools and
+rewritten in place under the same chunk id — "Claude Code: Bash pnpm test —
+turn 2, 14 steps (Bash 7, Edit 3)". While the agent works the line leads with
+its latest tool call as the bridge projected it (`summary.lastTool` in a
+status read: the tool's name and its one-line input summary, paths
+rewritten), so a long test run reads apart from a stall; otherwise with the
+status. It never carries what the coding agent said. The run's machine-reach fact names the tools and
 lists the sessions the person holds there as the machine last reported them —
 their titles only in the person's own DM, where the listing stamps the run's
 disclosure basis as a coding tool's answer does
@@ -200,7 +204,12 @@ Requests are hard-linked into `inbox/` under the executor command id the
 daemon passes in `_meta['nessie/command']`, so they land whole or not at all.
 Because the host deletes a request once it has acted, `commands/` is what makes
 a replay harmless: the first call for a command id records its outcome, and
-every later call with that id returns it and does nothing else.
+every later call with that id returns it and does nothing else. The host
+writes `session.json` at once, past its debounce, before it deletes a request
+it acted on: a read that finds the inbox empty never finds the state from
+before the request — a send's new turn, a queued message — and takes the last
+turn's end for the answer. `session_send` answers with the `turn` it was made
+at, so a caller that never read the session knows which turn is still owed.
 
 Reads use a `generation.byteOffset.seq` cursor and consume only
 newline-terminated lines. The bridge keeps a delivered cursor per session —

@@ -131,7 +131,7 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
           path: { description: 'A folder inside the root; the root itself when absent.', maxLength: PATH_MAX, type: 'string' },
           root: { enum: [...facts.rootNames], type: 'string' },
           task: { maxLength: TEXT_MAX, minLength: 1, type: 'string' },
-          title: { maxLength: TITLE_MAX, type: 'string' },
+          title: { maxLength: TITLE_MAX, minLength: 1, type: 'string' },
         },
         required: ['root', 'task'],
         type: 'object',
@@ -148,12 +148,16 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
   ]
 }
 
-const text = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined)
+/** An optional text argument, or nothing when it is blank: models fill optional fields with "". */
+const text = (value: unknown): string | undefined =>
+  (typeof value === 'string' && value.trim() !== '' ? value : undefined)
 
 /**
  * The bridge tool's own arguments, from the model's: `task` is the bridge's
- * `prompt`, a start without `agent` gets the default agent, and a key the
- * tool does not define is left behind rather than sent to be refused.
+ * `prompt`, a start without `agent` gets the default agent, a blank `path` or
+ * `title` is left out (the root itself, and a title from the task) rather
+ * than refused, and a key the tool does not define is left behind rather than
+ * sent to be refused.
  */
 export const codingBridgeArguments = (
   toolName: CodingSessionToolName,

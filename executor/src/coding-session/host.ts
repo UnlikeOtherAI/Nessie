@@ -258,6 +258,11 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       // Everything after a close is still consumed: a send there is reported ignored, not left waiting.
       for (const request of requests) {
         await handle(request)
+        // What the request changed — a new turn, a queued message — is on disk
+        // before it leaves the inbox, so a read that finds the inbox empty
+        // never finds the state from before it and takes the old turn's end
+        // for the answer.
+        await writer.flush()
         await removeRequest(paths, request.id)
       }
       if (!served) {

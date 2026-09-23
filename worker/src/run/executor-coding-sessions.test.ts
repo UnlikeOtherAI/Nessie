@@ -103,7 +103,55 @@ test('a start is the bridge’s session_start: task becomes prompt, and the agen
   assert.equal(result.success, true)
   assert.equal(result.toolCallRecordId, 'row-1')
   assert.match(result.output, new RegExp(`^Started coding session ${SESSION}\\. Call coding_session_wait next\\.`))
-  assert.match(result.output, /Output of the program `coding-sessions` on the person's machine/)
+  // A session's title is the first line of its task: the coding agent's banner, not a program's.
+  assert.match(result.output, /Output from the coding agent you supervise\./)
+  assert.doesNotMatch(result.output, /Output of the program/)
+})
+
+test('a blank path or title is left out of a start rather than sent to be refused', async () => {
+  const { sent, sessions } = harness(() => answer({ sessionId: SESSION, status: 'starting' }, 'row-1'))
+  await sessions.execute(CODING_SESSION_TOOL_NAMES.start, { path: ' ', root: 'nessie', task: 'Fix it.', title: '' }, 'call-1')
+  assert.deepEqual((sent[0]!.args as { arguments: unknown }).arguments, { agent: 'claude', prompt: 'Fix it.', root: 'nessie' })
+})
+
+test('a send in a run that never read the session still owes the next turn, from the turn the send reports', async () => {
+  let reads = 0
+  const { sessions } = harness((call) => {
+    if (call.toolName === 'coding_session_send') {
+      return answer({ queued: true, sessionId: SESSION, status: 'waiting_for_input', turn: 1 }, 'row-send')
+    }
+    reads += 1
+    // The host took the message; the turn it starts is not written yet, so
+    // the first read still shows turn 1's end and its summary.
+    const body = reads === 1
+      ? { agent: 'claude', lastResult: { permissionDenials: [], text: 'Old summary.' }, sessionId: SESSION, status: 'waiting_for_input', turn: 1 }
+      : { agent: 'claude', lastResult: { permissionDenials: [], text: 'Fixed.' }, sessionId: SESSION, status: 'waiting_for_input', turn: 2 }
+    return answer({ ...body, summary: { newEvents: 1, toolCounts: {} } }, `row-${reads}`)
+  })
+  await sessions.execute(CODING_SESSION_TOOL_NAMES.send, { message: 'Also add a test.', sessionId: SESSION }, 'call-a')
+  const waited = await sessions.execute(CODING_SESSION_TOOL_NAMES.wait, { sessionId: SESSION }, 'call-b')
+  assert.equal(reads, 2, 'turn 1’s end was not taken for the answer')
+  assert.match(waited.output, /"finalSummary":"Fixed\."/)
+  assert.doesNotMatch(waited.output, /Old summary/)
+})
+
+test('while the coding agent works, the thought-process line leads with what it is doing now', async () => {
+  let reads = 0
+  const progress: string[] = []
+  const { sessions } = harness((call) => {
+    reads += 1
+    const summary = { lastTool: { name: 'Bash', summary: 'pnpm test' }, newEvents: 2, toolCounts: { Bash: 1, Edit: 1 } }
+    const body = reads < 2
+      ? { agent: 'claude', sessionId: SESSION, status: 'working', summary, turn: 2 }
+      : { agent: 'claude', sessionId: SESSION, status: 'waiting_for_input', summary: { newEvents: 0, toolCounts: {} }, turn: 2 }
+    return answer(body, `row-${call.providerToolCallId}`)
+  })
+  await sessions.execute(CODING_SESSION_TOOL_NAMES.wait, { sessionId: SESSION }, 'call-c', {
+    onProgress: async (_toolName, line) => { progress.push(line) },
+  })
+  assert.equal(progress[0], 'Claude Code: Bash pnpm test — turn 2, 2 steps (Bash 1, Edit 1)')
+  // Once the turn ended, the status leads again.
+  assert.equal(progress.at(-1), 'Claude Code: waiting for input — turn 2, 2 steps (Bash 1, Edit 1)')
 })
 
 test('a wait reads every five seconds under the call’s own id first, and ends every later read’s row itself', async () => {

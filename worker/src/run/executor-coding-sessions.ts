@@ -140,9 +140,12 @@ export const createExecutorCodingSessions = (input: {
     if (!sessionId || body.replayed === true) return
     if (toolName === CODING_SESSION_TOOL_NAMES.start) owed.set(sessionId, 0)
     // A message to a working session folds into its running turn; to any
-    // other it starts the next one, which is the answer a wait must see.
-    if (toolName === CODING_SESSION_TOOL_NAMES.send && body.status !== 'working' && turns.has(sessionId)) {
-      owed.set(sessionId, turns.get(sessionId)!)
+    // other it starts the next one, which is the answer a wait must see. The
+    // send says the turn it was made at, so this holds in a run that never
+    // read the session before — the usual one, a person's reply.
+    if (toolName === CODING_SESSION_TOOL_NAMES.send) {
+      if (typeof body.turn === 'number') turns.set(sessionId, body.turn)
+      if (body.status !== 'working' && turns.has(sessionId)) owed.set(sessionId, turns.get(sessionId)!)
     }
     if (toolName === CODING_SESSION_TOOL_NAMES.close) owed.delete(sessionId)
   }
@@ -154,7 +157,7 @@ export const createExecutorCodingSessions = (input: {
     if (outcome.kind === 'expired') throw new ExecutorUnknownOutcomeError(outcome.toolCallRecordId)
     const parsed = parseBridgeResult(outcome.result)
     if (parsed.kind === 'answer') remember(toolName, parsed.body)
-    return { ...presentCodingCall(toolName, server, parsed, outcome.result), inputSummary: summarizeToolInput(args) }
+    return { ...presentCodingCall(toolName, parsed, outcome.result), inputSummary: summarizeToolInput(args) }
   }
 
   const wait = async (
