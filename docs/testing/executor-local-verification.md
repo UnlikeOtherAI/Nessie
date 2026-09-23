@@ -284,7 +284,9 @@ authoritative implementation and operator references.
 
 Assigning an agent to a board task writes a task event and human attention only.
 It does not create a run, executor binding, or coding session. Board watcher
-wakes do create a run, but likewise have no executor binding. The smallest
+wakes did create a run, but likewise had no executor binding; they are retired
+since 2026-09-23, and a `ticket_changed` trigger wakes an agent instead
+([board watchers §11](../plans/2026-09-06-board-watchers.md)). The smallest
 implementation should introduce an explicitly configured, entitlement-checked
 task-to-executor policy that creates the exact run-scoped coding binding in the
 same transaction as the assignment wake. It must retain the existing opaque

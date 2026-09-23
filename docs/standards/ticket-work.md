@@ -32,8 +32,12 @@ Each rule is tagged with the PR that first enforces it in code:
   run acting as the agent with its ticket tools, wakes that coalesce, the
   kickoff rebuilt from the record, the work thread's posting rule and event
   rows, `assignOnPickup`, teardown in the move and on disabling a trigger,
-  and the `wakesPerTicket` and `startsPerDay` limits. No machine does ticket
-  work yet: the agent reads, comments on and moves tickets.
+  and the `wakesPerTicket` and `startsPerDay` limits; and what the project
+  sees — the Triggers editor's ticket fields with refusals on their fields,
+  the column badge and column menu, the ticket's work chip and the card's
+  dot, the work thread's wake rows, read-only composer and Tickets fold — and
+  board watchers retired to people only. No machine does ticket work yet: the
+  agent reads, comments on and moves tickets.
 - **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
@@ -73,10 +77,11 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `RELEASED_TRIGGER_TYPES` equal — `workflow_trigger_create` offers exactly
   `WORKFLOW_TRIGGER_TYPES`, and the admin's `TriggerTypePicker` offers the
   released types it has an editor for. The picker serves the agent and the
-  workflow editors alike, so when it offers `ticket_changed`, it offers it
-  only for an agent target. The `agent-triggers` browser suite pins the
-  picker; `admin/test/trigger-type-unreleased.test.tsx` pins the labels and
-  the edit refusal.
+  workflow editors alike, so **(T1)** it offers `ticket_changed` only for an
+  agent target (`offerTicketChanged`), and `document_changed` nowhere. The
+  `agent-triggers` browser suite pins the picker;
+  `admin/test/trigger-type-unreleased.test.tsx` pins the labels, the
+  agent-only offer and `document_changed`'s edit refusal.
 - Taking a type off `UNRELEASED_TRIGGER_TYPES` is what releases it for
   agents. That happens in the PR that ships the type's typed configuration
   (its arm on the union), dispatch and editor (T1 for `ticket_changed`, T2
@@ -386,6 +391,79 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   agent with no person behind it that moves an unassigned ticket into
   in-progress takes it itself).
 
+## What the project sees, and where a person sets it up (T1)
+
+Everything a mover needs is on the ticket, the board and the work thread,
+readable by the project audience; none of it needs the owner-only Triggers
+routes, and none of it names a machine.
+
+- **Three reads, each on its own gate** (`packages/team-admin/src/ticket-work-view.ts`,
+  `api/src/routes/ticket-work.ts`, shapes in
+  `packages/schemas/src/ticket-work-view.ts`):
+  - `GET /api/tasks/:taskId/work`, behind the ticket's own read rule: each
+    trigger's newest record (`TicketWorkChipRecordSchema`: agent, status and
+    reason, who started it, last wake and its reason, wake n of
+    `limits.wakesPerTicket`) and the work thread **only for a viewer who may
+    open it** (`buildViewerThreadWhere`); a reader who may not gets the same
+    state and no door. It also carries `lastSkip`: the newest pickup skip in
+    `TICKET_WORK_NOTICE_SKIP_REASONS` (an agent's, a token's, a source's or
+    the platform's move, a non-editor's, the daily start limit) while nothing
+    newer happened under that trigger — *"Moved by an agent, so work did not
+    start…"* belongs on the ticket that did not start.
+  - `GET /api/projects/:projectId/boards/:boardId/ticket-work`, behind project
+    access: the columns an **enabled, active** ticket trigger starts work from
+    (what the dispatcher itself reads), the cards whose newest record is live
+    or failed at a limit, and `viewerCanCreateTriggers` — the Triggers
+    routes' own `requireOwner`, asked on the server.
+  - `GET /api/threads/:threadId/ticket-work`, behind the thread's own read
+    rule: whether it is a work thread (`findTicketWorkThread`) and whether the
+    viewer may write there (`canPostInTicketWorkThread`, the rule the message
+    route enforces).
+- **The ticket dialog's chip** (`TicketWorkChip`, first in the meta column):
+  *"CTO · working · started 14:05"*, who started it, *"Last woken 14:32: a
+  comment · wake 3 of 30"*, the reason it stopped or waits (*"Stopped: 30
+  wakes used. Move the ticket out of and back into a start-work column to
+  continue."*, *"Parked while the ticket is in review…"*), and "Open the work
+  thread" for its readers. The board card (`KanbanCard`) shows the agent's
+  avatar with a state dot (`TicketWorkCardDot`). Both re-read while work is
+  live, because work moves in the worker after the move has answered.
+- **The board column** says *"Moving here starts work: <agent>"* to everyone
+  (`ColumnStartsWorkBadge`). Its menu offers *"Start work with an agent…"* on
+  In progress and Review columns — the categories a pickup names by category —
+  only when `viewerCanCreateTriggers`, and opens the Triggers editor on a
+  ticket trigger for that board and column (`BoardStartWorkDialog`), on a
+  draft of its own so the Triggers page's unsent create never replaces it.
+- **The Triggers editor** offers "Ticket change" for an agent target only
+  (`TriggerTypePicker offerTicketChanged`). Its fields (`TicketTriggerFields`,
+  `ticket-trigger-form.ts`) narrow the channel list to live, ordinary, public
+  project channels and say why (`TICKET_TARGET_CHANNEL_HINT`); pick the board
+  and its columns (a new trigger starts from the board's In progress
+  columns, and a column an end rule covers cannot also start work); follow
+  kinds with the connected-board opt-in explained, and the mirrored board
+  named when there is one; end columns; both limits; and sectioned
+  instructions with a neutral example. It posts the typed config by column
+  id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its path
+  names** (`groupTicketRefusals`). A ticket trigger's page names its board
+  and columns (`useTicketTriggerFacts`) and says what each delivery decided
+  and why (`ticketDeliveryLine`: the skip sentence, or the wake reason).
+- **The work thread** renders each `metadata.ticketWorkEvent` row compactly
+  (`TicketWorkEventRow`: *"Woken: Ondrej commented"*, time, no author). A room
+  member who cannot edit the ticket's board gets `ChannelPostRefusal`'s line
+  in place of the composer — *"Comment on the ticket to give the agent more
+  information."* — with the ticket's link, before they type what the server
+  would refuse. In the agent's conversation list, threads whose record names
+  a ticket (`AgentConversationRecord.ticket`, from the thread's own
+  `{ taskId, triggerId }` metadata) fold under **Tickets**, closed unless the
+  one on screen is in it.
+- **Board watchers are people.** An agent recipient is refused with
+  `AGENT_WATCHERS_RETIRED` (*"Agents start work from the column menu…"*), the
+  Watchers editor offers no agent, and
+  `20260924000000_board_agent_watchers_to_ticket_triggers` turned every agent
+  row of a wakeable agent into a paused, disabled, follow-only trigger
+  ("Board watcher: <board>", no start-work columns and no instructions until
+  a person adds them), naming each row in a NOTICE line
+  ([board watchers §11](../plans/2026-09-06-board-watchers.md)).
+
 ## The machine owner's authority is read only by the standing-policy binder (from T4)
 
 - The author of a standing policy is never in the run's actor context. It
@@ -661,6 +739,24 @@ causes it**:
   lists only what the person asking can see, and the Designer's
   `agent_trigger_create` / `agent_trigger_update` resolve from names, refuse
   field by field and say back what they resolved.
+- `api/test/ticket-work-view-routes.test.ts`: the three reads against
+  Postgres — the chip's record, wake limit and thread only for its readers,
+  a skip said until work starts after it, the board's badges from enabled
+  triggers only and its dots, the owner gate, and the thread's posting rule.
+  `api/test/agent-conversations-postgres.test.ts`: a work thread's
+  conversation names its ticket. `api/test/board-agent-watchers-migration-postgres.test.ts`:
+  the watcher migration on seeded rows. `packages/team-admin/test/board-watchers.test.ts`
+  and `board-watch-notify.test.ts`: an agent recipient refused, a legacy agent
+  row never a recipient.
+- `admin/test/ticket-trigger-form.test.ts` and
+  `admin/test/trigger-type-unreleased.test.tsx`: what the editor posts is the
+  typed config the server parses, a refusal lands on its field, only a public
+  project channel is offered, Ticket change for an agent only.
 - `pnpm --filter @nessie/admin test:e2e:agent-triggers`: the real Triggers
-  editor offers the released types and neither new one, at 1280 and 390 px.
-  T1 extends it over each `ticket_changed` configuration state.
+  editor offers the released types, Ticket change for an agent and never
+  `document_changed`; a ticket trigger's form, a pickup refused on its field
+  and the typed create; the column badge, card dots and the column menu that
+  opens the editor prefilled; and a ticket trigger's page — at 1280 and
+  390 px. `test:e2e:task-dialog` shots the chip in each state and the card's
+  dot; `test:e2e:agent-conversations` walks the Tickets fold, the wake rows
+  and the read-only composer.
