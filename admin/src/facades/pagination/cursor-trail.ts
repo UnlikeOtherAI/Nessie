@@ -81,3 +81,14 @@ export const trailBackwardParams = (
   updated.delete(names.direction)
   return updated
 }
+
+/**
+ * The footer's count for a forward-only list. Such a list's pages are not all
+ * the same length — the server leaves out rows the viewer may not see, and
+ * reads only so many per request, so a page can be short or even empty while
+ * there is more — so the rows before this page cannot be counted from its
+ * number, and no "26–50" range is claimed. The page position is the footer's
+ * own "Page 2 of 3".
+ */
+export const trailPageLabel = (count: number): string =>
+  count === 0 ? 'None on this page' : count === 1 ? '1 on this page' : `${count} on this page`

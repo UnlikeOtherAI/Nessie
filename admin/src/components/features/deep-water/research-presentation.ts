@@ -56,6 +56,30 @@ export const researchStatusLine = (
     : 'The brief is being agreed with DeepWater.'
 }
 
+/**
+ * What one page of Knowledge › Research shows. The server reads a bounded
+ * number of rows per request and leaves out the ones this viewer may not see
+ * (nessie.md §7.1), so a page can come back short — even empty — while there is
+ * more further back: only the first page, empty with nothing further, means
+ * the viewer has no research yet.
+ */
+export type ResearchListPage =
+  | { kind: 'rows' }
+  | { kind: 'no_research' }
+  | { kind: 'nothing_here'; note: string }
+
+export const researchListPage = (page: { count: number; hasMore: boolean; index: number }): ResearchListPage => {
+  if (page.count > 0) return { kind: 'rows' }
+  if (page.hasMore) {
+    return {
+      kind: 'nothing_here',
+      note: 'Nothing to show on this page. Older research may be further back — choose Next to keep looking.',
+    }
+  }
+  if (page.index === 0) return { kind: 'no_research' }
+  return { kind: 'nothing_here', note: 'There’s no older research to show. Choose Previous to go back.' }
+}
+
 /** "Continue the brief" for the requester still agreeing it; "View brief" for everyone else. */
 export const briefDoorwayLabel = (run: Pick<DeepWaterResearchRunView, 'status' | 'viewer'>): string =>
   run.status === 'drafting' && run.viewer.canEdit ? 'Continue the brief' : 'View brief'

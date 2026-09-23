@@ -6,6 +6,7 @@ import {
   pagedListParamNames,
   trailBackwardParams,
   trailForwardParams,
+  trailPageLabel,
 } from '../src/facades/pagination/cursor-trail.js'
 
 /**
@@ -68,4 +69,11 @@ test('a prefixed list keeps its own trail, and the first page clears all of it',
   const reset = firstPageParams(params, prefixed)
   for (const key of ['runs_cursor', 'runs_page', 'runs_trail', 'runs_direction']) assert.equal(reset.get(key), null)
   assert.equal(reset.get('cursor'), 'other')
+})
+
+test('a forward-only list counts the rows on its page, never a range its short pages would make wrong', () => {
+  assert.equal(trailPageLabel(0), 'None on this page')
+  assert.equal(trailPageLabel(1), '1 on this page')
+  // Page two after a first page of seven is not "26–30": the page says only what it holds.
+  assert.equal(trailPageLabel(5), '5 on this page')
 })

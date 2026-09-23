@@ -111,8 +111,10 @@ export type DeepWaterResearchRunView = z.infer<typeof DeepWaterResearchRunViewSc
 
 /**
  * `GET …/research-runs?cursor&limit` — the runs this viewer may see, newest
- * first. Rows the viewer may not see are left out, so a page can be shorter
- * than `limit` only when it is the last; `total` is not counted.
+ * first. Rows the viewer may not see are left out, and each request reads a
+ * bounded number of rows, so a page can be shorter than `limit` — even empty —
+ * while `meta.hasMore` is true; `nextCursor` then carries on after the last row
+ * read. Only a page with `hasMore: false` is the last. `total` is not counted.
  */
 export const DeepWaterResearchRunListSchema = z
   .object({

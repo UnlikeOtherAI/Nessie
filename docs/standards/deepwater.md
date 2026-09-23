@@ -586,8 +586,14 @@ the screen it goes to that conversation, which opens the brief itself.
   `useResearchRunList` pages with `usePagedList`'s `backward: 'trail'`, which
   keeps the cursors already walked through in the address (`trail`,
   `cursor-trail.ts`), so Previous, Back and a reload land on the same page.
-  Once the list honours `direction=backward` and returns a `prevCursor`, the
-  trail goes and the list pages like every other.
+  The API reads a bounded number of rows per request, so a page can be short —
+  even empty — while `hasMore` is true: "No research yet" is only a first page
+  with nothing further (`researchListPage`); an empty page with more keeps its
+  pager and says older research may be further back, and a trail list's
+  footer counts the rows on its page ("7 on this page", `trailPageLabel`)
+  rather than a range its short pages would make wrong. Once the list honours
+  `direction=backward` and returns a `prevCursor`, the trail goes and the list
+  pages like every other.
 - **Nothing polls.** `useDeepWaterRunEvents`, mounted once in
   `AdminShellLayout`, turns each content-free `integration.run.updated` into an
   invalidation of that run's reads for every viewer scope and of every research

@@ -91,6 +91,8 @@ const listMeta = (list: DeepWaterResearchRunList) => list.meta
  * of any other shape is the list's error, never rows. The server keeps only
  * the rows this viewer may see, so it pages forwards only (`prevCursor` is
  * always null); Previous walks back along the cursors kept in the address.
+ * It reads a bounded number of rows per request, so a page can be short, or
+ * empty, while `hasMore` is true.
  */
 export const useResearchRunList = () => {
   const scope = useDeepWaterViewerScope()

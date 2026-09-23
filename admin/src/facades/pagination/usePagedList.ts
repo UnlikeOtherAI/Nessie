@@ -15,6 +15,7 @@ import {
   pagedListParamNames,
   trailBackwardParams,
   trailForwardParams,
+  trailPageLabel,
 } from './cursor-trail'
 
 /**
@@ -49,7 +50,9 @@ type UsePagedListOptions<TData, TItem> = {
    * the server backwards from its `prevCursor`. `trail` is for a list the
    * server can only page forwards — one it filters row by row for the viewer,
    * which returns no `prevCursor` — and keeps the cursors already walked
-   * through in the URL instead (`cursor-trail.ts`).
+   * through in the URL instead (`cursor-trail.ts`). Such a list's pages may be
+   * short, or empty, while `hasMore` is true, so its label counts the rows on
+   * the page rather than claiming a range.
    */
   backward?: 'server' | 'trail'
   /** Extract rows from an otherwise paged response. Arrays need no extractor. */
@@ -97,7 +100,7 @@ export type PagedList<T, TData = T[]> = {
   canNext: boolean
   canPrevious: boolean
   items: T[]
-  /** "26–50 of 134" — ready for `PaginationFooter`. */
+  /** "26–50 of 134" — ready for `PaginationFooter`; "7 on this page" for a `trail` list. */
   label: string
   meta: PaginationMeta | undefined
   onPageChange: (page: number) => void
@@ -267,7 +270,9 @@ export const usePagedList = <TItem, TData = TItem[]>({
     canNext: Boolean(meta?.hasMore),
     canPrevious: trailed ? page > 0 : Boolean(meta?.prevCursor) || isStalePage,
     items,
-    label: buildPageLabel(meta ?? {}, page * limit, items.length),
+    // A forward-only list's pages vary in length, so `page * limit` is not
+    // where this page starts: it says only how many rows it holds.
+    label: trailed ? trailPageLabel(items.length) : buildPageLabel(meta ?? {}, page * limit, items.length),
     meta,
     onPageChange,
     onPageSizeChange,

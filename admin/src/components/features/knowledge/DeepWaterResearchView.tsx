@@ -11,6 +11,7 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
   formatResearchDate,
+  researchListPage,
   researchName,
 } from '../deep-water/research-presentation'
 import { ResearchBriefHost, useResearchBriefDoorway } from '../deep-water/ResearchBriefHost'
@@ -29,6 +30,11 @@ import { KnowledgePane } from './KnowledgePane'
  * over this view (`?research=<runId>`); "New research" starts one whose result
  * comes back to the person's Personal Assistant conversation. The list stays
  * current through the shell's `integration.run.updated` handler.
+ *
+ * The server reads a bounded number of rows per request, so a page can be
+ * short — even empty — while there is more further back: the empty state is
+ * only the first page with nothing further, and an empty page with more keeps
+ * its pager and says so (`researchListPage`).
  */
 
 const PERSONAL_ORIGIN: DeepWaterBriefOriginRequest = { kind: 'personal' }
@@ -63,8 +69,9 @@ const ResearchList = () => {
         loadingLabel="Loading research…"
         query={list.query}
       >
-        {() =>
-          list.items.length === 0 && list.page === 0 ? (
+        {() => {
+          const shown = researchListPage({ count: list.items.length, hasMore: list.canNext, index: list.page })
+          return shown.kind === 'no_research' ? (
             <div className="mx-auto max-w-md px-6 py-16">
               <EmptyState title="No research yet">
                 Research you start here or from a conversation — and research an agent starts for you — appears
@@ -73,25 +80,31 @@ const ResearchList = () => {
             </div>
           ) : (
             <div className="mx-auto w-full max-w-3xl px-[var(--page-gutter)] pb-8 pt-4" data-testid="research-list">
-              <RowList label="Research">
-                {list.items.map((run) => (
-                  <Row
-                    data={{ 'data-research-run': run.id }}
-                    key={run.id}
-                    subtitle={rowSubtitle(run)}
-                    title={researchName(run)}
-                    trailing={(
-                      <Pill size="sm" tone={STATUS_TONE[run.status]} uppercase={false}>
-                        {STATUS_LABEL[run.status]}
-                      </Pill>
-                    )}
-                  >
-                    <div className="mt-2">
-                      <ResearchRunBody meUserId={me?.user.id ?? null} run={run} shownIn="elsewhere" />
-                    </div>
-                  </Row>
-                ))}
-              </RowList>
+              {shown.kind === 'nothing_here' ? (
+                <p className="py-6 text-sm text-[color:var(--tx2)]" data-testid="research-list-nothing-here">
+                  {shown.note}
+                </p>
+              ) : (
+                <RowList label="Research">
+                  {list.items.map((run) => (
+                    <Row
+                      data={{ 'data-research-run': run.id }}
+                      key={run.id}
+                      subtitle={rowSubtitle(run)}
+                      title={researchName(run)}
+                      trailing={(
+                        <Pill size="sm" tone={STATUS_TONE[run.status]} uppercase={false}>
+                          {STATUS_LABEL[run.status]}
+                        </Pill>
+                      )}
+                    >
+                      <div className="mt-2">
+                        <ResearchRunBody meUserId={me?.user.id ?? null} run={run} shownIn="elsewhere" />
+                      </div>
+                    </Row>
+                  ))}
+                </RowList>
+              )}
               <PaginationFooter
                 canNext={list.canNext}
                 canPrevious={list.canPrevious}
@@ -106,7 +119,7 @@ const ResearchList = () => {
               />
             </div>
           )
-        }
+        }}
       </QueryState>
     </KnowledgePane>
   )
