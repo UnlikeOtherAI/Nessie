@@ -50,7 +50,8 @@ const AudienceLine = ({
 export const TaskCommentsSection = ({ canComment, externalLink, projectId, taskId }: TaskCommentsSectionProps) => {
   const { token } = useAuthSession()
   const commentsQuery = useTaskComments(taskId)
-  const { attachmentViewer, openAttachment } = useAttachmentViewer(token)
+  // Rendered inside the ticket dialog (a modal): see TaskAttachmentsSection.
+  const { attachmentViewer, openAttachment } = useAttachmentViewer(token, { blocking: true })
   const listRef = useRef<HTMLUListElement>(null)
   const [justPosted, setJustPosted] = useState<string | null>(null)
   const { comments, total } = commentsQuery

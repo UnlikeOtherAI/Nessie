@@ -2,6 +2,7 @@ import { ApiClientError, ApiClientProvider, type ApiClient } from '@nessie/clien
 import { DndContext } from '@dnd-kit/core'
 import { SortableContext } from '@dnd-kit/sortable'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type {
@@ -13,6 +14,7 @@ import type {
 
 import { KanbanCard } from '../../src/components/features/projects/kanban/KanbanCard'
 import { TaskDialog } from '../../src/components/features/projects/kanban/TaskDialog'
+import { LocalBackProvider, useLocalBackSnapshot } from '../../src/navigation/LocalBackContext'
 import { BoardSettingsPage } from '../../src/pages/project/BoardSettingsPage'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
@@ -74,6 +76,7 @@ const PDF_ID = '40000000-0000-4000-8000-000000000002'
 const LINK_ID = '40000000-0000-4000-8000-000000000003'
 const FAILED_ID = '40000000-0000-4000-8000-000000000004'
 const REMOVED_ID = '40000000-0000-4000-8000-000000000005'
+const COMMENT_IMAGE_ID = '40000000-0000-4000-8000-000000000006'
 const T0 = '2026-09-20T09:00:00.000Z'
 type RemoverId = NonNullable<NonNullable<TaskAttachmentRecord['removed']>['byUserId']>
 
@@ -266,6 +269,17 @@ if (scenario === 'details') {
   // One comment of the viewer's own that stays in Nessie.
   comments[2] = { ...comments[2]!, external: null }
 }
+if (scenario === 'viewer-back') {
+  // A comment that carries a picture, so the viewer can be opened from both of
+  // the dialog's owners of it: the Attachments list and a comment's files.
+  comments[1] = {
+    ...comments[1]!,
+    attachments: [attachment(COMMENT_IMAGE_ID, 'render-trace.png', 'image/png', {
+      commentId: comments[1]!.id, hasThumbnail: true, height: 180, sizeBytes: '65536',
+      thumbnailPath: `/api/attachments/${COMMENT_IMAGE_ID}/thumbnail`, width: 320,
+    })],
+  }
+}
 
 const calls: { body?: unknown; method: string; path: string }[] = []
 Object.assign(window, { taskDialogCalls: calls })
@@ -403,6 +417,31 @@ const client = {
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
+/**
+ * What the phone header Back does: read the one local Back registry and invoke
+ * its active owner. Every overlay registers there with its kind's priority, so
+ * the runner can ask who owns Back and press it without a shell around the
+ * dialog.
+ */
+const BackProbe = () => {
+  const snapshot = useLocalBackSnapshot()
+  const latest = useRef(snapshot)
+  latest.current = snapshot
+  useEffect(() => {
+    Object.assign(window, {
+      taskDialogBack: {
+        active: () => latest.current?.active?.id ?? null,
+        press: () => {
+          const owner = latest.current?.active
+          owner?.onBack()
+          return owner?.id ?? null
+        },
+      },
+    })
+  }, [])
+  return null
+}
+
 const Scenario = () => {
   if (scenario === 'settings') {
     return (
@@ -451,9 +490,13 @@ createRoot(document.getElementById('root')!).render(
               ? `/projects/${PROJECT}/boards/${BOARD}/settings?tab=labels`
               : `/projects/${PROJECT}/board`]}
           >
-            <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
-              <Scenario />
-            </div>
+            {/* The shell's one Back registry, which every overlay registers with. */}
+            <LocalBackProvider>
+              <BackProbe />
+              <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
+                <Scenario />
+              </div>
+            </LocalBackProvider>
           </MemoryRouter>
         </AgentIdentityProvider>
       </ApiClientProvider>
