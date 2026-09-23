@@ -1,8 +1,10 @@
 import { Prisma, type ProductIntegrationRun } from '@prisma/client'
+import { z } from 'zod'
 import {
   DeepWaterBriefInputSchema,
   DeepWaterDeliveryBlockedReasonSchema,
   DeepWaterDisclosureSourcesSchema,
+  DeepWaterPendingActionErrorCodeSchema,
   DeepWaterReportKindSchema,
   DeepWaterRequesterIdentitySchema,
   DeepWaterScopeStateSchema,
@@ -27,12 +29,29 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * it crossed instead of rendering as something plausible.
  */
 /**
+ * The latest cancel of a launcher run sent through Ledger (`result_json.ledgerCancel`):
+ * `requested` when Nessie accepted it, `failed` with the reason when Ledger
+ * refused it or could not be asked. Latest wins; a confirmed cancel ends the run.
+ */
+export const DeepWaterLauncherLedgerCancelSchema = z.discriminatedUnion('state', [
+  z.object({ actionId: z.string().uuid(), state: z.literal('requested'), code: z.null(), at: z.string().min(1) }).strict(),
+  z.object({
+    actionId: z.string().uuid(),
+    state: z.literal('failed'),
+    code: DeepWaterPendingActionErrorCodeSchema,
+    at: z.string().min(1),
+  }).strict(),
+])
+export type DeepWaterLauncherLedgerCancel = z.infer<typeof DeepWaterLauncherLedgerCancelSchema>
+
+/**
  * A launcher run's own facts, from its `result_json` (Water plan amendments
  * N9.6) — whether its handoff recorded a start call, which decides how it can
- * be cancelled (`deepwater-legacy-cancel.ts`).
+ * be cancelled, and its latest cancel through Ledger (`deepwater-legacy-cancel.ts`).
  */
 export type DeepWaterLauncherFacts = {
   startRecorded: boolean
+  ledgerCancel: DeepWaterLauncherLedgerCancel | null
 }
 
 export type DeepWaterBriefRun = {
@@ -97,8 +116,11 @@ const parseLauncherFacts = (row: ProductIntegrationRun): DeepWaterLauncherFacts 
   const result = row.result !== null && typeof row.result === 'object' && !Array.isArray(row.result)
     ? row.result as Record<string, unknown>
     : {}
-  // The same test the cancel route makes under the row lock: the key's presence.
-  return { startRecorded: Object.hasOwn(result, 'startToolCallId') }
+  return {
+    // The same test the cancel route makes under the row lock: the key's presence.
+    startRecorded: Object.hasOwn(result, 'startToolCallId'),
+    ledgerCancel: result.ledgerCancel === undefined ? null : DeepWaterLauncherLedgerCancelSchema.parse(result.ledgerCancel),
+  }
 }
 
 const parseOriginKind = (value: string): DeepWaterOriginKind => {

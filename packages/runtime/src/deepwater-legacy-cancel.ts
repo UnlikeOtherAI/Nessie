@@ -1,6 +1,12 @@
 import { Prisma } from '@prisma/client'
 
-import type { DeepWaterBriefDb } from './deepwater-brief-run-record.js'
+import type { DeepWaterPendingActionErrorCode } from '@nessie/schemas'
+
+import {
+  DeepWaterLauncherLedgerCancelSchema,
+  type DeepWaterBriefDb,
+  type DeepWaterLauncherLedgerCancel,
+} from './deepwater-brief-run-record.js'
 import { recordDeepWaterLocalCancel, wasDeepWaterCancelAccepted } from './deepwater-local-cancel.js'
 import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
 
@@ -14,7 +20,10 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * - A run Ledger never received is cancelled here, locally: a `queued` run
  *   whose handoff never recorded a start call, or one parked in `needs_setup`.
  * - A run with a Ledger research id is cancelled through Ledger first; the
- *   worker records it with `recordLegacyDeepWaterCancel` once Ledger agrees.
+ *   worker records it with `recordLegacyDeepWaterCancel` once Ledger agrees,
+ *   or with `recordLegacyDeepWaterCancelFailure` when Ledger refused it or
+ *   could not be asked, so the run's view says why it is still open. The
+ *   latest such cancel is the run's `result_json.ledgerCancel` register.
  * - A `running` run with no research id may have a start in flight to Ledger
  *   at this moment, so nothing can safely cancel it: the handoff's own retry
  *   resolves it first.
@@ -65,6 +74,16 @@ export const deepWaterLauncherCancelRoute = (
   return 'not_cancellable'
 }
 
+/** Make this cancel the run's latest through Ledger. The caller holds the row lock. */
+const writeLedgerCancel = (tx: DeepWaterBriefDb, runId: string, value: DeepWaterLauncherLedgerCancel) =>
+  tx.$executeRaw(Prisma.sql`
+    UPDATE "product_integration_runs"
+    SET "result_json" = COALESCE("result_json", '{}'::jsonb)
+          || jsonb_build_object('ledgerCancel', CAST(${JSON.stringify(DeepWaterLauncherLedgerCancelSchema.parse(value))} AS jsonb)),
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = CAST(${runId} AS uuid)
+  `)
+
 /**
  * Decide how a launcher run is cancelled, under its row lock, and cancel it
  * here when Ledger never received it. `replay` when this actionId was already
@@ -79,9 +98,42 @@ export const beginLegacyDeepWaterCancel = async (
   if (!row) return null
   if (await wasDeepWaterCancelAccepted(tx, input.runId, input.actionId)) return 'replay'
   const route = deepWaterLauncherCancelRoute(row)
+  if (route === 'ledger') {
+    // This cancel is now the latest: an earlier one's failure no longer says
+    // why the run is open while this one is on its way.
+    await writeLedgerCancel(tx, input.runId, {
+      actionId: input.actionId, state: 'requested', code: null, at: new Date().toISOString(),
+    })
+  }
   if (route !== 'local') return route
   await recordDeepWaterLocalCancel(tx, { runId: input.runId, actionId: input.actionId })
   return 'local'
+}
+
+/**
+ * Ledger refused a launcher run's cancel, or could not be asked: record why on
+ * the run, so its view shows it, while it is still open and this cancel is
+ * still its latest (a newer one speaks for itself). True when recorded.
+ */
+export const recordLegacyDeepWaterCancelFailure = async (
+  tx: DeepWaterBriefDb,
+  input: { organizationId: string; runId: string; actionId: string; code: DeepWaterPendingActionErrorCode },
+): Promise<boolean> => {
+  const value = DeepWaterLauncherLedgerCancelSchema.parse({
+    actionId: input.actionId, state: 'failed', code: input.code, at: new Date().toISOString(),
+  })
+  const updated = await tx.$executeRaw(Prisma.sql`
+    UPDATE "product_integration_runs"
+    SET "result_json" = "result_json" || jsonb_build_object('ledgerCancel', CAST(${JSON.stringify(value)} AS jsonb)),
+        "updated_at" = CURRENT_TIMESTAMP
+    WHERE "id" = CAST(${input.runId} AS uuid)
+      AND "organization_id" = CAST(${input.organizationId} AS uuid)
+      AND "product_slug" = ${DEEP_WATER_PRODUCT_SLUG}
+      AND "uoa_identity" IS NULL
+      AND "status"::text IN (${Prisma.join([...OPEN_STATUSES])})
+      AND "result_json" -> 'ledgerCancel' ->> 'actionId' = ${input.actionId}
+  `)
+  return updated === 1
 }
 
 /**

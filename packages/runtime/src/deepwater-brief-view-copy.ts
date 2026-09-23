@@ -82,3 +82,17 @@ const PENDING_ACTION_ERROR: Record<DeepWaterPendingActionErrorCode, string> = {
 /** Why a person's last action on a brief did not go through (`pendingAction.error.message`). */
 export const deepWaterPendingActionErrorMessage = (code: DeepWaterPendingActionErrorCode): string =>
   PENDING_ACTION_ERROR[code]
+
+const CANCEL_FAILURE: Partial<Record<DeepWaterPendingActionErrorCode, string>> = {
+  unavailable: 'DeepWater couldn\'t be reached, so this research wasn\'t cancelled. Try again in a few minutes.',
+  identity_required: 'Your sign-in couldn\'t be confirmed, so this research wasn\'t cancelled. Sign in again, then try again.',
+  not_ready: 'DeepWater isn\'t ready for this team right now, so this research wasn\'t cancelled.',
+  forbidden: 'DeepWater didn\'t accept this cancel, so the research is still open.',
+}
+
+/**
+ * Why a cancel of a research that is still open did not go through
+ * (`cancelFailure.message`): whoever cancelled reads it on the run.
+ */
+export const deepWaterCancelFailureMessage = (code: DeepWaterPendingActionErrorCode): string =>
+  CANCEL_FAILURE[code] ?? 'DeepWater couldn\'t cancel this research, so it\'s still open. Try again.'

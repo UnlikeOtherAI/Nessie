@@ -93,6 +93,16 @@ export const DeepWaterResearchRunViewSchema = z
     /** Present only for a finished public report on research.deepwater.live. */
     publicUrl: z.string().refine(isDeepWaterPublicReportUrl).nullable(),
     failure: z.object({ code: z.string(), message: z.string() }).strict().nullable(),
+    /**
+     * The last cancel of this still-open research that did not go through —
+     * refused by DeepWater, or DeepWater could not be asked — so whoever
+     * cancelled sees why it is still open. Null once a newer cancel is in
+     * flight, and on every run that has ended.
+     */
+    cancelFailure: z
+      .object({ code: DeepWaterPendingActionErrorCodeSchema, message: z.string() })
+      .strict()
+      .nullable(),
     delivery: DeepWaterDeliveryViewSchema,
     viewer: DeepWaterResearchRunViewerSchema,
   })

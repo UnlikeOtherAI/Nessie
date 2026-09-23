@@ -20,7 +20,8 @@ import {
  * amendments-fable F3): a team owner or admin can clear any open research in
  * their team — a brief DeepWater has not named yet included — so a disable it
  * blocks always has a remedy; a cancel is answered once per actionId; and
- * whoever cancels is on the audit when DeepWater keeps no record of it.
+ * an owner's cancel, or one made here, is on the audit with its canceller —
+ * one sent through DeepWater as asked for until the worker has its answer.
  */
 
 const team = (fixture: BriefApiFixture) => ({ organizationId: fixture.ids.organization, teamId: fixture.ids.team })
@@ -28,9 +29,12 @@ const team = (fixture: BriefApiFixture) => ({ organizationId: fixture.ids.organi
 const cancel = (fixture: BriefApiFixture, runId: string, actionId: string = randomUUID()) =>
   fixture.request('POST', `${RUNS}/${runId}/cancel`, { actionId })
 
-const audits = (fixture: BriefApiFixture) => fixture.prisma.auditLog.findMany({
-  where: { organizationId: fixture.ids.organization, action: 'integration.research.cancelled' },
+const audits = (fixture: BriefApiFixture, action = 'integration.research.cancelled') => fixture.prisma.auditLog.findMany({
+  where: { organizationId: fixture.ids.organization, action },
 })
+
+/** A cancel sent through DeepWater is audited as asked for; the worker audits what DeepWater did. */
+const requested = (fixture: BriefApiFixture) => audits(fixture, 'integration.research.cancel_requested')
 
 const canCancel = async (fixture: BriefApiFixture, runId: string) =>
   ((await fixture.request('GET', `${RUNS}/${runId}`)).body.data?.viewer as { canCancel: boolean }).canCancel
@@ -80,6 +84,9 @@ withBriefApi('an owner\'s cancel of a named brief goes to DeepWater as the owner
   const job = (await fixture.briefJobs(runId)).find((row) => (row.payload.action as { kind: string }).kind === 'cancel')
   assert.deepEqual(job?.payload.actor, { userId: fixture.ids.owner, role: 'owner', identity: ownerIdentity })
   assert.equal(typeof job?.payload.acceptedAt, 'string', 'the retry window runs from acceptance')
+  const [asked] = await requested(fixture)
+  assert.deepEqual([asked?.actorId, (asked?.metadata as { via?: string } | null)?.via], [fixture.ids.owner, 'owner'])
+  assert.deepEqual(await audits(fixture), [], 'not cancelled until DeepWater answers')
 
   // The worker's research_cancel answer, as it applies it.
   const run = await fixture.prisma.productIntegrationRun.findUniqueOrThrow({ where: { id: runId } })
@@ -118,13 +125,14 @@ withBriefApi('a launcher run is cancelled through DeepWater once per action, wit
   const jobs = await fixture.briefJobs(launcher.id)
   assert.equal(jobs.length, 1)
   assert.deepEqual(jobs[0]?.payload.actor, { userId: fixture.ids.owner, role: 'owner', identity: ownerIdentity })
-  const [audit] = await audits(fixture)
+  const [audit] = await requested(fixture)
   assert.equal(audit?.actorId, fixture.ids.owner)
   assert.equal(audit?.resourceId, launcher.id)
   assert.equal((audit?.metadata as { via?: string } | null)?.via, 'launcher_ledger')
+  assert.deepEqual(await audits(fixture), [], 'not cancelled until DeepWater answers')
 
   const replay = await cancel(fixture, launcher.id, actionId)
   assert.equal(replay.statusCode, 200)
   assert.equal((await fixture.briefJobs(launcher.id)).length, 1, 'a replay enqueues nothing')
-  assert.equal((await audits(fixture)).length, 1)
+  assert.equal((await requested(fixture)).length, 1)
 })

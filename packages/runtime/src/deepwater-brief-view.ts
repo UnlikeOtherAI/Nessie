@@ -18,6 +18,7 @@ import { deepWaterLauncherCancelRoute } from './deepwater-legacy-cancel.js'
 import { isDeepWaterBriefOpening } from './deepwater-local-cancel.js'
 import {
   DEEP_WATER_NEEDS_OPERATOR_MESSAGE,
+  deepWaterCancelFailureMessage,
   deepWaterFailureSentence,
   deepWaterPendingActionErrorMessage,
   deepWaterPlannerFailureMessage,
@@ -155,6 +156,21 @@ const failureOf = (run: DeepWaterBriefRun): DeepWaterResearchRunView['failure'] 
   return { code, message: deepWaterFailureSentence(run.failureCode) }
 }
 
+/**
+ * The last cancel of a still-open run that did not go through: a brief's
+ * cancel action that ended in an error, or a launcher run's latest cancel
+ * through Ledger that failed. A newer action, or the run ending, clears it.
+ */
+const cancelFailureOf = (run: DeepWaterBriefRun): DeepWaterResearchRunView['cancelFailure'] => {
+  if (!OPEN_STATUSES.has(run.status)) return null
+  const action = run.scopeState?.pendingAction ?? null
+  const ledgerCancel = run.launcher?.ledgerCancel ?? null
+  const code = action !== null
+    ? (action.kind === 'cancel' ? action.error?.code ?? null : null)
+    : ledgerCancel?.state === 'failed' ? ledgerCancel.code : null
+  return code === null ? null : { code, message: deepWaterCancelFailureMessage(code) }
+}
+
 /** The research as a list row, the detail read or the card shows it. */
 export const toDeepWaterResearchRunView = (
   run: DeepWaterBriefRun,
@@ -190,6 +206,7 @@ export const toDeepWaterResearchRunView = (
     artifacts: delivered ? { report: run.reportFileId !== null, sources: run.sourcesFileId !== null } : null,
     publicUrl: run.publicUrl,
     failure: failureOf(run),
+    cancelFailure: cancelFailureOf(run),
     delivery: {
       state: delivered ? 'delivered' : run.deliveryBlockedReason !== null ? 'blocked' : 'pending',
       blockedReason: run.deliveryBlockedReason,

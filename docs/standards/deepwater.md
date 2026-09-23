@@ -456,12 +456,23 @@ connector, and the same projection applies every answer.
   read it (a non-reader is answered `{id, status}` only); the job signs as the
   owner with the owner's live identity and the `deep-water.owner-cancel`
   component, which Ledger checks against the owner's UOA team role — never as
-  the requester. The Nessie audit (`integration.research.cancelled`) names the
-  owner as the actor and the run by id — when their cancel of a brief or a
-  launcher run is accepted for Ledger, and for every cancel Nessie makes
-  itself (an unnamed brief, a launcher run Ledger never received), whoever
-  asked. Every cancel is answered once per `actionId`: a retried request whose
-  answer was lost gets 200 with the run as it now is.
+  the requester. The Nessie audit names the owner as the actor and the run by
+  id, and records what happened, never only what was asked: a cancel Nessie
+  makes itself (an unnamed brief, a launcher run Ledger never received) is
+  `integration.research.cancelled` at once, whoever asked; one sent through
+  Ledger (an owner's cancel of a brief, any launcher run's) is
+  `integration.research.cancel_requested` when accepted, and the worker writes
+  `integration.research.cancelled` with Ledger's answer
+  (`deepwater-cancel-outcome.ts`) — `success` once cancelled, `denied` when
+  Ledger refused (or the research had already ended), `error` when Ledger could
+  not be asked, including giving up after the 30-minute window. A cancel that
+  did not go through leaves the run open and says why in the view's
+  `cancelFailure` (the code in the brief dialog's vocabulary and plain words):
+  a brief's from its cancel action's error, a launcher run's from its
+  `result_json.ledgerCancel` register, which accepting a newer cancel resets to
+  `requested` and a late answer to an older one never overwrites. Every cancel
+  is answered once per `actionId`: a retried request whose answer was lost gets
+  200 with the run as it now is.
 - **Agents and briefs — the run binder** (`worker/src/run/deepwater-run-binder*.ts`)
   wraps every DeepWater call outside a launcher handoff turn.
   `research_scope_start` claims its run with `claimAgentOriginRun` before the

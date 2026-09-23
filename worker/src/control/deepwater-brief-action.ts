@@ -8,7 +8,6 @@ import {
   failUnstartedDeepWaterBrief,
   isPendingActionInFlight,
   readDeepWaterBriefRun,
-  recordLegacyDeepWaterCancel,
   refreshDeepWaterRunIdentity,
   revertDeepWaterLaunch,
   settleDeepWaterPersonAction,
@@ -33,6 +32,15 @@ import {
 } from '../run/deepwater-ledger-call.js'
 import { runDeepWaterTransaction, type DeepWaterAnnouncements } from './deepwater-announce.js'
 import { pendingActionErrorForLedger, revertsLaunch } from './deepwater-brief-action-errors.js'
+import {
+  DEEP_WATER_CANCEL_GAVE_UP,
+  DEEP_WATER_CANCEL_NOT_SENDABLE,
+  auditDeepWaterCancelOutcome,
+  deepWaterCancelOutcome,
+  finishLauncherCancel,
+  isAuditedDeepWaterCancel,
+  type DeepWaterCancelOutcome,
+} from './deepwater-cancel-outcome.js'
 import { ensureDeepWaterResearchCard } from './deepwater-messages.js'
 import type { DeepWaterWatchDeps } from './deepwater-watch.js'
 
@@ -240,29 +248,29 @@ const refuse = async (
   log(run, payload, `refused (${ledgerCode ?? errorCode})`)
 }
 
-/** A launcher run an owner is cancelling through Ledger (N9.6). */
-const cancelLauncherRun = async (
+/** Carry out Ledger's final answer to a brief's action. */
+const applyAnswerOf = async (
   deps: DeepWaterWatchDeps,
   run: DeepWaterBriefRun,
   payload: DeepWaterBriefActionJobPayload,
   answer: DeepWaterLedgerOutcome,
 ): Promise<void> => {
-  if (answer.outcome !== 'ok') {
-    console.error(`[deep-water] launcher run ${run.id}: Ledger did not cancel it (${answer.outcome})`)
-    return
+  switch (answer.outcome) {
+    case 'ok':
+      return applySuccess(deps, run, payload, answer.structured)
+    case 'refused':
+      return refuse(deps, run, payload, pendingActionErrorForLedger(answer.error), answer.error.code)
+    case 'identity':
+      // Nessie could not sign as this person, so nothing reached Ledger.
+      return refuse(deps, run, payload, 'identity_required', null)
+    case 'connector_missing':
+      return refuse(deps, run, payload, 'not_ready', null)
+    case 'malformed':
+      return malformed(deps, run, payload, answer.reason)
+    case 'unavailable':
+      // Transient answers are retried before this is reached.
+      throw new Error(`DeepWater brief action ${payload.actionId}: an unavailable answer reached the final step`)
   }
-  const parsed = LedgerResearchStatusDtoSchema.safeParse(answer.structured)
-  if (!parsed.success || parsed.data.status !== 'cancelled' || !run.externalRunId) {
-    console.error(`[deep-water] launcher run ${run.id}: Ledger's cancel answer left it open`)
-    return
-  }
-  const researchId = run.externalRunId
-  await runDeepWaterTransaction(deps, async (tx, announce) => {
-    if (await recordLegacyDeepWaterCancel(tx, { organizationId: run.organizationId, runId: run.id, researchId })) {
-      announce.run(run)
-    }
-  })
-  log(run, payload, 'launcher run cancelled through Ledger')
 }
 
 export const runDeepWaterBriefAction = async (
@@ -284,18 +292,23 @@ export const runDeepWaterBriefAction = async (
   const target = { organizationId: run.organizationId, runId: run.id, actionId: payload.actionId }
   // The window runs from when the action was accepted — never from the queue
   // row's `enqueued_at`, which every retry moves forward.
+  const audited = isAuditedDeepWaterCancel(run, payload)
+  /** End an action Ledger never answered, with what the run and the audit say. */
+  const endUnanswered = async (errorCode: 'unavailable' | 'rejected', outcome: DeepWaterCancelOutcome) => {
+    if (legacy) return finishLauncherCancel(deps, run, payload, outcome)
+    await settle(deps, run, target, errorCode)
+    if (audited) await auditDeepWaterCancelOutcome(deps, run, payload, outcome)
+  }
   if (Date.now() - Date.parse(payload.acceptedAt) >= DEEP_WATER_ACTION_RETRY_WINDOW_MS) {
-    if (!legacy) await settle(deps, run, target, 'unavailable')
     console.warn(`[deep-water] brief action ${payload.actionId} on run ${run.id} gave up: Ledger stayed unreachable`)
-    return
+    return endUnanswered('unavailable', DEEP_WATER_CANCEL_GAVE_UP)
   }
 
   const call = ledgerCall(run, payload.action)
   if (!call || !run.connectorId) {
     // The API accepts an action only on a run that can take it.
     console.error(`[deep-water] brief action ${payload.actionId}: run ${run.id} cannot take ${payload.action.kind}`)
-    if (!legacy) await settle(deps, run, target, 'rejected')
-    return
+    return endUnanswered('rejected', DEEP_WATER_CANCEL_NOT_SENDABLE)
   }
   const owner = payload.actor.role === 'owner'
   const answer = await callDeepWaterLedgerTool(deps, {
@@ -319,18 +332,8 @@ export const runDeepWaterBriefAction = async (
     log(run, payload, `Ledger unavailable (${reason}); retrying with the same call`)
     throw new QueueRetryAfterError(`DeepWater brief action ${payload.actionId} will retry`, retryDelayMs(job.attempt))
   }
-  if (legacy) return cancelLauncherRun(deps, run, payload, answer)
-  switch (answer.outcome) {
-    case 'ok':
-      return applySuccess(deps, run, payload, answer.structured)
-    case 'refused':
-      return refuse(deps, run, payload, pendingActionErrorForLedger(answer.error), answer.error.code)
-    case 'identity':
-      // Nessie could not sign as this person, so nothing reached Ledger.
-      return refuse(deps, run, payload, 'identity_required', null)
-    case 'connector_missing':
-      return refuse(deps, run, payload, 'not_ready', null)
-    case 'malformed':
-      return malformed(deps, run, payload, answer.reason)
-  }
+  if (legacy) return finishLauncherCancel(deps, run, payload, deepWaterCancelOutcome(answer))
+  await applyAnswerOf(deps, run, payload, answer)
+  // An owner's cancel is audited with Ledger's answer, once the run holds it.
+  if (audited) await auditDeepWaterCancelOutcome(deps, run, payload, deepWaterCancelOutcome(answer))
 }

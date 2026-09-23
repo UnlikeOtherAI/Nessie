@@ -56,8 +56,11 @@ import {
  *
  * Every cancel is answered once per actionId: a retried request whose first
  * answer was lost gets 200 with the run as it now is, whichever way the first
- * one went. Whoever cancels is recorded in the audit when DeepWater keeps no
- * record of it: an owner's cancel, and any cancel made here.
+ * one went. An owner's cancel and every cancel made here are audited with the
+ * canceller as the actor: a cancel made here as `integration.research.cancelled`
+ * at once, and one sent through DeepWater as `integration.research.cancel_requested`
+ * now — the worker records `integration.research.cancelled` with the real
+ * outcome once DeepWater has answered.
  */
 
 type RouteHelpers = {
@@ -128,10 +131,18 @@ export const registerResearchRunCancelRoute = (
 ): void => {
   const { prisma, realtimeHub, requireActorContext, requireUserActor } = deps
 
-  const audit = (actorContext: AuthorizedActionContext, run: DeepWaterBriefRun, via: string, actionId: string) =>
+  /** `cancelled` for a cancel made here; `cancel_requested` for one DeepWater has yet to answer. */
+  const audit = (
+    actorContext: AuthorizedActionContext,
+    run: DeepWaterBriefRun,
+    via: 'launcher_local' | 'unopened_local' | 'launcher_ledger' | 'owner',
+    actionId: string,
+  ) =>
     emitAuditEvent(prisma, {
       actorContext,
-      action: 'integration.research.cancelled',
+      action: via === 'launcher_ledger' || via === 'owner'
+        ? 'integration.research.cancel_requested'
+        : 'integration.research.cancelled',
       resourceType: 'product_integration_run',
       resourceId: run.id,
       outcome: 'success',
@@ -187,7 +198,7 @@ export const registerResearchRunCancelRoute = (
       console.info(`[deep-water] launcher run ${run.id} cancelled locally by ${viewer.userId}; DeepWater never received it`)
       await audit(input.actorContext, run, 'launcher_local', actionId)
     }
-    // Accepted for DeepWater: the owner is recorded now, as the one who asked.
+    // Accepted for DeepWater: the owner is recorded as asking; the worker records what DeepWater did.
     if (outcome === 'enqueued') await audit(input.actorContext, run, 'launcher_ledger', actionId)
     if (outcome !== 'replay') await publishDeepWaterRunUpdated(realtimeHub, run)
     return answer(reply, viewer, acting, run.id, outcome === 'replay' ? 200 : 202)

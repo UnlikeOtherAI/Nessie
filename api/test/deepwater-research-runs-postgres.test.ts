@@ -156,11 +156,13 @@ withBriefApi('an owner cancels someone else\'s research with their own identity,
   assert.deepEqual(Object.keys(cancel.body.data ?? {}).sort(), ['id', 'status'], 'the owner cannot read the brief')
   const job = (await fixture.briefJobs(runId)).find((row) => row.payload.actionId === cancelId)
   assert.deepEqual(job?.payload.actor, { userId: fixture.ids.owner, role: 'owner', identity: ownerIdentity })
+  // Asked for now; the worker audits what DeepWater did with it.
   const audit = await fixture.prisma.auditLog.findMany({
-    where: { organizationId: fixture.ids.organization, action: 'integration.research.cancelled' },
+    where: { organizationId: fixture.ids.organization, action: 'integration.research.cancel_requested' },
   })
   assert.equal(audit.length, 1)
   assert.equal(audit[0]?.resourceId, runId)
+  assert.equal(audit[0]?.actorId, fixture.ids.owner)
 })
 
 withBriefApi('research readiness names the one remedy for this person and team', async (fixture) => {

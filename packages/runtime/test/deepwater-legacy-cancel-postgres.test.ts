@@ -9,6 +9,7 @@ import { deepWaterViewerActions } from '../src/deepwater-brief-view.js'
 import {
   beginLegacyDeepWaterCancel,
   recordLegacyDeepWaterCancel,
+  recordLegacyDeepWaterCancelFailure,
 } from '../src/deepwater-legacy-cancel.js'
 import { createDeepWaterResearchRun } from '../src/integration-runs.js'
 import { insertBrief, seedBriefFixture, type BriefFixture } from './deepwater-brief-fixture.js'
@@ -134,6 +135,39 @@ withFixture('a launcher research is cancelled through Ledger, then recorded once
   assert.equal(await statusOf(fixture, running), 'cancelled')
   assert.equal(await record(researchId), false, 'a late job finds it already cancelled')
   assert.equal(await begin(fixture, running, enqueuedId), 'replay', 'still a replay once Ledger agreed')
+})
+
+withFixture('a cancel Ledger did not carry out is written on the run while it is still the latest', async (fixture) => {
+  const running = await launcher(fixture, { status: 'running', externalRunId: 'rs_legacyfailure1', startToolCallId: 'call_7' })
+  const read = async () => (await readDeepWaterBriefRun(fixture.prisma, {
+    organizationId: fixture.ids.organization,
+    runId: running,
+  }))?.launcher?.ledgerCancel ?? null
+  const fail = (actionId: string, code: 'forbidden' | 'unavailable') =>
+    fixture.prisma.$transaction((tx) => recordLegacyDeepWaterCancelFailure(tx, {
+      organizationId: fixture.ids.organization, runId: running, actionId, code,
+    }))
+
+  const first = randomUUID()
+  assert.equal(await begin(fixture, running, first), 'ledger')
+  assert.deepEqual({ ...await read(), at: undefined }, { actionId: first, state: 'requested', code: null, at: undefined })
+  assert.equal(await fail(first, 'forbidden'), true)
+  assert.deepEqual({ ...await read(), at: undefined }, { actionId: first, state: 'failed', code: 'forbidden', at: undefined })
+
+  // A newer cancel is the latest: the older one's late answer does not speak for it.
+  const second = randomUUID()
+  assert.equal(await begin(fixture, running, second), 'ledger')
+  assert.equal((await read())?.state, 'requested')
+  assert.equal(await fail(first, 'unavailable'), false)
+  assert.equal((await read())?.actionId, second)
+  assert.equal(await fail(second, 'unavailable'), true)
+  assert.equal((await read())?.code, 'unavailable')
+
+  // Nothing is written on a run that has ended.
+  await fixture.prisma.$transaction((tx) => recordLegacyDeepWaterCancel(tx, {
+    organizationId: fixture.ids.organization, runId: running, researchId: 'rs_legacyfailure1',
+  }))
+  assert.equal(await fail(second, 'forbidden'), false)
 })
 
 withFixture('a research brief is not a launcher run, and its research id finds it in its own team only', async (fixture) => {

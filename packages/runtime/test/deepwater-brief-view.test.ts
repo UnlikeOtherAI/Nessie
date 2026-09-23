@@ -143,7 +143,8 @@ test('only the requester edits a person\'s brief, and an owner may cancel any op
 })
 
 const launcherRun = (overrides: Partial<DeepWaterBriefRun> = {}): DeepWaterBriefRun => run({
-  scopeState: null, uoaIdentity: null, input: null, launcher: { startRecorded: true }, status: 'running', ...overrides,
+  scopeState: null, uoaIdentity: null, input: null, launcher: { startRecorded: true, ledgerCancel: null }, status: 'running',
+  ...overrides,
 })
 
 test('a launcher run is cancellable only by a team owner or admin while it is open', () => {
@@ -164,10 +165,39 @@ test('a launcher run offers Cancel only where the cancel route can act on it', (
   assert.equal(canCancel({ status: 'running', externalRunId: 'rs_1' }), true)
   // A start may be on its way to DeepWater right now: nothing may cancel it yet (N9.6).
   assert.equal(canCancel({ status: 'running', externalRunId: null }), false)
-  assert.equal(canCancel({ status: 'queued', externalRunId: null, launcher: { startRecorded: true } }), false)
+  assert.equal(canCancel({ status: 'queued', externalRunId: null, launcher: { startRecorded: true, ledgerCancel: null } }), false)
   // DeepWater never received it: cancelled here.
-  assert.equal(canCancel({ status: 'queued', externalRunId: null, launcher: { startRecorded: false } }), true)
+  assert.equal(canCancel({ status: 'queued', externalRunId: null, launcher: { startRecorded: false, ledgerCancel: null } }), true)
   assert.equal(canCancel({ status: 'needs_setup', externalRunId: null }), true)
+})
+
+test('a cancel that did not go through says why the research is still open, until a newer one or its end', () => {
+  // A brief: its cancel action ended in an error.
+  const refused = run({ status: 'running', scopeState: state({
+    pendingAction: action({ kind: 'cancel', error: { code: 'unavailable', at: SINCE } }),
+  }) })
+  const failure = toDeepWaterResearchRunView(refused, context).cancelFailure
+  assert.equal(failure?.code, 'unavailable')
+  assert.match(failure?.message ?? '', /wasn't cancelled/)
+  assert.doesNotMatch(failure?.message ?? '', /ledger|mcp|scope|_/i)
+  // A cancel still in flight, or another action's error, says nothing about cancelling.
+  const inFlight = run({ status: 'running', scopeState: state({ pendingAction: action({ kind: 'cancel' }) }) })
+  assert.equal(toDeepWaterResearchRunView(inFlight, context).cancelFailure, null)
+  const replyError = run({ scopeState: state({ pendingAction: action({ error: { code: 'busy', at: SINCE } }) }) })
+  assert.equal(toDeepWaterResearchRunView(replyError, context).cancelFailure, null)
+
+  // A launcher run: its latest cancel through DeepWater failed.
+  const failed = { actionId: ACTION, state: 'failed', code: 'forbidden', at: SINCE } as const
+  const launcher = launcherRun({ externalRunId: 'rs_1', launcher: { startRecorded: true, ledgerCancel: failed } })
+  assert.deepEqual(toDeepWaterResearchRunView(launcher, context).cancelFailure, {
+    code: 'forbidden', message: 'DeepWater didn\'t accept this cancel, so the research is still open.',
+  })
+  const requested = { actionId: ACTION, state: 'requested', code: null, at: SINCE } as const
+  const retrying = launcherRun({ externalRunId: 'rs_1', launcher: { startRecorded: true, ledgerCancel: requested } })
+  assert.equal(toDeepWaterResearchRunView(retrying, context).cancelFailure, null)
+  // Once the run has ended, an old failure is not a reason for anything.
+  const ended = launcherRun({ status: 'completed', launcher: { startRecorded: true, ledgerCancel: failed } })
+  assert.equal(toDeepWaterResearchRunView(ended, context).cancelFailure, null)
 })
 
 test('a brief DeepWater may be opening offers no Cancel until it opened or its opening ended', () => {
