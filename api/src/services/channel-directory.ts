@@ -220,3 +220,45 @@ export const readChannelForViewer = async (
     visibility: 'protected',
   }
 }
+
+/**
+ * Autocomplete over channel names and descriptions. Standard protected rooms
+ * may return only their limited directory card; direct/system conversations
+ * enter the candidate set only when the caller participates in them.
+ */
+export const searchChannelsForViewer = async (
+  prisma: PrismaClient,
+  viewer: ChannelDirectoryViewer,
+  input: { limit?: number; query: string },
+): Promise<ChannelDirectoryEntry[]> => {
+  const query = input.query.trim()
+  if (query.length < 2) return []
+  const channels = await prisma.channel.findMany({
+    where: {
+      archivedAt: null,
+      deletedAt: null,
+      organizationId: viewer.organizationId,
+      AND: [
+        {
+          OR: [
+            { label: { contains: query, mode: 'insensitive' } },
+            { description: { contains: query, mode: 'insensitive' } },
+          ],
+        },
+        {
+          OR: [
+            { type: 'standard', systemChannelType: null },
+            { members: { some: { userId: viewer.userId } } },
+          ],
+        },
+      ],
+    },
+    orderBy: [{ label: 'asc' }, { id: 'asc' }],
+    select: { id: true },
+    take: Math.min(input.limit ?? 20, 50),
+  })
+  const entries = await Promise.all(
+    channels.map((channel) => readChannelForViewer(prisma, viewer, channel.id)),
+  )
+  return entries.filter((entry): entry is ChannelDirectoryEntry => entry !== null)
+}

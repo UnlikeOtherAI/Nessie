@@ -9,14 +9,14 @@ type SearchModeToggleProps = {
 
 const options: ReadonlyArray<TabBarItem<GlobalSearchMode>> = [
   {
-    label: 'Text',
-    title: 'Text searches channels, people, projects, messages, and knowledge.',
-    value: 'text',
+    label: 'Full text',
+    title: 'Full text finds the words you entered across every searchable section.',
+    value: 'fulltext',
   },
   {
     label: 'Semantic',
     title:
-      'Semantic searches memory and knowledge by meaning. Messages stay in Text mode.',
+      'Semantic keeps exact matches and adds meaning-based message, ticket, document, and memory matches.',
     value: 'semantic',
   },
 ]

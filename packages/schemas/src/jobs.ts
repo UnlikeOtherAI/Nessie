@@ -400,6 +400,26 @@ export const MessageEmbedJobPayloadSchema = z.object({
 })
 export type MessageEmbedJobPayload = z.infer<typeof MessageEmbedJobPayloadSchema>
 
+// Canonical ticket indexing. A task's title/purpose/detail are one semantic
+// document; the expected hash prevents a delayed job from projecting an older
+// edit over the current ticket.
+export const TASK_EMBED_TOPIC = 'task.embed'
+
+export const TaskEmbedOriginSchema = z.object({
+  userId: z.string().uuid(),
+  uoaIdentity: UoaSessionIdentitySchema,
+})
+export type TaskEmbedOrigin = z.infer<typeof TaskEmbedOriginSchema>
+
+export const TaskEmbedJobPayloadSchema = z.object({
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+  embeddingModel: NonEmptyStringSchema,
+  organizationId: z.string().uuid(),
+  origin: TaskEmbedOriginSchema.optional(),
+  taskId: TaskIdSchema,
+})
+export type TaskEmbedJobPayload = z.infer<typeof TaskEmbedJobPayloadSchema>
+
 // The embedding model for knowledge page chunks is not pinned here: the worker
 // (chunk embedding) and the api (query embedding) both read
 // `ModelClient.embeddingModel`, so the two sides agree because they resolve the

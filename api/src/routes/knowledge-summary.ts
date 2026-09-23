@@ -3,7 +3,7 @@ import { attributionFromActorContext } from '@nessie/runtime'
 import { SearchSummaryBodySchema, type SearchSummaryResponse } from '../contracts/knowledge-base.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { getQueryEmbedding } from '../services/knowledge-query-embedding.js'
+import { getQueryEmbedding } from '../services/search-query-embedding.js'
 import { buildSummaryPassages, synthesizeSummary } from '../services/knowledge-summary.js'
 import {
   createKnowledgeAccess,

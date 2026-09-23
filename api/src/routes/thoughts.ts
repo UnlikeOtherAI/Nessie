@@ -7,12 +7,14 @@ import {
   RecordThoughtRecallSignalBodySchema,
   SearchThoughtsBodySchema,
 } from '@nessie/schemas'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { checkThoughtAudienceAccess } from '../services/thought-audience-access.js'
 import {
   resolveThoughtCaptureAudience,
   resolveThoughtOutputAudience,
 } from '../services/thought-audiences.js'
+import { getQueryEmbedding } from '../services/search-query-embedding.js'
 import type { RouteDeps } from './types.js'
 
 export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
@@ -129,8 +131,18 @@ export const registerThoughtRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     }
 
     try {
+      const queryEmbedding = body.mode === 'lexical'
+        ? undefined
+        : await getQueryEmbedding(
+            deps.sharedModelClient,
+            body.query,
+            attributionFromActorContext(actorContext, {
+              systemComponent: 'memory-search',
+            }),
+          )
       const results = await ts.search({
         query: body.query,
+        ...(queryEmbedding !== undefined ? { queryEmbedding } : {}),
         organizationId: actorContext.tenant.organizationId,
         userId: actorContext.actor.actorId,
         outputAudienceType: outputAudience.audience.audienceType,

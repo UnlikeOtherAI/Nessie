@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import { type AuthorizedActionContext, ProjectIdSchema, type TaskStatus, TaskStatusSchema } from '@nessie/schemas'
+import { attributionFromActorContext } from '@nessie/runtime'
 import { publishTaskUpdated, TicketSearchCursorError } from '@nessie/team-admin'
 import {
   ArchiveDoneTasksBodySchema,
@@ -31,6 +32,7 @@ import {
   updateTask,
 } from '../services/tasks.js'
 import { sendTaskActivityError } from './task-activity-gate.js'
+import { getQueryEmbedding } from '../services/search-query-embedding.js'
 import type { RouteDeps } from './types.js'
 
 
@@ -83,6 +85,18 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
     requireUserActor,
     listAccessibleProjectIds,
   } = deps
+
+  const taskEmbeddingFor = (actorContext: AuthorizedActionContext) => {
+    const model = deps.sharedModelClient?.embeddingModel
+    if (!model) return undefined
+    const uoaIdentity = actorContext.actionContext.uoaIdentity
+    return {
+      model,
+      ...(uoaIdentity && actorContext.actor.actorType === 'user'
+        ? { origin: { userId: actorContext.actor.actorId, uoaIdentity } }
+        : {}),
+    }
+  }
 
   // The REST task mutations say so, as the checklist routes and the worker do:
   // content-free, on the organisation scope, and the refetch is the check.
@@ -185,6 +199,16 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
 
     let tasks
     try {
+      const mode = query.mode ?? 'fulltext'
+      const queryEmbedding = mode === 'semantic'
+        ? await getQueryEmbedding(
+            deps.sharedModelClient,
+            query.query,
+            attributionFromActorContext(actorContext, {
+              systemComponent: 'global-search',
+            }),
+          )
+        : null
       tasks = await searchTasksForUser(
         prisma,
         actorContext.tenant.organizationId,
@@ -198,6 +222,11 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
         deps.authSecret,
         actorContext.actor.actorId,
         actorContext.actionContext.uoaIdentity,
+        {
+          embeddingModel: deps.sharedModelClient?.embeddingModel ?? null,
+          mode,
+          queryEmbedding,
+        },
       )
     } catch (error) {
       if (error instanceof TicketSearchCursorError) {
@@ -267,6 +296,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       ownerUserId: body.ownerUserId,
       labelIds: body.labelIds,
       attachmentIds: body.attachmentIds,
+      embedding: taskEmbeddingFor(actorContext),
     })
 
     if ('error' in result) {
@@ -446,6 +476,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       organizationId: actorContext.tenant.organizationId,
       fields,
       actorId: actorContext.actor.actorId,
+      embedding: taskEmbeddingFor(actorContext),
     }, deps.encryptionKeyRing)
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply

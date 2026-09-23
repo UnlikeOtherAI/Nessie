@@ -3,7 +3,11 @@ import test from 'node:test'
 
 import { PrismaClient } from '@prisma/client'
 
-import { readChannelForViewer, readChannelRoster } from '../src/services/channel-directory.js'
+import {
+  readChannelForViewer,
+  readChannelRoster,
+  searchChannelsForViewer,
+} from '../src/services/channel-directory.js'
 import { joinPublicChannel, listChannelsForUser } from '../src/services/channels.js'
 
 /**
@@ -297,6 +301,47 @@ dbTest('GET /api/channels excludes a protected room from non-members, admins inc
     const asAdmin = await listed(adminUserId, true)
     assert.ok(!asAdmin.includes(protectedChannelId), 'not even for an admin')
     assert.ok(!asAdmin.includes(dmChannelId), 'and never somebody else\'s DM')
+  })
+})
+
+// ─── Explicit autocomplete ─────────────────────────────────────────────────
+
+dbTest('channel autocomplete discovers protected rooms but never private conversations', async () => {
+  await withDb(async (prisma) => {
+    const protectedHits = await searchChannelsForViewer(
+      prisma,
+      viewer(outsiderUserId),
+      { query: `prot-${suite}` },
+    )
+    assert.equal(protectedHits.length, 1)
+    assert.equal(protectedHits[0]?.access, 'limited')
+    assert.equal(protectedHits[0]?.access === 'limited' && protectedHits[0].id, protectedChannelId)
+
+    assert.deepEqual(
+      await searchChannelsForViewer(prisma, viewer(outsiderUserId), { query: `dm-${suite}` }),
+      [],
+      'another person\'s direct message must not be discoverable',
+    )
+    const participantHits = await searchChannelsForViewer(
+      prisma,
+      viewer(memberUserId),
+      { query: `dm-${suite}` },
+    )
+    assert.equal(participantHits[0]?.access, 'full')
+    assert.equal(
+      participantHits[0]?.access === 'full' && participantHits[0].channel.id,
+      dmChannelId,
+    )
+
+    assert.deepEqual(
+      await searchChannelsForViewer(
+        prisma,
+        { isOrganizationAdmin: true, organizationId: projectId, userId: adminUserId },
+        { query: `prot-${suite}` },
+      ),
+      [],
+      'search never crosses the organisation boundary',
+    )
   })
 })
 
