@@ -138,7 +138,11 @@ nothing in it may be a secret or an instruction addressed to the model.
   one `[Name](/agents/<id>)` row per agent with its rooms as channel links,
   and the trigger as `[Name](/agents/triggers/<id>)` beside the agent it
   fires and the room it posts into. The persona names the link each
-  `projectId`, `agentId` and `triggerId` is read from.
+  `projectId`, `agentId` and `triggerId` is read from, and says a
+  `/agents/triggers/…` link is never an agent's. `channel_create` then dropped
+  its `channelId=` line, and `project_list`, `team_create`,
+  `agent_trigger_list` and `agent_trigger_update` link their projects and
+  triggers too; a team, which has no page, keeps `"Name" (teamId=<id>)`.
 - **An executor grant is confirmed from a card, not a link (F6).**
   `executor_agent_grant_prepare` answered with
   `/agents/executors?accessChange=<id>#confirmationToken=<token>`. The secret

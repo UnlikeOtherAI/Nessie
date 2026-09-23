@@ -59,7 +59,15 @@ test('an agent that works a board lives in one of that project\'s channels', () 
 // F9 took `agentId=` out of agent_create's output, so a later call finds the
 // id in the link. The model is told where; it is not left to guess.
 test('the ids later calls need are named as the links\' last segments', () => {
-  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/… link agent_create or agent_list returned/)
+  assert.match(prose, /the agentId that agent_bind_channel, agent_update, agent_trigger_create or executor_agent_grant_prepare takes is the last path segment of the \/agents\/<id> link agent_create or agent_list returned/)
+})
+
+// A trigger's link is `/agents/triggers/<id>`, which "an /agents/… link" also
+// describes; agent_trigger_create's result prints it before the agent's. A
+// model reading that rule literally took the trigger's id as the agentId.
+test('a trigger link is never read as an agent\'s', () => {
+  assert.match(prose, /\/agents\/<id> link agent_create or agent_list returned \(a \/agents\/triggers\/… link is a trigger, never an agent\)/)
+  assert.doesNotMatch(prose, /agentId[^.]*the last path segment of the \/agents\/… link/)
 })
 
 // project_create, agent_list and agent_trigger_create stopped printing

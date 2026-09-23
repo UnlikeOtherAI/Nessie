@@ -9,7 +9,7 @@ import {
 } from '@nessie/team-admin'
 
 import { runAgentUpdateTool } from '../../src/run/pa-tools/agent-config.js'
-import { runAgentTriggerUpdateTool } from '../../src/run/pa-tools/agent-lifecycle.js'
+import { runAgentTriggerListTool, runAgentTriggerUpdateTool } from '../../src/run/pa-tools/agent-lifecycle.js'
 import {
   runAgentBindChannelTool,
   runAgentCreateTool,
@@ -205,7 +205,7 @@ runDatabaseTest('the Designer stands up a project and a channel in its team', as
     projectId,
     teamId: team.teamId,
   })
-  const channelId = idFrom(channelResult.outputPreview, 'channelId')
+  const channelId = idFromLink(channelResult.outputPreview, 'channels')
 
   const channel = await prisma.channel.findUniqueOrThrow({
     where: { id: channelId },
@@ -233,10 +233,13 @@ runDatabaseTest('the Designer stands up a project and a channel in its team', as
   )
 
   // The resolving read finds the project and its owning team, so names become
-  // the ids the next write takes.
+  // the ids the next write takes: the project's from its link, the team's
+  // beside its name, since a team has no page to link.
   const listed = await runProjectListTool(context, { query: 'marketing' })
-  assert.match(listed.outputPreview, new RegExp(`projectId=${projectId}`))
-  assert.match(listed.outputPreview, new RegExp(`teamId=${team.teamId}`))
+  assert.equal(idFromLink(listed.outputPreview, 'projects'), projectId)
+  assert.match(listed.outputPreview, /^- \[Marketing\]\(\/projects\/[0-9a-f-]{36}\) \| teams: /m)
+  assert.equal(idFrom(listed.outputPreview, 'teamId'), team.teamId)
+  assert.doesNotMatch(listed.outputPreview, /projectId=/)
 
   // The mirroring claim, asserted: the same input through the function the
   // route calls produces the same row shape.
@@ -323,7 +326,7 @@ runDatabaseTest('a plain member creates a project and a channel in it; team_crea
     projectId: memberProjectId,
     teamId: team.teamId,
   })
-  const channelId = idFrom(channelResult.outputPreview, 'channelId')
+  const channelId = idFromLink(channelResult.outputPreview, 'channels')
   const channel = await prisma.channel.findUniqueOrThrow({
     where: { id: channelId },
     select: { visibility: true },
@@ -360,6 +363,30 @@ runDatabaseTest('channel_create refuses a team the caller has no standing in', a
   assert.equal(
     await prisma.channel.count({ where: { teamId: strangeTeam.id } }),
     channelsBefore,
+  )
+})
+
+// A team has no page to link, so it keeps its teamId beside its name; the
+// project it lands in is a link, and nothing tells the model what to do next.
+runDatabaseTest('team_create names the team and links the project it is in', async (t) => {
+  const prisma = new PrismaClient()
+  const team = await seed(prisma)
+  t.after(() => cleanup(prisma, team).then(() => prisma.$disconnect()))
+  const context = buildContext(prisma, team, team.ownerId)
+
+  const result = await runTeamCreateTool(context, { name: 'Campaigns', projectId: team.projectId })
+  const created = await prisma.team.findFirstOrThrow({
+    where: { name: 'Campaigns', projectId: team.projectId },
+    select: { id: true },
+  })
+  const { name: projectName } = await prisma.project.findUniqueOrThrow({
+    where: { id: team.projectId },
+    select: { name: true },
+  })
+  assert.equal(
+    result.outputPreview,
+    `Created team "Campaigns" (teamId=${created.id}) in [${projectName}](/projects/${team.projectId})\n`
+    + 'You are its only member and its owner — nobody else was added.',
   )
 })
 
@@ -419,7 +446,7 @@ runDatabaseTest('project_list is scoped to the caller and their organisation', a
   )
 
   const asOwner = await runProjectListTool(ownerContext, {})
-  assert.match(asOwner.outputPreview, new RegExp(`projectId=${ownerProject}`))
+  assert.match(asOwner.outputPreview, new RegExp(`\\(/projects/${ownerProject}\\)`))
   assert.ok(
     !asOwner.outputPreview.includes(team.otherProjectId),
     'never another organisation',
@@ -468,7 +495,7 @@ runDatabaseTest('agent_create and agent_bind_channel hand back links, not ids', 
     projectId: idFromLink(projectResult.outputPreview, 'projects'),
     teamId: team.teamId,
   })
-  const channelId = idFrom(channelResult.outputPreview, 'channelId')
+  const channelId = idFromLink(channelResult.outputPreview, 'channels')
   const teamResult = await runAgentCreateTool(context, { name: 'Night Shift' })
   assert.match(teamResult.outputPreview, /^Lives in: nowhere yet — add it to any channel\.$/m)
   const teamAgentId = /\/agents\/([0-9a-f-]{36})\)/.exec(teamResult.outputPreview)?.[1]
@@ -513,17 +540,24 @@ runDatabaseTest('project_create, agent_list and agent_trigger_create hand back l
     realtimeTransport: { publishWs: async () => undefined },
   } as unknown as BuiltinToolRuntimeContext
 
-  // project_create → channel_create, with the projectId from the link.
+  // project_create → channel_create, with the projectId from the link and the
+  // teamId from the result too — never only from the call's own arguments,
+  // which a compacted conversation may no longer hold.
   const projectResult = await runProjectCreateTool(context, { name: 'Night work', teamId: team.teamId })
   const projectId = idFromLink(projectResult.outputPreview, 'projects')
-  assert.equal(projectResult.outputPreview.split('\n')[0], `Created project [Night work](/projects/${projectId})`)
-  assert.doesNotMatch(projectResult.outputPreview, /projectId=|teamId=/)
+  const { name: teamName } = await prisma.team.findUniqueOrThrow({ where: { id: team.teamId }, select: { name: true } })
+  assert.equal(
+    projectResult.outputPreview.split('\n')[0],
+    `Created project [Night work](/projects/${projectId}) in team "${teamName}" (teamId=${team.teamId})`,
+  )
+  assert.doesNotMatch(projectResult.outputPreview, /projectId=/)
   const channelResult = await runChannelCreateTool(context, {
     label: 'Night desk',
     projectId,
-    teamId: team.teamId,
+    teamId: idFrom(projectResult.outputPreview, 'teamId'),
   })
-  const channelId = idFrom(channelResult.outputPreview, 'channelId')
+  const channelId = idFromLink(channelResult.outputPreview, 'channels')
+  assert.doesNotMatch(channelResult.outputPreview, /channelId=|projectId=/)
   const channel = await prisma.channel.findUniqueOrThrow({
     where: { id: channelId },
     select: { label: true, projectId: true },
@@ -560,9 +594,20 @@ runDatabaseTest('project_create, agent_list and agent_trigger_create hand back l
     `Created manual trigger [Night sweep](/agents/triggers/${trigger.id}) for [Night Watch](/agents/${agent.id})\n`
     + `status=active | posts into [#${channel.label}](/channels/${channelId})`,
   )
-  await runAgentTriggerUpdateTool(context, { enabled: false, triggerId: idFromLink(armed.outputPreview, 'agents/triggers') })
+  // agent_trigger_list names the same trigger by the same link.
+  const triggers = await runAgentTriggerListTool(context, { agentId: idFromLink(row, 'agents') })
+  assert.equal(
+    triggers.outputPreview,
+    `- [Night sweep](/agents/triggers/${trigger.id}) | type=manual | status=active | enabled=true`,
+  )
+  const paused = await runAgentTriggerUpdateTool(context, {
+    enabled: false,
+    triggerId: idFromLink(triggers.outputPreview, 'agents/triggers'),
+  })
+  assert.equal(paused.outputPreview, `Updated [Night sweep](/agents/triggers/${trigger.id}) | status=paused | enabled=false`)
   assert.equal(
     (await prisma.agentTrigger.findUniqueOrThrow({ where: { id: trigger.id }, select: { enabled: true } })).enabled,
     false,
   )
 })
+

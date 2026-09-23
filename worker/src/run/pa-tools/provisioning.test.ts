@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { loadAgentToolCatalog } from '@nessie/team-admin'
 
+import { createConsumedSourceSink } from '../execute/disclosure-basis.js'
 import { PEER_PROJECT_TOOL_IDS, resolveProjectDelegatedToolIds } from '../execute/run-setup.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import {
@@ -160,13 +161,16 @@ test('channel_create makes the acting user the owner of a channel in the run tea
   assert.deepEqual(created[0]?.members, {
     create: { userId: USER_ID, role: 'owner' },
   })
-  assert.match(result.outputPreview, /channelId=4f7d1c00-0e64-4d10-a517-0d0b69c1d009/)
   assert.match(result.outputPreview, /Nessie \/ Core/)
-  // A link the Designer can hand over as it is, beside the id the next call takes.
+  // A link the Designer can hand over as it is; the id the next call takes is
+  // its last segment, so no raw `channelId=` beside it, and no instruction
+  // addressed to the model.
   assert.match(
     result.outputPreview,
     /\[#[^\]]+\]\(\/channels\/4f7d1c00-0e64-4d10-a517-0d0b69c1d009\)/,
   )
+  assert.doesNotMatch(result.outputPreview, /channelId=|agent_bind_channel/)
+  assert.match(result.outputPreview, /^slug=release-planning \| visibility=protected$/m)
 })
 
 test('agent_create refuses a tool policy that grants an explicit-grant tool', async () => {
@@ -631,7 +635,7 @@ test('agent_trigger_create stamps launchOrigin with the creator and their UOA te
         }),
       },
       // The room the trigger posts into, named in the output.
-      channel: { findUnique: async () => ({ label: 'ops', type: 'standard', visibility: 'public' }) },
+      channel: { findFirst: async () => ({ id: TARGET_CHANNEL_ID, label: 'ops', type: 'standard', visibility: 'public' }) },
       team: { findFirst: async () => ({ id: TEAM_ID }) },
       agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
       thread: { findFirst: async () => ({ id: THREAD_ID }) },
@@ -708,7 +712,7 @@ test('agent_trigger_create links a trigger without a name by its type', async ()
         visibility: 'team',
       }),
     },
-    channel: { findUnique: async () => ({ label: 'ops', type: 'standard', visibility: 'public' }) },
+    channel: { findFirst: async () => ({ id: TARGET_CHANNEL_ID, label: 'ops', type: 'standard', visibility: 'public' }) },
     agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
     thread: { findFirst: async () => ({ id: THREAD_ID }) },
     agentTrigger: {
@@ -747,6 +751,90 @@ test('agent_trigger_create links a trigger without a name by its type', async ()
   )
 })
 
+// `createAgentTrigger` checks only that the agent is bound to the room, and
+// resolves a thread's room server-side; nothing there asks whether the caller
+// can see it. So the room's name is read through the caller's own channel
+// visibility: an owner outside a private room gets a link without its name and
+// no stamp, and a room they are in is named and stamped as agent_list would.
+test('agent_trigger_create names, and stamps, only a room the caller can see', async () => {
+  const run = async (room: { id: string; label: string; type: string; visibility: string } | null) => {
+    const sink = createConsumedSourceSink()
+    const lookups: unknown[] = []
+    const context = {
+      ...buildContext('owner', {
+        agent: {
+          count: async () => 1,
+          findUnique: async () => ({
+            agentKind: 'shared',
+            id: AGENT_ID,
+            name: 'Hardware Watch',
+            organizationId: ORG_ID,
+            systemSlug: null,
+            visibility: 'team',
+          }),
+        },
+        channel: {
+          findFirst: async (input: { where: unknown }) => {
+            lookups.push(input.where)
+            return room
+          },
+        },
+        agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
+        // Only a thread is named; its room is resolved server-side.
+        thread: {
+          findFirst: async () => ({ id: THREAD_ID }),
+          findUnique: async () => ({ channelId: TARGET_CHANNEL_ID }),
+        },
+        agentTrigger: {
+          create: async (input: { data: Record<string, unknown> }) => ({
+            agentId: AGENT_ID,
+            config: input.data.config,
+            createdAt: new Date('2026-01-01T00:00:00Z'),
+            description: null,
+            enabled: true,
+            id: '4f7d1c00-0e64-4d10-a517-0d0b69c1d014',
+            lastFiredAt: null,
+            name: null,
+            nextRunAt: null,
+            status: 'active',
+            targetChannelId: TARGET_CHANNEL_ID,
+            targetThreadId: THREAD_ID,
+            type: 'manual',
+            updatedAt: new Date('2026-01-01T00:00:00Z'),
+            workflowInstallationId: null,
+          }),
+        },
+      }),
+      consumedSources: sink,
+    } as BuiltinToolRuntimeContext
+    const result = await runAgentTriggerCreateTool(context, {
+      agentId: AGENT_ID,
+      config: { prompt: 'Do the thing' },
+      targetThreadId: THREAD_ID,
+      type: 'manual',
+    })
+    return { detail: result.outputPreview.split('\n')[1], lookups, scopes: sink.list() }
+  }
+
+  const unseen = await run(null)
+  assert.equal(unseen.detail, `status=active | posts into [#channel](/channels/${TARGET_CHANNEL_ID})`)
+  assert.deepEqual(unseen.scopes, [], 'a room the caller cannot see stamps nothing')
+  assert.deepEqual(unseen.lookups, [{
+    AND: [
+      {
+        OR: [{ visibility: 'public' }, { members: { some: { userId: USER_ID } } }],
+        deletedAt: null,
+        organizationId: ORG_ID,
+      },
+      { id: TARGET_CHANNEL_ID },
+    ],
+  }])
+
+  const seen = await run({ id: TARGET_CHANNEL_ID, label: 'leadership', type: 'standard', visibility: 'protected' })
+  assert.equal(seen.detail, `status=active | posts into [#leadership](/channels/${TARGET_CHANNEL_ID})`)
+  assert.deepEqual(seen.scopes, [{ scopeId: TARGET_CHANNEL_ID, scopeType: 'channel' }])
+})
+
 test('agent_trigger_create keeps a caller-supplied launchOrigin out of the stored config', async () => {
   const created: Array<Record<string, unknown>> = []
   const context = buildContext('owner', {
@@ -761,7 +849,7 @@ test('agent_trigger_create keeps a caller-supplied launchOrigin out of the store
         visibility: 'team',
       }),
     },
-    channel: { findUnique: async () => ({ label: 'ops', type: 'standard', visibility: 'public' }) },
+    channel: { findFirst: async () => ({ id: TARGET_CHANNEL_ID, label: 'ops', type: 'standard', visibility: 'public' }) },
     agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
     thread: { findFirst: async () => ({ id: THREAD_ID }) },
     agentTrigger: {

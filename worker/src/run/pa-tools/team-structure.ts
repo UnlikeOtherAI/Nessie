@@ -32,6 +32,14 @@ import { formatProjectMarkdownLink, formatSection } from './tool-output.js'
  * Neither write announces itself to the organisation or adds anybody else.
  */
 
+/**
+ * A team as these tools name it. A team has no admin page of its own, so it
+ * cannot be a link; its teamId, which `channel_create` takes, stays beside the
+ * name — the one raw id these outputs still print.
+ */
+const formatTeamRef = (team: { id: string; name: string }): string =>
+  `"${team.name}" (teamId=${team.id})`
+
 const ProjectListInputSchema = z.object({
   query: z
     .string()
@@ -102,14 +110,15 @@ export const runProjectListTool = async (
     )
   })
 
+  // Each project is a link, as project_create's is: its last segment is the
+  // projectId a later call takes. A team has no page to link, so it keeps
+  // beside its name the teamId channel_create takes.
   const lines = matches.map((project) => {
     const projectTeams = teams.filter((team) => (team.projectIds ?? []).includes(project.id))
     const teamText = projectTeams.length === 0
       ? 'no teams yet — a channel needs one'
-      : projectTeams
-        .map((team) => `"${team.name}" (teamId=${team.id})`)
-        .join(', ')
-    return `- "${project.name}" | projectId=${project.id} | teams: ${teamText}`
+      : projectTeams.map(formatTeamRef).join(', ')
+    return `- ${formatProjectMarkdownLink(project)} | teams: ${teamText}`
   })
 
   const empty = needle
@@ -152,14 +161,20 @@ export const runProjectCreateTool = async (
 
   // Data a person can be handed as it is, like agent_create's: a raw
   // `projectId=<uuid>` is copied into the reply as it stands. The id a later
-  // call takes (channel_create, team_create) is the link's last segment, and
-  // the teamId is the one this call was given. Not creating a second channel
-  // unasked is a rule in the tool's description and the Designer's prompt,
-  // not an instruction inside its result.
+  // call takes (channel_create, team_create) is the link's last segment. The
+  // team stays in the result too, with the teamId channel_create takes, so
+  // that call never depends on the model still holding this call's arguments.
+  // Not creating a second channel unasked is a rule in the tool's description
+  // and the Designer's prompt, not an instruction inside its result.
+  const team = await context.prisma.team.findUnique({
+    where: { id: args.teamId },
+    select: { id: true, name: true },
+  })
   return {
     inputSummary: `name="${args.name}" teamId=${args.teamId}`,
     outputPreview: [
-      `Created project ${formatProjectMarkdownLink(project)}`,
+      `Created project ${formatProjectMarkdownLink(project)}`
+      + ` in team ${formatTeamRef(team ?? { id: args.teamId, name: 'team' })}`,
       'You are its only member — nobody else was added. Anyone you add later has the same rights in it as you.',
       'It already has its own #general channel.',
     ].join('\n'),
@@ -202,13 +217,20 @@ export const runTeamCreateTool = async (
     throw new Error('Project not found. Resolve it with project_list first.')
   }
 
+  // The project as a link, the team by name with the teamId channel_create
+  // takes; what to do with it is the tool description's to say. The project's
+  // name is directory material, stamped as project_list stamps it.
+  const project = await context.prisma.project.findUnique({
+    where: { id: team.projectId },
+    select: { id: true, name: true },
+  })
+  recordProjectDirectoryRead(context, member, [team.projectId])
   return {
     inputSummary: `name="${args.name}" projectId=${args.projectId}`,
     outputPreview: [
-      `Created team "${team.name}" in projectId=${team.projectId}`,
-      `teamId=${team.id}`,
+      `Created team ${formatTeamRef(team)} in `
+      + formatProjectMarkdownLink(project ?? { id: team.projectId, name: 'project' }),
       'You are its only member and its owner — nobody else was added.',
-      'Pass this teamId to channel_create to put a channel in this project.',
     ].join('\n'),
     toolName: 'team_create',
   }

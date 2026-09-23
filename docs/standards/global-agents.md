@@ -186,28 +186,43 @@ file is the rule**.
   which renders both placements — the unplaced one a researcher, whose job
   needs no room, with no `#` anywhere on its card.
 - **The Designer hands a person links, and its tools hand it data.**
-  `agent_create`, `agent_bind_channel`, `agent_list`, `project_create` and
-  `agent_trigger_create` answer with markdown links — `[CTO](/agents/<id>)`,
-  `[#sales](/channels/<id>)`, `[Marketing](/projects/<id>)`,
-  `[Daily digest](/agents/triggers/<id>)`, built by the `format…MarkdownLink`
-  helpers in `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none
-  (reason: "…")`, never `agentId=`/`channelId=`/`projectId=`/`triggerId=`
-  pairs or an instruction addressed to the model. It relayed both verbatim:
-  the person read UUIDs and "give them this reason word for word". A later
-  call takes the id from the link's last segment, and the model is told so —
-  in the Designer's prompt and in each of those tools' own descriptions —
-  rather than left to guess; every tool that takes one of those ids takes it
-  exactly as before. Real-row tests parse the id out of a link and make the
-  next call with it: `agent_create` → `agent_bind_channel`, `project_create`
-  → `channel_create`, `agent_list` → `agent_update` and
-  `agent_trigger_create` → `agent_trigger_update`
-  (`worker/test/db/designer-team-structure.test.ts`). `project_create`'s
-  "no second channel unless asked" is its description's rule and the
-  prompt's, no longer a line in its result. `agent_bind_channel` and
+  `agent_create`, `agent_bind_channel`, `agent_list`, `channel_create`,
+  `project_create`, `project_list`, `team_create`, `agent_trigger_create`,
+  `agent_trigger_list` and `agent_trigger_update` answer with markdown links —
+  `[CTO](/agents/<id>)`, `[#sales](/channels/<id>)`,
+  `[Marketing](/projects/<id>)`, `[Daily digest](/agents/triggers/<id>)`,
+  built by the `format…MarkdownLink` helpers in
+  `worker/src/run/pa-tools/tool-output.ts` — and `portrait: none (reason:
+  "…")`, never `agentId=`/`channelId=`/`projectId=`/`triggerId=` pairs or an
+  instruction addressed to the model. It relayed both verbatim: the person
+  read UUIDs and "give them this reason word for word". A later call takes the
+  id from the link's last segment, and the model is told so — in the
+  Designer's prompt and in each of those tools' own descriptions — rather than
+  left to guess; every tool that takes one of those ids takes it exactly as
+  before. A trigger's `/agents/triggers/<id>` also reads as "an `/agents/…`
+  link", and `agent_trigger_create` prints it before the agent's, so the
+  prompt and the descriptions name the agent's as `/agents/<id>` and say a
+  trigger link is never an agent's. A team has no page to link, so
+  `project_create`, `project_list` and `team_create` name it as
+  `"Core" (teamId=<id>)` — the one raw id they still print, because
+  `channel_create` takes it — and `project_create` keeps it in its result so
+  that call never depends on the model still holding its own arguments.
+  Real-row tests parse the id out of a result and make the next call with it:
+  `agent_create` → `agent_bind_channel`, `project_create` → `channel_create`
+  (project and team both read from the result), `agent_list` →
+  `agent_update`, and `agent_trigger_create` → `agent_trigger_list` →
+  `agent_trigger_update` (`worker/test/db/designer-team-structure.test.ts`).
+  `project_create`'s "no second channel unless asked" (its description's rule
+  and the prompt's) and `channel_create`'s next steps (its description's) are
+  no longer lines in their results. `agent_bind_channel` and
   `agent_trigger_create` read the names they link, so each stamps those names
-  exactly as `agent_list` stamps them. `channel_create` answers with the new
-  room's link beside the `channelId=` its follow-up calls take, and
-  `agent_avatar_generate` reports a pinned style as
+  exactly as `agent_list` stamps them; `agent_trigger_create` reads the room's
+  through the caller's own `buildVisibleChannelWhere`, because
+  `createAgentTrigger` checks only the agent's binding and resolves a thread's
+  room itself — an owner outside a private room gets
+  `[#channel](/channels/<id>)` and no stamp. `agent_trigger_delete`,
+  `agent_unbind_channel` and the `channel_list`/`channel_find` reads still
+  print raw ids. `agent_avatar_generate` reports a pinned style as
   `style: pinned at the <scope> level; the requested "…" was not applied`
   rather than "Say so". Quoting the portrait reason, reporting a pinned style
   and never showing a raw id are rules in the Designer's own prompt, where

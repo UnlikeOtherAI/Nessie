@@ -31,7 +31,7 @@ import { z } from 'zod'
 import { fileServiceFor } from '../file-service.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { requireOwnerMember, resolveActingMember } from './access.js'
+import { buildVisibleChannelWhere, requireOwnerMember, resolveActingMember } from './access.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
 import {
   formatAgentMarkdownLink,
@@ -59,8 +59,10 @@ import {
  * through them, so there is deliberately no sink call on those two rather than
  * a no-op one. `agent_bind_channel` and `agent_trigger_create` link the room
  * (and the agent) they name, and those names are read, so they stamp exactly
- * as `agent_list` stamps the same names. The ids themselves had to come from a
- * read that did stamp: `agent_list` here, or `channel_find`/`channel_list`.
+ * as `agent_list` stamps the same names — and, like its labels, a room's name
+ * is read only through the caller's own channel visibility. The ids themselves
+ * had to come from a read that did stamp: `agent_list` here, or
+ * `channel_find`/`channel_list`.
  */
 
 // Whether this deployment signs Ledger calls is read once, exactly as
@@ -121,14 +123,16 @@ export const runChannelCreateTool = async (
     throw new Error('That team does not belong to this organisation.')
   }
 
-  // The link is what the person is handed; the ids stay for the calls that
-  // follow (agent_bind_channel), exactly as agent_create's link carries its id.
+  // The link is what the person is handed, and it carries the id the calls
+  // that follow take (agent_bind_channel), exactly as agent_create's does: a
+  // raw `channelId=<uuid>` beside it was copied into the reply as it stood.
+  // What to do next is the tool description's to say, not the result's.
   return {
     inputSummary: `label="${args.label}"`,
     outputPreview: [
       `Created ${describeChannel(channel)}: ${formatChannelMarkdownLink(channel)}`,
-      `channelId=${channel.id} | slug=${channel.slug ?? ''} | visibility=${channel.visibility}`,
-      `You are its owner. Bind an agent with agent_bind_channel, or invite people from the channel page.`,
+      `slug=${channel.slug ?? ''} | visibility=${channel.visibility}`,
+      'You are its owner.',
     ].join('\n'),
     toolName: 'channel_create',
   }
@@ -543,25 +547,31 @@ export const runAgentTriggerCreateTool = async (
   // model hands on as they are — a raw `triggerId=`/`channelId=` is copied
   // into the reply as it stands. Each id a later call takes is its link's
   // last segment.
-  // Both names were reached through the caller's own standing (the agent
-  // check above, the binding the target resolved through), so they stamp as
-  // agent_list and agent_bind_channel stamp them.
+  // The agent's name was reached through the caller's own standing (the
+  // access check above), so it stamps as agent_list stamps it. The room's was
+  // not: `createAgentTrigger` checks only that the agent is bound there, and
+  // resolves a thread's room server-side. So the label is read through the
+  // caller's own channel visibility, exactly as agent_list's labels are; a
+  // room they cannot see is linked without its name and stamps nothing.
   const [target, room] = await Promise.all([
     context.prisma.agent.findUnique({
       where: { id: agentId },
       select: { name: true, visibility: true },
     }),
     trigger.targetChannelId
-      ? context.prisma.channel.findUnique({
-        where: { id: trigger.targetChannelId },
-        select: { label: true, type: true, visibility: true },
+      ? context.prisma.channel.findFirst({
+        where: {
+          AND: [
+            buildVisibleChannelWhere(member.organizationId, member.userId),
+            { id: trigger.targetChannelId },
+          ],
+        },
+        select: { id: true, label: true, type: true, visibility: true },
       })
       : null,
   ])
   if (target) recordVisibleAgentRead(context, [{ id: agentId, visibility: target.visibility }])
-  if (room && trigger.targetChannelId) {
-    recordChannelDirectoryRead(context, [{ ...room, id: trigger.targetChannelId }])
-  }
+  if (room) recordChannelDirectoryRead(context, [room])
   const triggerLink = formatTriggerMarkdownLink({
     id: trigger.id,
     name: trigger.name ?? `${trigger.type} trigger`,

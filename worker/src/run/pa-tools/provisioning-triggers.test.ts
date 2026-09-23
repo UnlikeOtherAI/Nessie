@@ -38,7 +38,7 @@ const makeContext = (
       }),
     },
     // The room each trigger posts into, which its output links.
-    channel: { findUnique: async () => ({ label: 'releases', type: 'standard', visibility: 'public' }) },
+    channel: { findFirst: async () => ({ id: CHANNEL_ID, label: 'releases', type: 'standard', visibility: 'public' }) },
     agentBinding: { findFirst: async () => ({ id: 'binding-1' }) },
     agentTrigger: {
       create: async ({ data }: { data: Record<string, unknown> }) => {
