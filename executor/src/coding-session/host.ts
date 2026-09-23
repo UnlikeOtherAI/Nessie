@@ -142,7 +142,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
   let driver: AgentDriver | undefined
   let retiring = false
   let superseded = false
-  let pendingInterrupt: { at: number; reason?: string } | undefined
+  /** An interrupt still waiting for its turn to end, and which turn that is. */
+  let pendingInterrupt: { at: number; turn: number; reason?: string } | undefined
   const prepare = async (): Promise<AgentDriver> => {
     if (driver) return driver
     if (!await lock.stillOurs()) throw new AgentStartError('host_superseded')
@@ -195,7 +196,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       else update({ status: 'closed', reason: undefined, turnStartedAt: undefined })
     } else if (request.kind === 'interrupt') {
       await driver?.interrupt()
-      if (driver?.busy()) pendingInterrupt ??= { at: Date.now() }
+      if (driver?.busy()) pendingInterrupt ??= { at: Date.now(), turn: state.turn }
     } else if (state.status === 'closed' || state.status === 'failed') {
       emit({ kind: 'system', subtype: 'ignored', reason: state.status })
     } else if (request.kind === 'start' && state.turn > 0) {
@@ -226,7 +227,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     const now = Date.now()
     const limitMs = loaded.config.maxTurnMinutes * 60_000
     if (pendingInterrupt) {
-      if (!driver?.busy()) {
+      // A new turn is not the one interrupted; a follow-up folded into that one is.
+      if (!driver?.busy() || state.turn !== pendingInterrupt.turn) {
         pendingInterrupt = undefined
       } else if (now - pendingInterrupt.at > Math.min(INTERRUPT_GRACE_MS, limitMs)) {
         const { reason } = pendingInterrupt
@@ -240,7 +242,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     if (driver?.busy() && state.turnStartedAt && now - Date.parse(state.turnStartedAt) > limitMs) {
       emit({ kind: 'system', subtype: 'limit', reason: 'max_turn_minutes' })
       update({ turnStartedAt: undefined })
-      pendingInterrupt = { at: now, reason: 'max_turn_minutes' }
+      pendingInterrupt = { at: now, turn: state.turn, reason: 'max_turn_minutes' }
       await driver.interrupt('max_turn_minutes')
     } else if (driver?.running() && !driver.busy()
       && now - Date.parse(state.updatedAt) > loaded.config.idleMinutes * 60_000) {
