@@ -1,4 +1,4 @@
-import { codingHostSpawnPending } from './host-spawn.js'
+import { codingHostSpawnFailed, codingHostSpawnPending } from './host-spawn.js'
 import {
   encodeEventCursor,
   parseEventCursor,
@@ -19,7 +19,9 @@ import type { CodingSessionEvent, CodingSessionMeta, CodingSessionState, CodingS
  * session has exactly one owner, so that is the per-owner cursor), which lets
  * the model poll without carrying a cursor of its own. Status is derived at
  * read time: a session still marked working whose host has stopped
- * heartbeating is reported `interrupted` with reason `host_lost`.
+ * heartbeating is reported `interrupted` with reason `host_lost`, and one whose
+ * requests no host could be started for reads `host_failed_to_start` —
+ * `failed` before its first turn, `interrupted` (and resumable) after.
  */
 export const CODING_STATUS_MAX_BYTES = 8 * 1024
 
@@ -42,6 +44,10 @@ export const deriveCodingStatus = async (
   const hostStarting = !hostLive && await codingHostSpawnPending(paths)
   const inboxPending = (await listRequests(paths)).length
   const base = { hostLive, hostStarting, inboxPending }
+  if (state?.status !== 'closed' && state?.status !== 'failed' && inboxPending > 0 && !hostLive && !hostStarting
+    && await codingHostSpawnFailed(paths)) {
+    return { ...base, status: !state || state.turn === 0 ? 'failed' : 'interrupted', reason: 'host_failed_to_start' }
+  }
   if (!state) {
     // No host has written anything yet. With nothing asked for and nothing starting, it never will.
     if (!hostLive && !hostStarting && inboxPending === 0) return { ...base, status: 'interrupted', reason: 'host_lost' }
@@ -65,6 +71,8 @@ const pendingNotice = (
     notes.push(derived.inboxPending > 0
       ? 'The session host stopped; a new one is starting to deliver your request.'
       : 'The session host stopped. Send a message to resume the session.')
+  } else if (derived.reason === 'host_failed_to_start') {
+    notes.push('No session host could start to deliver the request (see its host log); a new message tries again.')
   } else if (derived.hostStarting) {
     notes.push('The session host is starting.')
   }

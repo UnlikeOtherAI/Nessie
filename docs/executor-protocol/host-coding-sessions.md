@@ -66,11 +66,24 @@ heartbeatAt}` and is rewritten every 2 s. It is stale once its heartbeat is
 alive, because pids are reused. Takeover renames the stale lock aside and
 recreates it with `wx`, and a host re-reads the lock on every heartbeat and
 just before it starts an agent, exiting the moment the token is not its own.
+It writes `session.json` only while the lock is its own, so a host that lost a
+takeover race never overwrites the winner's state. A lock or state file that
+exists but cannot be read — a Windows scanner or backup tool holding it — is
+read again for about a second and is never taken for a missing one: a host
+keeps a lock it cannot read for a moment, and refuses to serve rather than
+reset a state file it cannot read.
 
 The bridge writes `spawn.json` when it starts a host and starts no second one
-while that marker is under 15 s old; the host deletes it once it holds the
-lock. A bridge that meets a host running an older protocol or other code asks
-it to retire after its current turn.
+while that marker is under 15 s old; the host deletes it once it has served
+its first requests. The marker counts the hosts started since one last
+served, so a host that dies before serving — a configuration it cannot load,
+a runtime that cannot start — is not started for ever: after three, the
+waiting requests get no more hosts and the session reads
+`host_failed_to_start` (`failed` before its first turn, `interrupted` and
+resumable after). Each new request gets three attempts of its own. A bridge
+that meets a host running an older protocol or other code asks it to retire
+after its current turn, and a request that arrived behind the retirement goes
+to a successor the retiring host starts from the entry as installed now.
 
 ### Requests, replays and reads
 
@@ -93,6 +106,7 @@ refuses is retried like every other rename and otherwise tried again half a
 minute later, and the new generation reaches `session.json` at once rather
 than after the debounce, so a reader never pairs the new file with the old
 generation.
+
 Status is derived at read time: a session still marked working whose host has
 stopped heartbeating reads `interrupted` with reason `host_lost`, and a read
 that finds requests waiting with no live or starting host starts one.

@@ -96,9 +96,21 @@ export const spawnCodingSessionHost = async (input: {
   return 'detached'
 }
 
-type SpawnMarker = { at: number }
+/**
+ * `spawn.json`: when the bridge last started a host for this session, and how
+ * many hosts it has started since one last served a request. A host deletes it
+ * once it has handled its first requests, so a host that dies before that —
+ * a configuration it cannot load, a runtime that cannot start, a throw before
+ * it serves — leaves the count climbing, and after `MAX_HOST_SPAWN_ATTEMPTS`
+ * no more hosts are started for the requests already waiting: the session
+ * reads `host_failed_to_start` instead of `starting` for ever. A new request
+ * (a send, an interrupt, a close) gets fresh attempts of its own.
+ */
+type SpawnMarker = { at: number; attempts?: number }
 
-export type HostAssurance = 'live' | 'starting' | 'spawned'
+export const MAX_HOST_SPAWN_ATTEMPTS = 3
+
+export type HostAssurance = 'live' | 'starting' | 'spawned' | 'failed'
 
 /**
  * A live host is left alone (and asked to retire after its turn when it runs
@@ -111,7 +123,7 @@ export const ensureCodingSessionHost = async (input: {
   entry: string
   paths: CodingSessionPaths
   sessionId: string
-}): Promise<HostAssurance> => {
+}, options: HostSpawnOptions & { fresh?: boolean } = {}): Promise<HostAssurance> => {
   const lock = await readHostLock(input.paths.lock)
   if (lock && !hostLockIsStale(lock)) {
     const digest = await executorRuntimeDigest(input.entry)
@@ -125,10 +137,20 @@ export const ensureCodingSessionHost = async (input: {
   const requestedRecently = typeof marker?.at === 'number' && now - marker.at < SPAWN_GRACE_MS
   const tookOver = lock !== undefined && typeof marker?.at === 'number' && Date.parse(lock.startedAt) >= marker.at
   if (requestedRecently && !tookOver) return 'starting'
+  const attempts = options.fresh || typeof marker?.at !== 'number' ? 0 : marker.attempts ?? 1
+  if (attempts >= MAX_HOST_SPAWN_ATTEMPTS) return 'failed'
   await unlink(input.paths.spawnMarker).catch(() => undefined)
-  if (!await createJsonExclusive(input.paths.spawnMarker, { at: now } satisfies SpawnMarker)) return 'starting'
-  await spawnCodingSessionHost(input)
+  const next: SpawnMarker = { at: now, attempts: attempts + 1 }
+  if (!await createJsonExclusive(input.paths.spawnMarker, next)) return 'starting'
+  await spawnCodingSessionHost(input, options)
   return 'spawned'
+}
+
+/** The bridge gave up starting hosts for the requests waiting: every attempt died before it served one. */
+export const codingHostSpawnFailed = async (paths: CodingSessionPaths): Promise<boolean> => {
+  const marker = await readJson<SpawnMarker>(paths.spawnMarker)
+  return typeof marker?.at === 'number' && (marker.attempts ?? 1) >= MAX_HOST_SPAWN_ATTEMPTS
+    && Date.now() - marker.at >= SPAWN_GRACE_MS
 }
 
 /** A host was asked for and has not had the time to take the lock yet. */

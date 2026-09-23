@@ -137,6 +137,37 @@ export const readJson = async <T>(path: string): Promise<T | undefined> => {
   }
 }
 
+export type JsonRead<T> = { found: 'yes'; value: T } | { found: 'no' } | { found: 'unreadable' }
+
+const READ_RETRY_MS = 1_000
+
+/**
+ * A read that tells a missing file from one it could not read. A Windows
+ * scanner or backup tool holds a file for a moment (EPERM, EBUSY, EACCES), and
+ * a file created with `wx` is empty until its writer has written it, so those
+ * are read again for about a second before the file counts as unreadable.
+ * Only ENOENT is "no such file": a host that took a transient error for that
+ * would reset its session or think its lock was taken over.
+ */
+export const readJsonFile = async <T>(path: string): Promise<JsonRead<T>> => {
+  const deadline = Date.now() + READ_RETRY_MS
+  for (let wait = 25; ; wait = Math.min(wait * 2, 200)) {
+    try {
+      return { found: 'yes', value: JSON.parse(await readFile(path, 'utf8')) as T }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { found: 'no' }
+      if (Date.now() >= deadline) return { found: 'unreadable' }
+      await delay(wait)
+    }
+  }
+}
+
+/** `readJsonFile` for readers that only need the value: absent and unreadable are both `undefined`. */
+export const readJsonPatiently = async <T>(path: string): Promise<T | undefined> => {
+  const read = await readJsonFile<T>(path)
+  return read.found === 'yes' ? read.value : undefined
+}
+
 /** Keeps a log to about `maxBytes` by moving it aside once it grows past that. */
 export const rotateLogIfLarge = async (path: string, maxBytes: number): Promise<void> => {
   const size = await stat(path).then((info) => info.size, () => 0)
@@ -147,17 +178,31 @@ export const rotateLogIfLarge = async (path: string, maxBytes: number): Promise<
  * A debounced writer for the host's `session.json`: at most one write per
  * 500 ms, the latest state always wins, and a failed write is logged rather
  * than fatal — the next change rewrites the whole file anyway.
+ *
+ * `mayWrite` is asked before every write. A host whose lock another host has
+ * taken over answers `false`, and from then on writes nothing: a host that
+ * lost a takeover race would otherwise overwrite the winner's state — its
+ * freshly recorded agent identity among it.
  */
 export const createDebouncedJsonWriter = (
   path: string, current: () => unknown, log: (message: string) => void, intervalMs = 500,
+  mayWrite: () => Promise<boolean> = async () => true,
 ) => {
   let timer: NodeJS.Timeout | undefined
   let lastWrite = 0
   let writing: Promise<void> = Promise.resolve()
+  let refused = false
   const write = (): Promise<void> => {
     timer = undefined
     lastWrite = Date.now()
-    writing = writing.then(() => writeJsonAtomic(path, current())).catch((error: unknown) => {
+    writing = writing.then(async () => {
+      if (refused || !await mayWrite()) {
+        if (!refused) log('session state not written: another host owns the session')
+        refused = true
+        return
+      }
+      await writeJsonAtomic(path, current())
+    }).catch((error: unknown) => {
       log(`session state write failed: ${error instanceof Error ? error.message : String(error)}`)
     })
     return writing

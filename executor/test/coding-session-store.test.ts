@@ -12,7 +12,14 @@ import {
   parseEventCursor,
   readEventPage,
 } from '../src/coding-session/session-events.js'
-import { codingSessionPaths, writeJsonAtomic, type CodingSessionPaths } from '../src/coding-session/session-files.js'
+import { ensureCodingSessionHost } from '../src/coding-session/host-spawn.js'
+import {
+  codingSessionPaths,
+  createDebouncedJsonWriter,
+  readJsonFile,
+  writeJsonAtomic,
+  type CodingSessionPaths,
+} from '../src/coding-session/session-files.js'
 import { acquireHostLock, hostLockIsStale, readHostLock } from '../src/coding-session/session-lock.js'
 import { claimCommand, listRequests, writeRequest } from '../src/coding-session/session-requests.js'
 import { CODING_STATUS_MAX_BYTES, composeCodingStatus, deriveCodingStatus } from '../src/coding-session/status.js'
@@ -206,6 +213,54 @@ test('status in events mode always moves its cursor, even past big events and a 
       seen.push(...events.map((event) => event.seq))
     }
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test('hosts that die before serving stop being started, and the session says why', { timeout: 60_000 }, async () => {
+  const { dir, paths } = await scratch()
+  try {
+    const entry = join(dir, 'crashing-host.mjs')
+    await writeFile(entry, 'process.exit(1)\n')
+    await writeRequest(paths, { id: 'cmd-start', kind: 'start', text: 'x', at: new Date().toISOString() })
+    const input = { configPath: join(dir, 'c.json'), entry, paths, sessionId: SESSION }
+    const options = { userManager: () => undefined }
+    // Each spawn window is 15 s; the marker is aged instead of waiting it out.
+    const age = async () => {
+      const marker = JSON.parse(await readFile(paths.spawnMarker, 'utf8')) as Record<string, unknown>
+      await writeJsonAtomic(paths.spawnMarker, { ...marker, at: Date.now() - 20_000 })
+    }
+    assert.equal(await ensureCodingSessionHost(input, options), 'spawned')
+    assert.equal((await deriveCodingStatus(paths, undefined)).status, 'starting')
+    assert.equal(await ensureCodingSessionHost(input, options), 'starting', 'no second host inside the window')
+    for (const expected of ['spawned', 'spawned', 'failed'] as const) {
+      await age()
+      assert.equal(await ensureCodingSessionHost(input, options), expected)
+    }
+    const derived = await deriveCodingStatus(paths, undefined)
+    assert.deepEqual([derived.status, derived.reason], ['failed', 'host_failed_to_start'], 'not "starting" for ever')
+    const resumable = await deriveCodingStatus(paths, { ...initialCodingSessionState('x'), status: 'interrupted', turn: 2 })
+    assert.deepEqual([resumable.status, resumable.reason], ['interrupted', 'host_failed_to_start'])
+    assert.equal(await ensureCodingSessionHost(input, { ...options, fresh: true }), 'spawned', 'a new request tries again')
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  }
+})
+
+test('a file that exists but cannot be read is not taken for a missing one', async () => {
+  const { dir, paths } = await scratch()
+  try {
+    assert.deepEqual(await readJsonFile(join(dir, 'absent.json')), { found: 'no' })
+    await writeFile(paths.state, '{"half":')
+    assert.deepEqual(await readJsonFile(paths.state), { found: 'unreadable' })
+    await writeFile(paths.state, '{"version":1}')
+    assert.deepEqual(await readJsonFile(paths.state), { found: 'yes', value: { version: 1 } })
+    // A host whose lock is gone writes nothing more.
+    const target = join(dir, 'guarded.json')
+    const writer = createDebouncedJsonWriter(target, () => ({ status: 'working' }), () => undefined, 500, async () => false)
+    await writer.flush()
+    assert.deepEqual(await readJsonFile(target), { found: 'no' })
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

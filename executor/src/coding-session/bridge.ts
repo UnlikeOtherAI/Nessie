@@ -29,6 +29,7 @@ import {
   ensureCodingStateDir,
   ensurePrivateDir,
   readJson,
+  readJsonPatiently,
   type CodingSessionPaths,
 } from './session-files.js'
 import {
@@ -108,7 +109,8 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     return { paths, meta }
   }
 
-  const readState = (paths: CodingSessionPaths) => readJson<CodingSessionState>(paths.state)
+  // Patient: a scanner holding session.json for a moment must not read as a session nobody started.
+  const readState = (paths: CodingSessionPaths) => readJsonPatiently<CodingSessionState>(paths.state)
 
   const requireReviewedConfig = (): void => {
     if (!codingSessionsDigestMatches(loaded)) {
@@ -120,9 +122,10 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     }
   }
 
-  const ensureHost = (paths: CodingSessionPaths, sessionId: string) => ensureCodingSessionHost({
+  /** `fresh` for a new request, which gets hosts of its own even after earlier ones failed to start. */
+  const ensureHost = (paths: CodingSessionPaths, sessionId: string, fresh = false) => ensureCodingSessionHost({
     configPath: loaded.configPath, entry, paths, sessionId,
-  })
+  }, { fresh })
 
   /** A command id seen before returns the first outcome and does nothing else. */
   const replayed = async (commandId: string, ownerKey: string): Promise<CommandRecord | undefined> => {
@@ -200,7 +203,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     }
     await createJsonExclusive(paths.meta, meta)
     await writeRequest(paths, { id: commandId, kind: 'start', text: prompt, at: meta.createdAt })
-    await ensureHost(paths, sessionId)
+    await ensureHost(paths, sessionId, true)
     return { sessionId, status: 'starting', agent, root: root.name, path, title }
   }
 
@@ -234,7 +237,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     await claimCommand(stateDir, { commandId, ownerKey, tool: `session_${kind}`, sessionId: meta.sessionId, at: new Date().toISOString() })
     const at = new Date().toISOString()
     await writeRequest(paths, { id: commandId, kind, ...(text === undefined ? {} : { text }), at })
-    await ensureHost(paths, meta.sessionId)
+    await ensureHost(paths, meta.sessionId, true)
     return {
       sessionId: meta.sessionId,
       status: kind === 'close' ? 'closing' : derived.status,
@@ -306,7 +309,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       const derived = await deriveCodingStatus(paths, await readState(paths))
       if (derived.status === 'closed') continue
       await writeRequest(paths, { id: `close-all-${commandId}`.slice(0, 128), kind: 'close', at: new Date().toISOString() })
-      await ensureHost(paths, session.sessionId)
+      await ensureHost(paths, session.sessionId, true)
       closing += 1
     }
     return { closing }

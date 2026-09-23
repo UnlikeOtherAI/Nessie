@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { open, rename, stat, unlink } from 'node:fs/promises'
 
 import { codingProcessIsAlive } from './process-control.js'
-import { readJson, writeJsonAtomic } from './session-files.js'
+import { readJsonFile, readJsonPatiently, writeJsonAtomic } from './session-files.js'
 import { CODING_SESSION_PROTOCOL_VERSION } from './types.js'
 
 /**
@@ -45,7 +45,7 @@ const validLock = (value: unknown): value is HostLockRecord => {
 }
 
 export const readHostLock = async (path: string): Promise<HostLockRecord | undefined> => {
-  const value = await readJson<unknown>(path)
+  const value = await readJsonPatiently<unknown>(path)
   return validLock(value) ? value : undefined
 }
 
@@ -96,7 +96,13 @@ export const acquireHostLock = async (path: string, runtimeDigest: string): Prom
     await rename(path, aside).then(() => unlink(aside).catch(() => undefined), () => undefined)
   }
   if (!created) return undefined
-  const stillOurs = async (): Promise<boolean> => (await readHostLock(path))?.token === record.token
+  // Gone, or a lock with another token, is a takeover. A lock a scanner holds
+  // past the read's own retries is not: the next heartbeat looks again.
+  const stillOurs = async (): Promise<boolean> => {
+    const read = await readJsonFile<unknown>(path)
+    if (read.found === 'unreadable') return true
+    return read.found === 'yes' && validLock(read.value) && read.value.token === record.token
+  }
   return {
     record,
     stillOurs,

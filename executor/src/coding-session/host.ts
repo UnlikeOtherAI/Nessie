@@ -6,7 +6,7 @@ import { buildAgentEnvironment } from './agent-env.js'
 import { createClaudeDriver } from './claude-driver.js'
 import { createCodexDriver } from './codex-driver.js'
 import { codingSessionsDigestMatches, loadCodingSessionsConfig, type LoadedCodingSessionsConfig } from './config.js'
-import { executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
+import { ensureCodingSessionHost, executorRuntimeDigest, resolveExecutorEntry } from './host-spawn.js'
 import { stopOwnUserUnit } from './host-unit.js'
 import { createCodingProcessControl, type CodingProcessControl } from './process-control.js'
 import { createProjector, type Projector } from './projection.js'
@@ -14,7 +14,13 @@ import { gitStartSnapshot } from './review.js'
 import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots.js'
 import { runCodingSelfCheck } from './self-check.js'
 import { openEventLog } from './session-events.js'
-import { codingSessionPaths, createDebouncedJsonWriter, readJson, type CodingSessionPaths } from './session-files.js'
+import {
+  codingSessionPaths,
+  createDebouncedJsonWriter,
+  readJson,
+  readJsonFile,
+  type CodingSessionPaths,
+} from './session-files.js'
 import { acquireHostLock, HOST_HEARTBEAT_MS, type HeldHostLock } from './session-lock.js'
 import { inboxHasRequests, listRequests, readSessionMeta, removeRequest } from './session-requests.js'
 import {
@@ -79,14 +85,21 @@ const hostLogger = (): ((message: string) => void) => {
   }
 }
 
-/** Serves the session while this host holds the lock; `true` means it was asked to retire. */
-const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<boolean> => {
+/** How a host's time with the lock ended. */
+type ServeOutcome = 'finished' | 'retired' | 'superseded'
+
+/** Serves the session while this host holds the lock. */
+const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<ServeOutcome> => {
   const { control, loaded, meta, paths, log } = context
-  const previous = await readJson<CodingSessionState>(paths.state)
+  const read = await readJsonFile<CodingSessionState>(paths.state)
+  // A state file that exists but cannot be read is not a new session: starting
+  // afresh would erase its agent session, its turn and its review baseline.
+  if (read.found === 'unreadable') throw new Error('The session state exists but cannot be read.')
+  const previous = read.found === 'yes' ? read.value : undefined
   const state: CodingSessionState = previous?.version === 1
     ? previous
     : initialCodingSessionState(new Date().toISOString())
-  const writer = createDebouncedJsonWriter(paths.state, () => state, log)
+  const writer = createDebouncedJsonWriter(paths.state, () => state, log, undefined, lock.stillOurs)
   const position = { generation: state.eventsGeneration, lastSeq: state.lastSeq }
   const events = await openEventLog(paths, position, (next) => {
     state.eventsGeneration = next.generation
@@ -132,6 +145,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
   let pendingInterrupt: { at: number; reason?: string } | undefined
   const prepare = async (): Promise<AgentDriver> => {
     if (driver) return driver
+    if (!await lock.stillOurs()) throw new AgentStartError('host_superseded')
     const agent = loaded.config.agents[meta.agent]
     if (!agent) throw new AgentStartError('agent_unavailable')
     const folder = await resolveCodingFolder(findCodingRoot(context.roots, meta.rootName), meta.path)
@@ -229,6 +243,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
     }
   }
 
+  let served = false
   try {
     for (;;) {
       const requests = await listRequests(paths)
@@ -236,6 +251,11 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
       for (const request of requests) {
         await handle(request)
         await removeRequest(paths, request.id)
+      }
+      if (!served) {
+        // This host has served, so the bridge's count of hosts that died before serving starts again.
+        served = true
+        await unlink(paths.spawnMarker).catch(() => undefined)
       }
       if (state.status === 'closed' || superseded) break
       if (retiring && !driver?.busy()) break
@@ -252,7 +272,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<b
     await events.close()
     if (!superseded) await writer.flush()
   }
-  return retiring || superseded
+  return superseded ? 'superseded' : retiring ? 'retired' : 'finished'
 }
 
 export const runCodingSessionHost = async (input: { configPath: string; sessionId: string }): Promise<void> => {
@@ -264,27 +284,34 @@ export const runCodingSessionHost = async (input: { configPath: string; sessionI
     log('no such session')
     return
   }
-  const roots = await resolveCodingRoots(loaded)
   const mayRunAgent = codingSessionsDigestMatches(loaded)
+  // Roots nobody reviewed are never resolved; a host under a changed file only stops things.
+  const roots = await resolveCodingRoots(mayRunAgent ? loaded : { ...loaded, config: { ...loaded.config, roots: [] } })
   if (!mayRunAgent) log('the configuration no longer matches its reviewed digest; agents will not start')
   const context: HostContext = {
     control: createCodingProcessControl(),
     loaded, meta, paths, log, mayRunAgent, roots,
     projector: createProjector(roots.rewriter),
   }
-  const runtimeDigest = await executorRuntimeDigest(resolveExecutorEntry())
+  const entry = resolveExecutorEntry()
+  const runtimeDigest = await executorRuntimeDigest(entry)
   for (;;) {
     const lock = await acquireHostLock(paths.lock, runtimeDigest)
     if (!lock) return
-    // The host the bridge asked for has arrived; from here on the lock speaks for it.
-    await unlink(paths.spawnMarker).catch(() => undefined)
-    let done: boolean
+    let outcome: ServeOutcome
     try {
-      done = await serveSession(context, lock)
+      outcome = await serveSession(context, lock)
     } finally {
       await lock.release()
     }
-    if (!done && await inboxHasRequests(paths)) continue
+    if (outcome === 'finished' && await inboxHasRequests(paths)) continue
+    if (outcome === 'retired' && await inboxHasRequests(paths)) {
+      // This host runs older code. A request that arrived behind the retirement
+      // goes to a successor started from the entry as it is installed now.
+      await ensureCodingSessionHost({
+        configPath: input.configPath, entry, paths, sessionId: input.sessionId,
+      }, { fresh: true })
+    }
     // A closed session's unit is stopped, so nothing its agent started outlives it.
     if ((await readJson<CodingSessionState>(paths.state))?.status === 'closed') await stopOwnUserUnit()
     return

@@ -119,8 +119,9 @@ test('a host killed with -9 reads as host_lost, and the next send resumes withou
     assert.equal(starts[1]!.resume, true)
     assert.equal(starts[1]!.sessionId, firstAgent.sessionId)
     const survivor = await control.identify(firstAgent.pid as number)
-    assert.notEqual(survivor?.startedAt, firstIdentity.startedAt, 'the lost host\'s agent was stopped before the resume')
-    assert.equal(alive(starts[1]!.pid as number), true)
+    const firstStillRunning = survivor?.startedAt === firstIdentity.startedAt
+    assert.deepEqual([firstStillRunning, alive(starts[1]!.pid as number)], [false, true],
+      'exactly one agent after the resume: the lost host\'s was stopped first')
   } finally {
     await harness.cleanup()
   }
