@@ -65,6 +65,40 @@ const MAX_CONFIG_BYTES = 64 * 1024
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/u
 const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:[\]-]{0,99}$/u
 
+/**
+ * Flags an agent's `args` and `command` may not carry, because each one
+ * carries power the reviewed facts would not show — bypassing or widening
+ * permissions, other directories, other settings or MCP servers — or would
+ * break the protocol the bridge speaks. The typed fields (`permissionMode`,
+ * `allowedTools`, `disallowedTools`, `model`) say the same things in a way
+ * the review can show.
+ */
+const CLAUDE_REFUSED_FLAGS = [
+  '--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--permission-mode',
+  '--permission-prompts', '--permission-prompt-tool', '--allowedTools', '--allowed-tools', '--disallowedTools',
+  '--disallowed-tools', '--tools', '--add-dir', '--settings', '--setting-sources', '--mcp-config', '--plugin-dir',
+  '--plugin-url', '--agents', '--agent', '--chrome', '--remote-control', '--cloud', '--teleport', '--environment',
+  '-p', '--print', '--input-format', '--output-format', '-r', '--resume', '-c', '--continue', '--session-id',
+  '--fork-session', '--replay-user-messages', '--bg', '--background', '--append-system-prompt', '--system-prompt',
+]
+
+/**
+ * Codex's power is the stance its sandbox and approval flags take, which the
+ * facts name; a `-c` override, a profile or an added directory changes it
+ * behind that name, and `-C`, `resume` and `--json` belong to the bridge.
+ */
+const CODEX_REFUSED_FLAGS = [
+  '-c', '--config', '--enable', '--disable', '-p', '--profile', '--add-dir', '-C', '--cd',
+  '--dangerously-bypass-hook-trust', '--ignore-rules', '--json', '-o', '--output-last-message',
+]
+
+const usesFlag = (argument: string, flag: string): boolean => (
+  argument === flag
+  || argument.startsWith(`${flag}=`)
+  // A short option takes its value attached too: `-cmodel=o3`, `-C/dir`.
+  || (/^-[A-Za-z]$/u.test(flag) && argument.startsWith(flag) && !argument.startsWith('--'))
+)
+
 const record = (value: unknown): value is Record<string, unknown> => (
   !!value && typeof value === 'object' && !Array.isArray(value)
 )
@@ -105,6 +139,21 @@ const agentConfig = (name: CodingAgentName, value: unknown): CodingAgentConfig =
     : ['command', 'args', 'model'], where)
   const command = stringList(value.command, `${where}.command`, 8, 4_096)
   if (command.length === 0) refuse(`${where}.command names the program to run.`)
+  // Without a shell nothing can run a script shim, and an npm shim only forwards to the real program.
+  if (/\.(?:cmd|bat|ps1)$/iu.test(command[0]!)) {
+    refuse(`${where}.command names a script shim; name the program itself (${name === 'claude' ? 'claude.exe' : 'node and codex.js'}).`)
+  }
+  const args = stringList(value.args, `${where}.args`, 32, 1_024)
+  const refused = name === 'claude' ? CLAUDE_REFUSED_FLAGS : CODEX_REFUSED_FLAGS
+  for (const argument of [...command.slice(1), ...args]) {
+    const flag = refused.find((entry) => usesFlag(argument, entry))
+    if (flag) {
+      refuse(`${where} may not pass ${flag}: say it through the reviewed fields, which the review shows, or not at all.`)
+    }
+    if (name === 'codex' && (argument === 'resume' || argument === 'exec')) {
+      refuse(`${where} may not name the ${argument} subcommand; the bridge runs Codex itself.`)
+    }
+  }
   const permissionMode = value.permissionMode
   if (permissionMode !== undefined
     && !(CLAUDE_PERMISSION_MODES as readonly unknown[]).includes(permissionMode)) {
@@ -115,7 +164,7 @@ const agentConfig = (name: CodingAgentName, value: unknown): CodingAgentConfig =
   }
   return {
     command,
-    args: stringList(value.args, `${where}.args`, 32, 1_024),
+    args,
     ...(permissionMode === undefined ? {} : { permissionMode: permissionMode as ClaudePermissionMode }),
     allowedTools: stringList(value.allowedTools, `${where}.allowedTools`, 64, 200),
     disallowedTools: stringList(value.disallowedTools, `${where}.disallowedTools`, 64, 200),

@@ -43,7 +43,7 @@ const digest = `sha256:${'c'.repeat(64)}`
 
 const facts: ExecutorCodingSessionsFacts = {
   serverName: 'coding-sessions', agents: ['claude'], permissionMode: { claude: 'acceptEdits' },
-  allowedToolCount: 0, rootNames: ['nessie'], configDigest: digest,
+  allowedToolCount: 0, environmentNames: [], rootNames: ['nessie'], configDigest: digest,
 }
 
 const bridgeSpec = (configPath = join(tmpdir(), 'coding-sessions.json'), command = [process.execPath, SCRIPT]) => ({

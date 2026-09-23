@@ -146,6 +146,24 @@ object (`null` withdraws the bridge, absent keeps it). That object is closed:
 `maxLiveSessionsPerOwner` (3), `idleMinutes` (30), `maxTurnMinutes` (45),
 `maxBudgetUsd` and `closeOnDaemonShutdown` (false). Unknown keys are refused.
 
+An agent's `args` and `command` may not carry what the facts below would not
+show. For Claude that is every flag that bypasses, widens or relocates its
+permissions or its settings — `--dangerously-skip-permissions`,
+`--allow-dangerously-skip-permissions`, `--permission-mode`,
+`--permission-prompts`, `--permission-prompt-tool`, `--allowedTools`,
+`--disallowedTools`, `--tools`, `--add-dir`, `--settings`,
+`--setting-sources`, `--mcp-config`, `--plugin-dir`, `--agents` and the
+like — plus the protocol flags the bridge sets itself; the typed fields say
+the same things where the review can show them. For Codex it is `-c` /
+`--config` overrides, `--enable` / `--disable`, `--profile`, `--add-dir`,
+`-C`, `--dangerously-bypass-hook-trust`, `--ignore-rules` and the `exec` /
+`resume` subcommands; its stance flags (`--sandbox`, `--full-auto`,
+`--approve-for-me`, `--dangerously-bypass-approvals-and-sandbox`) are what
+the stance fact names. A `command` that names a `.cmd`, `.bat` or `.ps1`
+shim is refused too: nothing without a shell can run one, and the job helper
+resolves only programs, so the owner names `claude.exe` or `node` and
+`codex.js` instead.
+
 The executor then:
 
 - writes it owner-only to `<state dir>/coding-sessions.json`, as given — the
@@ -161,10 +179,22 @@ The executor then:
   name;
 - refuses the bridge unless `mcp.tools` and `mcp.call` are enabled;
 - adds `codingSessions` to the signed descriptor, inside `localPolicyDigest`:
-  `{serverName, agents, permissionMode, allowedToolCount, rootNames,
-  configDigest}`. Claude's mode is its `permissionMode` (`default` when
-  unset); Codex's is the stance its reviewed `args` take
-  (`bypassApprovalsAndSandbox`, `fullAuto`, `sandbox:<mode>` or `default`).
+  `{serverName, agents, permissionMode, allowedToolCount, environmentNames,
+  rootNames, configDigest}`. Claude's mode is its `permissionMode`
+  (`default` when unset); Codex's is the stance its reviewed `args` take
+  (`bypassApprovalsAndSandbox`, `fullAuto`, `approveForMe`,
+  `sandbox:<mode>` or `default`). `environmentNames` lists, sorted and by
+  name only, every variable `agentEnv.set` sets or `agentEnv.pass` passes:
+  a `CLAUDE_CONFIG_DIR` or an `ANTHROPIC_BASE_URL` changes what an agent may
+  do, or where its transcript goes, as surely as a flag.
+
+Both CLIs still read their own configuration on this machine — Claude Code
+its user, project and local settings (`~/.claude/settings.json`, a
+repository's `.claude/settings*.json`), Codex its `~/.codex/config.toml` —
+and those can pre-allow commands or set a default mode. The bridge leaves them
+in force, because they are how the person has set up the CLI they are logged
+into, and does not summarise them: `default` in the facts means "as this
+machine's own settings for that CLI say", and a review should read it so.
 
 On Windows, Claude Code 2.1.280 also runs commands through its own
 `PowerShell` tool, which a `Bash(…)` rule does not cover: live, a

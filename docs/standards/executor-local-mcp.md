@@ -186,8 +186,11 @@ rules follow from that:
   `coding-sessions` is refused.
 - **Its power facts travel, unlike any other launch spec.** The descriptor's
   `codingSessions` states the agents, their permission modes, the number of
-  pre-allowed tools, the root names and the configuration's digest, inside
-  `localPolicyDigest`. Paths and programs still stay on the host.
+  pre-allowed tools, the names of the environment variables they are given,
+  the root names and the configuration's digest, inside
+  `localPolicyDigest`. Flags that would carry power past those facts are
+  refused in the configuration. Paths, programs and values still stay on the
+  host.
 - **Its report carries its open sessions.** The local-MCP status for
   `coding-sessions` may carry `codingSessions`: each open session's id,
   owner key, title, status, agent, root name and `updatedAt` — never what it

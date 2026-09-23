@@ -68,6 +68,7 @@ const currentRuntime = (): ExecutorRuntime => ({
 const codexStance = (args: readonly string[]): string => {
   if (args.includes('--dangerously-bypass-approvals-and-sandbox') || args.includes('--yolo')) return 'bypassApprovalsAndSandbox'
   if (args.includes('--full-auto')) return 'fullAuto'
+  if (args.includes('--approve-for-me')) return 'approveForMe'
   const flag = args.findIndex((argument) => argument === '--sandbox' || argument === '-s')
   const sandbox = flag >= 0 ? args[flag + 1] : args.find((argument) => argument.startsWith('--sandbox='))?.slice(10)
   return sandbox && /^[a-z][a-z-]{0,40}$/u.test(sandbox) ? `sandbox:${sandbox}` : 'default'
@@ -84,6 +85,7 @@ export const codingSessionsFacts = (
       agent, agent === 'claude' ? config.agents.claude!.permissionMode ?? 'default' : codexStance(config.agents.codex!.args),
     ])),
     allowedToolCount: config.agents.claude?.allowedTools.length ?? 0,
+    environmentNames: [...new Set([...Object.keys(config.agentEnv.set), ...config.agentEnv.pass])].sort(),
     rootNames: config.roots.map((root) => root.name).sort(),
     configDigest,
   })

@@ -32,7 +32,7 @@ const result = (extra: Record<string, unknown> = {}) => line({
 })
 
 const agent: CodingAgentConfig = {
-  command: ['C:/tools/claude.exe'], args: ['--add-dir', 'C:/extra'], permissionMode: 'acceptEdits',
+  command: ['C:/tools/claude.exe'], args: ['--effort', 'high'], permissionMode: 'acceptEdits',
   allowedTools: ['Bash(git *)', 'Bash(pnpm *)'], disallowedTools: ['WebFetch'], model: 'opus',
 }
 
@@ -42,7 +42,7 @@ test('the argv is the verified stream-json invocation, with the reviewed power p
     '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--replay-user-messages',
     '--session-id', 'uuid-1', '--permission-prompts', 'none', '--permission-mode', 'acceptEdits',
     '--allowedTools', 'Bash(git *)', 'Bash(pnpm *)', '--disallowedTools', 'WebFetch', '--model', 'opus',
-    '--max-budget-usd', '20', '--add-dir', 'C:/extra', '--append-system-prompt', CLAUDE_APPENDED_SYSTEM_PROMPT,
+    '--max-budget-usd', '20', '--effort', 'high', '--append-system-prompt', CLAUDE_APPENDED_SYSTEM_PROMPT,
   ])
   const resumed = claudeArguments({ command: ['node', 'cli.js'], args: [], allowedTools: [], disallowedTools: [] }, {
     sessionId: 'uuid-1', resume: true,

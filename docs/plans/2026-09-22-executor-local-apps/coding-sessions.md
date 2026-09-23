@@ -167,6 +167,7 @@ codingSessions?: {
   agents: Array<'claude' | 'codex'>
   permissionMode: Record<'claude' | 'codex', string>
   allowedToolCount: number
+  environmentNames: string[]   // agentEnv.set and agentEnv.pass, names only
   rootNames: string[]
   configDigest: string   // sha256 of the canonical host-local config
 }

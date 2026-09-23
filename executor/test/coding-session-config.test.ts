@@ -67,6 +67,38 @@ test('an unknown key, an unknown mode or a Claude-only field on Codex is refused
   refuses({ codingSessions: minimal().codingSessions, other: true }, /unknown keys: other/u)
 })
 
+test('flags that carry power the review would not show are refused in args and command alike', () => {
+  const refuses = (agents: Record<string, unknown>, pattern: RegExp) => assert.throws(
+    () => normalizeCodingSessionsConfig(minimal({ agents })),
+    (error: unknown) => error instanceof CodingSessionConfigError && pattern.test(error.message),
+    JSON.stringify(agents),
+  )
+  for (const args of [
+    ['--dangerously-skip-permissions'], ['--allow-dangerously-skip-permissions'], ['--permission-mode', 'bypassPermissions'],
+    ['--permission-mode=bypassPermissions'], ['--add-dir', 'C:/'], ['--allowedTools', 'Bash'], ['--allowed-tools=Bash'],
+    ['--disallowedTools', 'Read'], ['--settings', '{"permissions":{}}'], ['--setting-sources', 'user'], ['--mcp-config', 'x.json'],
+    ['--permission-prompts', 'host'], ['--permission-prompt-tool', 'stdio'], ['--resume', 'x'], ['-p'],
+  ]) {
+    refuses({ claude: { command: ['/usr/local/bin/claude'], args } }, new RegExp(`may not pass ${args[0]!.split('=')[0]}`, 'u'))
+  }
+  refuses({ claude: { command: ['/usr/bin/node', 'cli.js', '--dangerously-skip-permissions'] } }, /may not pass/u)
+  for (const args of [
+    ['-c', 'sandbox_mode="danger-full-access"'], ['--config=approval_policy="never"'], ['-capproval_policy=never'],
+    ['--profile', 'wide'], ['--add-dir', '/'], ['-C', '/'], ['--enable', 'x'], ['--dangerously-bypass-hook-trust'],
+  ]) {
+    refuses({ codex: { command: ['/usr/bin/node', 'codex.js'], args } }, /may not pass -/u)
+  }
+  refuses({ codex: { command: ['/usr/bin/node', 'codex.js'], args: ['resume'] } }, /may not name the resume subcommand/u)
+  refuses({ claude: { command: ['C:/Users/o/AppData/Roaming/npm/claude.cmd'] } }, /script shim; name the program itself \(claude\.exe\)/u)
+  refuses({ codex: { command: ['C:/npm/codex.PS1'] } }, /script shim/u)
+  // What the reviewed fields already say, or what carries no power, still passes.
+  const fine = normalizeCodingSessionsConfig(minimal({ agents: {
+    claude: { command: ['/usr/local/bin/claude'], args: ['--effort', 'high', '--strict-mcp-config'] },
+    codex: { command: ['/usr/bin/node', 'codex.js'], args: ['--sandbox', 'workspace-write', '--skip-git-repo-check'] },
+  } }))
+  assert.deepEqual(fine.agents.codex?.args, ['--sandbox', 'workspace-write', '--skip-git-repo-check'])
+})
+
 test('a reviewed digest that differs from the file stops hosts; no digest at all is a hand-run bridge', () => {
   const digest = codingSessionsConfigDigest(normalizeCodingSessionsConfig(minimal()))
   assert.equal(codingSessionsDigestMatches({ digest }, {}), true)

@@ -20,6 +20,7 @@ const facts = {
   agents: ['claude', 'codex'],
   permissionMode: { claude: 'acceptEdits', codex: 'bypassApprovalsAndSandbox' },
   allowedToolCount: 3,
+  environmentNames: ['ANTHROPIC_BASE_URL'],
   rootNames: ['nessie'],
   configDigest: digest,
 }
@@ -49,6 +50,8 @@ test('the descriptor carries the bridge\'s power facts, and nothing looser', () 
     { ...facts, permissionMode: { claude: 'acceptEdits' } },
     { ...facts, permissionMode: { ...facts.permissionMode, cursor: 'x' } },
     { ...facts, configDigest: 'sha256:short' },
+    { ...facts, environmentNames: ['PATH', 'PATH'] },
+    { ...facts, environmentNames: ['NOT A NAME'] },
   ]) {
     assert.equal(ExecutorCodingSessionsFactsSchema.safeParse(loose).success, false, JSON.stringify(loose))
   }

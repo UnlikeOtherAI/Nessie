@@ -64,6 +64,15 @@ export const ExecutorCodingSessionsFactsSchema = z
     permissionMode: z.record(ExecutorCodingAgentNameSchema, z.string().regex(/^[A-Za-z][A-Za-z0-9:_-]{0,63}$/)),
     /** Claude Code's `allowedTools` entries — commands it may run without being asked. */
     allowedToolCount: z.number().int().min(0).max(128),
+    /**
+     * The environment variables the configuration sets or passes to the agents
+     * (`agentEnv.set` and `agentEnv.pass`), by name and sorted: a
+     * `CLAUDE_CONFIG_DIR` or an `ANTHROPIC_BASE_URL` changes what an agent may
+     * do, or where its transcript goes, as surely as a flag does. Values stay on
+     * the host.
+     */
+    environmentNames: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/)).max(128)
+      .refine(distinct, 'Each environment variable is named once.'),
     rootNames: z.array(CodingRootNameSchema).min(1).max(16).refine(distinct, 'Each coding root is named once.'),
     configDigest: Sha256DigestSchema,
   })

@@ -86,6 +86,7 @@ test('configure generates the bridge entry itself and states its power facts', a
       agents: ['claude', 'codex'],
       permissionMode: { claude: 'acceptEdits', codex: 'bypassApprovalsAndSandbox' },
       allowedToolCount: 3,
+      environmentNames: [],
       rootNames: ['nessie'],
       configDigest: 'x',
     })
@@ -122,6 +123,28 @@ test('a root may not overlap a workspace folder, executor state, bridge state or
       // The filesystem folds case, so the refusal does too.
       await refuse(s.folder.toUpperCase(), /overlaps the workspace folder "docs"/u)
     }
+  } finally {
+    await rm(s.dir, { recursive: true, force: true })
+  }
+})
+
+test('the facts name every environment variable the agents are given and each Codex stance', async () => {
+  const s = await scratch()
+  try {
+    const plan = await planCodingSessions({
+      requested: request(s.root, {
+        agentEnv: { pass: ['HTTPS_PROXY'], set: { ANTHROPIC_BASE_URL: 'https://proxy.example', CLAUDE_CONFIG_DIR: '/x' } },
+      }),
+      runtime, current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
+    })
+    assert.deepEqual(plan.facts?.environmentNames, ['ANTHROPIC_BASE_URL', 'CLAUDE_CONFIG_DIR', 'HTTPS_PROXY'])
+    const stance = async (args: string[]) => (await planCodingSessions({
+      requested: request(s.root, { agents: { codex: { command: ['node', '/opt/codex.js'], args } } }),
+      runtime, current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
+    })).facts?.permissionMode.codex
+    assert.equal(await stance(['--approve-for-me']), 'approveForMe')
+    assert.equal(await stance(['--sandbox', 'workspace-write']), 'sandbox:workspace-write')
+    assert.equal(await stance([]), 'default')
   } finally {
     await rm(s.dir, { recursive: true, force: true })
   }
