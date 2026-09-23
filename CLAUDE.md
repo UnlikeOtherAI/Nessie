@@ -216,8 +216,9 @@ sentence changes only if the invariant itself did.
   the composer's Research button in a channel, a reply thread, a person drawer
   and a Threads inbox card, a research card opening its brief through
   `?research=`, a person's own brief read from the brief API, a refused reply
-  saying why, Ledger's launch reaching the open dialog and the room live, and
-  Knowledge › Research. Ledger cannot be doubled on the wire (the pinned egress
+  saying why, Ledger's launch reaching the open dialog and the room live, a
+  signed DeepWater progress event posted to the real receiver moving the
+  room's card live, and Knowledge › Research. Ledger cannot be doubled on the wire (the pinned egress
   refuses loopback, and brief readiness needs a UOA signer), so its answers are
   played through the watch's own projection and realtime announcer
   (`real-stack-ledger.mjs`), and opening a new brief from a composer stays the

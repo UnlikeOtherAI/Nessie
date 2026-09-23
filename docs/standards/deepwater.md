@@ -986,5 +986,7 @@ the screen it goes to that conversation, which opens the brief itself.
   two frames; `test:e2e:research-brief-real` walks the same doorways
   against the real API, worker and database, with Ledger's answers applied
   through the watch's own projection and announcer, because the pinned egress
-  cannot reach a loopback Ledger or UOA. It cannot open a new brief: readiness
-  stops at `unavailable` without a Ledger key and UOA signer.
+  cannot reach a loopback Ledger or UOA; DeepWater's push is played on the
+  wire, a signed progress event posted to the real receiver moving the room's
+  card live. It cannot open a new brief: readiness stops at `unavailable`
+  without a Ledger key and UOA signer.
