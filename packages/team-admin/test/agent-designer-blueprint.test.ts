@@ -66,7 +66,10 @@ test('the ids later calls need are named as the links\' last segments', () => {
 // describes; agent_trigger_create's result prints it before the agent's. A
 // model reading that rule literally took the trigger's id as the agentId.
 test('a trigger link is never read as an agent\'s', () => {
-  assert.match(prose, /\/agents\/<id> link agent_create or agent_list returned \(a \/agents\/triggers\/… link is a trigger, never an agent\)/)
+  assert.ok(prose.includes(
+    '/agents/<id> link agent_create or agent_list returned '
+    + '(a /agents/triggers/… link is a trigger, never an agent)',
+  ))
   assert.doesNotMatch(prose, /agentId[^.]*the last path segment of the \/agents\/… link/)
 })
 
