@@ -11,6 +11,7 @@ import {
   codingSessionsConfigDigest,
   normalizeCodingSessionsConfig,
 } from '../src/coding-session/config.js'
+import type { ExecutorLocalMcpServer } from '../src/mcp-servers.js'
 import { createExecutorMcpSessionManager, type ExecutorMcpSessionManager } from '../src/mcp-session-manager.js'
 
 /**
@@ -38,6 +39,8 @@ export type CodingHarness = {
   recordDir: string
   outputs: string[]
   manager: ExecutorMcpSessionManager
+  /** The bridge exactly as `manager` starts it, for a suite that stands in for the daemon. */
+  server: ExecutorLocalMcpServer
   call: (tool: string, args: Record<string, unknown>, options?: CallOptions) => Promise<BridgeAnswer>
   /** Kills the bridge process; the next call starts a fresh one. */
   restartBridge: () => Promise<void>
@@ -166,12 +169,13 @@ export const createCodingHarness = async (options: {
     const written = normalizeCodingSessionsConfig(JSON.parse(await readFile(configPath, 'utf8')))
     bridgeEnv[CODING_SESSIONS_CONFIG_DIGEST_ENV] = codingSessionsConfigDigest(written)
   }
-  const manager = createExecutorMcpSessionManager([{
+  const server: ExecutorLocalMcpServer = {
     name: 'coding-sessions',
     command: [process.execPath, '--import', 'tsx', EXECUTOR_ENTRY, 'serve-coding-session-mcp', '--config', configPath],
     cwd: EXECUTOR_DIR,
     env: bridgeEnv,
-  }], { maxResultBytes: 65_536 }, {
+  }
+  const manager = createExecutorMcpSessionManager([server], { maxResultBytes: 65_536 }, {
     idleTimeoutMs: options.idleTimeoutMs ?? 60_000,
     log: () => undefined,
     startTimeoutMs: 30_000,
@@ -200,7 +204,7 @@ export const createCodingHarness = async (options: {
   }
   const stateDir = join(configDir, 'coding-sessions')
   return {
-    dir, root, configPath, stateDir, recordDir, outputs, manager, call, agents,
+    dir, root, configPath, stateDir, recordDir, outputs, manager, server, call, agents,
     restartBridge: () => manager.stopAll(),
     release: (name) => writeFile(join(recordDir, `release-${name}`), ''),
     waitForStatus: (sessionId, accept, owner = OWNER_A, timeoutMs = 30_000) => waitUntil(async () => {

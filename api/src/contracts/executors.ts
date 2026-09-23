@@ -13,6 +13,7 @@ import {
   ExecutorDaemonDescriptorRequestSchema,
   ExecutorDaemonDescriptorResponseSchema,
   ExecutorDaemonHeartbeatRequestSchema,
+  ExecutorDaemonHeartbeatResponseSchema,
   ExecutorEnrollmentRequestSchema,
   ExecutorPrivateAssignmentSchema,
   ExecutorAccessViewResponseSchema,
@@ -121,6 +122,7 @@ export const ExecutorDaemonCommandAttachmentSchema = ExecutorDaemonCommandAttach
 
 export const ExecutorDaemonChallengeSchema = ExecutorDaemonChallengeResponseSchema
 export const ExecutorDaemonConnectionSchema = ExecutorDaemonConnectionResponseSchema
+export const ExecutorDaemonHeartbeatSchema = ExecutorDaemonHeartbeatResponseSchema
 export const ExecutorDaemonDescriptorSchema = ExecutorDaemonDescriptorResponseSchema
 export const ExecutorDaemonCommandPollSchema = ExecutorDaemonCommandPollResponseSchema
 

@@ -187,7 +187,7 @@ export const processTaskSetItem = async (
     utilityModel: null,
     thinkingRecorder: {
       appendReasoning: async () => undefined, appendToolLine: async () => undefined, close: async () => undefined,
-      linkToolCall: async () => undefined,
+      linkToolCall: async () => undefined, replaceToolLine: async () => undefined,
     },
   })
   const model = await deps.prisma.inferenceModel.findFirst({ where: {

@@ -344,7 +344,10 @@ server that instead answers them with a JSON-RPC error still counts: the daemon
 reports that only as a refused call.
 
 `executor_mcp_tools` is an observation tool for loop detection: listing the same
-catalog again is allowed until the fourth identical call in a row.
+catalog again is allowed until the fourth identical call in a row. The
+coding-session list, review and wait are too, and a wait is never refused
+before it runs ([tech-and-run-budgets.md](tech-and-run-budgets.md) → "Loop
+detection").
 
 ## The pair is the one bundle that carries across runs
 
@@ -535,8 +538,8 @@ agent's own account (which the model knows and repeats) reads `<account>`, and
 its failures are named codes, never the underlying error. The whole contract is in
 [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md).
 
-It is the one named server that is not a program somebody named, and three
-rules follow from that:
+It is the one named server that is not a program somebody named, and the one
+that acts as the machine's own user, and these rules follow from that:
 
 - **The executor generates its entry.** `configure` takes a `codingSessions`
   object and writes the server itself; a hand-named server called
@@ -547,12 +550,53 @@ rules follow from that:
   the root names and the configuration's digest, inside
   `localPolicyDigest`. Flags that would carry power past those facts are
   refused in the configuration. Paths, programs and values still stay on the
-  host.
+  host. The descriptor-review projection carries the facts verbatim, and a
+  review reads them as "Coding agents on this machine: Claude Code (accept
+  edits, 3 pre-allowed commands) in nessie" (`ExecutorCodingAgents.tsx`).
+- **Only a private executor's pairing owner drives it.** A coding agent acts
+  as the machine's own user, so `createExecutorCommand` refuses an `mcp.call`
+  to the bridge unless the executor is private and the binding was made for
+  its pairing owner (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), and the daemon's
+  poll refuses it again. Every other program on the same machine stays
+  reachable to everyone the policy lets reach it.
+- **The model drives it through tools of its own, not the pair.** A run the
+  rule allows is offered `coding_session_list`, `_start`, `_wait`, `_send`,
+  `_interrupt`, `_review` and `_close`, each an `mcp.call` to one bridge tool
+  through the same dispatch. `executor_mcp_tools` / `executor_mcp_call` never
+  name the bridge, for any run; asked for through them anyway, it is refused
+  as correctable before any command exists. The wait is the worker's: short
+  status reads every 5 s for up to 10 minutes, nothing held on the lane
+  between them, returning early when the session needs the agent, the person
+  writes or the run's own time enters its wind-down. Coding output has its
+  own banner ("Output from the coding agent you supervise…"). The contract is
+  in
+  [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "The agent's tools".
+- **What ends a person's authority closes their sessions.** A lease's end, an
+  access withdrawal and a paused or revoked executor write a close request in
+  their own transaction — as does the pairing owner's Close on one session —
+  and the heartbeat carries it as `codingSessionClose` until a later report
+  shows it done
+  ([host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "Close requests").
 - **Its report carries its open sessions.** The local-MCP status for
   `coding-sessions` may carry `codingSessions`: each open session's id,
   owner key, title, status, agent, root name and `updatedAt` — never what it
   said or did. Absent means the bridge was not asked; only that server may
   carry the field.
+- **The executor page lists them, and only the pairing owner closes one.**
+  Under the bridge's status in Local apps (`ExecutorCodingSessions`), the
+  people who manage the machine see each open session from that report,
+  through `GET /api/executors/:executorId/coding-sessions`, which adds what
+  the report cannot say: the agent driving it — the owner key derived again
+  for the pairing owner's own bindings, and the agent named only when the
+  reader could see it — and whether a close is already on its way. Close is
+  the pairing owner's alone, because the sessions act as them:
+  `POST …/coding-sessions/close {ownerKey, sessionId}` writes a `person` close
+  request for a session the report lists as theirs and answers 202, and the
+  row reads "Closing…" until a later report drops it
+  ([host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
+  "The executor page").
 
 Both built-in servers are dispatched by `executor/src/builtin-mcp-cli.ts`.
 
@@ -563,6 +607,7 @@ pnpm --filter @nessie/executor run test:mcp
 pnpm --filter @nessie/worker run test:unit
 pnpm --filter @nessie/admin test:e2e:executor-local-mcp
 pnpm --filter @nessie/admin test:e2e:executor-run-launcher
+pnpm --filter @nessie/admin test:e2e:executor-coding-sessions
 pnpm --filter @nessie/admin test:e2e:tool-screenshots
 ```
 
@@ -572,8 +617,14 @@ API client: the eight options in order, the local-apps description, the
 availability request and the launch payload carrying exactly the pair, and the
 explanation when no machine offers it. Browser Suites runs it beside the other
 executor suites; `test:e2e:executor-local-mcp` runs in the project-usability
-lifecycle. `test:e2e:tool-screenshots` (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`,
-in the same executor step) is a pure fixture over the real thought-process
+lifecycle. `test:e2e:executor-coding-sessions`
+(`NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE`) drives the real executor page
+over runner-supplied answers: the open sessions, the pairing owner's Close
+and "Closing…" until the report drops the row, another administrator
+without Close, and the phone width; which answer a person gets is
+`api/test/executor-coding-session-routes.test.ts`.
+`test:e2e:tool-screenshots` (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`, in the
+same executor step) is a pure fixture over the real thought-process
 dialog and the real agent page Activity tab, with the image Kelpie really
 returned: no thumbnail while the call runs and both once the next thought
 shows it returned, the thumbnail route or the original as each ref says, the

@@ -25,6 +25,7 @@ import {
   ExecutorDaemonCommandPollSchema,
   ExecutorDaemonCommandReceiptBodySchema,
   ExecutorDaemonHeartbeatBodySchema,
+  ExecutorDaemonHeartbeatSchema,
   PendingExecutorEnrollmentSchema,
   SubmitExecutorEnrollmentBodySchema,
 } from '../contracts/executors.js'
@@ -87,8 +88,9 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       const body = parseInput(ExecutorDaemonHeartbeatBodySchema, request.body, reply)
       if (!body) return reply
       try {
-        const connection = await reportExecutorHeartbeat(prisma, body)
-        return createApiResponse(ExecutorDaemonConnectionSchema.parse(connection))
+        // The connection, and the coding sessions the daemon must close.
+        const heartbeat = await reportExecutorHeartbeat(prisma, body)
+        return createApiResponse(ExecutorDaemonHeartbeatSchema.parse(heartbeat))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
         throw error

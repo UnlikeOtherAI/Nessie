@@ -194,6 +194,24 @@ const REVIEW_SCENARIOS: Record<string, {
     change: { kind: 'descriptor_review', revision: 3, status: 'active' },
     descriptorRevisions: [mcpRevision],
   },
+  // The built-in coding bridge's power facts, which only a descriptor that
+  // offers it carries: the agents, their stance, the folders, the variables.
+  'policy-coding-sessions': {
+    change: { kind: 'descriptor_review', revision: 6, status: 'active' },
+    descriptorRevisions: [{
+      codingSessions: {
+        agents: ['claude'], allowedToolCount: 3, configDigest: `sha256:1a2b3c4d5e6f${'0'.repeat(52)}`,
+        environmentNames: ['CLAUDE_CONFIG_DIR'], permissionMode: { claude: 'acceptEdits' },
+        rootNames: ['nessie'], serverName: 'coding-sessions',
+      },
+      localPolicyDigest: `sha256:${'e'.repeat(64)}`,
+      mcpServers: ['coding-sessions', 'kelpie'],
+      operationKeys: ['mcp.tools', 'mcp.call'],
+      profiles: ['connected_browser'],
+      reviewStatus: 'pending_review',
+      revision: 6,
+    }],
+  },
   'policy-none-named': {
     change: { kind: 'descriptor_review', revision: 4, status: 'active' },
     descriptorRevisions: [{

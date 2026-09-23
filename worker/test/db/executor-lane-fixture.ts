@@ -18,6 +18,7 @@ import {
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 
+import type { CodingSessionsDaemon } from '../../../executor/src/coding-sessions-daemon.js'
 import { executeExecutorMcpCommand } from '../../../executor/src/mcp-dispatch.js'
 import type { ExecutorMcpSessionManager } from '../../../executor/src/mcp-session-manager.js'
 
@@ -47,11 +48,21 @@ export const localAppsToolPolicy = async (
   return { [tools.get('mcp.tools')!]: true, [tools.get('mcp.call')!]: true }
 }
 
-/** A private executor, reviewed with `mcpServers`, whose owner granted it to the agent. */
+/**
+ * A private executor, reviewed with `mcpServers` (and the coding bridge's power
+ * facts when given), whose owner — the person who paired it — granted it to the agent.
+ */
 export const seedLocalAppsExecutor = async (
   prisma: PrismaClient,
   actor: AuthorizedActionContext,
-  input: { agentId: string; executorId: string; mcpServers: string[]; organizationId: string; userId: string },
+  input: {
+    agentId: string
+    codingSessions?: Record<string, unknown>
+    executorId: string
+    mcpServers: string[]
+    organizationId: string
+    userId: string
+  },
 ): Promise<void> => {
   await prisma.executor.create({ data: {
     id: input.executorId, organizationId: input.organizationId, pairingOwnerUserId: input.userId,
@@ -62,6 +73,7 @@ export const seedLocalAppsExecutor = async (
   const descriptor = ExecutorCapabilityDescriptorSchema.parse({
     protocolVersion: 1, revision: 1, profiles: ['workspace_sandbox'], operationKeys: ['mcp.tools', 'mcp.call'],
     mcpServers: input.mcpServers,
+    ...(input.codingSessions ? { codingSessions: input.codingSessions } : {}),
     platform: { architecture: 'x64', os: 'windows', osMajorVersion: 26100 },
     supervisor: 'service', sandboxBackend: 'none', localPolicyDigest: `sha256:${'2'.repeat(64)}`,
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 65_536, maxSessions: 2 },
@@ -96,15 +108,22 @@ export const launchLocalApps = async (
   }))
 }
 
-export type DeliveredCommand = { args: Record<string, unknown>; operationKey: string }
+/** What the daemon received: the model's `args`, and the `owner` the worker stamped when it stamped one. */
+export type DeliveredCommand = { args: Record<string, unknown>; operationKey: string; owner?: unknown }
 
 /**
  * The daemon stand-in for one executor: the worker's queue claim, then poll,
- * run the daemon's own operation against `sessions`, and the three receipts.
+ * run the daemon's own operation against `sessions` — with the daemon's own
+ * coding-sessions bridge when given, which stamps the reserved `_meta` — and
+ * the three receipts.
  */
 export const startStandInDaemon = (
   prisma: PrismaClient,
-  input: { executorId: string; sessions: ExecutorMcpSessionManager },
+  input: {
+    codingBridge?: Pick<CodingSessionsDaemon, 'callMeta'>
+    executorId: string
+    sessions: ExecutorMcpSessionManager
+  },
 ): { delivered: DeliveredCommand[]; stop: () => Promise<void> } => {
   const delivered: DeliveredCommand[] = []
   let running = true
@@ -123,12 +142,18 @@ export const startStandInDaemon = (
         await new Promise((resolve) => setTimeout(resolve, 50))
         continue
       }
-      const payload = envelope.payload as { args: Record<string, unknown> }
-      delivered.push({ args: payload.args, operationKey: envelope.operationKey })
+      const payload = envelope.payload as { args: Record<string, unknown>; owner?: unknown }
+      delivered.push({
+        args: payload.args, operationKey: envelope.operationKey,
+        ...(payload.owner === undefined ? {} : { owner: payload.owner }),
+      })
       const at = new Date().toISOString()
       await recordExecutorCommandReceipt(prisma, LANE_SECRET, input.executorId, { commandId: envelope.commandId, occurredAt: at, state: 'accepted' }, undefined)
       await recordExecutorCommandReceipt(prisma, LANE_SECRET, input.executorId, { commandId: envelope.commandId, occurredAt: at, state: 'started' }, undefined)
-      const result = await executeExecutorMcpCommand(envelope.operationKey as 'mcp.tools' | 'mcp.call', payload.args, input.sessions)
+      const result = await executeExecutorMcpCommand(
+        envelope.operationKey as 'mcp.tools' | 'mcp.call', payload.args, input.sessions,
+        { ...(input.codingBridge ? { codingBridge: input.codingBridge } : {}), commandId: envelope.commandId, payload },
+      )
       await recordExecutorCommandReceipt(prisma, LANE_SECRET, input.executorId, {
         commandId: envelope.commandId, occurredAt: new Date().toISOString(), resultDigest: digest(result),
         state: 'result_acknowledged',

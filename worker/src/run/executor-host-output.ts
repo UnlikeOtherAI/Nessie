@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 
+import { CODING_SESSION_TOOL_NAME_SET } from './coding-session-tools.js'
 import type { BasisScope, ConsumedSourceSink } from './execute/disclosure-basis.js'
 import { executorToolName } from './executor-tool-descriptors.js'
 
@@ -42,7 +43,11 @@ export const launchConversationScope = (channelId: string): BasisScope => ({
 })
 
 // Their tool names too: a ToolCall keeps its name when its binding is gone.
-const HOST_OUTPUT_TOOL_NAMES = [...HOST_OUTPUT_OPERATION_KEYS].map(executorToolName)
+// The coding-session tools are `mcp.call`s under names of their own.
+const HOST_OUTPUT_TOOL_NAMES = [
+  ...[...HOST_OUTPUT_OPERATION_KEYS].map(executorToolName),
+  ...CODING_SESSION_TOOL_NAME_SET,
+]
 
 // Far past any real chain of "keep going"; a longer one is stamped anyway.
 const MAX_CHECKPOINT_CHAIN_RUNS = 64

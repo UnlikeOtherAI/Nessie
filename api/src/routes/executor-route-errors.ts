@@ -14,11 +14,12 @@ export const sendExecutorError = (reply: FastifyReply, error: unknown): boolean 
     return true
   }
   const status = error.code === 'EXECUTOR_NOT_FOUND'
+    || error.code === 'EXECUTOR_CODING_SESSION_NOT_FOUND'
     || error.code === 'EXECUTOR_ACCESS_CHANGE_NOT_FOUND'
     || error.code === 'EXECUTOR_PROMOTION_NOT_FOUND'
     || error.code === 'EXECUTOR_PROMOTION_REVIEW_NOT_FOUND'
     ? 404
-    : error.code === 'SCOPE_ENTITLEMENT_DENIED'
+    : error.code === 'SCOPE_ENTITLEMENT_DENIED' || error.code === 'EXECUTOR_CODING_SESSIONS_OWNER_ONLY'
       ? 403
       : error.code === 'EXECUTOR_DAEMON_PROOF_INVALID'
           || error.code === 'EXECUTOR_DAEMON_CHALLENGE_INVALID'

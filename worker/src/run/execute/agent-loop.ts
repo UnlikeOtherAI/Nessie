@@ -6,6 +6,7 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import { WIND_DOWN_FRACTION } from '../loop-budget.js'
 import type { LoopResumeState } from '../loop-resume.js'
 import type { CrashCheckpointWriter } from './crash-checkpoint.js'
 import { buildContextPlan } from '../context-window.js'
@@ -147,7 +148,15 @@ export const runExecutionAgentLoop = async (
     payload,
     stubbedBuiltinToolIds: input.stubbedBuiltinToolIds,
   })
-  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset)
+  // A coding-session wait watches for the worker's drain between its reads,
+  // keeps its one line in the thought process current instead of adding a
+  // line per read, and ends where the run's own wallclock enters its
+  // wind-down, so the agent still has time to say where the session stands.
+  const executeExecutorTool = createExecutorToolExecution(deps, context, input.executorToolset, {
+    onProgress: (toolName, line) => input.thinkingRecorder.replaceToolLine(toolName, line),
+    runWindDownAt: Date.now() - (input.resumeState?.elapsedMs ?? 0) + input.budget.maxWallclockMs * WIND_DOWN_FRACTION,
+    ...(input.drainSignal ? { signal: input.drainSignal } : {}),
+  })
   const toolImages = createToolImageInference({
     files: fileServiceFor(deps.prisma),
     organizationId: context.channel.organizationId,
@@ -475,7 +484,14 @@ export const runExecutionAgentLoop = async (
       onToolCallStart: async (toolName, _args, providerCallId) => {
         const startedAt = new Date()
         // Tool activity is part of the thought process, not a separate feed.
-        await input.thinkingRecorder.appendToolLine(toolName, summarizeToolInput(_args), providerCallId)
+        // The line goes under the offered name, the one a watching call
+        // rewrites it by, whatever prefix the provider put on the call, and
+        // is keyed by the provider's call id, the one its ToolCall links by.
+        await input.thinkingRecorder.appendToolLine(
+          normalizeToolName(toolName),
+          summarizeToolInput(_args),
+          providerCallId,
+        )
         await setAgentStatus(deps.prisma, context.agent.id, 'executing')
         await publishAgentStatus(deps.realtimeTransport, context, {
           currentRunId: context.run.id,

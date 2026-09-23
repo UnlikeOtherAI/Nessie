@@ -49,8 +49,21 @@ export {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   pollExecutorCommand,
+  type ExecutorCommandBindingFacts,
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
+export {
+  executorCodingSessionOwnerKey,
+  executorCodingSessionsAllowed,
+  reviewedCodingSessionsServer,
+  type ExecutorCodingSessionOwner,
+} from './executor-coding-session-owner.js'
+export {
+  EXECUTOR_CODING_SESSION_CLOSE_TTL_MS,
+  executorCodingSessionOwnerAgentIds,
+  reportedExecutorCodingSessions,
+  requestExecutorCodingSessionClose,
+} from './executor-coding-session-closes.js'
 export {
   markExecutorCommandUnknownOutcome,
   readExecutorCommandResult,

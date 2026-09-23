@@ -27,7 +27,7 @@ The fixture supplies API responses and does not claim server authorization
 coverage. The executor-management API tests own latest-revision selection and
 caller entitlement.
 
-The Browser Suites workflow enables seven isolated executor preview entries in
+The Browser Suites workflow enables eight isolated executor preview entries in
 its Navigation Transitions job, run together in its executor step:
 
 | Fixture | Build flag |
@@ -38,6 +38,7 @@ its Navigation Transitions job, run together in its executor step:
 | Attention badges | `NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE=1` |
 | Run launcher | `NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE=1` |
 | Conversation leases | `NESSIE_EXECUTOR_LEASE_E2E_FIXTURE=1` |
+| Coding sessions | `NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE=1` |
 | Tool screenshots | `NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE=1` |
 
 `pnpm --filter @nessie/admin test:e2e:executor-lease` renders the real
@@ -56,6 +57,22 @@ and phone width, and none in another reply thread's, and that the machine's
 says it may not — with End on screen at phone width. Screenshots go to
 `e2e/screenshots/executor-lease/`. Who gets which answer is the API's job and
 is covered by `api/test/executor-lease-routes.test.ts`.
+
+`pnpm --filter @nessie/admin test:e2e:executor-coding-sessions` renders the
+real executor page on its Permissions tab, whose Local apps section lists the
+coding bridge's open sessions, over runner-supplied API answers. It pins that
+each row names the title, status, coding agent, folder, the driving agent or
+"an agent you cannot see" and its last update; that the pairing owner's Close
+posts exactly that row's `{ownerKey, sessionId}`, reads "Closing…" at once
+and loses its button, and that the row goes without a reload once a later
+answer no longer carries it (the list is re-read every 20 s while a close
+waits); that another administrator sees the same list with no Close and the
+sentence saying who can; that at phone width every Close is on screen, and a
+Close refused because the session already left the report shows the refusal
+and drops the row; and that a bridge the daemon did not ask shows "Open
+coding sessions have not been checked yet" and asks nothing. Screenshots go
+to `e2e/screenshots/executor-coding-sessions/`. Who may Close, and which agent
+a reader may see, is covered by `api/test/executor-coding-session-routes.test.ts`.
 
 `pnpm --filter @nessie/admin test:e2e:tool-screenshots` renders the real
 thought-process dialog on a live run and the real agent page Activity tab, with

@@ -1188,6 +1188,7 @@ model User {
   executorAvailabilityCandidates        ExecutorAvailabilityCandidate[]        @relation("ExecutorAvailabilityCandidateActor")
   executorConversationLeases            ExecutorConversationLease[]            @relation("ExecutorConversationLeaseActor")
   endedExecutorConversationLeases       ExecutorConversationLease[]            @relation("ExecutorConversationLeaseEndedBy")
+  executorCodingSessionCloseRequests    ExecutorCodingSessionCloseRequest[]    @relation("ExecutorCodingSessionCloseRequester")
   createdAgentTodoTemplates             AgentTodoTemplate[]                    @relation("AgentTodoTemplateCreatedBy")
   createdAgentTodos                     AgentTodo[]                            @relation("AgentTodoCreatedBy")
   createdTaskChecklists                 TaskChecklist[]                        @relation("TaskChecklistCreatedBy")
@@ -5302,6 +5303,11 @@ model ToolCall {
   endedAt           DateTime?        @map("ended_at")
   durationMs        Int?             @map("duration_ms")
   executorBindingId String?          @map("executor_binding_id") @db.Uuid
+  /// The call a row is one step of: a coding-session wait's later status
+  /// reads each need a ToolCall for their executor command, and name the
+  /// wait's own row here so the run's tool-call views show the wait once.
+  /// App-enforced, no FK; both rows cascade from the run.
+  parentToolCallId  String?          @map("parent_tool_call_id") @db.Uuid
   run               Run              @relation(fields: [runId], references: [id], onDelete: Cascade)
   executorBinding   ExecutorBinding? @relation(fields: [executorBindingId], references: [id], onDelete: SetNull)
   executorCommand   ExecutorCommand?
@@ -5390,6 +5396,7 @@ model Executor {
   daemonChallenges       ExecutorDaemonChallenge[]
   availabilityCandidates ExecutorAvailabilityCandidate[]
   conversationLeases     ExecutorConversationLease[]
+  codingSessionCloses    ExecutorCodingSessionCloseRequest[]
   browserCookieImports   BrowserCookieImport[]
 
   @@unique([organizationId, id])
@@ -5600,6 +5607,32 @@ model ExecutorConversationLease {
   @@index([executorId, endedAt])
   @@index([actorUserId, endedAt])
   @@map("executor_conversation_leases")
+}
+
+/// An instruction to the machine's daemon, carried on every heartbeat until it
+/// is resolved: close this owner's coding sessions, or one of them
+/// (docs/executor-protocol/host-coding-sessions.md). Written in the same
+/// transaction as the lease end, access withdrawal or fence that causes it, or
+/// by a person's Close. Resolved once a local-MCP report taken after it no
+/// longer lists what it names, or after 24 hours.
+model ExecutorCodingSessionCloseRequest {
+  id                String    @id @default(uuid()) @db.Uuid
+  executorId        String    @map("executor_id") @db.Uuid
+  /// `sha256:` + hex SHA-256 of `executorCodingSessionOwnerKeyInput`, as the
+  /// daemon derives it for `_meta['nessie/owner']`.
+  ownerKey          String    @map("owner_key")
+  /// Absent means every session of that owner on the machine.
+  sessionId         String?   @map("session_id") @db.Uuid
+  /// lease_ended | access_revoked | executor_paused | executor_revoked | person
+  reason            String
+  requestedByUserId String?   @map("requested_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  executor          Executor  @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  requestedBy       User?     @relation("ExecutorCodingSessionCloseRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([executorId, resolvedAt, createdAt])
+  @@map("executor_coding_session_close_requests")
 }
 
 /// An opaque, short-lived choice made by the server's availability resolver.
