@@ -222,7 +222,8 @@ this standard, not an exception to it.
   deployment's browser TTL may shorten — is the card's. `card_post` never
   passes that step, so no model-written card can grant browser access. Pinned
   by `worker/test/browser-login-request.test.ts` (no second writer) and
-  `worker/test/db/browser-login-card.test.ts` (the card, its grant, and a
+  `worker/test/db/browser-login-card.test.ts` (the card, its grant, the
+  requester's bell, the tool result that parks the run on the card, and a
   failed grant taking the card with it).
 - **Waiting is the approval machinery, reused.** `wait: true` exits the loop
   through `pendingInput` (decided *after* dispatch — the card must exist first),

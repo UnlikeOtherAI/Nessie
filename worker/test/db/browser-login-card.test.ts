@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
+import { BROWSER_LOGIN_REQUEST_TOOL_ID } from '@nessie/runtime'
 import { AgentCardSpecSchema } from '@nessie/schemas'
 import { createAgentRecord, renderAgentCardPlainText } from '@nessie/team-admin'
 
+import { cloudBrowserTool } from '../../src/run/browser-cloud/browser-tools.js'
 import { requestBrowserLogin } from '../../src/run/browser-cloud/login-request.js'
 import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
 import type { RunContext } from '../../src/run/execute/types.js'
@@ -21,7 +23,9 @@ import { runDatabaseTest } from './support.js'
  * grant inside the card's own transaction. What this pins is that the move
  * changed nothing a person or the API reads: the same card, the same message
  * and pointer, the grant the card names, the grant's deadline as the card's,
- * the requester alone as respondent, and one realtime notice.
+ * the requester alone as respondent, one realtime notice, the requester's
+ * bell — and, through the tool's own dispatcher, a result that parks the run
+ * on that card.
  */
 
 type Seed = {
@@ -29,6 +33,7 @@ type Seed = {
   homeId: string
   organizationId: string
   ownerId: string
+  projectId: string
   runId: string
   teamId: string
   threadId: string
@@ -68,6 +73,7 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
     homeId: home.id,
     organizationId: organization.id,
     ownerId: owner.id,
+    projectId: project.id,
     runId: run.id,
     teamId: team.id,
     threadId,
@@ -107,6 +113,7 @@ const homeContext = (
       dmKey: `agent:${s.organizationId}:${s.ownerId}:${s.agentId}`,
       id: s.homeId,
       organizationId: s.organizationId,
+      projectId: s.projectId,
       systemChannelType: null,
       teamId: s.teamId,
       visibility: 'private',
@@ -219,6 +226,37 @@ runDatabaseTest('the sign-in card, its message and its grant are written as one'
   const announced = published.filter((payload) =>
     payload.event === 'message.new' && JSON.stringify(payload.data).includes(card.message.id))
   assert.equal(announced.length, 1)
+
+  // The requester's bell: one durable mention alert, and its realtime notice.
+  assert.deepEqual(
+    await prisma.userAlert.findMany({
+      where: { messageId: card.message.id },
+      select: { kind: true, threadId: true, userId: true },
+    }),
+    [{ kind: 'mention', threadId: s.threadId, userId: s.ownerId }],
+  )
+  const rung = published.filter((payload) =>
+    payload.event === 'alert.created' && JSON.stringify(payload.data).includes(card.message.id))
+  assert.equal(rung.length, 1)
+})
+
+// The tool as the loop dispatches it: its result parks the run on the card it
+// just posted, so the run waits for Done rather than carrying on.
+runDatabaseTest('browser_login_request parks its run on the card it posted', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(() => cleanup(prisma, s).then(() => prisma.$disconnect()))
+
+  const result = await cloudBrowserTool(
+    BROWSER_LOGIN_REQUEST_TOOL_ID,
+    { origins: ['https://app.example.com'], reason: 'Read the release notes', service: 'Example' },
+    { ...homeContext(prisma, s, []), cloudBrowser: { prisma, resolveSecret: async () => null } },
+  )
+
+  assert.ok(result, 'the cloud browser dispatcher owns browser_login_request')
+  assert.equal(result.success, true, result.output)
+  const card = await prisma.agentCard.findFirstOrThrow({ where: { runId: s.runId }, select: { id: true } })
+  assert.deepEqual(result.pendingInput, { cardId: card.id })
 })
 
 // The grant runs inside the card's transaction: a grant that cannot be written
