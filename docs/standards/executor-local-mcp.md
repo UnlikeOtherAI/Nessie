@@ -173,12 +173,18 @@ never names bytes nobody holds.
 
 Before the receipt, `command-attachments.ts` uploads each referenced image on
 its own request, signed under the `attachment` domain
-([command-attachments.md](../executor-protocol/command-attachments.md)). Each
-upload's deadline grows with its size, and all of one result's together fit
-`EXECUTOR_MCP_UPLOAD_BUDGET_MS`, the part of the command's expiry kept for
-them. A restart between an upload and the receipt uploads again from the
-same journal and sidecars; Nessie takes the same command and digest as the
-same attachment.
+([command-attachments.md](../executor-protocol/command-attachments.md)).
+`EXECUTOR_MCP_UPLOAD_BUDGET_MS` (50 s), the part of the command's expiry kept
+for them, is one result's six images and 8 MiB on a 2 Mbit/s uplink plus
+Nessie's own work on each. One upload's deadline is not a share of it: it is
+the ordinary 15 s request deadline plus the bytes' transfer on that uplink,
+because the server's work behind an image's answer — digest, lock, metadata
+stripping, thumbnail, storage write, quota — is at least an ordinary
+request's. A transfer-only deadline (2.7 s for a typical screenshot) timed a
+busy server out on an image it went on to keep. Each answered upload is
+journaled as delivered, so a pass that fails part-way resumes after it; a
+restart between an upload and that journal entry uploads again, and Nessie
+takes the same command and digest as the same attachment.
 
 Nessie keeps each image as a `FileService` file of its command, owned by the
 run's organisation and accounted to the person whose launch the command runs
@@ -196,7 +202,21 @@ sidecar that is missing or no longer matches its digest is withdrawn the same
 way. Three 4xx answers are not a refusal of the image and are retried with
 the receipt behind them: a fenced or stale connection (409
 `EXECUTOR_CONNECTION_FENCED`, `EXECUTOR_HEARTBEAT_STALE`), 408 and 429. A
-timeout, a 5xx or a lost connection throws, and the next poll delivers again.
+timeout, a 5xx or a lost connection is retried on the next poll too, as
+`ExecutorAttachmentDeliveryDeferred` — which, unlike any other failed poll,
+does not stop the machine's browser, command and coding sessions: it says
+nothing about them, and one slow answer from Nessie used to end them all. A
+fenced or stale connection throws as itself and stops them as before.
+
+**Delivery ends with the command.** The journal holds the machine's only
+command lane, so retrying for good would queue every later command, for every
+person and run, behind one slow uplink or one lasting storage fault — across
+restarts, because the journal replays. Once the command's `expiresAt` has
+passed, each image not yet delivered gets one more attempt, and a failure
+that is not a refusal then withdraws it as
+`[image unavailable: it could not be delivered before its command expired]`
+and the receipt goes out. Nessie still takes a late result, so a daemon that
+restarts after the expiry still delivers what it can on that attempt.
 
 An acknowledged receipt removes its command's sidecars, after the journal is
 cleared. The daemon's start removes every sidecar folder but the one the
@@ -269,7 +289,7 @@ case for one command — a cold start plus one call deadline — as
 `EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
 
 The worker stamps each `mcp.tools` / `mcp.call` command with
-`EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): that worst case + a 30 s upload budget +
+`EXECUTOR_MCP_COMMAND_TTL_MS` (140 s): that worst case + a 50 s upload budget +
 20 s for the lane's own hops (queue claim, daemon poll, receipts, journal
 fsyncs). The numbers live in one file, `@nessie/schemas` `executor-timing.ts`,
 which both processes import; `executor/test/mcp-timing.test.ts` pins the

@@ -11,7 +11,12 @@ import {
   EXECUTOR_TOOL_TIMEOUT_MARGIN_MS,
 } from '@nessie/schemas'
 
-import { executorAttachmentUploadTimeoutMs } from '../src/command-attachments.js'
+import { EXECUTOR_API_REQUEST_TIMEOUT_MS } from '../src/api-client.js'
+import {
+  EXECUTOR_ATTACHMENT_SERVER_ALLOWANCE_MS,
+  EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS,
+  executorAttachmentUploadTimeoutMs,
+} from '../src/command-attachments.js'
 import { EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS } from '../src/mcp-session-manager.js'
 
 /**
@@ -35,23 +40,28 @@ test('an mcp command outlives the daemon’s worst case, its uploads and the lan
 })
 
 /**
- * The upload budget above is what a result's image uploads may spend. Each
- * upload's own deadline grows with its size, and the sum of one result's —
- * at most six images, 8 MiB together — stays inside that budget however the
- * bytes are split.
+ * The upload budget above is what one result's image uploads spend on a slow
+ * but working uplink: at most six images and 8 MiB, each also costing Nessie
+ * its own work. A single upload's deadline is a different thing — a bound on
+ * one request, never shorter than any other daemon request's, because the
+ * server work behind an image's answer is at least an ordinary request's. A
+ * transfer-only deadline timed a busy server out on an image it went on to
+ * keep, and the failed poll that followed stopped the machine's sessions.
  */
-test('one result’s image uploads fit the upload budget however its bytes are split', () => {
-  const total = EXECUTOR_RESULT_IMAGES_TOTAL_MAX_BYTES
-  const splits = [
-    Array.from({ length: EXECUTOR_RESULT_IMAGE_MAXIMUM }, () => 1),
-    Array.from({ length: EXECUTOR_RESULT_IMAGE_MAXIMUM }, () => Math.floor(total / EXECUTOR_RESULT_IMAGE_MAXIMUM)),
-    [EXECUTOR_RESULT_IMAGE_MAX_BYTES, EXECUTOR_RESULT_IMAGE_MAX_BYTES],
-    [EXECUTOR_RESULT_IMAGE_MAX_BYTES, 1, 1, 1, 1, EXECUTOR_RESULT_IMAGE_MAX_BYTES - 4],
-  ]
-  for (const split of splits) {
-    const spent = split.reduce((sum, bytes) => sum + executorAttachmentUploadTimeoutMs(bytes), 0)
-    assert.ok(spent <= EXECUTOR_MCP_UPLOAD_BUDGET_MS, `${split.join('+')} bytes may take ${spent} ms`)
+test('one result’s image uploads fit the upload budget, and no upload is timed shorter than a request', () => {
+  const transfer = Math.ceil(EXECUTOR_RESULT_IMAGES_TOTAL_MAX_BYTES / EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS)
+  const serverWork = EXECUTOR_RESULT_IMAGE_MAXIMUM * EXECUTOR_ATTACHMENT_SERVER_ALLOWANCE_MS
+  assert.ok(
+    transfer + serverWork <= EXECUTOR_MCP_UPLOAD_BUDGET_MS,
+    `8 MiB at ${EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS} B/ms (${transfer} ms) + ${serverWork} ms of server work > ${EXECUTOR_MCP_UPLOAD_BUDGET_MS} ms`,
+  )
+  for (const bytes of [1, 13_715, 900_000, EXECUTOR_RESULT_IMAGE_MAX_BYTES]) {
+    assert.ok(executorAttachmentUploadTimeoutMs(bytes) >= EXECUTOR_API_REQUEST_TIMEOUT_MS, `${bytes} bytes`)
   }
-  assert.ok(executorAttachmentUploadTimeoutMs(4 * 1024 * 1024) > executorAttachmentUploadTimeoutMs(13_715))
-  assert.ok(executorAttachmentUploadTimeoutMs(1) >= 2_000, 'even a tiny image gets time for the round trip')
+  // The transfer on top grows with the bytes: a 4 MiB image on a 2 Mbit/s uplink.
+  assert.ok(executorAttachmentUploadTimeoutMs(EXECUTOR_RESULT_IMAGE_MAX_BYTES) > executorAttachmentUploadTimeoutMs(13_715))
+  assert.equal(
+    executorAttachmentUploadTimeoutMs(EXECUTOR_RESULT_IMAGE_MAX_BYTES),
+    EXECUTOR_API_REQUEST_TIMEOUT_MS + Math.ceil(EXECUTOR_RESULT_IMAGE_MAX_BYTES / EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS),
+  )
 })

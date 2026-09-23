@@ -13,6 +13,7 @@ import {
   waitForExecutorDaemonShutdown,
 } from './daemon.js'
 import {
+  commandPollFailureStopsSessions,
   createExecutorCommandAttachmentStore,
   sweepExecutorCommandAttachments,
 } from './command-attachments.js'
@@ -71,11 +72,16 @@ export const serveExecutor = async (
       stateDir, live, browserSessions, commandSessions, codingSessions, mcpSessions, recoveryStore, codingBridge,
       attachmentStore,
     ).catch(async (error) => {
-      await browserSessions.stopAll()
-      await commandSessions.stopAll()
-      await codingSessions.stopAll()
-      // Host coding sessions outlive a failed poll; only a definitive or lasting failure closes them.
-      await codingBridge.connectionFailed('command_poll_failed', error).catch(() => undefined)
+      // An image upload the next poll makes again says nothing about the
+      // connection or the other sessions; stopping them for it ended a
+      // person's browser and coding sessions over one slow answer from Nessie.
+      if (commandPollFailureStopsSessions(error)) {
+        await browserSessions.stopAll()
+        await commandSessions.stopAll()
+        await codingSessions.stopAll()
+        // Host coding sessions outlive a failed poll; only a definitive or lasting failure closes them.
+        await codingBridge.connectionFailed('command_poll_failed', error).catch(() => undefined)
+      }
       console.error('[nessie-executor] command poll failed:', error instanceof Error ? error.message : String(error))
     }))
     const heartbeat = createNonOverlappingExecutorTask(async () => {

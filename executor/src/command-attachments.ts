@@ -3,17 +3,14 @@ import { lstat, mkdir, open, readdir, readFile, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import {
-  EXECUTOR_MCP_UPLOAD_BUDGET_MS,
-  EXECUTOR_RESULT_IMAGE_MAXIMUM,
   EXECUTOR_RESULT_IMAGE_MAX_BYTES,
-  EXECUTOR_RESULT_IMAGES_TOTAL_MAX_BYTES,
   ExecutorCommandIdSchema,
   type ExecutorCommandEnvelope,
   type ExecutorImageMimeType,
   type ExecutorImageReference,
 } from '@nessie/schemas'
 
-import { ExecutorApiError } from './api-client.js'
+import { EXECUTOR_API_REQUEST_TIMEOUT_MS, ExecutorApiError } from './api-client.js'
 import type { ExecutorCommandRecoveryStore } from './command-recovery.js'
 import {
   executorMcpImageReferences,
@@ -140,17 +137,28 @@ export const sweepExecutorCommandAttachments = async (
   await sidecars.sweep(current?.command.commandId)
 }
 
+/** The slow uplink an upload is sized for — 2 Mbit/s — in bytes a millisecond. */
+export const EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS = 250
+
 /**
- * How long one upload may take. Each gets a floor and its share of the bytes,
- * so all of one result's uploads together — at most six images and 8 MiB —
- * fit inside `EXECUTOR_MCP_UPLOAD_BUDGET_MS`, which the command's expiry
- * reserves for them. A timeout is not a refusal: the next poll uploads again.
+ * What Nessie spends on one image before it answers, on a busy instance: the
+ * digest, the executor lock, metadata stripping, the thumbnail, the storage
+ * write and the quota transaction.
  */
-export const executorAttachmentUploadTimeoutMs = (byteLength: number): number => Math.floor(
-  EXECUTOR_MCP_UPLOAD_BUDGET_MS / 2 / EXECUTOR_RESULT_IMAGE_MAXIMUM
-  + ((EXECUTOR_MCP_UPLOAD_BUDGET_MS / 2) * Math.min(byteLength, EXECUTOR_RESULT_IMAGES_TOTAL_MAX_BYTES))
-    / EXECUTOR_RESULT_IMAGES_TOTAL_MAX_BYTES,
-)
+export const EXECUTOR_ATTACHMENT_SERVER_ALLOWANCE_MS = 2_000
+
+/**
+ * How long one upload may take: the ordinary request deadline — the server's
+ * work behind the answer is at least an ordinary request's — plus the bytes'
+ * transfer on a slow uplink. It is a bound on one request, not a share of the
+ * upload budget: a deadline that covered only the transfer timed a busy
+ * server out on a result it went on to store. What bounds the retries is the
+ * command's expiry (`deliverExecutorCommandAttachments`).
+ */
+export const executorAttachmentUploadTimeoutMs = (byteLength: number): number =>
+  EXECUTOR_API_REQUEST_TIMEOUT_MS + Math.ceil(
+    Math.min(Math.max(byteLength, 0), EXECUTOR_RESULT_IMAGE_MAX_BYTES) / EXECUTOR_ATTACHMENT_UPLINK_BYTES_PER_MS,
+  )
 
 export type ExecutorAttachmentUpload = (image: {
   bytes: Buffer
@@ -159,10 +167,30 @@ export type ExecutorAttachmentUpload = (image: {
   mimeType: ExecutorImageMimeType
 }) => Promise<void>
 
-// A fenced or stale connection and a rate limit are not a refusal of the
-// image: the receipt behind the upload fails the same way until the daemon
-// reconnects or waits, and the next poll retries both.
-const NOT_A_REFUSAL_CODES = new Set(['EXECUTOR_CONNECTION_FENCED', 'EXECUTOR_HEARTBEAT_STALE'])
+/**
+ * A delivery the next poll makes again: an upload timed out, met a 5xx, a 408
+ * or a 429, or lost its connection before its command expired. It is its own
+ * error because it says nothing about the machine's other sessions, which a
+ * failed poll otherwise stops.
+ */
+export class ExecutorAttachmentDeliveryDeferred extends Error {
+  constructor(cause: unknown) {
+    super(`An image upload will be made again: ${cause instanceof Error ? cause.message : String(cause)}`, { cause })
+    this.name = 'ExecutorAttachmentDeliveryDeferred'
+  }
+}
+
+/** Whether a failed command poll must stop the machine's browser, command and coding sessions. */
+export const commandPollFailureStopsSessions = (error: unknown): boolean =>
+  !(error instanceof ExecutorAttachmentDeliveryDeferred)
+
+// A fenced or stale connection is not a refusal of the image: the receipt
+// behind the upload fails the same way until the daemon reconnects, and it is
+// thrown as it came, like any failed poll's.
+const CONNECTION_CODES = new Set(['EXECUTOR_CONNECTION_FENCED', 'EXECUTOR_HEARTBEAT_STALE'])
+
+const connectionLost = (error: unknown): boolean =>
+  error instanceof ExecutorApiError && CONNECTION_CODES.has(error.code ?? '')
 
 const uploadWasRefused = (error: unknown): error is ExecutorApiError => (
   error instanceof ExecutorApiError
@@ -171,42 +199,72 @@ const uploadWasRefused = (error: unknown): error is ExecutorApiError => (
   && error.status < 500
   && error.status !== 408
   && error.status !== 429
-  && !NOT_A_REFUSAL_CODES.has(error.code ?? '')
+  && !connectionLost(error)
 )
 
 const MAX_REASON_LENGTH = 200
 
 const refusalReason = (error: ExecutorApiError): string => {
-  const message = error.message.replace(/\s+/g, ' ').trim()
+  const message = error.message.replace(/s+/g, ' ').trim()
   const bounded = message.length <= MAX_REASON_LENGTH ? message : `${message.slice(0, MAX_REASON_LENGTH - 1)}…`
   return `Nessie refused it (${bounded})`
 }
 
+const LOST_REASON = 'the image was lost on this machine before it could be delivered'
+const EXPIRED_REASON = 'it could not be delivered before its command expired'
+
+/** Progress through one result's images, as the journal keeps it. */
+export type ExecutorAttachmentDeliveryProgress = {
+  /** Digests Nessie has answered for; a later pass does not send them again. */
+  delivered: string[]
+  result: Record<string, unknown>
+}
+
 /**
- * Uploads every image `result` references, and answers the result its receipt
- * must carry. A refusal (a 4xx) is terminal: that image is withdrawn — its
- * reference and markers become `[image unavailable: <reason>]` — and the
- * rewritten result is journaled before anything else is sent, so the refused
- * upload is never made again and the receipt's digest is computed from what
- * was journaled. A sidecar that is gone or no longer matches is withdrawn the
- * same way. Anything else — a timeout, a 5xx, a lost connection — throws,
- * and the next poll delivers again from the same journal.
+ * Uploads every image `result` references that Nessie has not already
+ * answered for, and answers the result its receipt must carry.
+ *
+ * Each answered upload is journaled as delivered, so a pass that fails later
+ * does not send its bytes again. A refusal (a 4xx) is terminal: that image is
+ * withdrawn — its reference and markers become `[image unavailable:
+ * <reason>]` — and the rewritten result is journaled before anything else is
+ * sent, so the refused upload is never made again and the receipt's digest is
+ * computed from what was journaled. A sidecar that is gone or no longer
+ * matches is withdrawn the same way.
+ *
+ * Anything else — a timeout, a 5xx, a lost connection — is retried on the
+ * next poll while the command is live, as `ExecutorAttachmentDeliveryDeferred`
+ * (a fenced or stale connection throws as itself). Once the command has
+ * expired, an image gets one more attempt and a failure withdraws it: the
+ * journal holds the machine's only command lane, and a slow uplink or a lasting
+ * storage fault must not hold it for good. Nessie still takes a late result,
+ * so a daemon that restarts after the expiry still delivers what it can.
  */
 export const deliverExecutorCommandAttachments = async (input: {
   command: ExecutorCommandEnvelope
-  journal: (result: Record<string, unknown>) => Promise<void>
+  delivered?: readonly string[]
+  journal: (progress: ExecutorAttachmentDeliveryProgress) => Promise<void>
+  /** The clock the expiry is read against; the wall clock unless a test says otherwise. */
+  now?: () => number
   onWithdrawn?: (reference: ExecutorImageReference, reason: string) => void
   result: Record<string, unknown>
   sidecars: Pick<ExecutorCommandAttachmentStore, 'read'>
   upload: ExecutorAttachmentUpload
 }): Promise<Record<string, unknown>> => {
+  const now = input.now ?? Date.now
+  const expiresAt = Date.parse(input.command.expiresAt)
   let result = input.result
+  const delivered = [...(input.delivered ?? [])]
   for (const reference of executorMcpImageReferences(input.result)) {
+    if (delivered.includes(reference.attachmentDigest)) continue
     const bytes = await input.sidecars.read(input.command.commandId, reference.attachmentDigest)
     let reason: string | undefined
     if (!bytes) {
-      reason = 'the image was lost on this machine before it could be delivered'
+      reason = LOST_REASON
     } else {
+      // Read before the attempt: an attempt begun before the expiry that
+      // fails after it is still retried once more.
+      const expired = !(now() < expiresAt)
       try {
         await input.upload({
           bytes,
@@ -215,14 +273,19 @@ export const deliverExecutorCommandAttachments = async (input: {
           mimeType: reference.mimeType,
         })
       } catch (error) {
-        if (!uploadWasRefused(error)) throw error
-        reason = refusalReason(error)
+        if (uploadWasRefused(error)) reason = refusalReason(error)
+        else if (expired) reason = EXPIRED_REASON
+        else if (connectionLost(error)) throw error
+        else throw new ExecutorAttachmentDeliveryDeferred(error)
       }
     }
-    if (reason === undefined) continue
-    input.onWithdrawn?.(reference, reason)
-    result = withdrawExecutorMcpImage(result, reference.attachmentDigest, reason)
-    await input.journal(result)
+    if (reason === undefined) {
+      delivered.push(reference.attachmentDigest)
+    } else {
+      input.onWithdrawn?.(reference, reason)
+      result = withdrawExecutorMcpImage(result, reference.attachmentDigest, reason)
+    }
+    await input.journal({ delivered: [...delivered], result })
   }
   return result
 }

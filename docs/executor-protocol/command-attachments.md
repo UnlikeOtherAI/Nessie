@@ -71,29 +71,39 @@ receipt behind them.
    the command executes — before the `result_pending` journal entry that
    references them is saved.
 2. In `result_pending`, every referenced image is uploaded before the
-   receipt. Each upload's deadline grows with its size, and one result's
-   uploads together fit `EXECUTOR_MCP_UPLOAD_BUDGET_MS`, which the command's
-   expiry reserves for them (`@nessie/schemas` `executor-timing.ts`).
+   receipt. One upload's deadline is the daemon's ordinary 15 s request
+   deadline plus its bytes' transfer at 2 Mbit/s; one result's uploads on
+   that uplink fit `EXECUTOR_MCP_UPLOAD_BUDGET_MS` (50 s), which the command's
+   expiry reserves for them (`@nessie/schemas` `executor-timing.ts`). Each
+   answered upload is journaled in the entry's `delivered` digests, so a
+   later pass sends only what Nessie has not answered for.
 3. A 4xx answer is a refusal and terminal: the image's reference and markers
    become `[image unavailable: Nessie refused it (<message>)]`, the rewritten
    result is journaled before anything else is sent, and the refused upload is
    never made again. A fenced or stale connection (409
    `EXECUTOR_CONNECTION_FENCED` or `EXECUTOR_HEARTBEAT_STALE`), 408 and 429
    are not refusals of the image — the receipt behind it would fail the same
-   way — and neither are a timeout or a 5xx: the poll fails and the next one
-   delivers again from the same journal.
-4. A sidecar that is missing or no longer matches its digest is withdrawn as
+   way — and neither are a timeout, a 5xx or a lost connection: the poll fails
+   and the next one delivers again from the same journal.
+4. Delivery ends with the command. Once its `expiresAt` has passed, each
+   image not yet delivered gets one more attempt, and any failure then
+   withdraws it as `[image unavailable: it could not be delivered before its
+   command expired]`, the same way as a refusal. Without that bound, a slow
+   uplink or a lasting storage fault held the machine's one command lane for
+   good, across restarts.
+5. A sidecar that is missing or no longer matches its digest is withdrawn as
    lost, the same way as a refusal.
-5. The receipt is sent. Once it is acknowledged the journal is cleared and
+6. The receipt is sent. Once it is acknowledged the journal is cleared and
    then the command's sidecar folder is removed; a crash between the two
    leaves a folder no journal names.
-6. At start, before its first poll, the daemon removes every sidecar folder
+7. At start, before its first poll, the daemon removes every sidecar folder
    except the one its journal still names. A journal it cannot read removes
    nothing.
 
-A restart anywhere between steps 1 and 5 replays from the journal: a result
+A restart anywhere between steps 1 and 6 replays from the journal: a result
 still `executing` becomes `EXECUTOR_COMMAND_UNKNOWN_OUTCOME` with no
-references, and a `result_pending` one uploads its images again.
+references, and a `result_pending` one uploads again the images it had not
+journaled as delivered.
 
 ## On the control plane
 

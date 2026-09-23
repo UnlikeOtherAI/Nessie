@@ -440,8 +440,9 @@ export const pollAndExecuteCommand = async (
   if (!connectionEpoch) return
   await recoverOrPollExecutorCommand({
     attachments: {
-      deliver: ({ command, journal, result }) => deliverExecutorCommandAttachments({
+      deliver: ({ command, delivered, journal, result }) => deliverExecutorCommandAttachments({
         command,
+        delivered,
         journal,
         // The reason names only Nessie's own refusal; the image stays here.
         onWithdrawn: (reference, reason) => {

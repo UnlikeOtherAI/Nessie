@@ -8,7 +8,8 @@ import type { BrowserCookieImportOffer } from './browser-cookie-import-bridge.js
 
 type ApiError = { error?: { code?: string; message?: string } }
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
+/** Every daemon request's deadline, unless the request carries its own. */
+export const EXECUTOR_API_REQUEST_TIMEOUT_MS = 15_000
 
 const normalizeUrl = (baseUrl: string, path: string): string =>
   `${baseUrl.replace(/\/$/, '')}${path}`
@@ -106,7 +107,7 @@ export const createExecutorApi = (options: {
   requestTimeoutMs?: number
 } = {}): ExecutorApiClient => {
   const fetchImpl = options.fetchImpl ?? fetch
-  const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
+  const requestTimeoutMs = options.requestTimeoutMs ?? EXECUTOR_API_REQUEST_TIMEOUT_MS
   if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
     throw new Error('Executor API request timeout must be positive and finite.')
   }
