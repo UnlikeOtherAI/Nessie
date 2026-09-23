@@ -82,9 +82,53 @@ export const recordProjectRead = (
 }
 
 /**
+ * The channel scopes among `scopes` that every reader of this project can
+ * already read: a live, ordinary, public channel of this very project.
+ *
+ * Structural, like the rest of the disclosure machinery: a public standard
+ * channel is readable by every active organisation member
+ * (`buildAccessibleChannelWhere`), and every project reader is one, so its
+ * audience contains the board's. A protected channel is read by its members
+ * alone, a private one is a DM or a system room, and a channel of another
+ * project says nothing about this one — all stay refused. So does a channel
+ * that carries private-conversation lineage: its authors decide its export,
+ * whatever the channel has become since.
+ */
+const projectWideChannelIds = async (
+  context: BuiltinToolRuntimeContext,
+  input: { organizationId: string; projectId: string },
+  scopes: readonly { scopeId: string; scopeType: string }[],
+): Promise<Set<string>> => {
+  const lineage = new Set(
+    (context.consumedSources?.privateConversationSources() ?? []).map(({ sourceChannelId }) => sourceChannelId),
+  )
+  const candidates = [...new Set(scopes.flatMap((scope) => (
+    scope.scopeType === 'channel' && !lineage.has(scope.scopeId) ? [scope.scopeId] : []
+  )))]
+  if (candidates.length === 0) return new Set()
+  const channels = await context.prisma.channel.findMany({
+    where: {
+      deletedAt: null,
+      id: { in: candidates },
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      systemChannelType: null,
+      type: 'standard',
+      visibility: 'public',
+    },
+    select: { id: true },
+  })
+  return new Set(channels.map(({ id }) => id))
+}
+
+/**
  * A project write makes model-held material readable to every project reader.
  * Keep this at the shared ticket-write chokepoint so private sources cannot be
  * copied into a task, checklist, or board.
+ *
+ * One channel scope is implied: a public channel of this project, which is
+ * how a local program's output, stamped with the channel it was launched in,
+ * reaches that project's board (`executor-host-output.ts`).
  */
 export const assertProjectWriteDestination = async (
   context: BuiltinToolRuntimeContext,
@@ -117,9 +161,12 @@ export const assertProjectWriteDestination = async (
     )))
     return !visible.includes(false)
   }
-  for (const scope of context.consumedSources?.list() ?? []) {
+  const consumed = context.consumedSources?.list() ?? []
+  const projectWideChannels = await projectWideChannelIds(context, input, consumed)
+  for (const scope of consumed) {
     const implied = (scope.scopeType === 'organization' && scope.scopeId === input.organizationId)
       || (scope.scopeType === 'project' && scope.scopeId === input.projectId)
+      || (scope.scopeType === 'channel' && projectWideChannels.has(scope.scopeId))
       || (scope.scopeType === 'agent' && await audienceCanSeeAgent(scope.scopeId))
     if (!implied) throw new Error('I cannot copy restricted research into this shared project.')
   }
