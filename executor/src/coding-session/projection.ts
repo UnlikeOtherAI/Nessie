@@ -13,6 +13,8 @@ import type { CodingPermissionDenial } from './types.js'
  * Claude Code turn typed the account's e-mail into a `git config` command.
  * So the account's own e-mail and organisation are redactions, held in this
  * process's memory only, and every later string spells them `<account>`.
+ * The rewriter then hides paths, and after them the OS user and host names as
+ * `<user>` and `<host>` (git printed `ondre@Minis.(none)` in the same run).
  *
  * Credentials are scrubbed before anything else, and read `<secret>`: the
  * values the host gave the agent (every `agentEnv.set` value, and every
@@ -135,7 +137,7 @@ export const createProjector = (rewriter: PathRewriter): Projector => {
   let redactions: RegExp | undefined
   let secretValues: RegExp | undefined
   const secrets = new Set<string>()
-  // Credentials first (known values, then known shapes), then the account, then paths.
+  // Credentials first (known values, then known shapes), then the account, then paths, user and host.
   const scrub = (value: string): string => {
     let current = secretValues ? value.replace(secretValues, SECRET_PLACEHOLDER) : value
     for (const { pattern, replace } of SECRET_PATTERNS) current = current.replace(pattern, replace)
