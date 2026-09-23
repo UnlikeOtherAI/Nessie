@@ -24,7 +24,7 @@ import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
-import { captureScheduledLaunchOrigin } from '@nessie/team-admin'
+import { captureScheduledLaunchOrigin, unreleasedTriggerTypeRefusal } from '@nessie/team-admin'
 import {
   deleteAgentTrigger as deleteSharedAgentTrigger,
   getAgentTrigger as getSharedAgentTrigger,
@@ -110,6 +110,12 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     const body = parseInput(CreateAgentTriggerBodySchema, request.body, reply)
     if (!body) {
+      return reply
+    }
+
+    const unreleased = unreleasedTriggerTypeRefusal(body.type)
+    if (unreleased) {
+      sendApiError(reply, 400, 'TRIGGER_TYPE_UNAVAILABLE', unreleased)
       return reply
     }
 

@@ -113,6 +113,12 @@ test('parameter facts render from the contracts that validate them', () => {
   assert.match(rendered, /maxTokens, maxToolCalls, maxIterations, maxWallclockMs, maxCostCents/)
 })
 
+test('the trigger types offered are the ones a create surface accepts', () => {
+  const rendered = block()
+  assert.match(rendered, /triggers — manual \| scheduled \| webhook \| event \| interval\./)
+  assert.doesNotMatch(rendered, /ticket_changed|document_changed/)
+})
+
 test('the never-do facts are stated as facts', () => {
   const rendered = block()
   assert.match(rendered, /visibility cannot change after an agent is created/)

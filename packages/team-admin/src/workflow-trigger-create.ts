@@ -9,6 +9,7 @@ import {
   TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { unreleasedTriggerTypeRefusal } from './trigger-type-availability.js'
 
 /**
  * The one workflow-trigger write used by both the Admin route and an agent
@@ -27,6 +28,7 @@ export const createWorkflowTrigger = async (
     type: AgentTriggerType
   },
 ): Promise<AgentTriggerRecord | null> => {
+  if (unreleasedTriggerTypeRefusal(input.type)) return null
   const clientConfig = stripServerOwnedTriggerConfig(input.config)
   const config = input.type === 'webhook'
     ? ensureWebhookConfig(clientConfig)

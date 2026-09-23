@@ -15,6 +15,7 @@ import {
   TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { unreleasedTriggerTypeRefusal } from './trigger-type-availability.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 
 /**
@@ -68,6 +69,9 @@ export const createAgentTrigger = async (
     launchOrigin?: ScheduledTriggerLaunchOrigin
   } = {},
 ): Promise<AgentTriggerRecord | null> => {
+  // The surfaces refuse an unreleased type with its own sentence first; this
+  // is the floor under them, before anything is read or written.
+  if (unreleasedTriggerTypeRefusal(input.type)) return null
   const clientConfig = stripServerOwnedTriggerConfig(input.config)
   const isScheduled = SCHEDULER_TRIGGER_TYPES.includes(input.type)
   const parsedLaunchOrigin = isScheduled
