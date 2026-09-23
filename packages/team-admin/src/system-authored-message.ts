@@ -81,7 +81,7 @@ const writeSystemAuthoredRow = async (
 
 /**
  * A message the server authors on someone's behalf — a product handoff prompt,
- * a mirrored external-agent turn.
+ * a mirrored external-agent turn, a DeepWater research card, result or notice.
  *
  * This is deliberately **not** `createThreadMessage`, and deliberately named so
  * that adding a tenth `message.create` has to answer why it is neither. What it
@@ -99,8 +99,10 @@ const writeSystemAuthoredRow = async (
  *  - **structured agent-mention validation** — the content is server-authored
  *    or already-published external text, not a client's claim about identities.
  *  - **`metadata.mentions` resolution and durable mention alerts** — nobody is
- *    being @mentioned by the server, so there is nothing to highlight and
- *    nobody to alert.
+ *    @mentioned in the text, so nothing is parsed or highlighted. A message
+ *    that is addressed to someone (a DeepWater result to its requester) raises
+ *    that explicit recipient's durable alert itself, in this same transaction
+ *    (`createMentionUserAlerts` with an event key), never from the content.
  *  - **the "also send to #channel" copy** — there is no reply to broadcast.
  *
  * Announcement, push and orchestration stay with the caller exactly as they do
