@@ -49,8 +49,15 @@ export {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   pollExecutorCommand,
+  type ExecutorCommandBindingFacts,
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
+export {
+  executorCodingSessionOwnerKey,
+  executorCodingSessionsAllowed,
+  reviewedCodingSessionsServer,
+  type ExecutorCodingSessionOwner,
+} from './executor-coding-session-owner.js'
 export {
   markExecutorCommandUnknownOutcome,
   readExecutorCommandResult,

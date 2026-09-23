@@ -4,7 +4,11 @@ import {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   ensureExecutorLogicalTools,
+  EXECUTOR_ERROR_CODES,
+  ExecutorError,
+  reviewedCodingSessionsServer,
   waitForExecutorCommandResult,
+  type ExecutorCommandBindingFacts,
 } from '@nessie/executor-manage'
 import { ExecutorMcpServerNamesSchema, type ExecutorProfile } from '@nessie/schemas'
 import type { PrismaClient } from '@prisma/client'
@@ -30,6 +34,8 @@ const EXECUTOR_COMMAND_TOPIC = 'executor.command'
 
 type ExecutorEntry = {
   bindingId: string
+  /** The reviewed coding-sessions bridge's server name, when the bound revision offers it. */
+  codingSessionsServer: string | null
   descriptor: ToolSchemaDescriptor
   mcpServers: readonly string[]
   operationKey: string
@@ -59,6 +65,26 @@ export const executorDispatchResult = (document: Record<string, unknown>) => ({
   success: document.success === true,
   ...(isCorrectableExecutorFailure(document) ? { correctable: true as const } : {}),
 })
+
+/**
+ * The command payload. A call to the bound revision's coding-sessions bridge
+ * carries `owner` — the agent and the person the binding's candidate was made
+ * for, never anything the model sent — beside `runId`, under the argument
+ * digest, and no other call ever does. The model reaches only `args`: an
+ * `owner` it puts there is refused by the daemon's strict envelope, and
+ * `_meta` inside `arguments` goes to the program as the program's own.
+ */
+const executorCommandPayload = (
+  entry: ExecutorEntry,
+  args: Record<string, unknown>,
+  runId: string,
+  binding: ExecutorCommandBindingFacts,
+): Record<string, unknown> => {
+  const bridgeCall = entry.operationKey === 'mcp.call'
+    && entry.codingSessionsServer !== null
+    && args.server === entry.codingSessionsServer
+  return { args, ...(bridgeCall ? { owner: binding.owner } : {}), runId }
+}
 
 export type ExecutorToolset = {
   descriptors: ToolSchemaDescriptor[]
@@ -220,6 +246,7 @@ export const buildExecutorToolset = async (
     if (!registryId || input.agentToolPolicy?.[registryId] !== true || !descriptor) return []
     return [{
       bindingId: binding.id,
+      codingSessionsServer: reviewedCodingSessionsServer(binding.capabilityRevision?.descriptor),
       descriptor,
       mcpServers,
       operationKey: binding.operationKey,
@@ -372,12 +399,22 @@ export const buildExecutorToolset = async (
         commandId,
         encryptionSecret,
         expiresAt,
-        payload: { args, runId: input.runId },
+        payload: executorCommandPayload(entry, args, input.runId, binding),
         queueJobId: queueJob.id,
         toolCallId: toolCall.id,
       })
       return { expiresAt, toolCallId: toolCall.id }
+    }).catch((error: unknown) => {
+      // The coding-sessions rule refused the call where its command is made:
+      // the lane's own refusal, in words the model can pass on to the person.
+      if (error instanceof ExecutorError && error.code === EXECUTOR_ERROR_CODES.CODING_SESSIONS_OWNER_ONLY) {
+        return { refused: { code: error.code, message: error.message, success: false } }
+      }
+      throw error
     })
+    if ('refused' in created) {
+      return { inputSummary: summarizeToolInput(args), ...executorDispatchResult(created.refused) }
+    }
     if ('sessionUnavailable' in created) {
       return {
         inputSummary: summarizeToolInput(args),

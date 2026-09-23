@@ -10,6 +10,7 @@ import {
   encryptExecutorCommandJson,
   executorCommandDigest,
 } from './executor-command-codec.js'
+import { assertExecutorMcpCallPayload } from './executor-coding-session-owner.js'
 import {
   isExecutorLeaseLive,
   touchExecutorConversationLeaseForBinding,
@@ -51,6 +52,18 @@ export type ExecutorCommandCreateInput = {
   payload: Record<string, unknown>
 }
 
+/**
+ * What a current binding is: its executor, run and session, and whom it was
+ * made for — the consumed candidate's agent and person, which the worker
+ * stamps as the `owner` of a call to the coding-sessions bridge.
+ */
+export type ExecutorCommandBindingFacts = {
+  executorId: string
+  owner: { actorUserId: string; agentId: string }
+  runId: string
+  sessionId: string | null
+}
+
 /** New work is fenced immediately when policy, revision, or lifecycle changes. */
 export const assertExecutorCommandBindingCurrent = async (
   tx: Prisma.TransactionClient,
@@ -61,7 +74,7 @@ export const assertExecutorCommandBindingCurrent = async (
     allowPendingCommandRun?: boolean
     now?: Date
   } = {},
-): Promise<{ executorId: string; runId: string; sessionId: string | null }> => {
+): Promise<ExecutorCommandBindingFacts> => {
   let binding = await tx.executorBinding.findUnique({
     where: { id: bindingId },
     select: {
@@ -349,7 +362,12 @@ export const assertExecutorCommandBindingCurrent = async (
       'A coding session cannot dispatch an operation outside its exact bundle.',
     )
   }
-  return { executorId: executor.id, runId: binding.runId, sessionId: binding.sessionId }
+  return {
+    executorId: executor.id,
+    owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId },
+    runId: binding.runId,
+    sessionId: binding.sessionId,
+  }
 }
 
 /**
@@ -359,11 +377,19 @@ export const assertExecutorCommandBindingCurrent = async (
  *
  * This is the one record of a dispatch, so it is also where a conversation
  * lease's idle window moves: every command under a live lease counts as use.
+ * And it is where an `mcp.call` meets the coding-sessions rule: a call to the
+ * bridge that the binding's person may not make is refused
+ * (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`), as is any payload whose `owner` is
+ * not exactly the binding's (`executor-coding-session-owner.ts`).
  */
 export const createExecutorCommand = async (
-  prisma: Pick<PrismaClient, 'executorCommand' | 'executorConversationLease'>,
+  prisma: Pick<
+    PrismaClient,
+    'executorAvailabilityCandidate' | 'executorBinding' | 'executorCommand' | 'executorConversationLease'
+  >,
   input: ExecutorCommandCreateInput,
 ): Promise<void> => {
+  await assertExecutorMcpCallPayload(prisma, input.bindingId, input.payload)
   await touchExecutorConversationLeaseForBinding(prisma, input.bindingId)
   await prisma.executorCommand.create({
     data: {
@@ -374,6 +400,31 @@ export const createExecutorCommand = async (
       payloadExpiresAt: input.expiresAt,
       queueJobId: input.queueJobId,
       toolCallId: input.toolCallId,
+    },
+  })
+}
+
+const REFUSED_AT_DELIVERY: ReadonlySet<string> = new Set([
+  EXECUTOR_ERROR_CODES.BINDING_FENCED,
+  EXECUTOR_ERROR_CODES.CODING_SESSIONS_OWNER_ONLY,
+  EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID,
+])
+
+/** A command that will never be delivered, answered with its terminal result instead. */
+const settleUndeliveredCommand = async (
+  tx: Prisma.TransactionClient,
+  encryptionSecret: import('@nessie/runtime').EncryptionKeyRingInput,
+  commandId: string,
+  result: Record<string, unknown>,
+  now: Date,
+): Promise<void> => {
+  await tx.executorCommand.updateMany({
+    where: { id: commandId, state: 'leased' },
+    data: {
+      acknowledgedAt: now,
+      resultCiphertext: encryptExecutorCommandJson(encryptionSecret, result),
+      resultDigest: executorCommandDigest(result),
+      state: 'result_acknowledged',
     },
   })
 }
@@ -425,19 +476,24 @@ export const pollExecutorCommandInTransaction = async (
       )) {
         throw error
       }
-      const result = { code: EXECUTOR_ERROR_CODES.BINDING_FENCED, success: false }
-      await tx.executorCommand.updateMany({
-        where: { id: command.id, state: 'leased' },
-        data: {
-          acknowledgedAt: now,
-          resultCiphertext: encryptExecutorCommandJson(encryptionSecret, result),
-          resultDigest: executorCommandDigest(result),
-          state: 'result_acknowledged',
-        },
-      })
+      await settleUndeliveredCommand(tx, encryptionSecret, command.id, {
+        code: EXECUTOR_ERROR_CODES.BINDING_FENCED, success: false,
+      }, now)
       return null
     }
     const payload = decryptExecutorCommandJson(encryptionSecret, command.deliveryPayloadCiphertext)
+    // The coding-sessions rule once more, as the daemon collects the command:
+    // a refusal is its result, stated in words the model can pass on, and never
+    // a poll failure that would hold every later command behind it.
+    try {
+      await assertExecutorMcpCallPayload(tx, command.bindingId, payload)
+    } catch (error) {
+      if (!(error instanceof ExecutorError) || !REFUSED_AT_DELIVERY.has(error.code)) throw error
+      await settleUndeliveredCommand(tx, encryptionSecret, command.id, {
+        code: error.code, message: error.message, success: false,
+      }, now)
+      return null
+    }
     return ExecutorCommandEnvelopeSchema.parse({
       argumentDigest: command.argumentDigest,
       bindingFence: command.binding.fence.toString(),
