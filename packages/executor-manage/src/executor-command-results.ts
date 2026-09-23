@@ -6,6 +6,7 @@ import {
   type ExecutorCommandReceipt,
 } from '@nessie/schemas'
 
+import { assertExecutorResultImagesKept } from './executor-command-attachments.js'
 import {
   decryptExecutorCommandJson,
   encryptExecutorCommandJson,
@@ -99,6 +100,9 @@ export const recordExecutorCommandReceiptInTransaction = async (
       'Executor command receipt is stale or out of order.',
     )
   }
+  // The images a result references were uploaded before it, as attachments of
+  // this command; a reference to anything else names bytes Nessie never kept.
+  if (receipt.state === 'result_acknowledged') await assertExecutorResultImagesKept(tx, command.id, result)
   const occurredAt = new Date(receipt.occurredAt)
   await tx.executorCommand.update({
     where: { id: command.id },

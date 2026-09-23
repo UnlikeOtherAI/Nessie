@@ -62,6 +62,12 @@ export {
   recordAuthorizedExecutorCommandReceipt,
 } from './executor-daemon-control.js'
 export {
+  EXECUTOR_ATTACHMENT_RATE_MAXIMUM,
+  EXECUTOR_ATTACHMENT_RATE_WINDOW_MS,
+  executorResultImageReferences,
+  recordAuthorizedExecutorCommandAttachment,
+} from './executor-command-attachments.js'
+export {
   ensureExecutorLogicalTools,
   executorLogicalToolDefinitions,
   executorLogicalToolId,
@@ -69,6 +75,7 @@ export {
 export {
   claimExecutorConnection,
   authorizeExecutorDaemonControlCall,
+  type ExecutorDaemonControlType,
   recordExecutorDaemonChallenge,
   reportExecutorHeartbeat,
   submitExecutorDescriptor,
