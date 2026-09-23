@@ -94,6 +94,20 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   the durable run record (same team + thread). Also:
   [docs/external-tool-integration.md](../external-tool-integration.md).
 
+- **DeepWater results come back on their own, through a watch, never a push.**
+  Nothing reaches Nessie from Ledger unasked: the worker's `deep-water-watch`
+  sweep reads every open brief and research through Ledger over the run's own
+  team connector, as cost-free control-plane calls signed as the requester
+  with their captured UOA identity (5 s while a planner turn or action is in
+  flight, 30 s while research runs, then backing off). A finished research is
+  delivered exactly once to the conversation it came from, under its research
+  card: its `report.md` and `sources.csv` stored as retained run output, the
+  report imported into Documents, then a result reply that alerts the person
+  who asked, or one run that wakes the agent that asked. A changed sign-in
+  blocks the run until the requester acts again instead of being retried. The
+  rules are in [docs/standards/deepwater.md](deepwater.md) → "Research briefs —
+  the watch, delivery and wakes".
+
 Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
 and Stripe lifecycle stay in UOA; Nessie renders UOA-authored display models
 only and stores no commercial state. `/tokens` is the customer Credits &

@@ -552,7 +552,8 @@ before touching those surfaces.
 The Designer acts only with the live requesting member's authority. Generic
 agent updates must continue to reject protected keys; protected builtins and
 MCP tools use their specialist grant service, and DeepWater remains an atomic
-ready bundle with active-run revocation protection. Read
+bundle whose revocation waits for that agent's unlaunched briefs and any open
+launcher run. Read
 [docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md)
 before changing these contracts.
 
