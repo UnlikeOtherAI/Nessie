@@ -434,9 +434,9 @@ that acts as the machine's own user, and these rules follow from that:
   through the same dispatch, and `executor_mcp_tools` / `executor_mcp_call`
   stop naming the bridge; asked for through them anyway, it is refused as
   correctable before any command exists. The wait is the worker's: short
-  status reads every 5 s for up to 4 minutes, nothing held on the lane
-  between them, returning early when the session needs the agent or the
-  person writes. Coding output has its own banner ("Output from the coding
+  status reads every 5 s for up to 10 minutes, nothing held on the lane
+  between them, returning early when the session needs the agent, the person
+  writes or the run's own time enters its wind-down. Coding output has its own banner ("Output from the coding
   agent you supervise…"). The contract is in
   [host-coding-sessions.md](../executor-protocol/host-coding-sessions.md) →
   "The agent's tools".

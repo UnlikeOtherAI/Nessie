@@ -143,7 +143,7 @@ runDatabaseTest('start, wait, review and close drive a real bridge, and a wait g
     const beforeWrite = Date.now()
     const gaveWay = await tool('coding_session_wait', { sessionId })
     assert.match(gaveWay.output, /^The person sent a message; end your turn now with one line of status; you will read it next\./)
-    assert.ok(Date.now() - beforeWrite < 30_000, 'the wait did not sit out its four minutes')
+    assert.ok(Date.now() - beforeWrite < 30_000, 'the wait did not sit out its ten minutes')
     await prisma.runThreadPendingMessage.delete({ where: { seq: pending.seq } })
 
     // The person stops the run: the wait ends too, and the session keeps working.

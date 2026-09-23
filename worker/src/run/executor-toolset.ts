@@ -338,7 +338,7 @@ export const buildExecutorToolset = async (
       ? { failure: bridgeViaGenericPair({ server }) }
       : catalogs.load(server, providerToolCallId)),
     timeoutErrorFor: timeouts.timeoutErrorFor,
-    // A wait is four minutes of reads; its own deadline ends it inside this.
+    // A wait is ten minutes of reads; its own deadline ends it inside this.
     timeoutMsFor: (toolName) => (codingSessions && toolName === CODING_SESSION_TOOL_NAMES.wait
       ? CODING_WAIT_TOOL_TIMEOUT_MS
       : timeouts.timeoutMsFor(toolName)),

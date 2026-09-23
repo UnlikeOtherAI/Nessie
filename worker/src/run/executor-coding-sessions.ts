@@ -34,9 +34,14 @@ import type { AgenticToolResult } from './tools.js'
  * are the toolset's and nothing here repeats them.
  */
 
-/** What the agent loop lends a coding tool: the drain signal, and the thought-process line of a wait. */
+/**
+ * What the agent loop lends a coding tool: the drain signal, the
+ * thought-process line of a wait, and when the run's own time enters its
+ * wind-down, which a wait does not run past.
+ */
 export type CodingSessionHooks = {
   onProgress?: (toolName: string, line: string) => Promise<void>
+  runWindDownAt?: number
   signal?: AbortSignal
 }
 
@@ -89,12 +94,12 @@ export const codingSessionsOffer = async (
 /**
  * Why a wait stopped, as the loop detector reads it: an ended turn or a
  * session that failed or closed needs the model, which a second wait would
- * only report again; the person writing, or stopping the run, ends the turn;
- * anything else was still watching.
+ * only report again; the person writing, stopping the run or the run's time
+ * running low ends the turn; anything else was still watching.
  */
 const watchStateOf = (outcome: CodingWaitOutcome): WatchState => {
   if (outcome === 'attention') return 'needs_model'
-  return outcome === 'person_wrote' || outcome === 'cancelled' ? 'end_turn' : 'watching'
+  return outcome === 'person_wrote' || outcome === 'cancelled' || outcome === 'run_ending' ? 'end_turn' : 'watching'
 }
 
 export const createExecutorCodingSessions = (input: {
@@ -192,6 +197,7 @@ export const createExecutorCodingSessions = (input: {
           if (typeof parsed.body.turn === 'number') turns.set(sessionId, parsed.body.turn)
           return { body: parsed.body, kind: 'answer' }
         },
+        ...(hooks.runWindDownAt === undefined ? {} : { runWindDownAt: hooks.runWindDownAt }),
         ...(hooks.signal ? { signal: hooks.signal } : {}),
         stopRequested: input.stopRequested,
         ...(input.timing ? { timing: input.timing } : {}),

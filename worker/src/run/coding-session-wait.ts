@@ -6,13 +6,18 @@ import type { AgenticToolResult } from './tools.js'
  * `coding_session_wait`, done by the worker rather than the machine.
  *
  * The bridge's `session_status` never waits, so the wait is a series of short
- * reads, one every five seconds for up to four minutes, and between them
+ * reads, one every five seconds for up to ten minutes, and between them
  * nothing is outstanding on the executor's one command lane: another run's
  * command, or this run's next one, never queues behind a sleep. It returns
  * early when the session needs the model — its turn ended, it was
  * interrupted, it failed or closed — and when the model should stop watching:
- * the person wrote in this conversation, the run was stopped, or the worker is
- * handing the run over.
+ * the person wrote in this conversation, the run was stopped, the worker is
+ * handing the run over, or the run's own time reaches its wind-down.
+ *
+ * The window is long because every return costs a full-context inference:
+ * a coding turn of twenty minutes is two waits, not five. It ends at the run's
+ * wind-down all the same, so an agent whose run is nearly out of time still
+ * has the time to say where the session stands.
  *
  * Only one read can end in an unknown outcome, and only as any command does:
  * its own expiry. Every read's command expires no later than the wait's own
@@ -27,8 +32,8 @@ import type { AgenticToolResult } from './tools.js'
  */
 
 export const CODING_WAIT_POLL_MS = 5_000
-export const CODING_WAIT_WINDOW_MS = 4 * 60_000
-export const CODING_WAIT_TOOL_TIMEOUT_MS = 4.5 * 60_000
+export const CODING_WAIT_WINDOW_MS = 10 * 60_000
+export const CODING_WAIT_TOOL_TIMEOUT_MS = 10.5 * 60_000
 export const CODING_WAIT_DIGEST_MAX_BYTES = 1_536
 
 /** A `session_status` answer, as the bridge serialised it. */
@@ -43,11 +48,13 @@ export type CodingWaitPoll =
 export type CodingWaitOutcome =
   /** The session needs the model: its turn ended, it was interrupted, it failed or it closed. */
   | 'attention'
-  /** Four minutes passed and the coding agent is still working. */
+  /** Ten minutes passed and the coding agent is still working. */
   | 'window'
   | 'person_wrote'
   | 'cancelled'
   | 'drained'
+  /** The run's own time reached its wind-down; the coding agent may still be working. */
+  | 'run_ending'
   /** The last read came back too late to count. */
   | 'no_answer'
 
@@ -86,6 +93,12 @@ export type CodingWaitInput = {
   personWrote: () => Promise<boolean>
   /** One `session_status` read, whose command expires no later than `expiresBy`. */
   poll: (index: number, expiresBy: Date) => Promise<CodingWaitPoll>
+  /**
+   * When the run's own wallclock enters its wind-down (epoch ms): the wait
+   * ends there rather than hold the agent past the point it should be
+   * wrapping up. Past it already, the wait reads once and returns.
+   */
+  runWindDownAt?: number
   /** The worker is draining: stop at once and hand back what there is. */
   signal?: AbortSignal
   stopRequested: () => Promise<boolean>
@@ -195,6 +208,7 @@ export const runCodingSessionWait = async (
     const early = await stopWatching()
     if (early) return done(early)
     if (now() - startedAt + pollMs >= windowMs) return done('window')
+    if (input.runWindDownAt !== undefined && now() + pollMs >= input.runWindDownAt) return done('run_ending')
     await input.onProgress?.(last, activity).catch(() => undefined)
     await sleep(pollMs, input.signal)
     const late = await stopWatching()

@@ -17,7 +17,7 @@
  * a refusal. A wait that stopped because the model has to act is different:
  * waiting again returns the same answer at once, so the same wait repeated
  * with no acting call in between is refused, and so is every wait once the
- * person has written, for the rest of the run.
+ * person has written or the run's time runs low, for the rest of the run.
  */
 
 /**
@@ -38,8 +38,8 @@ export const WATCH_TOOL_NAMES: ReadonlySet<string> = new Set(['coding_session_wa
  * Why a watch tool stopped waiting. `watching`: what it watches is still busy
  * (or did not answer in time), and waiting again is expected. `needs_model`:
  * it stopped because the model has to act — the turn ended, the session was
- * interrupted, failed or closed. `end_turn`: the person wrote, or stopped the
- * run, and the model should end its turn.
+ * interrupted, failed or closed. `end_turn`: the person wrote or stopped the
+ * run, or the run's own time is running low, and the model should end its turn.
  */
 export type WatchState = 'end_turn' | 'needs_model' | 'watching'
 
@@ -76,7 +76,8 @@ export const CODING_WAIT_NEEDS_YOU_NUDGE =
   'Waiting again will not change the coding session: it is not working, and the last wait on it said why. Act on '
   + 'that answer — review it, send it a message or close it — or tell the person where it stands and end your turn.'
 export const CODING_WAIT_END_TURN_NUDGE =
-  'The person has sent a message: end your turn now with one line of status; you will read their message next.'
+  'Stop waiting and end your turn now with one line saying where the coding session stands: the person has '
+  + 'written, or this run is nearly out of time.'
 
 // The checkpoint keys. Counts written before observation tools had their own
 // rule carry neither prefix, and a resumed run drops them: a cumulative count
@@ -88,8 +89,8 @@ const OBSERVE_KEY_PREFIX = '#observe:'
 // any call that is not an observation, since only such a call can change what
 // the wait would see.
 const SETTLED_KEY_PREFIX = '#settled:'
-// A wait that stopped because the person wrote, by tool name: every later wait
-// in the run would stop for the same reason.
+// A wait that stopped because the turn is over (the person wrote, or the run is
+// nearly out of time), by tool name: every later wait would stop for the same reason.
 const ENDED_KEY_PREFIX = '#ended:'
 
 export type LoopVerdict = {
@@ -121,10 +122,10 @@ const WAIT_NEEDS_YOU: LoopVerdict = {
     + 'since can have changed that, so waiting again would return the same answer.',
 }
 
-const WAIT_AFTER_PERSON_WROTE: LoopVerdict = {
+const WAIT_AFTER_TURN_ENDED: LoopVerdict = {
   nudge: CODING_WAIT_END_TURN_NUDGE,
-  output: 'Not run: the person has sent a message, so every wait in this turn would stop at once. End your turn '
-    + 'now with one line of status.',
+  output: 'Not run: the person has written, or this run is nearly out of time, so every wait this turn would stop '
+    + 'at once. End your turn now with one line of status.',
 }
 
 const streakKeyOf = (toolName: string, args: Record<string, unknown>): string =>
@@ -165,7 +166,7 @@ export const countToolCall = (
     // Counted here so another call in between still ends it; a watching wait
     // is judged only once it says whether it saw anything move.
     counts.set(streakKey, streak)
-    if (counts.has(endedKeyOf(toolName))) return WAIT_AFTER_PERSON_WROTE
+    if (counts.has(endedKeyOf(toolName))) return WAIT_AFTER_TURN_ENDED
     return counts.has(settledKeyOf(toolName, args)) ? WAIT_NEEDS_YOU : null
   }
   if (observation) {

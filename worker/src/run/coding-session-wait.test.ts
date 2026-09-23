@@ -27,7 +27,7 @@ const working = (extra: CodingStatusBody = {}): CodingStatusBody => ({
   ...extra,
 })
 
-/** A clock the loop advances only by sleeping, so four minutes pass in no time. */
+/** A clock the loop advances only by sleeping, so ten minutes pass in no time. */
 const fakeTime = () => {
   let now = 1_000_000
   const sleeps: number[] = []
@@ -135,13 +135,19 @@ test('a stopped run and a draining worker end the wait too', async () => {
   assert.equal(polled, 2)
 })
 
-test('a busy session is watched for four minutes and no read starts after the window', async () => {
+test('a busy session is watched for ten minutes and no read starts after the window', async () => {
   const clock = fakeTime()
   const startedAt = clock.now()
   const { poll, polls } = scripted([{ body: working(), kind: 'answer' }], clock)
   const done = await runCodingSessionWait({ personWrote: never, poll, stopRequested: never, timing: clock.timing })
   assert.equal(done.kind === 'done' && done.outcome, 'window')
-  assert.ok(polls.length >= 40 && polls.length <= 48, `${polls.length} reads in four minutes`)
+  // One read every five seconds, each taking 300 ms of the scripted clock.
+  assert.ok(
+    polls.length >= Math.floor(CODING_WAIT_WINDOW_MS / (CODING_WAIT_POLL_MS + 300))
+      && polls.length <= CODING_WAIT_WINDOW_MS / CODING_WAIT_POLL_MS,
+    `${polls.length} reads in ten minutes`,
+  )
+  assert.equal(CODING_WAIT_WINDOW_MS, 600_000)
   for (const read of polls) {
     assert.ok(read.at - startedAt < CODING_WAIT_WINDOW_MS, 'every read starts inside the window')
     // Its command expires by the wait's own deadline, a margin inside the tool timeout.
@@ -152,6 +158,33 @@ test('a busy session is watched for four minutes and no read starts after the wi
     presentCodingWait(done as CodingWaitDone),
     /^Claude Code is still working; calling coding_session_wait again is expected\./,
   )
+})
+
+test('a wait ends where the run’s own time enters its wind-down, and tells the agent to wrap up', async () => {
+  const clock = fakeTime()
+  const startedAt = clock.now()
+  const { poll, polls } = scripted([{ body: working(), kind: 'answer' }], clock)
+  const done = await runCodingSessionWait({
+    personWrote: never, poll, runWindDownAt: startedAt + 30_000, stopRequested: never, timing: clock.timing,
+  })
+  assert.equal(done.kind === 'done' && done.outcome, 'run_ending')
+  assert.ok(polls.every((read) => read.at < startedAt + 30_000), 'no read starts past the wind-down')
+  assert.match(presentCodingWait(done as CodingWaitDone), /^This run is nearly out of time, so the wait stopped here\./)
+
+  // Started past it already: one read, then back to the agent.
+  const late = fakeTime()
+  const lateReads = scripted([{ body: working(), kind: 'answer' }], late)
+  const past = await runCodingSessionWait({
+    personWrote: never, poll: lateReads.poll, runWindDownAt: late.now() - 1, stopRequested: never, timing: late.timing,
+  })
+  assert.equal(past.kind === 'done' && past.outcome, 'run_ending')
+  assert.equal(lateReads.polls.length, 1)
+  // A turn that ended is still the answer, whatever the run's time.
+  const ended = scripted([{ body: { ...working(), status: 'waiting_for_input' }, kind: 'answer' }], late)
+  const answered = await runCodingSessionWait({
+    personWrote: never, poll: ended.poll, runWindDownAt: late.now() - 1, stopRequested: never, timing: late.timing,
+  })
+  assert.equal(answered.kind === 'done' && answered.outcome, 'attention')
 })
 
 test('a read that comes back after the wait’s own deadline ends it without an unknown outcome', async () => {

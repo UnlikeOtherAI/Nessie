@@ -189,6 +189,10 @@ const waitLead = (done: CodingWaitDone): string => {
         + 'coding_session_wait again.'
     case 'window':
       return `${agentLabel(last)} is still working; calling coding_session_wait again is expected.`
+    case 'run_ending':
+      return 'This run is nearly out of time, so the wait stopped here. The coding session keeps working on the '
+        + 'machine; tell the person where it stands in one line and end your turn — they can write when they want '
+        + 'you to check on it again.'
     default:
       break
   }

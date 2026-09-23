@@ -86,9 +86,9 @@ test('the owner’s run gets the seven coding tools, and the generic pair stops 
   assert.ok('failure' in viaCatalog && viaCatalog.failure.correctable === true)
   assert.equal(transactions.length, 0)
 
-  // A wait has its own four and a half minutes; every other coding tool is one mcp.call.
+  // A wait has its own ten and a half minutes; every other coding tool is one mcp.call.
   assert.equal(offered.timeoutMsFor('coding_session_wait'), CODING_WAIT_TOOL_TIMEOUT_MS)
-  assert.equal(CODING_WAIT_TOOL_TIMEOUT_MS, 270_000)
+  assert.equal(CODING_WAIT_TOOL_TIMEOUT_MS, 630_000)
   assert.equal(offered.timeoutMsFor('coding_session_start'), executorToolTimeoutMs('mcp.call'))
   assert.ok(offered.timeoutErrorFor('coding_session_wait', 'p3') instanceof ExecutorUnknownOutcomeError)
 })

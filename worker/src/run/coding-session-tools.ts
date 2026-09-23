@@ -139,7 +139,7 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
     },
     {
       toolName: CODING_SESSION_TOOL_NAMES.wait,
-      description: 'Wait up to 4 minutes on a coding session; it returns early when the turn ends, the session '
+      description: 'Wait up to 10 minutes on a coding session; it returns early when the turn ends, the session '
         + 'needs you, fails or closes, or the person writes. working means still busy — calling wait again is '
         + 'expected. waiting_for_input: read the summary, call coding_session_review, then send feedback or close. '
         + 'If the person wrote, end your turn now with one line of status; you will read their message next.',

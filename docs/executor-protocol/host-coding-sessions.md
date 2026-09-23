@@ -79,22 +79,32 @@ reaches the payload.
 
 **The wait is the worker's.** `coding_session_wait`
 (`worker/src/run/coding-session-wait.ts`) reads `session_status` every 5 s for
-up to 4 minutes, and nothing is outstanding on the machine's command lane
+up to 10 minutes, and nothing is outstanding on the machine's command lane
 between reads. It returns early when the session needs the agent — its turn
 ended (`waiting_for_input`), it was `interrupted`, it `failed` or `closed` —
 and when the agent should stop watching: the person posted a new message in
 this conversation (a live chat `RunThreadPendingMessage` for this agent and
 thread made after the run was, which says "The person sent a message; end
 your turn now with one line of status; you will read it next." — a row a
-drain left behind from before the run is not news), the run was stopped, or
-the worker
-is draining. A request the host has not picked up yet (`pendingNotice`,
+drain left behind from before the run is not news), the run was stopped, the
+worker is draining, or the run's own wallclock entered its wind-down ("This
+run is nearly out of time…", so the agent can still say where the session
+stands). A request the host has not picked up yet (`pendingNotice`,
 `queuedMessages`), and the turn a start or a send is still owed, are not the
-turn ending. Its tool timeout is 4.5 minutes; every read's command expires no
+turn ending. Its tool timeout is 10.5 minutes; every read's command expires no
 later than that less the margin, so only a single read's own TTL can end in an
 unknown outcome, and a late read whose expiry the deadline shortened just ends
 the wait. The first read carries the call's own ToolCall row, which the answer
 ends; every later read's row is ended by the wait.
+
+The window is long because each return is a full-context inference for the
+agent: a twenty-minute turn is two waits, not five
+([tech-and-run-budgets.md](../standards/tech-and-run-budgets.md) → "What a
+coding wait costs"). A turn can still outlive the run that started it — a
+turn may run 45 minutes (`maxTurnMinutes`), as long as the whole run's
+wallclock — and nothing wakes the agent when such a turn ends: the person
+learns of it when they next write, and the agent reads the session's state
+then.
 
 Its answer is a digest of at most 1.5 KB — status, turn, the coding agent's
 tool calls by name since the last wait, the files it touched and its last
@@ -111,8 +121,8 @@ The wait, the list and the review are observation tools for the loop
 detector. A wait says why it stopped: one that was still watching is never
 refused, and three in a row that saw nothing move are nudged; one that stopped
 because the session needs the agent is not repeated until the agent does
-something that can change that; and once the person has written, no further
-wait runs this turn
+something that can change that; and once the person has written or the run's
+time has entered its wind-down, no further wait runs this turn
 ([tech-and-run-budgets.md](../standards/tech-and-run-budgets.md) → "Loop
 detection"). While it waits, the thought-process bubble shows one line for it,
 rewritten in place under the same chunk id — "Claude Code: working — 14 steps
