@@ -34,6 +34,54 @@ this layout exists to prevent.
   whose reach is checked and whose uploads may be linked. `agentId` is set only
   when an agent writes *as itself*; `taskEventBy` then records the person
   (`by`), or `agent:<id>` for a run with no person behind it (`unattended`).
+  `origin` is the door the write came through (below); absent, it is
+  `system`.
+
+## History: who changed a ticket, and through which door
+
+A ticket trigger decides from a `TaskEvent` alone whether a change may start
+or steer an agent's work ([ticket work](ticket-work.md)), so the events it
+reads say who made the change and how the call was authenticated.
+
+- **Every event an actor writes carries `by` and `origin`**
+  (`taskEventAuthorship`, `task-access.ts`). `origin` is the allowlist
+  `TaskEventOriginSchema` (`@nessie/schemas`), stamped by the layer that
+  authenticated the call, never by the caller:
+  - `session`: the global auth hook verified a person's own session token and
+    set `request.authenticatedWith`; `taskEventOriginFor`
+    (`api/src/lib/task-event-origin.ts`) reads it for the task routes and the
+    comment, attachment and label routes' `TaskActor`.
+  - `token { keyId }`: an agent access credential (the MCP surface, which the
+    endpoint hands its tools as `taskEventOrigin`) or a voice credential,
+    naming that credential.
+  - `agent { agentId, runId }`: the worker's ticket tools
+    (`ticketEventAuthorFor`). A Personal Assistant's or a shared agent's write
+    is an agent's even when a person asked for it; `by` still names that
+    person, and names `agent:<id>` only when no person is behind the run.
+  - `source { boardSourceId }`: an inbound board-source change
+    (`sourceEventAuthorship`, `board-source-apply-events.ts`), with
+    `by: source:<id>`.
+  - `system`: anything else, including a writer that named no origin.
+- **`column_entered { fromColumnId, toColumnId }` is written on every column
+  change** (`recordColumnEntered`), a move between two columns of the same
+  category included, which changes no status and so writes no
+  `status_changed`. A drag or `ticket_move` writes it; so do a status
+  transition and an inbound source status change, on the ticket's home board.
+  A reorder within one column writes nothing.
+- **`priority_changed { from, to }`** is written when `updateProjectTask`
+  changes the priority, and not when it is set to what it already was.
+- **`created` names where the ticket landed** (`boardId`, `columnId`, its home
+  board's placement when it was written), and a ticket a board source creates
+  now writes one too, as the source's.
+- **The event and its dispatch job are one transaction.** `recordTaskEvent`
+  (`task-event-dispatch.ts`) writes the event and, for the types a ticket
+  trigger acts on (`TICKET_TRIGGER_EVENT_TYPES`: `created`, `column_entered`,
+  `comment_added`, `detail_edited`, `priority_changed`, `labels_changed`,
+  `assigned`, `unassigned`), enqueues `trigger.ticket.dispatch` in the same
+  transaction when the ticket's project has an enabled `ticket_changed`
+  trigger — the way `project-task-attention.ts` enqueues its alert. A
+  rolled-back write leaves neither behind. `status_changed`, attachment and
+  checklist events are history only.
 
 ## Files: one upload door, several link doors
 

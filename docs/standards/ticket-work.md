@@ -21,6 +21,16 @@ Each rule is tagged with the PR that first enforces it in code:
   TaskEvent origin shape, the `ticket.work` purpose and its empty
   `isProjectDelegatedRun` arm, and the refusals that keep the two new trigger
   types uncreatable.
+- **(T1)** shipped so far in T1: ticket event provenance (an origin on every
+  ticket writer, `column_entered`, `priority_changed`), the dispatch job
+  enqueued in the event's own transaction, and `trigger.ticket.dispatch`'s
+  decision with one delivery row per decision. What a decision then does —
+  the work record, its thread, the `ticket.work` run — is the rest of T1:
+  until it lands the worker's work seam (`notImplementedTicketWorkSeam`,
+  `worker/src/control/ticket-work-seam.ts`) records each start or wake as a
+  failed, retryable delivery rather than starting anything, and
+  `ticket_changed` stays in `UNRELEASED_TRIGGER_TYPES`, so no trigger exists
+  to reach it.
 - **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
@@ -71,11 +81,17 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   the two new types only; every existing type leaves both null. Both keys are
   `ON DELETE SET NULL`, so deleting the board or project leaves the trigger
   row behind, unscoped.
-- **(from T1)** The dispatcher looks triggers up by these columns, never by
-  loading every trigger in the organisation and matching JSON in memory. A
-  `ticket_changed` or `document_changed` trigger whose scope is null matches
-  **nothing** — never every board — and shows a health reason on the
-  Triggers page.
+- **(T1)** The ticket dispatcher looks triggers up by these columns, never by
+  loading every trigger in the organisation and matching JSON in memory:
+  `dispatchTicketEvent` (`worker/src/control/ticket-trigger-dispatch.ts`)
+  reads the enabled, active `ticket_changed` triggers whose `scope_board_id`
+  is the event's board, plus any trigger with live work on the ticket, which
+  follows it even to another board. A trigger whose scope is null matches
+  **nothing** — never every board. **(T1)** One the dispatcher still meets,
+  through its live work, with no scope or a stored config that no longer
+  parses, writes a `config_invalid` skip and moves to health `error` with
+  reason `ticket_trigger_config_invalid`. **(from T1)** A null scope with no
+  live work shows its health reason on the Triggers page too.
 
 ## Only a board editor's own move starts work; board editors, and an opted-in board source, steer it
 
@@ -93,27 +109,59 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   member's user id, an `agent` origin `agent:<agentId>` or the member its run
   acted for, a `source` origin only `source:<boardSourceId>` (what
   `board-source-apply.ts` writes) — and refuse an event that changes nothing.
-  The writers that stamp it, and the two events themselves, arrive from T1;
-  until then no `TaskEvent` carries an origin.
-- **(from T1) A pickup fires only for a `session`-origin event whose author
-  can edit the board when the event is written**: a `column_entered` into a
-  start-work column from outside the pickup set, or a `created` straight into
-  one (both wake with reason `pickup`). An agent's move, a token's move, a
-  source sync, the platform and an agent's `ticket_create` into the column
-  start nothing, and the ticket says so. Tests pin each of those as starting
-  nothing.
-- **(from T1) A follow wake fires for a `session`-origin event by a person who
+  **(T1)** Every ticket writer stamps it, and writes the two events, as
+  [ticket activity](ticket-activity.md) → "History" lists: `session` only
+  when the global auth hook verified a person's own session token
+  (`request.authenticatedWith`), `token` for the MCP surface's agent
+  credential, `agent` from the worker's ticket tools, `source` from a
+  board-source apply, `system` when a writer names none. An event whose
+  origin does not parse is read as `system`.
+- **(T1) A pickup fires only for a `session`-origin event whose author
+  can edit the board**: a `column_entered` into a start-work column from
+  outside the pickup set, or a `created` straight into one (both wake with
+  reason `pickup`). "Can edit the board" is `canMemberEditProjectBoards` — a
+  live organisation member who is in the project, or an organisation owner or
+  admin — asked by the dispatcher when it decides, a moment after the event
+  was written, so an author who lost the right in between starts nothing. An
+  agent's move, a token's move, a source sync, the platform and an agent's
+  `ticket_create` into the column start nothing: each writes a `skipped`
+  delivery with its reason (`agent_origin`, `token_origin`, `source_origin`,
+  `system_origin`, `not_board_editor`), and
+  `TICKET_TRIGGER_SKIP_SENTENCES` holds the sentence for it. **(from T1)** The
+  ticket shows that sentence. Tests pin each of those as starting nothing.
+- **(T1) A follow wake fires for a `session`-origin event by a person who
   can edit the board and — only when the trigger sets
   `follow.includeSourceEvents` — for a `source`-origin event. Nothing else
-  wakes it, and a source event never picks up work.** Text from anyone but a
+  wakes it, and a source event never picks up or resumes work.** A re-entry
+  into a start-work column obeys the same rule, so a token's or an agent's
+  move back leaves a parked record parked. **(from T1)** Text from anyone but a
   board editor — agents, sources (opted in or not), external provider users,
   people who cannot edit the board — reaches the agent only as quoted,
   attributed, untrusted content, which it is told never to forward to the
-  coding agent as an instruction. Each follow kind wakes with its own reason:
-  comment `ticket_commented`, description `ticket_description_changed`,
-  priority `ticket_priority_changed`, labels `ticket_labels_changed`,
-  assignee `ticket_assignee_changed`, moved `ticket_moved`, and
-  `thread_message` and `document_changed` by those names.
+  coding agent as an instruction; the dispatcher already marks a source wake
+  `untrusted` for the kickoff to frame. Each follow kind wakes with its own
+  reason (`TICKET_FOLLOW_WAKE_REASONS`): comment `ticket_commented`,
+  description `ticket_description_changed`, priority
+  `ticket_priority_changed`, labels `ticket_labels_changed`, assignee
+  `ticket_assignee_changed`, moved `ticket_moved`, and `thread_message` and
+  `document_changed` by those names.
+- **(T1) Every decision is exactly one `agent_trigger_deliveries` row**,
+  deduped on `ticket:<triggerId>:<taskEventId>`, with `source` `pickup` or
+  `follow` and a `TicketTriggerDeliveryPayloadSchema` payload (ids, the origin
+  kind, the outcome, the wake or skip reason). A skip names its reason in
+  `errorMessage` too, as a webhook skip does. An event the trigger has
+  nothing to do with — a kind it does not follow, a column that is neither
+  start-work nor end, a ticket it has no live work on — writes no row; every
+  event it would act on writes one. The decision itself is the pure
+  `decideTicketTrigger` (`worker/src/control/ticket-trigger-decision.ts`);
+  a start or a wake goes through the `TicketWorkSeam` inside the delivery's
+  transaction, and a throw there leaves a failed, retryable row, which the
+  delivery-retry poller decides again through
+  `reattemptTicketTriggerDelivery` because a ticket trigger has no fixed
+  thread. Entering an end column sends one machine-less `ticket_moved` wake
+  for the record that move ended, except when the trigger's own agent made
+  the move (`own_agent_event`); a priority change on a `queued` record wakes
+  nothing (`priority_while_queued`).
 - **(from T1) Only board editors write in a work thread**, checked live by the
   message route. A person's message there starts no ordinary run: it becomes a
   `thread_message` follow wake, and the message is stamped
@@ -327,7 +375,8 @@ causes it**:
   sectioned by (`onPickup`, `onSessionTurnEnded`, …). No code decides what the
   agent does from one.
 - The queue topics and their payload schemas are in
-  `packages/schemas/src/jobs.ts`: `TRIGGER_TICKET_DISPATCH_TOPIC` (from T1),
+  `packages/schemas/src/jobs.ts`: `TRIGGER_TICKET_DISPATCH_TOPIC` (T1,
+  subscribed in `worker/src/worker-subscriptions-integrations.ts`),
   `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (from
   T3, with an optional idempotency `bucket`) and `TICKET_WORK_SESSION_TOPIC`
   (from T5, whose `status` is only one that wakes: `waiting_for_input`,
@@ -337,8 +386,15 @@ causes it**:
   online, access being re-confirmed — enqueues it with a short idempotency
   window, and the periodic tick is only the backstop (from T5). So dispatch is
   one idempotent job that reads the queue and the pools afresh, and there is
-  no per-executor dispatch topic. Nothing subscribes to these topics yet; each
-  handler parses its payload with its schema when it lands.
+  no per-executor dispatch topic. Only `trigger.ticket.dispatch` has a
+  subscriber so far; each other handler parses its payload with its schema
+  when it lands.
+- The dispatch vocabularies are in `packages/schemas/src/ticket-triggers.ts`:
+  the stored `ticket_changed` config the dispatcher reads
+  (`TicketChangedStoredConfigSchema`, the board and pickup columns by id),
+  `TICKET_TRIGGER_EVENT_TYPES`, the follow kinds, and the delivery source,
+  outcome and skip reasons. None is a database CHECK, so none is pinned to
+  the migration.
 
 ## Tests that hold these rules
 
@@ -355,9 +411,27 @@ causes it**:
   alone, as the agent.
 - `worker/test/pa-tools-ticket-activity.test.ts`: a `ticket.work` run is not
   project-delegated.
-- `packages/schemas/src/__tests__/task-events.test.ts` and
-  `packages/schemas/src/__tests__/ticket-work-jobs.test.ts`: the origin and
-  payload shapes.
+- `packages/schemas/src/__tests__/task-events.test.ts`,
+  `packages/schemas/src/__tests__/ticket-work-jobs.test.ts` and
+  `packages/schemas/src/__tests__/ticket-triggers.test.ts`: the origin,
+  payload, stored-config and delivery shapes.
+- `api/test/task-event-origin-routes.test.ts`: the origin each door stamps —
+  the global hook's session, a minted agent credential as a token, the task
+  routes behind the real hook, the MCP tools.
+- `packages/team-admin/test/task-event-origin-db.test.ts`: `created`,
+  `column_entered` (a same-category move and a transition included) and
+  `priority_changed` with their origins, an unattended agent credited as
+  `agent:<id>`, a board source's own events, and the dispatch job written in
+  the event's transaction only when a ticket trigger could see it.
+- `worker/test/ticket-trigger-decision.test.ts`: every branch of
+  `decideTicketTrigger`. `worker/test/db/ticket-trigger-dispatch.test.ts`:
+  the dispatcher against Postgres — a board editor's move starts work once;
+  an agent's `ticket_move`, a token's move, an agent's `ticket_create`, a
+  token's create and a board-source create into the column each start
+  nothing and write a skip; a token or agent move back leaves a parked
+  record parked; a source event wakes live work only when opted in; a
+  non-editor's comment wakes nothing; the end wake and the own-move guard;
+  and the failed-then-retried delivery.
 - `packages/team-admin/test/trigger-type-availability.test.ts`,
   `api/test/trigger-type-unreleased-routes.test.ts`,
   `worker/test/trigger-type-unreleased-tools.test.ts` and
