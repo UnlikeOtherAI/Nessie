@@ -6,7 +6,7 @@ import { LedgerIdentityError, UOA_SUBJECT_FORBIDDEN_CODE, type UoaExchangeFailur
 import { DeepWaterNoticeMessageMetadataSchema } from '@nessie/schemas'
 
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
-import { researchId, seedWatchFixture, type WatchFixture } from './deep-water-watch-fixture.js'
+import { launchedBrief, researchId, seedWatchFixture, type WatchFixture } from './deep-water-watch-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 
 /**
@@ -39,7 +39,7 @@ const exchangeFailed = (failure: UoaExchangeFailure): LedgerIdentityError =>
 const claimedResearch = async (fixture: WatchFixture) => {
   const run = await fixture.insert('person')
   await fixture.attach(run.id, {
-    id: researchId(), status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: researchId(), status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
   })
   await fixture.prisma.productIntegrationRun.update({

@@ -184,12 +184,14 @@ export const settleDeepWaterPersonAction = async (
 /**
  * Ledger refused a launch after it had already moved the research to
  * `starting` — an inline Water 409 whose code starts with `scope-` (amendments
- * L3) — so the research is back to `drafting` in Ledger. A watch read may have
- * seen `starting` (reported as `running`) meanwhile and moved the run on, and
- * no later read can tell that revert from a stale read: the projection only
- * advances. So only the launch job that got the refusal moves the run back,
- * clearing `launched_at` and settling its action with `errorCode`, and only
- * while that launch is the action in flight.
+ * L3) — so the research is back to `drafting` in Ledger. A watch read that saw
+ * `starting` (reported as `running`) meanwhile did not move the run on, since
+ * a bare `running` is no proof of launch (`statusStepForLedger`), and no later
+ * read can tell the revert from a stale read: the projection only advances.
+ * So only the launch job that got the refusal settles its action with
+ * `errorCode`, and only while that launch is the action in flight. A
+ * `running` row is put back to `drafting` too, clearing `launched_at`, though
+ * no read moves a brief there before proof of launch any more.
  */
 export const revertDeepWaterLaunch = async (
   tx: DeepWaterBriefDb,

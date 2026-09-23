@@ -6,7 +6,7 @@ import { DeepWaterNoticeMessageMetadataSchema, PushDispatchJobPayloadSchema } fr
 
 import { reapUnconfirmedDeepWaterBriefs } from '../../src/control/deepwater-worker.js'
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
-import { researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
+import { launchedBrief, researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 
 /**
@@ -35,7 +35,7 @@ const launched = async (fixture: WatchFixture) => {
   const run = await fixture.insert('person')
   const rs = researchId()
   await fixture.attach(run.id, {
-    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
   })
   return { run, rs }
@@ -307,9 +307,9 @@ withFixture('a brief refused before launch never counts as launched, whatever it
   assert.equal(failed.cardMessageId, null)
 
   // One Ledger reports as launched before it failed is the room's.
-  const launchedBrief = await fixture.insert('person')
+  const launchedRun = await fixture.insert('person')
   const launchedRs = researchId()
-  await fixture.attach(launchedBrief.id, {
+  await fixture.attach(launchedRun.id, {
     id: launchedRs, status: 'drafting', errorCode: null, title: null, brief: null,
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'person', errorCode: null, retryable: false },
   })
@@ -317,11 +317,11 @@ withFixture('a brief refused before launch never counts as launched, whatever it
   fixture.ledger.answer('research_scope_get', {
     ...wire, brief: { ...wire.brief, state: 'launched' }, status: 'failed', error_code: 'upstream_failed',
   })
-  await watch(fixture, launchedBrief.id)
-  const told = await fixture.read(launchedBrief.id)
+  await watch(fixture, launchedRun.id)
+  const told = await fixture.read(launchedRun.id)
   assert.equal(told.status, 'failed')
   assert.ok(told.launchedAt && told.cardMessageId)
-  const [notice] = await noticesAnywhere(fixture, launchedBrief.id)
+  const [notice] = await noticesAnywhere(fixture, launchedRun.id)
   assert.equal(notice?.threadId, fixture.ids.thread)
   assert.equal(notice?.rootMessageId, told.cardMessageId)
 })

@@ -12,7 +12,7 @@ import { renewDeepWaterIdentity } from '../../src/control/deepwater-delivery.js'
 import { reapUnconfirmedDeepWaterBriefs } from '../../src/control/deepwater-worker.js'
 import { watchDeepWaterRun } from '../../src/control/deepwater-watch.js'
 import { deepWaterWakeKickoffId } from '../../src/control/deepwater-wake.js'
-import { researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
+import { launchedBrief, researchId, seedWatchFixture, wireScope, type WatchFixture } from './deep-water-watch-fixture.js'
 import { assertGlobalQueuesQuiet, runDatabaseTest } from './support.js'
 
 /**
@@ -169,7 +169,7 @@ withFixture('a finished research is imported to Documents and wakes the agent to
   const run = await fixture.insert('agent')
   const rs = researchId()
   await fixture.attach(run.id, {
-    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'agent', errorCode: null, retryable: false },
   })
   fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null, public_url: null })
@@ -244,7 +244,7 @@ const finishResearch = async (fixture: WatchFixture) => {
   const run = await fixture.insert('agent')
   const rs = researchId()
   await fixture.attach(run.id, {
-    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: null,
+    id: rs, status: 'running', errorCode: null, title: 'Heat pumps', brief: launchedBrief(),
     turn: { id: randomUUID(), seq: 1, status: 'complete', authorKind: 'agent', errorCode: null, retryable: false },
   })
   fixture.ledger.answer('research_status', { id: rs, status: 'complete', title: 'Heat pumps', error_code: null })

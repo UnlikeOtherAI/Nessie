@@ -11,7 +11,7 @@ import {
   type DeepWaterBriefRunOrigin,
   type LedgerIdentityService,
 } from '@nessie/runtime'
-import type { LedgerScopeResult, WsScope } from '@nessie/schemas'
+import { LedgerScopeBriefSchema, type LedgerScopeBrief, type LedgerScopeResult, type WsScope } from '@nessie/schemas'
 import { personalAssistantDmKey } from '@nessie/team-admin'
 
 import type { DeepWaterWatchDeps } from '../../src/control/deepwater-watch.js'
@@ -282,12 +282,44 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
   }
 }
 
+type BriefState = 'drafting' | 'launched' | 'cancelled'
+
+/** Water's brief on the wire, as Ledger passes it through. */
+const wireBrief = (input: { revision: number; state?: BriefState; withTranscript?: boolean }) => ({
+  state: input.state ?? 'drafting',
+  revision: input.revision,
+  topic: 'Heat pumps in older houses',
+  reply: 'I have drafted two pillars.',
+  pillars: ['Costs', 'Performance'],
+  settings: {
+    depth: 'light',
+    chapter_depth: 'standard',
+    search_quality: 'standard',
+    languages: [],
+    output_language: 'en',
+    recency: 'any',
+    writing_style: 'standard',
+  },
+  locked_settings: ['depth'],
+  open_questions: [],
+  analysis: null,
+  ready: true,
+  ...(input.withTranscript ? { messages: [] } : {}),
+})
+
+/**
+ * Water's brief once Water launched it: the proof of launch a scope read
+ * carries (a bare `running` is Ledger's `starting`, which may still revert).
+ */
+export const launchedBrief = (): LedgerScopeBrief => LedgerScopeBriefSchema.parse(wireBrief({ revision: 2, state: 'launched' }))
+
 /** A ScopeResult on the wire, as Ledger's research_scope_* tools answer. */
 export const wireScope = (input: {
   id: string
   status?: string
   turn?: { id: string; seq: number; status: string; author_kind: 'person' | 'agent'; retryable?: boolean }
   revision?: number
+  briefState?: BriefState
   withTranscript?: boolean
 }): Record<string, unknown> => ({
   id: input.id,
@@ -297,25 +329,9 @@ export const wireScope = (input: {
   turn: input.turn ? { error_code: null, retryable: false, ...input.turn } : null,
   brief: input.revision === undefined
     ? null
-    : {
-        state: 'drafting',
+    : wireBrief({
         revision: input.revision,
-        topic: 'Heat pumps in older houses',
-        reply: 'I have drafted two pillars.',
-        pillars: ['Costs', 'Performance'],
-        settings: {
-          depth: 'light',
-          chapter_depth: 'standard',
-          search_quality: 'standard',
-          languages: [],
-          output_language: 'en',
-          recency: 'any',
-          writing_style: 'standard',
-        },
-        locked_settings: ['depth'],
-        open_questions: [],
-        analysis: null,
-        ready: true,
-        ...(input.withTranscript ? { messages: [] } : {}),
-      },
+        ...(input.briefState ? { state: input.briefState } : {}),
+        ...(input.withTranscript ? { withTranscript: true } : {}),
+      }),
 })

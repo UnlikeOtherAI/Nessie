@@ -19,6 +19,7 @@ import {
   agentOrigin,
   insertBrief,
   personOrigin,
+  scopeBrief,
   seedBriefFixture,
   type BriefFixture,
 } from './deepwater-brief-fixture.js'
@@ -175,11 +176,37 @@ withFixture('an action whose job is gone ends by what Ledger shows', async (fixt
   assert.equal(await settle(lostReply), 'unavailable')
   assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction?.error?.code, 'unavailable')
 
+  // A launch whose job died while Ledger still shows it starting (a bare
+  // running, no proof of launch yet) ended with its job: the person may act again.
+  const cutOff = randomUUID()
+  await setPendingAction(fixture, run.id, { kind: 'launch', actionId: cutOff })
+  await apply(fixture, run.id, result(rs, { status: 'running', turn: turn({ id: open.id, status: 'complete' }) }))
+  assert.equal((await read(fixture, run.id))?.status, 'drafting')
+  assert.equal(await settle(cutOff), 'unavailable')
+
   const launch = randomUUID()
   await setPendingAction(fixture, run.id, { kind: 'launch', actionId: launch })
-  await apply(fixture, run.id, result(rs, { status: 'running', turn: turn({ id: open.id, status: 'complete' }) }))
+  await apply(fixture, run.id, result(rs, {
+    status: 'running',
+    brief: scopeBrief('launched'),
+    turn: turn({ id: open.id, status: 'complete' }),
+  }))
   assert.equal(await settle(launch), 'finished')
   assert.equal((await read(fixture, run.id))?.scopeState?.pendingAction, null)
+
+  // needs_setup is a launched research too.
+  const { run: setup } = await insertBrief(fixture, personOrigin())
+  const rsSetup = researchId()
+  const setupTurn = turn({ authorKind: 'person' })
+  await apply(fixture, setup.id, result(rsSetup, { turn: setupTurn }))
+  const setupLaunch = randomUUID()
+  await setPendingAction(fixture, setup.id, { kind: 'launch', actionId: setupLaunch })
+  await apply(fixture, setup.id, result(rsSetup, { status: 'needs_setup', turn: setupTurn }))
+  assert.equal(await fixture.prisma.$transaction((tx) => settleStaleDeepWaterAction(tx, {
+    organizationId: fixture.ids.organization,
+    runId: setup.id,
+    actionId: setupLaunch,
+  })), 'finished')
 })
 
 withFixture('a settled turn wakes its agent author once, in order; a person\'s turn only advances', async (fixture) => {
@@ -221,7 +248,9 @@ withFixture('an attach that names a finished research leaves the run where the n
   const rsQueued = researchId()
   const finished = await apply(fixture, queued.id, result(rsQueued, { status: 'complete', turn: turn({ authorKind: 'person' }) }))
   assert.equal(finished.applied && finished.attached, true)
-  assert.equal(finished.applied && finished.run.status, 'drafting', 'the attach makes it drafting (N1)')
+  // Ledger finishes only launched research, so the launch is seen before its result.
+  assert.equal(finished.applied && finished.run.status, 'running', 'a finished research was launched')
+  assert.ok(finished.applied && finished.run.launchedAt)
   assert.equal(finished.applied && finished.run.externalRunId, rsQueued)
   assert.deepEqual(finished.applied && finished.ledgerTerminal, { status: 'complete', errorCode: null })
 
@@ -233,7 +262,7 @@ withFixture('an attach that names a finished research leaves the run where the n
   )
   const rsReaped = researchId()
   const revived = await apply(fixture, reaped.id, result(rsReaped, { status: 'failed', errorCode: 'upstream_failed' }))
-  assert.equal(revived.applied && revived.run.status, 'drafting')
+  assert.equal(revived.applied && revived.run.status, 'drafting', 'the attach makes it drafting (N1); a bare failed is no launch')
   assert.equal(revived.applied && revived.run.failureCode, null)
   assert.deepEqual(revived.applied && revived.ledgerTerminal, { status: 'failed', errorCode: 'upstream_failed' })
 
@@ -262,7 +291,7 @@ withFixture('a read that failed for a passing reason is tried again soon only wh
 
   // A research that is running: the claim backed it off; the failed read brings it back within 30 s.
   const { run: research } = await insertBrief(fixture, personOrigin())
-  await apply(fixture, research.id, result(researchId(), { status: 'running' }))
+  await apply(fixture, research.id, result(researchId(), { status: 'running', brief: scopeBrief('launched') }))
   const researchClaim = await claimOf(research.id)
   assert.ok(await scheduledIn(research.id) > 9 * 60_000)
   assert.equal(await retry(research.id, researchClaim.reconcileSeq - 1), false, 'an older claim owns nothing')

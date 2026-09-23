@@ -39,9 +39,15 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  *   state;
  * - the brief projection only advances (the two registers), and so does the
  *   status: a read never moves a run back (`running` to `drafting`), because
- *   a read issued before a launch can be applied after its ticket. The one
+ *   a read issued before a launch can be applied after its ticket;
+ * - a run moves into its launched statuses only on proof of launch: a launch
+ *   ticket, a brief whose own state is `launched`, `needs_setup`, or a
+ *   `complete`. Ledger shows a launch in flight (`starting`) as `running`,
+ *   and a launch Water refuses from there is reverted to `drafting`, so a bare
+ *   `running` launches nothing — it would post a person's card to the room
+ *   and open their brief to it for a launch that may yet be undone. The one
  *   real way back, Ledger reverting a launch Water refused, is known only to
- *   the launch job, which moves the run back itself (`revertDeepWaterLaunch`);
+ *   the launch job, which settles its action itself (`revertDeepWaterLaunch`);
  * - non-terminal Ledger statuses move the run forward; `cancelled` is written
  *   directly; a finished research (`complete`, `failed`, `timed_out`) is
  *   reported back as `ledgerTerminal` and written only by the delivery claim,
@@ -159,14 +165,23 @@ const LAUNCHED_STATUSES: ReadonlySet<ProductIntegrationRunStatus> = new Set(['ru
 
 /**
  * What a Ledger status does to a live run's product status (contract §2.4);
- * never backwards. A finished research is written by the delivery claim, but
- * one Ledger shows was launched moves to `running` first when Nessie never saw
- * it run (a launch ack lost, or a research that finished between two reads):
- * the launch is what posts a person's card and opens the run to its room, and
- * a result must never be delivered to a room that was not shown the research.
- * `launched` is known for `complete` (Ledger finishes only launched research),
- * a brief Ledger reports as launched, and a launch ticket — never for a bare
- * `failed`, which can be a refusal before launch.
+ * never backwards, and into a launched status only on proof of launch.
+ *
+ * `launched` is that proof from the read itself: a launch ticket, or a brief
+ * whose own state is `launched` (Water launched it, which nothing reverts).
+ * `needs_setup` and `complete` are proof on their own — Ledger reports
+ * `needs_setup` only for a launched research and finishes only launched
+ * research. A bare `running` is not: Ledger shows `starting` as `running`
+ * while the launch call is still out, and reverts it to `drafting` when Water
+ * refuses the launch, so moving on it would post a person's card and open
+ * their brief to the room for a launch that is then undone. A bare `failed`
+ * is not either: it can be a refusal before launch.
+ *
+ * A finished research is written by the delivery claim, but one with proof of
+ * launch moves to `running` first when Nessie never saw it run (a launch ack
+ * lost, or a research that finished between two reads): the launch is what
+ * posts a person's card and opens the run to its room, and a result must never
+ * be delivered to a room that was not shown the research.
  */
 const statusStepForLedger = (
   current: ProductIntegrationRunStatus,
@@ -181,7 +196,13 @@ const statusStepForLedger = (
     return { status, ledgerTerminal: { status: ledger, errorCode } }
   }
   const next = productRunStatusForLedger(ledger)
-  return { status: STATUS_RANK[next] < STATUS_RANK[current] ? current : next, ledgerTerminal: null }
+  if (STATUS_RANK[next] < STATUS_RANK[current]) return { status: current, ledgerTerminal: null }
+  // Moving between `running` and `needs_setup` is not a launch; moving into
+  // `running` from a brief is, and needs its proof.
+  if (next === 'running' && !launched && !LAUNCHED_STATUSES.has(current)) {
+    return { status: current, ledgerTerminal: null }
+  }
+  return { status: next, ledgerTerminal: null }
 }
 
 /**

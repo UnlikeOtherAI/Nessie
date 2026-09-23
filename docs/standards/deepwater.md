@@ -422,7 +422,12 @@ the only way results come back.
   research that finishes from there is delivered under it; moving between
   `running` and `needs_setup` afterwards is not a second launch. A bare
   `failed` on a brief is never taken as a launch: it can be a refusal before
-  one.
+  one. Nor is a bare `running`: Ledger shows a launch whose call is still out
+  (`starting`) as `running`, and puts it back to `drafting` when Water refuses
+  it, so a brief moves to `running` only on proof — a launch ticket, or Water's
+  own brief state `launched` (`statusStepForLedger`). Otherwise a person's card
+  would be posted in the room, and their brief opened to it, for a launch that
+  is then undone.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind and provider tool-call id — which Ledger answers with the one
   brief it keyed to that call, or opens now. Ledger fingerprints the arguments
@@ -439,8 +444,8 @@ the only way results come back.
   watch.
 - **Stale actions.** An in-flight action whose job is no longer queued or
   running ends by what Ledger shows (`settleStaleDeepWaterAction`): a launch
-  whose research is running is finished, one whose planner turn is still open
-  is kept, anything else ends as `unavailable`.
+  whose run is launched (`running` or `needs_setup`) is finished, one whose
+  planner turn is still open is kept, anything else ends as `unavailable`.
 - **Turn wakes.** After every applied read, `claimDeepWaterTurnWake` takes the
   settled planner turn once, in turn order, by advancing
   `last_handled_turn_seq` under the row lock. An agent-authored turn wakes that

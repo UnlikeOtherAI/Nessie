@@ -218,7 +218,7 @@ export const reapUnconfirmedDeepWaterBrief = async (
 }
 
 export type DeepWaterStaleActionOutcome =
-  /** The action did what it was for (a launch the research shows as running): cleared. */
+  /** The action did what it was for (a launch the run shows as launched): cleared. */
   | 'finished'
   /** Ledger shows nothing left of it: ended as unavailable, so the person can act again. */
   | 'unavailable'
@@ -241,7 +241,8 @@ export const settleStaleDeepWaterAction = async (
   const action = state.pendingAction
   if (!isPendingActionInFlight(action) || action.actionId !== input.actionId) return 'none'
   const { run, now } = locked
-  if (action.kind === 'launch' && run.status === 'running') {
+  // The run reaches `running` or `needs_setup` only on proof of launch.
+  if (action.kind === 'launch' && (run.status === 'running' || run.status === 'needs_setup')) {
     await tx.productIntegrationRun.update({
       where: { id: run.id },
       data: { scopeJson: deepWaterBriefJson(DeepWaterScopeStateSchema.parse({ ...state, pendingAction: null })) },
