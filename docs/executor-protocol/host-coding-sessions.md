@@ -456,7 +456,12 @@ gains is required with it:
   the owner's `args`. A configured `permissionMode` must be one of the
   `(choices: …)` that `--permission-mode` lists (2.1.280: `acceptEdits`,
   `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan` — no `default`),
-  or the start fails with `permission_mode_unsupported`.
+  or the start fails with `permission_mode_unsupported`. Only a list that was
+  read refuses a mode: when the help shows no choices the host can read
+  (commander's double-quoted values; none at all, or a later CLI printing
+  them another way), the mode is not checked, the host log says so, and the
+  CLI itself refuses a mode it lacks — the owner is not told to change a mode
+  the CLI may well offer.
 - Codex (`codex exec --help` and `codex exec resume --help`): each help's
   `Usage:` line must name its subcommand (a codex without `exec resume`
   answers that help with the `exec` one); `-C` and `--json` on `exec`,

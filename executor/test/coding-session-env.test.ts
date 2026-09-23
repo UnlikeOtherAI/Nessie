@@ -154,6 +154,11 @@ test('the self-check names each failure, reads only the login flag, and treats g
   assert.deepEqual(await check({ 'gh auth': { missing: true }, 'claude auth': loggedIn }, {
     config: { ...claude, permissionMode: 'default' },
   }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode default'] })
+  // Choices this parser cannot read refuse nothing; the host logs the mode as not checked.
+  const unquoted = helpText('claude-2.1.280.txt').replace(/\(choices: "acceptEdits",[\s\S]*?"plan"\)/u, '(choices: acceptEdits, plan)')
+  assert.deepEqual(await check({
+    'claude --help': { stdout: unquoted }, 'gh auth': { missing: true }, 'claude --version': { stdout: '2.1.280 (Claude Code)\n' }, 'claude auth': loggedIn,
+  }, { config: { ...claude, permissionMode: 'plan' } }), { ok: true, agentVersion: '2.1.280 (Claude Code)', unverified: ['--permission-mode plan'] })
   assert.deepEqual(await check({ 'gh auth': { code: 1 }, 'claude auth': loggedIn }), { ok: false, reason: 'gh_not_authenticated' })
   assert.deepEqual(await check({}, { platform: 'win32', received: { NESSIE_EXECUTOR_SUPERVISOR: 'service' } }), {
     ok: false, reason: 'unsupported_supervisor',

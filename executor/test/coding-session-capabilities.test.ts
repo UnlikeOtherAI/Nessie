@@ -103,6 +103,26 @@ test('the permission mode is checked against the choices this CLI lists, not a l
   assert.deepEqual(check('review', { '': newer }), { ok: true }, 'a mode a newer CLI adds needs no executor release')
 })
 
+test('a mode is refused only against choices that were read: a list this parser cannot read leaves it unchecked', () => {
+  const check = (permissionMode: string, capabilities: AgentCapabilities) => (
+    checkAgentCapabilities({ agent: 'claude', config: agent({ permissionMode }), capabilities })
+  )
+  const listed = /\(choices: "acceptEdits",[\s\S]*?"plan"\)/u
+  // A later CLI that prints its choices unquoted, and one that lists none at all.
+  const unquoted = parseHelpText(helpText('claude-2.1.280.txt').replace(listed, '(choices: acceptEdits, plan, default)'))
+  const bare = parseHelpText(helpText('claude-2.1.280.txt').replace(listed, ''))
+  for (const digest of [unquoted, bare]) {
+    assert.ok(digest.flags.includes('--permission-mode'))
+    assert.equal(digest.choices['--permission-mode'], undefined, 'no list is recorded that was not read')
+    assert.deepEqual(check('plan', { '': digest }), { ok: true, unverified: ['--permission-mode plan'] })
+  }
+  // An empty list an earlier parser cached is no more a list than none.
+  const cached = { ...CLAUDE, choices: { ...CLAUDE.choices, '--permission-mode': [] } }
+  assert.deepEqual(check('plan', { '': cached }), { ok: true, unverified: ['--permission-mode plan'] })
+  // A list that was read still refuses a mode it lacks.
+  assert.deepEqual(check('review', { '': CLAUDE }), { ok: false, reason: 'permission_mode_unsupported', missing: ['--permission-mode review'] })
+})
+
 test('Codex needs exec, exec resume, and each flag where the subcommand that parses it lists it', () => {
   const codex = agent({ command: ['node', '/opt/codex.js'], args: ['--sandbox', 'workspace-write'], model: 'gpt-5' })
   assert.deepEqual(checkAgentCapabilities({ agent: 'codex', config: codex, capabilities: CODEX }), { ok: true })

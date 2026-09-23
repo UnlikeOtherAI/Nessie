@@ -175,6 +175,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       if (named) log(check.reason === 'agent_help_unreadable' ? `the agent's help did not answer: ${named}` : `the agent's --help does not offer ${named}`)
       throw new AgentStartError(check.reason)
     }
+    if (check.unverified) log(`the agent's --help lists no choices this host can read for ${check.unverified.join(', ')}; not checked`)
     if (check.agentVersion) update({ agentVersion: context.projector.line(check.agentVersion, 80) })
     if (state.baseCommit === undefined && state.worktreesAtStart === undefined) update(await gitStartSnapshot(folder))
     const driverContext = {
