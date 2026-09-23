@@ -157,6 +157,10 @@ export const AuditActionSchema = z.enum([
   'app.connected',
   'app.capabilities_refreshed',
   'app.disconnected',
+  // A DeepWater research cancelled by someone other than its requester — a
+  // team owner or admin — or a launcher run cancelled here without Ledger
+  // (Water plan amendments N8.5, N9.6). The run is named by id; never its topic.
+  'integration.research.cancelled',
   'auth.bootstrap',
   'auth.login',
   'auth.logout',
