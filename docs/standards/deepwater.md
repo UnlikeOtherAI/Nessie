@@ -387,18 +387,23 @@ the only way results come back.
   transcript only once a planner turn has settled since the transcript was
   captured), a research with `research_status`; the answer goes through the
   same projection the tool acks use. A failure that passes (Ledger restarting,
-  a timeout, a transient refusal) is read again within 30 s while the run
-  moves fast — a turn or action in flight, a research running — instead of
-  waiting out the claim's backoff (`retryDeepWaterWatchSoon`, which only ever
-  brings the next read earlier); a definitive refusal, a malformed answer or a
-  missing connector keeps the backoff. An
-  identity that no longer resolves blocks the run with
+  a timeout, a transient refusal, UOA not answering or answering 408, 429 or a
+  5xx) is read again within 30 s while the run moves fast — a turn or action in
+  flight, a research running — instead of waiting out the claim's backoff
+  (`retryDeepWaterWatchSoon`, which only ever brings the next read earlier); a
+  definitive refusal, a malformed answer or a missing connector keeps the
+  backoff, and a deployment fault (UOA refusing Nessie's client or assertion
+  with 400 or 401, or answering outside its contract) fails the read, so the
+  job's failure is logged and the backoff stands. An identity that no longer
+  resolves — the link gone or re-teamed, or UOA refusing to delegate the
+  captured identity with 403 or for another sign-in epoch
+  (`classifyUoaExchangeFailure`) — blocks the run with
   `requester_identity_changed` until the requester's next live action (or
-  Retry) renews it. Only a person's own brief is blocked quietly, because its
-  dialog says "Sign in again"; an agent's brief tells the requester once that
-  the agent can't carry on (they cannot edit it, and the agent is never woken
-  while the watch is stopped), and a launched research tells them DeepWater
-  can't check on it — never that it finished.
+  Retry) renews it; it is never retried in a loop. Only a person's own brief is
+  blocked quietly, because its dialog says "Sign in again"; an agent's brief
+  tells the requester once that the agent can't carry on (they cannot edit it,
+  and the agent is never woken while the watch is stopped), and a launched
+  research tells them DeepWater can't check on it — never that it finished.
 - **A lost agent scope start** is replayed as the agent's own call — its Run,
   agent, kind, provider tool-call id and stored arguments — which Ledger answers
   with the one brief it keyed to that call, or opens now. The attach posts the

@@ -110,7 +110,9 @@ test('does not rebind an old session from a newer mutable link', async () => {
 })
 
 test('rejects a returned delegation with a missing or different epoch', async () => {
-  for (const tokenVersion of [null, 8]) {
+  // A token naming no epoch breaks UOA's contract; one naming another epoch
+  // means the person's sign-in moved on.
+  for (const [tokenVersion, kind] of [[null, 'malformed'], [8, 'epoch_mismatch']] as const) {
     const service = createLedgerIdentityService({
       prisma: linkedPrisma() as never,
       settings,
@@ -123,7 +125,23 @@ test('rejects a returned delegation with a missing or different epoch', async ()
       service.requestHeaders(attribution, { requireUoaIdentity: true }),
       (error: unknown) =>
         error instanceof LedgerIdentityError
-        && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED',
+        && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED'
+        && error.exchangeFailure?.kind === kind,
     )
   }
+})
+
+test('a refused exchange carries UOA\'s status to the caller', async () => {
+  const service = createLedgerIdentityService({
+    prisma: linkedPrisma() as never,
+    settings,
+    fetchImpl: (async () => new Response('{}', { status: 403 })) as typeof fetch,
+  })
+  await assert.rejects(
+    service.requestHeaders(attribution, { requireUoaIdentity: true }),
+    (error: unknown) =>
+      error instanceof LedgerIdentityError
+      && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED'
+      && JSON.stringify(error.exchangeFailure) === JSON.stringify({ kind: 'refused', status: 403 }),
+  )
 })

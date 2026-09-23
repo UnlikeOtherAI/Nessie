@@ -47,7 +47,8 @@ export type WatchFixture = {
   realtime: RecordedRealtime
   ids: Record<'organization' | 'project' | 'team' | 'channel' | 'thread' | 'requester' | 'agent' | 'originRun' | 'connector', string>
   identity: { subject: string; organizationId: string; teamId: string; tokenVersion: number }
-  failIdentity: (fail: boolean) => void
+  /** `true` loses the requester's link; an error is thrown as the signer's own. */
+  failIdentity: (failure: boolean | LedgerIdentityError) => void
   insert: (origin: 'person' | 'agent', options?: { toolCallId?: string }) => Promise<DeepWaterBriefRun>
   attach: (runId: string, result: LedgerScopeResult) => Promise<void>
   read: (runId: string) => Promise<DeepWaterBriefRun>
@@ -105,10 +106,11 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
       answers.set(toolName, { structured, success })
     },
   }
-  let identityFails = false
+  let identityFailure: boolean | LedgerIdentityError = false
   const ledgerIdentity: LedgerIdentityService = {
     requestHeaders: async (_attribution, options) => {
-      if (identityFails) throw new LedgerIdentityError('LEDGER_UOA_IDENTITY_REQUIRED', 'no linked identity')
+      if (identityFailure instanceof LedgerIdentityError) throw identityFailure
+      if (identityFailure) throw new LedgerIdentityError('LEDGER_UOA_IDENTITY_REQUIRED', 'no linked identity')
       return { 'X-Nessie-Context': `signed:${options?.toolCallId ?? ''}` }
     },
   }
@@ -208,7 +210,7 @@ export const seedWatchFixture = async (): Promise<WatchFixture> => {
     realtime: { published, failPublishes: (fail) => { publishesFail = fail } },
     ids,
     identity,
-    failIdentity: (fail) => { identityFails = fail },
+    failIdentity: (failure) => { identityFailure = failure },
     insert: async (originKind, options = {}) => {
       const origin: DeepWaterBriefRunOrigin = originKind === 'person'
         ? { kind: 'person', actionId: randomUUID() }

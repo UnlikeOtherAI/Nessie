@@ -5,10 +5,10 @@ import {
   createUoaDelegatedIdentityService,
   loadUoaDelegatedIdentitySettings,
   loadUoaProductIdentity,
-  UoaDelegatedIdentityError,
   type UoaDelegatedIdentitySettings,
   type UoaProductIdentity,
 } from './uoa-delegated-identity.js'
+import { UoaDelegatedIdentityError, type UoaExchangeFailure } from './uoa-delegation-exchange.js'
 
 const DEEP_WATER_PRODUCT_SLUG = 'deep-water'
 const DEFAULT_LEDGER_AUDIENCE = 'https://ledger.unlikeotherai.com'
@@ -41,6 +41,12 @@ export class LedgerIdentityError extends Error {
       | 'LEDGER_UOA_IDENTITY_REQUIRED'
       | 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED',
     message: string,
+    /**
+     * On `LEDGER_UOA_TOKEN_EXCHANGE_FAILED`: what UOA's exchange failed with,
+     * so a caller can tell a refused person from an outage from a deployment
+     * fault (`classifyUoaExchangeFailure`).
+     */
+    public readonly exchangeFailure: UoaExchangeFailure | null = null,
   ) {
     super(message)
     this.name = 'LedgerIdentityError'
@@ -102,6 +108,7 @@ const mapIdentityError = (error: unknown): never => {
   throw new LedgerIdentityError(
     'LEDGER_UOA_TOKEN_EXCHANGE_FAILED',
     error.message,
+    error.exchangeFailure,
   )
 }
 

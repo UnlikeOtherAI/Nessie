@@ -8,6 +8,7 @@ import {
   type DeepWaterBriefRun,
   type LedgerAttribution,
   type LedgerIdentityService,
+  type UoaExchangeFailure,
 } from '@nessie/runtime'
 
 import {
@@ -119,18 +120,42 @@ test('a lost connection is unavailable; a refused bearer is a deployment fault a
   await assert.rejects(call({ dispatch: async () => { throw new McpAuthError('401') } }), McpAuthError)
 })
 
-test('identity: a lost link is identity drift, an unfinished exchange is unavailable', async () => {
+const exchangeFailed = (failure: UoaExchangeFailure): LedgerIdentityError =>
+  new LedgerIdentityError('LEDGER_UOA_TOKEN_EXCHANGE_FAILED', 'exchange failed', failure)
+
+test('identity: a lost link or a person UOA refuses is identity drift; an outage is unavailable', async () => {
   const dispatch = answer(true, { id: 'rs_abc' })
-  const drift = await call({
-    dispatch,
-    ledgerIdentity: signer(new LedgerIdentityError('LEDGER_UOA_IDENTITY_REQUIRED', 'no link')),
-  })
-  assert.equal(drift.outcome, 'identity')
-  const exchange = await call({
-    dispatch,
-    ledgerIdentity: signer(new LedgerIdentityError('LEDGER_UOA_TOKEN_EXCHANGE_FAILED', 'status 503')),
-  })
-  assert.equal(exchange.outcome, 'unavailable')
+  const outcome = async (error: LedgerIdentityError) =>
+    (await call({ dispatch, ledgerIdentity: signer(error) })).outcome
+  assert.equal(await outcome(new LedgerIdentityError('LEDGER_UOA_IDENTITY_REQUIRED', 'no link')), 'identity')
+  // UOA's token exchange answers 403 for a moved epoch or a lost organisation,
+  // team or domain role; a token for another epoch is the same drift.
+  assert.equal(await outcome(exchangeFailed({ kind: 'refused', status: 403 })), 'identity')
+  assert.equal(await outcome(exchangeFailed({ kind: 'epoch_mismatch' })), 'identity')
+  for (const status of [408, 429, 500, 503]) {
+    assert.equal(await outcome(exchangeFailed({ kind: 'refused', status })), 'unavailable', `status ${status}`)
+  }
+  assert.equal(await outcome(exchangeFailed({ kind: 'unreachable' })), 'unavailable')
+})
+
+test('identity: a refused client or assertion, or UOA outside its contract, is a deployment fault and throws', async () => {
+  const dispatch = answer(true, { id: 'rs_abc' })
+  for (const failure of [
+    { kind: 'refused', status: 400 },
+    { kind: 'refused', status: 401 },
+    { kind: 'malformed' },
+  ] satisfies UoaExchangeFailure[]) {
+    await assert.rejects(
+      call({ dispatch, ledgerIdentity: signer(exchangeFailed(failure)) }),
+      LedgerIdentityError,
+      JSON.stringify(failure),
+    )
+  }
+  // An exchange error that never said why is not guessed at either.
+  await assert.rejects(
+    call({ dispatch, ledgerIdentity: signer(new LedgerIdentityError('LEDGER_UOA_TOKEN_EXCHANGE_FAILED', 'why?')) }),
+    LedgerIdentityError,
+  )
 })
 
 test('only the managed first-party connector is called', async () => {

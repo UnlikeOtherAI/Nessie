@@ -6,6 +6,7 @@ import {
 } from '@nessie/mcp-client'
 import {
   LedgerIdentityError,
+  classifyUoaExchangeFailure,
   completeLedgerAttribution,
   type DeepWaterBriefRun,
   type LedgerAttribution,
@@ -50,7 +51,11 @@ export type DeepWaterLedgerOutcome =
   | { outcome: 'refused'; error: LedgerToolError }
   /** Nothing is known: the call may or may not have reached Ledger. Retry with the same tool_call_id. */
   | { outcome: 'unavailable'; reason: string }
-  /** The captured UOA identity no longer resolves to the requester's linked account and team. */
+  /**
+   * The captured UOA identity no longer resolves to the requester's linked
+   * account and team, or UOA refused to delegate it (their sign-in epoch moved
+   * or they lost the organisation or team). Only they can fix it.
+   */
   | { outcome: 'identity'; reason: string }
   /** Ledger answered outside its contract: a success with no structured result, or an uncoded error. */
   | { outcome: 'malformed'; reason: string }
@@ -142,7 +147,8 @@ const isUnavailable = (error: unknown): error is Error =>
 /**
  * Call one DeepWater tool through a run's team connector. Signing, transport
  * and Ledger's answer are each classified; a deployment fault (no signer, no
- * app key, Ledger refusing the bearer) throws.
+ * app key, UOA refusing Nessie's client or assertion, Ledger refusing the
+ * bearer) throws.
  */
 export const callDeepWaterLedgerTool = async (
   deps: DeepWaterLedgerCallDeps,
@@ -166,10 +172,13 @@ export const callDeepWaterLedgerTool = async (
     if (error instanceof LedgerIdentityError && error.code === 'LEDGER_UOA_IDENTITY_REQUIRED') {
       return { outcome: 'identity', reason: error.message }
     }
-    // An exchange UOA did not complete may be an outage as much as a refusal;
-    // only a missing or re-teamed link proves the identity changed.
+    // A failed exchange is only as retryable as UOA says: a refusal of this
+    // person is identity drift, an outage passes, and anything else is a
+    // deployment fault that repeating would only repeat.
     if (error instanceof LedgerIdentityError && error.code === 'LEDGER_UOA_TOKEN_EXCHANGE_FAILED') {
-      return { outcome: 'unavailable', reason: error.message }
+      const failure = classifyUoaExchangeFailure(error.exchangeFailure)
+      if (failure === 'identity') return { outcome: 'identity', reason: error.message }
+      if (failure === 'transient') return { outcome: 'unavailable', reason: error.message }
     }
     throw error
   }
