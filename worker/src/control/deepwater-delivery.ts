@@ -67,6 +67,12 @@ export const renewDeepWaterIdentity = (
 ): Promise<void> =>
   runDeepWaterTransaction(deps, async (tx, announce) => {
     const renewed = await refreshDeepWaterRunIdentity(tx, input)
+    if (!renewed.refreshed) {
+      // Another person, organisation or team, or an older sign-in: the capture
+      // is kept, and so is any block it caused.
+      console.warn(`[deep-water] run ${input.runId}: a live identity did not renew the captured one`)
+      return
+    }
     if (!renewed.unblocked) return
     const run = await readDeepWaterBriefRun(tx, input)
     if (run) announce.run(run)
