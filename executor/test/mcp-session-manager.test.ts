@@ -391,7 +391,7 @@ test('a start still in flight when the manager stops is closed, not left running
   }
 })
 
-test('a stopping manager starts no server, even one nothing was starting when the stop began', async () => {
+test('a manager starts no server while it stops, even one nothing was starting when the stop began', async () => {
   // The stop waits on the slow server's start; a call to another server arriving
   // meanwhile once started a process of its own, which the stop never saw.
   const directory = await mkdtemp(join(tmpdir(), 'nessie-mcp-stopping-'))
@@ -414,6 +414,8 @@ test('a stopping manager starts no server, even one nothing was starting when th
     assert.deepEqual(await startedPids(otherLog), [], 'nothing started once the stop had begun')
     const [slow] = await startedPids(slowLog)
     await until(async () => !isRunning(slow!), 'the slow server to stop with the manager', 5_000)
+    // A finished stop leaves the manager usable: the daemon's suites restart the bridge this way.
+    assert.equal((await sessions.callTool('other', 'echo', { value: 'after' })).success, true)
   } finally {
     await sessions.stopAll()
     await rm(directory, { force: true, recursive: true })

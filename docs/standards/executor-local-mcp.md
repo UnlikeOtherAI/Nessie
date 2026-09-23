@@ -162,11 +162,12 @@ case for one command — a cold start plus one call deadline — as
 
 A server has one cold start at a time. Whoever finds no session — a command,
 the reporter's probe — waits on the start already in flight for that server
-name (`sessionFor`). `stopAll` refuses every start once it has begun (a call
-then answers `EXECUTOR_MCP_UNAVAILABLE`, a probe `not_probed`) and lets the
-starts already in flight finish before it closes the sessions, so the process
-each opened stops with the rest; a call to another server arriving during
-that wait once started a process the stop never saw. A probe and a command
+name (`sessionFor`). `stopAll` refuses every start while it runs (a call then
+answers `EXECUTOR_MCP_UNAVAILABLE`, a probe `not_probed`) and lets the starts
+already in flight finish before it closes the sessions, so the process each
+opened stops with the rest; a call to another server arriving during that
+wait once started a process the stop never saw. A finished stop leaves the
+manager usable, which is how the coding-sessions suites restart the bridge. A probe and a command
 that met a cold server used to spawn a process each; the later one replaced
 the earlier in the session map, and the earlier was never closed.
 `mcp-session-manager.test.ts` counts the processes the scripted server started
