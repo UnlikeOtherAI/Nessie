@@ -113,6 +113,59 @@ test('private availability fails closed when the exact agent assignment is absen
   assert.deepEqual(response.explanations, [{ readiness: 'unavailable', reason: 'scope_mismatch' }])
 })
 
+test('a local-apps candidate names no program, no executor label and no executor id', async () => {
+  // The launcher's "Local apps on this machine" leans on this: the reviewed
+  // revision names its programs, and none of that may reach the browser.
+  const mcpServers = ['kelpie', 'coding-sessions']
+  const executor = {
+    ...availableExecutor(),
+    capabilityRevisions: [{
+      descriptor: { ...descriptor, mcpServers, operationKeys: ['mcp.tools', 'mcp.call'] },
+      id: '00000000-0000-4000-8000-000000000004',
+      reviewStatus: 'active',
+    }],
+    label: 'Ondrej’s workstation',
+    operationGrants: [
+      { operationKey: 'mcp.tools', state: 'allowed' },
+      { operationKey: 'mcp.call', state: 'allowed' },
+    ],
+  }
+  const prisma = availabilityPrisma(executor, [])
+  const agents = prisma.agent as unknown as { findFirst: () => Promise<unknown> }
+  agents.findFirst = async () => ({
+    id: agentId,
+    toolPolicy: { 'executor.mcp.call': true, 'executor.mcp.tools': true },
+  })
+  const assertOpaque = (response: unknown): void => {
+    const serialized = JSON.stringify(response)
+    for (const secret of [...mcpServers, executor.label, executor.id, executor.capabilityRevisions[0]!.id]) {
+      assert.equal(serialized.includes(secret), false, `the answer carries ${secret}`)
+    }
+  }
+
+  const offered = await resolveExecutorAvailabilityCandidates(
+    prisma,
+    actorContext,
+    { agentId, operationKeys: ['mcp.tools', 'mcp.call'] },
+    new Date('2026-08-12T12:00:00.000Z'),
+  )
+  assert.equal(offered.candidates.length, 1, JSON.stringify(offered.explanations))
+  assert.deepEqual(offered.candidates[0]?.operationKeys, ['mcp.tools', 'mcp.call'])
+  assertOpaque(offered)
+
+  // The explanation for a machine that cannot offer the pair is as opaque.
+  executor.status = 'offline'
+  const refused = await resolveExecutorAvailabilityCandidates(
+    prisma,
+    actorContext,
+    { agentId, operationKeys: ['mcp.tools', 'mcp.call'] },
+    new Date('2026-08-12T12:00:00.000Z'),
+  )
+  assert.deepEqual(refused.candidates, [])
+  assert.ok(refused.explanations.length > 0)
+  assertOpaque(refused)
+})
+
 test('an expired heartbeat is durably offline before availability is resolved', async () => {
   const executor = availableExecutor()
   executor.lastSeenAt = new Date('2026-08-12T11:58:59.999Z')

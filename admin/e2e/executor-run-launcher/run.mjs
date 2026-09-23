@@ -18,8 +18,11 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  * - the availability request and the launch payload carry exactly
  *   `['mcp.tools', 'mcp.call']`, because the bundle is the whole grant and a
  *   dialog posting one operation of the pair renders identically;
- * - candidates stay opaque: the row names a scope and nothing else, and when
- *   no candidate exists the existing explanation copy renders.
+ * - the dialog shows what it is handed and invents nothing: the row names a
+ *   scope and nothing else, and when no candidate exists the existing
+ *   explanation copy renders. That the resolver hands it nothing more — no
+ *   program name, executor label or id for this bundle — is pinned on the
+ *   server, in `packages/executor-manage/test/executor-availability-resolution.test.ts`.
  *
  * It refuses to adopt an admin already listening, so a run beside another
  * checkout's dev server cannot drive that checkout's dialog.
@@ -130,9 +133,9 @@ try {
     const asked = availability.at(-1)
     assert.deepEqual(asked, { agentId: AGENT_ID, operationKeys: LOCAL_APPS, projectId: PROJECT_ID })
 
-    // Opaque candidates: the dialog is handed a scope and a handle, and shows
-    // the scope. A server name or an executor label here would be the dialog
-    // inventing what the resolver deliberately withholds.
+    // The dialog is handed a scope and a handle, and shows the scope. This
+    // answer is the runner's own, so the check proves only that the dialog
+    // adds nothing; the resolver's own opacity is pinned on the server.
     const dialogText = await page.getByRole('dialog').innerText()
     assert.doesNotMatch(dialogText, /kelpie|ollama|coding-sessions|candidate-/i)
     assert.ok(await page.getByRole('radio').isChecked(), 'the only candidate is preselected')

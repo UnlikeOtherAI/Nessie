@@ -29,7 +29,10 @@ and this option change together; the launcher had no entry for the pair, so
 the bundle the binder, launcher service and worker all accepted could only be
 started through the API. The dialog learns no program names and no executor
 label — availability candidates are opaque, and the resolver's "contains no
-executor id or label" rule is what keeps a machine's identity private — so its
+executor id or label" rule is what keeps a machine's identity private (for
+this bundle, with the revision naming programs, `packages/executor-manage/test/executor-availability-resolution.test.ts`
+pins that neither a candidate nor an explanation carries a program name, the
+label or an id) — so its
 description says what the owner decided ("Programs this machine’s owner named
 in its reviewed policy…"), never what is installed. With no candidate for the
 pair, the resolver's explanation renders as it does for every bundle.
@@ -146,14 +149,27 @@ so it checks before repeating the call.
 ## Timing: the command outlives everything that can happen to it
 
 The daemon bounds a session start at `EXECUTOR_MCP_START_TIMEOUT_MS` (10 s) and
-one tool call (or `tools/list` page) at `EXECUTOR_MCP_CALL_TIMEOUT_MS` (60 s).
+one tool call at `EXECUTOR_MCP_CALL_TIMEOUT_MS` (60 s). Reading a server's
+catalog walks the server's own `tools/list` pages under that one deadline,
+not one each: a server that split its catalog into many slow pages used to
+spend a call timeout per page. The reporter's background probe steps back
+for a command: a command enqueued on the session cancels the probe's
+`tools/list` in flight, and a probe that finds a command waiting queues again
+behind it (at most `MCP_PROBE_MAX_YIELDS`, 10, times; a catalog already read
+answers the probe at once). The session manager states the resulting worst
+case for one command — a cold start plus one call deadline — as
+`EXECUTOR_MCP_DAEMON_COMMAND_WORST_CASE_MS`.
+
 The worker stamps each `mcp.tools` / `mcp.call` command with
-`EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): start + call + a 30 s upload budget + 20 s
-for the lane's own hops (queue claim, daemon poll, receipts, journal fsyncs).
-All of these live in one file, `@nessie/schemas` `executor-timing.ts`, which
-both processes import, and a unit test pins the inequality. The TTL was 25 s,
-shorter than a cold start plus a slow navigation, and an expired command is an
-unknown outcome that aborts the run.
+`EXECUTOR_MCP_COMMAND_TTL_MS` (120 s): that worst case + a 30 s upload budget +
+20 s for the lane's own hops (queue claim, daemon poll, receipts, journal
+fsyncs). The numbers live in one file, `@nessie/schemas` `executor-timing.ts`,
+which both processes import; `executor/test/mcp-timing.test.ts` pins the
+inequality against the daemon's stated worst case, and
+`mcp-session-manager.test.ts` drives a slow-paging server through the single
+deadline and a probe that yields. The TTL was 25 s, shorter than a cold start
+plus a slow navigation, and an expired command is an unknown outcome that
+aborts the run.
 
 The worker's own per-tool timeout for an executor tool sits
 `EXECUTOR_TOOL_TIMEOUT_MARGIN_MS` past the TTL, and when it fires it raises the
@@ -292,7 +308,10 @@ failure to `handshake_failed`; the fix and the test that pins it are in
   session's `KELPIE_HOME` and `PATH` rather than the daemon's. Detection once
   ran `command[0]` alone — `node describe` for a script entry — and a shim's
   synchronous throw rejected the whole sweep; a describe that fails for any
-  reason now costs only that server's inventory (`local-mcp-report.ts`).
+  reason now costs only that server's inventory (`local-mcp-report.ts`). A
+  describe stopped for its budget or an oversized answer is stopped as a
+  process tree on Windows (`taskkill /T /F`): a shim's `cmd.exe` killed on
+  its own left the Kelpie under it running, one more orphan per sweep.
 - **A Kelpie whose mDNS browse failed reports absence, not an empty network.**
   It has not found nothing, it has not looked, and "there are no browsers on
   this network" is the one thing it cannot know.
