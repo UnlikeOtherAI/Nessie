@@ -14,6 +14,7 @@ import {
 
 import { isPendingActionInFlight, isSettledTurnStatus } from './deepwater-brief-registers.js'
 import type { DeepWaterBriefRun } from './deepwater-brief-run-record.js'
+import { deepWaterLauncherCancelRoute } from './deepwater-legacy-cancel.js'
 import { isDeepWaterBriefOpening } from './deepwater-local-cancel.js'
 import {
   DEEP_WATER_NEEDS_OPERATOR_MESSAGE,
@@ -66,12 +67,21 @@ export const deepWaterViewerActions = (
   const brief = run.scopeState
   // A launcher run (no brief) has nothing to edit, start or deliver here; a
   // team owner or admin may cancel one still open, so a disable or a contract
-  // upgrade it blocks can be cleared (amendments N8.5, N9.6).
+  // upgrade it blocks can be cleared (amendments N8.5, N9.6) — but only one the
+  // cancel route can act on: a `running` run with no research id may have a
+  // start in flight, and nothing may cancel it until that resolves.
   if (brief === null) {
+    // No brief means a launcher row (the binding CHECK), which always carries its facts.
+    if (run.launcher === null) throw new Error(`DeepWater run ${run.id} has neither a brief nor launcher facts`)
+    const route = deepWaterLauncherCancelRoute({
+      status: run.status,
+      externalRunId: run.externalRunId,
+      startRecorded: run.launcher.startRecorded,
+    })
     return {
       canEdit: false,
       canStart: false,
-      canCancel: OPEN_STATUSES.has(run.status) && viewer.canChangeTeam,
+      canCancel: viewer.canChangeTeam && route !== 'not_cancellable',
       canRetryDelivery: false,
     }
   }

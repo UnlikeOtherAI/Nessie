@@ -4,7 +4,8 @@ import test from 'node:test'
 
 import { DeepWaterResearchLaunchRequestSchema } from '@nessie/schemas'
 
-import { findDeepWaterBriefRunByResearchId } from '../src/deepwater-brief-run-record.js'
+import { findDeepWaterBriefRunByResearchId, readDeepWaterBriefRun } from '../src/deepwater-brief-run-record.js'
+import { deepWaterViewerActions } from '../src/deepwater-brief-view.js'
 import {
   beginLegacyDeepWaterCancel,
   recordLegacyDeepWaterCancel,
@@ -89,6 +90,25 @@ withFixture('a start that may be in flight to Ledger is never cancelled locally'
   assert.equal(await begin(fixture, running), 'not_cancellable')
   assert.equal(await statusOf(fixture, starting), 'queued')
   assert.equal(await statusOf(fixture, running), 'running')
+})
+
+withFixture('a launcher run offers an owner Cancel exactly where the cancel route can act on it', async (fixture) => {
+  const rows = [
+    { status: 'queued', expected: 'local' },
+    { status: 'queued', startToolCallId: 'call_4', expected: 'not_cancellable' },
+    { status: 'running', startToolCallId: 'call_5', expected: 'not_cancellable' },
+    { status: 'running', startToolCallId: 'call_6', externalRunId: 'rs_legacyparity1', expected: 'ledger' },
+    { status: 'needs_setup', expected: 'local' },
+  ] as const
+  for (const row of rows) {
+    const runId = await launcher(fixture, row)
+    const run = await readDeepWaterBriefRun(fixture.prisma, { organizationId: fixture.ids.organization, runId })
+    assert.ok(run?.launcher, 'a launcher run carries its facts')
+    assert.equal(run.launcher.startRecorded, 'startToolCallId' in row)
+    const offered = deepWaterViewerActions(run, { userId: fixture.ids.requester, canChangeTeam: true }, new Date())
+    assert.equal(await begin(fixture, runId), row.expected)
+    assert.equal(offered.canCancel, row.expected !== 'not_cancellable', `${row.status} ${row.expected}`)
+  }
 })
 
 withFixture('a launcher research is cancelled through Ledger, then recorded once', async (fixture) => {

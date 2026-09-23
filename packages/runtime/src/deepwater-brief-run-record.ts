@@ -26,6 +26,15 @@ import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
  * through the same schemas, so a malformed stored value fails at the boundary
  * it crossed instead of rendering as something plausible.
  */
+/**
+ * A launcher run's own facts, from its `result_json` (Water plan amendments
+ * N9.6) — whether its handoff recorded a start call, which decides how it can
+ * be cancelled (`deepwater-legacy-cancel.ts`).
+ */
+export type DeepWaterLauncherFacts = {
+  startRecorded: boolean
+}
+
 export type DeepWaterBriefRun = {
   id: string
   organizationId: string
@@ -48,6 +57,8 @@ export type DeepWaterBriefRun = {
   uoaIdentity: DeepWaterRequesterIdentity | null
   scopeState: DeepWaterScopeState | null
   input: DeepWaterBriefInput | null
+  /** Null on a brief; set on a launcher run from before research briefs. */
+  launcher: DeepWaterLauncherFacts | null
   sourceScopes: DeepWaterSourceScope[]
   disclosureSources: DeepWaterDisclosureSource[]
   failureCode: string | null
@@ -81,6 +92,15 @@ export type DeepWaterBriefDb = Prisma.TransactionClient
 const parseBriefInput = (row: ProductIntegrationRun): DeepWaterBriefInput | null =>
   row.uoaIdentity === null ? null : DeepWaterBriefInputSchema.parse(row.input)
 
+const parseLauncherFacts = (row: ProductIntegrationRun): DeepWaterLauncherFacts | null => {
+  if (row.uoaIdentity !== null) return null
+  const result = row.result !== null && typeof row.result === 'object' && !Array.isArray(row.result)
+    ? row.result as Record<string, unknown>
+    : {}
+  // The same test the cancel route makes under the row lock: the key's presence.
+  return { startRecorded: Object.hasOwn(result, 'startToolCallId') }
+}
+
 const parseOriginKind = (value: string): DeepWaterOriginKind => {
   if (value === 'person' || value === 'agent') return value
   // The column CHECK admits nothing else.
@@ -108,6 +128,7 @@ export const toDeepWaterBriefRun = (row: ProductIntegrationRun): DeepWaterBriefR
   uoaIdentity: row.uoaIdentity === null ? null : DeepWaterRequesterIdentitySchema.parse(row.uoaIdentity),
   scopeState: row.scopeJson === null ? null : DeepWaterScopeStateSchema.parse(row.scopeJson),
   input: parseBriefInput(row),
+  launcher: parseLauncherFacts(row),
   sourceScopes: DeepWaterSourceScopesSchema.parse(row.sourceScopes),
   disclosureSources: DeepWaterDisclosureSourcesSchema.parse(row.disclosureSources),
   failureCode: row.failureCode,

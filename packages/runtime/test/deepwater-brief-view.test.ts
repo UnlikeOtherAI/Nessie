@@ -56,6 +56,7 @@ const run = (overrides: Partial<DeepWaterBriefRun> = {}): DeepWaterBriefRun => (
   uoaIdentity: { subject: 's', organizationId: 'o', teamId: 't', tokenVersion: 1 },
   scopeState: state(),
   input: { schemaVersion: 1, topic: 'Heat pumps', context: null, pillars: null, settings: null, originRootMessageId: null },
+  launcher: null,
   sourceScopes: [], disclosureSources: [], failureCode: null, reportKind: null, reportTruncated: false,
   reportFileId: null, sourcesFileId: null, knowledgePageId: null, sourceCount: null, publicUrl: null,
   resultMessageId: null, wakeMessageId: null, deliveredAt: null, deliveryBlockedReason: null,
@@ -141,14 +142,32 @@ test('only the requester edits a person\'s brief, and an owner may cancel any op
   assert.equal(deepWaterViewerActions(final, { userId: REQUESTER, canChangeTeam: true }, NOW).canCancel, false)
 })
 
+const launcherRun = (overrides: Partial<DeepWaterBriefRun> = {}): DeepWaterBriefRun => run({
+  scopeState: null, uoaIdentity: null, input: null, launcher: { startRecorded: true }, status: 'running', ...overrides,
+})
+
 test('a launcher run is cancellable only by a team owner or admin while it is open', () => {
-  const launcher = run({ scopeState: null, uoaIdentity: null, input: null, status: 'running' })
+  const launcher = launcherRun()
   assert.deepEqual(deepWaterViewerActions(launcher, { userId: REQUESTER, canChangeTeam: false }, NOW), {
     canEdit: false, canStart: false, canCancel: false, canRetryDelivery: false,
   })
   assert.equal(deepWaterViewerActions(launcher, { userId: OTHER, canChangeTeam: true }, NOW).canCancel, true)
-  const ended = run({ scopeState: null, uoaIdentity: null, input: null, status: 'completed' })
+  const ended = launcherRun({ status: 'completed' })
   assert.equal(deepWaterViewerActions(ended, { userId: OTHER, canChangeTeam: true }, NOW).canCancel, false)
+})
+
+test('a launcher run offers Cancel only where the cancel route can act on it', () => {
+  const owner = { userId: OTHER, canChangeTeam: true }
+  const canCancel = (overrides: Partial<DeepWaterBriefRun>) =>
+    deepWaterViewerActions(launcherRun(overrides), owner, NOW).canCancel
+  // DeepWater has it: cancelled through DeepWater.
+  assert.equal(canCancel({ status: 'running', externalRunId: 'rs_1' }), true)
+  // A start may be on its way to DeepWater right now: nothing may cancel it yet (N9.6).
+  assert.equal(canCancel({ status: 'running', externalRunId: null }), false)
+  assert.equal(canCancel({ status: 'queued', externalRunId: null, launcher: { startRecorded: true } }), false)
+  // DeepWater never received it: cancelled here.
+  assert.equal(canCancel({ status: 'queued', externalRunId: null, launcher: { startRecorded: false } }), true)
+  assert.equal(canCancel({ status: 'needs_setup', externalRunId: null }), true)
 })
 
 test('a brief DeepWater may be opening offers no Cancel until it opened or its opening ended', () => {

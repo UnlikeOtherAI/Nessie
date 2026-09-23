@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client'
 
-import type { DeepWaterBriefDb, DeepWaterBriefRun } from './deepwater-brief-run-record.js'
+import type { DeepWaterBriefDb } from './deepwater-brief-run-record.js'
 import { recordDeepWaterLocalCancel, wasDeepWaterCancelAccepted } from './deepwater-local-cancel.js'
 import { DEEP_WATER_PRODUCT_SLUG } from './integration-runs-mapping.js'
 
@@ -27,12 +27,13 @@ export type LegacyDeepWaterCancelRoute = 'local' | 'ledger' | 'not_cancellable' 
 
 const OPEN_STATUSES = ['queued', 'running', 'needs_setup'] as const
 
-type LegacyRow = { status: string; externalRunId: string | null; startRecorded: boolean }
+/** What decides how a launcher run can be cancelled. */
+export type DeepWaterLauncherCancelRow = { status: string; externalRunId: string | null; startRecorded: boolean }
 
-const readLegacyRow = async (
+const readDeepWaterLauncherCancelRow = async (
   tx: DeepWaterBriefDb,
   input: { organizationId: string; runId: string },
-): Promise<LegacyRow | null> => {
+): Promise<DeepWaterLauncherCancelRow | null> => {
   const rows = await tx.$queryRaw<Array<{ status: string; external_run_id: string | null; start_recorded: boolean }>>(
     Prisma.sql`
       SELECT "status"::text AS "status", "external_run_id",
@@ -49,7 +50,14 @@ const readLegacyRow = async (
   return row ? { status: row.status, externalRunId: row.external_run_id, startRecorded: row.start_recorded } : null
 }
 
-const routeFor = (row: LegacyRow): LegacyDeepWaterCancelRoute => {
+/**
+ * How a launcher run can be cancelled, from its row alone — the rule the
+ * cancel route applies under the row lock, and the one the view's Cancel is
+ * offered by, so a Cancel is never offered that the route must refuse.
+ */
+export const deepWaterLauncherCancelRoute = (
+  row: DeepWaterLauncherCancelRow,
+): Exclude<LegacyDeepWaterCancelRoute, 'replay'> => {
   if (!(OPEN_STATUSES as readonly string[]).includes(row.status)) return 'not_cancellable'
   if (row.externalRunId !== null) return 'ledger'
   if (row.status === 'needs_setup') return 'local'
@@ -67,10 +75,10 @@ export const beginLegacyDeepWaterCancel = async (
   tx: DeepWaterBriefDb,
   input: { organizationId: string; runId: string; actionId: string },
 ): Promise<LegacyDeepWaterCancelRoute | null> => {
-  const row = await readLegacyRow(tx, input)
+  const row = await readDeepWaterLauncherCancelRow(tx, input)
   if (!row) return null
   if (await wasDeepWaterCancelAccepted(tx, input.runId, input.actionId)) return 'replay'
-  const route = routeFor(row)
+  const route = deepWaterLauncherCancelRoute(row)
   if (route !== 'local') return route
   await recordDeepWaterLocalCancel(tx, { runId: input.runId, actionId: input.actionId })
   return 'local'
@@ -98,7 +106,3 @@ export const recordLegacyDeepWaterCancel = async (
   })
   return updated.count === 1
 }
-
-/** Is this a launcher run a person could still ask to cancel, as far as the row alone shows? */
-export const isOpenLegacyDeepWaterRun = (run: Pick<DeepWaterBriefRun, 'scopeState' | 'status'>): boolean =>
-  run.scopeState === null && (OPEN_STATUSES as readonly string[]).includes(run.status)

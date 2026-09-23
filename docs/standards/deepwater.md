@@ -181,7 +181,10 @@ file is the rule**.
   null external id remains a conservative blocker because Ledger dispatch may
   be in flight; an owner cancels a launcher run Ledger never received locally,
   one with a research id through Ledger, and one whose start may still be in
-  flight not at all until its handoff resolves it. A brief DeepWater never
+  flight not at all until its handoff resolves it. The view offers that Cancel
+  (`viewer.canCancel`) by the same rule the route applies under the row lock
+  (`deepWaterLauncherCancelRoute`, reading whether the handoff recorded a start
+  call), so it never offers a Cancel the route must refuse. A brief DeepWater never
   named is cancelled locally once nothing can still open it (see "A brief
   DeepWater never named is cancelled here"), so no open brief blocks a
   disable until the reap. Disable
