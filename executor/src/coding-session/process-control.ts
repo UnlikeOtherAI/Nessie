@@ -24,7 +24,8 @@ import type { CodingProcessIdentity } from './types.js'
  * grandchild. A packaged runtime whose helper is missing starts no agent.
  * Wherever neither a Job Object nor a unit's cgroup would end an agent whose
  * host died, the host starts it through the agent guard (`agent-guard.ts`),
- * which kills it with these same calls when the host's pipe closes.
+ * which kills it with these same calls when the host's pipe closes. Kelpie
+ * detection ends a `describe` it gave up on with them too (`kelpie-detect.ts`).
  *
  * Every signal checks an identity (pid plus process start time) first, so a
  * pid the OS has since handed to somebody else is never signalled. That holds

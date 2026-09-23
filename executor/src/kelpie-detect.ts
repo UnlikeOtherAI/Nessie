@@ -1,4 +1,4 @@
-import { execFile, type ChildProcess } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 
 import { getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js'
 import spawn from 'cross-spawn'
@@ -8,6 +8,7 @@ import {
   type KelpieDevice,
 } from '@nessie/schemas'
 
+import { createCodingProcessControl } from './coding-session/process-control.js'
 import type { ExecutorLocalMcpServer } from './mcp-servers.js'
 
 /**
@@ -57,21 +58,29 @@ export const kelpieDescribeCommand = (command: readonly string[]): string[] | un
 }
 
 /**
+ * How describe's tree is found and ended: the coding-session host's own
+ * identity-checked control. Describe starts through cross-spawn, not the
+ * control's `spawnAgent`, so no job helper is asked for.
+ */
+const describeTree = createCodingProcessControl(process.platform, {})
+
+/**
  * Stops describe and everything it started. On Windows a `.cmd` shim runs as
  * `cmd.exe /d /s /c …`, so killing the child ends only cmd.exe and leaves the
  * Kelpie process under it holding its stdout pipe and its mDNS scan — one
- * more orphan every report sweep. `taskkill /T` ends the whole tree, and a
- * failure to run it still ends the child. Elsewhere cross-spawn runs the
- * named program itself, so the child is the whole of it.
+ * more orphan every report sweep — and on any OS a process Kelpie started
+ * outlives a kill of Kelpie alone. The tree is read from the process table
+ * below describe and each member is checked by its start time right before
+ * its own signal: pid by pid on Windows, never `taskkill /T`, which follows
+ * parent ids that a reused pid makes somebody else's; describe's own process
+ * group and its descendants on POSIX, SIGTERM and then SIGKILL. A describe
+ * whose start time cannot be read is still this process's own child, so its
+ * handle ends it, and only it.
  */
-const stopProcessTree = (child: ChildProcess): void => {
-  if (process.platform === 'win32' && child.pid !== undefined) {
-    execFile('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true }, (error) => {
-      if (error) child.kill()
-    })
-    return
-  }
-  child.kill()
+const stopDescribeTree = async (child: ChildProcess): Promise<void> => {
+  const identity = child.pid === undefined ? undefined : await describeTree.identify(child.pid)
+  if (identity) await describeTree.killTree(identity)
+  else child.kill()
 }
 
 /**
@@ -80,55 +89,61 @@ const stopProcessTree = (child: ChildProcess): void => {
  * `kelpie.cmd` shim runs on Windows (plain `execFile` refuses it with EINVAL),
  * and with the SDK's default environment plus the policy's own, so describe
  * sees the `KELPIE_HOME` and `PATH` the session sees rather than the daemon's.
+ * On POSIX it leads its own process group, so the group can be ended without
+ * the daemon. A describe that fails is stopped, whole tree, before this
+ * answers, so no sweep starts beside the last one's leftovers.
  */
 const runKelpieDescribe = async (
   command: readonly string[],
   spec: ExecutorLocalMcpServer,
   timeoutMs: number,
-): Promise<RunResult> => new Promise((resolve) => {
+): Promise<RunResult> => {
   // Every failure is the same answer here — Kelpie could not describe itself —
   // and the reason why is decided by the MCP probe, which knows whether the
   // program exists at all. Nothing from an error may travel: it carries the
   // argv and a host path.
-  let timer: NodeJS.Timeout | undefined
-  let child: ChildProcess | undefined
-  let settled = false
-  const settle = (result: RunResult): void => {
-    if (settled) return
-    settled = true
-    clearTimeout(timer)
-    // A describe that already exited has nothing left to stop.
-    if (!result.ok && child && child.exitCode === null && child.signalCode === null) stopProcessTree(child)
-    resolve(result)
-  }
+  let child: ChildProcess
   try {
     child = spawn(command[0]!, command.slice(1), {
       ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+      detached: process.platform !== 'win32',
       env: { ...getDefaultEnvironment(), ...spec.env },
       shell: false,
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
     })
   } catch {
-    settle({ ok: false })
-    return
+    return { ok: false }
   }
-  const chunks: Buffer[] = []
-  let bytes = 0
-  timer = setTimeout(() => settle({ ok: false }), timeoutMs)
-  child.stdout?.on('data', (chunk: Buffer) => {
-    bytes += chunk.length
-    if (bytes > KELPIE_DESCRIBE_MAX_BYTES) {
-      settle({ ok: false })
-      return
+  const result = await new Promise<RunResult>((resolve) => {
+    let settled = false
+    let timer: NodeJS.Timeout | undefined
+    const settle = (outcome: RunResult): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(outcome)
     }
-    chunks.push(chunk)
+    const chunks: Buffer[] = []
+    let bytes = 0
+    timer = setTimeout(() => settle({ ok: false }), timeoutMs)
+    child.stdout?.on('data', (chunk: Buffer) => {
+      bytes += chunk.length
+      if (bytes > KELPIE_DESCRIBE_MAX_BYTES) {
+        settle({ ok: false })
+        return
+      }
+      chunks.push(chunk)
+    })
+    child.once('error', () => settle({ ok: false }))
+    child.once('close', (code) => {
+      settle(code === 0 ? { ok: true, stdout: Buffer.concat(chunks).toString('utf8') } : { ok: false })
+    })
   })
-  child.once('error', () => settle({ ok: false }))
-  child.once('close', (code) => {
-    settle(code === 0 ? { ok: true, stdout: Buffer.concat(chunks).toString('utf8') } : { ok: false })
-  })
-})
+  // A describe that already exited has nothing left to stop.
+  if (!result.ok && child.exitCode === null && child.signalCode === null) await stopDescribeTree(child)
+  return result
+}
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === 'object' && value !== null && !Array.isArray(value)

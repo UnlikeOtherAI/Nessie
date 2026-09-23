@@ -372,8 +372,13 @@ failure to `handshake_failed`; the fix and the test that pins it are in
   synchronous throw rejected the whole sweep; a describe that fails for any
   reason now costs only that server's inventory (`local-mcp-report.ts`). A
   describe stopped for its budget or an oversized answer is stopped as a
-  process tree on Windows (`taskkill /T /F`): a shim's `cmd.exe` killed on
-  its own left the Kelpie under it running, one more orphan per sweep.
+  whole tree before detection answers, with the coding-session host's
+  identity-checked `killTree` (`coding-session/process-control.ts`): pid by
+  pid on Windows, each member checked by its start time and never through
+  `taskkill /T`, and describe's own process group on POSIX, where it leads
+  one. A shim's `cmd.exe` killed on its own left the Kelpie under it running,
+  one more orphan per sweep, and a process Kelpie itself started outlived a
+  kill of Kelpie on every OS.
 - **A Kelpie whose mDNS browse failed reports absence, not an empty network.**
   It has not found nothing, it has not looked, and "there are no browsers on
   this network" is the one thing it cannot know.
@@ -470,7 +475,9 @@ CLI (`executor/test/fixtures/fake-kelpie-cli.mjs`) that answers only the exact
 describe arguments: a `node <script> mcp` command, the alias-pinned
 `--browser <alias> mcp` shape, the environment describe is given, and a
 `kelpie.cmd` shim — that last one only on Windows, and skipped elsewhere with
-the reason.
+the reason. A hanging stand-in (`hanging-kelpie-cli.mjs`) that starts a
+sleeping process of its own proves a stopped describe leaves neither behind,
+through a `.cmd` shim on Windows and as `node <script> mcp` on every OS.
 
 The worker's own half runs against the same fixture through the daemon's
 operation: `worker/test/executor-local-apps-subprocess.test.ts` for the
