@@ -840,14 +840,35 @@ absolute path is not left alone: the path rules rewrite only the host
 directories they name, so `/data/ondre/x`, `/home2/ondre`,
 `//server/share/ondre` and `~other/ondre` reach the names with the name still
 in them. A path is absolute when it starts — after whitespace, a quote, a
-bracket, `=`, `,`, `;`, `|`, or a `:` that is not a URL's `://` — with `/`,
-`\`, `~`, a drive letter or `file:` (`host-identity.ts`). Two separators
-before a name are a URL's host or a UNC server, and are rewritten. A branch,
-in `session_review`'s `branch`, a worktree's `branch` and the keys of
-`pullRequests`, is a name and not a path the model resolves, so every segment
-of it is rewritten (`feature/ondre/fix` reads `feature/<user>/fix`). The
-placeholders already written and UUIDs (a session id's hex group may spell a
-short host name) are never rewritten again.
+bracket, `=`, `,`, `;`, `|`, or a `:` that is not a URL's `://`, and past
+what may stand in front of one: a redirection (`>/data/ondre/log`, `2>>`,
+`&>`, `<`), `@` (`curl -d @/data/ondre/body`), `*` (`**/data/ondre/x**`) or
+a one-letter option (`-o/data/ondre/bin`, `-I…`) — with `/`, `\`, `~`, a
+drive letter or `file:` (`host-identity.ts`). A path that goes on from a
+closing bracket (`$(pwd)/ondre/x`, `${ROOT}/ondre/x`) is relative to what
+that expands to, and a glob or a scoped package inside a relative path
+(`src/**/ondre/x.ts`, `node_modules/@types/ondre`) stays relative. Three
+trade-offs follow from reading a path by its first characters alone: a
+route or a URL path with no host in front of it (`/api/ondre/runs`,
+`gh api /repos/ondre/app`) cannot be told from an absolute path, so its name
+is rewritten — the name stays hidden, at the cost of a route the model can
+no longer repeat; a drive letter and a colon start an absolute path even
+with no separator after them (Windows' drive-relative `D:data\ondre\x`, but
+also an `a:src/ondre/x` that is none); and a directory with a space in its
+name (`/data/My Files/ondre/in.csv`) ends the path at the space, so what
+follows reads as relative and keeps its name. Each name is found by one
+pass over the text, however long a token and however many names it holds:
+scanning back to the start of the token for every name made a 60 KB line of
+`ondre/ondre/…` cost seconds of the host's event loop, heartbeat included.
+Two separators before a name are a URL's host or a UNC server, and are
+rewritten. A branch, in `session_review`'s `branch`, a worktree's `branch`
+and the keys of `pullRequests`, is a name and not a path the model resolves,
+so every segment of it is rewritten (`feature/ondre/fix` reads
+`feature/<user>/fix`). A branch named in prose is not one of those: a commit
+subject in `commitsSinceStart` (`Merge branch 'feature/ondre/fix'`) or an
+agent's `git push -u origin feature/ondre/fix` reads as a relative path and
+keeps its name. The placeholders already written and UUIDs (a session id's
+hex group may spell a short host name) are never rewritten again.
 
 The last pass over an answer gives the path rules alone, without the names,
 to the fields other code parses as fixed values — `sessionId`, `ownerKey`,

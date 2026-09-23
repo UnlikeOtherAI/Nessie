@@ -34,9 +34,14 @@ import { hostname, userInfo } from 'node:os'
  * host directories they name, so `/data/ondre/x`, `//server/share/ondre` or
  * `~other/ondre` reach this pass with the name still in them. A path counts
  * as absolute when it starts — after whitespace, a quote, a bracket, `=`,
- * `,`, `;`, `|` or a `:` that is not a URL's `://` — with `/`, `\`, `~`, a
- * drive letter or `file:`. A branch (`everySegment`) is a name, not a path
- * the model resolves, so none of its segments is left alone.
+ * `,`, `;`, `|` or a `:` that is not a URL's `://`, and past a redirection
+ * (`>`, `2>>`, `<`), `@`, `*` or a one-letter option (`-o`, `-I`) in front of
+ * it — with `/`, `\`, `~`, a drive letter (`D:data\…` too) or `file:`; a
+ * path that goes on from a closing bracket (`$(pwd)/…`) does not. A route
+ * with no host (`/api/ondre/runs`) cannot be told from an absolute path and
+ * is rewritten, and a directory with a space in its name ends the path at
+ * the space. A branch (`everySegment`) is a name, not a path the model
+ * resolves, so none of its segments is left alone.
  */
 export const USER_PLACEHOLDER = '<user>'
 export const HOST_PLACEHOLDER = '<host>'
@@ -147,17 +152,41 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 const separator = (character: string | undefined): boolean => character === '/' || character === '\\'
 
 const BEFORE_PATH = /[\s"'`()[\]{}=,;|]/u
+/** What may stand in front of a path without being part of it: a redirection, `@file`, `**`, `-o` or `-I`. */
+const LEADING = /^(?:[0-9&]?[<>]+[&|]?|[@*]+|-[A-Za-z](?=[\\/]))/u
 const ABSOLUTE = /^(?:[\\/~]|[A-Za-z]:|file:)/iu
+/** `$(pwd)/…`, `${ROOT}/…`: a path that goes on from what a shell or a template expands. */
+const CLOSING = /[)\]}]/u
 
-/** Where the path or URL holding `offset` begins; see the header for what ends one. */
-const pathStart = (text: string, offset: number): number => {
-  let start = offset
-  for (; start > 0; start -= 1) {
-    const previous = text[start - 1]!
-    if (BEFORE_PATH.test(previous)) break
-    if (previous === ':' && separator(text[start]) && !separator(text[start + 1])) break
+/** Whether a path or URL begins at `start`; see the header for what ends one. */
+const beginsAt = (text: string, start: number): boolean => {
+  const previous = text[start - 1]!
+  return BEFORE_PATH.test(previous) || (previous === ':' && separator(text[start]) && !separator(text[start + 1]))
+}
+
+/**
+ * Where the path or URL holding each offset begins, for offsets asked left to
+ * right as a replace visits them: each scan stops where the last one started,
+ * so a text is read once however many names one long token holds. Scanning
+ * back to the start for each name made a 60 KB token of `ondre/ondre/…` take
+ * seconds, and blocked the host's heartbeat with it.
+ */
+const pathStarts = (text: string): ((offset: number) => number) => {
+  let scanned = 0
+  let start = 0
+  return (offset) => {
+    if (offset < scanned) {
+      scanned = 0
+      start = 0
+    }
+    for (let at = offset; at > scanned; at -= 1) {
+      if (!beginsAt(text, at)) continue
+      start = at
+      break
+    }
+    scanned = offset
+    return start
   }
-  return start
 }
 
 /**
@@ -165,10 +194,14 @@ const pathStart = (text: string, offset: number): number => {
  * it (not two, which is a URL's host or a UNC server), one after, and a path
  * around it that does not start at the root of anything on this machine.
  */
-const relativeSegment = (text: string, offset: number, length: number): boolean => (
-  separator(text[offset - 1]) && !separator(text[offset - 2]) && separator(text[offset + length])
-  && !ABSOLUTE.test(text.slice(pathStart(text, offset), offset))
-)
+const relativeSegment = (
+  text: string, offset: number, length: number, startOf: (offset: number) => number,
+): boolean => {
+  if (!separator(text[offset - 1]) || separator(text[offset - 2]) || !separator(text[offset + length])) return false
+  const start = startOf(offset)
+  if (CLOSING.test(text[start - 1] ?? '')) return true
+  return !ABSOLUTE.test(text.slice(start, Math.min(offset, start + 24)).replace(LEADING, ''))
+}
 
 /**
  * The rewrite itself. `keep` are the placeholders already written (`<host
@@ -193,11 +226,14 @@ export const createIdentityRewrite = (
     `(${[...kept, UUID].join('|')})|(?<![\\p{L}\\p{N}_])(?:${names.map((entry) => `(${escapeRegExp(entry.name)})`).join('|')})(?![\\p{L}\\p{N}_])`,
     'giu',
   )
-  return (text) => text.replace(pattern, (match: string, placeholder: string | undefined, ...rest: unknown[]) => {
-    if (placeholder !== undefined) return match
-    const offset = rest[names.length] as number
-    if (!everySegment && relativeSegment(text, offset, match.length)) return match
-    const index = rest.slice(0, names.length).findIndex((group) => group !== undefined)
-    return names[index]?.placeholder ?? match
-  })
+  return (text) => {
+    const startOf = pathStarts(text)
+    return text.replace(pattern, (match: string, placeholder: string | undefined, ...rest: unknown[]) => {
+      if (placeholder !== undefined) return match
+      const offset = rest[names.length] as number
+      if (!everySegment && relativeSegment(text, offset, match.length, startOf)) return match
+      const index = rest.slice(0, names.length).findIndex((group) => group !== undefined)
+      return names[index]?.placeholder ?? match
+    })
+  }
 }
