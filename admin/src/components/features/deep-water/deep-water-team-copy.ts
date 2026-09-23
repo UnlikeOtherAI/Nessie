@@ -13,27 +13,30 @@ import { readinessCopy } from './research-presentation'
  * DOM. Plain UK English; no infrastructure names.
  */
 
-export type TeamControl = 'turn_on' | 'turn_off' | 'update' | null
+export type TeamControl = 'turn_on' | 'turn_off' | 'update'
 
 /**
- * The one change a team owner can make from here, given the verdict and the
- * team switch. `viewerIsOwner` is the session's owner role — the
- * team-enablement route refuses anyone else, admins included — so nobody else
- * is offered a control the server would refuse. Cancelling a research is the
- * wider owner-or-admin standing (amendments N8.5): the verdict's
+ * The changes a team owner can make from here, given the verdict and the team
+ * switch, the one to reach for first: a team that is off can be turned on; one
+ * that is on can be turned off; one that needs updating (which is on — only an
+ * enabled team's tools can be out of date) can be updated, or turned off
+ * without updating it first. `viewerIsOwner` is the session's owner role —
+ * the team-enablement route refuses anyone else, admins included — so nobody
+ * else is offered a control the server would refuse. Cancelling a research is
+ * the wider owner-or-admin standing (amendments N8.5): the verdict's
  * `viewerCanChangeTeam` here, and each run's own `viewer.canCancel` elsewhere.
  */
-export const deepWaterTeamControl = (
+export const deepWaterTeamControls = (
   state: DeepWaterResearchReadinessState,
   teamEnabled: boolean,
   viewerIsOwner: boolean,
-): TeamControl => {
-  if (!viewerIsOwner) return null
-  if (state === 'contract_outdated') return 'update'
-  return teamEnabled ? 'turn_off' : 'turn_on'
+): TeamControl[] => {
+  if (!viewerIsOwner) return []
+  if (!teamEnabled) return ['turn_on']
+  return state === 'contract_outdated' ? ['update', 'turn_off'] : ['turn_off']
 }
 
-export const TEAM_CONTROL_LABEL: Record<Exclude<TeamControl, null>, string> = {
+export const TEAM_CONTROL_LABEL: Record<TeamControl, string> = {
   turn_off: 'Turn off DeepWater',
   turn_on: 'Turn on DeepWater',
   update: 'Update DeepWater',

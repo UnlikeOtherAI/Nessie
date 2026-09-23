@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { briefActionFailure } from './brief-action-errors'
 import {
   TEAM_CONTROL_LABEL,
-  deepWaterTeamControl,
+  deepWaterTeamControls,
   deepWaterTeamStatus,
   openResearchSentence,
   teamChangeFailure,
@@ -23,9 +23,10 @@ import { useIntentActionId } from './useIntentActionId'
 
 /**
  * DeepWater for this team, on its `/apps/deep-water` hero (nessie.md §7.7
- * doorways; amendments N8.5, N9): where it stands, and for a team owner the one
- * change there is to make — turn it on, turn it off, or update it to the
- * current research tools. A change an open research would break is refused
+ * doorways; amendments N8.5, N9): where it stands, and for a team owner the
+ * changes there are to make — turn it on, turn it off, or update it to the
+ * current research tools (a team that needs updating can also be turned off
+ * without updating it first). A change an open research would break is refused
  * naming that research by who started it and where it stands (never its
  * question), with Cancel beside it, so the owner is never sent to ask an agent
  * to do it. The readiness screen behind the composer's Research button sends
@@ -43,7 +44,7 @@ export const DeepWaterTeamControls = () => {
   // and Cancel is not offered a second time.
   const [cancelRequested, setCancelRequested] = useState<ReadonlySet<string>>(() => new Set())
   const teamEnabled = readiness.product?.teamEnablement?.enabled === true
-  const control = deepWaterTeamControl(readiness.state, teamEnabled, readiness.viewerIsOwner)
+  const controls = deepWaterTeamControls(readiness.state, teamEnabled, readiness.viewerIsOwner)
 
   if (readiness.isLoading) return null
 
@@ -62,17 +63,23 @@ export const DeepWaterTeamControls = () => {
       <p className="text-sm text-[color:var(--tx2)]">
         {deepWaterTeamStatus(readiness.state, teamEnabled, readiness.viewerIsOwner)}
       </p>
-      {control ? (
-        <div>
-          <button
-            className={`admin-button ${control === 'turn_off' ? 'admin-button-secondary' : 'admin-button-primary'}`}
-            data-testid="deep-water-team-control"
-            disabled={setEnabled.isPending}
-            onClick={() => (control === 'turn_off' ? setConfirmingOff(true) : change(true))}
-            type="button"
-          >
-            {setEnabled.isPending && control !== 'turn_off' ? 'Working…' : TEAM_CONTROL_LABEL[control]}
-          </button>
+      {controls.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {controls.map((control) => (
+            <button
+              className={`admin-button ${control === 'turn_off' ? 'admin-button-secondary' : 'admin-button-primary'}`}
+              data-control={control}
+              data-testid="deep-water-team-control"
+              disabled={setEnabled.isPending}
+              key={control}
+              onClick={() => (control === 'turn_off' ? setConfirmingOff(true) : change(true))}
+              type="button"
+            >
+              {setEnabled.isPending && setEnabled.variables === true && control !== 'turn_off'
+                ? 'Working…'
+                : TEAM_CONTROL_LABEL[control]}
+            </button>
+          ))}
         </div>
       ) : null}
       {failure?.kind === 'message' ? (

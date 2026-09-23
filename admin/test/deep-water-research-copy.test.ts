@@ -5,7 +5,7 @@ import { ApiClientError } from '@nessie/client-core'
 
 import { briefActionFailure, newBriefFailure } from '../src/components/features/deep-water/brief-action-errors.js'
 import {
-  deepWaterTeamControl,
+  deepWaterTeamControls,
   deepWaterTeamStatus,
   openResearchSentence,
   teamChangeFailure,
@@ -259,11 +259,15 @@ test('a busy refusal says what the refused action is waiting for', () => {
   }
 })
 
-test('an owner gets the one change there is to make for the team', () => {
-  assert.equal(deepWaterTeamControl('team_off', false, true), 'turn_on')
-  assert.equal(deepWaterTeamControl('ready', true, true), 'turn_off')
-  assert.equal(deepWaterTeamControl('contract_outdated', true, true), 'update')
-  assert.equal(deepWaterTeamControl('ready', true, false), null, 'only a team owner changes it')
+test('an owner gets every change there is to make for the team', () => {
+  assert.deepEqual(deepWaterTeamControls('team_off', false, true), ['turn_on'])
+  assert.deepEqual(deepWaterTeamControls('ready', true, true), ['turn_off'])
+  // A team that needs updating is on: it can be updated, or turned off without updating first.
+  assert.deepEqual(deepWaterTeamControls('contract_outdated', true, true), ['update', 'turn_off'])
+  assert.deepEqual(deepWaterTeamControls('unavailable', true, true), ['turn_off'])
+  assert.deepEqual(deepWaterTeamControls('account_not_linked', true, true), ['turn_off'])
+  assert.deepEqual(deepWaterTeamControls('ready', true, false), [], 'only a team owner changes it')
+  assert.deepEqual(deepWaterTeamControls('contract_outdated', true, false), [])
   assert.match(deepWaterTeamStatus('ready', true, false), /on for this team/)
   assert.match(deepWaterTeamStatus('account_not_linked', true, false), /^DeepWater is on for this team\. Your sign-in/)
   assert.match(deepWaterTeamStatus('team_off', false, true), /off for this team/)

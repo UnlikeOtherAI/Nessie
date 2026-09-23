@@ -555,8 +555,10 @@ the screen it goes to that conversation, which opens the brief itself.
   the products list's `research` readiness; the admin never re-derives it.
 - **The owner's controls live on the `/apps/deep-water` hero**
   (`DeepWaterTeamControls`): turn DeepWater on, off (confirmed) or update it to
-  the brief tools. They, and the readiness screen's way to them, are offered on
-  the session's owner role alone (`viewerIsOwner`), because `PATCH
+  the brief tools — a team that needs updating is on, so its owner is offered
+  both Update and Turn off (`deepWaterTeamControls`). They, and the readiness
+  screen's way to them, are offered on the session's owner role alone
+  (`viewerIsOwner`), because `PATCH
   …/team-enablement` accepts only owners; the verdict's `viewerCanChangeTeam`
   is owners and admins, the cancel standing (amendments N8.5), and gates
   nothing but Cancel. A refusal because a research is still open
