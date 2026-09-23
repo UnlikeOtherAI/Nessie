@@ -165,7 +165,12 @@ test('system calls act for the requester as the component\'s stable agent on the
 
   const replay = deepWaterAgentOriginAttribution(run, { agentKind: 'shared', identity })
   assert.deepEqual(
-    { runId: replay.runId, agentId: replay.agentId, agentKind: replay.agentKind, systemComponent: replay.systemComponent },
+    {
+      runId: replay.runId,
+      agentId: replay.agentId,
+      agentKind: replay.agentKind,
+      systemComponent: replay.systemComponent,
+    },
     { runId: run.originRunId, agentId: run.originAgentId, agentKind: 'shared', systemComponent: undefined },
   )
 })

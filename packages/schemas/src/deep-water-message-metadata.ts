@@ -73,3 +73,38 @@ export const DeepWaterDeliveryMessageMetadataSchema = z
   })
   .strict()
 export type DeepWaterDeliveryMessageMetadata = z.infer<typeof DeepWaterDeliveryMessageMetadataSchema>
+
+export const DeepWaterNoticeKindSchema = z.enum([
+  /** A finished research, addressed to the person who asked. */
+  'result',
+  /** The research did not finish. */
+  'failed',
+  /** The finished research could not be delivered; the notice names the remedy. */
+  'blocked',
+  /** DeepWater never confirmed the brief. */
+  'start_unconfirmed',
+  /** The agent that asked could not be woken, so the person is told instead. */
+  'wake_unreachable',
+  /** The agent working on the brief has been woken as often as a brief allows. */
+  'wake_cap',
+])
+export type DeepWaterNoticeKind = z.infer<typeof DeepWaterNoticeKindSchema>
+
+/**
+ * A visible message DeepWater posts into the thread a research belongs to —
+ * a result, or a notice naming what happened and what to do. Server-written
+ * only; it points at the run so the thread can show the run's actions beside
+ * it, and it is never a card or an agent's words.
+ */
+export const DeepWaterNoticeMessageMetadataSchema = z
+  .object({
+    deepWaterNotice: z
+      .object({
+        schemaVersion: z.literal(1),
+        runId: z.string().uuid(),
+        kind: DeepWaterNoticeKindSchema,
+      })
+      .strict(),
+  })
+  .strict()
+export type DeepWaterNoticeMessageMetadata = z.infer<typeof DeepWaterNoticeMessageMetadataSchema>

@@ -310,3 +310,71 @@ worker and card are built on them.
   one predicate for lists, detail, the card and artifacts: the origin thread's
   live chain for anyone in it, the full source basis for the requester's
   portable reach, and a person's brief stays private until it is launched.
+
+## Research briefs — the watch, delivery and wakes
+
+Nothing pushes from Ledger to Nessie. The worker watches every open brief and
+research through Ledger (`worker/src/control/deepwater-*.ts`), and that watch is
+the only way results come back.
+
+- **The watch.** `deep-water-watch` runs every 5 s under `withSweepLock` and
+  claims due runs with `claimDueDeepWaterWatchRuns` (`FOR UPDATE SKIP LOCKED`,
+  at most 50): attached briefs and researches still open and not blocked, plus
+  agent briefs whose `research_scope_start` result was lost. Each claim
+  advances `reconcile_seq`, backs `reconcile_after` off, and enqueues one
+  `deep_water.run.watch` job keyed by that sequence (`maxAttempts: 1`: the next
+  claim is the retry). An applied read sets the next read: 5 s while a planner
+  turn or a person's action is in flight, 30 s while the research runs, then
+  half the time since the last change, between 10 minutes and 6 hours.
+- **Reads are cost-free control-plane calls** through the run's own connector
+  (`callDeepWaterLedgerTool`, shared with the run toolset through
+  `deepwater-ledger-transport.ts`), signed as the requester with the captured
+  `uoa_identity` and the `deep-water.delivery` system component, tool-call id
+  `watch:<runId>:<seq>`. A brief is read with `research_scope_get` (with its
+  transcript only once a planner turn has settled since the transcript was
+  captured), a research with `research_status`; the answer goes through the
+  same projection the tool acks use. A transient failure changes nothing; an
+  identity that no longer resolves blocks the run with
+  `requester_identity_changed` (quietly for a brief, with a notice for a
+  launched research) until the requester's next live action renews it.
+- **A lost agent scope start** is replayed as the agent's own call — its Run,
+  agent, kind, provider tool-call id and stored arguments — which Ledger answers
+  with the one brief it keyed to that call, or opens now. The attach posts the
+  agent's research card (`ensureDeepWaterResearchCard`, once per run under the
+  row lock). A person's lost opening is retried by its own brief-action job,
+  never replayed by the watch.
+- **Stale actions.** An in-flight action whose job is no longer queued or
+  running ends by what Ledger shows (`settleStaleDeepWaterAction`): a launch
+  whose research is running is finished, one whose planner turn is still open
+  is kept, anything else ends as `unavailable`.
+- **Turn wakes.** After every applied read, `claimDeepWaterTurnWake` takes the
+  settled planner turn once, in turn order, by advancing
+  `last_handled_turn_seq` under the row lock. An agent-authored turn wakes that
+  agent (at most eight wakes per brief, then one notice to the person); a
+  person's turn only advances the claim. Acks never wake.
+- **A wake is one run** (`wakeDeepWaterAgent`): a hidden `system` kickoff with a
+  deterministic id, `metadata.deepWaterDelivery`, the run's full source basis
+  and private-conversation lineage, placed under the research card; then the
+  per-thread claim, with purpose `deep_water.delivery`, the requester as
+  effective user and the captured identity. Such a pending wake drains alone,
+  its failure is announced in the thread, and a replay is a `duplicate`. A wake
+  that cannot reach anyone (thread, agent or requester gone) becomes a notice to
+  the person.
+- **Delivery** (`deliverDeepWaterResearch`) reads `research_report` once per
+  attempt (`delivery:<runId>:report`), stores the exact `report.md` and an RFC
+  4180 `sources.csv` through `FileService` (`recordDeepWaterArtifactFile` keeps
+  the first), imports the report to a page whose id is fixed by the run (the
+  requester's My Docs for a DM or Personal Assistant conversation, otherwise the
+  project's Project Documents; notes for a summary or a truncated report lead
+  the page; a page that was deleted or replaced blocks rather than being
+  overwritten), and then, in the claim's transaction, posts the person's result
+  reply under the card with an alert keyed `deep-water-result:<runId>`, or wakes
+  the agent that asked. A failed research is delivered the same way with a
+  notice or a `failed` wake. An expired or unreadable report is a final block;
+  a changed identity, a destination that went away and any other refusal are
+  retryable blocks. Every notice names its remedy and carries
+  `metadata.deepWaterNotice`.
+- **The reap.** Every 10 minutes `deep-water-reap` gives up briefs Ledger never
+  confirmed within a day (`failed/start_unconfirmed`), telling the agent once
+  (a `start_unconfirmed` wake) or the person once. `delivered_at` stays unset,
+  so a confirmation that does arrive later still attaches.
