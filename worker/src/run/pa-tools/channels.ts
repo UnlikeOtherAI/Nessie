@@ -18,7 +18,7 @@ import {
   requireActingUserId,
   resolveActingMember,
 } from './access.js'
-import { recordMessageChannelRead } from './message-search-basis.js'
+import { recordChannelDirectoryRead, recordMessageChannelRead } from './message-search-basis.js'
 import { requireConsumedSources, resolveToolPostBasis } from './tool-message-basis.js'
 import { clampLimit, formatChannelRef, formatSection, truncate } from './tool-output.js'
 
@@ -49,6 +49,7 @@ export const runChannelListTool = async (
       id: true,
       label: true,
       slug: true,
+      type: true,
       visibility: true,
       topic: true,
       archivedAt: true,
@@ -64,10 +65,12 @@ export const runChannelListTool = async (
     take,
   })
 
-  // Listing channels reads no channel's content and feeds nothing
-  // (message-search-basis.ts). One channel's decision policy is content: it is
-  // what that room's members wrote for its agents, so that read stamps.
-  if (input.channelId) recordMessageChannelRead(context, channels.slice(0, 1))
+  // Provenance: the non-public channels among these were reachable only through
+  // the acting person's own memberships — except a DM named by its label alone
+  // (message-search-basis.ts). One channel's decision policy is content, DM or
+  // not: it is what that room's members wrote for its agents.
+  if (input.channelId) recordMessageChannelRead(context, channels)
+  else recordChannelDirectoryRead(context, channels)
 
   const lines = channels.map((channel, index) =>
     `${index + 1}. ${formatChannelRef(channel)} | channelId=${channel.id} | visibility=${channel.visibility}`
@@ -122,6 +125,7 @@ export const runChannelFindTool = async (
       id: true,
       label: true,
       slug: true,
+      type: true,
       visibility: true,
       team: {
         select: {
@@ -137,7 +141,14 @@ export const runChannelFindTool = async (
       || toChannelSlug(channel.team?.project.name ?? '') === scopedTarget.projectSlug,
   )
 
-  // A directory match, like `channel_list`'s rows, reads no channel's content.
+  // Same obligation as `channel_list`: a match found through the person's own
+  // membership in a non-public channel is scoped material, unless it is a DM —
+  // a match prints no topic, so a DM here is its name alone.
+  recordChannelDirectoryRead(
+    context,
+    channels.map(({ id, type, visibility }) => ({ id, type, visibility })),
+  )
+
   const lines = channels.map(
     (channel) =>
       `${formatChannelRef(channel)} | channelId=${channel.id} | slug=${getScopedChannelSlug(channel)} | visibility=${channel.visibility}`,
@@ -214,17 +225,21 @@ export const runChannelUpdateTool = async (
     throw new Error('Channel not found or insufficient permissions to manage it.')
   }
 
-  // The result echoes the channel's own directory fields, plus a policy only
-  // when this call wrote it — nothing the run did not already hold.
+  // The echo is the channel's directory entry, plus only what this call wrote:
+  // a topic, description or policy the model did not send is the room's
+  // members' own text, and echoing it would be a content read.
   const channelRef = toChannelRef(channel)
+  recordChannelDirectoryRead(context, [{ id: channel.id, type: channel.type, visibility: channel.visibility }])
+  const written = (value: string | null | undefined): string =>
+    value ? `"${truncate(value, 120)}"` : '(none)'
   return {
     inputSummary: `channelId=${input.channelId}`,
     outputPreview: [
       `Updated channelId=${channel.id}`,
       `channel=${formatChannelRef(channelRef)}`,
       `slug=${getScopedChannelSlug(channelRef)}`,
-      `topic=${channel.topic ? `"${channel.topic}"` : '(none)'}`,
-      `description=${channel.description ? `"${truncate(channel.description, 120)}"` : '(none)'}`,
+      ...(input.topic !== undefined ? [`topic=${written(channel.topic)}`] : []),
+      ...(input.description !== undefined ? [`description=${written(channel.description)}`] : []),
       ...(input.decisionPolicy !== undefined ? [
         `decisionPolicy=${JSON.stringify(channel.decisionPolicy ?? null)}`,
       ] : []),

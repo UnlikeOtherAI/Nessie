@@ -32,7 +32,7 @@ import { fileServiceFor } from '../file-service.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
-import { recordVisibleAgentRead } from './message-search-basis.js'
+import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
 import {
   formatAgentMarkdownLink,
   formatChannelMarkdownLink,
@@ -319,10 +319,12 @@ const resolveBoundChannelLabels = async (
       id: { in: [...new Set(channelIds)] },
       organizationId: context.channel.organizationId,
     },
-    select: { id: true, label: true },
+    select: { id: true, label: true, type: true, visibility: true },
   })
-  // A channel's name is a directory entry, not its content, so it feeds nothing
-  // (message-search-basis.ts).
+  // The bindings were already filtered to channels this person can reach, so a
+  // non-public label here is material they see through their own membership —
+  // a DM's label excepted (message-search-basis.ts).
+  recordChannelDirectoryRead(context, channels)
   return new Map(channels.map((channel) => [channel.id, channel.label]))
 }
 
@@ -453,11 +455,13 @@ export const runAgentBindChannelTool = async (
   }
 
   // The room's name, for the link the model hands on. The membership read
-  // above established the caller can see it; its name is a directory entry.
+  // above established the caller can see it; a non-public room's name is still
+  // its members' alone, so it stamps like any directory read.
   const placed = await context.prisma.channel.findUnique({
     where: { id: args.channelId },
-    select: { label: true },
+    select: { label: true, type: true, visibility: true },
   })
+  if (placed) recordChannelDirectoryRead(context, [{ ...placed, id: args.channelId }])
 
   return {
     inputSummary: `agentId=${args.agentId} channelId=${args.channelId}`,

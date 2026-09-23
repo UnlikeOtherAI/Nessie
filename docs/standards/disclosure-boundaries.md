@@ -80,20 +80,27 @@ Facts not restated there:
 - Sink writers today: the transcript window (transitive), memory recall, every
   knowledge-base read, the conversation searches, attachment reads, and an
   admitted checkpoint — and a checkpoint on resume is a read path too.
-- **A channel directory read is not a content read, and feeds nothing.**
-  `channel_list`, `channel_find`, the channel labels `agent_list` names and
-  the record `channel_update` echoes return a channel's label, slug, project
-  and team names, topic, description and visibility — what the channel is
-  called, not what was said in it. Stamping
-  every non-public channel a list returned put each of the person's DMs into
-  the run's basis, and the project write gate then refused every ticket write
-  for the rest of the run although no word of those rooms had been read. The
-  trade-off, accepted: a private channel's or DM's name can reach a reply that
-  people outside that channel read, when the requester asked for their own
-  channel list in a shared room. What a channel *holds* still stamps: its
-  messages, its attachments' names and bodies, the conversation searches
-  (whose channel matches also carry a thread title), and the decision policy
-  and agent participants `channel_list` returns for one `channelId`.
+- **A channel directory read stamps its non-public rooms — except a DM named
+  by its label alone.** `channel_list`, `channel_find`, the channel labels
+  `agent_list` names, the room `agent_bind_channel` links and the record
+  `channel_update` echoes all resolve channels through the acting person's
+  own memberships, so a private or protected room among them is scoped
+  material and stamps (`recordChannelDirectoryRead`,
+  `worker/src/run/pa-tools/message-search-basis.ts`). The one exemption is a
+  direct message the requester is in, named by its label and nothing else:
+  stamping every DM a list returned put each of the person's conversations
+  with their assistants into the run's basis, and the project write gate then
+  refused every ticket write for the rest of the run although no word of
+  those rooms had been read. A DM row that prints free text its members wrote
+  — `channel_list`'s `topic=` — stamps like any other room, and
+  `channel_update` echoes a topic or description only when that call wrote
+  it. The trade-off, accepted: the label of a DM the requester is in (for a
+  person-to-person DM, who it is with) can reach a reply that people outside
+  it read, when the requester asked for their own channel list in a shared
+  room. What a channel *holds* always stamps, DM or not: its messages, its
+  attachments' names and bodies, the conversation searches (whose channel
+  matches also carry a thread title), and the decision policy and agent
+  participants `channel_list` returns for one `channelId`.
 - **Recall under a project write is narrower than containment.** Containment
   admits the destination's team and channel audiences, which a reply may carry
   but the project write gate (`assertProjectWriteDestination`,

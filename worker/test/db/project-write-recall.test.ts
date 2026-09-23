@@ -7,7 +7,7 @@ import { Pool } from 'pg'
 
 import { createConsumedSourceSink, type ConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
 import { retrieveRelevantMemories } from '../../src/run/execute/memory.js'
-import { runChannelListTool } from '../../src/run/pa-tools/channels.js'
+import { runChannelFindTool, runChannelListTool } from '../../src/run/pa-tools/channels.js'
 import { runTeamSearchTool } from '../../src/run/pa-tools/conversation-search.js'
 import { runTicketCreateTool } from '../../src/run/pa-tools/tickets.js'
 import type { BuiltinToolRuntimeContext } from '../../src/run/tool-types.js'
@@ -21,9 +21,9 @@ import { runDatabaseTest } from './support.js'
  * Seen live: a CTO agent recalled memories captured from its requester's
  * private DMs at run start, each DM entered the run's basis, and the project
  * write gate refused every `ticket_create` from then on. `channel_list` did the
- * same by stamping every DM it merely listed. These run the real recall, the
- * real directory read, a real content read and the real write gate against one
- * seeded organisation.
+ * same by stamping every DM it merely listed; a private team room it lists
+ * still stamps. These run the real recall, the real directory reads, a real
+ * content read and the real write gate against one seeded organisation.
  */
 
 const REFUSAL = 'I cannot copy restricted research into this shared project.'
@@ -253,25 +253,37 @@ runDatabaseTest('a run without write tools recalls the private-DM memory exactly
   })
 })
 
-runDatabaseTest('listing channels no longer poisons the write basis', async (t) => {
+runDatabaseTest('a DM a directory read names no longer poisons the write basis', async (t) => {
   await withSeed(t, async (prisma, pool, s) => {
     const sink = createConsumedSourceSink()
     const context = toolContext(prisma, pool, s, sink)
 
-    const listed = await runChannelListTool(context, {})
-    // The DM and the private room are named — and neither is stamped.
-    assert.match(listed.outputPreview ?? '', new RegExp(`channelId=${s.dmId}`))
-    assert.match(listed.outputPreview ?? '', new RegExp(`channelId=${s.leadershipId}`))
+    // The person's own DM, found by its name, is not stamped.
+    const found = await runChannelFindTool(context, { query: 'assistant' })
+    assert.match(found.outputPreview ?? '', new RegExp(`channelId=${s.dmId}`))
     assert.deepEqual(sink.list(), [])
-
-    await runTicketCreateTool(context, { title: 'After listing channels' })
+    await runTicketCreateTool(context, { title: 'After finding a DM' })
     assert.equal(await prisma.task.count({
-      where: { organizationId: s.organizationId, title: 'After listing channels' },
+      where: { organizationId: s.organizationId, title: 'After finding a DM' },
     }), 1)
 
-    // Reading one channel's decision policy is a content read and still stamps.
-    await runChannelListTool(context, { channelId: s.leadershipId })
+    // A private team room's name is still its members' alone: the full list
+    // names both, stamps the room and not the DM, and the gate holds.
+    const listed = await runChannelListTool(context, {})
+    assert.match(listed.outputPreview ?? '', new RegExp(`channelId=${s.dmId}`))
+    assert.match(listed.outputPreview ?? '', new RegExp(`channelId=${s.leadershipId}`))
     assert.deepEqual(sink.list(), [{ scopeId: s.leadershipId, scopeType: 'channel' }])
+    await assert.rejects(
+      () => runTicketCreateTool(context, { title: 'After listing channels' }),
+      { message: REFUSAL },
+    )
+
+    // Reading one DM's decision policy is a content read and stamps too.
+    await runChannelListTool(context, { channelId: s.dmId })
+    assert.deepEqual(sink.list(), [
+      { scopeId: s.leadershipId, scopeType: 'channel' },
+      { scopeId: s.dmId, scopeType: 'channel' },
+    ])
   })
 })
 

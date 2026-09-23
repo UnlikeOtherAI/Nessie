@@ -100,18 +100,34 @@ export const recordPrivateConversationMessageRead = (
   }
 }
 
-/*
- * A channel *directory* read — `channel_list`, `channel_find`, the channel
- * labels `agent_list` names — deliberately feeds nothing. Listing a channel's
- * name, slug, topic and visibility is not reading what was said in it. Stamping
- * every non-public channel a list returned put each of the person's DMs into
- * the run's basis, and the project write gate then refused every ticket write
- * for the rest of the run, although no word of those rooms had been read. The
- * trade-off — a private channel's name may appear in a reply its other members
- * cannot see — is written into `docs/standards/disclosure-boundaries.md`.
- * What a channel *holds* still stamps: its messages, its attachments, and the
- * decision policy `channel_list` returns for one `channelId`.
+/**
+ * The same rule for a channel *directory* read: `channel_list`, `channel_find`,
+ * the channel labels `agent_list` and `agent_bind_channel` name, and the
+ * record `channel_update` echoes.
+ *
+ * Not only message bodies are scoped material: a private channel's existence,
+ * label and topic are visible to its members alone, and a delegated run
+ * resolves them through the acting person's own `ChannelMember` rows
+ * (`buildVisibleChannelWhere`). An agent that lists them and then names one in a
+ * reply is disclosing them, so the read owes the sink its scopes — the
+ * AGENTS.md rule that the obligation sits on the read, not on the reply.
+ *
+ * One exemption, and only one: a direct message named by its label alone. A
+ * directory read reaches a DM only through the person's own membership of it,
+ * and stamping every DM a list returned put each of their conversations with
+ * their assistants into the run's basis — the project write gate then refused
+ * every ticket write for the rest of the run, although no word of those rooms
+ * had been read. A DM row that prints free text its members wrote (a topic)
+ * still stamps, and a private or protected team channel stamps as it always
+ * did. The trade-off is in `docs/standards/disclosure-boundaries.md`.
  */
+export const recordChannelDirectoryRead = (
+  context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
+  channels: readonly { id: string; topic?: string | null; type: string; visibility: string }[],
+): void => recordMessageChannelRead(
+  context,
+  channels.filter((channel) => channel.type !== 'dm' || Boolean(channel.topic)),
+)
 
 /**
  * Provenance for an agent-directory read (`agent_list`).
@@ -126,8 +142,9 @@ export const recordPrivateConversationMessageRead = (
  * `listAgentsForUser` hands an organisation OWNER a strictly wider list
  * (unbound agents, and agents bound only into private channels they are not in).
  * Stamping those would compute a basis the requesting owner does not satisfy
- * and withhold the answer from the only reader of their own DM. The channels
- * their bindings name are directory entries, which feed nothing (above).
+ * and withhold the answer from the only reader of their own DM. What *is*
+ * expressible about them — the non-public channels their bindings named — is
+ * stamped by `recordChannelDirectoryRead` on the same read.
  */
 export const recordVisibleAgentRead = (
   context: Pick<BuiltinToolRuntimeContext, 'consumedSources'>,
