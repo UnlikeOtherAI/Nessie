@@ -74,10 +74,16 @@ Root app layout:
 
 ### 2.0a Live first-party DeepWater grant boundary
 
-- Team enablement installs the five Ledger-backed `research_*` projections;
-  `deep_water_run_update` is the sixth required registry entry. All six remain
-  default-off for every agent until that agent's exact `toolPolicy` key is
-  `true`; install scope and tenancy are still required after a grant.
+- Team enablement installs the manifest's Ledger-backed `research_*`
+  projections (the brief-first contract, listed in
+  [DeepWater](standards/deepwater.md)); with the `deep_water_run_update`
+  registry entry they form the team's DeepWater bundle, whose size is derived
+  from the manifest, never hard-coded. Every entry remains default-off for
+  every agent until that agent's exact `toolPolicy` key is `true`; install
+  scope and tenancy are still required after a grant. A team still on the
+  launcher contract is `contract_outdated` until its owner enables DeepWater
+  again, which upgrades the connector in place and re-grants every agent
+  holding the team's bundle marker.
 - Owners manage individual explicit entries on `/agents/tools` through
   `GET /api/mcp/tools/policy-targets` and targeted per-entry `PATCH` requests.
   This minimal target list includes the Personal Assistant without widening the
@@ -86,11 +92,23 @@ Root app layout:
   allow and deny entries. DeepWater projections lock team transition first and
   re-read the current projection before taking the agent lock.
 - `GET/PATCH /api/integrations/products/deep-water/agent-access` reports and
-  changes the complete six-entry bundle for the Personal Assistant or shared
-  agents. The launcher disables research until its PA has 6/6 and the launch
-  API repeats the check under team-then-policy locks before persisting a run.
-  The updater counts only while its registry entry is enabled and active, so a
-  stale policy allow cannot authorize a launch the worker cannot finish.
+  changes that bundle for the Personal Assistant or shared agents. Grant and
+  revoke take the team transition lock, re-read the current projection, then
+  take the agent-policy lock. The updater counts only while its registry entry
+  is enabled and active, matching worker exposure, so a stale policy allow
+  cannot authorize metered work.
+- Whether a person can start research is the `research` readiness on the
+  `deep-water` entry of `GET /api/integrations/products` (`ready`, `team_off`,
+  `contract_outdated`, `account_not_linked`, `unavailable`): the team switch,
+  an active connector on the brief contract, Nessie's Ledger configuration,
+  and the viewer's linked UOA identity for the team. The Personal Assistant's
+  grants are not an input, because a person's brief never goes through an
+  agent. Every research starts as a brief: a person opens one through the brief
+  API (`/api/integrations/products/deep-water/research-runs`), an agent through
+  `research_scope_start`. A brief is created only under the team transition
+  lock, which re-reads the team switch and its brief-contract connector; an
+  agent's claim also takes that agent's policy lock and re-reads its grant
+  there, before the call leaves.
 - Generic agent create/edit cannot write protected grants or server provenance;
   stale edits preserve current protected values, while clones and spawned
   subtask children strip them. PA bootstrap config cannot inject them, generic
@@ -102,18 +120,26 @@ Root app layout:
   bundle/projection depends on it. Its row remains known to cleanup while
   disabled, so revocation clears the old allow before a later registry re-enable.
 - Disabling the team integration returns `LEDGER_DEEPWATER_ACTIVE_RUNS` while a
-  run is queued, running, or awaiting setup. Cancel/recover it or wait for a
-  terminal result before retrying. Admin integration caches are scoped by
+  queued, drafting, running, or `needs_setup` research run still references the
+  connector. The refusal names that run by id, status, origin and requester
+  (never its topic), so a team owner or admin can cancel it from DeepWater's
+  app page (`POST …/research-runs/:runId/cancel`) or wait for a terminal result
+  before retrying. Admin integration caches are scoped by
   user/org/team/privilege, including DeepSignal signal digests.
   Mutation completions invalidate those scoped families instead of writing a
   response through mutable render scope, so switching team mid-request
   cannot place the old response in the new team cache.
-  Bundle or individual lifecycle revocation also returns 409 for those
-  nonterminal states; no force-revoke path can strand Ledger work. Handoff
-  message, run attachment, PA run/task, and direct `run.execute` enqueue commit
-  atomically; product handoffs bypass chat engagement decisions while ordinary
-  chat routing is unchanged. Duplicate enqueue conflicts roll back the
-  duplicate unit, and realtime is post-commit/non-fatal. Ambiguous null-id work
+  Bundle or individual revocation also returns 409 while work that needs the
+  grant is open: revoking the org-wide updater, like a contract upgrade, waits
+  for launcher runs still queued, running or `needs_setup`; revoking one
+  agent's grant also waits for that agent's own briefs not yet launched. No
+  force-revoke path can strand Ledger work. Launcher runs predate briefs; new
+  research never takes the Personal Assistant handoff, and one already in
+  flight keeps its guard until that path is retired. Personal Assistant
+  product handoffs commit their message, PA run/task, and direct `run.execute`
+  enqueue atomically and bypass chat engagement decisions while ordinary chat
+  routing is unchanged. Duplicate enqueue conflicts roll back the duplicate
+  unit, and realtime is post-commit/non-fatal. Ambiguous null-id work
   still blocks disable because Ledger dispatch may be in flight. Agent access
   remains visible after disable so retained bundle provenance can be revoked.
   Its individual-tools link stays in exact DeepWater mode after teardown: with
