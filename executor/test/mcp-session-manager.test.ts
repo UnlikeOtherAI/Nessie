@@ -132,6 +132,31 @@ test('a result over the budget is refused rather than truncated', async () => {
   }
 })
 
+test('an isError result is measured as returned, code and success included', async () => {
+  // The failure document is 35 bytes longer than the same result marked as a
+  // success. Measured before its code was added, a failure near the budget
+  // passed here and was then refused by the control plane's own 64 KiB cap.
+  const budget = 4_096
+  const sessions = managerFor([serverNamed('scripted', 'ok')], budget)
+  try {
+    const returned: number[] = []
+    let refused = 0
+    for (let bytes = 3_960; bytes <= 4_040; bytes += 1) {
+      const result = await sessions.callTool('scripted', 'boom', { bytes })
+      if (result.code === 'EXECUTOR_MCP_RESULT_TOO_LARGE') {
+        refused += 1
+        continue
+      }
+      assert.equal(result.code, 'EXECUTOR_MCP_CALL_FAILED')
+      returned.push(Buffer.byteLength(JSON.stringify(result)))
+    }
+    assert.ok(refused > 0 && returned.length > 0, 'the walk crosses the budget')
+    assert.equal(Math.max(...returned), budget, 'the largest failure returned is exactly the budget')
+  } finally {
+    await sessions.stopAll()
+  }
+})
+
 test('a catalog larger than one result pages, and the digest is stable across pages', async () => {
   const sessions = managerFor([serverNamed('scripted', 'many-tools')], 8_192)
   try {

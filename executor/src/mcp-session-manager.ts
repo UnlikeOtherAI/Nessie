@@ -404,7 +404,12 @@ export const createExecutorMcpSessionManager = (
           `The MCP server "${server}" refused the call to "${tool}".`,
         )
       }
-      const document: Record<string, unknown> = { ...result, success: true }
+      const document: Record<string, unknown> = (result as { isError?: boolean }).isError === true
+        ? { ...result, code: 'EXECUTOR_MCP_CALL_FAILED', success: false }
+        : { ...result, success: true }
+      // Measured as it is returned, `code` and `success` included. An isError
+      // result measured before its code was added could pass here, be refused
+      // by the control plane's own cap, and leave the receipt nowhere to go.
       const resultBytes = Buffer.byteLength(JSON.stringify(document))
       if (resultBytes > maxResultBytes) {
         return {
@@ -414,9 +419,6 @@ export const createExecutorMcpSessionManager = (
           resultBytes,
           success: false,
         }
-      }
-      if ((result as { isError?: boolean }).isError === true) {
-        return { ...result, code: 'EXECUTOR_MCP_CALL_FAILED', success: false }
       }
       return document
     }),

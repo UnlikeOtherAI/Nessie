@@ -132,7 +132,10 @@ const callResult = (request) => {
     return { content: [{ type: 'text', text: 'x'.repeat(200_000) }] }
   }
   if (name === 'boom' || mode === 'error-tool') {
-    return { content: [{ type: 'text', text: 'it failed' }], isError: true }
+    // `bytes` sizes the failure text, so a test can walk a result budget's edge.
+    const bytes = request.params?.arguments?.bytes
+    const text = Number.isSafeInteger(bytes) ? 'x'.repeat(bytes) : 'it failed'
+    return { content: [{ type: 'text', text }], isError: true }
   }
   return {
     content: [{ type: 'text', text: JSON.stringify({ echoed: request.params?.arguments ?? null }) }],
