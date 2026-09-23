@@ -188,7 +188,7 @@ export const registerIntegrationProductRoutes = (
           error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.AGENT_NOT_FOUND
             ? 404
             : 409
-        sendApiError(reply, status, error.code, error.message)
+        sendApiError(reply, status, error.code, error.message, undefined, error.details)
         return reply
       }
       throw error
@@ -250,7 +250,7 @@ export const registerIntegrationProductRoutes = (
           return reply
         }
         if (error instanceof LedgerDeepWaterActiveRunsError) {
-          sendApiError(reply, 409, error.code, error.message)
+          sendApiError(reply, 409, error.code, error.message, undefined, error.details)
           return reply
         }
         if (error instanceof LedgerDeepWaterEnablementPersistenceError) {

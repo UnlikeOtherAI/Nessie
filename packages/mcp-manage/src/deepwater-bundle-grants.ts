@@ -256,6 +256,7 @@ export const setDeepWaterAgentAccess = async (
       throw new DeepWaterAgentAccessError(
         DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS,
         error.message,
+        error.details,
       )
     }
     if (error instanceof AgentToolPolicyError) {
