@@ -10,10 +10,12 @@ import {
   parseChannelId,
   parseThreadId,
   parseUserId,
+  TICKET_WORK_THREAD_MESSAGE_TOPIC,
   type AuthorizedActionContext,
+  type TicketWorkThreadMessageJobPayload,
   type WsScope,
 } from '@nessie/schemas'
-import { enqueueOrchestrateDecide } from '@nessie/db'
+import { enqueueOrchestrateDecide, enqueueQueueJob } from '@nessie/db'
 
 import { enqueuePushDispatch } from '../queue/pgqueue.js'
 import type { CreateThreadMessageResult } from './message-create.js'
@@ -171,6 +173,12 @@ export type DeliverCreatedMessageInput = {
   log: DeliveryLog
   result: CreatedThreadMessage
   thread: DeliveredMessageThread
+  /**
+   * The thread is a ticket's work thread: the message starts no ordinary run.
+   * It wakes the thread's work record instead, as a `thread_message` follow
+   * (docs/standards/ticket-work.md → "The work thread").
+   */
+  ticketWorkThread?: boolean
 }
 
 export const deliverCreatedMessage = async (
@@ -340,6 +348,26 @@ export const deliverCreatedMessage = async (
       { err: error, messageId: result.message.id },
       '[push] failed to enqueue dispatch job — recipients will not be notified',
     )
+  }
+
+  if (input.ticketWorkThread) {
+    try {
+      const payload: TicketWorkThreadMessageJobPayload = {
+        organizationId: actorContext.tenant.organizationId,
+        messageId: result.message.id,
+      }
+      await enqueueQueueJob(prisma, {
+        idempotencyKey: `${TICKET_WORK_THREAD_MESSAGE_TOPIC}:${result.message.id}`,
+        payload,
+        topic: TICKET_WORK_THREAD_MESSAGE_TOPIC,
+      })
+    } catch (error) {
+      log.error(
+        { err: error, messageId: result.message.id },
+        '[ticket-work] failed to enqueue the thread message — the agent will not be told',
+      )
+    }
+    return
   }
 
   if (result.channelAgents.length > 0) {

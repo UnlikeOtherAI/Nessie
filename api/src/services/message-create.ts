@@ -13,6 +13,7 @@ import {
 import { claimMessageEmbeddingInTransaction } from '@nessie/db'
 import {
   PERSON_MESSAGE_AUTHORSHIP,
+  TICKET_WORK_STEER_METADATA_KEY,
   type AgentMention,
   type AuthorizedActionContext,
   type MessageEmbedOrigin,
@@ -213,6 +214,13 @@ export const createThreadMessage = async (
      * the voice model's tool call and leaves it unset.
      */
     authorship?: typeof PERSON_MESSAGE_AUTHORSHIP
+    /**
+     * Set only by the message route, for a person who can edit the board
+     * writing in a ticket's work thread: stamped as `metadata.ticketWorkSteer`,
+     * the mark a `ticket.work` run's conversation admits a person's words by
+     * (docs/standards/ticket-work.md → "The work thread").
+     */
+    ticketWorkSteer?: true
     clientMessageId?: string
     embedding?: MessageEmbeddingRequest
   },
@@ -389,7 +397,11 @@ export const createThreadMessage = async (
   // Built here from server-resolved facts only; no client metadata reaches a
   // row, so `authorship` cannot arrive from a request body.
   const authorship = input.authorship === PERSON_MESSAGE_AUTHORSHIP ? { authorship: input.authorship } : {}
-  const messageMetadata = { mentions: mergedMentions, ...authorship } as Prisma.InputJsonValue
+  const messageMetadata = {
+    mentions: mergedMentions,
+    ...authorship,
+    ...(input.ticketWorkSteer ? { [TICKET_WORK_STEER_METADATA_KEY]: true } : {}),
+  } as Prisma.InputJsonValue
 
   let message: MessageWithReactions
   let alertedUserIds: string[] = []

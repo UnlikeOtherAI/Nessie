@@ -7,6 +7,11 @@ import {
   parseUserId,
   PERSON_MESSAGE_AUTHORSHIP,
 } from '@nessie/schemas'
+import {
+  canPostInTicketWorkThread,
+  findTicketWorkThread,
+  TICKET_WORK_THREAD_READ_ONLY_SENTENCE,
+} from '@nessie/team-admin'
 import { CreateThreadMessageBodySchema, ThreadMessageRecordSchema } from '../contracts/messaging.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createThreadMessage, messageEmbeddingForSender } from '../services/message-create.js'
@@ -77,6 +82,18 @@ export const registerCreateThreadMessageRoute = (
       return reply
     }
 
+    // A ticket's work thread: only people who can edit its board write there,
+    // asked live on every post, because what they write steers the agent's
+    // work (docs/standards/ticket-work.md → "The work thread").
+    const workThread = await findTicketWorkThread(prisma, thread.id)
+    if (workThread && !(await canPostInTicketWorkThread(prisma, {
+      thread: workThread,
+      userId: actorContext.actor.actorId,
+    }))) {
+      sendApiError(reply, 403, 'TICKET_WORK_THREAD_READ_ONLY', TICKET_WORK_THREAD_READ_ONLY_SENTENCE)
+      return reply
+    }
+
     // Attachment-only posts carry no text; the stored message content is the
     // empty string and the attachments are the payload.
     const content = body.content ?? ''
@@ -110,6 +127,7 @@ export const registerCreateThreadMessageRoute = (
       // and the iOS/Android WebView all post here. Session tokens only: agent
       // and voice credentials are refused on this route by the auth hook.
       authorship: PERSON_MESSAGE_AUTHORSHIP,
+      ...(workThread ? { ticketWorkSteer: true as const } : {}),
       content,
       threadId: thread.id,
       userId: actorContext.actor.actorId,
@@ -190,7 +208,7 @@ export const registerCreateThreadMessageRoute = (
     // `pa_send` posts as the person too and a second copy of it would drift.
     await deliverCreatedMessage(
       { buildChannelRealtimeScopes, messageMemoryCaptureConfig, prisma, realtimeHub },
-      { actorContext, content, log: request.log, result, thread },
+      { actorContext, content, log: request.log, result, thread, ticketWorkThread: workThread !== null },
     )
 
     return reply.code(201).send(
