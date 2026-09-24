@@ -134,6 +134,8 @@ export const StandingPolicyMachineOptionSchema = z
         turnBudgetUsd: z.number().positive().nullable(),
         maxLiveSessionsPerOwner: z.number().int().min(1).nullable(),
         mergeCommands: z.array(ExecutorCodingMergeCommandSchema),
+        /** The machine's signed `unaskedCommands`; null from an executor too old to sign it. */
+        unaskedCommands: z.enum(['any', 'listed']).nullable(),
       })
       .strict()
       .nullable(),

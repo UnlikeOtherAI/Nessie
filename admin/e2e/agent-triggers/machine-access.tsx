@@ -124,14 +124,14 @@ const machines: StandingPolicyMachineOption[] = [
     executorId: MINIS, label: 'Minis', refusal: null,
     facts: {
       maxLiveSessionsPerOwner: 3, mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
-      permissionMode: 'acceptEdits', rootNames: ['nessie', 'site'], turnBudgetUsd: 5,
+      permissionMode: 'acceptEdits', rootNames: ['nessie', 'site'], turnBudgetUsd: 5, unaskedCommands: 'listed',
     },
   },
   {
     executorId: STUDIO, label: 'Studio', refusal: null,
     facts: {
       maxLiveSessionsPerOwner: 3, mergeCommands: [], permissionMode: 'bypassPermissions', rootNames: ['nessie'],
-      turnBudgetUsd: 8,
+      turnBudgetUsd: 8, unaskedCommands: 'any',
     },
   },
 ]
@@ -140,8 +140,8 @@ const card: PreparedStandingPolicyResponse['card'] = {
   actions: [{ key: 'review', label: 'Review', style: 'primary', submits: true }],
   blocks: [
     {
-      markdown: 'Anyone who can edit this board (7 people) can make Claude run commands on these machines as you, with '
-        + 'your git and coding-agent login.\n\nThe agent may drive Claude Code sessions on these machines; it gets no '
+      markdown: 'Anyone who can edit this board — 7 people today, and anyone added to the project later — can make '
+        + 'Claude run commands on these machines as you, with your git and coding-agent login.\n\nThe agent may drive Claude Code sessions on these machines; it gets no '
         + 'other program on them.\n\nProject members, organisation owners and people on the ticket see what the work '
         + 'does on the ticket: the coding agent\'s summaries and its pull requests. Pull requests are merged under your '
         + 'GitHub identity.',

@@ -208,6 +208,7 @@ export const listStandingPolicyMachineOptions = async (
         permissionMode: facts.permissionMode.claude ?? 'default',
         rootNames: facts.rootNames,
         turnBudgetUsd: facts.maxBudgetUsd?.claude ?? null,
+        unaskedCommands: facts.unaskedCommands ?? null,
       } : null,
     })
   }

@@ -173,8 +173,8 @@ export const MachineAccessSetupDialog = ({
             <Checkbox
               checked={allowAnyCommand}
               description={'Only for a machine whose Claude Code runs every command without asking '
-                + '(bypassPermissions). The people who can edit the board could then have it run anything on '
-                + 'your machine, as you.'}
+                + '(bypassPermissions, or a Bash rule that allows every command). The people who can edit the '
+                + 'board could then have it run anything on your machine, as you.'}
               label={STANDING_POLICY_ANY_COMMAND_OPTION}
               onChange={setAllowAnyCommand}
             />

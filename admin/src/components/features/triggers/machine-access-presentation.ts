@@ -148,7 +148,7 @@ export const machineOptionRefusal = (
   if (option.refusal) return option.refusal.sentence
   const facts = option.facts
   if (!facts) return `${option.label} has no reviewed coding-sessions bridge.`
-  if (facts.permissionMode === 'bypassPermissions' && !choices.allowAnyCommand) {
+  if ((facts.permissionMode === 'bypassPermissions' || facts.unaskedCommands === 'any') && !choices.allowAnyCommand) {
     return `Claude Code on ${option.label} runs any command without asking, which needs “${STANDING_POLICY_ANY_COMMAND_OPTION}” ticked.`
   }
   if (facts.turnBudgetUsd !== null && facts.turnBudgetUsd > choices.ticketUsd) {
