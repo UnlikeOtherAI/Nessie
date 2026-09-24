@@ -230,11 +230,17 @@ runDatabaseTest('the Machine access section, the machines, the Standing access p
 
   // The executor page: its Standing access panel, and the ticket's own session named through its work.
   as(s.authorId)
-  type Panel = { policies: Array<{ activeTickets: number; authorName: string; trigger: { name: string } }> }
+  type Panel = {
+    policies: Array<{ activeTickets: number; authorName: string; holdingTicket?: unknown; trigger: { name: string } }>
+  }
   const panel = await get<Panel>(
     `/api/executors/${s.minis}/standing-policies`)
   assert.deepEqual(panel.body.data.policies.map((row) => [row.trigger.name, row.authorName, row.activeTickets]),
     [['Pick up tickets', 'Ondrej', 1]])
+  // Which ticket holds the machine (T5), named for a reader who can read its project.
+  assert.deepEqual(panel.body.data.policies[0]?.holdingTicket, {
+    projectId: trigger.scopeProjectId, status: 'active', taskId: task.id, title: 'Fix login redirect',
+  })
   as(s.colleagueId)
   assert.equal((await get(`/api/executors/${s.minis}/standing-policies`)).status, 404)
   as(s.authorId)
