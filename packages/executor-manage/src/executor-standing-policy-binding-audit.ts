@@ -1,9 +1,12 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
-import type { RunExecuteJobPayload } from '@nessie/schemas'
+import {
+  standingPolicyRefusalSentence,
+  TicketTriggerBindingRefusalPayloadSchema,
+  type RunExecuteJobPayload,
+} from '@nessie/schemas'
 
 import {
-  STANDING_POLICY_REFUSAL_SENTENCES,
   type CheckedStandingPolicy,
   type StandingBindRecord,
   type StandingPolicyRefusalReason,
@@ -96,11 +99,12 @@ export const recordStandingPolicyRefused = async (
       await tx.agentTriggerDelivery.createMany({
         data: [{
           dedupeKey: `binding:${input.runId}`,
-          errorMessage: STANDING_POLICY_REFUSAL_SENTENCES[input.reason],
-          payload: {
+          // The Triggers page's words, which never name the machine.
+          errorMessage: standingPolicyRefusalSentence(input.reason),
+          payload: TicketTriggerBindingRefusalPayloadSchema.parse({
             kind: 'standing_policy_refused', reason: input.reason, runId: input.runId, taskId: record.taskId,
             workId: record.id,
-          },
+          }),
           source: 'binding',
           status: 'skipped',
           triggerId: record.triggerId,

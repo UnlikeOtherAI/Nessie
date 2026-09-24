@@ -1,5 +1,7 @@
 import {
+  standingPolicyRefusalSentence,
   TICKET_WORK_LIVE_STATUSES,
+  TicketTriggerBindingRefusalPayloadSchema,
   TicketTriggerDeliveryPayloadSchema,
   ticketTriggerSkipSentence,
   type TicketTriggerSkipReason,
@@ -168,6 +170,10 @@ export const ticketSkipSentence = (reason: TicketTriggerSkipReason, options: { r
  * payload view.
  */
 export const ticketDeliveryLine = (payload: unknown): string | null => {
+  // The standing-policy binder bound no machine to one run: the run went on
+  // without one, and the page says why in the same words the chip does.
+  const refusal = TicketTriggerBindingRefusalPayloadSchema.safeParse(payload)
+  if (refusal.success) return standingPolicyRefusalSentence(refusal.data.reason)
   const parsed = TicketTriggerDeliveryPayloadSchema.safeParse(payload)
   if (!parsed.success) return null
   const delivery = parsed.data

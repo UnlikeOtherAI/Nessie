@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { TicketWorkWakeReasonSchema, type TicketWorkWakeReason } from './ticket-work.js'
+import {
+  StandingPolicyBindRefusalReasonSchema,
+  TicketWorkWakeReasonSchema,
+  type StandingPolicyBindRefusalReason,
+  type TicketWorkWakeReason,
+} from './ticket-work.js'
 
 /**
  * What a `ticket_changed` trigger reacts to, as the dispatcher reads it
@@ -354,3 +359,40 @@ export const TicketTriggerDeliveryPayloadSchema = z
     }
   })
 export type TicketTriggerDeliveryPayload = z.infer<typeof TicketTriggerDeliveryPayloadSchema>
+
+/**
+ * A delivery the standing-policy binder writes when it binds no machine to one
+ * `ticket.work` run (`source: 'binding'`, skipped): the run went on unbound,
+ * told why. Its sibling of `TicketTriggerDeliveryPayloadSchema` — a binding
+ * refusal is about a run, not about a ticket event, so it names the run, the
+ * ticket and the work record, and the reason from the binder's vocabulary.
+ */
+export const TicketTriggerBindingRefusalPayloadSchema = z
+  .object({
+    kind: z.literal('standing_policy_refused'),
+    reason: StandingPolicyBindRefusalReasonSchema,
+    runId: uuid,
+    taskId: uuid,
+    workId: uuid,
+  })
+  .strict()
+export type TicketTriggerBindingRefusalPayload = z.infer<typeof TicketTriggerBindingRefusalPayloadSchema>
+
+/**
+ * Why a run went without a machine, as the people who read the trigger's page
+ * and the ticket's chip are told it. None names the machine: the ticket's
+ * readers are the project's, and the machine is its owner's to name.
+ */
+export const STANDING_POLICY_REFUSAL_CAUSES: Record<StandingPolicyBindRefusalReason, string> = {
+  policy_not_live: 'the machine access for this trigger is no longer live',
+  terms_changed: 'the trigger or the machine’s reviewed setup changed since machine access was confirmed',
+  author_unavailable: 'the machines’ owner could not be confirmed as still able to give this board their machines',
+  machine_unavailable: 'the machine was offline or no longer offers its coding tools',
+  channel_unavailable: 'the work thread is no longer in a public project channel the agent is in',
+  not_this_work: 'the run answered something other than this ticket’s own wake',
+  limit_reached: 'the ticket’s work reached one of its limits',
+}
+
+/** "Ran without a machine: the machine was offline or no longer offers its coding tools." */
+export const standingPolicyRefusalSentence = (reason: StandingPolicyBindRefusalReason): string =>
+  `Ran without a machine: ${STANDING_POLICY_REFUSAL_CAUSES[reason]}.`

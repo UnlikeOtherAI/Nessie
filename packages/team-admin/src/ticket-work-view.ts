@@ -5,11 +5,12 @@ import {
   parseChannelId,
   parseTaskId,
   parseThreadId,
-  StandingPolicyBindRefusalReasonSchema,
+  standingPolicyRefusalSentence,
   TICKET_WORK_ACTIVITY_EVENT_TYPES,
   TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_NOTICE_SKIP_REASONS,
   TicketChangedStoredConfigSchema,
+  TicketTriggerBindingRefusalPayloadSchema,
   TicketTriggerDeliveryPayloadSchema,
   TicketTriggerLimitsSchema,
   TicketWorkActivityPayloadSchema,
@@ -92,14 +93,14 @@ const loadMachineRefusals = async (
         triggerId: record.triggerId,
       },
       orderBy: { createdAt: 'desc' },
-      select: { createdAt: true, errorMessage: true, payload: true },
+      select: { createdAt: true, payload: true },
     })
-    const reason = StandingPolicyBindRefusalReasonSchema.safeParse(
-      (delivery?.payload as { reason?: unknown } | null)?.reason,
-    )
-    if (delivery?.errorMessage && reason.success) {
+    const refusal = TicketTriggerBindingRefusalPayloadSchema.safeParse(delivery?.payload)
+    if (delivery && refusal.success) {
       refusals.set(record.id, {
-        at: delivery.createdAt.toISOString(), reason: reason.data, sentence: delivery.errorMessage,
+        at: delivery.createdAt.toISOString(),
+        reason: refusal.data.reason,
+        sentence: standingPolicyRefusalSentence(refusal.data.reason),
       })
     }
   }
