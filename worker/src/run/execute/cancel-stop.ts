@@ -17,6 +17,7 @@ import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.
 import type { BudgetStopStats } from './budget-stop.js'
 import { createAgentMessage } from './agent-message.js'
 import { enqueueInteractiveReplyPush } from './reply-push.js'
+import { recordTicketWorkRunSpend } from './ticket-work-setup.js'
 
 // A run that ends because a human requested cancellation through
 // `POST /api/runs/:id/cancel`. The cooperative flag on the Run row is polled by
@@ -91,6 +92,7 @@ export const finalizeCancelledRun = async (
     invocations: input.invocations,
     runId: context.run.id,
   })
+  await recordTicketWorkRunSpend(deps.prisma, { actorContext: payload.actorContext, runId: context.run.id })
 
   const terminalContent = input.hadPartialText
     ? `${input.responseText}\n\n${input.notice}`

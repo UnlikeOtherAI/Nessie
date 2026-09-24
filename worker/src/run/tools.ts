@@ -93,7 +93,7 @@ import { summarizeToolInput, wrapTool } from './tool-util.js'
 import { dispatchKbTool } from './kb-tool-dispatch.js'
 import { dispatchSheetTool } from './sheet-tool-dispatch.js'
 import { TICKET_ACTIVITY_TOOL_RUNNERS } from './pa-tools/tickets.js'
-import { ticketWorkToolRefusal } from './execute/ticket-work-setup.js'
+import { ticketWorkHostOutputRefusal, ticketWorkToolRefusal } from './execute/ticket-work-setup.js'
 import { PROJECT_STRUCTURE_TOOL_RUNNERS } from './pa-tools/provisioning-structure.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 import { dispatchSandboxedBuiltinTool } from './sandboxed-tool-dispatch.js'
@@ -514,6 +514,7 @@ export const executeBuiltinTool = async (
 ): Promise<AgenticToolResult> => {
   // A ticket-work run has no person behind it; tools that act for one refuse.
   const refusal = ticketWorkToolRefusal(toolName, context.actorContext)
+    ?? ticketWorkHostOutputRefusal(toolName, context)
   if (refusal) return { inputSummary: summarizeToolInput(args), output: refusal, success: false }
   // Correct a model's double-encoded object/array arguments before dispatch, so
   // one rule covers every builtin instead of each tool learning it separately.

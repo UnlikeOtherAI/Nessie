@@ -17,6 +17,14 @@ export type ExecutorBindingInput = {
   candidateHandle: string
   operationKey: ImplementedExecutorOperationKey
   runId: string
+  /**
+   * A `ticket.work` run bound under a standing policy
+   * (`executor-standing-policy-binding.ts`): its trigger is the platform's
+   * kickoff, which no person wrote, so the run's trigger must be exactly that
+   * kickoff instead of the actor's own message. The binder checked the policy
+   * and the record before it asked.
+   */
+  standing?: { kickoffMessageId: string }
 }
 
 export type ExecutorBindingBundleInput = Omit<ExecutorBindingInput, 'operationKey'> & {
@@ -236,7 +244,7 @@ export const bindExecutorCandidateInTransaction = async (
       where: { id: input.runId },
       select: {
         agentId: true,
-        triggerMessage: { select: { userId: true } },
+        triggerMessage: { select: { id: true, role: true, userId: true } },
         thread: { select: { channel: { select: { organizationId: true, projectId: true } } } },
       },
     }),
@@ -254,7 +262,10 @@ export const bindExecutorCandidateInTransaction = async (
   if (
     !run
     || run.agentId !== candidate.agentId
-    || run.triggerMessage?.userId !== input.actorUserId
+    || !(input.standing
+      ? run.triggerMessage?.id === input.standing.kickoffMessageId
+        && run.triggerMessage.role === 'system' && run.triggerMessage.userId === null
+      : run.triggerMessage?.userId === input.actorUserId)
     || run.thread.channel.organizationId !== candidate.executor.organizationId
     || !membership
     || membership.deactivatedAt

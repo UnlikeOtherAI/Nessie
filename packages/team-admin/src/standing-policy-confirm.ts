@@ -145,7 +145,7 @@ export const confirmStandingPolicyInTransaction = async (
     },
   })
   const queued = await queueTicketWorkForConfirmedPolicyInTransaction(tx, {
-    policyId: change.policyId, triggerId: change.triggerId,
+    by: authorUserId, policyId: change.policyId, triggerId: change.triggerId,
   })
   await writeStandingPolicyAudit(tx, {
     action: 'executor.policy.confirmed',

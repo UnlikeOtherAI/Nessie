@@ -10,7 +10,12 @@ import {
 } from '@nessie/schemas'
 
 import { requestExecutorCodingSessionCloseForSessionsInTransaction } from './executor-coding-session-closes.js'
-import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.js'
+import {
+  enqueueTicketWorkSweep,
+  queueTicketWorkInTransaction,
+  standingPolicyPoolReason,
+} from './executor-standing-policy-pool.js'
+import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-records.js'
 
 /**
  * A standing policy's transitions after it was confirmed, each in the
@@ -28,7 +33,9 @@ import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.j
  *   replaced it, which hands its records to the new policy instead: a
  *   re-confirmation must not cancel the tickets it is re-confirming for.
  *
- * Each writes its `executor.policy.*` audit row in the same transaction.
+ * Each writes its `executor.policy.*` audit row in the same transaction, and
+ * each that may free a machine enqueues the pool dispatcher
+ * (`ticket-work.sweep`).
  */
 
 export type StandingPolicyActor = { requestId?: string; userId: string | null }
@@ -139,6 +146,7 @@ export const suspendStandingPolicyInTransaction = async (
       by: input.actor.userId,
     })
   }
+  if (active.length > 0) await enqueueTicketWorkSweep(tx)
   await writeStandingPolicyAudit(tx, {
     action: 'executor.policy.suspended',
     actor: input.actor,
@@ -150,10 +158,40 @@ export const suspendStandingPolicyInTransaction = async (
 }
 
 /**
+ * Queue records under a policy, each with why and where it stands, a
+ * `work_queued` row and `ticket.work.queued`: the dispatcher takes them
+ * from there.
+ */
+const queueRecords = async (
+  tx: Prisma.TransactionClient,
+  records: readonly Pick<LiveRecord, 'agentId' | 'id' | 'taskId' | 'triggerId'>[],
+  input: { by: string | null; policyId: string },
+): Promise<void> => {
+  if (records.length === 0) return
+  const reason = await standingPolicyPoolReason(tx, { policyId: input.policyId })
+  const { organizationId } = await tx.executorStandingPolicy.findUniqueOrThrow({
+    where: { id: input.policyId }, select: { organizationId: true },
+  })
+  for (const record of records) {
+    const position = await queueTicketWorkInTransaction(tx, { policyId: input.policyId, reason, workId: record.id })
+    await recordTicketWorkActivity(tx, { work: record, eventType: 'work_queued', status: 'queued', reason, by: input.by })
+    await writeTicketWorkAudit(tx, {
+      action: 'ticket.work.queued',
+      by: input.by,
+      metadata: { policyId: input.policyId, position, reason, taskId: record.taskId, triggerId: record.triggerId },
+      organizationId,
+      workId: record.id,
+    })
+  }
+  await enqueueTicketWorkSweep(tx)
+}
+
+/**
  * Hand a replaced policy's live records to the policy that replaced it. Their
  * sessions belong to the old policy's owner context, which nothing will bind
- * again, so they are closed; an `active` record goes back to the queue and
- * the dispatcher resumes it on the new pool with a `dequeued` wake.
+ * again, so every one of them is closed, a parked record's included; an
+ * `active` record goes back to the queue, unpinned, and the dispatcher
+ * resumes it on the new pool with a `dequeued` wake.
  */
 const handOverTicketWork = async (
   tx: Prisma.TransactionClient,
@@ -161,17 +199,15 @@ const handOverTicketWork = async (
   toPolicyId: string,
   requestedByUserId: string | null,
 ): Promise<void> => {
-  await closeTicketWorkSessionsInTransaction(
-    tx, records.filter((record) => record.status === 'active'), 'policy_ended', requestedByUserId,
-  )
+  await closeTicketWorkSessionsInTransaction(tx, records, 'policy_ended', requestedByUserId)
+  const active = records.filter((record) => record.status === 'active')
   for (const record of records) {
     await tx.agentTicketWork.update({
       where: { id: record.id },
-      data: record.status === 'active'
-        ? { enqueuedAt: new Date(), executorId: null, policyId: toPolicyId, stateReason: null, status: 'queued' }
-        : { policyId: toPolicyId },
+      data: record.status === 'active' ? { executorId: null, policyId: toPolicyId } : { policyId: toPolicyId },
     })
   }
+  await queueRecords(tx, active, { by: requestedByUserId, policyId: toPolicyId })
 }
 
 export const endStandingPolicyInTransaction = async (
@@ -210,6 +246,7 @@ export const endStandingPolicyInTransaction = async (
         work: record, status: 'cancelled', reason: 'machine_access_ended', by: input.actor.userId ?? 'system',
       })
     }
+    if (live.length > 0) await enqueueTicketWorkSweep(tx)
   }
   await writeStandingPolicyAudit(tx, {
     action: 'executor.policy.ended',
@@ -249,22 +286,25 @@ export const endStandingPoliciesForTriggerInTransaction = async (
 /**
  * A confirmation's half of the queue: every record of this trigger waiting for
  * machine access — because access was suspended, or had not been set up when
- * the ticket was picked up — is queued under the confirmed policy. The pool
- * dispatcher takes it from there.
+ * the ticket was picked up — is queued under the confirmed policy, with its
+ * reason, its place and a `work_queued` row, and the pool dispatcher is
+ * enqueued to take it from there.
  */
 export const queueTicketWorkForConfirmedPolicyInTransaction = async (
   tx: Prisma.TransactionClient,
-  input: { policyId: string; triggerId: string },
+  input: { by?: string | null; policyId: string; triggerId: string },
 ): Promise<number> => {
-  const { count } = await tx.agentTicketWork.updateMany({
+  const waiting = await tx.agentTicketWork.findMany({
     where: {
       stateReason: { in: ['machine_access_suspended', 'machine_access_not_set_up'] },
       status: 'waiting_machine',
       triggerId: input.triggerId,
     },
-    data: {
-      enqueuedAt: new Date(), executorId: null, policyId: input.policyId, stateReason: null, status: 'queued',
-    },
+    select: RECORD_SELECT,
   })
-  return count
+  for (const record of waiting) {
+    await tx.agentTicketWork.update({ where: { id: record.id }, data: { executorId: null, policyId: input.policyId } })
+  }
+  await queueRecords(tx, waiting, { by: input.by ?? null, policyId: input.policyId })
+  return waiting.length
 }

@@ -8,6 +8,7 @@ import {
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { takeExecutorCodingSessionClosesInTransaction } from './executor-coding-session-closes.js'
+import { enforceTicketWorkLimitsInTransaction } from './executor-standing-policy-limits.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
   EXECUTOR_HEARTBEAT_FRESHNESS_MS,
@@ -275,6 +276,9 @@ export const reportExecutorHeartbeat = async (
       },
       select: { activeConnectionEpoch: true, status: true },
     })
+    // The heartbeat intake: a ticket working on this machine past one of its
+    // limits stops here, and its sessions' closes ride this very answer.
+    await enforceTicketWorkLimitsInTransaction(tx, { now, where: { executorId: executor.id, status: 'active' } })
     const codingSessionClose = await takeExecutorCodingSessionClosesInTransaction(tx, {
       executorId: executor.id, ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }), now,
     })

@@ -45,6 +45,7 @@ import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import {
+  bindTicketWorkMachine,
   loadTicketWorkRunFacts,
   ticketWorkRecallSkipped,
   TICKET_WORK_PERSON_TOOL_IDS,
@@ -360,7 +361,15 @@ export const prepareRunExecution = async (
       // runs for every agent's every turn, so an unexpected failure in it (a
       // lost connection) must not sink an ordinary one either: the run goes on
       // with whatever bindings it already has, and no reach facts are told.
-      const lease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
+      // A ticket's work is bound by its standing policy, never a lease.
+      if (ticketWork) {
+        context.ticketWorkMachine = await bindTicketWorkMachine(deps.prisma, {
+          job: payload, runId: context.run.id, workId: ticketWork.workId,
+        })
+      }
+      const lease = ticketWork
+        ? undefined
+        : await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
         .catch((error: unknown) => {
           console.warn('[worker] executor lease carry failed for run', context.run.id, error)
           return undefined
@@ -385,6 +394,7 @@ export const prepareRunExecution = async (
         hostOutput,
         organizationId: context.channel.organizationId,
         runId: context.run.id,
+        ticketWork: context.ticketWorkMachine?.coding ?? null,
       })
     })(),
     (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
@@ -405,6 +415,7 @@ export const prepareRunExecution = async (
     organizationId: context.channel.organizationId,
     personUserId: payload.actorContext.actor.actorType === 'user' ? payload.actorContext.actor.actorId : null,
     runId: context.run.id,
+    standing: context.ticketWorkMachine,
     toolNames: executorToolset.handledNames,
   })
 

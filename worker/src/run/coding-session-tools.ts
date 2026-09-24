@@ -180,6 +180,12 @@ export const codingBridgeArguments = (
     }
     case CODING_SESSION_TOOL_NAMES.send:
       return { message: args.message, sessionId: args.sessionId }
+    case CODING_SESSION_TOOL_NAMES.review: {
+      // A pull request named by URL, read even after its branch is gone: a
+      // `ticket.work` run fills it from its work record.
+      const pullRequest = text(args.pullRequest)
+      return { sessionId: args.sessionId, ...(pullRequest === undefined ? {} : { pullRequest }) }
+    }
     default:
       return { sessionId: args.sessionId }
   }

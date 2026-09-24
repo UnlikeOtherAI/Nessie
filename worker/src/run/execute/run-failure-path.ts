@@ -22,6 +22,7 @@ import { RunDrainedError } from '../loop-resume.js'
 import { RunFencedError } from './lifecycle.js'
 import { persistInvocationLedgerEvents } from '../inference.js'
 import type { ThinkingRecorder } from './thinking-recorder.js'
+import { recordTicketWorkRunSpend } from './ticket-work-setup.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 
 /** Finish a failed run, or rethrow unchanged when its queue retry should own it. */
@@ -90,6 +91,7 @@ export const handleRunFailurePath = async (
         invocations: input.invocations,
         runId: context.run.id,
       })
+      await recordTicketWorkRunSpend(deps.prisma, { actorContext: payload.actorContext, runId: context.run.id })
     } catch (ledgerError) {
       console.error(
         '[worker] failed to persist ledger events for failed run',

@@ -158,6 +158,12 @@ export type RunContext = {
    * Absent until setup has run.
    */
   executorLease?: ExecutorLeaseCarryOutcome
+  /**
+   * A `ticket.work` run's machine: what the standing binder decided, and the
+   * ticket's coding scope when it bound (`ticket-work-setup.ts`). Absent for
+   * every other run, and until setup has run.
+   */
+  ticketWorkMachine?: import('./ticket-work-setup.js').TicketWorkMachine
   run: {
     id: string
     /** Durable trigger identity for last-moment scheduled-run admission. */

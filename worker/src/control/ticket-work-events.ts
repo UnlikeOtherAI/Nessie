@@ -248,5 +248,21 @@ export const describeWakeEvent = async (
   const described = input.source.kind === 'thread_message'
     ? await describeThreadMessage(loader, input.source.messageId)
     : await describeTaskEvent(loader, { ...input, taskEventId: input.source.taskEventId })
-  return { reason: input.reason, at: input.at.toISOString(), text: described.text, summary: described.summary }
+  // What it was and who wrote it, kept on the kickoff: a coding_session_send
+  // in the run it wakes is audited as forwarding exactly this.
+  const by = input.source.kind === 'thread_message'
+    ? (await prisma.message.findUnique({ where: { id: input.source.messageId }, select: { userId: true } }))?.userId
+    : TaskEventAuthorshipSchema.safeParse((await prisma.taskEvent.findUnique({
+        where: { id: input.source.taskEventId }, select: { payload: true },
+      }))?.payload).data?.by
+  return {
+    reason: input.reason,
+    at: input.at.toISOString(),
+    text: described.text,
+    summary: described.summary,
+    source: input.source.kind === 'thread_message'
+      ? { kind: 'thread_message', id: input.source.messageId }
+      : { kind: 'task_event', id: input.source.taskEventId },
+    ...(by ? { by } : {}),
+  }
 }

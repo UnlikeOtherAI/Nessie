@@ -19,6 +19,7 @@ import {
   executorLeaseAuditActor,
 } from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { endStandingPoliciesForExecutorInTransaction } from './executor-standing-policy-fences.js'
 
 export type ExecutorMutationClient = PrismaClient | Prisma.TransactionClient
 
@@ -102,7 +103,10 @@ const nextAuthorizationRevision = async (
 
 /**
  * Withdrawn or narrowed access ends the leases it covered, with the fence, and
- * closes the coding sessions it reached on the machine.
+ * closes the coding sessions it reached on the machine. It ends the standing
+ * machine access it covered too — the agent's, or the author's — whose own
+ * closes name each ticket's sessions by id, which the owner-wide close here,
+ * keyed without a ticket's context, never reaches.
  */
 const endLeasesForRevokedAccess = async (
   tx: Prisma.TransactionClient,
@@ -118,6 +122,10 @@ const endLeasesForRevokedAccess = async (
   })
   await closeExecutorCodingSessionsInTransaction(tx, {
     executorId, only, reason: 'access_revoked', requestedByUserId: requireHumanActor(actorContext),
+  })
+  await endStandingPoliciesForExecutorInTransaction(tx, {
+    actor: { requestId: actorContext.actionContext.requestId, userId: requireHumanActor(actorContext) },
+    executorId, only, reason: 'access_revoked',
   })
 }
 

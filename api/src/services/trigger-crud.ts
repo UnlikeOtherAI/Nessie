@@ -17,9 +17,9 @@ import {
   updateAgentTrigger,
   validateTodoTemplateTriggerConfig,
   type AgentTriggerScope,
-  type StandingPolicyActor,
   agentTriggerScopeWhere,
 } from '@nessie/team-admin'
+import type { StandingPolicyActor } from '@nessie/executor-manage'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,

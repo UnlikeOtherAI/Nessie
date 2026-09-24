@@ -224,6 +224,12 @@ export const TicketTriggerSkipReasonSchema = z.enum([
   // delivery failed and switched its trigger off (its health), so the move
   // that assigned the agent and started nothing still has a reason on it.
   'trigger_failed',
+  // Standing machine access (T4): the machine pinned to the work was offline
+  // when the wake came, so no run started and the work waits for it; or the
+  // work was over its policy's hours or spend, so it stopped instead.
+  'machine_offline',
+  'limit_hours',
+  'limit_cost',
 ])
 export type TicketTriggerSkipReason = z.infer<typeof TicketTriggerSkipReasonSchema>
 
@@ -254,6 +260,12 @@ export const TICKET_TRIGGER_SKIP_SENTENCES = {
   trigger_disabled: 'This ticket\'s trigger is off, so the message woke nobody.',
   trigger_failed: 'This trigger could not start work — its agent lost its channel, or its setup no longer holds — '
     + 'so it was switched off. Its owner can see why and fix it on the Triggers page.',
+  machine_offline: 'The machine working this ticket is offline, so the agent was not woken. Work resumes when it '
+    + 'reconnects.',
+  limit_hours: 'This ticket\'s work used all the hours its machine access allows, so it stopped. '
+    + 'Move the ticket out of and back into a start-work column to continue.',
+  limit_cost: 'This ticket\'s work spent what its machine access allows, for the ticket or for the day, so it stopped. '
+    + 'Move the ticket out of and back into a start-work column to continue.',
 } as const satisfies Record<TicketTriggerSkipReason, string>
 
 /**

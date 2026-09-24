@@ -11,7 +11,12 @@
 // cache anchor.
 
 import type { PrismaClient } from '@prisma/client'
-import { EXECUTOR_LOCAL_APPS_OPERATION_KEYS, executorCodingSessionOwnerKey } from '@nessie/executor-manage'
+import {
+  EXECUTOR_LOCAL_APPS_OPERATION_KEYS,
+  executorCodingSessionOwnerKey,
+  STANDING_POLICY_REFUSAL_SENTENCES,
+  type StandingPolicyRefusalReason,
+} from '@nessie/executor-manage'
 import {
   EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
   ExecutorCapabilityDescriptorSchema,
@@ -21,6 +26,7 @@ import {
 import { CODING_AGENT_LABELS, CODING_SESSION_TOOL_NAME_SET } from '../coding-session-tools.js'
 import type { ExecutorHostOutputDisclosure } from '../executor-host-output.js'
 import { executorToolName } from '../executor-toolset.js'
+import type { TicketWorkMachine } from './ticket-work-setup.js'
 import type { ExecutorLeaseCarryOutcome, ExecutorLeaseRefusalReason } from './types.js'
 
 /** The first-class coding-session tools, when the toolset holds them. */
@@ -58,6 +64,12 @@ export type ExecutorReachFacts =
   }
   /** A lease covers this conversation and did not reach this run. */
   | { kind: 'refused'; reason: ExecutorLeaseRefusalReason }
+  /**
+   * A `ticket.work` run whose pinned machine the standing binder refused this
+   * turn. A standing bind itself reads as `bound`, with no label: its thread
+   * is a public room, and the DM-only naming rule never names a machine there.
+   */
+  | { kind: 'standing_refused'; reason: StandingPolicyRefusalReason }
   /** The agent is granted local apps, and nothing in this conversation binds them. */
   | { kind: 'unbound' }
 
@@ -137,6 +149,8 @@ export const buildExecutorReachBlock = (facts: ExecutorReachFacts | null): strin
     }
     case 'refused':
       return `${NO_MACHINE_TOOLS} ${REFUSAL_LINES[facts.reason]}`
+    case 'standing_refused':
+      return `${NO_MACHINE_TOOLS} ${STANDING_POLICY_REFUSAL_SENTENCES[facts.reason]}`
     case 'unbound':
       return `${NO_MACHINE_TOOLS} A person starts them from the composer: Run on executor → Local apps on this machine.`
   }
@@ -205,6 +219,8 @@ const reportedOwnSessions = (
   binding: ReachBinding,
   agentId: string,
   withTitles: boolean,
+  /** A ticket's own owner context, for a standing bind: its sessions and no one else's. */
+  contextId?: string,
 ): ExecutorCodingSessionsReach['sessions'] => {
   const { executor, executorId } = binding
   if (!executorId || !executor.pairingOwnerUserId) return null
@@ -213,7 +229,9 @@ const reportedOwnSessions = (
     ? report.data.find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)?.codingSessions
     : undefined
   if (!listed) return null
-  const ownerKey = executorCodingSessionOwnerKey(executorId, { actorUserId: executor.pairingOwnerUserId, agentId })
+  const ownerKey = executorCodingSessionOwnerKey(executorId, {
+    actorUserId: executor.pairingOwnerUserId, agentId, ...(contextId ? { contextId } : {}),
+  })
   return listed
     .filter((session) => session.ownerKey === ownerKey && session.status !== 'closed')
     .map((session) => ({
@@ -243,10 +261,17 @@ export const loadExecutorReachFacts = async (
     /** The job's acting person, or null when no person acts. */
     personUserId: string | null
     runId: string
+    /** A `ticket.work` run's standing bind, when run setup made one. */
+    standing?: TicketWorkMachine | undefined
     toolNames: ReadonlySet<string>
   },
 ): Promise<ExecutorReachFacts | null> => {
-  const { lease } = input
+  const standing = input.standing?.binding
+  if (standing?.kind === 'refused') return { kind: 'standing_refused', reason: standing.reason }
+  if (standing?.kind === 'not_applicable') return null
+  const lease: ExecutorLeaseCarryOutcome | undefined = standing
+    ? { kind: 'already_bound', lease: null }
+    : input.lease
   if (!lease) return null
   if (lease.kind === 'refused') return { kind: 'refused', reason: lease.reason }
   const leaseSummary = lease.kind === 'no_lease' ? null : lease.lease
@@ -272,7 +297,7 @@ export const loadExecutorReachFacts = async (
       ? {
           agents: facts.agents.map((agent) => CODING_AGENT_LABELS[agent]),
           roots: facts.rootNames,
-          sessions: reportedOwnSessions(binding, input.agentId, ownDm),
+          sessions: reportedOwnSessions(binding, input.agentId, ownDm, input.standing?.coding?.contextId),
         }
       : undefined
     if (codingSessions?.sessions?.some((session) => session.title !== undefined) && input.hostOutput) {

@@ -7,6 +7,7 @@ import {
 } from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { standingBindingContextId } from './executor-standing-policy-fence.js'
 
 /**
  * Who may drive the executor's built-in coding-sessions bridge
@@ -45,7 +46,8 @@ type ExecutorOwnership = {
   scopeKind: 'private' | 'project' | 'organization'
 }
 
-type OwnerClient = Pick<PrismaClient, 'executorAvailabilityCandidate' | 'executorBinding'> | Prisma.TransactionClient
+type OwnerClient = Pick<PrismaClient, 'agentTicketWork' | 'executorAvailabilityCandidate' | 'executorBinding'>
+  | Prisma.TransactionClient
 
 export const executorCodingSessionsAllowed = (executor: ExecutorOwnership, actorUserId: string): boolean =>
   executor.scopeKind === 'private' && executor.pairingOwnerUserId === actorUserId
@@ -139,6 +141,8 @@ export const assertExecutorMcpCallPayload = async (
       capabilityRevision: { select: { descriptor: true } },
       executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
       operationKey: true,
+      standingPolicyId: true,
+      ticketWorkId: true,
     },
   })
   if (!binding || (binding.operationKey !== 'mcp.call' && binding.operationKey !== 'mcp.tools')) return
@@ -149,10 +153,12 @@ export const assertExecutorMcpCallPayload = async (
   if (!candidate) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.BINDING_FENCED, 'Executor binding provenance is no longer available.')
   }
+  // The ticket's own context, for a binding a standing policy made; none otherwise.
+  const contextId = await standingBindingContextId(prisma, binding)
   assertExecutorMcpCallAllowed({
     codingSessionsServer: reviewedCodingSessionsServer(binding.capabilityRevision.descriptor),
     executor: binding.executor,
     operationKey: binding.operationKey,
-    owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId },
+    owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId, ...(contextId ? { contextId } : {}) },
   }, payload)
 }

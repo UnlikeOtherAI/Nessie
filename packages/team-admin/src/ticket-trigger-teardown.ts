@@ -3,6 +3,7 @@ import {
   closeTicketWorkSessionsInTransaction,
   endStandingPoliciesForTriggerInTransaction,
   endTicketWork,
+  enqueueTicketWorkSweep,
   type StandingPolicyActor,
 } from '@nessie/executor-manage'
 import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
@@ -45,5 +46,6 @@ export const endTicketWorkForTrigger = async (
   await endStandingPoliciesForTriggerInTransaction(tx, {
     actor, reason: input.reason ?? 'trigger_disabled', triggerId: input.triggerId,
   })
+  if (ended > 0) await enqueueTicketWorkSweep(tx)
   return ended
 }

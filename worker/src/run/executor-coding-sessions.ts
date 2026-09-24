@@ -119,7 +119,16 @@ export const createExecutorCodingSessions = (input: {
   ) => Promise<ExecutorCommandOutcome>
   /** Ends a ToolCall row the call's own answer will not end. */
   endRecord: (toolCallRecordId: string, result: AgenticToolResult, durationMs: number) => Promise<void>
+  /** Descriptors in place of the ordinary seven: a `ticket.work` run's (`ticket-work-coding-sessions.ts`). */
+  descriptors?: ToolSchemaDescriptor[]
   facts: ExecutorCodingSessionsFacts
+  /**
+   * Every answer the bridge gives, before it is presented: a `ticket.work`
+   * run writes what it learns onto its work record in the same step.
+   */
+  observe?: (
+    toolName: CodingSessionToolName, args: Record<string, unknown>, body: Record<string, unknown>,
+  ) => Promise<void>
   personWrote: () => Promise<boolean>
   stopRequested: () => Promise<boolean>
   timing?: CodingWaitTiming
@@ -163,7 +172,10 @@ export const createExecutorCodingSessions = (input: {
     const outcome = await input.call(toolName, envelope(toolName, args), providerToolCallId)
     if (outcome.kind === 'expired') throw new ExecutorUnknownOutcomeError(outcome.toolCallRecordId)
     const parsed = parseBridgeResult(outcome.result)
-    if (parsed.kind === 'answer') remember(toolName, parsed.body)
+    if (parsed.kind === 'answer') {
+      remember(toolName, parsed.body)
+      await input.observe?.(toolName, args, parsed.body)
+    }
     return { ...presentCodingCall(toolName, parsed, outcome.result), inputSummary: summarizeToolInput(args) }
   }
 
@@ -210,6 +222,7 @@ export const createExecutorCodingSessions = (input: {
           const parsed = parseBridgeResult(outcome.result)
           if (parsed.kind !== 'answer') return { kind: 'failed', result: presentCodingFailure(parsed, outcome.result) }
           if (typeof parsed.body.turn === 'number') turns.set(sessionId, parsed.body.turn)
+          await input.observe?.(toolName, args, parsed.body)
           return { body: parsed.body, kind: 'answer' }
         },
         ...(hooks.runWindDownAt === undefined ? {} : { runWindDownAt: hooks.runWindDownAt }),
@@ -248,7 +261,7 @@ export const createExecutorCodingSessions = (input: {
     }
   }
 
-  const descriptors = codingSessionDescriptors(input.facts)
+  const descriptors = input.descriptors ?? codingSessionDescriptors(input.facts)
   const schemaOf = new Map(descriptors.map((descriptor) => [descriptor.toolName, descriptor.inputSchema]))
   return {
     descriptors,
@@ -274,7 +287,16 @@ export const createExecutorCodingSessions = (input: {
  */
 export const codingWaitRunChecks = (
   prisma: Pick<PrismaClient, 'run' | 'runThreadPendingMessage'>,
-  input: { agentId: string; runId: string },
+  input: {
+    agentId: string
+    runId: string
+    /**
+     * A `ticket.work` run's record: a wake for the same work pending behind
+     * this run — a comment, a thread message, a moved ticket — is news the
+     * way a person's message is, so the wait gives way to it too.
+     */
+    ticketWorkId?: string
+  },
 ) => {
   let thread: Promise<{ createdAt: Date; principalUserId: string | null; threadId: string } | null> | undefined
   return {
@@ -288,10 +310,13 @@ export const codingWaitRunChecks = (
         where: {
           agentId: input.agentId,
           createdAt: { gt: run.createdAt },
-          interactive: true,
-          principalUserId: run.principalUserId,
           threadId: run.threadId,
-          triggerId: null,
+          OR: [
+            { interactive: true, principalUserId: run.principalUserId, triggerId: null },
+            ...(input.ticketWorkId
+              ? [{ actorContext: { path: ['actionContext', 'ticketWorkId'], equals: input.ticketWorkId } }]
+              : []),
+          ],
         },
         select: { seq: true },
       })

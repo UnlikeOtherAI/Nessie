@@ -16,6 +16,7 @@ import {
 } from '@nessie/schemas'
 
 import { rehomeBoardLabels } from './task-labels.js'
+import { endStandingPoliciesForScopeInTransaction } from './standing-policy-fences.js'
 
 /**
  * Boards and their columns — the shared implementation behind the API routes,
@@ -312,6 +313,8 @@ export const deleteBoard = async (
   projectId: string,
   boardId: string,
   newDefaultBoardId?: string,
+  /** Who deleted it, named on the machine access it ends. */
+  actorUserId?: string,
 ): Promise<{ ok: true } | BoardMutationError> => {
   const board = await prisma.board.findFirst({
     where: { id: boardId, projectId },
@@ -339,6 +342,8 @@ export const deleteBoard = async (
       select: { id: true, projectId: true, organizationId: true },
     })
     if (heir) await rehomeBoardLabels(tx, board, heir)
+    // Before the delete: the trigger's scope is SET NULL with the board.
+    await endStandingPoliciesForScopeInTransaction(tx, { actor: { userId: actorUserId ?? null }, boardId })
     await tx.board.delete({ where: { id: boardId } })
     if (board.isDefault && newDefaultBoardId) {
       await tx.board.update({
@@ -427,9 +432,18 @@ export const deleteBoardColumn = async (
   prisma: PrismaClient,
   boardId: string,
   columnId: string,
+  /** Who deleted it, named on the machine access it ends. */
+  actorUserId?: string,
 ): Promise<{ ok: true } | BoardMutationError> => {
-  const result = await prisma.boardColumn.deleteMany({ where: { id: columnId, boardId } })
-  if (result.count === 0) return { error: 'COLUMN_NOT_FOUND' }
+  const count = await prisma.$transaction(async (tx) => {
+    const result = await tx.boardColumn.deleteMany({ where: { id: columnId, boardId } })
+    // A start-work column gone: the machine access that pinned it ends.
+    if (result.count > 0) {
+      await endStandingPoliciesForScopeInTransaction(tx, { actor: { userId: actorUserId ?? null }, columnId })
+    }
+    return result.count
+  })
+  if (count === 0) return { error: 'COLUMN_NOT_FOUND' }
   return { ok: true }
 }
 

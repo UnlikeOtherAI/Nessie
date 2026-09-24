@@ -1,10 +1,20 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
+  bindStandingPolicyExecutor,
+  recordTicketWorkRunCost,
+  type StandingPolicyBinding,
+} from '@nessie/executor-manage'
+import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
+import {
   TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_PURPOSE,
   TICKET_WORK_STEER_METADATA_KEY,
   type AuthorizedActionContext,
+  type RunExecuteJobPayload,
 } from '@nessie/schemas'
+import { canMemberEditProjectBoards } from '@nessie/team-admin'
+
+import { loadTicketWorkCodingScope, type TicketWorkCodingScope } from '../ticket-work-coding-sessions.js'
 
 const LIVE = new Set<string>(TICKET_WORK_LIVE_STATUSES)
 
@@ -88,6 +98,40 @@ export const ticketWorkToolRefusal = (
       + 'Comment on the ticket to ask the people on it instead.'
     : null
 
+/**
+ * Where a `ticket.work` run may put what it read from its machine
+ * (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md → "Disclosure"):
+ * only that ticket's comments and its work thread — the run's own replies. The
+ * run is stamped with its thread's channel as the launch conversation, which
+ * already admits host output to that project's board; this is narrower. Once
+ * a machine has answered, every tool that writes somewhere else refuses:
+ * another channel, another ticket, a document, a mail, a peer. Moving or
+ * transitioning a ticket carries no text, so it stays. `ticket_comment_add`
+ * then admits only this ticket (`assertProjectWriteDestination`).
+ */
+export const TICKET_WORK_HOST_OUTPUT_REFUSAL = 'This run has read the machine\'s output, which may be posted only to '
+  + 'this ticket\'s comments and its work thread: say it there instead.'
+
+const TICKET_WORK_HOST_OUTPUT_WRITES: ReadonlySet<string> = new Set(['ticket_comment_add', 'ticket_move', 'ticket_transition'])
+
+const WRITING_TOOL_IDS: ReadonlySet<string> = new Set(
+  BUILTIN_TOOL_DEFINITIONS.filter((tool) => !tool.safe).map((tool) => tool.id),
+)
+
+/** Why a tool refuses on a `ticket.work` run that has read host output, or null. */
+export const ticketWorkHostOutputRefusal = (
+  toolName: string,
+  context: {
+    actorContext: Pick<AuthorizedActionContext, 'actionContext'> | undefined
+    consumedSources?: { hostOutputScopes: () => readonly unknown[] } | undefined
+  },
+): string | null => isTicketWorkRun(context.actorContext)
+  && (context.consumedSources?.hostOutputScopes().length ?? 0) > 0
+  && WRITING_TOOL_IDS.has(toolName)
+  && !TICKET_WORK_HOST_OUTPUT_WRITES.has(toolName)
+  ? TICKET_WORK_HOST_OUTPUT_REFUSAL
+  : null
+
 export type TicketWorkRunFacts = { workId: string; projectId: string; taskId: string; live: boolean }
 
 /**
@@ -112,6 +156,51 @@ export const loadTicketWorkRunFacts = async (
   return work
     ? { workId, projectId: work.projectId, taskId: work.taskId, live: LIVE.has(work.status) }
     : null
+}
+
+/**
+ * The machine a `ticket.work` run may use: its record's pinned machine, bound
+ * afresh under the trigger's standing policy with every check run again
+ * (`bindStandingPolicyExecutor`, docs/standards/ticket-work-machine-access.md).
+ * The author's right to edit the board is team-admin's rule, handed in. A
+ * failure to bind is an outcome the run is told of, never a failed run: an
+ * unexpected error leaves the run with no machine, as a refusal does.
+ */
+export type TicketWorkMachine = { binding: StandingPolicyBinding; coding: TicketWorkCodingScope | null }
+
+export const bindTicketWorkMachine = async (
+  prisma: PrismaClient,
+  input: { job: RunExecuteJobPayload; runId: string; workId: string },
+): Promise<TicketWorkMachine | undefined> => {
+  try {
+    const binding = await bindStandingPolicyExecutor(prisma, { job: input.job, runId: input.runId }, {
+      workId: input.workId,
+    }, { canEditBoard: (check) => canMemberEditProjectBoards(prisma, check) })
+    const bound = binding.kind === 'bound' || binding.kind === 'already_bound'
+    return {
+      binding,
+      coding: bound ? await loadTicketWorkCodingScope(prisma, { runId: input.runId, workId: input.workId }) : null,
+    }
+  } catch (error) {
+    console.warn('[worker] the standing machine access bind failed for run', input.runId, error)
+    return undefined
+  }
+}
+
+/**
+ * A `ticket.work` run's own Nessie cost, once its ledger rows are written: it
+ * counts against its ticket's `ticketUsd` and its policy's `dailyUsd` beside
+ * the coding cost. Never fails the run it describes.
+ */
+export const recordTicketWorkRunSpend = async (
+  prisma: PrismaClient,
+  input: { actorContext: Pick<AuthorizedActionContext, 'actionContext'>; runId: string },
+): Promise<void> => {
+  const workId = input.actorContext.actionContext.ticketWorkId
+  if (!isTicketWorkRun(input.actorContext) || !workId) return
+  await recordTicketWorkRunCost(prisma, { runId: input.runId, workId }).catch((error: unknown) => {
+    console.warn('[worker] could not add the run\'s cost to its ticket\'s work', input.runId, error)
+  })
 }
 
 /** The lent tools that change a ticket — its fields, its column, its status. */

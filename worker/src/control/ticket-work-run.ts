@@ -1,11 +1,11 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { writeTicketWorkThreadRow } from '@nessie/executor-manage'
 import {
   AuthorizedActionContextSchema,
   TICKET_WORK_PURPOSE,
   TicketWorkKickoffMetadataSchema,
   withActionContext,
   type TicketWorkKickoffEvent,
-  type TicketWorkThreadEvent,
 } from '@nessie/schemas'
 
 import { buildAgentActorContext, startAgentRun } from './agent-run-start.js'
@@ -52,20 +52,8 @@ export type TicketWorkRunOutcome =
   | { kind: 'folded'; messageId: string }
   | { kind: 'over_limit'; wakesUsed: number; limit: number }
 
-/** A thread row: compact, and never ticket text (see `TicketWorkThreadEventSchema`). */
-export const writeTicketWorkThreadRow = async (
-  tx: Pick<Prisma.TransactionClient, 'message'>,
-  input: { threadId: string; event: TicketWorkThreadEvent },
-): Promise<void> => {
-  await tx.message.create({
-    data: {
-      threadId: input.threadId,
-      role: 'system',
-      content: `${input.event.kind === 'woken' ? 'Woken' : 'Stopped'}: ${input.event.summary}`,
-      metadata: { ticketWorkEvent: input.event } as Prisma.InputJsonValue,
-    },
-  })
-}
+/** A thread row: compact, and never ticket text. The writer is executor-manage's, which a limit's stop shares. */
+export { writeTicketWorkThreadRow }
 
 type PendingKickoff = { messageId: string; metadata: Prisma.JsonValue }
 
@@ -98,8 +86,13 @@ const kickoffEvents = (metadata: Prisma.JsonValue): TicketWorkKickoffEvent[] => 
   return parsed.success ? parsed.data.events : []
 }
 
-const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent =>
-  ({ reason: event.reason, at: event.at, text: event.text })
+const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent => ({
+  reason: event.reason,
+  at: event.at,
+  text: event.text,
+  ...(event.source ? { source: event.source } : {}),
+  ...(event.by ? { by: event.by } : {}),
+})
 
 /**
  * A kickoff as its run starts: rendered again from the record and its trigger
@@ -109,7 +102,7 @@ const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent =>
  * work in this thread, which then runs on its own content.
  */
 export const rerenderTicketWorkKickoff = async (
-  prisma: Pick<PrismaClient, 'agentTicketWork' | 'board' | 'taskBoardPlacement' | 'message'>,
+  prisma: PrismaClient | Prisma.TransactionClient,
   input: { messageId: string; metadata: Prisma.JsonValue | null; agentId: string; threadId: string },
 ): Promise<string | null> => {
   const record = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)

@@ -16,6 +16,7 @@ import {
 import { canModifyChannel } from './resource-authority.js'
 import { ChannelDecisionPolicyError, validateChannelDecisionPolicy } from './channel-decision-policy.js'
 import { captureChannelPolicyAuthorizer, resolveChannelPolicyAuthorizer } from './channel-policy-authority.js'
+import { endStandingPoliciesForChannelInTransaction } from './standing-policy-fences.js'
 
 /**
  * The channel writes `canModifyChannel` gates (`resource-authority.ts`: any
@@ -111,6 +112,14 @@ export const updateChannel = async (
         data,
         include: channelTeamInclude,
       })
+      // A trigger's work thread is public to the whole project: made
+      // protected, it no longer holds the audience its machine access agreed to.
+      if (data.visibility !== undefined && data.visibility !== 'public') {
+        await endStandingPoliciesForChannelInTransaction(tx, {
+          actor: { requestId: input.actorContext?.actionContext.requestId, userId: input.userId },
+          channelId: input.channelId,
+        })
+      }
       const context = input.actorContext
       await writeAuditEntryInTransaction(tx, {
         organizationId: input.organizationId,
@@ -185,10 +194,18 @@ export const setChannelArchived = async (
   }
 
   try {
-    const channel = await prisma.channel.update({
-      where: { id: input.channelId },
-      data: { archivedAt: input.archived ? new Date() : null },
-      include: channelTeamInclude,
+    const channel = await prisma.$transaction(async (tx) => {
+      const updated = await tx.channel.update({
+        where: { id: input.channelId },
+        data: { archivedAt: input.archived ? new Date() : null },
+        include: channelTeamInclude,
+      })
+      if (input.archived) {
+        await endStandingPoliciesForChannelInTransaction(tx, {
+          actor: { userId: input.userId }, channelId: input.channelId,
+        })
+      }
+      return updated
     })
     return mapChannelRecord(prisma, channel, input.userId, {
       isOrganizationAdmin: input.isOrganizationAdmin,
@@ -225,9 +242,14 @@ export const deleteChannel = async (
     return null
   }
   const now = new Date()
-  await prisma.channel.update({
-    where: { id: input.channelId },
-    data: { archivedAt: manage.channel.archivedAt ?? now, deletedAt: now },
+  await prisma.$transaction(async (tx) => {
+    await tx.channel.update({
+      where: { id: input.channelId },
+      data: { archivedAt: manage.channel.archivedAt ?? now, deletedAt: now },
+    })
+    await endStandingPoliciesForChannelInTransaction(tx, {
+      actor: { userId: input.userId }, channelId: input.channelId,
+    })
   })
   return { id: input.channelId }
 }

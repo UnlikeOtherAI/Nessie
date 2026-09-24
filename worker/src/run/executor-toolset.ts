@@ -25,6 +25,14 @@ import { HOST_OUTPUT_OPERATION_KEYS, type ExecutorHostOutputDisclosure } from '.
 import { createExecutorMcpCatalogs, type ExecutorMcpCatalogAnswer } from './executor-mcp-catalog.js'
 import { descriptorFor, executorToolName } from './executor-tool-descriptors.js'
 import { shapeExecutorToolArguments } from './executor-tool-arguments.js'
+import {
+  TICKET_WORK_CODING_WAIT_TIMING,
+  TICKET_WORK_CODING_WAIT_TOOL_TIMEOUT_MS,
+  ticketWorkCodingDescriptors,
+  ticketWorkCodingObserver,
+  ticketWorkCodingSessions,
+  type TicketWorkCodingScope,
+} from './ticket-work-coding-sessions.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -100,6 +108,11 @@ export const buildExecutorToolset = async (
     hostOutput: ExecutorHostOutputDisclosure | null
     organizationId: string
     runId: string
+    /**
+     * A `ticket.work` run the standing binder bound: its coding tools are the
+     * ticket's own (`ticket-work-coding-sessions.ts`).
+     */
+    ticketWork?: TicketWorkCodingScope | null
   },
 ): Promise<ExecutorToolset> => {
   const encryptionSecret = input.encryptionSecret
@@ -287,7 +300,8 @@ export const buildExecutorToolset = async (
   const dispatchCommand = createExecutorCommandDispatch({
     agentId: input.agentId, encryptionSecret, prisma, recordHostOutput, recordIdByProviderCall, runId: input.runId,
   })
-  const codingSessions = codingOffer
+  const ticketWork = input.ticketWork ?? null
+  const baseCodingSessions = codingOffer
     ? createExecutorCodingSessions({
       call: (toolName, args, providerToolCallId, options) => dispatchCommand({
         bindingId: codingOffer.bindingId,
@@ -298,9 +312,21 @@ export const buildExecutorToolset = async (
       }, toolName, args, providerToolCallId, options),
       endRecord: endRecord('A status read of the coding session.'),
       facts: codingOffer.facts,
-      ...codingWaitRunChecks(prisma, { agentId: input.agentId, runId: input.runId }),
+      ...(ticketWork
+        ? {
+            descriptors: ticketWorkCodingDescriptors(codingOffer.facts, ticketWork),
+            observe: ticketWorkCodingObserver(prisma, ticketWork),
+            timing: TICKET_WORK_CODING_WAIT_TIMING,
+          }
+        : {}),
+      ...codingWaitRunChecks(prisma, {
+        agentId: input.agentId, runId: input.runId, ...(ticketWork ? { ticketWorkId: ticketWork.workId } : {}),
+      }),
     })
     : null
+  const codingSessions = baseCodingSessions && ticketWork
+    ? ticketWorkCodingSessions(prisma, baseCodingSessions, ticketWork)
+    : baseCodingSessions
   // The bridge is not a program the generic pair reaches. Asked for anyway,
   // the model is pointed at its own tools, or told why it has none.
   const bridgeViaGenericPair = (args: Record<string, unknown>): AgenticToolResult => ({
@@ -357,7 +383,7 @@ export const buildExecutorToolset = async (
     timeoutErrorFor: timeouts.timeoutErrorFor,
     // A wait is ten minutes of reads; its own deadline ends it inside this.
     timeoutMsFor: (toolName) => (codingSessions && toolName === CODING_SESSION_TOOL_NAMES.wait
-      ? CODING_WAIT_TOOL_TIMEOUT_MS
+      ? ticketWork ? TICKET_WORK_CODING_WAIT_TOOL_TIMEOUT_MS : CODING_WAIT_TOOL_TIMEOUT_MS
       : timeouts.timeoutMsFor(toolName)),
   }
 }

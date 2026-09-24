@@ -359,7 +359,9 @@ dbTest('every pinned field\'s change suspends machine access, a lowered limit do
       await world.confirm(fresh)
       assert.equal((await policyOf(prisma, policyId)).endedReason, 'replaced')
       const queued = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: record.id } })
-      assert.deepEqual([queued.status, queued.stateReason, queued.policyId], ['queued', null, fresh.policyId], field)
+      // Queued with its reason and place, and the dispatcher enqueued; the machine is online and free.
+      assert.deepEqual([queued.status, queued.stateReason, queued.policyId, queued.queuePosition],
+        ['queued', 'queued_no_free_machine', fresh.policyId, 1], field)
       await prisma.agentTicketWork.update({
         where: { id: record.id }, data: { endedAt: new Date(), endedReason: 'left_flow', status: 'cancelled' },
       })
