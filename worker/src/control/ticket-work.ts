@@ -5,6 +5,7 @@ import {
   endTicketWork,
   ensureTicketWorkThread,
   lockTicketColumn,
+  lockTicketForWork,
   recordTicketWorkActivity,
   syncTicketWorkClock,
   ticketWorkThreadTitle,
@@ -22,6 +23,7 @@ import type {
   TicketWorkWakeInput,
 } from './ticket-work-seam.js'
 import { TriggerLaunchOriginError } from './trigger-origin.js'
+import { lockThreadRunSlot } from '../run/thread-serialization.js'
 
 /**
  * The ticket work seam as the worker wires it (docs/standards/ticket-work.md):
@@ -246,6 +248,12 @@ const wakeTicketWork = async (
   const live = work !== null && (TICKET_WORK_LIVE_STATUSES as readonly string[]).includes(work.status)
   // Only the end wake reaches a record that has ended.
   if (!work || (!live && !input.machineLess)) return { outcome: 'refused', reason: 'no_longer_applies' }
+  // Every lock before any write, in the one order ticket work takes them:
+  // the ticket (only a move's wake needs it), then the thread's run slot,
+  // then the record — the order a pickup, a reminder's claim and a quiet
+  // wake's claim take them too, so no two of them can wait on each other.
+  if (input.resumes || input.machineLess) await lockTicketForWork(tx, input.task.id)
+  await lockThreadRunSlot(tx, { agentId: work.agentId, threadId: work.threadId })
   const settled = await settleMoveAgainstColumn(tx, { ...input, work, live })
   if (settled) return settled
   await assertTargetChannel(tx, trigger)

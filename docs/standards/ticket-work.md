@@ -615,10 +615,17 @@ routes, and none of it names a machine.
 - **Delivery.** The scheduler tick that fires scheduled triggers
   (`worker-sweeps.ts`) calls `sweepDueAgentReminders`
   (`worker/src/control/agent-reminder-fire.ts`); each reminder is claimed
-  `FOR UPDATE SKIP LOCKED` inside the transaction that delivers it, taking the
-  thread's run slot and the record before the reminder, the order every wake
-  and every teardown takes them. A wake that throws leaves a failed,
-  retryable delivery (`reattemptTicketWorkDelivery`) and the reminder fired.
+  `FOR UPDATE SKIP LOCKED` inside the transaction that delivers it. **Ticket
+  work takes its locks in one order: the ticket (`lockTicketForWork`), the
+  thread's run slot (`lockThreadRunSlot`), the work record, a reminder** — a
+  pickup takes the ticket then the slot; every wake (`wakeTicketWork`) takes
+  the ticket when it settles a move, then the slot, before it writes the
+  record; a reminder's claim and a quiet wake's take the slot, then the record,
+  then the reminder; teardown takes the ticket then the record, and ending a
+  record cancels its reminders after it. A lock taken out of that order can
+  deadlock against a wake (`worker/test/db/ticket-work-locks.test.ts`). A
+  wake that throws leaves a failed, retryable delivery
+  (`reattemptTicketWorkDelivery`) and the reminder fired.
 - **The open question** is structural: `ticket_comment_add`'s `awaitsAnswer`
   stamps `awaitsAnswer: true` on the `comment_added` event and sets the
   agent's live records' `awaitingAnswerAt` (`applyTicketWorkAgentComment`,
