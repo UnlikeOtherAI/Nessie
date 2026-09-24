@@ -244,12 +244,19 @@ container on the `db` network (the shared host has no S3); `nessie-minio-setup`
 creates the bucket on each deploy. Set `NESSIE_STORAGE_ACCESS_KEY_ID` /
 `NESSIE_STORAGE_SECRET_ACCESS_KEY` (and optionally `NESSIE_STORAGE_BUCKET`) in the
 host `.env` — they are the MinIO root credentials and the app's S3 credentials.
-The Compose and CI server image is pinned to
+The Compose server image is pinned to
 `quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z`, with its bucket-setup client
 pinned to `quay.io/minio/mc:RELEASE.2025-07-21T05-28-08Z`; do not switch either
 back to the withdrawn Docker Hub `minio/*:latest` tags. Local dev keeps
 `filesystem` (zero setup); to exercise the S3 path locally, run a MinIO container
 and set the `NESSIE_STORAGE_*` vars.
+
+CI's multi-instance smoke uses those same MinIO and client versions as official
+GitHub release binaries, with SHA-256 hashes pinned in `.github/workflows/ci.yml`.
+Quay began refusing anonymous pulls of the pinned images; the smoke fixture
+extracts the server's Debian package in runner-temporary storage, verifies health
+and creates its shared bucket before either API starts. Production Compose is
+independent of this disposable test fixture.
 
 Uploads that can be previewed also get a small WebP **thumbnail** stored beside
 the original (`<key>.thumb.webp`) so chat feeds never transfer a full-resolution

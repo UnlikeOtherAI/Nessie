@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify'
+import { AgentTriggerMachineAccessEffectSchema } from '@nessie/schemas'
 
 import {
   AgentTriggerActivityRecordSchema,
@@ -22,6 +23,7 @@ import {
 } from '../services/triggers.js'
 import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
+import { createTriggerReader } from './trigger-readable.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import {
@@ -61,6 +63,9 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     isTriggerTargetWritableByActor,
     parseHeaderValue,
   } = deps
+
+  /** An owner, or a ticket trigger's author who can still edit its board (`trigger-readable.ts`). */
+  const readableTrigger = createTriggerReader({ isTriggerAccessibleToActor, prisma })
 
   app.get('/api/agents/:agentId/triggers', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
@@ -263,7 +268,30 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       metadata: { fields: Object.keys(body) },
     })
 
-    return createApiResponse(AgentTriggerRecordSchema.parse(updated))
+    // What the save did to a ticket trigger's standing machine access, beside
+    // the trigger, so the editor can say it paused access rather than let it
+    // happen silently. Absent when it did nothing.
+    return createApiResponse({
+      ...AgentTriggerRecordSchema.parse(updated),
+      ...(updated.machineAccess
+        ? { machineAccess: AgentTriggerMachineAccessEffectSchema.parse(updated.machineAccess) }
+        : {}),
+    })
+  })
+
+  app.get('/api/triggers/:triggerId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) {
+      return reply
+    }
+
+    const { triggerId } = request.params as { triggerId: string }
+    const readable = await readableTrigger(actorContext, triggerId)
+    if (!readable) {
+      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
+      return reply
+    }
+    return createApiResponse(AgentTriggerRecordSchema.parse(readable.record))
   })
 
   app.delete('/api/triggers/:triggerId', async (request, reply) => {
@@ -446,31 +474,21 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     )
   })
 
+  // The same readers as the trigger's own page: an owner, or a ticket
+  // trigger's author.
   app.get('/api/triggers/:triggerId/history', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) {
       return reply
     }
 
-    if (!requireOwner(actorContext, reply)) {
-      return reply
-    }
-
     const { triggerId } = request.params as { triggerId: string }
-    const scope = {
-      organizationId: actorContext.tenant.organizationId,
-      triggerId,
-    }
-    const trigger = await getAgentTrigger(prisma, scope)
-    if (!trigger) {
+    const readable = await readableTrigger(actorContext, triggerId)
+    if (!readable) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply
     }
-
-    if (!(await isTriggerAccessibleToActor(actorContext, trigger))) {
-      sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
-      return reply
-    }
+    const { scope } = readable
 
     const rawLimit = (request.query as { limit?: string }).limit
     const parsedLimit = rawLimit === undefined ? 20 : Number.parseInt(rawLimit, 10)

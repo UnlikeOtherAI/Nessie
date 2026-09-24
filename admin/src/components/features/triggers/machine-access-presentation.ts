@@ -47,6 +47,7 @@ export const MACHINE_ACCESS_STATE_TONE: Record<TriggerMachineAccessView['state']
 const SUSPENDED_BECAUSE: Record<ExecutorStandingPolicySuspendedReason, (owner: string) => string> = {
   trigger_changed: (owner) => `the trigger was edited since ${owner} confirmed it`,
   descriptor_changed: () => 'a machine’s reviewed coding setup changed',
+  agent_changed: (owner) => `the agent’s instructions, model, tools or connectors were edited since ${owner} confirmed it`,
 }
 
 const ENDED_BECAUSE: Record<ExecutorStandingPolicyEndedReason, string> = {
@@ -112,7 +113,11 @@ export const machineAccessTicketLine = (ticket: TriggerMachineAccessTicket): str
       return ticket.machineLabel ? `working on ${ticket.machineLabel}` : 'working'
     case 'queued':
       return `queued${ticket.position ? `: position ${ticket.position}` : ''}`
-        + (ticket.stateReason === 'queued_machines_offline' ? ', the machines are offline' : ', every machine is busy')
+        + (ticket.stateReason === 'queued_machines_offline'
+          ? ', the machines are offline'
+          : ticket.stateReason === 'queued_daily_limit'
+            ? ', today’s spending limit is used up'
+            : ', every machine is busy')
     case 'waiting_machine':
       return ticket.stateReason === 'machine_offline'
         ? `paused: ${ticket.machineLabel ?? 'its machine'} is offline${ticket.offlineSince ? ` since ${day(ticket.offlineSince)}` : ''}`
@@ -143,7 +148,7 @@ export const machineOptionRefusal = (
   if (option.refusal) return option.refusal.sentence
   const facts = option.facts
   if (!facts) return `${option.label} has no reviewed coding-sessions bridge.`
-  if (facts.permissionMode === 'bypassPermissions' && !choices.allowAnyCommand) {
+  if ((facts.permissionMode === 'bypassPermissions' || facts.unaskedCommands === 'any') && !choices.allowAnyCommand) {
     return `Claude Code on ${option.label} runs any command without asking, which needs “${STANDING_POLICY_ANY_COMMAND_OPTION}” ticked.`
   }
   if (facts.turnBudgetUsd !== null && facts.turnBudgetUsd > choices.ticketUsd) {

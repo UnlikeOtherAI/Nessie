@@ -1804,6 +1804,7 @@ POST   /api/agents/{id}/runs              — manually trigger any agent (create
 GET    /api/agents/{id}/triggers          — list trigger records for the agent
 GET    /api/agents/{id}/triggers/activity — what each of those triggers is doing now
 POST   /api/agents/{id}/triggers          — create trigger record
+GET    /api/triggers/{triggerId}          — one trigger, for an owner or a ticket trigger's author
 PUT    /api/triggers/{triggerId}          — update trigger `type` + `config`
 DELETE /api/triggers/{triggerId}          — remove trigger
 POST   /api/triggers/{triggerId}/pause    — disable without deleting

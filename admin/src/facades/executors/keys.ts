@@ -14,6 +14,12 @@ export const executorKeys = {
   agents: (executorId: string) => ['executors', executorId, 'agents'] as const,
   /** The coding sessions open on one machine, for its administrators. */
   codingSessions: (executorId: string) => ['executors', executorId, 'coding-sessions'] as const,
+  sessionView: (executorId: string, sessionId: string) => ['executors', executorId, 'session-view', sessionId] as const,
+  /** The host sessions the viewer may open, on one machine or on every one. */
+  hostSessions: (executorId?: string) => ['executors', 'host-sessions', executorId ?? 'all'] as const,
+  /** Who a session's owner shared its view with. */
+  sessionShares: (executorId: string, sessionId: string) =>
+    ['executors', executorId, 'session', sessionId, 'shares'] as const,
   /** The viewer's own conversation leases in one thread (the composer indicator). */
   conversationLeases: (threadId?: string) =>
     ['executors', 'conversation-leases', threadId ?? 'none'] as const,

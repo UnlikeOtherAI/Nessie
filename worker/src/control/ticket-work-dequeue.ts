@@ -3,6 +3,7 @@ import {
   closeTicketWorkSessionsInTransaction,
   compareTicketWorkQueueEntries,
   endTicketWork,
+  homeMachineOf,
   lockStandingPolicyRow,
   placeTicketWorkOnExecutorInTransaction,
   recordTicketWorkActivity,
@@ -94,6 +95,8 @@ type Candidate = {
   agentId: string
   enqueuedAt: Date | null
   executorId: string | null
+  /** The machine it last worked on (`homeMachineOf`), in its policy's pool, or null. */
+  home: string | null
   id: string
   policyId: string
   priority: string
@@ -104,7 +107,7 @@ type Candidate = {
   triggerId: string | null
 }
 
-export type DequeueOutcome = 'assigned' | 'held' | 'offline' | 'quota' | 'cancelled' | 'stale'
+export type DequeueOutcome = 'assigned' | 'held' | 'offline' | 'gone' | 'quota' | 'daily_limit' | 'cancelled' | 'stale'
 
 /** Live policies with queued work, whose trigger is on and whose confirmed digests still hold. */
 const standingPolicies = async (prisma: PrismaClient): Promise<Policy[]> => {
@@ -144,7 +147,7 @@ type Context = {
 
 /** Whether the machine a record last worked on could take it back now. */
 const ownMachineCouldTakeIt = (record: Candidate, policy: Policy, context: Context): boolean => {
-  const own = record.executorId
+  const own = record.home
   if (!own || !policy.executors.some((row) => row.executorId === own) || policy.unplaceable.has(own)) return false
   const holder = context.holders.get(own)
   return ticketWorkMachineOnline(context.machines.get(own) ?? null, context.now) && (!holder || holder === record.id)
@@ -156,10 +159,10 @@ const candidatesFor = (executorId: string, queued: readonly Candidate[], context
     const policy = context.policies.get(record.policyId)
     const pooled = policy?.executors.some((row) => row.executorId === executorId) ?? false
     if (!policy || !pooled || policy.unplaceable.has(executorId)) return false
-    return !record.executorId || record.executorId === executorId || !ownMachineCouldTakeIt(record, policy, context)
+    return !record.home || record.home === executorId || !ownMachineCouldTakeIt(record, policy, context)
   })
   .sort((left, right) => (
-    Number(right.executorId === executorId) - Number(left.executorId === executorId)
+    Number(right.home === executorId) - Number(left.home === executorId)
     || compareTicketWorkQueueEntries(left, right)
   ))
 
@@ -254,7 +257,7 @@ export const dequeueOnto = async (
   const columnId = await lockTicketColumn(tx, record.taskId)
   await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
   const fresh = await tx.agentTicketWork.findUnique({
-    where: { id: record.id }, select: { executorId: true, policyId: true, status: true },
+    where: { id: record.id }, select: { executorId: true, policyId: true, sessionOrigins: true, status: true },
   })
   if (fresh?.status !== 'queued' || fresh.policyId !== policy.id) return 'stale'
   const config = TicketChangedStoredConfigSchema.safeParse(policy.trigger?.config)
@@ -270,8 +273,8 @@ export const dequeueOnto = async (
     await cancelQueued(tx, record, 'mover_lost_access')
     return 'cancelled'
   }
-  const movedOff = (fresh.executorId !== null && fresh.executorId !== input.executorId)
-    || await queuedOffAnOfflineMachine(tx, record)
+  const home = homeMachineOf(fresh, new Set(policy.executors.map((row) => row.executorId)))
+  const movedOff = (home !== null && home !== input.executorId) || await queuedOffAnOfflineMachine(tx, record)
   const state = await placeTicketWorkOnExecutorInTransaction(tx, {
     executorId: input.executorId, now: input.now, workId: record.id,
   })
@@ -290,11 +293,17 @@ export const dequeueTicketWork = async (prisma: PrismaClient, deps: { now: Date 
   const queued = (await prisma.agentTicketWork.findMany({
     where: { policyId: { in: [...byId.keys()] }, status: 'queued' },
     select: {
-      agentId: true, enqueuedAt: true, executorId: true, id: true, policyId: true, projectId: true,
+      agentId: true, enqueuedAt: true, executorId: true, id: true, policyId: true, projectId: true, sessionOrigins: true,
       startedByUserId: true, taskId: true, threadId: true, triggerId: true, task: { select: { priority: true } },
     },
-  })).map(({ task, ...record }) => ({ ...record, policyId: record.policyId as string, priority: task.priority }))
-  const lastMachines = queued.flatMap((record) => (record.executorId ? [record.executorId] : []))
+  })).map(({ sessionOrigins, task, ...record }): Candidate => ({
+    ...record,
+    home: homeMachineOf({ executorId: record.executorId, sessionOrigins }, new Set(
+      byId.get(record.policyId as string)?.executors.map((row) => row.executorId) ?? [])),
+    policyId: record.policyId as string,
+    priority: task.priority,
+  }))
+  const lastMachines = queued.flatMap((record) => (record.home ? [record.home] : []))
   const known = [...new Set([...machineIds, ...lastMachines])]
   const machines = new Map((await prisma.executor.findMany({
     where: { id: { in: known } },
@@ -306,10 +315,13 @@ export const dequeueTicketWork = async (prisma: PrismaClient, deps: { now: Date 
   })).map((record) => [record.executorId as string, record.id]))
   const context = { holders, machines, now: deps.now, policies: byId }
   const taken = new Set<string>()
+  // Policies whose day is spent: none of their work goes anywhere until it turns.
+  const spent = new Set<string>()
   let started = 0
   for (const executorId of machineIds) {
     const candidates = candidatesFor(executorId, queued.filter((record) => !taken.has(record.id)), context)
     for (const record of candidates) {
+      if (spent.has(record.policyId)) continue
       const policy = byId.get(record.policyId)!
       const outcome = await dequeueOnto(prisma, { executorId, now: deps.now, policy, record })
       // Placed or gone, a record is done with; one this machine could not take waits for another.
@@ -318,7 +330,8 @@ export const dequeueTicketWork = async (prisma: PrismaClient, deps: { now: Date 
         started += 1
         holders.set(executorId, record.id)
       }
-      if (outcome === 'assigned' || outcome === 'held' || outcome === 'offline') break
+      if (outcome === 'daily_limit') spent.add(record.policyId)
+      if (outcome === 'assigned' || outcome === 'held' || outcome === 'offline' || outcome === 'gone') break
     }
   }
   // A renumbering skips a row another transaction holds: every queue read here is told its places again.

@@ -207,6 +207,8 @@ const buildAccessPrisma = (
       events.push(events.length === 0 ? 'team-lock' : 'agent-lock')
       return 0
     },
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findFirst: async () => ({
         agentKind: 'personal_assistant',

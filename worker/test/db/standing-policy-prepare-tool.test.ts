@@ -69,6 +69,7 @@ const seed = async (prisma: PrismaClient) => {
       agents: ['claude'], allowedToolCount: 2, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
       maxBudgetUsd: { claude: 5 }, maxLiveSessionsPerOwner: 3,
       mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
+      unaskedCommands: 'listed',
       permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
     },
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 2 },
@@ -229,7 +230,8 @@ runDatabaseTest('the author\'s own Designer turn posts ONE card there that holds
   assert.deepEqual(card.respondentUserIds, [s.authorId])
   const spec = AgentCardSpecSchema.parse(card.spec)
   assert.equal(spec.title, 'Let CTO use Minis')
-  assert.match(JSON.stringify(spec), /Anyone who can edit this board \(2 people\) can make Claude run commands/)
+  assert.match(JSON.stringify(spec),
+    /Anyone who can edit this board — 2 people today, and anyone added to the project later — can make Claude run commands/)
   assert.doesNotMatch(JSON.stringify(spec), TOKEN_SHAPE)
 })
 

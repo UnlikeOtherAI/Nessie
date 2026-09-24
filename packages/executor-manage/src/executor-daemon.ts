@@ -9,6 +9,7 @@ import {
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { takeExecutorCodingSessionClosesInTransaction } from './executor-coding-session-closes.js'
 import { enforceTicketWorkLimitsInTransaction } from './executor-standing-policy-limits.js'
+import { recordTicketWorkHeartbeatCostsInTransaction } from './ticket-work-heartbeat-costs.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
   EXECUTOR_HEARTBEAT_FRESHNESS_MS,
@@ -54,6 +55,7 @@ const machineKey = (encoded: string) => {
  * (`attachment`) is not a receipt, and a receipt is not a poll.
  */
 export type ExecutorDaemonControlType =
+  | 'session_view'
   | 'attachment'
   | 'browser_cookie_import.poll'
   | 'browser_cookie_import.upload'
@@ -298,11 +300,21 @@ export const reportExecutorHeartbeat = async (
       },
       select: { activeConnectionEpoch: true, status: true },
     })
-    // The heartbeat intake: a ticket working on this machine past one of its
-    // limits stops here, and its sessions' closes ride this very answer; then
-    // its sessions' turns, interruptions and closes wake their tickets, and a
-    // machine back online resumes the work waiting for it.
-    await enforceTicketWorkLimitsInTransaction(tx, { now, where: { executorId: executor.id, status: 'active' } })
+    // The heartbeat intake: what the ticket's sessions here cost since they
+    // were last counted, then a ticket working on this machine — or charged
+    // by it — past one of its limits stops here, and its sessions' closes
+    // ride this very answer; then its sessions' turns, interruptions and
+    // closes wake their tickets, and a machine back online resumes the work
+    // waiting for it (T5).
+    const charged = await recordTicketWorkHeartbeatCostsInTransaction(tx, {
+      executorId: executor.id, localMcp: input.localMcp, now,
+    })
+    await enforceTicketWorkLimitsInTransaction(tx, {
+      now,
+      where: {
+        OR: [{ executorId: executor.id, status: 'active' }, ...(charged.length > 0 ? [{ id: { in: charged } }] : [])],
+      },
+    })
     if (updated.status === 'online') {
       await intakeTicketWorkHeartbeatInTransaction(tx, {
         cameOnline: executorWasOffline(executor, now),

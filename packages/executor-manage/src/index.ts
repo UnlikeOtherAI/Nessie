@@ -1,3 +1,6 @@
+export * from './executor-session-views.js'
+export * from './executor-session-shares.js'
+
 export {
   canManagePrivateAssignments,
   resolveExecutorAvailability,
@@ -215,4 +218,7 @@ export * from './ticket-work-session-observations.js'
 export * from './ticket-work-session-intake.js'
 export * from './ticket-work-machine-return.js'
 export * from './ticket-work-session-release.js'
+export * from './ticket-work-session-origins.js'
+export * from './ticket-work-heartbeat-costs.js'
 export * from './executor-standing-policy-views.js'
+export * from './executor-standing-policy-agent.js'

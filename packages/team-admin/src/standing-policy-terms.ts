@@ -29,6 +29,8 @@ const LIMIT_LABELS: Record<keyof StandingPolicyPinnedTerms['limits'], string> = 
 
 const FIELD_LABELS: Record<Exclude<keyof StandingPolicyPinnedTerms, 'instructions' | 'limits'>, string> = {
   agentId: 'the agent',
+  agent: 'the agent’s instructions, model, tools or connectors',
+  quietWakeMinutes: 'the quiet wake',
   assignOnPickup: 'assigning the ticket on pickup',
   boardId: 'the board',
   endOn: 'the columns that end work',

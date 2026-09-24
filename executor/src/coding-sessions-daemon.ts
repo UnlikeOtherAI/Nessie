@@ -5,6 +5,9 @@ import {
   ExecutorCodingSessionCloseListSchema,
   executorCodingSessionOwnerKeyInput,
   ExecutorCodingSessionSummarySchema,
+  ExecutorSessionScreenSchema,
+  type ExecutorSessionViewRequest,
+  type ExecutorSessionScreen,
   type ExecutorCodingSessionClose,
   type ExecutorCodingSessionsFacts,
   type ExecutorCodingSessionSummary,
@@ -12,6 +15,9 @@ import {
 } from '@nessie/schemas'
 
 import { loadCodingSessionsConfig } from './coding-session/config.js'
+import { codingSessionPaths } from './coding-session/session-files.js'
+import { readSessionMeta } from './coding-session/session-requests.js'
+import { readSessionScreen } from './coding-session/session-view.js'
 import {
   CODING_SESSION_COMMAND_META,
   CODING_SESSION_DAEMON_CONTROL_META,
@@ -90,6 +96,8 @@ const DEFINITIVE_FAILURES = new Set(['EXECUTOR_NOT_FOUND', 'EXECUTOR_DAEMON_PROO
 const PENDING_CLOSE_MAXIMUM = 64
 
 export type CodingSessionsDaemon = {
+  inventory: () => Promise<ExecutorCodingSessionSummary[] | undefined>
+  screen: (request: ExecutorSessionViewRequest) => Promise<ExecutorSessionScreen | null>
   /** The reserved `_meta` for one call: defined only for the built-in bridge. */
   callMeta: (
     server: string, input: { commandId: string; owner?: ExecutorMcpCallOwner },
@@ -171,7 +179,28 @@ export const createCodingSessionsDaemon = (input: {
     }
   })
 
+  const sessionReport = async (tool: 'session_inventory' | 'session_list_all') => {
+    const answer = await serially(() => daemonCall(tool, {}))
+    if (!answer || !Array.isArray(answer.sessions)) return undefined
+    return answer.sessions.flatMap((entry) => {
+      const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
+      return parsed.success ? [parsed.data] : []
+    }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
+  }
+
   return {
+    inventory: () => sessionReport('session_inventory'),
+    screen: async (request) => {
+      const configPath = bridge ? codingSessionsServerConfigPath(bridge) : undefined
+      if (!configPath) return null
+      const loaded = await loadCodingSessionsConfig(configPath)
+      if (loaded.digest !== input.facts?.configDigest) return null
+      const paths = codingSessionPaths(loaded.stateDir, request.sessionId)
+      const meta = await readSessionMeta(paths)
+      if (!meta || meta.ownerKey !== request.ownerKey) return null
+      const parsed = ExecutorSessionScreenSchema.safeParse(await readSessionScreen(paths, meta))
+      return parsed.success ? parsed.data : null
+    },
     callMeta: (server, call) => {
       if (!bridge || server !== bridge.name) return undefined
       const ownerKey = call.owner ? codingSessionOwnerKey(input.executorId, call.owner) : undefined
@@ -230,13 +259,6 @@ export const createCodingSessionsDaemon = (input: {
       const optedIn = loaded?.digest !== input.facts?.configDigest || loaded?.config.closeOnDaemonShutdown === true
       if (optedIn) await serially(async () => { await daemonCall('session_close_all', { reason: 'daemon_shutdown' }) })
     },
-    report: async () => {
-      const answer = await serially(() => daemonCall('session_list_all', {}))
-      if (!answer || !Array.isArray(answer.sessions)) return undefined
-      return answer.sessions.flatMap((entry) => {
-        const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
-        return parsed.success ? [parsed.data] : []
-      }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
-    },
+    report: () => sessionReport('session_list_all'),
   }
 }

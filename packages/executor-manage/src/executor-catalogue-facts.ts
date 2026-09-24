@@ -53,6 +53,14 @@ export type GlobalAgentExecutorFacts = {
    * a coding session acts as whoever paired the machine.
    */
   pairedByYou: boolean
+  /**
+   * Why its reviewed bridge cannot take unattended ticket work yet, as
+   * standing access judges it (`assessStandingPolicyMachine`): an executor
+   * too old to sign its per-turn budget, session limit and unasked commands,
+   * Codex alone (no per-turn limit), or Claude Code with no `maxBudgetUsd`.
+   * Absent when it can, or when there is no reviewed bridge to judge.
+   */
+  ticketWorkBlocker?: 'older_executor' | 'no_claude' | 'no_turn_budget'
   profiles: ExecutorProfile[]
   projectId?: string
   revision?: number
@@ -125,7 +133,17 @@ const detailFor = (
         .sort((left, right) => right.revision - left.revision)[0]
       : undefined
     const active = latest?.reviewStatus === 'active' ? latest : undefined
+    const coding = active?.codingSessions
+    const ticketWorkBlocker = !coding
+      ? undefined
+      : coding.maxBudgetUsd === undefined || coding.maxLiveSessionsPerOwner === undefined
+        || coding.unaskedCommands === undefined
+        ? 'older_executor' as const
+        : !coding.agents.includes('claude')
+          ? 'no_claude' as const
+          : coding.maxBudgetUsd.claude == null ? 'no_turn_budget' as const : undefined
     return {
+      ...(ticketWorkBlocker ? { ticketWorkBlocker } : {}),
       canManage,
       codingSessionsReviewed: active !== undefined && offersReviewedCodingSessions(active),
       executorId: executor.id,

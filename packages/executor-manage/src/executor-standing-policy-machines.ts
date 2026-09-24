@@ -22,8 +22,11 @@ import { executorHeartbeatCutoff } from './executor-liveness.js'
  * reviewed revision offers the local-apps pair and the coding bridge. Then the
  * unattended host profile: Claude Code with a signed per-turn budget no larger
  * than what a ticket may spend (Codex has none, so it never works a ticket),
- * not in `bypassPermissions` unless the author ticked the option, and every
- * coding root the author allowed. Prepare also wants it online; a confirm a
+ * able to run any command without asking — `bypassPermissions`, or a Bash
+ * rule that allows every command, as the machine signs it (`unaskedCommands`)
+ * — only when the author ticked the option, and every coding root the author
+ * allowed. A machine too old to sign `unaskedCommands` is refused, as one too
+ * old to sign its budget is. Prepare also wants it online; a confirm a
  * few minutes later does not, since being offline for a moment changes
  * nothing the author agreed to.
  */
@@ -157,9 +160,10 @@ export const assessStandingPolicyMachine = async (
     || executor.lastSeenAt < executorHeartbeatCutoff(now))) {
     return refuse('offline', `${name} is ${executor.status === 'paused' ? 'paused' : 'offline'}. Bring it online first.`)
   }
-  if (facts.maxBudgetUsd === undefined || facts.maxLiveSessionsPerOwner === undefined) {
-    return refuse('older_executor', `${name}'s executor is too old to state its per-turn budget and session limit. `
-      + 'Update it and approve the new revision.')
+  if (facts.maxBudgetUsd === undefined || facts.maxLiveSessionsPerOwner === undefined
+    || facts.unaskedCommands === undefined) {
+    return refuse('older_executor', `${name}'s executor is too old to state its per-turn budget, its session limit `
+      + 'and which commands Claude Code runs without asking. Update it and approve the new revision.')
   }
   const budget = facts.agents.includes('claude') ? facts.maxBudgetUsd.claude : undefined
   if (budget === undefined) {
@@ -175,9 +179,10 @@ export const assessStandingPolicyMachine = async (
       + `the ${dollars(input.ticketUsd)} a ticket may spend. Lower its maxBudgetUsd or raise ticketUsd.`)
   }
   const permissionMode = facts.permissionMode.claude ?? 'default'
-  if (permissionMode === 'bypassPermissions' && !input.allowAnyCommand) {
-    return refuse('bypass_not_allowed', `Claude Code on ${name} runs in bypassPermissions, so it would run any `
-      + 'command without asking. That needs "Let the coding agent run any command without asking." ticked.')
+  if ((permissionMode === 'bypassPermissions' || facts.unaskedCommands === 'any') && !input.allowAnyCommand) {
+    return refuse('bypass_not_allowed', `Claude Code on ${name} may run any command without asking (${
+      permissionMode === 'bypassPermissions' ? 'it runs in bypassPermissions' : 'its configuration allows every Bash '
+        + 'command'}). That needs "Let the coding agent run any command without asking." ticked.`)
   }
   const missing = (input.allowedRootNames ?? []).filter((root) => !facts.rootNames.includes(root))
   if (missing.length > 0) {
@@ -196,6 +201,7 @@ export const assessStandingPolicyMachine = async (
       maxLiveSessionsPerOwner: facts.maxLiveSessionsPerOwner,
       mergeCommands: facts.mergeCommands ?? [],
       permissionMode,
+      unaskedCommands: permissionMode === 'bypassPermissions' ? 'any' : facts.unaskedCommands,
     },
     label: name,
     localPolicyDigest: live.localPolicyDigest,

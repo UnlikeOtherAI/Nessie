@@ -30,6 +30,12 @@ export const AgentsPage = lazy(() => import('./pages/AgentsPage').then((m) => ({
 export const ExecutorsPage = lazy(() =>
   import('./pages/ExecutorsPage').then((m) => ({ default: m.ExecutorsPage })),
 )
+export const ExecutorSessionPage = lazy(() =>
+  import('./pages/ExecutorSessionPage').then((m) => ({ default: m.ExecutorSessionPage })),
+)
+export const ExecutorSessionsPage = lazy(() =>
+  import('./pages/ExecutorSessionsPage').then((m) => ({ default: m.ExecutorSessionsPage })),
+)
 export const ExecutorDetailPage = lazy(() =>
   import('./pages/ExecutorDetailPage').then((m) => ({ default: m.ExecutorDetailPage })),
 )

@@ -183,6 +183,21 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     type: 'detail',
   },
   {
+    depth: 3,
+    identityOf: (match) => `executor-session:${match[1]}:${match[2]}`,
+    keyScope: () => 'executor-session',
+    parentOf: () => ({ label: 'Sessions', pathname: '/agents/executor-sessions' }),
+    pattern: /^\/agents\/executors\/([^/]+)\/sessions\/([^/]+)$/,
+    root: adminRoot,
+    section: 'admin',
+    type: 'detail',
+  },
+  {
+    depth: 2, identityOf: () => 'executor-sessions', keyScope: () => 'executor-sessions',
+    parentOf: toExecutors, pattern: /^\/agents\/executor-sessions$/, root: adminRoot,
+    section: 'admin', type: 'detail',
+  },
+  {
     // One tool, pushed from the Tools table.
     depth: 2,
     identityOf: (match) => `tool:${match[1]}`,
@@ -227,7 +242,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     keyScope: () => 'agent',
     intent: { state: ['agentTab'] },
     parentOf: toAgents,
-    pattern: /^\/agents\/(?!task-sets$)([^/]+)$/,
+    pattern: /^\/agents\/(?!(?:task-sets|executor-sessions)$)([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

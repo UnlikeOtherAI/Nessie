@@ -30,6 +30,7 @@ export const CODING_FACTS = {
   maxBudgetUsd: { claude: 5 },
   maxLiveSessionsPerOwner: 3,
   mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
+  unaskedCommands: 'listed',
   permissionMode: { claude: 'acceptEdits' },
   rootNames: ['nessie', 'web'],
   serverName: 'coding-sessions',

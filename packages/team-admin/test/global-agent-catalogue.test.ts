@@ -412,6 +412,14 @@ test('each executor says whether a trigger\'s ticket work can run on it, and the
         codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000dddd', label: 'Laptop',
         pairedByYou: true, scopeKind: 'private', status: 'offline',
       }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000eeee', label: 'Mini',
+        pairedByYou: true, scopeKind: 'private', ticketWorkBlocker: 'no_turn_budget',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000ffff', label: 'Old box',
+        pairedByYou: true, scopeKind: 'private', ticketWorkBlocker: 'older_executor',
+      }),
     ],
   })
   const lineAfter = (label: string): string => {
@@ -423,6 +431,9 @@ test('each executor says whether a trigger\'s ticket work can run on it, and the
   assert.match(lineAfter('Studio'), /^ticket work: not yet — .*offers no coding-sessions bridge/)
   assert.equal(lineAfter('PC'), 'ticket work: yes — you paired it and its coding-sessions bridge is reviewed')
   assert.match(lineAfter('Laptop'), /^ticket work: yes — .*, but it is not online/)
+  // A reviewed bridge is not enough: its turns need a signed budget, from an executor new enough to sign it.
+  assert.match(lineAfter('Mini'), /^ticket work: not yet — Claude Code there has no per-turn spending limit: set maxBudgetUsd/)
+  assert.match(lineAfter('Old box'), /^ticket work: not yet — its executor is too old/)
   assert.match(rendered, /executor_standing_policy_prepare prepares ONE confirmation card/)
   assert.match(rendered, /never prepare those separately/)
   for (const writeSurface of ['designer_form', 'read_only'] as const) {

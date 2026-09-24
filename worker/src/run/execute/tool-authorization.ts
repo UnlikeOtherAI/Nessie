@@ -12,6 +12,7 @@ import {
 import { judgeSendBoundary } from './send-boundary-judge.js'
 import { maybeAuthorizeDisclosureShare } from './disclosure-share-authorization.js'
 import { blocksPrivateConversationWrite } from './private-conversation-write-gate.js'
+import { ticketWorkStandingRefusal } from './ticket-work-standing-gate.js'
 import type { PrismaClient } from '@prisma/client'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 import { authorizeToolCall } from '../tool-policy.js'
@@ -207,6 +208,19 @@ export const authorizeToolExecution = async (
           reason: 'tool_arguments_invalid',
         }),
       }
+    }
+  }
+
+  const standingRefusal = ticketWorkStandingRefusal({
+    args, context, executorToolNames: auth.executorToolNames, toolName,
+  })
+  if (standingRefusal) {
+    await auditDenial(emitAudit, toolActorContext, context, toolName, {
+      source: 'ticket_work_standing_gate',
+    }, 'ticket_work_standing')
+    return {
+      decision: 'deny',
+      result: toolDeniedResult(toolName, args, { message: standingRefusal, reason: 'ticket_work_standing' }),
     }
   }
 

@@ -82,11 +82,12 @@ export const seedStandingPolicyRoutes = async (prisma: PrismaClient, suffix: str
     agents: ['claude'], allowedToolCount: 2, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
     maxBudgetUsd: { claude: 5 }, maxLiveSessionsPerOwner: 3,
     mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
+    unaskedCommands: 'listed',
     permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
   })
   const bare = await machine('Bare', null)
   return {
     agentId: agent.id, authorId: author!.id, bare, colleagueId: colleague!.id, minis, organizationId,
-    teamId: team.id, triggerId: trigger.id,
+    projectId: project.id, teamId: team.id, triggerId: trigger.id,
   }
 }

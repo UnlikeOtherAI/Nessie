@@ -413,6 +413,8 @@ export const STANDING_POLICY_REFUSAL_CAUSES: Record<StandingPolicyBindRefusalRea
   channel_unavailable: 'the work thread is no longer in a public project channel the agent is in',
   not_this_work: 'the run answered something other than this ticket’s own wake',
   limit_reached: 'the ticket’s work reached one of its limits',
+  ticket_not_in_flow: 'the ticket is no longer on the trigger’s board, or it sits in a column that ends its work',
+  bind_failed: 'the machine could not be reached this turn',
 }
 
 /** "Ran without a machine: the machine was offline or no longer offers its coding tools." */

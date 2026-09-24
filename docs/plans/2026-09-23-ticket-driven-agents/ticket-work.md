@@ -340,7 +340,17 @@ not to one policy.
     on its own machine. A pickup or a resume that finds a free machine
     queues instead when queued work that could take it is ahead of it. A
     machine whose newest revision awaits review takes no work and suspends
-    nothing: its review settles the policy.
+    nothing: its review settles the policy. This one rule replaced T4's
+    "waits for its own machine until that machine leaves the pool" (a lead's
+    decision), and the record's own machine is T4's `homeMachineOf` (the one
+    it holds, else its newest session's).
+  - The ticket's work lock is `FOR NO KEY UPDATE`, so a pickup, a resume and
+    every wake of live work read their policy under its row's shared lock
+    without a cycle with an end that writes the ticket's history.
+  - A session the work lets go of — it left the machine, or the agent closed
+    it — leaves `session_ids` but keeps its `session_origins` entry: it is
+    closed on its own machine and charged by the heartbeat until the machine
+    stops reporting it.
   - Positions stay per policy (the chip's "position 2" is the place in its
     own trigger's queue); the dequeue's order is across policies.
   - Every wake while the machine is away starts no run (`machine_offline`),

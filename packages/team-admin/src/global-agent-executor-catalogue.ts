@@ -78,12 +78,25 @@ const standingAccessRule = (writeSurface: GlobalAgentCatalogueWriteSurface): str
 /**
  * Whether a trigger's ticket work can run on it under the person's standing
  * machine access: a private machine they paired, with a reviewed
- * coding-sessions bridge. Said for every machine, so the Designer proposes
- * only those that qualify and can say why the others do not.
+ * coding-sessions bridge that signs Claude Code's per-turn budget
+ * (`maxBudgetUsd`) and is new enough to sign what standing access checks.
+ * Said for every machine, so the Designer proposes only those that qualify
+ * and can say why the others do not.
  */
+const TICKET_WORK_BLOCKERS: Record<NonNullable<GlobalAgentExecutorFacts['ticketWorkBlocker']>, string> = {
+  no_claude: 'it offers only Codex, which has no per-turn spending limit',
+  no_turn_budget: 'Claude Code there has no per-turn spending limit: set maxBudgetUsd in its coding-sessions '
+    + 'configuration and approve the new revision',
+  older_executor: 'its executor is too old to sign its per-turn budget, session limit and which commands run '
+    + 'unasked: update it and approve the new revision',
+}
+
 const ticketWorkLine = (executor: GlobalAgentExecutorFacts): string => {
   if (!executor.pairedByYou) {
     return "    ticket work: no — only a private machine you paired can run a trigger's ticket work as you"
+  }
+  if (executor.codingSessionsReviewed && executor.ticketWorkBlocker) {
+    return `    ticket work: not yet — ${TICKET_WORK_BLOCKERS[executor.ticketWorkBlocker]}`
   }
   return executor.codingSessionsReviewed
     ? `    ticket work: yes — you paired it and its coding-sessions bridge is reviewed${executor.status === 'online'

@@ -25,6 +25,8 @@ import { StandingPolicyRefusal } from './standing-policy-trigger.js'
 export type StandingPolicyCardInput = {
   agentName: string
   boardEditorCount: number
+  /** Tickets waiting for this machine access that start, or queue, the moment it is confirmed. */
+  waitingTickets: number
   boardName: string
   /** What differs from the policy this one replaces, when it replaces one. */
   changes: string[] | null
@@ -125,6 +127,23 @@ const budgetLine = (profile: StandingPolicyHostProfile): string => {
       + machine.label).join(' and ')}`
 }
 
+/** Which machines let Claude Code run any command without asking, in words. */
+const commandsLine = (profile: StandingPolicyHostProfile): string => {
+  const any = profile.machines.filter((machine) => machine.unaskedCommands === 'any'
+    || machine.permissionMode === 'bypassPermissions')
+  if (!profile.allowAnyCommand) return 'Only what each machine\'s reviewed configuration allows without asking'
+  return any.length === 0
+    ? `Only what each machine's reviewed configuration allows without asking; you allowed "${
+      STANDING_POLICY_ANY_COMMAND_OPTION}"`
+    : `Claude Code may run any command without asking on ${listed(any.map((machine) => machine.label))}: `
+      + `you chose "${STANDING_POLICY_ANY_COMMAND_OPTION}"`
+}
+
+const agentLine = (input: StandingPolicyCardInput): string => {
+  const model = [input.terms.agent.provider, input.terms.agent.model].filter(Boolean).join(' ')
+  return model ? `${input.agentName}, on ${model}` : input.agentName
+}
+
 const mergeLine = (profile: StandingPolicyHostProfile): string => {
   const unable = profile.machines.filter((machine) => (
     EXECUTOR_CODING_MERGE_COMMANDS.some((command) => !machine.mergeCommands.includes(command))
@@ -146,8 +165,9 @@ export const buildStandingPolicyCard =(input: StandingPolicyCardInput): AgentCar
     actions: [{ key: EXECUTOR_REVIEW_CARD_ACTION_KEY, label: 'Review', style: 'primary', submits: true }],
     blocks: [
       {
-        markdown: `Anyone who can edit this board (${plural(input.boardEditorCount, 'person', 'people')}) can make `
-          + 'Claude run commands on these machines as you, with your git and coding-agent login.\n\n'
+        markdown: `Anyone who can edit this board — ${plural(input.boardEditorCount, 'person', 'people')} today, and `
+          + 'anyone added to the project later — can make Claude run commands on these machines as you, with your '
+          + 'git and coding-agent login.\n\n'
           + `${STANDING_POLICY_CODING_ONLY_SENTENCE}\n\n`
           + 'Project members, organisation owners and people on the ticket see what the work does on the ticket: '
           + 'the coding agent\'s summaries and its pull requests. Pull requests are merged under your GitHub '
@@ -156,16 +176,12 @@ export const buildStandingPolicyCard =(input: StandingPolicyCardInput): AgentCar
       },
       {
         items: [
+          { label: 'Agent', value: agentLine(input) },
           { label: 'Machines', value: machines },
           { label: 'Board', value: input.boardName },
           { label: 'Starts work in', value: listed(input.pickupColumnNames) },
           { label: 'Coding agent', value: budgetLine(hostProfile) },
-          {
-            label: 'Commands',
-            value: hostProfile.allowAnyCommand
-              ? `Any, without asking: you chose "${STANDING_POLICY_ANY_COMMAND_OPTION}"`
-              : 'Only what each machine\'s reviewed configuration allows without asking',
-          },
+          { label: 'Commands', value: commandsLine(hostProfile) },
           { label: 'Coding roots', value: listed(hostProfile.allowedRootNames) },
           {
             label: 'Each ticket',
@@ -177,8 +193,30 @@ export const buildStandingPolicyCard =(input: StandingPolicyCardInput): AgentCar
             value: `At most ${plural(terms.limits.startsPerDay, 'ticket', 'tickets')} started and `
               + `${dollars(terms.limits.dailyUsd)} spent`,
           },
+          {
+            label: 'Quiet wake',
+            value: terms.quietWakeMinutes === null
+              ? 'Off'
+              : `After ${plural(terms.quietWakeMinutes, 'minute', 'minutes')} with nothing happening`,
+          },
+          ...(terms.includeSourceEvents
+            ? [{ label: 'Mirrored board', value: 'Its own changes wake work in progress too, marked untrusted' }]
+            : []),
+          ...(input.waitingTickets > 0
+            ? [{
+                label: 'On confirm',
+                value: `${plural(input.waitingTickets, 'ticket', 'tickets')} waiting for this access `
+                  + `${input.waitingTickets === 1 ? 'starts' : 'start'}, or ${input.waitingTickets === 1 ? 'queues' : 'queue'} `
+                  + 'for a free machine',
+              }]
+            : []),
         ],
         type: 'fields',
+      },
+      {
+        markdown: `Editing ${input.agentName} — its instructions, model, tools or connectors — pauses this access `
+          + 'until you confirm it again.',
+        type: 'text',
       },
       { markdown: mergeLine(hostProfile), type: 'text' },
       ...(input.changes && input.changes.length > 0

@@ -10,7 +10,10 @@ import { StandingPolicyRefusal } from '../src/standing-policy-trigger.js'
  * The standing policy's one card (docs/standards/agent-cards.md): the
  * instructions word for word, as literal text that still wraps — nothing in
  * them can render as a link, HTML, a comment, a heading or a code block — and
- * refused whole when they do not fit, never cut short.
+ * refused whole when they do not fit, never cut short; and everything else the
+ * author agrees to in plain words: the agent and its model, that editing it
+ * pauses the access, which machines may run any command unasked, the quiet
+ * wake, a mirrored board's own events, and the tickets that start on confirm.
  */
 
 const NBSP = String.fromCharCode(160)
@@ -26,16 +29,18 @@ const profile: StandingPolicyHostProfile = {
 }
 
 const terms = (instructions: Record<string, string>): StandingPolicyPinnedTerms => ({
+  agent: { digest: `sha256:${'f'.repeat(64)}`, model: 'claude-opus-5-5', provider: 'anthropic' },
   agentId: '00000000-0000-4000-8000-000000000002', assignOnPickup: true, boardId: '00000000-0000-4000-8000-000000000003',
   endOn: [{ category: 'done' }], followKinds: ['comment'], includeSourceEvents: false, instructions,
   limits: { dailyUsd: 60, startsPerDay: 20, ticketHours: 4, ticketUsd: 20, wakesPerTicket: 30 },
-  pickupColumnIds: ['00000000-0000-4000-8000-000000000004'], targetChannelId: '00000000-0000-4000-8000-000000000005',
+  pickupColumnIds: ['00000000-0000-4000-8000-000000000004'], quietWakeMinutes: 30,
+  targetChannelId: '00000000-0000-4000-8000-000000000005',
 })
 
 const input = (instructions: Record<string, string>): StandingPolicyCardInput => ({
   agentName: 'CTO', boardEditorCount: 1, boardName: 'Engineering', changes: null,
   expiresAt: new Date(Date.now() + 600_000), hostProfile: profile, pickupColumnNames: ['In progress'],
-  terms: terms(instructions), triggerName: 'Pick up tickets',
+  terms: terms(instructions), triggerName: 'Pick up tickets', waitingTickets: 0,
 })
 
 const instructionMarkdown = (card: AgentCardSpec): string => {
@@ -89,4 +94,30 @@ test('long instructions are cut into pieces that say so, and too long ones are r
   assert.throws(() => buildStandingPolicyCard(input({ general: 'x'.repeat(20_000) })), (error: unknown) => (
     error instanceof StandingPolicyRefusal && /too long to show you word for word/.test(error.message)
   ))
+})
+
+test('the card names the agent and its model, and says what editing it, unasked commands and waiting tickets mean', () => {
+  const base = input({ general: 'Do it.' })
+  const text = JSON.stringify(buildStandingPolicyCard(base))
+  assert.match(text, /"label":"Agent","value":"CTO, on anthropic claude-opus-5-5"/)
+  assert.match(text, /Editing CTO — its instructions, model, tools or connectors — pauses this access until you confirm /)
+  assert.match(text, /"label":"Commands","value":"Only what each machine's reviewed configuration allows without asking"/)
+  assert.match(text, /"label":"Quiet wake","value":"After 30 minutes with nothing happening"/)
+  assert.match(text, /1 person today, and anyone added to the project later/)
+  assert.doesNotMatch(text, /"label":"(Mirrored board|On confirm)"/)
+
+  const wide = JSON.stringify(buildStandingPolicyCard({
+    ...base,
+    hostProfile: {
+      ...profile,
+      allowAnyCommand: true,
+      machines: [{ ...profile.machines[0]!, label: 'Wide', unaskedCommands: 'any' }],
+    },
+    terms: { ...base.terms, includeSourceEvents: true, quietWakeMinutes: null },
+    waitingTickets: 3,
+  }))
+  assert.match(wide, /"value":"Claude Code may run any command without asking on Wide: you chose/)
+  assert.match(wide, /"label":"Quiet wake","value":"Off"/)
+  assert.match(wide, /"label":"Mirrored board","value":"Its own changes wake work in progress too, marked untrusted"/)
+  assert.match(wide, /"label":"On confirm","value":"3 tickets waiting for this access start, or queue for a free machine"/)
 })

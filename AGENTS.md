@@ -636,3 +636,5 @@ before writing code here.
 - [context-window-optimization-audit.md](docs/context-window-optimization-audit.md) — Audit + prioritized roadmap for LLM context-window usage in the agentic run pipeline
 - [known-limitations.md](docs/known-limitations.md) — Code-verified register of current limitations (status taxonomy; two fixes in flight as of 2026-07-23)
 - Finished documents belong in `docs/done/`.
+
+- Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.

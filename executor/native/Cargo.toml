@@ -21,6 +21,7 @@ tempfile = "3.24.0"
 # DACL get/set pair and the file access mask they grant for state security;
 # the Job Object, the process snapshot and the wait for `job-run`.
 [target."cfg(windows)".dependencies]
+portable-pty = "0.9.0"
 windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
   "Win32_Security",

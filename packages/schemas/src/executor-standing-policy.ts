@@ -29,15 +29,16 @@ export const STANDING_POLICY_LIMIT_DEFAULTS = { dailyUsd: 60, ticketHours: 4, ti
 /** The platform ceiling each limit is held to, whatever a person asks for. */
 export const STANDING_POLICY_LIMIT_CEILINGS = { dailyUsd: 1_000, ticketHours: 48, ticketUsd: 200 } as const
 
+// Coerced: a model or a form may send "20" for 20, and a limit is only ever a number.
 export const StandingPolicyLimitsSchema = z
   .object({
-    ticketHours: z
+    ticketHours: z.coerce
       .number()
       .positive()
       .max(STANDING_POLICY_LIMIT_CEILINGS.ticketHours)
       .default(STANDING_POLICY_LIMIT_DEFAULTS.ticketHours)
       .describe('Hours one ticket\'s work may stay active, not counting time it waits for a machine or a person.'),
-    ticketUsd: z
+    ticketUsd: z.coerce
       .number()
       .positive()
       .max(STANDING_POLICY_LIMIT_CEILINGS.ticketUsd)
@@ -46,7 +47,7 @@ export const StandingPolicyLimitsSchema = z
         'US dollars one ticket\'s coding may spend. Each machine\'s per-turn budget must not exceed it, '
         + 'so a ticket overshoots it by at most one turn.',
       ),
-    dailyUsd: z
+    dailyUsd: z.coerce
       .number()
       .positive()
       .max(STANDING_POLICY_LIMIT_CEILINGS.dailyUsd)
@@ -59,15 +60,30 @@ export const StandingPolicyLimitsSchema = z
 export type StandingPolicyLimits = z.infer<typeof StandingPolicyLimitsSchema>
 
 /**
- * The trigger's security-relevant fields, as the author agreed to them, and
- * every limit. `triggerDigest` is the digest of exactly this object, so the
- * binder can recompute it from the live trigger, and a fresh card can show
- * which of them changed. Lists are sorted, so an edit that only reorders
+ * The agent's definition as the author agreed to it: a digest of its
+ * instructions, model, tool policy and connectors, with the provider and model
+ * the card shows (`loadStandingPolicyAgentPin`, executor-manage).
+ */
+export const StandingPolicyAgentPinSchema = z
+  .object({
+    digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    provider: z.string().min(1).nullable(),
+    model: z.string().min(1).nullable(),
+  })
+  .strict()
+export type StandingPolicyAgentPin = z.infer<typeof StandingPolicyAgentPinSchema>
+
+/**
+ * The trigger's security-relevant fields, as the author agreed to them, the
+ * agent's definition, and every limit. `triggerDigest` is the digest of
+ * exactly this object, so the binder can recompute it from the live trigger,
+ * and a fresh card can show which of them changed. Lists are sorted, so an edit that only reorders
  * changes nothing.
  */
 export const StandingPolicyPinnedTermsSchema = z
   .object({
     agentId: uuid,
+    agent: StandingPolicyAgentPinSchema,
     targetChannelId: uuid,
     boardId: uuid,
     pickupColumnIds: z.array(uuid),
@@ -77,6 +93,8 @@ export const StandingPolicyPinnedTermsSchema = z
     endOn: z.array(TicketEndOnSchema),
     /** Every instructions section, verbatim, by its key. */
     instructions: z.record(z.string(), z.string()),
+    /** Minutes of quiet before a quiet wake; null when the trigger turned it off. */
+    quietWakeMinutes: z.number().int().positive().nullable(),
     limits: z
       .object({
         wakesPerTicket: z.number().int().min(1),
@@ -102,6 +120,12 @@ export const StandingPolicyHostMachineSchema = z
     maxLiveSessionsPerOwner: z.number().int().min(1),
     /** Which pull-request commands it may run unasked; fewer than four stops a ticket at an open pull request. */
     mergeCommands: z.array(ExecutorCodingMergeCommandSchema),
+    /**
+     * The machine's signed `unaskedCommands`: `any` when Claude Code there may
+     * run any command without asking, which the author's tick allowed.
+     * Optional only for policies confirmed before it was pinned.
+     */
+    unaskedCommands: z.enum(['any', 'listed']).optional(),
   })
   .strict()
 export type StandingPolicyHostMachine = z.infer<typeof StandingPolicyHostMachineSchema>

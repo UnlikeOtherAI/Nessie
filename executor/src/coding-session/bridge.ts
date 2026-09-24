@@ -47,6 +47,7 @@ import {
   type CommandRecord,
 } from './session-requests.js'
 import { composeCodingStatus, deriveCodingStatus } from './status.js'
+import { readSessionScreen, sessionScreenText } from './session-view.js'
 import {
   codingSessionIsLive,
   type CodingAgentName,
@@ -90,7 +91,9 @@ const OWNER_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/u
 const CloseReasonSchema = ExecutorCodingSessionCloseSchema.shape.reason
 
 /** What a changed, unreviewed configuration still allows: stopping things, and the daemon's report. */
-const ALLOWED_UNREVIEWED = new Set(['session_close', 'session_interrupt', 'session_close_all', 'session_list_all'])
+const ALLOWED_UNREVIEWED = new Set([
+  'session_close', 'session_interrupt', 'session_close_all', 'session_list_all', 'session_inventory',
+])
 
 /** The report's own limit; a title a rewrite lengthened is clipped rather than dropped from the report. */
 const TITLE_MAX = 120
@@ -101,6 +104,14 @@ const titleFrom = (prompt: string): string => {
   const first = prompt.split(/\r?\n/u).find((line) => line.trim())?.trim() ?? 'Coding session'
   return first.length > 80 ? `${first.slice(0, 79)}…` : first
 }
+
+/**
+ * What the session has cost across its turns, once a turn has reported a cost — the figure
+ * `session_status` answers, which a ticket's work and the heartbeat intake add to its spend.
+ */
+const costOf = (state: CodingSessionState | undefined): { totalCostUsd?: number } => (
+  state?.totalCostUsd === undefined ? {} : { totalCostUsd: state.totalCostUsd }
+)
 
 export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Promise<CodingBridge> => {
   const reviewed = codingSessionsDigestMatches(loaded)
@@ -171,8 +182,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   }
 
   const briefStatus = async (paths: CodingSessionPaths) => {
-    const derived = await deriveCodingStatus(paths, await readState(paths))
-    return { status: derived.status, ...(derived.reason ? { reason: derived.reason } : {}) }
+    const state = await readState(paths)
+    const derived = await deriveCodingStatus(paths, state)
+    return { status: derived.status, ...(derived.reason ? { reason: derived.reason } : {}), ...costOf(state) }
   }
 
   const list = async (ownerKey: string): Promise<Record<string, unknown>> => {
@@ -206,8 +218,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     const root = findCodingRoot(rootSet, args.root)
     const path = normalizeCodingPath(args.path)
     await resolveCodingFolder(root, path)
-    const prompt = requiredText(args.prompt, 'prompt', 32_000)
-    const title = args.title === undefined ? titleFrom(prompt) : requiredText(args.title, 'title', 120).trim()
+    const prompt = agent === 'terminal' && args.prompt === '' ? '' : requiredText(args.prompt, 'prompt', 32_000)
+    const title = args.title === undefined ? (agent === 'terminal' ? 'Terminal session' : titleFrom(prompt))
+      : requiredText(args.title, 'title', 120).trim()
     requireReviewedConfig()
     const previous = await replayed(commandId, ownerKey)
     if (previous) {
@@ -247,9 +260,14 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   const request = async (
     kind: 'send' | 'interrupt' | 'close', value: unknown, ownerKey: string, commandId: string,
   ): Promise<Record<string, unknown>> => {
-    const args = argumentsFor(value, kind === 'send' ? ['sessionId', 'message'] : ['sessionId'])
+    const args = argumentsFor(value, kind === 'send' ? ['sessionId', 'message', 'terminal'] : ['sessionId'])
     const { paths, meta } = await owned(args.sessionId, ownerKey)
-    const text = kind === 'send' ? requiredText(args.message, 'message', 32_000) : undefined
+    if (args.terminal === true && meta.agent !== 'terminal') invalidArguments('This is not a terminal session.')
+    const raw = kind === 'send' && meta.agent === 'terminal'
+    if (raw && (typeof args.message !== 'string' || !args.message.length || args.message.length > 32_000)) {
+      invalidArguments('Terminal input must contain 1 to 32000 characters.')
+    }
+    const text = kind === 'send' ? raw ? args.message as string : requiredText(args.message, 'message', 32_000) : undefined
     if (kind === 'send') requireReviewedConfig()
     if (await replayed(commandId, ownerKey)) {
       return { sessionId: meta.sessionId, ...await briefStatus(paths), replayed: true }
@@ -279,7 +297,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       status: kind === 'close' ? 'closing' : derived.status,
       // The turn the message was sent at: to a session that is not working it
       // starts the next one, so a caller knows which answer is still owed.
-      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0 } : {}),
+      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0, ...costOf(state) } : {}),
       ...(kind === 'interrupt' ? { interrupted: true } : {}),
     }
   }
@@ -363,10 +381,13 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
 
   /**
    * What the daemon reports on its heartbeat: every session not yet closed,
-   * newest first, by title, status, agent, root, owner, its turn count and
-   * when its last turn ended — nothing any of them said or did.
+   * newest first, by title, status, agent, root, owner, its turn count, when
+   * its last turn ended and what it has cost so far — nothing any of them said
+   * or did.
    */
-  const listAll = async (value: unknown, meta: CodingBridgeCallMeta): Promise<Record<string, unknown>> => {
+  const listAll = async (
+    value: unknown, meta: CodingBridgeCallMeta, includeClosed = false,
+  ): Promise<Record<string, unknown>> => {
     daemonOnly(meta)
     argumentsFor(value, [])
     const sessions = []
@@ -374,13 +395,13 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       const paths = codingSessionPaths(stateDir, session.sessionId)
       const state = await readState(paths)
       const derived = await deriveCodingStatus(paths, state)
-      if (derived.status === 'closed') continue
+      if (!includeClosed && derived.status === 'closed') continue
       sessions.push({
         sessionId: session.sessionId, ownerKey: session.ownerKey,
         title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
         ...(derived.reason ? { reason: derived.reason } : {}),
         agent: session.agent, root: session.rootName, updatedAt: state?.updatedAt ?? session.createdAt,
-        turn: state?.turn ?? 0, lastTurnEndedAt: state?.lastTurnEndedAt ?? null,
+        turn: state?.turn ?? 0, lastTurnEndedAt: state?.lastTurnEndedAt ?? null, ...costOf(state),
       })
     }
     sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
@@ -395,7 +416,17 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
         if (!reviewed && !ALLOWED_UNREVIEWED.has(tool)) requireReviewedConfig()
         if (tool === 'session_close_all') return await closeAll(args, meta, commandId)
         if (tool === 'session_list_all') return await listAll(args, meta)
+        if (tool === 'session_inventory') return await listAll(args, meta, true)
         const ownerKey = owner(meta)
+        if (tool === 'terminal_read') {
+          const view = argumentsFor(args, ['sessionId'])
+          const session = await owned(view.sessionId, ownerKey)
+          const screen = await readSessionScreen(session.paths, session.meta)
+          return {
+            sessionId: session.meta.sessionId, ...await briefStatus(session.paths),
+            text: await sessionScreenText(screen),
+          }
+        }
         if (tool === 'session_list') {
           argumentsFor(args, [])
           return await list(ownerKey)

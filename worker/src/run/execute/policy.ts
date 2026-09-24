@@ -70,6 +70,9 @@ type ToolDeniedOutputReason =
   // An email lifecycle tool was called with arguments its strict schema
   // refuses — an unknown field, or a malformed id.
   | 'tool_arguments_invalid'
+  // A `ticket.work` run that can reach its owner's machine, reaching past
+  // Nessie, or a ticket write naming another ticket after host output.
+  | 'ticket_work_standing'
 
 export const buildToolActorContext = (
   actorContext: AuthorizedActionContext,

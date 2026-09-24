@@ -234,7 +234,10 @@ delivery's transaction:
    follow `document`, and a person who can edit the board must have saved
    part of the change — an agent's or a non-editor's edit never steers ticket
    work. Only that agent's record is woken, however many ticket triggers cover
-   the board. The event carries the document trigger's own instructions.
+   the board. The event says only what changed: the document trigger's own
+   instructions stay with its review threads, because a ticket's work runs
+   on its ticket trigger's instructions, which the ticket's machine access
+   pinned ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
    To the T3 rules ([ticket-work-reminders.md](ticket-work-reminders.md)) it
    is a wake like any follow — it takes the thread's run slot before it
    writes the record, counts, and restarts the quiet wake's wait

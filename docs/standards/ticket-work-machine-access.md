@@ -21,12 +21,17 @@ where it and the code differ, the code and this file win.
   `assertExecutorCommandBindingCurrent`) read the author. No tool, gate or
   disclosure check may treat them as "act as this person".
 - **Every wake with an `active` record and a pinned machine is bound afresh**,
-  from run setup (`bindTicketWorkMachine`, `worker/src/run/execute/ticket-work-setup.ts`),
-  after seven checks, each its own refusal
-  (`executor-standing-policy-binding-checks.ts`): `policy_not_live` — the
-  policy is `live` and names this trigger, agent and machine;
-  `terms_changed` — the live trigger digests to `triggerDigest` and the
-  machine to its pinned digests; `author_unavailable` — the origin captured at
+  at the start of run setup, before any tool is resolved
+  (`prepareTicketWorkRun`, `worker/src/run/execute/ticket-work-standing-gate.ts`,
+  through `bindTicketWorkMachine` in `ticket-work-setup.ts`), after seven
+  checks, each its own refusal (`executor-standing-policy-binding-checks.ts`):
+  `policy_not_live` — the policy is `live` and names this trigger, agent and
+  machine; `terms_changed` — the live trigger and agent digest to
+  `triggerDigest` and the machine to its pinned digests (an agent whose
+  definition changed also suspends the policy, `agent_changed`), and
+  `ticket_not_in_flow` — the ticket still renders on the pinned board, in a
+  column that does not end its work (team-admin's `ticketInWorkFlow`, handed
+  in); `author_unavailable` — the origin captured at
   confirm verifies (its team still holds the author), UOA answers live
   (`resolveLiveEntitlementDecision`, failing closed on `denied` and
   `unavailable`, never from a cache), and the author can still edit the board
@@ -42,7 +47,11 @@ where it and the code differ, the code and this file win.
   { kickoffMessageId }` in place of the trigger-author check — the grants,
   revision and scope are re-checked under the executor lock, and so are the
   policy and the record — and the bindings name the policy and the record.
-- **A refusal is an outcome, never a throw.** It writes
+  A re-driven job whose earlier attempt bound runs every check again: its
+  bindings are reused only while the checks hold (`already_bound`), and a
+  refusal takes their policy off them, so the dispatch fence refuses them.
+- **A refusal is an outcome, never a throw** — an unexpected error once the
+  record is read is one too (`bind_failed`). It writes
   `executor.run.policy_refused` (`outcome: denied`, the reason) and a
   skipped delivery on the trigger (`source: 'binding'`, deduped
   `binding:<runId>`, its payload `TicketTriggerBindingRefusalPayloadSchema` —
@@ -64,8 +73,9 @@ where it and the code differ, the code and this file win.
   policy that ends mid-turn fences its bindings at once.
 - **The reach facts of a standing bind** read as `bound`
   (`executor-reach-facts.ts`) with no machine label — the work thread is a
-  public room, and the DM-only naming rule never names a machine there — and
-  list only the sessions under the ticket's own owner key.
+  public room, and the DM-only naming rule never names a machine there — name
+  it *"the ticket owner's machine"*, offer only the pinned coding agent and
+  folders, and list only the sessions under the ticket's own owner key.
 - **(T4) A ticket's coding sessions are their own owner.** The coding-session
   owner carries `contextId: ticket:<policyId>:<taskId>`, hashed into the owner
   key by `executorCodingSessionOwnerKeyInput` and by the daemon alike, so the
@@ -134,24 +144,46 @@ where it and the code differ, the code and this file win.
   administered by them, a live reviewed revision offering the local-apps pair
   and the coding bridge, online at prepare, a signed Claude Code per-turn
   budget at most `ticketUsd` (Codex's is always `null`, so a Codex-only
-  machine is refused, and so is a descriptor too old to state it), no
-  `bypassPermissions` unless the author chose *"Let the coding agent run any
-  command without asking."*, and every allowed root. The Designer's executor
-  facts carry `pairedByYou` and `codingSessionsReviewed` and say "ticket work:
-  yes / not yet / no" per machine.
+  machine is refused, and so is a descriptor too old to state it or its
+  `unaskedCommands`), Claude Code able to run any command without asking —
+  `bypassPermissions`, or a Bash rule the machine signs as
+  `unaskedCommands: 'any'` — only when the author chose *"Let the coding agent
+  run any command without asking."*, and every allowed root. The Designer's
+  executor facts carry `pairedByYou`, `codingSessionsReviewed` and
+  `ticketWorkBlocker` and say "ticket work: yes / not yet / no" per machine:
+  *yes* needs a signed Claude Code `maxBudgetUsd` from an executor new enough
+  to sign what this check reads.
 - **What is pinned.** The host profile (`StandingPolicyHostProfileSchema`):
   the coding agents a start may use, `allowAnyCommand`, `allowedRootNames`
   (default: the roots every pool machine shares) and per machine its
   permission mode, turn budget, session quota and `mergeCommands`. The terms
-  (`StandingPolicyPinnedTermsSchema`, column `pinned_terms`): agent, target
-  channel, board, start-work columns, `assignOnPickup`, follow kinds,
-  `includeSourceEvents`, end columns, every instructions section verbatim, and
-  every limit — the trigger's `wakesPerTicket` and `startsPerDay` and the
+  (`StandingPolicyPinnedTermsSchema`, column `pinned_terms`): the agent and
+  its definition (`agent`: a digest over its system prompt, role, the
+  published versions of its core documents, provider, model, subscription,
+  local binding, routing, execution and delegation modes, tool policy with
+  every explicit grant, and its connector grants, with the provider and model
+  kept for the card — `loadStandingPolicyAgentPin`,
+  `executor-standing-policy-agent.ts`), target channel, board, start-work
+  columns, `assignOnPickup`, follow kinds, `includeSourceEvents`, end columns,
+  every instructions section verbatim, `quietWakeMinutes`, and every limit — the trigger's `wakesPerTicket` and `startsPerDay` and the
   policy's own `ticketHours`, `ticketUsd` and `dailyUsd`
   (`StandingPolicyLimitsSchema`, 4 h, $20 and $60 by default), which live on
   the policy, not the trigger. `triggerDigest` is `standingPolicyTermsDigest`
   of exactly those terms. Each pool row pins the bridge's `configDigest` and
-  the revision's `localPolicyDigest`.
+  the revision's `localPolicyDigest`. The confirmation pins the agent again
+  once it has turned the executor tools on in its tool policy, since that is
+  its own doing. A limit sent as a string (`"20"`) is the number it says
+  (`z.coerce`, and the worker's argument coercion reaches nested objects).
+- **An edit of the agent suspends the policy** (`agent_changed`), in the
+  transaction that makes it, whoever saves it:
+  `updateAgentRecord` (the record, and the core-document writes that always
+  precede it), `mutateAgentToolPolicyInTransaction` (the tool policy and the
+  MCP grants synchronized with it), and the API's `createGrant` /
+  `deleteGrant` for an agent's connector grant
+  (`suspendStandingPoliciesForAgentChangeInTransaction`). Anything that
+  changes the definition outside those — a core document published elsewhere,
+  a row written directly — is caught by the binder's digest, which suspends
+  it then. A rename changes nothing pinned.
 - **Prepare writes a card, not access.** A `preparing` policy with its pool,
   and one executor access-change continuation (`kind: 'standing_policy'`) on
   the first machine that pins every machine's `authorizationRevision`. A new
@@ -189,27 +221,46 @@ where it and the code differ, the code and this file win.
   (`placeTicketWorkOnMachineInTransaction`,
   `packages/executor-manage/src/executor-standing-policy-pool.ts`, called by
   the worker's `placeTicketWorkForWake`, `worker/src/control/ticket-work-machine.ts`):
-  a pickup, and a person's move that resumes parked work. It locks the
-  trigger's binding policy's pool rows (`FOR UPDATE`), then each pool machine
-  under its own advisory lock in id order, because a machine can sit in two
-  triggers' pools; the record's previous machine is tried first. The first
-  machine that is online (a fresh heartbeat), held by no other record in
+  a pickup, and a person's move that resumes parked work. It reads the
+  trigger's binding policy under that row's shared lock (`lockStandingPolicyRow`,
+  T5: a suspension or an end waits for the placement that read it live, and
+  one in flight is read, never raced), then locks its pool rows
+  (`FOR UPDATE`), then each pool machine under its own advisory lock in id
+  order, because a machine can sit in two triggers' pools. Every wake of live
+  work takes the same shared lock on the policies it may read, after the
+  ticket and the thread's run slot and before it writes anything
+  (`lockTicketWorkPoliciesInTransaction`), and the ticket's own lock is
+  `FOR NO KEY UPDATE` (`lockTicketForWork`), which the history rows an end
+  writes under its policy row never wait on — so neither closes a cycle with
+  an end. The first machine that is online (a
+  fresh heartbeat), held by no other record in
   `TICKET_WORK_MACHINE_HOLDING_STATUSES` and below its pinned
   `maxLiveSessionsPerOwner` for this ticket's own owner key in its last
   report takes it: `executorId`, `policyId`, `active`.
+- **The machine a record last worked on** (`homeMachineOf`): the one it
+  holds, else the one its newest coding session was started on
+  (`session_origins`), while that machine is in the pool. The record tries it
+  first, and its own open sessions there never count against its quota. It
+  waits for it only while that machine could take it back — online and held
+  by no other work, and at the dequeue also reviewed (T5); otherwise it takes
+  any free machine
+  of its pool rather than starve, the sessions it leaves behind are closed
+  there (`machine_reassigned`) and forgotten, and its wake says the earlier
+  session was closed and that a new one's brief must say what was done,
+  with the pull request. The dequeue follows the same rule (below). On any
+  other machine the quota counts the sessions the bridge counts as live —
+  never a `closed` or `failed` one.
+- **A spent day queues** (`queued_daily_limit`): once the policy's spend
+  this UTC day reaches `dailyUsd`, a pickup or a dequeue assigns nothing and
+  the record is queued, with a wake that says it starts after 00:00 UTC.
 - **(T5) A free machine goes to the line first.** A pickup or a resume that
   finds a pool machine free, and that is not the record's own last machine,
   queues instead when queued work of any live policy sharing that machine is
-  ahead of it in the one order and could take it — work whose own last
-  machine could take it back (online, in its pool, held by nobody) waits for
-  that one, as the dequeue decides (`queuedTicketWorkOutranks`) — and enqueues
-  the dispatcher; an urgent ticket ahead of the whole line still takes it at
-  once. A record that goes to another machine than its last closes the
-  sessions it has there (`machine_reassigned`) and forgets them; one left
-  waiting for access, unpinned, closes them for the policy's reason.
-  Coming back to its own machine, the record's own sessions there never count
-  against its quota; on any other, the quota counts the sessions the bridge
-  counts as live — never a `closed` or `failed` one.
+  ahead of it in the one order and could take it — work whose own machine
+  could take it back waits for that one, as the dequeue decides
+  (`queuedTicketWorkOutranks`) — and enqueues the dispatcher; an urgent
+  ticket ahead of the whole line still takes it at once. A record left
+  waiting for access, unpinned, closes its sessions for the policy's reason.
 - **Nothing free: the record is queued** (`queueTicketWorkInTransaction`) with
   `queued_no_free_machine`, or `queued_machines_offline` when every pool
   machine is offline, its `enqueuedAt`, and a `queuePosition` among the
@@ -247,7 +298,9 @@ where it and the code differ, the code and this file win.
   `machine_offline`, keeping its machine's slot, with a `work_paused` row, and
   the delivery is skipped `machine_offline`. **(T5)** Every later wake while
   the machine stays away skips the same way; one that finds it back resumes
-  the work on it first (below, "A machine that goes away").
+  the work on it first (below, "A machine that goes away"). The sweep pauses
+  the same way an `active` record whose machine stopped heartbeating while
+  nothing woke it (below).
 
 ## A ticket's coding tools are the ticket's own (T4)
 
@@ -260,7 +313,10 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   Claude Code sessions on these machines; it gets no other program on
   them."* (`STANDING_POLICY_CODING_ONLY_SENTENCE`) — not to the machine's
   other reviewed programs. So a standing-bound run is offered the
-  `coding_session_*` tools alone: the generic `executor_mcp_tools` /
+  `coding_session_*` tools alone — never the interactive terminal's
+  `terminal_session_*` tools, which are refused if called, and its answers
+  carry no session viewer link (`viewPath`), since its thread is a project
+  room: the generic `executor_mcp_tools` /
   `executor_mcp_call` pair is not in its toolset whatever the agent's tool
   policy grants, a call to it anyway is refused as correctable, and its reach
   facts say so. On the server, `standingProgramRefusal`
@@ -272,27 +328,43 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   its `mcp.call` binding.
 - **Its sessions are the record's.** A `sessionId` not in `sessionIds` is
   refused (*"That session is not this ticket's."*); `sessionId` is optional,
-  and defaults to the one session the machine's last report lists open under
-  the ticket's owner key; none, or more than one, is said. A start whose
-  answer was lost is taken back onto the record from the next report by its
-  title under that owner key — never one that reports itself closed (T5).
+  and defaults to the ticket's one live session; none, or more than one, is
+  said. A recorded session is **live unless a report the machine took after it
+  was recorded says otherwise** (`liveTicketWorkSessions`,
+  `ticket-work-session-origins.ts`, against `localMcpObservedAt`): the
+  machine reports on its heartbeat, so a session started a moment ago is in no
+  report yet. So a start while the ticket has a live session is refused
+  (*"This ticket already has a coding session; use coding_session_send."*),
+  and the kickoff's session line uses the same rule. A start whose answer was
+  lost is taken back onto the record from the next report by its title under
+  that owner key — never one that reports itself closed, nor one the record
+  let go of, which keeps its origin (T5).
+- **Each session remembers its machine** (`session_origins`,
+  `{ executorId, policyId, startedAt }` per session, written with
+  `sessionIds` by `appendTicketWorkSession`): it is live only on that
+  machine, and closed there under its own policy's owner context.
 - **A start is the ticket's:** its title is forced to the ticket's own
   (`ticketWorkThreadTitle`), only the pinned coding agents (Claude Code) and
   `allowedRootNames` are offered and accepted — and the API refuses any other
   start on a standing binding before a command exists (`standingStartRefusal`,
   from `assertExecutorMcpCallPayload`) — and the session it returns is
   appended to the record as it answers (`appendTicketWorkSession`).
-- **Each tool says what it is for in ticket work** (start, send and wait
-  texts from the plan, `ticketWorkCodingDescriptors`), a wait reads for at
-  most a minute (`TICKET_WORK_CODING_WAIT_TIMING`), and it gives way when a
-  wake for the same record is pending behind the run (`codingWaitRunChecks`'
-  `ticketWorkId`).
+- **Each tool says what it is for in ticket work** (start, send, wait, list
+  and review texts, `ticketWorkCodingDescriptors`); a start or a send answers
+  *"… end your turn: Nessie wakes you here when the session's turn ends"*,
+  never "call coding_session_wait" (`presentCodingCall`'s `ticket`); a wait
+  returns within a minute (`TICKET_WORK_CODING_WAIT_TIMING`) and gives way
+  when a wake for the same record is pending behind the run
+  (`codingWaitRunChecks`' `ticketWorkId`); the list is answered from the
+  policy's pins — Claude Code, the pinned folders, this ticket's live
+  sessions — without asking the machine; and a review's `pullRequest` is the
+  record's alone: the model's argument is dropped.
 - **What every answer says lands on the record in the same step**
   (`ticketWorkCodingObserver`,
   `packages/executor-manage/src/ticket-work-session-observations.ts`): the
-  cost since the last read, from the status' cumulative `totalCostUsd`
-  (`session_costs`); the newest ended turn (`lastObservedTurn`); and a
-  review's pull request. **(T5)** It writes under the thread's run slot, the
+  cost since the last read, from the cumulative `totalCostUsd` a send, a
+  status read or a review carries (`session_costs`); the newest ended turn
+  (`lastObservedTurn`); and a review's pull request. **(T5)** It writes under the thread's run slot, the
   lock every wake is written under, and a turn end it sees withdraws the
   same session's turn-ended wakes at or below it still pending in the thread
   (`withdrawSeenSessionWakes`, `worker/src/control/ticket-work-session-withdraw.ts`):
@@ -314,15 +386,29 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   that leaves the machine its sessions run on — moved off one that stayed
   away, or placed on another by a resume or the dequeue (`machine_reassigned`,
   on that machine, for when it reconnects) — and queued work cancelled
-  because its mover lost the board (`mover_lost_access`). Never an owner-wide
-  close for ticket work. The next heartbeat carries them. A record that
-  leaves the machine — unpinned or pinned elsewhere — also forgets those
-  sessions (`releaseTicketWorkSessionsInTransaction`,
+  because its mover lost the board (`mover_lost_access`). Each session is
+  closed on the machine it was started on, under the policy it was started
+  under (`session_origins`), whichever machine the record holds now. Never an
+  owner-wide close for ticket work. The next heartbeat carries them. A
+  suspension and an end take the policy's pool locks first, as a placement
+  does. A record that leaves the machine — unpinned or pinned elsewhere —
+  also forgets those sessions (`releaseTicketWorkSessionsInTransaction`,
   `ticket-work-session-release.ts`), so no report of that machine wakes it
-  for them. A close request is settled after a day
+  for them; each keeps its origin. A close request is settled after a day
   (`EXECUTOR_CODING_SESSION_CLOSE_TTL_MS`) except `machine_reassigned`, which
   waits for a report of its machine that shows it done however long the
   machine is away.
+- **The heartbeat charges each ticket for its sessions**
+  (`recordTicketWorkHeartbeatCostsInTransaction`,
+  `ticket-work-heartbeat-costs.ts`, from `reportExecutorHeartbeat`): every
+  session in the machine's report carries its `totalCostUsd`, and a ticket's
+  sessions on that machine — under its own owner key there — add what they
+  cost since they were last counted to `costUsd` and the day, whether or not
+  a run reads the session. `session_costs` keeps each session's newest total,
+  so this and the worker's reading of a coding answer never count the same
+  dollars twice. A session the record let go of (T5) is charged the same
+  way, by its origin, until its machine stops reporting it: what it cost up
+  to its close is the ticket's.
 - **Limits are the policy's** (`executor-standing-policy-limits.ts`):
   `ticketHours` against the record's hours clock (`ticketWorkActiveMs`,
   `ticket-work-clock.ts`), which runs only while the record is `active` with
@@ -335,12 +421,17 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   completion, failure and cancel); `dailyUsd` against the day's spend row.
   They are checked when a wake is decided (`holdTicketWorkBeforeWake`), by the
   binder, and in the heartbeat intake (`reportExecutorHeartbeat`, for records
-  active on that machine, so the close rides the same answer);
-  and by the sweep for work nobody wakes
-  (`enforceTicketWorkLimitsInTransaction`). Over one, the record fails with `limit_hours` or `limit_cost` —
-  `dailyUsd` too, with its own sentence, because T1 gave `limit_daily` to the
-  trigger's `startsPerDay` — a `work_ended` row, a "Stopped" thread row, and
-  its closes; a wake it would have been is skipped with that reason.
+  active on that machine and every record it just charged, so the close
+  rides the same answer); and by the sweep for work nobody wakes
+  (`enforceTicketWorkLimitsInTransaction`). Over one, the record fails with
+  `limit_hours` or `limit_cost` — `dailyUsd` too, with its own sentence,
+  because T1 gave `limit_daily` to the trigger's `startsPerDay` — a
+  `work_ended` row, a "Stopped" thread row, and its closes; a wake it would
+  have been is skipped with that reason. **The day's spend fails only work
+  that is running** (`active`): queued, parked and waiting work that did not
+  spend it waits, and is queued with `queued_daily_limit` when it would
+  start. A coding review is only an answer like any other: it carries a cost,
+  and ends nothing by itself.
 
 ## Fences end the policy in their own transaction (T4)
 
@@ -382,13 +473,20 @@ a busy minute never multiplies them:
 
 - **Authors UOA no longer lists** (`endPoliciesOfDepartedAuthors`). UOA has
   no removal feed, so each author of a preparing, live or suspended policy
-  is asked again (`resolveLiveEntitlementDecision`, with the identity
-  captured at confirmation, the stored link allowed). An answer that does
-  not list them — or no identity to ask with — ends every such policy of
-  theirs (`author_left_organization`), its records cancelled and its
-  sessions closed, with `executor.policy.ended`, in one transaction. An
-  outage ends nothing: the binder refuses every wake meanwhile
-  (`author_unavailable`), failing closed on its own.
+  is asked again (`resolveLiveEntitlementDecision`) with the identity
+  captured at confirmation, and — when that no longer answers, a new token
+  version or another active team — once more through their current stored
+  link. Only a definite "not a member" ends every such policy of theirs
+  (`author_left_organization`), its records cancelled and its sessions
+  closed, with `executor.policy.ended`, in one transaction: UOA's own answer
+  through a live link, or a local organisation that no longer lists them. An
+  outage, or no identity left to ask with, ends nothing: the binder refuses
+  every wake meanwhile (`author_unavailable`), failing closed on its own.
+- **Work on a machine that went silent** (`pauseWorkOnSilentMachines`): an
+  `active` record whose machine is offline or has not heartbeated inside the
+  freshness window waits for it (`waiting_machine`, `machine_offline`), its
+  hours clock paused, with a `work_paused` row, under the ticket and
+  thread-slot locks every wake takes (`holdTicketWorkBeforeWake`).
 - **Limits on work nobody wakes** (`enforceLimitsOnLiveWork`): every live
   record under a policy, fifty to a transaction, against its hours clock
   and spend, exactly as a wake and the heartbeat intake check them.
@@ -397,9 +495,10 @@ a busy minute never multiplies them:
 - **(T5) The dequeue** (`dequeueTicketWork`; below, "The dequeue"), which
   replaced T4's first-free placement in each policy's own queue order.
 - **The quiet wake waits for a working session.** T3's quiet wake is not
-  sent while one of the ticket's own coding sessions is `working` in its
-  machine's last report (`ticketSessionWorking`): the coding agent's turn
-  ending wakes the agent instead (T5, below).
+  sent while one of the ticket's own coding sessions is `working` in the last
+  report of a machine still heard from (`ticketSessionWorking`, which reads
+  nothing from a silent machine): the coding agent's turn ending wakes the
+  agent instead (T5).
 
 ## A ticket's coding session wakes its work (T5)
 
@@ -546,8 +645,10 @@ last machine step and so the pool dispatcher every freeing transaction wakes:
   next record is tried. Placed: `active` with a `work_resumed`
   row, `ticket.work.started` (`dequeued: true`), a delivered `dequeue`
   delivery and one `dequeued` wake, *"a machine is free; you are bound to
-  it"*. A machine another record holds, or offline, takes nobody this round;
-  one at this ticket's own session quota lets the next record try.
+  it"*. A machine another record holds, or offline or gone, takes nobody this
+  round; one at this ticket's own session quota lets the next record try; a
+  policy whose day is spent places none of its work anywhere this round, and
+  the record it found that on says `queued_daily_limit`.
 - **Never two records on one machine.** Two sweeps racing serialise on the
   ticket and the machine's lock; the loser re-reads the record placed, or
   the machine held. `agent_ticket_work_one_per_executor` holds whatever else
@@ -579,7 +680,19 @@ administer it; everyone else reads states and counts.
   **End** (`POST /api/standing-policies/:policyId/end`, reason `person`).
   Anyone else reads *"Only Ondrej can set this up: the work would run on
   their own machines, as them."* The bell item T6 raises for a trigger an
-  agent set up opens this section (`#machine-access`).
+  agent set up opens this section (`#machine-access`). The author reaches
+  the page even when they are not an owner: `GET /api/triggers/:triggerId`
+  and its `/history` answer an owner, or the ticket trigger's author while
+  they can still edit its board (`trigger-readable.ts`), and the page is
+  read-only for them apart from this section. A card prepared and left
+  unconfirmed says where it is after a reload — the conversation with the
+  Agent Designer, with a link, or this page, with **Prepare it again…**
+  (`cardLocation`).
+- **The trigger editor warns before a save pauses access**: when a live
+  policy pins a field the form changed, above Save: *"Saving pauses Ondrej's
+  machine access until they re-confirm."* `PUT /api/triggers/:triggerId`
+  answers what the save did (`machineAccess`: `limits_lowered`, or
+  `suspended` with the author and the fields), and the page says it.
 - **The executor page's Standing access panel** (`ExecutorStandingAccessPanel`,
   private machines only; `GET /api/executors/:executorId/standing-policies`,
   for the machine's administrators): each policy not yet ended whose pool
@@ -599,6 +712,12 @@ administer it; everyone else reads states and counts.
   access"*, *"stopped"* at an hours or spend limit — and a wake the binder
   ran without a machine as its plain sentence (`machineRefusal`); its history
   lines say what each pause, resume and queueing was for.
+- **The confirmation card** names the agent and its model, says that editing
+  it (its instructions, model, tools or connectors) pauses the access, which
+  machines let Claude Code run any command without asking, the quiet wake,
+  whether a mirrored board's own events wake work, how many waiting tickets
+  start on confirm, and that anyone who can edit the board — *"N people today,
+  and anyone added to the project later"* — can start work.
 - **The Designer's proposal card** for a ticket-driven agent has a "Runs on"
   row — the machines by name only to the person who paired them, otherwise
   "a machine its owner confirms" — and says one machine-access confirmation
@@ -606,15 +725,35 @@ administer it; everyone else reads states and counts.
 
 ## Host output stays on the ticket (T4)
 
-A `ticket.work` run is stamped with its work thread's channel as the launch
-conversation (`launchConversationScope`), which admits host output to its
-project's board; it is narrower than that. Once a local program has answered
-the run, every writing builtin but `ticket_comment_add`, `ticket_move` and
-`ticket_transition` refuses before it runs (`ticketWorkHostOutputRefusal`,
-from `executeBuiltinTool`), and `assertProjectWriteDestination` admits only a
-comment on the run's own ticket (`destination: { kind: 'ticket_comment' }`),
-with `TICKET_WORK_HOST_OUTPUT_REFUSAL`. The run's replies stay in its work
-thread.
+- **A standing run reaches nothing outside Nessie.** A `ticket.work` run is
+  *standing* when its policy bound it a machine this turn, or when its record
+  has ever held a coding session (`prepareTicketWorkRun`,
+  `worker/src/run/execute/ticket-work-standing-gate.ts`). It is not offered
+  — and `authorizeToolExecution` refuses (`ticketWorkStandingRefusal`,
+  reason `ticket_work_standing`) — `http_fetch`, `web_fetch`, `web_search`,
+  the browser tools, `dashboard_source_probe`, `delegate`, `spawn_subtask`,
+  `agent_peer_delegate`, and every MCP connector tool: its MCP toolset is
+  empty (`withoutMcpTools`), and any name that is neither a builtin nor one
+  of its coding tools is refused at the gate.
+- **A record that has held a session is stamped with host output at setup**,
+  before any tool reads the machine again this turn: its kickoff, thread and
+  pull request already carry what the machine answered.
+- **After host output only the ticket takes it.** The run is stamped with its
+  work thread's channel as the launch conversation
+  (`launchConversationScope`), which admits host output to its project's
+  board; it is narrower than that. Every writing builtin but
+  `ticket_comment_add`, `ticket_move`, `ticket_transition` and
+  `check_back_in` refuses before it runs (`ticketWorkHostOutputRefusal`,
+  from `executeBuiltinTool`); the three ticket writes are refused at the gate
+  for any ticket but the run's own; and `assertProjectWriteDestination`
+  admits only a comment on the run's own ticket (`destination: { kind:
+  'ticket_comment' }`), with `TICKET_WORK_HOST_OUTPUT_REFUSAL`. The coding
+  session tools are the machine's own, and the run's replies stay in its
+  work thread.
+- **A document change reaches ticket work as what changed, never as
+  instructions**: the document trigger's own instructions stay with its
+  review threads, because a standing run runs on the ticket trigger's pinned
+  instructions ([document-triggers.md](document-triggers.md)).
 
 ## Done means merged (T4)
 
@@ -622,7 +761,11 @@ The first review in a `ticket.work` run that returns a pull request — by its
 branch, or by URL — records `pullRequestUrl`, `lastPrState`, `lastChecks`
 (`{ passed, failed, pending }` from `gh`'s conclusions) and `prSeenAt`; every
 later review asks after that URL (`session_review`'s `pullRequest`, filled by
-the worker), so a merge whose branch the coding agent deleted is still read.
+the worker from the record and never from the model), so a merge whose branch
+the coding agent deleted is still read. The kickoff tells the agent to run
+`coding_session_review` before it moves the ticket to Done, and, when the
+ticket's earlier session was closed (a hand-over after a re-confirm, say), to
+brief a new one with what was already done.
 The kickoff's state block says *"Pull request: <url>, MERGED, checks 14
 passed (15:20 UTC)."* (`ticket-work-kickoff-machine.ts`, with the machine,
 the hours and spend and the ticket's session), and a move into a done column
@@ -630,8 +773,8 @@ ends the record `merged` when the recorded state is `MERGED`.
 
 ## Audit (T4)
 
-`executor.run.policy_bound` (policy, record, TaskEvent, mover and origin,
-machine, bindings, digests), `executor.run.policy_refused`,
+`executor.run.policy_bound` (policy, record, TaskEvent, mover and the origin
+its move recorded, machine, bindings, digests), `executor.run.policy_refused`,
 `ticket.work.started`, `ticket.work.queued`, `ticket.work.ended`
 (`writeTicketWorkAudit`, from `endTicketWork` for every end), and
 `executor.coding_session.started`, `.closed` and `.sent` tagged with the
@@ -645,20 +788,37 @@ author naming the policy and the record, each check refusing on its own with
 its audit row and delivery, the fence naming the context, refusing another
 program and the generic catalog walk, and fencing after an end, the
 heartbeat carrying the close, the intake stopping a ticket past its hours);
-`worker/src/run/executor-toolset-coding.test.ts` (a standing-bound run offered
-the coding tools and no generic pair); `standing-policy-fences-db.test.ts` (every fence);
+`packages/team-admin/test/standing-policy-review-db.test.ts` (an agent edit
+suspending the policy field by field and behind the edit paths, a ticket out
+of its flow, a re-driven job re-checked and fenced, `bind_failed`, the
+mover's origin, the heartbeat's cost intake, each session closed on its own
+machine, returning work going back to its own machine while it could take
+it and to another once it is held, a spent day queueing,
+unasked commands needing the tick); `packages/executor-manage/test/ticket-work-session-origins.test.ts`
+(the live rule); `worker/src/run/execute/ticket-work-standing-gate.test.ts`
+(the standing gate, its withheld tools, own-ticket writes, the host-output
+stamp); `worker/src/run/executor-toolset-coding.test.ts` and
+`executor-toolset.test.ts` (a standing-bound run offered the coding tools and
+no generic pair, and nothing without its scope); `standing-policy-fences-db.test.ts` (every fence);
 `worker/test/db/standing-policy-dispatch.test.ts` (two pickups on two
 machines and a third queued, an offline machine at wake, a wake past spend,
 `ticket_left_flow` and `merged`);
 `worker/test/db/ticket-work-coding-tools.test.ts` (the ticket's session,
-title, agent, roots, cost, turn, pull request by URL after the branch is gone,
-send audit, lost-start reconciliation);
+title, agent, roots, a session live before the machine reports it and a
+second start refused, "end your turn", the list from the pins, cost, turn,
+pull request by URL after the branch is gone and never from the model, send
+audit, lost-start reconciliation);
 `worker/test/db/ticket-work-host-output.test.ts`;
 `worker/test/db/ticket-work-sweep-machines.test.ts` (a queued ticket taking a
 freed machine with a `dequeued` wake and an idle sweep writing nothing, work
 past its hours stopped with its closes, an author the organisation no longer
-lists losing their access, a quiet wake waiting on a working session); the reach-facts and kickoff
-unit tests; `executor/test/coding-session-bridge.test.ts` (`totalCostUsd`).
+lists losing their access and one asked again through their link, work on a
+silent machine paused, a quiet wake waiting on a working session of a
+machine still heard from); the reach-facts and kickoff unit tests;
+`executor/test/coding-session-bridge.test.ts`, `coding-session-teardown.test.ts`
+(`totalCostUsd` in answers and reports) and
+`coding-session-merge-commands.test.ts` (`unaskedCommands`).
+
 
 **(T5)** `packages/executor-manage/test/ticket-work-session-intake.test.ts`
 (the intake's decision over two reports: a fast turn once, a slow one at its

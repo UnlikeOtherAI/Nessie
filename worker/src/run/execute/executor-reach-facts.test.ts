@@ -5,7 +5,7 @@ import type { PrismaClient } from '@prisma/client'
 import { executorCodingSessionOwnerKey } from '@nessie/executor-manage'
 import { ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
 
-import { CODING_SESSION_TOOL_NAME_SET } from '../coding-session-tools.js'
+import { CODING_SESSION_TOOL_NAME_SET, STRUCTURED_CODING_SESSION_TOOL_NAMES } from '../coding-session-tools.js'
 import { launchConversationScope, type ExecutorHostOutputDisclosure } from '../executor-host-output.js'
 
 import { createConsumedSourceSink } from './disclosure-basis.js'
@@ -381,11 +381,13 @@ test('a standing bind reads as bound, lists only the ticket\'s own sessions, and
     binding: {
       bindingIds: ['b1', 'b2'], executorId, kind: 'bound' as const, policyId: runId, workId: agentId,
     },
-    coding: { contextId } as never,
+    // Its policy pinned Claude Code in one of the machine's two folders.
+    coding: { allowedRootNames: ['nessie'], codingAgents: ['claude'], contextId } as never,
   }
   const facts = await loadExecutorReachFacts(prisma, {
     agentId, channelId, hostOutput: null, lease: undefined, organizationId, personUserId: null, runId, standing,
-    toolNames: CODING_SESSION_TOOL_NAME_SET,
+    // What a ticket is offered: the seven, never the terminal's three.
+    toolNames: STRUCTURED_CODING_SESSION_TOOL_NAMES,
   })
   assert.equal(facts?.kind, 'bound')
   assert.equal(facts?.kind === 'bound' ? facts.executorLabel : 'x', null)
@@ -397,6 +399,9 @@ test('a standing bind reads as bound, lists only the ticket\'s own sessions, and
   // Coding sessions alone, and the run is told so.
   assert.doesNotMatch(block, /executor_mcp_call/)
   assert.match(block, /covers its coding sessions alone: no other program on the machine is offered to you/)
+  // Whose machine it is, and only what the policy pinned on it.
+  assert.ok(block.startsWith('You can have a coding agent on the ticket owner\'s machine (Claude Code, in the folders '
+    + 'nessie)'), block)
 })
 
 test('a standing refusal is its own line, and nothing else is read', async () => {
@@ -410,4 +415,12 @@ test('a standing refusal is its own line, and nothing else is read', async () =>
   assert.deepEqual(calls, [])
   assert.equal(buildExecutorReachBlock(facts), 'You have no machine tools this turn. The machine is offline or no '
     + 'longer offers you its coding tools, so no machine is bound this turn.')
+})
+
+test('a machine with no interactive terminal is still told as coding tools', async () => {
+  // Its toolset holds the structured seven and none of the terminal's three.
+  const { prisma } = stubPrisma({ descriptor: descriptor(['coding-sessions'], codingFacts) })
+  const facts = await load(prisma, carried, new Set([...LOCAL_APPS, ...STRUCTURED_CODING_SESSION_TOOL_NAMES]))
+  assert.ok(facts?.kind === 'bound')
+  assert.deepEqual(facts.codingSessions?.agents, ['Claude Code'])
 })

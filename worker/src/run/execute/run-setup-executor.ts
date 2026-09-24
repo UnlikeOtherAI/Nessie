@@ -2,7 +2,6 @@ import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@ness
 import type { RunExecuteJobPayload } from '@nessie/schemas'
 
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
-import { bindTicketWorkMachine } from './ticket-work-setup.js'
 import type { ExecutionDependencies, RunContext } from './types.js'
 
 type HostOutput = Parameters<typeof buildExecutorToolset>[1]['hostOutput']
@@ -11,8 +10,9 @@ type HostOutput = Parameters<typeof buildExecutorToolset>[1]['hostOutput']
  * The run's executor bindings and the toolset over them, at run setup
  * (docs/executor-protocol/overview.md → "Binding"). Two doors, never both:
  *
- * - A ticket's work is bound by its standing policy, afresh at every wake
- *   (`bindTicketWorkMachine`), never by a lease.
+ * - A ticket's work is bound by its standing policy, afresh at every wake,
+ *   never by a lease: at the start of setup (`prepareTicketWorkRun`), before
+ *   any tool is resolved, so a standing run is offered less.
  * - Any other run: a person's own follow-up in the conversation they launched
  *   local apps in is bound afresh here, immediately before the toolset reads
  *   the run's bindings. A refusal is an outcome, never a throw — and the carry
@@ -31,11 +31,6 @@ export const prepareRunExecutorToolset = async (
   },
 ): Promise<ExecutorToolset> => {
   const { context, payload } = input
-  if (input.ticketWork) {
-    context.ticketWorkMachine = await bindTicketWorkMachine(deps.prisma, {
-      job: payload, runId: context.run.id, workId: input.ticketWork.workId,
-    })
-  }
   const lease = input.ticketWork
     ? undefined
     : await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })

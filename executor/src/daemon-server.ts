@@ -24,6 +24,7 @@ import { createLocalMcpReporter } from './local-mcp-report.js'
 import { startExecutorLocalInferenceSupervisor } from './local-inference-supervisor.js'
 import { createExecutorMcpSessionManager } from './mcp-session-manager.js'
 import type { ExecutorLocalState } from './state-store.js'
+import { createSessionViewRelay } from './session-view-relay.js'
 
 // A shutdown that opted in to closing coding sessions gets this long to ask the bridge.
 const CODING_SESSION_SHUTDOWN_BUDGET_MS = 5_000
@@ -58,6 +59,8 @@ export const serveExecutor = async (
       sessions: mcpSessions,
     })
     const localMcp = createLocalMcpReporter(namedMcpServers, mcpSessions, { codingSessions: codingBridge.report })
+    const relayScreens = createSessionViewRelay(codingBridge)
+    const screenPoll = createNonOverlappingExecutorTask(() => relayScreens(live).catch(() => undefined))
     void localMcp.refresh().catch(() => undefined)
     let shuttingDown = false
     // One store for the daemon's whole life. Building it per poll re-secured
@@ -125,6 +128,7 @@ export const serveExecutor = async (
     const commandInterval = setInterval(() => {
       void commandPoll.run()
       void localInferencePoll.run()
+      void screenPoll.run()
     }, 1_000)
     const interval = setInterval(() => { void heartbeat.run() }, 20_000)
     void heartbeat.run()
@@ -141,6 +145,7 @@ export const serveExecutor = async (
         ...(commandPoll.current() ? [commandPoll.current()] : []),
         ...(heartbeat.current() ? [heartbeat.current()] : []),
         ...(localInferencePoll.current() ? [localInferencePoll.current()] : []),
+        ...(screenPoll.current() ? [screenPoll.current()] : []),
       ])
       await Promise.allSettled([
         browserSessions.stopAll(), commandSessions.stopAll(), codingSessions.stopAll(),

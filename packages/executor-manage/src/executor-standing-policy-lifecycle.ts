@@ -9,6 +9,7 @@ import {
 
 import {
   enqueueTicketWorkSweep,
+  lockStandingPolicyPool,
   queueTicketWorkInTransaction,
   standingPolicyPoolReason,
 } from './executor-standing-policy-pool.js'
@@ -39,7 +40,11 @@ import {
  *
  * Each writes its `executor.policy.*` audit row in the same transaction, and
  * each that may free a machine enqueues the pool dispatcher
- * (`ticket-work.sweep`).
+ * (`ticket-work.sweep`). A suspension and an end take the policy's pool
+ * locks (`lockStandingPolicyPool`) before they touch its records, as a
+ * placement does, so a placement deciding at the same moment either lands
+ * first and is paused or ended here, or waits and sees the policy no longer
+ * live.
  */
 
 export type StandingPolicyActor = { requestId?: string; userId: string | null }
@@ -97,6 +102,7 @@ export const suspendStandingPolicyInTransaction = async (
     data: { status: 'suspended', suspendedReason: input.reason },
   })
   if (count === 0) return false
+  await lockStandingPolicyPool(tx, input.policyId)
   const policy = await tx.executorStandingPolicy.findUniqueOrThrow({
     where: { id: input.policyId },
     select: { organizationId: true, triggerId: true },
@@ -206,6 +212,7 @@ export const endStandingPolicyInTransaction = async (
     },
   })
   if (count === 0) return false
+  if (policy.status !== 'preparing') await lockStandingPolicyPool(tx, input.policyId)
   const live = policy.status === 'preparing' ? [] : await tx.agentTicketWork.findMany({
     where: { policyId: input.policyId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
     select: RECORD_SELECT,

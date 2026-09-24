@@ -16,6 +16,7 @@ import {
  */
 
 const base: TicketWorkMachineFacts = {
+  heldSessions: false,
   limits: null,
   pinned: false,
   policy: null,
@@ -42,6 +43,8 @@ test('each place the work can stand with its machine reads as its own line', () 
   assert.match(lines({ queuePosition: 2, stateReason: 'queued_no_free_machine', status: 'queued' })[0]!,
     /^Machine: none yet — the work is queued at position 2, because every machine is busy/)
   assert.match(lines({ stateReason: 'queued_machines_offline', status: 'queued' })[0]!, /because the machines are offline/)
+  assert.match(lines({ stateReason: 'queued_daily_limit', status: 'queued' })[0]!,
+    /because this machine access already spent its daily limit, until 00:00 UTC/)
   assert.match(lines({ stateReason: 'machine_offline', status: 'waiting_machine' })[0]!, /its machine is offline/)
   assert.match(lines({ stateReason: 'machine_access_not_set_up', status: 'waiting_machine' })[0]!,
     /machine access for this trigger is not set up/)
@@ -52,7 +55,19 @@ test('each place the work can stand with its machine reads as its own line', () 
   })
   assert.match(working[0]!, /^Machine: one of its owner's machines is assigned to this work\./)
   assert.equal(working[1], 'Coding session for this ticket: s-1 waiting_for_input, turn 2; no other session belongs to '
-    + 'this ticket.')
+    + 'this ticket: use coding_session_send, never a second start.')
+  assert.equal(working[2], 'Before moving the ticket to Done, run coding_session_review so the merged pull request is '
+    + 'recorded.')
+  assert.equal(lines({ pinned: true, policy: 'live', sessions: [] })[1], 'Coding session for this ticket: none open yet.')
+  // Its earlier session was closed — a hand-over after a re-confirm, say: it briefs a new one.
+  const url = 'https://github.com/unlikeotherai/nessie/pull/142'
+  assert.equal(lines({
+    heldSessions: true, pinned: true, policy: 'live', sessions: [],
+    pullRequest: { checks: null, seenAt: null, state: 'OPEN', url },
+  })[1], 'Your earlier coding session for this ticket was closed; brief a new one with what was already done — see '
+    + 'the pull request.')
+  assert.match(lines({ heldSessions: true, pinned: true, policy: 'live', sessions: [] })[1]!,
+    /see the ticket's comments.$/)
   assert.deepEqual(lines({ pinned: true, policy: 'live' }, true), ['Machine: none.', 'Pull request: none on record.'])
 })
 

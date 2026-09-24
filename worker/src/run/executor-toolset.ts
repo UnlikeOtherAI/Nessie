@@ -138,15 +138,27 @@ export const buildExecutorToolset = async (
         // Who the binding was made for, and whose machine it is: the coding
         // tools are offered only to a private executor's pairing owner.
         candidateHandleDigest: true,
+        executorId: true,
         executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
         id: true,
         operationKey: true,
         session: { select: { id: true, profile: true, status: true } },
+        standingPolicyId: true,
+        ticketWorkId: true,
       },
     }),
   ])
+  // A ticket's work bound through a standing policy gets the coding-session
+  // tools and nothing else: the author's card consented to Claude Code
+  // sessions on these machines, not to the machine's other reviewed programs.
+  // So the generic pair is never offered to it, and the dispatch fence
+  // refuses it too (`standingProgramRefusal`). Standing whenever a binding of
+  // the run says so, whether or not the ticket's coding scope loaded — and
+  // with no scope, not even the coding tools are offered.
+  const standing = Boolean(input.ticketWork)
+    || bindings.some((binding) => Boolean(binding.standingPolicyId || binding.ticketWorkId))
   const mcpCallToolId = logicalTools.get('mcp.call')
-  const codingOffer = await codingSessionsOffer(
+  const codingOffer = standing && !input.ticketWork ? null : await codingSessionsOffer(
     prisma,
     bindings,
     mcpCallToolId !== undefined && input.agentToolPolicy?.[mcpCallToolId] === true,
@@ -217,12 +229,6 @@ export const buildExecutorToolset = async (
     ))
     && commandSessionLive,
   )
-  // A ticket's work bound through a standing policy gets the coding-session
-  // tools and nothing else: the author's card consented to Claude Code
-  // sessions on these machines, not to the machine's other reviewed programs.
-  // So the generic pair is never offered to it, and the dispatch fence
-  // refuses it too (`standingProgramRefusal`).
-  const standing = Boolean(input.ticketWork)
   const entries = standing ? [] : bindings.flatMap((binding): ExecutorEntry[] => {
     // Connected-browser operations stay unavailable until their private-run
     // disclosure gate lands. In particular, their session must never be
@@ -324,9 +330,12 @@ export const buildExecutorToolset = async (
         ? {
             descriptors: ticketWorkCodingDescriptors(codingOffer.facts, ticketWork),
             observe: ticketWorkCodingObserver(prisma, ticketWork),
+            ticket: true,
             timing: TICKET_WORK_CODING_WAIT_TIMING,
           }
-        : {}),
+        // A person's own run links each session to its viewer; a ticket's
+        // thread is a project room that never names the machine.
+        : { executorId: bindings.find((binding) => binding.id === codingOffer.bindingId)?.executorId }),
       ...codingWaitRunChecks(prisma, {
         agentId: input.agentId, runId: input.runId, ...(ticketWork ? { ticketWorkId: ticketWork.workId } : {}),
       }),

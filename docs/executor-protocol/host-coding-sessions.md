@@ -11,6 +11,10 @@ agent drives by conversation. Unlike guest work, such a session acts with the
 host OS user's full authority: their files, their git and SSH credentials,
 their Claude or ChatGPT subscription.
 
+Interactive terminal sessions, their tmux/ConPTY lifecycle, live read-only
+viewer, explicit sharing and platform setup are documented in
+[Live terminal sessions](terminal-sessions.md).
+
 ## What exists today, and what does not yet
 
 This chapter describes the executor side, which is built and tested: the
@@ -287,7 +291,7 @@ The owner configures the bridge through
 object (`null` withdraws the bridge, absent keeps it). That object is closed:
 `roots`, `agents` (`claude`: `command`, `args`, `permissionMode`,
 `allowedTools`, `disallowedTools`, `model`; `codex`: `command`, `args`,
-`model`), `agentEnv` (`inheritUserSession`, `pass`, `set`),
+`model`; `terminal`: `command`, `args`), `agentEnv` (`inheritUserSession`, `pass`, `set`),
 `maxLiveSessionsPerOwner` (3), `idleMinutes` (30), `maxTurnMinutes` (45),
 `maxBudgetUsd` and `closeOnDaemonShutdown` (false). Unknown keys are refused.
 `permissionMode` is checked for its shape only (a letter, then up to 39
@@ -331,7 +335,7 @@ The executor then:
 - adds `codingSessions` to the signed descriptor, inside `localPolicyDigest`:
   `{serverName, agents, permissionMode, allowedToolCount, environmentNames,
   rootNames, configDigest, maxBudgetUsd, maxLiveSessionsPerOwner,
-  mergeCommands}`. Claude's
+  mergeCommands, unaskedCommands}`. Claude's
   mode is its `permissionMode` (`default` when unset); Codex's is the stance
   its reviewed `args` take (`bypassApprovalsAndSandbox`, `fullAuto`,
   `approveForMe`, `sandbox:<mode>` or `default`). `environmentNames` lists,
@@ -352,7 +356,17 @@ The executor then:
   does (`executor/src/coding-session/merge-commands.ts`); empty without
   Claude Code. The host's tool list stays on the host: a standing policy's
   card needs only to say whether a ticket there can reach a merge, and a
-  descriptor without the fact is read as unable to.
+  descriptor without the fact is read as unable to. `unaskedCommands` says
+  whether Claude Code may run any command at all without asking: `any` under
+  `bypassPermissions`, or when an `allowedTools` rule covers every command
+  (a bare `Bash`, `Bash(*)` or `Bash(:*)`) and no `disallowedTools` rule of
+  those same whole-command forms takes it back — a narrower disallowed rule
+  such as `Bash(rm:*)` leaves it `any`, since everything else still runs
+  unasked; `listed` otherwise, and without Claude Code
+  (`claudeUnaskedCommands`, beside `claudeMergeCommands`). Standing machine
+  access on a machine that states `any` needs its author's separate "run any
+  command" tick, and a descriptor without the fact is a machine too old for
+  standing access.
 
 Both CLIs still read their own configuration on this machine — Claude Code
 its user, project and local settings (`~/.claude/settings.json`, a
@@ -683,7 +697,15 @@ words.
 `session_status` never waits and answers at most 8 KB, `status`,
 `nextCursor` and `pendingNotice` first. It carries `totalCostUsd`, what the session has cost
 across every turn so far, once a turn has reported a cost; a ticket's work
-adds only the difference from the last read to its spend. `session_review` runs read-only git in
+adds only the difference from the last read to its spend. The same figure,
+absent until a turn has reported one (a Codex session never does), rides the
+brief status `session_start` (on a replay), `session_send` and
+`session_review` answer, and each session's entry in the daemon's
+`session_list_all` — so the local-MCP report the heartbeat carries states
+per-session `totalCostUsd` (`ExecutorCodingSessionSummarySchema`), and the
+heartbeat intake adds each session's new cost since its last report to its
+ticket's spend, which holds a ticket's limits whether or not the model ever
+reads its status. `session_review` runs read-only git in
 the session's folder within 20 s, in the same login-like environment the
 agents get (the MCP SDK's minimal `PATH` finds no Homebrew `gh` on macOS):
 branch, the base commit recorded at start, commits since, `git diff --stat`,

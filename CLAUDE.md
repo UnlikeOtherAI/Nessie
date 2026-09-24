@@ -279,7 +279,10 @@ sentence changes only if the invariant itself did.
   awaiting confirmation, live with the machines named only to the author,
   suspended, ended by whom — the author's setup form refusing a machine for
   each reason, the prepare it posts, a server refusal, the one card with its
-  password review, and End; a document trigger's form
+  password review, and End, where a card left unconfirmed is after a reload,
+  the editor's warning before a save pauses live access and the page's
+  notice after it, and the author's read-only trigger page; a document
+  trigger's form
   (the project's Documents space chosen, a team-only space disabled), a
   refusal landing on the space field, the exact typed config its create
   posts, and its page with each delivery in words; and in a project's Docs
@@ -337,3 +340,5 @@ sentence changes only if the invariant itself did.
   the Personal Assistant (Gemini Live, browser + iPhone,
   [`docs/standards/voice-calling.md`](docs/standards/voice-calling.md)) and an
   older, architecturally separate OpenAI-Realtime companion in `macos/`.
+
+- Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.

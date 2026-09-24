@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { StandingPolicyPinnedTermsSchema, type ExecutorStandingPolicySuspendedReason } from '@nessie/schemas'
 
 import { executorHeartbeatCutoff } from './executor-liveness.js'
+import { loadStandingPolicyAgentPin } from './executor-standing-policy-agent.js'
 import { standingPolicyMachineRevision } from './executor-standing-policy-machines.js'
 import {
   enqueueTicketWorkSweep,
@@ -193,8 +194,11 @@ export const standingPolicyDigestCheck = async (
 ): Promise<StandingPolicyDigestCheck> => {
   const unplaceable = new Set<string>()
   const pinned = StandingPolicyPinnedTermsSchema.safeParse(policy.pinnedTerms)
+  // The agent as it stands now: an edit of it since the confirmation suspends, as its own door does.
+  const agent = policy.trigger?.agentId ? await loadStandingPolicyAgentPin(client, policy.trigger.agentId) : null
+  if (pinned.success && agent && pinned.data.agent.digest !== agent.digest) return { suspend: 'agent_changed', unplaceable }
   const terms = policy.trigger && pinned.success
-    ? standingPolicyTermsOf(policy.trigger, standingPolicyLimitsOf(pinned.data))
+    ? standingPolicyTermsOf(policy.trigger, standingPolicyLimitsOf(pinned.data), agent)
     : null
   if (!terms || standingPolicyTermsDigest(terms) !== policy.triggerDigest) return { suspend: 'trigger_changed', unplaceable }
   for (const row of policy.executors) {

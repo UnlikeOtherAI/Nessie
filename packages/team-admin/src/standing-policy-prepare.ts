@@ -7,6 +7,7 @@ import {
   lockExecutorMutation,
   standingPolicyTermsDigest,
   standingPolicyTermsOf,
+  loadStandingPolicyAgentPin,
   writeStandingPolicyAudit,
   type StandingPolicyMachineAssessment,
 } from '@nessie/executor-manage'
@@ -163,7 +164,8 @@ export const prepareStandingPolicy = async (
     if (allowedRootNames.length === 0) {
       throw new StandingPolicyRefusal('These machines share no coding root. Name the roots ticket work may use.')
     }
-    const terms = standingPolicyTermsOf(trigger.row, input.limits)
+    const agent = await loadStandingPolicyAgentPin(tx, trigger.agentId)
+    const terms = standingPolicyTermsOf(trigger.row, input.limits, agent)
     if (!terms) throw new StandingPolicyRefusal('This trigger\'s configuration no longer holds together.')
     const hostProfile: StandingPolicyHostProfile = {
       allowAnyCommand: input.allowAnyCommand,
@@ -231,12 +233,19 @@ export const prepareStandingPolicy = async (
       organizationId,
       policyId: policy.id,
     })
-    const [board, columns, boardEditorCount] = await Promise.all([
+    const [board, columns, boardEditorCount, waitingTickets] = await Promise.all([
       tx.board.findUnique({ where: { id: terms.boardId }, select: { name: true } }),
       tx.boardColumn.findMany({
         where: { id: { in: terms.pickupColumnIds } }, orderBy: { position: 'asc' }, select: { name: true },
       }),
       countStandingPolicyBoardEditors(tx, { organizationId, projectId: trigger.projectId }),
+      tx.agentTicketWork.count({
+        where: {
+          stateReason: { in: ['machine_access_not_set_up', 'machine_access_suspended'] },
+          status: 'waiting_machine',
+          triggerId: trigger.id,
+        },
+      }),
     ])
     const card = buildStandingPolicyCard({
       agentName: trigger.agentName,
@@ -248,6 +257,7 @@ export const prepareStandingPolicy = async (
       pickupColumnNames: columns.map((column) => column.name),
       terms,
       triggerName: trigger.name,
+      waitingTickets,
     })
     return {
       accessChangeId: prepared.accessChangeId,

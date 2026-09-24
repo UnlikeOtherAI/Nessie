@@ -61,11 +61,19 @@ test('each ticket says where it stands, and its machine only when named', () => 
 test('the setup form refuses a machine for what the chosen options cannot give it', () => {
   const minis: StandingPolicyMachineOption = {
     executorId: POLICY.id, label: 'Minis', refusal: null,
-    facts: { maxLiveSessionsPerOwner: 3, mergeCommands: [], permissionMode: 'bypassPermissions', rootNames: ['nessie'], turnBudgetUsd: 5 },
+    facts: {
+      maxLiveSessionsPerOwner: 3, mergeCommands: [], permissionMode: 'bypassPermissions', rootNames: ['nessie'],
+      turnBudgetUsd: 5, unaskedCommands: 'any',
+    },
   }
   const choices = { allowAnyCommand: false, roots: ['nessie'], ticketUsd: 20 }
   assert.match(machineOptionRefusal(minis, choices) ?? '', /runs any command without asking, which needs “Let the coding/)
   assert.equal(machineOptionRefusal(minis, { ...choices, allowAnyCommand: true }), null)
+  // A Bash rule that allows every command is the same as bypass: it needs the tick too.
+  const wide = { ...minis, facts: { ...minis.facts!, permissionMode: 'acceptEdits' } }
+  assert.match(machineOptionRefusal(wide, choices) ?? '', /runs any command without asking, which needs/)
+  assert.equal(machineOptionRefusal({ ...wide, facts: { ...wide.facts, unaskedCommands: 'listed' as const } }, choices),
+    null)
   assert.match(machineOptionRefusal(minis, { ...choices, allowAnyCommand: true, ticketUsd: 4 }) ?? '',
     /may spend \$5 a turn, more than the \$4 a ticket may spend/)
   assert.equal(machineOptionRefusal(minis, { ...choices, allowAnyCommand: true, roots: ['site'] }),

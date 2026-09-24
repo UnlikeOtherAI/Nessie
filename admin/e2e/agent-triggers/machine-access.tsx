@@ -14,8 +14,11 @@ import type {
  *
  * `&access=` picks the state: `not_set_up` (the author, the default for the
  * setup form), `not_set_up_other` (an owner who is not the author),
- * `awaiting`, `live` (the author: machines named), `live_other` (an owner:
- * machines not named), `suspended` and `ended`.
+ * `awaiting` (its card in the author's conversation with the Designer),
+ * `awaiting_here` (its card prepared on the page and left unconfirmed), `live`
+ * (the author: machines named), `live_other` (an owner: machines not named),
+ * `suspended` and `ended`. A trigger edit that pauses it lands through
+ * `suspendMachineAccess`.
  */
 
 const TRIGGER = '60000000-0000-4000-8000-000000000021'
@@ -26,11 +29,23 @@ const MINIS = '60000000-0000-4000-8000-000000000610'
 const STUDIO = '60000000-0000-4000-8000-000000000611'
 const BARE = '60000000-0000-4000-8000-000000000612'
 const AUTHOR = '60000000-0000-4000-8000-000000000620'
+// The author's conversation with the Agent Designer, where its card was posted.
+export const DESIGNER_DM = {
+  channelId: '60000000-0000-4000-8000-000000000650',
+  threadId: '60000000-0000-4000-8000-000000000651',
+}
 const T0 = '2026-09-23T09:00:00.000Z'
 
 export const machineAccessState = new URLSearchParams(location.search).get('access') ?? 'live'
-// What the server holds now: a prepare leaves a card out, an End ends it.
+// What the server holds now: a prepare leaves a card out, an End ends it, an edit pauses it.
 let current = machineAccessState
+
+/** A saved edit of a pinned field: live access pauses until its author confirms it again. */
+export const suspendMachineAccess = (): boolean => {
+  if (current !== 'live' && current !== 'live_other') return false
+  current = current === 'live' ? 'suspended' : 'suspended_other'
+  return true
+}
 
 const ticket = (n: number, title: string, extra: Partial<TriggerMachineAccessView['tickets'][number]>) => ({
   machineLabel: null, position: null, projectId: PROJECT, stateReason: null, status: 'active' as const,
@@ -66,31 +81,37 @@ const liveTickets = (named: boolean) => [
 
 const VIEWS: Record<string, () => TriggerMachineAccessView> = {
   not_set_up: () => ({
-    author: { name: 'Ondrej', userId: AUTHOR }, pendingCard: null, policy: null, state: 'not_set_up',
+    author: { name: 'Ondrej', userId: AUTHOR }, cardLocation: null, pendingCard: null, policy: null, state: 'not_set_up',
     tickets: [ticket(1, 'NES-140 Fix login redirect', { stateReason: 'machine_access_not_set_up', status: 'waiting_machine' })],
     triggerId: TRIGGER, viewerIsAuthor: true,
   }),
   not_set_up_other: () => ({ ...VIEWS.not_set_up!(), viewerIsAuthor: false }),
   awaiting: () => ({
-    author: { name: 'Ondrej', userId: AUTHOR }, pendingCard: null, policy: policyOf('preparing', true),
-    state: 'awaiting_confirmation', tickets: [], triggerId: TRIGGER, viewerIsAuthor: true,
+    author: { name: 'Ondrej', userId: AUTHOR }, cardLocation: { where: 'conversation', ...DESIGNER_DM },
+    pendingCard: null, policy: policyOf('preparing', true), state: 'awaiting_confirmation', tickets: [],
+    triggerId: TRIGGER, viewerIsAuthor: true,
   }),
+  awaiting_here: () => ({ ...VIEWS.awaiting!(), cardLocation: { where: 'this_page' } }),
   live: () => ({
-    author: { name: 'Ondrej', userId: AUTHOR }, pendingCard: null, policy: policyOf('live', true), state: 'live',
-    tickets: liveTickets(true), triggerId: TRIGGER, viewerIsAuthor: true,
+    author: { name: 'Ondrej', userId: AUTHOR }, cardLocation: null, pendingCard: null, policy: policyOf('live', true),
+    state: 'live', tickets: liveTickets(true), triggerId: TRIGGER, viewerIsAuthor: true,
   }),
   live_other: () => ({
-    author: { name: 'Ondrej', userId: AUTHOR }, pendingCard: null, policy: policyOf('live', false), state: 'live',
-    tickets: liveTickets(false), triggerId: TRIGGER, viewerIsAuthor: false,
+    author: { name: 'Ondrej', userId: AUTHOR }, cardLocation: null, pendingCard: null, policy: policyOf('live', false),
+    state: 'live', tickets: liveTickets(false), triggerId: TRIGGER, viewerIsAuthor: false,
   }),
   suspended: () => ({
-    author: { name: 'Ondrej', userId: AUTHOR }, pendingCard: null,
+    author: { name: 'Ondrej', userId: AUTHOR }, cardLocation: null, pendingCard: null,
     policy: policyOf('suspended', true, { suspendedReason: 'trigger_changed' }), state: 'suspended',
     tickets: [ticket(1, 'NES-140 Fix login redirect', { stateReason: 'machine_access_suspended', status: 'waiting_machine' })],
     triggerId: TRIGGER, viewerIsAuthor: true,
   }),
+  suspended_other: () => ({
+    ...VIEWS.suspended!(), policy: policyOf('suspended', false, { suspendedReason: 'trigger_changed' }),
+    viewerIsAuthor: false,
+  }),
   ended: () => ({
-    author: { name: 'Ondrej', userId: AUTHOR }, pendingCard: null,
+    author: { name: 'Ondrej', userId: AUTHOR }, cardLocation: null, pendingCard: null,
     policy: policyOf('ended', true, { endedAt: T0, endedByName: 'Ondrej', endedReason: 'person', viewerCanEnd: false }),
     state: 'ended', tickets: [], triggerId: TRIGGER, viewerIsAuthor: true,
   }),
@@ -109,14 +130,14 @@ const machines: StandingPolicyMachineOption[] = [
     executorId: MINIS, label: 'Minis', refusal: null,
     facts: {
       maxLiveSessionsPerOwner: 3, mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
-      permissionMode: 'acceptEdits', rootNames: ['nessie', 'site'], turnBudgetUsd: 5,
+      permissionMode: 'acceptEdits', rootNames: ['nessie', 'site'], turnBudgetUsd: 5, unaskedCommands: 'listed',
     },
   },
   {
     executorId: STUDIO, label: 'Studio', refusal: null,
     facts: {
       maxLiveSessionsPerOwner: 3, mergeCommands: [], permissionMode: 'bypassPermissions', rootNames: ['nessie'],
-      turnBudgetUsd: 8,
+      turnBudgetUsd: 8, unaskedCommands: 'any',
     },
   },
 ]
@@ -125,8 +146,8 @@ const card: PreparedStandingPolicyResponse['card'] = {
   actions: [{ key: 'review', label: 'Review', style: 'primary', submits: true }],
   blocks: [
     {
-      markdown: 'Anyone who can edit this board (7 people) can make Claude run commands on these machines as you, with '
-        + 'your git and coding-agent login.\n\nThe agent may drive Claude Code sessions on these machines; it gets no '
+      markdown: 'Anyone who can edit this board — 7 people today, and anyone added to the project later — can make '
+        + 'Claude run commands on these machines as you, with your git and coding-agent login.\n\nThe agent may drive Claude Code sessions on these machines; it gets no '
         + 'other program on them.\n\nProject members, organisation owners and people on the ticket see what the work '
         + 'does on the ticket: the coding agent\'s summaries and its pull requests. Pull requests are merged under your '
         + 'GitHub identity.',
@@ -195,7 +216,8 @@ export const machineAccessPost = (path: string, body: unknown, posted: Recorded[
         machines: [{ executorId: MINIS, label: 'Minis', reason: 'offline', sentence: 'Minis is offline. Bring it online first.' }],
       })
     }
-    current = 'awaiting'
+    // Prepared on this page: the card lives in the section until the page is left.
+    current = 'awaiting_here'
     return {
       accessChangeId: ACCESS_CHANGE, card, confirmationToken: 'c'.repeat(43), expiresAt: '2026-09-23T10:00:00.000Z',
       policyId: POLICY, requiresFreshVerification: true,

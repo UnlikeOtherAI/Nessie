@@ -12,7 +12,7 @@ import {
   type AuthorizedActionContext,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
-import { canMemberEditProjectBoards } from '@nessie/team-admin'
+import { canMemberEditProjectBoards, ticketInWorkFlow } from '@nessie/team-admin'
 
 import { loadTicketWorkCodingScope, type TicketWorkCodingScope } from '../ticket-work-coding-sessions.js'
 
@@ -105,14 +105,20 @@ export const ticketWorkToolRefusal = (
  * run is stamped with its thread's channel as the launch conversation, which
  * already admits host output to that project's board; this is narrower. Once
  * a machine has answered, every tool that writes somewhere else refuses:
- * another channel, another ticket, a document, a mail, a peer. Moving or
- * transitioning a ticket carries no text, so it stays. `ticket_comment_add`
- * then admits only this ticket (`assertProjectWriteDestination`).
+ * another channel, another ticket, a document, a mail, a peer. What stays:
+ * commenting on, moving or transitioning its own ticket — the other ticket a
+ * call names is refused at `authorizeToolExecution`
+ * (`ticketWorkStandingRefusal`), and `ticket_comment_add` admits only this
+ * ticket anyway (`assertProjectWriteDestination`) — `check_back_in`, which
+ * writes only its own reminder, and the coding session tools, which are the
+ * machine's own and are not builtins.
  */
 export const TICKET_WORK_HOST_OUTPUT_REFUSAL = 'This run has read the machine\'s output, which may be posted only to '
   + 'this ticket\'s comments and its work thread: say it there instead.'
 
-const TICKET_WORK_HOST_OUTPUT_WRITES: ReadonlySet<string> = new Set(['ticket_comment_add', 'ticket_move', 'ticket_transition'])
+export const TICKET_WORK_HOST_OUTPUT_WRITES: ReadonlySet<string> = new Set([
+  'ticket_comment_add', 'ticket_move', 'ticket_transition', 'check_back_in',
+])
 
 const WRITING_TOOL_IDS: ReadonlySet<string> = new Set(
   BUILTIN_TOOL_DEFINITIONS.filter((tool) => !tool.safe).map((tool) => tool.id),
@@ -132,7 +138,14 @@ export const ticketWorkHostOutputRefusal = (
   ? TICKET_WORK_HOST_OUTPUT_REFUSAL
   : null
 
-export type TicketWorkRunFacts = { workId: string; projectId: string; taskId: string; live: boolean }
+export type TicketWorkRunFacts = {
+  /** The record has started a coding session, ever: what its machine answered is in its history. */
+  heldSessions: boolean
+  live: boolean
+  projectId: string
+  taskId: string
+  workId: string
+}
 
 /**
  * The work record this run serves, re-read at setup: it must name this agent
@@ -151,10 +164,16 @@ export const loadTicketWorkRunFacts = async (
   if (!isTicketWorkRun(input.actorContext) || !workId) return null
   const work = await prisma.agentTicketWork.findFirst({
     where: { id: workId, agentId: input.agentId, threadId: input.threadId },
-    select: { projectId: true, taskId: true, status: true },
+    select: { projectId: true, sessionIds: true, taskId: true, status: true },
   })
   return work
-    ? { workId, projectId: work.projectId, taskId: work.taskId, live: LIVE.has(work.status) }
+    ? {
+        heldSessions: work.sessionIds.length > 0,
+        live: LIVE.has(work.status),
+        projectId: work.projectId,
+        taskId: work.taskId,
+        workId,
+      }
     : null
 }
 
@@ -162,9 +181,11 @@ export const loadTicketWorkRunFacts = async (
  * The machine a `ticket.work` run may use: its record's pinned machine, bound
  * afresh under the trigger's standing policy with every check run again
  * (`bindStandingPolicyExecutor`, docs/standards/ticket-work-machine-access.md).
- * The author's right to edit the board is team-admin's rule, handed in. A
- * failure to bind is an outcome the run is told of, never a failed run: an
- * unexpected error leaves the run with no machine, as a refusal does.
+ * The author's right to edit the board, and whether the ticket is still in
+ * the trigger's flow, are team-admin's rules, handed in. A failure to bind is
+ * an outcome the run is told of, never a failed run: the binder turns an
+ * unexpected error into a `bind_failed` refusal, and one before it has read
+ * the record leaves the run with no machine, as a refusal does.
  */
 export type TicketWorkMachine = { binding: StandingPolicyBinding; coding: TicketWorkCodingScope | null }
 
@@ -175,7 +196,10 @@ export const bindTicketWorkMachine = async (
   try {
     const binding = await bindStandingPolicyExecutor(prisma, { job: input.job, runId: input.runId }, {
       workId: input.workId,
-    }, { canEditBoard: (check) => canMemberEditProjectBoards(prisma, check) })
+    }, {
+      canEditBoard: (check) => canMemberEditProjectBoards(prisma, check),
+      ticketInFlow: (check) => ticketInWorkFlow(prisma, check),
+    })
     const bound = binding.kind === 'bound' || binding.kind === 'already_bound'
     return {
       binding,

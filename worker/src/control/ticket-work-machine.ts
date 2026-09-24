@@ -53,9 +53,13 @@ const eventFor = (event: DescribedWakeEvent, placement: TicketWorkMachinePlaceme
         ...event,
         reason: 'queued',
         summary: `queued: position ${placement.position}`,
-        text: `${event.text} No machine can take it yet, because ${machinesPhrase(placement.busy, placement.offline)}: `
-          + `it is queued at position ${placement.position}. You will be woken here when a machine frees. `
-          + 'Never name a machine on the ticket or in this thread.',
+        text: placement.reason === 'queued_daily_limit'
+          ? `${event.text} No machine can take it today: this machine access already spent its daily limit, so it `
+            + `is queued at position ${placement.position} until the day's spend resets at 00:00 UTC. You will be woken `
+            + 'here when a machine takes it. Never name a machine on the ticket or in this thread.'
+          : `${event.text} No machine can take it yet, because ${machinesPhrase(placement.busy, placement.offline)}: `
+            + `it is queued at position ${placement.position}. You will be woken here when a machine frees. `
+            + 'Never name a machine on the ticket or in this thread.',
       }
     case 'waiting':
       return {

@@ -253,11 +253,14 @@ this standard, not an exception to it.
     In plain words: the machines, the host profile and each machine that
     cannot merge (*"This machine cannot merge; tickets will stop at an open
     pull request."*), the board and its start-work columns, who can start
-    work (*"Anyone who can edit this board (N people) can make Claude run
-    commands on these machines as you, with your git and coding-agent
-    login."*), who sees it, the limits, that merges happen under the
-    author's GitHub identity, what changed since the policy it replaces, and
-    the instructions word for word in a closed fold — every punctuation mark
+    work (*"Anyone who can edit this board — N people today, and anyone
+    added to the project later — can make Claude run commands on these
+    machines as you, with your git and coding-agent login."*), the agent and
+    its model and that editing it pauses the access, which machines let
+    Claude Code run any command unasked, the quiet wake, a mirrored board's
+    own events, the tickets waiting to start, who sees it, the limits, that
+    merges happen under the author's GitHub identity, what changed since the
+    policy it replaces, and the instructions word for word in a closed fold — every punctuation mark
     escaped, so no link, HTML, comment or heading in them can render out of
     sight, and not fenced, because a code block does not wrap and a phone
     would show a sliver of them; refused as too long rather than cut. Its

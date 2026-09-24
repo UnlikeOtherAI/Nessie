@@ -140,7 +140,7 @@ const agentConfig = (name: CodingAgentName, value: unknown): CodingAgentConfig =
   if (!record(value)) return refuse(`${where} must be an object.`)
   onlyKeys(value, name === 'claude'
     ? ['command', 'args', 'permissionMode', 'allowedTools', 'disallowedTools', 'model']
-    : ['command', 'args', 'model'], where)
+    : name === 'terminal' ? ['command', 'args'] : ['command', 'args', 'model'], where)
   const command = stringList(value.command, `${where}.command`, 8, 4_096)
   if (command.length === 0) refuse(`${where}.command names the program to run.`)
   // Without a shell nothing can run a script shim, and an npm shim only forwards to the real program.
@@ -148,7 +148,7 @@ const agentConfig = (name: CodingAgentName, value: unknown): CodingAgentConfig =
     refuse(`${where}.command names a script shim; name the program itself (${name === 'claude' ? 'claude.exe' : 'node and codex.js'}).`)
   }
   const args = stringList(value.args, `${where}.args`, 32, 1_024)
-  const refused = name === 'claude' ? CLAUDE_REFUSED_FLAGS : CODEX_REFUSED_FLAGS
+  const refused = name === 'terminal' ? [] : name === 'claude' ? CLAUDE_REFUSED_FLAGS : CODEX_REFUSED_FLAGS
   for (const argument of [...command.slice(1), ...args]) {
     const flag = refused.find((entry) => usesFlag(argument, entry))
     if (flag) {

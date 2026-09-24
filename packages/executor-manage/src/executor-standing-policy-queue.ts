@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client'
 import { TICKET_WORK_MACHINE_HOLDING_STATUSES } from '@nessie/schemas'
 
 import { executorHeartbeatCutoff } from './executor-liveness.js'
+import { homeMachineOf } from './ticket-work-session-origins.js'
 
 /**
  * The order of the pool queue, and the place every queued record is told it
@@ -80,12 +81,12 @@ export const renumberTicketWorkQueueInTransaction = async (
 /**
  * Whether queued work goes before this record on a free machine (T5): queued
  * work of any live policy whose pool includes the machine, ahead of it in the
- * one order, that could take this machine — its own last machine is this one,
- * it has none, or its own is offline, out of its pool or held by other work (a
- * record waits for its own machine only while that machine could take it; its
- * own sessions there never keep it off). A pickup or a resume
- * that finds a machine free then queues instead of jumping the line, and the
- * dispatcher places whoever is first.
+ * one order, that could take this machine — the machine it last worked on
+ * (`homeMachineOf`) is this one, it has none, or its own could not take it
+ * back now: offline or gone, held by other work (a record waits for its own
+ * machine only while that machine could take it; its own sessions there never
+ * keep it off). A pickup or a resume that finds a machine free then queues
+ * instead of jumping the line, and the dispatcher places whoever is first.
  */
 export const queuedTicketWorkOutranks = async (
   tx: Prisma.TransactionClient,
@@ -101,25 +102,35 @@ export const queuedTicketWorkOutranks = async (
       trigger: { agentId: { not: null }, enabled: true, status: 'active' },
     },
     select: {
-      enqueuedAt: true, executorId: true, id: true, task: { select: { priority: true } },
-      executor: { select: { lastSeenAt: true, removedAt: true, status: true } },
+      enqueuedAt: true, executorId: true, id: true, sessionOrigins: true, task: { select: { priority: true } },
       policy: { select: { executors: { select: { executorId: true } } } },
     },
   })).filter((record) => compareTicketWorkQueueEntries({ ...record, priority: record.task.priority }, input.record) < 0)
   if (queued.length === 0) return false
-  const elsewhere = [...new Set(queued.flatMap((record) => (
-    record.executorId && record.executorId !== input.executorId ? [record.executorId] : [])))]
-  const held = new Set((await tx.agentTicketWork.findMany({
-    where: { executorId: { in: elsewhere }, status: { in: [...TICKET_WORK_MACHINE_HOLDING_STATUSES] } },
-    select: { executorId: true },
-  })).map((record) => record.executorId))
+  const homes = new Map(queued.map((record) => [
+    record.id, homeMachineOf(record, new Set(record.policy?.executors.map((row) => row.executorId) ?? [])),
+  ]))
+  const elsewhere = [...new Set([...homes.values()].filter((home): home is string => (
+    home !== null && home !== input.executorId)))]
+  if (elsewhere.length === 0) return true
+  const [machines, holders] = await Promise.all([
+    tx.executor.findMany({
+      where: { id: { in: elsewhere } }, select: { id: true, lastSeenAt: true, removedAt: true, status: true },
+    }),
+    tx.agentTicketWork.findMany({
+      where: { executorId: { in: elsewhere }, status: { in: [...TICKET_WORK_MACHINE_HOLDING_STATUSES] } },
+      select: { executorId: true },
+    }),
+  ])
+  const byId = new Map(machines.map((machine) => [machine.id, machine]))
+  const held = new Set(holders.map((holder) => holder.executorId))
   const cutoff = executorHeartbeatCutoff(now)
   return queued.some((record) => {
-    if (!record.executorId || record.executorId === input.executorId) return true
-    const own = record.executor
-    const pooled = record.policy?.executors.some((row) => row.executorId === record.executorId) ?? false
-    const ownCouldTakeIt = pooled && own && !own.removedAt && own.status === 'online' && own.lastSeenAt !== null
-      && own.lastSeenAt >= cutoff && !held.has(record.executorId)
+    const home = homes.get(record.id) ?? null
+    if (!home || home === input.executorId) return true
+    const own = byId.get(home)
+    const ownCouldTakeIt = own !== undefined && !own.removedAt && own.status === 'online' && own.lastSeenAt !== null
+      && own.lastSeenAt >= cutoff && !held.has(home)
     return !ownCouldTakeIt
   })
 }

@@ -82,6 +82,7 @@ export const executorOperationLabel = (key: string): string =>
 export const EXECUTOR_CODING_AGENT_LABELS: Record<ExecutorCodingAgentName, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  terminal: 'Terminal',
 }
 
 /**

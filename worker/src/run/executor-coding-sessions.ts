@@ -123,6 +123,11 @@ export const createExecutorCodingSessions = (input: {
   descriptors?: ToolSchemaDescriptor[]
   facts: ExecutorCodingSessionsFacts
   /**
+   * The machine the coding sessions run on: each answer names its session's
+   * viewer path. Absent for a `ticket.work` run, whose thread is a project room.
+   */
+  executorId?: string
+  /**
    * Every answer the bridge gives, before it is presented: a `ticket.work`
    * run writes what it learns onto its work record in the same step.
    */
@@ -131,6 +136,8 @@ export const createExecutorCodingSessions = (input: {
   ) => Promise<void>
   personWrote: () => Promise<boolean>
   stopRequested: () => Promise<boolean>
+  /** A `ticket.work` run's answers: after a start or a send it ends its turn, and is woken. */
+  ticket?: boolean
   timing?: CodingWaitTiming
 }): ExecutorCodingSessions => {
   const server = input.facts.serverName
@@ -174,9 +181,24 @@ export const createExecutorCodingSessions = (input: {
     const parsed = parseBridgeResult(outcome.result)
     if (parsed.kind === 'answer') {
       remember(toolName, parsed.body)
+      const addLink = (body: Record<string, unknown>): void => {
+        if (input.executorId && typeof body.sessionId === 'string'
+          && /^[0-9a-f-]{36}$/u.test(body.sessionId)) {
+          body.viewPath = `/agents/executors/${input.executorId}/sessions/${body.sessionId}`
+        }
+      }
+      addLink(parsed.body)
+      if (Array.isArray(parsed.body.sessions)) {
+        for (const session of parsed.body.sessions) {
+          if (session && typeof session === 'object') addLink(session as Record<string, unknown>)
+        }
+      }
       await input.observe?.(toolName, args, parsed.body)
     }
-    return { ...presentCodingCall(toolName, parsed, outcome.result), inputSummary: summarizeToolInput(args) }
+    return {
+      ...presentCodingCall(toolName, parsed, outcome.result, { ticket: input.ticket === true }),
+      inputSummary: summarizeToolInput(args),
+    }
   }
 
   const wait = async (
@@ -254,7 +276,7 @@ export const createExecutorCodingSessions = (input: {
     await hooks.onProgress?.(toolName, codingProgressLine(last, activity)).catch(() => undefined)
     return {
       inputSummary,
-      output: presentCodingWait(waited),
+      output: presentCodingWait(waited, { ticket: input.ticket === true }),
       success: true,
       ...recordIdField,
       watch: { progressed, state: watchStateOf(outcome, last) },

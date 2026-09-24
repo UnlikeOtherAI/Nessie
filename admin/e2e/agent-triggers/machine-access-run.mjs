@@ -11,6 +11,9 @@ import { assertNoSidewaysScroll, openPage, posted, settled, shot } from './helpe
  *   is not), awaiting confirmation, live (machines named to the author and to
  *   nobody else), suspended with its reason, ended by whom — with its tickets
  *   and their places, and the last wakes in words;
+ * - a card still out after a reload, where the server says it is: in the
+ *   author's conversation with the Designer (and a link to it), or prepared on
+ *   the page and left, with the prepare offered again;
  * - the author's setup form: a machine refused whatever is chosen, one refused
  *   until the "run any command" tick, one whose per-turn budget is over the
  *   ticket limit, the shared coding folders, and the exact prepare it posts;
@@ -21,10 +24,12 @@ import { assertNoSidewaysScroll, openPage, posted, settled, shot } from './helpe
  */
 
 const MINIS = '60000000-0000-4000-8000-000000000610'
+const DESIGNER_DM = '/channels/60000000-0000-4000-8000-000000000650/threads/60000000-0000-4000-8000-000000000651'
 const STATES = [
   ['not_set_up', /^Tickets this trigger picks up wait for machine access\./],
   ['not_set_up_other', /^Tickets this trigger picks up wait for machine access\./],
   ['awaiting', /^Ondrej has a card to confirm with their password\./],
+  ['awaiting_here', /^Ondrej has a card to confirm with their password\./],
   ['live', /: anyone who can edit the board starts work on Minis and Studio, as Ondrej\.$/],
   ['live_other', /: anyone who can edit the board starts work on two machines of Ondrej’s, as Ondrej\.$/],
   ['suspended', /^Paused because the trigger was edited .* Tickets wait until Ondrej confirms it again\.$/],
@@ -74,6 +79,21 @@ const states = async (browser, { name, options }) => {
       assert.equal(await section.getByRole('button', { name: 'Set up machine access…' }).count(), 1)
     }
     if (access === 'suspended') assert.match(text, /waiting: machine access is paused/)
+    // After a reload the card is wherever the server says it is (F16).
+    const location = section.getByTestId('machine-access-card-location')
+    if (access === 'awaiting') {
+      assert.equal(await location.innerText(),
+        'Confirm the card in your conversation with the Agent Designer. Open the conversation')
+      assert.equal(await location.getByRole('link', { name: 'Open the conversation' }).getAttribute('href'), DESIGNER_DM)
+      assert.equal(await section.getByRole('button', { name: 'Prepare it again…' }).count(), 0)
+    } else if (access === 'awaiting_here') {
+      const LEFT_HERE = /^The card prepared here was not confirmed before you left\. Prepare it again to confirm it\./
+      assert.match(await location.innerText(), LEFT_HERE)
+      assert.equal(await location.getByRole('link').count(), 0, `${name}: no conversation to open`)
+      assert.equal(await location.getByRole('button', { name: 'Prepare it again…' }).count(), 1)
+    } else {
+      assert.equal(await location.count(), 0, `${name} ${access}: no card is out`)
+    }
     // The last wakes, in the words the deliveries say them — a machine back and a session's turn (T5) among them.
     const wakes = await section.getByTestId('machine-access-wakes').innerText()
     assert.match(wakes, /Woke the agent: the machine came back\./)
@@ -134,6 +154,8 @@ const setupForm = async (browser, { name, options }) => {
   await card.waitFor()
   const cardText = await card.innerText()
   assert.match(cardText, /Let CTO use Minis/)
+  // The card is right here, so the line for a card left behind is not shown beside it.
+  assert.equal(await section.getByTestId('machine-access-card-location').count(), 0)
   assert.match(cardText, /The agent may drive Claude Code sessions on these machines; it gets no other program/)
   const prepares = (await posted(page)).filter((entry) => entry.path.endsWith('/machine-access'))
   assert.deepEqual(prepares.at(-1)?.body, {

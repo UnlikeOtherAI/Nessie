@@ -49,6 +49,7 @@ import { announceClosedExecutorReviewCards } from '../services/agent-card-execut
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorCodingSessionRoutes } from './executor-coding-sessions.js'
+import { registerExecutorSessionViewRoutes } from './executor-session-views.js'
 import { registerExecutorDaemonRoutes } from './executor-daemon-routes.js'
 import { notifyExecutorLeaseChanges, registerExecutorLeaseRoutes } from './executor-leases.js'
 import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
@@ -72,6 +73,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
   registerExecutorWorkspacePromotionRoutes(app, deps)
   registerExecutorLeaseRoutes(app, deps)
   registerExecutorCodingSessionRoutes(app, deps)
+  registerExecutorSessionViewRoutes(app, deps)
   const {
     buildChannelRealtimeScopes,
     config,

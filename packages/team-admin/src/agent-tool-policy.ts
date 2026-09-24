@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { buildAgentVisibilityWhere } from '@nessie/db'
+import { suspendStandingPoliciesForAgentChangeInTransaction } from '@nessie/executor-manage'
 import {
   AgentToolPolicyTargetSchema,
   type AgentToolPolicyTarget,
@@ -137,6 +138,11 @@ export const mutateAgentToolPolicyInTransaction = async (
         role: true,
         toolPolicy: true,
       },
+    })
+    // The tool policy and the connector grants synchronized with it are part of
+    // what a standing policy's author agreed to: a change pauses their access.
+    await suspendStandingPoliciesForAgentChangeInTransaction(tx, {
+      actor: { userId: input.actorUserId ?? null }, agentId: agent.id,
     })
     return mapTarget(updated)
 }

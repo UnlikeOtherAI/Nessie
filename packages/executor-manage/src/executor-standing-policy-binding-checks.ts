@@ -13,6 +13,7 @@ import { EXECUTOR_LOCAL_APPS_OPERATION_KEYS } from './executor-conversation-leas
 import { executorHeartbeatCutoff } from './executor-liveness.js'
 import { jobServesTicketWork } from './executor-standing-policy-fence.js'
 import { loadTicketWorkLimitState, ticketWorkLimitBreachOf } from './executor-standing-policy-limits.js'
+import { loadStandingPolicyAgentPin } from './executor-standing-policy-agent.js'
 import { standingPolicyMachineDigests } from './executor-standing-policy-machines.js'
 import { standingPolicyLimitsOf, standingPolicyTermsDigest, standingPolicyTermsOf } from './executor-standing-policy-terms.js'
 
@@ -23,8 +24,11 @@ import { standingPolicyLimitsOf, standingPolicyTermsDigest, standingPolicyTermsO
  *
  * 1. `policy_not_live` — the policy is `live` and names this trigger, agent
  *    and machine;
- * 2. `terms_changed` — the trigger still digests to what was pinned, and the
- *    machine to its pinned descriptor digests;
+ * 2. `terms_changed` — the trigger and its agent's definition still digest to
+ *    what was pinned, and the machine to its pinned descriptor digests (an
+ *    agent whose definition changed also suspends the policy, `agent_changed`);
+ *    and the ticket is still on the trigger's board, in no column that ends
+ *    its work (`ticket_not_in_flow`);
  * 3. `author_unavailable` — the author is re-resolved live with UOA, failing
  *    closed and never from a cache, is not deactivated, can still edit the
  *    board, and the origin captured at confirm still verifies;
@@ -55,6 +59,9 @@ export const STANDING_POLICY_REFUSAL_SENTENCES: Record<StandingPolicyRefusalReas
     + 'machine is bound this turn.',
   not_this_work: 'This turn answers something other than this ticket\'s own wake, so no machine is bound.',
   limit_reached: 'This ticket\'s work reached one of its limits and stopped, so no machine is bound.',
+  ticket_not_in_flow: 'This ticket is no longer on the trigger\'s board, or it sits in a column that ends its work, '
+    + 'so no machine is bound this turn.',
+  bind_failed: 'The machine could not be bound this turn because of an unexpected error; try again on a later wake.',
 }
 
 export type StandingPolicyBinderDeps = {
@@ -71,6 +78,11 @@ export type StandingPolicyBinderDeps = {
   }) => Promise<boolean>
   /** The live UOA lookup's transport; tests stand one in. */
   entitlements?: ResolveLiveEntitlementsDeps
+  /**
+   * Whether the ticket still renders on this board, outside every column the
+   * trigger ends work in: team-admin's placement rule, handed in.
+   */
+  ticketInFlow: (input: { boardId: string; config: unknown; taskId: string }) => Promise<boolean>
 }
 
 export type StandingBindRecord = {
@@ -94,7 +106,9 @@ export type CheckedStandingPolicy = {
   triggerDigest: string
 }
 
-type Checked = { ok: true; policy: CheckedStandingPolicy } | { ok: false; reason: StandingPolicyRefusalReason }
+type Checked =
+  | { ok: true; policy: CheckedStandingPolicy }
+  | { agentChanged?: true; ok: false; reason: StandingPolicyRefusalReason }
 
 const refused = (reason: StandingPolicyRefusalReason): Checked => ({ ok: false, reason })
 
@@ -234,11 +248,20 @@ export const checkStandingPolicyBindingFacts = async (
     standingPolicyMachineDigests(prisma, executorId),
   ])
   const pinned = StandingPolicyPinnedTermsSchema.safeParse(policy.pinnedTerms)
-  const terms = trigger && pinned.success ? standingPolicyTermsOf(trigger, standingPolicyLimitsOf(pinned.data)) : null
+  const agent = await loadStandingPolicyAgentPin(prisma, record.agentId)
+  const terms = trigger && pinned.success
+    ? standingPolicyTermsOf(trigger, standingPolicyLimitsOf(pinned.data), agent)
+    : null
   const row = policy.executors.find((entry) => entry.executorId === executorId)
+  if (pinned.success && agent && pinned.data.agent.digest !== agent.digest) {
+    return { agentChanged: true, ok: false, reason: 'terms_changed' }
+  }
   if (!trigger?.enabled || trigger.status !== 'active' || !terms || standingPolicyTermsDigest(terms) !== policy.triggerDigest
     || !digests || digests.descriptorConfigDigest !== row?.descriptorConfigDigest
     || digests.localPolicyDigest !== row.localPolicyDigest) return refused('terms_changed')
+  if (!await deps.ticketInFlow({ boardId: terms.boardId, config: trigger.config, taskId: record.taskId })) {
+    return refused('ticket_not_in_flow')
+  }
   // 3.
   if (!await authorStillStands(prisma, {
     authorOrigin: policy.authorOrigin, authorUserId: policy.authorUserId, organizationId: record.organizationId,

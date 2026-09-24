@@ -3,6 +3,7 @@ import {
   endStandingPoliciesInTransaction,
   enforceTicketWorkLimitsInTransaction,
   executorCodingSessionOwnerKey,
+  executorHeartbeatCutoff,
   reportedExecutorCodingSessions,
 } from '@nessie/executor-manage'
 import { resolveLiveEntitlementDecision, type ResolveLiveEntitlementsDeps } from '@nessie/runtime'
@@ -11,9 +12,12 @@ import {
   TICKET_WORK_LIVE_STATUSES,
   ticketWorkCodingSessionContext,
 } from '@nessie/schemas'
+import { lockTicketForWork } from '@nessie/team-admin'
 
 import { dequeueTicketWork } from './ticket-work-dequeue.js'
+import { holdTicketWorkBeforeWake } from './ticket-work-machine.js'
 import { requeueWorkStrandedOffline, resumeWorkWhoseMachineIsBack } from './ticket-work-machine-return.js'
+import { lockThreadRunSlot } from '../run/thread-serialization.js'
 
 /**
  * The sweep's machine half (docs/standards/ticket-work-machine-access.md →
@@ -23,11 +27,20 @@ import { requeueWorkStrandedOffline, resumeWorkWhoseMachineIsBack } from './tick
  *
  * - **Authors UOA no longer lists.** UOA has no removal feed, so each author
  *   of a live, suspended or preparing policy is asked again with the identity
- *   captured at confirmation. An answer that does not list them — or no way to
- *   ask — ends every such policy of theirs (`author_left_organization`), with
- *   its session closes and `executor.policy.ended`, in one transaction. An
- *   outage ends nothing: the binder refuses every wake meanwhile, failing
- *   closed on its own.
+ *   captured at confirmation, and — when that identity no longer answers (a
+ *   new token version, another active team) — with their current stored UOA
+ *   link. Only a definite "not a member" ends every such policy of theirs
+ *   (`author_left_organization`), with its session closes and
+ *   `executor.policy.ended`, in one transaction: UOA answering through a live
+ *   link that they are not in the organisation, or a local organisation that
+ *   no longer lists them. An outage, or no identity left to ask with, ends
+ *   nothing: the binder refuses every wake meanwhile, failing closed on its
+ *   own.
+ * - **Work on a machine that went away.** An `active` record whose machine
+ *   has not heartbeated inside the freshness window waits for it
+ *   (`waiting_machine`, `machine_offline`), its hours clock paused, as a wake
+ *   would have left it — so an offline machine's work stops counting hours
+ *   whether or not anything wakes it.
  * - **Limits on work nobody wakes.** Every live record under a policy is
  *   checked against its hours clock and spend, as a wake and the heartbeat
  *   intake check them.
@@ -62,16 +75,20 @@ export const endPoliciesOfDepartedAuthors = async (prisma: PrismaClient, deps: S
   let ended = 0
   for (const author of authors.values()) {
     const origin = ScheduledTriggerLaunchOriginSchema.safeParse(author.authorOrigin)
-    const decision = await resolveLiveEntitlementDecision(prisma, {
+    const captured = origin.success ? origin.data.uoaIdentity : undefined
+    const ask = (uoaIdentity: typeof captured) => resolveLiveEntitlementDecision(prisma, {
       allowStoredIdentity: true,
       organizationId: author.organizationId,
       userId: author.authorUserId,
-      ...(origin.success && origin.data.uoaIdentity ? { uoaIdentity: origin.data.uoaIdentity } : {}),
+      ...(uoaIdentity ? { uoaIdentity } : {}),
     }, deps.entitlements).catch((error: unknown) => {
       console.error('[worker.ticket-work-sweep] author re-check failed', JSON.stringify({ userId: author.authorUserId }), error)
       return { status: 'unavailable' as const }
     })
-    if (decision.status !== 'denied') continue
+    let decision = await ask(captured)
+    // The identity captured at confirmation may be stale: ask again through their current link.
+    if (decision.status === 'denied' && captured) decision = await ask(undefined)
+    if (decision.status !== 'denied' || !await answeredNotAMember(prisma, author)) continue
     ended += (await prisma.$transaction((tx) => endStandingPoliciesInTransaction(tx, {
       actor: { userId: null },
       reason: 'author_left_organization',
@@ -79,6 +96,60 @@ export const endPoliciesOfDepartedAuthors = async (prisma: PrismaClient, deps: S
     }))).length
   }
   return ended
+}
+
+/**
+ * Whether a denial is UOA's own answer that the author is not in the
+ * organisation — through a stored link that can still ask — or a local
+ * organisation's roster; never "nobody could be asked".
+ */
+const answeredNotAMember = async (
+  prisma: PrismaClient,
+  author: { authorUserId: string; organizationId: string },
+): Promise<boolean> => {
+  const organization = await prisma.organization.findUnique({
+    where: { id: author.organizationId }, select: { externalOrgId: true },
+  })
+  if (!organization?.externalOrgId) return true
+  // The link the live check asks through when no captured identity answers (`uoa-live-entitlements.ts`).
+  const link = await prisma.productAccountLink.findUnique({
+    where: { organizationId_userId_productSlug: {
+      organizationId: author.organizationId, productSlug: 'nessie', userId: author.authorUserId,
+    } },
+    select: { activeOrgId: true, activeTeamId: true, status: true, uoaSub: true, uoaTokenVersion: true },
+  })
+  return Boolean(link?.status === 'linked' && link.activeOrgId === organization.externalOrgId && link.activeTeamId
+    && link.uoaSub && link.uoaTokenVersion !== null)
+}
+
+/**
+ * Every `active` record whose machine is not heard from (offline, or no
+ * heartbeat inside the freshness window) waits for it, under the locks every
+ * wake takes in the one order: its ticket, its thread's run slot, then the
+ * record (`holdTicketWorkBeforeWake`, which also stops one over a limit).
+ */
+export const pauseWorkOnSilentMachines = async (prisma: PrismaClient, deps: SweepDeps): Promise<number> => {
+  const cutoff = executorHeartbeatCutoff(deps.now)
+  const silent = await prisma.agentTicketWork.findMany({
+    where: {
+      executorId: { not: null },
+      policyId: { not: null },
+      status: 'active',
+      executor: { OR: [{ status: { not: 'online' } }, { lastSeenAt: null }, { lastSeenAt: { lt: cutoff } }] },
+    },
+    select: { agentId: true, id: true, taskId: true, threadId: true, triggerId: true },
+    take: PAGE,
+  })
+  let paused = 0
+  for (const record of silent) {
+    const held = await prisma.$transaction(async (tx) => {
+      await lockTicketForWork(tx, record.taskId)
+      await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
+      return holdTicketWorkBeforeWake(tx, { now: deps.now, work: record })
+    })
+    if (held === 'machine_offline') paused += 1
+  }
+  return paused
 }
 
 /** Fail every live record under a policy that is over one of its limits, a page at a time. */
@@ -107,17 +178,21 @@ export const enforceLimitsOnLiveWork = async (prisma: PrismaClient, deps: SweepD
 
 /**
  * Whether any of the ticket's own coding sessions is mid-turn, as its machine
- * last reported: a quiet wake would only interrupt the work it waits for.
+ * last reported — and only while the machine is heard from: a report from a
+ * machine that went silent says nothing about now, and would hold the quiet
+ * wake back for good. A quiet wake would only interrupt the work it waits for.
  */
 export const ticketSessionWorking = (record: {
   agentId: string
-  executor: { localMcp: unknown } | null
+  executor: { lastSeenAt: Date | null; localMcp: unknown; status: string } | null
   executorId: string | null
   policy: { authorUserId: string } | null
   policyId: string | null
   taskId: string
-}): boolean => {
+}, now: Date): boolean => {
   if (!record.executorId || !record.policyId || !record.policy || !record.executor) return false
+  if (record.executor.status !== 'online' || !record.executor.lastSeenAt
+    || record.executor.lastSeenAt < executorHeartbeatCutoff(now)) return false
   const ownerKey = executorCodingSessionOwnerKey(record.executorId, {
     actorUserId: record.policy.authorUserId,
     agentId: record.agentId,
@@ -142,6 +217,7 @@ export const sweepStandingMachineAccess = async (
   const steps: Array<[string, () => Promise<unknown>]> = [
     ...(deps.machinesOnly ? [] : [
       ['authors', () => endPoliciesOfDepartedAuthors(prisma, deps)],
+      ['silent machines', () => pauseWorkOnSilentMachines(prisma, deps)],
       ['limits', () => enforceLimitsOnLiveWork(prisma, deps)],
     ] as Array<[string, () => Promise<unknown>]>),
     ['back online', () => resumeWorkWhoseMachineIsBack(prisma, deps)],

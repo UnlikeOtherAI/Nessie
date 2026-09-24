@@ -23,7 +23,7 @@ import {
   ExecutorLocalMcpReportSchema,
 } from '@nessie/schemas'
 
-import { CODING_AGENT_LABELS, CODING_SESSION_TOOL_NAME_SET } from '../coding-session-tools.js'
+import { CODING_AGENT_LABELS, STRUCTURED_CODING_SESSION_TOOL_NAMES } from '../coding-session-tools.js'
 import type { ExecutorHostOutputDisclosure } from '../executor-host-output.js'
 import { executorToolName } from '../executor-toolset.js'
 import type { TicketWorkMachine } from './ticket-work-setup.js'
@@ -125,9 +125,12 @@ export const buildExecutorReachBlock = (facts: ExecutorReachFacts | null): strin
   if (!facts) return null
   switch (facts.kind) {
     case 'bound': {
-      const named = facts.executorLabel
-        ? `the person's machine, ${JSON.stringify(facts.executorLabel)}`
-        : 'the person\'s machine'
+      // A ticket's machine is its owner's, never the person reading the thread.
+      const named = facts.standing
+        ? 'the ticket owner\'s machine'
+        : facts.executorLabel
+          ? `the person's machine, ${JSON.stringify(facts.executorLabel)}`
+          : 'the person\'s machine'
       const machine = facts.executorLabel ? `${named},` : named
       const servers = facts.servers === null
         ? ''
@@ -284,7 +287,8 @@ export const loadExecutorReachFacts = async (
   // Bound under a lease that has since ended or run out: dispatch fences these.
   if (leaseSummary && !leaseSummary.live) return { kind: 'refused', reason: 'lease_ended' }
   const pair = LOCAL_APPS_TOOL_NAMES.every((name) => input.toolNames.has(name))
-  const coding = [...CODING_SESSION_TOOL_NAME_SET].every((name) => input.toolNames.has(name))
+  // The structured seven: a machine with no interactive terminal is offered no terminal tools.
+  const coding = [...STRUCTURED_CODING_SESSION_TOOL_NAMES].every((name) => input.toolNames.has(name))
   if (pair || coding) {
     const [binding, ownDm] = await Promise.all([
       prisma.executorBinding.findFirst({
@@ -299,11 +303,14 @@ export const loadExecutorReachFacts = async (
     ])
     const descriptor = ExecutorCapabilityDescriptorSchema.safeParse(binding?.capabilityRevision.descriptor)
     const facts = descriptor.success ? descriptor.data.codingSessions : undefined
+    // A ticket's work is told only what its policy pinned: Claude Code, in the pinned folders.
+    const scope = input.standing?.coding
     const codingSessions: ExecutorCodingSessionsReach | undefined = coding && facts && binding
       ? {
-          agents: facts.agents.map((agent) => CODING_AGENT_LABELS[agent]),
-          roots: facts.rootNames,
-          sessions: reportedOwnSessions(binding, input.agentId, ownDm, input.standing?.coding?.contextId),
+          agents: facts.agents.filter((agent) => !scope || scope.codingAgents.includes(agent))
+            .map((agent) => CODING_AGENT_LABELS[agent]),
+          roots: facts.rootNames.filter((root) => !scope || scope.allowedRootNames.includes(root)),
+          sessions: reportedOwnSessions(binding, input.agentId, ownDm, scope?.contextId),
         }
       : undefined
     if (codingSessions?.sessions?.some((session) => session.title !== undefined) && input.hostOutput) {
