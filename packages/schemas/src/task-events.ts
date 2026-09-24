@@ -185,6 +185,10 @@ export const TicketWorkActivityPayloadSchema = z
     // ended, parked or resumed the work — so the dispatcher can tell the end
     // this move caused from one an earlier move did.
     causeEventId: uuid.optional(),
+    // Why the work was where it left (T5): `machine_offline` on the row that
+    // resumed it when its machine came back, or that queued it again for
+    // another machine because its own stayed offline too long.
+    previousReason: TicketWorkStateReasonSchema.optional(),
   })
   .strict()
 export type TicketWorkActivityPayload = z.infer<typeof TicketWorkActivityPayloadSchema>

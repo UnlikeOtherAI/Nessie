@@ -12,6 +12,7 @@ import {
   describeAgentTriggerType,
   describeAgentTriggerTypes,
   TICKET_QUIET_WAKE_MINUTES,
+  TICKET_WAITING_MACHINE_HOURS,
   TICKET_TRIGGER_LIMIT_CEILINGS,
   TicketChangedTriggerConfigSchema,
   TicketChangedWorkConfigSchema,
@@ -174,4 +175,20 @@ test('the quiet wake defaults to 30 minutes, null turns it off, and it stays wit
   // A stored trigger from before the option — a migrated board watcher — takes the default.
   assert.equal(TicketChangedWorkConfigSchema.parse({ boardId: BOARD }).quietWakeMinutes, 30)
   assert.equal(TicketChangedWorkConfigSchema.parse({ boardId: BOARD, quietWakeMinutes: null }).quietWakeMinutes, null)
+})
+
+test('work waits 24 hours for its own offline machine by default, within its bounds (T5)', () => {
+  assert.equal(
+    TicketChangedTriggerConfigSchema.parse(minimal).waitingMachineHours, TICKET_WAITING_MACHINE_HOURS.default,
+  )
+  assert.equal(TicketChangedTriggerConfigSchema.parse({ ...minimal, waitingMachineHours: 6 }).waitingMachineHours, 6)
+  for (const refused of [0, TICKET_WAITING_MACHINE_HOURS.max + 1, 1.5, '24', null]) {
+    assert.equal(
+      TicketChangedTriggerConfigSchema.safeParse({ ...minimal, waitingMachineHours: refused }).success,
+      false,
+      `waitingMachineHours ${JSON.stringify(refused)} is refused`,
+    )
+  }
+  // A stored trigger from before the option takes the default.
+  assert.equal(TicketChangedWorkConfigSchema.parse({ boardId: BOARD }).waitingMachineHours, 24)
 })

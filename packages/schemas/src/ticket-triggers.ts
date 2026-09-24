@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { ExecutorCodingSessionStatusSchema } from './executor-coding-sessions.js'
 import {
   StandingPolicyBindRefusalReasonSchema,
   TicketWorkWakeReasonSchema,
@@ -160,7 +161,8 @@ export type TicketChangedStoredConfig = z.infer<typeof TicketChangedStoredConfig
 /**
  * `agent_trigger_deliveries.source` for ticket work: which door the wake came
  * through. The dispatcher writes `pickup` and `follow`; the session intake,
- * reminders, the pool dispatcher and quiet wakes write the others.
+ * reminders, the pool dispatcher and quiet wakes write the others, and
+ * `machine` is a ticket's own machine coming back online (T5).
  */
 export const TicketTriggerDeliverySourceSchema = z.enum([
   'pickup',
@@ -169,6 +171,7 @@ export const TicketTriggerDeliverySourceSchema = z.enum([
   'reminder',
   'dequeue',
   'quiet',
+  'machine',
 ])
 export type TicketTriggerDeliverySource = z.infer<typeof TicketTriggerDeliverySourceSchema>
 
@@ -304,16 +307,32 @@ export const ticketTriggerSkipSentence = (
  * `messageId` with the event type `thread_message`; a `check_back_in`
  * reminder names its `reminderId` with the event type `reminder`; and a quiet
  * wake, which nothing caused, names none of them (event type `quiet`), nor
- * does a queued record the pool dispatcher placed on a machine (`dequeued`).
- * The origin of the last three is `system`: the platform woke the agent.
+ * does a queued record the pool dispatcher placed on a machine (`dequeued`),
+ * nor a ticket's machine coming back online (`machine_back_online`). A coding
+ * session's turn end, interruption, failure or close (`session`, T5) names
+ * the session as the heartbeat reported it (`session`). The origin of the
+ * last five is `system`: the platform woke the agent.
  */
+const NAMES_NOTHING: ReadonlySet<string> = new Set(['quiet', 'dequeued', 'machine_back_online'])
+
 export const TicketTriggerDeliveryPayloadSchema = z
   .object({
     taskEventId: uuid.optional(),
     messageId: uuid.optional(),
     reminderId: uuid.optional(),
+    session: z
+      .object({
+        sessionId: uuid,
+        turn: z.number().int().nonnegative(),
+        status: ExecutorCodingSessionStatusSchema.extract(['waiting_for_input', 'interrupted', 'failed', 'closed']),
+        reason: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
+      })
+      .strict()
+      .optional(),
     taskId: uuid,
-    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet', 'dequeued']),
+    eventType: z.enum([
+      ...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet', 'dequeued', 'session', 'machine_back_online',
+    ]),
     originKind: z.enum(['session', 'token', 'agent', 'source', 'system']),
     outcome: TicketTriggerDispatchOutcomeSchema,
     skipReason: TicketTriggerSkipReasonSchema.optional(),
@@ -348,14 +367,16 @@ export const TicketTriggerDeliveryPayloadSchema = z
       ? 'messageId'
       : payload.eventType === 'reminder'
         ? 'reminderId'
-        : payload.eventType === 'quiet' || payload.eventType === 'dequeued' ? null : 'taskEventId'
-    const ids = ['taskEventId', 'messageId', 'reminderId'] as const
+        : payload.eventType === 'session'
+          ? 'session'
+          : NAMES_NOTHING.has(payload.eventType) ? null : 'taskEventId'
+    const ids = ['taskEventId', 'messageId', 'reminderId', 'session'] as const
     if (ids.some((key) => (payload[key] !== undefined) !== (key === named))) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: [named ?? 'eventType'],
-        message: 'A thread message names its messageId, a reminder its reminderId, a quiet wake and a dequeue none, '
-          + 'and every other event its taskEventId.',
+        message: 'A thread message names its messageId, a reminder its reminderId, a coding session its session, a '
+          + 'quiet wake, a dequeue and a machine back online none, and every other event its taskEventId.',
       })
     }
   })

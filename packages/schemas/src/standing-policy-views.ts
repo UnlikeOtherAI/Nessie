@@ -52,6 +52,8 @@ export const TriggerMachineAccessTicketSchema = z
     position: z.number().int().positive().nullable(),
     /** The machine it holds: only for the author and the machine's administrators. */
     machineLabel: z.string().min(1).nullable(),
+    /** While it waits for that machine to reconnect: when the machine was last heard from (T5). */
+    offlineSince: timestamp.nullable().optional(),
   })
   .strict()
 export type TriggerMachineAccessTicket = z.infer<typeof TriggerMachineAccessTicketSchema>
@@ -146,6 +148,22 @@ export const ExecutorStandingPolicyRowSchema = z
     createdAt: timestamp,
     /** Tickets working on this machine under it now. */
     activeTickets: z.number().int().min(0),
+    /**
+     * The ticket that holds this machine under it (T5): working on it, or
+     * paused until it reconnects — at most one ticket holds a machine. Its
+     * title only for a reader who can read the ticket's project; null when no
+     * ticket of this policy holds the machine.
+     */
+    holdingTicket: z
+      .object({
+        taskId: uuid,
+        projectId: uuid,
+        title: z.string().min(1).nullable(),
+        status: z.enum(['active', 'waiting_machine']),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     viewerCanEnd: z.boolean(),
   })
   .strict()

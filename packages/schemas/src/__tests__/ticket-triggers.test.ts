@@ -130,3 +130,31 @@ test('a reminder names its reminder, a quiet wake names nothing, and neither a T
     false,
   )
 })
+
+test('a coding session\'s wake names its session, and a machine back online names nothing (T5)', () => {
+  const WORK = '6bc27c80-93a4-45b6-80c7-d8e9f0012345'
+  const SESSION = '7cd38d91-a4b5-46c7-81d8-e9f001234567'
+  const woken = { taskId: TASK, originKind: 'system', outcome: 'follow', workId: WORK }
+  const session = { sessionId: SESSION, status: 'interrupted', turn: 4, reason: 'max_turn_minutes' }
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({
+    ...woken, eventType: 'session', session, wakeReason: 'session_interrupted',
+  }).success, true)
+  // A session wake without its session, or with a TaskEvent beside it, is refused.
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'session' }).success, false)
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({
+    ...woken, eventType: 'session', session, taskEventId: EVENT,
+  }).success, false)
+  // Only a status that wakes: a session still working never does.
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({
+    ...woken, eventType: 'session', session: { ...session, status: 'working' },
+  }).success, false)
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({
+    ...woken, eventType: 'machine_back_online', wakeReason: 'machine_back_online',
+  }).success, true)
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({
+    ...woken, eventType: 'machine_back_online', session,
+  }).success, false)
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({
+    ...woken, eventType: 'comment_added', session, taskEventId: EVENT,
+  }).success, false, 'a session belongs to a session wake alone')
+})

@@ -139,6 +139,28 @@ export const TicketQuietWakeMinutesSchema = z
     + 'against wakesPerTicket. null turns the quiet wake off.',
   )
 
+/** How long work waits for its own offline machine before another may take it, in hours. */
+export const TICKET_WAITING_MACHINE_HOURS = { default: 24, min: 1, max: 168 } as const
+
+/**
+ * A ticket's work that waits for the machine it was working on, gone offline,
+ * keeps that machine's slot. After this many hours the platform takes the work
+ * off it and queues it again, so another machine of the pool can take it; the
+ * offline machine's sessions are closed when it reconnects. Not one of the
+ * terms machine access pins: it only decides which of the confirmed machines
+ * works the ticket.
+ */
+export const TicketWaitingMachineHoursSchema = z
+  .number()
+  .int()
+  .min(TICKET_WAITING_MACHINE_HOURS.min)
+  .max(TICKET_WAITING_MACHINE_HOURS.max)
+  .default(TICKET_WAITING_MACHINE_HOURS.default)
+  .describe(
+    'Hours a ticket\'s work waits for its own machine to come back online. After that it is queued again '
+    + 'for another machine of the pool, and a new coding session starts there.',
+  )
+
 const section = (when: string) =>
   z.string().trim().min(1).optional().describe(`Added after general ${when}.`)
 
@@ -220,6 +242,7 @@ export const TicketChangedTriggerConfigSchema = z
     follow: stored.follow.describe('Which changes wake the agent while a ticket\'s work is live.'),
     endOn: stored.endOn,
     quietWakeMinutes: TicketQuietWakeMinutesSchema,
+    waitingMachineHours: TicketWaitingMachineHoursSchema,
     limits: TicketTriggerLimitsSchema,
     instructions: TicketTriggerInstructionsSchema,
   })
@@ -240,6 +263,7 @@ export type TicketChangedTriggerConfig = z.infer<typeof TicketChangedTriggerConf
  */
 export const TicketChangedWorkConfigSchema = TicketChangedStoredConfigSchema.extend({
   quietWakeMinutes: TicketQuietWakeMinutesSchema,
+  waitingMachineHours: TicketWaitingMachineHoursSchema,
   limits: TicketTriggerLimitsSchema,
   instructions: TicketTriggerInstructionsSchema.optional(),
 })

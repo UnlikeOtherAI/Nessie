@@ -70,10 +70,14 @@ test('ticket-work.session carries the turn and only a status that wakes', () => 
     { ...payload, sessionId: 'session-1' },
     { organizationId: ORG, workId: WORK, sessionId: SESSION, status: 'failed' },
     { workId: WORK, sessionId: SESSION, turn: 3, status: 'failed' },
+    // The reason is the report's categorical code, never free text.
+    { ...payload, status: 'interrupted', reason: 'Hit the per-turn limit' },
   ]
   for (const candidate of refused) {
     assert.equal(TicketWorkSessionJobPayloadSchema.safeParse(candidate).success, false, JSON.stringify(candidate))
   }
+  const interrupted = { ...payload, status: 'interrupted', reason: 'max_turn_minutes' }
+  assert.deepEqual(TicketWorkSessionJobPayloadSchema.parse(interrupted), interrupted)
 })
 
 test('ticket-work.sweep takes only its idempotency bucket', () => {

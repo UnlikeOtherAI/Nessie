@@ -51,6 +51,12 @@ export const TicketWorkChipRecordSchema = z.object({
   /** Its place in the machine queue while `queued` (T4); absent or null otherwise. */
   queuePosition: z.number().int().positive().nullable().optional(),
   /**
+   * While the work waits for its own machine to reconnect (`machine_offline`,
+   * T5): when that machine was last heard from. The machine is never named;
+   * the time is what "paused: machine offline since 14:32" says.
+   */
+  machineOfflineSince: TimestampSchema.nullable().optional(),
+  /**
    * Why its latest wake ran with no machine, when the standing-policy binder
    * refused it (T4): the reason and the sentence the run was told, which
    * never names the machine. Null once a later wake came.
@@ -99,6 +105,8 @@ export const TicketWorkHistoryEntrySchema = z.object({
   agentName: z.string(),
   status: TicketWorkStatusSchema,
   reason: TicketWorkStateReasonSchema.nullable(),
+  /** Why it was where it left, when the row says (T5): `machine_offline`, its machine back or gone too long. */
+  previousReason: TicketWorkStateReasonSchema.nullable().optional(),
   /** Who caused it, by name: a person, an agent; null when the platform acted on its own. */
   byName: z.string().nullable(),
   at: TimestampSchema,
