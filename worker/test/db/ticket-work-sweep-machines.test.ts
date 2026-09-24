@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
+import { generateKeyPairSync, randomUUID } from 'node:crypto'
 
 import { Prisma, PrismaClient } from '@prisma/client'
 import { executorCodingSessionOwnerKey } from '@nessie/executor-manage'
@@ -18,6 +18,7 @@ import {
 } from '../../../packages/team-admin/test/standing-policy-fixture.js'
 import { dispatchTicketEvent } from '../../src/control/ticket-trigger-dispatch.js'
 import { runTicketWorkSweep } from '../../src/control/ticket-work-sweep.js'
+import { ticketSessionWorking } from '../../src/control/ticket-work-sweep-machines.js'
 import { runDatabaseTest } from './support.js'
 
 /**
@@ -25,8 +26,11 @@ import { runDatabaseTest } from './support.js'
  * → "The sweep's machine half"): a queued ticket takes the machine another
  * ticket freed with a `dequeued` wake; work over its hours that nobody wakes
  * stops, with its sessions' closes; an author the organisation no longer
- * lists loses their machine access; and a quiet wake waits while the
- * ticket's coding session is mid-turn.
+ * lists loses their machine access — asked again through their current link
+ * when the identity captured at confirmation no longer answers, and only on
+ * UOA's own "not a member"; work on a machine that went silent waits for it
+ * with its clock paused; and a quiet wake waits while the ticket's coding
+ * session is mid-turn on a machine that is still heard from.
  */
 
 const SESSION: TaskEventOrigin = { kind: 'session' }
@@ -199,5 +203,102 @@ runDatabaseTest('a quiet wake waits while the ticket\'s own coding session is mi
     await runTicketWorkSweep(prisma, LOCAL)
     assert.equal(await quiet(), 1)
     assert.equal((await recordOf(prisma, work.id)).lastWakeReason, 'quiet')
+  })
+})
+
+runDatabaseTest('work on a machine that went silent waits for it, its hours clock paused', async () => {
+  await withWorld(async (world, prisma) => {
+    const { work } = await pickedUp(prisma, world, 'Fix login redirect', new Set())
+    assert.equal(work.status, 'active')
+    // Still online by its row, but no heartbeat for five minutes.
+    await prisma.executor.update({ where: { id: world.minis }, data: { lastSeenAt: new Date(Date.now() - 5 * MINUTE) } })
+    await runTicketWorkSweep(prisma, LOCAL)
+    const waiting = await recordOf(prisma, work.id)
+    assert.deepEqual([waiting.status, waiting.stateReason, waiting.executorId, waiting.clockStartedAt],
+      ['waiting_machine', 'machine_offline', world.minis, null])
+    const paused = await prisma.taskEvent.findFirstOrThrow({ where: { eventType: 'work_paused', taskId: work.taskId } })
+    assert.equal((paused.payload as { reason: string }).reason, 'machine_offline')
+  })
+})
+
+runDatabaseTest('a session the machine last called working says nothing once the machine is silent', async () => {
+  await withWorld(async (world, prisma) => {
+    const { taskId } = await pickedUp(prisma, world, 'Fix login redirect', new Set())
+    const ownerKey = executorCodingSessionOwnerKey(world.minis, {
+      actorUserId: world.authorId, agentId: world.agentId, contextId: ticketWorkCodingSessionContext(world.policyId, taskId),
+    })
+    const record = (lastSeenAt: Date) => ({
+      agentId: world.agentId,
+      executor: { lastSeenAt, localMcp: bridgeReport([{ ownerKey, sessionId: randomUUID(), status: 'working' }]), status: 'online' },
+      executorId: world.minis,
+      policy: { authorUserId: world.authorId },
+      policyId: world.policyId,
+      taskId,
+    })
+    const now = new Date()
+    assert.equal(ticketSessionWorking(record(now), now), true)
+    assert.equal(ticketSessionWorking(record(new Date(now.getTime() - 5 * MINUTE)), now), false,
+      'an old report would hold the quiet wake back for good')
+  })
+})
+
+runDatabaseTest('the author re-check asks again through the current link, and ends access only on UOA\'s own no', async () => {
+  await withWorld(async (world, prisma) => {
+    const externalOrgId = `ext-${randomUUID()}`
+    await prisma.organization.update({ where: { id: world.organizationId }, data: { externalOrgId } })
+    await prisma.team.update({ where: { id: world.teamId }, data: { externalOrgId, externalTeamId: 'ext-team' } })
+    const policy = await prisma.executorStandingPolicy.findUniqueOrThrow({ where: { id: world.policyId } })
+    // Captured at confirmation with token version 3; the author has since signed in again (version 4).
+    await prisma.executorStandingPolicy.update({
+      where: { id: world.policyId },
+      data: {
+        authorOrigin: {
+          ...(policy.authorOrigin as object),
+          uoaIdentity: { organizationId: externalOrgId, subject: 'author-sub', teamId: 'ext-team', tokenVersion: 3 },
+        },
+      },
+    })
+    await prisma.productAccountLink.create({
+      data: {
+        activeOrgId: externalOrgId, activeTeamId: 'ext-team', organizationId: world.organizationId, productSlug: 'nessie',
+        status: 'linked', uoaSub: 'author-sub', uoaTokenVersion: 4, userId: world.authorId,
+      },
+    })
+    const key = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    let asked = 0
+    const uoa = (org: string) => ({
+      entitlements: {
+        fetchImpl: (async () => {
+          asked += 1
+          return new Response(JSON.stringify({ org: { org_id: org, org_role: 'member', teams: ['ext-team'] } }), { status: 200 })
+        }) as never,
+        resolveHost: async () => ['8.8.8.8'] as never,
+        settings: {
+          authBaseUrl: 'https://uoa.example.test', clientSecret: 'test-only', configUrl: 'https://nessie.example.test/config',
+          kid: 'test', privateKeyPem: key.privateKey.export({ format: 'pem', type: 'pkcs1' }).toString(),
+          sourceDomain: 'nessie.example.test',
+        },
+        uoaConfigured: true,
+      },
+    })
+    const status = async () => (await prisma.executorStandingPolicy.findUniqueOrThrow({ where: { id: world.policyId } })).status
+    // The stale identity answers nothing; the current link says they are still in the organisation.
+    await runTicketWorkSweep(prisma, uoa(externalOrgId))
+    assert.equal(await status(), 'live')
+    assert.ok(asked > 0, 'UOA was asked through the link')
+    // No link left to ask with: nobody said they left, so nothing ends.
+    await prisma.productAccountLink.deleteMany({ where: { organizationId: world.organizationId, userId: world.authorId } })
+    await runTicketWorkSweep(prisma, uoa(externalOrgId))
+    assert.equal(await status(), 'live')
+    // UOA itself, through a live link, no longer places them in the organisation: it ends.
+    await prisma.productAccountLink.create({
+      data: {
+        activeOrgId: externalOrgId, activeTeamId: 'ext-team', organizationId: world.organizationId, productSlug: 'nessie',
+        status: 'linked', uoaSub: 'author-sub', uoaTokenVersion: 4, userId: world.authorId,
+      },
+    })
+    await runTicketWorkSweep(prisma, uoa('another-org'))
+    assert.equal(await status(), 'ended')
+    await prisma.productAccountLink.deleteMany({ where: { organizationId: world.organizationId, userId: world.authorId } })
   })
 })

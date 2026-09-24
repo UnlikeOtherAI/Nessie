@@ -122,7 +122,7 @@ const loadLiveRecords = (prisma: PrismaClient, input: { after: string | null; ta
       awaitingAnswerAt: true,
       executorId: true,
       policyId: true,
-      executor: { select: { localMcp: true } },
+      executor: { select: { lastSeenAt: true, localMcp: true, status: true } },
       policy: { select: { authorUserId: true } },
       _count: { select: { reminders: { where: { status: 'pending' } } } },
       trigger: {
@@ -131,7 +131,7 @@ const loadLiveRecords = (prisma: PrismaClient, input: { after: string | null; ta
     },
   })
 
-const sweepFacts = (record: LiveRecord, lastRunFinishedAt: Date | null): SweepRecordFacts => {
+const sweepFacts = (record: LiveRecord, lastRunFinishedAt: Date | null, now: Date): SweepRecordFacts => {
   const config = ticketWorkConfigOf(record.trigger?.config)
   return {
     status: record.status,
@@ -143,7 +143,7 @@ const sweepFacts = (record: LiveRecord, lastRunFinishedAt: Date | null): SweepRe
     pendingReminders: record._count.reminders,
     quietWakeMinutes: config.quietWakeMinutes,
     lastRunFinishedAt,
-    sessionWorking: record.status === 'active' && ticketSessionWorking(record),
+    sessionWorking: record.status === 'active' && ticketSessionWorking(record, now),
   }
 }
 
@@ -360,7 +360,7 @@ const sweepPage = async (
     // A disabled trigger ends its work as it is switched off; one still
     // enabled but in error keeps its records, and wakes none of them.
     if (!record.trigger?.enabled || record.trigger.status !== 'active') continue
-    const facts = sweepFacts(record, finished.get(`${record.threadId}:${record.agentId}`) ?? null)
+    const facts = sweepFacts(record, finished.get(`${record.threadId}:${record.agentId}`) ?? null, now)
     const decision = decideTicketWorkSweep(facts, now)
     try {
       if (decision === 'over_limit') await endOverWakeLimit(prisma, record, facts.wakeLimit)

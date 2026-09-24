@@ -1,8 +1,9 @@
 import type { Prisma } from '@prisma/client'
 import {
   executorCodingSessionOwnerKey,
+  liveTicketWorkSessions,
   loadTicketWorkLimitState,
-  reportedExecutorCodingSessions,
+  ticketWorkSessionOriginsOf,
   type TicketWorkLimitState,
 } from '@nessie/executor-manage'
 import { ticketWorkCodingSessionContext } from '@nessie/schemas'
@@ -11,8 +12,9 @@ import { ticketWorkCodingSessionContext } from '@nessie/schemas'
  * The machine half of every kickoff's state block
  * (docs/plans/2026-09-23-ticket-driven-agents/ticket-work.md → "What every
  * wake says"): where the work stands with its machine, its hours and spend
- * against its policy's limits, the ticket's own coding session as the machine
- * last reported it, and the pull request on record. Read afresh from the
+ * against its policy's limits, the ticket's own coding session — live unless
+ * a report the machine took after it started says otherwise
+ * (`liveTicketWorkSessions`) — and the pull request on record. Read afresh from the
  * record every time the kickoff is rendered. Nothing here names the machine:
  * the work thread is the project's to read.
  */
@@ -27,8 +29,10 @@ export type TicketWorkMachineFacts = {
     url: string
   } | null
   queuePosition: number | null
-  /** The sessions this ticket's own owner holds on its machine, as last reported; null when nothing can be said. */
+  /** The ticket's live sessions on its machine (`liveTicketWorkSessions`); null when nothing can be said. */
   sessions: Array<{ sessionId: string; status: string; turn: number | null }> | null
+  /** The record started a coding session before, ever: none live means it was closed. */
+  heldSessions: boolean
   stateReason: string | null
   status: string
   pinned: boolean
@@ -48,25 +52,29 @@ export const loadTicketWorkMachineFacts = async (
     where: { id: input.workId },
     select: {
       agentId: true, executorId: true, lastChecks: true, lastPrState: true, policyId: true, prSeenAt: true,
-      pullRequestUrl: true, queuePosition: true, sessionIds: true, stateReason: true, status: true, taskId: true,
-      executor: { select: { localMcp: true } },
+      pullRequestUrl: true, queuePosition: true, sessionIds: true, sessionOrigins: true, stateReason: true,
+      status: true, taskId: true,
+      executor: { select: { localMcp: true, localMcpObservedAt: true } },
       policy: { select: { authorUserId: true, status: true } },
     },
   })
   const policyStatus = work.policy?.status === 'live' || work.policy?.status === 'suspended' ? work.policy.status : null
   const sessions = work.executorId && work.policyId && work.policy
-    ? (() => {
-        const ownerKey = executorCodingSessionOwnerKey(work.executorId, {
+    ? liveTicketWorkSessions({
+        executorId: work.executorId,
+        localMcp: work.executor?.localMcp ?? null,
+        localMcpObservedAt: work.executor?.localMcpObservedAt ?? null,
+        origins: ticketWorkSessionOriginsOf(work.sessionOrigins),
+        ownerKey: executorCodingSessionOwnerKey(work.executorId, {
           actorUserId: work.policy.authorUserId,
           agentId: work.agentId,
           contextId: ticketWorkCodingSessionContext(work.policyId, work.taskId),
-        })
-        return reportedExecutorCodingSessions(work.executor?.localMcp)
-          .filter((session) => session.ownerKey === ownerKey && session.status !== 'closed')
-          .map((session) => ({ sessionId: session.sessionId, status: session.status, turn: session.turn ?? null }))
-      })()
+        }),
+        sessionIds: work.sessionIds,
+      })
     : null
   return {
+    heldSessions: work.sessionIds.length > 0,
     limits: await loadTicketWorkLimitState(prisma, { workId: input.workId }),
     pinned: work.executorId !== null,
     policy: policyStatus,
@@ -96,11 +104,17 @@ export const ticketWorkLimitsClause = (facts: TicketWorkMachineFacts): string | 
     + `${dollars(facts.limits.costUsd)} of ${dollars(facts.limits.limits.ticketUsd)} (as last seen)`
   : null
 
+const QUEUED_BECAUSE: Record<string, string> = {
+  queued_daily_limit: 'this machine access already spent its daily limit, until 00:00 UTC',
+  queued_machines_offline: 'the machines are offline',
+  queued_no_free_machine: 'every machine is busy',
+}
+
 const machineLine = (facts: TicketWorkMachineFacts, ended: boolean): string => {
   if (ended) return 'Machine: none.'
   if (facts.status === 'queued') {
     return `Machine: none yet — the work is queued${facts.queuePosition ? ` at position ${facts.queuePosition}` : ''}, `
-      + `because ${facts.stateReason === 'queued_machines_offline' ? 'the machines are offline' : 'every machine is busy'}; `
+      + `because ${QUEUED_BECAUSE[facts.stateReason ?? ''] ?? 'every machine is busy'}; `
       + 'you will be woken here when one frees.'
   }
   if (facts.status === 'waiting_machine' && facts.stateReason === 'machine_offline') {
@@ -119,13 +133,21 @@ const machineLine = (facts: TicketWorkMachineFacts, ended: boolean): string => {
     + 'read it, comment on it and move it.'
 }
 
-const sessionLine = (facts: TicketWorkMachineFacts): string | null => {
-  if (facts.status !== 'active' || !facts.pinned || facts.sessions === null) return null
-  if (facts.sessions.length === 0) return 'Coding session for this ticket: none open yet.'
+const REVIEW_BEFORE_DONE = 'Before moving the ticket to Done, run coding_session_review so the merged pull request '
+  + 'is recorded.'
+
+const sessionLines = (facts: TicketWorkMachineFacts): string[] => {
+  if (facts.status !== 'active' || !facts.pinned || facts.sessions === null) return []
+  if (facts.sessions.length === 0) {
+    return facts.heldSessions
+      ? [`Your earlier coding session for this ticket was closed; brief a new one with what was already done — see `
+        + `${facts.pullRequest ? 'the pull request' : 'the ticket\'s comments'}.`, REVIEW_BEFORE_DONE]
+      : ['Coding session for this ticket: none open yet.', REVIEW_BEFORE_DONE]
+  }
   const listed = facts.sessions.map((session) => (
     `${session.sessionId} ${session.status}${session.turn === null ? '' : `, turn ${session.turn}`}`))
-  return `Coding session${facts.sessions.length === 1 ? '' : 's'} for this ticket: ${listed.join('; ')}; no other `
-    + 'session belongs to this ticket.'
+  return [`Coding session${facts.sessions.length === 1 ? '' : 's'} for this ticket: ${listed.join('; ')}; no other `
+    + 'session belongs to this ticket: use coding_session_send, never a second start.', REVIEW_BEFORE_DONE]
 }
 
 /** "Pull request: <url>, MERGED, checks 14 passed (15:20 UTC)." */
@@ -142,6 +164,6 @@ export const pullRequestLine = (facts: TicketWorkMachineFacts): string => {
 
 export const ticketWorkMachineLines = (facts: TicketWorkMachineFacts, ended: boolean): string[] => [
   machineLine(facts, ended),
-  ...(ended ? [] : [sessionLine(facts)].filter((line): line is string => line !== null)),
+  ...(ended ? [] : sessionLines(facts)),
   pullRequestLine(facts),
 ]

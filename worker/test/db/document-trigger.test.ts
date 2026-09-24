@@ -180,7 +180,10 @@ runDatabaseTest('a ticket\'s document reaches that ticket\'s live work for the s
   const run = await prisma.run.findFirstOrThrow({ where: { threadId: work.threadId }, orderBy: { createdAt: 'desc' } })
   const kickoff = await kickoffOf(prisma, run.id)
   assert.match(kickoff.content, /^## Why you were woken\ndocument_changed: a person saved 1 version of "Login spec"/)
-  assert.match(kickoff.content, /What this document trigger asks of you: Review the edit/)
+  // Only what changed: the document trigger's instructions are its review thread's, never a ticket
+  // work run's, which may drive the ticket owner's machine on the terms its ticket trigger pinned.
+  assert.doesNotMatch(kickoff.content, /What this document trigger asks of you/)
+  assert.doesNotMatch(kickoff.content, /Review the edit/)
   assert.doesNotMatch(kickoff.content, /PRIVATE-WORDING/)
   // The ticket's own state block now promises document edits.
   assert.match(kickoff.content, /edits one of its documents that your document trigger watches/,
