@@ -91,7 +91,8 @@ const authorPage = async (browser, { name, options }) => {
   assert.match(await section.getByTestId('machine-access-state').innerText(), /starts work on Minis and Studio, as Ondrej\.$/)
   assert.equal(await section.getByRole('button', { name: 'Change machine access…' }).count(), 1)
   assert.equal(await section.getByRole('button', { name: 'End' }).count(), 1)
-  assert.equal(await page.getByTestId('ticket-delivery-line').count(), 6, `${name}: the deliveries, read as the author`)
+  // Every delivery of the fixture's history, T5's machine and session ones among them.
+  assert.equal(await page.getByTestId('ticket-delivery-line').count(), 9, `${name}: the deliveries, read as the author`)
   await assertNoSidewaysScroll(page, `${name} author page`)
   await settled(page)
   await page.screenshot({ fullPage: true, path: shot('trigger-page-author', width) })
