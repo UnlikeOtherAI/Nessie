@@ -58,6 +58,7 @@ import { registerIterationRoutes } from './routes/iterations.js'
 import { registerKnowledgeBaseRoutes } from './routes/knowledge-base.js'
 import { registerKnowledgeBaseFileRoutes } from './routes/knowledge-base-files.js'
 import { registerKnowledgeCommentRoutes } from './routes/knowledge-comments.js'
+import { registerKnowledgeDocumentTriggerRoutes } from './routes/knowledge-document-triggers.js'
 import { registerKnowledgeFinderRoutes } from './routes/knowledge-finder.js'
 import { registerKnowledgeLibrarianRoutes } from './routes/knowledge-librarian.js'
 import { registerKnowledgeLinkRoutes } from './routes/knowledge-links.js'
@@ -229,6 +230,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerKnowledgeBaseRoutes(app, deps, spreadsheetContext)
   registerKnowledgeBaseFileRoutes(app, deps)
   registerKnowledgeCommentRoutes(app, deps)
+  registerKnowledgeDocumentTriggerRoutes(app, deps)
   registerKnowledgeFinderRoutes(app, deps)
   registerKnowledgeLibrarianRoutes(app, deps)
   registerKnowledgeLinkRoutes(app, deps)

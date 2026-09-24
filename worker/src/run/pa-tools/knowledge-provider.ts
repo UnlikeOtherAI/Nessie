@@ -9,6 +9,7 @@ import {
   KNOWLEDGE_EMBED_TOPIC,
   type KnowledgeInferenceOrigin,
 } from '@nessie/schemas'
+import { documentTriggerOnPagePublished, documentTriggerOnVersionCreated } from '@nessie/team-admin'
 import { enqueueQueueJob } from '../../queue.js'
 import { fileServiceFor } from '../file-service.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
@@ -86,6 +87,14 @@ export const createWorkerKnowledgeProvider = (
         topic: KNOWLEDGE_EMBED_TOPIC,
       })
     },
+    // An agent's save opens a watching document trigger's quiet window like
+    // anybody's: whether it wakes an agent is the dispatcher's decision, and
+    // its own saves must still move the marker the next review starts from.
+    onVersionCreated: documentTriggerOnVersionCreated,
+    // A publish an agent's tool makes (kb_document_compose, kb_document_edit)
+    // opens the window of a document trigger that fires on publish, as a
+    // person's publish does.
+    onPagePublished: documentTriggerOnPagePublished,
   })
   const withRunDisclosure = (input: KnowledgePageVersionDisclosureInput) =>
     mergeCurrentWorkerVersionDisclosure(context, input)

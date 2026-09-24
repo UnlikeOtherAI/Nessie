@@ -2,9 +2,6 @@ import {
   canReadSpace,
   canReadKnowledgePageVersion,
   createNativeKnowledgeProvider,
-  htmlToPlainText,
-  isMarkdownAttachment,
-  loadSpaceViewer,
   mapPage,
   pageInclude,
   searchNativePagesHybrid,
@@ -13,56 +10,25 @@ import {
   type KnowledgeSpaceRecord,
   type SpaceViewer,
 } from '@nessie/knowledge'
-import { attributionFromActorContext, resolveDisclosureViewer, resolveLiveEntitlements, type DisclosureViewer } from '@nessie/runtime'
+import { attributionFromActorContext, type DisclosureViewer } from '@nessie/runtime'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { buildSpaceViewerPrincipal, resolveEffectiveUserId } from './access.js'
-import { fileServiceFor } from '../file-service.js'
-import { readMarkdownAttachmentContent } from './knowledge-document-io.js'
+import {
+  loadReadableVersion,
+  openReadablePage,
+  resolveKnowledgeAccessViewers,
+  versionPlainText,
+  type PageReadDependencies,
+} from './knowledge-page-gate.js'
 import { recordKnowledgeSpaceRead, recordKnowledgeVersionRead } from './knowledge-basis.js'
 import { truncate } from './tool-output.js'
+
+export { resolveKnowledgeAccessViewers, type KnowledgeAccessViewers } from './knowledge-page-gate.js'
 
 const MAX_KB_SEARCH_LIMIT = 8
 const DEFAULT_KB_SEARCH_LIMIT = 5
 const DEFAULT_PAGE_READ_CHARS = 12_000
 const MAX_PAGE_READ_CHARS = 20_000
 const MAX_LIST_SPACES = 50
-
-export type KnowledgeAccessViewers = {
-  disclosureViewer: DisclosureViewer
-  viewer: SpaceViewer
-}
-
-// One fresh human UOA proof governs both ordinary KB home access and version
-// disclosure. A tool reuses this pair through all of its reads and mutations;
-// resolving either side per page would be both slower and an authority split.
-export const resolveKnowledgeAccessViewers = async (
-  context: BuiltinToolRuntimeContext,
-): Promise<KnowledgeAccessViewers> => {
-  const organizationId = String(context.channel.organizationId)
-  const effectiveUserId = resolveEffectiveUserId(context)
-  const liveEntitlements = effectiveUserId
-    ? await resolveLiveEntitlements(context.prisma, {
-        organizationId,
-        userId: effectiveUserId,
-        uoaIdentity: context.actorContext.actionContext.uoaIdentity,
-      })
-    : undefined
-  const disclosureViewer = await resolveDisclosureViewer(
-    context.prisma,
-    organizationId,
-    effectiveUserId,
-    effectiveUserId
-      ? { liveEntitlements }
-      : { agentId: context.agentId },
-  )
-  const viewer = await loadSpaceViewer(
-    context.prisma,
-    organizationId,
-    buildSpaceViewerPrincipal(context),
-    liveEntitlements ? { liveEntitlements, effectiveUserId } : {},
-  )
-  return { disclosureViewer, viewer }
-}
 
 export const resolveKnowledgeDisclosureViewer = async (
   context: BuiltinToolRuntimeContext,
@@ -188,10 +154,6 @@ export const runKbSearchTool = async (
   }
 }
 
-const ACCESS_DENIED_MESSAGE = 'You do not have access to this knowledge page.'
-
-type PageReadDependencies = { files?: Parameters<typeof readMarkdownAttachmentContent>[0] }
-
 export const runKbPageReadTool = async (
   context: BuiltinToolRuntimeContext,
   input: { pageId: string; versionId?: string; offset?: unknown; limit?: unknown },
@@ -201,107 +163,26 @@ export const runKbPageReadTool = async (
   if (!pageId) {
     throw new Error('pageId is required.')
   }
+  const refused = (outputPreview: string): ToolExecutionResult =>
+    ({ inputSummary: `pageId=${pageId}`, outputPreview, toolName: 'kb_page_read' })
 
-  const organizationId = String(context.channel.organizationId)
-  const provider = createNativeKnowledgeProvider(context.prisma)
-  const page = await provider.getPage(organizationId, pageId)
-  if (!page) {
-    return {
-      inputSummary: `pageId=${pageId}`,
-      outputPreview: `Knowledge page not found: ${pageId}`,
-      toolName: 'kb_page_read',
-    }
-  }
-
-  const space = await provider.getSpace(organizationId, page.spaceId)
-  if (!space) {
-    return {
-      inputSummary: `pageId=${pageId}`,
-      outputPreview: `Knowledge space not found for page: ${pageId}`,
-      toolName: 'kb_page_read',
-    }
-  }
-
-  const principal = buildSpaceViewerPrincipal(context)
-  const { disclosureViewer, viewer } = await resolveKnowledgeAccessViewers(context)
-  if (!canReadSpace(space, viewer)) {
-    return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
-  }
-
-  // Page-level privacy beyond the space: an agent viewer never sees a page
-  // that is itself restricted or privately scoped to a different agent, even
-  // when the containing space is otherwise readable.
-  if (principal.actorType === 'agent') {
-    const deniedByTier = page.sensitivityTier === 'restricted'
-    const deniedByPrivacy =
-      page.privateToAgentId !== null && page.privateToAgentId !== principal.actorId
-    if (deniedByTier || deniedByPrivacy) {
-      return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
-    }
-  }
+  const readable = await openReadablePage(context, pageId)
+  if ('refused' in readable) return refused(readable.refused)
+  const { page, space } = readable
 
   const selectedVersionId = input.versionId?.trim()
     || page.publishedVersionId
     || page.latestVersion?.id
-  const version = selectedVersionId
-    ? await context.prisma.knowledgePageVersion.findFirst({
-        where: {
-          id: selectedVersionId,
-          pageId: page.id,
-          page: { deletedAt: null, organizationId },
-        },
-        select: {
-          attachmentId: true,
-          basisScopes: { select: { scopeId: true, scopeType: true } },
-          body: true,
-          disclosureSources: {
-            select: { sourceAuthorUserId: true, sourceChannelId: true },
-          },
-          id: true,
-          versionNumber: true,
-        },
-      })
-    : null
-  if (!version) {
-    return {
-      inputSummary: `pageId=${pageId}`,
-      outputPreview: selectedVersionId
-        ? `Knowledge page version not found: ${selectedVersionId}`
-        : 'This page has no readable version yet.',
-      toolName: 'kb_page_read',
-    }
-  }
-  if (!canReadKnowledgePageVersion(version, disclosureViewer)) {
-    return { inputSummary: `pageId=${pageId}`, outputPreview: ACCESS_DENIED_MESSAGE, toolName: 'kb_page_read' }
-  }
+  if (!selectedVersionId) return refused('This page has no readable version yet.')
+  const version = await loadReadableVersion(context, readable, selectedVersionId)
+  if ('refused' in version) return refused(version.refused)
 
   // Past every gate: stamp this exact source before any bytes or extracted
   // text enter the model. Older versions are neither authorized nor recorded.
   recordKnowledgeSpaceRead(context, [space])
   recordKnowledgeVersionRead(context, version)
 
-  const attachment = version?.attachmentId
-    ? await context.prisma.attachment.findUnique({
-        where: { id: version.attachmentId },
-        select: { filename: true, mime: true, organizationId: true },
-      })
-    : null
-  const isCanonicalMarkdown = attachment
-    && attachment.organizationId === organizationId
-    && isMarkdownAttachment(attachment)
-  const markdown = isCanonicalMarkdown
-    ? await readMarkdownAttachmentContent(
-        dependencies.files ?? fileServiceFor(context.prisma),
-        version?.attachmentId ?? '',
-        organizationId,
-      )
-    : null
-  const plain = isCanonicalMarkdown
-    ? markdown ?? '(Markdown attachment bytes are unavailable.)'
-    : version.body === null && attachment
-      ? `No extracted text is available for ${attachment.filename} (${attachment.mime}). `
-        + 'Use its file-specific tool when available, or ask a person to provide a text-readable version.'
-      : htmlToPlainText(version.body ?? '')
+  const plain = await versionPlainText(context, version, dependencies)
   const rawOffset = Number(input.offset)
   const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0
   const rawLimit = Number(input.limit)

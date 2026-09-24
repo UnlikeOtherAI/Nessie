@@ -13,7 +13,12 @@ import { endColumnIds } from './ticket-trigger-decision.js'
 import { describeWakeEvent, type WakeEventSource } from './ticket-work-events.js'
 import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
 import { holdTicketWorkBeforeWake, placeTicketWorkForWake } from './ticket-work-machine.js'
-import { queueTicketWorkRun, stopTicketWorkAtWakeLimit, writeTicketWorkThreadRow } from './ticket-work-run.js'
+import {
+  loadDetailSeen,
+  queueTicketWorkRun,
+  stopTicketWorkAtWakeLimit,
+  writeTicketWorkThreadRow,
+} from './ticket-work-run.js'
 import type {
   TicketWorkSeam,
   TicketWorkSeamOutcome,
@@ -50,7 +55,10 @@ const startOfUtcDay = (at: Date): Date => new Date(Date.UTC(at.getUTCFullYear(),
  * that lost it cannot work any ticket, so this is the trigger's health, not a
  * skip — the same classified failure a scheduled trigger records.
  */
-const assertTargetChannel = async (tx: Prisma.TransactionClient, trigger: TicketWorkTrigger): Promise<string> => {
+export const assertTargetChannel = async (
+  tx: Pick<Prisma.TransactionClient, 'channel'>,
+  trigger: Pick<TicketWorkTrigger, 'agentId' | 'targetChannelId'>,
+): Promise<string> => {
   const channelId = trigger.targetChannelId
   const channel = channelId
     ? await tx.channel.findFirst({
@@ -237,6 +245,10 @@ const wakeSource = (event: TicketWorkWakeInput['event'], trigger: TicketWorkTrig
       return { kind: 'reminder', reminderId: event.id }
     case 'quiet':
       return { kind: 'quiet', quietMinutes: ticketWorkConfigOf(trigger.config).quietWakeMinutes ?? 0 }
+    // A document change arrives already told, metadata only, by its dispatcher.
+    case 'document':
+      if (event.described) return { kind: 'described', ...event.described }
+      return { kind: 'task_event', taskEventId: event.id }
     default:
       return { kind: 'task_event', taskEventId: event.id }
   }
@@ -267,7 +279,10 @@ const wakeTicketWork = async (
   const settled = await settleMoveAgainstColumn(tx, { ...input, work, live })
   if (settled) return settled
   await assertTargetChannel(tx, trigger)
+  // A description change is told as a diff against what this agent last saw.
+  const detailSeen = event.eventType === 'detail_edited' ? await loadDetailSeen(tx, work) : undefined
   const described = await describeWakeEvent(prisma, {
+    detailSeen,
     organizationId: trigger.organizationId,
     projectId: work.projectId,
     taskId: work.taskId,
@@ -283,10 +298,11 @@ const wakeTicketWork = async (
   // rendered, so the run is told where the work stands now.
   const resumed = input.resumes && work.status === 'parked'
   // A person's comment, message or move is the answer to any open question:
-  // it closes, and the hours clock runs again. A reminder, a quiet wake and a
-  // connected board's event answer nothing.
+  // it closes, and the hours clock runs again. A reminder, a quiet wake, a
+  // connected board's event and an edit to one of the ticket's documents
+  // answer nothing (docs/standards/document-triggers.md).
   const personEvent = live && !input.untrusted && !input.machineLess
-    && event.kind !== 'reminder' && event.kind !== 'quiet'
+    && event.kind !== 'reminder' && event.kind !== 'quiet' && event.kind !== 'document'
   if (personEvent) await closeTicketWorkQuestion(tx, work.id)
   const held = live && !input.machineLess ? await holdTicketWorkBeforeWake(tx, { work }) : null
   if (held) return { outcome: 'refused', reason: held }

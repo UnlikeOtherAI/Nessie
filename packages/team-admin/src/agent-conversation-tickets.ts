@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { ticketWorkThreadRefOf, type AgentConversationRecord } from '@nessie/schemas'
+import { documentReviewThreadRefOf, ticketWorkThreadRefOf, type AgentConversationRecord } from '@nessie/schemas'
 
 import { listAgentConversationRecordsForUser, loadConversationRecordForUser } from './agent-conversations.js'
 
@@ -8,7 +8,10 @@ import { listAgentConversationRecordsForUser, loadConversationRecordForUser } fr
  * ticket's work thread (`AgentConversationRecord.ticket`, from the thread's
  * own `{ taskId, triggerId }` metadata that `ensureTicketWorkThread` writes),
  * so the conversation list can fold ticket threads under Tickets
- * (docs/standards/ticket-work.md → "What the project sees").
+ * (docs/standards/ticket-work.md → "What the project sees") — and the
+ * document it reviews when it is a document trigger's review thread
+ * (`AgentConversationRecord.document`, from `{ pageId, triggerId }`), folded
+ * under Documents (docs/standards/document-triggers.md).
  *
  * Kept apart from `agent-conversations.ts`, which is over the size cap: these
  * are its two reads, as every door calls them, with the ticket attached from
@@ -24,8 +27,12 @@ const withTicketRefs = async (
     where: { id: { in: records.map((record) => record.id) } },
     select: { id: true, metadata: true },
   })
-  const refs = new Map(threads.map((thread) => [thread.id, ticketWorkThreadRefOf(thread.metadata)]))
-  return records.map((record) => ({ ...record, ticket: refs.get(record.id) ?? null }))
+  const byId = new Map(threads.map((thread) => [thread.id, thread.metadata]))
+  return records.map((record) => ({
+    ...record,
+    ticket: ticketWorkThreadRefOf(byId.get(record.id)),
+    document: documentReviewThreadRefOf(byId.get(record.id)),
+  }))
 }
 
 /** One conversation, by thread (`loadConversationRecordForUser`), naming its ticket. */

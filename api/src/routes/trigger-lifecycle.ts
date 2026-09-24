@@ -166,7 +166,10 @@ export const registerTriggerLifecycleRoutes = (
 
     let updated
     try {
-      updated = await resumeAgentTrigger(prisma, scope)
+      const uoaIdentity = actorContext.actionContext.uoaIdentity
+      updated = await resumeAgentTrigger(prisma, scope, actorContext.actor.actorType === 'user'
+        ? { userId: actorContext.actor.actorId, ...(uoaIdentity ? { uoaIdentity } : {}) }
+        : null)
     } catch (error) {
       if (error instanceof TriggerResumeError) {
         sendApiError(reply, 409, error.code, error.message)

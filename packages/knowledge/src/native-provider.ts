@@ -35,9 +35,10 @@ import type {
 
 export type {
   KnowledgePagePublishedEvent,
+  KnowledgeVersionCreatedEvent,
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
-} from './native-version-writer.js'
+} from './version-events.js'
 
 const nativeCapabilities = {
   canWrite: true,

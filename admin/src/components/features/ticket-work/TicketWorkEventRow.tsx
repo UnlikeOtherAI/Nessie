@@ -25,10 +25,17 @@ export const ticketWorkEventOf = (message: ThreadMessageRecord): TicketWorkThrea
   return parsed.success ? parsed.data : null
 }
 
-const EVENT_ICON = { woken: faBolt, stopped: faCircleStop, reminder_cancelled: faBellSlash } as const
+// A document review's wake (`document_woken`) reads as a wake.
+const EVENT_ICON = {
+  woken: faBolt,
+  stopped: faCircleStop,
+  document_woken: faBolt,
+  reminder_cancelled: faBellSlash,
+} as const
 const EVENT_ICON_TONE = {
   woken: 'text-[color:var(--info-text)]',
   stopped: 'text-[color:var(--danger-text)]',
+  document_woken: 'text-[color:var(--info-text)]',
   reminder_cancelled: 'text-[color:var(--tx3)]',
 } as const satisfies Record<TicketWorkThreadEvent['kind'], string>
 

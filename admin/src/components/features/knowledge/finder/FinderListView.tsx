@@ -6,8 +6,8 @@ import { formatBytes } from '../../../../lib/upload-xhr'
 import { EmptyState } from '../../../shared/EmptyState'
 import { RowList } from '../../../shared/RowList'
 import { familyLabel, familyTone, iconForFamily } from '../../../shared/file-icons'
-import { AgentDraftBadge } from '../AgentDraftBadge'
-import { isAgentDraft } from '../page-status'
+import { useFolderDocumentReviews } from '../../../../facades/knowledge/document-trigger-hooks'
+import { finderRowBadges } from './DocumentReviewBadge'
 import { FinderRow } from './FinderRow'
 import { NewFolderRow } from './NewFolderRow'
 import type {
@@ -127,6 +127,8 @@ export const FinderListView = ({
 }: FinderListViewProps) => {
   const gridRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(KIND_MIN)
+  // One read for the folder on screen, never one per row.
+  const reviews = useFolderDocumentReviews(rows)
 
   useEffect(() => {
     const element = gridRef.current
@@ -267,7 +269,7 @@ export const FinderListView = ({
                   shareCount={page.shareCount}
                   tabIndex={tabbableId === page.id ? 0 : -1}
                   title={page.title}
-                  trailing={isAgentDraft(page) ? <AgentDraftBadge /> : undefined}
+                  trailing={finderRowBadges(page, reviews.get(page.id))}
                   transfer={page.transfer ? page.transfer.operation : null}
                   variant="item"
                 />

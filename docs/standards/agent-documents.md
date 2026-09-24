@@ -81,7 +81,11 @@ Core is eager; every other accessible document is on demand. `kb_list`,
 ordinary agent runs unless an administrator deliberately disables/restricts
 them. The prompt supplies the real home id whenever that read set is present.
 `kb_page_read` pins a `versionId`, returns bounded text plus `nextOffset`, and
-requires both for continuation so one read cannot mix revisions. A stored file
+requires both for continuation so one read cannot mix revisions.
+`kb_page_diff` shows what changed between two versions of one page as bounded
+line-diff hunks; it passes the same gates for the page and for each version
+(`knowledge-page-gate.ts`) and records both
+([document-triggers.md](document-triggers.md) → "Reading the change"). A stored file
 without extracted text returns an actionable instruction to use a file-specific
 tool or publish a text-readable version. Write tools are optional and are
 described only when the resolved run actually has them.

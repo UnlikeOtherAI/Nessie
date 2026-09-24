@@ -3,10 +3,12 @@ import test from 'node:test'
 
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { DocumentChangedTriggerConfigSchema } from '@nessie/schemas'
 
 import { TriggerTypePicker } from '../src/components/features/triggers/TriggerTypePicker'
 import { buildSubmitPayload, getEditState } from '../src/components/features/triggers/trigger-config'
 import {
+  canRunTriggerNow,
   getScheduleSummary,
   getTriggerTypeLabel,
 } from '../src/components/features/triggers/trigger-presentation'
@@ -14,13 +16,14 @@ import type { AgentTriggerRecord } from '../src/lib/api-client'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
-// `document_changed` is in the API contract before the server accepts it on
-// create (it ships its editor in T2), so the admin never offers it. T1 released
-// `ticket_changed` for agents only: the picker offers it for an agent target
-// and never for a workflow (docs/standards/ticket-work.md → "Nothing is
-// half-exposed"). Both are named for what they are, never as a schedule.
+// T1 released `ticket_changed` and T2 `document_changed`, for agents only: the
+// picker offers both for an agent target and never for a workflow
+// (docs/standards/ticket-work.md → "Nothing is half-exposed"). Both are named
+// for what they are, never as a schedule, neither is run by hand, and editing
+// either posts its own typed config back — never an event list.
 
 const OFFERED = ['manual', 'scheduled', 'interval', 'webhook', 'event']
+const AGENT_ONLY = ['ticket_changed', 'document_changed']
 
 const record = (type: AgentTriggerRecord['type'], config: Record<string, unknown> = {}): AgentTriggerRecord => ({
   config,
@@ -32,34 +35,81 @@ const record = (type: AgentTriggerRecord['type'], config: Record<string, unknown
   updatedAt: new Date(0).toISOString(),
 })
 
-test('the picker offers ticket_changed for an agent only, and document_changed never', () => {
+test('the picker offers ticket_changed and document_changed for an agent only', () => {
   const workflow = renderToStaticMarkup(<TriggerTypePicker onChange={() => {}} value="manual" />)
-  const agent = renderToStaticMarkup(<TriggerTypePicker offerTicketChanged onChange={() => {}} value="manual" />)
+  const agent = renderToStaticMarkup(<TriggerTypePicker agentTarget onChange={() => {}} value="manual" />)
   for (const type of OFFERED) {
     assert.match(workflow, new RegExp(`value="${type}"`), `${type} is offered to a workflow`)
     assert.match(agent, new RegExp(`value="${type}"`), `${type} is offered to an agent`)
   }
-  assert.doesNotMatch(workflow, /ticket_changed/, 'a workflow can hold no ticket trigger')
-  assert.match(agent, /value="ticket_changed"/, 'an agent can')
+  for (const type of AGENT_ONLY) {
+    assert.doesNotMatch(workflow, new RegExp(type), `a workflow can hold no ${type} trigger`)
+    assert.match(agent, new RegExp(`value="${type}"`), `an agent can hold a ${type} trigger`)
+  }
   assert.match(agent, /Ticket change/)
-  for (const markup of [workflow, agent]) assert.doesNotMatch(markup, /document_changed/)
+  assert.match(agent, /Document change/)
+  assert.doesNotMatch(workflow, /Document change|Ticket change/)
 })
 
-test('a ticket or document trigger is named for what it is, never as a schedule', () => {
+test('a ticket or document trigger is named for what it is, never as a schedule, and never run by hand', () => {
   assert.equal(getTriggerTypeLabel(record('ticket_changed')), 'Ticket change')
   assert.equal(getTriggerTypeLabel(record('document_changed')), 'Document change')
-  for (const type of ['ticket_changed', 'document_changed'] as const) {
-    assert.doesNotMatch(getScheduleSummary(record(type)), /schedule|One-off/i)
+  for (const type of AGENT_ONLY) {
+    assert.doesNotMatch(getScheduleSummary(record(type as AgentTriggerRecord['type'])), /schedule|One-off/i)
+    assert.equal(canRunTriggerNow(record(type as AgentTriggerRecord['type'])), false, `${type} has no Run now`)
   }
+  assert.equal(canRunTriggerNow(record('manual')), true)
+  assert.equal(canRunTriggerNow({ status: 'paused', type: 'manual' }), false)
 })
 
-test('editing document_changed refuses rather than overwriting its config with events', () => {
-  const form = { ...getEditState(record('document_changed'), []), name: 'Review specs' }
-  assert.equal(form.triggerType, 'document_changed')
-  assert.deepEqual(
-    buildSubmitPayload(form, 'edit', record('document_changed')),
-    { error: 'This trigger type cannot be edited here yet.' },
-  )
+test('editing a document trigger posts its typed config back, clearing what was taken off', () => {
+  const stored = {
+    spaceId: '10000000-0000-4000-8000-000000000001',
+    folderPageId: '10000000-0000-4000-8000-000000000002',
+    pageIds: null,
+    labels: ['spec'],
+    kinds: ['document'],
+    fireOn: 'publish',
+    quietSeconds: 240,
+    includeAgentEdits: true,
+    instructions: { general: 'Review it.' },
+  }
+  const trigger = record('document_changed', stored)
+  const loaded = getEditState(trigger, [])
+  assert.equal(loaded.triggerType, 'document_changed')
+  assert.deepEqual(loaded.document, {
+    spaceId: stored.spaceId,
+    folderPageId: stored.folderPageId,
+    pageIds: [],
+    labels: ['spec'],
+    kinds: ['document'],
+    fireOn: 'publish',
+    quietSeconds: '240',
+    includeAgentEdits: true,
+    instructions: 'Review it.',
+  }, 'the stored config is read back into the form')
+
+  // The person takes the folder off and changes the window.
+  const form = { ...loaded, name: 'Review specs', document: { ...loaded.document!, folderPageId: '', quietSeconds: '60' } }
+  const result = buildSubmitPayload(form, 'edit', trigger)
+  assert.ok('payload' in result, JSON.stringify(result))
+  assert.deepEqual(result.payload.config, {
+    spaceId: stored.spaceId,
+    folderPageId: null,
+    pageIds: null,
+    labels: ['spec'],
+    kinds: ['document'],
+    fireOn: 'publish',
+    quietSeconds: 60,
+    includeAgentEdits: true,
+    instructions: { general: 'Review it.' },
+  })
+  assert.equal(result.payload.nextRunAt, undefined, 'a document trigger has no schedule')
+  // What the update route parses once it has merged the edit over the stored
+  // config and dropped every key the edit cleared.
+  const merged = Object.fromEntries(Object.entries({ ...stored, ...result.payload.config })
+    .filter(([, value]) => value !== null))
+  assert.ok(DocumentChangedTriggerConfigSchema.safeParse(merged).success)
 })
 
 test('editing a ticket trigger posts its typed config back, never an event list', () => {

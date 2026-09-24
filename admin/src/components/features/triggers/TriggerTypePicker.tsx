@@ -7,20 +7,23 @@ import { TRIGGER_TYPE_ICONS } from './trigger-presentation'
  * Radio-card picker for the trigger type in create mode. Each card explains
  * what the type does so operators do not need to know the internals.
  *
- * It serves the agent and the workflow editors alike, and a ticket trigger is
- * agent-only (docs/standards/ticket-work.md → "Nothing is half-exposed"), so
- * "Ticket change" is offered only for an agent target. `document_changed` is
- * not offered anywhere until it ships its editor (T2).
+ * It serves the agent and the workflow editors alike, and a ticket or
+ * document trigger wakes an agent in a project channel — a workflow cannot
+ * hold either (docs/standards/ticket-work.md → "Nothing is half-exposed") — so
+ * "Ticket change" and "Document change" are offered for an agent target only.
  */
 
 type TriggerType = AgentTriggerRecord['type']
 
 type TriggerTypePickerProps = {
+  /** True for an agent target: the only target a ticket or document trigger can wake. */
+  agentTarget?: boolean
   onChange: (type: TriggerType) => void
-  /** True for an agent target: the only target a ticket trigger can wake. */
-  offerTicketChanged?: boolean
   value: TriggerType
 }
+
+/** The types only an agent can hold. */
+export const AGENT_ONLY_TRIGGER_TYPES: readonly TriggerType[] = ['ticket_changed', 'document_changed']
 
 const TYPE_OPTIONS: Array<ChoiceOption<TriggerType>> = [
   {
@@ -55,19 +58,27 @@ const TYPE_OPTIONS: Array<ChoiceOption<TriggerType>> = [
   },
 ]
 
-const TICKET_CHANGED_OPTION: ChoiceOption<TriggerType> = {
-  value: 'ticket_changed',
-  label: 'Ticket change',
-  description: 'Starts work when a person moves a ticket into a start-work column.',
-  icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.ticket_changed} />,
-}
+const AGENT_OPTIONS: Array<ChoiceOption<TriggerType>> = [
+  {
+    value: 'ticket_changed',
+    label: 'Ticket change',
+    description: 'Starts work when a person moves a ticket into a start-work column.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.ticket_changed} />,
+  },
+  {
+    value: 'document_changed',
+    label: 'Document change',
+    description: 'Reviews a project document after a person saves it.',
+    icon: <FontAwesomeIcon icon={TRIGGER_TYPE_ICONS.document_changed} />,
+  },
+]
 
-export const TriggerTypePicker = ({ offerTicketChanged = false, onChange, value }: TriggerTypePickerProps) => (
+export const TriggerTypePicker = ({ agentTarget = false, onChange, value }: TriggerTypePickerProps) => (
   <ChoiceGroup
     label="Trigger type"
     labelHidden
     onChange={onChange}
-    options={offerTicketChanged ? [...TYPE_OPTIONS, TICKET_CHANGED_OPTION] : TYPE_OPTIONS}
+    options={agentTarget ? [...TYPE_OPTIONS, ...AGENT_OPTIONS] : TYPE_OPTIONS}
     value={value}
     variant="card"
   />

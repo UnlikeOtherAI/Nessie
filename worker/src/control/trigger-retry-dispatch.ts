@@ -1,5 +1,6 @@
 import { type PrismaClient } from '@prisma/client'
 import { type AgentTriggerType } from '@nessie/schemas'
+import { reattemptDocumentTriggerDelivery } from './document-trigger-dispatch.js'
 import { reattemptTicketWorkDelivery } from './ticket-work-retry.js'
 import { queueTriggerRun } from './trigger-run.js'
 import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
@@ -72,6 +73,18 @@ export const reattemptTriggerDelivery = async (
   // dispatcher decides the stored event again.
   if (trigger.type === 'ticket_changed') {
     await reattemptTicketWorkDelivery(prisma, {
+      organizationId: trigger.agent?.organizationId ?? null,
+      payload: input.payload,
+      retryCount: input.retryCount,
+      reuseDeliveryId: input.reuseDeliveryId,
+      triggerId: trigger.id,
+    })
+    return
+  }
+
+  // A document trigger likewise: its dispatcher decides the page's change again.
+  if (trigger.type === 'document_changed') {
+    await reattemptDocumentTriggerDelivery(prisma, {
       organizationId: trigger.agent?.organizationId ?? null,
       payload: input.payload,
       retryCount: input.retryCount,

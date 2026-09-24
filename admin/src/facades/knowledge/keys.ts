@@ -28,6 +28,13 @@ export const knowledgeKeys = {
   pageInfo: (pageId?: string) => ['knowledge-page', pageId ?? 'none', 'info'] as const,
   pageShares: (pageId?: string) => ['knowledge-page', pageId ?? 'none', 'shares'] as const,
   pages: (spaceId?: string) => ['knowledge-pages', spaceId ?? 'none'] as const,
+  // A listed folder's review badges and whether the viewer may set up a
+  // document trigger: views of the space's pages, so a page write (a save, a
+  // move) that invalidates the listing re-reads its badges with it.
+  documentTriggersAll: (spaceId?: string) =>
+    ['knowledge-pages', spaceId ?? 'none', 'document-triggers'] as const,
+  documentTriggers: (spaceId: string | undefined, pageIds: string) =>
+    ['knowledge-pages', spaceId ?? 'none', 'document-triggers', pageIds] as const,
   root: ['knowledge-root'] as const,
   // The subtree of one shared folder inside a space the viewer cannot
   // otherwise read — a different corpus from that space's whole page list,

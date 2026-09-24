@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
   TICKET_WORK_LIVE_STATUSES,
+  TICKET_WORK_THREAD_EVENT_LABELS,
   type TicketWorkActivityEventType,
   type TicketWorkActivityPayload,
   type TicketWorkStateReason,
@@ -59,7 +60,13 @@ export const recordTicketWorkActivity = async (
   })
 }
 
-/** A thread row: compact, and never ticket text (see `TicketWorkThreadEventSchema`). */
+/**
+ * One compact row in a work thread (`metadata.ticketWorkEvent`): why the
+ * agent was woken, why the platform stopped it, or who cancelled its
+ * reminder, labelled by `TICKET_WORK_THREAD_EVENT_LABELS`. Never ticket text:
+ * the channel can be wider than the ticket's project. The one writer, which
+ * team-admin re-exports.
+ */
 export const writeTicketWorkThreadRow = async (
   tx: Pick<Prisma.TransactionClient, 'message'>,
   input: { threadId: string; event: TicketWorkThreadEvent },
@@ -68,7 +75,7 @@ export const writeTicketWorkThreadRow = async (
     data: {
       threadId: input.threadId,
       role: 'system',
-      content: `${input.event.kind === 'woken' ? 'Woken' : 'Stopped'}: ${input.event.summary}`,
+      content: `${TICKET_WORK_THREAD_EVENT_LABELS[input.event.kind]}: ${input.event.summary}`,
       metadata: { ticketWorkEvent: input.event } as Prisma.InputJsonValue,
     },
   })

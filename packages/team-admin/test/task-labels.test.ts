@@ -268,11 +268,17 @@ runDatabaseTest('updateProjectTask writes labels and a detail_edited row in one 
   assert.ok(!('error' in result))
   // A native ticket keeps any of its board's labels locally.
   assert.deepEqual(result.labels.map((label) => label.name), ['Local', 'Owned A'])
-  // The text itself is never copied into history: only its hash, which a
-  // ticket wake compares with what the ticket says when it quotes it.
+  // The text itself is never copied into history: only its hashes, which a
+  // ticket wake compares with what the ticket says when it quotes it, and
+  // with what the agent last saw when it shows the edit as a diff.
   assert.deepEqual(
     await eventsOf(prisma, s.nativeTaskId, 'detail_edited'),
-    [{ by: s.memberId, origin: { kind: 'system' }, detailSha256: taskDetailSha256('## Heading') }],
+    [{
+      by: s.memberId,
+      origin: { kind: 'system' },
+      detailSha256: taskDetailSha256('## Heading'),
+      previousDetailSha256: taskDetailSha256('Plain'),
+    }],
   )
   assert.equal((await eventsOf(prisma, s.nativeTaskId, 'labels_changed')).length, 1)
 

@@ -74,6 +74,27 @@ export const KB_PAGE_READ_TOOL_DEFINITION: BuiltinToolDefinition = {
   safe: true,
 }
 
+export const KB_PAGE_DIFF_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'kb_page_diff',
+  category: 'knowledge',
+  summary: 'Show what changed in a knowledge page between two of its versions.',
+  label: 'KB Page Diff',
+  description:
+    'What changed in a knowledge page between two versions, as line-diff hunks (- removed, + added), '
+    + 'at most 12000 characters. A document-change wake names the pageId and both versionIds; read the '
+    + 'change with this before you act on it.',
+  parameters: {
+    type: 'object',
+    properties: {
+      pageId: { type: 'string', description: 'Knowledge-base page id' },
+      fromVersionId: { type: 'string', description: 'The older version, the one the change starts from' },
+      toVersionId: { type: 'string', description: 'The newer version, the one the change ends at' },
+    },
+    required: ['pageId', 'fromVersionId', 'toVersionId'],
+  },
+  safe: true,
+}
+
 export const KB_LIST_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'kb_list',
   category: 'knowledge',
@@ -307,6 +328,7 @@ export const KB_PUBLISH_REQUEST_TOOL_DEFINITION: BuiltinToolDefinition = {
 export const KB_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   KB_SEARCH_TOOL_DEFINITION,
   KB_PAGE_READ_TOOL_DEFINITION,
+  KB_PAGE_DIFF_TOOL_DEFINITION,
   KB_LIST_TOOL_DEFINITION,
   KB_DRAFT_WRITE_TOOL_DEFINITION,
   KB_DOCUMENT_COMPOSE_TOOL_DEFINITION,

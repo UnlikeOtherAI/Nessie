@@ -2,8 +2,8 @@ export type AgentTriggerRecord = {
   id: string
   agentId?: string
   workflowInstallationId?: string
-  // `ticket_changed` and `document_changed` are in the contract before any
-  // create surface accepts them, so a client renders one but never offers it.
+  // `ticket_changed` and `document_changed` are agent-only: a client offers
+  // them for an agent target and never for a workflow.
   type: 'manual' | 'scheduled' | 'webhook' | 'event' | 'interval' | 'ticket_changed' | 'document_changed'
   status: 'active' | 'paused' | 'error' | 'needs_reauthorization'
   enabled: boolean

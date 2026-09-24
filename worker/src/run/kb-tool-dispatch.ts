@@ -9,6 +9,7 @@ import {
   runKbFileTool,
   runKbListTool,
   runKbNoteAddTool,
+  runKbPageDiffTool,
   runKbPageReadTool,
   runKbPublishRequestTool,
   runKbSearchTool,
@@ -83,6 +84,14 @@ export const dispatchKbTool = (
           versionId: typeof args.versionId === 'string' ? args.versionId : undefined,
           offset: args.offset,
           limit: args.limit,
+        }),
+      )
+    case 'kb_page_diff':
+      return wrapTool(inputSummary, () =>
+        runKbPageDiffTool(context, {
+          pageId: String(args.pageId ?? ''),
+          fromVersionId: String(args.fromVersionId ?? ''),
+          toVersionId: String(args.toVersionId ?? ''),
         }),
       )
     case 'kb_list':

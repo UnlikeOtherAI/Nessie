@@ -91,3 +91,26 @@ export const ticketWorkFactsSection = (): string[] => [
     + 'run code or start a coding session.',
   ),
 ]
+
+export const documentTriggerFactsSection = (): string[] => [
+  'Document reviews (a document_changed trigger), as the platform runs them:',
+  bullet(
+    'It watches one document space of its channel\'s project — the whole space, one folder\'s subtree, '
+    + 'named pages, or labelled pages. The space must be readable by everyone in the channel, by the '
+    + 'agent and by the person setting it up; a refusal names the field.',
+  ),
+  bullet(
+    'Saves inside the quiet window (quietSeconds) wake the agent once, with the whole change. The '
+    + 'wake carries no document text: the agent reads the change with kb_page_diff and the ids the '
+    + 'wake names. Its own saves never wake it; other agents\' only with includeAgentEdits.',
+  ),
+  bullet(
+    'An edit to a ticket\'s document, while that ticket\'s work is live for the same agent, wakes that '
+    + 'work in its ticket thread (reason document_changed) — so a ticket_changed trigger that follows '
+    + '"document" hears about spec edits. Any other edit is reviewed in the document\'s own thread in the '
+    + 'trigger\'s channel, as the agent itself with no person behind it.',
+  ),
+  bullet(
+    'If the agent loses access to the space, the trigger is switched off with a reason its owner sees.',
+  ),
+]

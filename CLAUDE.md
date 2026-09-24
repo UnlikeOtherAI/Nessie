@@ -108,8 +108,9 @@ sentence changes only if the invariant itself did.
   behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip, and a ticket's work
   threads folded under Tickets at every width with their wake rows, the row a
-  cancelled reminder leaves, and the
-  read-only line for a room member who cannot edit the board; two assertions
+  cancelled reminder leaves, and the read-only line for a room member who
+  cannot edit the board, and a document trigger's review threads folded under
+  Documents the same way; two assertions
   deliberately pin known gaps and say so in their own message. It starts its
   own API and admin, on `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT` when set.
 - **Agent proposal card coverage:** run
@@ -252,10 +253,11 @@ sentence changes only if the invariant itself did.
 - **Agent triggers coverage:** run
   `pnpm --filter @nessie/admin test:e2e:agent-triggers`. A pure fixture suite
   (`NESSIE_AGENT_TRIGGERS_E2E_FIXTURE`) that drives the real
-  `TriggerEditorDialog`, `TriggerTypePicker`, `KanbanBoard` and `TriggerDetail`
-  over a stubbed client; CI runs it in the project-usability lifecycle after
-  the overlay-layer suite. It pins the picker (the five released types plus
-  Ticket change for an agent, `document_changed` named nowhere), a ticket
+  `TriggerEditorDialog`, `TriggerTypePicker`, `KanbanBoard`, `TriggerDetail`
+  and the documents Finder over a stubbed client; CI runs it in the
+  project-usability lifecycle after the overlay-layer suite. It pins the
+  picker (the five released types plus Ticket change and Document change for
+  an agent, and no agent-only type for a workflow), a ticket
   trigger's form (public project channels only and why, the board and
   columns picked, an end column that cannot start work), a second pickup on a
   column refused **on the pickup field** and the typed config the corrected
@@ -263,9 +265,18 @@ sentence changes only if the invariant itself did.
   track still aligned with its neighbours, card dots and the column menu on
   every column but Done that opens the editor prefilled with its type fixed,
   and a ticket trigger's page
-  with its named facts and deliveries in words — at 1280 and 390 px (the
-  phone paged to the columns that matter). The rules are in
-  [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md).
+  with its named facts and deliveries in words; a document trigger's form
+  (the project's Documents space chosen, a team-only space disabled), a
+  refusal landing on the space field, the exact typed config its create
+  posts, and its page with each delivery in words; and in a project's Docs
+  tab the "Reviewed by CTO · v5" and "Sent to CTO for review · v2" row
+  badges from one read per folder (a thread link only for its readers),
+  "Open review thread", and "Tell an agent
+  when this changes…" on a folder or document — never a spreadsheet, never
+  for a viewer the Triggers routes refuse — opening the editor prefilled —
+  at 1280 and 390 px (the phone paged to the columns that matter). The rules
+  are in [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md) and
+  [`docs/standards/document-triggers.md`](docs/standards/document-triggers.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
   The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the

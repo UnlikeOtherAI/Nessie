@@ -36,7 +36,7 @@ import { buildVisibleChannelWhere, requireOwnerMember, resolveActingMember } fro
 import { resolveOperatorAwareMember, type ActingFace } from './project-operator.js'
 import { assertOperatorTriggerCreateScope, operatorTriggerFollowUp } from './provisioning-operator-trigger.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
-import { describeTicketTriggerScope } from './provisioning-ticket-trigger.js'
+import { describeResolvedTriggerScope } from './provisioning-document-trigger.js'
 import {
   formatAgentMarkdownLink,
   formatChannelMarkdownLink,
@@ -72,6 +72,12 @@ import {
 // Whether this deployment signs Ledger calls is read once, exactly as
 // api/src/routes/triggers.ts reads it: never a per-request or per-user decision.
 const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
+
+/** Where a trigger with no fixed thread wakes its agent, said beside the channel link. */
+const TARGET_CHANNEL_PHRASES: Partial<Record<string, string>> = {
+  ticket_changed: ' | each ticket\'s work thread opens in',
+  document_changed: ' | each document change is reviewed in its own thread in',
+}
 
 const describeChannel = (channel: ChannelRecord): string =>
   `#${channel.label} (${channel.projectName} / ${channel.teamName})`
@@ -549,6 +555,9 @@ export const runAgentTriggerCreateTool = async (
   // and travels to the model as it is; every other type answers null.
   const trigger = await createAgentTrigger(context.prisma, agentId, body, {
     authorUserId: member.userId,
+    ...(context.actorContext.actionContext.uoaIdentity
+      ? { authorUoaIdentity: context.actorContext.actionContext.uoaIdentity }
+      : {}),
     ...(launchOrigin ? { launchOrigin } : {}),
   })
   if (!trigger) {
@@ -583,7 +592,7 @@ export const runAgentTriggerCreateTool = async (
         select: { id: true, label: true, type: true, visibility: true },
       })
       : null,
-    describeTicketTriggerScope(context, member, trigger),
+    describeResolvedTriggerScope(context, member, trigger),
   ])
   if (target) recordVisibleAgentRead(context, [{ id: agentId, visibility: target.visibility }])
   if (room) recordChannelDirectoryRead(context, [room])
@@ -600,7 +609,7 @@ export const runAgentTriggerCreateTool = async (
       `status=${trigger.status}`
       + (trigger.nextRunAt ? ` | next run ${trigger.nextRunAt}` : '')
       + (trigger.targetChannelId
-        ? `${trigger.type === 'ticket_changed' ? ' | each ticket\'s work thread opens in' : ' | posts into'} `
+        ? `${TARGET_CHANNEL_PHRASES[trigger.type] ?? ' | posts into'} `
           + formatChannelMarkdownLink({ id: trigger.targetChannelId, label: room?.label ?? 'channel' })
         : ''),
       ...scope,

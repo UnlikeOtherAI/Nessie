@@ -107,6 +107,8 @@ const buildFakePrisma = (options: {
   let currentPageRow = page ? toRow(page) : null
 
   const prisma = {
+    // A publish asks whether a document trigger watches the project; none does here.
+    agentTrigger: { count: async () => 0 },
     knowledgePage: {
       findFirst: async () => currentPageRow,
       update: async () => {

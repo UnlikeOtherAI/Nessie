@@ -11,6 +11,7 @@ import {
   TicketWorkKickoffMetadataSchema,
   withActionContext,
   type TicketWorkKickoffEvent,
+  type TicketWorkKickoffMetadata,
 } from '@nessie/schemas'
 
 import { buildAgentActorContext, startAgentRun } from './agent-run-start.js'
@@ -119,10 +120,39 @@ const findPendingKickoff = async (
   return null
 }
 
-const kickoffEvents = (metadata: Prisma.JsonValue): TicketWorkKickoffEvent[] => {
+const kickoffMetadata = (metadata: Prisma.JsonValue | null): TicketWorkKickoffMetadata | null => {
   const record = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {}
   const parsed = TicketWorkKickoffMetadataSchema.safeParse((record as Record<string, unknown>)['ticketWorkKickoff'])
-  return parsed.success ? parsed.data.events : []
+  return parsed.success ? parsed.data : null
+}
+
+const kickoffEvents = (metadata: Prisma.JsonValue): TicketWorkKickoffEvent[] =>
+  kickoffMetadata(metadata)?.events ?? []
+
+/** The wakes whose kickoff leaves the agent knowing the description as it is now. */
+const SHOWS_DESCRIPTION: ReadonlySet<string> = new Set(['pickup', 'dequeued', 'ticket_description_changed'])
+
+/**
+ * The description as this record's agent last saw it: the newest of its
+ * kickoffs that recorded one (`detailSeen`), or undefined when none did — a
+ * kickoff written before diffs were — so the change is told as its new text.
+ */
+export const loadDetailSeen = async (
+  tx: Pick<Prisma.TransactionClient, 'message'>,
+  work: { id: string; threadId: string },
+): Promise<string | null | undefined> => {
+  const kickoffs = await tx.message.findMany({
+    where: { threadId: work.threadId, role: 'system', metadata: { path: ['ticketWorkKickoff', 'workId'], equals: work.id } },
+    orderBy: { createdAt: 'desc' },
+    // A record runs at most its wake ceiling of kickoffs.
+    take: 100,
+    select: { metadata: true },
+  })
+  for (const kickoff of kickoffs) {
+    const seen = kickoffMetadata(kickoff.metadata)?.detailSeen
+    if (seen) return seen.text
+  }
+  return undefined
 }
 
 const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent => ({
@@ -183,16 +213,24 @@ export const queueTicketWorkRun = async (
     event: { kind: 'woken', workId: work.id, reason: input.event.reason, summary: input.event.summary },
   })
 
+  // What the agent will know the description as once this kickoff is read.
+  const detailSeen = SHOWS_DESCRIPTION.has(input.event.reason)
+    ? { text: (await tx.task.findUnique({ where: { id: work.taskId }, select: { detail: true } }))?.detail ?? null }
+    : undefined
+
   const pending = await findPendingKickoff(tx, { agentId: trigger.agentId, threadId: work.threadId, workId: work.id })
   if (pending) {
     const events = [...kickoffEvents(pending.metadata), kickoffEvent(input.event)]
     const facts = await loadTicketWorkKickoffFacts(tx, { workId: work.id, wakeNumber: record.wakeCount, trigger })
+    const seen = detailSeen ?? kickoffMetadata(pending.metadata)?.detailSeen
     await tx.message.update({
       where: { id: pending.messageId },
       data: {
         content: renderTicketWorkKickoff(facts, events),
         metadata: {
-          ticketWorkKickoff: { workId: work.id, events, wakeNumber: record.wakeCount },
+          ticketWorkKickoff: {
+            workId: work.id, events, wakeNumber: record.wakeCount, ...(seen ? { detailSeen: seen } : {}),
+          },
         } as Prisma.InputJsonValue,
       },
     })
@@ -213,7 +251,9 @@ export const queueTicketWorkRun = async (
       threadId: work.threadId,
       role: 'system',
       content,
-      metadata: { ticketWorkKickoff: { workId: work.id, events, wakeNumber } } as Prisma.InputJsonValue,
+      metadata: {
+        ticketWorkKickoff: { workId: work.id, events, wakeNumber, ...(detailSeen ? { detailSeen } : {}) },
+      } as Prisma.InputJsonValue,
     },
     select: { id: true },
   })

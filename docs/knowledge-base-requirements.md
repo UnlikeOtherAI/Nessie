@@ -725,6 +725,10 @@ tools:
   unreadable, but also when the **page itself** is `sensitivityTier =
   restricted` or `privateToAgentId` names a different agent — a page can be
   more restrictive than its space.
+- `kb_page_diff` — what changed in one page between two of its versions, as
+  unified line-diff hunks capped at 12,000 characters; `kb_page_read`'s gates
+  for the page and for each version, both recorded as read
+  ([standards/document-triggers.md](standards/document-triggers.md)).
 - `kb_list` — no `spaceId`: lists spaces the caller can read; with `spaceId`:
   an indented page-tree outline after an explicit `canReadSpace` check.
 

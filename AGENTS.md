@@ -373,6 +373,14 @@ when one changes, the same turn updates it, not this section.
   transaction that causes it.
   Read [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md)
   before writing code here.
+- **Document triggers.** Every canonical version write announces itself inside
+  the save (`onVersionCreated`); a watched save opens one quiet window per
+  (trigger, page), whose review carries metadata only — the agent reads the
+  change through `kb_page_diff`'s gates — never wakes on the agent's own
+  edits, reaches a ticket's live work only for the same agent, and pauses the
+  trigger with a health reason when access to its space is lost.
+  Read [`docs/standards/document-triggers.md`](docs/standards/document-triggers.md)
+  before writing code here.
 - **Provider reasoning ("thinking").** Every OpenAI-shaped stream is read
   for both reasoning spellings, the thinking switch is a per-dialect decision
   made at the transport boundary (DeepSeek `thinking`, DashScope

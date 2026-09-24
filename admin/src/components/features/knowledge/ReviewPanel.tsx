@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
-import { computeLineDiff, htmlToLines, type DiffLineOp } from '../../../lib/line-diff'
+import { computeLineDiff, htmlToLines, type DiffLineOp } from '@nessie/schemas'
 import { AgentDraftBadge } from './AgentDraftBadge'
 import { isAgentDraft } from './page-status'
 

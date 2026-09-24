@@ -119,7 +119,9 @@ test('the trigger types offered are the ones a create surface accepts, with thei
   for (const type of RELEASED_TRIGGER_TYPES) {
     assert.match(rendered, new RegExp(`^- ${type} — `, 'm'), `${type} is offered`)
   }
-  assert.doesNotMatch(rendered, /document_changed/)
+  assert.match(rendered, /^- document_changed — Wakes the agent when a watched document/m)
+  assert.match(rendered, /Document reviews \(a document_changed trigger\), as the platform runs them:/)
+  assert.match(rendered, /the agent reads the change with kb_page_diff/)
   // The section is the schema's prose, not a paraphrase of it.
   for (const line of describeAgentTriggerTypes()) assert.ok(rendered.includes(line), line)
   assert.match(rendered, /targetChannelId: id — A live, ordinary, public channel of the board's project/)

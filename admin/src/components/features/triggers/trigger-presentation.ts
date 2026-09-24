@@ -18,6 +18,7 @@ import type {
 } from '../../../lib/api-client'
 import type { PillTone } from '../../primitives/Pill'
 import { TicketChangedStoredConfigSchema } from '@nessie/schemas'
+import { getDocumentTriggerSummary } from './document-trigger-presentation'
 
 /**
  * Single source for trigger display logic: labels, tones, icons, schedule
@@ -164,6 +165,15 @@ export const getTicketTriggerSummary = (config: unknown): string => {
 }
 
 /**
+ * Whether "Run now" is offered. A ticket or document trigger acts on a
+ * person's change — a move, a save — and has nothing of its own to run, so the
+ * fire route refuses both (`TICKET_TRIGGER_NOT_FIREABLE`,
+ * `DOCUMENT_TRIGGER_NOT_FIREABLE`) and no surface offers it.
+ */
+export const canRunTriggerNow = (trigger: Pick<AgentTriggerRecord, 'status' | 'type'>): boolean =>
+  trigger.status === 'active' && trigger.type !== 'ticket_changed' && trigger.type !== 'document_changed'
+
+/**
  * Compact single-line description of when the trigger fires, for list rows.
  */
 export const getScheduleSummary = (trigger: AgentTriggerRecord): string => {
@@ -172,7 +182,7 @@ export const getScheduleSummary = (trigger: AgentTriggerRecord): string => {
   if (trigger.type === 'manual') return 'Fires only when started manually'
   if (trigger.type === 'webhook') return 'Fires on incoming webhook calls'
   if (trigger.type === 'ticket_changed') return getTicketTriggerSummary(trigger.config)
-  if (trigger.type === 'document_changed') return 'Fires when a watched document changes'
+  if (trigger.type === 'document_changed') return getDocumentTriggerSummary(trigger.config)
 
   if (trigger.type === 'event') {
     const events = Array.isArray(config.events)
@@ -291,6 +301,13 @@ export const TRIGGER_HEALTH_COPY: Record<string, string> = {
   launch_origin_invalid:
     'This schedule\'s saved launch identity is missing or inconsistent, so it '
     + 'has stopped running.',
+  document_trigger_access_lost:
+    'The agent can no longer read a document this trigger watches, or its space, '
+    + 'or the space became narrower than the trigger\'s channel, so it has stopped. '
+    + 'Give the agent access again, or widen the space or pick another, then resume it.',
+  document_trigger_config_invalid:
+    'This document trigger\'s configuration no longer parses, so it matches nothing '
+    + 'and has stopped. Edit it and choose its space again, then resume it.',
 }
 
 export const getTriggerHealthMessage = (

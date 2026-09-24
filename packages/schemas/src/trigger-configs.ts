@@ -1,5 +1,13 @@
 import { z } from 'zod'
 
+import {
+  DocumentTriggerFireOnFieldSchema,
+  DocumentTriggerIncludeAgentEditsSchema,
+  DocumentTriggerInstructionsSchema,
+  DocumentTriggerKindsSchema,
+  DocumentTriggerLabelsSchema,
+  DocumentTriggerQuietSecondsSchema,
+} from './document-triggers.js'
 import type { AgentTriggerType } from './lifecycle.js'
 import { describeObjectFields } from './schema-prose.js'
 import { TicketAssignOnPickupSchema, TicketChangedStoredConfigSchema } from './ticket-triggers.js'
@@ -11,14 +19,13 @@ import { TicketAssignOnPickupSchema, TicketChangedStoredConfigSchema } from './t
  * Every field carries a `.describe()`, and the agent tools' `type` enum and
  * config prose, and the Agent Designer's trigger catalogue, are generated from
  * this union rather than written by hand. So the union holds exactly the types
- * an agent may be given: `document_changed` joins it with its own typed
- * config, in the PR that releases it.
+ * an agent may be given (a test holds it equal to `RELEASED_TRIGGER_TYPES`).
  *
- * Only `ticket_changed` is validated by its arm today, by `createAgentTrigger`
- * and `updateAgentTrigger`, which answer with field-level refusals. The other
- * arms describe the keys their fire paths read, and are open to the keys they
- * do not name; those types keep the checks they always had, and the generic
- * refusal with them.
+ * `ticket_changed` and `document_changed` are validated by their arms, by
+ * `createAgentTrigger` and `updateAgentTrigger`, which answer with field-level
+ * refusals. The other arms describe the keys their fire paths read, and are
+ * open to the keys they do not name; those types keep the checks they always
+ * had, and the generic refusal with them.
  */
 
 const uuid = z.string().uuid()
@@ -243,6 +250,44 @@ export const TICKET_TRIGGER_TARGET_CHANNEL_RULE =
   'A live, ordinary, public channel of the board\'s project that the agent is bound to. It must be '
   + 'public because every ticket reader has to be able to open the ticket\'s work thread.'
 
+// ─── document_changed ───────────────────────────────────────────────────────
+
+/**
+ * The `document_changed` config as a person or the Designer writes it. The
+ * server resolves it into `DocumentChangedStoredConfigSchema` — the space
+ * always by id — so the narrowing fields are that schema's own.
+ */
+export const DocumentChangedTriggerConfigSchema = z
+  .object({
+    spaceId: uuid
+      .optional()
+      .describe(
+        'The document space to watch, of the target channel\'s project. May be left out: then the space of '
+        + 'folderPageId or pageIds, or else the project\'s Documents space.',
+      ),
+    folderPageId: uuid.optional().describe('Only pages inside this folder, at any depth.'),
+    pageIds: z.array(uuid).min(1).max(50).optional().describe('Only these pages.'),
+    labels: DocumentTriggerLabelsSchema.optional(),
+    kinds: DocumentTriggerKindsSchema,
+    fireOn: DocumentTriggerFireOnFieldSchema,
+    quietSeconds: DocumentTriggerQuietSecondsSchema,
+    includeAgentEdits: DocumentTriggerIncludeAgentEditsSchema,
+    instructions: DocumentTriggerInstructionsSchema,
+  })
+  .strict()
+  .describe(
+    'Wakes the agent when a watched document of the project is saved (or published), once per quiet '
+    + 'window, to review the change. An edit to a ticket\'s document reaches that ticket\'s live work for the '
+    + 'same agent, in its work thread; any other edit is reviewed in the document\'s own thread in the target '
+    + 'channel. The agent reads the change with kb_page_diff; nothing of the document is in the wake itself.',
+  )
+export type DocumentChangedTriggerConfig = z.infer<typeof DocumentChangedTriggerConfigSchema>
+
+/** Why the target channel of a document trigger is constrained, said once. */
+export const DOCUMENT_TRIGGER_TARGET_CHANNEL_RULE =
+  'A live, ordinary, public channel of the documents\' project that the agent is bound to. Every reader of '
+  + 'that channel must be able to read the watched space, because the agent reviews each change there.'
+
 // ─── The union ─────────────────────────────────────────────────────────────
 
 export const AgentTriggerConfigInputSchema = z.discriminatedUnion('type', [
@@ -255,6 +300,11 @@ export const AgentTriggerConfigInputSchema = z.discriminatedUnion('type', [
     type: z.literal('ticket_changed'),
     targetChannelId: uuid.describe(TICKET_TRIGGER_TARGET_CHANNEL_RULE),
     config: TicketChangedTriggerConfigSchema,
+  }),
+  z.object({
+    type: z.literal('document_changed'),
+    targetChannelId: uuid.describe(DOCUMENT_TRIGGER_TARGET_CHANNEL_RULE),
+    config: DocumentChangedTriggerConfigSchema,
   }),
 ])
 export type AgentTriggerConfigInput = z.infer<typeof AgentTriggerConfigInputSchema>

@@ -168,6 +168,9 @@ const buildFakePrisma = (options: FakePrismaOptions = {}) => {
   const updatePageCalls: unknown[] = []
   const movePageCalls: unknown[] = []
   const prisma = {
+    // Every worker save announces its version to the document triggers of its
+    // page's project; this fake's project has none.
+    agentTrigger: { findMany: async () => [] },
     agent: {
       findFirst: async (args: {
         where: { id: string; organizationId: string }
