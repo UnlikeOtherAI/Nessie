@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import test from 'node:test'
+import test, { type TestContext } from 'node:test'
 
 import { Prisma, PrismaClient } from '@prisma/client'
 import { createNativeKnowledgeProvider } from '@nessie/knowledge'
@@ -23,6 +23,20 @@ import { updateAgentTrigger } from '../src/trigger-lifecycle.js'
  * and by the person setting it up. A save it watches opens one quiet window.
  */
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
+
+// The author's read is asked of their live entitlement, and these fixtures are
+// an unbound local install. Other files configure UOA at module scope under
+// test-isolation=none, so each test scopes and restores the deployment mode.
+const localIdentity = (t: TestContext): void => {
+  for (const key of ['UOA_DOMAIN', 'UOA_CONFIG_URL']) {
+    const previous = process.env[key]
+    delete process.env[key]
+    t.after(() => {
+      if (previous === undefined) delete process.env[key]
+      else process.env[key] = previous
+    })
+  }
+}
 
 const INSTRUCTIONS = { general: 'Review the edit, and say on the thread what changed.' }
 
@@ -113,6 +127,7 @@ const create = (
 }, authorUserId ? { authorUserId } : {})
 
 runDatabaseTest('a document trigger resolves its space on the server and stores it by id', async (t) => {
+  localIdentity(t)
   const prisma = new PrismaClient()
   const s = await seed(prisma)
   t.after(() => s.cleanup().then(() => prisma.$disconnect()))
@@ -154,6 +169,7 @@ runDatabaseTest('a document trigger resolves its space on the server and stores 
 })
 
 runDatabaseTest('every wrong field is refused on its own path, naming what is wrong', async (t) => {
+  localIdentity(t)
   const prisma = new PrismaClient()
   const s = await seed(prisma)
   t.after(() => s.cleanup().then(() => prisma.$disconnect()))
@@ -202,6 +218,7 @@ const pendingJobs = (prisma: PrismaClient, triggerId: string) => prisma.$queryRa
 `)
 
 runDatabaseTest('a watched save opens one quiet window; everything else opens none', async (t) => {
+  localIdentity(t)
   const prisma = new PrismaClient()
   const s = await seed(prisma)
   t.after(async () => {
