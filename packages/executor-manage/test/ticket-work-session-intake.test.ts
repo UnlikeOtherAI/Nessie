@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import type { ExecutorCodingSessionSummary } from '@nessie/schemas'
+import type { ExecutorCodingSessionSummary, ExecutorLocalMcpReport } from '@nessie/schemas'
 
-import { ticketWorkSessionWakes } from '../src/ticket-work-session-intake.js'
+import { ticketWorkSessionWakes, withLastKnownCodingSessions } from '../src/ticket-work-session-intake.js'
 
 /**
  * The heartbeat intake's decision over two reports (T5;
@@ -140,4 +140,20 @@ test('a turn the agent already saw end is the baseline when the machine never li
   }).wakes, [{ sessionId: id, status: 'waiting_for_input', turn: 5 }])
   // Sessions no live record names are not read at all.
   assert.deepEqual(decide({ named: [], next: [summary(id, { status: 'waiting_for_input', turn: 9 })] }).wakes, [])
+})
+
+test('a report whose bridge went unasked is stored with the last sessions, as of when they were read', () => {
+  const session = { agent: 'claude', ownerKey: `sha256:${'a'.repeat(64)}`, root: 'nessie', sessionId: randomUUID(),
+    status: 'working', title: 'Fix login redirect', updatedAt: '2026-09-24T11:50:00.000Z' }
+  const stored = [{ available: true, codingSessions: [session], observedAt: '2026-09-24T11:50:00.000Z',
+    server: 'coding-sessions' }]
+  const next = [
+    { available: true, observedAt: '2026-09-24T11:59:00.000Z', server: 'coding-sessions' },
+  ] as ExecutorLocalMcpReport
+  assert.deepEqual(withLastKnownCodingSessions(stored, next), [{
+    available: true, codingSessions: [session], observedAt: '2026-09-24T11:50:00.000Z', server: 'coding-sessions',
+  }])
+  // A report that asked the bridge is stored as it came.
+  const asked = [{ ...next[0]!, codingSessions: [] }] as ExecutorLocalMcpReport
+  assert.deepEqual(withLastKnownCodingSessions(stored, asked), asked)
 })

@@ -71,3 +71,12 @@ test('an unreadable origin is as if absent, and a session from before origins fo
     localMcpObservedAt: reportedAt, origins: {}, ownerKey: OWNER, sessionIds: [OLD, OLDER],
   }), [{ sessionId: OLD, status: 'waiting_for_input', turn: null }])
 })
+
+test('a heartbeat whose bridge went unasked reads the sessions as of the last one that asked it (T5)', () => {
+  // The bridge was read ten minutes ago; the heartbeat carrying those sessions forward arrived a minute ago.
+  const origins = ticketWorkSessionOriginsOf({ [FRESH]: origin(MINIS, 5) })
+  const carried = report([], at(10))
+  assert.deepEqual(liveTicketWorkSessions({
+    executorId: MINIS, localMcp: carried, localMcpObservedAt: at(1), origins, ownerKey: OWNER, sessionIds: [FRESH],
+  }), [{ sessionId: FRESH, status: 'starting', turn: null }], 'started after the bridge was last read: still live')
+})
