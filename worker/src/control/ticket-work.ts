@@ -245,8 +245,10 @@ const wakeSource = (event: TicketWorkWakeInput['event'], trigger: TicketWorkTrig
       return { kind: 'reminder', reminderId: event.id }
     case 'quiet':
       return { kind: 'quiet', quietMinutes: ticketWorkConfigOf(trigger.config).quietWakeMinutes ?? 0 }
-    // A document change arrives already told, metadata only, by its dispatcher.
+    // A document change arrives already told, metadata only, by its
+    // dispatcher; a session's turn as its machine reported it.
     case 'document':
+    case 'session':
       if (event.described) return { kind: 'described', ...event.described }
       return { kind: 'task_event', taskEventId: event.id }
     default:
@@ -299,10 +301,10 @@ const wakeTicketWork = async (
   const resumed = input.resumes && work.status === 'parked'
   // A person's comment, message or move is the answer to any open question:
   // it closes, and the hours clock runs again. A reminder, a quiet wake, a
-  // connected board's event and an edit to one of the ticket's documents
-  // answer nothing (docs/standards/document-triggers.md).
+  // connected board's event, an edit to one of the ticket's documents and a
+  // coding session's turn answer nothing (docs/standards/document-triggers.md).
   const personEvent = live && !input.untrusted && !input.machineLess
-    && event.kind !== 'reminder' && event.kind !== 'quiet' && event.kind !== 'document'
+    && event.kind !== 'reminder' && event.kind !== 'quiet' && event.kind !== 'document' && event.kind !== 'session'
   if (personEvent) await closeTicketWorkQuestion(tx, work.id)
   const held = live && !input.machineLess ? await holdTicketWorkBeforeWake(tx, { work }) : null
   if (held) return { outcome: 'refused', reason: held }

@@ -7,10 +7,15 @@ import {
 import {
   EndStandingPolicyResponseSchema,
   ExecutorStandingPolicyListResponseSchema,
+  isAdminActor,
   StandingPolicyMachineOptionsResponseSchema,
   TriggerMachineAccessViewSchema,
 } from '@nessie/schemas'
-import { listStandingPolicyMachineOptions, loadTriggerMachineAccess } from '@nessie/team-admin'
+import {
+  listStandingPolicyMachineOptions,
+  loadExecutorHoldingTicket,
+  loadTriggerMachineAccess,
+} from '@nessie/team-admin'
 import { z } from 'zod'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
@@ -91,7 +96,16 @@ export const registerStandingPolicyViewRoutes = (app: FastifyInstance, deps: Rou
     const policies = await listExecutorStandingPolicies(prisma, {
       executorId, organizationId: actor.tenant.organizationId, userId: actor.actor.actorId,
     })
-    return createApiResponse(ExecutorStandingPolicyListResponseSchema.parse({ policies }))
+    // Which ticket holds the machine, on the row of the policy it holds it under.
+    const holder = await loadExecutorHoldingTicket(prisma, {
+      executorId, isOrganizationAdmin: isAdminActor(actor), organizationId: actor.tenant.organizationId,
+      viewerUserId: actor.actor.actorId,
+    })
+    return createApiResponse(ExecutorStandingPolicyListResponseSchema.parse({
+      policies: policies.map((policy) => ({
+        ...policy, holdingTicket: holder && holder.policyId === policy.id ? holder.ticket : null,
+      })),
+    }))
   })
 
   app.post('/api/standing-policies/:policyId/end', async (request, reply) => {

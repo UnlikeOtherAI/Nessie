@@ -13,13 +13,16 @@ import {
   StandingPolicyHostProfileSchema,
   StandingPolicyPinnedTermsSchema,
   TICKET_WORK_LIVE_STATUSES,
+  TICKET_WORK_MACHINE_HOLDING_STATUSES,
   TicketWorkStateReasonSchema,
   TicketWorkStatusSchema,
+  type ExecutorStandingPolicyRow,
   type StandingPolicyMachineOption,
   type TriggerMachineAccessState,
   type TriggerMachineAccessView,
 } from '@nessie/schemas'
 
+import { isProjectAccessibleToUser } from './project-structure.js'
 import { agentTriggerScopeWhere } from './trigger-lifecycle.js'
 import { ticketWorkThreadTitle } from './ticket-work-thread.js'
 
@@ -94,6 +97,7 @@ export const loadTriggerMachineAccess = async (
     take: 50,
     select: {
       executorId: true, id: true, projectId: true, queuePosition: true, stateReason: true, status: true, taskId: true,
+      executor: { select: { lastSeenAt: true } },
       task: { select: { externalLink: { select: { externalKey: true } }, title: true } },
     },
   })
@@ -139,6 +143,9 @@ export const loadTriggerMachineAccess = async (
         stateReason: reason.success ? reason.data : null,
         position: record.status === 'queued' ? record.queuePosition : null,
         machineLabel: namesMachines && label ? label : null,
+        offlineSince: record.status === 'waiting_machine' && record.stateReason === 'machine_offline'
+          ? record.executor?.lastSeenAt?.toISOString() ?? null
+          : null,
       }
     }),
   }
@@ -189,6 +196,42 @@ export const listStandingPolicyMachineOptions = async (
     })
   }
   return options
+}
+
+/**
+ * The ticket that holds a machine, for its Standing access panel (T5): the
+ * record working on it or waiting for it to reconnect — at most one, by
+ * `agent_ticket_work_one_per_executor` — and the policy it holds it under.
+ * The ticket's title only for a reader who can read its project, the rule the
+ * page's own session rows follow.
+ */
+export const loadExecutorHoldingTicket = async (
+  prisma: PrismaClient,
+  input: { executorId: string; isOrganizationAdmin: boolean; organizationId: string; viewerUserId: string },
+): Promise<{ policyId: string | null; ticket: NonNullable<ExecutorStandingPolicyRow['holdingTicket']> } | null> => {
+  const record = await prisma.agentTicketWork.findFirst({
+    where: {
+      executorId: input.executorId, organizationId: input.organizationId,
+      status: { in: [...TICKET_WORK_MACHINE_HOLDING_STATUSES] },
+    },
+    select: {
+      policyId: true, projectId: true, status: true, taskId: true,
+      task: { select: { externalLink: { select: { externalKey: true } }, title: true } },
+    },
+  })
+  if (!record || (record.status !== 'active' && record.status !== 'waiting_machine')) return null
+  const readable = await isProjectAccessibleToUser(prisma, {
+    isOrganizationAdmin: input.isOrganizationAdmin, organizationId: input.organizationId, userId: input.viewerUserId,
+  }, record.projectId)
+  return {
+    policyId: record.policyId,
+    ticket: {
+      projectId: record.projectId,
+      status: record.status,
+      taskId: record.taskId,
+      title: readable ? ticketWorkThreadTitle(record.task) : null,
+    },
+  }
 }
 
 /** The coding facts of a machine's live revision, for one the assessment refused. */

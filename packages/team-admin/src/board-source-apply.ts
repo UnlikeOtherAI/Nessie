@@ -4,6 +4,7 @@ import {
   type NormalisedItemLabel,
   itemFingerprint,
 } from '@nessie/board-sources'
+import { renumberTicketWorkQueuesForTaskInTransaction } from '@nessie/executor-manage'
 import {
   type BoardSourceFieldMapping,
   BoardSourceFieldMappingSchema,
@@ -559,10 +560,15 @@ export const applyInboundItem = async (
           assigneeAgentId: true,
           boardId: true,
           detail: true,
+          priority: true,
         },
       })
       boardId = previous?.boardId ?? null
       await tx.task.update({ where: { id }, data: base })
+      // A queued ticket's new priority re-sorts the machine queue it waits in.
+      if (base.priority !== undefined && previous && previous.priority !== base.priority) {
+        await renumberTicketWorkQueuesForTaskInTransaction(tx, id)
+      }
       if (previous) {
         await recordInboundItemEvents(tx, {
           source, taskId: id, boardId, previous, next: base, remoteStateId: item.stateId,

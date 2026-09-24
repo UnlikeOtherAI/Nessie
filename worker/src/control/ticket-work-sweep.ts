@@ -46,11 +46,13 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  *   settle changes nothing, and a person's move whose job was lost still
  *   starts its work.
  *
- * - **(T4) runs the machine half** (`ticket-work-sweep-machines.ts`): it ends
- *   the policies of authors UOA no longer lists, stops work over its hours or
- *   spend that nobody wakes, and places queued work on a free machine in each
- *   policy's queue order — the dispatcher's backstop; T5's dequeue orders it
- *   across policies.
+ * - **(T4, T5) runs the machine half** (`ticket-work-sweep-machines.ts`): it
+ *   ends the policies of authors UOA no longer lists, stops work over its
+ *   hours or spend that nobody wakes, resumes work whose machine came back
+ *   and moves work off one that stayed away past `waitingMachineHours`, and
+ *   dequeues — each free machine takes the first queued record in line across
+ *   every policy that shares it. Every transaction that may free a machine
+ *   enqueues this job, so it is the pool dispatcher as well as the backstop.
  */
 
 export const TICKET_WORK_SWEEP_INTERVAL_MS = 60_000

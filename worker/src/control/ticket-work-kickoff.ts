@@ -6,6 +6,7 @@ import {
   TicketQuietWakeMinutesSchema,
   TicketTriggerInstructionsSchema,
   TicketTriggerLimitsSchema,
+  TicketWaitingMachineHoursSchema,
   type TicketChangedStoredConfig,
   type TicketFollowKind,
   type TicketTriggerLimits,
@@ -47,12 +48,15 @@ export const ticketWorkConfigOf = (config: unknown): {
   followKinds: readonly TicketFollowKind[]
   /** Minutes of quiet before a `quiet` wake; null when the trigger turned it off. */
   quietWakeMinutes: number | null
+  /** Hours work waits for its own offline machine before it is queued for another (T5). */
+  waitingMachineHours: number
   stored: TicketChangedStoredConfig | null
 } => {
   const record = config && typeof config === 'object' ? config as Record<string, unknown> : {}
   const limits = TicketTriggerLimitsSchema.safeParse(record['limits'])
   const instructions = TicketTriggerInstructionsSchema.safeParse(record['instructions'])
   const quiet = TicketQuietWakeMinutesSchema.safeParse(record['quietWakeMinutes'])
+  const waiting = TicketWaitingMachineHoursSchema.safeParse(record['waitingMachineHours'])
   const stored = TicketChangedStoredConfigSchema.safeParse(config)
   return {
     limits: limits.success ? limits.data : { ...TICKET_TRIGGER_LIMIT_DEFAULTS },
@@ -60,6 +64,7 @@ export const ticketWorkConfigOf = (config: unknown): {
     followKinds: stored.success ? stored.data.follow.kinds : [],
     // A value that no longer parses keeps the safety net on, at its default.
     quietWakeMinutes: quiet.success ? quiet.data : TicketQuietWakeMinutesSchema.parse(undefined),
+    waitingMachineHours: waiting.success ? waiting.data : TicketWaitingMachineHoursSchema.parse(undefined),
     stored: stored.success ? stored.data : null,
   }
 }
@@ -213,6 +218,7 @@ const stateBlock = (facts: TicketWorkKickoffFacts): string[] => {
       ? 'This conversation is the ticket\'s work thread.'
       : 'This conversation is the ticket\'s work thread. After this run you are woken again when a person who can '
         + `edit the board ${followed.length > 0 ? followed.join(', ') : 'moves the ticket back into a start-work column'}`
+        + `${facts.machine?.pinned ? ', and when this ticket\'s coding session ends a turn, is interrupted, fails or closes' : ''}`
         + '. Your own changes to the ticket never wake you.',
   ]
 }

@@ -117,13 +117,22 @@ export const heartbeat = async (
 
 /** The coding bridge's report, listing these sessions under this owner key. */
 export const bridgeReport = (
-  sessions: Array<{ ownerKey: string; sessionId: string; status?: string; title?: string }>,
+  sessions: Array<{
+    ownerKey: string
+    reason?: string
+    sessionId: string
+    status?: string
+    title?: string
+    turn?: number
+  }>,
   observedAt = new Date(),
 ): ExecutorLocalMcpReport => [{
   available: true,
   codingSessions: sessions.map((session) => ({
     agent: 'claude', ownerKey: session.ownerKey, root: 'nessie', sessionId: session.sessionId,
     status: session.status ?? 'working', title: session.title ?? 'Fix login redirect', updatedAt: observedAt.toISOString(),
+    ...(session.reason ? { reason: session.reason } : {}),
+    ...(session.turn === undefined ? {} : { lastTurnEndedAt: null, turn: session.turn }),
   })),
   observedAt: observedAt.toISOString(),
   server: 'coding-sessions',

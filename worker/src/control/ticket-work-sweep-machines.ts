@@ -1,24 +1,19 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import {
   endStandingPoliciesInTransaction,
   enforceTicketWorkLimitsInTransaction,
   executorCodingSessionOwnerKey,
-  placeTicketWorkOnMachineInTransaction,
-  recordTicketWorkActivity,
   reportedExecutorCodingSessions,
-  writeTicketWorkAudit,
 } from '@nessie/executor-manage'
 import { resolveLiveEntitlementDecision, type ResolveLiveEntitlementsDeps } from '@nessie/runtime'
 import {
   ScheduledTriggerLaunchOriginSchema,
   TICKET_WORK_LIVE_STATUSES,
   ticketWorkCodingSessionContext,
-  type TicketTriggerDeliveryPayload,
 } from '@nessie/schemas'
-import { lockTicketForWork } from '@nessie/team-admin'
 
-import { queueTicketWorkRun, stopTicketWorkAtWakeLimit } from './ticket-work-run.js'
-import { lockThreadRunSlot } from '../run/thread-serialization.js'
+import { dequeueTicketWork } from './ticket-work-dequeue.js'
+import { requeueWorkStrandedOffline, resumeWorkWhoseMachineIsBack } from './ticket-work-machine-return.js'
 
 /**
  * The sweep's machine half (docs/standards/ticket-work-machine-access.md →
@@ -35,12 +30,15 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  * - **Limits on work nobody wakes.** Every live record under a policy is
  *   checked against its hours clock and spend, as a wake and the heartbeat
  *   intake check them.
- * - **The dispatcher's backstop.** Each live policy's queued records, in queue
- *   order, are placed on its pool until one finds no free machine; a record
- *   that gets one is `active` with a `dequeued` wake. This is a simple first
- *   free assignment in each policy's own queue order: the dequeue by priority
- *   and age across every policy sharing a machine, and its re-checks of the
- *   ticket, the mover and the digests, are T5's.
+ * - **A machine back, or gone too long** (T5, `ticket-work-machine-return.ts`):
+ *   work waiting for its own machine resumes on it with a
+ *   `machine_back_online` wake, or — past the trigger's `waitingMachineHours`
+ *   — is queued again for another machine of its pool.
+ * - **The dequeue** (T5, `ticket-work-dequeue.ts`): each free machine of a
+ *   live pool takes the queued record first in line across every policy that
+ *   shares it — the one that last worked there, then priority, then age —
+ *   after the policy's digests, the ticket's column and its mover are checked
+ *   again.
  */
 
 type SweepDeps = { entitlements?: ResolveLiveEntitlementsDeps; now: Date }
@@ -106,118 +104,6 @@ export const enforceLimitsOnLiveWork = async (prisma: PrismaClient, deps: SweepD
   return ended
 }
 
-const DEQUEUED_TEXT = 'A machine freed up, so this ticket\'s queued work starts now on one of its owner\'s machines. '
-  + 'Read the ticket, then brief the coding agent. Never name the machine on the ticket or in this thread.'
-
-type Queued = { agentId: string; id: string; projectId: string; taskId: string; threadId: string; triggerId: string }
-
-/** Nothing free for this record: every write the placement made is rolled back. */
-class NoFreeMachine extends Error {}
-
-/**
- * Place one queued record, under the locks every wake of it takes in the one
- * order — its ticket, its thread's run slot, then (inside the placement) its
- * pool and the record. Assigned, it writes its `work_resumed` row and a
- * `dequeued` wake with its delivery; otherwise nothing at all.
- */
-const dequeueOne = async (
-  prisma: PrismaClient,
-  record: Queued,
-  trigger: { agentId: string; config: unknown; id: string; organizationId: string },
-): Promise<boolean> => {
-  try {
-    return await prisma.$transaction(async (tx) => {
-      await lockTicketForWork(tx, record.taskId)
-      await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
-      const fresh = await tx.agentTicketWork.findUnique({
-        where: { id: record.id }, select: { status: true },
-      })
-      if (fresh?.status !== 'queued') return false
-      const placement = await placeTicketWorkOnMachineInTransaction(tx, { workId: record.id })
-      if (placement.kind !== 'assigned') throw new NoFreeMachine()
-      await recordDequeue(tx, { placement, record, trigger })
-      return true
-    })
-  } catch (error) {
-    if (error instanceof NoFreeMachine) return false
-    throw error
-  }
-}
-
-const recordDequeue = async (
-  tx: Prisma.TransactionClient,
-  input: {
-    placement: { executorId: string; policyId: string }
-    record: Queued
-    trigger: { agentId: string; config: unknown; id: string; organizationId: string }
-  },
-): Promise<void> => {
-  const { record, trigger } = input
-  await recordTicketWorkActivity(tx, { eventType: 'work_resumed', reason: null, status: 'active', work: record })
-  await writeTicketWorkAudit(tx, {
-    action: 'ticket.work.started',
-    metadata: {
-      dequeued: true, executorId: input.placement.executorId, policyId: input.placement.policyId,
-      taskId: record.taskId, triggerId: record.triggerId,
-    },
-    organizationId: trigger.organizationId,
-    workId: record.id,
-  })
-  const payload: TicketTriggerDeliveryPayload = {
-    eventType: 'dequeued', originKind: 'system', outcome: 'follow', taskId: record.taskId, wakeReason: 'dequeued',
-    workId: record.id,
-  }
-  const delivery = await tx.agentTriggerDelivery.create({
-    data: {
-      dedupeKey: `dequeue:${record.id}:${new Date().toISOString()}`, deliveredAt: new Date(), payload, source: 'dequeue',
-      status: 'delivered', triggerId: trigger.id,
-    },
-    select: { id: true },
-  })
-  const outcome = await queueTicketWorkRun(tx, {
-    work: record,
-    trigger,
-    event: { at: new Date().toISOString(), reason: 'dequeued', summary: 'a machine freed up', text: DEQUEUED_TEXT },
-    deliveryId: delivery.id,
-  })
-  if (outcome.kind !== 'over_limit') return
-  await stopTicketWorkAtWakeLimit(tx, { work: record, wakesUsed: outcome.wakesUsed })
-  await tx.agentTriggerDelivery.update({
-    where: { id: delivery.id },
-    data: { errorMessage: 'limit_wakes', payload: { ...payload, outcome: 'skipped', skipReason: 'limit_wakes' }, status: 'skipped' },
-  })
-}
-
-/** Each live policy's queue, oldest first, placed until a record finds no free machine. */
-export const dispatchQueuedTicketWork = async (prisma: PrismaClient): Promise<number> => {
-  const policies = await prisma.executorStandingPolicy.findMany({
-    where: { status: 'live', ticketWork: { some: { status: 'queued' } } },
-    select: {
-      id: true,
-      trigger: { select: { agentId: true, config: true, enabled: true, id: true, status: true } },
-      organizationId: true,
-    },
-  })
-  let started = 0
-  for (const policy of policies) {
-    const trigger = policy.trigger
-    if (!trigger?.agentId || !trigger.enabled || trigger.status !== 'active') continue
-    const queued = await prisma.agentTicketWork.findMany({
-      where: { policyId: policy.id, status: 'queued', triggerId: trigger.id },
-      orderBy: [{ queuePosition: 'asc' }, { enqueuedAt: 'asc' }, { id: 'asc' }],
-      select: { agentId: true, id: true, projectId: true, taskId: true, threadId: true, triggerId: true },
-    })
-    for (const record of queued) {
-      const placed = await dequeueOne(prisma, { ...record, triggerId: trigger.id }, {
-        agentId: trigger.agentId, config: trigger.config, id: trigger.id, organizationId: policy.organizationId,
-      })
-      if (!placed) break
-      started += 1
-    }
-  }
-  return started
-}
-
 /**
  * Whether any of the ticket's own coding sessions is mid-turn, as its machine
  * last reported: a quiet wake would only interrupt the work it waits for.
@@ -240,12 +126,19 @@ export const ticketSessionWorking = (record: {
     .some((session) => session.ownerKey === ownerKey && session.status === 'working')
 }
 
-/** The machine half, each step on its own: one failing never keeps the others from running. */
+/**
+ * The machine half, each step on its own: one failing never keeps the others
+ * from running. Work whose machine came back resumes before the dequeue, and
+ * work taken off a machine that stayed away joins the queue before it, so the
+ * dequeue that follows sees both.
+ */
 export const sweepStandingMachineAccess = async (prisma: PrismaClient, deps: SweepDeps): Promise<void> => {
   const steps: Array<[string, () => Promise<unknown>]> = [
     ['authors', () => endPoliciesOfDepartedAuthors(prisma, deps)],
     ['limits', () => enforceLimitsOnLiveWork(prisma, deps)],
-    ['dispatch', () => dispatchQueuedTicketWork(prisma)],
+    ['back online', () => resumeWorkWhoseMachineIsBack(prisma, deps)],
+    ['stranded', () => requeueWorkStrandedOffline(prisma, deps)],
+    ['dequeue', () => dequeueTicketWork(prisma, deps)],
   ]
   for (const [step, run] of steps) {
     await run().catch((error: unknown) => {

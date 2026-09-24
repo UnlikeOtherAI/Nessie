@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, TaskPriority } from '@prisma/client'
 import { claimTaskEmbeddingInTransaction } from '@nessie/db'
+import { renumberTicketWorkQueuesForTaskInTransaction } from '@nessie/executor-manage'
 import type { TaskEmbedOrigin, TaskEventOrigin } from '@nessie/schemas'
 
 import { projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
@@ -194,7 +195,8 @@ export const updateProjectTask = async (
         scope,
       })
     }
-    // A priority change wrote nothing before ticket triggers followed it.
+    // A priority change wrote nothing before ticket triggers followed it. On a
+    // queued ticket it re-sorts the machine queue it waits in, and wakes nothing.
     if (fields.priority !== undefined && fields.priority !== existing.priority) {
       await recordTaskEvent(tx, {
         taskId: existing.id,
@@ -202,6 +204,7 @@ export const updateProjectTask = async (
         payload: { ...(by ? { by } : {}), origin, from: existing.priority, to: fields.priority },
         scope,
       })
+      await renumberTicketWorkQueuesForTaskInTransaction(tx, existing.id)
     }
     if (input.actorId && input.fields.attachmentIds?.length) {
       const linked = await linkUploadsToTask(tx, {

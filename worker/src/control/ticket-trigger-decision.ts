@@ -72,8 +72,9 @@ export type TicketTriggerDecision =
   | { kind: 'reentry' | 'end'; source: 'follow'; workId: string; wakeReason: 'ticket_moved' }
   | {
       kind: 'follow'
-      // A reminder and a quiet wake are follows of the record too, through their own doors.
-      source: Extract<TicketTriggerDeliverySource, 'follow' | 'reminder' | 'quiet'>
+      // A reminder, a quiet wake and a coding session's turn are follows of the
+      // record too, through their own doors.
+      source: Extract<TicketTriggerDeliverySource, 'follow' | 'reminder' | 'quiet' | 'session'>
       workId: string
       wakeReason: TicketWorkWakeReason
       untrusted: boolean

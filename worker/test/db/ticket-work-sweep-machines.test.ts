@@ -120,7 +120,12 @@ runDatabaseTest('a queued ticket takes the machine another ticket freed, with a 
       where: { threadId: placed.threadId, metadata: { path: ['ticketWorkKickoff', 'workId'], equals: placed.id } },
       orderBy: { createdAt: 'desc' },
     })
-    assert.match(kickoff.content, /^## Why you were woken\ndequeued: A machine freed up/)
+    assert.match(kickoff.content, /^## Why you were woken\ndequeued: A machine is free, so this ticket's queued work starts now/)
+    assert.match(kickoff.content, /you are bound to it\./)
+    const row = await prisma.message.findFirstOrThrow({
+      where: { threadId: placed.threadId, metadata: { path: ['ticketWorkEvent', 'reason'], equals: 'dequeued' } },
+    })
+    assert.equal(row.content, 'Woken: a machine is free; you are bound to it')
     assert.doesNotMatch(kickoff.content, /Minis/, 'the project never reads the machine\'s name')
 
     // A second sweep finds nothing queued and starts nothing twice.

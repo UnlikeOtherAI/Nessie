@@ -171,7 +171,8 @@ const ticketSessions = async (
   const reported = reportedExecutorCodingSessions(executor?.localMcp)
     .filter((session) => session.ownerKey === scope.ownerKey)
   for (const session of reported) {
-    if (!recorded.includes(session.sessionId) && session.title === scope.title) {
+    // A closed one left the record's live set in the heartbeat intake (T5): it stays out.
+    if (!recorded.includes(session.sessionId) && session.title === scope.title && session.status !== 'closed') {
       await appendTicketWorkSession(prisma, { sessionId: session.sessionId, workId: scope.workId })
       recorded.push(session.sessionId)
     }

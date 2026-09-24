@@ -41,14 +41,18 @@ export type TicketWorkEvent = {
   createdAt: Date
   /**
    * Not a `TaskEvent`: a person's message in the work thread, a
-   * `check_back_in` the agent set, the platform's quiet wake, or an edit to
-   * one of the ticket's documents (`document_changed`).
+   * `check_back_in` the agent set, the platform's quiet wake, an edit to one
+   * of the ticket's documents (`document_changed`), or one of the ticket's
+   * own coding sessions ending a turn, interrupted, failed or closed
+   * (`session`, T5).
    */
-  kind?: 'thread_message' | 'reminder' | 'quiet' | 'document'
+  kind?: 'thread_message' | 'reminder' | 'quiet' | 'document' | 'session'
   /**
    * A document change as its dispatcher already told it: metadata only, the
    * document named by title only where every reader of the channel may read
-   * it (docs/standards/document-triggers.md). Set exactly when `kind` is `document`.
+   * it (docs/standards/document-triggers.md); or a session's turn as the
+   * heartbeat reported it, never anything the session said. Set exactly
+   * when `kind` is `document` or `session`.
    */
   described?: { text: string; summary: string }
   /** The event's `TaskEvent.by`: who a resume or an end it causes names. */
