@@ -8,6 +8,7 @@ import {
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
+  isStandingBinding,
   standingBindingContextId,
   standingProgramRefusal,
   standingStartRefusal,
@@ -151,11 +152,13 @@ export const assertExecutorMcpCallPayload = async (
     },
   })
   if (!binding) return
+  const mcp = binding.operationKey === 'mcp.call' || binding.operationKey === 'mcp.tools'
+  if (!mcp && !isStandingBinding(binding)) return
   const codingSessionsServer = reviewedCodingSessionsServer(binding.capabilityRevision.descriptor)
   // A standing binding reaches the coding-sessions bridge and nothing else.
   const program = standingProgramRefusal(binding, codingSessionsServer, payload)
   if (program) throw new ExecutorError(EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID, program)
-  if (binding.operationKey !== 'mcp.call' && binding.operationKey !== 'mcp.tools') return
+  if (!mcp) return
   const candidate = await prisma.executorAvailabilityCandidate.findUnique({
     where: { handleDigest: binding.candidateHandleDigest },
     select: { actorUserId: true, agentId: true },
