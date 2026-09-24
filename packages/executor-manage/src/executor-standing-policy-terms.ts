@@ -3,6 +3,8 @@ import { stableStringify } from '@nessie/db'
 import {
   StandingPolicyPinnedTermsSchema,
   TicketChangedWorkConfigSchema,
+  TicketQuietWakeMinutesSchema,
+  type StandingPolicyAgentPin,
   type StandingPolicyLimits,
   type StandingPolicyPinnedTerms,
 } from '@nessie/schemas'
@@ -12,9 +14,10 @@ import {
  * (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md → "What is
  * pinned"; docs/standards/ticket-work-machine-access.md).
  *
- * The terms are the trigger's agent, target channel, board, start-work
+ * The terms are the trigger's agent and the agent's own definition
+ * (`executor-standing-policy-agent.ts`), target channel, board, start-work
  * columns and `assignOnPickup`, follow kinds and `includeSourceEvents`, end
- * columns, every instructions section verbatim, and every limit — the
+ * columns, every instructions section verbatim, the quiet wake, and every limit — the
  * trigger's `wakesPerTicket` and `startsPerDay` and the policy's own
  * `ticketHours`, `ticketUsd` and `dailyUsd`. `triggerDigest` is the digest of
  * exactly that object. The card that confirms it (team-admin) and the binder
@@ -34,12 +37,16 @@ const sorted = <T extends string>(values: readonly T[]): T[] => [...values].sort
 export const standingPolicyTermsOf = (
   trigger: TriggerRow,
   policyLimits: StandingPolicyLimits,
+  agent: StandingPolicyAgentPin | null,
 ): StandingPolicyPinnedTerms | null => {
   const parsed = TicketChangedWorkConfigSchema.safeParse(trigger.config)
-  if (!parsed.success || !trigger.agentId || !trigger.targetChannelId) return null
+  if (!parsed.success || !trigger.agentId || !trigger.targetChannelId || !agent) return null
   const config = parsed.data
+  const record = trigger.config && typeof trigger.config === 'object' ? trigger.config as Record<string, unknown> : {}
+  const quiet = TicketQuietWakeMinutesSchema.safeParse(record['quietWakeMinutes'])
   return StandingPolicyPinnedTermsSchema.parse({
     agentId: trigger.agentId,
+    agent,
     targetChannelId: trigger.targetChannelId,
     boardId: config.boardId,
     pickupColumnIds: sorted(config.pickup?.columnIds ?? []),
@@ -49,6 +56,7 @@ export const standingPolicyTermsOf = (
     endOn: [...config.endOn].sort((left, right) => stableStringify(left).localeCompare(stableStringify(right))),
     instructions: Object.fromEntries(Object.entries(config.instructions ?? {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+    quietWakeMinutes: quiet.success ? quiet.data : TicketQuietWakeMinutesSchema.parse(undefined),
     limits: {
       wakesPerTicket: config.limits.wakesPerTicket,
       startsPerDay: config.limits.startsPerDay,

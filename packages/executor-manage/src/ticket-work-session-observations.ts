@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { TicketWorkPullRequestStateSchema } from '@nessie/schemas'
 
 import { addTicketWorkCostInTransaction } from './executor-standing-policy-limits.js'
+import { ticketWorkSessionOriginEntry } from './ticket-work-session-origins.js'
 
 /**
  * What a `ticket.work` run learns of its ticket's coding sessions, written
@@ -9,7 +10,8 @@ import { addTicketWorkCostInTransaction } from './executor-standing-policy-limit
  * (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md → "Session
  * isolation", "Done means merged"; ticket-work.md → "Limits"):
  *
- * - the session a start returned, appended in the same step;
+ * - the session a start returned, appended in the same step with its machine,
+ *   its policy and when it started (`ticket-work-session-origins.ts`);
  * - what each status read and review saw it cost since the last one
  *   (`session_costs` keeps the newest cumulative total per session), and each
  *   Nessie run's own cost once (keyed `run:<runId>`), added to `costUsd` and
@@ -32,12 +34,21 @@ const numberMap = (value: Prisma.JsonValue | null | undefined): Record<string, n
 const lockWork = (tx: Prisma.TransactionClient, workId: string) =>
   tx.$queryRaw(Prisma.sql`SELECT id FROM agent_ticket_work WHERE id = ${workId}::uuid FOR UPDATE`)
 
+/**
+ * A session this ticket started, onto its record once, with where and when it
+ * started (`session_origins`): the machine it runs on and the policy whose
+ * owner context it was started under.
+ */
 export const appendTicketWorkSession = async (
   prisma: Client,
-  input: { sessionId: string; workId: string },
+  input: { executorId: string; now?: Date; policyId: string; sessionId: string; workId: string },
 ): Promise<void> => {
+  const origin = JSON.stringify(ticketWorkSessionOriginEntry(input.sessionId, {
+    executorId: input.executorId, policyId: input.policyId, startedAt: input.now ?? new Date(),
+  }))
   await prisma.$executeRaw(Prisma.sql`
-    UPDATE agent_ticket_work SET session_ids = array_append(session_ids, ${input.sessionId}), updated_at = now()
+    UPDATE agent_ticket_work SET session_ids = array_append(session_ids, ${input.sessionId}),
+      session_origins = session_origins || ${origin}::jsonb, updated_at = now()
     WHERE id = ${input.workId}::uuid AND NOT (${input.sessionId} = ANY(session_ids))`)
 }
 

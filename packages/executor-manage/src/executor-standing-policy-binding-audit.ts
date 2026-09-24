@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
   standingPolicyRefusalSentence,
+  TaskEventOriginSchema,
   TicketTriggerBindingRefusalPayloadSchema,
   type RunExecuteJobPayload,
 } from '@nessie/schemas'
@@ -33,6 +34,13 @@ export const recordStandingPolicyBound = async (
 ): Promise<void> => {
   const { policy, record } = input
   const pool = policy.executors.find((row) => row.executorId === record.executorId)
+  // The move that started the work, as its own event recorded who made it and through which door.
+  const started = record.startedByEventId
+    ? await tx.taskEvent.findUnique({ where: { id: record.startedByEventId }, select: { payload: true } })
+    : null
+  const origin = TaskEventOriginSchema.safeParse(
+    (started?.payload as { origin?: unknown } | null | undefined)?.origin,
+  )
   await writeAuditEntryInTransaction(tx, {
     action: 'executor.run.policy_bound',
     actorId: record.agentId,
@@ -44,9 +52,7 @@ export const recordStandingPolicyBound = async (
       executorId: record.executorId,
       kickoffMessageId: input.job.messageId,
       localPolicyDigest: pool?.localPolicyDigest ?? null,
-      // The move that started the work, and who made it: pickups start only
-      // from a person's own session.
-      moverOrigin: 'session',
+      moverOrigin: origin.success ? origin.data : null,
       moverUserId: record.startedByUserId,
       policyId: policy.id,
       taskEventId: record.startedByEventId,

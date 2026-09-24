@@ -12,10 +12,12 @@ import {
 import { requestExecutorCodingSessionCloseForSessionsInTransaction } from './executor-coding-session-closes.js'
 import {
   enqueueTicketWorkSweep,
+  lockStandingPolicyPool,
   queueTicketWorkInTransaction,
   standingPolicyPoolReason,
 } from './executor-standing-policy-pool.js'
 import { syncTicketWorkClock } from './ticket-work-clock.js'
+import { ticketWorkSessionOriginsOf } from './ticket-work-session-origins.js'
 import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-records.js'
 
 /**
@@ -36,7 +38,11 @@ import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from '.
  *
  * Each writes its `executor.policy.*` audit row in the same transaction, and
  * each that may free a machine enqueues the pool dispatcher
- * (`ticket-work.sweep`).
+ * (`ticket-work.sweep`). A suspension and an end take the policy's pool
+ * locks (`lockStandingPolicyPool`) before they touch its records, as a
+ * placement does, so a placement deciding at the same moment either lands
+ * first and is paused or ended here, or waits and sees the policy no longer
+ * live.
  */
 
 export type StandingPolicyActor = { requestId?: string; userId: string | null }
@@ -82,34 +88,57 @@ export const writeStandingPolicyAudit = async (
 
 /**
  * Session-scoped close requests for the sessions these records started, each
- * on its own machine and named by its ticket's owner context under the policy
- * that pinned it, so nothing else of its author's is named.
+ * on **its own** machine and named by its ticket's owner context under the
+ * policy it was started under (`session_origins`), so nothing else of its
+ * author's is named — and a record handed to another machine leaves nothing
+ * open on the first. A session from before origins were kept closes on the
+ * record's machine, under its policy.
  */
 export const closeTicketWorkSessionsInTransaction = async (
   tx: Prisma.TransactionClient,
-  records: readonly Pick<LiveRecord, 'agentId' | 'executorId' | 'policyId' | 'sessionIds' | 'taskId'>[],
+  records: readonly Pick<LiveRecord, 'agentId' | 'executorId' | 'id' | 'policyId' | 'sessionIds' | 'taskId'>[],
   reason: ExecutorCodingSessionCloseReason,
   requestedByUserId: string | null,
 ): Promise<void> => {
-  const withSessions = records.filter((record) => record.executorId && record.policyId && record.sessionIds.length > 0)
+  const withSessions = records.filter((record) => record.sessionIds.length > 0)
   if (withSessions.length === 0) return
+  const stored = new Map((await tx.agentTicketWork.findMany({
+    where: { id: { in: withSessions.map((record) => record.id) } },
+    select: { id: true, sessionOrigins: true },
+  })).map((row) => [row.id, ticketWorkSessionOriginsOf(row.sessionOrigins)]))
+  type Group = { agentId: string; executorId: string; policyId: string; sessionIds: string[]; taskId: string }
+  const groups = new Map<string, Group>()
+  for (const record of withSessions) {
+    const origins = stored.get(record.id) ?? {}
+    for (const sessionId of record.sessionIds) {
+      const executorId = origins[sessionId]?.executorId ?? record.executorId
+      const policyId = origins[sessionId]?.policyId ?? record.policyId
+      if (!executorId || !policyId) continue
+      const key = `${record.id}:${executorId}:${policyId}`
+      const group = groups.get(key)
+        ?? { agentId: record.agentId, executorId, policyId, sessionIds: [], taskId: record.taskId }
+      group.sessionIds.push(sessionId)
+      groups.set(key, group)
+    }
+  }
+  if (groups.size === 0) return
   const authors = new Map((await tx.executorStandingPolicy.findMany({
-    where: { id: { in: [...new Set(withSessions.map((record) => record.policyId as string))] } },
+    where: { id: { in: [...new Set([...groups.values()].map((group) => group.policyId))] } },
     select: { authorUserId: true, id: true },
   })).map((policy) => [policy.id, policy.authorUserId]))
-  for (const record of withSessions) {
-    const actorUserId = authors.get(record.policyId as string)
+  for (const group of groups.values()) {
+    const actorUserId = authors.get(group.policyId)
     if (!actorUserId) continue
     await requestExecutorCodingSessionCloseForSessionsInTransaction(tx, {
-      executorId: record.executorId as string,
+      executorId: group.executorId,
       owner: {
         actorUserId,
-        agentId: record.agentId,
-        contextId: ticketWorkCodingSessionContext(record.policyId as string, record.taskId),
+        agentId: group.agentId,
+        contextId: ticketWorkCodingSessionContext(group.policyId, group.taskId),
       },
       reason,
       requestedByUserId,
-      sessionIds: record.sessionIds,
+      sessionIds: group.sessionIds,
     })
   }
 }
@@ -128,6 +157,7 @@ export const suspendStandingPolicyInTransaction = async (
     data: { status: 'suspended', suspendedReason: input.reason },
   })
   if (count === 0) return false
+  await lockStandingPolicyPool(tx, input.policyId)
   const policy = await tx.executorStandingPolicy.findUniqueOrThrow({
     where: { id: input.policyId },
     select: { organizationId: true, triggerId: true },
@@ -235,6 +265,7 @@ export const endStandingPolicyInTransaction = async (
     },
   })
   if (count === 0) return false
+  if (policy.status !== 'preparing') await lockStandingPolicyPool(tx, input.policyId)
   const live = policy.status === 'preparing' ? [] : await tx.agentTicketWork.findMany({
     where: { policyId: input.policyId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
     select: RECORD_SELECT,

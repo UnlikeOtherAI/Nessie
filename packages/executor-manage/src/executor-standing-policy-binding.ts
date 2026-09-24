@@ -7,9 +7,11 @@ import { EXECUTOR_LOCAL_APPS_OPERATION_KEYS } from './executor-conversation-leas
 import { ExecutorError } from './executor-errors.js'
 import {
   checkStandingPolicyBindingFacts,
+  type StandingBindRecord,
   type StandingPolicyBinderDeps,
   type StandingPolicyRefusalReason,
 } from './executor-standing-policy-binding-checks.js'
+import { suspendStandingPoliciesForAgentChangeInTransaction } from './executor-standing-policy-agent.js'
 import { enforceTicketWorkLimitsInTransaction } from './executor-standing-policy-limits.js'
 import { recordStandingPolicyBound, recordStandingPolicyRefused } from './executor-standing-policy-binding-audit.js'
 
@@ -32,7 +34,10 @@ export {
  *
  * A refusal is an outcome, never a throw: it writes `executor.run.policy_refused`
  * and a delivery row, and the run goes on with no machine, told why. A limit
- * the record is over ends it here, as the wake would have.
+ * the record is over ends it here, as the wake would have, and an agent whose
+ * definition changed suspends the policy (`agent_changed`). A re-driven job
+ * whose earlier attempt already bound runs every check again too: bindings
+ * that exist are reused only while the checks still hold.
  */
 
 export type StandingPolicyBinding =
@@ -60,26 +65,62 @@ export const bindStandingPolicyExecutor = async (
     where: { runId: run.runId },
     select: { executorId: true, id: true, standingPolicyId: true, ticketWorkId: true },
   })
-  if (existing.length > 0) {
-    // A re-driven job: its earlier attempt already bound, or bound nothing of ours.
-    const ours = existing.every((binding) => binding.ticketWorkId === record.id && binding.standingPolicyId)
-    return ours
-      ? {
-          bindingIds: existing.map((binding) => binding.id), executorId: existing[0]!.executorId, kind: 'already_bound',
-          policyId: existing[0]!.standingPolicyId!, workId: record.id,
-        }
-      : { kind: 'not_applicable' }
-  }
+  // A re-driven job whose earlier attempt bound something that is not ours has nothing to bind here.
+  const ours = existing.every((binding) => binding.ticketWorkId === record.id && binding.standingPolicyId)
+  if (existing.length > 0 && !ours) return { kind: 'not_applicable' }
   const refuse = async (reason: StandingPolicyRefusalReason): Promise<StandingPolicyBinding> => {
+    // An earlier attempt's bindings lose their policy, so the dispatch fence refuses them.
+    if (existing.length > 0) {
+      await prisma.executorBinding.updateMany({
+        where: { id: { in: existing.map((binding) => binding.id) } },
+        data: { standingPolicyId: null },
+      })
+    }
     await recordStandingPolicyRefused(prisma, { job: run.job, reason, record, runId: run.runId })
     return { kind: 'refused', policyId: record.policyId, reason, workId: record.id }
   }
+  try {
+    return await bindAfterChecks(prisma, {
+      existing, record: { ...record, executorId: record.executorId }, refuse, run,
+    }, deps, now)
+  } catch (error) {
+    // Never a failed run: an unexpected error is a refusal the run, the
+    // Triggers page and the ticket's chip are all told of.
+    console.warn('[standing-policy] the machine bind failed for run', run.runId, error)
+    return refuse('bind_failed')
+  }
+}
+
+const bindAfterChecks = async (
+  prisma: PrismaClient,
+  input: {
+    existing: Array<{ executorId: string; id: string; standingPolicyId: string | null }>
+    record: StandingBindRecord & { executorId: string }
+    refuse: (reason: StandingPolicyRefusalReason) => Promise<StandingPolicyBinding>
+    run: { job: RunExecuteJobPayload; runId: string }
+  },
+  deps: StandingPolicyBinderDeps,
+  now: Date,
+): Promise<StandingPolicyBinding> => {
+  const { existing, record, refuse, run } = input
   const checked = await checkStandingPolicyBindingFacts(prisma, { job: run.job, record, runId: run.runId }, deps, now)
   if (!checked.ok) {
     if (checked.reason === 'limit_reached') {
       await prisma.$transaction((tx) => enforceTicketWorkLimitsInTransaction(tx, { now, where: { id: record.id } }))
     }
+    if (checked.agentChanged) {
+      await prisma.$transaction((tx) => suspendStandingPoliciesForAgentChangeInTransaction(tx, {
+        actor: { userId: null }, agentId: record.agentId,
+      }))
+    }
     return refuse(checked.reason)
+  }
+  if (existing.length > 0) {
+    // Re-driven, and every check still holds: its earlier attempt's bindings stand.
+    return {
+      bindingIds: existing.map((binding) => binding.id), executorId: existing[0]!.executorId, kind: 'already_bound',
+      policyId: existing[0]!.standingPolicyId!, workId: record.id,
+    }
   }
   const { policy } = checked
   const executorId = record.executorId

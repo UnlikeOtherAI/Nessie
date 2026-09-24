@@ -20,19 +20,24 @@ import { endTicketWork, writeTicketWorkThreadRow } from './ticket-work-records.j
  *   record is `active` with no open question, so time `queued`,
  *   `waiting_machine`, `parked` (a person reviewing) or waiting for a
  *   person's answer is never counted.
- * - `ticketUsd` against `costUsd`: the coding cost each status read and review
- *   saw added since the last, and every Nessie run's own cost.
+ * - `ticketUsd` against `costUsd`: the coding cost the machine reported for
+ *   each of the ticket's sessions since it was last counted — on its
+ *   heartbeat (`ticket-work-heartbeat-costs.ts`) and in every coding answer
+ *   that carries one (a send, a status read, a review) — and every Nessie
+ *   run's own cost.
  * - `dailyUsd` against the policy's spend this UTC day
  *   (`executor_standing_policy_daily_spend`), which every addition to a
- *   record's cost also adds to. It fails the record with `limit_cost`, a
- *   spend limit, and says it was the day's: T1 gave `limit_daily` to the
- *   trigger's `startsPerDay`.
+ *   record's cost also adds to. It fails only work that is running (`active`)
+ *   with `limit_cost`, a spend limit, and says it was the day's: T1 gave
+ *   `limit_daily` to the trigger's `startsPerDay`. Queued, parked or waiting
+ *   work that did not spend it is left waiting, and a pickup or a dequeue on
+ *   a spent day queues with `queued_daily_limit` instead
+ *   (`placeTicketWorkOnMachineInTransaction`).
  *
  * Checked at every wake (the wake and the binder), in the heartbeat intake,
- * and by the sweep when it lands. Over a limit, the record fails with the
- * limit's reason, the ticket gets a `work_ended` row, the thread a "Stopped"
- * row, and its sessions session-scoped closes (`work_limit`), in one
- * transaction.
+ * and by the sweep. Over a limit, the record fails with the limit's reason,
+ * the ticket gets a `work_ended` row, the thread a "Stopped" row, and its
+ * sessions session-scoped closes (`work_limit`), in one transaction.
  */
 
 export type TicketWorkLimitBreach = {
@@ -84,11 +89,21 @@ export const loadTicketWorkLimitState = async (
   }
 }
 
-export const ticketWorkLimitBreachOf = (state: TicketWorkLimitState | null): TicketWorkLimitBreach | null => {
+/**
+ * The limit a record is over, or null. The day's spend stops only running
+ * work: `running: false` (queued, parked, waiting) leaves it to the
+ * placement, which queues on a spent day.
+ */
+export const ticketWorkLimitBreachOf = (
+  state: TicketWorkLimitState | null,
+  options: { running?: boolean } = {},
+): TicketWorkLimitBreach | null => {
   if (!state) return null
   if (state.activeMs >= state.limits.ticketHours * 3_600_000) return { limit: 'ticketHours', reason: 'limit_hours' }
   if (state.costUsd >= state.limits.ticketUsd) return { limit: 'ticketUsd', reason: 'limit_cost' }
-  if (state.dailyUsd >= state.limits.dailyUsd) return { limit: 'dailyUsd', reason: 'limit_cost' }
+  if (options.running !== false && state.dailyUsd >= state.limits.dailyUsd) {
+    return { limit: 'dailyUsd', reason: 'limit_cost' }
+  }
   return null
 }
 
@@ -103,8 +118,8 @@ export const ticketWorkLimitSentence = (breach: TicketWorkLimitBreach, state: Ti
     case 'ticketUsd':
       return `${dollars(state.limits.ticketUsd)} of coding and run cost used. ${again}`
     case 'dailyUsd':
-      return `this machine access already spent its ${dollars(state.limits.dailyUsd)} for today, so the work stopped. `
-        + 'Move the ticket out of and back into a start-work column tomorrow to continue'
+      return `this machine access spent its ${dollars(state.limits.dailyUsd)} for today, so the work stopped. `
+        + `${again}: it waits in the queue until the day's spend resets at 00:00 UTC`
   }
 }
 
@@ -146,14 +161,14 @@ export const enforceTicketWorkLimitsInTransaction = async (
   const records = await tx.agentTicketWork.findMany({
     where: { ...input.where, policyId: { not: null }, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
     select: {
-      agentId: true, executorId: true, id: true, policyId: true, sessionIds: true, taskId: true, threadId: true,
-      triggerId: true,
+      agentId: true, executorId: true, id: true, policyId: true, sessionIds: true, status: true, taskId: true,
+      threadId: true, triggerId: true,
     },
   })
   const ended: EndedOnLimit[] = []
   for (const record of records) {
     const state = await loadTicketWorkLimitState(tx, { now, workId: record.id })
-    const breach = ticketWorkLimitBreachOf(state)
+    const breach = ticketWorkLimitBreachOf(state, { running: record.status === 'active' })
     if (!breach || !state) continue
     await closeTicketWorkSessionsInTransaction(tx, [record], 'work_limit', null)
     if (!await endTicketWork(tx, { by: 'system', reason: breach.reason, status: 'failed', work: record })) continue
