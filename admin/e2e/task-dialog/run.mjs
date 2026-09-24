@@ -583,10 +583,18 @@ try {
         assert.equal(await link.getAttribute('href'),
           '/channels/70000000-0000-4000-8000-000000000011/threads/70000000-0000-4000-8000-000000000012')
       }
-      // At the head of the meta column, above the ticket's own fields.
-      const meta = await box(dialog.locator('.task-dialog-meta'))
-      const chipBox = await box(chip)
-      assert.ok(Math.abs(chipBox.y - meta.y) < 4 && Math.abs(chipBox.x - meta.x) < 4, `${state}: the chip leads the meta column`)
+      // At the head of the meta column, above the ticket's own fields. Both
+      // boxes come from one layout, once the dialog has come to rest: it
+      // opens with a 4 px rise, so two separate reads on a slow machine can
+      // straddle it and disagree by the whole rise with the chip in place.
+      await settled(page)
+      const offset = await dialog.evaluate((root) => {
+        const meta = root.querySelector('.task-dialog-meta')?.getBoundingClientRect()
+        const own = root.querySelector('[data-testid="ticket-work-chip"]')?.getBoundingClientRect()
+        return meta && own ? { x: own.x - meta.x, y: own.y - meta.y } : null
+      })
+      assert.ok(offset, `${state}: the chip and the meta column are both laid out`)
+      assert.ok(Math.abs(offset.y) < 4 && Math.abs(offset.x) < 4, `${state}: the chip leads the meta column`)
       if (state === 'reentry') {
         assert.doesNotMatch(text, /Moving it back into a start-work column resumes it/, 'a false remedy')
         assert.equal(await dialog.getByTestId('ticket-work-skip').count(), 0, 'said once, on the work\'s own row')
