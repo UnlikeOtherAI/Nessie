@@ -104,9 +104,10 @@ export const ExecutorSetupPage = () => (
     <p className="n-placeholder">
       Current limitation: activating a capability revision, changing private assignments and
       allowing an agent require fresh local-password verification. Accounts that sign in only
-      through UOA SSO cannot complete those access changes yet. A new SSO login does not satisfy
-      this check. Disconnect and Delete remain available to authorised managers because they only
-      remove access.
+      through UOA SSO cannot complete those access changes yet, so a newly paired machine cannot
+      be made usable by agents through an SSO-only account. A new SSO login does not satisfy this
+      check. Disconnect and Delete remain available to authorised managers because they only remove
+      access.
     </p>
 
     <h2>Sessions and sharing</h2>
