@@ -88,4 +88,7 @@ test('ticket-work.sweep takes only its idempotency bucket', () => {
   // come free. It reads the queue and the pools afresh, so the enqueuer can
   // never steer it to a record or a machine.
   assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ executorId: EXECUTOR }).success, false)
+  // An enqueue by a transaction that may have freed a machine runs the machine steps only.
+  assert.deepEqual(TicketWorkSweepJobPayloadSchema.parse({ bucket: '1', machinesOnly: true }), { bucket: '1', machinesOnly: true })
+  assert.equal(TicketWorkSweepJobPayloadSchema.safeParse({ machinesOnly: false }).success, false)
 })

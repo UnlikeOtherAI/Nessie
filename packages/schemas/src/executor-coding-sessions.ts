@@ -223,9 +223,12 @@ export type ExecutorCodingSessionClose = z.infer<typeof ExecutorCodingSessionClo
  *   digest having changed;
  * - `policy_ended`: the policy ended — End, a fence, its author gone;
  * - `work_limit`: the work record hit one of its limits;
- * - `machine_reassigned`: the machine stayed offline past the trigger's
- *   `waitingMachineHours`, so the ticket's work was queued again for another
- *   machine of the pool; its sessions here close when it reconnects (T5).
+ * - `machine_reassigned`: the ticket's work left this machine for another —
+ *   it stayed offline past the trigger's `waitingMachineHours`, or the work
+ *   was placed elsewhere — so its sessions here close, when the machine next
+ *   reports however long that takes (T5);
+ * - `mover_lost_access`: queued work was cancelled because the person whose
+ *   move started it can no longer edit the board (T5).
  */
 export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
   'lease_ended',
@@ -239,6 +242,7 @@ export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
   'policy_ended',
   'work_limit',
   'machine_reassigned',
+  'mover_lost_access',
 ] as const
 export const ExecutorCodingSessionCloseReasonSchema = z.enum(EXECUTOR_CODING_SESSION_CLOSE_REASONS)
 export type ExecutorCodingSessionCloseReason = z.infer<typeof ExecutorCodingSessionCloseReasonSchema>

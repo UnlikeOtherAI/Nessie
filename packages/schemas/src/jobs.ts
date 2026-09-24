@@ -635,7 +635,16 @@ export type TicketWorkSessionJobPayload = z.infer<typeof TicketWorkSessionJobPay
  */
 export const TICKET_WORK_SWEEP_TOPIC = 'ticket-work.sweep'
 
-export const TicketWorkSweepJobPayloadSchema = z.object({ bucket: z.string().optional() }).strict()
+/**
+ * `machinesOnly`: an enqueue by a transaction that may have freed a machine
+ * (T5), which runs the machine steps alone — limits, machines back or gone,
+ * the dequeue — and leaves quiet wakes, lost jobs and the UOA author re-check
+ * to the periodic tick.
+ */
+export const TicketWorkSweepJobPayloadSchema = z.object({
+  bucket: z.string().optional(),
+  machinesOnly: z.literal(true).optional(),
+}).strict()
 export type TicketWorkSweepJobPayload = z.infer<typeof TicketWorkSweepJobPayloadSchema>
 
 /**
