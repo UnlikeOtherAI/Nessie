@@ -77,7 +77,7 @@ export type LoopResumeState = {
   budgetRecoveryAttempted: boolean
   compactionAttempts: number
   compactionLastIteration: number | null
-  /** A response that could not yield a final answer gets one no-tools finalisation turn per run. */
+  /** A response that could not yield a final answer gets one mode-preserving recovery turn per run. */
   outputFinalizationUsed: boolean
   /** The retained transcript is waiting for that no-tools turn after a crash. */
   outputFinalizationPending: boolean

@@ -213,7 +213,10 @@ summary and points here; **this file is the rule**.
     frame is never dispatched and gets one tool-enabled regeneration under the
     same identity and effect ledger. Crash state carries the mode. Repeated length
     is `provider_output_limit`, never `token_limit`; empty recovery remains
-    `empty_provider_response`.
+    `empty_provider_response`. An empty success also retains tools for one
+    bounded recovery, even after earlier tool calls: no visible answer is not
+    evidence that the work is complete. A recovered text answer still passes
+    the structured completion review; repeated empty responses fail visibly.
 
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the

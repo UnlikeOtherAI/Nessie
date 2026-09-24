@@ -9,7 +9,7 @@ export type OutputFinalizationState = {
 }
 
 export const EMPTY_OUTPUT_FINALIZATION_INSTRUCTION =
-  'The provider returned no final answer. Give the user a concise final answer now, using only the completed work and tool results already in this conversation. Do not call tools or start new work.'
+  'The provider returned no visible answer or tool call. Continue only the already authorized unfinished work with the available tools, or report the result if it is complete. Do not repeat completed calls or begin unrelated work.'
 
 export const EMPTY_OUTPUT_TERMINAL_MESSAGE =
   'The model provider returned no final answer after a recovery attempt. Please try again; any completed work has been kept.'
@@ -22,7 +22,7 @@ export const OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION =
 
 export class EmptyProviderResponseError extends Error {
   constructor() {
-    super('Provider returned no final answer after one no-tools recovery attempt')
+    super('Provider returned no final answer after one recovery attempt')
     this.name = 'EmptyProviderResponseError'
   }
 }
@@ -56,7 +56,7 @@ export const outputFinalizationInstruction = (
   recovery: OutputFinalizationRecovery = 'final_answer',
 ): string =>
   recovery === 'unfinished_work'
-    ? OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION
+    ? reason === 'empty_output' ? EMPTY_OUTPUT_FINALIZATION_INSTRUCTION : OUTPUT_LENGTH_UNFINISHED_WORK_INSTRUCTION
     : recovery === 'tool_regeneration'
       ? 'Your previous tool-call response reached the provider output limit. Regenerate only the complete tool call needed to continue the already requested work. Do not repeat completed calls or begin unrelated work.'
     :
@@ -118,9 +118,10 @@ export const advanceOutputFinalization = (
     // call under the same identity and effect ledger. A length stop before any
     // visible answer or call may be hidden reasoning before authorized work,
     // so it gets the same bounded, ledger-protected continuation. Partial prose
-    // and ordinary empty output instead recover as a final answer only.
-    state.noTools = input.toolCalls.length === 0
-      && !(reason === 'length' && input.outputText.trim().length === 0)
+    // recovers as a final answer only. An empty response says nothing about
+    // completion: keep tools available for the same bounded continuation.
+    state.noTools = reason === 'length' && input.toolCalls.length === 0
+      && input.outputText.trim().length > 0
     return {
       kind: 'recover',
       reason,
