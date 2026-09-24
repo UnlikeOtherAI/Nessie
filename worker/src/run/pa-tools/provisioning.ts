@@ -33,6 +33,8 @@ import { fileServiceFor } from '../file-service.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildVisibleChannelWhere, requireOwnerMember, resolveActingMember } from './access.js'
+import { resolveOperatorAwareMember, type ActingFace } from './project-operator.js'
+import { assertOperatorTriggerCreateScope, operatorTriggerFollowUp } from './provisioning-operator-trigger.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
 import { describeResolvedTriggerScope } from './provisioning-document-trigger.js'
 import {
@@ -104,9 +106,15 @@ const ChannelCreateInputSchema = z.object({
  */
 const resolveNewChannelVisibility = (
   context: BuiltinToolRuntimeContext,
+  face: ActingFace,
   requested: 'public' | 'protected' | undefined,
 ): 'public' | 'protected' | 'private' => {
   if (requested) return requested
+  // An agent setting a project up for the person talking to it opens nothing
+  // to the whole organisation on an omitted argument either: a room it makes
+  // is theirs to open up (docs/plans/2026-09-23-ticket-driven-agents/
+  // setup-and-ui.md → "The project-operator capability").
+  if (face === 'project_operator') return 'protected'
   return context.channel.systemChannelType === 'system_agent' ? 'private' : 'public'
 }
 
@@ -115,7 +123,7 @@ export const runChannelCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ChannelCreateInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { face, member } = await resolveOperatorAwareMember(context)
 
   // An invalid name and a taken slug both throw messages written for a person
   // (the route turns them into 400/409), so they travel to the model as they are.
@@ -125,7 +133,7 @@ export const runChannelCreateTool = async (
     projectId: args.projectId,
     teamId: args.teamId,
     userId: member.userId,
-    visibility: resolveNewChannelVisibility(context, args.visibility),
+    visibility: resolveNewChannelVisibility(context, face, args.visibility),
   })
   if (!channel) {
     throw new Error('That team does not belong to this organisation.')
@@ -495,13 +503,15 @@ export const runAgentTriggerCreateTool = async (
   const { agentId, ...body } = AgentTriggerCreateInputSchema.parse(input)
   const unreleased = unreleasedTriggerTypeRefusal(body.type)
   if (unreleased) throw new Error(unreleased)
-  const member = await resolveActingMember(context)
+  const { member, operatorProjectId } = await resolveOperatorAwareMember(context)
 
   requireOwnerMember(member, 'create a trigger on an agent')
 
   if (!(await isAgentAccessibleToActor(context.prisma, member.actorContext, agentId))) {
     throw new Error('Agent not found.')
   }
+  // On the operator face: itself or an agent of this project, in this project.
+  if (operatorProjectId) await assertOperatorTriggerCreateScope(context, { agentId, body, operatorProjectId })
 
   const isScheduled = body.type === 'scheduled' || body.type === 'interval'
   const teamId =
@@ -606,6 +616,7 @@ export const runAgentTriggerCreateTool = async (
       ...(trigger.webhookApiKey
         ? ['A webhook key was generated; read it from the Triggers page rather than chat.']
         : []),
+      ...(operatorProjectId ? await operatorTriggerFollowUp(context, member, trigger, operatorProjectId) : []),
     ].join('\n'),
     toolName: 'agent_trigger_create',
   }

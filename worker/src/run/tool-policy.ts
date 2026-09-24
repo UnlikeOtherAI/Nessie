@@ -60,6 +60,7 @@ const isWithheldFromPersonalAssistantPresence = (tool: BuiltinToolDefinition): b
 export type ToolDenialReason =
   | 'agent_policy_denied'
   | 'global_agent_handoff_denied'
+  | 'live_requester_required'
   | 'parent_agent_subtask_denied'
   | 'personal_assistant_only'
   | 'tool_not_granted'
@@ -96,6 +97,21 @@ export type ToolAuthorizationOptions = {
    * and risking disagreement.
    */
   identityToolIds?: ReadonlySet<string>
+  /**
+   * The project-operator verbs this run may call: non-empty only for an
+   * ordinary shared agent holding the explicit `project_operator` grant, on a
+   * live requester's interactive turn in a channel it is bound to — resolved
+   * once per run by `resolveRunProjectOperatorToolIds`
+   * (`./project-operator-admission.ts`), which is where those conditions live,
+   * for the same reason `identityToolIds` keeps its conditions out of here.
+   */
+  projectOperatorToolIds?: ReadonlySet<string>
+  /**
+   * A live person's own interactive turn (a user actor, `interactive`), which
+   * a `requiresLiveRequester` verb needs on every arm. Absent is false, as on a
+   * sub-agent's calls.
+   */
+  liveRequester?: boolean
   /**
    * `Agent.systemSlug` — set only on a global agent's per-organisation row.
    *
@@ -135,23 +151,41 @@ export const authorizeToolCall = (
   // cannot be exercised by an agent it never delegated to (e.g. one pulled into
   // a channel by an @mention).
   //
-  // Two arms, and only two: the Personal Assistant, and a global agent whose
-  // blueprint declares this exact tool id AND whose run satisfied every
-  // condition in `resolveIdentityDelegatedToolIds` (own home DM, interactive,
-  // live human requester). Neither the policy nor the model can widen the set —
-  // it comes from code that ships with the deployment.
+  // The Personal Assistant, and a global agent whose blueprint declares this
+  // exact tool id AND whose run satisfied every condition in
+  // `resolveIdentityDelegatedToolIds` (own home DM, interactive, live human
+  // requester). Neither the policy nor the model can widen the set — it comes
+  // from code that ships with the deployment.
   //
   // `identityDelegatedOnly` removes the first arm for a tool the deployment has
   // moved to a specialist: creating and redesigning agents is the Agent
   // Designer's work, and the PA reaches it through `agent_handoff` rather than
   // by carrying the design catalogue in its own context.
+  //
+  // Beside them, two arms for an ordinary shared agent: a project board tool
+  // lent for a person's turn in its project channel, and — the third arm — a
+  // project-operator verb on a live requester's turn, for an agent holding
+  // the explicit `project_operator` grant (`resolveRunProjectOperatorToolIds`).
+  // Both are resolved at run setup from structural facts; the operator's never
+  // opens on a trigger, a schedule, ticket work or any other unattended run.
+  const operatorAdmitted = definition.projectOperator === true
+    && options.projectOperatorToolIds?.has(toolId) === true
   if (
     definition.personalAssistantOnly
     && !(agentKind === 'personal_assistant' && definition.identityDelegatedOnly !== true)
     && !options.identityToolIds?.has(toolId)
     && !(definition.projectDelegatedOnly && options.projectDelegatedToolIds?.has(toolId))
+    && !operatorAdmitted
   ) {
     return { allowed: false, reason: 'personal_assistant_only' }
+  }
+
+  // Standing work — arming, installing or starting a workflow, and the verbs
+  // the project-operator capability added — never runs as somebody who is not
+  // there, whichever arm admitted it: the Personal Assistant's opens on the
+  // schedules it fires for its owner too.
+  if (definition.requiresLiveRequester && options.liveRequester !== true) {
+    return { allowed: false, reason: 'live_requester_required' }
   }
 
   // Explicit-grant tools are OFF by default: they surface only when the agent's
@@ -159,8 +193,10 @@ export const authorizeToolCall = (
   // is a denial (the opposite of ordinary builtins, which are allowed unless the
   // policy sets `false`). This is the per-agent "allow this agent" gate for
   // powerful integration builtins such as `deep_water_run_update`, grantable to
-  // any agent kind (PA or shared), not PA-only.
-  if (definition.requiresExplicitGrant && agentToolPolicy?.[toolId] !== true) {
+  // any agent kind (PA or shared), not PA-only. On the operator arm the explicit
+  // grant is `project_operator` itself (already required to admit it), so an
+  // operator verb such as `ticket_board_create` needs no second allow of its own.
+  if (definition.requiresExplicitGrant && agentToolPolicy?.[toolId] !== true && !operatorAdmitted) {
     return { allowed: false, reason: 'tool_not_granted' }
   }
 
@@ -216,6 +252,8 @@ export const resolveAgentTools = (
         {
           ...(options.identityToolIds ? { identityToolIds: options.identityToolIds } : {}),
           ...(options.projectDelegatedToolIds ? { projectDelegatedToolIds: options.projectDelegatedToolIds } : {}),
+          ...(options.projectOperatorToolIds ? { projectOperatorToolIds: options.projectOperatorToolIds } : {}),
+          ...(options.liveRequester ? { liveRequester: true } : {}),
           ...(options.agentSystemSlug ? { agentSystemSlug: options.agentSystemSlug } : {}),
         },
       ).allowed
@@ -227,13 +265,16 @@ export const resolveAgentTools = (
   const allowedDefinitions = allToolDefinitions.filter((tool) => allowedIds.has(tool.id))
   // What this agent was deliberately given arrives with its schema rather
   // than as a stub: the project tools this run was lent first (a board turn
-  // opens with them), then every other tool its policy sets `true`. Both in
-  // definition order so the array is byte-stable; the view caps how much this
-  // may add (`BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS`).
+  // opens with them), then every other tool its policy sets `true` or its
+  // `project_operator` grant opened. Both in definition order so the array is
+  // byte-stable; the view caps how much this may add
+  // (`BUILTIN_PROMOTED_SCHEMA_BUDGET_CHARS`).
   const lent = options.projectDelegatedToolIds
+  const operator = options.projectOperatorToolIds
   const promotedIds = [
     ...allowedDefinitions.filter((tool) => lent?.has(tool.id)),
-    ...allowedDefinitions.filter((tool) => !lent?.has(tool.id) && agentToolPolicy?.[tool.id] === true),
+    ...allowedDefinitions.filter((tool) => !lent?.has(tool.id)
+      && (agentToolPolicy?.[tool.id] === true || operator?.has(tool.id))),
   ].map((tool) => tool.id)
   const view = buildBuiltinToolsetView(
     allowedDefinitions,

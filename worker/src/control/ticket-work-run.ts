@@ -6,8 +6,8 @@ import {
   withActionContext,
   type TicketWorkKickoffEvent,
   type TicketWorkKickoffMetadata,
-  type TicketWorkThreadEvent,
 } from '@nessie/schemas'
+import { endTicketWork, writeTicketWorkThreadRow } from '@nessie/team-admin'
 
 import { buildAgentActorContext, startAgentRun } from './agent-run-start.js'
 import { loadTicketWorkKickoffFacts, renderTicketWorkKickoff, ticketWorkConfigOf } from './ticket-work-kickoff.js'
@@ -53,19 +53,34 @@ export type TicketWorkRunOutcome =
   | { kind: 'folded'; messageId: string }
   | { kind: 'over_limit'; wakesUsed: number; limit: number }
 
-/** A thread row: compact, and never ticket text (see `TicketWorkThreadEventSchema`). */
-export const writeTicketWorkThreadRow = async (
-  tx: Pick<Prisma.TransactionClient, 'message'>,
-  input: { threadId: string; event: TicketWorkThreadEvent },
-): Promise<void> => {
-  await tx.message.create({
-    data: {
-      threadId: input.threadId,
-      role: 'system',
-      content: `${input.event.kind === 'stopped' ? 'Stopped' : 'Woken'}: ${input.event.summary}`,
-      metadata: { ticketWorkEvent: input.event } as Prisma.InputJsonValue,
+/** A thread row: compact, and never ticket text (`TicketWorkThreadEventSchema`); shared with the API. */
+export { writeTicketWorkThreadRow }
+
+/**
+ * The wake limit is spent: the record fails with `limit_wakes`, its reminders
+ * are cancelled with it, and its thread and ticket say how to continue. Shared
+ * by a wake that found the limit spent and the sweep that finds a record over
+ * a limit a person lowered.
+ */
+export const stopTicketWorkAtWakeLimit = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    work: { id: string; taskId: string; triggerId: string | null; agentId: string; threadId: string }
+    wakesUsed: number
+  },
+): Promise<boolean> => {
+  const ended = await endTicketWork(tx, { work: input.work, status: 'failed', reason: 'limit_wakes', by: 'system' })
+  if (!ended) return false
+  await writeTicketWorkThreadRow(tx, {
+    threadId: input.work.threadId,
+    event: {
+      kind: 'stopped',
+      workId: input.work.id,
+      reason: 'limit_wakes',
+      summary: `${input.wakesUsed} wakes used. Move the ticket out of and back into a start-work column to continue`,
     },
   })
+  return true
 }
 
 type PendingKickoff = { messageId: string; metadata: Prisma.JsonValue }

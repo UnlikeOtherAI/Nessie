@@ -62,6 +62,12 @@ type LoadedEvent = {
   task: { id: string; projectId: string }
 }
 
+/** The work records whose question a `comment_added` answered, as its writer stamped them. */
+const answeredWorkIdsOf = (payload: unknown): string[] => {
+  const ids = payload && typeof payload === 'object' ? (payload as Record<string, unknown>)['answeredWorkIds'] : undefined
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []
+}
+
 const readEvent = async (
   prisma: PrismaClient,
   job: TriggerTicketDispatchJobPayload,
@@ -108,7 +114,9 @@ const readEvent = async (
     id: row.id,
     eventType: row.eventType,
     createdAt: row.createdAt,
-    facts: { eventType: row.eventType, origin, toColumnId, fromColumnId },
+    facts: {
+      eventType: row.eventType, origin, toColumnId, fromColumnId, answeredWorkIds: answeredWorkIdsOf(row.payload),
+    },
     by: authorship.success ? authorship.data.by ?? null : null,
     boardId,
     task: { id: row.task.id, projectId: row.task.projectId },

@@ -28,12 +28,13 @@ import {
  * - a ticket trigger's editor: public project channels only, and why; the
  *   board and its columns picked, not typed; a server refusal on the field it
  *   names (a second trigger on a column that already starts work); and the
- *   typed config a corrected create posts;
+ *   typed config a corrected create posts, with the quiet wake's minutes (T3);
  * - the board: "Moving here starts work: <agent>" on the start-work column,
  *   the agent's avatar and state dot on the cards it works, and the column
  *   menu's "Start work with an agent…", which opens the editor prefilled;
  * - a ticket trigger's page: its board and columns by name, and each delivery
- *   saying what was decided and why;
+ *   saying what was decided and why — a reminder and a quiet wake included —
+ *   and its quiet wake;
  * - the document half (`documents-run.mjs`): a document trigger's form, a
  *   refusal on the space field, the typed create payload, its page, and the
  *   project's Documents — review badges from one read per folder, and the row
@@ -164,6 +165,24 @@ try {
       await settled(page)
       await page.screenshot({ path: resolve(SHOTS, `ticket-form-${width}.png`) })
 
+      // The quiet wake (T3): on at 30 minutes, off says what that costs, and
+      // the minutes a person sets are what the create posts.
+      const quiet = dialog.locator('fieldset', { has: page.locator('legend', { hasText: /^Quiet wake$/ }) })
+      const minutes = quiet.locator('#ticket-trigger-quiet')
+      assert.equal(await minutes.inputValue(), '30', `${name}: the quiet wake starts at its default`)
+      await quiet.scrollIntoViewIfNeeded()
+      await settled(page)
+      await assertNoSidewaysScroll(page, `${name} quiet wake`)
+      await quiet.screenshot({ path: resolve(SHOTS, `ticket-quiet-${width}.png`) })
+      const toggle = quiet.getByRole('switch', { name: 'Wake the agent when its work has gone quiet' })
+      await toggle.click()
+      assert.equal(await minutes.count(), 0, `${name}: off hides the minutes`)
+      await quiet.getByText('Off: work the agent forgets to check on waits until a person changes the ticket.').waitFor()
+      await settled(page)
+      await quiet.screenshot({ path: resolve(SHOTS, `ticket-quiet-off-${width}.png`) })
+      await toggle.click()
+      await minutes.fill('45')
+
       await dialog.getByRole('button', { name: 'Create trigger', exact: true }).click()
       const refusal = dialog.locator('[data-field-error="pickup"]')
       await refusal.waitFor()
@@ -198,6 +217,7 @@ try {
         instructions: { general: 'Read the ticket and comment a plan on it.' },
         limits: { startsPerDay: 20, wakesPerTicket: 30 },
         pickup: { assignOnPickup: true, columns: [{ id: DOING }] },
+        quietWakeMinutes: 45,
       })
       assert.deepEqual(errors, [], `${name}: no page errors`)
       await context.close()
@@ -273,7 +293,10 @@ try {
       await page.getByText('When a person moves a ticket into In progress', { exact: false }).waitFor()
       const lines = page.getByTestId('ticket-delivery-line')
       await lines.first().waitFor()
+      await page.getByText('After 30 minutes with nothing scheduled', { exact: false }).waitFor()
       assert.deepEqual(await lines.allInnerTexts(), [
+        'Woke the agent: nothing else was scheduled.',
+        'Woke the agent: a reminder.',
         'Woke the agent: a comment.',
         'Moved by an agent, so work did not start. A person who can edit the board can start it.',
         'Started work on the ticket.',

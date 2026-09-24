@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { TicketWorkChipRecord, TicketWorkHistoryEntry, TicketWorkSkipNotice } from '@nessie/schemas'
 
-import { useTaskTicketWork } from '../../../facades/ticket-work/hooks'
+import { useCancelTicketWorkReminder, useTaskTicketWork } from '../../../facades/ticket-work/hooks'
 import { useAuthSession } from '../../../providers/AuthSessionProvider'
 import { AgentAvatar } from '../../shared/AgentAvatar'
 import {
@@ -10,6 +11,8 @@ import {
   ticketSkipSentence,
   ticketWorkHeadline,
   ticketWorkHistoryLine,
+  ticketWorkQuestionLine,
+  ticketWorkReminderLine,
   ticketWorkStateLine,
   ticketWorkWakeLine,
 } from './ticket-work-presentation'
@@ -17,9 +20,10 @@ import {
 /**
  * The work chip in the ticket dialog (docs/standards/ticket-work.md → "What
  * the project sees"): which agent works the ticket, where the work stands and
- * why, when it last woke and for what, and the way into its work thread for a
- * reader who may open it. A reader who may not sees the same state and no
- * link. It names no machine.
+ * why, when it last woke and for what, the reminder it set (with Cancel for
+ * whoever can edit the board) and a question it waits on, and the way into its
+ * work thread for a reader who may open it. A reader who may not sees the
+ * same state and no link. It names no machine.
  *
  * A move that started nothing is said here too, until work starts after it:
  * the person who moved the ticket is the one who needs to know. A move back
@@ -28,10 +32,56 @@ import {
  * it — folds away beneath.
  */
 
-const WorkRow = ({ lastSkip, record }: { lastSkip: TicketWorkSkipNotice | null; record: TicketWorkChipRecord }) => {
+/**
+ * The agent's pending `check_back_in`, with Cancel for a viewer who can edit
+ * the board. Everyone else who reads the ticket sees when the agent checks
+ * back, and no door the route would refuse.
+ */
+const ReminderLine = ({ canCancel, record, taskId }: {
+  canCancel: boolean
+  record: TicketWorkChipRecord
+  taskId: string
+}) => {
+  const cancel = useCancelTicketWorkReminder(taskId)
+  const [failure, setFailure] = useState<string | null>(null)
+  const line = ticketWorkReminderLine(record)
+  if (!line || !record.pendingReminder) return null
+  const reminderId = record.pendingReminder.id
+  const press = () => {
+    setFailure(null)
+    cancel.mutate(reminderId, {
+      // Said beside the reminder it was about, in the route's own words.
+      onError: (error) => setFailure(error instanceof Error ? error.message : 'The reminder could not be cancelled.'),
+    })
+  }
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-[color:var(--tx2)]" data-testid="ticket-work-reminder">
+      <span className="break-words">{line}</span>
+      {canCancel ? (
+        <button
+          className="text-xs font-semibold text-[color:var(--lnk)] hover:underline disabled:opacity-60"
+          disabled={cancel.isPending}
+          onClick={press}
+          type="button"
+        >
+          {cancel.isPending ? 'Cancelling…' : 'Cancel'}
+        </button>
+      ) : null}
+      {failure ? <span className="basis-full text-[color:var(--danger-text)]" role="alert">{failure}</span> : null}
+    </div>
+  )
+}
+
+const WorkRow = ({ canCancelReminder, lastSkip, record, taskId }: {
+  canCancelReminder: boolean
+  lastSkip: TicketWorkSkipNotice | null
+  record: TicketWorkChipRecord
+  taskId: string
+}) => {
   const { token } = useAuthSession()
   const wake = ticketWorkWakeLine(record)
   const state = ticketWorkStateLine(record, lastSkip)
+  const question = ticketWorkQuestionLine(record)
   return (
     <div
       className="flex items-start gap-2.5 rounded-lg border border-[color:var(--sep)] bg-[color:var(--main)] px-3 py-2"
@@ -54,6 +104,10 @@ const WorkRow = ({ lastSkip, record }: { lastSkip: TicketWorkSkipNotice | null; 
           <div className="text-xs text-[color:var(--tx3)]">Started by {record.startedByName}</div>
         ) : null}
         {wake ? <div className="text-xs text-[color:var(--tx2)]">{wake}</div> : null}
+        <ReminderLine canCancel={canCancelReminder} record={record} taskId={taskId} />
+        {question ? (
+          <div className="text-xs text-[color:var(--tx2)]" data-testid="ticket-work-question">{question}</div>
+        ) : null}
         {state ? (
           <div
             className={`text-xs ${record.status === 'failed' ? 'text-[color:var(--danger-text)]' : 'text-[color:var(--tx2)]'}`}
@@ -94,12 +148,21 @@ export const TicketWorkChip = ({ taskId }: { taskId: string }) => {
   const records = data?.records ?? []
   const lastSkip = data?.lastSkip ?? null
   const history = data?.history ?? []
+  const canCancelReminder = data?.viewerCanEditBoard === true
   // A refused move back is said on the parked work's own row, not twice.
   const skipOnRow = records.some((record) => refusedReentryOf(record, lastSkip) !== null)
   if (records.length === 0 && !lastSkip && history.length === 0) return null
   return (
     <section aria-label="Agent work on this ticket" className="grid gap-2">
-      {records.map((record) => <WorkRow key={record.id} lastSkip={lastSkip} record={record} />)}
+      {records.map((record) => (
+        <WorkRow
+          canCancelReminder={canCancelReminder}
+          key={record.id}
+          lastSkip={lastSkip}
+          record={record}
+          taskId={taskId}
+        />
+      ))}
       {lastSkip && !skipOnRow ? (
         <p
           className="rounded-lg border border-dashed border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx2)]"

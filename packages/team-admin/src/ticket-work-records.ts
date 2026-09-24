@@ -7,6 +7,8 @@ import {
   type TicketWorkStatus,
 } from '@nessie/schemas'
 
+import { syncTicketWorkClock } from './ticket-work-clock.js'
+
 /**
  * The work record's platform-owned transitions (docs/standards/ticket-work.md
  * → "Teardown, limits and session closes are the platform's"). Each runs in
@@ -82,6 +84,8 @@ export const endTicketWork = async (
     },
   })
   if (count === 0) return false
+  // Ended work stops the hours clock at the moment it ended.
+  await syncTicketWorkClock(tx, input.work.id, endedAt)
   await tx.agentReminder.updateMany({
     where: { workId: input.work.id, status: 'pending' },
     data: { status: 'cancelled', cancelledReason: 'work_ended' },

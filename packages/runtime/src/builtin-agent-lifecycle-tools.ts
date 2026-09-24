@@ -34,6 +34,13 @@ export const LIFECYCLE_TOOL_DEFINITIONS: BuiltinToolDefinition[] =
 }))
 
 const updateLifecycleTool = LIFECYCLE_TOOL_DEFINITIONS.find((tool) => tool.id === 'agent_trigger_update')!
+// The one lifecycle verb the project operator holds: changing a trigger of
+// itself or of an agent in its project, as the person asking. Deleting,
+// unbinding and deleting agents stay the Designer's.
+updateLifecycleTool.projectOperator = true
+updateLifecycleTool.description = `${updateLifecycleTool.summary} It acts as the person asking you, with exactly `
+  + 'their rights: organisation owners only. An agent working in a project channel may change only triggers '
+  + 'in that project, of itself or an agent in one of its channels.'
 updateLifecycleTool.parameters.properties = {
   triggerId: { type: 'string' },
   config: {

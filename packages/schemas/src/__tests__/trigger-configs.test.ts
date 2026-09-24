@@ -11,6 +11,7 @@ import {
   AgentTriggerConfigInputSchema,
   describeAgentTriggerType,
   describeAgentTriggerTypes,
+  TICKET_QUIET_WAKE_MINUTES,
   TICKET_TRIGGER_LIMIT_CEILINGS,
   TicketChangedTriggerConfigSchema,
   TicketChangedWorkConfigSchema,
@@ -157,4 +158,20 @@ test('the prose names each field, its shape, its default and the forms a column 
     describeObjectFields(z.object({ outer: z.object({ inner: z.boolean().describe('I.') }).describe('O.') })),
     ['- outer: object — O.', '  - inner: true or false — I.'],
   )
+})
+
+test('the quiet wake defaults to 30 minutes, null turns it off, and it stays within its bounds', () => {
+  assert.equal(TicketChangedTriggerConfigSchema.parse(minimal).quietWakeMinutes, TICKET_QUIET_WAKE_MINUTES.default)
+  assert.equal(TicketChangedTriggerConfigSchema.parse({ ...minimal, quietWakeMinutes: null }).quietWakeMinutes, null)
+  assert.equal(TicketChangedTriggerConfigSchema.parse({ ...minimal, quietWakeMinutes: 45 }).quietWakeMinutes, 45)
+  for (const refused of [TICKET_QUIET_WAKE_MINUTES.min - 1, TICKET_QUIET_WAKE_MINUTES.max + 1, 20.5, '30']) {
+    assert.equal(
+      TicketChangedTriggerConfigSchema.safeParse({ ...minimal, quietWakeMinutes: refused }).success,
+      false,
+      `quietWakeMinutes ${JSON.stringify(refused)} is refused`,
+    )
+  }
+  // A stored trigger from before the option — a migrated board watcher — takes the default.
+  assert.equal(TicketChangedWorkConfigSchema.parse({ boardId: BOARD }).quietWakeMinutes, 30)
+  assert.equal(TicketChangedWorkConfigSchema.parse({ boardId: BOARD, quietWakeMinutes: null }).quietWakeMinutes, null)
 })

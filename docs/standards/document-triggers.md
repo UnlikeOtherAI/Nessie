@@ -235,6 +235,12 @@ delivery's transaction:
    part of the change — an agent's or a non-editor's edit never steers ticket
    work. Only that agent's record is woken, however many ticket triggers cover
    the board. The event carries the document trigger's own instructions.
+   To the T3 rules ([ticket-work-reminders.md](ticket-work-reminders.md)) it
+   is a wake like any follow — it takes the thread's run slot before it
+   writes the record, counts, and restarts the quiet wake's wait
+   (`lastWakeAt`) — but **it answers no open question**: only a comment, a
+   thread message or a move does, so an agent waiting on a person keeps
+   waiting through a spec edit.
    A ticket's state block promises document edits only while such a trigger
    exists for its agent (`documentsWatched`), worded as "one of its
    documents that your document trigger watches", since it may cover only some.
@@ -442,7 +448,8 @@ another channel.
   `page_not_readable` without pausing the trigger, a reviewer of another
   project and a save made during a document-trigger run never counting, the
   daily wake ceiling with the change still owed, and route 1 pausing the
-  trigger whose own channel the agent left.
+  trigger whose own channel the agent left, and a document wake of ticket
+  work leaving its open question open.
   `worker/test/db/document-trigger-naming.test.ts`: a version from a narrower
   basis and a page private to the agent itself reviewed by id — thread
   title (renamed when a later version narrows it), kickoff and thread row.

@@ -188,6 +188,16 @@ const protectedGrantSection = (
         + 'depends on it.',
       )]
     : []),
+  ...(access.canSet
+    ? [bullet(
+        'project_operator is a capability rather than a tool: granted, it lets '
+        + 'an agent such as a CTO set up projects, channels, boards and their '
+        + 'columns, labels, document spaces, triggers and workflows for the '
+        + 'person talking to it in a project channel it is in, as that person. '
+        + 'It never works on a trigger, a schedule or ticket work. Grant it '
+        + 'only to an agent meant to do setup.',
+      )]
+    : []),
   bullet(
     'These act as the person asking, so they are refused unless that person is '
     + 'an organisation owner. If the tool refuses, say what it said. Do not '

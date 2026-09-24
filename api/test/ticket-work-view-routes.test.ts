@@ -361,3 +361,82 @@ dbTest('the chip lists the ticket\'s work history, and a refused re-entry says t
     assert.equal(said.data.records[0]?.id, record.id)
   })
 })
+
+dbTest('the chip names the pending reminder and the open question, and only a board editor may cancel the reminder', async () => {
+  await withRoutes(async ({ app, as, s, prisma }) => {
+    const dueAt = new Date(Date.now() + 15 * 60 * 1000)
+    const reminder = await prisma.agentReminder.create({
+      data: {
+        agentId: s.cto.id, threadId: s.workingRecord.threadId, workId: s.workingRecord.id,
+        dueAt, note: 'waiting for CI',
+      },
+    })
+    const askedAt = new Date(Date.now() - 5 * 60 * 1000)
+    await prisma.agentTicketWork.update({ where: { id: s.workingRecord.id }, data: { awaitingAnswerAt: askedAt } })
+    // A member of the organisation outside the project: reads the ticket
+    // here (the harness lets every viewer but the outsider read it), cannot
+    // edit its board.
+    const reader = await prisma.user.create({
+      data: { displayName: 'Reader', email: `work-view-reader-${randomUUID()}@example.test` },
+    })
+    await prisma.organizationMember.create({
+      data: { organizationId: s.organization.id, userId: reader.id, role: 'member' },
+    })
+    const cancel = (reminderId: string) =>
+      app.inject({ method: 'DELETE', url: `/api/tasks/${s.working.id}/work/reminders/${reminderId}` })
+    try {
+      const seen = await read<TaskTicketWorkRecord>(app, `/api/tasks/${s.working.id}/work`)
+      assert.equal(seen.data.viewerCanEditBoard, true)
+      assert.deepEqual(seen.data.records[0]!.pendingReminder, {
+        id: reminder.id, dueAt: dueAt.toISOString(), note: 'waiting for CI',
+      })
+      assert.equal(seen.data.records[0]!.awaitingAnswerAt, askedAt.toISOString())
+
+      as(reader.id)
+      const read_ = await read<TaskTicketWorkRecord>(app, `/api/tasks/${s.working.id}/work`)
+      assert.equal(read_.status, 200)
+      assert.equal(read_.data.viewerCanEditBoard, false, 'no Cancel for a reader who cannot edit the board')
+      assert.equal(read_.data.records[0]!.pendingReminder?.note, 'waiting for CI', 'but the reminder is said')
+      const refused = await cancel(reminder.id)
+      assert.equal(refused.statusCode, 403)
+      assert.equal((refused.json() as { error: { code: string } }).error.code, 'TICKET_WORK_REMINDER_READ_ONLY')
+      as(s.outsider.id)
+      assert.equal((await cancel(reminder.id)).statusCode, 404, 'someone who cannot read the ticket learns nothing')
+      assert.equal((await prisma.agentReminder.findUniqueOrThrow({ where: { id: reminder.id } })).status, 'pending')
+
+      as(s.editor.id)
+      const cancelled = await cancel(reminder.id)
+      assert.equal(cancelled.statusCode, 200)
+      const row = await prisma.agentReminder.findUniqueOrThrow({ where: { id: reminder.id } })
+      assert.deepEqual([row.status, row.cancelledReason], ['cancelled', 'person'])
+      // The work thread says who cancelled it, and the audit trail records it.
+      const trace = await prisma.message.findFirstOrThrow({
+        where: {
+          threadId: s.workingRecord.threadId,
+          role: 'system',
+          metadata: { path: ['ticketWorkEvent', 'kind'], equals: 'reminder_cancelled' },
+        },
+      })
+      assert.equal(trace.content, 'Reminder cancelled: Ondrej cancelled the agent\'s reminder')
+      const audit = await prisma.auditLog.findFirstOrThrow({
+        where: { organizationId: s.organization.id, action: 'trigger.reminder_cancelled', resourceId: reminder.id },
+      })
+      assert.equal(audit.actorId, s.editor.id)
+      assert.equal(audit.resourceType, 'agent_reminder')
+      const again = await cancel(reminder.id)
+      assert.equal(again.statusCode, 404)
+      assert.equal((again.json() as { error: { code: string } }).error.code, 'REMINDER_NOT_FOUND')
+      const after = await read<TaskTicketWorkRecord>(app, `/api/tasks/${s.working.id}/work`)
+      assert.equal(after.data.records[0]!.pendingReminder, null)
+
+      // A reminder on another ticket's work is not this ticket's to cancel.
+      const elsewhere = await prisma.agentReminder.create({
+        data: { agentId: s.cto.id, threadId: s.closedRecord.threadId, workId: s.closedRecord.id, dueAt, note: 'later' },
+      })
+      assert.equal((await cancel(elsewhere.id)).statusCode, 404)
+      assert.equal((await cancel('not-a-uuid')).statusCode, 404)
+    } finally {
+      await prisma.user.delete({ where: { id: reader.id } })
+    }
+  })
+})

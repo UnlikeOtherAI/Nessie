@@ -31,7 +31,11 @@ export type SendAuthorizationContext = {
   agentId: string
   /** The person the send would act as — must be the mailbox owner. */
   requestingUserId: string
-  /** False for a trigger or schedule; those never ride a standing grant. */
+  /**
+   * False for a trigger, a schedule or a reminder the agent set itself
+   * (`check_back_in`, and every `ticket.work` wake); those never ride a
+   * standing grant.
+   */
   interactive: boolean
 }
 
@@ -48,7 +52,9 @@ export const hasStandingSendAuthorization = async (
   now: Date = new Date(),
 ): Promise<boolean> => {
   // An unattended run never rides a standing grant. The consent was given for
-  // "when I ask you to"; a schedule is not a person asking.
+  // "when I ask you to"; a schedule is not a person asking, and neither is a
+  // reminder the agent set itself (`check_back_in`): it wakes the agent as
+  // itself, never as whoever was talking when it was set.
   if (!input.interactive) return false
 
   const connection = await prisma.commsConnection.findFirst({
@@ -82,8 +88,9 @@ export type LiveSendGrant = {
  *
  * One exact-key lookup with no wildcard, inheritance or fallback — the
  * `ScopeDisclosureGrant` discipline — plus the two structural conditions that
- * no grant can waive: an unattended run is not a person asking, and the grant
- * is only the mailbox owner's to spend.
+ * no grant can waive: an unattended run — a schedule, a trigger, a reminder
+ * the agent set itself — is not a person asking, and the grant is only the
+ * mailbox owner's to spend.
  */
 export const loadLiveSendGrant = async (
   prisma: PrismaClient,

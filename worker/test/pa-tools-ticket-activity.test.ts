@@ -195,7 +195,10 @@ dbTest('a shared agent comments as itself for the person who asked, and reading 
     await prisma.project.create({ data: { id: projectId, name: 'Ticket activity project', organizationId } })
     await prisma.projectMember.create({ data: { projectId, userId: requesterId } })
     await prisma.team.create({ data: { id: teamId, name: 'Ticket activity team', projectId } })
-    await prisma.agent.create({ data: { id: agentId, name: 'Builder', organizationId } })
+    await prisma.agent.create({
+      // Lent ticket_label_create, as the gate requires (else it is the operator arm's).
+      data: { id: agentId, name: 'Builder', organizationId, toolPolicy: { ticket_label_create: true } },
+    })
     await prisma.channel.create({
       data: {
         id: channelId,
@@ -278,7 +281,10 @@ dbTest('board labels and file removal through the ticket tools', async () => {
     await prisma.project.create({ data: { id: projectId, name: 'Ticket labels project', organizationId } })
     await prisma.projectMember.create({ data: { projectId, userId: requesterId } })
     await prisma.team.create({ data: { id: teamId, name: 'Ticket labels team', projectId } })
-    await prisma.agent.create({ data: { id: agentId, name: 'Builder', organizationId } })
+    await prisma.agent.create({
+      // Lent ticket_label_create, as the gate requires (else it is the operator arm's).
+      data: { id: agentId, name: 'Builder', organizationId, toolPolicy: { ticket_label_create: true } },
+    })
     await prisma.channel.create({
       data: {
         id: channelId,

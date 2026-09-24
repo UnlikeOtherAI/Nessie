@@ -47,8 +47,25 @@ export const TicketWorkThreadEventSchema = z.discriminatedUnion('kind', [
     reason: z.literal('document_changed'),
     summary: z.string().min(1),
   }).strict(),
+  // A person cancelled the agent's pending reminder on the ticket's chip: the
+  // summary names who, so the thread says why the agent was not woken.
+  z.object({
+    kind: z.literal('reminder_cancelled'),
+    workId: uuid,
+    reminderId: uuid,
+    summary: z.string().min(1),
+  }).strict(),
 ])
 export type TicketWorkThreadEvent = z.infer<typeof TicketWorkThreadEventSchema>
+
+/** How each kind of row reads in the thread: "Woken: …", "Stopped: …". */
+export const TICKET_WORK_THREAD_EVENT_LABELS = {
+  woken: 'Woken',
+  stopped: 'Stopped',
+  // A document review woke the agent: it reads as a wake.
+  document_woken: 'Woken',
+  reminder_cancelled: 'Reminder cancelled',
+} as const satisfies Record<TicketWorkThreadEvent['kind'], string>
 
 /**
  * `Message.metadata.ticketWorkKickoff` on a `ticket.work` kickoff: the events

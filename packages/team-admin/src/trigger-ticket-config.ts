@@ -252,6 +252,7 @@ export const resolveTicketChangedTrigger = async (
       pickup: config.pickup ? { assignOnPickup: config.pickup.assignOnPickup, columnIds } : null,
       follow: config.follow,
       endOn: config.endOn,
+      quietWakeMinutes: config.quietWakeMinutes,
       limits: config.limits,
       instructions: config.instructions,
     },
@@ -270,12 +271,13 @@ export const resolveTicketChangedTrigger = async (
 export const ticketChangedConfigAsInput = (stored: unknown): Record<string, unknown> => {
   const parsed = TicketChangedWorkConfigSchema.safeParse(stored)
   if (!parsed.success) return {}
-  const { boardId, endOn, follow, instructions, limits, pickup } = parsed.data
+  const { boardId, endOn, follow, instructions, limits, pickup, quietWakeMinutes } = parsed.data
   return {
     boardId,
     endOn,
     follow,
     limits,
+    quietWakeMinutes,
     pickup: pickup
       ? { assignOnPickup: pickup.assignOnPickup, columns: pickup.columnIds.map((id) => ({ id })) }
       : null,

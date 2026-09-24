@@ -45,7 +45,7 @@ import {
 import { recordRunTimingEvent, summarizeRunTiming } from './run-timing.js'
 import { isInteractiveRun } from './continuation.js'
 import { createRunInference } from './run-inference.js'
-import { prepareRunExecution } from './run-setup.js'
+import { prepareRunExecution, runArmToolIds } from './run-setup.js'
 import { WIND_DOWN_INSTRUCTION } from './run-stop.js'
 import { resolveUtilityModel } from './utility-model.js'
 import { markWorking, workingMessageIdForTrigger } from './working-marker.js'
@@ -564,8 +564,7 @@ const runJobUnderFence = async (
         assertExecutorHoldsRun(context.run.id)
         return budgetBlockedProbe()
       },
-      identityToolIds: setup.identityToolIds,
-      projectDelegatedToolIds: setup.projectDelegatedToolIds,
+      ...runArmToolIds(setup),
       inference,
       isHandoffTurn: handoffLocator !== null,
       initialMessages,

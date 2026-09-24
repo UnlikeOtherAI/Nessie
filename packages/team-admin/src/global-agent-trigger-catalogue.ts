@@ -1,6 +1,8 @@
 import {
+  CHECK_BACK_IN_MINUTES,
   describeAgentTriggerTypes,
   TICKET_TRIGGER_LIMIT_CEILINGS,
+  TICKET_QUIET_WAKE_MINUTES,
   TICKET_TRIGGER_LIMIT_DEFAULTS,
 } from '@nessie/schemas'
 
@@ -11,7 +13,7 @@ import {
  * constants, never written by hand — the same rule as the rest of
  * `global-agent-catalogue.ts`, of which this is a part split out for size.
  *
- * The ticket-work facts say only what ships (T1 of
+ * The ticket-work facts say only what ships (T1 and T3 of
  * docs/plans/2026-09-23-ticket-driven-agents): no machine does ticket work
  * yet, so none is promised.
  */
@@ -60,6 +62,24 @@ export const ticketWorkFactsSection = (): string[] => [
     + `${TICKET_TRIGGER_LIMIT_DEFAULTS.startsPerDay} tickets started a day (startsPerDay, at most `
     + `${TICKET_TRIGGER_LIMIT_CEILINGS.startsPerDay}). A ticket that used up its runs stops, and a `
     + 'person restarts it by moving it out of and back into a start-work column.',
+  ),
+  bullet(
+    `The agent can set itself a reminder with check_back_in (${CHECK_BACK_IN_MINUTES.min} to `
+    + `${CHECK_BACK_IN_MINUTES.max} minutes and a short note) when it waits for something that will not `
+    + 'wake it, such as CI. It replaces the ticket\'s pending reminder, counts as one of the ticket\'s runs '
+    + 'when it fires, and people who can edit the board see it on the ticket and can cancel it.',
+  ),
+  bullet(
+    'A ticket comment the agent posts with awaitsAnswer asks the people on the ticket something: while '
+    + 'it waits for an answer the work is not woken for being quiet and its hours do not count, and a '
+    + 'comment from a person who can edit the board wakes it. It should also set check_back_in, in case '
+    + 'nobody answers.',
+  ),
+  bullet(
+    `Live work that has nothing scheduled — no reminder, no question waiting — is woken after `
+    + `${TICKET_QUIET_WAKE_MINUTES.default} quiet minutes (quietWakeMinutes, `
+    + `${TICKET_QUIET_WAKE_MINUTES.min} to ${TICKET_QUIET_WAKE_MINUTES.max}, or null for off), so a ticket `
+    + 'the agent forgot never sits in progress for ever. Each quiet wake counts as one of the ticket\'s runs.',
   ),
   bullet(
     'A ticket-work run acts as the agent itself, never as the person who moved the ticket: it reads, '

@@ -81,7 +81,11 @@ runDatabaseTest('host program output reaches its launch project’s board only f
       { organizationId, role: 'member', userId: collaboratorId },
     ] })
     const toolPolicy = await localAppsToolPolicy(prisma, organizationId)
-    await prisma.agent.create({ data: { id: agentId, name: 'CTO', organizationId, toolPolicy } })
+    // The board lend ticket_board_create needs on a person's turn: it is an
+    // explicit grant, and the handler re-reads it as well as the gate.
+    await prisma.agent.create({
+      data: { id: agentId, name: 'CTO', organizationId, toolPolicy: { ...toolPolicy, ticket_board_create: true } },
+    })
     await seedLocalAppsExecutor(prisma, actor, {
       agentId, executorId, mcpServers: ['kelpie'], organizationId, userId: ownerId,
     })

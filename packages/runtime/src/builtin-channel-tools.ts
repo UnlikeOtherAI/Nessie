@@ -150,8 +150,10 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Create a new organization channel.',
     label: 'Create Channel',
     personalAssistantOnly: true,
+    projectOperator: true,
     description:
-      'Create a new channel in the current organization, owned by the user. '
+      'Create a new channel in the current organization, acting as the person '
+      + 'asking you with exactly their rights; they own it. '
       + 'Pass the projectId and teamId returned by project_list. The name must '
       + 'be unique within its project. Any member can do this. The result links '
       + 'the new room as [#label](/channels/<channelId>): the last path segment '
@@ -179,7 +181,9 @@ export const CHANNEL_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
             + 'so getting in is by invitation and the person you are acting '
             + 'for is its sole member. Always set this from what the person '
             + 'actually asked for — who else should see the channel is not '
-            + 'something to assume.',
+            + 'something to assume. Omitted, an agent working in a project '
+            + 'channel makes it protected. A channel a ticket trigger works in '
+            + 'must be public.',
         },
         teamId: {
           type: 'string',

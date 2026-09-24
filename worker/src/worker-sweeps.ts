@@ -53,11 +53,14 @@ import {
 import { sweepExpiredActiveCalls } from './control/call-lifecycle.js'
 import type { WorkerSweepDeps } from './worker-runtime-types.js'
 import { startTaskSetSweep } from './task-sets/register.js'
+import { sweepDueAgentReminders } from './control/agent-reminder-fire.js'
+import { startTicketWorkSweep } from './control/ticket-work-sweep.js'
 
 export const startWorkerSweeps = (
   deps: WorkerSweepDeps,
 ): { stop: () => void } => {
   const stopTaskSetSweep = startTaskSetSweep(deps)
+  const stopTicketWorkSweep = startTicketWorkSweep(deps)
   const {
     abortSignal,
     automaticMembershipEnabled,
@@ -83,6 +86,13 @@ const triggerSweepInterval = setInterval(async () => {
     })
   } catch (error) {
     console.error('[worker.trigger-sweep] failed', error)
+  }
+  // The same tick delivers due `check_back_in` reminders, each claimed with
+  // FOR UPDATE SKIP LOCKED (docs/standards/ticket-work.md).
+  try {
+    await sweepDueAgentReminders(prisma, { limit: 20 })
+  } catch (error) {
+    console.error('[worker.reminder-sweep] failed', error)
   } finally {
     triggerSweepInFlight = false
   }
@@ -512,6 +522,7 @@ const executorLeaseExpiryInterval = setInterval(() => {
   return {
     stop: () => {
       stopTaskSetSweep()
+      stopTicketWorkSweep()
       clearInterval(triggerSweepInterval)
       clearInterval(gmailSendSweepInterval)
       clearInterval(activeCallExpiryInterval)

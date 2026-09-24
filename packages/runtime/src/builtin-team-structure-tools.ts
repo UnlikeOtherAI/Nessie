@@ -29,8 +29,9 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'List the projects you can reach and the teams inside them.',
     label: 'List Projects',
     personalAssistantOnly: true,
+    projectOperator: true,
     description:
-      'List the projects you can reach, each with the teams inside it. This is '
+      'List the projects the person asking you can reach, each with the teams inside it. This is '
       + 'how a project or team NAME becomes the projectId team_create needs and '
       + 'the teamId channel_create needs — do not ask the user for an id, and do '
       + 'not invent one. Each row links the project as [Name](/projects/<projectId>) '
@@ -60,8 +61,10 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Read Project Structure',
     personalAssistantOnly: true,
     identityDelegatedOnly: true,
+    projectOperator: true,
     description:
-      'Read what a project is made of, before you set up work in it: its boards with every column and its '
+      'Read what a project is made of, as the person asking you sees it, before you set up work in it: '
+      + 'its boards with every column and its '
       + 'category (todo, in_progress, review, done), the channels in it you can read with their visibility, '
       + 'and its document spaces with their top-level folders. Pass agentId to see which channels that '
       + 'agent is already in. A ticket_changed trigger needs a board, its start-work columns and a public '
@@ -87,12 +90,17 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Create a project, owned by the user.',
     label: 'Create Project',
     personalAssistantOnly: true,
+    projectOperator: true,
     description:
-      'Create a new project in the current organisation. The user becomes its '
+      'Create a new project in the current organisation, acting as the person '
+      + 'asking you with exactly their rights. They become its '
       + 'only member; nobody else is added. Any member may create one in a team '
       + 'they belong to. Resolve an existing team with project_list and pass its '
       + 'teamId. The project starts with its own #general channel; do not create '
-      + 'another channel for it unless the person asked for one. The result links '
+      + 'another channel for it unless the person asked for one. It also starts with '
+      + 'one board, whose columns the result lists by id: rename and recategorise '
+      + 'them with ticket_board_column_update, and add any with '
+      + 'ticket_board_column_create, rather than making a second board. The result links '
       + 'the new project as [Name](/projects/<projectId>): the last path segment '
       + 'of that link is the projectId channel_create and team_create take. It '
       + 'names the team the project is in as "Name" (teamId=<teamId>), the '
@@ -119,8 +127,10 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Create a team inside a project, owned by the user.',
     label: 'Create Team',
     personalAssistantOnly: true,
+    projectOperator: true,
     description:
-      'Create a team inside a project. The user becomes its only member and its '
+      'Create a team inside a project, acting as the person asking you with '
+      + 'exactly their rights. They become its only member and its '
       + 'owner; nobody else is added. Organisation owners only. Channels attach '
       + 'to a team, so this is what makes a project able to hold one — pass the '
       + 'returned teamId to channel_create. Resolve projectId with project_list, '

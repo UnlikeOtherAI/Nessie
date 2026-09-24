@@ -26,8 +26,9 @@ import { drainTicketJobs, finishRuns, move, newTask, seedTicketWork, type Ticket
 // the window is decided opens the next; a label filter sees the labels a save
 // leaves; an agent's publish opens a publish window; one narrower page is
 // skipped without pausing the trigger; no two reviewers can wake each other,
-// in any project; a page wakes its agent at most so often a day; and route 1
-// still asks the document trigger's own channel.
+// in any project; a page wakes its agent at most so often a day; route 1
+// still asks the document trigger's own channel; and a document edit that
+// wakes ticket work answers no open question.
 
 const windowJobs = (prisma: PrismaClient, triggerId: string) => prisma.queueJob.findMany({
   where: { topic: TRIGGER_DOCUMENT_DISPATCH_TOPIC, payload: { path: ['triggerId'], equals: triggerId } },
@@ -290,4 +291,22 @@ runDatabaseTest('a ticket\'s document still needs the document trigger\'s own ch
   assert.deepEqual([trigger.enabled, trigger.healthReason], [false, 'agent_channel_access_lost'])
   const after = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
   assert.equal(after.wakeCount, before.wakeCount, 'the ticket\'s work was not woken through a trigger that lost its channel')
+})
+
+runDatabaseTest('a document edit wakes the ticket\'s work but answers no open question', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const d = await seedDocumentTrigger(prisma, s)
+  const { task, work } = await liveWork(prisma, s)
+  // The agent asked on the ticket and waits for a person (ticket-work-reminders.md).
+  const asked = new Date()
+  await prisma.agentTicketWork.update({ where: { id: work.id }, data: { awaitingAnswerAt: asked } })
+  await d.provider.createPage({ ...d.scope, body: '<p>Spec</p>', taskId: task.id, title: 'Spec' })
+  await drainDocumentJobs(prisma, s, new Set())
+  const [delivery] = await documentDeliveries(prisma, d.documentTriggerId)
+  assert.deepEqual([delivery?.status, delivery?.parsed.outcome], ['delivered', 'ticket_work'])
+  const after = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
+  assert.equal(after.wakeCount, work.wakeCount + 1, 'the edit woke the work')
+  assert.equal(after.awaitingAnswerAt?.getTime(), asked.getTime(), 'a spec edit is not the answer the agent waits for')
 })
