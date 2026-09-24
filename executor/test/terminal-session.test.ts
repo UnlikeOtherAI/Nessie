@@ -67,6 +67,9 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
         }, 30_000, marker)
       } catch (error) {
         console.error('Last test-shell screen', last)
+        for (const file of ['session.json', 'host.log', 'agent-stderr.log', 'terminal.json']) {
+          console.error(file, await readFile(join(harness.stateDir, 'sessions', sessionId, file), 'utf8').catch(() => 'unavailable'))
+        }
         throw error
       }
     }
