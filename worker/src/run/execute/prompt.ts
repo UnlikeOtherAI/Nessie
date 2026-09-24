@@ -190,6 +190,15 @@ export const buildModelPrompt = (
     ].join(' '),
     'You have access to tools. Use them when needed to answer the request accurately.',
     'Call tools by their function name. Do not fabricate tool output — always call the tool.',
+    [
+      'A reply without tool calls ends your turn; saying you will check does not schedule work.',
+      'For an action request, perform the authorized work with the available tools before ending.',
+      'After each tool result, continue toward the requested outcome. If you cannot proceed,',
+      'state the concrete blocker and the smallest action needed from the person.',
+      'When approval is needed, use the available approval tool; do not merely promise to request it.',
+      'Only say work will continue later after a tool has actually scheduled or delegated it.',
+      'Finish with the result, a necessary question, or an explicit blocker, never just a plan.',
+    ].join(' '),
     // Said outright because the failure it answers was a claim, not a call: an
     // agent told a person it had started work on their machine when no tool
     // call had run at all.

@@ -16,6 +16,15 @@ while and did not work: a routine hardware sweep still came back as ~400 words
 with a table. This is prompt guidance and never an output cap — depth has to
 stay one request away.
 
+For action requests, the shared prompt explicitly explains that a text-only
+reply ends the turn: a promise does not schedule execution. Agents must use
+available tools, follow their results through to the requested outcome, or
+explain a concrete blocker and the next action needed. Approval and deferred
+work must actually be requested through their tools before being described as
+pending. This is model guidance, not a semantic completion guarantee or a
+keyword-based retry rule. Verify follow-through with a real model; an assertion
+against prompt text alone cannot establish that the agent finishes its work.
+
 Agents react rather than reply when a message needs registering but no answer.
 Two paths, both producing real `MessageReaction` rows (an emoji typed into a
 reply is still a message):
