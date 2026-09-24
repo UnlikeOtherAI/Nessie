@@ -1,72 +1,14 @@
-import { createHash } from 'node:crypto'
 import { stableStringify } from '@nessie/db'
-import {
-  StandingPolicyPinnedTermsSchema,
-  TicketChangedWorkConfigSchema,
-  type StandingPolicyLimits,
-  type StandingPolicyPinnedTerms,
-} from '@nessie/schemas'
+import type { StandingPolicyPinnedTerms } from '@nessie/schemas'
 
 /**
- * What a standing policy pins about its trigger, and how an edit is judged
- * against it (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md →
- * "What is pinned"; docs/standards/ticket-work.md).
- *
- * The terms are the trigger's agent, target channel, board, start-work
- * columns and `assignOnPickup`, follow kinds and `includeSourceEvents`, end
- * columns, every instructions section verbatim, and every limit — the
- * trigger's `wakesPerTicket` and `startsPerDay` and the policy's own
- * `ticketHours`, `ticketUsd` and `dailyUsd`. `triggerDigest` is the digest of
- * exactly that object, so the binder recomputes it from the live trigger, and
- * the policy keeps the object beside it so a fresh card can say what changed.
+ * How a trigger edit is judged against what a standing policy pinned, and
+ * what a fresh card says changed
+ * (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md → "What is
+ * pinned"). The terms themselves and their digest are
+ * `@nessie/executor-manage`'s (`executor-standing-policy-terms.ts`), which
+ * the binder shares.
  */
-
-type TriggerRow = { agentId: string | null; config: unknown; targetChannelId: string | null }
-
-const sorted = <T extends string>(values: readonly T[]): T[] => [...values].sort()
-
-/**
- * The terms a trigger stands at now, with the policy's limits. Null when it
- * has nothing a policy could pin: no agent or channel, or a config that no
- * longer parses.
- */
-export const standingPolicyTermsOf = (
-  trigger: TriggerRow,
-  policyLimits: StandingPolicyLimits,
-): StandingPolicyPinnedTerms | null => {
-  const parsed = TicketChangedWorkConfigSchema.safeParse(trigger.config)
-  if (!parsed.success || !trigger.agentId || !trigger.targetChannelId) return null
-  const config = parsed.data
-  return StandingPolicyPinnedTermsSchema.parse({
-    agentId: trigger.agentId,
-    targetChannelId: trigger.targetChannelId,
-    boardId: config.boardId,
-    pickupColumnIds: sorted(config.pickup?.columnIds ?? []),
-    assignOnPickup: config.pickup?.assignOnPickup ?? false,
-    followKinds: sorted(config.follow.kinds),
-    includeSourceEvents: config.follow.includeSourceEvents,
-    endOn: [...config.endOn].sort((left, right) => stableStringify(left).localeCompare(stableStringify(right))),
-    instructions: Object.fromEntries(Object.entries(config.instructions ?? {})
-      .filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
-    limits: {
-      wakesPerTicket: config.limits.wakesPerTicket,
-      startsPerDay: config.limits.startsPerDay,
-      ticketHours: policyLimits.ticketHours,
-      ticketUsd: policyLimits.ticketUsd,
-      dailyUsd: policyLimits.dailyUsd,
-    },
-  })
-}
-
-/** The policy's own limits, out of its pinned terms. */
-export const standingPolicyLimitsOf = (terms: StandingPolicyPinnedTerms): StandingPolicyLimits => ({
-  dailyUsd: terms.limits.dailyUsd,
-  ticketHours: terms.limits.ticketHours,
-  ticketUsd: terms.limits.ticketUsd,
-})
-
-export const standingPolicyTermsDigest = (terms: StandingPolicyPinnedTerms): string =>
-  `sha256:${createHash('sha256').update(stableStringify(terms)).digest('hex')}`
 
 const INSTRUCTION_LABELS: Record<string, string> = {
   general: 'the general instructions',

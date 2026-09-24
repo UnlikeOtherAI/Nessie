@@ -6,7 +6,7 @@ import { mergeTicketConfigPatch, resolveTicketChangedTrigger, ticketChangedConfi
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
 import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
-import type { StandingPolicyActor } from './standing-policy-lifecycle.js'
+import type { StandingPolicyActor } from '@nessie/executor-manage'
 import {
   applyTriggerEditToStandingPolicyInTransaction,
   type StandingPolicyTriggerEditEffect,

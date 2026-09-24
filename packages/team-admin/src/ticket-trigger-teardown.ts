@@ -1,12 +1,11 @@
 import type { Prisma } from '@prisma/client'
-import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
-
 import {
   closeTicketWorkSessionsInTransaction,
   endStandingPoliciesForTriggerInTransaction,
+  endTicketWork,
   type StandingPolicyActor,
-} from './standing-policy-lifecycle.js'
-import { endTicketWork } from './ticket-work-records.js'
+} from '@nessie/executor-manage'
+import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
 
 /**
  * Disabling or deleting a trigger ends every live record it holds, with

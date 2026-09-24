@@ -1,12 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { endTicketWork, recordTicketWorkActivity } from '@nessie/executor-manage'
 import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
-import {
-  endTicketWork,
-  ensureTicketWorkThread,
-  lockTicketColumn,
-  recordTicketWorkActivity,
-  ticketWorkThreadTitle,
-} from '@nessie/team-admin'
+import { ensureTicketWorkThread, lockTicketColumn, ticketWorkThreadTitle } from '@nessie/team-admin'
 
 import { endColumnIds } from './ticket-trigger-decision.js'
 import { describeWakeEvent } from './ticket-work-events.js'

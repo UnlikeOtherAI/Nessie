@@ -1,17 +1,15 @@
 import type { Prisma } from '@prisma/client'
-import { StandingPolicyPinnedTermsSchema } from '@nessie/schemas'
-
 import {
-  suspendStandingPolicyInTransaction,
-  writeStandingPolicyAudit,
-  type StandingPolicyActor,
-} from './standing-policy-lifecycle.js'
-import {
-  judgeStandingPolicyTermsChange,
   standingPolicyLimitsOf,
   standingPolicyTermsDigest,
   standingPolicyTermsOf,
-} from './standing-policy-terms.js'
+  suspendStandingPolicyInTransaction,
+  writeStandingPolicyAudit,
+  type StandingPolicyActor,
+} from '@nessie/executor-manage'
+import { StandingPolicyPinnedTermsSchema } from '@nessie/schemas'
+
+import { judgeStandingPolicyTermsChange } from './standing-policy-terms.js'
 
 /**
  * What a saved edit of a ticket trigger does to the machine access it holds,

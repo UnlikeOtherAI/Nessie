@@ -1,9 +1,8 @@
 import type { Prisma } from '@prisma/client'
-import type { ExecutorAccessChange } from '@nessie/executor-manage'
+import { suspendStandingPolicyInTransaction, type ExecutorAccessChange } from '@nessie/executor-manage'
 import { ExecutorCapabilityDescriptorSchema, type AuthorizedActionContext } from '@nessie/schemas'
 
 import { applyExecutorAgentPolicyChange } from './executor-agent-tool-policy.js'
-import { suspendStandingPolicyInTransaction } from './standing-policy-lifecycle.js'
 import { confirmStandingPolicyInTransaction, rejectStandingPolicyInTransaction } from './standing-policy-confirm.js'
 
 /**

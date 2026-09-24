@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client'
+import { endTicketWork, recordTicketWorkActivity } from '@nessie/executor-manage'
 import {
   TICKET_WORK_LIVE_STATUSES,
   TicketChangedStoredConfigSchema,
@@ -6,7 +7,6 @@ import {
 } from '@nessie/schemas'
 
 import { lockTicketForWork } from './ticket-work-lock.js'
-import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.js'
 
 /**
  * What entering a column does to the ticket's live work, **inside the

@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
-import { requestExecutorCodingSessionCloseForSessionsInTransaction } from '@nessie/executor-manage'
 import {
   TICKET_WORK_LIVE_STATUSES,
   ticketWorkCodingSessionContext,
@@ -10,6 +9,7 @@ import {
   type ExecutorStandingPolicySuspendedReason,
 } from '@nessie/schemas'
 
+import { requestExecutorCodingSessionCloseForSessionsInTransaction } from './executor-coding-session-closes.js'
 import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.js'
 
 /**

@@ -9,11 +9,11 @@ import {
   ExecutorError,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
+  standingPolicyTermsDigest,
 } from '@nessie/executor-manage'
 import { AgentCardSpecSchema, ticketWorkCodingSessionContext } from '@nessie/schemas'
 
 import { applyExecutorAccessChangeEffects, applyRejectedExecutorAccessChangeEffects } from '../src/executor-access-change-effects.js'
-import { standingPolicyTermsDigest } from '../src/standing-policy-terms.js'
 import { standingPolicyTriggerEditSentence } from '../src/standing-policy-trigger-edit.js'
 import { StandingPolicyRefusal } from '../src/standing-policy-trigger.js'
 import { deleteAgentTrigger, updateAgentTrigger } from '../src/trigger-lifecycle.js'

@@ -3,7 +3,11 @@ import {
   assessStandingPolicyMachine,
   closeExecutorReviewCards,
   createExecutorAccessChangeContinuationInTransaction,
+  endStandingPolicyInTransaction,
   lockExecutorMutation,
+  standingPolicyTermsDigest,
+  standingPolicyTermsOf,
+  writeStandingPolicyAudit,
   type StandingPolicyMachineAssessment,
 } from '@nessie/executor-manage'
 import {
@@ -17,8 +21,7 @@ import {
 } from '@nessie/schemas'
 
 import { buildStandingPolicyCard } from './standing-policy-card.js'
-import { endStandingPolicyInTransaction, writeStandingPolicyAudit } from './standing-policy-lifecycle.js'
-import { changedStandingPolicyTerms, standingPolicyTermsDigest, standingPolicyTermsOf } from './standing-policy-terms.js'
+import { changedStandingPolicyTerms } from './standing-policy-terms.js'
 import {
   countStandingPolicyBoardEditors,
   loadStandingPolicyTrigger,

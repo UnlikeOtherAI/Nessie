@@ -662,7 +662,8 @@ causes it**:
   and who did it, so re-enabling a trigger takes a fresh confirmation.
 - **(T4) Suspending machine access** (either `suspendedReason`,
   `suspendStandingPolicyInTransaction` in
-  `packages/team-admin/src/standing-policy-lifecycle.ts`) moves every `active`
+  `packages/executor-manage/src/executor-standing-policy-lifecycle.ts`, beside the
+  executor fences that end a policy) moves every `active`
   record of that policy to `waiting_machine` with `machine_access_suspended`
   and unpins it, with a `work_paused` row, which frees the machine, pauses the
   hours clock and stops quiet wakes; those records' sessions get close
