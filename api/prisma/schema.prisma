@@ -4360,6 +4360,10 @@ model AgentTicketWork {
   /// `{ "<sessionId>": <turn> }`: the newest turn end a `ticket.work` run has
   /// already seen, so a session wake at or below it is skipped.
   lastObservedTurn Json                    @default("{}") @map("last_observed_turn")
+  /// `{ "<sessionId>": <usd> }`: the newest cumulative coding cost each
+  /// session reported to a status read or review, so only what is new is
+  /// added to `costUsd`.
+  sessionCosts     Json                    @default("{}") @map("session_costs")
   pullRequestUrl   String?                 @map("pull_request_url")
   /// As `gh pr view` reports it: OPEN, CLOSED or MERGED
   /// (`TicketWorkPullRequestStateSchema`).
@@ -4393,6 +4397,7 @@ model AgentTicketWork {
   startedBy        User?                   @relation("AgentTicketWorkStartedBy", fields: [startedByUserId], references: [id], onDelete: SetNull)
   startedByEvent   TaskEvent?              @relation(fields: [startedByEventId], references: [id], onDelete: SetNull)
   reminders        AgentReminder[]
+  executorBindings ExecutorBinding[]
 
   @@index([triggerId, taskId])
   @@index([taskId, status])
@@ -5785,12 +5790,22 @@ model ExecutorBinding {
   /// SetNull: a lease row must never vanish under a binding that still names
   /// it, or the binding would dispatch as though no lease had ever bounded it.
   leaseId               String?                    @map("lease_id") @db.Uuid
+  /// The standing policy this binding was made under, and the work record it
+  /// serves: a `ticket.work` run bound afresh at its wake
+  /// (`executor-standing-policy-binding.ts`). Dispatch re-checks both, and the
+  /// coding-session owner's context is derived from them. Never with a lease
+  /// (`executor_bindings_one_authority`). SetNull: a binding that lost either
+  /// is fenced like any binding no person's message started.
+  standingPolicyId      String?                    @map("standing_policy_id") @db.Uuid
+  ticketWorkId          String?                    @map("ticket_work_id") @db.Uuid
   createdAt             DateTime                   @default(now()) @map("created_at")
   executor              Executor                   @relation(fields: [executorId], references: [id], onDelete: Restrict)
   capabilityRevision    ExecutorCapabilityRevision @relation(fields: [capabilityRevisionId], references: [id], onDelete: Restrict)
   run                   Run                        @relation(fields: [runId], references: [id], onDelete: Cascade)
   session               ExecutorSession?           @relation(fields: [sessionId], references: [id], onDelete: SetNull)
   lease                 ExecutorConversationLease? @relation(fields: [leaseId], references: [id], onDelete: NoAction)
+  standingPolicy        ExecutorStandingPolicy?    @relation(fields: [standingPolicyId], references: [id], onDelete: SetNull)
+  ticketWork            AgentTicketWork?           @relation(fields: [ticketWorkId], references: [id], onDelete: SetNull)
   toolCalls             ToolCall[]
   commands              ExecutorCommand[]
   continuations         ExecutorContinuation[]
@@ -5798,6 +5813,8 @@ model ExecutorBinding {
   @@unique([runId, operationKey])
   @@index([executorId, createdAt])
   @@index([leaseId])
+  @@index([standingPolicyId])
+  @@index([ticketWorkId])
   @@map("executor_bindings")
 }
 
@@ -5961,6 +5978,8 @@ model ExecutorStandingPolicy {
   endedBy         User?                            @relation("ExecutorStandingPolicyEndedBy", fields: [endedByUserId], references: [id], onDelete: SetNull)
   executors       ExecutorStandingPolicyExecutor[]
   ticketWork      AgentTicketWork[]
+  bindings        ExecutorBinding[]
+  dailySpend      ExecutorStandingPolicyDailySpend[]
 
   @@index([triggerId, status])
   @@index([authorUserId, status])
@@ -5990,6 +6009,21 @@ model ExecutorStandingPolicyExecutor {
   @@unique([policyId, position])
   @@index([executorId])
   @@map("executor_standing_policy_executors")
+}
+
+/// What a standing policy's ticket work spent on one UTC day, for its
+/// `dailyUsd` limit. Every cost added to a record under the policy is added
+/// here too, in the same transaction; a record's own `costUsd` is a lifetime
+/// total and cannot be split across midnight.
+model ExecutorStandingPolicyDailySpend {
+  policyId  String                 @map("policy_id") @db.Uuid
+  day       DateTime               @db.Date
+  costUsd   Decimal                @default(0) @map("cost_usd") @db.Decimal(20, 8)
+  updatedAt DateTime               @default(now()) @updatedAt @map("updated_at")
+  policy    ExecutorStandingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@id([policyId, day])
+  @@map("executor_standing_policy_daily_spend")
 }
 
 model ExecutorCommand {
