@@ -20,6 +20,7 @@ import { CODING_SESSION_TOOL_NAMES, codingSessionDescriptors, type CodingSession
 import type { CodingWaitTiming } from './coding-session-wait.js'
 import type { CodingSessionHooks, ExecutorCodingSessions } from './executor-coding-sessions.js'
 import { writeTicketWorkCodingAudit } from './ticket-work-coding-audit.js'
+import { withdrawSeenSessionWakes } from '../control/ticket-work-session-withdraw.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -42,7 +43,10 @@ import type { AgenticToolResult } from './tools.js'
  * - each tool is described by its purpose in ticket work, and a wait reads
  *   for at most a minute;
  * - every answer's cost, turn end and pull request are written to the record
- *   as they are seen, and a review asks after the recorded pull request by URL.
+ *   as they are seen, and a review asks after the recorded pull request by URL;
+ *   a turn end seen here withdraws the same turn's session wake still pending
+ *   in the thread (T5), and the agent's own close takes the session off the
+ *   record, so neither wakes the agent for what it already knows.
  */
 
 export type TicketWorkCodingScope = {
@@ -201,6 +205,9 @@ export const ticketWorkCodingObserver = (prisma: PrismaClient, scope: TicketWork
   if (sessionId) {
     await recordTicketWorkSessionObservation(prisma, {
       sessionId, workId: scope.workId,
+      // The agent's own close: the session leaves the ticket's live set, and its closing wakes nobody.
+      ...(toolName === CODING_SESSION_TOOL_NAMES.close ? { closedByAgent: true } : {}),
+      withdrawWakes: (tx, observed) => withdrawSeenSessionWakes(tx, { ...observed, workId: scope.workId }),
       ...(typeof body.status === 'string' ? { status: body.status } : {}),
       ...(typeof body.totalCostUsd === 'number' ? { totalCostUsd: body.totalCostUsd } : {}),
       ...(typeof body.turn === 'number' ? { turn: body.turn } : {}),

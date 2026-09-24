@@ -55,6 +55,12 @@ export type TicketWorkEvent = {
    * when `kind` is `document` or `session`.
    */
   described?: { text: string; summary: string }
+  /**
+   * A session wake's session and the turn it told of (T5): kept on the kickoff
+   * event and its thread row, so a wait of the agent's own that reads that turn
+   * while the wake still pends withdraws it.
+   */
+  session?: { sessionId: string; turn: number }
   /** The event's `TaskEvent.by`: who a resume or an end it causes names. */
   by?: string | null
 }

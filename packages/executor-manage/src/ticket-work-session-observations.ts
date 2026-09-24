@@ -1,7 +1,9 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { lockThreadRunSlot } from '@nessie/db'
 import { TicketWorkPullRequestStateSchema } from '@nessie/schemas'
 
 import { addTicketWorkCostInTransaction } from './executor-standing-policy-limits.js'
+import { forgetTicketWorkSessionsInTransaction } from './ticket-work-session-release.js'
 
 /**
  * What a `ticket.work` run learns of its ticket's coding sessions, written
@@ -15,7 +17,11 @@ import { addTicketWorkCostInTransaction } from './executor-standing-policy-limit
  *   Nessie run's own cost once (keyed `run:<runId>`), added to `costUsd` and
  *   to the policy's day;
  * - the newest turn end a wait or review saw (`lastObservedTurn`), so a
- *   session wake at or below it is skipped (T5);
+ *   turn-ended session wake at or below it is skipped (T5), and one still
+ *   pending in the thread is withdrawn by the caller's `withdrawWakes`; both
+ *   under the thread's run slot, the lock every wake is written under;
+ * - a session the agent closed itself: it leaves the live set, and is kept
+ *   under `lastObservedTurn.closed`, so its closing wakes nobody;
  * - the pull request, the first time a review returns one, then its state and
  *   checks each time a review reads it — so a merged pull request whose branch
  *   the coding agent deleted is still on record, and still read by URL.
@@ -43,11 +49,39 @@ export const appendTicketWorkSession = async (
 
 const TURN_ENDED = new Set(['waiting_for_input', 'interrupted', 'failed', 'closed'])
 
+/** The sessions a record's agent closed itself, kept beside the turns it saw end. */
+export const agentClosedTicketWorkSessions = (value: Prisma.JsonValue | null | undefined): string[] => {
+  const closed = value && typeof value === 'object' && !Array.isArray(value) ? value.closed : undefined
+  return Array.isArray(closed) ? closed.filter((id): id is string => typeof id === 'string') : []
+}
+
+export type ObservedSessionTurn = { sessionId: string; turn: number }
+
 export const recordTicketWorkSessionObservation = async (
   prisma: Client,
-  input: { now?: Date; sessionId: string; status?: string; totalCostUsd?: number; turn?: number; workId: string },
+  input: {
+    /** The agent's own `coding_session_close` answered: the session leaves the live set. */
+    closedByAgent?: boolean
+    now?: Date
+    sessionId: string
+    status?: string
+    totalCostUsd?: number
+    turn?: number
+    /** Under the thread's run slot, once a turn end is seen: withdraw the wakes still pending for it. */
+    withdrawWakes?: (
+      tx: Prisma.TransactionClient,
+      input: { agentId: string; seen: ObservedSessionTurn; threadId: string },
+    ) => Promise<unknown>
+    workId: string
+  },
 ): Promise<void> => {
+  const thread = await prisma.agentTicketWork.findUnique({
+    where: { id: input.workId }, select: { agentId: true, threadId: true },
+  })
+  if (!thread) return
   await prisma.$transaction(async (tx) => {
+    // The thread's run slot before the record, the order every wake takes them in.
+    await lockThreadRunSlot(tx, { agentId: thread.agentId, threadId: thread.threadId })
     await lockWork(tx, input.workId)
     const work = await tx.agentTicketWork.findUnique({
       where: { id: input.workId }, select: { lastObservedTurn: true, sessionCosts: true, sessionIds: true },
@@ -55,18 +89,30 @@ export const recordTicketWorkSessionObservation = async (
     if (!work || !work.sessionIds.includes(input.sessionId)) return
     const costs = numberMap(work.sessionCosts)
     const turns = numberMap(work.lastObservedTurn)
+    const closed = agentClosedTicketWorkSessions(work.lastObservedTurn)
     const data: Prisma.AgentTicketWorkUpdateInput = {}
     let delta = 0
     if (typeof input.totalCostUsd === 'number' && input.totalCostUsd > (costs[input.sessionId] ?? 0)) {
       delta = input.totalCostUsd - (costs[input.sessionId] ?? 0)
       data.sessionCosts = { ...costs, [input.sessionId]: input.totalCostUsd }
     }
-    if (typeof input.turn === 'number' && input.status && TURN_ENDED.has(input.status)
-      && input.turn > (turns[input.sessionId] ?? 0)) {
-      data.lastObservedTurn = { ...turns, [input.sessionId]: input.turn }
+    const turnEnded = typeof input.turn === 'number' && input.status !== undefined && TURN_ENDED.has(input.status)
+    const seen = Math.max(turnEnded ? input.turn! : 0, turns[input.sessionId] ?? 0)
+    if (seen > (turns[input.sessionId] ?? 0) || (input.closedByAgent && !closed.includes(input.sessionId))) {
+      data.lastObservedTurn = {
+        ...turns,
+        ...(turns[input.sessionId] !== undefined || turnEnded ? { [input.sessionId]: seen } : {}),
+        closed: input.closedByAgent ? [...new Set([...closed, input.sessionId])] : closed,
+      }
     }
     if (Object.keys(data).length > 0) await tx.agentTicketWork.update({ where: { id: input.workId }, data })
     await addTicketWorkCostInTransaction(tx, { deltaUsd: delta, now: input.now, workId: input.workId })
+    if (input.closedByAgent) {
+      await forgetTicketWorkSessionsInTransaction(tx, { sessionIds: [input.sessionId], workId: input.workId })
+    }
+    if (turnEnded && input.withdrawWakes) {
+      await input.withdrawWakes(tx, { ...thread, seen: { sessionId: input.sessionId, turn: seen } })
+    }
   })
 }
 

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { agentClosedTicketWorkSessions } from '@nessie/executor-manage'
 import {
   TicketChangedStoredConfigSchema,
   type TicketWorkSessionJobPayload,
@@ -23,11 +24,14 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  * the status names and one line of what happened. Exactly one delivery row per
  * report of it, deduped on the job's own key, `session:<id>:<turn>:<status>`.
  * It is skipped (`no_longer_applies`, the row says so) when the record is no
- * longer `active` — parked, queued, waiting for its machine or ended — or when
- * a wait or review of the agent's own already saw a turn at or after this one
- * end (`lastObservedTurn`): the agent knows, and a second wake would only
- * repeat it. Both are read under the thread's run slot, the lock the tools'
- * observation and every other wake write under.
+ * longer `active` — parked, queued, waiting for its machine or ended — when a
+ * turn-ended wake's turn, or a later one, was already seen to end by a wait or
+ * review of the agent's own (`lastObservedTurn`), and when a closed session is
+ * one the agent closed itself: the agent knows, and a second wake would only
+ * repeat it. An interruption or a failure always wakes. All of it is read
+ * under the thread's run slot, the lock the tools' observation writes under —
+ * and a wait that sees the turn while this wake still pends behind its run
+ * withdraws it (`ticket-work-session-withdraw.ts`).
  *
  * Nothing the session said reaches the wake: only its turn, its status and a
  * categorical reason. The agent reads the rest with its coding tools.
@@ -133,7 +137,10 @@ export const dispatchTicketWorkSession = async (
         where: { id: record.id }, select: { lastObservedTurn: true, status: true },
       })
       const seen = observedTurn(fresh?.lastObservedTurn, wake.sessionId)
-      if (fresh?.status !== 'active' || (seen !== undefined && wake.turn <= seen)) {
+      const alreadySeen = wake.status === 'waiting_for_input' && seen !== undefined && wake.turn <= seen
+      const closedItself = wake.status === 'closed'
+        && agentClosedTicketWorkSessions(fresh?.lastObservedTurn).includes(wake.sessionId)
+      if (fresh?.status !== 'active' || alreadySeen || closedItself) {
         return { outcome: 'refused', reason: 'no_longer_applies' }
       }
       return seam.wakeTicketWork(tx, {
@@ -144,6 +151,7 @@ export const dispatchTicketWorkSession = async (
           eventType: 'session',
           id: wake.sessionId,
           kind: 'session',
+          session: { sessionId: wake.sessionId, turn: wake.turn },
         },
         machineLess: false,
         reason,

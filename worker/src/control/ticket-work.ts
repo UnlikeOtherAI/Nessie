@@ -283,7 +283,7 @@ const wakeTicketWork = async (
   await assertTargetChannel(tx, trigger)
   // A description change is told as a diff against what this agent last saw.
   const detailSeen = event.eventType === 'detail_edited' ? await loadDetailSeen(tx, work) : undefined
-  const described = await describeWakeEvent(prisma, {
+  const told = await describeWakeEvent(prisma, {
     detailSeen,
     organizationId: trigger.organizationId,
     projectId: work.projectId,
@@ -294,6 +294,8 @@ const wakeTicketWork = async (
     untrusted: input.untrusted,
     machineLess: input.machineLess,
   })
+  // A session wake names its turn and delivery on the kickoff: a wait that reads the turn withdraws it.
+  const described = event.session ? { ...told, session: { ...event.session, deliveryId: input.deliveryId } } : told
   // Live work over a limit stops instead of waking, and work whose machine is
   // offline waits for it without a run. A person's move back into a
   // start-work column resumes parked work on a machine — before the kickoff is
