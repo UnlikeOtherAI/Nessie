@@ -426,3 +426,53 @@ test('a viewer who cannot write is offered no conversion at all', () => {
   )
   assert.ok(!rows.includes('open-as-spreadsheet'))
 })
+
+// ── Document triggers (docs/plans/2026-09-23-ticket-driven-agents/setup-and-ui.md) ──
+
+const withDocumentTriggers = (extra: Partial<FinderMenuHandlers> = {}): FinderMenuHandlers => ({
+  ...handlers(),
+  openReviewThread: () => void selected.push('openReviewThread'),
+  tellAgent: () => void selected.push('tellAgent'),
+  ...extra,
+})
+
+const docIds = (target: FinderMenuTarget, capabilities: FinderMenuCapabilities, on = withDocumentTriggers()) =>
+  buildFinderMenu({ capabilities, handlers: on, target })
+    .map((item) => (item.kind === 'separator' ? '—' : item.kind === 'heading' ? '#' : item.id))
+
+test('"Tell an agent when this changes…" is offered only where the Finder read says the viewer may set one up', () => {
+  for (const kind of ['folder', 'document', 'file'] as const) {
+    const target: FinderMenuTarget = { kind: 'page', page: page({ kind }), virtual: false }
+    assert.ok(docIds(target, caps({ canCreateDocumentTriggers: true })).includes('tell-agent'), kind)
+    assert.ok(!docIds(target, caps({ canCreateDocumentTriggers: false })).includes('tell-agent'), `${kind}: refused`)
+    assert.ok(!docIds(target, caps()).includes('tell-agent'), `${kind}: not yet known`)
+    // Mounted without the doorway, the item is absent rather than inert.
+    assert.ok(!docIds(target, caps({ canCreateDocumentTriggers: true }), handlers()).includes('tell-agent'), kind)
+  }
+  const tell = buildFinderMenu({
+    capabilities: caps({ canCreateDocumentTriggers: true }),
+    handlers: withDocumentTriggers(),
+    target: { kind: 'page', page: page({ kind: 'folder' }), virtual: false },
+  }).find((item) => item.kind === 'item' && item.id === 'tell-agent')
+  assert.equal(tell?.kind === 'item' ? tell.label : null, 'Tell an agent when this changes…')
+})
+
+test('a spreadsheet or a row standing somewhere else offers no document trigger', () => {
+  const allowed = caps({ canCreateDocumentTriggers: true })
+  const sheet = docIds({ kind: 'page', page: page({ kind: 'spreadsheet' }), virtual: false }, allowed)
+  const virtual = docIds({ kind: 'page', page: page({ kind: 'document' }), virtual: true }, allowed)
+  for (const rows of [sheet, virtual]) {
+    assert.ok(!rows.includes('tell-agent'))
+    assert.ok(!rows.includes('open-review-thread'))
+  }
+})
+
+test('a reviewed page offers its review thread where the viewer may open it, and nowhere else', () => {
+  const target: FinderMenuTarget = { kind: 'page', page: page({ kind: 'document' }), virtual: false }
+  assert.ok(docIds(target, caps()).includes('open-review-thread'), 'any reader, not only an owner')
+  assert.ok(!docIds(target, caps(), withDocumentTriggers({ openReviewThread: undefined })).includes('open-review-thread'))
+  // Its own group, and never a doubled separator.
+  const rows = docIds(target, caps({ canCreateDocumentTriggers: true }))
+  const at = rows.indexOf('open-review-thread')
+  assert.deepEqual(rows.slice(at - 1, at + 3), ['—', 'open-review-thread', 'tell-agent', '—'])
+})

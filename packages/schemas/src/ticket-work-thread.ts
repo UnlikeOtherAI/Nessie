@@ -39,6 +39,14 @@ export const TicketWorkThreadEventSchema = z.discriminatedUnion('kind', [
     reason: TicketWorkStateReasonSchema,
     summary: z.string().min(1),
   }).strict(),
+  // A document trigger woke its agent in a document's own review thread
+  // (docs/standards/document-triggers.md): no work record, the same row.
+  z.object({
+    kind: z.literal('document_woken'),
+    triggerId: uuid,
+    reason: z.literal('document_changed'),
+    summary: z.string().min(1),
+  }).strict(),
   // A person cancelled the agent's pending reminder on the ticket's chip: the
   // summary names who, so the thread says why the agent was not woken.
   z.object({
@@ -54,6 +62,8 @@ export type TicketWorkThreadEvent = z.infer<typeof TicketWorkThreadEventSchema>
 export const TICKET_WORK_THREAD_EVENT_LABELS = {
   woken: 'Woken',
   stopped: 'Stopped',
+  // A document review woke the agent: it reads as a wake.
+  document_woken: 'Woken',
   reminder_cancelled: 'Reminder cancelled',
 } as const satisfies Record<TicketWorkThreadEvent['kind'], string>
 
@@ -81,5 +91,15 @@ export const TicketWorkKickoffMetadataSchema = z.object({
    * have counted the next one.
    */
   wakeNumber: z.number().int().positive().optional(),
+  /**
+   * The ticket's description as this kickoff left the agent knowing it: set
+   * by a kickoff that starts the work or tells it of a description change, so
+   * the next change is shown as a line diff against what the agent last saw
+   * rather than as the whole text again. It lives only on the kickoff — a
+   * hidden `system` message of the work thread, which already quotes a
+   * changed description — never in the ticket's history. `text` is null for
+   * a ticket with no description.
+   */
+  detailSeen: z.object({ text: z.string().nullable() }).strict().optional(),
 }).strict()
 export type TicketWorkKickoffMetadata = z.infer<typeof TicketWorkKickoffMetadataSchema>

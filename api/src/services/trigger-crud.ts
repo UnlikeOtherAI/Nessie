@@ -10,12 +10,14 @@ import {
   createAgentTrigger,
   createWorkflowTrigger,
   deleteAgentTrigger,
+  documentTriggerResumeRefusal,
   endTicketWorkForTrigger,
   getAgentTrigger,
   listAgentTriggers,
   ticketTriggerResumeRefusal,
   updateAgentTrigger,
   validateTodoTemplateTriggerConfig,
+  type AgentTriggerEditor,
   type AgentTriggerScope,
   agentTriggerScopeWhere,
 } from '@nessie/team-admin'
@@ -318,6 +320,8 @@ const assertTriggerCanResume = async (
 export const resumeAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
+  /** The person resuming it; a document trigger asks whether they can read what it watches. */
+  resumer: AgentTriggerEditor | null = null,
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     select: {
@@ -339,7 +343,11 @@ export const resumeAgentTrigger = async (
   const triggerId = existing.id
 
   const needsRearm = SCHEDULER_TRIGGER_TYPES.includes(existing.type as AgentTriggerType)
-  if (existing.status === 'error' || needsRearm) {
+  // A ticket or document trigger has no fixed thread and no launch identity:
+  // its own resume check below resolves its whole stored config instead, so
+  // one that stopped on a health failure can be resumed once it is repaired.
+  const resolvedOnResume = existing.type === 'ticket_changed' || existing.type === 'document_changed'
+  if ((existing.status === 'error' || needsRearm) && !resolvedOnResume) {
     await assertTriggerCanResume(prisma, {
       agent: existing.agent,
       config: existing.config,
@@ -377,6 +385,14 @@ export const resumeAgentTrigger = async (
     // channel or instructions is refused here, not enabled to do nothing.
     if (existing.type === 'ticket_changed') {
       const refusal = await ticketTriggerResumeRefusal(tx, existing)
+      if (refusal) throw new TriggerResumeError(refusal)
+    }
+    // A document trigger's space still readable by the whole channel and the
+    // agent, its channel still public with the agent in it
+    // (docs/standards/document-triggers.md): an access loss that paused it
+    // must be repaired first, not re-armed to pause again.
+    if (existing.type === 'document_changed') {
+      const refusal = await documentTriggerResumeRefusal(prisma, existing, resumer)
       if (refusal) throw new TriggerResumeError(refusal)
     }
     if (existing.agent && Object.hasOwn(configRecord, 'todoTemplateId')) {

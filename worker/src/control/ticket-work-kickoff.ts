@@ -87,6 +87,12 @@ export type TicketWorkKickoffFacts = {
     quietWakeMinutes: number | null
   }
   followKinds: readonly TicketFollowKind[]
+  /**
+   * Whether an edit to one of the ticket's documents can reach this work: the
+   * agent has an enabled `document_changed` trigger on the ticket's project.
+   * Without one, following `document` promises nothing.
+   */
+  documentsWatched: boolean
   instructions: TicketTriggerInstructions | undefined
 }
 
@@ -118,7 +124,8 @@ const FOLLOW_PHRASES: Record<TicketFollowKind, string> = {
   description: 'edits the description',
   moved: 'moves the ticket',
   thread_message: 'writes in this thread',
-  document: 'edits one of its documents',
+  // Conditional: the trigger may watch only some of the ticket's documents.
+  document: 'edits one of its documents that your document trigger watches',
   priority: 'changes the priority',
   labels: 'changes the labels',
   assignee: 'changes the assignee',
@@ -171,9 +178,11 @@ const workLine = (facts: TicketWorkKickoffFacts): string => {
 const stateBlock = (facts: TicketWorkKickoffFacts): string[] => {
   const { ticket, board, column } = facts
   const ended = TERMINAL.has(facts.work.status)
-  // A document edit reaches a ticket's work only once the document trigger
-  // ships (T2), so it is not promised here before then.
-  const followed = facts.followKinds.filter((kind) => kind !== 'document').map((kind) => FOLLOW_PHRASES[kind])
+  // A document edit reaches a ticket's work only through the agent's own
+  // document trigger on the project, so it is promised only when there is one.
+  const followed = facts.followKinds
+    .filter((kind) => kind !== 'document' || facts.documentsWatched)
+    .map((kind) => FOLLOW_PHRASES[kind])
   return [
     '## State',
     // The title is ticket data: anyone who could write the ticket — a
@@ -286,7 +295,7 @@ const columnRoles = (
  * record, or when the run starts.
  */
 export const loadTicketWorkKickoffFacts = async (
-  prisma: Pick<Prisma.TransactionClient, 'agentTicketWork' | 'board' | 'taskBoardPlacement'>,
+  prisma: Pick<Prisma.TransactionClient, 'agentTicketWork' | 'agentTrigger' | 'board' | 'taskBoardPlacement'>,
   input: {
     workId: string
     /** The wake this kickoff is for, counted before the record is written. */
@@ -302,6 +311,7 @@ export const loadTicketWorkKickoffFacts = async (
       startedAt: true,
       endedAt: true,
       pullRequestUrl: true,
+      agentId: true,
       awaitingAnswerAt: true,
       reminders: { where: { status: 'pending' }, orderBy: { dueAt: 'asc' }, take: 1, select: { dueAt: true, note: true } },
       startedBy: { select: { displayName: true } },
@@ -353,6 +363,15 @@ export const loadTicketWorkKickoffFacts = async (
       quietWakeMinutes: config.quietWakeMinutes,
     },
     followKinds: config.followKinds,
+    documentsWatched: config.followKinds.includes('document') && await prisma.agentTrigger.count({
+      where: {
+        agentId: work.agentId,
+        type: 'document_changed',
+        enabled: true,
+        status: 'active',
+        scopeProjectId: work.task.projectId,
+      },
+    }) > 0,
     instructions: config.instructions,
   }
 }

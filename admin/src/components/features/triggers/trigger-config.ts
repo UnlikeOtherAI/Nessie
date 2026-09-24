@@ -5,8 +5,17 @@ import type {
   WorkflowInstallationRecord,
 } from '../../../lib/api-client'
 import {
+  buildDocumentConfig,
+  documentStateFromConfig,
+  getDefaultDocumentState,
+  type DocumentFormField,
+  type DocumentTriggerFormState,
+  type DocumentTriggerPrefill,
+} from './document-trigger-form'
+import {
   buildTicketConfig,
   getDefaultTicketState,
+  isTicketTargetChannel,
   ticketStateFromConfig,
   type TicketFormField,
   type TicketTriggerFormState,
@@ -41,6 +50,8 @@ export type TriggerFormState = {
    * defaults.
    */
   ticket?: TicketTriggerFormState
+  /** The `document_changed` fields (`document-trigger-form.ts`); optional for the same reason. */
+  document?: DocumentTriggerFormState
 }
 
 export type SubmitPayload = {
@@ -58,18 +69,42 @@ export type DefaultTarget =
       targetKind: 'agent'
       /**
        * A doorway that opens the editor on one type already: the board's column
-       * menu opens it on a ticket trigger for that board and column.
+       * menu opens it on a ticket trigger for that board and column, and the
+       * Finder on a document trigger for that folder or page.
        */
-      prefill?: {
-        name?: string
-        ticket: { boardId: string; pickupColumnIds: string[] }
-        triggerType: 'ticket_changed'
-      }
+      prefill?:
+        | {
+            name?: string
+            ticket: { boardId: string; pickupColumnIds: string[] }
+            triggerType: 'ticket_changed'
+          }
+        | {
+            document: DocumentTriggerPrefill
+            name?: string
+            triggerType: 'document_changed'
+          }
     }
   | {
       targetKind: 'workflow'
       workflowInstallationId: string
     }
+
+/**
+ * The channels a trigger of this type may target for this agent: every one it
+ * is bound to, or for a ticket or document trigger only its live, ordinary,
+ * public project ones — every reader of the ticket or document has to be able
+ * to open the thread it is worked in. The server refuses anything else, and
+ * the field says why.
+ */
+export const triggerTargetChannels = (
+  channels: readonly ChannelRecord[],
+  agent: Pick<AgentRecord, 'channelIds'> | undefined,
+  type: AgentTriggerRecord['type'],
+): ChannelRecord[] => {
+  const bound = new Set(agent?.channelIds ?? [])
+  const projectWork = type === 'ticket_changed' || type === 'document_changed'
+  return channels.filter((channel) => bound.has(channel.id) && (!projectWork || isTicketTargetChannel(channel)))
+}
 
 export const getLocalTimezone = (): string =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
@@ -143,9 +178,10 @@ export const getDefaultCreateState = (
     agents.find((candidate) => candidate.id === agentId)?.channelIds ?? [],
   )
   const firstChannelId = channels.find((candidate) => boundChannelIds.has(candidate.id))?.id
+  const prefill = defaultTarget?.targetKind === 'agent' ? defaultTarget.prefill : undefined
 
   return {
-    name: defaultTarget?.targetKind === 'agent' ? defaultTarget.prefill?.name ?? '' : '',
+    name: prefill?.name ?? '',
     description: '',
     enabled: true,
     targetKind: defaultTargetKind,
@@ -155,12 +191,9 @@ export const getDefaultCreateState = (
       defaultTarget?.targetKind === 'agent'
         ? (defaultTarget.targetChannelId ?? firstChannelId ?? '')
         : firstChannelId ?? '',
-    triggerType: defaultTarget?.targetKind === 'agent' && defaultTarget.prefill
-      ? defaultTarget.prefill.triggerType
-      : 'manual',
-    ticket: getDefaultTicketState(
-      defaultTarget?.targetKind === 'agent' ? defaultTarget.prefill?.ticket : undefined,
-    ),
+    triggerType: prefill?.triggerType ?? 'manual',
+    ticket: getDefaultTicketState(prefill?.triggerType === 'ticket_changed' ? prefill.ticket : undefined),
+    document: getDefaultDocumentState(prefill?.triggerType === 'document_changed' ? prefill.document : undefined),
     scheduleMode: 'once',
     nextRunAt: '',
     rollingStatus: false,
@@ -208,6 +241,7 @@ export const getEditState = (
     eventNames: toEventNamesValue(config),
     eventFilter: toEventFilterValue(config),
     ticket: trigger.type === 'ticket_changed' ? ticketStateFromConfig(config) : getDefaultTicketState(),
+    document: trigger.type === 'document_changed' ? documentStateFromConfig(config) : getDefaultDocumentState(),
   }
 }
 
@@ -233,7 +267,7 @@ export const getFormTriggerTypeLabel = (input: {
 
 export type BuildSubmitResult =
   | { payload: SubmitPayload }
-  | { error: string; field?: TicketFormField }
+  | { error: string; field?: TicketFormField | DocumentFormField }
 
 /**
  * Validate the form and produce the API submit payload. Returns either a
@@ -377,10 +411,19 @@ export const buildSubmitPayload = (
     }
   }
 
-  // Document triggers have no editor fields yet (T2). Falling through to the
-  // event branch would overwrite their configuration with an event list.
+  // Its own typed config, create or edit — never the event branch below, which
+  // would overwrite it with an event list.
   if (form.triggerType === 'document_changed') {
-    return { error: 'This trigger type cannot be edited here yet.' }
+    const built = buildDocumentConfig(form.document ?? getDefaultDocumentState(), mode)
+    if ('error' in built) return built
+    return {
+      payload: {
+        name,
+        description: description || undefined,
+        enabled: form.enabled,
+        config: built.config,
+      },
+    }
   }
 
   const events = form.eventNames

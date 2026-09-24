@@ -79,6 +79,7 @@ export {
   runKbPageReadTool,
   runKbSearchTool,
 } from './pa-tools/knowledge.js'
+export { runKbPageDiffTool } from './pa-tools/knowledge-diff.js'
 export { runKbDocumentComposeTool } from './pa-tools/knowledge-compose.js'
 export { runKbDocumentEditTool } from './pa-tools/knowledge-edit.js'
 export {

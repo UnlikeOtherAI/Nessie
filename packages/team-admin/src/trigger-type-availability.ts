@@ -5,22 +5,21 @@ import { AgentTriggerTypeSchema, type AgentTriggerType } from '@nessie/schemas'
  *
  * `ticket_changed` and `document_changed` entered the schema first so the
  * ticket-work tables, queue payloads and standard could name them
- * (docs/plans/2026-09-23-ticket-driven-agents, T0). `ticket_changed` is
- * released: its typed configuration (`AgentTriggerConfigInputSchema`), its
- * server-side resolution and its dispatch ship in T1. `document_changed`'s
- * ship in T2. A row of an unreleased type would be an automation nobody can
- * configure and that never fires, so every agent-trigger create surface
- * refuses it with the one sentence below: the Triggers route and the
- * assistant's `agent_trigger_create` tool, with `createAgentTrigger` refusing
- * it again underneath, and nothing that lists agent trigger types to a person
- * or a model names it. Taking a type off this list is what releases it for
- * agents, in the same change that adds its arm to the typed config union (a
- * test holds the two equal). Workflows are gated separately, by
- * `WORKFLOW_TRIGGER_TYPES`.
+ * (docs/plans/2026-09-23-ticket-driven-agents, T0), and each was released in
+ * the PR that shipped its typed configuration (`AgentTriggerConfigInputSchema`),
+ * its server-side resolution and its dispatch: `ticket_changed` in T1,
+ * `document_changed` in T2. The list is empty now; it stays as the gate a
+ * future type enters the enum through. A row of an unreleased type would be
+ * an automation nobody can configure and that never fires, so every
+ * agent-trigger create surface refuses it with the one sentence below: the
+ * Triggers route and the assistant's `agent_trigger_create` tool, with
+ * `createAgentTrigger` refusing it again underneath, and nothing that lists
+ * agent trigger types to a person or a model names it. Taking a type off this
+ * list is what releases it for agents, in the same change that adds its arm
+ * to the typed config union (a test holds the two equal). Workflows are gated
+ * separately, by `WORKFLOW_TRIGGER_TYPES`.
  */
-export const UNRELEASED_TRIGGER_TYPES: readonly AgentTriggerType[] = [
-  'document_changed',
-]
+export const UNRELEASED_TRIGGER_TYPES: readonly AgentTriggerType[] = []
 
 /** The types a person or a model may give an agent today, in the enum's order. */
 export const RELEASED_TRIGGER_TYPES: readonly AgentTriggerType[] = AgentTriggerTypeSchema.options

@@ -65,7 +65,9 @@ type AgentConversationListProps = {
  * A ticket's work threads fold under **Tickets**, after the agent's other
  * conversations (docs/standards/ticket-work.md → "The work thread"): an agent
  * that works twenty tickets would otherwise bury the conversations people
- * started with it. The fold opens by itself when the one on screen is in it.
+ * started with it. A document trigger's review threads fold the same way
+ * under **Documents** (docs/standards/document-triggers.md → "Where a change
+ * lands"). A fold opens by itself when the one on screen is in it.
  */
 export const AgentConversationList = ({
   activeChannelId = null,
@@ -82,6 +84,7 @@ export const AgentConversationList = ({
   })
   const conversations = query.data
   const [ticketsOpen, setTicketsOpen] = useState<boolean | null>(null)
+  const [documentsOpen, setDocumentsOpen] = useState<boolean | null>(null)
 
   if (query.isPending) {
     return <Skeleton className="p-3" count={3} variant="list" />
@@ -188,41 +191,63 @@ export const AgentConversationList = ({
     )
   }
 
-  // Ticket work threads fold under Tickets; everything else lists as before.
+  // Ticket work threads fold under Tickets, document review threads under
+  // Documents; everything else lists as before.
   const ticketRows = conversations.filter((conversation) => conversation.ticket)
-  const otherRows = conversations.filter((conversation) => !conversation.ticket)
-  const showTickets = ticketsOpen ?? ticketRows.some((conversation) => conversation.id === activeThreadId)
+  const documentRows = conversations.filter((conversation) => !conversation.ticket && conversation.document)
+  const otherRows = conversations.filter((conversation) => !conversation.ticket && !conversation.document)
+  const onScreen = (rows: AgentConversationRecord[]) => rows.some((conversation) => conversation.id === activeThreadId)
+  const fold = (input: {
+    label: string
+    open: boolean
+    rows: AgentConversationRecord[]
+    setOpen: (open: boolean) => void
+    testId: string
+  }) => (input.rows.length > 0 ? (
+    <div className="flex flex-col" data-testid={input.testId}>
+      <button
+        aria-expanded={input.open}
+        className="flex min-h-11 w-full items-center gap-2 border-b border-[color:var(--sep)] px-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:bg-[color:var(--main-hover)]"
+        onClick={() => input.setOpen(!input.open)}
+        type="button"
+      >
+        <FontAwesomeIcon aria-hidden className="h-2.5 w-2.5" icon={input.open ? faChevronDown : faChevronRight} />
+        <span className="flex-1">{input.label}</span>
+        {/* Counted over the pages loaded so far: more may sit behind "Show older". */}
+        <span
+          className="font-normal normal-case tracking-normal"
+          title={query.hasNextPage ? `${input.rows.length} loaded so far` : undefined}
+        >
+          {input.rows.length}{query.hasNextPage ? '+' : ''}
+        </span>
+      </button>
+      {input.open ? (
+        <div className="flex flex-col" role="list">
+          {input.rows.map(renderRow)}
+        </div>
+      ) : null}
+    </div>
+  ) : null)
 
   return (
     <div className="flex flex-col">
       <div className="flex flex-col" role="list">
         {otherRows.map(renderRow)}
       </div>
-      {ticketRows.length > 0 ? (
-        <div className="flex flex-col" data-testid="agent-conversation-tickets">
-          <button
-            aria-expanded={showTickets}
-            className="flex min-h-11 w-full items-center gap-2 border-b border-[color:var(--sep)] px-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:bg-[color:var(--main-hover)]"
-            onClick={() => setTicketsOpen(!showTickets)}
-            type="button"
-          >
-            <FontAwesomeIcon aria-hidden className="h-2.5 w-2.5" icon={showTickets ? faChevronDown : faChevronRight} />
-            <span className="flex-1">Tickets</span>
-            {/* Counted over the pages loaded so far: more may sit behind "Show older". */}
-            <span
-              className="font-normal normal-case tracking-normal"
-              title={query.hasNextPage ? `${ticketRows.length} loaded so far` : undefined}
-            >
-              {ticketRows.length}{query.hasNextPage ? '+' : ''}
-            </span>
-          </button>
-          {showTickets ? (
-            <div className="flex flex-col" role="list">
-              {ticketRows.map(renderRow)}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {fold({
+        label: 'Tickets',
+        open: ticketsOpen ?? onScreen(ticketRows),
+        rows: ticketRows,
+        setOpen: setTicketsOpen,
+        testId: 'agent-conversation-tickets',
+      })}
+      {fold({
+        label: 'Documents',
+        open: documentsOpen ?? onScreen(documentRows),
+        rows: documentRows,
+        setOpen: setDocumentsOpen,
+        testId: 'agent-conversation-documents',
+      })}
       {query.hasNextPage ? (
         <div className="p-3">
           <button

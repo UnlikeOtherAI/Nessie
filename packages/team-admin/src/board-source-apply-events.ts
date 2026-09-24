@@ -96,6 +96,9 @@ export const recordInboundItemEvents = async (
     })
   }
   if ((previous.detail ?? null) !== (next.detail ?? null)) {
-    await record('detail_edited', { detailSha256: taskDetailSha256(next.detail ?? null) })
+    await record('detail_edited', {
+      detailSha256: taskDetailSha256(next.detail ?? null),
+      previousDetailSha256: taskDetailSha256(previous.detail ?? null),
+    })
   }
 }

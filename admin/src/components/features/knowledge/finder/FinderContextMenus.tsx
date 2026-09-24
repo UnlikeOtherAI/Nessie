@@ -14,6 +14,7 @@ import { knowledgeKeys } from '../../../../facades/knowledge/keys'
 import { useKnowledge } from '../KnowledgeProvider'
 import { useOpenDocument } from '../useOpenDocument'
 import { AccessReadoutDialog } from './AccessReadoutDialog'
+import { useFinderDocumentTrigger } from './FinderDocumentTrigger'
 import { GetInfoDialog } from './GetInfoDialog'
 import { ShareDialog } from './ShareDialog'
 import { useRemovePageShare } from './share-hooks'
@@ -103,6 +104,8 @@ export const useFinderMenus = ({
   const space = knowledge.selectedSpace
   const spacePersonal = space?.metadata?.personal === true
   const ownPersonal = spacePersonal && space?.userId === me?.user.id
+  const { canCreate: offersDocumentTrigger, dialog: documentTriggerDialog, handlersFor: documentTriggerFor } =
+    useFinderDocumentTrigger(space)
 
   const openMenu = useCallback(
     (next: FinderMenuActiveTarget, event: ReactMouseEvent<HTMLElement>) => {
@@ -342,10 +345,11 @@ export const useFinderMenus = ({
         const id = first?.id ?? virtualRow?.id
         if (id) knowledge.openHistory(id)
       },
+      ...documentTriggerFor(first),
     }
   }, [
-    active, failed, knowledge, me?.user.id, navigate, onConvertToSpreadsheet, onCreateRootFolder,
-    onCreateSpreadsheet, onImportSpreadsheet, onNewFolderIn, onRefresh, onUploadFiles,
+    active, documentTriggerFor, failed, knowledge, me?.user.id, navigate, onConvertToSpreadsheet,
+    onCreateRootFolder, onCreateSpreadsheet, onImportSpreadsheet, onNewFolderIn, onRefresh, onUploadFiles,
     openDocument, openSharing, pushToast,
     queryClient, reindex, removeShare, renderMoveTo, space, targetPages,
   ])
@@ -355,6 +359,7 @@ export const useFinderMenus = ({
       capabilities: {
         accessMode: accessFor()?.mode ?? 'unknown',
         actorIsPerson: true,
+        canCreateDocumentTriggers: offersDocumentTrigger,
         canManageAccess: space?.canManageAccess ?? false,
         canShare: ownPersonal,
         canWrite: space?.canWrite ?? false,
@@ -362,7 +367,7 @@ export const useFinderMenus = ({
       handlers,
       target: menuTarget,
     })
-    : []), [accessFor, handlers, menuTarget, ownPersonal, space])
+    : []), [accessFor, handlers, menuTarget, offersDocumentTrigger, ownPersonal, space])
 
   // ── rowProps / backgroundProps ──────────────────────────────────────────
   const renameProps = useCallback((pageId: string): FinderRowRename | undefined => {
@@ -530,6 +535,7 @@ export const useFinderMenus = ({
           title={confirm.title}
         />
       ) : null}
+      {documentTriggerDialog}
     </>
   )
 

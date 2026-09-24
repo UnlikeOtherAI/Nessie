@@ -33,16 +33,24 @@ export type TicketWorkTrigger = {
 export type TicketWorkEvent = {
   /**
    * The `TaskEvent`'s id; the message's for a thread message; the reminder's
-   * for a reminder; the work record's own for a quiet wake, which nothing caused.
+   * for a reminder; the work record's own for a quiet wake, which nothing
+   * caused; the version a document change brought the agent up to.
    */
   id: string
   eventType: string
   createdAt: Date
   /**
    * Not a `TaskEvent`: a person's message in the work thread, a
-   * `check_back_in` the agent set, or the platform's quiet wake.
+   * `check_back_in` the agent set, the platform's quiet wake, or an edit to
+   * one of the ticket's documents (`document_changed`).
    */
-  kind?: 'thread_message' | 'reminder' | 'quiet'
+  kind?: 'thread_message' | 'reminder' | 'quiet' | 'document'
+  /**
+   * A document change as its dispatcher already told it: metadata only, the
+   * document named by title only where every reader of the channel may read
+   * it (docs/standards/document-triggers.md). Set exactly when `kind` is `document`.
+   */
+  described?: { text: string; summary: string }
   /** The event's `TaskEvent.by`: who a resume or an end it causes names. */
   by?: string | null
 }

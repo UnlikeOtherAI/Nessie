@@ -38,14 +38,19 @@ Each rule is tagged with the PR that first enforces it in code:
   dot, the work thread's wake rows, read-only composer and Tickets fold — and
   board watchers retired to people only. No machine does ticket work yet: the
   agent reads, comments on and moves tickets.
+- **(T2)** `document_changed`, released with its own standard,
+  [document-triggers.md](document-triggers.md): an edit to one of a ticket's
+  documents now reaches that ticket's live work for the same agent as a
+  `document_changed` follow (the `document` follow kind, below), a
+  description change is told as a bounded line diff (below), and a document's
+  own review thread carries `document_woken` rows.
 - **(T3)** shipped: `check_back_in` and its reminders, the quiet wake, the
   open question (`awaitsAnswer`) with the hours clock it pauses, and the
   periodic `ticket-work.sweep`, in their own chapter,
   [ticket-work-reminders.md](ticket-work-reminders.md).
-- **(from T1)**, **(from T4)**, **(from T5)** are rules the
-  design fixes now and a later PR builds. Until that PR lands no code path
-  exists that could break them, because nothing can create a `ticket_changed`
-  or `document_changed` trigger (below).
+- **(from T4)**, **(from T5)** are rules the design fixes now and a later PR
+  builds; **(from T1)** marks a T1 rule still to land. Until its PR lands no
+  code path exists that could break such a rule.
 
 The PR that ships a rule changes its tag here in the same change. A tag that
 still says "from T*n*" after T*n* merged is a false statement about the code.
@@ -62,7 +67,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `POST /api/agents/:agentId/triggers` answers 400
   `TRIGGER_TYPE_UNAVAILABLE`, `agent_trigger_create` throws it, and
   `createAgentTrigger` returns null before touching the database. **(T1)**
-  `ticket_changed` is off the list; `document_changed` stays on it until T2.
+  `ticket_changed` is off the list, and **(T2)** `document_changed` too: the
+  list is empty, and stays as the gate a future type enters through.
 - **Both types are agent-only, permanently.** Workflow installations are
   gated by `WORKFLOW_TRIGGER_TYPES` (manual, scheduled, webhook, event,
   interval), not by the release list: `POST
@@ -81,11 +87,14 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `RELEASED_TRIGGER_TYPES` equal — `workflow_trigger_create` offers exactly
   `WORKFLOW_TRIGGER_TYPES`, and the admin's `TriggerTypePicker` offers the
   released types it has an editor for. The picker serves the agent and the
-  workflow editors alike, so **(T1)** it offers `ticket_changed` only for an
-  agent target (`offerTicketChanged`), and `document_changed` nowhere. The
+  workflow editors alike, so it offers the agent-only types
+  (`AGENT_ONLY_TRIGGER_TYPES`: **(T1)** `ticket_changed`, **(T2)**
+  `document_changed`) only for an agent target (`agentTarget`), and a
+  workflow target switched to one falls back to manual. Neither can be run
+  by hand, so neither shows "Run now" (`canRunTriggerNow`). The
   `agent-triggers` browser suite pins the picker;
   `admin/test/trigger-type-unreleased.test.tsx` pins the labels, the
-  agent-only offer and `document_changed`'s edit refusal.
+  agent-only offer and that editing either posts its typed config.
 - Taking a type off `UNRELEASED_TRIGGER_TYPES` is what releases it for
   agents. That happens in the PR that ships the type's typed configuration
   (its arm on the union), dispatch and editor (T1 for `ticket_changed`, T2
@@ -195,6 +204,10 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   parses, writes a `config_invalid` skip and moves to health `error` with
   reason `ticket_trigger_config_invalid`. **(from T1)** A null scope with no
   live work shows its health reason on the Triggers page too.
+- **(T2)** A `document_changed` trigger is found by `scope_project_id` alone
+  (its board scope stays null): a saved version reads the enabled triggers of
+  its page's project, never every trigger of the organisation
+  ([document-triggers.md](document-triggers.md)).
 
 ## Only a board editor's own move starts work; board editors, and an opted-in board source, steer it
 
@@ -257,7 +270,14 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   description `ticket_description_changed`, priority
   `ticket_priority_changed`, labels `ticket_labels_changed`, assignee
   `ticket_assignee_changed`, moved `ticket_moved`, and `thread_message` and
-  `document_changed` by those names.
+  `document_changed` by those names. **(T2)** A `document` follow arrives
+  through a `document_changed` trigger of **the same agent** that watches the
+  ticket's document (`KnowledgePage.taskId`), under this rule: a board
+  editor saved part of the change, or it goes to the document's own review
+  thread instead ([document-triggers.md](document-triggers.md) → "Where a
+  change lands"). A kickoff promises document edits only while such a
+  trigger exists (`documentsWatched`), and then only "one of its documents
+  that your document trigger watches": the trigger may cover some of them.
 - **(T1) Every decision is exactly one `agent_trigger_deliveries` row**,
   deduped on `ticket:<triggerId>:<taskEventId>`, with `source` `pickup` or
   `follow` and a `TicketTriggerDeliveryPayloadSchema` payload (ids, the origin
@@ -436,8 +456,18 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   ticket change and thread message, `onSessionTurnEnded`, `onReminder` for a
   reminder and **(T3)** a quiet wake, `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
   instruction that no longer parses costs the instructions alone. A comment
-  carries its full text and its author, a description change the new
-  description (T2 adds the line diff), a thread message the message.
+  carries its full text and its author, a thread message the message, and
+  **(T2)** a description change a line diff (the shared
+  `computeLineDiff`/`renderLineDiffHunks`, bounded at 4 000 characters, a
+  long line clipped around its change rather than dropped)
+  against the description as the agent last saw it: a kickoff that starts
+  the work or tells of a description change records it in its own metadata
+  (`ticketWorkKickoff.detailSeen`, never the ticket's history), and
+  `detail_edited` records the replaced text's hash
+  (`previousDetailSha256`), so a diff that also spans another writer's edit
+  is framed untrusted. With no recorded baseline — a kickoff from before T2 —
+  it carries the new description, as T1 did. A document change carries only
+  what its dispatcher worded ([document-triggers.md](document-triggers.md)).
 - **A kickoff is rendered again when its run starts**
   (`rerenderTicketWorkKickoff`, called by `resolveRunKickoffPrompt` in
   `worker/src/run/execute/run-kickoff-prompt.ts`), from the record as it is
@@ -544,7 +574,7 @@ routes, and none of it names a machine.
   and target kind fixed, on a draft of its own so the Triggers page's unsent
   create never replaces it.
 - **The Triggers editor** offers "Ticket change" for an agent target only
-  (`TriggerTypePicker offerTicketChanged`). Its fields (`TicketTriggerFields`,
+  (`TriggerTypePicker agentTarget`). Its fields (`TicketTriggerFields`,
   `ticket-trigger-form.ts`) narrow the channel list to live, ordinary, public
   project channels and say why (`TICKET_TARGET_CHANNEL_HINT`); pick the board
   and its columns (a new trigger starts from the board's In progress
@@ -554,7 +584,8 @@ routes, and none of it names a machine.
   (a switch and its minutes, off posting `null`, and what off costs); and
   sectioned instructions with a neutral example. It posts the typed config by
   column id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its
-  path names** (`groupTicketRefusals`). A ticket trigger's page names its
+  path names** (`groupTicketRefusals`, on the shared `groupTriggerRefusals` a
+  document trigger's form uses too). A ticket trigger's page names its
   board and columns (`useTicketTriggerFacts`) and its quiet wake, and says
   what each delivery decided and why (`ticketDeliveryLine`: the skip
   sentence, or the wake reason — a reminder and a quiet wake included).
@@ -785,8 +816,10 @@ causes it**:
   subscribed in `worker/src/worker-subscriptions-integrations.ts`),
   `TICKET_WORK_THREAD_MESSAGE_TOPIC` (T1, a person's message in a work
   thread, subscribed beside it),
-  `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (T3,
-  one job a minute by its `bucket`, subscribed beside them) and `TICKET_WORK_SESSION_TOPIC`
+  `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (T2, one quiet window of one page,
+  subscribed beside them; [document-triggers.md](document-triggers.md)),
+  `TICKET_WORK_SWEEP_TOPIC` (T3, one job a minute by its `bucket`, subscribed
+  beside them) and `TICKET_WORK_SESSION_TOPIC`
   (from T5, whose `status` is only one that wakes: `waiting_for_input`,
   `interrupted`, `failed` or `closed`). The sweep is also **the pool
   dispatcher**: every transaction that may free a machine — a record ending,
@@ -795,8 +828,9 @@ causes it**:
   window, and the periodic tick is only the backstop (from T5). So dispatch is
   one idempotent job that reads the queue and the pools afresh, and there is
   no per-executor dispatch topic. Only `trigger.ticket.dispatch`,
-  `ticket-work.thread-message` and `ticket-work.sweep` have a subscriber so far; each other handler
-  parses its payload with its schema when it lands.
+  `ticket-work.thread-message`, `trigger.document.dispatch` and
+  `ticket-work.sweep` have a subscriber so far; each other handler parses its
+  payload with its schema when it lands.
 - The dispatch vocabularies are in `packages/schemas/src/ticket-triggers.ts`:
   the stored `ticket_changed` config the dispatcher reads
   (`TicketChangedStoredConfigSchema`, the board and pickup columns by id),
@@ -853,6 +887,11 @@ causes it**:
   `worker/test/db/ticket-work-thread.test.ts`: a thread message as a
   `thread_message` wake, a non-editor's refused again at dispatch, a message
   that wakes nobody skipped with its reason, and the content rules.
+  `worker/test/db/ticket-work-description-diff.test.ts` **(T2)**: the pickup
+  records the description the agent starts from, an editor's change is a
+  line diff against it, and a diff spanning a token's edit is framed
+  untrusted. `worker/test/db/document-trigger.test.ts` **(T2)**: a ticket's
+  document reaching its live work, and only the same agent's.
   `worker/test/db/ticket-work-races.test.ts`: each job dispatched after the
   moves that race it — a ticket moved in and back out starts nothing, a
   parked one moved back and out stays parked, a second end column
@@ -913,8 +952,8 @@ causes it**:
   line for each outcome and the read-only line, the parked line after a
   refused move back, and the history rows.
 - `pnpm --filter @nessie/admin test:e2e:agent-triggers`: the real Triggers
-  editor offers the released types, Ticket change for an agent and never
-  `document_changed`; a ticket trigger's form, a pickup refused on its field
+  editor offers the released types, Ticket change and Document change for an
+  agent and neither for a workflow; a ticket trigger's form, a pickup refused on its field
   and the typed create; the column badge at the head of an aligned track,
   card dots, and the column menu on every column but Done that opens the
   editor prefilled with its type fixed; the quiet wake field; and a ticket

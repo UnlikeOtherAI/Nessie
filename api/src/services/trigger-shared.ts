@@ -229,8 +229,13 @@ export type DispatchTriggerResult =
       // re-asked after the ack; `webhook_secret_mismatch` is the one rejection
       // only an inbound request can produce, so it never reaches a job — as is
       // `ticket_trigger_not_fireable`: a ticket trigger starts from a person's
-      // move, one work thread per ticket, never from a hand fire.
-      reason: TriggerFireSkipReason | 'webhook_secret_mismatch' | 'ticket_trigger_not_fireable'
+      // move, one work thread per ticket, never from a hand fire — and
+      // `document_trigger_not_fireable`, which wakes from a saved document.
+      reason:
+        | TriggerFireSkipReason
+        | 'webhook_secret_mismatch'
+        | 'ticket_trigger_not_fireable'
+        | 'document_trigger_not_fireable'
     }
   | {
       delivery: AgentTriggerDeliveryRecord

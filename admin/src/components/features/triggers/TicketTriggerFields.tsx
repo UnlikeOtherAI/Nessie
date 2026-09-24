@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useEffect, type Dispatch, type SetStateAction } from 'react'
 import { TICKET_QUIET_WAKE_MINUTES, TICKET_TRIGGER_LIMIT_CEILINGS } from '@nessie/schemas'
 
 import { useProjectBoards } from '../../../facades/boards/hooks'
@@ -7,6 +7,7 @@ import { Checkbox } from '../../primitives/Checkbox'
 import { Switch } from '../../primitives/Switch'
 import { CATEGORY_LABEL } from '../projects/kanban/kanban-config'
 import { fieldLabelClass, type TriggerFormState } from './trigger-config'
+import { TriggerFieldError, TriggerFieldSection } from './TriggerFieldParts'
 import {
   columnEndsWork,
   getDefaultTicketState,
@@ -36,19 +37,9 @@ type TicketTriggerFieldsProps = {
 }
 
 const FieldError = ({ field, message }: { field: TicketFormField; message?: string }) =>
-  message ? (
-    <p className="text-xs text-[color:var(--danger-text)]" data-field-error={field} role="alert">
-      {message}
-    </p>
-  ) : null
+  <TriggerFieldError field={field} message={message} />
 
-const Section = ({ children, hint, title }: { children: ReactNode; hint?: string; title: string }) => (
-  <fieldset className="grid gap-2 md:col-span-2">
-    <legend className={fieldLabelClass}>{title}</legend>
-    {hint ? <p className="text-xs text-[color:var(--tx3)]">{hint}</p> : null}
-    {children}
-  </fieldset>
-)
+const Section = TriggerFieldSection
 
 /** A board's In progress columns: where a board's work usually starts, so a new trigger starts there. */
 const startColumnsOf = (board: { columns: { category: string; id: string }[] } | undefined): string[] =>

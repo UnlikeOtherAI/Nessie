@@ -5,6 +5,7 @@ import { TriggerDetail } from '../components/features/triggers/TriggerDetail'
 import { TriggerEditorDialog } from '../components/features/triggers/TriggerEditorDialog'
 import { useTriggerRegistry } from '../components/features/triggers/useTriggersPageState'
 import {
+  canRunTriggerNow,
   getTriggerHealthMessage,
   getTriggerTone,
   getTriggerTypeLabel,
@@ -186,7 +187,7 @@ export const TriggerDetailPage = () => {
         priority: 80,
       } satisfies PageHeaderAction]
       : []),
-    ...(trigger.status === 'active' ? [{
+    ...(canRunTriggerNow(trigger) ? [{
       id: 'fire-trigger',
       label: fireTrigger.isPending ? 'Firing…' : 'Run now',
       onSelect: fire,

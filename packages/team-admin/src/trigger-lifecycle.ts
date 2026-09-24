@@ -1,7 +1,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
-import type { AgentTriggerRecord, AgentTriggerStatus } from '@nessie/schemas'
+import type { AgentTriggerRecord, AgentTriggerStatus, UoaSessionIdentity } from '@nessie/schemas'
 import { mergeTriggerConfigPreservingIdentity, stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { TriggerConfigRefusalError } from './trigger-config-refusal.js'
+import {
+  DOCUMENT_TRIGGER_NEEDS_A_PERSON,
+  documentChangedConfigAsInput,
+  mergeDocumentConfigPatch,
+  resolveDocumentChangedTrigger,
+} from './trigger-document-config.js'
 import { mergeTicketConfigPatch, resolveTicketChangedTrigger, ticketChangedConfigAsInput } from './trigger-ticket-config.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
@@ -111,10 +118,73 @@ const updateTicketChangedTrigger = async (
   return trigger ? mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE) : null
 }
 
+/** Who is editing, for the checks that ask what that person may read. */
+export type AgentTriggerEditor = { userId: string; uoaIdentity?: UoaSessionIdentity }
+
+/**
+ * A `document_changed` edit: the patch over the stored config
+ * (`mergeDocumentConfigPatch`), resolved and checked again as a create is —
+ * the editor, when a person, must be able to read the space it now watches.
+ * Switching it back on resolves it too, so a space that went private, or an
+ * agent that lost its channel, is refused rather than re-armed.
+ */
+const updateDocumentChangedTrigger = async (
+  prisma: PrismaClient,
+  existing: { agentId: string | null; config: unknown; id: string; targetChannelId: string | null },
+  input: AgentTriggerUpdateInput,
+  editor: AgentTriggerEditor | null,
+): Promise<AgentTriggerRecord | null> => {
+  const agentId = existing.agentId
+  if (!agentId) return null
+  const status = input.status ?? (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
+  const enabled = status === 'paused' ? false : input.enabled
+  const reresolve = enabled === true || input.config !== undefined || input.nextRunAt !== undefined
+    || input.targetChannelId !== undefined || input.targetThreadId !== undefined
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { id: true, name: true, organizationId: true },
+  })
+  if (!agent?.organizationId) return null
+  let resolvedData: Prisma.AgentTriggerUncheckedUpdateInput = {}
+  if (reresolve) {
+    // A change to what it watches, or switching it back on, is a person's —
+    // asked whether they can read it — never a token's or an agent's alone.
+    if (!editor) {
+      throw new TriggerConfigRefusalError([{ path: 'config', reason: DOCUMENT_TRIGGER_NEEDS_A_PERSON }])
+    }
+    const resolved = await resolveDocumentChangedTrigger(prisma, {
+      agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
+      author: editor,
+      config: mergeDocumentConfigPatch(
+        documentChangedConfigAsInput(existing.config),
+        stripServerOwnedTriggerConfig(input.config),
+      ),
+      nextRunAt: input.nextRunAt,
+      targetChannelId: input.targetChannelId === undefined ? existing.targetChannelId : input.targetChannelId,
+      targetThreadId: input.targetThreadId,
+    })
+    const target = await resolveExecutionTarget(prisma, agent.id, { targetChannelId: resolved.targetChannelId })
+    if (!target) return null
+    resolvedData = {
+      config: mergeTriggerConfigPreservingIdentity(existing.config, resolved.config) as Prisma.InputJsonValue,
+      scopeProjectId: resolved.scopeProjectId,
+      scopeBoardId: null,
+      targetChannelId: target.channelId,
+      targetThreadId: null,
+    }
+  }
+  const updated = await prisma.agentTrigger.update({
+    where: { id: existing.id },
+    data: { description: input.description, enabled, name: input.name, status, ...resolvedData },
+  })
+  return mapTriggerRecord(updated, TRIGGER_ADMIN_AUDIENCE)
+}
+
 export const updateAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
   input: AgentTriggerUpdateInput,
+  trusted: { editor?: AgentTriggerEditor } = {},
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     where: agentTriggerScopeWhere(scope),
@@ -124,6 +194,9 @@ export const updateAgentTrigger = async (
   })
   if (!existing) return null
   if (existing.type === 'ticket_changed') return updateTicketChangedTrigger(prisma, existing, input)
+  if (existing.type === 'document_changed') {
+    return updateDocumentChangedTrigger(prisma, existing, input, trusted.editor ?? null)
+  }
   const agentId = existing.agentId
   const targetChanged = input.targetChannelId !== undefined || input.targetThreadId !== undefined
   const target = agentId

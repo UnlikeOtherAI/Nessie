@@ -7,7 +7,6 @@ import {
   canWriteSpace,
   createNativeKnowledgeProvider,
   isAgentCoreDocumentPage,
-  knowledgeEmbeddingJobKey,
   loadSpaceViewer,
   viewerHoldsPageShare,
   type KnowledgePageRecord,
@@ -19,7 +18,7 @@ import {
 } from '@nessie/knowledge'
 import { AgentEditAuthorityError, assertAgentFieldAuthority } from '@nessie/runtime'
 import { resolveDisclosureViewer, resolveLiveEntitlements, type DisclosureViewer } from '@nessie/runtime'
-import { KNOWLEDGE_EMBED_TOPIC, KnowledgeSpaceResponseSchema } from '@nessie/schemas'
+import { KnowledgeSpaceResponseSchema } from '@nessie/schemas'
 import type {
   AuthorizedActionContext,
   KnowledgeSpaceResponse,
@@ -29,13 +28,9 @@ import type {
   PolicyResourceType,
 } from '@nessie/schemas'
 import { sendApiError } from '../lib/api.js'
-import { enqueueQueueJob } from '@nessie/db'
-import { createKnowledgePublicationAttention } from '../services/push-attention.js'
-import {
-  enterKnowledgeInferenceActorContext,
-  requireApiKnowledgeInferenceOrigin,
-} from '../services/knowledge-inference-origin.js'
+import { enterKnowledgeInferenceActorContext } from '../services/knowledge-inference-origin.js'
 import { checkPolicy } from '../services/policy.js'
+import { apiKnowledgeProviderOptions } from './knowledge-provider-options.js'
 import type { RouteDeps } from './types.js'
 
 // Shared knowledge-base access/envelope helpers used by both the page routes
@@ -183,33 +178,7 @@ export const createKnowledgeAccess = (deps: KnowledgeRouteDeps) => {
   const { prisma } = deps
   const resolveLive = deps.resolveLiveEntitlements ?? resolveLiveEntitlements
   const resolveViewer = deps.resolveDisclosureViewer ?? resolveDisclosureViewer
-  const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma, {
-    readMarkdownAttachment: async (attachmentId, organizationId) => {
-      const opened = await deps.fileService.openStream(attachmentId, organizationId)
-      return opened?.stream ?? null
-    },
-    // Enqueued inside the save transaction: the job becomes visible only when
-    // the version + chunk rows commit, and a failed enqueue rolls the save back.
-    onVersionChunksReplaced: async (tx, event) => {
-      const origin = await requireApiKnowledgeInferenceOrigin(
-        tx,
-        event,
-        'knowledge-indexer',
-      )
-      await enqueueQueueJob(tx, {
-        idempotencyKey: knowledgeEmbeddingJobKey(
-          event.pageId,
-          event.versionId,
-          deps.sharedModelClient?.embeddingModel ?? 'unresolved',
-        ),
-        payload: { ...event, origin },
-        topic: KNOWLEDGE_EMBED_TOPIC,
-      })
-    },
-    onPagePublished: async (tx, event) => {
-      await createKnowledgePublicationAttention(tx, event)
-    },
-  })
+  const provider = deps.knowledgeProvider ?? createNativeKnowledgeProvider(prisma, apiKnowledgeProviderOptions(deps))
 
   // Build the live organization proof once, then reuse it for the document
   // basis and ordinary space entitlement. UOA remains the authority for both.

@@ -22,6 +22,7 @@ import { TriggerRunState } from '../triggers/TriggerRunState'
 import { findTriggerActivity, groupTriggers } from '../triggers/trigger-groups'
 import {
   TRIGGER_TYPE_ICONS,
+  canRunTriggerNow,
   formatTimestamp,
   getScheduleSummary,
   getTriggerHealthMessage,
@@ -98,7 +99,7 @@ const TriggerRow = ({
         </div>
 
         <div className="flex shrink-0 gap-2">
-          {trigger.status === 'active' ? (
+          {canRunTriggerNow(trigger) ? (
             <button
               className="admin-button admin-button-secondary"
               onClick={() => onFire(trigger)}

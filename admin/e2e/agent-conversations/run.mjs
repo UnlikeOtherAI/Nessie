@@ -26,6 +26,7 @@ import {
 } from '../navigation/lib/servers.mjs'
 import { waitForStackSettled } from '../navigation/lib/freeze.mjs'
 import { exerciseConversationCard } from './conversation-card.mjs'
+import { exerciseDocumentsFold, seedDocumentReviewThread } from './documents-fold.mjs'
 import { saveFailureEvidence } from './failure-evidence.mjs'
 import {
   ALPHA_QUESTION,
@@ -1090,12 +1091,32 @@ const main = async () => {
       await visitorContext.close().catch(() => {})
     }
 
+    // ---- documents-fold ---------------------------------------------------
+    // A document trigger's review threads fold under Documents, as ticket work
+    // threads fold under Tickets. Seeded last, so every count above stands.
+    const { ensureDocumentReviewThread } = await import('../../../worker/src/control/document-trigger-run.ts')
+    await exerciseDocumentsFold({
+      conversationsPanel,
+      desktop,
+      fixture,
+      gallery,
+      goto,
+      openConversationsColumn,
+      room,
+      rowTitles,
+      screenshots: SCREENSHOTS,
+      seeded: await seedDocumentReviewThread(pipeline.prisma, fixture, {
+        ensureDocumentReviewThread, writeTicketWorkThreadRow,
+      }),
+      waitForComposer: (page) => composer(page).waitFor({ timeout: 60_000 }),
+    })
+
     console.log(
       '[agent-conversations e2e] PASS: rail → two isolated conversations, named by their'
       + ' first message → one empty conversation at a time → rename → concurrent runs'
       + ' → scoped visibility → live card → phone column → agent page'
       + ' → an ordinary room’s own doorway → the agent strip → the Tickets fold and the work'
-      + ' thread’s posting rule',
+      + ' thread’s posting rule → the Documents fold',
     )
   } catch (error) {
     await saveFailureEvidence({

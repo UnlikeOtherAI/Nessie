@@ -409,7 +409,7 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'with exactly their rights. Organisation owners only, and '
       + 'the agent must already be bound to the target channel. An agent working in a project channel '
       + 'may set up triggers only in that project: for itself, or for an agent in one of its channels. '
-      + 'A ticket_changed trigger is checked '
+      + 'A ticket_changed or document_changed trigger is checked '
       + 'field by field, and a refusal names the field and what exists instead. Get the agentId '
       + 'from agent_list when the user named the agent. To schedule a one-off '
       + 'reminder for yourself instead, use schedule_task — that needs no owner rights. The '

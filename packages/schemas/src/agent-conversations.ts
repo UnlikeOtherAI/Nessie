@@ -9,6 +9,7 @@ import {
 } from './ids.js'
 import { RunStatusSchema, SystemChannelTypeSchema } from './lifecycle.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
+import { DocumentReviewThreadRefSchema } from './document-triggers.js'
 import { TicketWorkThreadRefSchema } from './ticket-work-view.js'
 
 /**
@@ -110,6 +111,13 @@ export const AgentConversationRecordSchema = z.object({
    * Tickets group (docs/standards/ticket-work.md → "The work thread").
    */
   ticket: TicketWorkThreadRefSchema.nullable().optional(),
+  /**
+   * The document this conversation is the review thread of, from the thread's
+   * own metadata; null for every other conversation. The list folds these
+   * under a Documents group (docs/standards/document-triggers.md → "Where a
+   * change lands").
+   */
+  document: DocumentReviewThreadRefSchema.nullable().optional(),
   createdAt: TimestampSchema,
 })
 export type AgentConversationRecord = z.infer<typeof AgentConversationRecordSchema>

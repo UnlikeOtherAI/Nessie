@@ -17,11 +17,40 @@ export const enqueueQueueJob = async (
     maxAttempts?: number
     payload: unknown
     topic: string
+    /**
+     * With an idempotency key already taken: `ignore` (the default) adds
+     * nothing; `lock` adds nothing either, but row-locks the job holding the
+     * key until the caller's transaction ends. A handler that releases the
+     * key (sets it null) before reading what the job is about then waits for
+     * every transaction that relied on the job — a document trigger's quiet
+     * window, whose saves must all be seen by the job they coalesced into.
+     */
+    onConflict?: 'ignore' | 'lock'
   },
 ): Promise<boolean> => {
   const encodedPayload = JSON.stringify(input.payload)
   const maxAttempts = input.maxAttempts ?? 3
   const delayMs = input.delayMs ?? 0
+
+  if (input.idempotencyKey && input.onConflict === 'lock') {
+    const touched = await prisma.$executeRaw(
+      Prisma.sql`
+        INSERT INTO queue_jobs (topic, payload, status, attempt, max_attempts, enqueued_at, idempotency_key)
+        VALUES (
+          ${input.topic},
+          ${encodedPayload}::jsonb,
+          'pending',
+          0,
+          ${maxAttempts},
+          now() + (${delayMs} * interval '1 millisecond'),
+          ${input.idempotencyKey}
+        )
+        ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
+        DO UPDATE SET idempotency_key = queue_jobs.idempotency_key
+      `,
+    )
+    return Number(touched) > 0
+  }
 
   if (input.idempotencyKey) {
     const inserted = await prisma.$executeRaw(

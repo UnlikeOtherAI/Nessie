@@ -244,6 +244,12 @@ For "editing a tech document of the project wakes the agent" (T2).
 - **Access lost** at fire time pauses the trigger with a health reason; it
   does not skip silently.
 
+As built in T2, the rule is
+[docs/standards/document-triggers.md](../../standards/document-triggers.md);
+its "Deviations from the plan" lists where the code differs from this
+section (only `taskId` links a page to a ticket, the ticket trigger's follow
+rules gate route 1, the window key is released by its handler, and more).
+
 ## Board watchers
 
 Agent watchers were a second way to configure the same wake. They had

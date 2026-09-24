@@ -18,8 +18,21 @@ import {
   getTriggerEventNames,
   type TriggerRegistryMaps,
 } from './trigger-presentation'
+import { useDocumentTriggerFacts } from './document-trigger-facts'
+import { documentDeliveryLine } from './document-trigger-presentation'
 import { useTicketTriggerFacts } from './ticket-trigger-facts'
 import { ticketDeliveryLine } from '../ticket-work/ticket-work-presentation'
+
+/**
+ * What a ticket or document delivery decided and why, in words, and which
+ * kind it is; null for every other trigger's payload.
+ */
+const deliveryLine = (payload: unknown): { kind: 'ticket' | 'document'; text: string } | null => {
+  const ticket = ticketDeliveryLine(payload)
+  if (ticket) return { kind: 'ticket', text: ticket }
+  const document = documentDeliveryLine(payload)
+  return document ? { kind: 'document', text: document } : null
+}
 
 /**
  * What a trigger *is*, on its own screen: its description, one definition list
@@ -43,6 +56,9 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
   const eventNames = getTriggerEventNames(trigger)
   const nextRunRelative = formatRelativeTime(trigger.nextRunAt)
   const ticketFacts = useTicketTriggerFacts(trigger, registry)
+  const documentFacts = useDocumentTriggerFacts(trigger)
+  // A ticket or document trigger's facts say when it acts; it has no schedule.
+  const acts = trigger.type === 'ticket_changed' || trigger.type === 'document_changed'
 
   return (
     <div className="grid max-w-3xl gap-5">
@@ -54,8 +70,7 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
       <KeyValueList
         items={[
           { label: 'Target', value: formatTriggerTarget(trigger, registry) },
-          // A ticket trigger's facts below say when it acts, column by column.
-          ...(trigger.type === 'ticket_changed' ? [] : [{ label: 'Schedule', value: getScheduleSummary(trigger) }]),
+          ...(acts ? [] : [{ label: 'Schedule', value: getScheduleSummary(trigger) }]),
           ...(trigger.status === 'active'
             && (trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval')
             ? [
@@ -75,6 +90,7 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
             ? [{ label: 'Quiet runs', value: getRollingStatusLabel(trigger) }]
             : []),
           ...ticketFacts,
+          ...documentFacts,
         ]}
       />
 
@@ -107,9 +123,10 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
         ) : (
           <RowList className="mt-3" label="Recent deliveries">
             {history.map((delivery) => {
-              // A ticket delivery says what it decided and why, in words: a
-              // skip is exactly the answer to "I moved it and nothing happened".
-              const ticketLine = ticketDeliveryLine(delivery.payload)
+              // A ticket or document delivery says what it decided and why, in
+              // words: a skip is exactly the answer to "I moved it (or saved
+              // it) and nothing happened".
+              const line = deliveryLine(delivery.payload)
               return (
                 <Row
                   key={delivery.id}
@@ -142,12 +159,12 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
                     </span>
                   }
                 >
-                  {ticketLine ? (
-                    <div className="mt-1 text-xs text-[color:var(--tx2)]" data-testid="ticket-delivery-line">
-                      {ticketLine}
+                  {line ? (
+                    <div className="mt-1 text-xs text-[color:var(--tx2)]" data-testid={`${line.kind}-delivery-line`}>
+                      {line.text}
                     </div>
                   ) : null}
-                  {delivery.errorMessage && !(ticketLine && delivery.status === 'skipped') ? (
+                  {delivery.errorMessage && !(line && delivery.status === 'skipped') ? (
                     <div className="mt-1 text-xs text-[var(--danger-text)]">
                       {delivery.errorMessage}
                     </div>
