@@ -263,11 +263,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
-      await notifyExecutorStatus(deps, request.log, result.executorId)
-      // Content-free invalidation also reaches a person whose access was just removed.
-      await deps.realtimeHub.publishWs([{
-        kind: 'executor_inventory', organizationId: actorContext.tenant.organizationId,
-      }], { event: 'executor.inventory.changed', data: {} })
+      await notifyExecutorStatus(deps, request.log, result.executorId, actorContext.tenant.organizationId)
       await announceClosedExecutorReviewCards(deps, result.closedReviewCards)
       return createApiResponse({ rejected: true })
     } catch (error) {
@@ -434,11 +430,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
-      await notifyExecutorStatus(deps, request.log, result.executorId)
-      // Content-free invalidation also reaches a person whose access was just removed.
-      await deps.realtimeHub.publishWs([{
-        kind: 'executor_inventory', organizationId: actorContext.tenant.organizationId,
-      }], { event: 'executor.inventory.changed', data: {} })
+      await notifyExecutorStatus(deps, request.log, result.executorId, actorContext.tenant.organizationId)
       await announceClosedExecutorReviewCards(deps, result.closedReviewCards)
       // A pause, revoke, narrowed grant or review may have ended leases; each
       // holder hears about their own, and nobody else learns who held one.

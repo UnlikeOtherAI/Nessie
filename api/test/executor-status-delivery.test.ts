@@ -1,3 +1,6 @@
+import type { FastifyBaseLogger } from 'fastify'
+import type { RouteDeps } from '../src/routes/types.js'
+import { notifyExecutorStatus } from '../src/routes/executor-status-events.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { parseOrganizationId } from '@nessie/schemas'
@@ -53,4 +56,23 @@ test('malformed status data is discarded before entitlement lookup or delivery',
   delivery.wsConnections.add({ organizationId, userId: 'owner', scopes,
     close: () => undefined, send: () => assert.fail('invalid payload must not be sent') })
   await delivery.deliverNotification({ kind: 'ws', scopes, message: { ...message, data: {} } })
+})
+
+test('a failed inventory announcement does not reject an already committed access change', async () => {
+  let calls = 0
+  let warnings = 0
+  const deps = {
+    prisma: { executor: { findUnique: async () => ({
+      id: '33333333-3333-4333-8333-333333333333', organizationId, status: 'paused',
+      lastSeenAt: null, statusDetail: null, updatedAt: new Date(), removedAt: null,
+    }) } },
+    realtimeHub: { publishWs: async () => {
+      calls += 1
+      if (calls === 2) throw new Error('notification transport unavailable')
+    } },
+  } as unknown as RouteDeps
+  const log = { warn: () => { warnings += 1 } } as unknown as FastifyBaseLogger
+  await notifyExecutorStatus(deps, log, '33333333-3333-4333-8333-333333333333', organizationId)
+  assert.equal(calls, 2)
+  assert.equal(warnings, 1)
 })
