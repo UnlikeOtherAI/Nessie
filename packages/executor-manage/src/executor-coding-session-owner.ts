@@ -7,7 +7,11 @@ import {
 } from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
-import { standingBindingContextId, standingStartRefusal } from './executor-standing-policy-fence.js'
+import {
+  standingBindingContextId,
+  standingProgramRefusal,
+  standingStartRefusal,
+} from './executor-standing-policy-fence.js'
 
 /**
  * Who may drive the executor's built-in coding-sessions bridge
@@ -146,7 +150,12 @@ export const assertExecutorMcpCallPayload = async (
       ticketWorkId: true,
     },
   })
-  if (!binding || (binding.operationKey !== 'mcp.call' && binding.operationKey !== 'mcp.tools')) return
+  if (!binding) return
+  const codingSessionsServer = reviewedCodingSessionsServer(binding.capabilityRevision.descriptor)
+  // A standing binding reaches the coding-sessions bridge and nothing else.
+  const program = standingProgramRefusal(binding, codingSessionsServer, payload)
+  if (program) throw new ExecutorError(EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID, program)
+  if (binding.operationKey !== 'mcp.call' && binding.operationKey !== 'mcp.tools') return
   const candidate = await prisma.executorAvailabilityCandidate.findUnique({
     where: { handleDigest: binding.candidateHandleDigest },
     select: { actorUserId: true, agentId: true },
@@ -160,7 +169,7 @@ export const assertExecutorMcpCallPayload = async (
   const refusal = await standingStartRefusal(prisma, binding, payload)
   if (refusal) throw new ExecutorError(EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID, refusal)
   assertExecutorMcpCallAllowed({
-    codingSessionsServer: reviewedCodingSessionsServer(binding.capabilityRevision.descriptor),
+    codingSessionsServer,
     executor: binding.executor,
     operationKey: binding.operationKey,
     owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId, ...(contextId ? { contextId } : {}) },

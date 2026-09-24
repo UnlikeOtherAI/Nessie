@@ -134,7 +134,11 @@ const mergeLine = (profile: StandingPolicyHostProfile): string => {
     + 'at an open pull request.').join('\n\n')
 }
 
-export const buildStandingPolicyCard = (input: StandingPolicyCardInput): AgentCardSpec => {
+/** What the card says a standing policy reaches; the dispatch fence refuses anything else. */
+export const STANDING_POLICY_CODING_ONLY_SENTENCE =
+  'The agent may drive Claude Code sessions on these machines; it gets no other program on them.'
+
+export const buildStandingPolicyCard =(input: StandingPolicyCardInput): AgentCardSpec => {
   const { hostProfile, terms } = input
   const minutes = Math.max(1, Math.round((input.expiresAt.getTime() - Date.now()) / 60_000))
   const machines = listed(hostProfile.machines.map((machine) => machine.label))
@@ -144,6 +148,7 @@ export const buildStandingPolicyCard = (input: StandingPolicyCardInput): AgentCa
       {
         markdown: `Anyone who can edit this board (${plural(input.boardEditorCount, 'person', 'people')}) can make `
           + 'Claude run commands on these machines as you, with your git and coding-agent login.\n\n'
+          + `${STANDING_POLICY_CODING_ONLY_SENTENCE}\n\n`
           + 'Project members, organisation owners and people on the ticket see what the work does on the ticket: '
           + 'the coding agent\'s summaries and its pull requests. Pull requests are merged under your GitHub '
           + 'identity.',

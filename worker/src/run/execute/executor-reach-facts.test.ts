@@ -392,7 +392,11 @@ test('a standing bind reads as bound, lists only the ticket\'s own sessions, and
   assert.deepEqual(facts?.kind === 'bound' ? facts.codingSessions?.sessions : null, [
     { sessionId: '00000000-0000-4000-8000-0000000000a1', status: 'waiting_for_input' },
   ])
-  assert.doesNotMatch(buildExecutorReachBlock(facts) ?? '', /Minis/)
+  const block = buildExecutorReachBlock(facts) ?? ''
+  assert.doesNotMatch(block, /Minis/)
+  // Coding sessions alone, and the run is told so.
+  assert.doesNotMatch(block, /executor_mcp_call/)
+  assert.match(block, /covers its coding sessions alone: no other program on the machine is offered to you/)
 })
 
 test('a standing refusal is its own line, and nothing else is read', async () => {

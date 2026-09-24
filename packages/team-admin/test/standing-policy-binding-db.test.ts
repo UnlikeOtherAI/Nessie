@@ -119,6 +119,17 @@ dbTest('a live policy binds the pinned machine for the author, and names the pol
     await start('claude', 'nessie')
     await assert.rejects(start('codex', 'nessie'), /only the coding agents its machine access names/)
     await assert.rejects(start('claude', 'secrets'), /only in the roots its machine access allows/)
+    // Only the coding sessions: any other reviewed program on the machine, and
+    // the generic pair's catalog walk, is refused before a command exists.
+    await assert.rejects(assertExecutorMcpCallPayload(prisma, call.id, {
+      args: { arguments: {}, server: 'kelpie', tool: 'screenshot' },
+      runId: wake.runId,
+    }), /only coding sessions on this machine/)
+    const tools = await prisma.executorBinding.findFirstOrThrow({ where: { operationKey: 'mcp.tools', runId: wake.runId } })
+    await assert.rejects(assertExecutorMcpCallPayload(prisma, tools.id, {
+      args: { server: 'coding-sessions' },
+      runId: wake.runId,
+    }), /only coding sessions on this machine/)
     // A context the binding does not pin is refused like any other owner.
     await assert.rejects(assertExecutorMcpCallPayload(prisma, call.id, {
       args: { arguments: {}, server: 'coding-sessions', tool: 'session_list' },

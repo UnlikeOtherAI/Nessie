@@ -178,6 +178,8 @@ dbTest('one confirmation applies each machine\'s assignment, grant and tools and
     const card = AgentCardSpecSchema.parse(prepared.card)
     const text = JSON.stringify(card)
     assert.equal(card.title, 'Let CTO use Minis and Studio')
+    assert.ok(text.includes('The agent may drive Claude Code sessions on these machines; it gets no other program '
+      + 'on them.'), 'the card says the policy reaches coding sessions alone')
     assert.ok(text.includes('Anyone who can edit this board (3 people) can make Claude run commands on these '
       + 'machines as you, with your git and coding-agent login.'))
     assert.match(text, /Project members, organisation owners and people on the ticket see what the work does/)

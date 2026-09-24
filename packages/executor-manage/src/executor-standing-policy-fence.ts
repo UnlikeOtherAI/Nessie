@@ -119,6 +119,29 @@ export const standingStartRefusal = async (
   return null
 }
 
+/**
+ * What a standing binding may reach, on the server, whatever the worker
+ * offered: the author's card consented to Claude Code sessions on these
+ * machines, not to the machine's other reviewed programs. So an `mcp.call`
+ * is admitted only to the reviewed coding-sessions bridge, and an
+ * `mcp.tools` listing — the generic pair's catalog walk — or any other
+ * operation is refused before a command exists. Null for any other binding,
+ * or a call that passes.
+ */
+export const standingProgramRefusal = (
+  binding: Pick<StandingBindingRef, 'standingPolicyId' | 'ticketWorkId'> & { operationKey: string },
+  codingSessionsServer: string | null,
+  payload: Record<string, unknown>,
+): string | null => {
+  if (!isStandingBinding(binding)) return null
+  const server = record(payload.args)?.server
+  if (binding.operationKey === 'mcp.call' && codingSessionsServer !== null && server === codingSessionsServer) {
+    return null
+  }
+  return 'Ticket work under standing machine access may drive only coding sessions on this machine; no other '
+    + 'program on it was consented to.'
+}
+
 /** A `ticket.work` job's own claim to serve this record, as its actor context states it. */
 export const jobServesTicketWork = (
   job: {

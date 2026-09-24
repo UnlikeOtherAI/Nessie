@@ -61,6 +61,8 @@ export type ExecutorReachFacts =
     leaseExpiresAt: Date | null
     pair?: false
     servers: string[] | null
+    /** Bound through a standing policy: coding sessions only, never another program. */
+    standing?: true
   }
   /** A lease covers this conversation and did not reach this run. */
   | { kind: 'refused'; reason: ExecutorLeaseRefusalReason }
@@ -140,6 +142,10 @@ export const buildExecutorReachBlock = (facts: ExecutorReachFacts | null): strin
           : []),
         // "This machine", never "this session": beside the coding sessions it
         // would read as one of them.
+        ...(facts.standing
+          ? ['This ticket’s machine access covers its coding sessions alone: no other program on the machine is '
+            + 'offered to you.']
+          : []),
         ...(facts.leaseExpiresAt
           ? [`The person can keep using this machine in this conversation until `
             + `${formatUtcMinute(facts.leaseExpiresAt)} or until they end it.`]
@@ -314,6 +320,7 @@ export const loadExecutorReachFacts = async (
       leaseExpiresAt: leaseSummary?.expiresAt ?? null,
       ...(pair ? {} : { pair: false as const }),
       servers: servers && servers.filter((server) => !bridge.has(server)),
+      ...(standing ? { standing: true as const } : {}),
     }
   }
   // Carried or launched under a live lease, yet the toolset exposed no pair.

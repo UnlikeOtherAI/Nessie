@@ -224,6 +224,21 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
 (`worker/src/run/ticket-work-coding-sessions.ts`, wrapping the ordinary
 `createExecutorCodingSessions` through `buildExecutorToolset`'s `ticketWork`):
 
+- **Coding sessions, and no other program.** The author's card consented to
+  Claude Code sessions on these machines — it says *"The agent may drive
+  Claude Code sessions on these machines; it gets no other program on
+  them."* (`STANDING_POLICY_CODING_ONLY_SENTENCE`) — not to the machine's
+  other reviewed programs. So a standing-bound run is offered the
+  `coding_session_*` tools alone: the generic `executor_mcp_tools` /
+  `executor_mcp_call` pair is not in its toolset whatever the agent's tool
+  policy grants, a call to it anyway is refused as correctable, and its reach
+  facts say so. On the server, `standingProgramRefusal`
+  (`executor-standing-policy-fence.ts`, called from
+  `assertExecutorMcpCallPayload` as a command is created and again as the
+  daemon collects it) refuses a standing binding's `mcp.tools` listing and any
+  `mcp.call` to a server other than the reviewed coding-sessions bridge. The
+  binder still pins the local-apps pair as one bundle; the coding tools ride
+  its `mcp.call` binding.
 - **Its sessions are the record's.** A `sessionId` not in `sessionIds` is
   refused (*"That session is not this ticket's."*); `sessionId` is optional,
   and defaults to the one session the machine's last report lists open under
@@ -341,9 +356,11 @@ its run and who wrote each (the kickoff keeps their `source` and `by`).
 
 `packages/team-admin/test/standing-policy-binding-db.test.ts` (a bind for the
 author naming the policy and the record, each check refusing on its own with
-its audit row and delivery, the fence naming the context and fencing after an
-end, the heartbeat carrying the close, the intake stopping a ticket past its
-hours); `standing-policy-fences-db.test.ts` (every fence);
+its audit row and delivery, the fence naming the context, refusing another
+program and the generic catalog walk, and fencing after an end, the
+heartbeat carrying the close, the intake stopping a ticket past its hours);
+`worker/src/run/executor-toolset-coding.test.ts` (a standing-bound run offered
+the coding tools and no generic pair); `standing-policy-fences-db.test.ts` (every fence);
 `worker/test/db/standing-policy-dispatch.test.ts` (two pickups on two
 machines and a third queued, an offline machine at wake, a wake past spend,
 `ticket_left_flow` and `merged`);

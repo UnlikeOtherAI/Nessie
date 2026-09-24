@@ -217,7 +217,13 @@ export const buildExecutorToolset = async (
     ))
     && commandSessionLive,
   )
-  const entries = bindings.flatMap((binding): ExecutorEntry[] => {
+  // A ticket's work bound through a standing policy gets the coding-session
+  // tools and nothing else: the author's card consented to Claude Code
+  // sessions on these machines, not to the machine's other reviewed programs.
+  // So the generic pair is never offered to it, and the dispatch fence
+  // refuses it too (`standingProgramRefusal`).
+  const standing = Boolean(input.ticketWork)
+  const entries = standing ? [] : bindings.flatMap((binding): ExecutorEntry[] => {
     // Connected-browser operations stay unavailable until their private-run
     // disclosure gate lands. In particular, their session must never be
     // exposed through an isolated browser, coding, or command entry.
@@ -301,6 +307,8 @@ export const buildExecutorToolset = async (
     agentId: input.agentId, encryptionSecret, prisma, recordHostOutput, recordIdByProviderCall, runId: input.runId,
   })
   const ticketWork = input.ticketWork ?? null
+  // The coding tools reach the bridge over the mcp.call binding itself, which
+  // a standing bind pins even though the generic tool is not offered.
   const baseCodingSessions = codingOffer
     ? createExecutorCodingSessions({
       call: (toolName, args, providerToolCallId, options) => dispatchCommand({
@@ -347,6 +355,14 @@ export const buildExecutorToolset = async (
       return codingSessions.execute(toolName, modelArgs, providerToolCallId)
     }
     const entry = entryByName.get(toolName)
+    if (!entry && standing) {
+      return {
+        correctable: true,
+        inputSummary: summarizeToolInput(modelArgs),
+        output: 'Ticket work may drive only coding sessions on this machine; no other program on it is offered to you.',
+        success: false,
+      }
+    }
     if (!entry) {
       return { correctable: true, inputSummary: summarizeToolInput(modelArgs), output: `Unknown executor tool: ${toolName}`, success: false }
     }
