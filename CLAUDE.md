@@ -339,3 +339,6 @@ sentence changes only if the invariant itself did.
   older, architecturally separate OpenAI-Realtime companion in `macos/`.
 
 - Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.
+
+Executor agent grants use the chat **Allow access** card and its alert doorway,
+without another code after machine approval; see [executor pairing](docs/executor-pairing.md).

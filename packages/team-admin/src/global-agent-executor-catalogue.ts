@@ -51,11 +51,11 @@ const wholeSuiteRule = (
       + 'policy offers')
   + ', minus workspace.promote, which only a person can issue. There is no way '
   + 'to grant a subset, and no agent is ever granted an executor without the '
-  + 'person confirming it with fresh verification — '
+  + 'person confirming it. The machine permissions are verified once; adding an agent needs no second code. '
   + (writeSurface === 'agent_tools'
-    ? 'from the confirmation card the prepare posts in this conversation, whose '
-      + 'Review opens the exact change; not itself, and not another agent.'
-    : 'that confirmation happens on the Executors page, not here.'),
+    ? 'The prepare posts an Allow access card in this conversation and alerts the person with a link to it. '
+      + 'Their press applies the grant and wakes you to continue; you and other agents cannot press it.'
+    : 'That confirmation happens on the Executors page or its chat card.'),
 ]
 
 /**

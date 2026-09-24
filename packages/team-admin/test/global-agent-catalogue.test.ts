@@ -394,7 +394,9 @@ test('the block states that an executor grant is whole-suite, never a pick', () 
   assert.match(rendered, /whole-suite and never a per-operation pick/)
   assert.match(rendered, /minus workspace\.promote/)
   assert.match(rendered, /executor_agent_grant_prepare prepares ONE change/)
-  assert.match(rendered, /not itself, and not another agent/)
+  assert.match(rendered, /you and other agents cannot press it/)
+  assert.match(rendered, /adding an agent needs no second code/)
+  assert.match(rendered, /alerts the person with a link to it/)
 })
 
 test('each executor says whether a trigger\'s ticket work can run on it, and the Designer prepares one card', () => {

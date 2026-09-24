@@ -173,6 +173,7 @@ export {
 } from './executor-standing-policy-machines.js'
 export {
   confirmExecutorAccessChange,
+  confirmExecutorAccessChangeInTransaction,
   createExecutorAccessChangeContinuationInTransaction,
   getExecutorAccessChangeForUser,
   prepareExecutorAccessChange,
@@ -184,6 +185,7 @@ export {
 export {
   closeExecutorReviewCards,
   EXECUTOR_REVIEW_CARD_ACTION_KEY,
+  EXECUTOR_ALLOW_ACCESS_CARD_ACTION_KEY,
   issueExecutorAccessChangeConfirmationToken,
   issueExecutorWorkspacePromotionConfirmationToken,
   settledExecutorReviewOutcome,

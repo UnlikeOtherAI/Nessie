@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 
 import { PrismaClient } from '@prisma/client'
 import { AT_REST_SECRET_PURPOSE, encryptWithKeyRing, toEncryptionKeyRing } from '@nessie/runtime'
-import { AgentCardSpecSchema } from '@nessie/schemas'
+import { AgentCardSpecSchema, ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
 import { AGENT_DESIGNER_BLUEPRINT, AGENT_DESIGNER_SLUG, ensureGlobalAgentBootstrap } from '@nessie/team-admin'
 
 import { createConsumedSourceSink } from '../../src/run/execute/disclosure-basis.js'
@@ -82,6 +82,16 @@ const seed = async (prisma: PrismaClient): Promise<Seed> => {
       status: 'online',
     },
   })
+  const descriptor = ExecutorCapabilityDescriptorSchema.parse({
+    protocolVersion: 1, revision: 1, profiles: ['workspace_sandbox'], operationKeys: ['file.read'],
+    platform: { architecture: 'x64', os: 'windows', osMajorVersion: 26100 },
+    supervisor: 'service', sandboxBackend: 'none', localPolicyDigest: `sha256:${'1'.repeat(64)}`,
+    limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 2 },
+  })
+  await prisma.executorCapabilityRevision.create({ data: {
+    executorId: executor.id, revision: 1, descriptor, signature: 'test',
+    localPolicyDigest: descriptor.localPolicyDigest, reviewStatus: 'active', reviewedByUserId: owner.id,
+  } })
   return {
     agentId: bootstrap.agentId,
     executorId: executor.id,
@@ -170,8 +180,8 @@ runDatabaseTest('a prepared grant posts a review card that holds only the change
   })
 
   // What the model reads: that a card was posted, and no secret at all.
-  assert.match(result.outputPreview, /put a confirmation card in this conversation/)
-  assert.match(result.outputPreview, /with fresh account verification/)
+  assert.match(result.outputPreview, /Posted an Allow access card in this chat/)
+  assert.match(result.outputPreview, /No additional code is required/)
   assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/agents\/executors/)
   assert.doesNotMatch(result.outputPreview.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, ''), TOKEN_SHAPE)
   assert.equal(result.deliveredToConversation, true)
@@ -188,6 +198,7 @@ runDatabaseTest('a prepared grant posts a review card that holds only the change
       channelId: true,
       executorAccessChangeId: true,
       expiresAt: true,
+      messageId: true,
       message: { select: { content: true, metadata: true, role: true } },
       respondentUserIds: true,
       spec: true,
@@ -202,15 +213,18 @@ runDatabaseTest('a prepared grant posts a review card that holds only the change
   assert.equal(card.waitRunId, null, 'the run does not park on it: the review is the person\'s')
 
   const spec = AgentCardSpecSchema.parse(card.spec)
-  assert.equal(spec.title, 'Confirm an executor change')
-  assert.equal(spec.subtitle, 'Give an agent access to this executor')
-  assert.deepEqual(spec.actions, [{ key: 'review', label: 'Review', style: 'primary', submits: true }])
-  assert.match(JSON.stringify(spec.blocks), /Nothing is applied until you confirm it there, with your password/)
+  assert.equal(spec.title, 'Allow CTO on Minis')
+  assert.deepEqual(spec.actions, [{ key: 'allow_access', label: 'Allow access', style: 'primary', submits: true }])
+  assert.match(JSON.stringify(spec.blocks), /No additional verification code/)
+  assert.match(JSON.stringify(spec.blocks), /file.read/)
   // Server-written copy: nothing in the card or its message is a way in.
   for (const text of [JSON.stringify(card.spec), card.message.content, JSON.stringify(card.message.metadata)]) {
     assert.doesNotMatch(text, /confirmationToken|accessChange=/)
   }
   assert.equal(card.message.role, 'assistant')
+  const alert = await prisma.userAlert.findFirstOrThrow({ where: { userId: s.ownerId, messageId: card.messageId } })
+  assert.equal(alert.threadId, s.threadId)
+  assert.equal(alert.channelId, s.home.id)
 })
 
 runDatabaseTest('every prepared access change is confirmed through the same card', async (t) => {
@@ -321,7 +335,7 @@ runDatabaseTest('a prepared workspace promotion posts the same card, and no toke
     { reviewCommandId: command.id },
   )
 
-  assert.match(result.outputPreview, /put a confirmation card in this conversation/)
+  assert.match(result.outputPreview, /Posted an Allow access card in this chat/)
   assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/agents\/executors/)
   assert.doesNotMatch(result.outputPreview.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, ''), TOKEN_SHAPE)
   assert.equal(result.deliveredToConversation, true)

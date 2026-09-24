@@ -302,7 +302,7 @@ dbTest('agent policy and executor access commit together only after a valid cont
       scopeKind: 'private', privateAssignments: { create: { principalKind: 'user', userId, role: 'admin' } },
     } })
     const allowed = await prepare('allowed')
-    assert.equal(allowed.requiresFreshVerification, true)
+    assert.equal(allowed.requiresFreshVerification, false)
     await confirm(allowed)
     assert.deepEqual((await snapshot()).agent.toolPolicy, { [policyKey]: true })
     assert.equal((await snapshot()).grants[0]?.state, 'allowed')

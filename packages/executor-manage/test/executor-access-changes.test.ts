@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { requiresFreshExecutorVerification } from '../src/index.js'
 
-test('private assignment changes, grants and descriptor activation require fresh human verification', () => {
+test('human administration and machine activation require fresh verification; agent grants do not', () => {
   assert.equal(requiresFreshExecutorVerification({
     kind: 'private_assignment',
     action: 'set',
@@ -14,7 +14,7 @@ test('private assignment changes, grants and descriptor activation require fresh
     agentId: 'agent-1',
     operationKey: 'file.read',
     state: 'allowed',
-  }), true)
+  }), false)
   assert.equal(requiresFreshExecutorVerification({
     kind: 'descriptor_review',
     revision: 2,
@@ -47,11 +47,10 @@ test('low-risk denial and pause changes still require structural user confirmati
   }), false)
 })
 
-test('combined agent access retains fresh verification for a grant', () => {
+test('adding or removing an agent needs no second code after machine approval', () => {
   assert.equal(requiresFreshExecutorVerification({
     kind: 'agent_executor_access', agentId: 'agent-1', state: 'allowed',
-  }), true)
-  // Private removal adds the roster's verification requirement at prepare time.
+  }), false)
   assert.equal(requiresFreshExecutorVerification({
     kind: 'agent_executor_access', agentId: 'agent-1', state: 'denied',
   }), false)

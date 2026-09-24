@@ -20,6 +20,7 @@ import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-typ
 import { runDelegatesToRequestingPerson } from '../delegated-identity.js'
 import { requireActingUserId } from './access.js'
 import { postAgentCard } from './agent-card-post.js'
+import { postExecutorAccessCard } from './executor-access-card.js'
 import { formatSection } from './tool-output.js'
 
 /**
@@ -218,6 +219,16 @@ const prepare = async (
     change,
   })
   await auditPreparedAccessChange(context, actorContext, prepared)
+  if (change.kind === 'agent_executor_access' && change.state === 'allowed') {
+    await postExecutorAccessCard(context, actorContext, { ...prepared, agentId: change.agentId })
+    return {
+      deliveredToConversation: true,
+      inputSummary: `executorId=${executorId} change=${change.kind}`,
+      outputPreview: 'Posted an Allow access card in this chat and alerted the requesting person. '
+        + 'Their press applies the grant and wakes you to continue. No additional code is required.',
+      toolName: 'executor_access_prepare',
+    }
+  }
   await postReviewCard(context, actorContext, {
     change: { accessChangeId: prepared.accessChangeId },
     expiresAt: prepared.expiresAt,
@@ -376,7 +387,7 @@ export const runExecutorAgentGrantPrepareTool = async (
     throw new Error('state must be allowed or denied.')
   }
   return prepare(context, requireId(input.executorId, 'executorId'), {
-    kind: 'agent_executor_grant',
+    kind: 'agent_executor_access',
     agentId: requireId(input.agentId, 'agentId'),
     state: input.state,
   })

@@ -23,12 +23,10 @@ dbTest('two agents share a private executor and revoking one preserves the other
   })
   const apply = async (change: ExecutorAccessChange) => {
     const prepared = await prepareExecutorAccessChange(prisma, actor, { executorId, change })
-    assert.equal(prepared.requiresFreshVerification, true, 'both adding and removing a private agent preserve verification')
-    // This package seam receives the route's completed human verification.
-    // HTTP/SSO verification is deliberately outside this multi-agent test.
+    assert.equal(prepared.requiresFreshVerification, false, 'reviewed machine access needs no second code')
     return confirmExecutorAccessChange(prisma, actor, {
       accessChangeId: prepared.accessChangeId, confirmationToken: prepared.confirmationToken,
-      freshVerificationSatisfied: true,
+      freshVerificationSatisfied: false,
     })
   }
   const availability = (agentId: string) => resolveExecutorAvailabilityCandidates(prisma, actor, {
