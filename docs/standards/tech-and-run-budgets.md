@@ -114,6 +114,25 @@ summary and points here; **this file is the rule**.
     it by writing again — a known gap, recorded as a follow-up in
     [the plan](../plans/2026-09-22-executor-local-apps/coding-sessions.md) →
     "Follow-ups".
+
+    **Ticket work** runs are clamped to `TICKET_WORK_RUN_CEILING`
+    (`worker/src/run/run-budget.ts`) whatever the agent's own limits say,
+    and a ticket's wait reads for at most a minute: the agent starts or
+    steers the coding agent and ends its turn, and the turn's end wakes it
+    (T5). Around the runs sit the ticket's and the policy's own limits —
+    `wakesPerTicket` and `startsPerDay` on the trigger, `ticketHours`,
+    `ticketUsd` and `dailyUsd` on the policy (the hours are the record's
+    clock, which runs only while the work is active and owes nobody an
+    answer), a turn bounded by the machine's signed per-turn `maxBudgetUsd` —
+    enforced by the platform at every wake, by the binder, in the heartbeat
+    intake and by `ticket-work.sweep`. The coding cost counted against
+    `ticketUsd` and `dailyUsd` is what the machine itself reports for each of
+    the ticket's sessions on every heartbeat, whether or not a run reads the
+    session, and what any coding answer carries (a send, a status read, a
+    review); each is counted once. The day's spend stops only running work:
+    work that did not spend it is queued until the UTC day turns
+    ([ticket-work-machine-access.md](ticket-work-machine-access.md) →
+    "Server-side closes, limits and spend").
   - **Executor calls in one batch run in call order**, one after another; the
     batch's other tools still run in parallel beside them. A fatal executor
     call stops the ones queued behind it from dispatching (nothing claimed

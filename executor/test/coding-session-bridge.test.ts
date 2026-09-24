@@ -39,6 +39,8 @@ test('a session survives bridge restarts, and its turn ends in a result', { time
     await harness.release('first')
     const done = await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input')
     assert.match(lastResultText(done), /first task/)
+    // What the session has cost across its turns, for a ticket's spend.
+    assert.equal(done.totalCostUsd, 0.01)
     const listed = await harness.call('session_list', {})
     assert.deepEqual((listed.body.sessions as { sessionId: string }[]).map((entry) => entry.sessionId), [sessionId])
     assert.deepEqual(listed.body.agents, ['claude', 'codex'])
@@ -254,6 +256,7 @@ test('no host path, no account data and no OS user or host name reach any answer
     const review = await harness.call('session_review', { sessionId })
     assert.equal((review.body.lastTest as { exitCode: number }).exitCode, 3)
     assert.equal(review.body.branch, 'main')
+    assert.equal(review.body.totalCostUsd, 0.01, 'a review\'s status states what the session has cost')
     await harness.call('session_list', {})
     const all = harness.outputs.join('\n')
     assert.match(all, /<work>\/README\.md/)

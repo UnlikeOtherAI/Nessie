@@ -18,6 +18,8 @@ import {
   type ExecutorLeaseEndReason,
 } from './executor-conversation-lease.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import { endStandingPoliciesForExecutorInTransaction } from './executor-standing-policy-fences.js'
+import { offersReviewedCodingSessions } from './executor-standing-policy-machines.js'
 
 export type ExecutorLifecycleAction = 'pause' | 'resume' | 'drain' | 'revoke' | 'remove'
 
@@ -182,6 +184,13 @@ export const transitionExecutorLifecycleInTransaction = async (
       reason: LIFECYCLE_END_REASON[input.action],
       where: { executorId: executor.id },
     })
+    // And every standing machine access naming it: its tickets' work ends and
+    // their sessions close (docs/standards/ticket-work-machine-access.md).
+    await endStandingPoliciesForExecutorInTransaction(tx, {
+      actor: { requestId: actorContext.actionContext.requestId, userId: actorUserId },
+      executorId: executor.id,
+      reason: LIFECYCLE_END_REASON[input.action],
+    })
   }
   // Pausing or revoking the machine closes every coding session on it, not
   // only those a lease still covered. A drain closes fewer, but not none:
@@ -258,6 +267,16 @@ export const reviewExecutorDescriptorInTransaction = async (
       endedByUserId: actorUserId,
       reason: 'descriptor_narrowed',
       where: { executorId: input.executorId },
+    })
+  }
+  // Standing machine access needs the pair and a reviewed coding bridge. A
+  // review that keeps both but changes a pinned digest suspends it instead
+  // (team-admin's access-change effects, before this review is written).
+  if (!keepsLocalApps || !reviewed.success || !offersReviewedCodingSessions(reviewed.data)) {
+    await endStandingPoliciesForExecutorInTransaction(tx, {
+      actor: { requestId: actorContext.actionContext.requestId, userId: actorUserId },
+      executorId: input.executorId,
+      reason: 'descriptor_narrowed',
     })
   }
 }

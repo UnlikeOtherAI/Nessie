@@ -86,6 +86,8 @@ const makeApp = (
   let updateCalls = 0
   const db = {
     $executeRaw: async () => 0,
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       // Two different reads land here: the owner-only paused-private aggregate,
       // and the entitlement count `canEditAgent` composes for a team-owned
@@ -291,6 +293,8 @@ const makeApp = (
 test('generic agent creation requires organization ownership before persistence', async () => {
   let createCalls = 0
   const prisma = {
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       create: async () => {
         createCalls += 1
@@ -319,6 +323,8 @@ test('owner agent listing never includes unbound agents from another org', async
     makeAgent(foreignAgentId, otherOrganizationId),
   ]
   const prisma = {
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findMany: async ({
         where,
@@ -347,6 +353,8 @@ test('binding cannot attach a foreign agent to a local channel', async () => {
   let upsertCalls = 0
   const foreign = makeAgent(foreignAgentId, otherOrganizationId)
   const prisma = {
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findFirst: async ({
         where,

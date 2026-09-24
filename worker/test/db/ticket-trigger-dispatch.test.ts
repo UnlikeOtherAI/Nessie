@@ -522,6 +522,7 @@ runDatabaseTest('a seam that throws is a failed delivery, and the retry poller s
   assert.equal(settled?.id, failed?.id)
   assert.equal(settled?.status, 'delivered')
   const work = await prisma.agentTicketWork.findFirstOrThrow({ where: { triggerId: s.triggerId, taskId: task.id } })
-  assert.equal(work.status, 'active')
+  // No machine access is set up, so the started work waits for it.
+  assert.equal(work.status, 'waiting_machine')
   assert.equal((settled?.payload as { workId?: string }).workId, work.id)
 })

@@ -6,6 +6,7 @@ import { Prisma, PrismaClient } from '@prisma/client'
 import {
   AgentReminderCancelledReasonSchema,
   AgentReminderStatusSchema,
+  EXECUTOR_CODING_SESSION_CLOSE_REASONS,
   ExecutorStandingPolicyEndedReasonSchema,
   ExecutorStandingPolicyStatusSchema,
   ExecutorStandingPolicySuspendedReasonSchema,
@@ -395,7 +396,9 @@ withWorld('an organisation deleted with a live pool takes its policy and pool wi
 runDatabaseTest('the migrated database holds exactly the Zod vocabularies', async () => {
   const prisma = new PrismaClient()
   try {
-    const tables = ['agent_ticket_work', 'agent_reminders', 'executor_standing_policies']
+    const tables = [
+      'agent_ticket_work', 'agent_reminders', 'executor_standing_policies', 'executor_coding_session_close_requests',
+    ]
     const definitions = new Map<string, string>()
     const constraints = await prisma.$queryRaw<Array<{ name: string; definition: string }>>`
       SELECT c.conname AS name, pg_get_constraintdef(c.oid) AS definition
@@ -423,6 +426,8 @@ runDatabaseTest('the migrated database holds exactly the Zod vocabularies', asyn
         ...ExecutorStandingPolicySuspendedReasonSchema.options,
       ],
       executor_standing_policies_ended_reason_known: ['ended', ...ExecutorStandingPolicyEndedReasonSchema.options],
+      // A ticket's work closes its sessions for reasons of its own (T4).
+      executor_coding_session_close_requests_reason_known: EXECUTOR_CODING_SESSION_CLOSE_REASONS,
       agent_ticket_work_one_live: TICKET_WORK_LIVE_STATUSES,
       agent_ticket_work_one_per_executor: TICKET_WORK_MACHINE_HOLDING_STATUSES,
       agent_reminders_one_pending_per_work: ['pending'],

@@ -1,19 +1,18 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
 import {
   closeTicketWorkQuestion,
+  closeTicketWorkSessionsInTransaction,
   endTicketWork,
-  ensureTicketWorkThread,
-  lockTicketColumn,
-  lockTicketForWork,
+  enqueueTicketWorkSweep,
   recordTicketWorkActivity,
-  syncTicketWorkClock,
-  ticketWorkThreadTitle,
-} from '@nessie/team-admin'
+} from '@nessie/executor-manage'
+import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
+import { ensureTicketWorkThread, lockTicketColumn, lockTicketForWork, ticketWorkThreadTitle } from '@nessie/team-admin'
 
 import { endColumnIds } from './ticket-trigger-decision.js'
 import { describeWakeEvent, type WakeEventSource } from './ticket-work-events.js'
 import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
+import { holdTicketWorkBeforeWake, placeTicketWorkForWake } from './ticket-work-machine.js'
 import {
   loadDetailSeen,
   queueTicketWorkRun,
@@ -162,13 +161,6 @@ const startTicketWork = async (
     })
     return { outcome: 'refused', reason: 'limit_starts' }
   }
-  await recordTicketWorkActivity(tx, {
-    work,
-    eventType: 'work_started',
-    status: 'active',
-    reason: null,
-    by: input.startedByUserId,
-  })
   const described = await describeWakeEvent(prisma, {
     organizationId: trigger.organizationId,
     projectId: task.projectId,
@@ -179,7 +171,17 @@ const startTicketWork = async (
     untrusted: false,
     machineLess: false,
   })
-  await queueTicketWorkRun(tx, { work: ref, trigger, event: described, deliveryId: input.deliveryId })
+  // A machine from the policy's pool, at dispatch; or a place in its queue;
+  // or no machine access yet. The one wake says which.
+  const placed = await placeTicketWorkForWake(tx, {
+    by: input.startedByUserId,
+    event: described,
+    kind: 'start',
+    organizationId: trigger.organizationId,
+    startedByEventId: event.kind === 'thread_message' ? null : event.id,
+    work,
+  })
+  await queueTicketWorkRun(tx, { work: ref, trigger, event: placed, deliveryId: input.deliveryId })
   return { outcome: 'started', workId: work.id }
 }
 
@@ -191,6 +193,9 @@ type WorkRow = {
   projectId: string
   threadId: string
   status: string
+  executorId: string | null
+  policyId: string | null
+  sessionIds: string[]
 }
 
 /**
@@ -219,6 +224,8 @@ const settleMoveAgainstColumn = async (
   const ends = endColumnIds(input.trigger.config, columns)
   if (!inColumns(columnId, ends)) return { outcome: 'refused', reason: 'no_longer_applies' }
   const done = columns.find((column) => column.id === columnId)?.category === 'done'
+  await closeTicketWorkSessionsInTransaction(tx, [input.work], 'ticket_left_flow', null)
+  await enqueueTicketWorkSweep(tx)
   await endTicketWork(tx, {
     work: input.work,
     status: done ? 'done' : 'cancelled',
@@ -255,7 +262,10 @@ const wakeTicketWork = async (
   const { trigger, event } = input
   const work = await tx.agentTicketWork.findFirst({
     where: { id: input.workId, triggerId: trigger.id, taskId: input.task.id },
-    select: { id: true, taskId: true, triggerId: true, agentId: true, projectId: true, threadId: true, status: true },
+    select: {
+      id: true, taskId: true, triggerId: true, agentId: true, projectId: true, threadId: true, status: true,
+      executorId: true, policyId: true, sessionIds: true,
+    },
   })
   const live = work !== null && (TICKET_WORK_LIVE_STATUSES as readonly string[]).includes(work.status)
   // Only the end wake reaches a record that has ended.
@@ -282,12 +292,11 @@ const wakeTicketWork = async (
     untrusted: input.untrusted,
     machineLess: input.machineLess,
   })
-  // A person's move back into a start-work column resumes parked work — before
-  // the kickoff is rendered, so the run is told the work is live again.
+  // Live work over a limit stops instead of waking, and work whose machine is
+  // offline waits for it without a run. A person's move back into a
+  // start-work column resumes parked work on a machine — before the kickoff is
+  // rendered, so the run is told where the work stands now.
   const resumed = input.resumes && work.status === 'parked'
-  if (resumed) {
-    await tx.agentTicketWork.update({ where: { id: work.id }, data: { status: 'active', stateReason: null } })
-  }
   // A person's comment, message or move is the answer to any open question:
   // it closes, and the hours clock runs again. A reminder, a quiet wake, a
   // connected board's event and an edit to one of the ticket's documents
@@ -295,21 +304,20 @@ const wakeTicketWork = async (
   const personEvent = live && !input.untrusted && !input.machineLess
     && event.kind !== 'reminder' && event.kind !== 'quiet' && event.kind !== 'document'
   if (personEvent) await closeTicketWorkQuestion(tx, work.id)
-  if (resumed) await syncTicketWorkClock(tx, work.id)
-  const outcome = await queueTicketWorkRun(tx, { work, trigger, event: described, deliveryId: input.deliveryId })
+  const held = live && !input.machineLess ? await holdTicketWorkBeforeWake(tx, { work }) : null
+  if (held) return { outcome: 'refused', reason: held }
+  // The placement moves the record — active, queued or waiting — and its
+  // hours clock with it.
+  const wake = resumed
+    ? await placeTicketWorkForWake(tx, {
+        by: event.by ?? null, causeEventId: event.id, event: described, kind: 'resume',
+        organizationId: trigger.organizationId, work,
+      })
+    : described
+  const outcome = await queueTicketWorkRun(tx, { work, trigger, event: wake, deliveryId: input.deliveryId })
   if (outcome.kind === 'over_limit') {
     if (live) await stopTicketWorkAtWakeLimit(tx, { work, wakesUsed: outcome.wakesUsed })
     return { outcome: 'refused', reason: 'limit_wakes' }
-  }
-  if (resumed) {
-    await recordTicketWorkActivity(tx, {
-      work,
-      eventType: 'work_resumed',
-      status: 'active',
-      reason: null,
-      by: event.by ?? null,
-      causeEventId: event.id,
-    })
   }
   return { outcome: 'woken', workId: work.id }
 }

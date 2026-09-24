@@ -10,13 +10,13 @@ import {
   SourceHttpError,
   inlineAssetsIn,
 } from '@nessie/board-sources'
+import { answerTicketWorkQuestions } from '@nessie/executor-manage'
 import type { FileService, LedgerAttribution } from '@nessie/runtime'
 import { inlineAttachmentPath } from '@nessie/schemas'
 
 import type { ResolvedIdentity } from './board-source-identity.js'
 import { sourceEventAuthorship } from './board-source-apply-events.js'
 import { recordTaskEvent } from './task-event-dispatch.js'
-import { answerTicketWorkQuestions } from './ticket-work-clock.js'
 
 /**
  * The parts of an upstream issue that are not the issue: its comments and its

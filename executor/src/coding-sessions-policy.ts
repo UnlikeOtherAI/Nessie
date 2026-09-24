@@ -16,6 +16,7 @@ import {
   type CodingSessionsConfig,
 } from './coding-session/config.js'
 import { resolveExecutorEntry } from './coding-session/host-spawn.js'
+import { claudeMergeCommands, claudeUnaskedCommands } from './coding-session/merge-commands.js'
 import { canonicalOrDeclared, codingPathsOverlap, resolveCodingRoots } from './coding-session/roots.js'
 import { assertExecutorLocalMcpServers, type ExecutorLocalMcpServer } from './mcp-servers.js'
 import { replaceOwnerOnlyJson } from './owner-only-json.js'
@@ -89,6 +90,14 @@ export const codingSessionsFacts = (
     environmentNames: [...new Set([...Object.keys(config.agentEnv.set), ...config.agentEnv.pass])].sort(),
     rootNames: config.roots.map((root) => root.name).sort(),
     configDigest,
+    // Only Claude Code is given the budget; nothing bounds a Codex turn.
+    maxBudgetUsd: Object.fromEntries(agents.map((agent) => [
+      agent, agent === 'claude' ? config.maxBudgetUsd ?? null : null,
+    ])),
+    maxLiveSessionsPerOwner: config.maxLiveSessionsPerOwner,
+    mergeCommands: claudeMergeCommands(config.agents.claude),
+    // Standing machine access needs its author's "run any command" tick for `any`.
+    unaskedCommands: claudeUnaskedCommands(config.agents.claude),
   })
 }
 

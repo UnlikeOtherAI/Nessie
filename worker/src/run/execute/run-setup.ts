@@ -11,11 +11,10 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, TICKET_WORK_PURPOSE, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { launchConversationScope } from '../executor-host-output.js'
-import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
+import type { ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { createRunDeepWaterBinder } from '../deepwater-run-binder.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
@@ -40,18 +39,23 @@ import {
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
 import { loadExecutorReachFacts } from './executor-reach-facts.js'
+import { prepareRunExecutorToolset } from './run-setup-executor.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import {
-  loadTicketWorkRunFacts,
   ticketWorkRecallSkipped,
   TICKET_WORK_PERSON_TOOL_IDS,
   TICKET_WORK_PROJECT_TOOL_IDS,
   withoutEndedWorkWrites,
 } from './ticket-work-setup.js'
+import {
+  prepareTicketWorkRun,
+  TICKET_WORK_STANDING_WITHHELD_TOOL_IDS,
+  withoutMcpTools,
+} from './ticket-work-standing-gate.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
   browserLoginRequestPromptTools,
@@ -171,10 +175,13 @@ export const resolveWithheldRunToolIds = (input: {
   todosEnabled: boolean
   /** A `ticket.work` run: never the tools that act for a person (`ticket-work-setup.ts`). */
   ticketWork?: boolean
+  /** A standing `ticket.work` run: nothing that reaches past Nessie either (`ticket-work-standing-gate.ts`). */
+  ticketWorkStanding?: boolean
 }): ReadonlySet<string> => new Set([
   ...(input.isHandoffTurn ? [DELEGATE_TOOL_ID] : []),
   ...(input.todosEnabled ? [] : TODO_TOOL_IDS),
   ...(input.ticketWork ? TICKET_WORK_PERSON_TOOL_IDS : []),
+  ...(input.ticketWorkStanding ? TICKET_WORK_STANDING_WITHHELD_TOOL_IDS : []),
 ])
 
 export type RunExecutionSetup = {
@@ -246,11 +253,9 @@ export const prepareRunExecution = async (
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
   const ticketWorkRun = payload.actorContext.actionContext.purpose === TICKET_WORK_PURPOSE
-  const ticketWork = await loadTicketWorkRunFacts(deps.prisma, {
-    actorContext: payload.actorContext,
-    agentId: context.agent.id,
-    threadId: context.run.threadId,
-  })
+  // Bound before any tool is resolved: a standing run is offered less.
+  const ticketWork = await prepareTicketWorkRun(deps.prisma, { context, payload })
+  const ticketWorkStanding = context.ticketWorkScope?.standing === true
   // Ordinary shared agents may receive project tools only when a real person
   // initiated this project-channel run (or a bounded durable peer request did),
   // the agent remains bound there, and its policy explicitly grants each tool.
@@ -332,6 +337,7 @@ export const prepareRunExecution = async (
         isHandoffTurn: input.isHandoffTurn,
         todosEnabled: agentRecord?.todosEnabled ?? false,
         ticketWork: ticketWorkRun,
+        ticketWorkStanding,
       }),
     },
   )
@@ -361,7 +367,7 @@ export const prepareRunExecution = async (
   // output, a coding session's title in the reach facts — is shown there.
   const hostOutput = { launchScope: launchConversationScope(context.channel.id), sink: context.consumedSources }
   const [mcpToolset, executorToolset, todoFacts] = await Promise.all([
-    buildMcpToolset(
+    ticketWorkStanding ? withoutMcpTools() : buildMcpToolset(
       deps.prisma,
       context.channel.organizationId,
       toolPolicy,
@@ -389,40 +395,7 @@ export const prepareRunExecution = async (
         secretResolver: deps.mcpSecrets?.resolver,
       },
     ),
-    (async () => {
-      // A person's own follow-up in the conversation they launched local apps
-      // in is bound afresh here, immediately before the toolset reads the
-      // run's bindings. A refusal is an outcome, never a throw — and the carry
-      // runs for every agent's every turn, so an unexpected failure in it (a
-      // lost connection) must not sink an ordinary one either: the run goes on
-      // with whatever bindings it already has, and no reach facts are told.
-      const lease = await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
-        .catch((error: unknown) => {
-          console.warn('[worker] executor lease carry failed for run', context.run.id, error)
-          return undefined
-        })
-      context.executorLease = lease
-      if (lease?.kind === 'carried') {
-        // The carry moved the idle window the holder's composer shows. Only
-        // the holder's own job carries, so the job's actor is the recipient.
-        await publishExecutorLeaseChanges(deps.realtimeTransport, [{
-          actorUserId: payload.actorContext.actor.actorId,
-          id: lease.lease.id,
-          organizationId: context.channel.organizationId,
-          threadId: payload.threadId,
-        }]).catch((error: unknown) => {
-          console.warn('[worker] could not publish the executor lease notice for run', context.run.id, error)
-        })
-      }
-      return buildExecutorToolset(deps.prisma, {
-        agentId: context.agent.id,
-        agentToolPolicy: toolPolicy,
-        encryptionSecret: deps.executorCommandEncryptionSecret,
-        hostOutput,
-        organizationId: context.channel.organizationId,
-        runId: context.run.id,
-      })
-    })(),
+    prepareRunExecutorToolset(deps, { context, hostOutput, payload, ticketWork, toolPolicy }),
     (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
       ? loadAgentTodoPromptFacts(deps.prisma, {
           agentId: context.agent.id,
@@ -441,6 +414,7 @@ export const prepareRunExecution = async (
     organizationId: context.channel.organizationId,
     personUserId: payload.actorContext.actor.actorType === 'user' ? payload.actorContext.actor.actorId : null,
     runId: context.run.id,
+    standing: context.ticketWorkMachine,
     toolNames: executorToolset.handledNames,
   })
 

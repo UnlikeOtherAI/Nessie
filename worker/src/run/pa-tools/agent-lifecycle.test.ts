@@ -42,6 +42,11 @@ test('a live organization admin can unbind a reachable standard channel', async 
       channel: { findUnique: async () => ({ id: '00000000-0000-4000-8000-000000000005', organizationId: '00000000-0000-4000-8000-000000000003', deletedAt: null, dmKey: null, systemChannelType: null, type: 'standard', members: [{ id: 'member' }] }) },
       agent: { findFirst: async () => ({ id: '00000000-0000-4000-8000-000000000006' }) },
       agentBinding: { deleteMany: async () => { deletes += 1 } },
+      // The unbind and the machine access it ends are one transaction; none is held here.
+      $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({
+        agentBinding: { deleteMany: async () => { deletes += 1 } },
+        executorStandingPolicy: { findMany: async () => [] },
+      }),
       $queryRaw: async () => [{ id: 'rule', scope: 'organization', scopeId: '00000000-0000-4000-8000-000000000003', resourceType: 'agent', action: 'bind', effect: 'allow', priority: 0, conditions: {}, actorType: 'user', actorId: '00000000-0000-4000-8000-000000000004' }],
       auditLog: { create: async () => ({}) },
     }, realtimeTransport: { publishWs: async () => undefined },

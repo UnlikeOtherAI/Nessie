@@ -45,7 +45,14 @@ const dbRateLimitUrl = new URL(
   '../../packages/db/src/rate-limit-window.ts',
   import.meta.url,
 ).href
+// The standing machine access digest (`@nessie/executor-manage`) hashes with
+// the audit chain's canonical JSON, so the stub carries that one real export too.
+const dbAuditChainUrl = new URL(
+  '../../packages/db/src/audit-chain.ts',
+  import.meta.url,
+).href
 const dbStub = [
+  `export { stableStringify } from ${JSON.stringify(dbAuditChainUrl)}`,
   'export {',
   '  clearRateLimitWindows,',
   '  countRateLimitHit,',

@@ -11,6 +11,7 @@ import {
   ticketSkipSentence,
   ticketWorkHeadline,
   ticketWorkHistoryLine,
+  ticketWorkMachineRefusalLine,
   ticketWorkQuestionLine,
   ticketWorkReminderLine,
   ticketWorkStateLine,
@@ -20,10 +21,12 @@ import {
 /**
  * The work chip in the ticket dialog (docs/standards/ticket-work.md → "What
  * the project sees"): which agent works the ticket, where the work stands and
- * why, when it last woke and for what, the reminder it set (with Cancel for
- * whoever can edit the board) and a question it waits on, and the way into its
- * work thread for a reader who may open it. A reader who may not sees the
- * same state and no link. It names no machine.
+ * why — its place in the machine queue, a machine gone offline, machine access
+ * not set up or paused — when it last woke and for what, and why that wake ran
+ * without a machine, the reminder it set (with Cancel for whoever can edit the
+ * board) and a question it waits on, and the way into its work thread for a
+ * reader who may open it. A reader who may not sees the same state and no
+ * link. It names no machine.
  *
  * A move that started nothing is said here too, until work starts after it:
  * the person who moved the ticket is the one who needs to know. A move back
@@ -80,6 +83,7 @@ const WorkRow = ({ canCancelReminder, lastSkip, record, taskId }: {
 }) => {
   const { token } = useAuthSession()
   const wake = ticketWorkWakeLine(record)
+  const machineRefusal = ticketWorkMachineRefusalLine(record)
   const state = ticketWorkStateLine(record, lastSkip)
   const question = ticketWorkQuestionLine(record)
   return (
@@ -104,6 +108,11 @@ const WorkRow = ({ canCancelReminder, lastSkip, record, taskId }: {
           <div className="text-xs text-[color:var(--tx3)]">Started by {record.startedByName}</div>
         ) : null}
         {wake ? <div className="text-xs text-[color:var(--tx2)]">{wake}</div> : null}
+        {machineRefusal ? (
+          <div className="break-words text-xs text-[color:var(--tx2)]" data-testid="ticket-work-machine-refusal">
+            {machineRefusal}
+          </div>
+        ) : null}
         <ReminderLine canCancel={canCancelReminder} record={record} taskId={taskId} />
         {question ? (
           <div className="text-xs text-[color:var(--tx2)]" data-testid="ticket-work-question">{question}</div>
@@ -111,6 +120,7 @@ const WorkRow = ({ canCancelReminder, lastSkip, record, taskId }: {
         {state ? (
           <div
             className={`text-xs ${record.status === 'failed' ? 'text-[color:var(--danger-text)]' : 'text-[color:var(--tx2)]'}`}
+            data-testid="ticket-work-state"
           >
             {state}
           </div>

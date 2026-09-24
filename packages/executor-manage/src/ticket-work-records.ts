@@ -1,10 +1,14 @@
+import { randomUUID } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
+import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
   TICKET_WORK_LIVE_STATUSES,
+  TICKET_WORK_THREAD_EVENT_LABELS,
   type TicketWorkActivityEventType,
   type TicketWorkActivityPayload,
   type TicketWorkStateReason,
   type TicketWorkStatus,
+  type TicketWorkThreadEvent,
 } from '@nessie/schemas'
 
 import { syncTicketWorkClock } from './ticket-work-clock.js'
@@ -15,6 +19,10 @@ import { syncTicketWorkClock } from './ticket-work-clock.js'
  * the caller's transaction — the move that entered an end column, the edit
  * that disabled the trigger, the wake that found a limit spent — so a record
  * can never outlive the change that ended it.
+ *
+ * They live beside the standing policy's lifecycle, which ends records when a
+ * fence ends the policy, rather than in team-admin: the executor fences that
+ * end a policy are in this package.
  */
 
 export type TicketWorkRecordRef = { id: string; taskId: string; triggerId: string | null; agentId: string }
@@ -52,16 +60,65 @@ export const recordTicketWorkActivity = async (
   })
 }
 
-type EndWriter = ActivityWriter & Pick<Prisma.TransactionClient, 'agentTicketWork' | 'agentReminder'>
+/**
+ * One compact row in a work thread (`metadata.ticketWorkEvent`): why the
+ * agent was woken, why the platform stopped it, or who cancelled its
+ * reminder, labelled by `TICKET_WORK_THREAD_EVENT_LABELS`. Never ticket text:
+ * the channel can be wider than the ticket's project. The one writer, which
+ * team-admin re-exports.
+ */
+export const writeTicketWorkThreadRow = async (
+  tx: Pick<Prisma.TransactionClient, 'message'>,
+  input: { threadId: string; event: TicketWorkThreadEvent },
+): Promise<void> => {
+  await tx.message.create({
+    data: {
+      threadId: input.threadId,
+      role: 'system',
+      content: `${TICKET_WORK_THREAD_EVENT_LABELS[input.event.kind]}: ${input.event.summary}`,
+      metadata: { ticketWorkEvent: input.event } as Prisma.InputJsonValue,
+    },
+  })
+}
 
 /**
- * End one live record: its status and reason, its reminders cancelled, and a
- * `work_ended` row on the ticket. The update is conditional on the record
- * still being live, so a second end racing this one changes nothing and
- * writes no second row. Returns whether this call ended it.
+ * `ticket.work.started`, `ticket.work.queued` and `ticket.work.ended`, in the
+ * transaction that moved the record: the audit chain says what the platform
+ * did with a ticket's work, beside the ticket's own history rows.
+ */
+export const writeTicketWorkAudit = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    action: 'ticket.work.started' | 'ticket.work.queued' | 'ticket.work.ended'
+    by?: string | null
+    metadata: Record<string, unknown>
+    organizationId: string
+    workId: string
+  },
+): Promise<void> => {
+  const person = input.by && input.by !== 'system' && !input.by.startsWith('agent:') ? input.by : null
+  await writeAuditEntryInTransaction(tx, {
+    action: input.action,
+    actorId: person ?? input.by ?? 'ticket-work',
+    actorType: person ? 'user' : input.by?.startsWith('agent:') ? 'agent' : 'system',
+    metadata: input.metadata as Prisma.InputJsonValue,
+    organizationId: input.organizationId,
+    outcome: 'success',
+    requestId: `ticket-work:${input.workId}:${randomUUID()}`,
+    resourceId: input.workId,
+    resourceType: 'agent_ticket_work',
+  })
+}
+
+/**
+ * End one live record: its status and reason, its reminders cancelled, a
+ * `work_ended` row on the ticket and `ticket.work.ended` on the audit chain.
+ * The update is conditional on the record still being live, so a second end
+ * racing this one changes nothing and writes no second row. Returns whether
+ * this call ended it.
  */
 export const endTicketWork = async (
-  tx: EndWriter,
+  tx: Prisma.TransactionClient,
   input: {
     work: TicketWorkRecordRef
     status: Extract<TicketWorkStatus, 'done' | 'cancelled' | 'failed'>
@@ -98,27 +155,23 @@ export const endTicketWork = async (
     by: input.by ?? null,
     ...(input.causeEventId ? { causeEventId: input.causeEventId } : {}),
   })
-  return true
-}
-
-/**
- * Disabling or deleting a trigger ends every live record it holds, with
- * `trigger_disabled`, in the transaction that disables or deletes it — the
- * delete ends them first, because `triggerId` is `SetNull` and a record that
- * lost its trigger could otherwise never end. Nothing wakes: the trigger that
- * would wake the agent is the thing being switched off.
- */
-export const endTicketWorkForTrigger = async (
-  tx: EndWriter,
-  input: { triggerId: string },
-): Promise<number> => {
-  const live = await tx.agentTicketWork.findMany({
-    where: { triggerId: input.triggerId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
-    select: { id: true, taskId: true, triggerId: true, agentId: true },
+  const record = await tx.agentTicketWork.findUniqueOrThrow({
+    where: { id: input.work.id },
+    select: { executorId: true, organizationId: true, policyId: true },
   })
-  let ended = 0
-  for (const work of live) {
-    if (await endTicketWork(tx, { work, status: 'cancelled', reason: 'trigger_disabled', by: 'system' })) ended += 1
-  }
-  return ended
+  await writeTicketWorkAudit(tx, {
+    action: 'ticket.work.ended',
+    by: input.by ?? null,
+    metadata: {
+      executorId: record.executorId,
+      policyId: record.policyId,
+      reason: input.reason,
+      status: input.status,
+      taskId: input.work.taskId,
+      triggerId: input.work.triggerId,
+    },
+    organizationId: record.organizationId,
+    workId: input.work.id,
+  })
+  return true
 }

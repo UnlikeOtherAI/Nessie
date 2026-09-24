@@ -12,6 +12,20 @@ import { CODING_SESSION_ID_PATTERN } from './types.js'
 
 const sessionIdSchema = { type: 'string' as const, pattern: CODING_SESSION_ID_PATTERN.source }
 
+/**
+ * A pull request `session_review` may be asked about by URL: github.com, an
+ * owner (1 to 39 letters, digits and inner hyphens), a repository, and a
+ * number — nothing after it, no other host, no query. It becomes an argv
+ * entry of `gh pr view`, which it can never be read as an option of, since it
+ * starts with `https://`.
+ */
+const GITHUB_OWNER = '[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?'
+const GITHUB_REPOSITORY = '(?!\\.{1,2}/)[A-Za-z0-9._-]{1,100}'
+export const GITHUB_PULL_REQUEST_URL = new RegExp(
+  `^https://github\\.com/${GITHUB_OWNER}/${GITHUB_REPOSITORY}/pull/[1-9][0-9]{0,9}$`, 'u',
+)
+export const PULL_REQUEST_URL_MAX = 200
+
 export const codingBridgeTools = (loaded: LoadedCodingSessionsConfig) => {
   const agents = Object.keys(loaded.config.agents)
   const roots = loaded.config.roots.map((root) => root.name)
@@ -67,7 +81,18 @@ export const codingBridgeTools = (loaded: LoadedCodingSessionsConfig) => {
       },
     },
     session('Stop the current turn. The session stays open and can be sent a new message.', 'session_interrupt'),
-    session('What the session actually changed: branch, commits, diff, worktrees and pull requests.', 'session_review'),
+    {
+      name: 'session_review',
+      description: 'What the session actually changed: branch, commits, diff, worktrees and pull requests. Name a '
+        + 'pull request to be told its state even after its branch was merged and deleted.',
+      inputSchema: {
+        type: 'object' as const, additionalProperties: false, required: ['sessionId'],
+        properties: {
+          sessionId: sessionIdSchema,
+          pullRequest: { type: 'string', pattern: GITHUB_PULL_REQUEST_URL.source, maxLength: PULL_REQUEST_URL_MAX },
+        },
+      },
+    },
     session('End the session and every process it started. Its history stays readable.', 'session_close'),
     session('Read the current interactive terminal screen as text.', 'terminal_read'),
   ]
@@ -94,6 +119,15 @@ export const argumentsFor = (value: unknown, allowed: readonly string[]): Record
 export const requiredText = (value: unknown, name: string, maxLength: number): string => {
   if (typeof value !== 'string' || !value.trim() || value.length > maxLength) {
     return invalidArguments(`${name} must be text of at most ${maxLength} characters.`)
+  }
+  return value
+}
+
+export const pullRequestArgument = (value: unknown): string => {
+  if (typeof value !== 'string' || value.length > PULL_REQUEST_URL_MAX || !GITHUB_PULL_REQUEST_URL.test(value)) {
+    return invalidArguments(
+      'pullRequest must be a GitHub pull request URL, such as https://github.com/owner/repo/pull/123.',
+    )
   }
   return value
 }

@@ -1,5 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 
+import { endStandingPoliciesForScopeInTransaction } from './standing-policy-fences.js'
+
 /**
  * Deleting a project, and the one place that decides what that does.
  *
@@ -97,7 +99,12 @@ const collectBlocks = (counts: {
 
 export const deleteProject = async (
   prisma: PrismaClient,
-  input: { organizationId: string; projectId: string },
+  input: {
+    /** Who deleted it, named on the machine access it ends. */
+    actorUserId?: string
+    organizationId: string
+    projectId: string
+  },
 ): Promise<DeleteProjectResult> => {
   try {
     return await prisma.$transaction(async (tx): Promise<DeleteProjectResult> => {
@@ -136,6 +143,9 @@ export const deleteProject = async (
       if (blocks.length > 0) return { kind: 'blocked', blocks }
 
       const now = new Date()
+      await endStandingPoliciesForScopeInTransaction(tx, {
+        actor: { userId: input.actorUserId ?? null }, projectId: project.id,
+      })
       await tx.channel.updateMany({
         where: { projectId: project.id, archivedAt: null, deletedAt: null },
         data: { archivedAt: now, deletedAt: now },

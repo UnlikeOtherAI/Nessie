@@ -34,7 +34,12 @@ only that agent's assignment and grants, in one confirmed transaction.
 Run `pnpm --filter @nessie/admin test:e2e:executor-detail` on this worktree's
 fixed ports. The real page is exercised at 1280 and 390 pixels, including the
 default roster, latest-only policy review, unavailable SSO verification,
-conversation doorway, people dialog and nested local-model confirmation.
+conversation doorway, people dialog and nested local-model confirmation, and
+a private machine's **Standing access** panel: each ticket trigger's policy
+that runs on it — trigger, agent, author, state and the tickets working there —
+its End confirmed and posted, and the panel's empty state
+([ticket-work-machine-access.md](../standards/ticket-work-machine-access.md) →
+"What the screens show").
 Screenshots are written to `e2e/screenshots/executor-detail/`.
 
 The complementary `executor-agents`, `executor-attention`, `executor-pairing`

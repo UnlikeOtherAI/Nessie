@@ -1,8 +1,10 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  ExecutorStandingPolicyAccessChangeSchema,
   ImplementedExecutorOperationKeySchema,
   type AuthorizedActionContext,
+  type ExecutorStandingPolicyAccessChange,
   type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
@@ -74,6 +76,14 @@ export type ExecutorAccessChange =
       revision: number
       status: 'active' | 'disabled'
     }
+  /**
+   * A trigger's standing machine access: one confirmation for every pool
+   * machine's assignment, grant and tool enablement and the policy itself
+   * (docs/standards/ticket-work.md). It is applied by the confirming
+   * service's `applyPolicy`, never by `applyChange`: the policy, its
+   * trigger and its ticket work are not this package's to write.
+   */
+  | ExecutorStandingPolicyAccessChange
 
 export type PreparedExecutorAccessChange = {
   accessChangeId: string
@@ -100,6 +110,9 @@ export const requiresFreshExecutorVerification = (change: ExecutorAccessChange):
   // access away, the daemon's next connection is refused, and the machine can
   // pair again. A kill switch must never be harder to reach than what it stops.
   || (change.kind === 'descriptor_review' && change.status === 'active')
+  // A standing policy lets colleagues start commands on the machine as its
+  // owner: the widest thing this door confirms.
+  || change.kind === 'standing_policy'
 
 const isPrincipal = (value: unknown): value is { principalKind: 'user'; userId: string } | {
   principalKind: 'agent'
@@ -155,6 +168,9 @@ const parseStoredAccessChange = (value: unknown): StoredAccessChange | null => {
   ) {
     return stored as StoredAccessChange
   }
+  if (change.kind === 'standing_policy' && ExecutorStandingPolicyAccessChangeSchema.safeParse(change).success) {
+    return stored as StoredAccessChange
+  }
   if (
     change.kind === 'descriptor_review'
     && Number.isInteger(change.revision)
@@ -203,6 +219,15 @@ const applyChange = async (
       state: change.state,
     })
   }
+  if (change.kind === 'standing_policy') {
+    // Its effects were the confirming service's (`applyPolicy`), which the
+    // confirm refuses to go without; this machine's revision is what they left.
+    const executor = await tx.executor.findUniqueOrThrow({
+      where: { id: executorId },
+      select: { authorizationRevision: true },
+    })
+    return executor.authorizationRevision
+  }
   if (change.kind === 'descriptor_review') {
     await reviewExecutorDescriptorInTransaction(tx, actorContext, {
       executorId,
@@ -225,36 +250,44 @@ const applyChange = async (
   return result.authorizationRevision
 }
 
-export const prepareExecutorAccessChange = async (
-  prisma: PrismaClient,
-  actorContext: AuthorizedActionContext,
-  input: { executorId: string; change: ExecutorAccessChange },
-): Promise<PreparedExecutorAccessChange> => prisma.$transaction(async (tx) => {
-  await lockExecutorMutation(tx, input.executorId)
-  const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
+/**
+ * The continuation a prepared change is confirmed through: its token, its
+ * expiry, its subject digest and, where the change needs it, the fresh
+ * verification it will ask for. The one place one is minted, for the
+ * per-machine changes below and for a standing policy's composite one, which
+ * hangs off its first pool machine and pins every machine's revision itself.
+ */
+export const createExecutorAccessChangeContinuationInTransaction = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    actorUserId: string
+    authorizationRevision: number
+    change: ExecutorAccessChange
+    executorId: string
+    requiresFreshVerification: boolean
+  },
+): Promise<PreparedExecutorAccessChange> => {
   const confirmationToken = randomBytes(32).toString('base64url')
-  const verificationRequired = requiresFreshExecutorVerification(input.change)
-    || (input.change.kind === 'agent_executor_access' && executor.scopeKind === 'private')
   const expiresAt = new Date(Date.now() + EXECUTOR_CONTINUATION_TTL_MS)
   const revisions: StoredAccessChange = {
-    authorizationRevision: executor.authorizationRevision,
+    authorizationRevision: input.authorizationRevision,
     change: input.change,
-    requiresFreshVerification: verificationRequired,
+    requiresFreshVerification: input.requiresFreshVerification,
   }
   const subjectDigest = executorContinuationSubjectDigest({
-    actorUserId: actorContext.actor.actorId,
-    executorId: executor.id,
+    actorUserId: input.actorUserId,
+    executorId: input.executorId,
     revisions,
   })
   const continuation = await tx.executorContinuation.create({
     data: {
-      executorId: executor.id,
+      executorId: input.executorId,
       subject: 'access_change',
-      actorUserId: actorContext.actor.actorId,
+      actorUserId: input.actorUserId,
       subjectDigest,
       revisions: revisions as unknown as Prisma.InputJsonValue,
       confirmationTokenHash: hashExecutorContinuationValue(confirmationToken),
-      verificationChallengeId: verificationRequired ? randomUUID() : null,
+      verificationChallengeId: input.requiresFreshVerification ? randomUUID() : null,
       expiresAt,
     },
     select: { id: true },
@@ -262,10 +295,32 @@ export const prepareExecutorAccessChange = async (
   return {
     accessChangeId: continuation.id,
     confirmationToken,
-    executorId: executor.id,
+    executorId: input.executorId,
     expiresAt,
-    requiresFreshVerification: verificationRequired,
+    requiresFreshVerification: input.requiresFreshVerification,
   }
+}
+
+export const prepareExecutorAccessChange = async (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: { executorId: string; change: ExecutorAccessChange },
+): Promise<PreparedExecutorAccessChange> => prisma.$transaction(async (tx) => {
+  // A standing policy is prepared by its trigger's author through its own
+  // door, which checks the trigger and every pool machine first.
+  if (input.change.kind === 'standing_policy') {
+    throw new ExecutorError(EXECUTOR_ERROR_CODES.SCOPE_INVALID, 'Prepare machine access from its trigger.')
+  }
+  await lockExecutorMutation(tx, input.executorId)
+  const executor = await requireManagedExecutor(tx, actorContext, input.executorId)
+  return createExecutorAccessChangeContinuationInTransaction(tx, {
+    actorUserId: actorContext.actor.actorId,
+    authorizationRevision: executor.authorizationRevision,
+    change: input.change,
+    executorId: executor.id,
+    requiresFreshVerification: requiresFreshExecutorVerification(input.change)
+      || (input.change.kind === 'agent_executor_access' && executor.scopeKind === 'private'),
+  })
 })
 
 export const getExecutorAccessChangeForUser = async (
@@ -354,7 +409,7 @@ export const confirmExecutorAccessChange = async (
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_EXPIRED, 'Access change has expired.')
     }
     const stored = parseStoredAccessChange(continuation.revisions)
-    if (!stored) {
+    if (!stored || (stored.change.kind === 'standing_policy' && !applyPolicy)) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, 'Access change is invalid.')
     }
     const expectedDigest = executorContinuationSubjectDigest({
@@ -425,6 +480,10 @@ export const rejectExecutorAccessChange = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: { accessChangeId: string; confirmationToken: string },
+  /** The confirming service's own clean-up of a rejected change, in this transaction. */
+  onRejected?: (
+    tx: Prisma.TransactionClient, input: { executorId: string; change: ExecutorAccessChange },
+  ) => Promise<void>,
 ): Promise<{ closedReviewCards: ClosedExecutorReviewCard[]; executorId: string }> => prisma.$transaction(async (tx) => {
   const continuation = await tx.executorContinuation.findUnique({
     where: { id: input.accessChangeId },
@@ -433,6 +492,7 @@ export const rejectExecutorAccessChange = async (
       confirmationTokenHash: true,
       executorId: true,
       id: true,
+      revisions: true,
       status: true,
     },
   })
@@ -461,5 +521,7 @@ export const rejectExecutorAccessChange = async (
     continuationId: continuation.id,
     outcome: 'rejected',
   })
+  const stored = parseStoredAccessChange(continuation.revisions)
+  if (stored) await onRejected?.(tx, { executorId: continuation.executorId, change: stored.change })
   return { closedReviewCards, executorId: continuation.executorId }
 })

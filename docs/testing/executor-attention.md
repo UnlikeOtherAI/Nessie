@@ -70,7 +70,10 @@ waits); that another administrator sees the same list with no Close and the
 sentence saying who can; that at phone width every Close is on screen, and a
 Close refused because the session already left the report shows the refusal
 and drops the row; and that a bridge the daemon did not ask shows "Open
-coding sessions have not been checked yet" and asks nothing. Screenshots go
+coding sessions have not been checked yet" and asks nothing. A ticket's own
+session names its ticket as a link and "ticket work under Ondrej's standing
+access", or says only whose access it runs under when the reader cannot read
+the ticket's project. Screenshots go
 to `e2e/screenshots/executor-coding-sessions/`. Who may Close, and which agent
 a reader may see, is covered by `api/test/executor-coding-session-routes.test.ts`.
 

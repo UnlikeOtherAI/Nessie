@@ -88,8 +88,12 @@ win. Every rule here shipped in T3.
   open question: `clockStartedAt` is when it last started, and every
   transition — start, park, resume, end, question opened or closed — folds
   the elapsed time in (`syncTicketWorkClock`,
-  `packages/team-admin/src/ticket-work-clock.ts`). Parked work pauses it too.
-  Nothing enforces `ticketHours` yet (from T4).
+  `packages/executor-manage/src/ticket-work-clock.ts`, beside the record
+  transitions that end work, so a fence ending a policy stops the clock in
+  its own transaction). Parked work pauses it too, and so does every machine
+  transition that leaves the record anything but `active` — queued, waiting
+  for its machine or for access (T4). **(T4)** `ticketHours` is enforced
+  against it ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
 - **The quiet wake** (`quietWakeMinutes`, default 30): an `active` record
   with no pending reminder, no open question, no run in flight and nothing for
   that long — measured from the later of its last wake and the end of the
@@ -98,8 +102,9 @@ win. Every rule here shipped in T3.
   delivery deduped on `quiet:<workId>:<the wake it followed>` and naming that
   wake (`followedWakeAt`), whose claim re-reads all of that — and that no wake
   came since — under the thread's run slot. A retried quiet delivery runs the
-  same claim and is settled `no_longer_applies` when it fails. No coding
-  session can be working yet, so none is checked (from T5). Queued, parked
+  same claim and is settled `no_longer_applies` when it fails. **(T4)** Nor
+  is it sent while one of the ticket's own coding sessions is `working`, as
+  its machine last reported. Queued, parked
   and waiting-machine records never get one.
 - **`ticket-work.sweep`** (`worker/src/control/ticket-work-sweep.ts`) is one
   job a minute, idempotent by its bucket (`enqueueTicketWorkSweep`, started by

@@ -114,6 +114,7 @@ test('the coding observation tools are the coding-session tools that only look',
   }
   assert.deepEqual([...CODING_OBSERVATION_TOOL_NAMES].sort(), [
     CODING_SESSION_TOOL_NAMES.list, CODING_SESSION_TOOL_NAMES.review, CODING_SESSION_TOOL_NAMES.wait,
+    // Reading a terminal's screen only looks too.
     CODING_SESSION_TOOL_NAMES.terminalRead,
   ].sort())
   const acting = [

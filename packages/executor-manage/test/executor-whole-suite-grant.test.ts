@@ -60,6 +60,8 @@ const transactionFake = (input: {
     // this fake holds no lease, and a shared executor has no coding session.
     $executeRaw: async () => 1,
     executorConversationLease: { findMany: async () => [] },
+    // Nothing of this agent's is under standing machine access here.
+    executorStandingPolicy: { findMany: async () => [] },
     executor: {
       findFirst: async () => ({
         authorizationRevision: 4,

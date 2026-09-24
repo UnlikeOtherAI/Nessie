@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { TicketWorkWakeReasonSchema, type TicketWorkWakeReason } from './ticket-work.js'
+import {
+  StandingPolicyBindRefusalReasonSchema,
+  TicketWorkWakeReasonSchema,
+  type StandingPolicyBindRefusalReason,
+  type TicketWorkWakeReason,
+} from './ticket-work.js'
 
 /**
  * What a `ticket_changed` trigger reacts to, as the dispatcher reads it
@@ -224,6 +229,12 @@ export const TicketTriggerSkipReasonSchema = z.enum([
   // delivery failed and switched its trigger off (its health), so the move
   // that assigned the agent and started nothing still has a reason on it.
   'trigger_failed',
+  // Standing machine access (T4): the machine pinned to the work was offline
+  // when the wake came, so no run started and the work waits for it; or the
+  // work was over its policy's hours or spend, so it stopped instead.
+  'machine_offline',
+  'limit_hours',
+  'limit_cost',
 ])
 export type TicketTriggerSkipReason = z.infer<typeof TicketTriggerSkipReasonSchema>
 
@@ -254,6 +265,12 @@ export const TICKET_TRIGGER_SKIP_SENTENCES = {
   trigger_disabled: 'This ticket\'s trigger is off, so the message woke nobody.',
   trigger_failed: 'This trigger could not start work — its agent lost its channel, or its setup no longer holds — '
     + 'so it was switched off. Its owner can see why and fix it on the Triggers page.',
+  machine_offline: 'The machine working this ticket is offline, so the agent was not woken. Work resumes when it '
+    + 'reconnects.',
+  limit_hours: 'This ticket\'s work used all the hours its machine access allows, so it stopped. '
+    + 'Move the ticket out of and back into a start-work column to continue.',
+  limit_cost: 'This ticket\'s work spent what its machine access allows, for the ticket or for the day, so it stopped. '
+    + 'Move the ticket out of and back into a start-work column to continue.',
 } as const satisfies Record<TicketTriggerSkipReason, string>
 
 /**
@@ -286,8 +303,9 @@ export const ticketTriggerSkipSentence = (
  * the work thread is not a `TaskEvent`, so it names its message by
  * `messageId` with the event type `thread_message`; a `check_back_in`
  * reminder names its `reminderId` with the event type `reminder`; and a quiet
- * wake, which nothing caused, names none of them (event type `quiet`). The
- * origin of the last two is `system`: the platform woke the agent.
+ * wake, which nothing caused, names none of them (event type `quiet`), nor
+ * does a queued record the pool dispatcher placed on a machine (`dequeued`).
+ * The origin of the last three is `system`: the platform woke the agent.
  */
 export const TicketTriggerDeliveryPayloadSchema = z
   .object({
@@ -295,7 +313,7 @@ export const TicketTriggerDeliveryPayloadSchema = z
     messageId: uuid.optional(),
     reminderId: uuid.optional(),
     taskId: uuid,
-    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet']),
+    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet', 'dequeued']),
     originKind: z.enum(['session', 'token', 'agent', 'source', 'system']),
     outcome: TicketTriggerDispatchOutcomeSchema,
     skipReason: TicketTriggerSkipReasonSchema.optional(),
@@ -330,15 +348,54 @@ export const TicketTriggerDeliveryPayloadSchema = z
       ? 'messageId'
       : payload.eventType === 'reminder'
         ? 'reminderId'
-        : payload.eventType === 'quiet' ? null : 'taskEventId'
+        : payload.eventType === 'quiet' || payload.eventType === 'dequeued' ? null : 'taskEventId'
     const ids = ['taskEventId', 'messageId', 'reminderId'] as const
     if (ids.some((key) => (payload[key] !== undefined) !== (key === named))) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: [named ?? 'eventType'],
-        message: 'A thread message names its messageId, a reminder its reminderId, a quiet wake none, '
+        message: 'A thread message names its messageId, a reminder its reminderId, a quiet wake and a dequeue none, '
           + 'and every other event its taskEventId.',
       })
     }
   })
 export type TicketTriggerDeliveryPayload = z.infer<typeof TicketTriggerDeliveryPayloadSchema>
+
+/**
+ * A delivery the standing-policy binder writes when it binds no machine to one
+ * `ticket.work` run (`source: 'binding'`, skipped): the run went on unbound,
+ * told why. Its sibling of `TicketTriggerDeliveryPayloadSchema` — a binding
+ * refusal is about a run, not about a ticket event, so it names the run, the
+ * ticket and the work record, and the reason from the binder's vocabulary.
+ */
+export const TicketTriggerBindingRefusalPayloadSchema = z
+  .object({
+    kind: z.literal('standing_policy_refused'),
+    reason: StandingPolicyBindRefusalReasonSchema,
+    runId: uuid,
+    taskId: uuid,
+    workId: uuid,
+  })
+  .strict()
+export type TicketTriggerBindingRefusalPayload = z.infer<typeof TicketTriggerBindingRefusalPayloadSchema>
+
+/**
+ * Why a run went without a machine, as the people who read the trigger's page
+ * and the ticket's chip are told it. None names the machine: the ticket's
+ * readers are the project's, and the machine is its owner's to name.
+ */
+export const STANDING_POLICY_REFUSAL_CAUSES: Record<StandingPolicyBindRefusalReason, string> = {
+  policy_not_live: 'the machine access for this trigger is no longer live',
+  terms_changed: 'the trigger or the machine’s reviewed setup changed since machine access was confirmed',
+  author_unavailable: 'the machines’ owner could not be confirmed as still able to give this board their machines',
+  machine_unavailable: 'the machine was offline or no longer offers its coding tools',
+  channel_unavailable: 'the work thread is no longer in a public project channel the agent is in',
+  not_this_work: 'the run answered something other than this ticket’s own wake',
+  limit_reached: 'the ticket’s work reached one of its limits',
+  ticket_not_in_flow: 'the ticket is no longer on the trigger’s board, or it sits in a column that ends its work',
+  bind_failed: 'the machine could not be reached this turn',
+}
+
+/** "Ran without a machine: the machine was offline or no longer offers its coding tools." */
+export const standingPolicyRefusalSentence = (reason: StandingPolicyBindRefusalReason): string =>
+  `Ran without a machine: ${STANDING_POLICY_REFUSAL_CAUSES[reason]}.`

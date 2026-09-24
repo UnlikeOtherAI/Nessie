@@ -8,6 +8,7 @@ import {
   TRIGGER_TICKET_DISPATCH_TOPIC,
   TriggerTicketDispatchJobPayloadSchema,
   type AuthorizedActionContext,
+  type StandingPolicyHostProfile,
   type TaskEventOrigin,
 } from '@nessie/schemas'
 import { createProjectTask, moveProjectTaskToColumn } from '@nessie/team-admin'
@@ -31,6 +32,14 @@ export type TicketWorkSeedOptions = {
   followKinds?: string[]
   assignOnPickup?: boolean
   instructions?: Record<string, string> | null
+  /**
+   * A live standing policy for the trigger with one private, online machine
+   * paired by the editor, written as a confirmation leaves it — so a pickup
+   * is `active` on that machine. Without it, work waits for machine access
+   * (`machine_access_not_set_up`). The policy's own rules are the
+   * standing-policy suites'; this only gives the other suites active work.
+   */
+  machineAccess?: boolean
 }
 
 export const seedTicketWork = async (prisma: PrismaClient, options: TicketWorkSeedOptions = {}) => {
@@ -102,6 +111,12 @@ export const seedTicketWork = async (prisma: PrismaClient, options: TicketWorkSe
       },
     },
   })
+  const executorId = options.machineAccess
+    ? await grantMachineAccess(prisma, {
+        agentId: agent.id, authorUserId: editor!.id, organizationId: organization.id, projectId: project.id,
+        teamId: team.id, triggerId: trigger.id,
+      })
+    : null
   const actorContext = {
     actor: { actorId: editor!.id, actorType: 'user', roles: ['member'] },
     actionContext: { requestId: randomUUID() },
@@ -118,6 +133,7 @@ export const seedTicketWork = async (prisma: PrismaClient, options: TicketWorkSe
     agentName: agent.name,
     channelId: channel.id,
     triggerId: trigger.id,
+    executorId,
     columns,
     actorContext,
     cleanup: async () => {
@@ -131,6 +147,44 @@ export const seedTicketWork = async (prisma: PrismaClient, options: TicketWorkSe
   }
 }
 export type TicketWorkSeed = Awaited<ReturnType<typeof seedTicketWork>>
+
+const grantMachineAccess = async (
+  prisma: PrismaClient,
+  input: { agentId: string; authorUserId: string; organizationId: string; projectId: string; teamId: string; triggerId: string },
+): Promise<string> => {
+  const executor = await prisma.executor.create({
+    data: {
+      label: 'Studio', lastSeenAt: new Date(), organizationId: input.organizationId,
+      pairingOwnerUserId: input.authorUserId, scopeKind: 'private', status: 'online',
+    },
+  })
+  const hostProfile: StandingPolicyHostProfile = {
+    allowAnyCommand: false,
+    allowedRootNames: ['nessie'],
+    codingAgents: ['claude'],
+    machines: [{
+      executorId: executor.id, label: 'Studio', maxBudgetUsd: 5, maxLiveSessionsPerOwner: 3,
+      mergeCommands: [], permissionMode: 'acceptEdits',
+    }],
+  }
+  await prisma.executorStandingPolicy.create({
+    data: {
+      agentId: input.agentId,
+      authorOrigin: { organizationId: input.organizationId, teamId: input.teamId, userId: input.authorUserId },
+      authorUserId: input.authorUserId,
+      confirmedAt: new Date(),
+      executors: {
+        create: [{ descriptorConfigDigest: 'sha256:test', executorId: executor.id, localPolicyDigest: 'sha256:test', position: 0 }],
+      },
+      hostProfile: hostProfile as unknown as Prisma.InputJsonValue,
+      organizationId: input.organizationId,
+      status: 'live',
+      triggerDigest: 'sha256:test',
+      triggerId: input.triggerId,
+    },
+  })
+  return executor.id
+}
 
 export const newTask = async (
   prisma: PrismaClient,

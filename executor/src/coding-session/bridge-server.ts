@@ -41,7 +41,8 @@ export const codingBridgeCallMeta = (meta: unknown): CodingBridgeCallMeta => {
  * request's `url`, whose owner is a repository's, not this machine's.
  */
 const FIXED_VALUE_KEYS = new Set([
-  'sessionId', 'ownerKey', 'agent', 'agents', 'status', 'reason', 'root', 'rootName', 'name', 'path', 'createdAt', 'updatedAt', 'at',
+  'sessionId', 'ownerKey', 'agent', 'agents', 'status', 'reason', 'root', 'rootName', 'name', 'path', 'createdAt', 'updatedAt',
+  'lastTurnEndedAt', 'at',
   'baseCommit', 'code', 'nextCursor', 'kind', 'subtype', 'state', 'mergeable', 'url', 'unavailable', 'incomplete',
 ])
 

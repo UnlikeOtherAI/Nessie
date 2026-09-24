@@ -22,6 +22,13 @@ import type { CodingSessionState } from './types.js'
  * request's URL gets the path rules only: its owner is the repository's
  * (`github.com/ondre/app`), which is often spelled like the OS user, and the
  * link is the one thing in the review a person follows.
+ *
+ * A caller that already knows the pull request names it by URL, and gets
+ * `pullRequest` beside the branch lookup: the coding agent usually deletes a
+ * merged branch and its worktree, so the lookup by branch finds nothing just
+ * when the answer is MERGED. It is the same `gh pr view`, within the same
+ * budget, projected and rewritten the same way; one gh cannot answer says so
+ * (`unavailable`) rather than leaving the field out.
  */
 const REVIEW_BUDGET_MS = 20_000
 const DIFF_STAT_LINES = 60
@@ -80,13 +87,14 @@ const porcelainCounts = (text: string | undefined): { uncommitted: number; untra
 
 type CheckCounts = Record<string, number>
 
+/** One `gh pr view`, of a branch by its real name or of a pull request by its URL. */
 const pullRequest = async (
-  run: CommandRunner, branch: string, cwd: string, deadline: number, rewriter: PathRewriter,
+  run: CommandRunner, target: string, cwd: string, deadline: number, rewriter: PathRewriter,
   env: NodeJS.ProcessEnv,
 ): Promise<Record<string, unknown> | undefined> => {
   const remaining = deadline - Date.now()
   if (remaining <= 0) return undefined
-  const outcome = await run('gh', ['pr', 'view', branch, '--json', 'url,state,mergeable,statusCheckRollup'], {
+  const outcome = await run('gh', ['pr', 'view', target, '--json', 'url,state,mergeable,statusCheckRollup'], {
     cwd, timeoutMs: Math.min(remaining, 10_000),
     env: { ...env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1', GIT_TERMINAL_PROMPT: '0' },
   })
@@ -120,6 +128,8 @@ export const reviewCodingSession = async (input: {
   state: CodingSessionState | undefined
   /** The person's login-like environment, so `git` and `gh` are the ones they use. */
   env?: NodeJS.ProcessEnv
+  /** A pull request to look up by URL, already checked against `GITHUB_PULL_REQUEST_URL`. */
+  pullRequest?: string
   run?: CommandRunner
 }): Promise<Record<string, unknown>> => {
   const run = input.run ?? runCommand
@@ -132,13 +142,17 @@ export const reviewCodingSession = async (input: {
     ? undefined
     : text.split(/\r?\n/u).filter((line) => line.trim()).slice(0, max).map((line) => rewrite(line).slice(0, 200))
   const base = input.state?.baseCommit
-  const [branch, commits, diffStat, status, worktreeList, indexLock] = await Promise.all([
+  const [branch, commits, diffStat, status, worktreeList, indexLock, named] = await Promise.all([
     git(['rev-parse', '--abbrev-ref', 'HEAD'], input.folder),
     base ? git(['log', '--oneline', '--no-decorate', `-n${COMMIT_LINES}`, `${base}..HEAD`], input.folder) : undefined,
     base ? git(['diff', '--stat', base], input.folder) : git(['diff', '--stat'], input.folder),
     git(['status', '--porcelain=v1', '-z', '--untracked-files=normal'], input.folder),
     git(['worktree', 'list', '--porcelain'], input.folder),
     git(['rev-parse', '--git-path', 'index.lock'], input.folder),
+    // Beside git, not after it: the one answer a merged, deleted branch cannot give.
+    input.pullRequest === undefined
+      ? undefined
+      : pullRequest(run, input.pullRequest, input.folder, deadline, input.rewriter, env),
   ])
   // A git the agent's tree was killed in mid-commit leaves index.lock behind, and every later git command fails on it.
   const indexLocked = indexLock?.trim()
@@ -179,6 +193,12 @@ export const reviewCodingSession = async (input: {
     ...porcelainCounts(status),
     worktreesCreatedSinceStart: worktrees,
     pullRequests,
+    ...(input.pullRequest === undefined ? {} : {
+      pullRequest: named && named.unavailable === undefined
+        ? named
+        // gh missing, or gh answering nothing it could parse in time: said, with the one asked about.
+        : { url: input.rewriter.rewritePaths(input.pullRequest), unavailable: named?.unavailable ?? 'lookup_failed' },
+    }),
     lastTest: input.state?.lastTest ?? null,
     ...(indexLocked ? { staleIndexLock: true } : {}),
     ...(Date.now() > deadline ? { incomplete: 'review_budget_exhausted' } : {}),

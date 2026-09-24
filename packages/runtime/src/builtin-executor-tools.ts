@@ -1,5 +1,10 @@
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
-import { IMPLEMENTED_EXECUTOR_OPERATION_KEYS } from '@nessie/schemas'
+import {
+  IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
+  STANDING_POLICY_ANY_COMMAND_OPTION,
+  STANDING_POLICY_LIMIT_CEILINGS,
+  STANDING_POLICY_LIMIT_DEFAULTS,
+} from '@nessie/schemas'
 
 const UUID = { type: 'string', format: 'uuid' }
 
@@ -202,6 +207,71 @@ export const EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION: BuiltinToolDefinit
   personalAssistantOnly: true,
 }
 
+/**
+ * A ticket trigger's standing machine access, as ONE confirmation card
+ * (docs/standards/ticket-work.md). PA-only, so it reaches the Agent Designer
+ * through its identity-delegated set and never a designed agent — the agent
+ * that works the tickets has no way to give itself machines. The handler
+ * refuses anyone but the trigger's author, in their own Designer or Personal
+ * Assistant conversation, on an interactive turn.
+ */
+export const EXECUTOR_STANDING_POLICY_PREPARE_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'executor_standing_policy_prepare',
+  category: 'executors',
+  summary: 'Prepare a ticket trigger’s standing machine access as one confirmation card.',
+  label: 'Prepare Machine Access',
+  description:
+    'Prepare standing machine access for a ticket trigger you set up: one or two private machines you paired, '
+    + 'whose reviewed coding-sessions bridge lets the trigger’s agent have Claude Code work its tickets as '
+    + 'you. It posts ONE confirmation card in this conversation covering the agent’s access to every machine '
+    + 'and the policy itself, which you confirm with your password; each machine that cannot take the work is '
+    + 'refused with its reason. Only the person who set the trigger up can prepare it.',
+  parameters: {
+    type: 'object',
+    properties: {
+      triggerId: { ...UUID, description: 'The ticket trigger, from agent_trigger_create or agent_trigger_list.' },
+      executorIds: {
+        type: 'array',
+        items: UUID,
+        minItems: 1,
+        maxItems: 2,
+        description: 'One or two machines that say "ticket work: yes" in your executor facts.',
+      },
+      allowAnyCommand: {
+        type: 'boolean',
+        description: `${STANDING_POLICY_ANY_COMMAND_OPTION} Only when the person asked for exactly that; without it a `
+          + 'machine whose Claude Code runs in bypassPermissions is refused.',
+      },
+      allowedRootNames: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'The coding roots ticket work may use. Leave out for every root the machines share.',
+      },
+      limits: {
+        type: 'object',
+        properties: {
+          ticketHours: {
+            type: 'number', maximum: STANDING_POLICY_LIMIT_CEILINGS.ticketHours,
+            description: `Hours one ticket may stay active (default ${STANDING_POLICY_LIMIT_DEFAULTS.ticketHours}).`,
+          },
+          ticketUsd: {
+            type: 'number', maximum: STANDING_POLICY_LIMIT_CEILINGS.ticketUsd,
+            description: `US dollars one ticket may spend (default ${STANDING_POLICY_LIMIT_DEFAULTS.ticketUsd}); `
+              + 'each machine’s per-turn budget must not exceed it.',
+          },
+          dailyUsd: {
+            type: 'number', maximum: STANDING_POLICY_LIMIT_CEILINGS.dailyUsd,
+            description: `US dollars the trigger’s work may spend a day (default ${STANDING_POLICY_LIMIT_DEFAULTS.dailyUsd}).`,
+          },
+        },
+      },
+    },
+    required: ['triggerId', 'executorIds'],
+  },
+  safe: false,
+  personalAssistantOnly: true,
+}
+
 export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_LIST_TOOL_DEFINITION,
   EXECUTOR_INSPECT_TOOL_DEFINITION,
@@ -214,4 +284,5 @@ export const EXECUTOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   EXECUTOR_AGENT_GRANT_PREPARE_TOOL_DEFINITION,
   EXECUTOR_PRIVATE_ASSIGNMENT_PREPARE_TOOL_DEFINITION,
   EXECUTOR_TEAM_PROMOTION_PREPARE_TOOL_DEFINITION,
+  EXECUTOR_STANDING_POLICY_PREPARE_TOOL_DEFINITION,
 ]

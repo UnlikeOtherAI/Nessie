@@ -156,6 +156,11 @@ export const coerceToolArgumentsToSchema = (
     if (want === 'array' && Array.isArray(next)) {
       next = coerceItems(next, (schema as { items?: unknown }).items)
     }
+    // A declared nested object is corrected by its own properties the same
+    // way: `limits: { ticketUsd: "20" }` is the scalar fault one level down.
+    if (kindOf(next) === 'object' && declaredProperties(schema)) {
+      next = coerceToolArgumentsToSchema(schema, next as Record<string, unknown>, options)
+    }
     if (next !== value) {
       corrected ??= { ...args }
       corrected[key] = next

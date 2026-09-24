@@ -10,6 +10,7 @@ import { ExecutorPermissionsPanel } from './ExecutorPermissionsPanel'
 import { ExecutorActivityPanel } from './ExecutorActivityPanel'
 import { ExecutorLeasesPanel } from './ExecutorLeasesPanel'
 import { ExecutorHostSessionList } from './ExecutorHostSessionList'
+import { ExecutorStandingAccessPanel } from './ExecutorStandingAccessPanel'
 
 export const EXECUTOR_TAB_VALUES = ['agents', 'sessions', 'permissions', 'activity'] as const
 export type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
@@ -58,6 +59,7 @@ export const ExecutorDetailPanels = ({
             {tab === 'activity' ? (
               <div className="grid gap-6">
                 <ExecutorLeasesPanel executorId={executor.id} />
+                {executor.scope.kind === 'private' ? <ExecutorStandingAccessPanel executorId={executor.id} /> : null}
                 <section aria-labelledby="executor-sessions-heading" className="grid gap-3">
                   <h2 className="text-sm font-semibold text-[color:var(--tx)]" id="executor-sessions-heading">Recent sessions</h2>
                   <ExecutorActivityPanel sessions={access.sessions ?? []} />

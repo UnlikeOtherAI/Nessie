@@ -10,7 +10,7 @@ import {
   encryptExecutorCommandJson,
   executorCommandDigest,
 } from './executor-command-codec.js'
-import { assertExecutorMcpCallPayload } from './executor-coding-session-owner.js'
+import { assertExecutorMcpCallPayload, type ExecutorCodingSessionOwner } from './executor-coding-session-owner.js'
 import {
   isExecutorLeaseLive,
   touchExecutorConversationLeaseForBinding,
@@ -20,6 +20,7 @@ import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 import { resolveExecutorAvailability } from './availability.js'
 import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
 import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
+import { assertStandingPolicyBindingCurrent, isStandingBinding } from './executor-standing-policy-fence.js'
 
 const CODING_SESSION_OPERATION_KEYS = new Set([
   'coding.launch',
@@ -55,11 +56,12 @@ export type ExecutorCommandCreateInput = {
 /**
  * What a current binding is: its executor, run and session, and whom it was
  * made for — the consumed candidate's agent and person, which the worker
- * stamps as the `owner` of a call to the coding-sessions bridge.
+ * stamps as the `owner` of a call to the coding-sessions bridge, with the work
+ * context when the binding pins one.
  */
 export type ExecutorCommandBindingFacts = {
   executorId: string
-  owner: { actorUserId: string; agentId: string }
+  owner: ExecutorCodingSessionOwner
   runId: string
   sessionId: string | null
 }
@@ -109,6 +111,8 @@ export const assertExecutorCommandBindingCurrent = async (
       runId: true,
       sessionId: true,
       session: { select: { executorId: true, profile: true, runId: true, status: true } },
+      standingPolicyId: true,
+      ticketWorkId: true,
     },
   })
   if (!lockedBinding || lockedBinding.executorId !== binding.executorId) {
@@ -277,11 +281,16 @@ export const assertExecutorCommandBindingCurrent = async (
       { projectId, projectMember: Boolean(projectMembership) },
     ),
   })
+  // A standing policy's binding answers to its policy and work record
+  // (`executor-standing-policy-fence.ts`); every other one to its trigger's author.
+  const standing = isStandingBinding(lockedBinding)
+    ? await assertStandingPolicyBindingCurrent(tx, lockedBinding, candidate)
+    : null
   if (
     executor.authorizationRevision !== binding.authorizationRevision
     || !run
     || run.agentId !== candidate.agentId
-    || run.triggerMessage?.userId !== candidate.actorUserId
+    || (!standing && run.triggerMessage?.userId !== candidate.actorUserId)
     || run.thread.channel.organizationId !== executor.organizationId
     || !membership
     || membership.deactivatedAt !== null
@@ -364,7 +373,11 @@ export const assertExecutorCommandBindingCurrent = async (
   }
   return {
     executorId: executor.id,
-    owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId },
+    owner: {
+      actorUserId: candidate.actorUserId,
+      agentId: candidate.agentId,
+      ...(standing ? { contextId: standing.contextId } : {}),
+    },
     runId: binding.runId,
     sessionId: binding.sessionId,
   }
@@ -385,7 +398,8 @@ export const assertExecutorCommandBindingCurrent = async (
 export const createExecutorCommand = async (
   prisma: Pick<
     PrismaClient,
-    'executorAvailabilityCandidate' | 'executorBinding' | 'executorCommand' | 'executorConversationLease'
+    'agentTicketWork' | 'executorAvailabilityCandidate' | 'executorBinding' | 'executorCommand'
+    | 'executorConversationLease' | 'executorStandingPolicy'
   >,
   input: ExecutorCommandCreateInput,
 ): Promise<void> => {

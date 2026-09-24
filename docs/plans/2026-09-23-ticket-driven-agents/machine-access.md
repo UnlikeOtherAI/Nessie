@@ -49,12 +49,26 @@ card shows and every start checks:
   trigger's `ticketUsd`. It bounds a runaway turn, while `ticketUsd` is the
   coarser backstop checked at wakes, intake and the sweep. T4 adds
   `maxBudgetUsd` and `maxLiveSessionsPerOwner` to the signed codingSessions
-  facts, so the server can check both.
+  facts, so the server can check both. As built, `maxBudgetUsd` is stated
+  per offered agent: Claude Code's is the configuration's, and Codex's is
+  always `null`, because Codex has no budget flag and nothing bounds its
+  turn. So a required budget can be met only by Claude Code, and a
+  descriptor an older daemon signed, which states neither fact, meets
+  neither check.
 - **Merge ability.** The card reads the pinned descriptor's `allowedTools`.
   It says whether `Bash(git push:*)`, `Bash(gh pr create:*)`,
   `Bash(gh pr checks:*)` and `Bash(gh pr merge:*)` are allowed. When they are
   not, it warns *"This machine cannot merge; tickets will stop at an open pull
-  request."*
+  request."* As built: `allowedTools` never leaves the host (the descriptor
+  carries only `allowedToolCount`), so the executor signs a derived fact,
+  `mergeCommands` — which of the four commands Claude Code may run unasked,
+  all of them under `bypassPermissions` — and the card reads that; a
+  descriptor without it reads as unable to merge.
+- **As built, the rest of the profile** (`StandingPolicyHostProfileSchema`):
+  `codingAgents` is `['claude']` (a start naming Codex is refused), the
+  author's `allowAnyCommand` and `allowedRootNames` (default: the roots every
+  pool machine shares, each required on every machine), and per machine its
+  permission mode, turn budget, session quota and merge commands.
 
 ## What is pinned
 
@@ -68,6 +82,16 @@ security-relevant fields:
 
 The pool rows store each machine's `codingSessions` config digest and
 `localPolicyDigest`.
+
+As built: the digest is `standingPolicyTermsDigest` of
+`StandingPolicyPinnedTermsSchema`, which the policy keeps beside it
+(`pinned_terms`) so the next card can say what changed. `ticketHours`,
+`ticketUsd` and `dailyUsd` are the **policy's** limits, chosen at prepare and
+held only in its terms; the trigger keeps `wakesPerTicket` and
+`startsPerDay`. "The author gets a fresh card that shows the diff" is the
+card of their next prepare (its "Changed since you last confirmed" line);
+nothing posts a card on its own when a policy is suspended — the saving
+door says it paused access instead.
 
 - **A trigger edit that changes a pinned field** suspends the policy in the
   same transaction (`suspendedReason: trigger_changed`). This holds whoever
@@ -121,6 +145,52 @@ The pool rows store each machine's `codingSessions` config digest and
   - that merges happen under the author's GitHub identity;
   - the instructions, verbatim.
 - **Changing the pool or raising a limit** takes a new prepare and a new card.
+- **As built (T4, the policy and its card).** The team-admin
+  `standing-policy-*` modules and `assessStandingPolicyMachine`; the rules
+  are in `docs/standards/ticket-work-machine-access.md`. What the rest of T4
+  inherits:
+  - A confirmation that **replaces** a live or suspended policy hands its live
+    records to the new one: an `active` record goes back to `queued` with no
+    machine and its sessions closed (`policy_ended`), since the old owner
+    context is never bound again. Suspension closes only the `active`
+    records' sessions; parked records keep theirs.
+  - `ticket-work.sweep` is enqueued by every transaction that may free a
+    machine (T4's binding part); T3's subscriber runs it, and T4's last part
+    gives it a machine half (below, "The sweep's machine half"). Records
+    queued by a confirmation or a hand-over carry their reason, place and a
+    `work_queued` row.
+  - Confirm re-checks everything but online-ness; prepare requires it.
+  - The trigger disable, pause, health switch-off, delete and the agent's
+    delete end a policy (`endTicketWorkForTrigger`, in
+    `ticket-trigger-teardown.ts`); every fence below does too (T4's binding
+    part). A review that changes a pool machine's digests suspends
+    (`descriptor_changed`); one that leaves it without the pair or a
+    reviewed bridge then ends it (`descriptor_narrowed`).
+  - The route `POST /api/triggers/:triggerId/machine-access` answers the
+    card spec with the token, for the Machine access section to render with
+    the chat's own card renderer.
+  - **As built (T4, the screens).** The Machine access section renders that
+    card in place and opens the same access-change review for the password,
+    rather than posting it to the author's DM: a chat card needs the run
+    that posted it, and a route has none. The section is on the trigger's
+    own page, which only owners and the author reach, so the card is never
+    shown in a project room; the Designer's tool still posts it to the
+    author's own DM. An owner reads the page from the Triggers list; the
+    author, owner or not, reads it through `GET /api/triggers/:triggerId`
+    and its `/history`, which answer an owner or the ticket trigger's
+    `config.authorUserId` and nobody else, and sees it read-only — no Run
+    now, Edit, Pause or Delete — with the Machine access section working as
+    usual. After a reload the section says where a card still out can be
+    answered (`cardLocation`): the author's conversation it was posted to,
+    linked, or "prepared here and not confirmed", with the prepare offered
+    again. The reads are `GET /api/triggers/:triggerId/machine-access`
+    (and `/machines` for the author's form), the executor page's
+    `GET /api/executors/:executorId/standing-policies`, and End is
+    `POST /api/standing-policies/:policyId/end`. A save of the trigger that
+    would pause live access says so above Save in the editor, and
+    `PUT /api/triggers/:triggerId` answers what it did (`machineAccess`:
+    `suspended` with the author and fields, or `limits_lowered`) for the
+    page to say after it.
 
 ## Binding at each wake
 
@@ -151,6 +221,45 @@ without a lease. Each refusal writes `executor.run.policy_refused` and a
 delivery row, and the run continues unbound. Its reason is in the facts and
 on the chip.
 
+- **As built (T4, binding and what follows it).** The rules are in
+  `docs/standards/ticket-work-machine-access.md`. Where the code went another
+  way than the text above:
+  - The policy travels on the bindings (`executor_bindings.standing_policy_id`
+    and `ticket_work_id`, never beside a lease), not in
+    `actionContext.standingPolicy`; the dispatch fence reads it there, and the
+    owner context is derived from it.
+  - The binder's checks are `executor-standing-policy-binding-checks.ts`.
+    Board-edit standing is team-admin's rule, so the worker hands it in
+    (`canEditBoard`); the policy's lifecycle, the record transitions and the
+    pinned terms moved into `@nessie/executor-manage`, so the executor fences
+    there end a policy in their own transaction.
+  - A pinned machine found offline is handled when the wake is decided, at
+    dispatch, so no run starts. One that goes offline between then and run
+    setup is refused `machine_unavailable` by the binder, and that run goes
+    on unbound.
+  - `ticketHours` is T3's hours clock (`activeMs` plus the running
+    stretch), which moved into `@nessie/executor-manage` beside the record
+    transitions; every pool transition syncs it. `dailyUsd` fails a record with `limit_cost`,
+    because T1 gave `limit_daily` to `startsPerDay`.
+  - Coding cost is the difference in a session's cumulative `totalCostUsd`,
+    which `session_status` now reports; each run's own cost comes from the
+    token ledger once, keyed `run:<runId>` in `session_costs`.
+  - A pinned-field edit suspends the policy, so its sessions' closes say
+    `policy_suspended`; `trigger_changed` is written by a disable or delete.
+  - Projects, boards and columns have no archive in the product: their fence
+    is their delete. Nothing moves a channel to another project.
+  - A binding refusal's delivery is a skipped row with `source: 'binding'`
+    and its own payload (`TicketTriggerBindingRefusalPayloadSchema`), which
+    the Triggers page and the chip say in one plain sentence per reason.
+  - A standing binding reaches the coding-sessions bridge alone: the run is
+    offered only the `coding_session_*` tools, and the dispatch fence refuses
+    the generic pair and every other program (a lead's decision: the card
+    consents to coding sessions, not to the machine's other programs).
+  - The sweep's machine half ends policies whose author UOA no longer lists,
+    stops work over its limits that nobody wakes, and places queued work on
+    a free machine in each policy's queue order, a first-free assignment;
+    T5's dequeue orders it by priority and age across policies.
+
 ## Session isolation
 
 Today a coding session's owner key is `sha256(executorId|agentId|actorUserId)`.
@@ -163,7 +272,15 @@ shared.
   `ticket:<policyId>:<taskId>` for ticket work, and absent for launches and
   leases. `executorCodingSessionOwnerKeyInput` and the daemon's `_meta`
   derivation both hash it. A lease-end close then cannot reach ticket
-  sessions, and each ticket has its own quota.
+  sessions, and each ticket has its own quota. As built: the key text is
+  the three ids, then `|contextId`, and a context-less key is unchanged. The
+  same holds for the other owner-wide close keyed without a context, one
+  agent's access being withdrawn, so its fence must also end the policy and
+  write the session-scoped closes below. A machine-wide close (pause,
+  revoke, the owner's roster removal) already names every key the last
+  report listed, a ticket's included. The executor page names a session's
+  agent from context-less keys, so a ticket's session reads with no agent
+  until the page learns the policy contexts.
 - **Worker filter (T4, defence in depth):** in `ticket.work` runs the
   `coding_session_*` tools refuse a `sessionId` not in the work record: *"That
   session is not this ticket's."* `sessionId` is optional and defaults to the
@@ -197,7 +314,8 @@ Sessions are closed by the server, never through the model.
   - the policy ending or being suspended, through any fence;
   - the trigger being deleted, disabled or changed.
 - T4 adds five close reasons to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and
-  to its CHECK, and records them in `host-coding-sessions.md`:
+  to its CHECK, and records them in the close-requests section of
+  `host-coding-sessions-containment.md`:
 
   | Event | Close reason |
   |---|---|

@@ -52,9 +52,29 @@ test('the descriptor carries the bridge\'s power facts, and nothing looser', () 
     { ...facts, configDigest: 'sha256:short' },
     { ...facts, environmentNames: ['PATH', 'PATH'] },
     { ...facts, environmentNames: ['NOT A NAME'] },
+    { ...facts, maxBudgetUsd: { claude: 5 } },
+    { ...facts, maxBudgetUsd: { claude: 5, codex: null, cursor: 1 } },
+    { ...facts, maxBudgetUsd: { claude: 0, codex: null } },
+    { ...facts, maxBudgetUsd: { claude: 1_001, codex: null } },
+    { ...facts, maxLiveSessionsPerOwner: 0 },
+    { ...facts, maxLiveSessionsPerOwner: 2.5 },
+    { ...facts, mergeCommands: ['git push', 'git push'] },
+    { ...facts, mergeCommands: ['git push --force'] },
   ]) {
     assert.equal(ExecutorCodingSessionsFactsSchema.safeParse(loose).success, false, JSON.stringify(loose))
   }
+})
+
+test('the turn budget per agent and the live-session quota are signed facts; an older daemon states neither', () => {
+  const stated = { ...facts, maxBudgetUsd: { claude: 2.5, codex: null }, maxLiveSessionsPerOwner: 3 }
+  const parsed = ExecutorCapabilityDescriptorSchema.parse({ ...descriptor, codingSessions: stated })
+  assert.deepEqual(parsed.codingSessions, stated)
+  const older = ExecutorCodingSessionsFactsSchema.parse(facts)
+  assert.equal(older.maxBudgetUsd, undefined, 'not stated, which is not the same as no budget')
+  assert.equal(older.maxLiveSessionsPerOwner, undefined)
+  assert.equal(older.mergeCommands, undefined, 'a machine that has not said which merge commands it allows')
+  const merging = { ...stated, mergeCommands: ['git push', 'gh pr create'] }
+  assert.deepEqual(ExecutorCodingSessionsFactsSchema.parse(merging).mergeCommands, ['git push', 'gh pr create'])
 })
 
 test('the mcp.call payload stamps an owner beside runId, outside the model\'s arguments', () => {
@@ -71,6 +91,37 @@ test('the mcp.call payload stamps an owner beside runId, outside the model\'s ar
     'an owner inside the model\'s envelope is refused, not honoured',
   )
   assert.equal(executorCodingSessionOwnerKeyInput('exec', { agentId: 'agent', actorUserId: 'user' }), 'exec|agent|user')
+})
+
+test('a ticket context rides the owner, and only in its one lowercase spelling', () => {
+  const args = { server: 'coding-sessions', tool: 'session_list', arguments: {} }
+  const contextId = `ticket:${agentId}:${runId}`
+  const owner = { agentId, actorUserId, contextId }
+  assert.deepEqual(ExecutorMcpCallPayloadSchema.parse({ args, runId, owner }).owner, owner)
+  for (const bad of [
+    '', 'ticket:', `ticket:${agentId}`, `lease:${agentId}:${runId}`, `ticket:${agentId}:${runId}:x`,
+    `ticket:ABCDEF00-0000-4000-8000-000000000701:${runId}`, `ticket:${agentId}|${runId}`, ` ticket:${agentId}:${runId}`,
+  ]) {
+    const parsed = ExecutorMcpCallPayloadSchema.safeParse({ args, runId, owner: { ...owner, contextId: bad } })
+    assert.equal(parsed.success, false, bad)
+  }
+})
+
+test('the owner-key text: three ids without a context, exactly as before it existed, and four with one', () => {
+  // The same vectors as the executor's daemon test and executor-manage's key
+  // test: each runtime hashes this text, and all three must agree on every OS.
+  const executorId = '00000000-0000-4000-8000-000000000801'
+  const owner = { agentId: '00000000-0000-4000-8000-000000000802', actorUserId: '00000000-0000-4000-8000-000000000803' }
+  const contextId = 'ticket:00000000-0000-4000-8000-000000000901:00000000-0000-4000-8000-000000000902'
+  assert.equal(
+    executorCodingSessionOwnerKeyInput(executorId, owner),
+    '00000000-0000-4000-8000-000000000801|00000000-0000-4000-8000-000000000802|00000000-0000-4000-8000-000000000803',
+  )
+  assert.equal(
+    executorCodingSessionOwnerKeyInput(executorId, { ...owner, contextId }),
+    '00000000-0000-4000-8000-000000000801|00000000-0000-4000-8000-000000000802|00000000-0000-4000-8000-000000000803'
+      + '|ticket:00000000-0000-4000-8000-000000000901:00000000-0000-4000-8000-000000000902',
+  )
 })
 
 test('the heartbeat may tell the daemon whose sessions to close', () => {
@@ -100,4 +151,23 @@ test('only the coding-sessions report carries sessions, and a session carries no
   assert.equal(ExecutorLocalMcpReportSchema.safeParse([status('kelpie')]).success, false)
   assert.equal(ExecutorCodingSessionSummarySchema.safeParse({ ...session, lastAssistant: 'I edited…' }).success, false)
   assert.equal(ExecutorCodingSessionSummarySchema.safeParse({ ...session, title: 'x'.repeat(121) }).success, false)
+})
+
+test('a session states its turn and when its last turn ended, and an older report without them still parses', () => {
+  const session = {
+    sessionId: runId, ownerKey, title: 'Fix the flaky test', status: 'waiting_for_input', agent: 'claude', root: 'nessie',
+    updatedAt: '2026-09-23T10:00:00.000Z',
+  }
+  const status = (sessions: unknown[]) => [{
+    server: 'coding-sessions', available: true, observedAt: '2026-09-23T10:00:00.000Z', codingSessions: sessions,
+  }]
+  assert.equal(ExecutorLocalMcpReportSchema.safeParse(status([session])).success, true, 'an older daemon’s report')
+  const turned = { ...session, turn: 3, lastTurnEndedAt: '2026-09-23T09:59:00.000Z' }
+  assert.deepEqual(ExecutorCodingSessionSummarySchema.parse(turned), turned)
+  assert.equal(ExecutorLocalMcpReportSchema.safeParse(status([turned])).success, true)
+  const fresh = { ...session, status: 'working', turn: 0, lastTurnEndedAt: null }
+  assert.deepEqual(ExecutorCodingSessionSummarySchema.parse(fresh), fresh, 'no turn has ended yet')
+  for (const bad of [{ ...turned, turn: -1 }, { ...turned, turn: 1.5 }, { ...turned, lastTurnEndedAt: '' }]) {
+    assert.equal(ExecutorCodingSessionSummarySchema.safeParse(bad).success, false, JSON.stringify(bad))
+  }
 })

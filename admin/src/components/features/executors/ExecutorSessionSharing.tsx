@@ -24,7 +24,9 @@ export const ExecutorSessionSharing = ({ executorId, sessionId, open, onClose }:
         </label>
         <button className="admin-button admin-button-primary" type="submit" disabled={change.isPending}>Add viewer</button>
       </form>
-      <FormError>{change.isError ? formErrorMessage(change.error, 'Could not update sharing. Try again.') : null}</FormError>
+      <FormError>{change.isError
+        ? formErrorMessage(change.error, 'Could not update sharing. Use an active Nessie user in your organisation.')
+        : null}</FormError>
       <QueryState query={query} loadingLabel="Loading viewers…" errorLabel="Could not load viewers.">
         {() => query.data?.length ? <ul className="grid gap-3" aria-label="Session viewers">
           {query.data.map((person) => <li key={person.userId} className="flex items-center justify-between gap-3">

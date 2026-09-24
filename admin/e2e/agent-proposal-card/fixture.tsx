@@ -149,7 +149,9 @@ const unplacedCard: AgentCardPresenter = {
 
 // T1 of docs/plans/2026-09-23-ticket-driven-agents: an agent that picks up a
 // board's tickets says, on the same fields block, the moment its work starts.
-// The "Runs on" row for its machines arrives with machine access (T4).
+// T4 adds "Runs on": the machines by name on this card, which the person who
+// paired them reads in their own conversation with the Designer, and the one
+// machine-access confirmation that follows, in the card's message.
 const TICKET_CARD_ID = '77777777-7777-4777-8777-777777777779'
 
 const ticketCard: AgentCardPresenter = {
@@ -167,6 +169,7 @@ const ticketCard: AgentCardPresenter = {
         { label: 'Lives in', value: 'KiloMayo → Nessie → #eng' },
         { label: 'Who can see it', value: 'Everyone in the KiloMayo team' },
         { label: 'Starts work when', value: 'Someone moves a ticket into In progress on Engineering' },
+        { label: 'Runs on', value: 'Studio and Minis' },
       ],
       type: 'fields',
     },
@@ -189,14 +192,41 @@ const ticketCard: AgentCardPresenter = {
   ],
   cardId: TICKET_CARD_ID,
   message:
-    'Here is the CTO I would build. It starts on a ticket when someone moves it into In progress. '
-    + 'Press Accept, or tell me what to change.',
+    'Here is the CTO I would build. It starts on a ticket when someone moves it into In progress, '
+    + 'and works it on Studio and Minis. One machine-access confirmation follows, which you confirm '
+    + 'with your password. Press Accept, or tell me what to change.',
   messageId: '99999999-9999-4999-8999-999999999997',
   subtitle: 'ticket triage',
   title: 'CTO',
 }
 
-const cards = new Map([[CARD_ID, card], [UNPLACED_CARD_ID, unplacedCard], [TICKET_CARD_ID, ticketCard]])
+// The same agent for someone who did not pair the machines: the card never
+// names them, and says whose password the one confirmation takes.
+const OWNER_CONFIRMS_CARD_ID = '77777777-7777-4777-8777-77777777777a'
+
+const ownerConfirmsCard: AgentCardPresenter = {
+  ...ticketCard,
+  blocks: ticketCard.blocks.map((block) => block.type === 'fields'
+    ? {
+        ...block,
+        items: block.items.map((item) =>
+          item.label === 'Runs on' ? { ...item, value: 'a machine its owner confirms' } : item),
+      }
+    : block),
+  cardId: OWNER_CONFIRMS_CARD_ID,
+  message:
+    'Here is the CTO I would build. It starts on a ticket when someone moves it into In progress. '
+    + 'One machine-access confirmation follows, which the machines\' owner confirms with their password. '
+    + 'Press Accept, or tell me what to change.',
+  messageId: '99999999-9999-4999-8999-999999999996',
+}
+
+const cards = new Map([
+  [CARD_ID, card],
+  [UNPLACED_CARD_ID, unplacedCard],
+  [TICKET_CARD_ID, ticketCard],
+  [OWNER_CONFIRMS_CARD_ID, ownerConfirmsCard],
+])
 
 const client = {
   delete: async () => ({ ok: true }),
@@ -225,6 +255,9 @@ createRoot(document.getElementById('root')!).render(
             </div>
             <div data-testid="ticket-proposal">
               <AgentCardMessage metadata={{ agentCard: { cardId: TICKET_CARD_ID, schemaVersion: 1 } }} />
+            </div>
+            <div data-testid="owner-confirms-proposal">
+              <AgentCardMessage metadata={{ agentCard: { cardId: OWNER_CONFIRMS_CARD_ID, schemaVersion: 1 } }} />
             </div>
           </div>
         </div>

@@ -8,6 +8,8 @@ import {
 
 import { canonicalExecutorPayload } from './executor-canonical-json.js'
 import { takeExecutorCodingSessionClosesInTransaction } from './executor-coding-session-closes.js'
+import { enforceTicketWorkLimitsInTransaction } from './executor-standing-policy-limits.js'
+import { recordTicketWorkHeartbeatCostsInTransaction } from './ticket-work-heartbeat-costs.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import {
   EXECUTOR_HEARTBEAT_FRESHNESS_MS,
@@ -275,6 +277,19 @@ export const reportExecutorHeartbeat = async (
           : undefined,
       },
       select: { activeConnectionEpoch: true, status: true },
+    })
+    // The heartbeat intake: what the ticket's sessions here cost since they
+    // were last counted, then a ticket working on this machine — or charged
+    // by it — past one of its limits stops here, and its sessions' closes
+    // ride this very answer.
+    const charged = await recordTicketWorkHeartbeatCostsInTransaction(tx, {
+      executorId: executor.id, localMcp: input.localMcp, now,
+    })
+    await enforceTicketWorkLimitsInTransaction(tx, {
+      now,
+      where: {
+        OR: [{ executorId: executor.id, status: 'active' }, ...(charged.length > 0 ? [{ id: { in: charged } }] : [])],
+      },
     })
     const codingSessionClose = await takeExecutorCodingSessionClosesInTransaction(tx, {
       executorId: executor.id, ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }), now,

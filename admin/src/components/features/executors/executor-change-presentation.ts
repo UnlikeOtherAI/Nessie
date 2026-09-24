@@ -51,5 +51,27 @@ export const executorChangePresentation = (
       action: remove ? 'Remove access' : 'Allow access', reviewable: Boolean(name),
     }
   }
+  if (change.kind === 'standing_policy') {
+    // A trigger's standing machine access: the plain-words card it was prepared
+    // with says everything it covers; this names it and what it means.
+    const summary = change.summary && typeof change.summary === 'object'
+      ? change.summary as { machineLabels?: unknown; triggerName?: unknown }
+      : {}
+    const labels = Array.isArray(summary.machineLabels)
+      ? summary.machineLabels.filter((label): label is string => typeof label === 'string')
+      : []
+    const machines = labels.length <= 1 ? labels.join('') : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
+    const trigger = typeof summary.triggerName === 'string' ? summary.triggerName : null
+    return {
+      title: 'Allow standing machine access',
+      description: agentName && trigger && machines
+        ? `${agentName} will work tickets from “${trigger}” on ${machines}. Anyone who can edit that board can `
+          + 'then make Claude run commands there as you, with your git and coding-agent login, within the limits '
+          + 'and instructions you were shown.'
+        : 'The agent could not be loaded. Close this change and try again.',
+      action: 'Allow machine access',
+      reviewable: Boolean(agentName && trigger && machines),
+    }
+  }
   return { title: 'Review machine change', description: 'This change cannot be reviewed in this version of Nessie.', action: 'Confirm', reviewable: false }
 }

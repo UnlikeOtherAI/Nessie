@@ -4,7 +4,8 @@ import {
   resolveExecutorWholeSuiteOperationKeys, type ExecutorAccessChange,
 } from '@nessie/executor-manage'
 import { ImplementedExecutorOperationKeySchema, type ImplementedExecutorOperationKey } from '@nessie/schemas'
-import { acquireAgentToolPolicyLock, mergeAgentToolPolicy, mutateAgentToolPolicyInTransaction } from '@nessie/team-admin'
+import { acquireAgentToolPolicyLock, mergeAgentToolPolicy } from './agent-tool-policy-core.js'
+import { mutateAgentToolPolicyInTransaction } from './agent-tool-policy.js'
 
 /** The logical tool policy is per agent and organisation; the grant is per
  * executor. Denial preserves keys this same agent still holds elsewhere. */

@@ -79,6 +79,13 @@ export const TicketWorkKickoffEventSchema = z.object({
   at: z.string().datetime(),
   /** The event as the kickoff tells it: one line, then any quoted text. */
   text: z.string().min(1),
+  /**
+   * The `TaskEvent` or thread message it tells of, and who wrote it (a
+   * `TaskEvent.by`): what a `coding_session_send` in its run is audited as
+   * forwarding, so a merge traces back to the member who asked for it.
+   */
+  source: z.object({ kind: z.enum(['task_event', 'thread_message']), id: uuid }).strict().optional(),
+  by: z.string().min(1).max(200).optional(),
 }).strict()
 export type TicketWorkKickoffEvent = z.infer<typeof TicketWorkKickoffEventSchema>
 

@@ -231,10 +231,10 @@ cannot compute that today:
 
 The fix:
 
-- **Executor** (every OS; T5): the signed session summary gains `turn` and
-  `lastTurnEndedAt`, and `listAll` emits them. The report always includes
-  every session a live work record names, even past the newest-first cap of
-  32 rows.
+- **Executor** (every OS): the signed session summary gains `turn` and
+  `lastTurnEndedAt`, and `listAll` emits them — shipped early, in T4, beside
+  the other executor facts. The report always includes every session a live
+  work record names, even past the newest-first cap of 32 rows (T5).
 - **Intake** is in the existing heartbeat transaction, which already holds
   `lockExecutorConnection`, in a helper in a new file. It compares the previous
   and new `codingSessions` for sessions named by live work records. It enqueues

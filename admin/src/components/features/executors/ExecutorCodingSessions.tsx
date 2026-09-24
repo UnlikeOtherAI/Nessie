@@ -39,6 +39,27 @@ const STATUS: Record<ExecutorCodingSessionStatus, { label: string; tone: PillTon
   working: { label: 'working', tone: 'accent' },
 }
 
+/**
+ * A ticket's own session runs under its trigger's standing access, as the
+ * person who set that up. The ticket is linked when this reader can read its
+ * project; otherwise the row says only that a ticket's work is running.
+ */
+const TicketWork = ({ work }: { work: NonNullable<ExecutorCodingSessionRecord['ticketWork']> }) => (
+  <p className="text-[color:var(--tx3)]" data-testid="executor-coding-session-ticket">
+    {work.ticket ? (
+      <>
+        <Link
+          className="break-words font-medium text-[color:var(--lnk)] underline-offset-2 hover:underline"
+          to={`/projects/${work.ticket.projectId}/board?task=${encodeURIComponent(work.ticket.taskId)}`}
+        >
+          {work.ticket.title}
+        </Link>
+        {' · '}ticket work under {work.authorName}’s standing access
+      </>
+    ) : <>A ticket’s work under {work.authorName}’s standing access</>}
+  </p>
+)
+
 type SessionRowProps = {
   executorId: string
   canClose: boolean
@@ -64,6 +85,7 @@ const SessionRow = ({ executorId, canClose, closing, onClose, pending, readAt, s
         {' · '}driven by {session.ownerAgentName ?? 'an agent you cannot see'}
         {' · '}updated <span title={session.updatedAt}>{executorObservedAge(session.updatedAt, readAt)}</span>
       </p>
+      {session.ticketWork ? <TicketWork work={session.ticketWork} /> : null}
     </div>
     {canClose ? <Link className="admin-button admin-button-secondary admin-button-compact"
       to={`/agents/executors/${executorId}/sessions/${session.sessionId}`} aria-label={`View ${session.title}`}>

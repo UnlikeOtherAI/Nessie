@@ -7,6 +7,7 @@ import type {
   ToolRegistryTransport,
 } from '@nessie/schemas'
 import { buildAgentVisibilityWhere } from '@nessie/db'
+import { suspendStandingPoliciesForAgentChangeInTransaction } from '@nessie/executor-manage'
 
 import {
   fromPrismaToolGrantSource,
@@ -276,7 +277,7 @@ export const createGrant = async (
     return toToolGrantRow(existing)
   }
 
-  const created = await prisma.toolGrant.create({
+  const create = (client: Pick<PrismaClient, 'toolGrant'>) => client.toolGrant.create({
     data: {
       toolId: input.toolRegistryEntryId,
       state,
@@ -286,6 +287,18 @@ export const createGrant = async (
       agentId: input.agentId ?? null,
     },
   })
+  const agentId = input.agentId
+  // An agent's connectors are part of what a standing policy's author agreed
+  // to: a grant of one suspends the agent's live policies in its transaction.
+  const created = agentId
+    ? await prisma.$transaction(async (tx) => {
+        const grant = await create(tx)
+        await suspendStandingPoliciesForAgentChangeInTransaction(tx, {
+          actor: { userId: input.actorUserId ?? null }, agentId,
+        })
+        return grant
+      })
+    : await create(prisma)
   return toToolGrantRow(created)
 }
 
@@ -328,10 +341,18 @@ export const deleteGrant = async (
         },
       ],
     },
-    select: { id: true },
+    select: { agentId: true, id: true },
   })
   if (!existing) return false
-  await prisma.toolGrant.delete({ where: { id: grantId } })
+  const agentId = existing.agentId
+  if (!agentId) {
+    await prisma.toolGrant.delete({ where: { id: grantId } })
+    return true
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.toolGrant.delete({ where: { id: grantId } })
+    await suspendStandingPoliciesForAgentChangeInTransaction(tx, { actor: { userId: actorUserId ?? null }, agentId })
+  })
   return true
 }
 

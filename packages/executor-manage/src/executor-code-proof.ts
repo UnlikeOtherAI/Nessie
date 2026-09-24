@@ -11,6 +11,7 @@ import {
   type ExecutorLeaseRef,
 } from './executor-conversation-lease.js'
 import { ExecutorError, EXECUTOR_ERROR_CODES } from './executor-errors.js'
+import { endStandingPoliciesForExecutorInTransaction } from './executor-standing-policy-fences.js'
 
 export const pairingDigest = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`
@@ -84,6 +85,9 @@ export const revokePairingExecutor = async (
     where: { executorId },
   })
   await closeExecutorCodingSessionsInTransaction(tx, { executorId, reason: 'executor_revoked', requestedByUserId: null })
+  await endStandingPoliciesForExecutorInTransaction(tx, {
+    actor: { requestId: `executor-pairing:${executorId}`, userId: null }, executorId, reason: 'executor_revoked',
+  })
   return ended
 }
 

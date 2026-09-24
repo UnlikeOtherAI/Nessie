@@ -1,5 +1,11 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
+  closeTicketWorkSessionsInTransaction,
+  endTicketWork,
+  enqueueTicketWorkSweep,
+  writeTicketWorkThreadRow,
+} from '@nessie/executor-manage'
+import {
   AuthorizedActionContextSchema,
   TICKET_WORK_PURPOSE,
   TicketWorkKickoffMetadataSchema,
@@ -7,7 +13,6 @@ import {
   type TicketWorkKickoffEvent,
   type TicketWorkKickoffMetadata,
 } from '@nessie/schemas'
-import { endTicketWork, writeTicketWorkThreadRow } from '@nessie/team-admin'
 
 import { buildAgentActorContext, startAgentRun } from './agent-run-start.js'
 import { loadTicketWorkKickoffFacts, renderTicketWorkKickoff, ticketWorkConfigOf } from './ticket-work-kickoff.js'
@@ -53,14 +58,15 @@ export type TicketWorkRunOutcome =
   | { kind: 'folded'; messageId: string }
   | { kind: 'over_limit'; wakesUsed: number; limit: number }
 
-/** A thread row: compact, and never ticket text (`TicketWorkThreadEventSchema`); shared with the API. */
+/** A thread row: compact, and never ticket text. The writer is executor-manage's, which a limit's stop shares. */
 export { writeTicketWorkThreadRow }
 
 /**
  * The wake limit is spent: the record fails with `limit_wakes`, its reminders
- * are cancelled with it, and its thread and ticket say how to continue. Shared
- * by a wake that found the limit spent and the sweep that finds a record over
- * a limit a person lowered.
+ * are cancelled with it, its coding sessions get session-scoped `work_limit`
+ * closes, the pool dispatcher is enqueued for the machine it frees, and its
+ * thread and ticket say how to continue. Shared by a wake that found the limit
+ * spent and the sweep that finds a record over a limit a person lowered.
  */
 export const stopTicketWorkAtWakeLimit = async (
   tx: Prisma.TransactionClient,
@@ -69,8 +75,14 @@ export const stopTicketWorkAtWakeLimit = async (
     wakesUsed: number
   },
 ): Promise<boolean> => {
+  const sessions = await tx.agentTicketWork.findUnique({
+    where: { id: input.work.id },
+    select: { executorId: true, policyId: true, sessionIds: true },
+  })
   const ended = await endTicketWork(tx, { work: input.work, status: 'failed', reason: 'limit_wakes', by: 'system' })
   if (!ended) return false
+  if (sessions) await closeTicketWorkSessionsInTransaction(tx, [{ ...input.work, ...sessions }], 'work_limit', null)
+  await enqueueTicketWorkSweep(tx)
   await writeTicketWorkThreadRow(tx, {
     threadId: input.work.threadId,
     event: {
@@ -143,8 +155,13 @@ export const loadDetailSeen = async (
   return undefined
 }
 
-const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent =>
-  ({ reason: event.reason, at: event.at, text: event.text })
+const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent => ({
+  reason: event.reason,
+  at: event.at,
+  text: event.text,
+  ...(event.source ? { source: event.source } : {}),
+  ...(event.by ? { by: event.by } : {}),
+})
 
 /**
  * A kickoff as its run starts: rendered again from the record and its trigger
@@ -154,7 +171,7 @@ const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent =>
  * work in this thread, which then runs on its own content.
  */
 export const rerenderTicketWorkKickoff = async (
-  prisma: Pick<PrismaClient, 'agentTicketWork' | 'agentTrigger' | 'board' | 'taskBoardPlacement' | 'message'>,
+  prisma: PrismaClient | Prisma.TransactionClient,
   input: { messageId: string; metadata: Prisma.JsonValue | null; agentId: string; threadId: string },
 ): Promise<string | null> => {
   const record = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)

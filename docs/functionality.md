@@ -380,9 +380,9 @@ Root app layout:
 - An executor can offer the built-in `coding-sessions` bridge: Claude Code or
   Codex running on the host as long-lived sessions, acting as that machine's
   own user. Its power facts — agents, permission modes, pre-allowed commands,
-  folders, environment variable names, configuration digest — are in the
-  signed descriptor and read on review as "Coding agents on this machine:
-  Claude Code (accept edits, 3 pre-allowed commands) in nessie".
+  turn budgets, session quota, folders, env names, config digest — are signed
+  and read on review as "Coding agents on this machine: Claude Code (accept
+  edits, 3 pre-allowed commands, at most $5 a turn) in nessie".
 - Only a **private** executor's **pairing owner** drives it: the API refuses
   any other call to the bridge (`EXECUTOR_CODING_SESSIONS_OWNER_ONLY`). A run
   that pairing owner launched with local apps is offered

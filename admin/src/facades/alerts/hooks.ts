@@ -156,10 +156,13 @@ export const getAlertLink = (
     // on email by default.
     return { to: `/settings/connections?tab=inference#local-inference-host-${alert.localInferenceHostId}` }
   }
-  if ((alert.kind === 'trigger_health' || alert.kind === 'trigger_machine_access') && alert.triggerId) {
-    // The trigger's own screen: the schedule that stopped, or the ticket
-    // trigger an agent set up whose machines are still to be set up there,
-    // rather than a list the reader has to search.
+  if (alert.kind === 'trigger_machine_access' && alert.triggerId) {
+    // The ticket trigger an agent set up for the reader, at its Machine access
+    // section, where its author sets the machines up.
+    return { to: `${triggerUrl(alert.triggerId)}#machine-access` }
+  }
+  if (alert.kind === 'trigger_health' && alert.triggerId) {
+    // The trigger's own screen, rather than a list the reader has to search.
     return { to: triggerUrl(alert.triggerId) }
   }
   if (alert.kind === 'automatic_membership_health' && alert.automaticMembershipRuleId) {

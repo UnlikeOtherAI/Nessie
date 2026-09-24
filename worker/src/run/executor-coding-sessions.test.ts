@@ -301,7 +301,29 @@ test('the person-wrote check reads a live chat message pending for this agent in
     agentId: 'agent-1',
     // A message still pending from before this run began is not one the person wrote while it waited.
     createdAt: { gt: createdAt },
-    interactive: true, principalUserId: null, threadId: 'thread-1', triggerId: null,
+    threadId: 'thread-1',
+    OR: [{ interactive: true, principalUserId: null, triggerId: null }],
   })
   assert.equal(await checks.stopRequested(), false)
+})
+
+test('a ticket.work run\'s wait gives way to a wake for the same work pending behind it', async () => {
+  const queries: unknown[] = []
+  const createdAt = new Date('2026-09-23T20:00:00.000Z')
+  const checks = codingWaitRunChecks({
+    run: { findUnique: async () => ({ cancelRequestedAt: null, createdAt, principalUserId: null, threadId: 'thread-1' }) },
+    runThreadPendingMessage: {
+      findFirst: async (query: unknown) => {
+        queries.push(query)
+        return { seq: 1 }
+      },
+    },
+  } as unknown as Pick<PrismaClient, 'run' | 'runThreadPendingMessage'>, {
+    agentId: 'agent-1', runId: 'run-1', ticketWorkId: '00000000-0000-4000-8000-00000000000a',
+  })
+  assert.equal(await checks.personWrote(), true)
+  assert.deepEqual((queries[0] as { where: { OR: unknown[] } }).where.OR, [
+    { interactive: true, principalUserId: null, triggerId: null },
+    { actorContext: { path: ['actionContext', 'ticketWorkId'], equals: '00000000-0000-4000-8000-00000000000a' } },
+  ])
 })

@@ -3,6 +3,7 @@ import { getProjectTask, isAgentAccessibleToActor, isProjectAccessibleToUser } f
 import { canUserReadRunDerivedRecord, runCarriesDisclosureBasis } from '@nessie/runtime'
 import { z } from 'zod'
 
+import { isTicketWorkRun, TICKET_WORK_HOST_OUTPUT_REFUSAL } from '../execute/ticket-work-setup.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import type { TicketMember } from './ticket-member.js'
 
@@ -201,11 +202,25 @@ export const assertProjectWriteDestination = async (
   context: BuiltinToolRuntimeContext,
   input: {
     agentId?: string
+    /**
+     * What is written: a comment on one ticket. A `ticket.work` run that has
+     * read its machine's output writes only a comment on its own ticket.
+     */
+    destination?: { kind: 'ticket_comment'; taskId: string }
     organizationId: string
     projectId: string
     taskUserIds?: Array<string | null>
   },
 ): Promise<void> => {
+  if (isTicketWorkRun(context.actorContext) && (context.consumedSources?.hostOutputScopes().length ?? 0) > 0) {
+    const workId = context.actorContext.actionContext.ticketWorkId
+    const work = workId
+      ? await context.prisma.agentTicketWork.findUnique({ where: { id: workId }, select: { taskId: true } })
+      : null
+    if (!work || input.destination?.kind !== 'ticket_comment' || input.destination.taskId !== work.taskId) {
+      throw new Error(TICKET_WORK_HOST_OUTPUT_REFUSAL)
+    }
+  }
   const members = await context.prisma.projectMember.findMany({
     where: { projectId: input.projectId },
     select: { userId: true },

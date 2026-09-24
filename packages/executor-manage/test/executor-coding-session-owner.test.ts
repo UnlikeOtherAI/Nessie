@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import {
+  assertExecutorMcpCallAllowed,
+  executorCodingSessionOwnerKey,
+} from '../src/executor-coding-session-owner.js'
+import {
   assertExecutorCommandBindingCurrent,
   createExecutorCommand,
   pollExecutorCommand,
@@ -77,6 +81,51 @@ const refusedWith = (code: string, message?: RegExp) => (error: unknown) => {
   return true
 }
 
+// The same vectors as the schemas' owner-key text test and the executor's
+// daemon test: the control plane and the daemon must derive one key, on every OS.
+const VECTOR = {
+  executorId: '00000000-0000-4000-8000-000000000801',
+  owner: { agentId: '00000000-0000-4000-8000-000000000802', actorUserId: '00000000-0000-4000-8000-000000000803' },
+  contextId: 'ticket:00000000-0000-4000-8000-000000000901:00000000-0000-4000-8000-000000000902',
+}
+
+test('the control plane derives the owner key with and without a ticket context', () => {
+  assert.equal(
+    executorCodingSessionOwnerKey(VECTOR.executorId, VECTOR.owner),
+    'sha256:8b525e6e91d92c5ccdddcd9d9956f71fa0438b1b29371c92103c743f1fe5689c',
+    'without a context, the key every existing session already has',
+  )
+  assert.equal(
+    executorCodingSessionOwnerKey(VECTOR.executorId, { ...VECTOR.owner, contextId: VECTOR.contextId }),
+    'sha256:bf37fb2ab3d3d9b845cce071a239f1676a5c1bd29fbd1f7e6805781e04b50187',
+  )
+})
+
+test('a payload carries exactly the context its binding pins, or none', () => {
+  const runId = randomUUID()
+  const authority = (owner: { actorUserId: string; agentId: string; contextId?: string }) => ({
+    codingSessionsServer: 'coding-sessions',
+    executor: { pairingOwnerUserId: VECTOR.owner.actorUserId, scopeKind: 'private' as const },
+    operationKey: 'mcp.call',
+    owner,
+  })
+  const withContext = { ...VECTOR.owner, contextId: VECTOR.contextId }
+  assertExecutorMcpCallAllowed(authority(withContext), { args: bridgeCall, owner: withContext, runId })
+  assertExecutorMcpCallAllowed(authority(VECTOR.owner), { args: bridgeCall, owner: VECTOR.owner, runId })
+  for (const [pinned, stamped] of [
+    [VECTOR.owner, withContext],
+    [withContext, VECTOR.owner],
+    [withContext, { ...VECTOR.owner, contextId: `ticket:${randomUUID()}:${randomUUID()}` }],
+    [withContext, { ...withContext, extra: true }],
+  ] as const) {
+    assert.throws(
+      () => assertExecutorMcpCallAllowed(authority(pinned), { args: bridgeCall, owner: stamped, runId }),
+      refusedWith('EXECUTOR_COMMAND_PAYLOAD_INVALID'),
+      JSON.stringify(stamped),
+    )
+  }
+})
+
 dbTest('the pairing owner of a private executor drives the bridge, stamped with the binding’s own owner', async () => {
   await withWorld({ pairingOwner: 'holder', scope: 'private' }, async (world) => {
     const { bindingId, runId } = await launchedCall(world)
@@ -99,6 +148,8 @@ dbTest('an owner that is not the binding’s, a missing one, or one on another s
       { args: bridgeCall, runId },
       { args: bridgeCall, owner: { actorUserId: world.memberId, agentId: world.agentId }, runId },
       { args: bridgeCall, owner: { ...owner, extra: true }, runId },
+      // A context names ticket work its binding would have to pin; a launch pins none.
+      { args: bridgeCall, owner: { ...owner, contextId: `ticket:${randomUUID()}:${randomUUID()}` }, runId },
       { args: { server: 'kelpie', tool: 'navigate' }, owner, runId },
     ]) {
       await assert.rejects(createCommand(world, { bindingId, payload, runId }), refusedWith('EXECUTOR_COMMAND_PAYLOAD_INVALID'))

@@ -5,10 +5,12 @@ import {
   parseChannelId,
   parseTaskId,
   parseThreadId,
+  standingPolicyRefusalSentence,
   TICKET_WORK_ACTIVITY_EVENT_TYPES,
   TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_NOTICE_SKIP_REASONS,
   TicketChangedStoredConfigSchema,
+  TicketTriggerBindingRefusalPayloadSchema,
   TicketTriggerDeliveryPayloadSchema,
   TicketTriggerLimitsSchema,
   TicketWorkActivityPayloadSchema,
@@ -67,6 +69,42 @@ const byLiveThenNewest = (
 ): number => {
   const live = Number(LIVE.has(right.status)) - Number(LIVE.has(left.status))
   return live !== 0 ? live : right.startedAt.getTime() - left.startedAt.getTime()
+}
+
+/**
+ * Why each record's latest wake ran with no machine, when the standing
+ * binder refused it: its skipped `binding` delivery, if one is no older
+ * than that wake. The sentence never names the machine.
+ */
+const loadMachineRefusals = async (
+  prisma: PrismaClient,
+  records: ReadonlyArray<{
+    id: string; lastWakeAt: Date | null; startedAt: Date; status: string; triggerId: string | null
+  }>,
+): Promise<Map<string, NonNullable<TicketWorkChipRecord['machineRefusal']>>> => {
+  const refusals = new Map<string, NonNullable<TicketWorkChipRecord['machineRefusal']>>()
+  for (const record of records) {
+    if (!record.triggerId || !LIVE.has(record.status)) continue
+    const delivery = await prisma.agentTriggerDelivery.findFirst({
+      where: {
+        createdAt: { gte: record.lastWakeAt ?? record.startedAt },
+        payload: { path: ['workId'], equals: record.id },
+        source: 'binding',
+        triggerId: record.triggerId,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true, payload: true },
+    })
+    const refusal = TicketTriggerBindingRefusalPayloadSchema.safeParse(delivery?.payload)
+    if (delivery && refusal.success) {
+      refusals.set(record.id, {
+        at: delivery.createdAt.toISOString(),
+        reason: refusal.data.reason,
+        sentence: standingPolicyRefusalSentence(refusal.data.reason),
+      })
+    }
+  }
+  return refusals
 }
 
 /**
@@ -211,6 +249,7 @@ export const loadTaskTicketWork = async (
       id: true,
       lastWakeAt: true,
       lastWakeReason: true,
+      queuePosition: true,
       startedAt: true,
       startedBy: { select: { displayName: true } },
       stateReason: true,
@@ -243,6 +282,7 @@ export const loadTaskTicketWork = async (
     select: { id: true },
   })).map((thread) => thread.id))
 
+  const refusals = await loadMachineRefusals(prisma, picked)
   const records: TicketWorkChipRecord[] = picked.map((row) => ({
     id: row.id,
     triggerId: row.triggerId,
@@ -259,6 +299,8 @@ export const loadTaskTicketWork = async (
     thread: openable.has(row.thread.id)
       ? { id: parseThreadId(row.thread.id), channelId: parseChannelId(row.thread.channelId) }
       : null,
+    queuePosition: row.status === 'queued' ? row.queuePosition : null,
+    machineRefusal: refusals.get(row.id) ?? null,
     // Ended work cancels its reminders and answers nothing more.
     pendingReminder: LIVE.has(row.status) && row.reminders[0]
       ? { id: row.reminders[0].id, dueAt: row.reminders[0].dueAt.toISOString(), note: row.reminders[0].note }

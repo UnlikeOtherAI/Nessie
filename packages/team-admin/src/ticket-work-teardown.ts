@@ -1,13 +1,18 @@
 import type { Prisma } from '@prisma/client'
 import {
+  closeTicketWorkSessionsInTransaction,
+  endTicketWork,
+  enqueueTicketWorkSweep,
+  recordTicketWorkActivity,
+  syncTicketWorkClock,
+} from '@nessie/executor-manage'
+import {
   TICKET_WORK_LIVE_STATUSES,
   TicketChangedStoredConfigSchema,
   type TicketEndOn,
 } from '@nessie/schemas'
 
-import { syncTicketWorkClock } from './ticket-work-clock.js'
 import { lockTicketForWork } from './ticket-work-lock.js'
-import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.js'
 
 /**
  * What entering a column does to the ticket's live work, **inside the
@@ -27,14 +32,16 @@ import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.j
  *   origin rule, so a token's or an agent's move back leaves it parked).
  * - Any other column changes nothing here.
  *
+ * Ending one also writes session-scoped close requests for every coding
+ * session it started (`ticket_left_flow`), and ending or parking one frees its
+ * machine — neither status holds a machine — and enqueues the pool
+ * dispatcher, all in the same move.
+ *
  * Both take the ticket's work lock first (`lockTicketForWork`), so a pickup
  * the dispatcher is deciding at the same moment is either already committed
  * and ended here, or waits and sees where this move put the ticket.
  */
-export type TicketWorkTeardownWriter = Pick<
-  Prisma.TransactionClient,
-  'agentTicketWork' | 'agentReminder' | 'boardColumn' | 'taskEvent' | '$queryRaw'
->
+export type TicketWorkTeardownWriter = Prisma.TransactionClient
 
 /** Whether an `endOn` list ends the work in this column, of whatever board. */
 const endsWorkIn = (endOn: readonly TicketEndOn[], column: { id: string; category: string }): boolean =>
@@ -50,6 +57,9 @@ const liveRecords = (tx: TicketWorkTeardownWriter, taskId: string) =>
       agentId: true,
       status: true,
       lastPrState: true,
+      executorId: true,
+      policyId: true,
+      sessionIds: true,
       trigger: { select: { config: true } },
     },
   })
@@ -74,6 +84,7 @@ export const applyTicketWorkColumnEntry = async (
   })
   if (!column) return
   const cause = input.eventId ? { causeEventId: input.eventId } : {}
+  let freed = false
   for (const record of records) {
     // A trigger deleted without ending its records first, or one whose
     // configuration no longer parses, says nothing about where work ends.
@@ -81,6 +92,7 @@ export const applyTicketWorkColumnEntry = async (
     if (!config.success) continue
     if (endsWorkIn(config.data.endOn, column)) {
       const status = column.category === 'done' ? 'done' : 'cancelled'
+      await closeTicketWorkSessionsInTransaction(tx, [record], 'ticket_left_flow', personOf(input.by))
       await endTicketWork(tx, {
         work: record,
         status,
@@ -88,6 +100,7 @@ export const applyTicketWorkColumnEntry = async (
         by: input.by ?? 'system',
         ...cause,
       })
+      freed = true
       continue
     }
     const pickup = new Set(config.data.pickup?.columnIds ?? [])
@@ -106,9 +119,15 @@ export const applyTicketWorkColumnEntry = async (
       await recordTicketWorkActivity(tx, {
         work: record, eventType: 'work_paused', status: 'parked', reason: null, by: input.by ?? null, ...cause,
       })
+      freed = true
     }
   }
+  if (freed) await enqueueTicketWorkSweep(tx)
 }
+
+/** A close request names who asked for it: a person's move names them, anything else nobody. */
+const personOf = (by: string | undefined): string | null =>
+  by && by !== 'system' && !by.includes(':') ? by : null
 
 /**
  * The ticket left every column — archived, by a person, a board source or
@@ -123,7 +142,10 @@ export const applyTicketWorkLeftBoard = async (
   input: { taskId: string; by?: string },
 ): Promise<void> => {
   await lockTicketForWork(tx, input.taskId)
-  for (const record of await liveRecords(tx, input.taskId)) {
+  const records = await liveRecords(tx, input.taskId)
+  for (const record of records) {
+    await closeTicketWorkSessionsInTransaction(tx, [record], 'ticket_left_flow', personOf(input.by))
     await endTicketWork(tx, { work: record, status: 'cancelled', reason: 'left_flow', by: input.by ?? 'system' })
   }
+  if (records.length > 0) await enqueueTicketWorkSweep(tx)
 }

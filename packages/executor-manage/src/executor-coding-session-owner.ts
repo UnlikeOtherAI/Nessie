@@ -7,6 +7,12 @@ import {
 } from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
+import {
+  isStandingBinding,
+  standingBindingContextId,
+  standingProgramRefusal,
+  standingStartRefusal,
+} from './executor-standing-policy-fence.js'
 
 /**
  * Who may drive the executor's built-in coding-sessions bridge
@@ -25,8 +31,12 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
  * bridge from that candidate, and no other server ever gets one.
  */
 
-/** Who an `mcp.call` to the bridge acts for: `ExecutorMcpCallOwnerSchema`, unbranded. */
-export type ExecutorCodingSessionOwner = { actorUserId: string; agentId: string }
+/**
+ * Who an `mcp.call` to the bridge acts for: `ExecutorMcpCallOwnerSchema`,
+ * unbranded. `contextId` names one ticket's work under a standing policy; a
+ * launch and a lease have none, and their key is the three ids alone.
+ */
+export type ExecutorCodingSessionOwner = { actorUserId: string; agentId: string; contextId?: string }
 
 /**
  * The key the bridge isolates an owner's sessions by: `sha256:` + hex SHA-256
@@ -41,7 +51,9 @@ type ExecutorOwnership = {
   scopeKind: 'private' | 'project' | 'organization'
 }
 
-type OwnerClient = Pick<PrismaClient, 'executorAvailabilityCandidate' | 'executorBinding'> | Prisma.TransactionClient
+type OwnerClient = Pick<
+  PrismaClient, 'agentTicketWork' | 'executorAvailabilityCandidate' | 'executorBinding' | 'executorStandingPolicy'
+> | Prisma.TransactionClient
 
 export const executorCodingSessionsAllowed = (executor: ExecutorOwnership, actorUserId: string): boolean =>
   executor.scopeKind === 'private' && executor.pairingOwnerUserId === actorUserId
@@ -68,19 +80,25 @@ const ownerOnlyRefusal = (executor: ExecutorOwnership): ExecutorError => new Exe
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
+/** Exactly the expected owner: the same ids, the same context or none, and nothing else. */
 const sameOwner = (stamped: unknown, expected: ExecutorCodingSessionOwner | undefined): boolean => {
   if (expected === undefined) return stamped === undefined
   return isRecord(stamped)
-    && Object.keys(stamped).length === 2
+    && Object.keys(stamped).length === (expected.contextId === undefined ? 2 : 3)
     && stamped.agentId === expected.agentId
     && stamped.actorUserId === expected.actorUserId
+    && stamped.contextId === expected.contextId
 }
 
 export type ExecutorMcpCallAuthority = {
   codingSessionsServer: string | null
   executor: ExecutorOwnership
   operationKey: string
-  /** The binding's consumed candidate: the agent and the person it was made for. */
+  /**
+   * The binding's consumed candidate — the agent and the person it was made
+   * for — and the work context the binding pins, when it pins one. A payload
+   * naming a context the binding does not pin is refused like any other owner.
+   */
   owner: ExecutorCodingSessionOwner
 }
 
@@ -129,9 +147,18 @@ export const assertExecutorMcpCallPayload = async (
       capabilityRevision: { select: { descriptor: true } },
       executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
       operationKey: true,
+      standingPolicyId: true,
+      ticketWorkId: true,
     },
   })
-  if (!binding || (binding.operationKey !== 'mcp.call' && binding.operationKey !== 'mcp.tools')) return
+  if (!binding) return
+  const mcp = binding.operationKey === 'mcp.call' || binding.operationKey === 'mcp.tools'
+  if (!mcp && !isStandingBinding(binding)) return
+  const codingSessionsServer = reviewedCodingSessionsServer(binding.capabilityRevision.descriptor)
+  // A standing binding reaches the coding-sessions bridge and nothing else.
+  const program = standingProgramRefusal(binding, codingSessionsServer, payload)
+  if (program) throw new ExecutorError(EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID, program)
+  if (!mcp) return
   const candidate = await prisma.executorAvailabilityCandidate.findUnique({
     where: { handleDigest: binding.candidateHandleDigest },
     select: { actorUserId: true, agentId: true },
@@ -139,10 +166,15 @@ export const assertExecutorMcpCallPayload = async (
   if (!candidate) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.BINDING_FENCED, 'Executor binding provenance is no longer available.')
   }
+  // The ticket's own context, for a binding a standing policy made; none
+  // otherwise. Its starts keep to the host profile the author confirmed.
+  const contextId = await standingBindingContextId(prisma, binding)
+  const refusal = await standingStartRefusal(prisma, binding, payload)
+  if (refusal) throw new ExecutorError(EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID, refusal)
   assertExecutorMcpCallAllowed({
-    codingSessionsServer: reviewedCodingSessionsServer(binding.capabilityRevision.descriptor),
+    codingSessionsServer,
     executor: binding.executor,
     operationKey: binding.operationKey,
-    owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId },
+    owner: { actorUserId: candidate.actorUserId, agentId: candidate.agentId, ...(contextId ? { contextId } : {}) },
   }, payload)
 }

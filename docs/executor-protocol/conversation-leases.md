@@ -7,7 +7,10 @@ keeps that reach in the same conversation: their own later messages there bind
 the agent to the same machine again, until they end it or it runs out. Nobody
 else's messages do, and nothing a system, workflow or agent posts does. Before
 the lease, every follow-up, continuation and restart ran with no executor tools,
-so each executor session was one fire-and-forget prompt.
+so each executor session was one fire-and-forget prompt. A ticket's work under
+standing machine access is not a lease either: it is a separate path, the
+machine owner's one confirmation for one trigger's work, bound afresh at every
+wake ([ticket-work-machine-access.md](../standards/ticket-work-machine-access.md)).
 
 The lease never stretches a binding across runs. Each carried run is bound
 **afresh**, by the same fenced binder a launch uses, and every check runs again.

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client'
+import { TicketChangedStoredConfigSchema } from '@nessie/schemas'
 
 import { resolveProjectTaskDetailPlacement } from './board-placement.js'
 
@@ -44,4 +45,33 @@ export const lockTicketColumn = async (
   })
   if (!task) return null
   return (await resolveProjectTaskDetailPlacement(tx, task))?.columnId ?? null
+}
+
+/**
+ * Whether a ticket is still in its trigger's flow: it renders on the pinned
+ * board, in a column, and not in one the trigger ends work in. The standing
+ * policy binder asks this before it lends a machine
+ * (docs/standards/ticket-work-machine-access.md → "Binding"), so a ticket
+ * moved to another board, archived, or sitting in an end column its teardown
+ * has not caught up with gets no machine. An unreadable config is out of flow.
+ */
+export const ticketInWorkFlow = async (
+  prisma: Pick<Prisma.TransactionClient, 'board' | 'boardColumn' | 'task' | 'taskBoardPlacement'>,
+  input: { boardId: string; config: unknown; taskId: string },
+): Promise<boolean> => {
+  const config = TicketChangedStoredConfigSchema.safeParse(input.config)
+  if (!config.success || config.data.boardId !== input.boardId) return false
+  const task = await prisma.task.findUnique({
+    where: { id: input.taskId },
+    select: { id: true, projectId: true, boardId: true, status: true, archivedAt: true },
+  })
+  if (!task || task.archivedAt) return false
+  const placement = await resolveProjectTaskDetailPlacement(prisma, task)
+  if (!placement?.columnId || placement.boardId !== input.boardId) return false
+  const column = await prisma.boardColumn.findFirst({
+    where: { boardId: input.boardId, id: placement.columnId },
+    select: { category: true, id: true },
+  })
+  return Boolean(column) && !config.data.endOn.some((entry) =>
+    ('id' in entry ? entry.id === column?.id : entry.category === column?.category))
 }

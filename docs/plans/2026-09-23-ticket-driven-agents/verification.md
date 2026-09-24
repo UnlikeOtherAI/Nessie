@@ -95,10 +95,13 @@ row with Cancel.
 
 ### T4: machine access (needs 3b on `main`)
 
-It starts with the two pieces that change 3b's code: the coding-session
-owner `contextId` (key derivation in `packages/schemas` and in the executor
-daemon, on every OS) and the five close reasons in
-[machine-access.md](machine-access.md#server-side-closes).
+It starts with the pieces that change 3b's code: the coding-session owner
+`contextId` (key derivation in `packages/schemas` and in the executor
+daemon, on every OS), the five close reasons in
+[machine-access.md](machine-access.md#server-side-closes), the signed
+`maxBudgetUsd` and `maxLiveSessionsPerOwner` facts, `session_review`'s
+`pullRequest` argument, and — brought forward from T5 — the report's `turn`
+and `lastTurnEndedAt` (executor, every OS).
 
 Tests (DB):
 
@@ -127,7 +130,7 @@ Standing access panel; the card render.
 
 Tests:
 
-- Turn numbers in the report (executor, every OS).
+- Turn numbers in the report (executor, every OS) — shipped and tested in T4.
 - The intake fires on a fast turn inside one report, on interrupted, on
   failed, and on a missing session. A missing field infers nothing.
 - Dedupe with `lastObservedTurn`.

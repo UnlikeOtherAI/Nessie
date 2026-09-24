@@ -2,6 +2,8 @@ import type { PrismaClient } from '@prisma/client'
 import { AGENT_EDIT_AUTHORITY_ERROR_CODES, resolveAgentEditAuthority, type AgentEditAuthorityErrorCode } from '@nessie/runtime'
 import type { AuthorizedActionContext } from '@nessie/schemas'
 
+import { endTicketWorkForTrigger } from './ticket-trigger-teardown.js'
+
 export type DeleteAgentResult =
   | { kind: 'deleted'; agentId: string }
   | { kind: 'not_found' }
@@ -33,6 +35,19 @@ export const deleteAgent = async (
   await prisma.$transaction(async (tx) => {
     await tx.agent.update({ where: { id: agent.id }, data: { deletedAt: now } })
     await tx.agentBinding.deleteMany({ where: { agentId: agent.id } })
+    // Its ticket triggers' work and machine access end before the triggers go,
+    // while they still know which trigger held them.
+    const ticketTriggers = await tx.agentTrigger.findMany({
+      where: { agentId: agent.id, type: 'ticket_changed' },
+      select: { id: true },
+    })
+    for (const trigger of ticketTriggers) {
+      await endTicketWorkForTrigger(tx, {
+        actor: { requestId: actorContext.actionContext.requestId, userId: actorContext.actor.actorId },
+        reason: 'trigger_deleted',
+        triggerId: trigger.id,
+      })
+    }
     await tx.agentTrigger.deleteMany({ where: { agentId: agent.id } })
     await tx.run.updateMany({ where: { agentId: agent.id, status: { in: ['pending', 'waiting_approval', 'waiting_input'] } }, data: { status: 'cancelled', finishedAt: now, cancelRequestedAt: now, cancelRequestedByUserId: actorContext.actor.actorId } })
     await tx.run.updateMany({ where: { agentId: agent.id, status: 'running', cancelRequestedAt: null }, data: { cancelRequestedAt: now, cancelRequestedByUserId: actorContext.actor.actorId } })

@@ -282,3 +282,33 @@ dbTest('a directory that still asserts every team changes nothing', async () => 
     assert.deepEqual(await heldTeamIds(prisma, seeded.userId), before)
   })
 })
+
+dbTest('machine access the person gave where UOA no longer places them ends in the same reconciliation', async () => {
+  await withSeed(async (prisma, seeded) => {
+    await prisma.teamMember.deleteMany({ where: { teamId: seeded.localTeamId, userId: seeded.userId } })
+    const agent = await prisma.agent.create({ data: { name: 'CTO', organizationId: seeded.boundOrgId } })
+    const policy = await prisma.executorStandingPolicy.create({
+      data: {
+        agentId: agent.id,
+        authorOrigin: { organizationId: seeded.boundOrgId, teamId: seeded.teamAId, userId: seeded.userId },
+        authorUserId: seeded.userId,
+        confirmedAt: new Date(),
+        hostProfile: {},
+        organizationId: seeded.boundOrgId,
+        status: 'live',
+        triggerDigest: `sha256:${'0'.repeat(64)}`,
+      },
+    })
+    try {
+      await prisma.$transaction((tx) => reconcileUoaMembershipProjection(tx, {
+        asserted: buildUoaAssertedTeams({ entries: [] }),
+        userId: seeded.userId,
+      }))
+      const ended = await prisma.executorStandingPolicy.findUniqueOrThrow({ where: { id: policy.id } })
+      assert.deepEqual([ended.status, ended.endedReason], ['ended', 'author_deactivated'])
+      assert.ok(await prisma.auditLog.findFirst({ where: { action: 'executor.policy.ended', resourceId: policy.id } }))
+    } finally {
+      await prisma.executorStandingPolicy.deleteMany({ where: { id: policy.id } })
+    }
+  })
+})

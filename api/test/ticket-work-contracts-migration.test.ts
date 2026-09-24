@@ -8,6 +8,7 @@ import {
   AgentReminderCancelledReasonSchema,
   AgentReminderStatusSchema,
   AgentTriggerTypeSchema,
+  EXECUTOR_CODING_SESSION_CLOSE_REASONS,
   ExecutorStandingPolicyEndedReasonSchema,
   ExecutorStandingPolicyStatusSchema,
   ExecutorStandingPolicySuspendedReasonSchema,
@@ -188,6 +189,14 @@ test('the standing policy CHECKs are the policy Zod lists', () => {
   const [positions] = [...constraintBody('executor_standing_policy_executors_position_known')
     .matchAll(/"position" IN \(([^)]*)\)/g)].map((match) => match[1]!.split(',').map((value) => value.trim()))
   assert.deepEqual(positions, ['0', '1'], 'a pool is one or two machines')
+})
+
+test('the coding-session close reasons are EXECUTOR_CODING_SESSION_CLOSE_REASONS, a ticket’s five included', () => {
+  const [reasons] = inLists(constraintBody('executor_coding_session_close_requests_reason_known'), 'reason')
+  sameList(reasons!, EXECUTOR_CODING_SESSION_CLOSE_REASONS, 'close request reason')
+  for (const reason of ['ticket_left_flow', 'trigger_changed', 'policy_suspended', 'policy_ended', 'work_limit']) {
+    assert.ok(reasons!.includes(reason), reason)
+  }
 })
 
 test('the reminder CHECK is the reminder Zod lists', () => {
