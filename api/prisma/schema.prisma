@@ -2776,6 +2776,11 @@ enum UserAlertKind {
   knowledge_shared
   /// A local inference host or exact binding needs an authorised repair.
   local_inference_health
+  /// An agent set up a ticket trigger for this person; its machine access is
+  /// still the machines' owner's to set up. Written and read in the same
+  /// deploy: no push or realtime frame carries it, and an older replica's
+  /// visibility predicate has no arm for it, so it never reads the row.
+  trigger_machine_access
 }
 
 // Persistent per-user alert records. v1 writes one `mention` row per directly

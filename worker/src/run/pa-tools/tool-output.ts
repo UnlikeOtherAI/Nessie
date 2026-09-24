@@ -105,6 +105,24 @@ export const buildSnippet = (
   return `${prefix}${content.slice(start, end)}${suffix}`
 }
 
+/**
+ * A board as the setup tools say it back: its link and id, then every column
+ * with its category and id — the ids `ticket_board_column_update`, labels and
+ * a ticket trigger's columns take. `project_structure_read`, `project_create`
+ * and `ticket_board_create` all answer with it, so a board just made reads
+ * the same as one read back.
+ */
+export const formatBoardStructureLines = (board: {
+  columns: readonly { category: string; id: string; name: string }[]
+  id: string
+  isDefault?: boolean
+  name: string
+  projectId: string
+}): string[] => [
+  `- ${formatBoardMarkdownLink(board)} (boardId=${board.id})` + (board.isDefault ? ' — the default board' : ''),
+  ...board.columns.map((column) => `  - ${column.name} (${column.category}) | columnId=${column.id}`),
+]
+
 export const formatSection = (title: string, lines: string[]): string => {
   if (lines.length === 0) {
     return ''

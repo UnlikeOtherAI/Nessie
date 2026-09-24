@@ -1,6 +1,8 @@
 import { chromium } from 'playwright-core'
 import { mkdir } from 'node:fs/promises'
 
+import { resolveAdminPort } from '../../../scripts/dev-ports.mjs'
+
 const token = process.env.UI_TOKEN
 const agentId = process.env.UI_AGENT_ID
 const phase = process.env.UI_PROOF_PHASE
@@ -10,12 +12,18 @@ if (phase !== 'enable' && phase !== 'revoke') {
 }
 
 const entries = JSON.parse(process.env.UI_ENTRIES ?? 'null')
+// [toolId, label] or [toolId, label, explanation]: an explanation is text the
+// entry must show beside its switch, as a capability grant explains itself.
 if (!Array.isArray(entries) || entries.length === 0 || entries.some(
-  (entry) => !Array.isArray(entry) || entry.length !== 2
+  (entry) => !Array.isArray(entry) || entry.length < 2 || entry.length > 3
     || entry.some((value) => typeof value !== 'string' || value.length === 0),
 )) {
-  throw new Error('UI_ENTRIES must be a nonempty JSON array of [toolId, label] pairs.')
+  throw new Error('UI_ENTRIES must be a nonempty JSON array of [toolId, label, explanation?] entries.')
 }
+
+// The Tools tab's own search, by its placeholder: the admin shell carries
+// other search boxes, and filling the first one filters nothing here.
+const toolSearch = (page) => page.getByPlaceholder('Search tools…')
 
 const revoke = phase === 'revoke'
 const beforeVerb = revoke ? 'Disable' : 'Enable'
@@ -40,22 +48,31 @@ try {
   const page = await context.newPage()
   const proofDir = 'artifacts/tool-access-ui-proof'
   await mkdir(proofDir, { recursive: true })
-  const url = `http://localhost:5455/agents/${agentId}?agentTab=tools`
+  // This worktree's admin (AGENTS.md → "Ports"), never a hardcoded default.
+  const adminUrl = process.env.UI_PROOF_ADMIN_URL ?? `http://localhost:${resolveAdminPort()}`
+  const url = `${adminUrl}/agents/${agentId}?agentTab=tools`
   const responses = []
   page.on('response', (response) => {
     if (response.url().includes('/api/mcp/tools')) responses.push(`${response.status()} ${response.url()}`)
   })
   await page.goto(url, { waitUntil: 'domcontentloaded' })
-  await page.locator('input[type=search]').waitFor()
+  await toolSearch(page).waitFor()
 
   const before = {}
-  for (const [key, label] of entries) {
-    const search = page.locator('input[type=search]')
+  const explained = {}
+  for (const [key, label, explanation] of entries) {
+    const search = toolSearch(page)
     await search.fill(key)
     const toggle = page.getByRole('switch', { name: `${beforeVerb} ${label}` })
     await toggle.waitFor()
     before[key] = await toggle.getAttribute('aria-checked')
     if (before[key] !== expectedBefore) throw new Error(`${key} did not start ${expectedBefore}.`)
+    if (explanation) {
+      const text = page.getByText(explanation, { exact: false })
+      await text.first().waitFor()
+      explained[key] = await text.first().isVisible()
+      if (!explained[key]) throw new Error(`${key} does not show its explanation.`)
+    }
     await page.screenshot({ path: `${proofDir}/${revoke ? 'enabled' : 'initial'}-${key}.png`, fullPage: true })
     await toggle.click()
     await page.waitForFunction(
@@ -70,11 +87,11 @@ try {
     return button?.textContent?.trim() === 'Save changes' && button.hasAttribute('disabled')
   })
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.locator('input[type=search]').waitFor()
+  await toolSearch(page).waitFor()
 
   const after = {}
   for (const [key, label] of entries) {
-    const search = page.locator('input[type=search]')
+    const search = toolSearch(page)
     await search.fill(key)
     const toggle = page.getByRole('switch', { name: `${afterVerb} ${label}` })
     await toggle.waitFor()
@@ -82,7 +99,7 @@ try {
     if (after[key] !== expectedAfter) throw new Error(`${key} did not persist ${expectedAfter}.`)
     await page.screenshot({ path: `${proofDir}/${revoke ? 'revoked' : 'enabled'}-${key}.png`, fullPage: true })
   }
-  process.stdout.write(`${JSON.stringify({ after, before, responses, url })}\n`)
+  process.stdout.write(`${JSON.stringify({ after, before, explained, responses, url })}\n`)
   await context.close()
 } finally {
   await browser.close()

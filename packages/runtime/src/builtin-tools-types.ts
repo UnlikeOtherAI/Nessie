@@ -53,6 +53,27 @@ export type BuiltinToolDefinition = {
    */
   projectDelegatedOnly?: boolean
   /**
+   * One of the project-operator verbs. Beside its `personalAssistantOnly`
+   * arms, an ordinary shared agent whose policy carries the explicit
+   * `project_operator` grant may call it — acting as the live person talking
+   * to it, on an interactive turn in a project channel it is bound to, and on
+   * no other run (`worker/src/run/project-operator-admission.ts`). The grant
+   * stands in for the tool's own explicit allow on that arm alone.
+   *
+   * Meaningful only with `personalAssistantOnly`: it widens that gate by
+   * exactly one arm, as `identityDelegatedOnly` narrows it by one.
+   */
+  projectOperator?: boolean
+  /**
+   * Only a live person's own interactive turn may call it, on every arm —
+   * the Personal Assistant's included, whose arm otherwise also opens on a
+   * schedule it fires for its owner. Set on the verbs that arm, install or
+   * start standing work (the workflow writes) and on the project-operator
+   * verbs this capability added, so none of them runs as somebody who is not
+   * there. The identity and operator arms are live-only already.
+   */
+  requiresLiveRequester?: boolean
+  /**
    * When true, the tool is OFF for every agent by default and is exposed ONLY
    * to an agent whose per-agent `toolPolicy` carries an explicit allow
    * (`toolPolicy[id] === true`). Unlike the ordinary builtin default (enabled

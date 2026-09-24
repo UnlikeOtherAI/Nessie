@@ -156,9 +156,10 @@ export const getAlertLink = (
     // on email by default.
     return { to: `/settings/connections?tab=inference#local-inference-host-${alert.localInferenceHostId}` }
   }
-  if (alert.kind === 'trigger_health' && alert.triggerId) {
-    // The Triggers page selects by hash, so the row opens the schedule that
-    // stopped rather than a list the reader has to search.
+  if ((alert.kind === 'trigger_health' || alert.kind === 'trigger_machine_access') && alert.triggerId) {
+    // The trigger's own screen: the schedule that stopped, or the ticket
+    // trigger an agent set up whose machines are still to be set up there,
+    // rather than a list the reader has to search.
     return { to: triggerUrl(alert.triggerId) }
   }
   if (alert.kind === 'automatic_membership_health' && alert.automaticMembershipRuleId) {
