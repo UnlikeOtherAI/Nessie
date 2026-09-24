@@ -28,6 +28,13 @@ export type DocumentTriggerFireOn = z.infer<typeof DocumentTriggerFireOnSchema>
 /** The quiet window, in seconds: saves inside it wake the agent once. */
 export const DOCUMENT_TRIGGER_QUIET_SECONDS = { default: 180, min: 10, max: 3_600 } as const
 
+/**
+ * How many times one page may wake one trigger's agent in any 24 hours. A
+ * review thread has no work record and so no wake limit of its own; this is
+ * its ceiling, whatever loop or burst of saves might otherwise wake it.
+ */
+export const DOCUMENT_TRIGGER_PAGE_WAKES_PER_DAY = 20
+
 export const DocumentTriggerKindsSchema = z
   .array(DocumentTriggerKindSchema)
   .min(1)
@@ -157,9 +164,17 @@ export const DocumentTriggerSkipReasonSchema = z.enum([
   'out_of_scope',
   // The page was deleted before its window ended.
   'page_gone',
-  // The agent can no longer read the page or its space, or the space became
-  // narrower than the target channel: the trigger is paused with a health reason.
+  // The agent can no longer read the space, or the space became narrower
+  // than the target channel: the trigger is paused with a health reason.
   'access_lost',
+  // This one page is narrower than its space — restricted, or private to
+  // another agent — so its change is not reviewed; the trigger keeps
+  // watching the rest, and is not paused.
+  'page_not_readable',
+  // The page already woke the agent `DOCUMENT_TRIGGER_PAGE_WAKES_PER_DAY`
+  // times in the last day: the change is still owed (the marker does not
+  // move), and the first window after that reviews it with everything since.
+  'wake_limit',
   // The stored configuration no longer parses: the trigger matches nothing.
   'config_invalid',
   // A failed delivery, retried, whose change no longer wakes anyone.
@@ -172,8 +187,12 @@ export const DOCUMENT_TRIGGER_SKIP_SENTENCES = {
     + 'while agent edits are left out — so nobody was woken.',
   out_of_scope: 'The document left what this trigger watches before its quiet window ended, so nobody was woken.',
   page_gone: 'The document was deleted before its quiet window ended, so nobody was woken.',
-  access_lost: 'The agent can no longer read this document or its space, or the space became narrower than the '
+  access_lost: 'The agent can no longer read this document\'s space, or the space became narrower than the '
     + 'target channel, so the trigger was paused. Its owner can see why on the Triggers page.',
+  page_not_readable: 'The agent may not read this one document — it is restricted, or private to another agent — '
+    + 'so its change was not reviewed. The trigger keeps watching the rest.',
+  wake_limit: 'This document already woke the agent as often as a day allows, so this change waits: the first '
+    + 'save after that opens a review that covers it with everything since.',
   config_invalid: 'This trigger\'s configuration no longer parses, so it matches nothing.',
   no_longer_applies: 'By the time this was retried, it no longer woke anyone.',
 } as const satisfies Record<DocumentTriggerSkipReason, string>

@@ -93,6 +93,9 @@ export const enqueueDocumentTriggerDispatch = async (
     await enqueueQueueJob(tx, {
       delayMs: config.data.quietSeconds * 1_000,
       idempotencyKey: documentTriggerPendingKey(trigger.id, event.pageId),
+      // A save joining an open window row-locks its job until the save
+      // commits, so the job's release waits for it and its read sees it.
+      onConflict: 'lock',
       payload,
       topic: TRIGGER_DOCUMENT_DISPATCH_TOPIC,
     })

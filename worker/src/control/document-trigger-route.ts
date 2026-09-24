@@ -14,7 +14,7 @@ import {
   type DocumentTicketNote,
 } from './document-trigger-kickoff.js'
 import { ensureDocumentReviewThread, queueDocumentReviewRun } from './document-trigger-run.js'
-import type { DocumentAct } from './document-trigger-dispatch.js'
+import type { DocumentAct } from './document-trigger-settle.js'
 import { assertTargetChannel } from './ticket-work.js'
 import type { TicketWorkSeam } from './ticket-work-seam.js'
 
@@ -107,10 +107,10 @@ const withInstructions = (text: string, config: DocumentChangedStoredConfig): st
 
 const reviewInThread = async (
   tx: Prisma.TransactionClient,
-  input: RouteInput,
+  input: RouteInput & { channelId: string },
   note: DocumentTicketNote | null,
 ): ReturnType<DocumentAct> => {
-  const channelId = await assertTargetChannel(tx, input.trigger)
+  const { channelId } = input
   const channel = await tx.channel.findUniqueOrThrow({
     where: { id: channelId },
     select: { id: true, label: true, projectId: true, teamId: true },
@@ -144,8 +144,12 @@ export const routeDocumentChange = async (
   tx: Prisma.TransactionClient,
   input: RouteInput,
 ): ReturnType<DocumentAct> => {
+  // The document trigger's own channel, whichever way the change goes: a
+  // trigger whose agent left it, or whose channel went non-public, is paused
+  // with its health reason (the classified throw), never routed around.
+  const channelId = await assertTargetChannel(tx, input.trigger)
   const route = await ticketRoute(prisma, input)
-  if (route.kind === 'thread') return reviewInThread(tx, input, route.note)
+  if (route.kind === 'thread') return reviewInThread(tx, { ...input, channelId }, route.note)
   const described = describeDocumentChange(input.facts)
   const outcome = await input.seam.wakeTicketWork(tx, {
     trigger: { ...route.ticketTrigger, organizationId: input.trigger.organizationId },
@@ -168,7 +172,9 @@ export const routeDocumentChange = async (
   // ended a moment ago): the change is still reviewed, in the page's thread.
   if (outcome.outcome === 'refused') {
     const task = await tx.task.findUnique({ where: { id: route.work.taskId }, select: { title: true } })
-    return reviewInThread(tx, input, { id: route.work.taskId, title: task?.title ?? null, why: 'work_ended' })
+    return reviewInThread(tx, { ...input, channelId }, {
+      id: route.work.taskId, title: task?.title ?? null, why: 'work_ended',
+    })
   }
   return { outcome: 'ticket_work', workId: outcome.workId, threadId: route.work.threadId }
 }

@@ -27,6 +27,7 @@ export const seedDocumentTrigger = async (
   prisma: PrismaClient,
   s: TicketWorkSeed,
   config: Record<string, unknown> = {},
+  options: { targetChannelId?: string } = {},
 ) => {
   const space = await prisma.knowledgeSpace.create({
     data: {
@@ -56,7 +57,7 @@ export const seedDocumentTrigger = async (
   const trigger = await createAgentTrigger(prisma, s.agentId, {
     config: { instructions: DOCUMENT_INSTRUCTIONS, ...config },
     name: 'Review spec edits',
-    targetChannelId: s.channelId,
+    targetChannelId: options.targetChannelId ?? s.channelId,
     type: 'document_changed',
   }, { authorUserId: s.editorId })
   if (!trigger) throw new Error('seedDocumentTrigger: the trigger was not created')

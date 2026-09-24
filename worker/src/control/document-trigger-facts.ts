@@ -13,6 +13,7 @@ import {
 import { canMemberEditProjectBoards } from '@nessie/team-admin'
 
 import type { DocumentChangeFacts } from './document-trigger-kickoff.js'
+import { wakingVersions } from './document-trigger-loop-guard.js'
 
 /**
  * What one document trigger's quiet window found, read afresh when it fires
@@ -145,19 +146,23 @@ export const scopeFactsOf = async (prisma: PrismaClient, page: WatchedPage): Pro
 
 /**
  * Whether the agent can still read the page, as `kb_page_read` would decide:
- * the space by the agent's own reach, and no page-level narrowing an agent
- * never passes (restricted, or private to another agent).
+ * its space by the agent's own reach (`space_lost` when not: the trigger
+ * cannot work at all), then no page-level narrowing an agent never passes —
+ * restricted, or private to another agent (`page_narrowed`: this page only).
  */
-export const agentCanReadPage = async (
+export const agentPageAccess = async (
   prisma: PrismaClient,
   input: { organizationId: string; agentId: string; page: WatchedPage },
-): Promise<boolean> => {
-  if (input.page.sensitivityTier === 'restricted') return false
-  if (input.page.privateToAgentId && input.page.privateToAgentId !== input.agentId) return false
+): Promise<'reads' | 'space_lost' | 'page_narrowed'> => {
   const space = await createNativeKnowledgeProvider(prisma).getSpace(input.organizationId, input.page.spaceId)
-  if (!space) return false
+  if (!space) return 'space_lost'
   const viewer = await loadSpaceViewer(prisma, input.organizationId, { actorType: 'agent', actorId: input.agentId })
-  return canReadSpace(space, viewer)
+  if (!canReadSpace(space, viewer)) return 'space_lost'
+  // One page narrower than its space is that page's business: the trigger
+  // keeps watching the rest, and a person can widen the page or not.
+  if (input.page.sensitivityTier === 'restricted') return 'page_narrowed'
+  if (input.page.privateToAgentId && input.page.privateToAgentId !== input.agentId) return 'page_narrowed'
+  return 'reads'
 }
 
 const CHANNEL_WIDE = new Set(['project', 'organization'])
@@ -187,9 +192,8 @@ export type CountedVersions = {
 
 /**
  * The versions after the marker, up to the target, and those that wake the
- * agent: its own never do, so it cannot loop on its own edits; another
- * agent's only with `includeAgentEdits`, and never an agent that reviews this
- * project's documents itself, so two reviewers cannot wake each other.
+ * agent (`wakingVersions`, `document-trigger-loop-guard.ts`): its own never
+ * do, another agent's only with `includeAgentEdits` and never a reviewer's.
  */
 export const countVersions = async (
   prisma: PrismaClient,
@@ -208,25 +212,12 @@ export const countVersions = async (
     orderBy: { versionNumber: 'asc' },
     select: { id: true, versionNumber: true, authorType: true, authorId: true, createdAt: true },
   })
-  // Two agents that review each other's saves would wake each other forever,
-  // so an agent that itself reviews this project's documents never counts.
-  const otherAgents = [...new Set(versions
-    .filter((version) => version.authorType === 'agent' && version.authorId !== input.agentId)
-    .map((version) => version.authorId))]
-  const reviewers = input.config.includeAgentEdits && otherAgents.length > 0
-    ? new Set((await prisma.agentTrigger.findMany({
-        where: {
-          agentId: { in: otherAgents },
-          type: 'document_changed',
-          enabled: true,
-          scopeProjectId: input.projectId,
-        },
-        select: { agentId: true },
-      })).map((trigger) => trigger.agentId))
-    : new Set<string | null>()
-  const counted = versions.filter((version) =>
-    version.authorType !== 'agent'
-    || (version.authorId !== input.agentId && input.config.includeAgentEdits && !reviewers.has(version.authorId)))
+  const counted = await wakingVersions(prisma, {
+    organizationId: input.organizationId,
+    agentId: input.agentId,
+    includeAgentEdits: input.config.includeAgentEdits,
+    versions,
+  })
   const people = [...new Set(counted.filter((version) => version.authorType !== 'agent').map((version) => version.authorId))]
   const editors = await Promise.all(people.map((userId) => canMemberEditProjectBoards(prisma, {
     organizationId: input.organizationId,
