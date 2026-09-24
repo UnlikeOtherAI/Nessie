@@ -677,7 +677,9 @@ bridge, which never sees the account; its commit subjects are the agent's own
 words.
 
 `session_status` never waits and answers at most 8 KB, `status`,
-`nextCursor` and `pendingNotice` first. `session_review` runs read-only git in
+`nextCursor` and `pendingNotice` first. It carries `totalCostUsd`, what the session has cost
+across every turn so far, once a turn has reported a cost; a ticket's work
+adds only the difference from the last read to its spend. `session_review` runs read-only git in
 the session's folder within 20 s, in the same login-like environment the
 agents get (the MCP SDK's minimal `PATH` finds no Homebrew `gh` on macOS):
 branch, the base commit recorded at start, commits since, `git diff --stat`,

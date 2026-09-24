@@ -154,6 +154,9 @@ export const composeCodingStatus = async (input: {
       updatedAt: state?.updatedAt ?? meta.createdAt,
       ...(state?.queued ? { queuedMessages: state.queued } : {}),
       ...(state?.backgroundTasks ? { backgroundTasks: state.backgroundTasks } : {}),
+      // What the session has cost so far, across every turn: a ticket's work adds
+      // only what is new since the last read to its spend.
+      ...(state?.totalCostUsd === undefined ? {} : { totalCostUsd: state.totalCostUsd }),
       moreEvents: page.more || keep < events.length,
       ...(input.detail === 'events'
         ? { events: events.slice(0, keep) }
