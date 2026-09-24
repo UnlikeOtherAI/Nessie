@@ -12,6 +12,7 @@ import {
 } from "@nessie/schemas";
 import type { ReplyRootMetadata } from "@nessie/runtime";
 import {
+  AgentToolPolicyError,
   createSystemAuthoredReply,
   findTicketWorkThread,
   inheritAgentCardResponseBasis,
@@ -414,7 +415,7 @@ export const respondToAgentCard = async (
         "SECRET_NAME_TAKEN",
         "A secret with that name already exists in this scope. Rename or replace it in Secrets.",
       );
-    if (error instanceof ExecutorError)
+    if (error instanceof ExecutorError || error instanceof AgentToolPolicyError)
       throw new AgentCardResponseError(409, error.code, error.message);
     if (error instanceof ResumeRollback)
       throw new AgentCardResponseError(
