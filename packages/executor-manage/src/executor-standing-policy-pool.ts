@@ -12,7 +12,6 @@ import { reportedExecutorCodingSessions } from './executor-coding-session-closes
 import { executorCodingSessionOwnerKey } from './executor-coding-session-owner.js'
 import { executorHeartbeatCutoff } from './executor-liveness.js'
 import {
-  compareTicketWorkQueueEntries,
   lockTicketWorkQueue,
   queuedTicketWorkOutranks,
   renumberTicketWorkQueueInTransaction,
@@ -121,22 +120,6 @@ const machineState = async (
   const live = reportedExecutorCodingSessions(executor.localMcp)
     .filter((session) => session.ownerKey === input.ownerKey && session.status !== 'closed').length
   return live < input.maxLiveSessions ? 'free' : 'quota'
-}
-
-/** Where a queued record stands among its policy's queue: priority, then age. */
-export const ticketWorkQueuePosition = async (
-  tx: Prisma.TransactionClient,
-  input: { policyId: string; workId: string },
-): Promise<number> => {
-  const queued = await tx.agentTicketWork.findMany({
-    where: { policyId: input.policyId, status: 'queued' },
-    select: { enqueuedAt: true, id: true, task: { select: { priority: true } } },
-  })
-  const order = queued
-    .map((entry) => ({ enqueuedAt: entry.enqueuedAt, id: entry.id, priority: entry.task.priority }))
-    .sort(compareTicketWorkQueueEntries)
-  const index = order.findIndex((entry) => entry.id === input.workId)
-  return index < 0 ? order.length + 1 : index + 1
 }
 
 /**
