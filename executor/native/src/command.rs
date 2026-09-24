@@ -18,6 +18,7 @@ pub enum Command {
     /// with the program's own code. The argv after `--` is the program and its
     /// arguments, exactly as given.
     JobRun(Vec<String>),
+    TerminalRun(Vec<String>),
     /// Create the executor's private state directory if absent and give it an
     /// owner-only, non-inherited DACL.
     SecureDirectory(String),
@@ -79,6 +80,9 @@ pub fn parse_command(arguments: &[String]) -> Result<Command, NativeError> {
     match arguments {
         [command, separator, rest @ ..] if command == "job-run" && separator == "--" => {
             Ok(Command::JobRun(job_argv(rest)?))
+        }
+        [command, separator, rest @ ..] if command == "terminal-run" && separator == "--" => {
+            Ok(Command::TerminalRun(job_argv(rest)?))
         }
         [command] if command == "workspace-preflight" => Ok(Command::WorkspacePreflight),
         [command] if command == "workspace-apply" => Ok(Command::WorkspaceApply),

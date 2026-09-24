@@ -90,7 +90,8 @@ runDatabaseTest('ticket-mode coding tools keep to the ticket\'s own session, tit
     const calls: Call[] = []
     const started = randomUUID()
     let reviews = 0
-    const facts = { ...CODING_FACTS, agents: ['claude', 'codex'] } as unknown as ExecutorCodingSessionsFacts
+    // The machine offers Codex and an interactive terminal too; the ticket gets neither.
+    const facts = { ...CODING_FACTS, agents: ['claude', 'codex', 'terminal'] } as unknown as ExecutorCodingSessionsFacts
     const base = createExecutorCodingSessions({
       call: async (_toolName, envelope) => {
         const { arguments: args, tool } = envelope as { arguments: Record<string, unknown>; tool: string }
@@ -134,6 +135,10 @@ runDatabaseTest('ticket-mode coding tools keep to the ticket\'s own session, tit
     const wait = base.descriptors.find((descriptor) => descriptor.toolName === 'coding_session_wait')!
     assert.match(wait.description, /It returns within a minute\. Do not use it to watch work in progress\./)
     assert.deepEqual((wait.inputSchema as { required: string[] }).required, [])
+    assert.deepEqual(base.descriptors.filter((descriptor) => descriptor.toolName.startsWith('terminal_')), [],
+      'no terminal on the machine for a ticket')
+    assert.match((await call('terminal_session_start', { root: 'nessie' })).output,
+      /^Ticket work runs Claude Code sessions only: it has no terminal on the machine\./)
 
     // No session yet: a send has nothing to default to.
     assert.match((await call('coding_session_send', { message: 'hi' })).output, /no open coding session yet/)

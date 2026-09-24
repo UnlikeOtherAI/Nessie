@@ -28,6 +28,7 @@
  */
 export const CODING_OBSERVATION_TOOL_NAMES: ReadonlySet<string> = new Set([
   'coding_session_list',
+  'terminal_session_read',
   'coding_session_review',
   'coding_session_wait',
 ])

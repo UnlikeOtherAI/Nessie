@@ -23,7 +23,7 @@ import {
   ExecutorLocalMcpReportSchema,
 } from '@nessie/schemas'
 
-import { CODING_AGENT_LABELS, CODING_SESSION_TOOL_NAME_SET } from '../coding-session-tools.js'
+import { CODING_AGENT_LABELS, STRUCTURED_CODING_SESSION_TOOL_NAMES } from '../coding-session-tools.js'
 import type { ExecutorHostOutputDisclosure } from '../executor-host-output.js'
 import { executorToolName } from '../executor-toolset.js'
 import type { TicketWorkMachine } from './ticket-work-setup.js'
@@ -287,7 +287,8 @@ export const loadExecutorReachFacts = async (
   // Bound under a lease that has since ended or run out: dispatch fences these.
   if (leaseSummary && !leaseSummary.live) return { kind: 'refused', reason: 'lease_ended' }
   const pair = LOCAL_APPS_TOOL_NAMES.every((name) => input.toolNames.has(name))
-  const coding = [...CODING_SESSION_TOOL_NAME_SET].every((name) => input.toolNames.has(name))
+  // The structured seven: a machine with no interactive terminal is offered no terminal tools.
+  const coding = [...STRUCTURED_CODING_SESSION_TOOL_NAMES].every((name) => input.toolNames.has(name))
   if (pair || coding) {
     const [binding, ownDm] = await Promise.all([
       prisma.executorBinding.findFirst({

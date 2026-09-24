@@ -111,6 +111,12 @@ const TICKET_END_TURN = `End your turn: ${TICKET_WOKEN}`
 
 const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>, ticket: boolean): string => {
   switch (toolName) {
+    case CODING_SESSION_TOOL_NAMES.terminalStart:
+      return 'Terminal opened. Read its screen with terminal_session_read. Share its viewPath when asked to show it.'
+    case CODING_SESSION_TOOL_NAMES.terminalRead:
+      return 'The terminal screen as last captured on the machine.'
+    case CODING_SESSION_TOOL_NAMES.terminalWrite:
+      return 'Input queued. Read the terminal screen to see what the application did.'
     case CODING_SESSION_TOOL_NAMES.start:
       if (ticket) {
         return body.replayed === true

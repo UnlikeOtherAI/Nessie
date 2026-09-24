@@ -22,6 +22,7 @@ import {
   CODING_AGENT_LABELS,
   CODING_SESSION_TOOL_NAMES,
   codingSessionDescriptors,
+  TERMINAL_SESSION_TOOL_NAMES,
   type CodingSessionToolName,
 } from './coding-session-tools.js'
 import type { CodingWaitTiming } from './coding-session-wait.js'
@@ -50,7 +51,9 @@ import type { AgenticToolResult } from './tools.js'
  *   is found in the machine's next report by that title and the ticket's owner
  *   key;
  * - a start may use only the pinned coding agents (Claude Code: its turns
- *   have a budget) and the pinned roots;
+ *   have a budget) and the pinned roots, and the interactive terminal's tools
+ *   are never offered, and refused if called: the author consented to Claude
+ *   Code sessions, not to typing into a shell on the machine;
  * - each tool is described by its purpose in ticket work, a start or a send
  *   answers "end your turn" (Nessie wakes the run when the session's turn
  *   ends), and a wait reads for at most a minute;
@@ -140,14 +143,19 @@ const TICKET_DESCRIPTIONS: Partial<Record<CodingSessionToolName, string>> = {
     + 'it to watch work in progress. Leave sessionId out: it is this ticket\'s session.',
 }
 
-/** The seven, described for ticket work: each by its purpose, sessionId optional, the start's title the ticket's. */
+/**
+ * The seven, described for ticket work: each by its purpose, sessionId
+ * optional, the start's title the ticket's; never a terminal.
+ */
 export const ticketWorkCodingDescriptors = (
   facts: ExecutorCodingSessionsFacts,
   scope: Pick<TicketWorkCodingScope, 'allowedRootNames' | 'codingAgents'>,
 ): ToolSchemaDescriptor[] => {
   const agents = facts.agents.filter((agent) => scope.codingAgents.includes(agent))
   const roots = facts.rootNames.filter((root) => scope.allowedRootNames.includes(root))
-  return codingSessionDescriptors(facts).map((descriptor) => {
+  const offered = codingSessionDescriptors(facts)
+    .filter((descriptor) => !TERMINAL_SESSION_TOOL_NAMES.has(descriptor.toolName))
+  return offered.map((descriptor) => {
     const schema = descriptor.inputSchema as { properties: Record<string, unknown>; required?: string[] }
     if (descriptor.toolName === CODING_SESSION_TOOL_NAMES.start) {
       const properties = Object.fromEntries(Object.entries(schema.properties).filter(([key]) => key !== 'title'))
@@ -291,6 +299,9 @@ export const ticketWorkCodingSessions = (
   ...base,
   execute: async (toolName, rawArgs, providerToolCallId, hooks?: CodingSessionHooks) => {
     const args = { ...rawArgs }
+    if (TERMINAL_SESSION_TOOL_NAMES.has(toolName)) {
+      return refusal(args, 'Ticket work runs Claude Code sessions only: it has no terminal on the machine.')
+    }
     if (toolName === CODING_SESSION_TOOL_NAMES.list) {
       return ticketListAnswer(args, scope, (await ticketSessions(prisma, scope)).live)
     }

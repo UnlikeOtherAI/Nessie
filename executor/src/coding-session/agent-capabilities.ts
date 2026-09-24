@@ -70,6 +70,7 @@ const CACHE_ENTRIES = 8
 const MAX_FLAGS = 400
 
 const HELP_COMMANDS: Record<CodingAgentName, { help: string; args: string[] }[]> = {
+  terminal: [],
   claude: [{ help: '', args: ['--help'] }],
   codex: [{ help: 'exec', args: ['exec', '--help'] }, { help: 'exec resume', args: ['exec', 'resume', '--help'] }],
 }

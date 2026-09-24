@@ -4,7 +4,7 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
 
-import { CODING_SESSION_TOOL_NAME_SET } from './coding-session-tools.js'
+import { CODING_SESSION_TOOL_NAME_SET, STRUCTURED_CODING_SESSION_TOOL_NAMES } from './coding-session-tools.js'
 import { CODING_WAIT_TOOL_TIMEOUT_MS } from './coding-session-wait.js'
 import { executorToolTimeoutMs, ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { buildExecutorToolset } from './executor-toolset.js'
@@ -74,7 +74,9 @@ test('the owner’s run gets the seven coding tools, and the generic pair stops 
   const { built, transactions } = toolset()
   const offered = await built
   const names = offered.descriptors.map((descriptor) => descriptor.toolName)
-  for (const name of CODING_SESSION_TOOL_NAME_SET) assert.ok(names.includes(name), name)
+  // The machine lists no interactive terminal, so the seven and none of the terminal's three.
+  for (const name of STRUCTURED_CODING_SESSION_TOOL_NAMES) assert.ok(names.includes(name), name)
+  assert.ok(!names.some((name) => name.startsWith('terminal_')))
   assert.ok(offered.codingSessions)
   assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_call'), ['kelpie'])
   assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_tools'), ['kelpie'])
@@ -131,7 +133,7 @@ test('a machine that names only the bridge offers the coding tools and no generi
   const offered = await toolset({ mcpServers: ['coding-sessions'] }).built
   assert.deepEqual(
     offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
-    [...CODING_SESSION_TOOL_NAME_SET].sort(),
+    [...STRUCTURED_CODING_SESSION_TOOL_NAMES].sort(),
   )
 })
 
@@ -147,7 +149,7 @@ test('a ticket’s work under standing machine access gets the coding tools and 
   // the machine reviews another program and the agent's policy grants the pair.
   assert.deepEqual(
     offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
-    [...CODING_SESSION_TOOL_NAME_SET].sort(),
+    [...STRUCTURED_CODING_SESSION_TOOL_NAMES].sort(),
   )
   assert.ok(!offered.handledNames.has('executor_mcp_call'))
   assert.ok(!offered.handledNames.has('executor_mcp_tools'))

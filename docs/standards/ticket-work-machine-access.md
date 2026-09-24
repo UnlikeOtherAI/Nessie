@@ -277,7 +277,10 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   Claude Code sessions on these machines; it gets no other program on
   them."* (`STANDING_POLICY_CODING_ONLY_SENTENCE`) — not to the machine's
   other reviewed programs. So a standing-bound run is offered the
-  `coding_session_*` tools alone: the generic `executor_mcp_tools` /
+  `coding_session_*` tools alone — never the interactive terminal's
+  `terminal_session_*` tools, which are refused if called, and its answers
+  carry no session viewer link (`viewPath`), since its thread is a project
+  room: the generic `executor_mcp_tools` /
   `executor_mcp_call` pair is not in its toolset whatever the agent's tool
   policy grants, a call to it anyway is refused as correctable, and its reach
   facts say so. On the server, `standingProgramRefusal`

@@ -110,6 +110,7 @@ export const ExecutorsPage = () => {
           rather than wrapping into a ragged row. */}
       <ScreenHeader
         actions={[
+          { href: '/agents/executor-sessions', id: 'sessions', kind: 'link', label: 'Sessions', priority: 80 },
           {
             href: '/apps',
             id: 'manage-apps',

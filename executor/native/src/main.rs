@@ -1,5 +1,6 @@
 mod command;
 mod job_run;
+mod terminal_run;
 // The workspace commands act on inherited directory descriptors with `openat`
 // and friends, which have no Windows equivalent: the Windows helper exists for
 // the state-security commands and `job-run`, and the parser above still knows
@@ -78,6 +79,7 @@ fn run(command: &Command) -> Result<(), NativeError> {
         // The program owns stdout and the exit code from here on, so the
         // helper says nothing on success and leaves with the program's code.
         Command::JobRun(argv) => std::process::exit(job_run::run(argv)?),
+        Command::TerminalRun(argv) => std::process::exit(terminal_run::run(argv)?),
         Command::WorkspacePreflight => run_preflight(),
         Command::WorkspaceApply => run_promotion(),
         Command::SecureDirectory(path) => {
@@ -120,7 +122,7 @@ fn run(command: &Command) -> Result<(), NativeError> {
 /// unparsable argv keeps answering in the promotion shape, as it always has.
 fn reject(command: Option<&Command>, error: &NativeError) {
     match command {
-        Some(Command::JobRun(_)) => {
+        Some(Command::JobRun(_)) | Some(Command::TerminalRun(_)) => {
             let encoded = serde_json::to_string(&JobRunResponse {
                 code: Some(error.code.to_owned()),
                 status: JobRunStatus::Rejected,

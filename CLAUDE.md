@@ -337,3 +337,5 @@ sentence changes only if the invariant itself did.
   the Personal Assistant (Gemini Live, browser + iPhone,
   [`docs/standards/voice-calling.md`](docs/standards/voice-calling.md)) and an
   older, architecturally separate OpenAI-Realtime companion in `macos/`.
+
+- Executor terminal sessions use tmux on Mac/Linux and ConPTY on Windows; read [the session guide](docs/executor-protocol/terminal-sessions.md) for setup, sharing, agent tools and native verification.

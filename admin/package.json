@@ -90,6 +90,7 @@
     "@tiptap/react": "3.31.3",
     "@tiptap/starter-kit": "3.31.3",
     "@unlikeotherai/billing-statement-protocol": "workspace:*",
+    "@xterm/xterm": "5.5.0",
     "emoji-picker-react": "4.19.1",
     "i18next": "^26.3.1",
     "jmespath": "^0.16.0",

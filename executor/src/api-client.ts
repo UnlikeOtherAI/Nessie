@@ -3,6 +3,8 @@ import type {
   ExecutorCommandEnvelope,
   ExecutorCommandReceipt,
   ExecutorDaemonCommandAttachmentResponse,
+  ExecutorSessionViewExchange,
+  ExecutorSessionViewRequest,
 } from '@nessie/schemas'
 import type { BrowserCookieImportOffer } from './browser-cookie-import-bridge.js'
 
@@ -27,6 +29,8 @@ export class ExecutorApiError extends Error {
 }
 
 export type ExecutorApiClient = {
+  exchangeSessionViews: (baseUrl: string, input: ExecutorSessionViewExchange) =>
+    Promise<{ requests: ExecutorSessionViewRequest[] }>
   pairing: (baseUrl: string, action: 'start' | 'poll' | 'confirm' | 'cancel' | 'connection', input: unknown) => Promise<unknown>
   cancelPending: () => void
   claim: (baseUrl: string, input: { challenge: string; executorId: string; signature: string }) =>
@@ -160,6 +164,7 @@ export const createExecutorApi = (options: {
   }
 
   return {
+    exchangeSessionViews: (baseUrl, input) => post(baseUrl, '/api/executor-daemon/session-views', input),
     pairing: (baseUrl, action, input) => post(baseUrl, `/api/executor-pairing/${action}`, input),
     cancelPending: () => {
       for (const controller of pending) controller.abort('cancelled')

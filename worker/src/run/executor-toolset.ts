@@ -138,6 +138,7 @@ export const buildExecutorToolset = async (
         // Who the binding was made for, and whose machine it is: the coding
         // tools are offered only to a private executor's pairing owner.
         candidateHandleDigest: true,
+        executorId: true,
         executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
         id: true,
         operationKey: true,
@@ -332,7 +333,9 @@ export const buildExecutorToolset = async (
             ticket: true,
             timing: TICKET_WORK_CODING_WAIT_TIMING,
           }
-        : {}),
+        // A person's own run links each session to its viewer; a ticket's
+        // thread is a project room that never names the machine.
+        : { executorId: bindings.find((binding) => binding.id === codingOffer.bindingId)?.executorId }),
       ...codingWaitRunChecks(prisma, {
         agentId: input.agentId, runId: input.runId, ...(ticketWork ? { ticketWorkId: ticketWork.workId } : {}),
       }),

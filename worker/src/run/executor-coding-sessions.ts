@@ -123,6 +123,11 @@ export const createExecutorCodingSessions = (input: {
   descriptors?: ToolSchemaDescriptor[]
   facts: ExecutorCodingSessionsFacts
   /**
+   * The machine the coding sessions run on: each answer names its session's
+   * viewer path. Absent for a `ticket.work` run, whose thread is a project room.
+   */
+  executorId?: string
+  /**
    * Every answer the bridge gives, before it is presented: a `ticket.work`
    * run writes what it learns onto its work record in the same step.
    */
@@ -176,6 +181,18 @@ export const createExecutorCodingSessions = (input: {
     const parsed = parseBridgeResult(outcome.result)
     if (parsed.kind === 'answer') {
       remember(toolName, parsed.body)
+      const addLink = (body: Record<string, unknown>): void => {
+        if (input.executorId && typeof body.sessionId === 'string'
+          && /^[0-9a-f-]{36}$/u.test(body.sessionId)) {
+          body.viewPath = `/agents/executors/${input.executorId}/sessions/${body.sessionId}`
+        }
+      }
+      addLink(parsed.body)
+      if (Array.isArray(parsed.body.sessions)) {
+        for (const session of parsed.body.sessions) {
+          if (session && typeof session === 'object') addLink(session as Record<string, unknown>)
+        }
+      }
       await input.observe?.(toolName, args, parsed.body)
     }
     return {

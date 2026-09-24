@@ -11,6 +11,10 @@ agent drives by conversation. Unlike guest work, such a session acts with the
 host OS user's full authority: their files, their git and SSH credentials,
 their Claude or ChatGPT subscription.
 
+Interactive terminal sessions, their tmux/ConPTY lifecycle, live read-only
+viewer, explicit sharing and platform setup are documented in
+[Live terminal sessions](terminal-sessions.md).
+
 ## What exists today, and what does not yet
 
 This chapter describes the executor side, which is built and tested: the
@@ -287,7 +291,7 @@ The owner configures the bridge through
 object (`null` withdraws the bridge, absent keeps it). That object is closed:
 `roots`, `agents` (`claude`: `command`, `args`, `permissionMode`,
 `allowedTools`, `disallowedTools`, `model`; `codex`: `command`, `args`,
-`model`), `agentEnv` (`inheritUserSession`, `pass`, `set`),
+`model`; `terminal`: `command`, `args`), `agentEnv` (`inheritUserSession`, `pass`, `set`),
 `maxLiveSessionsPerOwner` (3), `idleMinutes` (30), `maxTurnMinutes` (45),
 `maxBudgetUsd` and `closeOnDaemonShutdown` (false). Unknown keys are refused.
 `permissionMode` is checked for its shape only (a letter, then up to 39

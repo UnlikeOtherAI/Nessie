@@ -9,12 +9,14 @@ import { ExecutorAgentsPanel } from './ExecutorAgentsPanel'
 import { ExecutorPermissionsPanel } from './ExecutorPermissionsPanel'
 import { ExecutorActivityPanel } from './ExecutorActivityPanel'
 import { ExecutorLeasesPanel } from './ExecutorLeasesPanel'
+import { ExecutorHostSessionList } from './ExecutorHostSessionList'
 import { ExecutorStandingAccessPanel } from './ExecutorStandingAccessPanel'
 
-export const EXECUTOR_TAB_VALUES = ['agents', 'permissions', 'activity'] as const
+export const EXECUTOR_TAB_VALUES = ['agents', 'sessions', 'permissions', 'activity'] as const
 export type ExecutorTab = (typeof EXECUTOR_TAB_VALUES)[number]
 export const EXECUTOR_TABS = [
   { label: 'Agents', value: 'agents' },
+  { label: 'Sessions', value: 'sessions' },
   { label: 'Permissions', value: 'permissions' },
   { label: 'Activity', value: 'activity' },
 ] as const
@@ -53,6 +55,7 @@ export const ExecutorDetailPanels = ({
           <>
             {tab === 'agents' ? <ExecutorAgentsPanel executorId={executor.id} scopeKind={executor.scope.kind} onPrepared={onPrepared} token={token} /> : null}
             {tab === 'permissions' ? <ExecutorPermissionsPanel access={access} onPrepared={onPrepared} /> : null}
+            {tab === 'sessions' ? <ExecutorHostSessionList executorId={executor.id} /> : null}
             {tab === 'activity' ? (
               <div className="grid gap-6">
                 <ExecutorLeasesPanel executorId={executor.id} />

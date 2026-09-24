@@ -78,12 +78,13 @@ const codexStance = (args: readonly string[]): string => {
 export const codingSessionsFacts = (
   config: CodingSessionsConfig, configDigest: string,
 ): ExecutorCodingSessionsFacts => {
-  const agents = (['claude', 'codex'] as const).filter((agent) => config.agents[agent] !== undefined)
+  const agents = (['claude', 'codex', 'terminal'] as const).filter((agent) => config.agents[agent] !== undefined)
   return ExecutorCodingSessionsFactsSchema.parse({
     serverName: EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
     agents,
     permissionMode: Object.fromEntries(agents.map((agent) => [
-      agent, agent === 'claude' ? config.agents.claude!.permissionMode ?? 'default' : codexStance(config.agents.codex!.args),
+      agent, agent === 'terminal' ? 'hostUser'
+        : agent === 'claude' ? config.agents.claude!.permissionMode ?? 'default' : codexStance(config.agents.codex!.args),
     ])),
     allowedToolCount: config.agents.claude?.allowedTools.length ?? 0,
     environmentNames: [...new Set([...Object.keys(config.agentEnv.set), ...config.agentEnv.pass])].sort(),
