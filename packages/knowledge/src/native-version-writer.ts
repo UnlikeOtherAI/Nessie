@@ -156,6 +156,9 @@ export const createPage = async (
       pageId: page.id,
       title: page.title,
     })
+    // Labels before the version is announced: a label-filtered watcher reads
+    // the page as this save leaves it.
+    await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     if (!isFolder) {
       const version = await tx.knowledgePageVersion.create({
         data: {
@@ -181,7 +184,6 @@ export const createPage = async (
       await indexVersionChunks(tx, options, page, version)
       await announceVersionCreated(tx, options, page, version)
     }
-    await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     const created = await fetchPage(tx, input.organizationId, page.id)
     if (!created) throw new Error('Created page could not be loaded')
     return created
@@ -479,6 +481,7 @@ export const updatePage = async (
       throw new KnowledgeConflictError('A folder page cannot carry content')
     }
     const createsVersion = existing.kind !== 'folder' && contentChanged
+    let written: Parameters<typeof announceVersionCreated>[3] | null = null
     if (createsVersion) {
       const previous = await tx.knowledgePageVersion.findFirst({
         where: { pageId }, orderBy: { versionNumber: 'desc' }, include: versionInclude,
@@ -503,7 +506,7 @@ export const updatePage = async (
         organizationId: input.organizationId, versionId: version.id,
       })
       await indexVersionChunks(tx, options, existing, version)
-      await announceVersionCreated(tx, options, existing, version)
+      written = version
     }
     const updated = await tx.knowledgePage.updateMany({
       where: {
@@ -530,5 +533,7 @@ export const updatePage = async (
       await resolveLinksToPage(tx, { organizationId: input.organizationId, pageId, title: input.title })
     }
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId })
+    // Announced last, so a watcher reads the page's labels as this save leaves them.
+    if (written) await announceVersionCreated(tx, options, existing, written)
     return fetchPage(tx, input.organizationId, pageId)
   }))

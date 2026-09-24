@@ -21,7 +21,8 @@ import { drainTicketJobs, finishRuns, move, newTask, seedTicketWork, type Ticket
 // The guards around a document trigger's review, against Postgres
 // (docs/standards/document-triggers.md): a save that joined a window is seen
 // by it however the commit and the job interleave, and one that lands while
-// the window is decided opens the next; one narrower page is skipped without
+// the window is decided opens the next; a label filter sees the labels a save
+// leaves; one narrower page is skipped without
 // pausing the trigger; no two reviewers can wake each other, in any project;
 // a page wakes its agent at most so often a day; and route 1 still asks the
 // document trigger's own channel.
@@ -121,6 +122,24 @@ runDatabaseTest('a save that lands while a window is being decided opens the nex
   const second = (await documentDeliveries(prisma, d.documentTriggerId)).at(-1)
   assert.deepEqual([second?.status, second?.parsed.toVersionNumber], ['delivered', 2])
   assert.equal((await openWindows(prisma, d.documentTriggerId)).length, 0, 'and it opens no window after itself')
+})
+
+runDatabaseTest('a label-filtered trigger sees a page created with its label, and one given it later', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const d = await seedDocumentTrigger(prisma, s, { labels: ['spec'] })
+  const labelled = await d.provider.createPage({ ...d.scope, body: '<p>Spec</p>', labels: ['Spec'], title: 'Spec' })
+  const notes = await d.provider.createPage({ ...d.scope, body: '<p>Notes</p>', title: 'Notes' })
+  const pending = (pageId: string) => documentTriggerPendingKey(d.documentTriggerId, pageId)
+  assert.deepEqual((await openWindows(prisma, d.documentTriggerId)).map((row) => row.idempotencyKey), [pending(labelled.id)],
+    'created with the label: its window opens; without it: none')
+  await d.provider.updatePage(notes.id, { ...d.scope, labels: ['spec'] })
+  assert.deepEqual((await openWindows(prisma, d.documentTriggerId)).map((row) => row.idempotencyKey).sort(),
+    [pending(labelled.id), pending(notes.id)].sort(), 'given the label: its window opens')
+  await drainDocumentJobs(prisma, s, new Set())
+  const statuses = (await documentDeliveries(prisma, d.documentTriggerId)).map((row) => row.status)
+  assert.deepEqual(statuses, ['delivered', 'delivered'])
 })
 
 runDatabaseTest('one restricted page is skipped with its reason; the trigger keeps watching the rest', async (t) => {
