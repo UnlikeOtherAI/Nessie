@@ -17,7 +17,7 @@ import { TimestampSchema } from './schema-primitives.js'
 /** Reserved: the executor refuses a hand-named server of this name. */
 export const EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME = 'coding-sessions'
 
-export const EXECUTOR_CODING_AGENT_NAMES = ['claude', 'codex'] as const
+export const EXECUTOR_CODING_AGENT_NAMES = ['claude', 'codex', 'terminal'] as const
 export const ExecutorCodingAgentNameSchema = z.enum(EXECUTOR_CODING_AGENT_NAMES)
 export type ExecutorCodingAgentName = z.infer<typeof ExecutorCodingAgentNameSchema>
 

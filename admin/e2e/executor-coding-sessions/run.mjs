@@ -97,7 +97,10 @@ const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-coding-sessions')
  * machine's next report arriving without it.
  */
 const openContext = async (browser, { accessView = access, canClose, names, refuse = [], width }) => {
-  const state = { closing: new Set(), dropped: new Set(), posted: [], reads: 0 }
+  const state = {
+    closing: new Set(), dropped: new Set(), posted: [], reads: 0, viewers: [],
+    screen: 'Claude is working', revoked: false,
+  }
   const unexpected = []
   const context = await browser.newContext({ hasTouch: width < 768, viewport: { width, height: 900 } })
   await context.route('**/api/**', async (route) => {
@@ -105,6 +108,34 @@ const openContext = async (browser, { accessView = access, canClose, names, refu
     const path = url.pathname
     const method = route.request().method()
     const respond = (data, status = 200) => route.fulfill({ status, json: { data } })
+    const sessionBase = `/api/executors/${executorId}/coding-sessions/${pricing.sessionId}`
+    if (path === sessionBase + '/view') {
+      if (state.revoked) return respond(null, 404)
+      const session = { ...pricing }
+      delete session.ownerKey
+      return respond({
+        canShare: canClose, online: true, session,
+        screen: { ansi: '\u001b[32m' + state.screen + '\u001b[0m\r\n> ', cols: 120, rows: 36,
+          capturedAt: iso(0), kind: 'terminal' },
+      })
+    }
+    if (path === sessionBase + '/shares') {
+      if (method === 'POST') state.viewers.push({
+        userId: ownerId, email: route.request().postDataJSON().email, displayName: 'A colleague',
+      })
+      return respond(method === 'GET' ? state.viewers : { success: true })
+    }
+    if (path === sessionBase + '/shares/' + ownerId && method === 'DELETE') {
+      state.viewers = []
+      return respond({ success: true })
+    }
+    if (path === '/api/executor-sessions') {
+      return respond(reported.map((entry) => {
+        const session = { ...entry }
+        delete session.ownerKey
+        return { ...session, executorId, executorLabel: 'Workstation', shared: !canClose }
+      }))
+    }
     if (path === '/api/executors') return respond([executor])
     if (path === `/api/executors/${executorId}/access`) return respond(accessView)
     if (path === `/api/executors/${executorId}/coding-sessions` && method === 'GET') {
@@ -174,6 +205,22 @@ try {
   assert.equal(await list.getByRole('button', { name: /^Close / }).count(), 3, 'the pairing owner may close each one')
   assert.equal(await owner.page.getByText('Only the person who paired this machine', { exact: false }).count(), 0)
   await owner.page.screenshot({ animations: 'disabled', fullPage: true, path: resolve(output, 'owner-list-1280.png') })
+
+  await list.getByRole('link', { name: `View ${pricing.title}` }).click()
+  await owner.page.getByTestId('executor-terminal-screen').waitFor()
+  await owner.page.getByText('Claude is working', { exact: false }).first().waitFor()
+  owner.state.screen = 'Claude finished the check'
+  await owner.page.getByText('Claude finished the check', { exact: false }).first().waitFor()
+  await owner.page.screenshot({ animations: 'disabled', fullPage: true, path: resolve(output, 'terminal-1280.png') })
+  await owner.page.getByRole('button', { name: 'Share session', exact: true }).click()
+  await owner.page.getByLabel('User’s email').fill('colleague@example.test')
+  await owner.page.getByRole('button', { name: 'Add viewer' }).click()
+  await owner.page.getByText('colleague@example.test', { exact: true }).waitFor()
+  await owner.page.screenshot({ animations: 'disabled', fullPage: true, path: resolve(output, 'session-sharing.png') })
+  await owner.page.getByRole('button', { name: 'Remove', exact: true }).click()
+  await owner.page.getByText('Only you can view this session.', { exact: true }).waitFor()
+  await owner.page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  await open(owner.page)
 
   await list.getByRole('button', { name: `Close ${pricing.title}` }).click()
   await rowOf(list, pricing).getByTestId('executor-coding-session-closing').waitFor()
@@ -254,6 +301,23 @@ try {
   assert.deepEqual(unasked.errors, [])
   assert.deepEqual(unasked.unexpected, [])
   await unasked.context.close()
+
+  // A shared recipient reaches the same viewer without any machine-management reads.
+  const recipient = await openContext(browser, { canClose: false, names: {}, width: 390 })
+  await recipient.page.goto(`${ADMIN_URL}/e2e/executor-coding-sessions/index.html?sessions=1`)
+  await recipient.page.getByRole('link', { name: new RegExp(pricing.title) }).click()
+  await recipient.page.getByTestId('executor-terminal-screen').waitFor()
+  assert.equal(await recipient.page.getByRole('button', { name: 'Share session', exact: true }).count(), 0)
+  assert.equal(recipient.state.reads, 0, 'a shared recipient never reads the machine session roster')
+  assert.ok(await noOverflow(recipient.page), 'the terminal scrolls internally on a phone')
+  await recipient.page.screenshot({ fullPage: true, path: resolve(output, 'shared-terminal-390.png') })
+  recipient.state.revoked = true
+  await recipient.page.getByText('This session is unavailable or you no longer have permission to view it.',
+    { exact: false }).waitFor()
+  assert.equal(await recipient.page.getByTestId('executor-terminal-screen').count(), 0, 'revocation hides cached output')
+  assert.deepEqual(recipient.errors, [])
+  assert.deepEqual(recipient.unexpected, [])
+  await recipient.context.close()
 
   console.log(`Executor coding sessions flows passed; screenshots: ${output}`)
 } finally { await browser.close(); await stopProcess(admin) }

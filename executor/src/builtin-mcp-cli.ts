@@ -3,6 +3,7 @@ import { isAbsolute } from 'node:path'
 import { AGENT_GUARD_COMMAND, AGENT_GUARD_USAGE, runCodingAgentGuard } from './coding-session/agent-guard.js'
 import { serveCodingSessionMcp } from './coding-session/bridge-server.js'
 import { runCodingSessionHost } from './coding-session/host.js'
+import { runTerminalProcess } from './coding-session/terminal-process.js'
 import { serveOllamaSearchMcp } from './ollama-search-mcp.js'
 
 /**
@@ -22,6 +23,11 @@ const configPath = (args: readonly string[], usage: string): string => {
 }
 
 export const runBuiltinMcpCli = async (args: string[]): Promise<boolean> => {
+  if (args[0] === 'terminal-session-process') {
+    if (args.length !== 1) throw new Error('Usage: nessie-executor terminal-session-process')
+    await runTerminalProcess()
+    return true
+  }
   if (args[0] === 'serve-ollama-search-mcp') {
     if (args.length !== 1) throw new Error('Usage: nessie-executor serve-ollama-search-mcp')
     await serveOllamaSearchMcp()

@@ -1103,6 +1103,7 @@ enum ProductIntegrationRunStatus {
 }
 
 model User {
+  executorSessionShares ExecutorHostSessionShare[]
   id                                    String                                 @id @default(uuid()) @db.Uuid
   email                                 String                                 @unique
   // Stable UnlikeOtherAI subject (`sub`) — THE principal key for UOA SSO
@@ -5656,6 +5657,7 @@ model Executor {
   availabilityCandidates ExecutorAvailabilityCandidate[]
   conversationLeases     ExecutorConversationLease[]
   codingSessionCloses    ExecutorCodingSessionCloseRequest[]
+  sessionViews           ExecutorHostSession[]
   browserCookieImports   BrowserCookieImport[]
 
   @@unique([organizationId, id])
@@ -5663,6 +5665,40 @@ model Executor {
   @@index([projectId])
   @@index([pairingOwnerUserId])
   @@map("executors")
+}
+
+/// Short-lived, owner-only screen relay. Durable terminal history stays on the executor.
+model ExecutorHostSession {
+  executorId       String   @map("executor_id") @db.Uuid
+  sessionId        String   @map("session_id") @db.Uuid
+  ownerKey         String   @map("owner_key")
+  title            String
+  agent            String
+  root             String
+  status           String
+  reportedAt       DateTime @map("reported_at")
+  requestedUntil   DateTime @map("requested_until")
+  capturedAt       DateTime? @map("captured_at")
+  screenCiphertext String?  @map("screen_ciphertext")
+  executor         Executor @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  shares           ExecutorHostSessionShare[]
+
+  @@id([executorId, sessionId])
+  @@index([requestedUntil])
+  @@map("executor_host_sessions")
+}
+
+model ExecutorHostSessionShare {
+  executorId String @map("executor_id") @db.Uuid
+  sessionId  String @map("session_id") @db.Uuid
+  userId     String @map("user_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+  session    ExecutorHostSession @relation(fields: [executorId, sessionId], references: [executorId, sessionId], onDelete: Cascade)
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([executorId, sessionId, userId])
+  @@index([userId])
+  @@map("executor_host_session_shares")
 }
 
 model ExecutorPairingCode {

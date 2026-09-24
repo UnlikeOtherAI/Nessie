@@ -103,6 +103,12 @@ const sessionIdOf = (body: Record<string, unknown>): string => oneLine(body.sess
 
 const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>): string => {
   switch (toolName) {
+    case CODING_SESSION_TOOL_NAMES.terminalStart:
+      return 'Terminal opened. Read its screen with terminal_session_read. Share its viewPath when asked to show it.'
+    case CODING_SESSION_TOOL_NAMES.terminalRead:
+      return 'The terminal screen as last captured on the machine.'
+    case CODING_SESSION_TOOL_NAMES.terminalWrite:
+      return 'Input queued. Read the terminal screen to see what the application did.'
     case CODING_SESSION_TOOL_NAMES.start:
       return body.replayed === true
         ? `This start was already made: session ${sessionIdOf(body)}. Call coding_session_wait next.`

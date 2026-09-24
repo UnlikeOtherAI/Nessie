@@ -141,6 +141,9 @@ importers:
       '@unlikeotherai/billing-statement-protocol':
         specifier: workspace:*
         version: link:../packages/billing-statement-protocol
+      '@xterm/xterm':
+        specifier: 5.5.0
+        version: 5.5.0
       emoji-picker-react:
         specifier: 4.19.1
         version: 4.19.1(react@19.2.4)
@@ -381,6 +384,12 @@ importers:
       '@nessie/schemas':
         specifier: workspace:*
         version: link:../packages/schemas
+      '@xterm/addon-serialize':
+        specifier: 0.13.0
+        version: 0.13.0(@xterm/xterm@5.5.0)
+      '@xterm/headless':
+        specifier: 5.5.0
+        version: 5.5.0
       cross-spawn:
         specifier: ^7.0.6
         version: 7.0.6
@@ -4218,6 +4227,17 @@ packages:
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
     deprecated: this version has critical issues, please update to the latest version
+
+  '@xterm/addon-serialize@0.13.0':
+    resolution: {integrity: sha512-kGs8o6LWAmN1l2NpMp01/YkpxbmO4UrfWybeGu79Khw5K9+Krp7XhXbBTOTc3GJRRhd6EmILjpR8k5+odY39YQ==}
+    peerDependencies:
+      '@xterm/xterm': ^5.0.0
+
+  '@xterm/headless@5.5.0':
+    resolution: {integrity: sha512-5xXB7kdQlFBP82ViMJTwwEc3gKCLGKR/eoxQm4zge7GPBl86tCdI0IdPJjoKd8mUSFXz5V7i/25sfsEkP4j46g==}
+
+  '@xterm/xterm@5.5.0':
+    resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
 
   '@zone-eu/mailsplit@5.4.16':
     resolution: {integrity: sha512-zQ9iXvlT3Wi/hazeC1MdI4rQc1UJwJ6IQ6QzSZ5KDxLZZWQSazWLOzImLFluXadKShJ9WJvI1xH+AyVS8b9azg==}
@@ -11767,6 +11787,14 @@ snapshots:
   '@xmldom/xmldom@0.8.13': {}
 
   '@xmldom/xmldom@0.9.10': {}
+
+  '@xterm/addon-serialize@0.13.0(@xterm/xterm@5.5.0)':
+    dependencies:
+      '@xterm/xterm': 5.5.0
+
+  '@xterm/headless@5.5.0': {}
+
+  '@xterm/xterm@5.5.0': {}
 
   '@zone-eu/mailsplit@5.4.16':
     dependencies:

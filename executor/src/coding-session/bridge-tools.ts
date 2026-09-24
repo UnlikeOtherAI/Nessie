@@ -38,7 +38,7 @@ export const codingBridgeTools = (loaded: LoadedCodingSessionsConfig) => {
           agent: { type: 'string', enum: agents },
           root: { type: 'string', enum: roots },
           path: { type: 'string', maxLength: 1_000, description: 'A folder inside the root; the root itself when absent.' },
-          prompt: { type: 'string', minLength: 1, maxLength: 32_000 },
+          prompt: { type: 'string', maxLength: 32_000 },
           title: { type: 'string', maxLength: 120 },
         },
       },
@@ -60,12 +60,16 @@ export const codingBridgeTools = (loaded: LoadedCodingSessionsConfig) => {
       description: 'Send a follow-up or a correction. A working session reads it at its next step.',
       inputSchema: {
         type: 'object' as const, additionalProperties: false, required: ['sessionId', 'message'],
-        properties: { sessionId: sessionIdSchema, message: { type: 'string', minLength: 1, maxLength: 32_000 } },
+        properties: {
+          sessionId: sessionIdSchema, message: { type: 'string', minLength: 1, maxLength: 32_000 },
+          terminal: { type: 'boolean' },
+        },
       },
     },
     session('Stop the current turn. The session stays open and can be sent a new message.', 'session_interrupt'),
     session('What the session actually changed: branch, commits, diff, worktrees and pull requests.', 'session_review'),
     session('End the session and every process it started. Its history stays readable.', 'session_close'),
+    session('Read the current interactive terminal screen as text.', 'terminal_read'),
   ]
 }
 

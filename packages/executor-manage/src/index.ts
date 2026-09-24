@@ -1,3 +1,6 @@
+export * from './executor-session-views.js'
+export * from './executor-session-shares.js'
+
 export {
   canManagePrivateAssignments,
   resolveExecutorAvailability,

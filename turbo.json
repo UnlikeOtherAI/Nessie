@@ -78,6 +78,12 @@
       "outputs": [],
       "env": ["DATABASE_URL"]
     },
+    "test:terminal": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": [],
+      "env": ["DATABASE_URL", "NESSIE_EXECUTOR_PACKAGED_CLI", "LD_LIBRARY_PATH"]
+    },
     // `test` depends only on `^build`, so Turbo — unlike `pnpm -r`, which is
     // topological — is free to run @nessie/api's and @nessie/worker's suites at
     // the same time, against the one database. `worker/test/db` drives the

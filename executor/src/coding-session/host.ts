@@ -15,6 +15,7 @@ import { createProjector, SECRET_NAME, type Projector } from './projection.js'
 import { gitStartSnapshot } from './review.js'
 import { findCodingRoot, resolveCodingFolder, resolveCodingRoots } from './roots.js'
 import { runCodingSelfCheck } from './self-check.js'
+import { createTerminalDriver } from './terminal-driver.js'
 import { openEventLog } from './session-events.js'
 import {
   codingAgentHelpCache,
@@ -169,7 +170,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     const program = await resolveProgramPath(configured.command[0]!, env)
     if (program === undefined) throw new AgentStartError('agent_missing')
     const agent = { ...configured, command: [program, ...configured.command.slice(1)] }
-    const check = await runCodingSelfCheck({
+    const check = meta.agent === 'terminal' ? { ok: true as const } : await runCodingSelfCheck({
       agent: meta.agent, config: agent, cwd: folder, env, helpCacheFile: codingAgentHelpCache(loaded.stateDir),
       ...(loaded.config.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: loaded.config.maxBudgetUsd }),
     })
@@ -186,7 +187,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       stillOwner: lock.stillOurs,
       ...(loaded.config.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: loaded.config.maxBudgetUsd }),
     }
-    driver = meta.agent === 'claude' ? createClaudeDriver(driverContext) : createCodexDriver(driverContext)
+    driver = meta.agent === 'terminal' ? createTerminalDriver(driverContext)
+      : meta.agent === 'claude' ? createClaudeDriver(driverContext) : createCodexDriver(driverContext)
     return driver
   }
 
@@ -200,7 +202,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     // that finds no agent running any more carries them first: the agent that had them never
     // confirmed its session, so they went with it. A start delivered again (its host died before it
     // left the inbox) is that first message itself, never a second copy of it.
-    const unconfirmed = state.agentSessionStarted !== true
+    const unconfirmed = meta.agent !== 'terminal' && state.agentSessionStarted !== true
     const held = kind === 'send' && unconfirmed ? state.firstPrompt : undefined
     const lost = held !== undefined && !driver?.running()
     if (lost) log('sending the earlier messages again: the agent that had them never confirmed its session')
@@ -213,6 +215,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       const reason = error instanceof AgentStartError ? error.reason : 'agent_exited'
       if (reason === 'host_superseded') throw new HostSuperseded()
       log(`the agent could not start: ${reason}`)
+      if (meta.agent === 'terminal' && !(error instanceof AgentStartError)) log(String(error))
       emit({ kind: 'system', subtype: 'agent_failed', reason })
       update({ status: state.agentSessionStarted ? 'interrupted' : 'failed', reason, turnStartedAt: undefined })
     }

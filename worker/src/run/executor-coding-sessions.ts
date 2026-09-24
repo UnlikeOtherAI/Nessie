@@ -120,6 +120,7 @@ export const createExecutorCodingSessions = (input: {
   /** Ends a ToolCall row the call's own answer will not end. */
   endRecord: (toolCallRecordId: string, result: AgenticToolResult, durationMs: number) => Promise<void>
   facts: ExecutorCodingSessionsFacts
+  executorId?: string
   personWrote: () => Promise<boolean>
   stopRequested: () => Promise<boolean>
   timing?: CodingWaitTiming
@@ -163,7 +164,21 @@ export const createExecutorCodingSessions = (input: {
     const outcome = await input.call(toolName, envelope(toolName, args), providerToolCallId)
     if (outcome.kind === 'expired') throw new ExecutorUnknownOutcomeError(outcome.toolCallRecordId)
     const parsed = parseBridgeResult(outcome.result)
-    if (parsed.kind === 'answer') remember(toolName, parsed.body)
+    if (parsed.kind === 'answer') {
+      remember(toolName, parsed.body)
+      const addLink = (body: Record<string, unknown>): void => {
+        if (input.executorId && typeof body.sessionId === 'string'
+          && /^[0-9a-f-]{36}$/u.test(body.sessionId)) {
+          body.viewPath = `/agents/executors/${input.executorId}/sessions/${body.sessionId}`
+        }
+      }
+      addLink(parsed.body)
+      if (Array.isArray(parsed.body.sessions)) {
+        for (const session of parsed.body.sessions) {
+          if (session && typeof session === 'object') addLink(session as Record<string, unknown>)
+        }
+      }
+    }
     return { ...presentCodingCall(toolName, parsed, outcome.result), inputSummary: summarizeToolInput(args) }
   }
 

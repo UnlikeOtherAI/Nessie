@@ -5,6 +5,7 @@ import {
   type ExecutorLocalMcpStatus,
 } from '@nessie/schemas'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { useCloseExecutorCodingSession, useExecutorCodingSessions } from '../../../facades/executors/coding-sessions'
 import { formErrorMessage } from '../../../facades/forms/form-errors'
@@ -39,6 +40,7 @@ const STATUS: Record<ExecutorCodingSessionStatus, { label: string; tone: PillTon
 }
 
 type SessionRowProps = {
+  executorId: string
   canClose: boolean
   closing: boolean
   onClose: () => void
@@ -48,7 +50,7 @@ type SessionRowProps = {
   session: ExecutorCodingSessionRecord
 }
 
-const SessionRow = ({ canClose, closing, onClose, pending, readAt, session }: SessionRowProps) => (
+const SessionRow = ({ executorId, canClose, closing, onClose, pending, readAt, session }: SessionRowProps) => (
   <li className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2" data-testid="executor-coding-session">
     <div className="grid min-w-0 flex-1 gap-0.5">
       <div className="flex flex-wrap items-center gap-2">
@@ -63,6 +65,10 @@ const SessionRow = ({ canClose, closing, onClose, pending, readAt, session }: Se
         {' · '}updated <span title={session.updatedAt}>{executorObservedAge(session.updatedAt, readAt)}</span>
       </p>
     </div>
+    {canClose ? <Link className="admin-button admin-button-secondary admin-button-compact"
+      to={`/agents/executors/${executorId}/sessions/${session.sessionId}`} aria-label={`View ${session.title}`}>
+      View session
+    </Link> : null}
     {closing ? (
       <span
         className="py-1 text-[color:var(--tx3)]"
@@ -71,7 +77,7 @@ const SessionRow = ({ canClose, closing, onClose, pending, readAt, session }: Se
       >
         Closing…
       </span>
-    ) : canClose ? (
+    ) : canClose && session.status !== 'closed' && session.status !== 'failed' ? (
       <button
         aria-label={`Close ${session.title}`}
         className="admin-button admin-button-secondary admin-button-compact"
@@ -85,7 +91,7 @@ const SessionRow = ({ canClose, closing, onClose, pending, readAt, session }: Se
   </li>
 )
 
-const CodingSessionList = ({ executorId }: { executorId: string }) => {
+export const ExecutorSessionList = ({ executorId }: { executorId: string }) => {
   const query = useExecutorCodingSessions(executorId)
   const close = useCloseExecutorCodingSession(executorId)
   const [error, setError] = useState<string | null>(null)
@@ -105,7 +111,7 @@ const CodingSessionList = ({ executorId }: { executorId: string }) => {
       {() => {
         const list = query.data ?? { canClose: false, sessions: [] }
         if (list.sessions.length === 0) {
-          return <p className="mt-1 text-[color:var(--tx2)]">No coding sessions are open on this machine.</p>
+          return <p className="mt-1 text-[color:var(--tx2)]">No sessions have been reported on this machine. Ask an agent with access to start one.</p>
         }
         const pressed = close.isPending ? close.variables?.sessionId : undefined
         return (
@@ -115,6 +121,7 @@ const CodingSessionList = ({ executorId }: { executorId: string }) => {
               {list.sessions.map((session) => (
                 <SessionRow
                   canClose={list.canClose}
+                  executorId={executorId}
                   closing={session.closing || pressed === session.sessionId}
                   key={session.sessionId}
                   onClose={() => closeSession(session)}
@@ -146,5 +153,5 @@ export const ExecutorCodingSessions = ({ executorId, status }: {
   if (!status.codingSessions) {
     return <p className="mt-1 text-[color:var(--tx3)]">Open coding sessions have not been checked yet.</p>
   }
-  return <CodingSessionList executorId={executorId} />
+  return <ExecutorSessionList executorId={executorId} />
 }
