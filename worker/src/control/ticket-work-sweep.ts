@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient, type RunStatus } from '@prisma/client'
+import type { ResolveLiveEntitlementsDeps } from '@nessie/runtime'
 import {
   TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_SWEEP_TOPIC,
@@ -16,6 +17,7 @@ import { settleTicketDelivery } from './ticket-trigger-settle.js'
 import { createTicketWorkSeam } from './ticket-work.js'
 import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
 import { stopTicketWorkAtWakeLimit } from './ticket-work-run.js'
+import { sweepStandingMachineAccess, ticketSessionWorking } from './ticket-work-sweep-machines.js'
 import type { TicketWorkSeam } from './ticket-work-seam.js'
 import type { RetryContext } from './trigger-run.js'
 import { enqueueQueueJob } from '../queue.js'
@@ -35,8 +37,8 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  * - **sends the quiet wake** — an `active` record with no pending reminder, no
  *   open question, no run in flight and no wake for the trigger's
  *   `quietWakeMinutes` is woken with reason `quiet`, counted against its wake
- *   limit. No coding session can be working yet (they come with machine
- *   access), so none is checked;
+ *   limit — nor while one of the ticket's own coding sessions is mid-turn
+ *   on its machine, as the machine last reported (T4);
  * - **recovers a lost dispatch job** — a `trigger.ticket.dispatch` or
  *   `ticket-work.thread-message` job the queue gave up on (its worker died
  *   holding it, or it failed at every attempt) is dispatched once more. Each
@@ -44,7 +46,11 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  *   settle changes nothing, and a person's move whose job was lost still
  *   starts its work.
  *
- * Later PRs make it the pool dispatcher too (T4, T5).
+ * - **(T4) runs the machine half** (`ticket-work-sweep-machines.ts`): it ends
+ *   the policies of authors UOA no longer lists, stops work over its hours or
+ *   spend that nobody wakes, and places queued work on a free machine in each
+ *   policy's queue order — the dispatcher's backstop; T5's dequeue orders it
+ *   across policies.
  */
 
 export const TICKET_WORK_SWEEP_INTERVAL_MS = 60_000
@@ -65,14 +71,17 @@ export type SweepRecordFacts = {
   quietWakeMinutes: number | null
   /** When the agent's newest run in the work thread finished, if one has. */
   lastRunFinishedAt: Date | null
+  /** One of the ticket's own coding sessions is mid-turn, as its machine last reported (T4). */
+  sessionWorking?: boolean
 }
 
 /** What the sweep does with one live record, decided from its facts alone. */
 export const decideTicketWorkSweep = (record: SweepRecordFacts, now: Date): 'over_limit' | 'quiet' | null => {
   if (record.wakeCount > record.wakeLimit) return 'over_limit'
   if (record.status !== 'active' || record.quietWakeMinutes === null) return null
-  // Something is already scheduled, or a person owes an answer: not quiet.
-  if (record.awaitingAnswerAt !== null || record.pendingReminders > 0) return null
+  // Something is already scheduled, a person owes an answer, or the coding
+  // agent is working: not quiet.
+  if (record.awaitingAnswerAt !== null || record.pendingReminders > 0 || record.sessionWorking) return null
   // Quiet since the last thing that happened: the wake, or — a run that took
   // a while — the moment the run it started finished.
   const woken = (record.lastWakeAt ?? record.startedAt).getTime()
@@ -111,6 +120,10 @@ const loadLiveRecords = (prisma: PrismaClient, input: { after: string | null; ta
       lastWakeAt: true,
       startedAt: true,
       awaitingAnswerAt: true,
+      executorId: true,
+      policyId: true,
+      executor: { select: { localMcp: true } },
+      policy: { select: { authorUserId: true } },
       _count: { select: { reminders: { where: { status: 'pending' } } } },
       trigger: {
         select: { id: true, agentId: true, config: true, targetChannelId: true, enabled: true, status: true },
@@ -130,6 +143,7 @@ const sweepFacts = (record: LiveRecord, lastRunFinishedAt: Date | null): SweepRe
     pendingReminders: record._count.reminders,
     quietWakeMinutes: config.quietWakeMinutes,
     lastRunFinishedAt,
+    sessionWorking: record.status === 'active' && ticketSessionWorking(record),
   }
 }
 
@@ -320,8 +334,8 @@ export const recoverLostTicketJobs = async (prisma: PrismaClient, now: Date, lim
 
 export const runTicketWorkSweep = async (
   prisma: PrismaClient,
-  /** `limit`: live records read a page; every page is read. */
-  input: { now?: Date; limit?: number; seam?: TicketWorkSeam } = {},
+  /** `limit`: live records read a page; every page is read. `entitlements`: the UOA transport; tests stand one in. */
+  input: { now?: Date; limit?: number; seam?: TicketWorkSeam; entitlements?: ResolveLiveEntitlementsDeps } = {},
 ): Promise<void> => {
   const now = input.now ?? new Date()
   const take = input.limit ?? 200
@@ -332,6 +346,7 @@ export const runTicketWorkSweep = async (
     after = records[records.length - 1]!.id
   }
   await recoverLostTicketJobs(prisma, now)
+  await sweepStandingMachineAccess(prisma, { now, ...(input.entitlements ? { entitlements: input.entitlements } : {}) })
 }
 
 const sweepPage = async (

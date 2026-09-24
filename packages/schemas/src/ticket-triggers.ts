@@ -303,8 +303,9 @@ export const ticketTriggerSkipSentence = (
  * the work thread is not a `TaskEvent`, so it names its message by
  * `messageId` with the event type `thread_message`; a `check_back_in`
  * reminder names its `reminderId` with the event type `reminder`; and a quiet
- * wake, which nothing caused, names none of them (event type `quiet`). The
- * origin of the last two is `system`: the platform woke the agent.
+ * wake, which nothing caused, names none of them (event type `quiet`), nor
+ * does a queued record the pool dispatcher placed on a machine (`dequeued`).
+ * The origin of the last three is `system`: the platform woke the agent.
  */
 export const TicketTriggerDeliveryPayloadSchema = z
   .object({
@@ -312,7 +313,7 @@ export const TicketTriggerDeliveryPayloadSchema = z
     messageId: uuid.optional(),
     reminderId: uuid.optional(),
     taskId: uuid,
-    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet']),
+    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet', 'dequeued']),
     originKind: z.enum(['session', 'token', 'agent', 'source', 'system']),
     outcome: TicketTriggerDispatchOutcomeSchema,
     skipReason: TicketTriggerSkipReasonSchema.optional(),
@@ -347,13 +348,13 @@ export const TicketTriggerDeliveryPayloadSchema = z
       ? 'messageId'
       : payload.eventType === 'reminder'
         ? 'reminderId'
-        : payload.eventType === 'quiet' ? null : 'taskEventId'
+        : payload.eventType === 'quiet' || payload.eventType === 'dequeued' ? null : 'taskEventId'
     const ids = ['taskEventId', 'messageId', 'reminderId'] as const
     if (ids.some((key) => (payload[key] !== undefined) !== (key === named))) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: [named ?? 'eventType'],
-        message: 'A thread message names its messageId, a reminder its reminderId, a quiet wake none, '
+        message: 'A thread message names its messageId, a reminder its reminderId, a quiet wake and a dequeue none, '
           + 'and every other event its taskEventId.',
       })
     }

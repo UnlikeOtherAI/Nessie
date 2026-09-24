@@ -45,12 +45,17 @@ where it and the code differ, the code and this file win.
 - **A refusal is an outcome, never a throw.** It writes
   `executor.run.policy_refused` (`outcome: denied`, the reason) and a
   skipped delivery on the trigger (`source: 'binding'`, deduped
-  `binding:<runId>`, the reason's sentence from
-  `STANDING_POLICY_REFUSAL_SENTENCES`), and the run goes on with no machine:
-  the reach facts say `standing_refused` with the same sentence, and the
-  ticket's chip record carries it (`machineRefusal`, from
-  `loadTaskTicketWork`, beside a queued record's `queuePosition`) until a
-  later wake. None names the machine.
+  `binding:<runId>`, its payload `TicketTriggerBindingRefusalPayloadSchema` —
+  `{ kind: 'standing_policy_refused', reason, runId, taskId, workId }` — and
+  its error message the people's sentence, `standingPolicyRefusalSentence`:
+  *"Ran without a machine: the machine was offline or no longer offers its
+  coding tools."*), and the run goes on with no machine: the reach facts say
+  `standing_refused` with the run's own sentence
+  (`STANDING_POLICY_REFUSAL_SENTENCES`), the Triggers page renders the
+  delivery with the people's (`ticketDeliveryLine`), and the ticket's chip
+  record carries it too (`machineRefusal`, from `loadTaskTicketWork`, beside a
+  queued record's `queuePosition`) until a later wake. None names the
+  machine.
 - **The dispatch fence** re-checks every command a standing binding creates or
   the daemon collects: the policy `live` with this machine in its pool and the
   candidate's author and agent; the record `active`, pinned to this machine
@@ -210,9 +215,8 @@ where it and the code differ, the code and this file win.
   every transaction that may free a machine (a record ending, parking or
   waiting, a suspension, an end, a confirmation, a limit) enqueues
   `ticket-work.sweep` with a ten-second idempotency bucket
-  (`enqueueTicketWorkSweep`). Nothing subscribes to it until the sweep lands
-  (T3), and the dequeue is T5's: until then a queued record says "every
-  machine is busy" even when the machine that freed it is idle.
+  (`enqueueTicketWorkSweep`); the sweep then places queued work on the freed
+  machine (below, "The sweep's machine half").
 - **A pinned machine offline when a wake comes starts no model run**
   (`holdTicketWorkBeforeWake`): the record goes to `waiting_machine` with
   `machine_offline`, keeping its machine's slot, with a `work_paused` row, and
@@ -286,8 +290,8 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   They are checked when a wake is decided (`holdTicketWorkBeforeWake`), by the
   binder, and in the heartbeat intake (`reportExecutorHeartbeat`, for records
   active on that machine, so the close rides the same answer);
-  `enforceTicketWorkLimitsInTransaction` is what the sweep calls when it
-  lands. Over one, the record fails with `limit_hours` or `limit_cost` —
+  and by the sweep for work nobody wakes
+  (`enforceTicketWorkLimitsInTransaction`). Over one, the record fails with `limit_hours` or `limit_cost` —
   `dailyUsd` too, with its own sentence, because T1 gave `limit_daily` to the
   trigger's `startsPerDay` — a `work_ended` row, a "Stopped" thread row, and
   its closes; a wake it would have been is skipped with that reason.
@@ -316,7 +320,45 @@ Ending a policy (`endStandingPolicyInTransaction`) cancels its live records
   (`agent_unbound`, `unbindAgentFromChannel`); the target channel archived,
   deleted or made protected (`target_channel_unavailable`); the project, a
   board or a start-work column deleted (`scope_archived`, before the delete
-  that nulls the trigger's scope). The sweep's UOA re-check of authors is T3's.
+  that nulls the trigger's scope); and the author no longer listed by UOA
+  (`author_left_organization`), found by the sweep, below.
+
+## The sweep's machine half (T4)
+
+`ticket-work.sweep` (T3's periodic job, and every enqueue a transaction that
+may free a machine makes) runs `sweepStandingMachineAccess`
+(`worker/src/control/ticket-work-sweep-machines.ts`) after its record pages,
+each step on its own so one failing never keeps the others from running:
+
+- **Authors UOA no longer lists** (`endPoliciesOfDepartedAuthors`). UOA has
+  no removal feed, so each author of a preparing, live or suspended policy
+  is asked again (`resolveLiveEntitlementDecision`, with the identity
+  captured at confirmation, the stored link allowed). An answer that does
+  not list them — or no identity to ask with — ends every such policy of
+  theirs (`author_left_organization`), its records cancelled and its
+  sessions closed, with `executor.policy.ended`, in one transaction. An
+  outage ends nothing: the binder refuses every wake meanwhile
+  (`author_unavailable`), failing closed on its own.
+- **Limits on work nobody wakes** (`enforceLimitsOnLiveWork`): every live
+  record under a policy, fifty to a transaction, against its hours clock
+  and spend, exactly as a wake and the heartbeat intake check them.
+- **The dispatcher's backstop** (`dispatchQueuedTicketWork`): each live
+  policy's queued records, by queue position then age, are placed on its
+  pool one at a time until one finds no free machine. Each placement takes
+  the locks every wake of the record takes, in the one order — the ticket,
+  the thread's run slot, then the pool and the record — and re-reads the
+  record still `queued`. Placed, the record is `active` with a
+  `work_resumed` row, `ticket.work.started` (`dequeued: true`), a delivered
+  `dequeue` delivery (event type `dequeued`) and one `dequeued` wake; not
+  placed, every write the attempt made rolls back, so an idle sweep writes
+  nothing. This is a simple first-free assignment in each policy's own
+  queue order; the dequeue by priority and age across every policy that
+  shares a machine, and its re-checks of the ticket, the mover and the
+  digests, are T5's.
+- **The quiet wake waits for a working session.** T3's quiet wake is not
+  sent while one of the ticket's own coding sessions is `working` in its
+  machine's last report (`ticketSessionWorking`): the coding agent's turn
+  ending wakes the agent instead (T5).
 
 ## Host output stays on the ticket (T4)
 
@@ -367,5 +409,9 @@ machines and a third queued, an offline machine at wake, a wake past spend,
 `worker/test/db/ticket-work-coding-tools.test.ts` (the ticket's session,
 title, agent, roots, cost, turn, pull request by URL after the branch is gone,
 send audit, lost-start reconciliation);
-`worker/test/db/ticket-work-host-output.test.ts`; the reach-facts and kickoff
+`worker/test/db/ticket-work-host-output.test.ts`;
+`worker/test/db/ticket-work-sweep-machines.test.ts` (a queued ticket taking a
+freed machine with a `dequeued` wake and an idle sweep writing nothing, work
+past its hours stopped with its closes, an author the organisation no longer
+lists losing their access, a quiet wake waiting on a working session); the reach-facts and kickoff
 unit tests; `executor/test/coding-session-bridge.test.ts` (`totalCostUsd`).
