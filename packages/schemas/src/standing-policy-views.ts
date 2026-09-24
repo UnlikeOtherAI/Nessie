@@ -94,6 +94,19 @@ export const TriggerMachineAccessViewSchema = z
       .nullable(),
     /** A card prepared and not yet confirmed, beside a policy that still binds. */
     pendingCard: z.object({ policyId: uuid, createdAt: timestamp }).strict().nullable(),
+    /**
+     * Where the card still out (the `preparing` policy, shown or pending) can
+     * be answered: in the author's conversation it was posted to — the Agent
+     * Designer's or their Personal Assistant's DM — or nowhere lasting, when it
+     * was prepared on this page and the page has since been left. Null when no
+     * card is out.
+     */
+    cardLocation: z
+      .union([
+        z.object({ where: z.literal('conversation'), channelId: uuid, threadId: uuid }).strict(),
+        z.object({ where: z.literal('this_page') }).strict(),
+      ])
+      .nullable(),
     /** Every live ticket of the trigger: working, queued, waiting or parked. */
     tickets: z.array(TriggerMachineAccessTicketSchema).max(50),
   })
@@ -160,3 +173,15 @@ export type ExecutorStandingPolicyListResponse = z.infer<typeof ExecutorStanding
 /** `POST /api/standing-policies/:policyId/end`. */
 export const EndStandingPolicyResponseSchema = z.object({ ended: z.boolean() }).strict()
 export type EndStandingPolicyResponse = z.infer<typeof EndStandingPolicyResponseSchema>
+
+/**
+ * What saving a ticket trigger did to its standing machine access, as
+ * `PUT /api/triggers/:triggerId` answers it beside the trigger: an edit of a
+ * pinned field paused it until its author re-confirms (the fields named as the
+ * card names them); lowering a limit moved the pinned terms down instead.
+ */
+export const AgentTriggerMachineAccessEffectSchema = z.union([
+  z.object({ kind: z.literal('limits_lowered') }).strict(),
+  z.object({ kind: z.literal('suspended'), authorName: z.string().min(1), fields: z.array(z.string().min(1)) }).strict(),
+])
+export type AgentTriggerMachineAccessEffect = z.infer<typeof AgentTriggerMachineAccessEffectSchema>

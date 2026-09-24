@@ -4370,6 +4370,9 @@ model AgentTicketWork {
   /// review, so only what is new is added; `"run:<runId>": <usd>`, a run's own
   /// cost, added once.
   sessionCosts     Json                    @default("{}") @map("session_costs")
+  /// Where and when each session in `sessionIds` was started: its machine, its
+  /// policy and its start time (`"<sessionId>": {executorId, policyId, startedAt}`).
+  sessionOrigins   Json                    @default("{}") @map("session_origins")
   pullRequestUrl   String?                 @map("pull_request_url")
   /// As `gh pr view` reports it: OPEN, CLOSED or MERGED
   /// (`TicketWorkPullRequestStateSchema`).

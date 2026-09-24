@@ -77,6 +77,8 @@ export const TICKET_WORK_MACHINE_HOLDING_STATUSES = [
 export const TicketWorkStateReasonSchema = z.enum([
   'queued_no_free_machine',
   'queued_machines_offline',
+  // The policy spent its `dailyUsd` today: queued until the UTC day turns.
+  'queued_daily_limit',
   'machine_access_not_set_up',
   'machine_access_suspended',
   'machine_access_ended',
@@ -128,6 +130,18 @@ export type TicketWorkWakeReason = z.infer<typeof TicketWorkWakeReasonSchema>
 
 /** A recorded pull request's state, exactly as `gh pr view --json state` spells it. */
 export const TicketWorkPullRequestStateSchema = z.enum(['OPEN', 'CLOSED', 'MERGED'])
+
+/**
+ * One entry of `agent_ticket_work.session_origins`: the machine a coding
+ * session was started on, the policy it was started under, and when the
+ * worker recorded it (`ticket-work-session-origins.ts` in executor-manage).
+ */
+export const TicketWorkSessionOriginSchema = z.object({
+  executorId: z.string().uuid(),
+  policyId: z.string().uuid(),
+  startedAt: z.string().datetime(),
+})
+export type TicketWorkSessionOrigin = z.infer<typeof TicketWorkSessionOriginSchema>
 export type TicketWorkPullRequestState = z.infer<typeof TicketWorkPullRequestStateSchema>
 
 /**
@@ -151,6 +165,8 @@ export const ExecutorStandingPolicySuspendedReasonSchema = z.enum([
   'trigger_changed',
   // A descriptor review changed a pool machine's pinned digest.
   'descriptor_changed',
+  // The agent's definition changed: its instructions, model, tool policy or connectors.
+  'agent_changed',
 ])
 export type ExecutorStandingPolicySuspendedReason = z.infer<
   typeof ExecutorStandingPolicySuspendedReasonSchema
@@ -210,6 +226,10 @@ export const StandingPolicyBindRefusalReasonSchema = z.enum([
   'channel_unavailable',
   'not_this_work',
   'limit_reached',
+  // The ticket left the trigger's board, or sits in a column that ends its work.
+  'ticket_not_in_flow',
+  // Binding failed unexpectedly (a lost connection, say): the run goes on unbound, told so.
+  'bind_failed',
 ])
 export type StandingPolicyBindRefusalReason = z.infer<typeof StandingPolicyBindRefusalReasonSchema>
 
