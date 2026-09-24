@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 
 import { Prisma, PrismaClient } from '@prisma/client'
 import {
+  RunExecuteJobPayloadSchema,
+  TicketChangedStoredConfigSchema,
   TICKET_WORK_SWEEP_TOPIC,
   TRIGGER_TICKET_DISPATCH_TOPIC,
   TriggerTicketDispatchJobPayloadSchema,
@@ -15,6 +17,8 @@ import {
   type StandingPolicyWorld,
 } from '../../../packages/team-admin/test/standing-policy-fixture.js'
 import { dispatchTicketEvent } from '../../src/control/ticket-trigger-dispatch.js'
+import { createTicketWorkSeam } from '../../src/control/ticket-work.js'
+import { bindTicketWorkMachine } from '../../src/run/execute/ticket-work-setup.js'
 import { runDatabaseTest } from './support.js'
 
 /**
@@ -191,5 +195,59 @@ runDatabaseTest('a wake past the policy\'s spend stops the work instead of wakin
       where: { dedupeKey: `ticket:${world.triggerId}:${commented.id}` },
     })
     assert.deepEqual([delivery.status, (delivery.payload as { skipReason?: string }).skipReason], ['skipped', 'limit_cost'])
+  })
+})
+
+runDatabaseTest('a document edit reaching a standing ticket\'s work binds its machine like any other wake', async () => {
+  await withWorld(async (world, prisma) => {
+    const seen = new Set<string>()
+    const taskId = await ticket(prisma, world, 'Fix login redirect')
+    await moveTo(prisma, world, taskId, world.columns.inProgress)
+    await drain(prisma, world, seen)
+    const work = await workOf(prisma, world, taskId)
+    assert.equal(work.status, 'active')
+    await prisma.run.updateMany({ where: { threadId: work.threadId }, data: { status: 'completed' } })
+    const before = new Set((await prisma.run.findMany({ where: { threadId: work.threadId }, select: { id: true } }))
+      .map((run) => run.id))
+    // The document trigger's router hands the change to the work through the seam, as T2's does.
+    const trigger = await prisma.agentTrigger.findUniqueOrThrow({ where: { id: world.triggerId } })
+    const delivery = await prisma.agentTriggerDelivery.create({
+      data: { dedupeKey: `document:${randomUUID()}`, payload: {}, source: 'follow', status: 'delivered', triggerId: trigger.id },
+    })
+    const outcome = await prisma.$transaction((tx) => createTicketWorkSeam(prisma).wakeTicketWork(tx, {
+      trigger: {
+        agentId: world.agentId, config: TicketChangedStoredConfigSchema.parse(trigger.config), id: trigger.id,
+        organizationId: world.organizationId, targetChannelId: trigger.targetChannelId,
+      },
+      task: { id: taskId, projectId: world.projectId },
+      event: {
+        createdAt: new Date(), described: { summary: 'a person edited a watched document', text: 'Login spec v3.' },
+        eventType: 'document_changed', id: randomUUID(), kind: 'document',
+      },
+      workId: work.id,
+      reason: 'document_changed',
+      untrusted: false,
+      machineLess: false,
+      resumes: false,
+      deliveryId: delivery.id,
+    }))
+    assert.equal(outcome.outcome, 'woken')
+    const run = await prisma.run.findFirstOrThrow({
+      where: { threadId: work.threadId, id: { notIn: [...before] } }, orderBy: { createdAt: 'desc' },
+    })
+    const job = RunExecuteJobPayloadSchema.parse((await prisma.queueJob.findFirstOrThrow({
+      where: { topic: 'run.execute', payload: { path: ['runId'], equals: run.id } },
+    })).payload)
+    // The run setup's own bind: the policy, the record, the pinned machine.
+    const machine = await bindTicketWorkMachine(prisma, { job, runId: run.id, workId: work.id })
+    assert.equal(machine?.binding.kind, 'bound', JSON.stringify(machine?.binding))
+    const bindings = await prisma.executorBinding.findMany({
+      where: { runId: run.id }, select: { executorId: true, standingPolicyId: true, ticketWorkId: true },
+    })
+    assert.ok(bindings.length > 0)
+    for (const binding of bindings) {
+      assert.deepEqual(binding, { executorId: work.executorId, standingPolicyId: world.policyId, ticketWorkId: work.id })
+    }
+    await prisma.executorBinding.deleteMany({ where: { runId: run.id } })
   })
 })

@@ -168,12 +168,14 @@ export const routeDocumentChange = async (
     resumes: false,
     deliveryId: input.deliveryId,
   })
-  // The work stopped before the change reached it (its wake limit, or it
-  // ended a moment ago): the change is still reviewed, in the page's thread.
+  // The work stopped before the change reached it (a limit, or it ended a
+  // moment ago), or waits for its machine to reconnect: the change is still
+  // reviewed, in the page's thread.
   if (outcome.outcome === 'refused') {
     const task = await tx.task.findUnique({ where: { id: route.work.taskId }, select: { title: true } })
     return reviewInThread(tx, { ...input, channelId }, {
-      id: route.work.taskId, title: task?.title ?? null, why: 'work_ended',
+      id: route.work.taskId, title: task?.title ?? null,
+      why: outcome.reason === 'machine_offline' ? 'work_waiting_machine' : 'work_ended',
     })
   }
   return { outcome: 'ticket_work', workId: outcome.workId, threadId: route.work.threadId }

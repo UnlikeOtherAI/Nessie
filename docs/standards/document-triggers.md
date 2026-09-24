@@ -261,8 +261,12 @@ delivery's transaction:
    A ticket's document lands here when that ticket's work is not live for the
    agent, does not follow documents, or was steered by nobody who may, and
    the kickoff names the ticket and says which. A ticket work wake the seam
-   refuses (its wake limit, work that ended a moment ago) is reviewed here
-   too, rather than lost.
+   refuses (a limit, work that ended a moment ago, or — under standing
+   machine access — work whose machine is offline, which the kickoff says is
+   waiting for it rather than ended) is reviewed here too, rather than lost.
+   A wake the seam takes is a `ticket.work` wake like any other: its run is
+   bound through the ticket's standing policy afresh
+   ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
 
 ## What a wake says
 
