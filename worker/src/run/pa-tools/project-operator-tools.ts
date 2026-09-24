@@ -10,6 +10,7 @@ import {
 } from '@nessie/team-admin'
 import { z } from 'zod'
 
+import { emitWorkerAuditEvent } from '../execute/policy.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import type { ActingMember } from './access.js'
 import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
@@ -121,6 +122,21 @@ export const runTicketBoardColumnUpdateTool = async (
   )
 }
 
+/** The route's own `kb.space.created` audit row, as the person asking. */
+const auditSpaceCreated = (
+  context: BuiltinToolRuntimeContext,
+  member: ActingMember,
+  space: { id: string; name: string },
+  projectId: string,
+): Promise<void> => emitWorkerAuditEvent(context.prisma, member.actorContext, {
+  action: 'kb.space.created',
+  metadata: { name: space.name },
+  outcome: 'success',
+  resourceId: space.id,
+  resourceType: 'knowledge_space',
+  tenantOverride: { organizationId: member.organizationId, projectId },
+})
+
 /**
  * `POST /api/knowledge-base/spaces`, as the person asking: the project must be
  * one they belong to (the knowledge viewer's projects — an organisation role
@@ -169,6 +185,7 @@ export const runKbSpaceCreateTool = async (
       organizationId: member.organizationId,
       projectId: project.id,
     })
+    if (ensured.created) await auditSpaceCreated(context, member, { id: ensured.spaceId, name: 'Project Documents' }, project.id)
     return result(
       'kb_space_create',
       `projectId=${project.id} kind=project_documents`,
@@ -184,6 +201,7 @@ export const runKbSpaceCreateTool = async (
     projectId: project.id,
     visibility: 'project',
   })
+  await auditSpaceCreated(context, member, space, project.id)
   return result(
     'kb_space_create',
     `projectId=${project.id} kind=space name="${args.name}"`,
