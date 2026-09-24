@@ -1,18 +1,21 @@
-import { Prisma } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
 import {
   EXECUTOR_CODING_SESSION_REPORT_MAXIMUM,
   EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME,
   TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_SESSION_TOPIC,
+  ticketWorkCodingSessionContext,
   type ExecutorCodingSessionSummary,
   type ExecutorLocalMcpReport,
   type TicketWorkSessionJobPayload,
 } from '@nessie/schemas'
 
 import { reportedExecutorCodingSessions } from './executor-coding-session-closes.js'
+import { executorCodingSessionOwnerKey } from './executor-coding-session-owner.js'
 import { executorHeartbeatCutoff } from './executor-liveness.js'
 import { enqueueTicketWorkSweep } from './executor-standing-policy-pool.js'
+import { forgetTicketWorkSessionsInTransaction } from './ticket-work-session-release.js'
 
 /**
  * The heartbeat's ticket-work intake (T5; docs/plans/2026-09-23-ticket-driven-agents/ticket-work.md
@@ -20,18 +23,25 @@ import { enqueueTicketWorkSweep } from './executor-standing-policy-pool.js'
  * heartbeat transaction, which already holds the machine's connection lock, so two reports of
  * one machine are never compared at once.
  *
- * **Session wakes.** The previous and the new `codingSessions` are compared for the sessions a
- * live work record names, and a `ticket-work.session` job is enqueued — idempotent on
- * `session:<sessionId>:<turn>:<status>`, so a repeated report wakes nothing twice — when:
+ * **Only this machine's own tickets.** A report speaks for the machine that signed it, so it is
+ * read only for the live records pinned to that machine in its organisation, and only for the
+ * sessions it lists under each record's own owner key (the author, the agent and the ticket's
+ * context): another machine's report naming a record's session, or a session under any other
+ * owner, wakes nothing and closes nothing.
+ *
+ * **Session wakes.** The previous and the new `codingSessions` are compared for those sessions,
+ * and a `ticket-work.session` job is enqueued — idempotent on `session:<sessionId>:<turn>:<status>`,
+ * so a repeated report wakes nothing twice — when:
  *
  * - the turn went up and the session is not `starting` or `working`. The turn a report shows
  *   ended is its `turn`, or the one before while a turn is still in progress, so a fast turn
  *   that began and ended between two reports (`waiting_for_input` turn 3, then turn 4) wakes
  *   exactly once, and a slow one (`working` turn 4, then `waiting_for_input` turn 4) too;
  * - it entered `interrupted` or `failed`, or reports itself `closed`;
- * - it is missing from a report that has the field, having been in the previous one: closed.
- *   A report at its row cap may have left it out, so there a missing session is unknown, not
- *   closed; and a report without the field infers nothing at all.
+ * - it is missing from a report that has the field, having been in the last report that had
+ *   it: closed. A report at its row cap may have left it out, so there a missing session is
+ *   unknown, not closed; and a report without the field infers nothing at all — nor does it
+ *   erase what the last one said (`withLastKnownCodingSessions`).
  *
  * A closed session leaves the record's live set (`sessionIds`) at once, so the next kickoff's
  * state block and the ticket's coding tools never name it, and the pool dispatcher is enqueued:
@@ -39,8 +49,9 @@ import { enqueueTicketWorkSweep } from './executor-standing-policy-pool.js'
  *
  * **A machine back.** A machine reporting while a record waits for it (`waiting_machine`,
  * `machine_offline`) enqueues the sweep, which resumes that work with a `machine_back_online`
- * wake; and a machine coming online — offline or unheard-from before this heartbeat, or
- * claiming a new connection — enqueues it when a live policy's queue waits on its pool.
+ * wake; and a machine coming online — offline or unheard-from before this heartbeat — enqueues it
+ * when a live policy's queue waits on its pools. `claimExecutorConnection` calls the same enqueue
+ * (`enqueueTicketWorkForMachineInTransaction`) when a claim brings an offline machine back.
  */
 
 type WakingStatus = TicketWorkSessionJobPayload['status']
@@ -57,12 +68,14 @@ const endedTurnOf = (summary: ExecutorCodingSessionSummary): number | null => {
 
 /**
  * Which of the named sessions wake, and which closed, from two reports' sessions. `next` is
- * null when the new report does not carry the field. Pure: the transaction below reads and
- * writes around it.
+ * null when the new report does not carry the field; `nextComplete` says whether the new list
+ * could have held every session (it is below the row cap), which a caller that filtered it must
+ * say from the whole list. Pure: the transaction below reads and writes around it.
  */
 export const ticketWorkSessionWakes = (input: {
   named: ReadonlySet<string>
   next: readonly ExecutorCodingSessionSummary[] | null
+  nextComplete?: boolean
   observed: ReadonlyMap<string, number>
   previous: readonly ExecutorCodingSessionSummary[]
 }): { closed: string[]; wakes: TicketWorkSessionWake[] } => {
@@ -71,7 +84,7 @@ export const ticketWorkSessionWakes = (input: {
   if (input.next === null) return { closed, wakes }
   const before = new Map(input.previous.map((session) => [session.sessionId, session]))
   const after = new Map(input.next.map((session) => [session.sessionId, session]))
-  const complete = input.next.length < EXECUTOR_CODING_SESSION_REPORT_MAXIMUM
+  const complete = input.nextComplete ?? input.next.length < EXECUTOR_CODING_SESSION_REPORT_MAXIMUM
   for (const sessionId of input.named) {
     const was = before.get(sessionId)
     const now = after.get(sessionId)
@@ -117,26 +130,66 @@ const numberMap = (value: Prisma.JsonValue | null | undefined): Map<string, numb
 const reportedSessionsOrNull = (report: ExecutorLocalMcpReport): readonly ExecutorCodingSessionSummary[] | null =>
   report.find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)?.codingSessions ?? null
 
+/**
+ * The report to store: this one, except that a bridge entry which did not carry its sessions —
+ * its probe failed this time — keeps the sessions the last report that had them listed. Absent
+ * means not asked, never none, and the next report is compared with what was last known.
+ */
+export const withLastKnownCodingSessions = (
+  stored: unknown,
+  next: ExecutorLocalMcpReport,
+): ExecutorLocalMcpReport => {
+  const bridge = next.find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)
+  if (!bridge || bridge.codingSessions !== undefined) return next
+  const last = reportedExecutorCodingSessions(stored)
+  const hadField = Array.isArray(stored) && (stored as Array<{ codingSessions?: unknown; server?: unknown }>)
+    .some((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME && status.codingSessions !== undefined)
+  if (!hadField) return next
+  return next.map((status) => (status === bridge ? { ...status, codingSessions: [...last] } : status))
+}
+
 const intakeSessionReport = async (
   tx: Prisma.TransactionClient,
-  input: { localMcp: ExecutorLocalMcpReport; now: Date; previousLocalMcp: unknown },
+  input: { executorId: string; localMcp: ExecutorLocalMcpReport; now: Date; previousLocalMcp: unknown },
 ): Promise<void> => {
   const next = reportedSessionsOrNull(input.localMcp)
   if (next === null) return
   const previous = reportedExecutorCodingSessions(input.previousLocalMcp)
   const seen = new Set([...previous, ...next].map((session) => session.sessionId))
   if (seen.size === 0) return
+  const executor = await tx.executor.findUnique({ where: { id: input.executorId }, select: { organizationId: true } })
+  if (!executor) return
   const records = await tx.agentTicketWork.findMany({
-    where: { sessionIds: { hasSome: [...seen] }, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
-    select: { id: true, lastObservedTurn: true, organizationId: true, sessionIds: true },
+    where: {
+      executorId: input.executorId,
+      organizationId: executor.organizationId,
+      policyId: { not: null },
+      sessionIds: { hasSome: [...seen] },
+      status: { in: [...TICKET_WORK_LIVE_STATUSES] },
+    },
+    select: {
+      agentId: true, id: true, lastObservedTurn: true, organizationId: true, policyId: true, sessionIds: true,
+      taskId: true, policy: { select: { authorUserId: true } },
+    },
   })
+  const nextComplete = next.length < EXECUTOR_CODING_SESSION_REPORT_MAXIMUM
   let closedAny = false
   for (const record of records) {
+    if (!record.policy || !record.policyId) continue
+    // The ticket's own owner key on this machine: a session under any other owner is not its.
+    const ownerKey = executorCodingSessionOwnerKey(input.executorId, {
+      actorUserId: record.policy.authorUserId,
+      agentId: record.agentId,
+      contextId: ticketWorkCodingSessionContext(record.policyId, record.taskId),
+    })
+    const own = (sessions: readonly ExecutorCodingSessionSummary[]) =>
+      sessions.filter((session) => session.ownerKey === ownerKey)
     const { closed, wakes } = ticketWorkSessionWakes({
       named: new Set(record.sessionIds.filter((sessionId) => seen.has(sessionId))),
-      next,
+      next: own(next),
+      nextComplete,
       observed: numberMap(record.lastObservedTurn),
-      previous,
+      previous: own(previous),
     })
     for (const wake of wakes) {
       const payload: TicketWorkSessionJobPayload = { organizationId: record.organizationId, workId: record.id, ...wake }
@@ -146,31 +199,26 @@ const intakeSessionReport = async (
         topic: TICKET_WORK_SESSION_TOPIC,
       })
     }
-    for (const sessionId of closed) {
-      await tx.$executeRaw(Prisma.sql`
-        UPDATE agent_ticket_work SET session_ids = array_remove(session_ids, ${sessionId}), updated_at = now()
-        WHERE id = ${record.id}::uuid`)
-      closedAny = true
-    }
+    await forgetTicketWorkSessionsInTransaction(tx, { sessionIds: closed, workId: record.id })
+    closedAny ||= closed.length > 0
   }
   if (closedAny) await enqueueTicketWorkSweep(tx, input.now)
 }
 
 /**
  * The machine is here: the sweep resumes the work waiting for it, and — when it has just come
- * online — places queued work on it. Nothing to do costs one indexed count.
+ * online — places queued work on it. Only work the sweep would act on counts (a trigger that is
+ * on, active and an agent's), so a record the sweep leaves alone never makes every heartbeat
+ * enqueue it. Nothing to do costs one indexed count.
  */
 export const enqueueTicketWorkForMachineInTransaction = async (
   tx: Prisma.TransactionClient,
   input: { cameOnline: boolean; executorId: string; now: Date },
 ): Promise<void> => {
-  // Only work the sweep would resume: a trigger switched off or in error keeps
-  // its records and wakes none, and counting them would enqueue a sweep on
-  // every heartbeat for as long as the machine stays up.
   const waiting = await tx.agentTicketWork.count({
     where: {
       executorId: input.executorId, stateReason: 'machine_offline', status: 'waiting_machine',
-      trigger: { enabled: true, status: 'active' },
+      trigger: { agentId: { not: null }, enabled: true, status: 'active' },
     },
   })
   if (waiting > 0) {
@@ -203,7 +251,7 @@ export const intakeTicketWorkHeartbeatInTransaction = async (
 ): Promise<void> => {
   if (input.localMcp) {
     await intakeSessionReport(tx, {
-      localMcp: input.localMcp, now: input.now, previousLocalMcp: input.previousLocalMcp,
+      executorId: input.executorId, localMcp: input.localMcp, now: input.now, previousLocalMcp: input.previousLocalMcp,
     })
   }
   await enqueueTicketWorkForMachineInTransaction(tx, input)

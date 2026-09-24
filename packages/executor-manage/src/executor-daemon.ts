@@ -18,6 +18,7 @@ import {
   enqueueTicketWorkForMachineInTransaction,
   executorWasOffline,
   intakeTicketWorkHeartbeatInTransaction,
+  withLastKnownCodingSessions,
 } from './ticket-work-session-intake.js'
 
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
@@ -282,9 +283,14 @@ export const reportExecutorHeartbeat = async (
         // Absent leaves the stored report alone: a daemon that stops reporting
         // has not told us its servers vanished, and overwriting the last
         // observation with nothing would destroy the only thing we know.
+        // The same holds for the coding bridge's sessions within a report that
+        // was taken without them: the last list stays until one replaces it.
         ...(input.localMcp === undefined
           ? {}
-          : { localMcp: input.localMcp, localMcpObservedAt: observedAt }),
+          : {
+              localMcp: withLastKnownCodingSessions(previousLocalMcp, input.localMcp),
+              localMcpObservedAt: observedAt,
+            }),
         status: executor.status === 'offline' ? 'online' : executor.status,
         statusDetail: executor.status === 'offline'
           ? 'Authenticated executor daemon connected.'

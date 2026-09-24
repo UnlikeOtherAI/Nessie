@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { Prisma, PrismaClient } from '@prisma/client'
 import { executorCodingSessionOwnerKey } from '@nessie/executor-manage'
 import {
@@ -6,10 +8,12 @@ import {
   TicketWorkSessionJobPayloadSchema,
   TRIGGER_TICKET_DISPATCH_TOPIC,
   TriggerTicketDispatchJobPayloadSchema,
+  type ExecutorLocalMcpReport,
   type TaskEventOrigin,
 } from '@nessie/schemas'
 import { createProjectTask, moveProjectTaskToColumn } from '@nessie/team-admin'
 
+import { heartbeat, pairKey } from '../../../packages/team-admin/test/standing-policy-binding-fixture.js'
 import {
   seedStandingPolicyWorld,
   type StandingPolicyWorld,
@@ -107,6 +111,39 @@ export const ticketOwnerKey = (world: StandingPolicyWorld, input: { executorId: 
   executorCodingSessionOwnerKey(input.executorId, {
     actorUserId: world.authorId, agentId: world.agentId, contextId: ticketWorkCodingSessionContext(input.policyId, input.taskId),
   })
+
+export type WorkingTicket = {
+  machine: string
+  ownerKey: string
+  sessionId: string
+  taskId: string
+  threadId: string
+  workId: string
+}
+
+/** One picked-up ticket working on the machine the pool gave it, with one session on record. */
+export const workingTicket = async (prisma: PrismaClient, world: MachinesWorld): Promise<WorkingTicket> => {
+  const { taskId, work } = await pickUp(prisma, world, 'Fix login redirect', new Set())
+  if (work.status !== 'active' || !work.executorId) throw new Error(`The pickup did not start work: ${work.status}`)
+  const sessionId = randomUUID()
+  await prisma.agentTicketWork.update({ where: { id: work.id }, data: { sessionIds: [sessionId] } })
+  return {
+    machine: work.executorId,
+    ownerKey: ticketOwnerKey(world, { executorId: work.executorId, policyId: world.policyId, taskId }),
+    sessionId,
+    taskId,
+    threadId: work.threadId,
+    workId: work.id,
+  }
+}
+
+const daemonKeys = new Map<string, Awaited<ReturnType<typeof pairKey>>>()
+
+/** One signed heartbeat from a machine, carrying this report (or none). */
+export const reportFrom = async (prisma: PrismaClient, executorId: string, localMcp?: ExecutorLocalMcpReport) => {
+  if (!daemonKeys.has(executorId)) daemonKeys.set(executorId, await pairKey(prisma, executorId))
+  return heartbeat(prisma, { executorId, key: daemonKeys.get(executorId)!, ...(localMcp ? { localMcp } : {}) })
+}
 
 /** The session jobs the heartbeat intake enqueued for one record, oldest first. */
 export const sessionJobs = (prisma: PrismaClient, workId: string) => prisma.queueJob.findMany({
