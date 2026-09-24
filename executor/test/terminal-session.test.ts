@@ -52,10 +52,19 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
     }
     await write(first, process.platform === 'win32' ? 'echo FIRST_SESSION_ONLY\r' : "printf '\\033[2J\\033[HFIRST_SESSION_ONLY\\n'\r")
     await write(second, process.platform === 'win32' ? 'echo SECOND_SESSION_ONLY\r' : "printf '\\033[2J\\033[HSECOND_SESSION_ONLY\\n'\r")
-    const readContaining = (sessionId: string, marker: string) => waitUntil(async () => {
-      const answer = await harness.call('terminal_read', { sessionId })
-      return typeof answer.body.text === 'string' && answer.body.text.includes(marker) ? answer.body.text : undefined
-    }, 30_000, marker)
+    const readContaining = async (sessionId: string, marker: string) => {
+      let last: unknown
+      try {
+        return await waitUntil(async () => {
+          const answer = await harness.call('terminal_read', { sessionId })
+          last = answer.body
+          return typeof answer.body.text === 'string' && answer.body.text.includes(marker) ? answer.body.text : undefined
+        }, 30_000, marker)
+      } catch (error) {
+        console.error('Last test-shell screen', last)
+        throw error
+      }
+    }
     assert.doesNotMatch(await readContaining(first, 'FIRST_SESSION_ONLY'), /SECOND_SESSION_ONLY/)
     assert.doesNotMatch(await readContaining(second, 'SECOND_SESSION_ONLY'), /FIRST_SESSION_ONLY/)
     assert.equal((await harness.call('terminal_read', { sessionId: first }, { owner: OWNER_B })).ok, false)
