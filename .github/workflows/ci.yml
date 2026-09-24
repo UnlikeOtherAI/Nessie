@@ -910,28 +910,38 @@ jobs:
 
       # Two instances must share one bucket: `filesystem` storage gives each
       # replica a private directory, so instance 1 writes an attachment instance 2
-      # answers 404 for, and `selfHosted` mode refuses it at config load. Not a
-      # `services:` container because MinIO needs `server /data` as its command and
-      # service containers cannot override one. Credentials match
-      # `infrastructure/compose/docker-compose.multi.yml`.
+      # answers 404 for, and `selfHosted` mode refuses it at config load.
+      # MinIO's registry images are no longer anonymously pullable. Use the same
+      # pinned releases from upstream GitHub assets, checksum-verified before
+      # execution. Credentials match infrastructure/compose/docker-compose.multi.yml.
       - name: Start shared object storage
         if: steps.scope.outputs.code == '1'
         run: |
-          docker run --platform linux/amd64 -d --name minio \
-            -p 9010:9000 \
-            -e MINIO_ROOT_USER=nessie \
-            -e MINIO_ROOT_PASSWORD=nessie-multi-instance \
-            quay.io/minio/minio@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2 server /data
+          fixture="$RUNNER_TEMP/nessie-minio"
+          mkdir -p "$fixture"
+          curl --fail --location --retry 3 \
+            https://github.com/minio/minio/releases/download/RELEASE.2025-07-23T15-54-02Z/minio_20250723155402.0.0_amd64.deb \
+            --output "$fixture/minio.deb"
+          curl --fail --location --retry 3 \
+            https://github.com/minio/mc/releases/download/RELEASE.2025-07-21T05-28-08Z/mc.linux-amd64.RELEASE.2025-07-21T05-28-08Z \
+            --output "$fixture/mc"
+          echo "a6ff2d7424206c3d8be43bd5eac159e49ea57780ef1d7fb3afbe47227650a62d  $fixture/minio.deb" | sha256sum --check
+          echo "ea4a453be116071ab1ccbd24eb8755bf0579649f41a7b94ab9e68571bb9f4a1e  $fixture/mc" | sha256sum --check
+          dpkg-deb --extract "$fixture/minio.deb" "$fixture/server"
+          chmod +x "$fixture/mc"
+          MINIO_ROOT_USER=nessie MINIO_ROOT_PASSWORD=nessie-multi-instance \
+            nohup "$fixture/server/usr/local/bin/minio" server "$fixture/data" --address 127.0.0.1:9010 \
+            > "$fixture/server.log" 2>&1 &
+          echo "$!" > "$fixture/server.pid"
           for attempt in $(seq 1 30); do
             if curl -sf http://127.0.0.1:9010/minio/health/live > /dev/null; then break; fi
             if [ "$attempt" -eq 30 ]; then
-              echo "MinIO did not become live in 60s"; docker logs minio; exit 1
+              echo "MinIO did not become live in 60s"; cat "$fixture/server.log"; exit 1
             fi
             sleep 2
           done
-          docker run --platform linux/amd64 --rm --network host --entrypoint sh quay.io/minio/mc@sha256:eb4ea9884b77704230e2423e9004d2fa738dc272876b9cc41a297d29443b8780 -c \
-            "mc alias set local http://127.0.0.1:9010 nessie nessie-multi-instance \
-             && mc mb --ignore-existing local/nessie"
+          "$fixture/mc" --config-dir "$fixture/client" alias set local http://127.0.0.1:9010 nessie nessie-multi-instance
+          "$fixture/mc" --config-dir "$fixture/client" mb --ignore-existing local/nessie
 
       - name: Run multi-instance smoke
         if: steps.scope.outputs.code == '1'
