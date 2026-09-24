@@ -293,8 +293,9 @@ export const dequeueTicketWork = async (prisma: PrismaClient, deps: { now: Date 
   const queued = (await prisma.agentTicketWork.findMany({
     where: { policyId: { in: [...byId.keys()] }, status: 'queued' },
     select: {
-      agentId: true, enqueuedAt: true, executorId: true, id: true, policyId: true, projectId: true, sessionOrigins: true,
-      startedByUserId: true, taskId: true, threadId: true, triggerId: true, task: { select: { priority: true } },
+      agentId: true, enqueuedAt: true, executorId: true, id: true, policyId: true, projectId: true,
+      sessionOrigins: true, startedByUserId: true, taskId: true, threadId: true, triggerId: true,
+      task: { select: { priority: true } },
     },
   })).map(({ sessionOrigins, task, ...record }): Candidate => ({
     ...record,

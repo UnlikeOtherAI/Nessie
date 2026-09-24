@@ -413,7 +413,9 @@ export const placeTicketWorkOnExecutorInTransaction = async (
   const now = input.now ?? new Date()
   const work = await tx.agentTicketWork.findUniqueOrThrow({
     where: { id: input.workId },
-    select: { agentId: true, executorId: true, id: true, policyId: true, sessionOrigins: true, status: true, taskId: true },
+    select: {
+      agentId: true, executorId: true, id: true, policyId: true, sessionOrigins: true, status: true, taskId: true,
+    },
   })
   // Read live under its row's shared lock, which the dequeue took first.
   if (!work.policyId || work.status !== 'queued' || await lockStandingPolicyRow(tx, work.policyId) !== 'live') {

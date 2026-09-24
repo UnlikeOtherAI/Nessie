@@ -147,7 +147,8 @@ export const withLastKnownCodingSessions = (
   const last = reportedExecutorCodingSessions(stored)
   const lastBridge = Array.isArray(stored)
     ? (stored as Array<{ codingSessions?: unknown; observedAt?: unknown; server?: unknown }>)
-      .find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME && status.codingSessions !== undefined)
+      .find((status) => (
+        status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME && status.codingSessions !== undefined))
     : undefined
   if (!lastBridge) return next
   // The sessions keep the moment they were read: a session recorded since then is in no report yet.
@@ -198,7 +199,8 @@ const intakeSessionReport = async (
       const origin = origins[sessionId]
       const policyId = origin?.policyId ?? record.policyId
       const actorUserId = policyId ? authors.get(policyId) : undefined
-      if (!seen.has(sessionId) || (origin && origin.executorId !== input.executorId) || !policyId || !actorUserId) continue
+      const elsewhere = origin !== undefined && origin.executorId !== input.executorId
+      if (!seen.has(sessionId) || elsewhere || !policyId || !actorUserId) continue
       expected.set(sessionId, executorCodingSessionOwnerKey(input.executorId, {
         actorUserId, agentId: record.agentId, contextId: ticketWorkCodingSessionContext(policyId, record.taskId),
       }))
