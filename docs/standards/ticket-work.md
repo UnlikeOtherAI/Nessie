@@ -597,7 +597,8 @@ routes, and none of it names a machine.
   it (`replaced`) under the record's row lock. It fires as the record's
   `reminder` wake through the work seam — a `ticket.work` run counted against
   `wakesPerTicket`, one delivery (`source: reminder`, deduped on
-  `reminder:<id>`) — and ends with the record (`work_ended`). The chip's
+  `reminder:<id>`, its thread row carrying the agent's own note) — and
+  ends with the record (`work_ended`). The chip's
   Cancel is `DELETE /api/tasks/:taskId/work/reminders/:reminderId`, for a
   board editor only (403 `TICKET_WORK_REMINDER_READ_ONLY` for another reader).
 - **Outside ticket work** it wakes the agent in the same conversation **as
@@ -635,7 +636,8 @@ routes, and none of it names a machine.
   with no pending reminder, no open question, no run in flight and no wake for
   that long gets a `quiet` wake, *"nothing else is scheduled"*, counted, one
   delivery deduped on `quiet:<workId>:<the wake it followed>`, whose claim
-  re-reads all of that under the thread's run slot. No coding session can be
+  re-reads all of that under the thread's run slot, as a retried one does
+  first. No coding session can be
   working yet, so none is checked (from T5). Queued, parked and
   waiting-machine records never get one.
 - **`ticket-work.sweep`** (`worker/src/control/ticket-work-sweep.ts`) is one
@@ -989,6 +991,7 @@ causes it**:
   `worker/test/db/ticket-work-sweep.test.ts`: the quiet wake only for active
   work with nothing scheduled, the open question pausing it and the clock
   until a person answers, a lowered limit ended, a lost pickup job recovered
-  once, one sweep job a minute. `worker/test/ticket-work-sweep-decision.test.ts`,
+  once, one sweep job a minute, a quiet retry under an open question settled.
+  `worker/test/ticket-work-sweep-decision.test.ts`,
   `worker/test/check-back-in-tool.test.ts`, the drain-alone test for
   `agent.reminder`, and `api/test/ticket-work-view-routes.test.ts`'s Cancel.

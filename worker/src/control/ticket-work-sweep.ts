@@ -120,11 +120,39 @@ const sweepFacts = (record: LiveRecord): SweepRecordFacts => {
 type QuietOptions = { seam?: TicketWorkSeam; retry?: RetryContext; now?: Date }
 
 /**
+ * Whether the record is still quiet: active, no open question, no pending
+ * reminder, no run in flight — and, when the wake it followed is named, no
+ * wake since. A question waiting for a person never costs a wake.
+ */
+const stillQuiet = async (
+  tx: Pick<Prisma.TransactionClient, 'agentTicketWork' | 'run'>,
+  input: { workId: string; agentId: string; threadId: string; followedWakeAt?: Date | null },
+): Promise<boolean> => {
+  const fresh = await tx.agentTicketWork.findUnique({
+    where: { id: input.workId },
+    select: {
+      status: true,
+      lastWakeAt: true,
+      awaitingAnswerAt: true,
+      _count: { select: { reminders: { where: { status: 'pending' } } } },
+    },
+  })
+  const inFlight = await tx.run.count({
+    where: { agentId: input.agentId, threadId: input.threadId, status: { in: IN_FLIGHT_RUN_STATUSES } },
+  })
+  return fresh !== null && fresh.status === 'active' && fresh.awaitingAnswerAt === null
+    && fresh._count.reminders === 0 && inFlight === 0
+    && (input.followedWakeAt === undefined
+      || (fresh.lastWakeAt?.getTime() ?? null) === (input.followedWakeAt?.getTime() ?? null))
+}
+
+/**
  * One quiet wake, deduped on `quiet:<workId>:<the wake it followed>`. Its
  * claim re-reads the record under the thread's run slot — the lock every wake
  * of the record takes first — and writes no delivery at all when something
  * woke or scheduled it in the meantime. Also the delivery-retry poller's arm
- * for a failed quiet delivery, which claims nothing and wakes live work.
+ * for a failed quiet delivery, which asks the same (a question opened since
+ * settles it instead) and then wakes the work.
  */
 export const sendQuietWake = async (
   prisma: PrismaClient,
@@ -149,7 +177,10 @@ export const sendQuietWake = async (
   })
   const trigger = record?.trigger
   const config = TicketChangedStoredConfigSchema.safeParse(trigger?.config)
-  if (!record || !trigger?.agentId || !config.success || record.status !== 'active') {
+  const quietMinutes = ticketWorkConfigOf(trigger?.config).quietWakeMinutes
+  const quiet = record && trigger?.agentId && config.success && quietMinutes !== null
+    && await stillQuiet(prisma, { workId: record.id, agentId: trigger.agentId, threadId: record.threadId })
+  if (!record || !trigger?.agentId || !config.success || !quiet) {
     if (options.retry?.reuseDeliveryId) {
       await prisma.agentTriggerDelivery.updateMany({
         where: { id: options.retry.reuseDeliveryId, status: 'failed' },
@@ -159,7 +190,6 @@ export const sendQuietWake = async (
     return
   }
   const agentId = trigger.agentId
-  const quietMinutes = ticketWorkConfigOf(trigger.config).quietWakeMinutes
   const followed = record.lastWakeAt ?? record.startedAt
   const seam = options.seam ?? createTicketWorkSeam(prisma)
   await settleTicketDelivery(prisma, {
@@ -172,22 +202,9 @@ export const sendQuietWake = async (
       : {
           claim: async (tx) => {
             await lockThreadRunSlot(tx, { agentId, threadId: record.threadId })
-            const fresh = await tx.agentTicketWork.findUnique({
-              where: { id: record.id },
-              select: {
-                status: true,
-                lastWakeAt: true,
-                awaitingAnswerAt: true,
-                _count: { select: { reminders: { where: { status: 'pending' } } } },
-              },
+            return stillQuiet(tx, {
+              workId: record.id, agentId, threadId: record.threadId, followedWakeAt: record.lastWakeAt,
             })
-            const inFlight = await tx.run.count({
-              where: { agentId, threadId: record.threadId, status: { in: IN_FLIGHT_RUN_STATUSES } },
-            })
-            return fresh !== null && fresh.status === 'active' && fresh.awaitingAnswerAt === null
-              && fresh._count.reminders === 0 && inFlight === 0
-              && (fresh.lastWakeAt?.getTime() ?? null) === (record.lastWakeAt?.getTime() ?? null)
-              && quietMinutes !== null
           },
         }),
     act: (tx, deliveryId) => seam.wakeTicketWork(tx, {
