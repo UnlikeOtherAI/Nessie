@@ -96,8 +96,13 @@ export const applyTicketWorkColumnEntry = async (
         where: { id: record.id },
         data: { status: 'parked', stateReason: null },
       })
-      // Parked work waits for people, so its hours clock pauses.
+      // Parked work waits for people, so its hours clock pauses and its
+      // reminder goes: a person moving it back wakes the agent anyway.
       await syncTicketWorkClock(tx, record.id)
+      await tx.agentReminder.updateMany({
+        where: { workId: record.id, status: 'pending' },
+        data: { status: 'cancelled', cancelledReason: 'work_parked' },
+      })
       await recordTicketWorkActivity(tx, {
         work: record, eventType: 'work_paused', status: 'parked', reason: null, by: input.by ?? null, ...cause,
       })

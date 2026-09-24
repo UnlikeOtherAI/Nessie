@@ -206,6 +206,9 @@ export const AgentReminderCancelledReasonSchema = z.enum([
   'replaced',
   // Its work record ended.
   'work_ended',
+  // Its work record parked in review: it waits for people, and a person
+  // moving the ticket back wakes the agent anyway.
+  'work_parked',
   // A person pressed Cancel on the ticket's chip.
   'person',
   // It came due where its agent can no longer wake: the thread or its channel

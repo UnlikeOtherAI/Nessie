@@ -598,7 +598,11 @@ routes, and none of it names a machine.
   `reminder` wake through the work seam — a `ticket.work` run counted against
   `wakesPerTicket`, one delivery (`source: reminder`, deduped on
   `reminder:<id>`, its thread row carrying the agent's own note) — and
-  ends with the record (`work_ended`). The chip's
+  ends with the record (`work_ended`). **Parked work takes no reminder**: the
+  move that parks a record cancels its pending one (`work_parked`), one that
+  comes due on a parked record is cancelled rather than fired, and
+  `check_back_in` on a parked ticket is refused — its work waits for the
+  people reviewing it, and a person moving it back wakes the agent. The chip's
   Cancel is `DELETE /api/tasks/:taskId/work/reminders/:reminderId`, for a
   board editor only (403 `TICKET_WORK_REMINDER_READ_ONLY` for another reader).
 - **Outside ticket work** it wakes the agent in the same conversation **as

@@ -289,3 +289,36 @@ runDatabaseTest('outside ticket work check_back_in is refused in a system conver
   assert.equal(overDay.success, false)
   assert.match(overDay.output, /already set 24 reminders today/)
 })
+
+runDatabaseTest('parking cancels the ticket\'s reminder, and a parked ticket takes none', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const seen = new Set<string>()
+  const { task, work } = await startWork(prisma, s)
+  const context = await onRealRun(prisma, ticketWorkToolContext(prisma, s, work))
+  assert.equal((await executeBuiltinTool('check_back_in', { minutes: 20, note: 'waiting for CI' }, context)).success, true)
+  const [reminder] = await pendingOf(prisma, { workId: work.id })
+
+  // Into review: the work parks, and its reminder goes in the same move.
+  await move(prisma, s, task.id, s.columns.review)
+  const cancelled = await prisma.agentReminder.findUniqueOrThrow({ where: { id: reminder!.id } })
+  assert.deepEqual([cancelled.status, cancelled.cancelledReason], ['cancelled', 'work_parked'])
+  await drainTicketJobs(prisma, s, seen)
+  await finishRuns(prisma, work.threadId)
+
+  const refused = await executeBuiltinTool('check_back_in', { minutes: 20, note: 'check the review' }, context)
+  assert.equal(refused.success, false)
+  assert.match(refused.output, /This ticket is in review, so its work waits for people/)
+  assert.deepEqual(await pendingOf(prisma, { workId: work.id }), [])
+
+  // One set just before the move that parked it, and due now, is cancelled rather than fired.
+  const raced = await prisma.agentReminder.create({
+    data: { agentId: s.agentId, threadId: work.threadId, workId: work.id, dueAt: new Date(Date.now() - 1_000), note: 'late' },
+  })
+  const wakes = (await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })).wakeCount
+  await sweepDueAgentReminders(prisma, { limit: 20 })
+  const late = await prisma.agentReminder.findUniqueOrThrow({ where: { id: raced.id } })
+  assert.deepEqual([late.status, late.cancelledReason], ['cancelled', 'work_parked'])
+  assert.equal((await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })).wakeCount, wakes)
+})

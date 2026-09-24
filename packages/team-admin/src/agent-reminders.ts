@@ -69,6 +69,11 @@ const setTicketWorkReminder = async (
   if (!(TICKET_WORK_LIVE_STATUSES as readonly string[]).includes(work.status)) {
     return refuse('This ticket\'s work has ended, so there is nothing to check back on.')
   }
+  // Parked work waits for the people reviewing it, not for a clock.
+  if (work.status === 'parked') {
+    return refuse('This ticket is in review, so its work waits for people: a person moving it back into a '
+      + 'start-work column wakes you. There is no need for a reminder.')
+  }
   const { count } = await tx.agentReminder.updateMany({
     where: { workId: input.workId, status: 'pending' },
     data: { status: 'cancelled', cancelledReason: 'replaced' },

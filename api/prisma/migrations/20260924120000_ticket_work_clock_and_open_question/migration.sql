@@ -30,6 +30,8 @@ UPDATE "agent_ticket_work"
 -- A reminder that came due where its agent can no longer wake — the thread or
 -- its channel is gone, archived or a system conversation now, or the agent is
 -- no longer in it — is cancelled `undeliverable` rather than recorded as fired.
+-- Work parked in review cancels its pending reminder `work_parked`: it waits
+-- for people, and a person moving it back wakes the agent anyway.
 -- The CHECK is dropped and re-added whole, as the vocabulary rule says
 -- (`AgentReminderCancelledReasonSchema`, packages/schemas/src/ticket-work.ts).
 ALTER TABLE "agent_reminders" DROP CONSTRAINT "agent_reminders_status_known";
@@ -49,6 +51,6 @@ ALTER TABLE "agent_reminders" ADD CONSTRAINT "agent_reminders_status_known"
       "status" = 'cancelled'
       AND "fired_at" IS NULL
       AND "cancelled_reason" IS NOT NULL
-      AND "cancelled_reason" IN ('replaced', 'work_ended', 'person', 'undeliverable')
+      AND "cancelled_reason" IN ('replaced', 'work_ended', 'work_parked', 'person', 'undeliverable')
     )
   );

@@ -4439,7 +4439,7 @@ model AgentReminder {
   createdByRunId  String?          @map("created_by_run_id") @db.Uuid
   status          String           @default("pending")
   firedAt         DateTime?        @map("fired_at")
-  /// replaced | work_ended | person | undeliverable
+  /// replaced | work_ended | work_parked | person | undeliverable
   cancelledReason String?          @map("cancelled_reason")
   createdAt       DateTime         @default(now()) @map("created_at")
   agent           Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)

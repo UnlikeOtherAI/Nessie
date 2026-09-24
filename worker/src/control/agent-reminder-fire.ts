@@ -159,12 +159,14 @@ export const fireTicketWorkReminder = async (
   const work = reminder?.work
   const trigger = work?.trigger
   const live = work !== null && work !== undefined && LIVE.has(work.status)
-  if (!reminder || !work || !trigger?.agentId || !live) {
-    // Ended work cancels its reminders in the transaction that ends it; a
-    // record that lost its trigger ended first. Nothing is left to wake.
+  const parked = work?.status === 'parked'
+  if (!reminder || !work || !trigger?.agentId || !live || parked) {
+    // Ended work cancels its reminders in the transaction that ends it, and
+    // parked work in the move that parks it; a record that lost its trigger
+    // ended first. Nothing is left to wake: parked work waits for people.
     await prisma.agentReminder.updateMany({
       where: { id: reminderId, status: 'pending' },
-      data: { status: 'cancelled', cancelledReason: 'work_ended' },
+      data: { status: 'cancelled', cancelledReason: parked ? 'work_parked' : 'work_ended' },
     })
     if (options.retry?.reuseDeliveryId) {
       await prisma.agentTriggerDelivery.updateMany({
