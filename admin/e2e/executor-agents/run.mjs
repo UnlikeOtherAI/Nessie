@@ -91,11 +91,11 @@ const fixtureApi = () => {
       if (url.pathname === `/api/agent-cards/${reviewCardId}`) return send({ data: reviewCard(cardResolved) })
       if (url.pathname === `/api/agent-cards/${reviewCardId}/respond`) {
         assert.deepEqual(body, { actionKey: 'review', secrets: {}, values: {} },
-          'a review press carries no value and no secret â€” the card has no inputs')
+          'a review press carries no value and no secret — the card has no inputs')
         assert.equal(cardResolved, false, 'a resolved card is never pressed')
         cardPresses += 1
         // The server's side of the press: a pending change this person
-        // prepared from chat, and a token minted for them at this moment â€”
+        // prepared from chat, and a token minted for them at this moment —
         // replacing the last one, so only the newest confirms.
         const accessChangeId = uuid(2000)
         const confirmationToken = cardMintedToken(cardPresses)
@@ -336,7 +336,7 @@ const evaluate = async (browser, viewport) => {
     await visible(addDialog.getByRole('button', { name: 'Add Personal Assistant', exact: true }))
     await addDialog.getByRole('button', { name: 'Add Personal Assistant', exact: true }).click()
     await visible(review)
-    await visible(review.getByText('Personal Assistant will be able to use this machineâ€™s approved permissions.'))
+    await visible(review.getByText('Personal Assistant will be able to use this machine’s approved permissions.'))
     assert.ok(api.requests.some((entry) => entry.path === '/api/agents' && entry.search === '?scope=all'))
     assert.equal(await review.getByRole('button', { name: 'Allow access' }).isEnabled(), true)
     await page.screenshot({ path: resolve(screenshots, `personal-assistant-review-${viewport.width}.png`) })
@@ -373,7 +373,7 @@ const evaluate = async (browser, viewport) => {
     const reviewButton = card.getByRole('button', { name: 'Review', exact: true })
     await reviewButton.click()
     await visible(review)
-    await visible(review.getByText('Candidate 02 will be able to use this machineâ€™s approved permissions.'))
+    await visible(review.getByText('Candidate 02 will be able to use this machine’s approved permissions.'))
     assert.equal(await review.getByText('The confirmation token is missing', { exact: false }).count(), 0)
     assert.equal(page.url().includes(cardMintedToken(1)), false, 'the minted token never enters the address')
     // Closed without confirming: the change is still pending, so the card is
