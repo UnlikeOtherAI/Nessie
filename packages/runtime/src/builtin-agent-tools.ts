@@ -282,11 +282,11 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Set Agent Protected Tool Access',
     personalAssistantOnly: true,
     identityDelegatedOnly: true,
-    description: 'Grant or revoke one protected builtin or connected-app tool using the requester\'s current authority. Inspect the agent and catalogue first. Deep Water research tools are granted through this verb like any other protected tool, one registry id at a time, to any agent the requester may administer; agent_deepwater_access_set is the shortcut that moves the whole ready bundle at once.',
+    description: 'Grant or revoke one protected builtin or connected-app tool using the requester\'s current authority. Inspect the agent and catalogue first. Deep Water research tools are granted through this verb like any other protected tool, one registry id at a time, to any agent the requester may administer; agent_deepwater_access_set is the shortcut that moves the whole ready bundle at once. project_operator is granted the same way: a capability, not a tool, that lets an agent such as a CTO set up projects and flows for the person talking to it, as that person.',
     parameters: { type: 'object', properties: { agentId: { type: 'string' }, toolRegistryEntryId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'toolRegistryEntryId', 'enabled'] },
     safe: false,
   },
-  { id: 'agent_tool_access_inspect', category: 'agents', summary: 'Inspect protected tool access for an agent.', label: 'Inspect Agent Protected Tool Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Shows protected builtin and active connector tools, their exact registry ids, and whether the target agent currently has each access grant.', parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] }, safe: true },
+  { id: 'agent_tool_access_inspect', category: 'agents', summary: 'Inspect protected tool access for an agent.', label: 'Inspect Agent Protected Tool Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Shows protected builtin and active connector tools, and the project_operator capability with what it lets an agent do, each with its exact registry id and whether the target agent currently has that grant.', parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] }, safe: true },
   { id: 'agent_deepwater_access_set', category: 'agents', summary: 'Grant or revoke the complete DeepWater bundle.', label: 'Set Agent DeepWater Access', personalAssistantOnly: true, identityDelegatedOnly: true, description: 'Moves the whole ready DeepWater bundle for one agent and team in a single call. This is a convenience, not the only path: agent_tool_access_set grants or revokes an individual DeepWater tool, and revoking one is refused while another still depends on it.', parameters: { type: 'object', properties: { agentId: { type: 'string' }, teamId: { type: 'string' }, enabled: { type: 'boolean' } }, required: ['agentId', 'teamId', 'enabled'] }, safe: false },
   {
     id: 'agent_avatar_generate',
@@ -403,12 +403,16 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     summary: 'Create a trigger for an existing bound agent.',
     label: 'Create Agent Trigger',
     personalAssistantOnly: true,
+    projectOperator: true,
     description:
-      'Give ANOTHER agent a trigger, one of the types in config below. Organisation owners only, and '
-      + 'the agent must already be bound to the target channel. A ticket_changed trigger is checked '
+      'Give an agent a trigger, one of the types in config below, acting as the person asking you '
+      + 'with exactly their rights. Organisation owners only, and '
+      + 'the agent must already be bound to the target channel. An agent working in a project channel '
+      + 'may set up triggers only in that project: for itself, or for an agent in one of its channels. '
+      + 'A ticket_changed trigger is checked '
       + 'field by field, and a refusal names the field and what exists instead. Get the agentId '
-      + 'from agent_list when the user named the agent. To schedule '
-      + 'yourself instead, use schedule_task — that needs no owner rights. The '
+      + 'from agent_list when the user named the agent. To schedule a one-off '
+      + 'reminder for yourself instead, use schedule_task — that needs no owner rights. The '
       + 'result links the trigger as [Name](/agents/triggers/<triggerId>), the '
       + 'agent it fires as [Name](/agents/<agentId>) and the channel it posts '
       + 'into as [#label](/channels/<channelId>): the triggerId agent_trigger_update '

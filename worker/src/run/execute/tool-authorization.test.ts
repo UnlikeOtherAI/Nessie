@@ -411,6 +411,7 @@ const runLoop = async (input: {
       executorToolset,
       identityToolIds: new Set<string>(),
       projectDelegatedToolIds: new Set<string>(),
+      projectOperatorToolIds: new Set<string>(),
       initialMessages: [{ content: 'go', role: 'user' }],
       inference: {
         consumeStreamedFlag: () => false,

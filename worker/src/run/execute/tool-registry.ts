@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS, BUILTIN_TOOL_IDS, CAPABILITY_GRANT_DEFINITIONS } from '@nessie/runtime'
 import type { RunContext } from './types.js'
 
 const BUILTIN_TOOL_SCOPE_KEY = 'builtin'
@@ -17,8 +17,11 @@ const seedBuiltinToolRegistry = async (
     return
   }
 
+  // The capability grants (`project_operator`) are registered beside the
+  // builtins so the grant verbs and the Tools page can name them by registry
+  // id; `loadAllowedToolIds` below still offers only callable builtins.
   await Promise.all(
-    BUILTIN_TOOL_DEFINITIONS.map((tool) =>
+    [...BUILTIN_TOOL_DEFINITIONS, ...CAPABILITY_GRANT_DEFINITIONS].map((tool) =>
       prisma.toolRegistryEntry.upsert({
         where: {
           organizationId_scopeKey_toolId: {

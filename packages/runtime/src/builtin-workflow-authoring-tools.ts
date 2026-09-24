@@ -43,6 +43,8 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'workflow_create',
+    personalAssistantOnly: true,
+    projectOperator: true,
     category: 'workflows',
     summary: 'Create a validated workflow template.',
     label: 'Create Workflow',
@@ -65,6 +67,8 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'workflow_update',
+    personalAssistantOnly: true,
+    projectOperator: true,
     category: 'workflows',
     summary: 'Update a validated workflow template.',
     label: 'Update Workflow',
@@ -89,6 +93,8 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'workflow_install',
+    personalAssistantOnly: true,
+    projectOperator: true,
     category: 'workflows',
     summary: 'Install a workflow template so it can run.',
     label: 'Install Workflow',
@@ -118,6 +124,8 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'workflow_trigger_create',
+    personalAssistantOnly: true,
+    projectOperator: true,
     category: 'scheduling',
     summary: 'Choose how an installed workflow starts.',
     label: 'Create Workflow Trigger',
@@ -158,6 +166,8 @@ export const WORKFLOW_AUTHORING_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   },
   {
     id: 'workflow_run',
+    personalAssistantOnly: true,
+    projectOperator: true,
     category: 'workflows',
     summary: 'Start an installed workflow in this conversation.',
     label: 'Run Workflow',

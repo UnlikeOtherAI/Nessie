@@ -53,6 +53,18 @@ export type BuiltinToolDefinition = {
    */
   projectDelegatedOnly?: boolean
   /**
+   * One of the project-operator verbs. Beside its `personalAssistantOnly`
+   * arms, an ordinary shared agent whose policy carries the explicit
+   * `project_operator` grant may call it — acting as the live person talking
+   * to it, on an interactive turn in a project channel it is bound to, and on
+   * no other run (`worker/src/run/project-operator-admission.ts`). The grant
+   * stands in for the tool's own explicit allow on that arm alone.
+   *
+   * Meaningful only with `personalAssistantOnly`: it widens that gate by
+   * exactly one arm, as `identityDelegatedOnly` narrows it by one.
+   */
+  projectOperator?: boolean
+  /**
    * When true, the tool is OFF for every agent by default and is exposed ONLY
    * to an agent whose per-agent `toolPolicy` carries an explicit allow
    * (`toolPolicy[id] === true`). Unlike the ordinary builtin default (enabled

@@ -24,6 +24,7 @@ import {
   resolveDelegatedRequesterUserId,
   resolveIdentityDelegatedToolIds,
 } from '../delegated-identity.js'
+import { resolveRunProjectOperatorToolIds } from '../project-operator-admission.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
   admitRunCheckpoint,
@@ -188,6 +189,8 @@ export type RunExecutionSetup = {
    */
   identityToolIds: ReadonlySet<string>
   projectDelegatedToolIds: ReadonlySet<string>
+  /** The third arm's verbs, resolved once like the other two (`project-operator-admission.ts`). */
+  projectOperatorToolIds: ReadonlySet<string>
   executorToolset: ExecutorToolset
   initialMessages: ProviderMessage[]
   mcpToolset: McpToolset
@@ -198,6 +201,20 @@ export type RunExecutionSetup = {
   toolSpecEnabled: boolean
   toolPolicy: Record<string, boolean> | null
 }
+
+/**
+ * The three arm sets the per-call gate reads, resolved together at setup: the
+ * identity arm, the project lend and the project-operator arm. Handed to the
+ * loop as one, so a new arm cannot reach toolset assembly and miss the gate.
+ */
+export const runArmToolIds = (setup: RunExecutionSetup): Pick<
+  RunExecutionSetup,
+  'identityToolIds' | 'projectDelegatedToolIds' | 'projectOperatorToolIds'
+> => ({
+  identityToolIds: setup.identityToolIds,
+  projectDelegatedToolIds: setup.projectDelegatedToolIds,
+  projectOperatorToolIds: setup.projectOperatorToolIds,
+})
 
 export const prepareRunExecution = async (
   deps: ExecutionDependencies,
@@ -268,6 +285,25 @@ export const prepareRunExecution = async (
       interactive: payload.interactive === true,
     }),
   )
+  // The third arm: an ordinary agent holding `project_operator`, on a live
+  // requester's turn in a channel it is bound to. Never on a trigger, a
+  // schedule, ticket work or any other kickoff that carries a purpose.
+  const projectOperatorToolIds = await resolveRunProjectOperatorToolIds(deps.prisma, {
+    actorId: payload.actorContext.actor.actorId,
+    actorType: payload.actorContext.actor.actorType,
+    agentId: context.agent.id,
+    agentKind: context.agent.agentKind,
+    channel: { dmKey: context.channel.dmKey, systemChannelType: context.channel.systemChannelType },
+    channelId: context.channel.id,
+    effectiveUserId: payload.actorContext.actionContext.effectiveUserId,
+    interactive: payload.interactive === true,
+    organizationId: context.channel.organizationId,
+    parentAgentId: context.agent.parentAgentId,
+    purpose: payload.actorContext.actionContext.purpose,
+    systemManaged: agentRecord?.systemManaged ?? true,
+    systemSlug: context.agent.systemSlug,
+    toolPolicy,
+  })
 
   const {
     descriptors: toolDefs,
@@ -287,6 +323,7 @@ export const prepareRunExecution = async (
       agentSystemSlug: context.agent.systemSlug ?? null,
       identityToolIds,
       projectDelegatedToolIds,
+      projectOperatorToolIds,
       isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
         agentKind: context.agent.agentKind,
         principalUserId: context.run.principalUserId,
@@ -451,8 +488,12 @@ export const prepareRunExecution = async (
       : null
 
   // A run lent a project write recalls only what every project reader already
-  // has, so recalled material cannot shut its own ticket writes.
-  const projectWriteRecall = holdsProjectWriteTools(projectDelegatedToolIds, resolvedToolIds)
+  // has, so recalled material cannot shut its own ticket writes — and so does a
+  // run holding the operator's, which write boards, columns and spaces.
+  const projectWriteRecall = holdsProjectWriteTools(
+    new Set([...projectDelegatedToolIds, ...projectOperatorToolIds]),
+    resolvedToolIds,
+  )
   // A `ticket.work` run recalls nothing: its context is its kickoff and the
   // filtered window above, and recall from its own thread would bring back
   // exactly the messages that filter keeps out (`ticketWorkRecallSkipped`).
@@ -547,6 +588,7 @@ export const prepareRunExecution = async (
     checkpoint,
     identityToolIds,
     projectDelegatedToolIds,
+    projectOperatorToolIds,
     executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
       approvalInstruction,

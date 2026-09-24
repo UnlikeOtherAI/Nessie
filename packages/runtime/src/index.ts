@@ -13,6 +13,11 @@ export * from './builtin-email-account-tools.js'
 export * from './builtin-email-tools.js'
 export * from './builtin-integration-tools.js'
 export * from './builtin-tools.js'
+export {
+  CAPABILITY_GRANT_DEFINITIONS,
+  PROJECT_OPERATOR_CAPABILITY_DEFINITION,
+  PROJECT_OPERATOR_CAPABILITY_ID,
+} from './builtin-project-operator-tools.js'
 export * from './db.js'
 export * from './decision-model.js'
 export * from './channel-decisions.js'
