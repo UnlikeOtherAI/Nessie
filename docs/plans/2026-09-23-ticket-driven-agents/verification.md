@@ -143,6 +143,15 @@ Tests:
   machine.
 - Waiting-machine and back-online.
 
+As built: `packages/executor-manage/test/ticket-work-session-intake.test.ts`
+and the worker's `ticket-work-session-wakes`, `ticket-work-dequeue` and
+`ticket-work-machine-back` Postgres suites (their cases are listed in
+`docs/standards/ticket-work-machine-access.md` → "Tests that hold these
+rules"); the suspend-then-re-confirm and parking enqueues were T4's and keep
+their tests. Browser: task-dialog shots 21 and 28–30, agent-triggers' waiting
+hours field, trigger page and paused ticket, and executor-detail's holding
+ticket, at 1280 and 390 px.
+
 ### T6: project operator
 
 Tests:

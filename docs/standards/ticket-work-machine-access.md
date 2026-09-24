@@ -1,8 +1,8 @@
 # Ticket work — standing machine access
 
 Part of the ticket-work standard: [ticket-work.md](ticket-work.md) is the
-rule for everything else a ticket's work does, and its tags — (T4), (from
-T4) — mean what they mean there. This file holds the machine owner's
+rule for everything else a ticket's work does, and its tags — (T4), (T5) —
+mean what they mean there. This file holds the machine owner's
 authority: who may give a trigger's work their machines, what they agree to,
 and what the platform does with that consent. The design is
 [machine-access.md](../plans/2026-09-23-ticket-driven-agents/machine-access.md);
@@ -197,11 +197,22 @@ where it and the code differ, the code and this file win.
   `TICKET_WORK_MACHINE_HOLDING_STATUSES` and below its pinned
   `maxLiveSessionsPerOwner` for this ticket's own owner key in its last
   report takes it: `executorId`, `policyId`, `active`.
+- **(T5) A free machine goes to the line first.** A pickup or a resume that
+  finds a pool machine free, and that is not the record's own last machine,
+  queues instead when queued work of any live policy sharing that machine is
+  ahead of it in the one order (`queuedTicketWorkOutranks`), and enqueues the
+  dispatcher; an urgent ticket ahead of the whole line still takes it at once.
 - **Nothing free: the record is queued** (`queueTicketWorkInTransaction`) with
   `queued_no_free_machine`, or `queued_machines_offline` when every pool
   machine is offline, its `enqueuedAt`, and a `queuePosition` among the
-  policy's queue by ticket priority, then age (`ticketWorkQueuePosition`,
-  renumbering the rest). The ticket gets `work_started` and `work_queued`
+  policy's queue by ticket priority, then age, then id
+  (`executor-standing-policy-queue.ts`). **(T5)** Every change to a queue
+  renumbers it (`renumberTicketWorkQueueInTransaction`): a record joining,
+  placed, parked, ended or handed over, and a queued ticket's priority
+  changing — `updateProjectTask` and a board source's apply, which wake
+  nothing — under a per-policy lock (`lockTicketWorkQueue`) the mover takes
+  before it writes the record, so a renumbering waiting on the record's row
+  never holds what the mover waits for. The ticket gets `work_started` and `work_queued`
   rows, the chain `ticket.work.started` and `ticket.work.queued`, and the work
   one short unbound wake with reason `queued`, whose text gives its place and
   how many machines are busy or offline — never which — and whose
@@ -213,14 +224,17 @@ where it and the code differ, the code and this file win.
 - **Confirming, re-confirming and a hand-over queue the waiting records the
   same way** — reason, place, a `work_queued` row, `ticket.work.queued` — and
   every transaction that may free a machine (a record ending, parking or
-  waiting, a suspension, an end, a confirmation, a limit) enqueues
-  `ticket-work.sweep` with a ten-second idempotency bucket
-  (`enqueueTicketWorkSweep`); the sweep then places queued work on the freed
-  machine (below, "The sweep's machine half").
+  waiting, a suspension, an end, a confirmation, a limit, **(T5)** a session
+  closing, a machine back online, work moved off one that stayed away)
+  enqueues `ticket-work.sweep` with a ten-second idempotency bucket
+  (`enqueueTicketWorkSweep`); the sweep then dequeues onto the freed machine
+  (below, "The dequeue").
 - **A pinned machine offline when a wake comes starts no model run**
   (`holdTicketWorkBeforeWake`): the record goes to `waiting_machine` with
   `machine_offline`, keeping its machine's slot, with a `work_paused` row, and
-  the delivery is skipped `machine_offline`. Its reconnect wakes it (T5).
+  the delivery is skipped `machine_offline`. **(T5)** Every later wake while
+  the machine stays away skips the same way; one that finds it back resumes
+  the work on it first (below, "A machine that goes away").
 
 ## A ticket's coding tools are the ticket's own (T4)
 
@@ -248,7 +262,7 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   and defaults to the one session the machine's last report lists open under
   the ticket's owner key; none, or more than one, is said. A start whose
   answer was lost is taken back onto the record from the next report by its
-  title under that owner key.
+  title under that owner key — never one that reports itself closed (T5).
 - **A start is the ticket's:** its title is forced to the ticket's own
   (`ticketWorkThreadTitle`), only the pinned coding agents (Claude Code) and
   `allowedRootNames` are offered and accepted — and the API refuses any other
@@ -275,8 +289,10 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   `applyTicketWorkLeftBoard`, the worker's end-wake settle), a limit
   (`work_limit`), the trigger switched off or deleted (`trigger_changed`), a
   suspension (`policy_suspended`, which also unpins the record) and an end
-  (`policy_ended`, a hand-over's parked records included). Never an
-  owner-wide close for ticket work. The next heartbeat carries them.
+  (`policy_ended`, a hand-over's parked records included), and **(T5)** work
+  moved off a machine that stayed away (`machine_reassigned`, on that
+  machine, for when it reconnects). Never an owner-wide close for ticket
+  work. The next heartbeat carries them.
 - **Limits are the policy's** (`executor-standing-policy-limits.ts`):
   `ticketHours` against the record's hours clock (`ticketWorkActiveMs`,
   `ticket-work-clock.ts`), which runs only while the record is `active` with
@@ -323,7 +339,7 @@ Ending a policy (`endStandingPolicyInTransaction`) cancels its live records
   that nulls the trigger's scope); and the author no longer listed by UOA
   (`author_left_organization`), found by the sweep, below.
 
-## The sweep's machine half (T4)
+## The sweep's machine half (T4, T5)
 
 `ticket-work.sweep` (T3's periodic job, and every enqueue a transaction that
 may free a machine makes) runs `sweepStandingMachineAccess`
@@ -342,23 +358,130 @@ each step on its own so one failing never keeps the others from running:
 - **Limits on work nobody wakes** (`enforceLimitsOnLiveWork`): every live
   record under a policy, fifty to a transaction, against its hours clock
   and spend, exactly as a wake and the heartbeat intake check them.
-- **The dispatcher's backstop** (`dispatchQueuedTicketWork`): each live
-  policy's queued records, by queue position then age, are placed on its
-  pool one at a time until one finds no free machine. Each placement takes
-  the locks every wake of the record takes, in the one order — the ticket,
-  the thread's run slot, then the pool and the record — and re-reads the
-  record still `queued`. Placed, the record is `active` with a
-  `work_resumed` row, `ticket.work.started` (`dequeued: true`), a delivered
-  `dequeue` delivery (event type `dequeued`) and one `dequeued` wake; not
-  placed, every write the attempt made rolls back, so an idle sweep writes
-  nothing. This is a simple first-free assignment in each policy's own
-  queue order; the dequeue by priority and age across every policy that
-  shares a machine, and its re-checks of the ticket, the mover and the
-  digests, are T5's.
+- **(T5) A machine back, or gone too long** (`resumeWorkWhoseMachineIsBack`,
+  `requeueWorkStrandedOffline`; below, "A machine that goes away").
+- **(T5) The dequeue** (`dequeueTicketWork`; below, "The dequeue"), which
+  replaced T4's first-free placement in each policy's own queue order.
 - **The quiet wake waits for a working session.** T3's quiet wake is not
   sent while one of the ticket's own coding sessions is `working` in its
   machine's last report (`ticketSessionWorking`): the coding agent's turn
-  ending wakes the agent instead (T5).
+  ending wakes the agent instead (T5, below).
+
+## A ticket's coding session wakes its work (T5)
+
+- **The intake is the heartbeat's** (`intakeTicketWorkHeartbeatInTransaction`,
+  `packages/executor-manage/src/ticket-work-session-intake.ts`, called from
+  `reportExecutorHeartbeat` after the limits, in the transaction that holds
+  the machine's connection lock, so two reports of one machine are never
+  compared at once). It compares the stored report with the new one for the
+  sessions a live record names (`sessionIds`) and enqueues
+  `ticket-work.session`, idempotent on `session:<id>:<turn>:<status>`, when
+  the turn went up and the session is not `starting` or `working` — the turn
+  a report shows ended is its `turn`, or the one before while a turn runs, so
+  a fast turn inside one report (`waiting_for_input` turn 3, then turn 4)
+  wakes once, and a slow one (`working` turn 4, then `waiting_for_input`
+  turn 4) too; when it entered `interrupted` or `failed`, with the report's
+  categorical `reason`; or when it closed — `closed` in the report, or gone
+  from a report that has the field having been in the previous one. A report
+  at `EXECUTOR_CODING_SESSION_REPORT_MAXIMUM` rows proves nothing by what it
+  leaves out, so there a missing session is unknown, not closed; a report
+  without the field, or no report, infers nothing; a session no report of
+  this machine ever listed is a start the report was taken before, not a
+  close. A session first listed with no previous summary counts from the
+  turn the agent last saw end (`lastObservedTurn`). The executor still caps
+  its list at 32 rows: the plan's "every named session even past the cap" is
+  not built.
+- **A closed session leaves the record's live set at once** (`array_remove`
+  on `session_ids`, never a read-then-write), so the next kickoff's state
+  block, the coding tools and teardown's closes never name it, and the
+  dispatcher is enqueued: the ticket's session quota has room again.
+- **The wake** (`dispatchTicketWorkSession`, `worker/src/control/ticket-work-session-wake.ts`,
+  subscribed in `worker-subscriptions-integrations.ts`) goes through the
+  ticket-work seam — limits, machine, target channel, `wakesPerTicket` — with
+  `session_turn_ended`, `session_interrupted`, `session_failed` or
+  `session_closed` and one line (*"the coding session's turn 4 ended"*,
+  *"…was interrupted: max_turn_minutes"*), and a kickoff that says what the
+  status means for the next step (the plan's glossary: `max_turn_minutes` →
+  send "continue", `host_lost` → "continue where you left off", `failed` → a
+  new session whose brief says what was done). One delivery per job
+  (`source: 'session'`, its payload naming the `session`), skipped
+  `no_longer_applies` — and said so on the Triggers page — when the record is
+  not `active` (parked, queued, waiting or ended) or a wait or review of the
+  agent's own saw a turn at or after this one end: both read under the
+  thread's run slot. Nothing the session said reaches the wake. A failed
+  delivery is retried from its payload (`reattemptTicketWorkDelivery`).
+- **Every live kickoff with a machine promises it**: *"…and when this
+  ticket's coding session ends a turn, is interrupted, fails or closes."*
+
+## A machine that goes away (T5)
+
+- **Back online.** The machine's heartbeat enqueues the sweep while a record
+  waits for it (`waiting_machine`, `machine_offline`), and a heartbeat or a
+  claim that finds it had gone offline enqueues it when a live queue waits on
+  its pools (`enqueueTicketWorkForMachineInTransaction`). The sweep resumes
+  such work on it (`resumeTicketWorkOnItsMachineInTransaction`, under the
+  ticket's lock and the thread's run slot): `active`, its hours clock
+  running, a `work_resumed` row with `previousReason: machine_offline`, a
+  delivered `machine` delivery and one `machine_back_online` wake bound to
+  it — after its limits, as at any wake. Machine access paused meanwhile:
+  the work waits for access instead, unpinned, its sessions there closed
+  (`policy_suspended`), with no wake. A person's wake that finds the machine
+  back resumes the work the same way first.
+- **Gone too long.** Past the trigger's `waitingMachineHours` (default 24,
+  1–168, in the editor beside the limits; not a pinned term) measured from
+  the later of the work's newest `machine_offline` pause and the machine's
+  last heartbeat, the sweep takes the work off it
+  (`requeueStrandedTicketWorkInTransaction`): its sessions there get
+  `machine_reassigned` closes on that machine and leave the record, it is
+  unpinned and queued under its policy as of when it started (ahead of
+  tickets that never began), with a `work_queued` row whose
+  `previousReason` is `machine_offline` and `ticket.work.queued`
+  (`requeuedFrom`). The dequeue then places it on another machine with a
+  wake that says its session is gone and a new one's brief must say what was
+  done. With a one-machine pool it simply stays queued.
+- **What it reads as.** The chip says *"Paused: the machine is offline since
+  14:32. Work resumes when it reconnects."* (`machineOfflineSince`, the
+  machine's last heartbeat, never its name), its history *"resumed the work:
+  its machine is back online"* and *"queued the work for another machine,
+  because its machine stayed offline"*; the Machine access section *"paused:
+  Studio is offline since 14:32"* (the label only for its author and
+  administrators).
+
+## The dequeue (T5)
+
+`dequeueTicketWork` (`worker/src/control/ticket-work-dequeue.ts`), the sweep's
+last machine step and so the pool dispatcher every freeing transaction wakes:
+
+- **Policies first.** Each live policy with queued work and its trigger on is
+  checked against what its author confirmed (`standingPolicyDigestDrift`):
+  a trigger whose terms or a machine whose descriptor digests moved suspends
+  it (`trigger_changed`, `descriptor_changed`) exactly as the doors that
+  change them do, and none of its records is placed or cancelled — they wait
+  for a new confirmation, as a suspension's queued records do.
+- **The queue belongs to the machine.** For each machine of those pools, in
+  id order, the queued records of every live policy whose pool includes it
+  are read in one order: a record that last worked on this machine first
+  (its sessions are there), then priority, then age, then id. A record that
+  last worked on another machine of its pool waits for that one while it
+  still stands — in the pool, not removed or revoked, heard from within the
+  trigger's `waitingMachineHours`.
+- **Each placement re-checks the record** under the locks every wake of it
+  takes (`dequeueOnto`: the ticket, the thread's run slot, then — inside
+  `placeTicketWorkOnExecutorInTransaction` — the pool, the machine and the
+  queue): still `queued` under the same policy; its ticket still in a
+  start-work column, else cancelled `left_flow`; the person whose move
+  started it still a live member who can edit the board
+  (`canMemberEditProjectBoards`), else cancelled `mover_lost_access`. A
+  cancel writes `work_ended`, a stop row in the thread and closes any
+  sessions; the next record is tried. Placed: `active` with a `work_resumed`
+  row, `ticket.work.started` (`dequeued: true`), a delivered `dequeue`
+  delivery and one `dequeued` wake, *"a machine is free; you are bound to
+  it"*. A machine another record holds, or offline, takes nobody this round;
+  one at this ticket's own session quota lets the next record try.
+- **Never two records on one machine.** Two sweeps racing serialise on the
+  ticket and the machine's lock; the loser re-reads the record placed, or
+  the machine held. `agent_ticket_work_one_per_executor` holds whatever else
+  writes.
 
 ## What the screens show (T4)
 
@@ -391,7 +514,11 @@ administer it; everyone else reads states and counts.
   private machines only; `GET /api/executors/:executorId/standing-policies`,
   for the machine's administrators): each policy not yet ended whose pool
   names the machine — its trigger, agent, author, state, the tickets working
-  there now — with End.
+  there now — with End. **(T5)** The row of the policy the machine is held
+  under names the ticket holding it (`holdingTicket`, from
+  `loadExecutorHoldingTicket`: working, or paused until it reconnects),
+  linked to its board for a reader who can read its project and *"A ticket
+  you cannot open"* for anyone else.
 - **A ticket's own coding session on the executor page** names its agent,
   its ticket (a link, only for a reader who can read its project) and *"ticket
   work under Ondrej's standing access"*: the reported session is joined to
@@ -441,7 +568,7 @@ machine, bindings, digests), `executor.run.policy_refused`,
 ticket, the policy and the owner context — a send with the events that woke
 its run and who wrote each (the kickoff keeps their `source` and `by`).
 
-## Tests that hold these rules (T4)
+## Tests that hold these rules (T4, T5)
 
 `packages/team-admin/test/standing-policy-binding-db.test.ts` (a bind for the
 author naming the policy and the record, each check refusing on its own with
@@ -462,3 +589,30 @@ freed machine with a `dequeued` wake and an idle sweep writing nothing, work
 past its hours stopped with its closes, an author the organisation no longer
 lists losing their access, a quiet wake waiting on a working session); the reach-facts and kickoff
 unit tests; `executor/test/coding-session-bridge.test.ts` (`totalCostUsd`).
+
+**(T5)** `packages/executor-manage/test/ticket-work-session-intake.test.ts`
+(the intake's decision over two reports: a fast turn once, a slow one at its
+end, interrupted and failed with their reason, a missing session closed but
+unknown at the row cap, nothing from a report without the field);
+`worker/test/db/ticket-work-session-wakes.test.ts` (signed heartbeats through
+the subscriber: a fast turn inside one report waking once and a replayed job
+nothing, a turn the agent already saw skipped with its row, interrupted and
+failed, a closed session leaving the live set, a report without the field,
+a parked record skipped, and the wake budget);
+`worker/test/db/ticket-work-dequeue.test.ts` (priority then age across two
+policies sharing a machine, positions renumbered, a priority change re-sorting
+and waking nothing, a ticket out of its column and a mover off the board
+cancelled with their reasons, a drifted trigger suspending its policy, a
+record waiting for its own machine, a new pickup not jumping the line, two
+racing dequeues putting one record on the machine and the index refusing a
+second); `worker/test/db/ticket-work-machine-back.test.ts` (no run while the
+machine is away, the heartbeat's sweep and one `machine_back_online` wake, a
+wake that finds it back, `waitingMachineHours` moving the work to the other
+machine with its old session's `machine_reassigned` close riding that
+machine's next heartbeat, and what the chip, the section and the executor
+page read); `api/test/standing-policy-routes.test.ts` (the holding ticket);
+the admin's `ticket-work-machine-states`, `machine-access-presentation`,
+`executor-standing-access` and `ticket-trigger-form` tests; and the
+task-dialog (21, 28–30), agent-triggers (the waiting-hours field, the page's
+facts and deliveries, the paused ticket) and executor-detail (the holding
+ticket) suites.

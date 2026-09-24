@@ -247,6 +247,11 @@ on the chip.
     stops work over its limits that nobody wakes, and places queued work on
     a free machine in each policy's queue order, a first-free assignment;
     T5's dequeue orders it by priority and age across policies.
+  - **As built (T5).** The first-free placement is gone: the sweep resumes
+    work whose machine came back, moves work off one that stayed away past
+    `waitingMachineHours`, and dequeues across every policy that shares a
+    machine, suspending a policy whose digests moved
+    (`docs/standards/ticket-work-machine-access.md` → "The dequeue").
 
 ## Session isolation
 

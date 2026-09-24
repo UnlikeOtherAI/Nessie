@@ -248,6 +248,22 @@ The fix:
   below that turn is skipped (a delivery row records the skip).
 - v1 relies on the existing 120 s probe. An immediate executor-side refresh
   on status change is a follow-up.
+- **As built (T5).** The rules are in
+  `docs/standards/ticket-work-machine-access.md` → "A ticket's coding session
+  wakes its work". Where the code went another way than the text above:
+  - The executor was not changed: the report still stops at 32 rows, and at
+    that cap a missing session is unknown rather than closed. A session
+    counts as missing only after a report of this machine listed it, so a
+    start the report was taken before is never read as a close.
+  - The turn a report shows ended is its `turn`, or the one before while a
+    turn is `starting` or `working`, so a slow turn wakes when it ends and a
+    fast one once. A session present with status `closed` wakes as closed
+    too, and every closed session leaves the record's `sessionIds` in the
+    heartbeat's transaction.
+  - The skip at or below `lastObservedTurn` applies to every status, and so
+    does the skip for a record that is not `active`; each writes its
+    delivery (`no_longer_applies`). The wake itself never writes
+    `lastObservedTurn`: only the agent's own reads do.
 
 ## The pool queue (T4 assigns, T5 dequeues)
 
@@ -299,6 +315,28 @@ not to one policy.
   state block carries the pull request, if there is one. With a one-machine
   pool the record simply stays queued, and the chip shows *"waiting for a
   machine"*.
+- **As built (T5).** The rules are in
+  `docs/standards/ticket-work-machine-access.md` → "A machine that goes away"
+  and "The dequeue". Where the code went another way than the text above:
+  - A digest that no longer matches at dequeue **suspends** the policy
+    (`trigger_changed` or `descriptor_changed`), as the doors that change a
+    digest do; its queued records wait for a new confirmation instead of
+    being cancelled one by one. The ticket's column (`left_flow`) and its
+    mover (`mover_lost_access`) are the record's own re-checks and cancel it.
+  - A record that last worked on a machine goes first on that machine and
+    waits for it while it still stands (in the pool, not removed, heard from
+    within `waitingMachineHours`). A pickup or a resume that finds a free
+    machine queues instead when queued work is ahead of it.
+  - Positions stay per policy (the chip's "position 2" is the place in its
+    own trigger's queue); the dequeue's order is across policies.
+  - Every wake while the machine is away starts no run (`machine_offline`),
+    not only the first; a wake that finds it back resumes the work first.
+    The heartbeat enqueues the sweep, which sends the `machine_back_online`
+    wake, rather than a job of its own.
+  - `waitingMachineHours` counts from the later of the newest
+    `machine_offline` pause and the machine's last heartbeat. The sessions
+    left behind get a close reason of their own, `machine_reassigned`, and
+    leave the record; a close request still expires after a day.
 
 ## What the project sees
 

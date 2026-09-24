@@ -36,7 +36,8 @@ fixed ports. The real page is exercised at 1280 and 390 pixels, including the
 default roster, latest-only policy review, unavailable SSO verification,
 conversation doorway, people dialog and nested local-model confirmation, and
 a private machine's **Standing access** panel: each ticket trigger's policy
-that runs on it — trigger, agent, author, state and the tickets working there —
+that runs on it — trigger, agent, author, state and the tickets working there,
+or the one ticket that holds the machine, linked to its board (T5) —
 its End confirmed and posted, and the panel's empty state
 ([ticket-work-machine-access.md](../standards/ticket-work-machine-access.md) →
 "What the screens show").

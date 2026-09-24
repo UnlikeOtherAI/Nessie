@@ -191,9 +191,11 @@ sentence changes only if the invariant itself did.
   (shots 16–18), and at 1280 and 390 px the agent's pending reminder with
   Cancel for a board editor, pressed and gone, a reader's without Cancel, and
   an open question (shots 19), and the chip's machine states — queued at its
-  position, paused for an offline machine, waiting for machine access,
-  stopped at an hours or spend limit, a wake that ran without a machine in
-  words, and their history lines (shots 20 on; the rules are in
+  position, paused for an offline machine since it was last heard from,
+  waiting for machine access, stopped at an hours or spend limit, a wake that
+  ran without a machine in words, queued again for another machine after its
+  own stayed away, back online, woken by its coding session's turn, and their
+  history lines (shots 20 on; the rules are in
   [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md) and
   [`docs/standards/ticket-work-machine-access.md`](docs/standards/ticket-work-machine-access.md)). The
   real-stack half — a label following a ticket to another board by name, a
@@ -266,7 +268,8 @@ sentence changes only if the invariant itself did.
   trigger's form (public project channels only and why, the board and
   columns picked, an end column that cannot start work), a second pickup on a
   column refused **on the pickup field** and the typed config the corrected
-  create posts (its quiet wake on, off and set), the board's "Moving here starts work" badge at the head of a
+  create posts (its quiet wake on, off and set, and the hours to wait for an
+  offline machine), the board's "Moving here starts work" badge at the head of a
   track still aligned with its neighbours, card dots and the column menu on
   every column but Done that opens the editor prefilled with its type fixed,
   and a ticket trigger's page
