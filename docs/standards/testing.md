@@ -15,13 +15,17 @@ file is the rule.**
 
 ## Browser usability evaluations
 
-Navigation Transitions CI runs
-`pnpm --filter @nessie/admin test:e2e:browser-cloud` through the same managed
-API, admin, Postgres, and Chromium lifecycle as Project Usability. The runner
-uses a deterministic mediated-provider fixture: it exercises browser grants,
-revocation, preview-only control boundaries, and narrow/mobile interaction
-without requiring a Browserbase credential in CI. Its screenshots are retained
-as the `browser-cloud-screenshots` artifact.
+Browser UI suites run locally on request, outside the GitHub Actions pipeline.
+The `Browser Suites` workflow was retired on 2026-09-24. Older plans and
+verification records describing that workflow are historical, not instructions
+to dispatch it. The main CI workflow retains builds, lint, type checks,
+package tests and non-browser integration smoke checks.
+
+Use the existing `pnpm --filter @nessie/admin test:e2e:<suite>` scripts; their
+individual guides describe database and fixture flags. For example,
+`test:e2e:browser-cloud` uses the managed API, admin, Postgres and Chromium
+lifecycle with a deterministic mediated-provider fixture. Screenshots remain
+local artifacts. UI changes still receive targeted headless visual verification.
 
 ## Process count and memory
 
@@ -54,10 +58,8 @@ Deterministic scripted inference for tests lives in `@nessie/mock-llm` (`package
 [`private-conversation-disclosure.md`](../testing/private-conversation-disclosure.md)
 uses that HTTP transport with the production local-mode API, its embedded
 worker, and headless admin UI. Its Postgres harness owns the isolated fixture
-and terminal observation. It runs first in the **Navigation Transitions** job,
-so it reuses that job's migrated Postgres service, built artifacts, fixed
-ports, and Chromium installation before another suite can start a different
-lifecycle.
+and terminal observation. Run it locally with migrated Postgres, built
+artifacts, fixed ports, and Chromium; do not overlap another lifecycle on those ports.
 It proves the worker and UI
 enforce scripted model decisions; it does not claim live-model language
 understanding.

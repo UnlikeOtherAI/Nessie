@@ -70,12 +70,10 @@ sentence changes only if the invariant itself did.
   person to check a screen you can open yourself.
 - **Project usability browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:project-usability`.
-  The on-request Browser Suites workflow runs it in Navigation Transitions through a fixed-port lifecycle harness,
-  between the navigation and independent connected-mail suites.
+  This is a manual local suite using its fixed-port lifecycle harness.
 - **Mailbox onboarding browser coverage:** run
-  `pnpm --filter @nessie/admin test:e2e:mailbox-onboarding`. CI runs it in
-  Navigation Transitions after the connected-mail suite, on the same admin
-  lifecycle. It walks the connect ladder — password, one mail server, the one
+  `pnpm --filter @nessie/admin test:e2e:mailbox-onboarding` manually. It uses
+  the managed admin lifecycle. It walks the connect ladder — password, one mail server, the one
   leg still missing, then every field — and asserts the posted payload as well
   as the screen, because a form that posts an untyped port looks identical and
   silently disables the server-side sweep.
@@ -90,18 +88,16 @@ sentence changes only if the invariant itself did.
   at — and asserts the admin shell is absent from it. The shell is simulated by
   publishing `__nessieDesktopPlatform`, the way the real init script does.
 - **Member-management browser coverage:** run
-  `pnpm --filter @nessie/admin test:e2e:member-management`. CI alone includes
+  `pnpm --filter @nessie/admin test:e2e:member-management`. An explicitly flagged manual build includes
   its fixture in the preview build; details and cache rules are in
   [`docs/testing/member-management-e2e.md`](docs/testing/member-management-e2e.md).
 - **Private-conversation disclosure browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:disclosure` after
-  building `@nessie/mock-llm`. The on-request Browser Suites workflow runs it first in Navigation Transitions on
-  the same fixed ports; details and limits are in
+  building `@nessie/mock-llm`. Run it locally on fixed ports; details and limits are in
   [`docs/testing/private-conversation-disclosure.md`](docs/testing/private-conversation-disclosure.md).
 - **Agent-conversations browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:agent-conversations`.
-  The on-request Browser Suites workflow runs it in Navigation Transitions after the connected-mail suite, on the
-  same fixed ports. It brings up its own scripted inference endpoint
+  Run it locally on fixed ports. It brings up its own scripted inference endpoint
   (`admin/e2e/agent-conversations/mock-server.mjs`) because the isolation proof
   reads that server's request log. It covers the DM rail, two isolated
   conversations named by their first message, the one-empty-at-a-time rule
@@ -116,7 +112,7 @@ sentence changes only if the invariant itself did.
 - **Agent proposal card coverage:** run
   `pnpm --filter @nessie/admin test:e2e:agent-proposal-card`. A pure fixture
   suite — it drives the real card renderer over a stubbed presenter, so it
-  needs no database. CI runs it in the project-usability lifecycle, after the
+  needs no database. The manual project-usability lifecycle runs it after the
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
   model dropdown, the tool/app fold that arrives closed, and a ticket-driven
@@ -135,31 +131,18 @@ sentence changes only if the invariant itself did.
   navigation lifecycle, so give it ports of its own (`NAV_E2E_API_PORT` /
   `NAV_E2E_ADMIN_PORT`) beside a running dev pair. The rule it defends is in
   [`docs/navigation/native-shell.md`](docs/navigation/native-shell.md).
-- **The browser suites run on request, not on every push.** They live in
-  `.github/workflows/browser-suites.yml`; start them with
-  `gh workflow run browser-suites.yml --ref <branch>` or from the Actions tab.
-  Nothing runs them automatically, so a branch that touches the admin shell,
-  navigation surfaces, the mailbox or the documents browser should be given a
-  run before it merges.
-- **A CI browser fixture takes three edits, not one.** Navigation Transitions
-  serves a *preview build* (`NAV_E2E_ADMIN_MODE: preview`), not the dev
-  server, so a new `admin/e2e/<name>/index.html` is not served at all unless
-  **(1)** it is a rollup input in `admin/vite.config.ts` behind its own
-  `NESSIE_<NAME>_E2E_FIXTURE` flag, which keeps it out of release bundles,
-  **(2)** that flag is set on the job in `.github/workflows/browser-suites.yml`, and
-  **(3)** the flag is listed under `@nessie/admin#build`'s `env` in
-  `turbo.json`. Miss (3) and CI restores a cached bundle built without the
-  fixture, which fails exactly like missing (1) — the flag has to be in the
-  build's hash or it changes nothing. All of this passes locally either way,
-  because `startAdmin()` defaults to the dev server. Verify a new suite with
-  `NAV_E2E_ADMIN_MODE=preview` against a build made with the flag, and confirm
-  the flag actually changes `admin/dist`, before trusting it.
-  The executor pairing, agent access, machine detail and attention fixture
-  flags are listed in [their browser guide](docs/testing/executor-attention.md).
+- **Browser UI suites are manual local checks, outside GitHub Actions.**
+  Use the existing `pnpm --filter @nessie/admin test:e2e:<suite>` commands.
+  No browser workflow is dispatched or required before merge.
+- **Preview fixtures stay out of production bundles.** Register the fixture
+  in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
+  that flag for a manual preview build, and list it in `@nessie/admin#build`
+  `env` in `turbo.json`. Verify with `NAV_E2E_ADMIN_MODE=preview` against
+  that build. The executor flags are in [their browser guide](docs/testing/executor-attention.md).
 - **Channel agent-control coverage:** run
   `pnpm --filter @nessie/admin test:e2e:channel-agent-controls`. A pure fixture
   suite — it drives the real members popup over each answer to
-  `ChannelRecord.viewerCanManageAgents`, so it needs no database. CI runs it in
+  `ChannelRecord.viewerCanManageAgents`, so it needs no database. The manual harness runs it in
   the same lifecycle, after the proposal-card suite. It pins that placing an
   agent is owner-or-admin standing while adding a person is any member of the
   channel, including the case where those pull apart: an admin outside the room
@@ -174,7 +157,7 @@ sentence changes only if the invariant itself did.
 - **Ticket dialog coverage:** run
   `pnpm --filter @nessie/admin test:e2e:task-dialog`. A pure fixture suite
   (`NESSIE_TASK_DIALOG_E2E_FIXTURE`) that drives the real `TaskDialog` over a
-  stubbed client; CI runs it after the visibility-affordance one. It pins the
+  stubbed client; The manual harness runs it after the visibility-affordance one. It pins the
   layout Ondrej asked for — Documents directly under the Markdown description
   in the left column, then Attachments and Comments, labels as a compact token
   field on the right — plus the label keyboard, the read-only mirror and
@@ -202,7 +185,7 @@ sentence changes only if the invariant itself did.
   [`docs/standards/ticket-activity.md`](docs/standards/ticket-activity.md).
 - **Tool screenshot coverage:** run
   `pnpm --filter @nessie/admin test:e2e:tool-screenshots`. A pure fixture suite
-  (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`) in Browser Suites' executor step: a
+  (`NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE`) run manually: a
   local program's screenshots as thumbnails in the thought-process dialog and
   the agent page's tool execution log, the original in the attachment viewer
   (over the dialog in the blocking layer), at 1280 and 390 px. The rules are in
@@ -210,7 +193,7 @@ sentence changes only if the invariant itself did.
 - **DeepWater research coverage:** run
   `pnpm --filter @nessie/admin test:e2e:research-brief`. A pure fixture suite
   (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
-  card, Knowledge › Research and `/apps/deep-water` hero; CI runs it after the
+  card, Knowledge › Research and `/apps/deep-water` hero; The manual harness runs it after the
   agent-triggers one. The runner plays the server through `window.__research`
   (the planner answering, a launch landing, a revision conflict, DeepWater's
   progress pushes as `integration.run.updated` frames) and pins the whole
@@ -243,8 +226,7 @@ sentence changes only if the invariant itself did.
   played through the watch's own projection and realtime announcer
   (`real-stack-ledger.mjs`), and opening a new brief from a composer stays the
   fixture suite's. It starts and stops its own API and admin and never adopts a
-  running pair; the on-request Browser Suites workflow runs it after the
-  spreadsheets suite.
+  running pair. Run it manually on this worktree's free ports.
 - **Overlay layer coverage:** run
   `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
   over the real navigation stack, in the same lifecycle after the task-dialog
@@ -259,7 +241,7 @@ sentence changes only if the invariant itself did.
   `pnpm --filter @nessie/admin test:e2e:agent-triggers`. A pure fixture suite
   (`NESSIE_AGENT_TRIGGERS_E2E_FIXTURE`) that drives the real
   `TriggerEditorDialog`, `TriggerTypePicker`, `KanbanBoard`, `TriggerDetail`
-  and the documents Finder over a stubbed client; CI runs it in the
+  and the documents Finder over a stubbed client; The manual harness runs it in the
   project-usability lifecycle after the overlay-layer suite. It pins the
   picker (the five released types plus Ticket change and Document change for
   an agent, and no agent-only type for a workflow), a ticket
@@ -293,14 +275,12 @@ sentence changes only if the invariant itself did.
   [`docs/standards/document-triggers.md`](docs/standards/document-triggers.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.
-  The on-request Browser Suites workflow runs it in that same managed Navigation Transitions lifecycle before the
-  project usability suite.
+  Run it manually through the managed lifecycle on this worktree's free ports.
 - **Spreadsheets browser coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:spreadsheets` — two real
   browsers and two real accounts on one API, covering a live batch, the
   presence overlay and draft ghost, the structural rebase, the offline queue
-  and phone touch selection. CI runs `node admin/e2e/spreadsheets/ci.mjs` last
-  in Navigation Transitions. Both entries start and stop their own API and
+  and phone touch selection. The optional aggregate runner is `node admin/e2e/spreadsheets/ci.mjs`. Both entries start and stop their own API and
   admin and **never adopt a server that is already listening** — a run that
   adopted one drove another worktree's API and seeded into the wrong database
   in silence — so free this worktree's pair before running it, or point the run
