@@ -46,6 +46,11 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
     }
     await running(first)
     await running(second)
+    // A PTY exists before its shell finishes terminal initialization, which may flush input.
+    for (const sessionId of [first, second]) await waitUntil(async () => {
+      const answer = await harness.call('terminal_read', { sessionId })
+      return typeof answer.body.text === 'string' && answer.body.text.trim().length > 0 ? true : undefined
+    }, 30_000, 'initial shell screen')
     const write = async (sessionId: string, message: string) => {
       const answer = await harness.call('session_send', { sessionId, message, terminal: true })
       assert.equal(answer.ok, true, JSON.stringify(answer.body))
