@@ -9,6 +9,7 @@ import {
   enforceTicketWorkLimitsInTransaction,
   executorCodingSessionOwnerKey,
   placeTicketWorkOnMachineInTransaction,
+  suspendStandingPolicyInTransaction,
   utcDay,
 } from '@nessie/executor-manage'
 import { ticketWorkCodingSessionContext } from '@nessie/schemas'
@@ -353,5 +354,34 @@ dbTest('the flow check reads the ticket where it renders', async () => {
     assert.equal(await ticketInWorkFlow(prisma, { boardId: world.board, config: trigger.config, taskId }), true)
     assert.equal(await ticketInWorkFlow(prisma, { boardId: randomUUID(), config: trigger.config, taskId }), false)
     assert.equal(await ticketInWorkFlow(prisma, { boardId: world.board, config: { nonsense: true }, taskId }), false)
+  })
+})
+
+dbTest('a placement racing a suspension waits for the pool it locks, and places nothing under it', async () => {
+  await withWorld(async (world, prisma) => {
+    const policyId = await confirmPolicy(world, [world.minis])
+    const waiting = await world.work({ policyId, status: 'queued', taskId: await world.task('Fix login redirect') })
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => { release = resolve })
+    let suspended: () => void = () => undefined
+    const suspending = new Promise<void>((resolve) => { suspended = resolve })
+    // The suspension takes the pool's locks and holds its transaction open.
+    const suspension = prisma.$transaction(async (tx) => {
+      await suspendStandingPolicyInTransaction(tx, {
+        actor: { userId: world.authorId }, detail: { changed: ['the agent'] }, policyId, reason: 'agent_changed',
+      })
+      suspended()
+      await held
+    }, { timeout: 20_000 })
+    await suspending
+    // The placement read the policy before the suspension committed; it waits for the pool, then reads it again.
+    const placing = prisma.$transaction((tx) => placeTicketWorkOnMachineInTransaction(tx, { workId: waiting.id }),
+      { timeout: 20_000 })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    release()
+    const [, placed] = await Promise.all([suspension, placing])
+    assert.deepEqual([placed.kind, placed.kind === 'waiting' ? placed.reason : null], ['waiting', 'machine_access_suspended'])
+    const record = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: waiting.id } })
+    assert.deepEqual([record.status, record.executorId], ['waiting_machine', null], 'nothing placed under a suspended policy')
   })
 })
