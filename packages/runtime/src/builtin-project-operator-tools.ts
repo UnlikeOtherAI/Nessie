@@ -25,13 +25,14 @@ export const PROJECT_OPERATOR_CAPABILITY_DEFINITION: BuiltinToolDefinition = {
   category: 'projects',
   label: 'Project operator',
   summary: 'Set up projects and flows for the person talking to it, as that person.',
+  // What the Tools page shows beside the switch, most important first: the
+  // row folds after two lines, and who it acts as is the decision it drives.
   description:
-    'Lets this agent set up new projects and flows for the person talking to it: projects and '
-    + 'channels, boards with their columns and labels, document spaces, triggers for itself or '
-    + 'agents in its project, and workflows. It acts as that person, with exactly their rights, '
-    + 'so it can do nothing they could not do themselves. It works only while a person is '
-    + 'talking to it in a project channel it is in: a trigger, a schedule or ticket work never '
-    + 'gets it. It never changes who is in a project and never sets up machine access.',
+    'Acts as the person talking to it, with exactly their rights, while they talk to it in a '
+    + 'project channel it is in — never on a trigger, a schedule or ticket work. It can then set up '
+    + 'projects, channels, boards with their columns and labels, document spaces, triggers for itself '
+    + 'or agents in its project, and workflows: nothing that person could not do themselves. It never '
+    + 'changes who is in a project and never sets up machine access.',
   parameters: { type: 'object', properties: {} },
   requiresExplicitGrant: true,
   safe: false,
