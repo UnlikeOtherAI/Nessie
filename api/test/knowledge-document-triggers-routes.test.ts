@@ -17,9 +17,10 @@ import { seedDefaultPolicies } from '../src/services/policy-seed.js'
 /**
  * The Finder's row badge and doorway (docs/standards/document-triggers.md →
  * "What a person sees"), through the real route against Postgres: the newest
- * review of each listed page a viewer may read, its thread only for a viewer
- * who may open it, a page the viewer cannot read never named, and the doorway
- * offered only by the Triggers routes' own owner gate.
+ * review of each listed page a viewer may read — by an agent the viewer may
+ * see, "sent" until its run completed and "reviewed" after — its thread only
+ * for a viewer who may open it, a page the viewer cannot read never named,
+ * and the doorway offered only by the Triggers routes' own owner gate.
  */
 const dbTest = process.env.DATABASE_URL ? test : test.skip
 
@@ -72,12 +73,26 @@ dbTest('the Finder read gives each readable page its newest review, and the door
       config: { spaceId: space.id, instructions: { general: 'Review it.' } },
     },
   })
-  const deliver = async (pageId: string, versionNumber: number, channelId: string, at: Date) => {
+  // A second reviewer only the leads room binds: the member cannot see it.
+  const hidden = await prisma.agent.create({ data: { name: 'Leads reviewer', organizationId: organization.id } })
+  await prisma.agentBinding.create({ data: { agentId: hidden.id, channelId: leads.id } })
+  const hiddenTrigger = await prisma.agentTrigger.create({
+    data: {
+      agentId: hidden.id, type: 'document_changed', targetChannelId: leads.id, scopeProjectId: project.id,
+      config: { spaceId: space.id, instructions: { general: 'Review it too.' } },
+    },
+  })
+  const deliver = async (
+    pageId: string, versionNumber: number, channelId: string, at: Date,
+    by: { agentId: string; triggerId: string } = { agentId: agent.id, triggerId: trigger.id },
+  ) => {
     const version = await prisma.knowledgePageVersion.findFirstOrThrow({ where: { pageId, versionNumber } })
-    const thread = await prisma.thread.create({ data: { agentId: agent.id, channelId, metadata: { pageId, triggerId: trigger.id } } })
-    await prisma.agentTriggerDelivery.create({
+    const thread = await prisma.thread.create({
+      data: { agentId: by.agentId, channelId, metadata: { pageId, triggerId: by.triggerId } },
+    })
+    const delivery = await prisma.agentTriggerDelivery.create({
       data: {
-        triggerId: trigger.id, dedupeKey: documentTriggerDeliveryKey(trigger.id, pageId, version.id), source: 'document',
+        triggerId: by.triggerId, dedupeKey: documentTriggerDeliveryKey(by.triggerId, pageId, version.id), source: 'document',
         status: 'delivered', deliveredAt: at,
         payload: {
           pageId, spaceId: space.id, projectId: project.id, taskId: null, kind: 'document', fireOn: 'save',
@@ -86,11 +101,24 @@ dbTest('the Finder read gives each readable page its newest review, and the door
         },
       },
     })
-    return thread
+    return { ...thread, deliveryId: delivery.id }
   }
   await deliver(spec.id, 1, room.id, new Date(Date.now() - 60_000))
-  const newest = await deliver(spec.id, 2, room.id, new Date())
+  const newest = await deliver(spec.id, 2, room.id, new Date(Date.now() - 30_000))
+  // Its review ran to the end: the badge may say "Reviewed".
+  await prisma.run.create({
+    data: {
+      agentId: agent.id, threadId: newest.id, triggerDeliveryId: newest.deliveryId, triggerId: trigger.id,
+      status: 'completed', startedAt: new Date(), finishedAt: new Date(),
+    },
+  })
+  // Newer still, by the reviewer the member cannot see.
+  const hiddenReview = await deliver(spec.id, 2, leads.id, new Date(), { agentId: hidden.id, triggerId: hiddenTrigger.id })
   const leadsThread = await deliver(leadsOnly.id, 1, leads.id, new Date())
+  // A run still going in its thread: sent, not yet reviewed.
+  await prisma.run.create({
+    data: { agentId: agent.id, threadId: leadsThread.id, triggerDeliveryId: leadsThread.deliveryId, status: 'running' },
+  })
 
   let actor: AuthorizedActionContext = { actor: { actorId: member!.id, actorType: 'user', roles: ['member'] },
     actionContext: { requestId: randomUUID() }, tenant: { organizationId: organization.id } } as AuthorizedActionContext
@@ -118,15 +146,22 @@ dbTest('the Finder read gives each readable page its newest review, and the door
   assert.equal(asMember.projectId, project.id)
   const byPage = new Map(asMember.reviews.map((review) => [review.pageId, review]))
   assert.equal(byPage.size, 2, 'only pages with a review, never an unknown id')
-  assert.deepEqual(byPage.get(spec.id)?.agent, { id: agent.id, name: 'CTO' })
+  assert.deepEqual(byPage.get(spec.id)?.agent, { id: agent.id, name: 'CTO' },
+    'a newer review by an agent the member cannot see is passed over, not the badge taken away')
   assert.equal(byPage.get(spec.id)?.versionNumber, 2, 'the newest review')
+  assert.equal(byPage.get(spec.id)?.state, 'reviewed', 'its run completed')
   assert.deepEqual(byPage.get(spec.id)?.thread, { id: newest.id, channelId: room.id })
   assert.equal(byPage.get(leadsOnly.id)?.thread, null, 'a thread in a room the member is not in: the badge, no door')
+  assert.equal(byPage.get(leadsOnly.id)?.state, 'sent', 'its run has not finished: sent, never "reviewed"')
 
   actor = { ...actor, actor: { actorId: owner!.id, actorType: 'user', roles: ['owner'] } } as AuthorizedActionContext
-  const asOwner = await read([leadsOnly.id])
+  const asOwner = await read([leadsOnly.id, spec.id])
   assert.equal(asOwner.viewerCanCreateTriggers, true)
-  assert.deepEqual(asOwner.reviews[0]?.thread, { id: leadsThread.id, channelId: leads.id })
+  const ownerByPage = new Map(asOwner.reviews.map((review) => [review.pageId, review]))
+  assert.deepEqual(ownerByPage.get(leadsOnly.id)?.thread, { id: leadsThread.id, channelId: leads.id })
+  assert.deepEqual([ownerByPage.get(spec.id)?.agent.name, ownerByPage.get(spec.id)?.state], ['Leads reviewer', 'sent'],
+    'a viewer who may see the newer reviewer gets its review')
+  assert.deepEqual(ownerByPage.get(spec.id)?.thread, { id: hiddenReview.id, channelId: leads.id })
 
   // A page the viewer cannot read is never named, even by its badge.
   await prisma.knowledgeSpace.update({ where: { id: space.id }, data: { visibility: 'private', createdBy: owner!.id } })

@@ -8,8 +8,9 @@ import { AgentDraftBadge } from '../AgentDraftBadge'
 import { isAgentDraft } from '../page-status'
 
 /**
- * The row badge on a page a document trigger reviewed — *"Reviewed by CTO ·
- * v5"* — in the Finder's columns and list, and so in a project's Docs tab
+ * The row badge on a page a document trigger sent to its agent — *"Sent to
+ * CTO for review · v5"*, then *"Reviewed by CTO · v5"* once that review ran —
+ * in the Finder's columns and list, and so in a project's Docs tab
  * (docs/plans/2026-09-23-ticket-driven-agents/setup-and-ui.md → "Finder and
  * project docs"). It answers "has the agent seen my edit?" at the row the
  * person just saved.
@@ -26,8 +27,15 @@ import { isAgentDraft } from '../page-status'
 export const reviewThreadPath = (thread: { channelId: string; id: string }): string =>
   `/channels/${encodeURIComponent(thread.channelId)}/threads/${encodeURIComponent(thread.id)}`
 
-export const documentReviewLabel = (review: Pick<DocumentReviewRecord, 'agent' | 'versionNumber'>): string =>
-  `Reviewed by ${review.agent.name} · v${review.versionNumber}`
+/**
+ * "Sent to CTO for review · v5" until a run that took the change in has
+ * finished, "Reviewed by CTO · v5" after: the badge never claims a review
+ * that has not happened yet.
+ */
+export const documentReviewLabel = (review: Pick<DocumentReviewRecord, 'agent' | 'state' | 'versionNumber'>): string =>
+  review.state === 'reviewed'
+    ? `Reviewed by ${review.agent.name} · v${review.versionNumber}`
+    : `Sent to ${review.agent.name} for review · v${review.versionNumber}`
 
 const reviewedOn = (value: string): string =>
   new Date(value).toLocaleString([], { day: 'numeric', hour: '2-digit', minute: '2-digit', month: 'short' })
@@ -35,7 +43,10 @@ const reviewedOn = (value: string): string =>
 export const DocumentReviewBadge = ({ review }: { review: DocumentReviewRecord }) => {
   const navigate = useNavigate()
   const thread = review.thread
-  const when = `${review.agent.name} reviewed version ${review.versionNumber} on ${reviewedOn(review.reviewedAt)}`
+  const when = review.state === 'reviewed'
+    ? `${review.agent.name} reviewed version ${review.versionNumber}, sent on ${reviewedOn(review.sentAt)}`
+    : `Version ${review.versionNumber} was sent to ${review.agent.name} on ${reviewedOn(review.sentAt)}; `
+      + 'not reviewed yet'
   const open = (event: MouseEvent<HTMLElement>) => {
     // The row beneath would select and open the document on the same click.
     event.stopPropagation()

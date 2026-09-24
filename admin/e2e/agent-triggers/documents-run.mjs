@@ -23,7 +23,8 @@ import {
  * - a document trigger's page: its space, folder and labels by name, no
  *   schedule, and each delivery in words (reviewed in the document's thread,
  *   woke the ticket's work, a skip's sentence);
- * - the project's Documents: "Reviewed by CTO · v5" on a reviewed row, from
+ * - the project's Documents: "Reviewed by CTO · v5" on a reviewed row and "Sent
+ *   to CTO for review · v2" on one whose review has not run yet, from
  *   one Finder read for the listed folder (plus one for the space's own
  *   answer) — never one per row; the badge leading to the review thread only
  *   where the viewer may open it; "Tell an agent when this changes…" on a
@@ -175,7 +176,7 @@ export const documentsFinder = async (browser, { name, options }) => {
   const { context, errors, page } = await openPage(browser, options, 'docs')
   const badges = page.getByTestId('document-review-badge')
   await badges.nth(1).waitFor()
-  assert.deepEqual(await badges.allInnerTexts(), ['Reviewed by CTO · v5', 'Reviewed by CTO · v2'])
+  assert.deepEqual(await badges.allInnerTexts(), ['Reviewed by CTO · v5', 'Sent to CTO for review · v2'])
   assert.equal(await row(page, ARCHITECTURE).getByTestId('document-review-badge').getAttribute('data-review-thread'),
     REVIEW_THREAD, `${name}: a review the viewer may open leads to its thread`)
   assert.equal(await row(page, RELEASE_NOTES).getByTestId('document-review-badge').getAttribute('data-review-thread'),
@@ -240,7 +241,7 @@ export const documentsFinder = async (browser, { name, options }) => {
   await list.page.locator('.finder-grid-row[data-finder-row]').first().waitFor()
   await list.page.getByTestId('document-review-badge').nth(1).waitFor()
   assert.deepEqual(await list.page.getByTestId('document-review-badge').allInnerTexts(),
-    ['Reviewed by CTO · v5', 'Reviewed by CTO · v2'])
+    ['Reviewed by CTO · v5', 'Sent to CTO for review · v2'])
   assert.equal((await fixtureState(list.page)).reads.filter((read) => !read.endsWith('?')).length, 1,
     'one read for the listed folder')
   await settled(list.page)

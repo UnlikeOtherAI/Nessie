@@ -9,9 +9,10 @@ import { knowledgeKeys } from './keys'
 /**
  * What a document browser shows of document triggers
  * (docs/plans/2026-09-23-ticket-driven-agents/setup-and-ui.md → "Finder and
- * project docs"): the row badge *"Reviewed by CTO · v5"* on each reviewed
- * page of a listed folder, and whether the viewer may set up a trigger, which
- * decides whether "Tell an agent when this changes…" is offered.
+ * project docs"): the row badge *"Sent to CTO for review · v5"*, then
+ * *"Reviewed by CTO · v5"*, on each page of a listed folder a document
+ * trigger sent to an agent, and whether the viewer may set up a trigger,
+ * which decides whether "Tell an agent when this changes…" is offered.
  *
  * One read per listed folder, with the ids of the rows it can badge — never a
  * read per row — behind the space's own read rule rather than the owner-only

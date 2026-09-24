@@ -106,7 +106,12 @@ export type FinderRowProps = {
   subtitle?: ReactNode
   tabIndex?: number
   title: string
-  /** Extra trailing content before the status glyphs: a badge, a pill. */
+  /**
+   * Extra trailing content before the status glyphs: a badge, a pill. In the
+   * list view's grid it sits after the title in the name cell instead, whose
+   * track is the one that grows — the trailing lane there is a 16px chevron
+   * track, and a badge in it would spill over the Kind column.
+   */
   trailing?: ReactNode
   /** Live cross-space move or copy: the row is read-only until it lands. */
   transfer?: 'move' | 'copy' | null
@@ -345,7 +350,7 @@ export const FinderRow = ({
           {meta ? (
             <span className="finder-row-meta shrink-0 text-xs text-[color:var(--tx3)]">{meta}</span>
           ) : null}
-          {trailing}
+          {gridTemplate ? null : trailing}
           {shareCount > 0
             ? glyph(
               faUserGroup,
@@ -364,6 +369,9 @@ export const FinderRow = ({
           ) : null}
         </>
       }
-    />
+    >
+      {/* The list view's name cell: `trailing` there, beside the title. */}
+      {gridTemplate && trailing ? <span className="flex shrink-0 items-center gap-2">{trailing}</span> : null}
+    </Row>
   )
 }

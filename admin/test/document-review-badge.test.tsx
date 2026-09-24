@@ -30,10 +30,14 @@ import type { ThreadMessageRecord } from '../src/lib/api-client'
 const THREAD = '30000000-0000-4000-8000-000000000001'
 const CHANNEL = '30000000-0000-4000-8000-000000000002'
 
-const review = (thread: DocumentReviewRecord['thread']): DocumentReviewRecord => ({
+const review = (
+  thread: DocumentReviewRecord['thread'],
+  state: DocumentReviewRecord['state'] = 'reviewed',
+): DocumentReviewRecord => ({
   agent: { id: '30000000-0000-4000-8000-000000000003', name: 'CTO' },
   pageId: '30000000-0000-4000-8000-000000000004',
-  reviewedAt: '2026-09-24T09:30:00.000Z',
+  sentAt: '2026-09-24T09:30:00.000Z',
+  state,
   thread,
   triggerId: '30000000-0000-4000-8000-000000000005',
   versionNumber: 5,
@@ -57,6 +61,14 @@ test('a reviewed row says who reviewed which version, and leads to the thread wh
     'a viewer who may not open the thread gets the badge and no door')
   // It is never a nested link inside the row's own button.
   for (const markup of [linked, plain]) assert.doesNotMatch(markup, /<a /)
+})
+
+test('a change sent but not yet reviewed says so, and never claims a review', () => {
+  assert.equal(documentReviewLabel(review(null, 'sent')), 'Sent to CTO for review · v5')
+  const sent = render(<DocumentReviewBadge review={review({ channelId: CHANNEL, id: THREAD }, 'sent')} />)
+  assert.match(sent, /Sent to CTO for review · v5/)
+  assert.match(sent, /Version 5 was sent to CTO on [^;]+; not reviewed yet\. Open the review thread\./)
+  assert.doesNotMatch(sent, /Reviewed by/)
 })
 
 test('a row carries its badges only when it has something to say', () => {

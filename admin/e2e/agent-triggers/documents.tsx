@@ -67,14 +67,17 @@ export const pages = [
   page(BUDGET, 'Budget', 'spreadsheet', null),
 ]
 
-/** The newest review of two root pages: one in a thread the viewer may open, one in a thread they may not. */
+/**
+ * The newest review of two root pages: one reviewed, in a thread the viewer may
+ * open; one sent and not yet reviewed, in a thread they may not.
+ */
 const reviews = (agentId: string) => [
   {
-    agent: { id: agentId, name: 'CTO' }, pageId: ARCHITECTURE, reviewedAt: '2026-09-24T09:12:00.000Z',
+    agent: { id: agentId, name: 'CTO' }, pageId: ARCHITECTURE, sentAt: '2026-09-24T09:12:00.000Z', state: 'reviewed',
     thread: { channelId: REVIEW_CHANNEL, id: REVIEW_THREAD }, triggerId: DOCUMENT_TRIGGER, versionNumber: 5,
   },
   {
-    agent: { id: agentId, name: 'CTO' }, pageId: RELEASE_NOTES, reviewedAt: '2026-09-24T09:40:00.000Z',
+    agent: { id: agentId, name: 'CTO' }, pageId: RELEASE_NOTES, sentAt: '2026-09-24T09:40:00.000Z', state: 'sent',
     thread: null, triggerId: DOCUMENT_TRIGGER, versionNumber: 2,
   },
 ]

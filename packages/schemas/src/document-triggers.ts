@@ -275,8 +275,17 @@ export const documentReviewThreadRefOf = (metadata: unknown): DocumentReviewThre
 }
 
 /**
+ * Whether the agent a change was sent to has reviewed it: `reviewed` once a
+ * run that took the change in — the one the delivery started, or one in the
+ * same thread started after it was delivered — completed; `sent` until then.
+ */
+export const DocumentReviewStateSchema = z.enum(['sent', 'reviewed'])
+export type DocumentReviewState = z.infer<typeof DocumentReviewStateSchema>
+
+/**
  * One row badge in the Finder and the project's Docs tab: the newest wake a
- * document trigger delivered for a page — *"Reviewed by CTO · v5"* — and the
+ * document trigger delivered for a page to an agent the viewer may see —
+ * *"Sent to CTO for review · v5"*, then *"Reviewed by CTO · v5"* — and the
  * thread it happened in, only for a viewer who may open that thread.
  */
 export const DocumentReviewRecordSchema = z
@@ -285,7 +294,9 @@ export const DocumentReviewRecordSchema = z
     triggerId: uuid,
     agent: z.object({ id: uuid, name: z.string() }).strict(),
     versionNumber: z.number().int().positive(),
-    reviewedAt: z.string().datetime(),
+    state: DocumentReviewStateSchema,
+    /** When the change was delivered to the agent. */
+    sentAt: z.string().datetime(),
     /** Where the review happened, only for a viewer who may open that thread. */
     thread: z.object({ id: uuid, channelId: uuid }).strict().nullable(),
   })

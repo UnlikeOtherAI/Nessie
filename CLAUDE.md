@@ -266,8 +266,9 @@ sentence changes only if the invariant itself did.
   (the project's Documents space chosen, a team-only space disabled), a
   refusal landing on the space field, the exact typed config its create
   posts, and its page with each delivery in words; and in a project's Docs
-  tab the "Reviewed by CTO · v5" row badges from one read per folder (a
-  thread link only for its readers), "Open review thread", and "Tell an agent
+  tab the "Reviewed by CTO · v5" and "Sent to CTO for review · v2" row
+  badges from one read per folder (a thread link only for its readers),
+  "Open review thread", and "Tell an agent
   when this changes…" on a folder or document — never a spreadsheet, never
   for a viewer the Triggers routes refuse — opening the editor prefilled —
   at 1280 and 390 px (the phone paged to the columns that matter). The rules

@@ -280,9 +280,15 @@ ticket trigger's does.
   the Finder read says `viewerCanCreateTriggers` — opens the Triggers editor
   on a document trigger for that folder or page, type and target kind fixed,
   on a draft of its own (`FinderDocumentTrigger.tsx`, the pattern
-  `BoardStartWorkDialog` set). A reviewed row carries *"Reviewed by CTO · v5"*
-  (`DocumentReviewBadge`), from one read per listed folder
-  (`useFolderDocumentReviews`), never per row. The row is itself a button, so
+  `BoardStartWorkDialog` set). A row whose change was sent to an agent
+  carries *"Sent to CTO for review · v5"*, and *"Reviewed by CTO · v5"* once
+  a run that took the change in completed — the run the delivery started, or
+  one in the same thread started after it (`DocumentReviewRecord.state`)
+  (`DocumentReviewBadge`, `loadDocumentReviews`), from one read per listed
+  folder (`useFolderDocumentReviews`), never per row. The badge is the newest
+  delivery **to an agent the viewer may see**: a newer one to an agent hidden
+  from the viewer is passed over rather than taking the badge away, and never
+  named. The row is itself a button, so
   the badge is not a nested link: a click on it opens the review thread, and
   the row's menu offers "Open review thread" for the keyboard; without a
   thread the viewer may open, the badge is text.
