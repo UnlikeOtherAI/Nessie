@@ -205,7 +205,9 @@ runDatabaseTest('wakes while the run is busy fold into one pending kickoff, and 
     await finishRuns(prisma, work.threadId)
     await drainPendingThreadMessages(prisma, { agentId: s.agentId, threadId: work.threadId })
   }
-  const runs = await prisma.run.findMany({ where: { threadId: work.threadId } })
+  // Oldest first: `.at(-1)` below means the folded wake, and a table other
+  // suites have deleted from hands back rows in no particular order.
+  const runs = await prisma.run.findMany({ where: { threadId: work.threadId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })
   const jobs = await Promise.all(runs.map((run) => runJobFor(prisma, run.id)))
   const ticketWorkJobs = jobs.filter((job) => job.actorContext.actionContext.purpose === 'ticket.work')
   assert.equal(ticketWorkJobs.length, 2, 'the pickup and the one folded wake')
