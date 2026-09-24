@@ -37,7 +37,8 @@ test('the pull request line says its state and checks, and when they were seen',
 })
 
 test('each place the work can stand with its machine reads as its own line', () => {
-  const lines = (facts: Partial<TicketWorkMachineFacts>, ended = false) => ticketWorkMachineLines({ ...base, ...facts }, ended)
+  const lines = (facts: Partial<TicketWorkMachineFacts>, ended = false) =>
+    ticketWorkMachineLines({ ...base, ...facts }, ended)
   assert.match(lines({ queuePosition: 2, stateReason: 'queued_no_free_machine', status: 'queued' })[0]!,
     /^Machine: none yet — the work is queued at position 2, because every machine is busy/)
   assert.match(lines({ stateReason: 'queued_machines_offline', status: 'queued' })[0]!, /because the machines are offline/)
@@ -58,7 +59,9 @@ test('each place the work can stand with its machine reads as its own line', () 
 test('the limits clause counts hours and spend against the policy\'s', () => {
   assert.equal(ticketWorkLimitsClause({
     ...base,
-    limits: { activeMs: 72 * 60_000, costUsd: 3.1, dailyUsd: 3.1, limits: { dailyUsd: 60, ticketHours: 4, ticketUsd: 20 } },
+    limits: {
+      activeMs: 72 * 60_000, costUsd: 3.1, dailyUsd: 3.1, limits: { dailyUsd: 60, ticketHours: 4, ticketUsd: 20 },
+    },
   }), '1 h 12 min of 4 h, coding cost $3.10 of $20 (as last seen)')
   assert.equal(ticketWorkLimitsClause(base), null)
 })
