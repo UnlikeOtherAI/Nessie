@@ -212,21 +212,29 @@ runDatabaseTest('the operator arm opens only on a live requester\'s turn, and ev
     toolPolicy: shape.toolPolicy ?? { project_operator: true },
   })
   assert.deepEqual([...await admission({})], [...PROJECT_OPERATOR_TOOL_IDS])
-  const refusedRuns: Array<[string, RunShape]> = [
-    ['a trigger fire', { actorType: 'agent' }],
-    ['a scheduled fire, which reconstructs its creator', { actorType: 'agent', effectiveUserId: s.ownerId, interactive: false }],
-    ['ticket work', { purpose: TICKET_WORK_PURPOSE }],
-    ['a peer delegation', { purpose: 'agent.peer_delegation' }],
-    ['a channel the agent is not bound to', { channelId: randomUUID() }],
+  // A run with nobody to act as says so in its own words first; one that has
+  // somebody still is not a live requester's.
+  const NOBODY = /requires a user actor context/
+  const TICKET_WORK = /acts for a person, and ticket work has none behind it/
+  const refusedRuns: Array<[string, RunShape, RegExp]> = [
+    ['a trigger fire', { actorType: 'agent' }, NOBODY],
+    [
+      'a scheduled fire, which reconstructs its creator',
+      { actorType: 'agent', effectiveUserId: s.ownerId, interactive: false },
+      ARM_REFUSAL,
+    ],
+    // Ticket work acts as the agent, with no person behind it.
+    ['ticket work', { actorType: 'agent', purpose: TICKET_WORK_PURPOSE }, TICKET_WORK],
+    // Even a ticket-work kickoff that somehow carried a person is no live turn.
+    ['ticket work carrying a person', { purpose: TICKET_WORK_PURPOSE }, ARM_REFUSAL],
+    ['a peer delegation', { purpose: 'agent.peer_delegation' }, ARM_REFUSAL],
+    ['a channel the agent is not bound to', { channelId: randomUUID() }, ARM_REFUSAL],
   ]
-  for (const [name, shape] of refusedRuns) {
+  for (const [name, shape, expected] of refusedRuns) {
     assert.equal((await admission(shape)).size, 0, name)
     // The handler refuses the same run on its own, whatever the schema said.
-    assert.match(
-      await refusal(runProjectCreateTool(buildContext(prisma, s, s.ownerId, shape), { name: 'Sneaky', teamId: s.teamId })),
-      ARM_REFUSAL,
-      name,
-    )
+    const context = buildContext(prisma, s, s.ownerId, shape)
+    assert.match(await refusal(runProjectCreateTool(context, { name: 'Sneaky', teamId: s.teamId })), expected, name)
   }
   // The admission's other half: a run whose agent holds no grant.
   assert.equal((await admission({ agentId: s.scoutId, channelId: s.elsewhereId, toolPolicy: {} })).size, 0)

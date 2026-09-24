@@ -6,7 +6,7 @@ import {
   isProjectOperatorCapabilityEnabled,
 } from '../project-operator-admission.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
-import { resolveActingMember, type ActingMember } from './access.js'
+import { requireActingUserId, resolveActingMember, type ActingMember } from './access.js'
 
 /**
  * The handlers' half of the project-operator arm: every condition the run was
@@ -47,6 +47,9 @@ const REFUSAL =
 export const assertProjectOperatorCall = async (
   context: BuiltinToolRuntimeContext,
 ): Promise<{ projectId: string }> => {
+  // A run with nobody to act as says so first, in its own words: ticket work
+  // acts as the agent (docs/standards/ticket-work.md), a fire as no one.
+  requireActingUserId(context)
   const organizationId = context.channel.organizationId
   const [agent, channel, bindings, capabilityEnabled] = await Promise.all([
     context.prisma.agent.findFirst({
