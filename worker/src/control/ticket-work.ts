@@ -4,6 +4,7 @@ import {
   closeTicketWorkSessionsInTransaction,
   endTicketWork,
   enqueueTicketWorkSweep,
+  lockTicketWorkPoliciesInTransaction,
   recordTicketWorkActivity,
 } from '@nessie/executor-manage'
 import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
@@ -274,10 +275,13 @@ const wakeTicketWork = async (
   if (!work || (!live && !input.machineLess)) return { outcome: 'refused', reason: 'no_longer_applies' }
   // Every lock before any write, in the one order ticket work takes them:
   // the ticket (only a move's wake needs it), then the thread's run slot,
-  // then the record — the order a pickup, a reminder's claim and a quiet
-  // wake's claim take them too, so no two of them can wait on each other.
+  // then the policy rows the wake reads, shared — so a suspension or an end
+  // waits for a resume that read its policy live (T5) — then the record: the
+  // order a pickup, a reminder's claim and a quiet wake's claim take them too,
+  // so no two of them can wait on each other.
   if (input.resumes || input.machineLess) await lockTicketForWork(tx, input.task.id)
   await lockThreadRunSlot(tx, { agentId: work.agentId, threadId: work.threadId })
+  if (live) await lockTicketWorkPoliciesInTransaction(tx, { policyId: work.policyId, triggerId: work.triggerId })
   const settled = await settleMoveAgainstColumn(tx, { ...input, work, live })
   if (settled) return settled
   await assertTargetChannel(tx, trigger)

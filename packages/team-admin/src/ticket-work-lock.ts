@@ -20,12 +20,19 @@ import { resolveProjectTaskDetailPlacement } from './board-placement.js'
  *
  * Re-entrant within a transaction, and a move that changed the ticket's
  * status already holds it.
+ *
+ * `FOR NO KEY UPDATE`, not `FOR UPDATE` (T5): two of these still exclude each
+ * other, and a move's own update of the ticket still waits for it, but a row
+ * that merely references the ticket — the `task_events` history row a policy
+ * end or suspension writes while it holds its policy row — does not. So a
+ * pickup or a resume holding this lock may take the policy row's shared lock
+ * (`lockStandingPolicyRow`) without closing a cycle with that end.
  */
 export const lockTicketForWork = async (
   tx: Pick<Prisma.TransactionClient, '$queryRaw'>,
   taskId: string,
 ): Promise<void> => {
-  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "tasks" WHERE "id" = ${taskId}::uuid FOR UPDATE`)
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "tasks" WHERE "id" = ${taskId}::uuid FOR NO KEY UPDATE`)
 }
 
 /**

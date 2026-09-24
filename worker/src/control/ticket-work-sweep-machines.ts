@@ -4,6 +4,7 @@ import {
   enforceTicketWorkLimitsInTransaction,
   executorCodingSessionOwnerKey,
   executorHeartbeatCutoff,
+  lockTicketWorkPoliciesInTransaction,
   reportedExecutorCodingSessions,
 } from '@nessie/executor-manage'
 import { resolveLiveEntitlementDecision, type ResolveLiveEntitlementsDeps } from '@nessie/runtime'
@@ -125,8 +126,8 @@ const answeredNotAMember = async (
 /**
  * Every `active` record whose machine is not heard from (offline, or no
  * heartbeat inside the freshness window) waits for it, under the locks every
- * wake takes in the one order: its ticket, its thread's run slot, then the
- * record (`holdTicketWorkBeforeWake`, which also stops one over a limit).
+ * wake takes in the one order: its ticket, its thread's run slot, its policy
+ * rows shared, then the record (`holdTicketWorkBeforeWake`, which also stops one over a limit).
  */
 export const pauseWorkOnSilentMachines = async (prisma: PrismaClient, deps: SweepDeps): Promise<number> => {
   const cutoff = executorHeartbeatCutoff(deps.now)
@@ -137,7 +138,7 @@ export const pauseWorkOnSilentMachines = async (prisma: PrismaClient, deps: Swee
       status: 'active',
       executor: { OR: [{ status: { not: 'online' } }, { lastSeenAt: null }, { lastSeenAt: { lt: cutoff } }] },
     },
-    select: { agentId: true, id: true, taskId: true, threadId: true, triggerId: true },
+    select: { agentId: true, id: true, policyId: true, taskId: true, threadId: true, triggerId: true },
     take: PAGE,
   })
   let paused = 0
@@ -145,6 +146,7 @@ export const pauseWorkOnSilentMachines = async (prisma: PrismaClient, deps: Swee
     const held = await prisma.$transaction(async (tx) => {
       await lockTicketForWork(tx, record.taskId)
       await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
+      await lockTicketWorkPoliciesInTransaction(tx, { policyId: record.policyId, triggerId: record.triggerId })
       return holdTicketWorkBeforeWake(tx, { now: deps.now, work: record })
     })
     if (held === 'machine_offline') paused += 1
