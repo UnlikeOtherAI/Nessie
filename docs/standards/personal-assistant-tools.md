@@ -108,7 +108,13 @@ Per-tool facts:
 - `agent_trigger_create` → `createAgentTrigger`, parsing the route's own
   `CreateAgentTriggerBodySchema`; scheduled/interval triggers build
   `launchOrigin` from the acting user and carry `actionContext.uoaIdentity`, and
-  a signing deployment refuses a schedule without it, as the route does.
+  a signing deployment refuses a schedule without it, as the route does. Every
+  type records the acting user as its `authorUserId`, which grants nothing. Its
+  `type` enum and config prose are generated from the typed trigger config
+  union (`AgentTriggerConfigInputSchema`), and a `ticket_changed` refusal
+  (`TriggerConfigRefusalError`) reaches the model field by field, as the route
+  answers it (`TRIGGER_CONFIG_REFUSED`); the other types keep the generic
+  sentence ([ticket-work.md](ticket-work.md)).
 - `agent_avatar_generate` (also `identityDelegatedOnly`, so the Designer's
   alone) → `generateAgentAvatar` + `updateAgentAvatar`, mirroring
   `POST /api/agents/:agentId/avatar/generate` in its exact order — the

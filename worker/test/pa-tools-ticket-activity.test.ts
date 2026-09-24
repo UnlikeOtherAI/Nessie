@@ -11,7 +11,13 @@ import {
   isProjectDelegatedRun,
   PEER_PROJECT_TOOL_IDS,
   resolveProjectDelegatedToolIds,
+  resolveWithheldRunToolIds,
 } from '../src/run/execute/run-setup.js'
+import {
+  TICKET_WORK_PROJECT_TOOL_IDS,
+  ticketWorkRecallSkipped,
+  ticketWorkToolRefusal,
+} from '../src/run/execute/ticket-work-setup.js'
 import {
   relativeTime,
   removedText,
@@ -99,24 +105,56 @@ test('the peer subset admits ticket_comment_add in a project channel and refuses
   }), false)
 })
 
-test('a ticket.work run is never lent project tools through a person-started arm', () => {
-  // It acts as the agent with no person behind it, so even an actor context
-  // that looks person-started must not admit it. Its own arm admits nothing
-  // until the ticket-work tools ship (docs/standards/ticket-work.md).
+test('a ticket.work run is lent only its agent-capable ticket tools, and only through its own arm', () => {
+  const projectId = randomUUID()
+  const policy = Object.fromEntries([...PEER_PROJECT_TOOL_IDS].map((id) => [id, true]))
+  // It acts as the agent with no person behind it, so a person-looking actor
+  // context changes nothing: only its own arm decides, and that arm asks
+  // whether the work record it serves belongs to this channel's project.
   for (const actorType of ['user', 'agent']) {
     for (const interactive of [true, false]) {
-      const run = {
-        agentKind: 'shared',
-        channelProjectId: randomUUID(),
-        actorType,
-        interactive,
-        purpose: TICKET_WORK_PURPOSE,
-      }
-      assert.equal(isProjectDelegatedRun(run), false, `${actorType}, interactive ${interactive}`)
-      const policy = Object.fromEntries([...PEER_PROJECT_TOOL_IDS].map((id) => [id, true]))
-      assert.equal(resolveProjectDelegatedToolIds(isProjectDelegatedRun(run), policy).size, 0)
+      const run = { agentKind: 'shared', channelProjectId: projectId, actorType, interactive, purpose: TICKET_WORK_PURPOSE }
+      const label = `${actorType}, interactive ${interactive}`
+      assert.equal(isProjectDelegatedRun({ ...run, ticketWorkProjectId: projectId }), true, label)
+      assert.equal(isProjectDelegatedRun(run), false, `${label}: no work record, no tools`)
+      assert.equal(isProjectDelegatedRun({ ...run, ticketWorkProjectId: randomUUID() }), false, `${label}: another project`)
+      assert.equal(
+        isProjectDelegatedRun({ ...run, agentKind: 'personal_assistant', ticketWorkProjectId: projectId }),
+        false,
+        `${label}: not a shared agent`,
+      )
     }
   }
+  const lent = resolveProjectDelegatedToolIds(true, policy, true)
+  assert.deepEqual([...lent].sort(), [...TICKET_WORK_PROJECT_TOOL_IDS].sort())
+  for (const id of [
+    'ticket_create', 'ticket_assign', 'ticket_board_create', 'ticket_label_create',
+    'ticket_checklist_apply', 'ticket_checklist_step_update', 'ticket_attachment_add',
+  ]) {
+    assert.equal(lent.has(id), false, `${id} needs a person`)
+  }
+  // The agent's policy still decides each one.
+  assert.deepEqual([...resolveProjectDelegatedToolIds(true, { ticket_read: true }, true)], ['ticket_read'])
+})
+
+test('a ticket.work run withholds and refuses the tools that act for a person', () => {
+  const withheld = resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true, ticketWork: true })
+  for (const id of [
+    'schedule_task', 'mailbox_search', 'mailbox_send', 'gmail_search', 'calendar_event_create', 'email_send', 'card_post',
+  ]) {
+    assert.ok(withheld.has(id), id)
+  }
+  assert.equal(resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true }).has('schedule_task'), false)
+  assert.equal(resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true }).has('card_post'), false)
+  const ticketWork = { actionContext: { purpose: TICKET_WORK_PURPOSE, requestId: randomUUID() } }
+  assert.match(ticketWorkToolRefusal('schedule_task', ticketWork) ?? '', /needs a person behind the run/)
+  assert.match(ticketWorkToolRefusal('card_post', ticketWork) ?? '', /Comment on the ticket/)
+  assert.equal(ticketWorkToolRefusal('ticket_read', ticketWork), null)
+  assert.equal(ticketWorkToolRefusal('schedule_task', { actionContext: { requestId: randomUUID() } }), null)
+
+  // Recall would search the work thread itself and hand back what its window keeps out.
+  assert.equal(ticketWorkRecallSkipped(ticketWork), true)
+  assert.equal(ticketWorkRecallSkipped({ actionContext: { requestId: randomUUID() } }), false)
 })
 
 test('a removed file\'s line names who removed it, when, and why', () => {

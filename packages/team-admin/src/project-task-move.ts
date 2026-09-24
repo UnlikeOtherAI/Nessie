@@ -4,6 +4,7 @@ import {
   CATEGORY_TO_STATUS,
   type BoardColumnStateBinding,
   statusToCategory,
+  type TaskEventOrigin,
 } from '@nessie/schemas'
 
 import type { BoardSourceWriteBack, BoardSourceWriteBackError } from './board-source-writeback.js'
@@ -12,6 +13,10 @@ import { boardTaskPoolWhere, resolveBoardPlacement } from './board-placement.js'
 import { mapProjectTask, projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { isProjectTaskTransitionValid } from './project-task-status.js'
 import { rehomeTaskLabels } from './task-labels.js'
+import { taskEventAuthorship } from './task-access.js'
+import { recordColumnEntered, resolveHomeColumnId } from './task-column-events.js'
+import { recordTaskEvent } from './task-event-dispatch.js'
+import { recordPickupAssignment, resolvePickupAssignment } from './ticket-work-pickup.js'
 
 export type ProjectTaskMoveError =
   | { error: 'NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_TRANSITION'; from?: TaskStatus }
@@ -96,8 +101,18 @@ export const moveProjectTaskToColumn = async (
     taskId: string
     organizationId: string
     columnId: string
-    actorId: string
+    /**
+     * The person moving it, or null for an agent with no person behind it
+     * (a `ticket.work` run), which then names itself with `agentId` and
+     * `unattended`.
+     */
+    actorId: string | null
     position?: number
+    /** Set when an agent moves the ticket; see `TaskActor`. */
+    agentId?: string | null
+    unattended?: boolean
+    /** The authenticated door, stamped by the caller's auth layer; absent ⇒ `system`. */
+    origin?: TaskEventOrigin
   },
   /**
    * Injected by the API and the worker alike. Absent means "no source can be
@@ -115,6 +130,7 @@ export const moveProjectTaskToColumn = async (
       boardId: true,
       status: true,
       projectId: true,
+      archivedAt: true,
     },
   })
   if (!existing) return { error: 'NOT_FOUND' }
@@ -160,11 +176,30 @@ export const moveProjectTaskToColumn = async (
     if (outcome && 'error' in outcome) return outcome
   }
 
-  const shouldAutoAssignActor =
-    target === 'in_progress' && !existing.assigneeUserId && !existing.assigneeAgentId
-  const assignmentData = shouldAutoAssignActor
+  const unassigned = !existing.assigneeUserId && !existing.assigneeAgentId
+  // A person starting an agent's work on an unassigned ticket hands it to that
+  // agent (`assignOnPickup`, `ticket-work-pickup.ts`); otherwise whoever moves
+  // an unassigned ticket into in-progress takes it — the person, or the agent
+  // itself when no person is behind the move.
+  const pickupAssignment = unassigned
+    ? await resolvePickupAssignment(prisma, {
+        organizationId: input.organizationId,
+        projectId: existing.projectId,
+        taskId: existing.id,
+        boardId: column.board.id,
+        toColumnId: column.id,
+        fromColumnId: () => resolveHomeColumnId(prisma, existing),
+        actorId: input.actorId,
+        ...(input.origin ? { origin: input.origin } : {}),
+      })
+    : null
+  const mover = input.actorId
     ? { assigneeUserId: input.actorId, assigneeAgentId: null }
-    : {}
+    : input.agentId ? { assigneeUserId: null, assigneeAgentId: input.agentId } : null
+  const autoAssignee = pickupAssignment
+    ? { assigneeUserId: null, assigneeAgentId: pickupAssignment.agentId }
+    : unassigned && target === 'in_progress' ? mover : null
+  const assignmentData = autoAssignee ?? {}
 
   // A column names its board, and a board owns its tasks — so dropping a card
   // on another board's column *is* how work changes boards. The board tab only
@@ -176,41 +211,42 @@ export const moveProjectTaskToColumn = async (
   const boardData = changesBoard ? { boardId: column.board.id } : {}
   const taskData = { ...assignmentData, ...boardData }
 
+  const authorship = taskEventAuthorship({ ...input, userId: input.actorId })
+  const scope = { organizationId: input.organizationId, projectId: existing.projectId }
+
   const task = await prisma.$transaction(async (tx) => {
+    // Where the ticket rendered before the move — on its home board, which is
+    // the board it leaves when the drop is onto another board's column.
+    const fromColumnId = await resolveHomeColumnId(tx, existing)
     if (needsTransition) {
       const { count } = await tx.task.updateMany({
         where: { id: existing.id, organizationId: input.organizationId, status: existing.status },
         data: { status: target as TaskStatus, ...taskData },
       })
       if (count === 0) return null
-      await tx.taskEvent.create({
-        data: {
-          taskId: existing.id,
-          eventType: 'status_changed',
-          payload: {
-            by: input.actorId,
-            from: existing.status,
-            to: target,
-            boardId: column.board.id,
-            columnId: column.id,
-          },
+      await recordTaskEvent(tx, {
+        taskId: existing.id,
+        eventType: 'status_changed',
+        payload: {
+          ...authorship,
+          from: existing.status,
+          to: target,
+          boardId: column.board.id,
+          columnId: column.id,
         },
+        scope,
       })
     } else if (Object.keys(taskData).length > 0) {
       await tx.task.update({ where: { id: existing.id }, data: taskData })
     }
-    if (shouldAutoAssignActor) {
-      await tx.taskEvent.create({
-        data: {
-          taskId: existing.id,
-          eventType: 'assigned',
-          payload: {
-            by: input.actorId,
-            assigneeUserId: input.actorId,
-            assigneeAgentId: null,
-            reason: 'moved_to_in_progress',
-          },
-        },
+    if (pickupAssignment) {
+      await recordPickupAssignment(tx, { taskId: existing.id, scope, pickup: pickupAssignment })
+    } else if (autoAssignee) {
+      await recordTaskEvent(tx, {
+        taskId: existing.id,
+        eventType: 'assigned',
+        payload: { ...authorship, ...autoAssignee, reason: 'moved_to_in_progress' },
+        scope,
       })
     }
 
@@ -236,7 +272,7 @@ export const moveProjectTaskToColumn = async (
       })
       // A ticket's labels are its board's, so they follow it by name: each
       // gets its equivalent on the new board, created when missing.
-      await rehomeTaskLabels(tx, { id: existing.id }, column.board, input.actorId)
+      await rehomeTaskLabels(tx, { id: existing.id }, column.board, authorship.by)
     }
 
     // The public move contract treats an omitted position as append.  A raw
@@ -251,6 +287,15 @@ export const moveProjectTaskToColumn = async (
       existing.projectId as string,
       input.position ?? Number.MAX_SAFE_INTEGER,
     )
+    // Every column change, a same-category one included: that move changes no
+    // status, so nothing else records that the ticket entered this column.
+    await recordColumnEntered(tx, {
+      taskId: existing.id,
+      scope,
+      fromColumnId,
+      toColumnId: column.id,
+      authorship,
+    })
     return tx.task.findFirst({ where: { id: existing.id }, include: projectTaskInclude })
   })
   if (!task) return { error: 'INVALID_TRANSITION', from: existing.status }

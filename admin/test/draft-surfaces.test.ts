@@ -41,7 +41,9 @@ const ADOPTED_SURFACES: { file: string; key: string; label: string }[] = [
   },
   {
     file: 'components/features/triggers/TriggerEditorDialog.tsx',
-    key: "draftKey('trigger', trigger?.id ?? 'new')",
+    // A doorway that prefills the editor (the board's column menu) keeps its
+    // own create draft, so it never inherits the Triggers page's.
+    key: "draftKey('trigger', trigger?.id ?? draftId ?? 'new')",
     label: 'the trigger editor',
   },
   {

@@ -9,6 +9,8 @@ type KanbanColumnProps = {
   count: number
   children: ReactNode
   headerAction?: ReactNode
+  /** A read-only line under the header — "Moving here starts work: CTO" — for everyone. */
+  headerBadge?: ReactNode
   // Ordered task ids in this column — the SortableContext items for reordering.
   itemIds: string[]
   /** One-line tickets sit closer together than full cards. */
@@ -28,6 +30,7 @@ export const KanbanColumn = ({
   count,
   children,
   headerAction,
+  headerBadge,
   itemIds,
   dense = false,
   droppable = true,
@@ -44,13 +47,15 @@ export const KanbanColumn = ({
       className="flex min-h-0 min-w-[300px] flex-1 flex-col"
       data-kanban-column={columnId}
     >
-      <div className="mb-2 flex shrink-0 items-center gap-2 px-1">
+      {/* As tall as a header action (44px), so a column with a menu and one
+          without start their tracks on the same line. */}
+      <div className="mb-2 flex min-h-11 shrink-0 items-center gap-2 px-1">
         <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
         <span className="truncate text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--tx2)]">
           {label}
         </span>
         <span className="text-xs text-[color:var(--tx3)]">{count}</span>
-        {headerAction ? <div className="ml-auto">{headerAction}</div> : null}
+        {headerAction ? <div className="ml-auto flex items-center gap-1">{headerAction}</div> : null}
       </div>
       <div
         ref={setNodeRef}
@@ -66,6 +71,9 @@ export const KanbanColumn = ({
         data-drop-over={isOver ? '' : undefined}
         data-kanban-dropzone={droppable ? columnId : undefined}
       >
+        {/* At the head of the track rather than above it, so a column with the
+            badge starts its track on the same line as its neighbours. */}
+        {headerBadge ? <div className="shrink-0">{headerBadge}</div> : null}
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
           {children}
         </SortableContext>

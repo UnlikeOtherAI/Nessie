@@ -251,6 +251,33 @@ file is the rule**.
   rather than "Say so". Quoting the portrait reason, reporting a pinned style
   and never showing a raw id are rules in the Designer's own prompt, where
   instructions belong.
+- **A ticket-driven agent is set up from the project's real structure, and a
+  refusal names the field.** `project_structure_read(projectId, agentId?)`
+  (`worker/src/run/pa-tools/provisioning-structure.ts`) is the Designer's read
+  of what a project is made of: its boards with every column and category,
+  the live ordinary channels in it the person can read
+  (`buildVisibleChannelWhere`) with their visibility and whether the named
+  agent is in each, and the document spaces they can read (the knowledge
+  viewer `kb_list` reads with) with their top-level folders (`kb_list`'s
+  version gate). It is `identityDelegatedOnly`, like `agent_read`: it acts as
+  the person in the home DM and a project they are not in reads as missing.
+  The persona sets such an agent up in order — the agent, then a public
+  channel of the board's project, then the `ticket_changed` trigger from those
+  names — and drafts the trigger's sectioned instructions, from a neutral
+  example, never promising a machine (none does ticket work before T4 of
+  [the ticket-driven agents plan](../plans/2026-09-23-ticket-driven-agents/overview.md)).
+  The catalogue's trigger section is generated from the typed trigger config
+  union (`describeAgentTriggerTypes`, `packages/schemas/src/trigger-configs.ts`),
+  as the agent tools' `type` enum and config prose are, and its ticket-work
+  facts say only what ships; board tools reach a project's board on a
+  person's turn in its channels or when a `ticket_changed` trigger wakes the
+  agent there. `agent_trigger_create` and `agent_trigger_update` relay a
+  ticket trigger's field-level refusal as it is and, on success, say back the
+  board as a link and the columns it resolved by name and category. The
+  proposal card gains a "Starts work when" field for such an agent. Pinned by
+  `worker/test/db/designer-ticket-trigger.test.ts`, the blueprint and
+  catalogue tests and the proposal-card fixture suite. The trigger rules
+  themselves are [ticket-work.md](ticket-work.md)'s.
 
 - **`agent_handoff` passes the person, and its bounds are structural.** Any
   agent may hand a conversation to a global agent: a hidden server-authored
@@ -376,6 +403,23 @@ call `channel_list`: it names a channel's project, never its id. (Listing
 channels does not stamp the run's disclosure basis; reading a channel's content
 does, and that stamp blocks the project write.) The Personal Assistant works
 across projects and still names one.
+
+**Unattended runs never reconstruct a requester — and the one unattended run
+lent these tools acts as its agent instead.** A `ticket.work` run (a ticket's
+work record waking its agent, [ticket-work.md](ticket-work.md)) has no
+person behind it and no `effectiveUserId`: not the mover, not the trigger's
+author. `isProjectDelegatedRun` admits it by its own arm — a shared agent
+whose run serves a work record of the channel's own project, still bound to
+the channel — and lends it only `TICKET_WORK_PROJECT_TOOL_IDS`, the tools
+with an agent path, that its policy grants. They resolve the agent itself as
+the acting member (`resolveTicketMember`), reach the project only through
+that binding, and write through an `AgentTaskActor` credited `agent:<id>`
+with the run; `requireActingUserId` is never consulted, so every tool that
+needs a person — identity tools, setup verbs, the rest of the peer set —
+refuses as it does on any unattended run, and schedules and mail, which would
+fall back to the agent's own authority, are withheld and refused outright.
+That is the two-lock rule's shape for ticket work: the arm admits only the
+agent's own reach, and no path to a person's exists to be opened.
 
 A run lent any of these tools that writes recalls memory under project-write
 containment: only organisation and same-project material, never a thought fed

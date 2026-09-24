@@ -14,6 +14,8 @@ import type { FileService, LedgerAttribution } from '@nessie/runtime'
 import { inlineAttachmentPath } from '@nessie/schemas'
 
 import type { ResolvedIdentity } from './board-source-identity.js'
+import { sourceEventAuthorship } from './board-source-apply-events.js'
+import { recordTaskEvent } from './task-event-dispatch.js'
 
 /**
  * The parts of an upstream issue that are not the issue: its comments and its
@@ -253,18 +255,19 @@ export const applyInboundComments = async (
         if (isUniqueViolation(cause)) continue
         throw cause
       }
-      await prisma.taskEvent.create({
-        data: {
-          taskId,
-          eventType: 'comment_added',
-          payload: {
-            by: sourceActor(source.id),
-            commentId: created.id,
-            bySourceId: source.id,
-            externalId: comment.externalId,
-          },
+      // Its own transaction with its dispatch job: a provider's comment can
+      // wake live work when the trigger opts in to source events.
+      await prisma.$transaction((tx) => recordTaskEvent(tx, {
+        taskId,
+        eventType: 'comment_added',
+        payload: {
+          ...sourceEventAuthorship(source.id),
+          commentId: created.id,
+          bySourceId: source.id,
+          externalId: comment.externalId,
         },
-      })
+        scope: source,
+      }))
       touched.add(taskId)
       continue
     }

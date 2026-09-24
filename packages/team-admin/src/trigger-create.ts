@@ -15,6 +15,7 @@ import {
   TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { resolveTicketChangedTrigger } from './trigger-ticket-config.js'
 import { unreleasedTriggerTypeRefusal } from './trigger-type-availability.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 
@@ -46,26 +47,38 @@ export const validateTodoTemplateTriggerConfig = async (
   }))
 }
 
+type CreateAgentTriggerInput = {
+  config?: Record<string, unknown>
+  description?: string
+  enabled?: boolean
+  name?: string
+  nextRunAt?: string
+  targetChannelId?: string
+  targetThreadId?: string
+  type: AgentTriggerType
+}
+
 /**
  * Create a trigger on an agent. Shared by `POST /api/agents/:agentId/triggers`
  * and the personal assistant's `agent_trigger_create` tool: `launchOrigin` is a
  * trusted, caller-supplied argument in both, because only the surface holding a
  * live session can say which user and UOA team a future fire inherits.
+ *
+ * `authorUserId` is who set the trigger up, recorded for every type. It is
+ * authorship only and grants nothing: no fire path reads it as the identity a
+ * run acts as (docs/standards/ticket-work.md).
+ *
+ * A `ticket_changed` config is resolved and checked field by field
+ * (`resolveTicketChangedTrigger`), and a refusal throws
+ * `TriggerConfigRefusalError` naming each field. Every other type answers null
+ * for anything it refuses, as it always has.
  */
 export const createAgentTrigger = async (
   prisma: PrismaClient,
   agentId: string,
-  input: {
-    config?: Record<string, unknown>
-    description?: string
-    enabled?: boolean
-    name?: string
-    nextRunAt?: string
-    targetChannelId?: string
-    targetThreadId?: string
-    type: AgentTriggerType
-  },
+  input: CreateAgentTriggerInput,
   trusted: {
+    authorUserId?: string
     launchOrigin?: ScheduledTriggerLaunchOrigin
   } = {},
 ): Promise<AgentTriggerRecord | null> => {
@@ -83,10 +96,13 @@ export const createAgentTrigger = async (
   const launchOrigin = parsedLaunchOrigin?.success
     ? parsedLaunchOrigin.data
     : undefined
+  const authorUserId = launchOrigin?.userId ?? trusted.authorUserId
+  const authorship = authorUserId ? { authorUserId } : {}
   const normalizedConfig = input.type === 'webhook'
-    ? ensureWebhookConfig(clientConfig)
+    ? { ...ensureWebhookConfig(clientConfig), ...authorship }
     : {
         ...clientConfig,
+        ...authorship,
         ...(launchOrigin
           ? {
               createdByUserId: launchOrigin.userId,
@@ -109,6 +125,7 @@ export const createAgentTrigger = async (
     select: {
       id: true,
       agentKind: true,
+      name: true,
       organizationId: true,
       systemSlug: true,
     },
@@ -121,6 +138,15 @@ export const createAgentTrigger = async (
   // that declaration enforced where triggers are actually written.
   if (!agent || agent.agentKind === 'personal_assistant' || agent.systemSlug) {
     return null
+  }
+  if (input.type === 'ticket_changed') {
+    if (!agent.organizationId) return null
+    return createTicketChangedTrigger(prisma, {
+      agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
+      authorship,
+      clientConfig,
+      input,
+    })
   }
   if (isScheduled) {
     if (!launchOrigin) {
@@ -180,3 +206,49 @@ export const createAgentTrigger = async (
 
 const hasTodoTemplateReference = (config: Record<string, unknown>): boolean =>
   Object.hasOwn(config, 'todoTemplateId')
+
+/**
+ * The `ticket_changed` create: resolved, checked and written in one
+ * transaction, because the one-pickup-per-column check holds the board's lock
+ * until the new row commits. The scope columns are the resolved project and
+ * board, which is how the dispatcher finds the trigger.
+ */
+const createTicketChangedTrigger = async (
+  prisma: PrismaClient,
+  input: {
+    agent: { id: string; name: string; organizationId: string }
+    authorship: Record<string, unknown>
+    clientConfig: Record<string, unknown>
+    input: CreateAgentTriggerInput
+  },
+): Promise<AgentTriggerRecord | null> => prisma.$transaction(async (tx) => {
+  const resolved = await resolveTicketChangedTrigger(tx, {
+    agent: input.agent,
+    config: input.clientConfig,
+    enabled: input.input.enabled ?? true,
+    nextRunAt: input.input.nextRunAt,
+    targetChannelId: input.input.targetChannelId,
+    targetThreadId: input.input.targetThreadId,
+  })
+  const target = await resolveExecutionTarget(tx, input.agent.id, { targetChannelId: resolved.targetChannelId })
+  if (!target) return null
+  const trigger = await tx.agentTrigger.create({
+    data: {
+      agentId: input.agent.id,
+      type: 'ticket_changed',
+      enabled: input.input.enabled ?? true,
+      status: input.input.enabled === false ? 'paused' : 'active',
+      name: input.input.name,
+      description: input.input.description,
+      config: { ...resolved.config, ...input.authorship } as Prisma.InputJsonValue,
+      scopeBoardId: resolved.scopeBoardId,
+      scopeProjectId: resolved.scopeProjectId,
+      targetChannelId: target.channelId,
+      // A ticket trigger opens one work thread per ticket in its channel and
+      // has no fixed thread: nothing may start a run for it in the channel's
+      // General thread, a hand fire included (`dispatchAgentTrigger` refuses).
+      targetThreadId: null,
+    },
+  })
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
+})

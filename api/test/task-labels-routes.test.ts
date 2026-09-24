@@ -114,7 +114,15 @@ runDatabaseTest('PATCH /api/tasks/:id sets labels, records history and publishes
   assert.deepEqual(h.published, [{ event: 'task.updated', data: { taskId: h.ids.taskId, status: 'inbox' } }])
   const events = await prisma.taskEvent.findMany({ where: { taskId: h.ids.taskId }, orderBy: { eventType: 'asc' } })
   assert.deepEqual(events.map((event) => event.eventType), ['detail_edited', 'labels_changed'])
-  assert.deepEqual(events[1]?.payload, { by: h.ids.memberId, added: [label.id], removed: [] })
+  // The harness mounts no global auth hook, so no session was verified and the
+  // change carries the platform's origin (task-event-origin-routes.test.ts
+  // pins the session door).
+  assert.deepEqual(events[1]?.payload, {
+    by: h.ids.memberId,
+    origin: { kind: 'system' },
+    added: [label.id],
+    removed: [],
+  })
 
   // Another board's label — or one from nowhere — is a 400 naming the field.
   for (const labelId of [devLabel.id, '00000000-0000-4000-8000-000000000000']) {

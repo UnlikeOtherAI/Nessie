@@ -14,6 +14,8 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import type { BoardTaskRecord } from '../../../../facades/boards/hooks'
+import type { BoardTicketWorkRecord } from '../../../../facades/ticket-work/hooks'
+import { ColumnStartsWorkBadge, ColumnWorkMenu } from '../../ticket-work/ColumnStartsWork'
 import type { TaskRecord } from '../../../../facades/tasks/hooks'
 import { ArchiveDoneMenu } from './ArchiveDoneMenu'
 import type { BoardView } from './board-view'
@@ -71,6 +73,13 @@ type KanbanBoardProps = {
    * that every reader paid for in height whether or not they wanted it.
    */
   showArchived?: boolean
+  /**
+   * Agents' ticket work on this board: which columns start it (a badge for
+   * everyone), which cards it is on (a dot), and whether the viewer may add a
+   * start-work column from the column menu.
+   */
+  ticketWork?: BoardTicketWorkRecord
+  onStartWork?: (column: BoardColumnView) => void
   view?: BoardView
 }
 
@@ -84,6 +93,8 @@ export const KanbanBoard = ({
   onMoveTask,
   onOpenTask,
   showArchived = false,
+  ticketWork,
+  onStartWork,
   view = 'cards',
 }: KanbanBoardProps) => {
   const [isDraggingCard, setIsDraggingCard] = useState(false)
@@ -146,6 +157,21 @@ export const KanbanBoard = ({
     () => new Set(columns.filter((column) => column.category === 'done').map((c) => c.id)),
     [columns],
   )
+
+  const { pickupsByColumn, workByTask } = useMemo(() => {
+    const byColumn = new Map<string, NonNullable<typeof ticketWork>['pickups']>()
+    for (const pickup of ticketWork?.pickups ?? []) {
+      byColumn.set(pickup.columnId, [...(byColumn.get(pickup.columnId) ?? []), pickup])
+    }
+    return {
+      pickupsByColumn: byColumn,
+      workByTask: new Map((ticketWork?.cards ?? []).map((card) => [card.taskId as string, card])),
+    }
+  }, [ticketWork])
+  // Offered on every column but Done, whose menu archives: a to-do column can
+  // start work too, and the editor explains why an end column cannot.
+  const canStartWorkIn = (column: BoardColumnView): boolean =>
+    Boolean(onStartWork && ticketWork?.viewerCanCreateTriggers) && column.category !== 'done'
 
   const taskById = useMemo(() => {
     const map = new Map<string, BoardTaskRecord>()
@@ -325,6 +351,7 @@ export const KanbanBoard = ({
     showProject,
     task,
     view,
+    work: workByTask.get(task.id) ?? null,
   })
 
   return (
@@ -415,6 +442,8 @@ export const KanbanBoard = ({
                     )
                   }
                   const ids = items[column.id] ?? []
+                  const drawn = columns.find((candidate) => candidate.id === column.id)
+                  const pickups = pickupsByColumn.get(column.id) ?? []
                   return (
                     <KanbanColumn
                       key={column.id}
@@ -425,8 +454,15 @@ export const KanbanBoard = ({
                       headerAction={
                         doneColumnIds.has(column.id) && projectId && boardId ? (
                           <ArchiveDoneMenu boardId={boardId} projectId={projectId} />
+                        ) : drawn && canStartWorkIn(drawn) ? (
+                          <ColumnWorkMenu
+                            columnId={column.id}
+                            columnName={column.name}
+                            onStartWork={() => onStartWork?.(drawn)}
+                          />
                         ) : undefined
                       }
+                      headerBadge={pickups.length > 0 ? <ColumnStartsWorkBadge pickups={pickups} /> : undefined}
                       itemIds={ids}
                       label={column.name}
                     >

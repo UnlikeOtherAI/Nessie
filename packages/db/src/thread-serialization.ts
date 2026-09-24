@@ -120,6 +120,19 @@ const acquireThreadRunLock = async (
   )
 }
 
+/**
+ * The same lock, for a caller that must read one (agent, thread)'s pending
+ * rows consistently with its claims and drains: a `ticket.work` wake that
+ * folds its event into a kickoff still pending for the same work record. A
+ * drain holding it has either already taken that kickoff (the wake then
+ * pends its own) or has not started (the run it starts will read the folded
+ * kickoff). Transaction-scoped, and re-entrant within the transaction.
+ */
+export const lockThreadRunSlot = (
+  tx: Prisma.TransactionClient,
+  input: { agentId: string; principalUserId?: string; threadId: string },
+): Promise<void> => acquireThreadRunLock(tx, input.agentId, input.principalUserId, input.threadId)
+
 const runPrincipalWhere = (principalUserId: string | undefined) =>
   principalUserId === undefined ? { principalUserId: null } : { principalUserId }
 

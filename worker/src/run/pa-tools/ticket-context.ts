@@ -1,10 +1,10 @@
 import type { ProjectTaskRecord } from '@nessie/team-admin'
 import { getProjectTask, isAgentAccessibleToActor, isProjectAccessibleToUser } from '@nessie/team-admin'
-import { canUserReadRunDerivedRecord } from '@nessie/runtime'
+import { canUserReadRunDerivedRecord, runCarriesDisclosureBasis } from '@nessie/runtime'
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import type { ActingMember } from './access.js'
+import type { TicketMember } from './ticket-member.js'
 
 /**
  * What every ticket tool needs before and after it touches a ticket: the
@@ -55,7 +55,7 @@ export const ticketProjectIdFor = (
 
 export const projectFor = async (
   context: BuiltinToolRuntimeContext,
-  member: ActingMember,
+  member: TicketMember,
   projectId: string,
 ): Promise<void> => {
   if (context.agentKind === 'shared' && context.channel.projectId !== projectId) {
@@ -63,6 +63,19 @@ export const projectFor = async (
       'This agent may work only on the project that owns this channel. '
       + 'Omit projectId to use it.',
     )
+  }
+  if (member.userId === null) {
+    // An agent with no person behind it reaches a project only through its
+    // own live binding to one of that project's channels: this one.
+    const binding = await context.prisma.agentBinding.count({
+      where: {
+        agentId: context.agentId,
+        channel: { id: context.channel.id, projectId, deletedAt: null, archivedAt: null, project: { deletedAt: null } },
+      },
+    })
+    if (binding > 0) return
+    const agent = await context.prisma.agent.findUnique({ where: { id: context.agentId }, select: { name: true } })
+    throw new Error(`${agent?.name ?? 'This agent'} is no longer in a channel of this project.`)
   }
   if (context.agentKind === 'shared') {
     const binding = await context.prisma.agentBinding.count({
@@ -83,18 +96,32 @@ export const projectFor = async (
   }
 }
 
+/**
+ * Whether this member may read a ticket some run derived. A person reads it
+ * when they can read that run; an agent with no person behind it only when
+ * the run carries no disclosure basis at all, because nobody's reach vouches
+ * for what a restricted run drew on.
+ */
+export const canTicketMemberReadRunDerived = async (
+  context: BuiltinToolRuntimeContext,
+  member: TicketMember,
+  runId: string | null,
+): Promise<boolean> => member.userId === null
+  ? !(await runCarriesDisclosureBasis(context.prisma, runId))
+  : canUserReadRunDerivedRecord(context.prisma, {
+      organizationId: member.organizationId,
+      runId,
+      uoaIdentity: context.actorContext.actionContext.uoaIdentity,
+      userId: member.userId,
+    })
+
 export const projectTicketFor = async (
   context: BuiltinToolRuntimeContext,
-  member: ActingMember,
+  member: TicketMember,
   ticketId: string,
 ): Promise<ProjectTaskRecord> => {
   const ticket = await getProjectTask(context.prisma, ticketId, member.organizationId)
-  if (!ticket?.projectId || !(await canUserReadRunDerivedRecord(context.prisma, {
-    organizationId: member.organizationId,
-    runId: ticket.runId ?? null,
-    uoaIdentity: context.actorContext.actionContext.uoaIdentity,
-    userId: member.userId,
-  }))) {
+  if (!ticket?.projectId || !(await canTicketMemberReadRunDerived(context, member, ticket.runId ?? null))) {
     throw new Error('Ticket not found. Resolve it with ticket_list first.')
   }
   await projectFor(context, member, ticket.projectId)
@@ -103,7 +130,7 @@ export const projectTicketFor = async (
 
 export const recordProjectRead = (
   context: BuiltinToolRuntimeContext,
-  member: ActingMember,
+  member: TicketMember,
   projectId: string,
 ): void => {
   // Owners reach every project by their organization role, so applying a

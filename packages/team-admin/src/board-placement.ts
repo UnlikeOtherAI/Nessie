@@ -135,7 +135,7 @@ export const resolveBoardPlacement = (
  * null` is the established default-board contract.
  */
 export const resolveProjectTaskDetailPlacement = async (
-  prisma: PrismaClient,
+  prisma: Pick<Prisma.TransactionClient, 'board' | 'taskBoardPlacement'>,
   task: {
     id: string
     projectId: string | null

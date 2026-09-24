@@ -257,3 +257,96 @@ export const waitForRun = async (pipeline, { agentId, threadId, timeoutMs = 60_0
   }
   throw new Error(`No run was admitted for thread ${threadId}`)
 }
+
+/**
+ * Two tickets the agent works, each with its work thread in the public room,
+ * and a person who reads that room but cannot edit the project's boards
+ * (docs/standards/ticket-work.md → "The work thread").
+ *
+ * The thread and its wake row are written by the functions the ticket work
+ * seam writes them with (`ensureTicketWorkThread`, `writeTicketWorkThreadRow`);
+ * the trigger and the work records are inserted, because what starts real work
+ * is a person's move through the dispatcher — a different suite's claim — and
+ * this one is about where the threads land in a conversation list and who may
+ * write in them.
+ */
+export const seedTicketThreads = async (
+  prisma,
+  fixture,
+  { ensureTicketWorkThread, ticketWorkThreadTitle, writeTicketWorkThreadRow },
+) => {
+  const { scope } = fixture
+  const board = await prisma.board.create({
+    data: { name: 'Engineering', organizationId: scope.organizationId, position: 9, projectId: scope.projectId },
+  })
+  const trigger = await prisma.agentTrigger.create({
+    data: {
+      agentId: fixture.agent.id,
+      config: { boardId: board.id, instructions: { general: 'Triage the ticket.' } },
+      name: 'Start work from In progress',
+      scopeBoardId: board.id,
+      scopeProjectId: scope.projectId,
+      targetChannelId: fixture.publicRoom.id,
+      type: 'ticket_changed',
+    },
+  })
+  const owner = await prisma.user.findUniqueOrThrow({ where: { id: fixture.owner.id }, select: { displayName: true } })
+  const tickets = []
+  for (const [title, status] of [['Fix login redirect', 'active'], ['Refactor billing', 'parked']]) {
+    const task = await prisma.task.create({
+      data: { organizationId: scope.organizationId, projectId: scope.projectId, title, boardId: board.id },
+    })
+    const thread = await prisma.$transaction((tx) => ensureTicketWorkThread(tx, {
+      agentId: fixture.agent.id,
+      channelId: fixture.publicRoom.id,
+      taskId: task.id,
+      title: ticketWorkThreadTitle({ title }),
+      triggerId: trigger.id,
+    }))
+    const work = await prisma.agentTicketWork.create({
+      data: {
+        agentId: fixture.agent.id, organizationId: scope.organizationId, projectId: scope.projectId,
+        startedByUserId: fixture.owner.id, status, taskId: task.id, threadId: thread.id, triggerId: trigger.id,
+      },
+    })
+    await writeTicketWorkThreadRow(prisma, {
+      event: { kind: 'woken', reason: 'pickup', summary: `work started — ${owner.displayName} moved the ticket into a start-work column`, workId: work.id },
+      threadId: thread.id,
+    })
+    tickets.push({ task, threadId: thread.id, title })
+  }
+  await writeTicketWorkThreadRow(prisma, {
+    event: {
+      kind: 'woken', reason: 'ticket_commented', summary: `${owner.displayName} commented`,
+      workId: (await prisma.agentTicketWork.findFirstOrThrow({ where: { threadId: tickets[0].threadId } })).id,
+    },
+    threadId: tickets[0].threadId,
+  })
+
+  // Reads the public room and is in it, so the room's composer is theirs —
+  // but is not a member of the project, so its boards are not theirs to edit.
+  const visitor = await prisma.user.create({
+    data: { displayName: 'Cleo Visitor', email: `agent-conversations-visitor-${Date.now()}@example.test` },
+  })
+  const visitorSessionId = randomUUID()
+  await prisma.$transaction([
+    prisma.authSession.create({ data: { id: visitorSessionId, userId: visitor.id } }),
+    prisma.refreshToken.create({
+      data: {
+        expiresAt: new Date(Date.now() + 86_400_000), familyId: visitorSessionId, providerId: 'local',
+        providerType: 'local-bootstrap', sessionId: visitorSessionId,
+        tokenHash: `agent-conversations-session-${visitor.id}`, userId: visitor.id,
+      },
+    }),
+    prisma.organizationMember.create({
+      data: { organizationId: scope.organizationId, role: MemberRole.member, userId: visitor.id },
+    }),
+    prisma.channelMember.create({
+      data: { channelId: fixture.publicRoom.id, role: MemberRole.member, userId: visitor.id },
+    }),
+  ])
+  return {
+    tickets,
+    visitor: { id: visitor.id, role: MemberRole.member, sessionId: visitorSessionId },
+  }
+}

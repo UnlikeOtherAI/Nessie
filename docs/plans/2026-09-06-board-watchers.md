@@ -1,6 +1,7 @@
 # Board watchers: telling somebody a ticket moved
 
-**Date:** 2026-09-06 · **Status:** built (§10 records the as-built deltas)
+**Date:** 2026-09-06 · **Status:** built (§10 records the as-built deltas; §11 retires
+agent watchers in favour of ticket triggers)
 **Owning surface:** Project → **Settings → Boards → <board> → Watchers**
 (`/projects/:projectId/settings?section=boards&board=<id>`)
 **Doorways:** the board header's Configure menu (whose sync row's sub-line
@@ -360,3 +361,40 @@ above as a description of the code.
   batched into the follow-up instead of racing it. That is the coalescing §2
   asked for, provided by machinery that already existed rather than a window of
   its own.
+
+## 11. Agent watchers retired (2026-09-23)
+
+[Ticket-driven agents](2026-09-23-ticket-driven-agents/triggers.md#board-watchers),
+T1, replaced the agent half of this plan. An agent watcher was only ever "wake
+an agent when a ticket moves", which is what a `ticket_changed` trigger is,
+and it had a different authority and a worse wake: the run landed in the
+adder's DM with no ticket tools, so the kickoff's own "check the board" could
+not be carried out. The §10 entries about the agent half describe code that no
+longer exists.
+
+- **Watchers are people.** `setBoardWatchers` refuses an agent recipient with
+  `AGENT_WATCHERS_RETIRED` and `AGENT_WATCHERS_RETIRED_SENTENCE`, and the
+  Watchers editor offers only people, with the line *"Agents start work from
+  the column menu."* People watchers keep their bells exactly as before.
+- **The rows that existed became disabled ticket triggers.**
+  `20260924000000_board_agent_watchers_to_ticket_triggers` turns every agent
+  row of an agent that could still be woken (an ordinary team agent, or the
+  adder's own private agent) into one paused, disabled `ticket_changed`
+  trigger named "Board watcher: <board>": follow-only, no start-work columns,
+  no instructions, authored by the adder, aimed at the agent's oldest public
+  channel of the board's project or at none. Nobody is notified; the
+  migration names each row in a WARNING line of the database log. A person
+  reviews it on the Triggers page, adds start-work columns and instructions,
+  and enables it.
+  Every agent row is then deleted.
+- **The wake path is gone.** `worker/src/control/board-watch-wake.ts` and the
+  agent branch of `resolveBoardWatchRecipients` are deleted; a legacy agent row
+  is never a recipient. The `BoardWatcher` columns only agent rows used
+  (`agent_id`, `channel_id`, `thread_id`, `launch_origin`) stay, empty:
+  dropping them would be a deploy-incompatible migration, and nothing reads
+  them any more.
+- **Inbound changes are ticket history now.** A board source's inbound change
+  writes `TaskEvent`s with the `source` origin (`board-source-apply-events.ts`),
+  so a ticket trigger that opts in with `follow.includeSourceEvents` wakes live
+  work from a mirrored board's own changes; none ever starts work. The watcher
+  bell above still comes from the same inbound classification.

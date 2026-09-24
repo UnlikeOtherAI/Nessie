@@ -222,7 +222,9 @@ test('REST schedule creation stamps trusted scope through run.execute', async ()
     })
 
     assert.equal(response.statusCode, 201)
+    // The authorship stamp is the session's user too, never the body's.
     assert.deepEqual(harness.getPersistedConfig(), {
+      authorUserId: USER_ID,
       createdByUserId: USER_ID,
       interval_minutes: 60,
       launchOrigin: {

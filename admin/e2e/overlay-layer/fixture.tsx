@@ -109,6 +109,8 @@ const get = async (path: string) => {
   if (route === `/api/tasks/${TASK}/comments`) return { comments: [], nextCursor: null, total: 0 }
   if (route === `/api/tasks/${TASK}/attachments`) return { attachments: [] }
   if (route === `/api/tasks/${TASK}/checklist`) return { steps: [] }
+  // No agent works this ticket: the dialog's work chip reads this and draws nothing.
+  if (route === `/api/tasks/${TASK}/work`) return { lastSkip: null, records: [] }
   return []
 }
 

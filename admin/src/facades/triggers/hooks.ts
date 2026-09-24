@@ -6,6 +6,7 @@ import type {
 } from '../../lib/api-client'
 import { agentKeys } from '../agents/keys'
 import { runKeys } from '../runs/keys'
+import { taskKeys } from '../tasks/keys'
 import { workflowKeys } from '../workflows/keys'
 import { triggerKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
@@ -100,6 +101,7 @@ export const useCreateAgentTrigger = () => {
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
       void queryClient.invalidateQueries({
         queryKey: agentKeys.triggers(variables.agentId),
       })
@@ -116,6 +118,7 @@ export const usePauseTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
     },
   })
 }
@@ -129,6 +132,7 @@ export const useResumeTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
     },
   })
 }
@@ -152,6 +156,7 @@ export const useReauthorizeTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
     },
   })
 }
@@ -178,6 +183,7 @@ export const useUpdateTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
       void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
     },
   })
@@ -192,6 +198,7 @@ export const useDeleteTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
     },
   })
 }
@@ -244,6 +251,7 @@ export const useFireTrigger = () => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
       void queryClient.invalidateQueries({ queryKey: runKeys.all })
     },
   })

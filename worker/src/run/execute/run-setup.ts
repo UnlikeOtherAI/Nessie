@@ -44,6 +44,13 @@ import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
+import {
+  loadTicketWorkRunFacts,
+  ticketWorkRecallSkipped,
+  TICKET_WORK_PERSON_TOOL_IDS,
+  TICKET_WORK_PROJECT_TOOL_IDS,
+  withoutEndedWorkWrites,
+} from './ticket-work-setup.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
   browserLoginRequestPromptTools,
@@ -82,9 +89,11 @@ export const PEER_PROJECT_TOOL_IDS: ReadonlySet<string> = new Set([
  *
  * A `ticket.work` run is decided by its own arm, first, so it can never be
  * admitted through the person-started arms below: it acts as the agent with
- * no person behind it, whatever its actor context says. Until its ticket tools
- * and agent task actor ship, that arm admits nothing
- * (docs/standards/ticket-work.md → "A `ticket.work` run acts as the agent").
+ * no person behind it, whatever its actor context says. It is admitted when a
+ * shared agent works a ticket of this channel's own project — the work record
+ * run setup re-read (`ticketWorkProjectId`) — and the caller still checks the
+ * agent's live binding here (docs/standards/ticket-work.md → "A `ticket.work`
+ * run acts as the agent").
  */
 export const isProjectDelegatedRun = (run: {
   agentKind: string
@@ -92,8 +101,14 @@ export const isProjectDelegatedRun = (run: {
   actorType: string
   interactive: boolean
   purpose?: string | null
+  /** The project of the work record a `ticket.work` run serves; null when none matched. */
+  ticketWorkProjectId?: string | null
 }): boolean => {
-  if (run.purpose === TICKET_WORK_PURPOSE) return false
+  if (run.purpose === TICKET_WORK_PURPOSE) {
+    return run.agentKind === 'shared'
+      && run.channelProjectId !== null
+      && run.ticketWorkProjectId === run.channelProjectId
+  }
   return run.agentKind === 'shared'
     && run.channelProjectId !== null
     && run.actorType === 'user'
@@ -103,17 +118,21 @@ export const isProjectDelegatedRun = (run: {
 /**
  * The project tools admitted for this run: none unless the run is a real
  * project delegation, and then only the peer set's tools the agent's policy
- * explicitly grants. Pure, so the admission can be pinned without a run.
+ * explicitly grants — for a `ticket.work` run, only those with an agent task
+ * actor (`TICKET_WORK_PROJECT_TOOL_IDS`). Pure, so the admission can be pinned
+ * without a run.
  */
 export const resolveProjectDelegatedToolIds = (
   projectDelegation: boolean,
   toolPolicy: Record<string, boolean> | null,
+  ticketWork = false,
 ): Set<string> => new Set(
   projectDelegation
     ? BUILTIN_TOOL_DEFINITIONS
       .filter(
         (tool) =>
           PEER_PROJECT_TOOL_IDS.has(tool.id)
+          && (!ticketWork || TICKET_WORK_PROJECT_TOOL_IDS.has(tool.id))
           && tool.projectDelegatedOnly
           && toolPolicy?.[tool.id] === true,
       )
@@ -149,9 +168,12 @@ export const holdsProjectWriteTools = (
 export const resolveWithheldRunToolIds = (input: {
   isHandoffTurn: boolean
   todosEnabled: boolean
+  /** A `ticket.work` run: never the tools that act for a person (`ticket-work-setup.ts`). */
+  ticketWork?: boolean
 }): ReadonlySet<string> => new Set([
   ...(input.isHandoffTurn ? [DELEGATE_TOOL_ID] : []),
   ...(input.todosEnabled ? [] : TODO_TOOL_IDS),
+  ...(input.ticketWork ? TICKET_WORK_PERSON_TOOL_IDS : []),
 ])
 
 export type RunExecutionSetup = {
@@ -203,6 +225,12 @@ export const prepareRunExecution = async (
     },
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
+  const ticketWorkRun = payload.actorContext.actionContext.purpose === TICKET_WORK_PURPOSE
+  const ticketWork = await loadTicketWorkRunFacts(deps.prisma, {
+    actorContext: payload.actorContext,
+    agentId: context.agent.id,
+    threadId: context.run.threadId,
+  })
   // Ordinary shared agents may receive project tools only when a real person
   // initiated this project-channel run (or a bounded durable peer request did),
   // the agent remains bound there, and its policy explicitly grants each tool.
@@ -212,11 +240,15 @@ export const prepareRunExecution = async (
     actorType: payload.actorContext.actor.actorType,
     interactive: payload.interactive === true,
     purpose: payload.actorContext.actionContext.purpose,
+    ticketWorkProjectId: ticketWork?.projectId ?? null,
   })
     && (await deps.prisma.agentBinding.count({
       where: { agentId: context.agent.id, channelId: context.channel.id },
     })) > 0
-  const projectDelegatedToolIds = resolveProjectDelegatedToolIds(projectDelegation, toolPolicy)
+  const projectDelegatedToolIds = withoutEndedWorkWrites(
+    resolveProjectDelegatedToolIds(projectDelegation, toolPolicy, ticketWorkRun),
+    ticketWork,
+  )
 
   // D3: the one place the identity-tool admission is decided. Both the schema
   // array below and the per-call gate downstream consume this same set, so a
@@ -263,6 +295,7 @@ export const prepareRunExecution = async (
       withheldToolIds: resolveWithheldRunToolIds({
         isHandoffTurn: input.isHandoffTurn,
         todosEnabled: agentRecord?.todosEnabled ?? false,
+        ticketWork: ticketWorkRun,
       }),
     },
   )
@@ -399,8 +432,12 @@ export const prepareRunExecution = async (
     organizationId: context.channel.organizationId,
     rootMessageId: context.conversationRootMessageId,
     threadId: context.run.threadId,
+    ...(ticketWorkRun ? { ticketWorkAgentId: context.agent.id } : {}),
     viewer,
   })
+  // Every kickoff is built from the ticket: the run has read its project, so
+  // what it writes outside that project's audience carries the project's basis.
+  if (ticketWork) context.consumedSources.add({ scopeId: ticketWork.projectId, scopeType: 'project' })
   // Mail is not a Message row, so a run woken by email would otherwise see only
   // the one-line reference. This is also where its disclosure scope is fed.
   const emailContext =
@@ -416,25 +453,25 @@ export const prepareRunExecution = async (
   // A run lent a project write recalls only what every project reader already
   // has, so recalled material cannot shut its own ticket writes.
   const projectWriteRecall = holdsProjectWriteTools(projectDelegatedToolIds, resolvedToolIds)
-  const memories = await retrieveRelevantMemories(
-    deps,
-    context,
-    payload,
-    input.prompt,
-    liveEntitlements,
-    { holdsProjectWriteTools: projectWriteRecall },
-  )
+  // A `ticket.work` run recalls nothing: its context is its kickoff and the
+  // filtered window above, and recall from its own thread would bring back
+  // exactly the messages that filter keeps out (`ticketWorkRecallSkipped`).
+  const recall = !ticketWorkRecallSkipped(payload.actorContext)
+  const memories = recall
+    ? await retrieveRelevantMemories(deps, context, payload, input.prompt, liveEntitlements, {
+        holdsProjectWriteTools: projectWriteRecall,
+      })
+    : []
   const legacyMemoryContext = buildMemoryContext(memories)
-  const history = await retrieveRelevantHistory(deps, context, payload, {
-    holdsProjectWriteTools: projectWriteRecall,
-    liveEntitlements,
-    prompt: input.prompt,
-    tokenBudget: Math.max(
-      0,
-      RETRIEVED_CONTEXT_TOKEN_BUDGET - estimateTokens(legacyMemoryContext ?? ''),
-    ),
-    viewer,
-  })
+  const history = recall
+    ? await retrieveRelevantHistory(deps, context, payload, {
+        holdsProjectWriteTools: projectWriteRecall,
+        liveEntitlements,
+        prompt: input.prompt,
+        tokenBudget: Math.max(0, RETRIEVED_CONTEXT_TOKEN_BUDGET - estimateTokens(legacyMemoryContext ?? '')),
+        viewer,
+      })
+    : { context: null, messageIds: [], tokenCount: 0 }
   const injectedRecallIds = memories.flatMap((memory) =>
     memory.recallId ? [memory.recallId] : [],
   )

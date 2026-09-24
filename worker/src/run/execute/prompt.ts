@@ -47,6 +47,7 @@ import {
   coverProviderInputComponent,
   deriveProviderInputComponent,
 } from './provenanced-provider-input.js'
+import { ticketWorkConversationWhere } from './ticket-work-setup.js'
 
 export { AGENT_SECRET_SAFETY_INSTRUCTION } from '@nessie/schemas'
 
@@ -394,6 +395,12 @@ export const loadConversation = async (
     rootMessageId?: string | undefined
     threadId: string
     /**
+     * A `ticket.work` run's agent: the window is then only that agent's own
+     * replies and the steer messages people who can edit the board wrote in
+     * the work thread (`ticketWorkConversationWhere`).
+     */
+    ticketWorkAgentId?: string
+    /**
      * Who this window is being assembled for. Required, not optional: a new
      * caller must decide rather than silently bypass the predicate. Autonomous
      * runs pass `{ kind: 'autonomous' }` and see only unrestricted turns.
@@ -410,13 +417,14 @@ export const loadConversation = async (
     // Exclude internal `system`-role messages (e.g. a PA scheduled kickoff
     // prompt) so they never leak into the model's conversation window. The
     // current run still receives its prompt directly via payload.messageId.
-    where: input.rootMessageId
-      ? {
-          threadId: input.threadId,
-          role: { not: 'system' },
-          OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }],
-        }
-      : { threadId: input.threadId, role: { not: 'system' } },
+    where: {
+      threadId: input.threadId,
+      role: { not: 'system' },
+      ...(input.rootMessageId
+        ? { OR: [{ id: input.rootMessageId }, { rootMessageId: input.rootMessageId }] }
+        : {}),
+      ...(input.ticketWorkAgentId ? { AND: [ticketWorkConversationWhere(input.ticketWorkAgentId)] } : {}),
+    },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

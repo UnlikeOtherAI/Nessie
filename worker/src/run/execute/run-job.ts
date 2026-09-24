@@ -25,7 +25,7 @@ import {
 } from '../tool-execution-errors.js'
 import type { LoopResult } from '../agentic-loop.js'
 import { RunDrainedError } from '../loop-resume.js'
-import { resolveCacheReadWeight, resolveEffectiveRunBudget } from '../run-budget.js'
+import { resolveCacheReadWeight, resolveRunJobBudget } from '../run-budget.js'
 import { runExecutionAgentLoop } from './agent-loop.js'
 import {
   persistRunSubscriptionBinding,
@@ -77,7 +77,7 @@ import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.
 import { loadGlobalAgentCatalogueBlock } from './global-agent-catalogue.js'
 import { assertGlobalAgentRunPlacement } from './global-agent-placement.js'
 import { assertPrivateAgentRunPlacement } from './private-agent-placement.js'
-import { resolveAgentTodoKickoffPrompt } from './todo-kickoff.js'
+import { resolveRunKickoffPrompt } from './run-kickoff-prompt.js'
 import { createCrashCheckpointWriter, loadCrashCheckpoint } from './crash-checkpoint.js'
 import { admitTriggerMessageLineage } from './private-conversation-lineage.js'
 import { revalidateChannelPolicyRun } from './channel-policy-admission.js'
@@ -401,7 +401,7 @@ const runJobUnderFence = async (
     // no other worker mistakes a slow run for a crashed one. Stopped in the
     // `finally` on every exit path.
     heartbeat = startExecutorHeartbeat(deps.prisma, context.run.id)
-    prompt = await resolveAgentTodoKickoffPrompt(deps.prisma, context, {
+    prompt = await resolveRunKickoffPrompt(deps.prisma, context, {
       messageId: payload.messageId,
       metadata: message.metadata,
       prompt,
@@ -547,7 +547,7 @@ const runJobUnderFence = async (
       onReacted: () => {
         reacted = true
       },
-      budget: resolveEffectiveRunBudget(context.agent.runLimits),
+      budget: resolveRunJobBudget(context.agent.runLimits, payload.actorContext),
       // Resolved once per run against the model this run will actually use
       // (the budget gate's degrade override wins over the agent's own).
       cacheReadWeight: await resolveCacheReadWeight(deps.prisma, {

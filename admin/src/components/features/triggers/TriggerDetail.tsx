@@ -18,6 +18,8 @@ import {
   getTriggerEventNames,
   type TriggerRegistryMaps,
 } from './trigger-presentation'
+import { useTicketTriggerFacts } from './ticket-trigger-facts'
+import { ticketDeliveryLine } from '../ticket-work/ticket-work-presentation'
 
 /**
  * What a trigger *is*, on its own screen: its description, one definition list
@@ -40,6 +42,7 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
   const webhookBaseUrl = getBaseUrl() || window.location.origin.replace(/\/$/, '')
   const eventNames = getTriggerEventNames(trigger)
   const nextRunRelative = formatRelativeTime(trigger.nextRunAt)
+  const ticketFacts = useTicketTriggerFacts(trigger, registry)
 
   return (
     <div className="grid max-w-3xl gap-5">
@@ -51,7 +54,8 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
       <KeyValueList
         items={[
           { label: 'Target', value: formatTriggerTarget(trigger, registry) },
-          { label: 'Schedule', value: getScheduleSummary(trigger) },
+          // A ticket trigger's facts below say when it acts, column by column.
+          ...(trigger.type === 'ticket_changed' ? [] : [{ label: 'Schedule', value: getScheduleSummary(trigger) }]),
           ...(trigger.status === 'active'
             && (trigger.nextRunAt || trigger.type === 'scheduled' || trigger.type === 'interval')
             ? [
@@ -70,6 +74,7 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
           ...(getRollingStatusLabel(trigger)
             ? [{ label: 'Quiet runs', value: getRollingStatusLabel(trigger) }]
             : []),
+          ...ticketFacts,
         ]}
       />
 
@@ -101,53 +106,63 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
           </EmptyState>
         ) : (
           <RowList className="mt-3" label="Recent deliveries">
-            {history.map((delivery) => (
-              <Row
-                key={delivery.id}
-                leading={
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: getDeliveryStatusColor(delivery.status) }}
-                  />
-                }
-                title={
-                  <span className="flex items-center gap-2">
-                    <span>{delivery.status}</span>
-                    <span className="font-normal text-xs text-[color:var(--tx3)]">
-                      {delivery.source ?? 'manual'}
-                      {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
+            {history.map((delivery) => {
+              // A ticket delivery says what it decided and why, in words: a
+              // skip is exactly the answer to "I moved it and nothing happened".
+              const ticketLine = ticketDeliveryLine(delivery.payload)
+              return (
+                <Row
+                  key={delivery.id}
+                  leading={
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: getDeliveryStatusColor(delivery.status) }}
+                    />
+                  }
+                  title={
+                    <span className="flex items-center gap-2">
+                      <span>{delivery.status}</span>
+                      <span className="font-normal text-xs text-[color:var(--tx3)]">
+                        {delivery.source ?? 'manual'}
+                        {delivery.runId ? ` · run ${delivery.runId.slice(0, 8)}` : ''}
+                      </span>
+                      {/* The delivery reached a worker; whether the run then
+                          succeeded is a different question, and the one the
+                          owner is actually asking when a schedule looks broken. */}
+                      {delivery.runStatus && delivery.runStatus !== 'completed' ? (
+                        <Pill radius="chip" size="sm" tone="danger" uppercase={false}>
+                          run {delivery.runStatus}
+                        </Pill>
+                      ) : null}
                     </span>
-                    {/* The delivery reached a worker; whether the run then
-                        succeeded is a different question, and the one the
-                        owner is actually asking when a schedule looks broken. */}
-                    {delivery.runStatus && delivery.runStatus !== 'completed' ? (
-                      <Pill radius="chip" size="sm" tone="danger" uppercase={false}>
-                        run {delivery.runStatus}
-                      </Pill>
-                    ) : null}
-                  </span>
-                }
-                trailing={
-                  <span className="text-xs tabular-nums text-[color:var(--tx3)]">
-                    {formatTimestamp(delivery.createdAt)}
-                  </span>
-                }
-              >
-                {delivery.errorMessage ? (
-                  <div className="mt-1 text-xs text-[var(--danger-text)]">
-                    {delivery.errorMessage}
-                  </div>
-                ) : null}
-                <details className="mt-2">
-                  <summary className="cursor-pointer select-none text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:text-[color:var(--tx2)]">
-                    Payload
-                  </summary>
-                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-[color:var(--tx2)]">
-                    {formatTriggerDeliveryPayload(delivery.payload)}
-                  </pre>
-                </details>
-              </Row>
-            ))}
+                  }
+                  trailing={
+                    <span className="text-xs tabular-nums text-[color:var(--tx3)]">
+                      {formatTimestamp(delivery.createdAt)}
+                    </span>
+                  }
+                >
+                  {ticketLine ? (
+                    <div className="mt-1 text-xs text-[color:var(--tx2)]" data-testid="ticket-delivery-line">
+                      {ticketLine}
+                    </div>
+                  ) : null}
+                  {delivery.errorMessage && !(ticketLine && delivery.status === 'skipped') ? (
+                    <div className="mt-1 text-xs text-[var(--danger-text)]">
+                      {delivery.errorMessage}
+                    </div>
+                  ) : null}
+                  <details className="mt-2">
+                    <summary className="cursor-pointer select-none text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--tx3)] hover:text-[color:var(--tx2)]">
+                      Payload
+                    </summary>
+                    <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-[color:var(--tx2)]">
+                      {formatTriggerDeliveryPayload(delivery.payload)}
+                    </pre>
+                  </details>
+                </Row>
+              )
+            })}
           </RowList>
         )}
       </section>

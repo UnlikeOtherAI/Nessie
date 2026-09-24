@@ -142,8 +142,25 @@ const makePrisma = (
         return { count: 1 }
       },
     },
+    // The home board and its pin: where the ticket rendered before the move,
+    // for the `column_entered` event every column change writes.
+    board: {
+      findFirst: async () => ({ id: boardId, columns }),
+    },
+    // No ticket trigger in this project, so no event enqueues a dispatch.
+    agentTrigger: { findFirst: async () => null },
+    // No agent is working the ticket, so entering a column tears nothing down
+    // — after taking the ticket's work lock, which this fake grants at once.
+    agentTicketWork: { findMany: async () => [] },
+    $queryRaw: async () => [],
     taskBoardPlacement: {
       findMany: async () => placements,
+      findUnique: async ({ where }: { where: { taskId_boardId: { taskId: string; boardId: string } } }) =>
+        placements.find(
+          (placement) =>
+            placement.taskId === where.taskId_boardId.taskId
+            && placement.boardId === where.taskId_boardId.boardId,
+        ) ?? null,
       upsert: async ({
         where,
         create,
@@ -169,7 +186,7 @@ const makePrisma = (
     taskEvent: {
       create: async ({ data }: { data: TaskEventFixture }) => {
         events.push(data)
-        return data
+        return { id: `event-${events.length}`, ...data }
       },
     },
     $executeRaw: async (
@@ -256,10 +273,13 @@ test('moveTaskToColumn auto-assigns an unassigned task moved into In Progress', 
   ])
   assert.deepEqual(
     events.map((event) => event.eventType),
-    ['status_changed', 'assigned'],
+    ['status_changed', 'assigned', 'column_entered'],
   )
   assert.deepEqual(events[1]?.payload, {
     by: actorId,
+    // No authenticated door was named, so the change is the platform's and
+    // can start no agent's work.
+    origin: { kind: 'system' },
     assigneeUserId: actorId,
     assigneeAgentId: null,
     reason: 'moved_to_in_progress',
@@ -283,8 +303,14 @@ test('moveTaskToColumn keeps an existing assignee when moved into In Progress', 
   assert.equal(result.status, 'in_progress')
   assert.deepEqual(
     events.map((event) => event.eventType),
-    ['status_changed'],
+    ['status_changed', 'column_entered'],
   )
+  assert.deepEqual(events[1]?.payload, {
+    by: actorId,
+    origin: { kind: 'system' },
+    fromColumnId: todoColumnId,
+    toColumnId: inProgressColumnId,
+  })
 })
 
 // The column names its board and the board names its project, so a column id

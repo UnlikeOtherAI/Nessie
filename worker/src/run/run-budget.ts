@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
-import { AgentRunLimitsSchema, type AgentRunLimits } from '@nessie/schemas'
+import { AgentRunLimitsSchema, TICKET_WORK_PURPOSE, type AgentRunLimits } from '@nessie/schemas'
 import { DEFAULT_CACHE_READ_WEIGHT, type BudgetLimits } from './loop-budget.js'
 
 // Effective run budget.
@@ -59,20 +59,49 @@ export const parseAgentRunLimits = (raw: unknown): AgentRunLimits | null => {
   return parsed.success ? parsed.data : null
 }
 
+/**
+ * The ceiling every `ticket.work` run is clamped to, whatever the agent's own
+ * `runLimits` say (docs/standards/ticket-work.md). Ticket work is a series of
+ * short supervisor turns — the platform wakes the agent again for everything
+ * that matters — and anyone who can edit a board can start one, so no agent's
+ * generous limits may turn a single wake into an hour of unattended spend.
+ */
+export const TICKET_WORK_RUN_CEILING = {
+  maxCostCents: 500,
+  maxIterations: 200,
+  maxTokens: 300_000,
+  maxToolCalls: 300,
+  maxWallclockMs: 1_200_000,
+} as const
+
 export const resolveEffectiveRunBudget = (
   runLimits: AgentRunLimits | null | undefined,
   env: Env = process.env,
+  /** The run's action purpose: a `ticket.work` run is clamped to its ceiling. */
+  purpose?: string | null,
 ): BudgetLimits => {
   const backstop = resolveRunBackstop(env)
+  const ceiling = purpose === TICKET_WORK_PURPOSE ? TICKET_WORK_RUN_CEILING : undefined
+  const clamp = (value: number, max: number | undefined): number => (max === undefined ? value : Math.min(value, max))
   return {
-    maxCostCents: runLimits?.maxCostCents ?? backstop.maxCostCents,
-    maxIterations: runLimits?.maxIterations ?? backstop.maxIterations,
-    maxTokens: runLimits?.maxTokens ?? backstop.maxTokens,
-    maxToolCalls: runLimits?.maxToolCalls ?? backstop.maxToolCalls,
-    maxWallclockMs: runLimits?.maxWallclockMs ?? backstop.maxWallclockMs,
+    maxCostCents: clamp(runLimits?.maxCostCents ?? backstop.maxCostCents, ceiling?.maxCostCents),
+    maxIterations: clamp(runLimits?.maxIterations ?? backstop.maxIterations, ceiling?.maxIterations),
+    maxTokens: clamp(runLimits?.maxTokens ?? backstop.maxTokens, ceiling?.maxTokens),
+    maxToolCalls: clamp(runLimits?.maxToolCalls ?? backstop.maxToolCalls, ceiling?.maxToolCalls),
+    maxWallclockMs: clamp(runLimits?.maxWallclockMs ?? backstop.maxWallclockMs, ceiling?.maxWallclockMs),
     toolTimeoutMs: TOOL_TIMEOUT_MS,
   }
 }
+
+/**
+ * A run job's budget: its agent's own limits under the deployment backstop,
+ * and a `ticket.work` run clamped to its ceiling, read from the job's own
+ * action purpose.
+ */
+export const resolveRunJobBudget = (
+  runLimits: AgentRunLimits | null | undefined,
+  actorContext: { actionContext: { purpose?: string | null | undefined } },
+): BudgetLimits => resolveEffectiveRunBudget(runLimits, process.env, actorContext.actionContext.purpose)
 
 // Delegate sub-agents are a discovery fan-out, not a second full run: their
 // envelope is fixed and small, and the parent run caps how many it may spawn.

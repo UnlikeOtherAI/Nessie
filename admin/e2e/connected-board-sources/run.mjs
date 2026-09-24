@@ -168,8 +168,17 @@ const exerciseWatcherSave = async (browser, fixtures) => {
     await page.goto(`${adminUrl}${watcherSettingsPath}`)
     const recipient = page.getByLabel('Tell')
     await recipient.waitFor()
+    // Watchers are people; an agent is set up to start work from a column.
+    await page.getByTestId('watchers-agents-moved').filter({ hasText: 'Start work with an agent' }).waitFor()
     await recipient.fill('watcher')
-    await page.getByRole('button', { name: 'UnlikeOtherAI QA watcher' }).click()
+    const person = page.getByRole('button', { name: 'UnlikeOtherAI QA watcher qa-watcher@example.test' })
+    await person.waitFor()
+    assert.equal(
+      await page.getByRole('button', { name: 'UnlikeOtherAI QA watcher agent' }).count(),
+      0,
+      'the address bar offers people only, never the agent of the same name',
+    )
+    await person.click()
     assert.equal(
       await page.getByRole('button', { name: 'UnlikeOtherAI QA backup' }).count(),
       0,
@@ -180,7 +189,7 @@ const exerciseWatcherSave = async (browser, fixtures) => {
     await save.click()
     await page.waitForTimeout(50)
     const call = fixtures.calls.filter((entry) => entry.pathname.endsWith('/watchers') && entry.method === 'PUT').at(-1)
-    assert.deepEqual(call.body.watchers, [{ id: ids.watcher, kind: 'agent' }], 'Save remains reachable and submits only the chosen watcher')
+    assert.deepEqual(call.body.watchers, [{ id: ids.watcher, kind: 'user' }], 'Save remains reachable and submits only the chosen watcher')
     assert.deepEqual(errors, [], `watcher page errors: ${errors.join('; ')}`)
   } finally {
     await close()

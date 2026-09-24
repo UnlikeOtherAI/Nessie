@@ -10,8 +10,10 @@ import {
   createAgentTrigger,
   createWorkflowTrigger,
   deleteAgentTrigger,
+  endTicketWorkForTrigger,
   getAgentTrigger,
   listAgentTriggers,
+  ticketTriggerResumeRefusal,
   updateAgentTrigger,
   validateTodoTemplateTriggerConfig,
   type AgentTriggerScope,
@@ -179,7 +181,11 @@ export const pauseAgentTrigger = async (
       },
       data: { enabled: false },
     })
-    return tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
+    const trigger = await tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
+    // A paused ticket trigger ends the work it holds in the same write
+    // (docs/standards/ticket-work.md); every other type holds none.
+    if (trigger?.type === 'ticket_changed') await endTicketWorkForTrigger(tx, { triggerId: trigger.id })
+    return trigger
   })
   return paused ? mapTriggerRecord(paused, TRIGGER_ADMIN_AUDIENCE) : null
 }
@@ -315,12 +321,13 @@ export const resumeAgentTrigger = async (
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     select: {
-      agent: { select: { agentKind: true, id: true, organizationId: true } },
+      agent: { select: { agentKind: true, id: true, name: true, organizationId: true } },
       config: true,
       enabled: true,
       healthReason: true,
       healthRevision: true,
       id: true,
+      scopeBoardId: true,
       status: true,
       targetChannelId: true,
       targetThreadId: true,
@@ -363,6 +370,15 @@ export const resumeAgentTrigger = async (
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Switching a ticket trigger back on resolves its stored config exactly
+    // as a create would: its channel still public and the agent in it, its
+    // instructions written, and no other enabled trigger holding its column
+    // (checked under the board's lock). A migrated board watcher with no
+    // channel or instructions is refused here, not enabled to do nothing.
+    if (existing.type === 'ticket_changed') {
+      const refusal = await ticketTriggerResumeRefusal(tx, existing)
+      if (refusal) throw new TriggerResumeError(refusal)
+    }
     if (existing.agent && Object.hasOwn(configRecord, 'todoTemplateId')) {
       await acquireAgentTodoAgentLock(tx, existing.agent.id)
       if (!await validateTodoTemplateTriggerConfig(tx, existing.agent.id, configRecord)) {

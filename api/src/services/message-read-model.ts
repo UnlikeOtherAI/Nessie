@@ -7,7 +7,13 @@ import {
   resolveGrantedScopeKeysForMessages,
   viewerSatisfiesBasis,
 } from '@nessie/runtime'
-import { parseAgentId, parseThreadId, parseUserId, type UoaSessionIdentity } from '@nessie/schemas'
+import {
+  parseAgentId,
+  parseThreadId,
+  parseUserId,
+  TicketWorkThreadEventSchema,
+  type UoaSessionIdentity,
+} from '@nessie/schemas'
 import { messageInclude, type MessageWithReactions } from '@nessie/team-admin'
 
 import type { ThreadMessageRecord } from '../contracts/messaging.js'
@@ -209,6 +215,20 @@ export const mapMessageRecordWithAttachments = async (
   return mapThreadMessageRecord(message, count, !readable, false)
 }
 
+/**
+ * The `system` rows a thread feed does show: a ticket work thread's compact
+ * event rows (`metadata.ticketWorkEvent`), which say why its agent woke or why
+ * the platform stopped it (docs/standards/ticket-work.md → "What the project
+ * sees"). Matched by the row's own closed `kind`, so a kickoff — which carries
+ * none — stays hidden.
+ */
+const TICKET_WORK_EVENT_ROWS: Prisma.MessageWhereInput = {
+  role: 'system',
+  OR: TicketWorkThreadEventSchema.options.map((option) => ({
+    metadata: { path: ['ticketWorkEvent', 'kind'], equals: option.shape.kind.value },
+  })),
+}
+
 const DEFAULT_MESSAGE_PAGE_SIZE = 50
 const MAX_MESSAGE_PAGE_SIZE = 200
 
@@ -254,12 +274,13 @@ export const listThreadMessages = async (
   const limit = Math.min(options.limit ?? DEFAULT_MESSAGE_PAGE_SIZE, MAX_MESSAGE_PAGE_SIZE)
 
   // Internal `system`-role messages (e.g. the personal assistant's scheduled
-  // kickoff prompt) drive a run but are never rendered in the thread feed.
+  // kickoff prompt) drive a run but are never rendered in the thread feed —
+  // except a ticket work thread's event rows, which exist to be seen.
   // The default feed lists top-level posts only (rootMessageId null); passing
   // a root id lists that root's replies (#233).
   const where: Prisma.MessageWhereInput = {
     threadId,
-    role: { not: 'system' },
+    OR: [{ role: { not: 'system' } }, TICKET_WORK_EVENT_ROWS],
     rootMessageId: options.rootMessageId ?? null,
   }
   const andClauses: Prisma.MessageWhereInput[] = []

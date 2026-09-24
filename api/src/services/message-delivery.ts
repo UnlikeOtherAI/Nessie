@@ -171,6 +171,12 @@ export type DeliverCreatedMessageInput = {
   log: DeliveryLog
   result: CreatedThreadMessage
   thread: DeliveredMessageThread
+  /**
+   * The thread is a ticket's work thread: the message starts no ordinary run.
+   * It wakes the thread's work record instead, as a `thread_message` follow
+   * (docs/standards/ticket-work.md → "The work thread").
+   */
+  ticketWorkThread?: boolean
 }
 
 export const deliverCreatedMessage = async (
@@ -341,6 +347,10 @@ export const deliverCreatedMessage = async (
       '[push] failed to enqueue dispatch job — recipients will not be notified',
     )
   }
+
+  // The work record's job was enqueued with the message itself
+  // (`createThreadMessage`'s `ticketWorkSteer`); nothing else wakes an agent here.
+  if (input.ticketWorkThread) return
 
   if (result.channelAgents.length > 0) {
     // A single-member system DM — the Personal Assistant's, or a global

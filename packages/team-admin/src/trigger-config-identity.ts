@@ -1,4 +1,8 @@
 const SERVER_OWNED_TRIGGER_CONFIG_KEYS = new Set([
+  // Who set the trigger up, for every type. Authorship only: it grants
+  // nothing, and no fire path reads it as the identity a run acts as. That
+  // identity is `createdByUserId` with `launchOrigin`, a schedule's alone.
+  'authorUserId',
   'createdByUserId',
   'createdViaTool',
   'launchOrigin',

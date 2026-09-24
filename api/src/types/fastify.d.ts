@@ -39,5 +39,14 @@ declare module 'fastify' {
      * the actor context beside it is an ordinary one for the granting human.
      */
     agentCredential?: AgentAccessCredential
+    /**
+     * Set by the global auth hook, and only there, when the request
+     * authenticated with a person's own session token — the web admin, the
+     * desktop shell and the phone apps. A ticket change that came through
+     * such a request is the only one whose `TaskEvent` origin is `session`,
+     * and so the only one that can start or steer an agent's ticket work
+     * (`taskEventOriginFor`, docs/standards/ticket-work.md).
+     */
+    authenticatedWith?: 'session'
   }
 }

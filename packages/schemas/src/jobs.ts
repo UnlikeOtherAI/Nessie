@@ -561,6 +561,23 @@ export type TriggerTicketDispatchJobPayload =
   z.infer<typeof TriggerTicketDispatchJobPayloadSchema>
 
 /**
+ * `ticket-work.thread-message` queue job — a person who can edit the board
+ * wrote in a ticket's work thread. The message starts no ordinary run: the
+ * message route enqueues this instead of orchestration, and the worker decides
+ * it as a `thread_message` follow of the thread's live work record, with a
+ * delivery deduped on `thread:<triggerId>:<messageId>`
+ * (docs/standards/ticket-work.md → "The work thread").
+ */
+export const TICKET_WORK_THREAD_MESSAGE_TOPIC = 'ticket-work.thread-message'
+
+export const TicketWorkThreadMessageJobPayloadSchema = z.object({
+  organizationId: z.string().uuid(),
+  messageId: z.string().uuid(),
+})
+export type TicketWorkThreadMessageJobPayload =
+  z.infer<typeof TicketWorkThreadMessageJobPayloadSchema>
+
+/**
  * `trigger.document.dispatch` queue job — the end of one `document_changed`
  * trigger's quiet window for one page. Saves inside the window coalesce into
  * one job, so it carries no version: the handler reads the page's latest

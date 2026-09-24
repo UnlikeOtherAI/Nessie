@@ -135,3 +135,28 @@ runDatabaseTest('idempotency still holds within a caller namespace', async () =>
     await prisma.$disconnect()
   }
 })
+
+// A ticket trigger has no thread to run in: its work starts from a person's
+// move, one work thread per ticket (docs/standards/ticket-work.md). A hand
+// fire would be an ordinary run in the channel's General thread acting as
+// whoever fired it — even for a row that still names a thread.
+runDatabaseTest('a ticket trigger is never fired by hand', async () => {
+  const prisma = new PrismaClient()
+  const seed = await seedScheduledTrigger(prisma)
+  try {
+    await prisma.agentTrigger.update({ where: { id: seed.triggerId }, data: { type: 'ticket_changed', config: {} } })
+    const result = await dispatchAgentTrigger(prisma, {
+      dedupeKey: 'by-hand',
+      payload: { note: 'run now' },
+      prompt: 'Do something in General.',
+      source: 'manual',
+      triggerId: seed.triggerId,
+    })
+    assert.deepEqual(result, { kind: 'rejected', reason: 'ticket_trigger_not_fireable' })
+    assert.equal(await prisma.agentTriggerDelivery.count({ where: { triggerId: seed.triggerId } }), 0)
+    assert.equal(await prisma.run.count({ where: { triggerId: seed.triggerId } }), 0)
+  } finally {
+    await prisma.organization.deleteMany({ where: { id: seed.organizationId } })
+    await prisma.$disconnect()
+  }
+})

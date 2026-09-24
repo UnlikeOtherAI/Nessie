@@ -12,6 +12,7 @@ import {
   listProjectLabels,
   moveProjectTaskToColumn,
   setTaskLabels,
+  taskDetailSha256,
   updateBoardLabel,
   updateProjectTask,
   type BoardSourceWriteBack,
@@ -177,10 +178,16 @@ runDatabaseTest('setTaskLabels writes Nessie-only labels locally and asks the pr
   assert.equal(readWrite.calls.length, 1)
   assert.deepEqual(await labelsOf(prisma, s.mirroredTaskId), [labels.ownedA.id, labels.ownedB.id].sort())
 
-  // History rows carry who and what.
+  // History rows carry who, through which door, and what. The seed's actor
+  // names no door, so it is the platform's: it can start no agent's work.
   const history = await eventsOf(prisma, s.mirroredTaskId, 'labels_changed')
   assert.equal(history.length, 3)
-  assert.deepEqual(history[2], { by: s.memberId, added: [], removed: [labels.local.id] })
+  assert.deepEqual(history[2], {
+    by: s.memberId,
+    origin: { kind: 'system' },
+    added: [],
+    removed: [labels.local.id],
+  })
 
   // A label from another project, and an outsider, are refused.
   const otherProjectLabel = await createLabel(prisma, s.otherProjectBoard, 'X')
@@ -261,7 +268,12 @@ runDatabaseTest('updateProjectTask writes labels and a detail_edited row in one 
   assert.ok(!('error' in result))
   // A native ticket keeps any of its board's labels locally.
   assert.deepEqual(result.labels.map((label) => label.name), ['Local', 'Owned A'])
-  assert.deepEqual(await eventsOf(prisma, s.nativeTaskId, 'detail_edited'), [{ by: s.memberId }])
+  // The text itself is never copied into history: only its hash, which a
+  // ticket wake compares with what the ticket says when it quotes it.
+  assert.deepEqual(
+    await eventsOf(prisma, s.nativeTaskId, 'detail_edited'),
+    [{ by: s.memberId, origin: { kind: 'system' }, detailSha256: taskDetailSha256('## Heading') }],
+  )
   assert.equal((await eventsOf(prisma, s.nativeTaskId, 'labels_changed')).length, 1)
 
   // An unchanged description writes no history line.

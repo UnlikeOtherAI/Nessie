@@ -106,15 +106,20 @@ sentence changes only if the invariant itself did.
   reads that server's request log. It covers the DM rail, two isolated
   conversations named by their first message, the one-empty-at-a-time rule
   behind the "New conversation" button, the rename doorway, an ordinary
-  room's own doorway and a two-agent room's agent strip; two assertions
-  deliberately pin known gaps and say so in their own message.
+  room's own doorway and a two-agent room's agent strip, and a ticket's work
+  threads folded under Tickets at every width with their wake rows and the
+  read-only line for a room member who cannot edit the board; two assertions
+  deliberately pin known gaps and say so in their own message. It starts its
+  own API and admin, on `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT` when set.
 - **Agent proposal card coverage:** run
   `pnpm --filter @nessie/admin test:e2e:agent-proposal-card`. A pure fixture
   suite — it drives the real card renderer over a stubbed presenter, so it
   needs no database. CI runs it in the project-usability lifecycle, after the
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
-  model dropdown, and the tool/app fold that arrives closed.
+  model dropdown, the tool/app fold that arrives closed, and a ticket-driven
+  agent's "Starts work when" row (with no "Runs on" row until machine access
+  ships).
 - **Android shell bottom-edge coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:android-dock`. It drives
   the admin with the Android shell's own globals and its published dock
@@ -175,7 +180,13 @@ sentence changes only if the invariant itself did.
   still shows its uploader, remover, reason and Download (shot 13), and the
   full-size viewer opened from the ticket's Attachments or a comment's file
   sitting on the blocking layer and owning Back, so Back closes it and leaves
-  the ticket open (shots 14 and 15, phone). The
+  the ticket open (shots 14 and 15, phone). With `&work=` it shots an agent's
+  work chip in each T1 state — working, with no thread link for a reader who
+  may not open it, parked, parked after a move back that did not resume it,
+  stopped at its wake limit, done — its work history opened, the move that
+  started nothing, the card's avatar and state dot, and the chip on a phone
+  (shots 16–18; the rules are in
+  [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md)). The
   real-stack half — a label following a ticket to another board by name, a
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
@@ -238,13 +249,19 @@ sentence changes only if the invariant itself did.
 - **Agent triggers coverage:** run
   `pnpm --filter @nessie/admin test:e2e:agent-triggers`. A pure fixture suite
   (`NESSIE_AGENT_TRIGGERS_E2E_FIXTURE`) that drives the real
-  `TriggerEditorDialog` and `TriggerTypePicker` over a stubbed client; CI runs
-  it in the project-usability lifecycle after the overlay-layer suite. Today it
-  pins the unreleased trigger types: the picker offers exactly manual,
-  schedule, interval, webhook and event, the dialog's markup names neither
-  `ticket_changed` nor `document_changed`, and a create posts the type picked,
-  at 1280 and 390 px. The PR that releases `ticket_changed` extends it over
-  each configuration state. The rules are in
+  `TriggerEditorDialog`, `TriggerTypePicker`, `KanbanBoard` and `TriggerDetail`
+  over a stubbed client; CI runs it in the project-usability lifecycle after
+  the overlay-layer suite. It pins the picker (the five released types plus
+  Ticket change for an agent, `document_changed` named nowhere), a ticket
+  trigger's form (public project channels only and why, the board and
+  columns picked, an end column that cannot start work), a second pickup on a
+  column refused **on the pickup field** and the typed config the corrected
+  create posts, the board's "Moving here starts work" badge at the head of a
+  track still aligned with its neighbours, card dots and the column menu on
+  every column but Done that opens the editor prefilled with its type fixed,
+  and a ticket trigger's page
+  with its named facts and deliveries in words — at 1280 and 390 px (the
+  phone paged to the columns that matter). The rules are in
   [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md).
 - **Browser Cloud usability coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:browser-cloud`.

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { ApiClientError } from '@nessie/client-core'
 import {
   useCreateAgentTrigger,
   useCreateWorkflowInstallationTrigger,
@@ -23,6 +24,13 @@ import {
 } from './trigger-config'
 import { EventTriggerFields } from './EventTriggerFields'
 import { IntervalTriggerFields } from './IntervalTriggerFields'
+import { TicketTriggerFields } from './TicketTriggerFields'
+import {
+  groupTicketRefusals,
+  isTicketTargetChannel,
+  TICKET_TARGET_CHANNEL_HINT,
+  type TicketFieldErrors,
+} from './ticket-trigger-form'
 import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
 import { WebhookTriggerFields } from './WebhookTriggerFields'
@@ -35,6 +43,12 @@ type TriggerEditorDialogProps = {
   agents: AgentRecord[]
   channels: ChannelRecord[]
   defaultTarget?: DefaultTarget
+  /**
+   * Whose unsent draft a create keeps. A doorway that prefills the editor (the
+   * board's column menu) names its own, so the Triggers page's half-written
+   * create never replaces the column it was opened for.
+   */
+  draftId?: string
   onClose: () => void
   onSaved: (trigger: AgentTriggerRecord) => void
   open: boolean
@@ -47,6 +61,7 @@ export const TriggerEditorDialog = ({
   agents,
   channels,
   defaultTarget,
+  draftId,
   onClose,
   onSaved,
   open,
@@ -59,6 +74,8 @@ export const TriggerEditorDialog = ({
   const createWorkflowTrigger = useCreateWorkflowInstallationTrigger()
   const updateTrigger = useUpdateTrigger()
   const [formError, setFormError] = useState<string | null>(null)
+  // A ticket trigger's server refusals, on the field each names.
+  const [fieldErrors, setFieldErrors] = useState<TicketFieldErrors>({})
 
   // The trigger as stored (or the create defaults) — the draft's baseline, so a
   // dialog opened and dismissed untouched leaves nothing behind.
@@ -75,7 +92,7 @@ export const TriggerEditorDialog = ({
   // PUT would re-arm a live schedule on every keystroke, so Save stays the act
   // that changes when something fires.
   const triggerDraft = useDraft<TriggerFormState>(
-    open ? draftKey('trigger', trigger?.id ?? 'new') : null,
+    open ? draftKey('trigger', trigger?.id ?? draftId ?? 'new') : null,
     { initial: baseline },
   )
   const form = triggerDraft.draft
@@ -93,10 +110,16 @@ export const TriggerEditorDialog = ({
     [agents, form.agentId],
   )
 
+  const isTicketTrigger = form.triggerType === 'ticket_changed'
   const agentChannels = useMemo(() => {
     const boundChannelIds = new Set(selectedAgent?.channelIds ?? [])
-    return channels.filter((candidate) => boundChannelIds.has(candidate.id))
-  }, [channels, selectedAgent])
+    // A ticket trigger works in a public project channel only, so that every
+    // ticket reader can open the ticket's work thread; the server refuses
+    // anything else, and the field says why.
+    return channels.filter((candidate) =>
+      boundChannelIds.has(candidate.id) && (!isTicketTrigger || isTicketTargetChannel(candidate)))
+  }, [channels, isTicketTrigger, selectedAgent])
+  const targetChannel = channels.find((candidate) => candidate.id === form.targetChannelId)
 
   const selectedWorkflowInstallation = useMemo(
     () =>
@@ -116,6 +139,7 @@ export const TriggerEditorDialog = ({
   useEffect(() => {
     if (!open) return
     setFormError(null)
+    setFieldErrors({})
   }, [open, trigger])
 
   useEffect(() => {
@@ -173,6 +197,7 @@ export const TriggerEditorDialog = ({
   // Dismissing is not discarding: the draft stays under this trigger's key.
   const handleClose = () => {
     setFormError(null)
+    setFieldErrors({})
     onClose()
   }
 
@@ -185,10 +210,12 @@ export const TriggerEditorDialog = ({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFormError(null)
+    setFieldErrors({})
 
     const result = buildSubmitPayload(form, mode, trigger)
     if ('error' in result) {
-      setFormError(result.error)
+      if (result.field) setFieldErrors({ [result.field]: result.error })
+      else setFormError(result.error)
       return
     }
     const payload = result.payload
@@ -253,6 +280,13 @@ export const TriggerEditorDialog = ({
       onSaved(created)
       closeSaved()
     } catch (error) {
+      if (error instanceof ApiClientError && error.code === 'TRIGGER_CONFIG_REFUSED') {
+        // Field by field, where the person has to change it.
+        const refused = groupTicketRefusals(error.details)
+        setFieldErrors(refused.fields)
+        setFormError(refused.rest.length > 0 ? refused.rest.join(' ') : 'Fix the fields marked below.')
+        return
+      }
       setFormError(error instanceof Error ? error.message : 'Unable to save trigger.')
     }
   }
@@ -262,6 +296,8 @@ export const TriggerEditorDialog = ({
     scheduleMode: form.scheduleMode,
   })
   const showTargetChooser = mode === 'create'
+  // A doorway that opened the editor on one type (the board's column menu) keeps it.
+  const typeLocked = mode === 'create' && defaultTarget?.targetKind === 'agent' && Boolean(defaultTarget.prefill)
   const showAgentTarget = showTargetChooser && form.targetKind === 'agent'
   const showWorkflowTarget = showTargetChooser && form.targetKind === 'workflow'
   const webhookBaseUrl = getBaseUrl() || window.location.origin.replace(/\/$/, '')
@@ -288,6 +324,13 @@ export const TriggerEditorDialog = ({
       <form className="grid max-h-[80dvh] gap-4 overflow-y-auto pr-1" onSubmit={handleSubmit}>
           <TriggerMetaFields
             agentChannels={agentChannels}
+            {...(isTicketTrigger
+              ? {
+                  channelEmptyLabel: 'Add this agent to a public project channel first',
+                  channelError: fieldErrors.targetChannelId,
+                  channelHint: TICKET_TARGET_CHANNEL_HINT,
+                }
+              : {})}
             agents={agents}
             currentTriggerLabel={currentTriggerLabel}
             form={form}
@@ -298,6 +341,7 @@ export const TriggerEditorDialog = ({
             setForm={setForm}
             showAgentTarget={showAgentTarget}
             showTargetChooser={showTargetChooser}
+            typeLocked={typeLocked}
             showWorkflowTarget={showWorkflowTarget}
             templatesById={templatesById}
             trigger={trigger}
@@ -322,6 +366,15 @@ export const TriggerEditorDialog = ({
 
           {form.triggerType === 'event' ? (
             <EventTriggerFields form={form} setForm={setForm} />
+          ) : null}
+
+          {isTicketTrigger ? (
+            <TicketTriggerFields
+              errors={fieldErrors}
+              form={form}
+              projectId={targetChannel?.projectId ?? null}
+              setForm={setForm}
+            />
           ) : null}
 
           <div className="grid gap-1.5">

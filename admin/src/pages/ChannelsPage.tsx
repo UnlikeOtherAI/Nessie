@@ -34,6 +34,7 @@ import { useChannelTitleFavorite } from './channels/useChannelTitleFavorite'
 import { useChannelParticipants } from './channels/useChannelParticipants'
 import { useChannelChatTools } from './channels/useChannelChatTools'
 import { useChannelMessageSurface } from './channels/useChannelMessageSurface'
+import { useTicketWorkThreadGate } from '../facades/ticket-work/hooks'
 
 export const ChannelsPage = () => {
   const location = useLocation()
@@ -93,6 +94,18 @@ export const ChannelsPage = () => {
       ?? (personalAssistantState?.agent?.id === conversationRecord.agentId
         ? personalAssistantState.agent
         : null)
+    : null
+  // A ticket's work thread is written in only by people who can edit its
+  // board (docs/standards/ticket-work.md → "The work thread"); asked only for
+  // a conversation that names a ticket.
+  const workThreadGate = useTicketWorkThreadGate(threadId, inConversation && Boolean(conversationRecord?.ticket)).data
+  const workThread = workThreadGate
+    ? {
+        messageOutcome: workThreadGate.messageOutcome,
+        readOnly: !workThreadGate.viewerCanPost,
+        taskTitle: workThreadGate.taskTitle,
+        ticketHref: `/projects/${workThreadGate.projectId}/board?task=${encodeURIComponent(workThreadGate.taskId)}`,
+      }
     : null
   const conversationHeader = inConversation && conversationRecord
     ? {
@@ -303,6 +316,7 @@ export const ChannelsPage = () => {
           isExternalAgentConversation={isExternalAgentActiveChannel}
           triggersTabAvailable={triggersTabAvailable}
           todosTabAvailable={todosTabAvailable}
+          workThread={workThread}
           isPersonalAssistantConversation={isPersonalAssistantConversation}
           joinPending={messageSurface.joinChannel.isPending}
           mentionEntities={messageSurface.mentionEntities}

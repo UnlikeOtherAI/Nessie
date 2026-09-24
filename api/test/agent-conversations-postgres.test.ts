@@ -1070,6 +1070,42 @@ runDatabaseTest('a room’s unread badge counts its conversations too', async ()
   })
 })
 
+runDatabaseTest('a ticket\'s work thread names its ticket; every other conversation names none', async () => {
+  await withSeed(async (prisma, s) => {
+    // `ensureTicketWorkThread` writes `{ taskId, triggerId }` on the thread;
+    // the list reads it back so it can fold ticket threads under Tickets.
+    const task = await prisma.task.create({
+      data: { organizationId: s.organizationId, projectId: s.projectId, title: 'Fix login redirect' },
+    })
+    const workThread = await prisma.thread.create({
+      data: {
+        agentId: s.agentId, channelId: s.publicChannelId, title: 'Fix login redirect',
+        metadata: { taskId: task.id, triggerId: randomUUID() },
+      },
+    })
+    // A thread whose metadata only happens to carry a task id is not one.
+    await prisma.thread.create({
+      data: { agentId: s.agentId, channelId: s.publicChannelId, title: 'Mentions a task', metadata: { taskId: task.id } },
+    })
+    const page = await listAgentConversationsForUser(prisma, {
+      agentId: s.agentId,
+      organizationId: s.organizationId,
+      userId: s.userA,
+    })
+    assert.ok(page)
+    const byTitle = new Map(page.data.map((row) => [row.title, row.ticket]))
+    assert.deepEqual(byTitle.get('Fix login redirect'), { taskId: task.id })
+    assert.equal(byTitle.get('Mentions a task'), null)
+    assert.equal(byTitle.get('public'), null)
+    assert.deepEqual(
+      (await loadConversationForUser(prisma, {
+        organizationId: s.organizationId, threadId: workThread.id, userId: s.userA,
+      }))?.ticket,
+      { taskId: task.id },
+    )
+  })
+})
+
 runDatabaseTest('a conversation thread is reachable by the same predicate as any other', async () => {
   await withSeed(async (prisma, s) => {
     const started = await startAgentConversation(prisma, {

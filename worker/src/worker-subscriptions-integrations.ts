@@ -32,6 +32,10 @@ import {
   AgentEmailInboundJobPayloadSchema,
   AgentEmailRetentionJobPayloadSchema,
   AgentEmailSendJobPayloadSchema,
+  TICKET_WORK_THREAD_MESSAGE_TOPIC,
+  TicketWorkThreadMessageJobPayloadSchema,
+  TRIGGER_TICKET_DISPATCH_TOPIC,
+  TriggerTicketDispatchJobPayloadSchema,
 } from '@nessie/schemas'
 import {
   executeBoardSourceSync,
@@ -52,6 +56,8 @@ import {
   processAgentEmailSendJob,
   type AgentEmailJobDeps,
 } from './control/agent-email/jobs.js'
+import { dispatchTicketEvent } from './control/ticket-trigger-dispatch.js'
+import { dispatchTicketThreadMessage } from './control/ticket-thread-message-dispatch.js'
 import { enqueueBoardSourceHealthAlert } from './queue.js'
 import { registerExecutionRunners } from './control/execution.js'
 import type { WorkerIntegrationSubscriptionDeps } from './worker-runtime-types.js'
@@ -160,6 +166,29 @@ subscribe(
   async (job) => {
     const payload = BoardSourceHealthAlertJobPayloadSchema.parse(job.payload)
     await writeHealthAlerts(prisma, payload)
+  },
+  { signal: abortSignal },
+)
+
+// Ticket triggers: one TaskEvent, decided for every ticket_changed trigger
+// that can see it. Board sources are its busiest producer, beside every
+// person's and agent's ticket change (docs/standards/ticket-work.md).
+subscribe(
+  TRIGGER_TICKET_DISPATCH_TOPIC,
+  async (job) => {
+    const payload = TriggerTicketDispatchJobPayloadSchema.parse(job.payload)
+    await dispatchTicketEvent(prisma, payload)
+  },
+  { signal: abortSignal },
+)
+
+// A person's message in a ticket's work thread: a thread_message follow of
+// the thread's live work, never an ordinary run.
+subscribe(
+  TICKET_WORK_THREAD_MESSAGE_TOPIC,
+  async (job) => {
+    const payload = TicketWorkThreadMessageJobPayloadSchema.parse(job.payload)
+    await dispatchTicketThreadMessage(prisma, payload)
   },
   { signal: abortSignal },
 )

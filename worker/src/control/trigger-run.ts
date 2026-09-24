@@ -143,7 +143,12 @@ const occurrenceAlreadyHandled = (
   )
 }
 
-const recordTriggerRunFailure = async (
+/**
+ * A dispatch that threw: a retryable failed delivery (outside the rolled-back
+ * transaction), plus the trigger's health when the failure is a classified
+ * authority loss. Shared with the ticket dispatcher.
+ */
+export const recordTriggerRunFailure = async (
   prisma: PrismaClient,
   input: {
     dedupeKey?: string

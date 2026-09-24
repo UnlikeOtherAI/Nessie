@@ -9,6 +9,7 @@ import {
 } from './ids.js'
 import { RunStatusSchema, SystemChannelTypeSchema } from './lifecycle.js'
 import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
+import { TicketWorkThreadRefSchema } from './ticket-work-view.js'
 
 /**
  * A conversation with an agent, on the wire.
@@ -103,6 +104,12 @@ export const AgentConversationRecordSchema = z.object({
    * after the live dot goes. Null until a run has finished in this thread.
    */
   lastRunOutcome: RunOutcomeSchema.nullable(),
+  /**
+   * The ticket this conversation is the work thread of, from the thread's own
+   * metadata; null for every other conversation. The list folds these under a
+   * Tickets group (docs/standards/ticket-work.md → "The work thread").
+   */
+  ticket: TicketWorkThreadRefSchema.nullable().optional(),
   createdAt: TimestampSchema,
 })
 export type AgentConversationRecord = z.infer<typeof AgentConversationRecordSchema>

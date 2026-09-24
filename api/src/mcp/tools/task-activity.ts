@@ -160,7 +160,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const result = await createTaskComment(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         { taskId: task.id, body: input.body as string },
         { writeBack: createTaskCommentWriteBack(context.prisma, context.encryptionKeyRing) },
       )
@@ -192,7 +192,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const result = await updateTaskComment(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         { taskId: task.id, commentId: input.commentId as string, body: input.body as string },
         { writeBack: createTaskCommentWriteBack(context.prisma, context.encryptionKeyRing) },
       )
@@ -216,7 +216,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const result = await deleteTaskComment(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         { taskId: task.id, commentId: input.commentId as string },
         { writeBack: createTaskCommentWriteBack(context.prisma, context.encryptionKeyRing) },
       )
@@ -240,7 +240,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const result = await listTaskAttachments(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         { taskId: task.id },
       )
       if ('error' in result) return describeWriteFailure(result)
@@ -289,7 +289,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
         }
       }
 
-      const actor = taskActorFromContext(context.actorContext)
+      const actor = taskActorFromContext(context.actorContext, context.taskEventOrigin)
       const attribution = attributionFromActorContext(context.actorContext)
       let attachmentId: string
       try {
@@ -342,7 +342,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const listed = await listTaskAttachments(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         { taskId: task.id },
       )
       if ('error' in listed) return describeWriteFailure(listed)
@@ -391,7 +391,7 @@ export const taskActivityTools = (): McpToolDefinition[] => [
       if (!task) return { error: TASK_NOT_REACHABLE }
       const result = await removeTaskAttachment(
         context.prisma,
-        taskActorFromContext(context.actorContext),
+        taskActorFromContext(context.actorContext, context.taskEventOrigin),
         {
           taskId: task.id,
           attachmentId: input.attachmentId as string,

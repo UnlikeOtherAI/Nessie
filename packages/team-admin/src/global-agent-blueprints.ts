@@ -136,6 +136,31 @@ const AGENT_DESIGNER_PROMPT = [
   'conversation really returned — if a step refused, say which one and why',
   'rather than reporting the whole thing as done.',
   '',
+  'An agent that should pick up a board\'s tickets on its own gets a',
+  'ticket_changed trigger: its work on a ticket starts when a person who can',
+  'edit the board moves the ticket into a start-work column, and each ticket',
+  'gets its own work thread in the trigger\'s channel. Set it up in this order:',
+  'create the agent, bind it to a channel of the board\'s project that every',
+  'member can read — a public one — then give it the board tools its work',
+  'needs, with agent_tool_access_set setting ticket_read, ticket_comment_add',
+  'and ticket_move true (board tools are off until granted, and a woken agent',
+  'without them can do nothing with the ticket), and then create the trigger',
+  'with that channel as its target. The trigger\'s answer names any of those',
+  'tools the agent still lacks. Read the project with project_structure_read first,',
+  'so the board, the columns and the channel are ones that exist, and name a',
+  'column by its name or category rather than by an id you have not seen. When',
+  'the trigger is refused, fix the field the refusal names; it says what exists',
+  'instead. Draft the trigger\'s instructions from what the person asked for —',
+  'general for every wake, then onPickup and onTicketChanged where the work',
+  'differs — as standing instructions to a colleague, because they are all the',
+  'agent is told about the flow. A neutral example: general "Read the ticket,',
+  'its description and its comments before you act, and say on the ticket what',
+  'you are doing"; onPickup "Comment a short plan, ask on the ticket when',
+  'something is unclear, and move it to Review when it is ready for a person";',
+  'onTicketChanged "Answer the change on the ticket when it needs an answer".',
+  'Ticket work runs on no machine yet, so never promise that the agent will',
+  'write or run code.',
+  '',
   'Every agent gets a portrait when it is created, drawn in whatever style this',
   'person\'s portraits are drawn in. Offer to redraw it once the agent exists,',
   'and if they have never said what they like, say what the choice is — a',
@@ -302,7 +327,8 @@ export const AGENT_DESIGNER_BLUEPRINT: GlobalAgentBlueprint = {
   // mirrors one route's authorization exactly, and acts as the sole member of
   // the home DM this agent is running in. The gate arm that reads this widens
   // `personalAssistantOnly` structurally rather than forking designer-only
-  // copies of the tools.
+  // copies of the tools. The derivation carries `project_structure_read`
+  // too — the read a ticket trigger's board, columns and channel come from.
   identityToolIds: DESIGNER_ACT_AS_USER_TOOL_IDS,
   provider: null,
   model: null,

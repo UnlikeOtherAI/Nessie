@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply } from 'fastify'
 
 import {
   AgentTriggerActivityRecordSchema,
@@ -24,7 +24,11 @@ import { registerTriggerIntakeRoutes } from './trigger-intake.js'
 import { registerTriggerLifecycleRoutes } from './trigger-lifecycle.js'
 import type { RouteDeps } from './types.js'
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
-import { captureScheduledLaunchOrigin, unreleasedTriggerTypeRefusal } from '@nessie/team-admin'
+import {
+  captureScheduledLaunchOrigin,
+  TriggerConfigRefusalError,
+  unreleasedTriggerTypeRefusal,
+} from '@nessie/team-admin'
 import {
   deleteAgentTrigger as deleteSharedAgentTrigger,
   getAgentTrigger as getSharedAgentTrigger,
@@ -35,6 +39,16 @@ import {
 // Read once at startup, exactly like the runtime signer itself: whether this
 // deployment signs Ledger calls is never a per-request or per-user decision.
 const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
+
+/**
+ * A typed trigger's field-level refusal, answered as a 400 that names the
+ * first field and carries every refusal, instead of the generic sentence.
+ */
+const sendTriggerConfigRefusal = (reply: FastifyReply, error: unknown): boolean => {
+  if (!(error instanceof TriggerConfigRefusalError)) return false
+  sendApiError(reply, 400, error.code, error.message, error.refusals[0]?.path, { refusals: error.refusals })
+  return true
+}
 
 export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
   const {
@@ -155,12 +169,16 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     const launchOrigin =
       captured?.kind === 'captured' ? captured.launchOrigin : undefined
 
-    const trigger = await createAgentTrigger(
-      prisma,
-      agentId,
-      body,
-      launchOrigin ? { launchOrigin } : {},
-    )
+    let trigger
+    try {
+      trigger = await createAgentTrigger(prisma, agentId, body, {
+        ...(actorContext.actor.actorType === 'user' ? { authorUserId: actorContext.actor.actorId } : {}),
+        ...(launchOrigin ? { launchOrigin } : {}),
+      })
+    } catch (error) {
+      if (sendTriggerConfigRefusal(reply, error)) return reply
+      throw error
+    }
     if (!trigger) {
       sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply
@@ -212,7 +230,13 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const updated = await updateSharedAgentTrigger(prisma, scope, body)
+    let updated
+    try {
+      updated = await updateSharedAgentTrigger(prisma, scope, body)
+    } catch (error) {
+      if (sendTriggerConfigRefusal(reply, error)) return reply
+      throw error
+    }
     if (!updated) {
       sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
       return reply
@@ -351,6 +375,16 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     })
 
     if (dispatched.kind === 'rejected') {
+      if (dispatched.reason === 'ticket_trigger_not_fireable') {
+        sendApiError(
+          reply,
+          409,
+          'TICKET_TRIGGER_NOT_FIREABLE',
+          'A ticket trigger starts work when a person who can edit the board moves a ticket into one of its '
+          + 'start-work columns; it cannot be fired by hand.',
+        )
+        return reply
+      }
       if (dispatched.reason === 'agent_not_bound') {
         sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
         return reply

@@ -31,7 +31,9 @@ import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 export const AGENT_CONVERSATION_START_TOOL_ID = 'agent_conversation_start'
 export const AGENT_CONVERSATIONS_LIST_TOOL_ID = 'agent_conversations_list'
 
-import { LIFECYCLE_TOOL_DEFINITIONS } from './builtin-agent-lifecycle-tools.js'
+import { AGENT_TRIGGER_INPUT_TYPES } from '@nessie/schemas'
+
+import { AGENT_TRIGGER_CONFIG_PROSE, LIFECYCLE_TOOL_DEFINITIONS } from './builtin-agent-lifecycle-tools.js'
 
 export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   {
@@ -402,9 +404,9 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Create Agent Trigger',
     personalAssistantOnly: true,
     description:
-      'Give ANOTHER agent a trigger: a schedule, an interval, an inbound webhook, '
-      + 'an event subscription, or a manual button. Organisation owners only, and '
-      + 'the agent must already be bound to the target channel. Get the agentId '
+      'Give ANOTHER agent a trigger, one of the types in config below. Organisation owners only, and '
+      + 'the agent must already be bound to the target channel. A ticket_changed trigger is checked '
+      + 'field by field, and a refusal names the field and what exists instead. Get the agentId '
       + 'from agent_list when the user named the agent. To schedule '
       + 'yourself instead, use schedule_task — that needs no owner rights. The '
       + 'result links the trigger as [Name](/agents/triggers/<triggerId>), the '
@@ -417,26 +419,16 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       type: 'object',
       properties: {
         agentId: { type: 'string', description: 'The agent the trigger fires.' },
-        type: {
-          type: 'string',
-          enum: ['manual', 'scheduled', 'interval', 'webhook', 'event'],
-          description: 'Kind of trigger.',
-        },
+        // Both generated from `AgentTriggerConfigInputSchema`, the union the
+        // create surfaces accept: a type is offered exactly when it has an arm.
+        type: { type: 'string', enum: [...AGENT_TRIGGER_INPUT_TYPES], description: 'Kind of trigger.' },
         name: { type: 'string', description: 'Short name shown on the Triggers page.' },
         description: { type: 'string', description: 'What this trigger is for.' },
         enabled: {
           type: 'boolean',
           description: 'Create it paused with false (default true).',
         },
-        config: {
-          type: 'object',
-          description:
-            'Type-specific settings: {"cron","timezone","until"} for scheduled, '
-            + '{"interval_minutes"} for interval, {"prompt"} for what the agent should do, '
-            + '{"events":["event.name"],"filter":{...}} for event. Events is the '
-            + 'non-empty list of event names that starts the agent; filter is an optional '
-            + 'exact top-level payload match.',
-        },
+        config: { type: 'object', description: AGENT_TRIGGER_CONFIG_PROSE },
         nextRunAt: {
           type: 'string',
           description: 'ISO 8601 time for the first run (scheduled/interval).',

@@ -17,6 +17,7 @@ import {
   UpdateTaskBodySchema,
 } from '../contracts/tasks-board.js'
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
+import { taskEventOriginFor } from '../lib/task-event-origin.js'
 import {
   archiveDoneTasks,
   assignTask,
@@ -297,6 +298,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       labelIds: body.labelIds,
       attachmentIds: body.attachmentIds,
       embedding: taskEmbeddingFor(actorContext),
+      origin: taskEventOriginFor(request),
     })
 
     if ('error' in result) {
@@ -359,6 +361,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       assigneeUserId: body.assigneeUserId,
       assigneeAgentId: body.assigneeAgentId,
       actorContext,
+      origin: taskEventOriginFor(request),
     }, deps.encryptionKeyRing)
 
     if ('error' in result) {
@@ -391,6 +394,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       columnId: body.columnId,
       actorId: actorContext.actor.actorId,
       position: body.position,
+      origin: taskEventOriginFor(request),
     }, deps.encryptionKeyRing)
 
     if ('error' in result) {
@@ -477,6 +481,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       fields,
       actorId: actorContext.actor.actorId,
       embedding: taskEmbeddingFor(actorContext),
+      origin: taskEventOriginFor(request),
     }, deps.encryptionKeyRing)
     if ('error' in result) {
       if (sendWriteBackError(reply, result)) return reply
@@ -513,6 +518,7 @@ export const registerTaskRoutes = (app: FastifyInstance, deps: RouteDeps): void 
       organizationId: actorContext.tenant.organizationId,
       status: body.status,
       actorId: actorContext.actor.actorId,
+      origin: taskEventOriginFor(request),
     })
 
     if ('error' in result) {

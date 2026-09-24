@@ -34,6 +34,7 @@ import {
 import { useResolveReactorName } from './useResolveReactorName'
 import { useCollapsedFeedDates } from './useCollapsedFeedDates'
 import { FeedConversationContext } from './feed-conversation'
+import { TicketWorkEventRow, ticketWorkEventOf } from '../ticket-work/TicketWorkEventRow'
 
 // Stable identity so a feed without a document facade never re-runs the
 // dialog's effects on a fresh array.
@@ -329,6 +330,12 @@ export const ChannelMessageFeed = ({
 
           if (item.message.deletedAt) {
             return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
+          }
+
+          // A ticket work thread's event row: why its agent woke, not a message.
+          const workEvent = ticketWorkEventOf(item.message)
+          if (workEvent) {
+            return <TicketWorkEventRow event={workEvent} key={item.message.id} message={item.message} />
           }
 
           const anchoredThinking = pendingByRoot.get(item.message.id) ?? []

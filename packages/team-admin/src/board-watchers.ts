@@ -1,116 +1,65 @@
-import type { Prisma, PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@prisma/client'
 import type { BoardWatcherRecord } from '@nessie/schemas'
-import { buildVisibleAgentWhere } from '@nessie/db'
-
-import { resolveAgentConversation } from './agent-conversation.js'
 
 /**
  * Who to tell when a ticket on a board changes.
  *
  * A watcher costs somebody else's attention, so adding one is board
  * administration and every recipient is checked against what the *board's*
- * organisation can actually reach: a user must be an active member; an agent
- * must be an ordinary team agent, or the adder's own live private agent. A row
- * naming a recipient the server would not accept is refused here rather than
- * discovered later by a fan-out with nowhere to deliver.
+ * organisation can actually reach: an active member. A row naming a recipient
+ * the server would not accept is refused here rather than discovered later by
+ * a fan-out with nowhere to deliver.
+ *
+ * **Watchers are people.** Agent watchers were a second way to configure the
+ * wake a `ticket_changed` trigger is, with a different authority and a wake
+ * that landed in the adder's DM with no tools
+ * (docs/plans/2026-09-23-ticket-driven-agents/triggers.md → "Board
+ * watchers"). An agent recipient is refused with the sentence that says where
+ * that moved; the rows that existed became disabled ticket triggers in
+ * `20260924000000_board_agent_watchers_to_ticket_triggers`.
  *
  * Removal is deliberately not symmetrical with addition — see
  * `removeSelfAsWatcher`.
  */
 
 /**
- * A recipient as this layer needs it. Deliberately unbranded: the branded ids
- * are the API boundary's business, and a store that demands them makes every
- * internal caller mint a brand it has no way to check.
+ * A recipient as this layer receives it. `agent` is still a kind a request can
+ * name, so that one is refused in words rather than as a malformed body.
+ * Deliberately unbranded: the branded ids are the API boundary's business.
  */
 export type BoardWatcherInput = { kind: 'user' | 'agent'; id: string }
-
-/**
- * The adder's session, captured so a wake can replay it.
- *
- * A wake has no session of its own. Both halves matter: `teamId` decides which
- * DM the agent is woken in (the key includes it, and the interactive route
- * takes it from the session), and `uoaIdentity` is what the Ledger signer
- * verifies — a trigger captures the same thing as its `launchOrigin`, for the
- * same reason.
- */
-export type BoardWatcherOrigin = {
-  teamId: string
-  uoaIdentity?: unknown
-}
 
 export type BoardWatcherError =
   | { error: 'BOARD_NOT_FOUND' }
   | { error: 'RECIPIENT_NOT_REACHABLE'; recipientId: string }
-  | { error: 'AGENT_HAS_NO_CONVERSATION'; recipientId: string }
+  | { error: 'AGENT_WATCHERS_RETIRED'; recipientId: string }
+
+/** What an agent recipient is told instead, and what the watcher editor says. */
+export const AGENT_WATCHERS_RETIRED_SENTENCE =
+  'Agents no longer watch boards. Agents start work from the column menu: '
+  + '"Start work with an agent…" on a column sets up a ticket trigger.'
 
 export const isBoardWatcherError = <T>(
   value: T | BoardWatcherError,
 ): value is BoardWatcherError =>
   typeof value === 'object' && value !== null && 'error' in value
 
-/**
- * The only agents a board watcher can wake. Kept at the service boundary so a
- * legacy row, a route caller, and delivery cannot disagree about who owns a
- * private home conversation.
- */
-export const boardWatcherAgentWhere = (input: {
-  addedByUserId: string
-  agentIds?: readonly string[]
-  organizationId: string
-}): Prisma.AgentWhereInput => ({
-  ...(input.agentIds ? { id: { in: [...input.agentIds] } } : {}),
-  organizationId: input.organizationId,
-  systemManaged: false,
-  systemSlug: null,
-  agentKind: { not: 'personal_assistant' },
-  OR: [
-    { visibility: 'team' },
-    {
-      visibility: 'private',
-      ownerUserId: input.addedByUserId,
-      // The ownership FK proves this row exists, not that the person is still
-      // active. A retained, deactivated owner cannot receive unattended work.
-      ownerMembership: { deactivatedAt: null },
-    },
-  ],
-})
-
-export const isBoardWatcherAgentEligible = async (
-  prisma: Pick<PrismaClient, 'agent'>,
-  input: { addedByUserId: string; agentId: string; organizationId: string },
-): Promise<boolean> =>
-  (await prisma.agent.count({
-    where: boardWatcherAgentWhere({
-      addedByUserId: input.addedByUserId,
-      agentIds: [input.agentId],
-      organizationId: input.organizationId,
-    }),
-  })) > 0
-
 const toRecord = (row: {
   id: string
   boardId: string
   userId: string | null
-  agentId: string | null
   addedByUserId: string
   createdAt: Date
   user: { displayName: string } | null
-  agent: { name: string } | null
 }): BoardWatcherRecord => ({
   id: row.id,
   boardId: row.boardId,
-  kind: row.userId ? 'user' : 'agent',
-  recipientId: (row.userId ?? row.agentId) as string,
-  displayName: row.user?.displayName ?? row.agent?.name ?? 'Unknown',
+  kind: 'user',
+  recipientId: row.userId as string,
+  displayName: row.user?.displayName ?? 'Unknown',
   addedByUserId: row.addedByUserId as BoardWatcherRecord['addedByUserId'],
   createdAt: row.createdAt.toISOString(),
 })
-
-const WATCHER_INCLUDE = {
-  user: { select: { displayName: true } },
-  agent: { select: { name: true } },
-} as const
 
 export const listBoardWatchers = async (
   prisma: PrismaClient,
@@ -120,21 +69,9 @@ export const listBoardWatchers = async (
     where: {
       boardId: input.boardId,
       organizationId: input.organizationId,
-      OR: [
-        { userId: { not: null } },
-        {
-          agent: {
-            AND: [
-              buildVisibleAgentWhere({
-                organizationId: input.organizationId,
-                userId: input.userId,
-              }),
-            ],
-          },
-        },
-      ],
+      userId: { not: null },
     },
-    include: WATCHER_INCLUDE,
+    include: { user: { select: { displayName: true } } },
     orderBy: { createdAt: 'asc' },
   })
   return rows.map(toRecord)
@@ -150,7 +87,6 @@ export const setBoardWatchers = async (
     boardId: string
     organizationId: string
     addedByUserId: string
-    origin: BoardWatcherOrigin
     watchers: BoardWatcherInput[]
   },
 ): Promise<BoardWatcherRecord[] | BoardWatcherError> => {
@@ -160,10 +96,10 @@ export const setBoardWatchers = async (
   })
   if (!board) return { error: 'BOARD_NOT_FOUND' }
 
-  const userIds = input.watchers.filter((w) => w.kind === 'user').map((w) => w.id)
-  const agentIds = input.watchers.filter((w) => w.kind === 'agent').map((w) => w.id)
-  const agentTargets = new Map<string, { channelId: string; threadId: string }>()
+  const agent = input.watchers.find((watcher) => watcher.kind === 'agent')
+  if (agent) return { error: 'AGENT_WATCHERS_RETIRED', recipientId: agent.id }
 
+  const userIds = input.watchers.map((watcher) => watcher.id)
   if (userIds.length > 0) {
     const reachable = await prisma.organizationMember.findMany({
       where: {
@@ -178,61 +114,15 @@ export const setBoardWatchers = async (
     if (missing) return { error: 'RECIPIENT_NOT_REACHABLE', recipientId: missing }
   }
 
-  if (agentIds.length > 0) {
-    const reachable = await prisma.agent.findMany({
-      where: boardWatcherAgentWhere({
-        addedByUserId: input.addedByUserId,
-        agentIds,
-        organizationId: input.organizationId,
-      }),
-      select: { id: true },
-    })
-    const found = new Set(reachable.map((row) => row.id))
-    const missing = agentIds.find((id) => !found.has(id))
-    if (missing) return { error: 'RECIPIENT_NOT_REACHABLE', recipientId: missing }
-
-    // An agent is *woken* rather than told, and a wake needs a conversation it
-    // is bound to. A system agent and the personal assistant have none they
-    // could be woken in — they own no automation at all — so accepting one
-    // would be a watcher that silently never fires. Resolved here, where a
-    // person is still looking at the picker, and stored: the worker must not
-    // work out the destination a second time (see `channelId` on the row).
-    for (const agentId of agentIds) {
-      const conversation = await resolveAgentConversation(prisma, {
-        agentId,
-        organizationId: input.organizationId,
-        onBehalfOfUserId: input.addedByUserId,
-        teamId: input.origin.teamId,
-      })
-      if (!conversation) {
-        return { error: 'AGENT_HAS_NO_CONVERSATION', recipientId: agentId }
-      }
-      agentTargets.set(agentId, conversation)
-    }
-  }
-
   await prisma.$transaction(async (tx) => {
     await tx.boardWatcher.deleteMany({ where: { boardId: input.boardId } })
-    if (input.watchers.length === 0) return
+    if (userIds.length === 0) return
     await tx.boardWatcher.createMany({
-      data: input.watchers.map((watcher) => ({
+      data: userIds.map((userId) => ({
         boardId: input.boardId,
         organizationId: input.organizationId,
         addedByUserId: input.addedByUserId,
-        ...(watcher.kind === 'user'
-          ? { userId: watcher.id }
-          : {
-              agentId: watcher.id,
-              channelId: agentTargets.get(watcher.id)?.channelId ?? null,
-              threadId: agentTargets.get(watcher.id)?.threadId ?? null,
-              launchOrigin: {
-                teamId: input.origin.teamId,
-                userId: input.addedByUserId,
-                ...(input.origin.uoaIdentity
-                  ? { uoaIdentity: input.origin.uoaIdentity }
-                  : {}),
-              } as object,
-            }),
+        userId,
       })),
     })
   })

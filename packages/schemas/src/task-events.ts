@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { TaskPrioritySchema } from './task-records.js'
+import { TicketWorkStateReasonSchema, TicketWorkStatusSchema } from './ticket-work.js'
 
 /**
  * `TaskEvent` payload contracts for ticket-driven agents
@@ -75,6 +76,36 @@ const requireAuthorMatchingOrigin = (
 }
 
 /**
+ * The authorship every ticket-trigger event carries, read from any event type
+ * the dispatcher acts on (`comment_added`, `detail_edited`, `labels_changed`,
+ * `assigned`, …) without restating each type's own fields. Unknown keys pass
+ * through, so a writer's own fields survive a parse.
+ */
+export const TaskEventAuthorshipSchema = z
+  .object(authoredEventShape)
+  .passthrough()
+  .superRefine(requireAuthorMatchingOrigin)
+export type TaskEventAuthorship = z.infer<typeof TaskEventAuthorshipSchema>
+
+/**
+ * `created`: where a new ticket landed, as its home board placed it when it
+ * was written. A ticket created straight into a start-work column is a
+ * pickup under the same origin rule as a move, so the column is stamped by
+ * the writer rather than re-derived later from a ticket that may have moved
+ * since. Both are null for a projectless ticket, or a board with no column
+ * for its status.
+ */
+export const CreatedTaskEventPayloadSchema = z
+  .object({
+    ...authoredEventShape,
+    boardId: uuid.nullable(),
+    columnId: uuid.nullable(),
+  })
+  .passthrough()
+  .superRefine(requireAuthorMatchingOrigin)
+export type CreatedTaskEventPayload = z.infer<typeof CreatedTaskEventPayloadSchema>
+
+/**
  * `column_entered`: written on every column change, including a move between
  * two columns of the same category, which changes no status and so writes no
  * `status_changed`. `fromColumnId` is the column the ticket left, or null when
@@ -116,3 +147,44 @@ export const PriorityChangedTaskEventPayloadSchema = z
     }
   })
 export type PriorityChangedTaskEventPayload = z.infer<typeof PriorityChangedTaskEventPayloadSchema>
+
+/**
+ * The ticket-activity rows a work record writes, so the ticket says what its
+ * agent's work did and why (docs/standards/ticket-work.md → "What the project
+ * sees"). They are history only: none is a type a ticket trigger acts on, so
+ * none is dispatched. `work_started`, `work_paused` (a review column parked
+ * the work), `work_resumed` (a person moved it back) and `work_ended` are
+ * written from T1; `work_queued` belongs to the machine queue and is named
+ * here so every reader already knows it.
+ */
+export const TICKET_WORK_ACTIVITY_EVENT_TYPES = [
+  'work_started',
+  'work_queued',
+  'work_paused',
+  'work_resumed',
+  'work_ended',
+] as const
+export type TicketWorkActivityEventType = (typeof TICKET_WORK_ACTIVITY_EVENT_TYPES)[number]
+
+/**
+ * A work row is the platform's, whoever caused it, so its origin is `system`;
+ * `by` names who caused it where someone did — the person whose move started
+ * or ended the work, `agent:<id>` for the agent's own move — and is absent
+ * when the platform acted on its own (a limit, a disabled trigger).
+ */
+export const TicketWorkActivityPayloadSchema = z
+  .object({
+    by: z.string().min(1).optional(),
+    origin: z.object({ kind: z.literal('system') }).strict(),
+    workId: uuid,
+    triggerId: uuid.nullable(),
+    agentId: uuid,
+    status: TicketWorkStatusSchema,
+    reason: TicketWorkStateReasonSchema.nullable(),
+    // The `TaskEvent` whose move caused this row — the `column_entered` that
+    // ended, parked or resumed the work — so the dispatcher can tell the end
+    // this move caused from one an earlier move did.
+    causeEventId: uuid.optional(),
+  })
+  .strict()
+export type TicketWorkActivityPayload = z.infer<typeof TicketWorkActivityPayloadSchema>

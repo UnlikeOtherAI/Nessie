@@ -1,10 +1,12 @@
 import type { Prisma, PrismaClient, TaskPriority } from '@prisma/client'
 import { claimTaskEmbeddingInTransaction } from '@nessie/db'
-import type { TaskEmbedOrigin } from '@nessie/schemas'
+import type { TaskEmbedOrigin, TaskEventOrigin } from '@nessie/schemas'
 
 import { projectTaskInclude, type ProjectTaskRecord } from './project-task-records.js'
 import { linkUploadsToTask, mapProjectTaskWithCount, recordAttachmentsAdded } from './task-attachments.js'
 import { applyTaskLabelPlan, planTaskLabels, type TaskLabelSetError } from './task-labels.js'
+import { SYSTEM_TASK_EVENT_ORIGIN, taskEventBy } from './task-access.js'
+import { recordTaskEvent, taskDetailSha256 } from './task-event-dispatch.js'
 import {
   type BoardSourceWriteBack,
   type BoardSourceWriteBackError,
@@ -38,10 +40,19 @@ export const updateProjectTask = async (
     taskId: string
     organizationId: string
     fields: ProjectTaskUpdateFields
-    /** `TaskEvent.by` for the history rows this write adds, and the uploader whose files link. */
-    actorId?: string
+    /**
+     * `TaskEvent.by` for the history rows this write adds, and the uploader
+     * whose files link. Absent or null for an agent with no person behind it,
+     * which names itself with `agentId` and `unattended` and links no uploads.
+     */
+    actorId?: string | null
     /** Semantic projection claimed while the originating session still exists. */
     embedding?: { model: string; origin?: TaskEmbedOrigin }
+    /** Set when an agent edits the ticket; see `TaskActor`. */
+    agentId?: string | null
+    unattended?: boolean
+    /** The authenticated door, stamped by the caller's auth layer; absent ⇒ `system`. */
+    origin?: TaskEventOrigin
   },
   writeBack?: BoardSourceWriteBack,
 ): Promise<
@@ -55,9 +66,11 @@ export const updateProjectTask = async (
     where: { id: input.taskId, organizationId: input.organizationId },
     select: {
       id: true,
+      organizationId: true,
       projectId: true,
       boardId: true,
       detail: true,
+      priority: true,
       externalLink: { select: { sourceId: true } },
     },
   })
@@ -155,14 +168,32 @@ export const updateProjectTask = async (
       await tx.task.update({ where: { id: existing.id }, data })
     }
     if (patch) await applyFieldValuesPatch(tx, existing.id, patch)
-    const by = input.actorId ?? null
+    const by = input.actorId || (input.unattended && input.agentId)
+      ? taskEventBy({ ...input, userId: input.actorId ?? null })
+      : null
+    const origin = input.origin ?? SYSTEM_TASK_EVENT_ORIGIN
+    const scope = { organizationId: existing.organizationId, projectId: existing.projectId }
     if (labelPlan) {
-      await applyTaskLabelPlan(tx, labelPlan, { by, ownedWrittenUpstream: labelsWrittenUpstream })
+      await applyTaskLabelPlan(tx, labelPlan, { by, origin, ownedWrittenUpstream: labelsWrittenUpstream })
     }
-    // The description gets a history line at all; the text itself is not copied.
+    // The description gets a history line at all; the text itself is not
+    // copied — only its hash, so a wake can tell whether what the ticket says
+    // now is still what this author wrote (`detailSha256`).
     if (input.fields.detail !== undefined && (input.fields.detail ?? null) !== existing.detail) {
-      await tx.taskEvent.create({
-        data: { taskId: existing.id, eventType: 'detail_edited', payload: { by } },
+      await recordTaskEvent(tx, {
+        taskId: existing.id,
+        eventType: 'detail_edited',
+        payload: { by, origin, detailSha256: taskDetailSha256(input.fields.detail ?? null) },
+        scope,
+      })
+    }
+    // A priority change wrote nothing before ticket triggers followed it.
+    if (fields.priority !== undefined && fields.priority !== existing.priority) {
+      await recordTaskEvent(tx, {
+        taskId: existing.id,
+        eventType: 'priority_changed',
+        payload: { ...(by ? { by } : {}), origin, from: existing.priority, to: fields.priority },
+        scope,
       })
     }
     if (input.actorId && input.fields.attachmentIds?.length) {

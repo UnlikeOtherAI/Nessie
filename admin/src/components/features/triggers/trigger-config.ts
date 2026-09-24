@@ -4,6 +4,13 @@ import type {
   ChannelRecord,
   WorkflowInstallationRecord,
 } from '../../../lib/api-client'
+import {
+  buildTicketConfig,
+  getDefaultTicketState,
+  ticketStateFromConfig,
+  type TicketFormField,
+  type TicketTriggerFormState,
+} from './ticket-trigger-form'
 
 export type TriggerTargetKind = 'agent' | 'workflow'
 export type ScheduleMode = 'cron' | 'once'
@@ -28,6 +35,12 @@ export type TriggerFormState = {
   cron: string
   timezone: string
   agentId: string
+  /**
+   * The `ticket_changed` fields (`ticket-trigger-form.ts`). Optional because a
+   * draft stored before the type existed has none; readers fall back to the
+   * defaults.
+   */
+  ticket?: TicketTriggerFormState
 }
 
 export type SubmitPayload = {
@@ -43,6 +56,15 @@ export type DefaultTarget =
       agentId: string
       targetChannelId?: string
       targetKind: 'agent'
+      /**
+       * A doorway that opens the editor on one type already: the board's column
+       * menu opens it on a ticket trigger for that board and column.
+       */
+      prefill?: {
+        name?: string
+        ticket: { boardId: string; pickupColumnIds: string[] }
+        triggerType: 'ticket_changed'
+      }
     }
   | {
       targetKind: 'workflow'
@@ -123,7 +145,7 @@ export const getDefaultCreateState = (
   const firstChannelId = channels.find((candidate) => boundChannelIds.has(candidate.id))?.id
 
   return {
-    name: '',
+    name: defaultTarget?.targetKind === 'agent' ? defaultTarget.prefill?.name ?? '' : '',
     description: '',
     enabled: true,
     targetKind: defaultTargetKind,
@@ -133,7 +155,12 @@ export const getDefaultCreateState = (
       defaultTarget?.targetKind === 'agent'
         ? (defaultTarget.targetChannelId ?? firstChannelId ?? '')
         : firstChannelId ?? '',
-    triggerType: 'manual',
+    triggerType: defaultTarget?.targetKind === 'agent' && defaultTarget.prefill
+      ? defaultTarget.prefill.triggerType
+      : 'manual',
+    ticket: getDefaultTicketState(
+      defaultTarget?.targetKind === 'agent' ? defaultTarget.prefill?.ticket : undefined,
+    ),
     scheduleMode: 'once',
     nextRunAt: '',
     rollingStatus: false,
@@ -180,6 +207,7 @@ export const getEditState = (
       typeof config.until === 'string' ? toDatetimeLocalValue(config.until) : '',
     eventNames: toEventNamesValue(config),
     eventFilter: toEventFilterValue(config),
+    ticket: trigger.type === 'ticket_changed' ? ticketStateFromConfig(config) : getDefaultTicketState(),
   }
 }
 
@@ -205,7 +233,7 @@ export const getFormTriggerTypeLabel = (input: {
 
 export type BuildSubmitResult =
   | { payload: SubmitPayload }
-  | { error: string }
+  | { error: string; field?: TicketFormField }
 
 /**
  * Validate the form and produce the API submit payload. Returns either a
@@ -336,9 +364,22 @@ export const buildSubmitPayload = (
     }
   }
 
-  // Ticket and document triggers have no editor fields yet. Falling through to
-  // the event branch would overwrite their configuration with an event list.
-  if (form.triggerType === 'ticket_changed' || form.triggerType === 'document_changed') {
+  if (form.triggerType === 'ticket_changed') {
+    const built = buildTicketConfig(form.ticket ?? getDefaultTicketState())
+    if ('error' in built) return built
+    return {
+      payload: {
+        name,
+        description: description || undefined,
+        enabled: form.enabled,
+        config: built.config,
+      },
+    }
+  }
+
+  // Document triggers have no editor fields yet (T2). Falling through to the
+  // event branch would overwrite their configuration with an event list.
+  if (form.triggerType === 'document_changed') {
     return { error: 'This trigger type cannot be edited here yet.' }
   }
 

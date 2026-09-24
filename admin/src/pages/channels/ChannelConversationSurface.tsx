@@ -51,6 +51,8 @@ import type { useChannelMessageSearch } from './useChannelMessageSearch'
 import type { useExecutorRunLauncher } from './useExecutorRunLauncher'
 import type { useReplyThread } from '../../components/features/channels/useReplyThread'
 import { useResearchComposerButton } from '../../components/features/deep-water/useResearchComposerButton'
+import { ChannelPostRefusal } from '../../components/features/channels/ChannelPostRefusal'
+import type { WorkThreadComposer } from '../../components/features/ticket-work/WorkThreadReadOnlyNotice'
 
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
@@ -158,6 +160,8 @@ interface ChannelConversationSurfaceProps {
   titleFavorite: ChannelTitleFavorite | null
   token: string | null
   visibleActiveTab: ChannelTab
+  /** Set when this is a ticket's work thread: who may write there, and what a message does. */
+  workThread: WorkThreadComposer | null
 }
 
 /**
@@ -224,6 +228,7 @@ export const ChannelConversationSurface = ({
   titleFavorite,
   token,
   visibleActiveTab,
+  workThread,
 }: ChannelConversationSurfaceProps) => {
   const {
     addReaction,
@@ -411,26 +416,12 @@ export const ChannelConversationSurface = ({
         </div>
       </div>
 
-      {/*
-        The composer is membership, not management. An organisation admin
-        administering a room they never joined reads it, opens its settings and
-        its members popup, and cannot speak in it — decision 2 of the visibility
-        spec, and the reason `canPost` is its own answer rather than a reading
-        of `viewerCanManage`. A public room the viewer has not joined offers
-        Join in the header instead; a protected one offers neither.
-      */}
-      {visibleActiveTab === 'messages' && !roomControls.canPost ? (
-        <div
-          className="border-t border-[color:var(--bd)] px-4 py-3 text-xs text-[color:var(--tx3)]"
-          role="status"
-        >
-          {roomControls.postRefusal === 'join-to-post'
-            ? 'Join this channel to send messages.'
-            : 'You are not a member of this channel, so you cannot send messages in it.'}
-        </div>
+      {/* The composer, or why it is not here (`ChannelPostRefusal`). */}
+      {visibleActiveTab === 'messages' ? (
+        <ChannelPostRefusal postRefusal={roomControls.postRefusal} workThread={workThread} />
       ) : null}
 
-      {visibleActiveTab === 'messages' && roomControls.canPost ? (
+      {visibleActiveTab === 'messages' && roomControls.canPost && !workThread?.readOnly ? (
         <ChannelComposer
           attachments={composer.attachments}
           inviteErrors={composer.inviteErrors}

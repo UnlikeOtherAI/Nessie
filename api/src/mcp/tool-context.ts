@@ -12,7 +12,7 @@ import type {
   FileService,
   PgRealtimeTransport,
 } from '@nessie/runtime'
-import type { AuthorizedActionContext, TaskLabelSummary } from '@nessie/schemas'
+import type { AuthorizedActionContext, TaskEventOrigin, TaskLabelSummary } from '@nessie/schemas'
 
 /**
  * What a tool is handed, and what a tool is.
@@ -90,6 +90,14 @@ export type McpToolContext = {
    * which makes the tools say so plainly.
    */
   spreadsheet: SpreadsheetServiceDeps | null
+  /**
+   * The origin every ticket change this call makes carries: the agent access
+   * credential, as `token`. An MCP call is a member's credential acting
+   * without that member at a screen, so it never starts or steers an agent's
+   * ticket work (docs/standards/ticket-work.md). Optional for partial test
+   * contexts; absent, the events are `system`, which starts nothing either.
+   */
+  taskEventOrigin?: TaskEventOrigin
 }
 
 /** The parts of a task record these tools read. */

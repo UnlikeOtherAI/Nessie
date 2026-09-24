@@ -9,6 +9,7 @@ import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import { resolveTicketMember } from './ticket-member.js'
 import { buildScopes } from '../execute/scopes.js'
 import {
   assertProjectWriteDestination,
@@ -63,7 +64,7 @@ export const runTicketChecklistReadTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const { ticketId } = ReadInput.parse(input)
-  const member = await resolveActingMember(context)
+  const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, ticketId)
   const checklist = await getTaskChecklist(context.prisma, {
     organizationId: member.organizationId,

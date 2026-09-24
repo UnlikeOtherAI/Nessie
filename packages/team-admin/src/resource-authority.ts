@@ -57,6 +57,33 @@ export const canModifyProject = async (
   projectId: string,
 ): Promise<boolean> => isProjectAccessibleToUser(prisma, viewer, projectId)
 
+/**
+ * Whether a person can edit a project's boards right now — the question a
+ * ticket trigger asks of whoever moved, created or commented on a ticket
+ * before it lets that start or steer an agent's work
+ * (docs/standards/ticket-work.md). `canModifyProject` over the live
+ * membership row: a deactivated member, or someone no longer in the
+ * organisation, edits nothing. The worker asks it after the request has gone,
+ * so it reads the row; a REST caller also passes the request's own verified
+ * role (`isOrganizationAdmin`, see `ChannelModifier`), so a UOA demotion that
+ * has not reached the local row yet is not board-editor standing.
+ */
+export const canMemberEditProjectBoards = async (
+  prisma: PrismaClient,
+  input: { organizationId: string; userId: string; projectId: string; isOrganizationAdmin?: boolean },
+): Promise<boolean> => {
+  const member = await prisma.organizationMember.findUnique({
+    where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
+    select: { role: true, deactivatedAt: true },
+  })
+  if (!member || member.deactivatedAt) return false
+  return canModifyProject(prisma, {
+    organizationId: input.organizationId,
+    userId: input.userId,
+    isOrganizationAdmin: input.isOrganizationAdmin ?? isAdminRole(member.role),
+  }, input.projectId)
+}
+
 export type ChannelModifier = {
   userId: string
   organizationId: string

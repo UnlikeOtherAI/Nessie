@@ -13,6 +13,7 @@ import {
   resolveEffectiveRunBudget,
   resolveMaxDelegatesPerRun,
   RUN_BACKSTOP_DEFAULTS,
+  TICKET_WORK_RUN_CEILING,
 } from './run-budget.js'
 
 test('an agent with no explicit limits runs on the deployment backstop', () => {
@@ -30,6 +31,19 @@ test('explicit run limits win per dimension; absent keys keep the backstop', () 
   assert.equal(budget.maxIterations, 7)
   assert.equal(budget.maxToolCalls, RUN_BACKSTOP_DEFAULTS.maxToolCalls)
   assert.equal(budget.maxCostCents, RUN_BACKSTOP_DEFAULTS.maxCostCents)
+})
+
+test('a ticket.work run is clamped to the platform ceiling, whatever the agent\'s own limits say', () => {
+  const generous = { maxCostCents: 100_000, maxTokens: 9_000_000, maxWallclockMs: 36_000_000 }
+  const clamped = resolveEffectiveRunBudget(generous, {}, 'ticket.work')
+  assert.equal(clamped.maxCostCents, TICKET_WORK_RUN_CEILING.maxCostCents)
+  assert.equal(clamped.maxTokens, TICKET_WORK_RUN_CEILING.maxTokens)
+  assert.equal(clamped.maxWallclockMs, TICKET_WORK_RUN_CEILING.maxWallclockMs)
+  assert.equal(clamped.maxToolCalls, TICKET_WORK_RUN_CEILING.maxToolCalls)
+  assert.equal(clamped.maxIterations, TICKET_WORK_RUN_CEILING.maxIterations)
+  // A tighter limit of the agent's own still wins; other purposes are untouched.
+  assert.equal(resolveEffectiveRunBudget({ maxTokens: 10_000 }, {}, 'ticket.work').maxTokens, 10_000)
+  assert.equal(resolveEffectiveRunBudget(generous, {}, 'agent.peer_delegation').maxCostCents, 100_000)
 })
 
 test('backstop env overrides are applied, and junk values fall back to defaults', () => {

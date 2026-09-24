@@ -125,6 +125,13 @@ const KEEP_PREVIOUS_EXEMPT = [
   // project's roles could briefly grant board or sprint controls in the next
   // project, so the new project's decision deliberately loads closed first.
   'src/facades/projects/hooks.ts',
+  // A ticket's work chip names the agent, its state and a door into its work
+  // thread, and a thread's gate decides whether its composer is offered.
+  // Replaying the previous ticket's chip would show another ticket's work and
+  // thread link; replaying another thread's gate could offer a composer the
+  // new thread refuses. The board's badges keep their previous data: they are
+  // matched to columns and cards by id, so a stale answer paints nothing wrong.
+  'src/facades/ticket-work/hooks.ts',
   // A DeepWater research is read per viewer, and a brief can be private to its
   // requester. Replaying one run's view or brief under another run's id would
   // offer that run's actions and artifacts — or its private brief — as this

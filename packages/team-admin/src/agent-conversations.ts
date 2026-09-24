@@ -520,7 +520,7 @@ const buildConversationRecords = async (
  * Nobody named an agent here, so a General thread keeps the oldest-binding rule
  * and a conversation keeps its own `agentId`.
  */
-export const loadConversationForUser = async (
+export const loadConversationRecordForUser = async (
   prisma: PrismaClient,
   input: {
     organizationId: string
@@ -557,7 +557,7 @@ export const loadConversationForUser = async (
  * what lets "zero rows plus an invisible agent is a 404" live here instead of
  * being restated at every door.)
  */
-export const listAgentConversationsForUser = async (
+export const listAgentConversationRecordsForUser = async (
   prisma: PrismaClient,
   input: {
     agentId: string

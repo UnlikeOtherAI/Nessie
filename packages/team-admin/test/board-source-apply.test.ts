@@ -135,10 +135,13 @@ runDatabaseTest('re-applying an unchanged item writes no event', async () => {
   const prisma = new PrismaClient()
   const seeded = await seed(prisma)
   try {
-    await applyInboundItem(prisma, context(seeded), item())
+    const first = await applyInboundItem(prisma, context(seeded), item())
+    // The create is recorded once, as the source's own change.
+    const afterCreate = await prisma.taskEvent.findMany({ where: { taskId: first.taskId } })
+    assert.deepEqual(afterCreate.map((event) => event.eventType), ['created'])
     const second = await applyInboundItem(prisma, context(seeded), item())
     assert.equal(second.applied, 'unchanged')
-    assert.equal(await prisma.taskEvent.count({ where: { taskId: second.taskId } }), 0)
+    assert.equal(await prisma.taskEvent.count({ where: { taskId: second.taskId } }), 1)
   } finally {
     await cleanup(prisma, seeded)
     await prisma.$disconnect()
@@ -190,10 +193,14 @@ runDatabaseTest('a real upstream change moves the task and records who moved it'
 
     // The vendor is the authority for its own item, so this bypasses the
     // transition rules — but it still says who did it and from what.
-    const events = await prisma.taskEvent.findMany({ where: { taskId: created.taskId } })
+    const events = await prisma.taskEvent.findMany({
+      where: { taskId: created.taskId, eventType: 'status_changed' },
+    })
     assert.equal(events.length, 1)
     const payload = events[0]?.payload as Record<string, unknown>
     assert.equal(payload.bySourceId, seeded.sourceId)
+    assert.equal(payload.by, `source:${seeded.sourceId}`)
+    assert.deepEqual(payload.origin, { kind: 'source', boardSourceId: seeded.sourceId })
     assert.equal(payload.from, 'inbox')
     assert.equal(payload.to, 'done')
   } finally {

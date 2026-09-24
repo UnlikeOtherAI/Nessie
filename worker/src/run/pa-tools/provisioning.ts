@@ -34,6 +34,7 @@ import { createWorkerKnowledgeProvider } from './knowledge-provider.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { buildVisibleChannelWhere, requireOwnerMember, resolveActingMember } from './access.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
+import { describeTicketTriggerScope } from './provisioning-ticket-trigger.js'
 import {
   formatAgentMarkdownLink,
   formatChannelMarkdownLink,
@@ -534,12 +535,12 @@ export const runAgentTriggerCreateTool = async (
       }
     : undefined
 
-  const trigger = await createAgentTrigger(
-    context.prisma,
-    agentId,
-    body,
-    launchOrigin ? { launchOrigin } : {},
-  )
+  // A ticket trigger's refusal names its fields (`TriggerConfigRefusalError`),
+  // and travels to the model as it is; every other type answers null.
+  const trigger = await createAgentTrigger(context.prisma, agentId, body, {
+    authorUserId: member.userId,
+    ...(launchOrigin ? { launchOrigin } : {}),
+  })
   if (!trigger) {
     throw new Error(
       'Trigger configuration is invalid. Check the schedule, and that the agent is bound to the target channel.',
@@ -556,7 +557,7 @@ export const runAgentTriggerCreateTool = async (
   // resolves a thread's room server-side. So the label is read through the
   // caller's own channel visibility, exactly as agent_list's labels are; a
   // room they cannot see is linked without its name and stamps nothing.
-  const [target, room] = await Promise.all([
+  const [target, room, scope] = await Promise.all([
     context.prisma.agent.findUnique({
       where: { id: agentId },
       select: { name: true, visibility: true },
@@ -572,6 +573,7 @@ export const runAgentTriggerCreateTool = async (
         select: { id: true, label: true, type: true, visibility: true },
       })
       : null,
+    describeTicketTriggerScope(context, member, trigger),
   ])
   if (target) recordVisibleAgentRead(context, [{ id: agentId, visibility: target.visibility }])
   if (room) recordChannelDirectoryRead(context, [room])
@@ -588,8 +590,10 @@ export const runAgentTriggerCreateTool = async (
       `status=${trigger.status}`
       + (trigger.nextRunAt ? ` | next run ${trigger.nextRunAt}` : '')
       + (trigger.targetChannelId
-        ? ` | posts into ${formatChannelMarkdownLink({ id: trigger.targetChannelId, label: room?.label ?? 'channel' })}`
+        ? `${trigger.type === 'ticket_changed' ? ' | each ticket\'s work thread opens in' : ' | posts into'} `
+          + formatChannelMarkdownLink({ id: trigger.targetChannelId, label: room?.label ?? 'channel' })
         : ''),
+      ...scope,
       ...(trigger.webhookApiKey
         ? ['A webhook key was generated; read it from the Triggers page rather than chat.']
         : []),

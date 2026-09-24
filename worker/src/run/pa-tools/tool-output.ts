@@ -56,6 +56,11 @@ export const formatAgentMarkdownLink = (agent: { id: string; name: string }): st
 export const formatProjectMarkdownLink = (project: { id: string; name: string }): string =>
   `[${markdownLinkText(project.name)}](/projects/${project.id})`
 
+// A board opens on its project's board tab; the default board needs no
+// `?board=`, but naming it always is still the same page.
+export const formatBoardMarkdownLink = (board: { id: string; name: string; projectId: string }): string =>
+  `[${markdownLinkText(board.name)}](/projects/${board.projectId}/board?board=${board.id})`
+
 // The Triggers page's own detail route. Its last segment is the triggerId
 // agent_trigger_update and agent_trigger_delete take, as an agent link's is
 // the agentId.

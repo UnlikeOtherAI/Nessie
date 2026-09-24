@@ -23,7 +23,12 @@ import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
  */
 
 type TriggerMetaFieldsProps = {
+  /** The channels this type may target: every bound one, or for a ticket trigger the public project ones. */
   agentChannels: ChannelRecord[]
+  /** Why the channel list is narrower than the agent's rooms, and a server refusal of it. */
+  channelHint?: string
+  channelError?: string
+  channelEmptyLabel?: string
   agents: AgentRecord[]
   currentTriggerLabel: string
   form: TriggerFormState
@@ -34,14 +39,31 @@ type TriggerMetaFieldsProps = {
   showAgentTarget: boolean
   showTargetChooser: boolean
   showWorkflowTarget: boolean
+  /** Opened on one type by a doorway: the type and the target kind are not the person's to change. */
+  typeLocked?: boolean
   templatesById: Map<string, WorkflowTemplateRecord>
   trigger?: AgentTriggerRecord
   nameInputRef: RefObject<HTMLInputElement | null>
   workflowInstallations: WorkflowInstallationRecord[]
 }
 
+/** Why the channel list is what it is, and the server's refusal of the choice, under the select. */
+const ChannelNote = ({ error, hint }: { error?: string; hint?: string }) => (
+  <>
+    {hint ? <p className="text-xs text-[color:var(--tx3)]">{hint}</p> : null}
+    {error ? (
+      <p className="text-xs text-[color:var(--danger-text)]" data-field-error="targetChannelId" role="alert">
+        {error}
+      </p>
+    ) : null}
+  </>
+)
+
 export const TriggerMetaFields = ({
   agentChannels,
+  channelEmptyLabel = 'Bind this agent to a channel first',
+  channelError,
+  channelHint,
   agents,
   currentTriggerLabel,
   form,
@@ -53,6 +75,7 @@ export const TriggerMetaFields = ({
   showAgentTarget,
   showTargetChooser,
   showWorkflowTarget,
+  typeLocked = false,
   templatesById,
   trigger,
   workflowInstallations,
@@ -75,10 +98,11 @@ export const TriggerMetaFields = ({
       />
     </div>
 
-    {mode === 'create' ? (
+    {mode === 'create' && !typeLocked ? (
       <div className="grid gap-1.5 md:col-span-2">
         <div className={fieldLabelClass}>Trigger type</div>
         <TriggerTypePicker
+          offerTicketChanged={form.targetKind === 'agent'}
           onChange={(nextType) =>
             setForm((current) => ({ ...current, triggerType: nextType }))
           }
@@ -94,7 +118,12 @@ export const TriggerMetaFields = ({
       </div>
     )}
 
-    {showTargetChooser ? (
+    {showTargetChooser && typeLocked ? (
+      <div className="grid gap-1.5">
+        <div className={fieldLabelClass}>Target kind</div>
+        <div className="admin-input cursor-default opacity-70">Agent</div>
+      </div>
+    ) : showTargetChooser ? (
       <div className="grid gap-1.5">
         <label className={fieldLabelClass} htmlFor="trigger-target-kind">
           Target kind
@@ -103,10 +132,14 @@ export const TriggerMetaFields = ({
           className="admin-input"
           id="trigger-target-kind"
           onChange={(nextEvent) =>
-            setForm((current) => ({
-              ...current,
-              targetKind: nextEvent.target.value as TriggerTargetKind,
-            }))
+            setForm((current) => {
+              const targetKind = nextEvent.target.value as TriggerTargetKind
+              // A ticket trigger wakes an agent; a workflow cannot hold one.
+              const triggerType = targetKind === 'workflow' && current.triggerType === 'ticket_changed'
+                ? 'manual'
+                : current.triggerType
+              return { ...current, targetKind, triggerType }
+            })
           }
           value={form.targetKind}
         >
@@ -151,7 +184,7 @@ export const TriggerMetaFields = ({
               value={form.targetChannelId}
             >
               {agentChannels.length === 0 ? (
-                <option value="">Bind this agent to a channel first</option>
+                <option value="">{channelEmptyLabel}</option>
               ) : null}
               {agentChannels.map((channel) => (
                 <option key={channel.id} value={channel.id}>
@@ -159,6 +192,7 @@ export const TriggerMetaFields = ({
                 </option>
               ))}
             </select>
+            <ChannelNote error={channelError} hint={channelHint} />
           </div>
         ) : null}
       </>
@@ -206,7 +240,7 @@ export const TriggerMetaFields = ({
             value={form.targetChannelId}
           >
             {agentChannels.length === 0 ? (
-              <option value="">Bind this agent to a channel first</option>
+              <option value="">{channelEmptyLabel}</option>
             ) : null}
             {agentChannels.map((channel) => (
               <option key={channel.id} value={channel.id}>
@@ -214,6 +248,7 @@ export const TriggerMetaFields = ({
               </option>
             ))}
           </select>
+          <ChannelNote error={channelError} hint={channelHint} />
         </div>
       </>
     ) : null}
