@@ -88,3 +88,33 @@ test('a thread message names its message, every other event its TaskEvent, never
     false,
   )
 })
+
+test('a reminder names its reminder, a quiet wake names nothing, and neither a TaskEvent', () => {
+  const REMINDER = '5ab16b7f-8293-44a5-9fb6-c7d8ef901234'
+  const WORK = '6bc27c80-93a4-45b6-80c7-d8e9f0012345'
+  const woken = { taskId: TASK, originKind: 'system', outcome: 'follow', workId: WORK }
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({
+      ...woken, eventType: 'reminder', reminderId: REMINDER, wakeReason: 'reminder',
+    }).success,
+    true,
+  )
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'reminder' }).success, false)
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'reminder', reminderId: REMINDER, taskEventId: EVENT })
+      .success,
+    false,
+  )
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'quiet', wakeReason: 'quiet' }).success,
+    true,
+  )
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'quiet', reminderId: REMINDER }).success,
+    false,
+  )
+  assert.equal(
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'comment_added', reminderId: REMINDER }).success,
+    false,
+  )
+})

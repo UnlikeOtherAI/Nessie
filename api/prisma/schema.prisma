@@ -4368,9 +4368,20 @@ model AgentTicketWork {
   lastChecks       Json?                   @map("last_checks")
   prSeenAt         DateTime?               @map("pr_seen_at")
   wakeCount        Int                     @default(0) @map("wake_count")
-  /// Paused while the record is `waiting_machine` or waiting on a person.
-  /// BigInt: an Int of milliseconds overflows at about 596 hours.
+  /// The hours clock: time spent `active` with no question waiting for a
+  /// person, up to `clockStartedAt`. Paused while `queued`, `parked` or
+  /// `waiting_machine`. BigInt: an Int of milliseconds overflows at about 596
+  /// hours.
   activeMs         BigInt                  @default(0) @map("active_ms")
+  /// When the hours clock last started running; null while it is paused. It
+  /// runs only while the record is `active` and no question waits for a
+  /// person (`syncTicketWorkClock` folds the elapsed time into `activeMs`).
+  clockStartedAt   DateTime?               @map("clock_started_at")
+  /// When the agent's latest comment on the ticket asked the people on it
+  /// something (`ticket_comment_add` with `awaitsAnswer`). Cleared by the
+  /// next person event that wakes the record, or by a later agent comment
+  /// that asks nothing. While set, quiet wakes stop and the clock is paused.
+  awaitingAnswerAt DateTime?               @map("awaiting_answer_at")
   /// Coding cost deltas plus the Nessie run cost, at the ledger's precision.
   costUsd          Decimal                 @default(0) @map("cost_usd") @db.Decimal(20, 8)
   lastWakeAt       DateTime?               @map("last_wake_at")
@@ -4428,7 +4439,7 @@ model AgentReminder {
   createdByRunId  String?          @map("created_by_run_id") @db.Uuid
   status          String           @default("pending")
   firedAt         DateTime?        @map("fired_at")
-  /// replaced | work_ended | person
+  /// replaced | work_ended | person | undeliverable
   cancelledReason String?          @map("cancelled_reason")
   createdAt       DateTime         @default(now()) @map("created_at")
   agent           Agent            @relation(fields: [agentId], references: [id], onDelete: Cascade)

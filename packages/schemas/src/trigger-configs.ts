@@ -111,6 +111,27 @@ export const TicketTriggerLimitsSchema = z
   .describe('Limits the platform enforces on this trigger\'s work.')
 export type TicketTriggerLimits = z.infer<typeof TicketTriggerLimitsSchema>
 
+/** The quiet wake's default and bounds, in minutes. */
+export const TICKET_QUIET_WAKE_MINUTES = { default: 30, min: 15, max: 1440 } as const
+
+/**
+ * The quiet wake: an `active` record with no working session, no pending
+ * reminder, no open question and no wake for this long is woken with reason
+ * `quiet`, so a ticket a weak model forgot never sits in progress for ever.
+ */
+export const TicketQuietWakeMinutesSchema = z
+  .number()
+  .int()
+  .min(TICKET_QUIET_WAKE_MINUTES.min)
+  .max(TICKET_QUIET_WAKE_MINUTES.max)
+  .nullable()
+  .default(TICKET_QUIET_WAKE_MINUTES.default)
+  .describe(
+    'Minutes of quiet after which the platform wakes the agent on live work that has nothing else '
+    + 'scheduled — no reminder, no question waiting for an answer, no wake. Each quiet wake counts '
+    + 'against wakesPerTicket. null turns the quiet wake off.',
+  )
+
 const section = (when: string) =>
   z.string().trim().min(1).optional().describe(`Added after general ${when}.`)
 
@@ -125,7 +146,9 @@ export const TicketTriggerInstructionsSchema = z
       onPickup: section('when work on a ticket starts'),
       onTicketChanged: section('when the ticket changes while its work is live: a comment, an edit, a move'),
       onSessionTurnEnded: section('when a coding session working the ticket ends a turn'),
-      onReminder: section('when a reminder the agent set for the ticket fires'),
+      onReminder: section(
+        'when a reminder the agent set for the ticket fires, or the platform wakes it because nothing else is scheduled',
+      ),
       onQueued: section('when the ticket has to wait for a free machine'),
     },
     { required_error: 'give the agent standing instructions, at least {"general": "…"}' },
@@ -189,6 +212,7 @@ export const TicketChangedTriggerConfigSchema = z
       .describe('Leave out, or set null, for a trigger that never starts work itself.'),
     follow: stored.follow.describe('Which changes wake the agent while a ticket\'s work is live.'),
     endOn: stored.endOn,
+    quietWakeMinutes: TicketQuietWakeMinutesSchema,
     limits: TicketTriggerLimitsSchema,
     instructions: TicketTriggerInstructionsSchema,
   })
@@ -208,6 +232,7 @@ export type TicketChangedTriggerConfig = z.infer<typeof TicketChangedTriggerConf
  * writes them.
  */
 export const TicketChangedWorkConfigSchema = TicketChangedStoredConfigSchema.extend({
+  quietWakeMinutes: TicketQuietWakeMinutesSchema,
   limits: TicketTriggerLimitsSchema,
   instructions: TicketTriggerInstructionsSchema.optional(),
 })

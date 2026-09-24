@@ -284,14 +284,18 @@ export const ticketTriggerSkipSentence = (
  * `agent_trigger_deliveries.payload` of a ticket dispatch. Ids and vocabulary
  * only. A `TaskEvent` names its event by `taskEventId`; a person's message in
  * the work thread is not a `TaskEvent`, so it names its message by
- * `messageId` with the event type `thread_message`. Exactly one of the two.
+ * `messageId` with the event type `thread_message`; a `check_back_in`
+ * reminder names its `reminderId` with the event type `reminder`; and a quiet
+ * wake, which nothing caused, names none of them (event type `quiet`). The
+ * origin of the last two is `system`: the platform woke the agent.
  */
 export const TicketTriggerDeliveryPayloadSchema = z
   .object({
     taskEventId: uuid.optional(),
     messageId: uuid.optional(),
+    reminderId: uuid.optional(),
     taskId: uuid,
-    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message']),
+    eventType: z.enum([...TICKET_TRIGGER_EVENT_TYPES, 'thread_message', 'reminder', 'quiet']),
     originKind: z.enum(['session', 'token', 'agent', 'source', 'system']),
     outcome: TicketTriggerDispatchOutcomeSchema,
     skipReason: TicketTriggerSkipReasonSchema.optional(),
@@ -312,15 +316,18 @@ export const TicketTriggerDeliveryPayloadSchema = z
         message: 'A skipped delivery says why, and only a skipped one does.',
       })
     }
-    const fromMessage = payload.eventType === 'thread_message'
-    if (
-      (payload.taskEventId === undefined) !== fromMessage
-      || (payload.messageId === undefined) === fromMessage
-    ) {
+    const named = payload.eventType === 'thread_message'
+      ? 'messageId'
+      : payload.eventType === 'reminder'
+        ? 'reminderId'
+        : payload.eventType === 'quiet' ? null : 'taskEventId'
+    const ids = ['taskEventId', 'messageId', 'reminderId'] as const
+    if (ids.some((key) => (payload[key] !== undefined) !== (key === named))) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [fromMessage ? 'messageId' : 'taskEventId'],
-        message: 'A thread message names its messageId; every other event its taskEventId.',
+        path: [named ?? 'eventType'],
+        message: 'A thread message names its messageId, a reminder its reminderId, a quiet wake none, '
+          + 'and every other event its taskEventId.',
       })
     }
   })
