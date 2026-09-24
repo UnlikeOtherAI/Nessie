@@ -14,7 +14,7 @@ import { z } from 'zod'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
 import { emitWorkerAuditEvent } from '../execute/policy.js'
-import { describeTicketTriggerScope } from './provisioning-ticket-trigger.js'
+import { describeResolvedTriggerScope } from './provisioning-document-trigger.js'
 import { formatTriggerMarkdownLink } from './tool-output.js'
 
 const Id = z.string().uuid()
@@ -84,14 +84,17 @@ export const runAgentTriggerUpdateTool = async (
   )) {
     throw new Error('Trigger not found.')
   }
-  // A ticket trigger's refusal names its fields (`TriggerConfigRefusalError`),
-  // and travels to the model as it is; every other type answers null.
+  // A ticket or document trigger's refusal names its fields
+  // (`TriggerConfigRefusalError`), and travels to the model as it is; every
+  // other type answers null. The live requester is the editor, asked whether
+  // they can read a document trigger's space.
+  const uoaIdentity = context.actorContext.actionContext.uoaIdentity
   const updated = await updateAgentTrigger(context.prisma, {
     organizationId: member.organizationId,
     triggerId: trigger.id,
-  }, args)
+  }, args, { editor: { userId: member.userId, ...(uoaIdentity ? { uoaIdentity } : {}) } })
   if (!updated) throw new Error('Trigger configuration is invalid.')
-  const scope = await describeTicketTriggerScope(context, member, updated)
+  const scope = await describeResolvedTriggerScope(context, member, updated)
   await emitWorkerAuditEvent(context.prisma, member.actorContext, {
     action: 'trigger.updated',
     metadata: { fields: Object.keys(args).filter((key) => key !== 'triggerId') },

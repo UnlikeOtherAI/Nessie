@@ -3,15 +3,9 @@ import { randomUUID } from 'node:crypto'
 import { Prisma } from '@prisma/client'
 import type { FastifyInstance } from 'fastify'
 import { enqueueQueueJob } from '@nessie/db'
-import {
-  canReadSpace,
-  canWriteSpace,
-  knowledgeEmbeddingJobKey,
-  type NativeKnowledgeProviderOptions,
-} from '@nessie/knowledge'
+import { canReadSpace, canWriteSpace } from '@nessie/knowledge'
 import { attributionFromActorContext } from '@nessie/runtime'
 import {
-  KNOWLEDGE_EMBED_TOPIC,
   KNOWLEDGE_TRANSFER_TOPIC,
   TransferPagesBodySchema,
   TransferResultSchema,
@@ -21,7 +15,6 @@ import { z } from 'zod'
 
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { requireApiKnowledgeInferenceOrigin } from '../services/knowledge-inference-origin.js'
 import {
   createKnowledgeAccess,
   requestIds,
@@ -29,6 +22,7 @@ import {
   type KnowledgeRouteDeps,
 } from './knowledge-base-access.js'
 import { sendKnowledgeMutationError } from './knowledge-base-errors.js'
+import { apiKnowledgeProviderOptions } from './knowledge-provider-options.js'
 import {
   finishTransferCopy,
   runTransferTransaction,
@@ -120,21 +114,10 @@ export const registerKnowledgeTransferRoutes = (
   // and must enqueue its embed pass there too, exactly as an ordinary save
   // does — otherwise the copy is chunked but never embedded and stays invisible
   // to semantic search, which is the opposite of the "searchable within
-  // seconds" the copy-by-content-hash path exists to give it.
-  const providerOptions: NativeKnowledgeProviderOptions = {
-    onVersionChunksReplaced: async (tx, event) => {
-      const origin = await requireApiKnowledgeInferenceOrigin(tx, event, 'knowledge-indexer')
-      await enqueueQueueJob(tx, {
-        idempotencyKey: knowledgeEmbeddingJobKey(
-          event.pageId,
-          event.versionId,
-          deps.sharedModelClient?.embeddingModel ?? 'unresolved',
-        ),
-        payload: { ...event, origin },
-        topic: KNOWLEDGE_EMBED_TOPIC,
-      })
-    },
-  }
+  // seconds" the copy-by-content-hash path exists to give it. The hooks are
+  // the knowledge routes' own; a copy writes its versions without the writer,
+  // so it opens no document trigger's quiet window.
+  const providerOptions = apiKnowledgeProviderOptions(deps)
 
   app.post('/api/knowledge-base/transfers', async (request, reply) => {
     const actorContext = requireActorContext(request, reply)

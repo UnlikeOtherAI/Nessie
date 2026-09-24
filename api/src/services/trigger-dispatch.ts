@@ -94,6 +94,11 @@ export const dispatchAgentTrigger = async (
   if (trigger.type === 'ticket_changed') {
     return { kind: 'rejected', reason: 'ticket_trigger_not_fireable' }
   }
+  // A document trigger likewise: it wakes from a saved version, in that
+  // document's own thread or its ticket's work thread, never by hand.
+  if (trigger.type === 'document_changed') {
+    return { kind: 'rejected', reason: 'document_trigger_not_fireable' }
+  }
 
   if (trigger.workflowInstallationId) {
     return dispatchWorkflowTrigger(prisma, {

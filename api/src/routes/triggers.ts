@@ -173,6 +173,7 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     try {
       trigger = await createAgentTrigger(prisma, agentId, body, {
         ...(actorContext.actor.actorType === 'user' ? { authorUserId: actorContext.actor.actorId } : {}),
+        ...(actorContext.actionContext.uoaIdentity ? { authorUoaIdentity: actorContext.actionContext.uoaIdentity } : {}),
         ...(launchOrigin ? { launchOrigin } : {}),
       })
     } catch (error) {
@@ -232,7 +233,16 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     let updated
     try {
-      updated = await updateSharedAgentTrigger(prisma, scope, body)
+      // The editor, for the checks that ask what the person making the edit may
+      // read (a document trigger's space).
+      updated = await updateSharedAgentTrigger(prisma, scope, body, actorContext.actor.actorType === 'user'
+        ? {
+            editor: {
+              userId: actorContext.actor.actorId,
+              ...(actorContext.actionContext.uoaIdentity ? { uoaIdentity: actorContext.actionContext.uoaIdentity } : {}),
+            },
+          }
+        : {})
     } catch (error) {
       if (sendTriggerConfigRefusal(reply, error)) return reply
       throw error
@@ -382,6 +392,15 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
           'TICKET_TRIGGER_NOT_FIREABLE',
           'A ticket trigger starts work when a person who can edit the board moves a ticket into one of its '
           + 'start-work columns; it cannot be fired by hand.',
+        )
+        return reply
+      }
+      if (dispatched.reason === 'document_trigger_not_fireable') {
+        sendApiError(
+          reply,
+          409,
+          'DOCUMENT_TRIGGER_NOT_FIREABLE',
+          'A document trigger wakes its agent when a watched document is saved; it cannot be fired by hand.',
         )
         return reply
       }

@@ -22,12 +22,11 @@ const CHANNEL = '2d8f3e4c-5f60-4172-8c83-94a5bc6d7e8f'
 
 const minimal = { instructions: { general: 'Read the ticket before you act.' } }
 
-test('the union offers every type an agent may be given, and document_changed only when it ships', () => {
+test('the union offers every type an agent may be given', () => {
   assert.deepEqual(
     [...AGENT_TRIGGER_INPUT_TYPES],
-    ['manual', 'scheduled', 'interval', 'webhook', 'event', 'ticket_changed'],
+    ['manual', 'scheduled', 'interval', 'webhook', 'event', 'ticket_changed', 'document_changed'],
   )
-  assert.ok(!(AGENT_TRIGGER_INPUT_TYPES as readonly string[]).includes('document_changed'))
   for (const type of AGENT_TRIGGER_INPUT_TYPES) {
     assert.ok(AgentTriggerTypeSchema.options.includes(type), `${type} is a trigger type`)
   }
@@ -152,7 +151,7 @@ test('the prose names each field, its shape, its default and the forms a column 
   for (const type of AGENT_TRIGGER_INPUT_TYPES) assert.match(all, new RegExp(`^- ${type} — `, 'm'))
   assert.match(all, /- interval_minutes: whole number of at least 1 — Minutes between two runs\./)
   assert.match(all, /- events: list of text \(at least 1\) — The event names/)
-  assert.doesNotMatch(all, /document_changed/)
+  assert.match(all, /^- document_changed — Wakes the agent when a watched document/m)
   // The generic walker indents nested objects under their field.
   assert.deepEqual(
     describeObjectFields(z.object({ outer: z.object({ inner: z.boolean().describe('I.') }).describe('O.') })),

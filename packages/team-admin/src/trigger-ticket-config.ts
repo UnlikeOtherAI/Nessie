@@ -12,6 +12,7 @@ import {
   TriggerConfigRefusalError,
   type TriggerConfigRefusal,
 } from './trigger-config-refusal.js'
+import { resolveTriggerTargetChannel } from './trigger-target-channel.js'
 
 /**
  * A `ticket_changed` trigger's configuration, resolved on the server
@@ -64,51 +65,15 @@ const lockBoardPickups = async (tx: Prisma.TransactionClient, boardId: string): 
   )
 }
 
-const resolveChannel = async (tx: Prisma.TransactionClient, input: TicketTriggerResolveInput) => {
-  const channelId = input.targetChannelId
-  if (!channelId) {
-    return refuse(
-      'targetChannelId',
-      'a ticket trigger needs the channel its work threads open in: a public channel of the board\'s '
-      + 'project that the agent is bound to',
-    )
-  }
-  const channel = await tx.channel.findFirst({
-    where: { deletedAt: null, id: channelId, organizationId: input.agent.organizationId, project: { deletedAt: null } },
-    select: {
-      archivedAt: true,
-      dmKey: true,
-      id: true,
-      label: true,
-      project: { select: { name: true } },
-      projectId: true,
-      systemChannelType: true,
-      type: true,
-      visibility: true,
-    },
-  })
-  if (!channel) return refuse('targetChannelId', 'no such channel in this organisation')
-  const room = `#${channel.label}`
-  if (channel.archivedAt) return refuse('targetChannelId', `${room} is archived; pick a live channel`)
-  if (channel.type !== 'standard' || channel.systemChannelType || channel.dmKey) {
-    return refuse(
-      'targetChannelId',
-      `${room} is a direct or system conversation; a ticket trigger works in an ordinary project channel`,
-    )
-  }
-  if (channel.visibility !== 'public') {
-    return refuse(
-      'targetChannelId',
-      `${room} is ${channel.visibility}. A ticket trigger's channel must be public, so that everyone who `
-      + 'can read a ticket can open its work thread',
-    )
-  }
-  const bound = await tx.agentBinding.count({ where: { agentId: input.agent.id, channelId: channel.id } })
-  if (bound === 0) {
-    return refuse('targetChannelId', `${input.agent.name} is not in ${room}; add it to the channel first`)
-  }
-  return channel
+const TICKET_CHANNEL_WORDING = {
+  missing: 'a ticket trigger needs the channel its work threads open in: a public channel of the board\'s '
+    + 'project that the agent is bound to',
+  subject: 'a ticket trigger',
+  whyPublic: 'everyone who can read a ticket can open its work thread',
 }
+
+const resolveChannel = (tx: Prisma.TransactionClient, input: TicketTriggerResolveInput) =>
+  resolveTriggerTargetChannel(tx, { agent: input.agent, targetChannelId: input.targetChannelId, wording: TICKET_CHANNEL_WORDING })
 
 const boardSelect = {
   columns: { orderBy: { position: 'asc' }, select: { category: true, id: true, name: true } },

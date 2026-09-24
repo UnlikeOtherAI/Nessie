@@ -65,7 +65,8 @@ export const TEAM_STRUCTURE_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
       + 'category (todo, in_progress, review, done), the channels in it you can read with their visibility, '
       + 'and its document spaces with their top-level folders. Pass agentId to see which channels that '
       + 'agent is already in. A ticket_changed trigger needs a board, its start-work columns and a public '
-      + 'channel the agent is in; take them from here rather than guessing. Only what you can see is listed. '
+      + 'channel the agent is in; a document_changed trigger a document space (or one of its folders) and '
+      + 'the same kind of channel. Take them from here rather than guessing. Only what you can see is listed. '
       + 'Resolve the projectId with project_list.',
     parameters: {
       type: 'object',

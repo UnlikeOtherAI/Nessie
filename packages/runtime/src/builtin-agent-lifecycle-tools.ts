@@ -38,8 +38,9 @@ updateLifecycleTool.parameters.properties = {
   triggerId: { type: 'string' },
   config: {
     type: 'object',
-    description: 'Only the settings that change; the rest stay as they are. A ticket_changed change is '
-      + `checked again as a whole, and a refusal names the field.\n${AGENT_TRIGGER_CONFIG_PROSE}`,
+    description: 'Only the settings that change; the rest stay as they are. A ticket_changed or '
+      + 'document_changed change is checked again as a whole, and a refusal names the field.\n'
+      + AGENT_TRIGGER_CONFIG_PROSE,
   },
   description: { type: 'string' },
   enabled: { type: 'boolean' },

@@ -405,8 +405,8 @@ export const AGENT_ADMIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     personalAssistantOnly: true,
     description:
       'Give ANOTHER agent a trigger, one of the types in config below. Organisation owners only, and '
-      + 'the agent must already be bound to the target channel. A ticket_changed trigger is checked '
-      + 'field by field, and a refusal names the field and what exists instead. Get the agentId '
+      + 'the agent must already be bound to the target channel. A ticket_changed or document_changed '
+      + 'trigger is checked field by field, and a refusal names the field and what exists instead. Get the agentId '
       + 'from agent_list when the user named the agent. To schedule '
       + 'yourself instead, use schedule_task — that needs no owner rights. The '
       + 'result links the trigger as [Name](/agents/triggers/<triggerId>), the '

@@ -24,6 +24,7 @@ import {
   type LedgerResearchReference,
   type LedgerResearchReport,
 } from '@nessie/schemas'
+import { documentTriggerOnVersionCreated } from '@nessie/team-admin'
 
 /**
  * The steps of a delivery that are safe to repeat (Water plan amendments N3
@@ -299,6 +300,8 @@ export const ensureDeepWaterReportPage = async (
         topic: KNOWLEDGE_EMBED_TOPIC,
       })
     },
+    // A report landing in a watched space is a new document there, like any other.
+    onVersionCreated: documentTriggerOnVersionCreated,
   })
   const notes = reportNotes(input.report).map((note) => `> ${note}`)
   try {

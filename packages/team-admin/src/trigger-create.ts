@@ -4,6 +4,7 @@ import {
   type AgentTriggerRecord,
   type AgentTriggerType,
   type ScheduledTriggerLaunchOrigin,
+  type UoaSessionIdentity,
 } from '@nessie/schemas'
 
 import {
@@ -15,6 +16,8 @@ import {
   TRIGGER_ADMIN_AUDIENCE,
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { TriggerConfigRefusalError } from './trigger-config-refusal.js'
+import { resolveDocumentChangedTrigger } from './trigger-document-config.js'
 import { resolveTicketChangedTrigger } from './trigger-ticket-config.js'
 import { unreleasedTriggerTypeRefusal } from './trigger-type-availability.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
@@ -68,10 +71,10 @@ type CreateAgentTriggerInput = {
  * authorship only and grants nothing: no fire path reads it as the identity a
  * run acts as (docs/standards/ticket-work.md).
  *
- * A `ticket_changed` config is resolved and checked field by field
- * (`resolveTicketChangedTrigger`), and a refusal throws
- * `TriggerConfigRefusalError` naming each field. Every other type answers null
- * for anything it refuses, as it always has.
+ * A `ticket_changed` or `document_changed` config is resolved and checked
+ * field by field (`resolveTicketChangedTrigger`, `resolveDocumentChangedTrigger`),
+ * and a refusal throws `TriggerConfigRefusalError` naming each field. Every
+ * other type answers null for anything it refuses, as it always has.
  */
 export const createAgentTrigger = async (
   prisma: PrismaClient,
@@ -79,6 +82,8 @@ export const createAgentTrigger = async (
   input: CreateAgentTriggerInput,
   trusted: {
     authorUserId?: string
+    /** The author's live UOA identity, for the checks that ask what the author may read. */
+    authorUoaIdentity?: UoaSessionIdentity
     launchOrigin?: ScheduledTriggerLaunchOrigin
   } = {},
 ): Promise<AgentTriggerRecord | null> => {
@@ -143,6 +148,18 @@ export const createAgentTrigger = async (
     if (!agent.organizationId) return null
     return createTicketChangedTrigger(prisma, {
       agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
+      authorship,
+      clientConfig,
+      input,
+    })
+  }
+  if (input.type === 'document_changed') {
+    if (!agent.organizationId) return null
+    return createDocumentChangedTrigger(prisma, {
+      agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
+      author: authorUserId
+        ? { userId: authorUserId, ...(trusted.authorUoaIdentity ? { uoaIdentity: trusted.authorUoaIdentity } : {}) }
+        : null,
       authorship,
       clientConfig,
       input,
@@ -252,3 +269,54 @@ const createTicketChangedTrigger = async (
   })
   return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
 })
+
+/**
+ * The `document_changed` create: resolved and checked first, field by field
+ * (`resolveDocumentChangedTrigger` — the space readable by the whole channel,
+ * by the agent and by the person setting it up), then written with its
+ * project scope, which is how a saved version finds the trigger. Like a
+ * ticket trigger it has no fixed thread: each document is reviewed in its own
+ * thread of the target channel, or in its ticket's work thread.
+ */
+const createDocumentChangedTrigger = async (
+  prisma: PrismaClient,
+  input: {
+    agent: { id: string; name: string; organizationId: string }
+    author: { userId: string; uoaIdentity?: UoaSessionIdentity } | null
+    authorship: Record<string, unknown>
+    clientConfig: Record<string, unknown>
+    input: CreateAgentTriggerInput
+  },
+): Promise<AgentTriggerRecord | null> => {
+  if (!input.author) {
+    throw new TriggerConfigRefusalError([{
+      path: 'config',
+      reason: 'a document trigger is set up by a person, who must be able to read the documents it watches',
+    }])
+  }
+  const resolved = await resolveDocumentChangedTrigger(prisma, {
+    agent: input.agent,
+    author: input.author,
+    config: input.clientConfig,
+    nextRunAt: input.input.nextRunAt,
+    targetChannelId: input.input.targetChannelId,
+    targetThreadId: input.input.targetThreadId,
+  })
+  const target = await resolveExecutionTarget(prisma, input.agent.id, { targetChannelId: resolved.targetChannelId })
+  if (!target) return null
+  const trigger = await prisma.agentTrigger.create({
+    data: {
+      agentId: input.agent.id,
+      type: 'document_changed',
+      enabled: input.input.enabled ?? true,
+      status: input.input.enabled === false ? 'paused' : 'active',
+      name: input.input.name,
+      description: input.input.description,
+      config: { ...resolved.config, ...input.authorship } as Prisma.InputJsonValue,
+      scopeProjectId: resolved.scopeProjectId,
+      targetChannelId: target.channelId,
+      targetThreadId: null,
+    },
+  })
+  return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)
+}

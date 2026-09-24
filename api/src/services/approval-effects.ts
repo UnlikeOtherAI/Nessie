@@ -6,7 +6,7 @@ import {
   EFFECT_FREE_APPROVAL_ACTIONS,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
-import { activateAgentTodoTemplate } from '@nessie/team-admin'
+import { activateAgentTodoTemplate, documentTriggerOnPagePublished } from '@nessie/team-admin'
 import { emitAuditEvent } from './audit.js'
 import { resumeRunFromApproval } from './approval-resume.js'
 import { createKnowledgePublicationAttention } from './push-attention.js'
@@ -54,8 +54,13 @@ const runKnowledgePagePublishEffect = async (
   }
   const { pageId, versionId } = parsed.data
 
+  // The publication's attention, and the quiet window of any document
+  // trigger that fires on publish — the knowledge routes' own publish hooks.
   const provider = createNativeKnowledgeProvider(prisma, {
-    onPagePublished: async (tx, event) => createKnowledgePublicationAttention(tx, event),
+    onPagePublished: async (tx, event) => {
+      await createKnowledgePublicationAttention(tx, event)
+      await documentTriggerOnPagePublished(tx, event)
+    },
   })
   const page = await provider.getPage(actorContext.tenant.organizationId, pageId)
   if (!page) {

@@ -11,7 +11,11 @@ import {
   executorSection,
   type GlobalAgentCatalogueWriteSurface,
 } from './global-agent-executor-catalogue.js'
-import { ticketWorkFactsSection, triggerCatalogueSection } from './global-agent-trigger-catalogue.js'
+import {
+  documentTriggerFactsSection,
+  ticketWorkFactsSection,
+  triggerCatalogueSection,
+} from './global-agent-trigger-catalogue.js'
 
 import type {
   AgentToolCatalog,
@@ -482,6 +486,8 @@ export const buildGlobalAgentCatalogueBlock = (
     ...triggerCatalogueSection(),
     '',
     ...ticketWorkFactsSection(),
+    '',
+    ...documentTriggerFactsSection(),
     '',
     `Tools you can give an agent (${facts.catalogue.togglable.length}), by tool `
     + 'policy key:',
