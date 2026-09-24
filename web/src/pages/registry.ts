@@ -12,6 +12,7 @@ import type { ComponentType } from 'react'
 import { ApiPage } from './api'
 import { EuPage } from './eu'
 import { ExecutorsPage } from './executors'
+import { ExecutorSetupPage } from './executor-setup'
 import { InstallationPage } from './installation'
 import { McpPage } from './mcp'
 import { PrivacyPage } from './privacy'
@@ -69,6 +70,14 @@ export const pages: Page[] = [
     path: '/docs/executors',
     summary: 'Give an agent a real computer to work on — on Linux, macOS or Windows.',
     title: 'Remote executors',
+  },
+  {
+    Component: ExecutorSetupPage,
+    group: 'resources',
+    navLabel: 'Pair an executor',
+    path: '/docs/executor-setup',
+    summary: 'Install, pair and manage a computer that works with Nessie agents.',
+    title: 'Set up a remote executor',
   },
   {
     Component: EuPage,
