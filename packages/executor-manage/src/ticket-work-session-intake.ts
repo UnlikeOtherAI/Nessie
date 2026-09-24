@@ -164,8 +164,14 @@ export const enqueueTicketWorkForMachineInTransaction = async (
   tx: Prisma.TransactionClient,
   input: { cameOnline: boolean; executorId: string; now: Date },
 ): Promise<void> => {
+  // Only work the sweep would resume: a trigger switched off or in error keeps
+  // its records and wakes none, and counting them would enqueue a sweep on
+  // every heartbeat for as long as the machine stays up.
   const waiting = await tx.agentTicketWork.count({
-    where: { executorId: input.executorId, stateReason: 'machine_offline', status: 'waiting_machine' },
+    where: {
+      executorId: input.executorId, stateReason: 'machine_offline', status: 'waiting_machine',
+      trigger: { enabled: true, status: 'active' },
+    },
   })
   if (waiting > 0) {
     await enqueueTicketWorkSweep(tx, input.now)

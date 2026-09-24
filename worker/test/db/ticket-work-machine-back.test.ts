@@ -177,3 +177,21 @@ runDatabaseTest('past waitingMachineHours the work moves to another machine of t
     assert.equal(await prisma.agentTicketWork.count({ where: { executorId: machine, status: { in: ['active', 'waiting_machine'] } } }), 0)
   })
 })
+
+runDatabaseTest('work handed to a policy whose pool does not name its machine queues for one that does', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const { machine, work } = await pausedOffline(prisma, world)
+    const sessionId = randomUUID()
+    await prisma.agentTicketWork.update({ where: { id: work.id }, data: { sessionIds: [sessionId] } })
+    // As a confirmation that replaced the policy with one on other machines leaves it.
+    await prisma.executorStandingPolicyExecutor.deleteMany({ where: { executorId: machine, policyId: world.policyId } })
+    await prisma.executor.update({ where: { id: machine }, data: { lastSeenAt: new Date(), status: 'online' } })
+    await runTicketWorkSweep(prisma, LOCAL)
+    const moved = await recordOf(prisma, work.id)
+    assert.deepEqual([moved.status, moved.executorId, moved.sessionIds], ['queued', null, []])
+    const close = await prisma.executorCodingSessionCloseRequest.findFirstOrThrow({ where: { sessionId } })
+    assert.deepEqual([close.executorId, close.reason], [machine, 'machine_reassigned'])
+    assert.equal(await prisma.agentTriggerDelivery.count({ where: { source: 'machine', triggerId: world.triggerId } }), 0,
+      'no machine_back_online wake for a machine the work is not bound to')
+  })
+})

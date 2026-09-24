@@ -69,7 +69,46 @@ const loadWaiting = async (tx: Prisma.TransactionClient, workId: string): Promis
     : null
 }
 
-export type TicketWorkMachineReturn = 'resumed' | 'access_paused' | 'still_offline' | 'not_waiting'
+/**
+ * Take waiting work off the machine it holds and queue it under its policy,
+ * as of when it started. Its sessions stay on that machine; they close when it
+ * reconnects (`machine_reassigned`), and the ticket's next session starts on
+ * whichever machine takes the work.
+ */
+const moveTicketWorkOffItsMachine = async (
+  tx: Prisma.TransactionClient,
+  work: Waiting,
+  input: { now: Date; waitingMachineHours?: number },
+): Promise<void> => {
+  const policyId = work.policyId as string
+  const movedFrom = work.executorId as string
+  await closeTicketWorkSessionsInTransaction(tx, [work], 'machine_reassigned', null)
+  for (const sessionId of work.sessionIds) {
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE agent_ticket_work SET session_ids = array_remove(session_ids, ${sessionId}), updated_at = now()
+      WHERE id = ${work.id}::uuid`)
+  }
+  await tx.agentTicketWork.update({ where: { id: work.id }, data: { executorId: null } })
+  const reason = await standingPolicyPoolReason(tx, { now: input.now, policyId })
+  const position = await queueTicketWorkInTransaction(tx, {
+    joinedAt: work.startedAt, now: input.now, policyId, reason, workId: work.id,
+  })
+  await recordTicketWorkActivity(tx, {
+    work, eventType: 'work_queued', status: 'queued', reason, previousReason: 'machine_offline',
+  })
+  await writeTicketWorkAudit(tx, {
+    action: 'ticket.work.queued',
+    metadata: {
+      policyId, position, reason, requeuedFrom: movedFrom, taskId: work.taskId, triggerId: work.triggerId,
+      ...(input.waitingMachineHours === undefined ? {} : { waitingMachineHours: input.waitingMachineHours }),
+    },
+    organizationId: work.organizationId,
+    workId: work.id,
+  })
+  await enqueueTicketWorkSweep(tx, input.now)
+}
+
+export type TicketWorkMachineReturn = 'resumed' | 'access_paused' | 'requeued' | 'still_offline' | 'not_waiting'
 
 export const resumeTicketWorkOnItsMachineInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -79,6 +118,14 @@ export const resumeTicketWorkOnItsMachineInTransaction = async (
   const work = await loadWaiting(tx, input.workId)
   if (!work) return 'not_waiting'
   if (!ticketWorkMachineOnline(work.executor, now)) return 'still_offline'
+  // Handed to a policy whose pool does not name this machine: it was never
+  // the new policy's to bind, so the work queues for one that is.
+  if (work.policy?.status === 'live' && work.policyId && await tx.executorStandingPolicyExecutor.count({
+    where: { executorId: work.executorId as string, policyId: work.policyId },
+  }) === 0) {
+    await moveTicketWorkOffItsMachine(tx, work, { now })
+    return 'requeued'
+  }
   if (work.policy?.status !== 'live') {
     await closeTicketWorkSessionsInTransaction(tx, [work], 'policy_suspended', null)
     await tx.agentTicketWork.update({
@@ -119,36 +166,12 @@ export const requeueStrandedTicketWorkInTransaction = async (
 ): Promise<boolean> => {
   const now = input.now ?? new Date()
   const work = await loadWaiting(tx, input.workId)
-  if (!work?.policyId || work.policy?.status !== 'live' || ticketWorkMachineOnline(work.executor, now)) return false
+  if (!work?.policyId || work.policy?.status !== 'live' || ticketWorkMachineOnline(work.executor, now)) {
+    return false
+  }
   const since = await waitingSince(tx, work)
   if (now.getTime() - since.getTime() < input.waitingMachineHours * 3_600_000) return false
-  const strandedOn = work.executorId as string
-  // Its sessions stay on the offline machine; they close when it reconnects, and the ticket's
-  // next session starts on whichever machine takes the work.
-  await closeTicketWorkSessionsInTransaction(tx, [work], 'machine_reassigned', null)
-  for (const sessionId of work.sessionIds) {
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE agent_ticket_work SET session_ids = array_remove(session_ids, ${sessionId}), updated_at = now()
-      WHERE id = ${work.id}::uuid`)
-  }
-  await tx.agentTicketWork.update({ where: { id: work.id }, data: { executorId: null } })
-  const reason = await standingPolicyPoolReason(tx, { now, policyId: work.policyId })
-  const position = await queueTicketWorkInTransaction(tx, {
-    joinedAt: work.startedAt, now, policyId: work.policyId, reason, workId: work.id,
-  })
-  await recordTicketWorkActivity(tx, {
-    work, eventType: 'work_queued', status: 'queued', reason, previousReason: 'machine_offline',
-  })
-  await writeTicketWorkAudit(tx, {
-    action: 'ticket.work.queued',
-    metadata: {
-      policyId: work.policyId, position, reason, requeuedFrom: strandedOn, taskId: work.taskId,
-      triggerId: work.triggerId, waitingMachineHours: input.waitingMachineHours,
-    },
-    organizationId: work.organizationId,
-    workId: work.id,
-  })
-  await enqueueTicketWorkSweep(tx, now)
+  await moveTicketWorkOffItsMachine(tx, work, { now, waitingMachineHours: input.waitingMachineHours })
   return true
 }
 

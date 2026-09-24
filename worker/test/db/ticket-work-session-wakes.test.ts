@@ -15,6 +15,7 @@ import {
   withMachinesWorld,
   type MachinesWorld,
 } from './ticket-work-machines-fixture.js'
+import { recoverLostTicketJobs } from '../../src/control/ticket-work-sweep.js'
 import { runDatabaseTest } from './support.js'
 
 /**
@@ -207,5 +208,31 @@ runDatabaseTest('a turn that ends while the work is parked is skipped, and a wak
     await drainSessionJobs(client, ticket.workId, seen)
     const stopped = await client.agentTicketWork.findUniqueOrThrow({ where: { id: ticket.workId } })
     assert.deepEqual([stopped.status, stopped.stateReason], ['failed', 'limit_wakes'])
+  })
+})
+
+runDatabaseTest('a trigger in error wakes nothing, and a session job the queue gave up on is dispatched once more', async () => {
+  await withTicket(async (world, client, ticket) => {
+    const session = (turn: number) =>
+      bridgeReport([{ ownerKey: ticket.ownerKey, sessionId: ticket.sessionId, status: 'waiting_for_input', turn }])
+    await report(client, world, ticket, session(1))
+    await client.agentTrigger.update({ where: { id: world.triggerId }, data: { status: 'error' } })
+    await drainSessionJobs(client, ticket.workId, new Set())
+    const off = await client.agentTriggerDelivery.findFirstOrThrow({
+      where: { dedupeKey: `session:${ticket.sessionId}:1:waiting_for_input`, triggerId: world.triggerId },
+    })
+    assert.deepEqual([off.status, off.errorMessage], ['skipped', 'trigger_disabled'])
+
+    // Back on; the next turn's job dies with its worker, and the sweep's recovery dispatches it.
+    await client.agentTrigger.update({ where: { id: world.triggerId }, data: { status: 'active' } })
+    await report(client, world, ticket, session(2))
+    const [, lost] = await sessionJobs(client, ticket.workId)
+    assert.ok(lost)
+    await client.queueJob.update({ where: { id: lost.id }, data: { status: 'dead' } })
+    assert.ok(await recoverLostTicketJobs(client, new Date()) >= 1)
+    const woken = await client.agentTriggerDelivery.findFirstOrThrow({
+      where: { dedupeKey: `session:${ticket.sessionId}:2:waiting_for_input`, triggerId: world.triggerId },
+    })
+    assert.equal(woken.status, 'delivered')
   })
 })

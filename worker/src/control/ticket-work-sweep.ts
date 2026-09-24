@@ -2,9 +2,11 @@ import { Prisma, type PrismaClient, type RunStatus } from '@prisma/client'
 import type { ResolveLiveEntitlementsDeps } from '@nessie/runtime'
 import {
   TICKET_WORK_LIVE_STATUSES,
+  TICKET_WORK_SESSION_TOPIC,
   TICKET_WORK_SWEEP_TOPIC,
   TICKET_WORK_THREAD_MESSAGE_TOPIC,
   TicketChangedStoredConfigSchema,
+  TicketWorkSessionJobPayloadSchema,
   TicketWorkThreadMessageJobPayloadSchema,
   TRIGGER_TICKET_DISPATCH_TOPIC,
   TriggerTicketDispatchJobPayloadSchema,
@@ -16,6 +18,7 @@ import { dispatchTicketEvent } from './ticket-trigger-dispatch.js'
 import { settleTicketDelivery } from './ticket-trigger-settle.js'
 import { createTicketWorkSeam } from './ticket-work.js'
 import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
+import { dispatchTicketWorkSession } from './ticket-work-session-wake.js'
 import { stopTicketWorkAtWakeLimit } from './ticket-work-run.js'
 import { sweepStandingMachineAccess, ticketSessionWorking } from './ticket-work-sweep-machines.js'
 import type { TicketWorkSeam } from './ticket-work-seam.js'
@@ -39,8 +42,9 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  *   `quietWakeMinutes` is woken with reason `quiet`, counted against its wake
  *   limit — nor while one of the ticket's own coding sessions is mid-turn
  *   on its machine, as the machine last reported (T4);
- * - **recovers a lost dispatch job** — a `trigger.ticket.dispatch` or
- *   `ticket-work.thread-message` job the queue gave up on (its worker died
+ * - **recovers a lost dispatch job** — a `trigger.ticket.dispatch`,
+ *   `ticket-work.thread-message` or (T5) `ticket-work.session` job the queue
+ *   gave up on (its worker died
  *   holding it, or it failed at every attempt) is dispatched once more. Each
  *   dispatcher decides at most once per (trigger, event), so a job that did
  *   settle changes nothing, and a person's move whose job was lost still
@@ -301,7 +305,7 @@ export const recoverLostTicketJobs = async (prisma: PrismaClient, now: Date, lim
   const since = new Date(now.getTime() - LOST_JOB_HORIZON_MS)
   const jobs = await prisma.$queryRaw<LostJob[]>(Prisma.sql`
     SELECT id::text AS id, topic, payload FROM queue_jobs
-    WHERE topic IN (${TRIGGER_TICKET_DISPATCH_TOPIC}, ${TICKET_WORK_THREAD_MESSAGE_TOPIC})
+    WHERE topic IN (${TRIGGER_TICKET_DISPATCH_TOPIC}, ${TICKET_WORK_THREAD_MESSAGE_TOPIC}, ${TICKET_WORK_SESSION_TOPIC})
       AND status = 'dead'
       AND enqueued_at >= ${since}
       AND position(${LOST_JOB_RECOVERED} in coalesce(error_message, '')) = 0
@@ -323,6 +327,9 @@ export const recoverLostTicketJobs = async (prisma: PrismaClient, now: Date, lim
     try {
       if (job.topic === TRIGGER_TICKET_DISPATCH_TOPIC) {
         await dispatchTicketEvent(prisma, TriggerTicketDispatchJobPayloadSchema.parse(job.payload))
+      } else if (job.topic === TICKET_WORK_SESSION_TOPIC) {
+        // A session's wake decides once per report of it, by its own key.
+        await dispatchTicketWorkSession(prisma, TicketWorkSessionJobPayloadSchema.parse(job.payload))
       } else {
         await dispatchTicketThreadMessage(prisma, TicketWorkThreadMessageJobPayloadSchema.parse(job.payload))
       }

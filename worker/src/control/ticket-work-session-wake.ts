@@ -88,7 +88,9 @@ export const dispatchTicketWorkSession = async (
     where: { id: wake.workId },
     select: {
       agentId: true, id: true, organizationId: true, projectId: true, taskId: true, threadId: true,
-      trigger: { select: { agentId: true, config: true, id: true, targetChannelId: true } },
+      trigger: {
+        select: { agentId: true, config: true, enabled: true, id: true, status: true, targetChannelId: true },
+      },
     },
   })
   const trigger = record?.trigger
@@ -106,9 +108,14 @@ export const dispatchTicketWorkSession = async (
   const dedupeKey = `session:${wake.sessionId}:${wake.turn}:${wake.status}`
   const retry = options.retry ? { retry: options.retry } : {}
   const config = TicketChangedStoredConfigSchema.safeParse(trigger.config)
-  if (!config.success) {
+  // A trigger switched off ends its work; one in error keeps it and wakes none of it.
+  const refusal = !config.success ? 'config_invalid' as const
+    : !trigger.enabled || trigger.status !== 'active' ? 'trigger_disabled' as const
+      : null
+  if (refusal || !config.success) {
     await settleTicketDelivery(prisma, {
-      base, decision: { kind: 'skip', reason: 'config_invalid', source: 'session' }, dedupeKey, triggerId: trigger.id, ...retry,
+      base, decision: { kind: 'skip', reason: refusal ?? 'config_invalid', source: 'session' }, dedupeKey,
+      triggerId: trigger.id, ...retry,
     })
     return
   }

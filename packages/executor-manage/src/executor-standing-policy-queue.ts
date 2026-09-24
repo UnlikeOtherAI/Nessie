@@ -89,6 +89,8 @@ export const queuedTicketWorkOutranks = async (
       id: { not: input.record.id },
       policy: { executors: { some: { executorId: input.executorId } }, status: 'live' },
       status: 'queued',
+      // Only work the dispatcher would place: a trigger in error keeps its records and places none.
+      trigger: { enabled: true, status: 'active' },
     },
     select: { enqueuedAt: true, executorId: true, id: true, task: { select: { priority: true } } },
   })
