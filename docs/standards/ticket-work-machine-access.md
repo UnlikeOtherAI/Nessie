@@ -408,8 +408,10 @@ each step on its own so one failing never keeps the others from running:
   `no_longer_applies` — and said so on the Triggers page — when the record is
   not `active` (parked, queued, waiting or ended) or a wait or review of the
   agent's own saw a turn at or after this one end: both read under the
-  thread's run slot. Nothing the session said reaches the wake. A failed
-  delivery is retried from its payload (`reattemptTicketWorkDelivery`).
+  thread's run slot; a trigger off or in error skips it `trigger_disabled`.
+  Nothing the session said reaches the wake. A failed delivery is retried
+  from its payload (`reattemptTicketWorkDelivery`), and a job the queue gave
+  up on is dispatched once more by the sweep's lost-job recovery.
 - **Every live kickoff with a machine promises it**: *"…and when this
   ticket's coding session ends a turn, is interrupted, fails or closes."*
 
@@ -425,8 +427,13 @@ each step on its own so one failing never keeps the others from running:
   delivered `machine` delivery and one `machine_back_online` wake bound to
   it — after its limits, as at any wake. Machine access paused meanwhile:
   the work waits for access instead, unpinned, its sessions there closed
-  (`policy_suspended`), with no wake. A person's wake that finds the machine
-  back resumes the work the same way first.
+  (`policy_suspended`), with no wake. Handed to a policy whose pool does not
+  name the machine (a confirmation that replaced it with other machines): it
+  is queued for one that does, as below, since the binder would never bind
+  it there. A person's wake that finds the machine back resumes the work the
+  same way first. Only work of a trigger that is on and not in error counts
+  — for the heartbeat's enqueue as for the sweep — so a trigger in error
+  never makes every heartbeat enqueue a sweep.
 - **Gone too long.** Past the trigger's `waitingMachineHours` (default 24,
   1–168, in the editor beside the limits; not a pinned term) measured from
   the later of the work's newest `machine_offline` pause and the machine's
@@ -598,7 +605,8 @@ unknown at the row cap, nothing from a report without the field);
 the subscriber: a fast turn inside one report waking once and a replayed job
 nothing, a turn the agent already saw skipped with its row, interrupted and
 failed, a closed session leaving the live set, a report without the field,
-a parked record skipped, and the wake budget);
+a parked record skipped, the wake budget, a trigger in error waking nothing,
+and a dead session job recovered);
 `worker/test/db/ticket-work-dequeue.test.ts` (priority then age across two
 policies sharing a machine, positions renumbered, a priority change re-sorting
 and waking nothing, a ticket out of its column and a mover off the board
@@ -609,8 +617,9 @@ second); `worker/test/db/ticket-work-machine-back.test.ts` (no run while the
 machine is away, the heartbeat's sweep and one `machine_back_online` wake, a
 wake that finds it back, `waitingMachineHours` moving the work to the other
 machine with its old session's `machine_reassigned` close riding that
-machine's next heartbeat, and what the chip, the section and the executor
-page read); `api/test/standing-policy-routes.test.ts` (the holding ticket);
+machine's next heartbeat, work handed to a pool without its machine queued
+for one that has it, and what the chip, the section and the executor page
+read); `api/test/standing-policy-routes.test.ts` (the holding ticket);
 the admin's `ticket-work-machine-states`, `machine-access-presentation`,
 `executor-standing-access` and `ticket-trigger-form` tests; and the
 task-dialog (21, 28–30), agent-triggers (the waiting-hours field, the page's
