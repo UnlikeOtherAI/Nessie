@@ -40,7 +40,7 @@ test('a lendable project tool never requires a projectId and says what omitting 
   })
   assert.deepEqual(
     takingProject.map((tool) => tool.id).sort(),
-    ['ticket_board_read', 'ticket_create', 'ticket_label_create', 'ticket_labels_read', 'ticket_list'],
+    ['ticket_board_create', 'ticket_board_read', 'ticket_create', 'ticket_label_create', 'ticket_labels_read', 'ticket_list'],
   )
   for (const tool of takingProject) {
     const parameters = tool.parameters as {
