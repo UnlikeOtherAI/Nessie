@@ -215,6 +215,28 @@ dbTest('a move that started nothing is said on the ticket until work starts afte
     })
     await skip(other.id, 'already_in_pickup_column', new Date())
     assert.equal((await read<TaskTicketWorkRecord>(app, `/api/tasks/${other.id}/work`)).data.lastSkip, null)
+
+    // A pickup that failed and switched its trigger off is said on the ticket.
+    const failed = await prisma.task.create({
+      data: { organizationId: s.organization.id, projectId: s.project.id, title: 'Picked up as the channel went' },
+    })
+    await prisma.agentTriggerDelivery.create({
+      data: {
+        dedupeKey: `ticket:${s.trigger.id}:${randomUUID()}`,
+        errorMessage: 'its agent is no longer in the target channel',
+        payload: {
+          eventType: 'column_entered', originKind: 'session', outcome: 'pickup', wakeReason: 'pickup',
+          taskEventId: randomUUID(), taskId: failed.id,
+        },
+        source: 'pickup',
+        status: 'failed',
+        triggerId: s.trigger.id,
+      },
+    })
+    const readFailed = () => read<TaskTicketWorkRecord>(app, `/api/tasks/${failed.id}/work`)
+    assert.equal((await readFailed()).data.lastSkip, null, 'a failure still being retried is not the ticket\'s news yet')
+    await prisma.agentTrigger.update({ where: { id: s.trigger.id }, data: { status: 'error', enabled: false } })
+    assert.equal((await readFailed()).data.lastSkip?.reason, 'trigger_failed')
   })
 })
 

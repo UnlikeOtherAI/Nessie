@@ -220,6 +220,10 @@ export const TicketTriggerSkipReasonSchema = z.enum([
   'work_ended',
   'not_followed',
   'trigger_disabled',
+  // Not written on a delivery: what the ticket says of a pickup whose
+  // delivery failed and switched its trigger off (its health), so the move
+  // that assigned the agent and started nothing still has a reason on it.
+  'trigger_failed',
 ])
 export type TicketTriggerSkipReason = z.infer<typeof TicketTriggerSkipReasonSchema>
 
@@ -248,6 +252,8 @@ export const TICKET_TRIGGER_SKIP_SENTENCES = {
   not_followed: 'This trigger does not read messages in the work thread, so the message woke nobody. '
     + 'Comment on the ticket instead.',
   trigger_disabled: 'This ticket\'s trigger is off, so the message woke nobody.',
+  trigger_failed: 'This trigger could not start work — its agent lost its channel, or its setup no longer holds — '
+    + 'so it was switched off. Its owner can see why and fix it on the Triggers page.',
 } as const satisfies Record<TicketTriggerSkipReason, string>
 
 /**

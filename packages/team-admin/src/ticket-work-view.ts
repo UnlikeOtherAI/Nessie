@@ -80,7 +80,7 @@ const loadLastSkip = async (
 ): Promise<TicketWorkSkipNotice | null> => {
   const deliveries = await prisma.agentTriggerDelivery.findMany({
     where: {
-      status: 'skipped',
+      status: { in: ['skipped', 'failed'] },
       source: { in: ['pickup', 'follow'] },
       trigger: { type: 'ticket_changed', scopeProjectId: input.projectId },
       payload: { path: ['taskId'], equals: input.taskId },
@@ -91,14 +91,31 @@ const loadLastSkip = async (
       createdAt: true,
       payload: true,
       source: true,
+      status: true,
       triggerId: true,
-      trigger: { select: { agent: { select: { name: true } } } },
+      trigger: { select: { agent: { select: { name: true } }, status: true } },
     },
   })
   const notice = new Set<string>(TICKET_WORK_NOTICE_SKIP_REASONS)
   for (const delivery of deliveries) {
     const payload = TicketTriggerDeliveryPayloadSchema.safeParse(delivery.payload)
-    if (!payload.success || !payload.data.skipReason || !notice.has(payload.data.skipReason)) continue
+    if (!payload.success) continue
+    // A pickup that failed and switched its trigger off (its health) is said
+    // too: the move may already have assigned the agent, and started nothing.
+    if (delivery.status === 'failed') {
+      const unhealthy = delivery.trigger.status === 'error' || delivery.trigger.status === 'needs_reauthorization'
+      if (delivery.source !== 'pickup' || !unhealthy) continue
+      const newer = input.newestByTrigger.get(delivery.triggerId)
+      if (newer && newer >= delivery.createdAt) return null
+      return {
+        triggerId: delivery.triggerId,
+        agentName: delivery.trigger.agent?.name ?? 'The agent',
+        reason: 'trigger_failed',
+        reentry: false,
+        at: delivery.createdAt.toISOString(),
+      }
+    }
+    if (!payload.data.skipReason || !notice.has(payload.data.skipReason)) continue
     // A follow skip is a notice only when it refused a re-entry; any other is
     // bookkeeping the Triggers page shows its owner.
     const reentry = payload.data.reentry === true

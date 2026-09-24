@@ -106,6 +106,7 @@ export const TICKET_WORK_NOTICE_SKIP_REASONS = [
   'system_origin',
   'not_board_editor',
   'limit_starts',
+  'trigger_failed',
 ] as const satisfies readonly z.infer<typeof TicketTriggerSkipReasonSchema>[]
 
 /** A board card's compact work state: the agent's avatar and a state dot. */

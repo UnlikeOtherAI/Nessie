@@ -489,7 +489,9 @@ routes, and none of it names a machine.
     state and no door. It also carries `lastSkip`: the newest pickup skip, or
     refused re-entry (`reentry`), in `TICKET_WORK_NOTICE_SKIP_REASONS` (an
     agent's, a token's, a source's or the platform's move, a non-editor's,
-    the daily start limit) while nothing newer happened under that trigger —
+    the daily start limit, and `trigger_failed` — a pickup whose delivery
+    failed and switched its trigger off, which may already have assigned the
+    agent) while nothing newer happened under that trigger —
     *"Moved by an agent, so work did not start…"* belongs on the ticket that
     did not start, and *"Moved back by an agent, so work did not resume…"*
     (`ticketTriggerSkipSentence`) on the one whose work stayed parked. And
