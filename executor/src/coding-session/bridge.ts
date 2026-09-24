@@ -8,6 +8,7 @@ import {
   argumentsFor,
   CodingBridgeError,
   invalidArguments,
+  pullRequestArgument,
   requiredText,
   sessionIdArgument,
 } from './bridge-tools.js'
@@ -305,8 +306,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   }
 
   const review = async (value: unknown, ownerKey: string): Promise<Record<string, unknown>> => {
-    const args = argumentsFor(value, ['sessionId'])
+    const args = argumentsFor(value, ['sessionId', 'pullRequest'])
     const { paths, meta } = await owned(args.sessionId, ownerKey)
+    const pullRequest = args.pullRequest === undefined ? undefined : pullRequestArgument(args.pullRequest)
     const root = findCodingRoot(rootSet, meta.rootName)
     const folder = await resolveCodingFolder(root, meta.path)
     const state = await readState(paths)
@@ -315,6 +317,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       ...await briefStatus(paths),
       ...await reviewCodingSession({
         folder, rootCanonical: root.canonical!, rewriter: rootSet.rewriter, state, env: await reviewEnv(),
+        ...(pullRequest === undefined ? {} : { pullRequest }),
       }),
     }
   }

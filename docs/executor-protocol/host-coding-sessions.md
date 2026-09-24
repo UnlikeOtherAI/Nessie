@@ -680,6 +680,22 @@ names — often their author's — are rewritten like every other string, keys
 of `pullRequests` included (the bridge's last pass rewrites values, not
 keys), while `gh` is still asked about each branch by its real name.
 
+`session_review` also takes an optional `pullRequest`, a URL of exactly the
+shape `https://github.com/<owner>/<repo>/pull/<number>` (`pullRequestArgument`
+in `bridge-tools.ts`; anything else is `coding_session_invalid_arguments`).
+The coding agent usually deletes a merged branch and its worktree, which
+leaves the lookup by branch empty just when the answer is MERGED, so the
+review then also runs `gh pr view <url> --json
+url,state,mergeable,statusCheckRollup` — beside the git reads, with no shell,
+inside the same 20 s budget and 10 s per call — and answers `pullRequest`
+with the same projection and rewriting as a branch's: `url` (path rules
+only), `state`, `mergeable` and the check counts. When `gh` is missing, or
+answers nothing it can parse in time, `pullRequest` is `{url, unavailable:
+'gh_missing' | 'lookup_failed'}` rather than absent. Only the worker fills
+it: the model's `coding_session_review` still takes a `sessionId` alone, and
+ticket work will pass the pull request its record holds
+([ticket-driven agents](../plans/2026-09-23-ticket-driven-agents/machine-access.md#done-means-merged)).
+
 ## Verifying
 
 ```bash
@@ -751,6 +767,15 @@ or any value of the logged-in account, and nothing was left running. On Linux
 the turn finished, a new executor life sent a follow-up to the same agent, and
 the close stopped the unit. Claude cannot log in over SSH on the macOS test
 machine, so macOS ran the suites only.
+
+One owner-key vector with and one without a ticket context is pinned, as
+literal hex, in the schemas' `executor-coding-sessions.test.ts`,
+executor-manage's `executor-coding-session-owner.test.ts` and the executor's
+`coding-session-daemon.test.ts`, so the three derivations agree on every OS
+the suites run on; `coding-session-owners.test.ts` drives a real bridge with
+keys the daemon derived and shows a lease-end close missing a ticket's
+sessions and each ticket getting its own quota. `coding-session-review.test.ts`
+reviews a real repository whose branch was merged and deleted, by URL.
 
 The control plane's half runs against real rows (`DATABASE_URL=…`):
 `packages/executor-manage/test/executor-coding-session-owner.test.ts` and
