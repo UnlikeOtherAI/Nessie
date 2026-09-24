@@ -65,6 +65,15 @@ export type BuiltinToolDefinition = {
    */
   projectOperator?: boolean
   /**
+   * Only a live person's own interactive turn may call it, on every arm —
+   * the Personal Assistant's included, whose arm otherwise also opens on a
+   * schedule it fires for its owner. Set on the verbs that arm, install or
+   * start standing work (the workflow writes) and on the project-operator
+   * verbs this capability added, so none of them runs as somebody who is not
+   * there. The identity and operator arms are live-only already.
+   */
+  requiresLiveRequester?: boolean
+  /**
    * When true, the tool is OFF for every agent by default and is exposed ONLY
    * to an agent whose per-agent `toolPolicy` carries an explicit allow
    * (`toolPolicy[id] === true`). Unlike the ordinary builtin default (enabled

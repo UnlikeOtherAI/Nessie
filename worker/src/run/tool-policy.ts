@@ -59,6 +59,7 @@ const isWithheldFromPersonalAssistantPresence = (tool: BuiltinToolDefinition): b
 export type ToolDenialReason =
   | 'agent_policy_denied'
   | 'global_agent_handoff_denied'
+  | 'live_requester_required'
   | 'parent_agent_subtask_denied'
   | 'personal_assistant_only'
   | 'tool_not_granted'
@@ -104,6 +105,12 @@ export type ToolAuthorizationOptions = {
    * for the same reason `identityToolIds` keeps its conditions out of here.
    */
   projectOperatorToolIds?: ReadonlySet<string>
+  /**
+   * A live person's own interactive turn (a user actor, `interactive`), which
+   * a `requiresLiveRequester` verb needs on every arm. Absent is false, as on a
+   * sub-agent's calls.
+   */
+  liveRequester?: boolean
   /**
    * `Agent.systemSlug` — set only on a global agent's per-organisation row.
    *
@@ -172,6 +179,14 @@ export const authorizeToolCall = (
     return { allowed: false, reason: 'personal_assistant_only' }
   }
 
+  // Standing work — arming, installing or starting a workflow, and the verbs
+  // the project-operator capability added — never runs as somebody who is not
+  // there, whichever arm admitted it: the Personal Assistant's opens on the
+  // schedules it fires for its owner too.
+  if (definition.requiresLiveRequester && options.liveRequester !== true) {
+    return { allowed: false, reason: 'live_requester_required' }
+  }
+
   // Explicit-grant tools are OFF by default: they surface only when the agent's
   // policy carries an explicit allow (`=== true`). An absent/inherited verdict
   // is a denial (the opposite of ordinary builtins, which are allowed unless the
@@ -237,6 +252,7 @@ export const resolveAgentTools = (
           ...(options.identityToolIds ? { identityToolIds: options.identityToolIds } : {}),
           ...(options.projectDelegatedToolIds ? { projectDelegatedToolIds: options.projectDelegatedToolIds } : {}),
           ...(options.projectOperatorToolIds ? { projectOperatorToolIds: options.projectOperatorToolIds } : {}),
+          ...(options.liveRequester ? { liveRequester: true } : {}),
           ...(options.agentSystemSlug ? { agentSystemSlug: options.agentSystemSlug } : {}),
         },
       ).allowed

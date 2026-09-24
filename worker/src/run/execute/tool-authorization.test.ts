@@ -412,6 +412,7 @@ const runLoop = async (input: {
       identityToolIds: new Set<string>(),
       projectDelegatedToolIds: new Set<string>(),
       projectOperatorToolIds: new Set<string>(),
+      liveRequester: true,
       initialMessages: [{ content: 'go', role: 'user' }],
       inference: {
         consumeStreamedFlag: () => false,

@@ -69,6 +69,7 @@ export const PROJECT_OPERATOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Add Board Column',
     personalAssistantOnly: true,
     projectOperator: true,
+    requiresLiveRequester: true,
     summary: 'Add a column to a board.',
     description:
       `Add a column to a board, with its category. ${ACTS_AS} Any member of the board's project may do `
@@ -92,6 +93,7 @@ export const PROJECT_OPERATOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Change Board Column',
     personalAssistantOnly: true,
     projectOperator: true,
+    requiresLiveRequester: true,
     summary: 'Rename, recategorise or move a board column.',
     description:
       `Change a board column: its name, its category or its position. ${ACTS_AS} Any member of the `
@@ -115,6 +117,7 @@ export const PROJECT_OPERATOR_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     label: 'Create Document Space',
     personalAssistantOnly: true,
     projectOperator: true,
+    requiresLiveRequester: true,
     summary: 'Create a project\'s documents space, or a named document space in a project.',
     description:
       `Create a place for a project's documents. ${ACTS_AS} kind "project_documents" makes sure the `

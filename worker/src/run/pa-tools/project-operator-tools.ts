@@ -77,7 +77,7 @@ export const runTicketBoardColumnCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ColumnCreateInput.parse(input)
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'ticket_board_column_create')
   const board = await modifiableBoard(context, member, args.boardId)
   const column = await createBoardColumn(context.prisma, board, {
     category: args.category,
@@ -102,7 +102,7 @@ export const runTicketBoardColumnUpdateTool = async (
 ): Promise<ToolExecutionResult> => {
   const { boardId, columnId, ...changes } = ColumnUpdateInput.parse(input)
   if (Object.keys(changes).length === 0) throw new Error('Name what changes: name, category or position.')
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'ticket_board_column_update')
   const board = await modifiableBoard(context, member, boardId)
   const updated = await updateBoardColumn(context.prisma, board.id, columnId, changes)
   if (isBoardMutationError(updated)) {
@@ -134,7 +134,7 @@ export const runKbSpaceCreateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = SpaceCreateInput.parse(input)
   if (args.kind === 'space' && !args.name) throw new Error('A new space needs a name.')
-  const { member, operatorProjectId } = await resolveOperatorAwareMember(context)
+  const { member, operatorProjectId } = await resolveOperatorAwareMember(context, 'kb_space_create')
   const projectId = args.projectId ?? operatorProjectId
   if (!projectId) throw new Error('Name the projectId. Resolve it with project_list first.')
 

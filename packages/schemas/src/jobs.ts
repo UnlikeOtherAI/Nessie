@@ -33,11 +33,12 @@ export const RunExecuteJobPayloadSchema = z.object({
   batchMessageIds: z.array(z.string().uuid()).min(1).optional(),
   /**
    * The person whose own press brought a stopped run back: Continue, a card
-   * answer, or an approval. Only `resumeSuspendedRun` sets it, from the
-   * server-side press, and it is set on every continuation that press makes.
-   * A card or approval resume acts as the parked run's own actor, so this is
-   * the one field that says who pressed: an executor conversation lease
-   * carries into a continuation only when it names the lease holder.
+   * answer, an approval, or Restart. Only `resumeSuspendedRun` and
+   * `restartRun` set it, from the server-side press, on every run that press
+   * makes. A card or approval resume acts as the parked run's own actor, so
+   * this is the one field that says who pressed: an executor conversation
+   * lease carries into a continuation only when it names the lease holder, and
+   * the project-operator arm opens on any replay only when it names the actor.
    */
   resumedByUserId: z.string().uuid().optional(),
   messageId: NonEmptyStringSchema,

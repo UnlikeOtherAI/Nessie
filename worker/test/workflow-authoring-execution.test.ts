@@ -143,7 +143,8 @@ const createContext = (): {
       agentKind: 'personal_assistant',
       channel: { id: channelId, organizationId },
       prisma,
-      run: { id: randomUUID(), messageId, threadId },
+      // The owner's own live turn: the workflow writes run on no other.
+      run: { id: randomUUID(), interactive: true, messageId, threadId },
     } as unknown as BuiltinToolRuntimeContext,
   }
 }

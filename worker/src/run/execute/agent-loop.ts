@@ -75,6 +75,7 @@ export const runExecutionAgentLoop = async (
     identityToolIds: ReadonlySet<string>
     projectDelegatedToolIds: ReadonlySet<string>
     projectOperatorToolIds: ReadonlySet<string>
+    liveRequester: boolean
     initialMessages: ProviderMessage[]
     inference: RunInference
     /** DeepWater turns retain their own recovery matrix and never suspend. */
@@ -194,6 +195,7 @@ export const runExecutionAgentLoop = async (
         identityToolIds: input.identityToolIds,
         projectDelegatedToolIds: input.projectDelegatedToolIds,
         projectOperatorToolIds: input.projectOperatorToolIds,
+        liveRequester: input.liveRequester,
         executorToolNames: input.executorToolset.handledNames,
         mcpToolNames: mcpExposedNames,
         skipAutoReview: options.skipAutoReview,

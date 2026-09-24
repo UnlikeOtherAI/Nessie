@@ -1,9 +1,10 @@
-import { PROJECT_OPERATOR_CAPABILITY_ID } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
 import { canModifyProject } from '@nessie/team-admin'
 
 import {
-  isLiveRequesterRun,
-  isProjectOperatorCapabilityEnabled,
+  loadProjectOperatorFacts,
+  PROJECT_OPERATOR_LIVE_TURN_REFUSAL,
+  projectOperatorRefusal,
 } from '../project-operator-admission.js'
 import type { BuiltinToolRuntimeContext } from '../tool-types.js'
 import { requireActingUserId, resolveActingMember, type ActingMember } from './access.js'
@@ -35,17 +36,22 @@ export const actingFaceOf = (
   return context.channel.systemChannelType === 'system_agent' && globalAgent ? 'global_agent' : 'project_operator'
 }
 
+/** The verbs that run only on a live person's own turn (`requiresLiveRequester`). */
+const LIVE_REQUESTER_TOOL_IDS: ReadonlySet<string> = new Set(
+  BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.requiresLiveRequester === true).map((tool) => tool.id),
+)
+
 const REFUSAL =
-  'This sets things up for the person talking to you, so it works only on their own turn in a '
-  + 'project channel you are in, and only while your owner has given you the project-operator '
-  + 'grant. It cannot run here.'
+  'This sets things up for the person talking to you, so it works only in a project channel you are '
+  + 'in, and only while your owner has given you the project-operator grant. It cannot run here.'
 
 /**
- * Re-checks the whole arm and answers the project of this channel: a live
- * ordinary shared agent that is nobody's child, still bound to a live ordinary
- * channel of a live project, still holding `project_operator` in an
- * organisation that has not switched it off, on a person's own interactive
- * turn with no other identity or purpose riding on it.
+ * Re-checks the whole arm and answers the project of this channel: the same
+ * facts and the same verdict run setup admitted the arm on
+ * (`loadProjectOperatorFacts`, `projectOperatorRefusal`), read again from
+ * live rows at the moment of the call — the agent, the room, its project, the
+ * binding, the grant, the organisation's switch, the run row, and the
+ * person's own messages its turn names.
  */
 export const assertProjectOperatorCall = async (
   context: BuiltinToolRuntimeContext,
@@ -53,44 +59,27 @@ export const assertProjectOperatorCall = async (
   // A run with nobody to act as says so first, in its own words: ticket work
   // acts as the agent (docs/standards/ticket-work.md), a fire as no one.
   requireActingUserId(context)
-  const organizationId = context.channel.organizationId
-  const [agent, channel, bindings, capabilityEnabled] = await Promise.all([
-    context.prisma.agent.findFirst({
-      where: { deletedAt: null, id: context.agentId, organizationId },
-      select: { agentKind: true, parentAgentId: true, systemManaged: true, systemSlug: true, toolPolicy: true },
-    }),
-    context.prisma.channel.findFirst({
-      where: {
-        archivedAt: null, deletedAt: null, id: context.channel.id, organizationId, project: { deletedAt: null },
-      },
-      select: { dmKey: true, projectId: true, systemChannelType: true, type: true },
-    }),
-    context.prisma.agentBinding.count({ where: { agentId: context.agentId, channelId: context.channel.id } }),
-    isProjectOperatorCapabilityEnabled(context.prisma, organizationId),
-  ])
-  const policy = agent?.toolPolicy && typeof agent.toolPolicy === 'object'
-    ? agent.toolPolicy as Record<string, unknown>
-    : {}
-  const admitted = agent !== null
-    && channel !== null
-    && channel.type === 'standard'
-    && bindings > 0
-    && capabilityEnabled
-    && policy[PROJECT_OPERATOR_CAPABILITY_ID] === true
-    && isLiveRequesterRun({
-      actorId: context.actorContext.actor.actorId,
-      actorType: context.actorContext.actor.actorType,
-      agentKind: agent.agentKind,
-      channel: { dmKey: channel.dmKey, systemChannelType: channel.systemChannelType },
-      effectiveUserId: context.actorContext.actionContext.effectiveUserId,
-      interactive: context.run.interactive === true,
-      parentAgentId: agent.parentAgentId,
-      purpose: context.actorContext.actionContext.purpose,
-      systemManaged: agent.systemManaged,
-      systemSlug: agent.systemSlug,
-    })
-  if (!admitted) throw new Error(REFUSAL)
-  return { projectId: channel.projectId }
+  const facts = await loadProjectOperatorFacts(context.prisma, {
+    actorId: context.actorContext.actor.actorId,
+    actorType: context.actorContext.actor.actorType,
+    agentId: context.agentId,
+    batchMessageIds: context.run.batchMessageIds ?? null,
+    channelId: context.channel.id,
+    effectiveUserId: context.actorContext.actionContext.effectiveUserId ?? null,
+    interactive: context.run.interactive === true,
+    messageId: context.run.messageId,
+    organizationId: context.channel.organizationId,
+    purpose: context.actorContext.actionContext.purpose ?? null,
+    resumedByUserId: context.run.resumedByUserId ?? null,
+    runId: context.run.id,
+    threadId: context.run.threadId,
+  })
+  const refusal = projectOperatorRefusal(facts)
+  if (refusal === 'not_a_live_turn' || refusal === 'not_the_persons_own_turn') {
+    throw new Error(PROJECT_OPERATOR_LIVE_TURN_REFUSAL)
+  }
+  if (refusal !== null || !facts.channel) throw new Error(REFUSAL)
+  return { projectId: facts.channel.projectId }
 }
 
 /**
@@ -102,8 +91,19 @@ export const assertProjectOperatorCall = async (
  */
 export const resolveOperatorAwareMember = async (
   context: BuiltinToolRuntimeContext,
+  /** The verb being called: a `requiresLiveRequester` one needs a live turn on every face. */
+  toolId?: string,
 ): Promise<{ face: ActingFace; member: ActingMember; operatorProjectId: string | null }> => {
   const face = actingFaceOf(context)
+  // The operator face re-checks the live turn below; the Personal Assistant's
+  // arm also opens on the schedules it fires for its owner, so it is re-checked
+  // here for the verbs that must never run as somebody who is not there.
+  if (
+    face !== 'project_operator' && toolId !== undefined && LIVE_REQUESTER_TOOL_IDS.has(toolId)
+    && (context.run.interactive !== true || context.actorContext.actor.actorType !== 'user')
+  ) {
+    throw new Error(PROJECT_OPERATOR_LIVE_TURN_REFUSAL)
+  }
   const operator = face === 'project_operator' ? await assertProjectOperatorCall(context) : null
   return { face, member: await resolveActingMember(context), operatorProjectId: operator?.projectId ?? null }
 }

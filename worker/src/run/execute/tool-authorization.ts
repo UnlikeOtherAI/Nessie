@@ -24,6 +24,7 @@ import {
   type ReviewableToolSurface,
 } from './auto-review.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
+import { liveTurnDenialMessage } from '../project-operator-admission.js'
 import type { AgenticToolResult } from '../tools.js'
 import {
   buildToolActorContext,
@@ -85,6 +86,8 @@ export type ToolAuthorizationContext = {
   projectDelegatedToolIds?: ReadonlySet<string>
   /** The operator verbs, resolved at run setup; never passed for a sub-agent. */
   projectOperatorToolIds?: ReadonlySet<string>
+  /** A live person's own turn; absent (a sub-agent's call) is false. */
+  liveRequester?: boolean
   /** The main loop's live view, including deferred MCP names loaded mid-run. */
   mcpToolNames?: ReadonlySet<string>
   /** The executor operations actually exposed for this run. */
@@ -268,6 +271,7 @@ export const authorizeToolExecution = async (
         ...(auth.identityToolIds ? { identityToolIds: auth.identityToolIds } : {}),
         ...(auth.projectDelegatedToolIds ? { projectDelegatedToolIds: auth.projectDelegatedToolIds } : {}),
         ...(auth.projectOperatorToolIds ? { projectOperatorToolIds: auth.projectOperatorToolIds } : {}),
+        ...(auth.liveRequester ? { liveRequester: true } : {}),
         // Read straight off the run context rather than threaded through every
         // caller: the same row toolset assembly consulted, so a stale schema
         // (a deferred stub, a replayed call, a resumed approval) cannot smuggle
@@ -288,7 +292,10 @@ export const authorizeToolExecution = async (
     return {
       decision: 'deny',
       result: toolDeniedResult(toolName, args, {
-        message: `Tool "${toolName}" is not allowed for this agent.`,
+        message: liveTurnDenialMessage(toolName, reason, {
+          liveRequester: auth.liveRequester === true,
+          toolPolicy: auth.toolPolicy,
+        }) ?? `Tool "${toolName}" is not allowed for this agent.`,
         reason,
       }),
     }

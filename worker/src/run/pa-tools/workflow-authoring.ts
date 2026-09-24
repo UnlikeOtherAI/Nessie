@@ -98,7 +98,7 @@ export const runWorkflowCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = WorkflowTemplateInputSchema.parse(input)
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'workflow_create')
   requireOwnerMember(member, 'create a workflow')
   const workflow = await createWorkflowTemplateForActor(
     context.prisma,
@@ -129,7 +129,7 @@ export const runWorkflowUpdateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = WorkflowTemplateUpdateInputSchema.parse(input)
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'workflow_update')
   requireOwnerMember(member, 'update a workflow')
   const { expectedVersion, workflowTemplateId, ...templateInput } = args
   const workflow = await updateWorkflowTemplateForActor(
@@ -188,7 +188,7 @@ export const runWorkflowInstallTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = WorkflowInstallInputSchema.parse(input)
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'workflow_install')
   requireOwnerMember(member, 'install a workflow')
   const created = await installWorkflowTemplateForActor(
     context.prisma,
@@ -224,7 +224,7 @@ export const runWorkflowTriggerCreateTool = async (
   const args = WorkflowTriggerInputSchema.parse(input)
   const agentOnly = workflowTriggerTypeRefusal(args.type)
   if (agentOnly) throw new Error(agentOnly)
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'workflow_trigger_create')
   requireOwnerMember(member, 'create a workflow trigger')
 
   const installation = await context.prisma.workflowInstallation.findFirst({
@@ -330,7 +330,7 @@ export const runWorkflowRunTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = WorkflowRunInputSchema.parse(input)
-  const { member } = await resolveOperatorAwareMember(context)
+  const { member } = await resolveOperatorAwareMember(context, 'workflow_run')
   if (!(await canActorStartWorkflowRun(
     context.prisma,
     member.actorContext,
