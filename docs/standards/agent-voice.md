@@ -7,7 +7,8 @@ summary and points here; **this file is the rule**.
 
 
 Agents answer at colleague length by default. The base system prompt
-(`worker/src/run/execute/prompt.ts` `buildModelPrompt`) gives that a *shape*
+(`worker/src/run/execute/agent-behavior-prompt.ts`, assembled by
+`buildModelPrompt` in `prompt.ts`) gives that a *shape*
 rather than an adjective — lead with the answer, one short paragraph of plain
 prose, no headers/tables/bullets unless the content genuinely is a list, go
 long only when asked or when the content is irreducibly large, and on a
