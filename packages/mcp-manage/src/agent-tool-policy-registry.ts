@@ -266,6 +266,7 @@ const translateActiveRunError = (error: unknown): never => {
     throw new AgentToolPolicyError(
       AGENT_TOOL_POLICY_ERROR_CODES.ACTIVE_RUNS,
       error.message,
+      error.details,
     )
   }
   throw error
@@ -325,8 +326,10 @@ const updateEntryPolicy = (
           )
         }
         try {
+          // The updater is org-wide and only launcher runs use it.
           await guardDeepWaterPolicyRevocation(policyTx, {
             organizationId: input.organizationId,
+            mode: { kind: 'legacy' },
           })
         } catch (error) {
           translateActiveRunError(error)
@@ -346,6 +349,7 @@ const updateEntryPolicy = (
           await guardDeepWaterPolicyRevocation(policyTx, {
             organizationId: input.organizationId,
             teamId,
+            mode: { kind: 'agent', agentId: input.agentId },
           })
         } catch (error) {
           translateActiveRunError(error)

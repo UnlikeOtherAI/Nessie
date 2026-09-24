@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
+
 import { AGENT_DESIGNER_BLUEPRINT } from '../src/global-agent-blueprints.js'
 
 /**
@@ -108,4 +110,32 @@ test('a ticket-driven agent is set up in order, from the project\'s real structu
 
 test('a pinned portrait style is reported because the prompt says so', () => {
   assert.match(prose, /When a redraw reports its style as pinned, tell them the style they asked for was not used/)
+})
+
+// The owner's rule (2026-09-23): the Designer acts with the full reach of the
+// person asking. Anything act-as-user the Personal Assistant holds must reach
+// the Designer's home DM, except the verbs whose handlers refuse every face
+// but the PA's own conversation — a curated subset is the defect this replaced.
+test('the Designer holds every act-as-user verb its handlers do not refuse', () => {
+  const paOnly = BUILTIN_TOOL_DEFINITIONS
+    .filter((tool) => tool.personalAssistantOnly === true)
+  const held = new Set(AGENT_DESIGNER_BLUEPRINT.identityToolIds)
+  const paDmOnly = ['app_connect_request', 'pa_join_channel']
+  const outside = paOnly.filter((tool) => !held.has(tool.id))
+  for (const tool of outside) {
+    assert.ok(
+      paDmOnly.includes(tool.id) || tool.requiresExplicitGrant === true,
+      `${tool.id} is outside the delegated set with no refusing handler and no explicit-grant gate`,
+    )
+  }
+  for (const id of paDmOnly) {
+    assert.ok(!held.has(id), `${id} hard-refuses non-PA faces and must not be offered`)
+  }
+  // And no held verb is grant-gated: identity delegation never stands in for
+  // an owner's per-agent allow, so a held one would be offered-then-denied.
+  for (const tool of paOnly) {
+    if (held.has(tool.id)) {
+      assert.notEqual(tool.requiresExplicitGrant, true, `${tool.id} is grant-gated yet declared`)
+    }
+  }
 })

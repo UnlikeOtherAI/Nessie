@@ -449,9 +449,8 @@ whole of that path, including Alt/⌥ to copy without asking, the audience
 line, the refusals and the background job for large trees, is
 [transfer.md](transfer.md). A root row (My Documents, a project, a shared
 folder) is a valid drop target meaning "the root of that folder". Virtual
-columns are never drop targets. Dropping onto a page that is a *document with
-sub-pages* is refused (only folders receive drops; a document's sub-pages
-are edited from the document). Dragging a folder onto its own descendant is
+columns are never drop targets. Dropping onto a document is refused: only
+folders can contain folders or documents. Dragging a folder onto its own descendant is
 refused client-side before the server's cycle check answers 409.
 
 The file-drop overlay and the row drag share `dragover`; the host tells them

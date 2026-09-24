@@ -15,7 +15,7 @@ import {
   hashExecutorContinuationValue,
 } from './executor-continuation-security.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
-import { closeExecutorReviewCards } from './executor-review-cards.js'
+import { closeExecutorReviewCards, type ClosedExecutorReviewCard } from './executor-review-cards.js'
 import { parseExecutorWorkspaceReviewResult } from './executor-workspace-reviews.js'
 
 const PROMOTION_COMMAND_TTL_MS = 2 * 60 * 1_000
@@ -233,7 +233,13 @@ export const confirmExecutorWorkspacePromotion = async (
     freshVerificationSatisfied: boolean
     promotionId: string
   },
-): Promise<{ commandId: string; executorId: string; promotionId: string; runId: string }> => {
+): Promise<{
+  closedReviewCards: ClosedExecutorReviewCard[]
+  commandId: string
+  executorId: string
+  promotionId: string
+  runId: string
+}> => {
   const actorUserId = requireHumanActor(actorContext)
   if (!actorUserId) {
     throw new ExecutorError(
@@ -397,12 +403,13 @@ export const confirmExecutorWorkspacePromotion = async (
       where: { id: continuation.id },
       data: { bindingId: binding.bindingId, consumedAt: startedAt, status: 'consumed' },
     })
-    await closeExecutorReviewCards(tx, {
+    const closedReviewCards = await closeExecutorReviewCards(tx, {
       actorUserId,
       continuationId: continuation.id,
       outcome: 'confirmed',
     })
     return {
+      closedReviewCards,
       commandId,
       executorId: executor.id,
       promotionId: continuation.id,
@@ -415,7 +422,7 @@ export const rejectExecutorWorkspacePromotion = async (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
   input: { confirmationToken: string; promotionId: string },
-): Promise<{ executorId: string; promotionId: string }> => {
+): Promise<{ closedReviewCards: ClosedExecutorReviewCard[]; executorId: string; promotionId: string }> => {
   const actorUserId = requireHumanActor(actorContext)
   if (!actorUserId) {
     throw new ExecutorError(
@@ -453,11 +460,11 @@ export const rejectExecutorWorkspacePromotion = async (
       where: { id: continuation.id },
       data: { consumedAt: new Date(), status: 'rejected' },
     })
-    await closeExecutorReviewCards(tx, {
+    const closedReviewCards = await closeExecutorReviewCards(tx, {
       actorUserId,
       continuationId: continuation.id,
       outcome: 'rejected',
     })
-    return { executorId: continuation.executorId, promotionId: continuation.id }
+    return { closedReviewCards, executorId: continuation.executorId, promotionId: continuation.id }
   })
 }

@@ -300,3 +300,62 @@ runDatabaseTest('a sign-in grant that fails takes its card and message with it',
   assert.equal(await prisma.message.count({ where: { threadId: s.threadId } }), messagesBefore)
   assert.equal(await prisma.browserPersonalAccessGrant.count({ where: { runId: s.runId } }), 0)
 })
+
+const DONE_CARD = {
+  actions: [{ key: 'done', label: 'Done', style: 'primary' as const, submits: true }],
+  blocks: [{ markdown: 'Press Done when it is done.', type: 'text' as const }],
+  schemaVersion: 1 as const,
+  title: 'Tell me when it is done',
+}
+
+// Once the card's transaction commits, the card is the durable truth. A step
+// that fails after it used to fail the tool call, so the model saw an error
+// beside a live, answerable card, and posted it again.
+runDatabaseTest('a notice that fails after the card committed still answers with the card', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(() => cleanup(prisma, s).then(() => prisma.$disconnect()))
+
+  // The realtime insert fails: nothing is announced, and the card still stands.
+  const offline = homeContext(prisma, s, [])
+  const down = {
+    ...offline,
+    realtimeTransport: { publishWs: async () => { throw new Error('realtime_events insert failed') } },
+  } as unknown as BuiltinToolRuntimeContext
+  const posted = await postAgentCard(down, down.runContext as RunContext, {
+    card: DONE_CARD, expiresAt: null, respondentUserIds: [s.ownerId],
+  })
+  const card = await prisma.agentCard.findUniqueOrThrow({
+    where: { id: posted.cardId }, select: { messageId: true, status: true },
+  })
+  assert.deepEqual(card, { messageId: posted.messageId, status: 'open' })
+  assert.equal(await prisma.userAlert.count({ where: { messageId: posted.messageId } }), 1,
+    'the bell is written though its notice could not be sent')
+})
+
+runDatabaseTest('reply bookkeeping that fails after the card committed still announces and answers', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(() => cleanup(prisma, s).then(() => prisma.$disconnect()))
+
+  // The card is still announced, only without its place in the reply thread,
+  // which the next read of the thread shows.
+  const root = await prisma.message.create({
+    data: { content: 'Ping me when it is done', role: 'user', threadId: s.threadId, userId: s.ownerId },
+  })
+  const published: Published[] = []
+  const replying = homeContext(new Proxy(prisma, {
+    get: (target, property) => {
+      if (property === '$queryRaw') return async () => { throw new Error('reply bookkeeping failed') }
+      const value = Reflect.get(target, property) as unknown
+      return typeof value === 'function' ? value.bind(target) : value
+    },
+  }), s, published)
+  const runContext = { ...(replying.runContext as RunContext), replyRootMessageId: root.id }
+  const reply = await postAgentCard(replying, runContext, {
+    card: DONE_CARD, expiresAt: null, respondentUserIds: [s.ownerId],
+  })
+  assert.equal((await prisma.message.findUniqueOrThrow({ where: { id: reply.messageId } })).rootMessageId, root.id)
+  assert.equal(published.filter((payload) =>
+    payload.event === 'message.new' && JSON.stringify(payload.data).includes(reply.messageId)).length, 1)
+})

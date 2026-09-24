@@ -56,9 +56,6 @@ interface ChannelOverlaysProps {
   callerDialogCall: CallRecord | null
   voiceCall: VoiceCallOverlay
   personalAssistantPresences: PersonalAssistantPresenceParticipant[]
-  // Already-rendered node rather than the launcher hook: the overlay layer
-  // places it, it does not own it.
-  deepWaterDialog: ReactNode
   hasRespondingAgent: boolean
   isExternalAgentConversation: boolean
   isPersonalAssistantConversation: boolean
@@ -128,7 +125,6 @@ export const ChannelOverlays = ({
   callerDialogCall,
   voiceCall,
   personalAssistantPresences,
-  deepWaterDialog,
   hasRespondingAgent,
   isExternalAgentConversation,
   isPersonalAssistantConversation,
@@ -205,8 +201,6 @@ export const ChannelOverlays = ({
     {dashboardId && activeChannel ? (
       <DashboardWorkspacePanel dashboardId={dashboardId} onClose={closeDashboard} />
     ) : null}
-
-    {deepWaterDialog}
 
     {showMembersPopup && activeChannel ? (
       <ChannelMembersPopup

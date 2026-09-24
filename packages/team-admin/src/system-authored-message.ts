@@ -2,6 +2,10 @@ import type { Prisma } from '@prisma/client'
 import {
   applyReplyBookkeeping,
   followReplyThread,
+  insertMessageBasis,
+  insertMessageDisclosureSources,
+  type BasisScopeRow,
+  type MessagePrivateConversationSource,
   type ReplyRootMetadata,
 } from '@nessie/runtime'
 import type { MessageRole } from '@nessie/schemas'
@@ -23,7 +27,16 @@ import { messageInclude, type MessageWithReactions } from './message-include.js'
 /** The fields a server-authored message row is written from. */
 export type SystemAuthoredMessageInput = {
   agentId?: string | null
+  /**
+   * The disclosure the content needs, stamped on the row in this transaction:
+   * the basis scopes it may be shown under, and the private conversations it
+   * carries words from. A server-authored message that relays gathered content
+   * (a DeepWater research result, its wake kickoff) must never be readable by
+   * anyone its sources are not; one that relays nothing leaves both empty.
+   */
+  basisScopes?: readonly BasisScopeRow[]
   content: string
+  disclosureSources?: readonly MessagePrivateConversationSource[]
   /** Backdated only when mirroring history that already happened elsewhere. */
   createdAt?: Date
   followedByUserIds: string[]
@@ -52,11 +65,11 @@ const withoutPersonAuthorship = (
   ) as Prisma.InputJsonValue
 }
 
-const writeSystemAuthoredRow = (
+const writeSystemAuthoredRow = async (
   tx: Prisma.TransactionClient,
   input: SystemAuthoredMessageInput & { rootMessageId?: string },
-): Promise<MessageWithReactions> =>
-  tx.message.create({
+): Promise<MessageWithReactions> => {
+  const created = await tx.message.create({
     data: {
       content: input.content,
       role: input.role,
@@ -70,10 +83,22 @@ const writeSystemAuthoredRow = (
     },
     include: messageInclude,
   })
+  const basis = input.basisScopes ?? []
+  const sources = input.disclosureSources ?? []
+  if (basis.length === 0 && sources.length === 0) return created
+  const { organizationId } = await tx.thread.findUniqueOrThrow({
+    where: { id: input.threadId },
+    select: { channel: { select: { organizationId: true } } },
+  }).then((thread) => thread.channel)
+  await insertMessageBasis(tx, { messageId: created.id, organizationId, basis })
+  await insertMessageDisclosureSources(tx, { messageId: created.id, organizationId, sources })
+  // Re-read so the returned row carries the basis it was written with.
+  return tx.message.findUniqueOrThrow({ where: { id: created.id }, include: messageInclude })
+}
 
 /**
  * A message the server authors on someone's behalf — a product handoff prompt,
- * a mirrored external-agent turn.
+ * a mirrored external-agent turn, a DeepWater research card, result or notice.
  *
  * This is deliberately **not** `createThreadMessage`, and deliberately named so
  * that adding a tenth `message.create` has to answer why it is neither. What it
@@ -91,8 +116,10 @@ const writeSystemAuthoredRow = (
  *  - **structured agent-mention validation** — the content is server-authored
  *    or already-published external text, not a client's claim about identities.
  *  - **`metadata.mentions` resolution and durable mention alerts** — nobody is
- *    being @mentioned by the server, so there is nothing to highlight and
- *    nobody to alert.
+ *    @mentioned in the text, so nothing is parsed or highlighted. A message
+ *    that is addressed to someone (a DeepWater result to its requester) raises
+ *    that explicit recipient's durable alert itself, in this same transaction
+ *    (`createMentionUserAlerts` with an event key), never from the content.
  *  - **the "also send to #channel" copy** — there is no reply to broadcast.
  *
  * Announcement, push and orchestration stay with the caller exactly as they do

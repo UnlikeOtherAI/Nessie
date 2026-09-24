@@ -1096,6 +1096,10 @@ enum ProductIntegrationRunStatus {
   completed
   failed
   warning
+  // DeepWater briefs: the research brief is being agreed with DeepWater's
+  // planner (docs/standards/deepwater.md). `starting` is a view state only.
+  drafting
+  cancelled
 }
 
 model User {
@@ -1184,6 +1188,7 @@ model User {
   productAccountLinks                   ProductAccountLink[]
   productTeamEnablements                ProductTeamEnablement[]
   productIntegrationRuns                ProductIntegrationRun[]
+  principalProductIntegrationRuns       ProductIntegrationRun[]                @relation("ProductIntegrationRunPrincipal")
   cancelledRuns                         Run[]                                  @relation("RunCancelledBy")
   pairedExecutors                       Executor[]                             @relation("ExecutorPairingOwner")
   executorPrivateAssignments            ExecutorPrivateAssignment[]            @relation("ExecutorPrivateAssignmentUser")
@@ -1615,6 +1620,52 @@ model ProductIntegrationRun {
   createdAt         DateTime                    @default(now()) @map("created_at")
   updatedAt         DateTime                    @updatedAt @map("updated_at")
 
+  // DeepWater brief binding (migration 20260923090100_deepwater_research_binding;
+  // docs/plans in the Water repo, "DeepWater in Nessie"). `uoaIdentity` and
+  // `scopeJson` are written together by the two brief insert paths and never by
+  // legacy launcher rows or other products, so `uoa_identity IS NULL` is the
+  // exact legacy marker (CHECK product_integration_runs_brief_binding_shape).
+  /// `person` (a brief a person opened) or `agent` (an agent's research_scope_start).
+  originKind            String    @default("person") @map("origin_kind")
+  originAgentId         String?   @map("origin_agent_id") @db.Uuid
+  originRunId           String?   @map("origin_run_id") @db.Uuid
+  /// Agent origin: the provider tool-call id. Person origin: the create actionId.
+  originToolCallId      String?   @map("origin_tool_call_id")
+  /// The origin Run's principal, captured at claim so a wake never depends on
+  /// `origin_run_id`, which is SET NULL when that run is deleted.
+  principalUserId       String?   @map("principal_user_id") @db.Uuid
+  /// `{subject, organizationId, teamId, tokenVersion}` only — stable UOA ids, never profile fields.
+  uoaIdentity           Json?     @map("uoa_identity")
+  /// Portable, never destination-subtracted consumed-source basis (BasisScope[]).
+  sourceScopes          Json      @default("[]") @map("source_scopes")
+  /// Private-conversation lineage (PrivateConversationSource[]).
+  disclosureSources     Json      @default("[]") @map("disclosure_sources")
+  /// `{brief, turn, turnAuthors, pendingAction}` — two monotone registers plus Nessie's own bookkeeping.
+  scopeJson             Json?     @map("scope_json")
+  failureCode           String?   @map("failure_code")
+  reportKind            String?   @map("report_kind")
+  reportFileId          String?   @map("report_file_id") @db.Uuid
+  sourcesFileId         String?   @map("sources_file_id") @db.Uuid
+  resultMessageId       String?   @map("result_message_id") @db.Uuid
+  wakeMessageId         String?   @map("wake_message_id") @db.Uuid
+  deliveredAt           DateTime? @map("delivered_at")
+  deliveryBlockedReason String?   @map("delivery_blocked_reason")
+  agentWakeCount        Int       @default(0) @map("agent_wake_count")
+  lastHandledTurnSeq    Int?      @map("last_handled_turn_seq")
+  wakeCapNoticeAt       DateTime? @map("wake_cap_notice_at")
+  /// Last time a Ledger read, ack or person mutation changed this projection.
+  ledgerObservedAt      DateTime  @default(now()) @map("ledger_observed_at")
+  reconcileAfter        DateTime  @default(dbgenerated("(CURRENT_TIMESTAMP + '00:10:00'::interval)")) @map("reconcile_after")
+  reconcileSeq          Int       @default(0) @map("reconcile_seq")
+  /// When DeepWater's last research event for this run was received (Water plan
+  /// amendments-streaming S2); the watch backs off to 60 s while it is recent.
+  lastEventAt           DateTime? @map("last_event_at")
+  /// When the agreed brief was launched; `requestedAt` is when it was opened.
+  launchedAt            DateTime? @map("launched_at")
+  reportTruncated       Boolean   @default(false) @map("report_truncated")
+  /// Only ever `https://research.deepwater.live/…`, for a person's public launch.
+  publicUrl             String?   @map("public_url")
+
   organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   team            Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
   product         IntegratedProduct  @relation(fields: [productSlug], references: [slug], onDelete: Cascade)
@@ -1624,12 +1675,26 @@ model ProductIntegrationRun {
   thread          Thread?            @relation(fields: [threadId], references: [id], onDelete: SetNull)
   message         Message?           @relation(fields: [messageId], references: [id], onDelete: SetNull)
   knowledgePage   KnowledgePage?     @relation(fields: [knowledgePageId], references: [id], onDelete: SetNull)
+  originAgent     Agent?             @relation("ProductIntegrationRunOriginAgent", fields: [originAgentId], references: [id], onDelete: SetNull)
+  originRun       Run?               @relation("ProductIntegrationRunOriginRun", fields: [originRunId], references: [id], onDelete: SetNull)
+  principalUser   User?              @relation("ProductIntegrationRunPrincipal", fields: [principalUserId], references: [id], onDelete: SetNull)
+  reportFile      Attachment?        @relation("ProductIntegrationRunReportFile", fields: [reportFileId], references: [id], onDelete: SetNull)
+  sourcesFile     Attachment?        @relation("ProductIntegrationRunSourcesFile", fields: [sourcesFileId], references: [id], onDelete: SetNull)
+  resultMessage   Message?           @relation("ProductIntegrationRunResultMessage", fields: [resultMessageId], references: [id], onDelete: SetNull)
+  wakeMessage     Message?           @relation("ProductIntegrationRunWakeMessage", fields: [wakeMessageId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, teamId, productSlug, requestedAt(sort: Desc)], map: "product_integration_runs_scope_requested_idx")
   @@index([organizationId, productSlug, status], map: "product_integration_runs_status_idx")
   @@index([connectorId, requestedAt(sort: Desc)], map: "product_integration_runs_connector_idx")
   @@index([messageId], map: "product_integration_runs_message_idx")
   @@index([knowledgePageId], map: "product_integration_runs_knowledge_page_idx")
+  @@index([originAgentId], map: "product_integration_runs_origin_agent_idx")
+  @@index([originRunId], map: "product_integration_runs_origin_run_idx")
+  @@index([principalUserId], map: "product_integration_runs_principal_user_idx")
+  @@index([reportFileId], map: "product_integration_runs_report_file_idx")
+  @@index([sourcesFileId], map: "product_integration_runs_sources_file_idx")
+  @@index([resultMessageId], map: "product_integration_runs_result_message_idx")
+  @@index([wakeMessageId], map: "product_integration_runs_wake_message_idx")
   @@map("product_integration_runs")
 }
 
@@ -3030,6 +3095,8 @@ model Message {
   userAlerts                  UserAlert[]
   threadFollows               MessageThreadFollow[]
   productIntegrationRuns      ProductIntegrationRun[]
+  productIntegrationResults   ProductIntegrationRun[]        @relation("ProductIntegrationRunResultMessage")
+  productIntegrationWakes     ProductIntegrationRun[]        @relation("ProductIntegrationRunWakeMessage")
   appConnectionRequestCards   AgentAppConnectionRequest[]    @relation("AgentAppConnectionRequestCardMessage")
   agentCards                  AgentCard[]                    @relation("AgentCardMessage")
   agentCardResponses          AgentCard[]                    @relation("AgentCardResponseMessage")
@@ -3369,6 +3436,7 @@ model Agent {
   messages                       Message[]
   reactions                      MessageReaction[]
   runs                           Run[]
+  originProductIntegrationRuns   ProductIntegrationRun[]         @relation("ProductIntegrationRunOriginAgent")
   triggers                       AgentTrigger[]
   tasks                          Task[]                          @relation("AgentRunTasks")
   assignedTasks                  Task[]                          @relation("AgentAssignedTasks")
@@ -3683,6 +3751,8 @@ model Run {
   browserPersonalAccessGrants BrowserPersonalAccessGrant[]
 
   budgetReservation BudgetReservation?
+
+  originProductIntegrationRuns ProductIntegrationRun[] @relation("ProductIntegrationRunOriginRun")
 
   @@unique([id, agentId, threadId])
   @@index([agentId, status])
@@ -5546,6 +5616,11 @@ model Executor {
   nextBindingFence       BigInt                          @default(0) @map("next_binding_fence")
   lastSeenAt             DateTime?                       @map("last_seen_at")
   statusDetail           String?                         @map("status_detail")
+  /// Set when a person deletes the executor. A removed executor is always
+  /// revoked too, so every revoked-status guard still refuses it; the row
+  /// stays because run bindings, leases and audit history point at it, and
+  /// only the people-facing reads hide it.
+  removedAt              DateTime?                       @map("removed_at")
   createdAt              DateTime                        @default(now()) @map("created_at")
   updatedAt              DateTime                        @updatedAt @map("updated_at")
   organization           Organization                    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -7421,6 +7496,8 @@ model Attachment {
   avatarForAgents      Agent[]        @relation("AgentAvatar")
   avatarForProjects    Project[]      @relation("ProjectAvatar")
   feedbackItems        Feedback[]     @relation("FeedbackAttachment")
+  deepWaterReportRuns  ProductIntegrationRun[] @relation("ProductIntegrationRunReportFile")
+  deepWaterSourcesRuns ProductIntegrationRun[] @relation("ProductIntegrationRunSourcesFile")
   organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([messageId])

@@ -416,3 +416,34 @@ test('a child reading its bound parent\'s documents has an unrestricted reply', 
     [],
   )
 })
+
+test('a shared agent can use DeepWater only in a run with no private-conversation lineage', () => {
+  // Water plan amendments N7: no DeepWater exemption and no read carve-out.
+  // The gate runs before the toolset dispatches, so a refused
+  // research_scope_start never claims a research run.
+  const privateSink = createConsumedSourceSink()
+  privateSink.addPrivateConversationSource({ sourceAuthorUserId: 'author-b', sourceChannelId: 'group-dm' })
+  const shared = { agent: { agentKind: 'shared' }, consumedSources: privateSink } as unknown as
+    import('./types.js').RunContext
+  for (const toolName of ['mcp_research_scope_start', 'mcp_research_scope_get', 'mcp_research_report']) {
+    assert.equal(blocksPrivateConversationWrite({ context: shared, isExternal: true, toolName }), true, toolName)
+  }
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { ...shared, consumedSources: createConsumedSourceSink() },
+      isExternal: true,
+      toolName: 'mcp_research_scope_start',
+    }),
+    false,
+    'a shared agent in a public room may open a brief',
+  )
+  assert.equal(
+    blocksPrivateConversationWrite({
+      context: { ...shared, agent: { agentKind: 'personal_assistant' } } as never,
+      isExternal: true,
+      toolName: 'mcp_research_scope_start',
+    }),
+    false,
+    'the Personal Assistant is unaffected',
+  )
+})

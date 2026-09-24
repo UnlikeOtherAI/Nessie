@@ -67,9 +67,12 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
 
 - **DeepWater as an agent tool** — an owner-only `team-enablement` toggle
   provisions a **team-scoped, tool-projecting** `McpServerInstance` from the
-  `deep-water` catalog entry and projects Ledger's `research_start` /
-  `research_status` / `research_report` / `research_list` / `research_cancel`
-  as active `mcp_research_*` tools, **always routed through Ledger**:
+  `deep-water` catalog entry and projects the manifest's Ledger tools (the
+  brief-first contract, manifest 0.3.0: the four `research_scope_*` tools plus
+  `research_status` / `research_report` / `research_cancel` /
+  `research_list`, pinned to Ledger's `tools/list`, never `research_start`;
+  an owner's next enable upgrades a team still on the launcher contract in
+  place) as active `mcp_research_*` tools, **always routed through Ledger**:
   `LEDGER_DEEPWATER_MCP_URL` (hosted
   `https://ledger.unlikeotherai.com/v1/mcp/deepwater`) with `LEDGER_PROXY_TOKEN`
   — Nessie's one deployment-wide, product-bound app API key, never a per-user
@@ -77,19 +80,42 @@ The management core lives in the shared **`@nessie/mcp-manage`** package (catalo
   (`LEDGER_DEEPWATER_MCP_URL_UNSET`,
   `LEDGER_DEEPWATER_CATALOG_UNAVAILABLE`) rather than persisting a dead
   toggle. Everything else — default OFF with explicit per-agent
-  `requiresExplicitGrant` grants, the exact six-entry launcher bundle and
-  `/api/integrations/products/deep-water/agent-access`, the team-lock →
-  policy-lock → 6/6-read → run-insert ordering, handoff enforcement via
-  server-authored `integrationLaunch` metadata with the
-  ambiguity-is-fatal-never-terminal recovery matrix, the
-  no-cost/no-currency rule, identity headers, and the managed-instance
-  lifecycle (`MCP_INSTANCE_MANAGED_BY_INTEGRATION`,
-  `LEDGER_DEEPWATER_ACTIVE_RUNS`) — is stated **in full** in
+  `requiresExplicitGrant` grants, the manifest-derived bundle and
+  `/api/integrations/products/deep-water/agent-access`, research readiness
+  (team switch, brief-contract connector, Ledger configuration and the
+  person's linked UOA identity — never the Personal Assistant's grants), the
+  person's brief API and the worker that carries its actions out, the run
+  binder that claims an agent's brief before its `research_scope_start`
+  leaves, the one stable `tool_call_id` per logical call, the shared agent's
+  private-conversation boundary, the no-cost/no-currency rule, identity
+  headers, the managed-instance lifecycle
+  (`MCP_INSTANCE_MANAGED_BY_INTEGRATION`, `LEDGER_DEEPWATER_ACTIVE_RUNS` and the
+  run it names for an owner's Cancel), and the legacy launcher handoff that
+  governs only launcher runs until phase E — is stated **in full** in
   [docs/standards/deepwater.md](deepwater.md); read it before
   touching any of this.
   `deep_water_run_update` is **not** PA-only: any granted agent may write back
-  the durable run record (same team + thread). Also:
+  a launcher run's durable record (same team + thread); it refuses every
+  research brief, whose status Ledger owns. Also:
   [docs/external-tool-integration.md](../external-tool-integration.md).
+
+- **DeepWater results come back on their own; Ledger never pushes.** Nothing
+  reaches Nessie from Ledger unasked. DeepWater pushes each research's
+  progress, settled turns and outcome straight to Nessie's signed receiver;
+  progress streams to the card, and a turn or an outcome triggers the read the
+  worker's `deep-water-watch` sweep would make — that sweep reads every open
+  brief and research through Ledger over the run's own team connector, as
+  cost-free control-plane calls signed as the requester with their captured
+  UOA identity (5 s while a planner turn or action is in flight, 30 s while
+  research runs, then backing off; never faster than 60 s while DeepWater's
+  events are arriving), and is the backstop when the push is off. A finished research is
+  delivered exactly once to the conversation it came from, under its research
+  card: its `report.md` and `sources.csv` stored as retained run output, the
+  report imported into Documents, then a result reply that alerts the person
+  who asked, or one run that wakes the agent that asked. A changed sign-in
+  blocks the run until the requester acts again instead of being retried. The
+  rules are in [docs/standards/deepwater.md](deepwater.md) → "Research briefs —
+  the watch, delivery and wakes".
 
 Customer tariffs, statements, credits, top-ups, subscriptions, adjustments,
 and Stripe lifecycle stay in UOA; Nessie renders UOA-authored display models

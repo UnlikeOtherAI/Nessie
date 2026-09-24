@@ -38,14 +38,6 @@ export const integratedProductsKey = (scope: IntegrationQueryScope) => [
   ...scopeParts(scope),
 ] as const
 
-export const deepWaterResearchRunsKeyPrefix =
-  ['integrations', 'products', 'deep-water', 'research-runs'] as const
-
-export const deepWaterResearchRunsKey = (scope: IntegrationQueryScope) => [
-  ...deepWaterResearchRunsKeyPrefix,
-  ...scopeParts(scope),
-] as const
-
 export const deepWaterAgentAccessKeyPrefix =
   ['integrations', 'products', 'deep-water', 'agent-access'] as const
 

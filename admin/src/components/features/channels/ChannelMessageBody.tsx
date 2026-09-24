@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { isResearchRunRefMessage } from '@nessie/schemas'
 import type { ThreadMessageRecord } from '../../../lib/api-client'
 import type { AttachmentRecord } from '../../../lib/uploads'
 import { MessageAttachments, useMessageAttachments } from '../../shared/MessageAttachments'
@@ -27,6 +28,7 @@ import { VoiceCallMessage, readVoiceCallRecord } from './VoiceCallMessage'
 import { WebSearchResultsCard } from './WebSearchResultsCard'
 import { WorkflowPreviewCard } from './WorkflowPreviewCard'
 import { WorkflowRunCard } from './WorkflowRunCard'
+import { ResearchNoticeActions, ResearchRunCard } from '../deep-water/ResearchRunCard'
 import { DashboardPresentation } from '../dashboards/DashboardPresentation'
 import { TaskPresentation } from './TaskPresentation'
 import { EmbeddedWidget, readMessageEmbedIds } from '../dashboards/EmbeddedWidget'
@@ -98,6 +100,9 @@ export const ChannelMessageBody = ({
   const carriesWebSearchCard = Boolean(
     (message.metadata as { webSearch?: unknown } | undefined)?.webSearch,
   )
+  // A research card's text is its plain-text twin for search and models; the
+  // feed renders the card, which reads the run live for this viewer.
+  const carriesResearchCard = isResearchRunRefMessage(message.metadata)
   const threadRootMessageId = message.rootMessageId ?? message.id
   const broadcastRootId = getReplyBroadcastRootId(message.metadata)
   const openThread =
@@ -149,7 +154,7 @@ export const ChannelMessageBody = ({
         <>
           {/* A card message's `content` is the same card rendered as plain text.
               Other clients and the model use it; the feed renders the card once. */}
-          {carriesAgentCard || carriesWebSearchCard || voiceCall ? null : (
+          {carriesAgentCard || carriesWebSearchCard || carriesResearchCard || voiceCall ? null : (
             <MessageMarkdown renderInlineText={renderContent}>{message.content}</MessageMarkdown>
           )}
           {voiceCall ? (
@@ -177,6 +182,7 @@ export const ChannelMessageBody = ({
         <MessageUiCards
           isExternalAgent={isExternalAgentConversation && message.role === 'assistant'}
           metadata={message.metadata}
+          place={{ rootMessageId: message.rootMessageId ?? null, threadId: message.threadId }}
         />
       ) : null}
       {!isEditingMessage
@@ -206,6 +212,8 @@ export const ChannelMessageBody = ({
       {!isEditingMessage ? <DocumentRefChip metadata={message.metadata} /> : null}
       {!isEditingMessage ? <AgentHandoffDoorway metadata={message.metadata} /> : null}
       {!isEditingMessage ? <ConversationCard metadata={message.metadata} /> : null}
+      {!isEditingMessage ? <ResearchRunCard metadata={message.metadata} /> : null}
+      {!isEditingMessage ? <ResearchNoticeActions metadata={message.metadata} /> : null}
       {!isEditingMessage ? <WorkflowRunCard metadata={message.metadata} /> : null}
       {!isEditingMessage ? <WorkflowPreviewCard metadata={message.metadata} /> : null}
       {(message.attachmentCount ?? 1) > 0 ? (

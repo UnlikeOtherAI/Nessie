@@ -212,6 +212,7 @@ test('managed start delivery is acknowledged only by the owning loop', async () 
   const toolset = await build(
     { managed: true },
     {
+      bound: true,
       assertCompletion: () => undefined,
       dispatchDeepWater: async () => ({
         deliveryToken,

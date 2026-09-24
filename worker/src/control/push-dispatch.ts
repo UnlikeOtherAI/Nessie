@@ -129,9 +129,15 @@ export const handlePushDispatch = async (
   // by every active organisation member, so a person @mentioned there who never
   // joined is still rung — framed as a mention. A private or protected channel
   // never adds anyone: its recipients are its members, and the API never lists
-  // a non-member in `mentionUserIds` there.
+  // a non-member in `mentionUserIds` there. An explicitly addressed message (a
+  // DeepWater result naming its requester) follows the same rule, and never
+  // rings anyone it does not address.
   const memberIds = new Set(members.map((member) => member.userId))
-  const openChannelMentionIds = !recipientUserIds && channel && isOpenMentionChannel({
+  const addressed = (userId: string): boolean => !recipientUserIds || recipientUserIds.includes(userId)
+  const openChannelMentionCandidates = payload.mentionUserIds.filter(
+    (userId) => userId !== payload.authorUserId && !memberIds.has(userId) && addressed(userId),
+  )
+  const openChannelMentionIds = openChannelMentionCandidates.length > 0 && channel && isOpenMentionChannel({
     ...channel,
     organizationId: payload.organizationId,
   })
@@ -139,11 +145,7 @@ export const handlePushDispatch = async (
       where: {
         deactivatedAt: null,
         organizationId: payload.organizationId,
-        userId: {
-          in: payload.mentionUserIds.filter(
-            (userId) => userId !== payload.authorUserId && !memberIds.has(userId),
-          ),
-        },
+        userId: { in: openChannelMentionCandidates },
       },
       select: { userId: true },
     })).map((row) => row.userId)
@@ -212,7 +214,10 @@ export const handlePushDispatch = async (
     ?? replyMessage?.agent?.name
     ?? replyMessage?.user?.displayName
     ?? 'Nessie'
-  const mentionUserIds = new Set(protectedReply ? [] : payload.mentionUserIds)
+  // A mention keeps its framing — and its preference class — when its content
+  // is withheld: the framing says who it is for, never what it says, and the
+  // recipient set above already holds only people the message addresses.
+  const mentionUserIds = new Set(payload.mentionUserIds)
   const mentionedRecipientIds = entitledUsers
     .filter((user) => mentionUserIds.has(user.id))
     .filter((user) => !shouldSuppressPushForPreferences(user.preferences, now, 'mentions'))
@@ -231,7 +236,7 @@ export const handlePushDispatch = async (
     title: authorName,
     subtitle,
     body: protectedReply
-      ? genericReplyBody
+      ? payload.genericBody ?? genericReplyBody
       : payload.contentSnippet.replace(/\s+/gu, ' ').trim() || 'New message',
     data: {
       channelId: payload.channelId,

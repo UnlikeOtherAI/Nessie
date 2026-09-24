@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { DeepWaterResearchReadinessSchema } from './deep-water-briefs.js'
 import {
   McpServerLifecycleStateSchema,
   McpServerScopeTypeSchema,
@@ -101,6 +102,8 @@ export const ProductMcpInstallationRecordSchema = z.object({
 export type ProductMcpInstallationRecord =
   z.infer<typeof ProductMcpInstallationRecordSchema>
 
+// `drafting` and `cancelled` belong to DeepWater briefs: a brief being agreed
+// with DeepWater's planner, and a brief or research that was cancelled.
 export const ProductIntegrationRunStatusSchema = z.enum([
   'queued',
   'running',
@@ -108,6 +111,8 @@ export const ProductIntegrationRunStatusSchema = z.enum([
   'completed',
   'failed',
   'warning',
+  'drafting',
+  'cancelled',
 ])
 export type ProductIntegrationRunStatus =
   z.infer<typeof ProductIntegrationRunStatusSchema>
@@ -134,7 +139,9 @@ export const DeepWaterResearchRunRecordSchema = z.object({
   outputTier: z.enum(['summary', 'full']),
   productSlug: z.literal('deep-water'),
   queryPreview: z.string(),
-  reportUrl: z.string().url().nullable(),
+  // No report URL: Ledger's report endpoint answers only its authenticated
+  // callers, so a link to it could never open for a person. The report is
+  // read through Nessie (the Knowledge page, and the run's artifacts).
   requestedAt: TimestampSchema,
   requestedByUserId: z.string().uuid().nullable(),
   searchQuality: z.enum(['standard', 'premium']),
@@ -203,6 +210,12 @@ export const IntegratedProductResponseSchema = z.object({
   summary: z.string(),
   teamEnablement: ProductTeamEnablementRecordSchema.nullable(),
   updatedAt: TimestampSchema,
+  /**
+   * Whether the viewer can start DeepWater research in this team, and why not
+   * (Water plan nessie.md §7.1 "Readiness"). Present only on the `deep-water`
+   * entry; every research doorway reads it instead of re-deriving it.
+   */
+  research: DeepWaterResearchReadinessSchema.optional(),
 })
 export type IntegratedProductResponse = z.infer<typeof IntegratedProductResponseSchema>
 
@@ -227,6 +240,12 @@ export type DeepWaterAgentAccessTarget =
 
 export const DeepWaterAgentAccessResponseSchema = z.object({
   configured: z.boolean(),
+  /**
+   * The team's connector projects an older DeepWater tool contract than the
+   * manifest's. Its bundle cannot be granted until an owner enables DeepWater
+   * for the team again, which upgrades the connector in place.
+   */
+  contractOutdated: z.boolean(),
   personalAssistant: DeepWaterAgentAccessTargetSchema.nullable(),
   requiredToolCount: z.number().int().positive(),
   sharedAgents: z.array(DeepWaterAgentAccessTargetSchema),

@@ -33,6 +33,7 @@ import {
 } from './personal-assistant-presence'
 import { useResolveReactorName } from './useResolveReactorName'
 import { useCollapsedFeedDates } from './useCollapsedFeedDates'
+import { FeedConversationContext } from './feed-conversation'
 import { TicketWorkEventRow, ticketWorkEventOf } from '../ticket-work/TicketWorkEventRow'
 
 // Stable identity so a feed without a document facade never re-runs the
@@ -55,6 +56,11 @@ const DeletedBubble = () => (
 )
 
 interface ChannelMessageFeedProps {
+  /**
+   * The conversation this feed shows, for the cards that act on their own
+   * message's place (`feed-conversation.ts`); null while there is none yet.
+   */
+  channelId: string | null
   // Documents an agent is writing into this conversation (`useThreadStream`).
   // Optional: the read-only info drawers render a feed with no live surface, so
   // they pass nothing and get no popup.
@@ -127,6 +133,7 @@ interface ChannelMessageFeedProps {
 }
 
 export const ChannelMessageFeed = ({
+  channelId,
   documentSessions,
   documentStore,
   feedItems,
@@ -165,6 +172,7 @@ export const ChannelMessageFeed = ({
   thinkingSurface = 'channel',
 }: ChannelMessageFeedProps) => {
   const getPresence = usePresenceLookup()
+  const conversation = useMemo(() => (channelId ? { channelId } : null), [channelId])
   const personalAssistantPresenceByIdentity = useMemo(
     () => indexPersonalAssistantPresences(personalAssistantPresences),
     [personalAssistantPresences],
@@ -256,175 +264,177 @@ export const ChannelMessageFeed = ({
   )
 
   return (
-    <div className="admin-chat-feed" data-message-feed>
-      {historyStatus?.isLoadingOlder ? (
-        <div
-          aria-live="polite"
-          className="px-5 py-2 text-center text-xs text-[color:var(--tx3)]"
-          role="status"
-        >
-          Loading earlier messages…
-        </div>
-      ) : historyStatus?.olderLoadFailed && historyStatus.hasOlder ? (
-        <div className="flex items-center justify-center gap-2 px-5 py-2 text-xs text-[color:var(--danger-text)]">
-          <span>Earlier messages could not be loaded.</span>
-          <button
-            className="admin-button admin-button-secondary admin-button-compact"
-            onClick={historyStatus.retryOlder}
-            type="button"
+    <FeedConversationContext.Provider value={conversation}>
+      <div className="admin-chat-feed" data-message-feed>
+        {historyStatus?.isLoadingOlder ? (
+          <div
+            aria-live="polite"
+            className="px-5 py-2 text-center text-xs text-[color:var(--tx3)]"
+            role="status"
           >
-            Retry
-          </button>
-        </div>
-      ) : null}
-
-      {feedItems.length === 0 &&
-      pendingMessages.length === 0 &&
-      optimisticMessages.length === 0 ? (
-        emptyState ?? (
-          <div className="p-5">
-            <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
-              No messages yet. Send the first message to start this thread.
-            </div>
+            Loading earlier messages…
           </div>
-        )
-      ) : null}
+        ) : historyStatus?.olderLoadFailed && historyStatus.hasOlder ? (
+          <div className="flex items-center justify-center gap-2 px-5 py-2 text-xs text-[color:var(--danger-text)]">
+            <span>Earlier messages could not be loaded.</span>
+            <button
+              className="admin-button admin-button-secondary admin-button-compact"
+              onClick={historyStatus.retryOlder}
+              type="button"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
 
-      {visibleFeedItems.map((item, index) => {
-        if (item.kind === 'date') {
-          const collapsed = collapsedDateKeys.has(item.key)
-          return (
-            <div key={`date:${item.key}`} className="admin-date-sep">
-              <button
-                aria-expanded={!collapsed}
-                className="admin-date-pill admin-date-pill-button"
-                onClick={() => toggleDateKey(item.key)}
-                type="button"
-              >
-                {item.label}
-                <svg
-                  className={[
-                    'h-3 w-3 flex-shrink-0 transition-transform',
-                    collapsed ? '-rotate-90' : '',
-                  ].join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
+        {feedItems.length === 0 &&
+        pendingMessages.length === 0 &&
+        optimisticMessages.length === 0 ? (
+          emptyState ?? (
+            <div className="p-5">
+              <div className="admin-card p-4 text-sm text-[color:var(--tx3)]">
+                No messages yet. Send the first message to start this thread.
+              </div>
             </div>
           )
-        }
+        ) : null}
 
-        if (item.message.deletedAt) {
-          return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
-        }
+        {visibleFeedItems.map((item, index) => {
+          if (item.kind === 'date') {
+            const collapsed = collapsedDateKeys.has(item.key)
+            return (
+              <div key={`date:${item.key}`} className="admin-date-sep">
+                <button
+                  aria-expanded={!collapsed}
+                  className="admin-date-pill admin-date-pill-button"
+                  onClick={() => toggleDateKey(item.key)}
+                  type="button"
+                >
+                  {item.label}
+                  <svg
+                    className={[
+                      'h-3 w-3 flex-shrink-0 transition-transform',
+                      collapsed ? '-rotate-90' : '',
+                    ].join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M19 9l-7 7-7-7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            )
+          }
 
-        // A ticket work thread's event row: why its agent woke, not a message.
-        const workEvent = ticketWorkEventOf(item.message)
-        if (workEvent) {
-          return <TicketWorkEventRow event={workEvent} key={item.message.id} message={item.message} />
-        }
+          if (item.message.deletedAt) {
+            return index < lastMessageIndex ? <DeletedBubble key={item.message.id} /> : null
+          }
 
-        const anchoredThinking = pendingByRoot.get(item.message.id) ?? []
-        const personalAssistantPresence =
-          item.message.agentId && item.message.onBehalfOfUserId
-            ? personalAssistantPresenceByIdentity.get(personalAssistantPresenceKey(
-                item.message.agentId,
-                item.message.onBehalfOfUserId,
-              )) ?? null
-            : null
+          // A ticket work thread's event row: why its agent woke, not a message.
+          const workEvent = ticketWorkEventOf(item.message)
+          if (workEvent) {
+            return <TicketWorkEventRow event={workEvent} key={item.message.id} message={item.message} />
+          }
 
-        return (
-          <Fragment key={item.message.id}>
-            <ChannelMessageRow
-              activeActionMessageId={activeActionMessageId}
-              agentMap={agentMap}
-              assistantFallbackName={assistantFallbackName}
-              editingContent={editingContent}
-              editingMessageId={editingMessageId}
-              getPresence={getPresence}
-              isDedicatedAgentConversation={isDedicatedAgentConversation}
-              isExternalAgentConversation={isExternalAgentConversation}
-              meAvatar={meAvatar}
-              meDisplayName={meDisplayName}
-              meUserId={meUserId}
-              message={item.message}
-              personalAssistantPresence={personalAssistantPresence}
-              renderContent={renderContent}
-              resolveReactorName={resolveReactorName}
-              setActiveActionMessageId={setActiveActionMessageId}
-              token={token}
-              updatePending={updatePending}
-              onAddReaction={onAddReaction}
-              onCancelEdit={onCancelEdit}
-              onChangeEditingContent={onChangeEditingContent}
-              onConfirmDelete={onConfirmDelete}
-              onOpenAttachment={openAttachment}
-              onOpenThread={onOpenThread}
-              onSelectAgent={onSelectAgent}
-              onSelectUser={onSelectUser}
-              onStartEdit={onStartEdit}
-              shareRestrictedMessage={shareRestrictedMessage}
-              onSubmitEdit={onSubmitEdit}
-              resolveThreadParticipant={resolveThreadParticipant}
-            />
-            {anchoredThinking.map((entry) => renderThinkingBubble(entry))}
-          </Fragment>
-        )
-      })}
+          const anchoredThinking = pendingByRoot.get(item.message.id) ?? []
+          const personalAssistantPresence =
+            item.message.agentId && item.message.onBehalfOfUserId
+              ? personalAssistantPresenceByIdentity.get(personalAssistantPresenceKey(
+                  item.message.agentId,
+                  item.message.onBehalfOfUserId,
+                )) ?? null
+              : null
 
-      {optimisticMessages.map((entry) => (
-        <OptimisticMessageRow
-          entry={entry}
-          getPresence={getPresence}
-          key={entry.clientId}
-          meAvatar={meAvatar}
-          meDisplayName={meDisplayName}
-          meUserId={meUserId}
+          return (
+            <Fragment key={item.message.id}>
+              <ChannelMessageRow
+                activeActionMessageId={activeActionMessageId}
+                agentMap={agentMap}
+                assistantFallbackName={assistantFallbackName}
+                editingContent={editingContent}
+                editingMessageId={editingMessageId}
+                getPresence={getPresence}
+                isDedicatedAgentConversation={isDedicatedAgentConversation}
+                isExternalAgentConversation={isExternalAgentConversation}
+                meAvatar={meAvatar}
+                meDisplayName={meDisplayName}
+                meUserId={meUserId}
+                message={item.message}
+                personalAssistantPresence={personalAssistantPresence}
+                renderContent={renderContent}
+                resolveReactorName={resolveReactorName}
+                setActiveActionMessageId={setActiveActionMessageId}
+                token={token}
+                updatePending={updatePending}
+                onAddReaction={onAddReaction}
+                onCancelEdit={onCancelEdit}
+                onChangeEditingContent={onChangeEditingContent}
+                onConfirmDelete={onConfirmDelete}
+                onOpenAttachment={openAttachment}
+                onOpenThread={onOpenThread}
+                onSelectAgent={onSelectAgent}
+                onSelectUser={onSelectUser}
+                onStartEdit={onStartEdit}
+                shareRestrictedMessage={shareRestrictedMessage}
+                onSubmitEdit={onSubmitEdit}
+                resolveThreadParticipant={resolveThreadParticipant}
+              />
+              {anchoredThinking.map((entry) => renderThinkingBubble(entry))}
+            </Fragment>
+          )
+        })}
+
+        {optimisticMessages.map((entry) => (
+          <OptimisticMessageRow
+            entry={entry}
+            getPresence={getPresence}
+            key={entry.clientId}
+            meAvatar={meAvatar}
+            meDisplayName={meDisplayName}
+            meUserId={meUserId}
+            renderContent={renderContent}
+            token={token}
+          />
+        ))}
+
+        <ChannelLiveStreamTail
+          isDedicatedAgentConversation={isDedicatedAgentConversation}
+          onOpenThoughtProcess={openThoughtProcess}
+          pendingMessages={pendingMessages}
           renderContent={renderContent}
+          resolveAgentIdentity={resolveAgentIdentity}
+          thinkingSurface={thinkingSurface}
           token={token}
         />
-      ))}
+        {/*
+          The ambient line, last so it sits directly under the newest row. It is
+          anonymous by design — no avatar, no agent name — because no run exists
+          yet and the engagement decision may still decline.
+        */}
+        {showLivenessHint ? (
+          <div
+            aria-label="Waiting for a reply"
+            className="flex items-center py-1 pl-12 pr-5"
+            data-testid="liveness-hint"
+            role="status"
+          >
+            <span aria-hidden="true" className="liveness-dots">
+              <span />
+              <span />
+              <span />
+            </span>
+          </div>
+        ) : null}
 
-      <ChannelLiveStreamTail
-        isDedicatedAgentConversation={isDedicatedAgentConversation}
-        onOpenThoughtProcess={openThoughtProcess}
-        pendingMessages={pendingMessages}
-        renderContent={renderContent}
-        resolveAgentIdentity={resolveAgentIdentity}
-        thinkingSurface={thinkingSurface}
-        token={token}
-      />
-      {/*
-        The ambient line, last so it sits directly under the newest row. It is
-        anonymous by design — no avatar, no agent name — because no run exists
-        yet and the engagement decision may still decline.
-      */}
-      {showLivenessHint ? (
-        <div
-          aria-label="Waiting for a reply"
-          className="flex items-center py-1 pl-12 pr-5"
-          data-testid="liveness-hint"
-          role="status"
-        >
-          <span aria-hidden="true" className="liveness-dots">
-            <span />
-            <span />
-            <span />
-          </span>
-        </div>
-      ) : null}
+        {documentChips}
 
-      {documentChips}
-
-      {attachmentViewer}
-      {documentDialog}
-      {thoughtProcessDialog}
-      <div className="h-3" />
-    </div>
+        {attachmentViewer}
+        {documentDialog}
+        {thoughtProcessDialog}
+        <div className="h-3" />
+      </div>
+    </FeedConversationContext.Provider>
   )
 }

@@ -135,6 +135,39 @@ test('one image over 4 MiB, or images over 8 MiB together, become placeholders â
   assert.deepEqual(result.structuredContent, { image: tooLarge, last: overTotal })
 })
 
+test('a copy another encoder line-wrapped or escaped becomes the marker too', () => {
+  // 0xff bytes spell `/` in base64, so the JSON-escaped copy has slashes to escape.
+  const bytes = png(3_000, 0xff)
+  const data = bytes.toString('base64')
+  const lines = (width: number): string[] => data.match(new RegExp(`.{1,${width}}`, 'gu'))!
+  const { images, result } = extractExecutorMcpImages({
+    content: [
+      // JSON text from an encoder that escapes `/`, and one that wrapped the base64 before encoding it.
+      { text: `{"image":"${data.replaceAll('/', '\\/')}","wrapped":"${lines(76).join('\\n')}"}`, type: 'text' },
+      imageItem(bytes),
+    ],
+    structuredContent: { image: lines(76).join('\n'), pem: `-----BEGIN-----\r\n${lines(64).join('\r\n')}\r\n-----END-----` },
+  })
+  assert.equal(images.length, 1)
+  const marker = `[image: attachment ${digestOf(bytes)}]`
+  assert.deepEqual(JSON.parse(contentOf(result)[0]!.text as string), { image: marker, wrapped: marker })
+  assert.deepEqual(result.structuredContent, { image: marker, pem: `-----BEGIN-----\r\n${marker}\r\n-----END-----` })
+  const flattened = JSON.stringify(result).replace(/\\[nr/]|\s/gu, '')
+  assert.equal(flattened.includes(data.slice(0, 64)), false, 'no spelling of the base64 is left anywhere')
+})
+
+test('an escaped copy whose base64 opens with a slash leaves nothing of that escape behind', () => {
+  // Every JPEG's base64 opens `/9j/`, so its JSON-escaped copy opens with `\/`.
+  const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(3_000, 0xff)])
+  const data = bytes.toString('base64')
+  assert.equal(data.startsWith('/9j/'), true)
+  const { result } = extractExecutorMcpImages({
+    content: [{ text: `{"image":"${data.replaceAll('/', '\\/')}"}`, type: 'text' }, imageItem(bytes, 'image/jpeg')],
+  })
+  // A backslash left before the marker would be `\[`, which is no JSON escape at all.
+  assert.deepEqual(JSON.parse(contentOf(result)[0]!.text as string), { image: `[image: attachment ${digestOf(bytes)}]` })
+})
+
 test('a copy shorter than any real image is left alone', () => {
   // 24 bytes of GIF: base64 short enough to occur in ordinary text by chance.
   const tiny = Buffer.concat([Buffer.from('GIF89a'), Buffer.alloc(18, 1)])

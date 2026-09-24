@@ -211,7 +211,7 @@ export const respondToAgentCard = async (
   // A review card is pressed, never answered: each press mints a token and
   // resolves nothing (agent-card-executor-review.ts).
   if (executorReviewOf(prepared.card)) {
-    const pressed = await pressExecutorReviewCard(deps.prisma, {
+    const pressed = await pressExecutorReviewCard(deps, {
       actorContext: input.actorContext,
       card: prepared.card,
       userId,

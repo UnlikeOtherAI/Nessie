@@ -162,3 +162,37 @@ nothing in it may be a secret or an instruction addressed to the model.
   confirms every executor grant. Mechanics:
   [agent cards](../standards/agent-cards.md) → "An executor review card holds
   an id".
+
+- **A restricted label is about the designed agent, and the block now says
+  whose verb it is (2026-09-23).** Asked "can CTO see executors?", the
+  Designer answered that `executor_list` / `executor_agent_grant_prepare`
+  "are Personal Assistant only — I can't grant it from here" — while holding
+  all three executor verbs through identity delegation, in the very
+  conversation whose executor section told it to use them. The catalogue's
+  restricted list ("Tools that exist but are not yours to grant") rendered
+  every `personal_assistant_only` builtin with that label, and for the home-DM
+  face three of those keys were its own. Same failure and same remedy as
+  `protectedAccess`: whether a verb is "not yours" is a property of the face
+  reading the block, so `buildGlobalAgentCatalogueBlock` now takes the run's
+  resolved tool ids (`heldToolIds`) and renders a held restricted verb under
+  "Verbs you hold in this conversation" — never under the not-yours list, and
+  never as "Personal Assistant only". The admission machinery needed no
+  change: the verbs were resolved and in the schema array all along; the
+  prompt was the only thing refusing.
+
+- **The Designer's delegated set is the whole act-as-user surface
+  (2026-09-23, owner decision).** `identityToolIds` was a curated list that
+  had quietly fallen behind what the person's own delegate could do — 51
+  verbs behind, which is how "can CTO see executors?" got a refusal while
+  the grant machinery sat ready. It is now derived: every
+  `personalAssistantOnly` builtin, minus explicit-grant verbs (an owner's
+  per-agent allow is never implied by delegation) and the verbs whose handlers
+  refuse any face but the PA's own DM (`pa_join_channel`,
+  `app_connect_request` — each named with its reason beside the
+  derivation). The surface conditions are unchanged — own home DM,
+  interactive turn, live human requester — and every handler keeps
+  mirroring its route's authorization, so the person asking can still only
+  reach what they could reach themselves. `connector_uninstall`'s earlier
+  deliberate absence ("designing an agent is never a reason to take an app
+  away") is superseded by the owner's rule; the handler's own scope checks
+  remain the boundary.

@@ -16,13 +16,12 @@ import {
   deepWaterBundleMarkerKey,
 } from '../src/services/deepwater-policy-markers.js'
 
-const names = [
-  'research_start',
-  'research_status',
-  'research_report',
-  'research_list',
-  'research_cancel',
-]
+import { getIntegrationPluginManifest } from '../src/services/integration-plugin-manifests.js'
+
+// The bundle is derived from the manifest, never a hard-coded count.
+const names = getIntegrationPluginManifest('deep-water')?.mcp?.tools.map((tool) => tool.name) ?? []
+const firstName = names[0]!
+const lastName = names[names.length - 1]!
 
 const projectedEntries = names.map((toolName, index) => ({
   id: `registry-${index + 1}`,
@@ -33,20 +32,17 @@ const projectedEntries = names.map((toolName, index) => ({
   transportConfig: { toolName },
 }))
 
-test('Deep Water access resolves the exact five projections plus updater builtin', () => {
+test('Deep Water access resolves the exact manifest projections plus updater builtin', () => {
   const resolved = resolveDeepWaterPolicyKeys({
     builtinPolicyKey: 'deep_water_run_update',
     projectedEntries,
   })
 
-  assert.equal(DEEP_WATER_REQUIRED_TOOL_COUNT, 6)
+  assert.equal(names.length, 8)
+  assert.equal(DEEP_WATER_REQUIRED_TOOL_COUNT, names.length + 1)
   assert.equal(resolved.configured, true)
   assert.deepEqual(resolved.policyKeys, [
-    'registry-1',
-    'registry-2',
-    'registry-3',
-    'registry-4',
-    'registry-5',
+    ...names.map((_, index) => `registry-${index + 1}`),
     'deep_water_run_update',
   ])
 })
@@ -55,22 +51,22 @@ test('missing, duplicate, or non-explicit projections cannot satisfy readiness',
   const resolved = resolveDeepWaterPolicyKeys({
     builtinPolicyKey: 'deep_water_run_update',
     projectedEntries: [
-      ...projectedEntries.slice(0, 4),
+      ...projectedEntries.slice(0, names.length - 1),
       {
         id: 'duplicate',
         metadata: { requiresExplicitGrant: true },
-        transportConfig: { toolName: 'research_start' },
+        transportConfig: { toolName: firstName },
       },
       {
         id: 'not-explicit',
         metadata: {},
-        transportConfig: { toolName: 'research_cancel' },
+        transportConfig: { toolName: lastName },
       },
     ],
   })
 
   assert.equal(resolved.configured, false)
-  assert.equal(resolved.policyKeys.length, 5)
+  assert.equal(resolved.policyKeys.length, names.length)
 })
 
 test('the updater builtin is mandatory even when every MCP projection exists', () => {
@@ -80,7 +76,7 @@ test('the updater builtin is mandatory even when every MCP projection exists', (
   })
 
   assert.equal(resolved.configured, false)
-  assert.equal(resolved.policyKeys.length, 5)
+  assert.equal(resolved.policyKeys.length, names.length)
 })
 
 test('an extra active projection cannot be mistaken for the exact contract', () => {
@@ -97,7 +93,7 @@ test('an extra active projection cannot be mistaken for the exact contract', () 
   })
 
   assert.equal(resolved.configured, false)
-  assert.equal(resolved.revocationPolicyKeys.length, 7)
+  assert.equal(resolved.revocationPolicyKeys.length, names.length + 2)
 })
 
 test('revoking one team preserves the shared updater needed by another team', () => {
@@ -204,6 +200,7 @@ const buildAccessPrisma = (
     [deepWaterBundleMarkerKey(teamId), true] as const,
   ])
   let updateCalls = 0
+  const registered: string[] = []
   const grants: Array<{ toolId: string; state: string; config: unknown }> = []
   const tx = {
     $executeRaw: async () => {
@@ -256,7 +253,10 @@ const buildAccessPrisma = (
         events.push('projection-read')
         return liveEntries
       },
-      upsert: async () => ({}),
+      upsert: async ({ where }: any) => {
+        registered.push(where.organizationId_scopeKey_toolId.toolId)
+        return {}
+      },
     },
     toolGrant: {
       updateMany: async ({ where, data }: any) => { const grant = grants.find((item) => item.toolId === where.toolId); if (!grant) return { count: 0 }; Object.assign(grant, data); return { count: 1 } },
@@ -280,6 +280,7 @@ const buildAccessPrisma = (
       return updateCalls
     },
     get grants() { return grants },
+    registered,
   }
 }
 
@@ -299,6 +300,9 @@ test('bundle grant locks team before final projection read and agent policy', as
   assert.equal(state.updateCalls, 1)
   for (const entry of liveEntries) assert.equal(state.policy[entry.id], true)
   assert.equal(state.grants.filter((grant) => grant.state === 'allowed').length, liveEntries.length)
+  // Inside the lock's transaction only the updater it reads is registered, never
+  // every builtin: 200+ upserts on one connection outran the transaction timeout.
+  assert.deepEqual(state.registered, [DEEP_WATER_RUN_UPDATE_TOOL_ID])
 })
 
 test('bundle revoke blocks while a linked run is nonterminal', async () => {
@@ -315,7 +319,14 @@ test('bundle revoke blocks while a linked run is nonterminal', async () => {
     (error: unknown) =>
       error instanceof DeepWaterAgentAccessError
       && error.code === DEEP_WATER_AGENT_ACCESS_ERROR_CODES.ACTIVE_RUNS
-      && error.message.includes(`/channels/${channelId}`),
+      // The remedy is the app page's Cancel, which the 409 names the run for;
+      // never the run's topic, and no longer a chat to open.
+      && error.message.includes('Cancel it from DeepWater in Apps')
+      && !error.message.includes(`/channels/${channelId}`)
+      // Plain copy: the run is named in `details`, never by its id or stored status.
+      && !error.message.includes(runId)
+      && !error.message.includes('running')
+      && JSON.stringify(error.details).includes('"status"'),
   )
   assert.equal(state.events[0], 'team-lock')
   assert.ok(

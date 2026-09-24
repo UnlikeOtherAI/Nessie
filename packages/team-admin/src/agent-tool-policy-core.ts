@@ -33,7 +33,7 @@ export const AGENT_TOOL_POLICY_ERROR_CODES = {
 export class AgentToolPolicyError extends Error {
   override readonly name = 'AgentToolPolicyError'
 
-  constructor(public readonly code: string, message: string) {
+  constructor(public readonly code: string, message: string, public readonly details?: unknown) {
     super(message)
   }
 }

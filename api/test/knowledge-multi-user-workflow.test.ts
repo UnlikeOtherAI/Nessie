@@ -147,7 +147,7 @@ dbTest('documents persist multi-user project permissions, moves, updates, and ex
     const createParent = await requestAs('owner', {
       method: 'POST',
       url: `/api/knowledge-base/spaces/${spaceId}/pages`,
-      payload: { body: '<p>Shared project guidance</p>', title: 'Runbook' },
+      payload: { body: '', kind: 'folder', title: 'Runbook' },
     })
     assert.equal(createParent.statusCode, 201)
     const parentPageId = (createParent.json() as { data: { id: string } }).data.id

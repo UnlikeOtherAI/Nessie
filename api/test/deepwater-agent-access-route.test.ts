@@ -324,9 +324,10 @@ test('owner grant bootstraps the Personal Assistant and grants the exact bundle'
     assert.equal(response.statusCode, 200)
     assert.equal(state.personalAssistantExists, true)
     assert.equal(response.json().data.personalAssistant.enabled, true)
+    // Every projected tool, the run updater and the team's bundle marker.
     assert.equal(
       Object.values(state.personalAssistantPolicy).filter(Boolean).length,
-      7,
+      projectedEntries.length + 2,
     )
     assert.deepEqual(state.agentBindings, [{ agentId: personalAssistantId, channelId }])
   } finally {

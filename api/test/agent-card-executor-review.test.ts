@@ -15,6 +15,7 @@ import Fastify from 'fastify'
 
 import { createRequestHelpers } from '../src/lib/request-helpers.js'
 import { registerAgentCardRoutes } from '../src/routes/agent-cards.js'
+import { registerExecutorRoutes } from '../src/routes/executors.js'
 import type { RouteDeps } from '../src/routes/types.js'
 
 /**
@@ -142,17 +143,61 @@ const prepareWithCard = async (
   return { cardId: card.id, prepared }
 }
 
-const press = async (prisma: PrismaClient, s: Seed, cardId: string, userId = s.userId) => {
-  const actorContext = actorFor(userId, s.organizationId)
+/** A pending workspace promotion (an `invocation` continuation) and its review card. */
+const promotionWithCard = async (prisma: PrismaClient, s: Seed) => {
+  const promotion = await prisma.executorContinuation.create({
+    data: {
+      actorUserId: s.userId,
+      confirmationTokenHash: `prepare-time-${randomUUID()}`,
+      executorId: s.executorId,
+      expiresAt: new Date(Date.now() + 600_000),
+      subject: 'invocation',
+      subjectDigest: 'sha256:test',
+    },
+  })
+  const message = await prisma.message.create({
+    data: { agentId: s.agentId, content: 'Confirm a workspace promotion', role: 'assistant', threadId: s.threadId },
+  })
+  const card = await prisma.agentCard.create({
+    data: {
+      agentId: s.agentId,
+      channelId: s.channelId,
+      executorWorkspacePromotionId: promotion.id,
+      expiresAt: promotion.expiresAt,
+      messageId: message.id,
+      organizationId: s.organizationId,
+      respondentUserIds: [s.userId],
+      runId: s.runId,
+      spec: { ...REVIEW_CARD, title: 'Confirm a workspace promotion' },
+      threadId: s.threadId,
+    },
+  })
+  return { cardId: card.id, promotion, promotionId: promotion.id }
+}
+
+type Published = { data: Record<string, unknown>; event: string; scopes: unknown[] }
+
+/** The realtime and actor deps every route here needs, recording what is published. */
+const routeDeps = (prisma: PrismaClient, s: Seed, userId: string, published: Published[]) => ({
+  buildChannelRealtimeScopes: createRequestHelpers(prisma).buildChannelRealtimeScopes,
+  prisma,
+  realtimeHub: {
+    publishWs: async (scopes: unknown[], input: { data: Record<string, unknown>; event: string }) => {
+      published.push({ data: input.data, event: input.event, scopes })
+      return { ...input, ts: new Date().toISOString(), type: 'event' }
+    },
+  },
+  requireActorContext: () => actorFor(userId, s.organizationId),
+  requireUserActor: () => true,
+})
+
+const press = async (prisma: PrismaClient, s: Seed, cardId: string, userId = s.userId, published: Published[] = []) => {
   const app = Fastify()
   registerAgentCardRoutes(app, {
-    buildChannelRealtimeScopes: createRequestHelpers(prisma).buildChannelRealtimeScopes,
+    ...routeDeps(prisma, s, userId, published),
     dashboardCredentials: {},
     mcpSecretStore: {},
     messageMemoryCaptureConfig: null,
-    prisma,
-    realtimeHub: { publishWs: async () => undefined },
-    requireActorContext: () => actorContext,
   } as unknown as RouteDeps & { dashboardCredentials: unknown })
   const response = await app.inject({
     method: 'POST',
@@ -272,7 +317,9 @@ runDatabaseTest('every press hands the presser a fresh token, and only the newes
 
 runDatabaseTest('a change that needs fresh verification still needs it', async (t) => {
   await withSeed(t, async (prisma, s) => {
-    const { cardId } = await prepareWithCard(prisma, s, { action: 'revoke', kind: 'lifecycle' })
+    const { cardId } = await prepareWithCard(prisma, s, {
+      action: 'set', assignment: { principalKind: 'user', role: 'use', userId: s.otherUserId }, kind: 'private_assignment',
+    })
     const review = await reviewFrom(prisma, s, cardId)
 
     await assert.rejects(
@@ -283,8 +330,10 @@ runDatabaseTest('a change that needs fresh verification still needs it', async (
       }),
       /Fresh verification is required/,
     )
-    const executor = await prisma.executor.findUniqueOrThrow({ where: { id: s.executorId } })
-    assert.equal(executor.status, 'online', 'nothing was applied without the proof')
+    const granted = await prisma.executorPrivateAssignment.count({
+      where: { executorId: s.executorId, userId: s.otherUserId },
+    })
+    assert.equal(granted, 0, 'nothing was applied without the proof')
     const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
     assert.equal(card.status, 'open', 'a refused confirm leaves the card to press again')
   })
@@ -324,8 +373,15 @@ runDatabaseTest('only the person who prepared the change can be handed its token
   })
 })
 
+/** The `card.updated` notices published for one card. */
+const cardUpdates = (published: Published[], cardId: string) =>
+  published.filter((entry) => entry.event === 'card.updated' && entry.data.cardId === cardId)
+
 // A press that finds the change already over closes the card to match rather
-// than leaving a live Review button that always fails until the sweep runs.
+// than leaving a live Review button that always fails until the sweep runs —
+// on every screen showing it, not only the presser's. The press can find that
+// because the card and its change expire at the same instant and the press
+// reads the clock twice, or because a confirm elsewhere committed under it.
 runDatabaseTest('a change that is over closes its card on the next press', async (t) => {
   await withSeed(t, async (prisma, s) => {
     const cases = [
@@ -338,12 +394,66 @@ runDatabaseTest('a change that is over closes its card on the next press', async
       // Settled through a door that is not the card, behind the card's back.
       await prisma.executorContinuation.update({ where: { id: prepared.accessChangeId }, data })
 
-      const response = await press(prisma, s, cardId)
+      const published: Published[] = []
+      const response = await press(prisma, s, cardId, s.userId, published)
       assert.equal(response.statusCode, 409, response.body)
       assert.match(response.body, /no longer waiting for your review/)
       const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
       assert.equal(card.status, expected, JSON.stringify(data))
       assert.equal(card.responseMessageId, null)
+      assert.deepEqual(cardUpdates(published, cardId).map((entry) => [entry.data, entry.scopes]), [[
+        { cardId, messageId: card.messageId, status: expected, threadId: s.threadId },
+        [{ kind: 'channel', channelId: s.channelId }],
+      ]], 'every open screen is told the card closed')
+    }
+  })
+})
+
+// Confirming or rejecting closes the card in the change's own transaction;
+// the route then tells every screen showing it, so the preparer's other
+// device and everyone else in the room stop showing it open.
+runDatabaseTest('confirming or rejecting the change tells every open screen its card closed', async (t) => {
+  await withSeed(t, async (prisma, s) => {
+    const published: Published[] = []
+    const app = Fastify()
+    registerExecutorRoutes(app, routeDeps(prisma, s, s.userId, published) as unknown as RouteDeps)
+    t.after(() => app.close())
+
+    const confirmed = await prepareWithCard(prisma, s, { action: 'pause', kind: 'lifecycle' })
+    const confirmReview = await reviewFrom(prisma, s, confirmed.cardId)
+    const confirming = await app.inject({
+      method: 'POST',
+      payload: { confirmationToken: confirmReview.confirmationToken },
+      url: `/api/executor-access-changes/${confirmed.prepared.accessChangeId}/confirm`,
+    })
+    assert.equal(confirming.statusCode, 200, confirming.body)
+
+    const rejected = await prepareWithCard(prisma, s, { action: 'resume', kind: 'lifecycle' })
+    const rejectReview = await reviewFrom(prisma, s, rejected.cardId)
+    const rejecting = await app.inject({
+      method: 'POST',
+      payload: { confirmationToken: rejectReview.confirmationToken },
+      url: `/api/executor-access-changes/${rejected.prepared.accessChangeId}/reject`,
+    })
+    assert.equal(rejecting.statusCode, 200, rejecting.body)
+
+    const promotion = await promotionWithCard(prisma, s)
+    const promotionReview = await reviewFrom(prisma, s, promotion.cardId)
+    const rejectingPromotion = await app.inject({
+      method: 'POST',
+      payload: { confirmationToken: promotionReview.confirmationToken },
+      url: `/api/executor-workspace-promotions/${promotion.promotionId}/reject`,
+    })
+    assert.equal(rejectingPromotion.statusCode, 200, rejectingPromotion.body)
+
+    for (const [cardId, status] of [
+      [confirmed.cardId, 'resolved'], [rejected.cardId, 'cancelled'], [promotion.cardId, 'cancelled'],
+    ] as const) {
+      const card = await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })
+      assert.equal(card.status, status)
+      assert.deepEqual(cardUpdates(published, cardId).map((entry) => entry.data), [
+        { cardId, messageId: card.messageId, status, threadId: s.threadId },
+      ])
     }
   })
 })
@@ -353,35 +463,9 @@ runDatabaseTest('a change that is over closes its card on the next press', async
 // token minted per press.
 runDatabaseTest('a workspace promotion card mints its own token per press', async (t) => {
   await withSeed(t, async (prisma, s) => {
-    const promotion = await prisma.executorContinuation.create({
-      data: {
-        actorUserId: s.userId,
-        confirmationTokenHash: `prepare-time-${randomUUID()}`,
-        executorId: s.executorId,
-        expiresAt: new Date(Date.now() + 600_000),
-        subject: 'invocation',
-        subjectDigest: 'sha256:test',
-      },
-    })
-    const message = await prisma.message.create({
-      data: { agentId: s.agentId, content: 'Confirm a workspace promotion', role: 'assistant', threadId: s.threadId },
-    })
-    const card = await prisma.agentCard.create({
-      data: {
-        agentId: s.agentId,
-        channelId: s.channelId,
-        executorWorkspacePromotionId: promotion.id,
-        expiresAt: promotion.expiresAt,
-        messageId: message.id,
-        organizationId: s.organizationId,
-        respondentUserIds: [s.userId],
-        runId: s.runId,
-        spec: { ...REVIEW_CARD, title: 'Confirm a workspace promotion' },
-        threadId: s.threadId,
-      },
-    })
+    const { cardId, promotion } = await promotionWithCard(prisma, s)
 
-    const review = await reviewFrom(prisma, s, card.id)
+    const review = await reviewFrom(prisma, s, cardId)
     assert.equal(review.promotionId, promotion.id)
     assert.equal(review.accessChangeId, undefined)
     const stored = await prisma.executorContinuation.findUniqueOrThrow({ where: { id: promotion.id } })
@@ -393,6 +477,6 @@ runDatabaseTest('a workspace promotion card mints its own token per press', asyn
       confirmationToken: review.confirmationToken,
       promotionId: promotion.id,
     })
-    assert.equal((await prisma.agentCard.findUniqueOrThrow({ where: { id: card.id } })).status, 'cancelled')
+    assert.equal((await prisma.agentCard.findUniqueOrThrow({ where: { id: cardId } })).status, 'cancelled')
   })
 })

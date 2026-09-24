@@ -1,0 +1,139 @@
+import { useState } from 'react'
+import type { DeepWaterBriefView } from '@nessie/schemas'
+import { Switch } from '../../primitives/Switch'
+import { ResearchCancelFailure } from './ResearchRunOutcome'
+
+/**
+ * The foot of a brief: the person-only choice to publish the finished report
+ * (nessie.md §7.9 — an agent's brief is always private, and Ledger enforces
+ * that from the signed author), Start, and a way to give the research up.
+ * Start is the dialog's one primary action; it is explained, not just greyed,
+ * when it cannot be pressed yet.
+ *
+ * A cancel is its own state: from the moment it is sent until the research has
+ * stopped, the bar says it is being discarded or stopped and offers neither
+ * Cancel again nor Start — the API accepts a cancel at once, but DeepWater
+ * stops the research a moment later. One that did not go through comes back
+ * with its reason (`cancelFailure`) and Cancel is offered again — said here for
+ * a brief still being agreed, and in the research's outcome above once it has
+ * been started.
+ */
+
+export type StartBarProps = {
+  brief: DeepWaterBriefView
+  /** The requester's own brief, still being agreed: Start and the publish switch belong here. */
+  canOfferStart: boolean
+  /** A cancel is on its way or accepted, and the research has not stopped yet. */
+  cancelling: boolean
+  /** Why Start cannot be pressed yet, in words; null when it can. */
+  blockedReason: string | null
+  error: string | null
+  onCancel: (() => void) | null
+  onPublishChange: (publish: boolean) => void
+  onStart: () => void
+  publish: boolean
+  starting: boolean
+}
+
+export const BriefStartBar = ({
+  blockedReason,
+  brief,
+  canOfferStart,
+  cancelling,
+  error,
+  onCancel,
+  onPublishChange,
+  onStart,
+  publish,
+  starting,
+}: StartBarProps) => {
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const personBrief = brief.origin.kind === 'person'
+  const drafting = brief.status === 'drafting'
+  const cancelWord = drafting ? 'Discard brief' : 'Cancel research'
+  const offerStart = canOfferStart && !cancelling
+
+  return (
+    // Pinned to the foot of the dialog's scrolling panel, so Start and the
+    // publish choice stay in reach however long the conversation grows. The
+    // negative margins meet the panel's own 24px padding.
+    <div
+      className={[
+        'sticky -bottom-6 -mx-6 -mb-6 flex flex-col gap-3 border-t border-[color:var(--sep)]',
+        'bg-[color:var(--panel)] px-6 pb-6 pt-3',
+      ].join(' ')}
+      data-testid="research-brief-start"
+    >
+      {offerStart ? (
+        <div className="flex items-start gap-3">
+          <Switch checked={publish} label="Publish on research.deepwater.live" onChange={onPublishChange} />
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-[color:var(--tx)]">Publish on research.deepwater.live</span>
+            <span className="text-xs text-[color:var(--tx3)]">
+              Anyone with the link can read the finished report.
+            </span>
+          </div>
+        </div>
+      ) : null}
+      {!personBrief ? (
+        <p className="text-xs text-[color:var(--tx3)]">
+          An agent started this research, so it stays private to the people who can see this conversation.
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {brief.ready && drafting && !cancelling ? (
+          <span className="mr-auto text-xs text-[color:var(--tx2)]">DeepWater thinks this brief is ready.</span>
+        ) : null}
+        {cancelling ? (
+          <span className="text-sm text-[color:var(--tx2)]" data-testid="research-brief-cancelling" role="status">
+            {drafting ? 'Discarding this brief…' : 'Stopping this research…'}
+          </span>
+        ) : null}
+        {onCancel && !cancelling && !confirmingCancel ? (
+          <button className="admin-button admin-button-secondary" onClick={() => setConfirmingCancel(true)} type="button">
+            {cancelWord}
+          </button>
+        ) : null}
+        {onCancel && !cancelling && confirmingCancel ? (
+          <span className="flex flex-wrap items-center gap-2" role="group" aria-label={cancelWord}>
+            <span className="text-sm text-[color:var(--tx2)]">
+              {drafting ? 'Discard this brief?' : 'Stop this research? It can’t be resumed.'}
+            </span>
+            <button
+              className="admin-button admin-button-secondary admin-button-danger"
+              onClick={() => {
+                setConfirmingCancel(false)
+                onCancel()
+              }}
+              type="button"
+            >
+              {drafting ? 'Discard' : 'Stop research'}
+            </button>
+            <button className="admin-button admin-button-secondary" onClick={() => setConfirmingCancel(false)} type="button">
+              Keep it
+            </button>
+          </span>
+        ) : null}
+        {offerStart ? (
+          <button
+            className="admin-button admin-button-primary"
+            disabled={blockedReason !== null || starting}
+            onClick={onStart}
+            title={blockedReason ?? undefined}
+            type="button"
+          >
+            {starting ? 'Starting…' : 'Start research'}
+          </button>
+        ) : null}
+      </div>
+      {offerStart && blockedReason ? (
+        <p className="text-right text-xs text-[color:var(--tx3)]">{blockedReason}</p>
+      ) : null}
+      {drafting && !cancelling && onCancel && brief.cancelFailure ? (
+        <ResearchCancelFailure message={brief.cancelFailure.message} />
+      ) : null}
+      {error ? <p className="text-sm text-[color:var(--danger-text)]" role="alert">{error}</p> : null}
+    </div>
+  )
+}

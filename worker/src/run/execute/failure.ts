@@ -1,20 +1,56 @@
 import type { Prisma } from '@prisma/client'
-import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
+import { DEEP_WATER_DELIVERY_PURPOSE, parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { markDelegationStepFinished, markRunPlanFinished } from '../plans.js'
 import { buildScopes } from './scopes.js'
 import { updateRunStatus, updateTaskStatus, setAgentStatus, applyRunReplyBookkeeping } from './lifecycle.js'
 import { maybeContinueParentWorkflow } from './parent-workflow.js'
 import { publishAgentStatus, publishMessageCreated, publishRunUpdated, publishTaskUpdated } from './realtime.js'
 import { drainPendingThreadMessagesBestEffort } from '../thread-serialization.js'
-import { classifyError, userMessageForFailureReason } from '../error-classification.js'
+import { classifyError, userMessageForFailureReason, type FailoverReason } from '../error-classification.js'
 import { isInteractiveRun } from './continuation.js'
 import { noteSubscriptionFailure } from './subscription-health.js'
-
-/** Control-flow marker: this run has nobody waiting, so it posts nothing. */
-class SkipTerminalMessage extends Error {}
+import { tellRequesterDeepWaterWakeFailed } from '../../control/deepwater-wake-failure.js'
 import type { ExecutionDependencies, RunContext, RunPlanContext } from './types.js'
 import { createAgentMessage } from './agent-message.js'
 import { enqueueInteractiveReplyPush } from './reply-push.js'
+
+/** Control-flow marker: this run posts no terminal message of its own. */
+class SkipTerminalMessage extends Error {
+  constructor(readonly why: string) {
+    super(why)
+  }
+}
+
+/**
+ * A DeepWater wake that could not act for the person who asked, because their
+ * sign-in changed (amendments-fable F4): DeepWater's own notice tells them
+ * where the research ended, with its report's link, in place of the agent's
+ * failure reply. A failure to post it is logged and the agent's reply stands,
+ * so the person always hears something.
+ */
+const tellDeepWaterRequester = async (
+  deps: ExecutionDependencies,
+  payload: RunExecuteJobPayload,
+  context: RunContext,
+  failureReason: FailoverReason,
+): Promise<boolean> => {
+  if (
+    failureReason !== 'requester_identity'
+    || payload.actorContext.actionContext.purpose !== DEEP_WATER_DELIVERY_PURPOSE
+  ) {
+    return false
+  }
+  try {
+    const outcome = await tellRequesterDeepWaterWakeFailed(
+      { prisma: deps.prisma, realtime: deps.realtimeTransport },
+      { organizationId: context.channel.organizationId, kickoffMessageId: payload.messageId },
+    )
+    return outcome === 'told'
+  } catch (error) {
+    console.error(`[worker] run ${context.run.id}: DeepWater could not tell the requester; the agent's reply stands`, error)
+    return false
+  }
+}
 
 export const handleRunExecutionFailure = async (
   deps: ExecutionDependencies,
@@ -88,13 +124,22 @@ export const handleRunExecutionFailure = async (
   // to deliver. The failure is not hidden — the run is `failed`, the Triggers
   // page delivery row now shows that outcome, and the error is logged — it
   // simply stops being announced to a room that did not ask.
+  // A DeepWater wake is unattended but owed: the person who asked for the
+  // research is waiting for the agent's answer in this thread.
   const announceFailure =
-    (isInteractiveRun(payload) || payload.actorContext.actionContext.purpose === 'agent.peer_delegation')
+    (
+      isInteractiveRun(payload)
+      || payload.actorContext.actionContext.purpose === 'agent.peer_delegation'
+      || payload.actorContext.actionContext.purpose === DEEP_WATER_DELIVERY_PURPOSE
+    )
     && failureReason !== 'private_agent_placement'
     && failureReason !== 'global_agent_placement'
 
+  const deepWaterTold = announceFailure && await tellDeepWaterRequester(deps, payload, context, failureReason)
+
   try {
-    if (!announceFailure) throw new SkipTerminalMessage()
+    if (!announceFailure) throw new SkipTerminalMessage('nobody was waiting')
+    if (deepWaterTold) throw new SkipTerminalMessage('DeepWater told its requester instead')
     const errorMessage = await createAgentMessage(deps.prisma, context, {
       agentId: context.agent.id,
       content: terminalContent,
@@ -131,7 +176,7 @@ export const handleRunExecutionFailure = async (
   } catch (streamError) {
     if (streamError instanceof SkipTerminalMessage) {
       console.warn(
-        `[worker] run ${context.run.id} posted no channel message: nobody was waiting`,
+        `[worker] run ${context.run.id} posted no channel message: ${streamError.why}`,
       )
     } else {
       console.error('Failed to persist terminal error message', streamError)

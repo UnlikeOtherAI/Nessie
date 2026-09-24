@@ -499,7 +499,9 @@ already-running release pipeline.
    thread before its terminal reply: the requester receives one completion
    notification per run. A reply based on restricted sources is rechecked
    against live membership and disclosure grants immediately before delivery
-   and uses only the generic body “An agent reply is ready.” Every native and
+   and uses only a generic body: “An agent reply is ready.”, or a DeepWater
+   notice's own wording (“Your DeepWater research has finished.”), still framed
+   as a mention of the person it addresses. Every native and
    browser push also carries that recipient's current total badge: unread
    channel messages plus visible assigned-work and knowledge attention. This is
    an absolute total, never a per-notification increment, so a later

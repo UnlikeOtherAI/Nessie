@@ -28,6 +28,7 @@ import { createMcpSecretResolver, createPgSecretStore } from '@nessie/mcp-manage
 import { registerWorkerCoreSubscriptions } from './worker-subscriptions-core.js'
 import { registerWorkerIntegrationSubscriptions } from './worker-subscriptions-integrations.js'
 import { startWorkerSweeps } from './worker-sweeps.js'
+import { startDeepWaterWorker } from './control/deepwater-worker.js'
 
 const config = loadConfig()
 const encryptionKeyRing = resolveEncryptionKeyRing(config, config.auth.secret)
@@ -49,6 +50,8 @@ const prisma = getPrismaClient({
  * passes locally and fails with ERR_MODULE_NOT_FOUND under `pnpm test`.
  */
 export { queueTriggerRun } from './control/trigger-run.js'
+export { handleDeepWaterResearchEvent } from './control/deepwater-research-event.js'
+export type { DeepWaterWatchDeps } from './control/deepwater-watch.js'
 export {
   resolveDelegatedRequesterUserId,
   resolveIdentityDelegatedToolIds,
@@ -227,6 +230,16 @@ export const startWorker = async (
     realtimeTransport,
     runnerLabelPrefix,
   })
+  const deepWater = startDeepWaterWorker({
+    abortSignal: abortController.signal,
+    embeddingModel: modelClient.embeddingModel ?? null,
+    fileService,
+    ledgerIdentity,
+    pool,
+    prisma,
+    realtime: realtimeTransport,
+    subscribe,
+  })
 
   console.log(
     JSON.stringify(
@@ -259,6 +272,7 @@ export const startWorker = async (
       subscription.stop()
     }
     sweeps.stop()
+    deepWater.stop()
     const { settleTimedOut, timedOut } = await drainQueueSubscriptions(subscriptions)
     if (timedOut) {
       console.warn(

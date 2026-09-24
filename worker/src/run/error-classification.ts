@@ -1,6 +1,7 @@
 import {
   CREDITS_EXHAUSTED_USER_MESSAGE,
   isCreditsExhaustedError,
+  isRequesterIdentityRefusal,
   providerFailureDetails,
 } from '@nessie/runtime'
 import { exponentialBackoffMs } from '@nessie/runtime/scheduling'
@@ -15,6 +16,7 @@ export type FailoverReason =
   | 'credentials_scope'
   | 'rate_limit'
   | 'credits_exhausted'
+  | 'requester_identity'
   | 'billing'
   | 'provider_forbidden'
   | 'provider_rejected'
@@ -62,6 +64,8 @@ export const userMessageForFailureReason = (
       return 'The model provider is rate limited. Please try again shortly.'
     case 'credits_exhausted':
       return CREDITS_EXHAUSTED_USER_MESSAGE
+    case 'requester_identity':
+      return 'I can\'t act for you right now because your sign-in has changed. Sign in again, then ask me again.'
     case 'billing':
       return 'The model provider reported a billing or quota problem. Ask a team owner to review the provider account, then try again.'
     case 'context_overflow':
@@ -105,6 +109,11 @@ export const classifyError = (error: unknown): FailoverReason => {
 
   if (isCreditsExhaustedError(error)) {
     return 'credits_exhausted'
+  }
+  // Checked before the message patterns: UOA's refusal reads like a provider
+  // 403, but it is the person's sign-in that changed, not the model's access.
+  if (isRequesterIdentityRefusal(error)) {
+    return 'requester_identity'
   }
 
   const message = error.message.toLowerCase()
@@ -238,6 +247,11 @@ export const resolveRecovery = (
   // terminal on this call and must reach normal run failure handling instead
   // of becoming an assistant-shaped synthetic completion.
   if (reason === 'credits_exhausted') {
+    return { action: 'fail_run' }
+  }
+  // Only the person can fix a changed sign-in; retrying repeats the refusal,
+  // and an answer-shaped apology would hide it from whoever is owed the result.
+  if (reason === 'requester_identity') {
     return { action: 'fail_run' }
   }
 

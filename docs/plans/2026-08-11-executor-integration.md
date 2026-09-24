@@ -593,7 +593,7 @@ It can offer these tools:
 | `availability_list`, `availability_explain` *(next)* | Will return only executor and connector capabilities visible to the requesting user, optionally for one agent and immutable context, plus safe readiness reasons. |
 | `executor_list`, `executor_inspect` | Entitlement-scoped status, capability, scope, and data-boundary summary. |
 | `executor_pair` | Opens the user-owned setup surface; the user selects the immutable scope and assignments, and the companion completes the cryptographic pairing. |
-| `executor_pause`, `executor_drain`, `executor_revoke` | Creates a reviewed lifecycle-change draft only; the user confirms it in the Executors surface. Revoke always requires fresh verification. |
+| `executor_pause`, `executor_drain`, `executor_revoke` | Creates a reviewed lifecycle-change draft only; the user confirms it in the Executors surface. Revoke, like pause, needs no fresh verification: it only removes access. |
 | `executor_agent_access_prepare` | Produces an exact grant/revoke diff for a selected agent and logical operations. |
 | `executor_private_assignment_prepare` | Produces an exact add/remove/change diff for named users and agents, only when the requesting user is a private administrator. |
 | `executor_workspace_promotion_prepare` | Prepares only the requesting user's acknowledged COW review for the separate password-confirmed host-promotion control. |
@@ -604,8 +604,8 @@ single-use confirmation token. The PA cannot apply a draft itself. The web or
 desktop client renders an explicit confirmation control bound to that token;
 the confirmation endpoint re-checks the current human user's entitlement,
 revisions, and the exact digest before applying it. When policy requires
-step-up—or always for a private-assignment change, access elevation, or
-revocation—the confirmation requires a fresh, server-side password re-proof in
+step-up—or always for a private-assignment change or access elevation—the
+confirmation requires a fresh, server-side password re-proof in
 the first control-plane slice. An account without a password fails closed until
 the platform's SSO/WebAuthn verifier is connected to this continuation contract;
 the opaque verification binding remains on the continuation for that upgrade.

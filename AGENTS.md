@@ -474,7 +474,18 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **DeepWater — default OFF, explicit per-agent grant, always via Ledger.**
   Enabling DeepWater provisions a team-scoped tool-projecting instance routed
-  through Ledger; the handoff, grant bundle and ambiguity rules are exacting.
+  through Ledger; every research is agreed as a brief with DeepWater's planner
+  first and comes back to the conversation it came from, and the brief, grant
+  bundle and legacy handoff rules are exacting. Ledger relays nothing back:
+  DeepWater pushes progress, settled turns and outcomes straight to a signed
+  receiver, and each turn or outcome only triggers the read the worker's
+  `deep-water-watch` backstop makes as the requester, which delivers a finished
+  research exactly once, under its research card with an explicit-recipient
+  alert to the person who asked, or as one run that wakes the agent that
+  asked; progress streams to the card and never wakes anyone. Its `report.md`
+  and `sources.csv` are served only
+  behind the run's viewer predicate, and a person's brief is theirs alone until
+  it is launched.
   Read [`docs/standards/deepwater.md`](docs/standards/deepwater.md)
   before writing code here.
 - **Customer billing stays in UOA.** Tariffs, statements, credits, top-ups,
@@ -562,7 +573,8 @@ before touching those surfaces.
 The Designer acts only with the live requesting member's authority. Generic
 agent updates must continue to reject protected keys; protected builtins and
 MCP tools use their specialist grant service, and DeepWater remains an atomic
-ready bundle with active-run revocation protection. Read
+bundle whose revocation waits for that agent's unlaunched briefs and any open
+launcher run. Read
 [docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md)
 before changing these contracts.
 

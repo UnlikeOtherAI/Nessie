@@ -30,7 +30,8 @@ export type CodingSelfCheckReason =
   | 'unsupported_supervisor'
 
 export type CodingSelfCheckOutcome =
-  | { ok: true; agentVersion?: string }
+  /** `unverified` names what the CLI's help could not show either way, for the host's own log only. */
+  | { ok: true; agentVersion?: string; unverified?: string[] }
   /** `missing` names what the CLI's help lacked, for the host's own log only. */
   | { ok: false; reason: CodingSelfCheckReason; missing?: string[] }
 
@@ -119,5 +120,9 @@ export const runCodingSelfCheck = async (input: {
   // `gh` is optional; a present one that is logged out would make every PR step fail.
   if (!gh.missing && gh.code !== 0) return { ok: false, reason: 'gh_not_authenticated' }
   const firstLine = version.stdout.split(/\r?\n/u)[0]?.trim() ?? ''
-  return { ok: true, ...(VERSION_TEXT.test(firstLine) ? { agentVersion: firstLine } : {}) }
+  return {
+    ok: true,
+    ...(VERSION_TEXT.test(firstLine) ? { agentVersion: firstLine } : {}),
+    ...(offered.unverified ? { unverified: offered.unverified } : {}),
+  }
 }

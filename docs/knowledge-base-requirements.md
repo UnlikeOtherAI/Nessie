@@ -431,19 +431,19 @@ that column):
     cookie.
   - **Tree** shows an expandable/collapsible hierarchy with animated branches.
   - **Page preview** (`PagePreview`) is a read-only document view (status, title,
-    labels, rendered body, and a Sub-pages section) rendered on a
+    labels, rendered body, backlinks, comments, and document actions) rendered on a
     centered white "sheet" (`.kb-reader`) so content reads like paper — the sheet
     stays white with dark text under **any** theme. Selecting a document from any
-    browsing view opens this document state; **Back** pops to the parent document
-    or browser root.
+    browsing view opens this document state; **Back** returns to its containing
+    folder or the browser root. A document is a leaf: it never offers creation or
+    renders children.
   - **Editor** (`PageEditor`) and **version History** are full-width. The editor
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
-    On creation its Location picker chooses the space root or any existing page
-    as the parent. The same **New page** action stays visible at the space root,
-    inside folders, and on an open page; it creates at that location, so from an
-    open page it preselects that page as the parent. Page previews show clickable
+    On creation its Location picker chooses the space root or an existing folder
+    as the parent. **New page** is available at the space root and inside folders,
+    never on an open document. Page previews show clickable
     breadcrumbs from the space through every ancestor to the current page. A
     published page shows no redundant `Published` control or status chip;
     History and Archive page live in its always-visible three-dot action menu.

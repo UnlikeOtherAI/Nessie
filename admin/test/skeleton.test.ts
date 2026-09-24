@@ -132,6 +132,11 @@ const KEEP_PREVIOUS_EXEMPT = [
   // new thread refuses. The board's badges keep their previous data: they are
   // matched to columns and cards by id, so a stale answer paints nothing wrong.
   'src/facades/ticket-work/hooks.ts',
+  // A DeepWater research is read per viewer, and a brief can be private to its
+  // requester. Replaying one run's view or brief under another run's id would
+  // offer that run's actions and artifacts — or its private brief — as this
+  // one's, so a card or dialog shows its skeleton until its own run arrives.
+  'src/facades/deep-water/hooks.ts',
 ]
 
 test('every per-id facade query keeps its previous data', () => {

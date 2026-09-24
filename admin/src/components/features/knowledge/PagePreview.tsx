@@ -3,18 +3,13 @@ import {
   faBoxArchive,
   faClockRotateLeft,
   faEllipsis,
-  faFileLines,
-  faFolder,
   faPaperclip,
 } from '@fortawesome/free-solid-svg-icons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { toFormErrors } from '../../../facades/forms/form-errors'
 import type { KnowledgePageRecord } from '../../../facades/knowledge/hooks'
 import { Pill } from '../../primitives/Pill'
 import { ConfirmDialog } from '../../shared/ConfirmDialog'
 import { QueryState } from '../../shared/QueryState'
-import { Row, RowList } from '../../shared/RowList'
-import { SectionLabel } from '../../primitives/SectionLabel'
 import { AgentDraftBadge } from './AgentDraftBadge'
 import { BacklinksPanel } from './backlinks/BacklinksPanel'
 import { CommentsSection } from './comments/CommentsSection'
@@ -36,8 +31,6 @@ type PagePreviewProps = {
   onBack?: () => void
   onArchive: () => Promise<void>
   onBrowseRoot: () => void
-  onCreateChild: () => void
-  onDrill: (childPageId: string) => void
   onEdit: () => void
   onOpenHistory: () => void
   onOpenBreadcrumb: (pageId: string) => void
@@ -45,26 +38,8 @@ type PagePreviewProps = {
   onToggleAttachments: () => void
   page: KnowledgePageRecord
   publishPending?: boolean
-  subPages: KnowledgePageRecord[]
   spaceName: string
 }
-
-/**
- * A folder is the `folder` kind, never "a document that happens to have
- * children". Inferring it from `childPageIds` disagreed with the Finder in
- * both directions — a document with sub-pages drew a folder here and a
- * document there, and a real empty folder drew a document — which is the
- * convention the kind column replaced.
- */
-const isFolderPage = (page: KnowledgePageRecord): boolean => page.kind === 'folder'
-
-const sortedSubPages = (pages: KnowledgePageRecord[]): KnowledgePageRecord[] =>
-  [...pages].sort((left, right) => {
-    const leftFolder = isFolderPage(left)
-    const rightFolder = isFolderPage(right)
-    if (leftFolder !== rightFolder) return leftFolder ? -1 : 1
-    return left.position - right.position || left.title.localeCompare(right.title)
-  })
 
 export const PagePreview = ({
   bodyQuery,
@@ -74,8 +49,6 @@ export const PagePreview = ({
   onBack,
   onArchive,
   onBrowseRoot,
-  onCreateChild,
-  onDrill,
   onEdit,
   onOpenHistory,
   onOpenBreadcrumb,
@@ -83,7 +56,6 @@ export const PagePreview = ({
   onToggleAttachments,
   page,
   publishPending,
-  subPages,
   spaceName,
 }: PagePreviewProps) => {
   const commentsComposerRef = useRef<HTMLTextAreaElement>(null)
@@ -94,18 +66,6 @@ export const PagePreview = ({
     commentsComposerRef.current?.focus()
   }
   const headerActions: PageHeaderAction[] = [
-    ...(canWrite
-      ? [{
-          id: 'new-sub-page',
-          label: 'New page',
-          onSelect: onCreateChild,
-          // Creating is the primary here only once Publish has left the row:
-          // a draft's reason to be open is publishing it, and two filled
-          // buttons side by side name no decision.
-          primary: page.status === 'published',
-          priority: 90,
-        } satisfies PageHeaderAction]
-      : []),
     {
       icon: faPaperclip,
       id: 'attachments',
@@ -241,57 +201,6 @@ export const PagePreview = ({
         <BacklinksPanel pageId={page.id} />
 
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
-
-        <div className="mt-10 border-t border-[color:var(--sep)] pt-6">
-          <div className="flex items-center justify-between">
-            <SectionLabel size="2xs">Sub-pages</SectionLabel>
-            {canWrite ? (
-              <button
-                className="admin-button admin-button-secondary admin-button-compact"
-                onClick={onCreateChild}
-                type="button"
-              >
-                New page
-              </button>
-            ) : null}
-          </div>
-          <div className="mt-3">
-            {subPages.length === 0 ? (
-              <p className="py-4 text-sm text-[color:var(--tx3)]">No sub-pages yet.</p>
-            ) : (
-              <RowList>
-                {sortedSubPages(subPages).map((child) => {
-                  const isFolder = isFolderPage(child)
-                  return (
-                    <Row
-                      key={child.id}
-                      leading={
-                        <FontAwesomeIcon
-                          className={[
-                            'h-4 w-4',
-                            isFolder ? 'text-[color:var(--accent)]' : 'text-[color:var(--tx3)]',
-                          ].join(' ')}
-                          fixedWidth
-                          icon={isFolder ? faFolder : faFileLines}
-                        />
-                      }
-                      onClick={() => onDrill(child.id)}
-                      title={child.title}
-                      trailing={
-                        <>
-                          {isAgentDraft(child) ? <AgentDraftBadge /> : null}
-                          <Pill size="sm" tone={pageStatusPillTone[child.status]}>
-                            {child.status}
-                          </Pill>
-                        </>
-                      }
-                    />
-                  )
-                })}
-              </RowList>
-            )}
-          </div>
-        </div>
       </div>
       <ConfirmDialog
         body={

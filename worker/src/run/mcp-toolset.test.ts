@@ -555,6 +555,7 @@ test('suppressed handoff calls do not record connector usage without a transport
     { organizationId: 'org-1', actorId: 'agent-1' },
     {
       deepWaterHandoffGuard: {
+        bound: true,
         assertCompletion: () => undefined,
         dispatchDeepWater: async () => ({
           deliveryToken: null,
@@ -598,6 +599,7 @@ test('pre-transport fatal handoff errors do not record connector usage', async (
     { organizationId: 'org-1', actorId: 'agent-1' },
     {
       deepWaterHandoffGuard: {
+        bound: true,
         assertCompletion: () => undefined,
         dispatchDeepWater: async () => {
           throw new DeepWaterHandoffInvariantError('handoff-run-1')
@@ -667,4 +669,50 @@ test('toolset picks deferred mode above the inline limit', async () => {
     ['mcp_find_tools', 'mcp_load_tools', 'mcp_drop_tools'],
   )
   assert.ok(deferredView.handledNames.has('mcp_tool_0'))
+})
+
+test('a launcher handoff turn\'s DeepWater calls go to its guard, every other one to the run binder', async () => {
+  const deepWater = withCurrentAllowedGrant({
+    catalogName: 'deep-water',
+    catalogVisibility: 'public',
+    integratedProductSlugs: ['deep-water'],
+    id: 'dw',
+    toolName: 'research_scope_get',
+    scopeType: 'team',
+    scopeId: 'team-1',
+    requiresExplicitGrant: true,
+  })
+  const routed: string[] = []
+  const guard = (bound: boolean) => ({
+    bound,
+    assertCompletion: () => undefined,
+    dispatchDeepWater: async () => {
+      routed.push('guard')
+      return { deliveryToken: null, result: { output: 'guarded', raw: null, success: true }, transportInvoked: false }
+    },
+    markDelivered: () => undefined,
+    suppressBuiltin: async () => false,
+    timeoutErrorFor: () => null,
+  })
+  const deepWaterRunBinder = {
+    dispatch: async (toolName: string, toolCallId: string | undefined) => {
+      routed.push(`binder:${toolName}:${toolCallId}`)
+      return { result: { output: 'bound', raw: null, success: true }, transportInvoked: false }
+    },
+  }
+  const build = (bound: boolean) => buildMcpToolset(
+    makeMcpPrisma([deepWater]),
+    'org-1',
+    null,
+    mcpActorContext(),
+    { agentId: 'agent-1', agentKind: 'personal_assistant', channelId: 'channel-1' },
+    { organizationId: 'org-1', actorId: 'agent-1' },
+    { deepWaterHandoffGuard: guard(bound), deepWaterRunBinder },
+  )
+
+  const ordinary = await (await build(false)).dispatch('mcp_research_scope_get', { id: 'rs_1' }, 'call-1')
+  assert.equal(ordinary.output, 'bound')
+  const handoff = await (await build(true)).dispatch('mcp_research_scope_get', { id: 'rs_1' }, 'call-2')
+  assert.equal(handoff.output, 'guarded')
+  assert.deepEqual(routed, ['binder:research_scope_get:call-1', 'guard'])
 })

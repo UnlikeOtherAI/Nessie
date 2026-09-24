@@ -54,7 +54,8 @@ sentence changes only if the invariant itself did.
   [`docs/plans/2026-09-07-private-browser-access-and-import.md`](docs/plans/2026-09-07-private-browser-access-and-import.md).
 - **Conversational Agent Designer grants** act as the live requesting member;
   protected policy keys stay closed to generic updates, and DeepWater remains
-  an atomic bundle. Read
+  an atomic bundle whose revocation waits for that agent's unlaunched briefs
+  and any open launcher run. Read
   [`docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md`](docs/plans/2026-09-20-agent-designer-capabilities-and-output-recovery.md).
 
 ## Notes specific to Claude Code
@@ -197,6 +198,44 @@ sentence changes only if the invariant itself did.
   the agent page's tool execution log, the original in the attachment viewer
   (over the dialog in the blocking layer), at 1280 and 390 px. The rules are in
   [`docs/standards/executor-local-mcp.md`](docs/standards/executor-local-mcp.md).
+- **DeepWater research coverage:** run
+  `pnpm --filter @nessie/admin test:e2e:research-brief`. A pure fixture suite
+  (`NESSIE_RESEARCH_BRIEF_E2E_FIXTURE`) over the real brief dialog, research
+  card, Knowledge › Research and `/apps/deep-water` hero; CI runs it after the
+  agent-triggers one. The runner plays the server through `window.__research`
+  (the planner answering, a launch landing, a revision conflict, DeepWater's
+  progress pushes as `integration.run.updated` frames) and pins the whole
+  person brief, a running card streaming each push with no request between
+  two, the dialog leaving "replying" as its turn lands, the artifact actions
+  and their clipboard fallback, an
+  older card's action, an agent's read-only brief and its discard (accepted,
+  then settled by `cancelSettles`), the not-ready doorways and a verdict the
+  admin cannot read, the owner's cancel of a research that blocks turning
+  DeepWater off (requested, still refusing, then stopped; refused by DeepWater
+  through `cancelRefused` and offered again; unseen by an owner who may not
+  read it), Knowledge › Research with a research from before briefs, a second
+  page walked back and an empty first page with more to come, and the admin's
+  own addresses — a brief on a reply thread's and the Threads inbox's address,
+  and a question handed from a screen with no brief host (`/elsewhere`) that
+  Back and Forward never reopen. The server stub is `fixture-server.ts`. The
+  rules are in
+  [`docs/standards/deepwater.md`](docs/standards/deepwater.md) → "Research
+  briefs — the admin".
+- **DeepWater research real-stack coverage:** run
+  `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:research-brief-real`.
+  The same components against the real API, embedded worker and database:
+  the composer's Research button in a channel, a reply thread, a person drawer
+  and a Threads inbox card, a research card opening its brief through
+  `?research=`, a person's own brief read from the brief API, a refused reply
+  saying why, Ledger's launch reaching the open dialog and the room live, a
+  signed DeepWater progress event posted to the real receiver moving the
+  room's card live, and Knowledge › Research. Ledger cannot be doubled on the wire (the pinned egress
+  refuses loopback, and brief readiness needs a UOA signer), so its answers are
+  played through the watch's own projection and realtime announcer
+  (`real-stack-ledger.mjs`), and opening a new brief from a composer stays the
+  fixture suite's. It starts and stops its own API and admin and never adopts a
+  running pair; the on-request Browser Suites workflow runs it after the
+  spreadsheets suite.
 - **Overlay layer coverage:** run
   `pnpm --filter @nessie/admin test:e2e:overlay-layer`. A pure fixture suite
   over the real navigation stack, in the same lifecycle after the task-dialog

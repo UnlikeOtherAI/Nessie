@@ -13,7 +13,7 @@ import type { DisclosureDuration } from './RestrictedMessageCard'
 import { formatClock, getDisplayName } from './channel-feed'
 import { type ChannelAgentParticipant, type MessageUserIdentity } from './channel-participants'
 import type { ThreadParticipant } from './thread-panel/thread-replies'
-import { isAgentCardResponseMessage } from '@nessie/schemas'
+import { isAgentCardResponseMessage, isResearchRunRefMessage } from '@nessie/schemas'
 
 const SpeechBubbleIcon = () => (
   <svg fill="none" height="13" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="13">
@@ -90,7 +90,11 @@ export const ChannelMessageRow = ({
     personalAssistantPresence?.displayName,
   )
   const canManageOwnMessage = message.role === 'user' && message.userId === meUserId
-  const canEditOwnMessage = canManageOwnMessage && !isAgentCardResponseMessage(message.metadata)
+  // A research card is the server's pointer, not the person's words: editing
+  // it is refused (`MESSAGE_IMMUTABLE_RESEARCH_CARD`), so it is never offered.
+  const canEditOwnMessage = canManageOwnMessage
+    && !isAgentCardResponseMessage(message.metadata)
+    && !isResearchRunRefMessage(message.metadata)
   const isEditingMessage = editingMessageId === message.id
   const threadRootMessageId = message.rootMessageId ?? message.id
   // The entitled map controls actions; the identity directory only resolves a

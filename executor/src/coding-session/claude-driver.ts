@@ -178,9 +178,9 @@ export const createClaudeDriver = (context: AgentDriverContext): AgentDriver => 
       interruptReason = reason
       agent.write(claudeControlLine('interrupt'))
     },
-    close: async () => {
+    close: async (reason) => {
       await stop()
-      context.update({ status: 'closed', reason: undefined, turnStartedAt: undefined })
+      context.update({ status: 'closed', reason, turnStartedAt: undefined })
     },
     endIdle: stop,
     running: () => agent?.alive() === true || starting !== undefined,

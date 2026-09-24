@@ -17,6 +17,7 @@ import { fileServiceFor } from '../file-service.js'
 import { launchConversationScope } from '../executor-host-output.js'
 import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
+import { createRunDeepWaterBinder } from '../deepwater-run-binder.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
 import { isPersonalAssistantPresenceRun, resolveAgentTools } from '../tool-policy.js'
 import {
@@ -347,6 +348,7 @@ export const prepareRunExecution = async (
       {
         consumedSources: context.consumedSources,
         deepWaterHandoffGuard: input.deepWaterHandoffGuard,
+        deepWaterRunBinder: createRunDeepWaterBinder(deps, context, payload.actorContext),
         ledgerIdentity: deps.ledgerIdentity,
         secretResolver: deps.mcpSecrets?.resolver,
       },
@@ -553,7 +555,8 @@ export const prepareRunExecution = async (
       executorReach,
       routing: {
         hasDelegate: resolvedToolIds.has('delegate'),
-        hasResearchTools: mcpToolset.hasManagedResearchTools,
+        researchTools: mcpToolset.managedResearchToolNames,
+        hasCardPost: resolvedToolIds.has('card_post'),
         hasWebSearch: resolvedToolIds.has('web_search'),
         isHandoffTurn: input.isHandoffTurn,
       },
