@@ -1,5 +1,26 @@
 # Pair a machine with Nessie
 
+Platform instructions: [macOS](running-the-apps/executor-menu-bar-macos.md#pairing-and-unpairing),
+[Windows](running-the-apps/windows-desktop.md#pairing-and-unpairing), and
+[Linux](running-the-apps/linux-desktop.md#pairing-and-unpairing).
+
+## Before pairing
+
+Install the executor on the computer that will run the work. For production,
+choose **Nessie**, which connects to `https://api.nessie.works`, and sign in at
+[Nessie](https://app.nessie.works). A development build can also offer a local
+server: select production explicitly when that is the intended destination.
+Keep executor state outside a repository or worktree; it contains the machine's
+private key and must stay owned by the account that runs the executor.
+
+For personal Claude, Codex or terminal sessions, choose **private** access and
+pair as the person whose OS account owns those programs. Select the real team
+from the live team picker. Do not create a similarly named replacement team.
+API clients must use `/api/executor-pairing/options` for the selectable team
+IDs; these are UOA team identifiers, not Nessie's internal team-row IDs.
+
+## Complete both halves
+
 Open **Nessie Executor** on the machine and choose **Pair with Nessie**.
 Choose the folder it may work with. The app displays eight digits, a
 fingerprint and the time remaining.
@@ -17,6 +38,19 @@ confirmation; entering a code alone does not activate the machine.
 The code lasts ten minutes and works once. Leading zeroes are part of the code.
 If it expires, start again on the machine. Closing the website popup does not
 confirm a pending attempt.
+
+Verify that the machine says **Paired**, names the intended organisation and
+team, and appears **Online** in Nessie's Executors list. Online proves a daemon
+connection; it does not prove that a capability is approved or an agent has
+permission. Review the machine's proposed capabilities in **Permissions**, then
+configure the permitted agents in **Agents**. Install and sign in to Claude or
+kimix separately as the same OS user. See the SSO limitation below before
+promising that an SSO-only account can complete those access changes.
+
+For live output, open **Executors → Sessions**, or an executor's **Sessions**
+tab. Agents return the same session link. **Share session** gives named users
+in your organisation view-only access to that session, including scrollback;
+the URL alone grants nothing. Remove a viewer in the same dialog to revoke it.
 
 ## Existing pairing
 
@@ -94,6 +128,33 @@ code-based replacement path retires the previous record by proof from its old
 key.
 
 ## Platform operation
+
+Stopping the local program, pausing a machine, disconnecting it, deleting its
+server record and uninstalling the program are different operations:
+
+| Action | Result | Use again |
+| --- | --- | --- |
+| Stop local daemon / quit owning app | Local connection stops; pairing remains | Start the same daemon/app |
+| Pause in Nessie | Server stops accepting work under the paused executor | Resume after reviewing its state |
+| Disconnect in Nessie | Pairing is revoked; work stops; history remains visible | Pair again with a new key |
+| Delete in Nessie | Revokes and hides the record; audit references remain | Pair again |
+| Uninstall | Removes local software; does not itself revoke server access | Reinstall and inspect retained state |
+
+To unpair completely, **Disconnect** or **Delete** in Nessie first, then stop
+the platform's local supervisor and disable its startup entry. Only remove
+private state after revocation and after preserving any outputs you need.
+Deleting a local key first can strand a server record and prevents the signed
+replacement flow from proving ownership of the old connection. Unpairing is
+not a way to preserve running terminal sessions.
+
+If a code is expired or claimed for the wrong destination, cancel on the
+machine and request another. If a paired machine is offline, check its local
+process/service and logs, API connectivity, runtime integrity and the machine's
+server status before replacing the pairing. A descriptor rejected with an
+unknown capability or enum usually means the server and installed executor
+versions differ; deploy compatible versions, then restart the supervisor.
+Do not edit signed manifests, weaken key permissions or create another pairing
+to conceal a runtime verification failure.
 
 - **Windows:** the installed service starts at boot; the tray owns local
   pairing and confirmation. See [Windows desktop](running-the-apps/windows-desktop.md).

@@ -117,7 +117,10 @@ test('the coding observation tools are the coding-session tools that only look',
     // Reading a terminal's screen only looks too.
     CODING_SESSION_TOOL_NAMES.terminalRead,
   ].sort())
-  const acting = [CODING_SESSION_TOOL_NAMES.start, CODING_SESSION_TOOL_NAMES.send, CODING_SESSION_TOOL_NAMES.close]
+  const acting = [
+    CODING_SESSION_TOOL_NAMES.start, CODING_SESSION_TOOL_NAMES.send, CODING_SESSION_TOOL_NAMES.close,
+    CODING_SESSION_TOOL_NAMES.terminalStart, CODING_SESSION_TOOL_NAMES.terminalWrite,
+  ]
   for (const name of acting) {
     assert.equal(OBSERVATION_TOOL_NAMES.has(name), false, `${name} acts, so the cumulative rule keeps it`)
   }

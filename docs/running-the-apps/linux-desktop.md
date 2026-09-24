@@ -2,6 +2,54 @@
 
 Chapter of [Running the Native Apps](overview.md).
 
+## Pairing and unpairing
+
+For a headless machine, install the standalone Debian executor package as an
+administrator, then pair and run it as the ordinary user who owns the local
+programs. Do not pair as root.
+
+```sh
+sudo apt install ./nessie-executor_<version>_amd64.deb
+mkdir -p "$HOME/NessieWorkspace"
+nessie-executor pair --api nessie --workspace "$HOME/NessieWorkspace"
+```
+
+Claim the displayed code in Nessie's **Executors → Pair executor**, choose the
+real team and private access for personal terminal programs, then confirm the
+named organisation and team in the CLI. The interactive pairing command enables
+the service after confirmation. A JSON/noninteractive pairing client must enable
+it explicitly, using the executor ID returned by confirmation:
+
+```sh
+nessie-executor enable <executor-id> --yes
+nessie-executor status
+systemctl --user status nessie-executor@<executor-id>.service
+journalctl --user -u nessie-executor@<executor-id>.service -n 50
+loginctl show-user "$USER" -p Linger
+```
+
+Lingering starts the user manager at boot and keeps it running after logout.
+Enabling it may require an administrator. Expect `Linger=yes`, an enabled/active
+unit and Online in production. State belongs to that user under
+`~/.local/state/nessie-executor/<executor-id>`. The package runtime is root-owned
+under `/usr/lib/nessie-executor`; its bundle must be mode 0644 even when the
+builder uses a group-writable umask. Runtime verification rejects writable code.
+
+Install tmux and authenticate kimix as the same user. Configure its absolute
+command path and environment using the [terminal guide](../executor-protocol/terminal-sessions.md).
+Keep coding roots separate from the paired workspace and executor state. Review
+the resulting capability revision and agent grants in Nessie; pairing alone
+does not authorize agent execution.
+
+To unpair, **Disconnect** or **Delete** in Nessie, then run
+`nessie-executor disable <executor-id>`. This stops and disables only that unit.
+`loginctl disable-linger` affects all of your user services, so use it only if
+none must survive logout. Uninstall with `sudo apt remove nessie-executor` if
+desired; this is not server revocation. Preserve state until old work is closed
+and revocation is complete. To switch team, pair again with `--replace`, review
+the new destination, and enable the new executor ID. Never reuse another
+computer's state directory.
+
 The desktop shell is not yet a release, but it now compiles on Linux: single
 instance with the deep-link feature, the frameless transparent window, and an
 executor companion that verifies a package-manager install (root-owned runtime
