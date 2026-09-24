@@ -451,7 +451,7 @@ test('a face that holds no tools states the rule without naming one', () => {
   for (const writeSurface of ['designer_form', 'read_only'] as const) {
     const rendered = block({ executors: [executor()], writeSurface })
     assert.match(rendered, /whole-suite and never a per-operation pick/)
-    assert.match(rendered, /confirmation happens on the Executors page, not here/)
+    assert.match(rendered, /confirmation happens on the Executors page or its chat card/)
     // The restricted section may still name the tool with its reason — that is
     // the catalogue doing its job. What must not appear is an instruction to
     // call it.
