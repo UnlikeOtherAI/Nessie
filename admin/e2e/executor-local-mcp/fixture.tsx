@@ -203,6 +203,7 @@ const REVIEW_SCENARIOS: Record<string, {
       codingSessions: {
         agents: ['claude', 'codex'], allowedToolCount: 3, configDigest: `sha256:1a2b3c4d5e6f${'0'.repeat(52)}`,
         environmentNames: ['CLAUDE_CONFIG_DIR'], maxBudgetUsd: { claude: 5, codex: null }, maxLiveSessionsPerOwner: 3,
+        mergeCommands: ['git push', 'gh pr create'],
         permissionMode: { claude: 'acceptEdits', codex: 'sandbox:workspace-write' },
         rootNames: ['nessie'], serverName: 'coding-sessions',
       },

@@ -17,7 +17,7 @@ import { StandingPolicyRefusal } from './standing-policy-trigger.js'
  * executor review card: the machines, the host profile and whether each can
  * merge, the board and its start-work columns, who can start work and who
  * sees it, the limits, that merges happen as the author, and the instructions
- * word for word — fenced, so nothing in them can render out of sight. Its one
+ * word for word — escaped, so nothing in them can render out of sight. Its one
  * action is the executor review card's `review`, whose press mints the
  * confirmation token for the author alone.
  */
@@ -55,27 +55,48 @@ const dollars = (amount: number): string => `$${Number.isInteger(amount) ? amoun
 
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`
 
-/** A fence no run of backticks in the text can close. */
-const fenced = (text: string): string => {
-  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length))
-  const fence = '`'.repeat(Math.max(3, longest + 1))
-  return `${fence}text\n${text}\n${fence}`
-}
+/** A leading space that stays a space in Markdown, where an ordinary one opens a code block. */
+const NO_BREAK_SPACE = String.fromCharCode(160)
 
-/** One section cut into pieces that each fit a text block once fenced and titled. */
+/**
+ * One line of somebody's text as Markdown that renders exactly its
+ * characters and still wraps: every ASCII punctuation mark is escaped, so no
+ * emphasis, link, HTML, comment, list, heading or code fence can hide a word
+ * or change one, and leading spaces stay spaces instead of opening a code
+ * block. A fenced block would be literal too, but it does not wrap, and a
+ * phone would show the author a sliver of what they agree to. A line of only
+ * whitespace is a blank line, as Markdown reads it.
+ */
+const literalLine = (line: string): string => line.trim().length === 0 ? '' : line
+  .replace(/[!-/:-@[-`{-~]/g, (mark) => `\\${mark}`)
+  .replace(/^[ \t]+/, (lead) => NO_BREAK_SPACE.repeat(lead.length))
+
+/**
+ * Lines as literal text, one per line and a paragraph at each blank line. The
+ * card's prose keeps a paragraph's line breaks as written (`white-space:
+ * pre-wrap`), so a line needs no Markdown hard break, which would show twice.
+ */
+const literalText = (lines: readonly string[]): string => lines.map(literalLine).join('\n')
+
+/** One section cut, on line boundaries where it can be, into pieces that each fit a text block titled. */
 const sectionPieces = (title: string, text: string): string[] => {
-  const room = TEXT_BLOCK_MAX - title.length - 40
-  const pieces: string[] = []
-  let rest = text
-  while (rest.length > room) {
-    const cut = rest.lastIndexOf('\n', room)
-    const at = cut > room / 2 ? cut : room
-    pieces.push(rest.slice(0, at))
-    rest = rest.slice(at).replace(/^\n/, '')
+  const room = TEXT_BLOCK_MAX - title.length - 30
+  const groups: string[][] = [[]]
+  for (const line of text.split('\n')) {
+    // A line too long for a block on its own is cut; escaping at most doubles it.
+    const parts = literalLine(line).length <= room
+      ? [line]
+      : Array.from({ length: Math.ceil(line.length / Math.floor(room / 2)) }, (_, at) => (
+        line.slice(at * Math.floor(room / 2), (at + 1) * Math.floor(room / 2))
+      ))
+    for (const part of parts) {
+      const group = groups[groups.length - 1] as string[]
+      if (group.length > 0 && literalText([...group, part]).length > room) groups.push([part])
+      else group.push(part)
+    }
   }
-  pieces.push(rest)
-  return pieces.map((piece, index) => `**${title}${pieces.length > 1 ? ` (${index + 1} of ${pieces.length})` : ''}**`
-    + `\n\n${fenced(piece)}`)
+  return groups.map((group, index) => `**${title}${groups.length > 1 ? ` (${index + 1} of ${groups.length})` : ''}**`
+    + `\n\n${literalText(group)}`)
 }
 
 const instructionBlocks = (instructions: Record<string, string>): Array<{ markdown: string; type: 'text' }> => {
@@ -109,8 +130,8 @@ const mergeLine = (profile: StandingPolicyHostProfile): string => {
     EXECUTOR_CODING_MERGE_COMMANDS.some((command) => !machine.mergeCommands.includes(command))
   ))
   if (unable.length === 0) return 'Each machine may push, open, watch and merge pull requests without asking.'
-  return unable.map((machine) => `**${machine.label}:** This machine cannot merge; tickets will stop at an open `
-    + 'pull request.').join('\n\n')
+  return unable.map((machine) => `**${literalLine(machine.label)}:** This machine cannot merge; tickets will stop `
+    + 'at an open pull request.').join('\n\n')
 }
 
 export const buildStandingPolicyCard = (input: StandingPolicyCardInput): AgentCardSpec => {

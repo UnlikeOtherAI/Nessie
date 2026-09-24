@@ -893,7 +893,9 @@ causes it**:
   lowered limit not, a fresh card saying what changed and re-confirming
   queueing the record; a descriptor review suspending it; a disable and a
   delete ending it; a new prepare replacing the card still out; a rejected
-  card ending its policy. `worker/test/db/standing-policy-prepare-tool.test.ts`:
+  card ending its policy. `standing-policy-card.test.ts`: the instructions
+  word for word, escaped so nothing renders out of sight, wrapping, cut into
+  labelled pieces, refused when too long. `worker/test/db/standing-policy-prepare-tool.test.ts`:
   the tool posts one card in the author's own Designer DM holding only the
   change id, and refuses a shared room, an unattended run, someone else's
   Designer and a non-author. `api/test/standing-policy-routes.test.ts`: the

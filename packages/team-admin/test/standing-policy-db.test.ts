@@ -189,9 +189,13 @@ dbTest('one confirmation applies each machine\'s assignment, grant and tools and
     assert.doesNotMatch(text, /\*\*Minis:\*\* This machine cannot merge/)
     assert.match(text, /At most 4 hours, \$10 and 30 wakes/)
     assert.match(text, /At most 20 tickets started and \$60 spent/)
-    // The instructions, fenced, word for word.
-    assert.match(text, /Read the ticket, then have Claude open a pull request and merge it on green\./)
-    assert.match(text, /Comment that you picked it up\./)
+    // The instructions, word for word, escaped so they render as written.
+    const fold = card.blocks.find((block) => block.type === 'details')
+    const literal = fold?.type === 'details'
+      ? fold.blocks.map((block) => (block.type === 'text' ? block.markdown : '')).join('\n').replace(/\\(.)/g, '$1')
+      : ''
+    assert.match(literal, /Read the ticket, then have Claude open a pull request and merge it on green\./)
+    assert.match(literal, /Comment that you picked it up\./)
     assert.equal(card.actions[0]?.key, 'review')
 
     const result = await world.confirm(prepared)

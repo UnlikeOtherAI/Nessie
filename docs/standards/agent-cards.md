@@ -257,14 +257,18 @@ this standard, not an exception to it.
     commands on these machines as you, with your git and coding-agent
     login."*), who sees it, the limits, that merges happen under the
     author's GitHub identity, what changed since the policy it replaces, and
-    the instructions fenced word for word in a closed fold — refused as too
-    long rather than cut. Its one action is the `review` above, so the
+    the instructions word for word in a closed fold — every punctuation mark
+    escaped, so no link, HTML, comment or heading in them can render out of
+    sight, and not fenced, because a code block does not wrap and a phone
+    would show a sliver of them; refused as too long rather than cut. Its
+    one action is the `review` above, so the
     press, the token and the close follow the same rules, and the review
     dialog names the change (`executorChangePresentation`). It is posted
     only on the trigger author's own interactive turn in their own Designer
     or Personal Assistant DM, never in a project room. Pinned by
-    `worker/test/db/standing-policy-prepare-tool.test.ts` and
-    `packages/team-admin/test/standing-policy-db.test.ts`.
+    `worker/test/db/standing-policy-prepare-tool.test.ts`,
+    `packages/team-admin/test/standing-policy-db.test.ts` and
+    `packages/team-admin/test/standing-policy-card.test.ts`.
 - **Every card goes through one door.** `postAgentCard`
   (`worker/src/run/pa-tools/agent-card-post.ts`) is the only place the worker
   writes an `AgentCard` row: `card_post`, the executor review card and
