@@ -1,3 +1,4 @@
+import { canReadExecutorStatus } from '@nessie/executor-manage'
 import type { PrismaClient } from '@prisma/client'
 import { isAgentVisibleToUser } from '@nessie/team-admin'
 
@@ -16,6 +17,9 @@ import { isAgentVisibleToUser } from '@nessie/team-admin'
  * stream, until they happened to disconnect.
  */
 export type RealtimeDeliveryEntitlements = {
+  canAccessExecutorEvent?: (input: {
+    executorId: string; organizationId: string; userId: string
+  }) => Promise<boolean>
   canAccessAgentEvent: (input: {
     agentId: string
     organizationId: string
@@ -87,6 +91,7 @@ export const createEntitlementGate = <TKey extends string>(
 export const createRealtimeDeliveryEntitlements = (
   prisma: PrismaClient,
 ): RealtimeDeliveryEntitlements => ({
+  canAccessExecutorEvent: (input) => canReadExecutorStatus(prisma, input),
   canAccessAgentEvent: async (input) =>
     isAgentVisibleToUser(prisma, input.userId, input.organizationId, input.agentId),
   canAccessOrganizationEvent: async (input) =>

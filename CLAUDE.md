@@ -22,7 +22,7 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [the channel policy standard](docs/standards/channel-decision-policy.md) and
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
-Executor code pairing and its browser verification follow [docs/executor-pairing.md](docs/executor-pairing.md).
+Executor pairing and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
 
 Sequential Task Sets, their native agent tools and the configured
 `serve-ollama-search-mcp` executor bridge follow

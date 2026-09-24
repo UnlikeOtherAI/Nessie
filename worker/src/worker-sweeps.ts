@@ -1,3 +1,4 @@
+import { startExecutorStatusSweep } from './control/executor-status-sweep.js'
 import { withSweepLock } from '@nessie/db'
 import { expireExecutorConversationLeases, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { expireDeadQueueJobs } from '@nessie/runtime'
@@ -59,6 +60,7 @@ import { startTicketWorkSweep } from './control/ticket-work-sweep.js'
 export const startWorkerSweeps = (
   deps: WorkerSweepDeps,
 ): { stop: () => void } => {
+  const stopExecutorStatusSweep = startExecutorStatusSweep(deps)
   const stopTaskSetSweep = startTaskSetSweep(deps)
   const stopTicketWorkSweep = startTicketWorkSweep(deps)
   const {
@@ -521,6 +523,7 @@ const executorLeaseExpiryInterval = setInterval(() => {
 
   return {
     stop: () => {
+      stopExecutorStatusSweep()
       stopTaskSetSweep()
       stopTicketWorkSweep()
       clearInterval(triggerSweepInterval)

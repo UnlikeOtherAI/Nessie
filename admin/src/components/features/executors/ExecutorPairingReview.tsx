@@ -7,6 +7,7 @@ import { FormActions, FormError } from '../../shared/FormActions'
 type Props = {
   busy: boolean
   error: string | null
+  initialAudience?: 'personal' | 'team'
   fixedProjectId?: string
   onBack: () => void
   onClaim: (input: { label: string; scope: ExecutorScope; teamId: string | null }) => void
@@ -24,10 +25,11 @@ const scopeLabels = {
 const platformLabels = { linux: 'Linux', macos: 'Mac', windows: 'Windows' } as const
 
 export const ExecutorPairingReview = ({
-  busy, error, fixedProjectId, onBack, onClaim, options, preview, projects, remaining,
+  busy, error, fixedProjectId, initialAudience, onBack, onClaim, options, preview, projects, remaining,
 }: Props) => {
   const [label, setLabel] = useState(preview.machineName)
-  const [scopeKind, setScopeKind] = useState<ExecutorScope['kind']>(fixedProjectId ? 'project' : 'private')
+  const [scopeKind, setScopeKind] = useState<ExecutorScope['kind']>(fixedProjectId ? 'project'
+    : initialAudience === 'team' ? (options.scopes.includes('project') ? 'project' : 'organization') : 'private')
   const [projectId, setProjectId] = useState(fixedProjectId ?? '')
   const fixedTeam = fixedProjectId ? options.teams.find((team) => team.projectIds.includes(fixedProjectId)) : null
   const [teamId, setTeamId] = useState(fixedTeam?.id ?? (options.teams.length === 1 ? options.teams[0]!.id : ''))
@@ -118,6 +120,9 @@ export const ExecutorPairingReview = ({
       </label>
       {fixedProjectId && !fixedTeam ? (
         <FormError>This project's team is unavailable. Choose a project you can access.</FormError>
+      ) : null}
+      {initialAudience === 'team' && !options.scopes.some((scope) => scope !== 'private') ? (
+        <FormError>You do not have permission to add a team executor. Ask a team administrator.</FormError>
       ) : null}
       <FormError>{error}</FormError>
       <FormActions>

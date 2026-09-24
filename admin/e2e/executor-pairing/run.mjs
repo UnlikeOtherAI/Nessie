@@ -92,6 +92,14 @@ try {
     await page.keyboard.press('Escape')
     assert.equal(await page.getByRole('dialog').count(), 0)
 
+    // The account menu's team doorway starts with shared access, not Only me.
+    await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?team=1`)
+    await page.getByRole('button', { name: 'Pair executor', exact: true }).click()
+    await page.getByLabel('Eight-digit code').fill('01234567')
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
+    assert.equal(await page.getByLabel('Who can use this machine?').inputValue(), 'project')
+    await page.keyboard.press('Escape')
+
     // The existing project's doorway pins its actual team and project.
     await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?project=1`)
     await page.getByRole('button', { name: 'Pair executor', exact: true }).click()
