@@ -48,6 +48,8 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
     await running(second)
     // A PTY exists before its shell finishes terminal initialization, which may flush input.
     for (const sessionId of [first, second]) await waitUntil(async () => {
+      const captured = await readFile(join(harness.stateDir, 'sessions', sessionId, 'terminal.json'), 'utf8').catch(() => '')
+      if (!captured) return undefined
       const answer = await harness.call('terminal_read', { sessionId })
       return typeof answer.body.text === 'string' && answer.body.text.trim().length > 0 ? true : undefined
     }, 30_000, 'initial shell screen')

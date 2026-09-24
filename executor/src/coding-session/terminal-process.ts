@@ -50,7 +50,8 @@ export const runTerminalProcess = async (): Promise<void> => {
   let serverEnded = false
   server.once('exit', () => { serverEnded = true })
   server.once('error', () => { serverEnded = true })
-  const command = (...args: string[]) => run(tmux, ['-S', socket, ...args], {
+  // A client must never auto-start a competing server while our foreground server binds.
+  const command = (...args: string[]) => run(tmux, ['-N', '-S', socket, ...args], {
     env, timeout: 5_000, maxBuffer: 2 * 1024 * 1024, encoding: 'utf8',
   })
   try {
