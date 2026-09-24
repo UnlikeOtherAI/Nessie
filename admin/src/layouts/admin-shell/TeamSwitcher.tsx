@@ -313,12 +313,13 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
         >
           <span className="relative">
             {/*
-              No teamId: the active team's picture comes from the current-team
-              relay (/api/team/avatar), which resolves without the local
-              TeamMember row the membership-scoped relay needs — the same lane
-              the settings panel uses (TeamAvatarPanel).
+              Keep the directory image that the menu row and native chrome
+              draw. After an upload, avatarRevision temporarily selects the
+              current-team relay so the new bytes do not wait on UOA's public
+              cache.
             */}
             <TeamAvatar
+              directoryImageFirst
               imageUrl={active?.avatarImageUrl}
               label={active?.label ?? 'Team'}
               revision={avatarRevision}
@@ -354,6 +355,7 @@ export const TeamSwitcher = ({ variant = 'rail' }: TeamSwitcherProps) => {
           type="button"
         >
           <TeamAvatar
+            directoryImageFirst
             imageUrl={active?.avatarImageUrl}
             label={active?.label ?? 'Team'}
             revision={avatarRevision}
