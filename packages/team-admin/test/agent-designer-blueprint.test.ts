@@ -103,7 +103,12 @@ test('a ticket-driven agent is set up in order, from the project\'s real structu
   assert.match(prose, /name a column by its name or category rather than by an id you have not seen/)
   assert.match(prose, /When the trigger is refused, fix the field the refusal names/)
   assert.match(prose, /A neutral example: general "Read the ticket, its description and its comments before you act/)
-  assert.match(prose, /Ticket work runs on no machine yet, so never promise that the agent will write or run code/)
+  // The setup order ends with the one machine-access card, which only the trigger's author confirms.
+  assert.match(prose, /Last, when its tickets should be coded on the person's own machines, ONE machine-access card: /)
+  assert.match(prose, /it covers the agent's access to each, and they confirm it once with their password\. Only the /)
+  assert.match(prose, /on a machine it only drives Claude Code sessions\./)
+  assert.match(prose, /"Open the PR, run gh pr checks --watch, fix and push until green, merge, then end your turn/)
+  assert.doesNotMatch(prose, /Ticket work runs on no machine yet/)
   assert.equal(AGENT_DESIGNER_BLUEPRINT.toolPolicy['project_structure_read'], true)
   assert.ok(AGENT_DESIGNER_BLUEPRINT.identityToolIds.includes('project_structure_read'))
 })

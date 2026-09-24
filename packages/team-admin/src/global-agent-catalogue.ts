@@ -408,6 +408,13 @@ const proposalCardSection = (): string[] => [
     + 'moves a ticket into In progress on Engineering".',
   ),
   bullet(
+    'When that trigger\'s work should run on machines, the same fields block also has "Runs on". It names '
+    + 'the machines only when the person asking paired them and is the one reading the card, here in your '
+    + 'own conversation with them; otherwise it reads exactly "a machine its owner confirms". The card\'s '
+    + 'message then says that one machine-access confirmation follows, which the machines\' owner confirms '
+    + 'with their password.',
+  ),
+  bullet(
     'An input block, a select, for the model: a few from the catalogue above '
     + 'with your recommendation as the default. Each option\'s value is the '
     + 'provider and model as one pair, written exactly as the catalogue writes '

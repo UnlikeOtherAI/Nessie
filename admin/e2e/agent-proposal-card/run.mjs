@@ -23,6 +23,11 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  *
  * A fifth, since 2026-09-23 (ticket triggers, T1): an agent that picks up a
  * board's tickets says "Starts work when" in the same fields block.
+ *
+ * A sixth (machine access, T4): the same block says "Runs on" — the machines
+ * by name only on the card the person who paired them reads, otherwise "a
+ * machine its owner confirms" — and the card's message says that one
+ * machine-access confirmation follows, and whose password it takes.
  */
 
 const screenshots = resolve(REPO_ROOT, 'e2e/screenshots/agent-proposal-card')
@@ -30,6 +35,7 @@ const closedPath = resolve(screenshots, 'proposal-closed.png')
 const openPath = resolve(screenshots, 'proposal-open.png')
 const unplacedPath = resolve(screenshots, 'proposal-nowhere-yet.png')
 const ticketPath = resolve(screenshots, 'proposal-starts-work-when.png')
+const ownerConfirmsPath = resolve(screenshots, 'proposal-runs-on-owner-confirms.png')
 const admin = await startAdmin()
 const browser = await launchBrowser()
 try {
@@ -84,9 +90,10 @@ try {
   )
   await unplaced.getByRole('button', { name: 'Accept', exact: true }).waitFor()
 
-  // A ticket-driven agent's card says when its work starts, as a third field
-  // in the same block — and, until machine access ships (T4), nothing about
-  // what it runs on.
+  // A ticket-driven agent's card says when its work starts and what it runs
+  // on, as the third and fourth fields in the same block. The person who
+  // paired the machines reads them by name, and the card's message says the
+  // one machine-access confirmation that follows is theirs to give.
   const ticketDriven = page.getByTestId('ticket-proposal')
   await ticketDriven.getByText('CTO', { exact: true }).waitFor()
   const ticketFields = ticketDriven.locator('dl.agent-card-fields')
@@ -95,20 +102,40 @@ try {
   assert.ok(
     ticketFieldText.includes(
       'Lives in KiloMayo → Nessie → #eng Who can see it Everyone in the KiloMayo team '
-      + 'Starts work when Someone moves a ticket into In progress on Engineering',
+      + 'Starts work when Someone moves a ticket into In progress on Engineering '
+      + 'Runs on Studio and Minis',
     ),
     ticketFieldText,
   )
-  assert.doesNotMatch(
-    await ticketDriven.locator('[data-testid="agent-card"]').textContent() ?? '',
-    /Runs on/,
-    'no machine row before machine access exists',
+  const ticketProse = (await ticketDriven.locator('[data-testid="agent-card"] .agent-card-prose').innerText())
+    .replace(/\s+/g, ' ')
+  assert.match(ticketProse, /One machine-access confirmation follows, which you confirm with your password\./)
+
+  // Anyone else's card never names the machines: "Runs on" reads "a machine
+  // its owner confirms", and the confirmation is the machines' owner's.
+  const ownerConfirms = page.getByTestId('owner-confirms-proposal')
+  await ownerConfirms.getByText('CTO', { exact: true }).waitFor()
+  const ownerFields = ownerConfirms.locator('dl.agent-card-fields')
+  await ownerFields.waitFor()
+  const ownerFieldText = (await ownerFields.innerText()).replace(/\s+/g, ' ')
+  assert.ok(
+    ownerFieldText.includes(
+      'Starts work when Someone moves a ticket into In progress on Engineering Runs on a machine its owner confirms',
+    ),
+    ownerFieldText,
   )
+  const ownerCard = await ownerConfirms.locator('[data-testid="agent-card"]').textContent() ?? ''
+  assert.match(
+    ownerCard.replace(/\s+/g, ' '),
+    /One machine-access confirmation follows, which the machines' owner confirms with their password\./,
+  )
+  assert.doesNotMatch(ownerCard, /Studio|Minis/, 'no machine is named on a card its pairer does not read')
 
   await mkdir(screenshots, { recursive: true })
   await page.screenshot({ fullPage: true, path: closedPath })
   await unplaced.screenshot({ path: unplacedPath })
   await ticketDriven.screenshot({ path: ticketPath })
+  await ownerConfirms.screenshot({ path: ownerConfirmsPath })
 
   await placed.getByText('What the agent can reach').click()
   await placed.getByText('send_message', { exact: true }).waitFor()
@@ -120,7 +147,8 @@ try {
   await page.screenshot({ fullPage: true, path: openPath })
 
   await context.close()
-  console.log(`Agent proposal card proofs passed: ${closedPath}, ${openPath}, ${unplacedPath}, ${ticketPath}`)
+  const written = [closedPath, openPath, unplacedPath, ticketPath, ownerConfirmsPath]
+  console.log(`Agent proposal card proofs passed: ${written.join(', ')}`)
 } finally {
   await browser.close()
   await stopProcess(admin)

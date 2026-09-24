@@ -87,8 +87,11 @@ export const ticketWorkFactsSection = (): string[] => [
     + 'use a mailbox or set anything up. Its ticket comments are read by everyone on the project.',
   ),
   bullet(
-    'Ticket work runs on no machine yet: the agent triages, comments on and moves tickets, and cannot '
-    + 'run code or start a coding session.',
+    'Ticket work runs on a machine only under the machine access its trigger\'s author confirmed, once, '
+    + 'with their password. Then the agent drives Claude Code sessions on those machines through the '
+    + 'coding_session_* tools and no other program there, within the ticket\'s hours and spend limits '
+    + '(ticketHours, ticketUsd, dailyUsd). Without it the agent triages, comments on and moves tickets, and '
+    + 'cannot run code or start a coding session.',
   ),
 ]
 

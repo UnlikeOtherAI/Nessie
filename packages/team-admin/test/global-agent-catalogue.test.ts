@@ -140,15 +140,19 @@ test('the ticket-work facts say what T1 and T3 ship, and board tools are no long
   assert.match(rendered, /which is why that channel must be public/)
   assert.match(rendered, /Limits: 30 model runs per ticket by default \(wakesPerTicket, at most 100\) and 20 tickets/)
   assert.match(rendered, /Its ticket comments are read by everyone on the project/)
-  assert.match(rendered, /Ticket work runs on no machine yet/)
+  // T4: machines only under the author's one confirmation, coding sessions alone, within its limits.
+  assert.match(rendered, /Ticket work runs on a machine only under the machine access its trigger's author confirmed/)
+  assert.match(rendered, /drives Claude Code sessions on those machines through the coding_session_\* tools and no /)
+  assert.match(rendered, /\(ticketHours, ticketUsd, dailyUsd\)/)
+  assert.doesNotMatch(rendered, /runs on no machine yet/)
   // T3: reminders, the open question and the quiet wake, with their bounds.
   assert.match(rendered, /check_back_in \(5 to 1440 minutes and a short note\)/)
   assert.match(rendered, /It replaces the ticket's pending reminder/)
   assert.match(rendered, /awaitsAnswer asks the people on the ticket something/)
   assert.match(rendered, /It should also set check_back_in, in case nobody answers/)
   assert.match(rendered, /woken after 30 quiet minutes \(quietWakeMinutes, 15 to 1440, or null for off\)/)
-  // Nothing from a later PR is promised.
-  assert.doesNotMatch(rendered, /machine access|standing access/i)
+  // Nothing from a later PR is promised: no session wake when a coding turn ends (T5).
+  assert.doesNotMatch(rendered, /woken when (its|a coding) turn ends/i)
 })
 
 test('the never-do facts are stated as facts', () => {
@@ -252,7 +256,14 @@ test('the proposal card places an agent in named channels, or nowhere yet', () =
     chat,
     /When the agent gets a ticket_changed trigger, the same fields block has a third field, "Starts work when"/,
   )
-  assert.doesNotMatch(chat, /"Runs on"/)
+  // T4: machines, by name only on the card their own pairer reads, and the one confirmation that follows.
+  assert.match(chat, /When that trigger's work should run on machines, the same fields block also has "Runs on"/)
+  assert.match(chat, /names the machines only when the person asking paired them and is the one reading the card/)
+  assert.match(chat, /otherwise it reads exactly "a machine its owner confirms"/)
+  assert.match(chat, /one machine-access confirmation follows, which the machines' owner confirms with their password/)
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    assert.doesNotMatch(block({ writeSurface }), /"Runs on"/, `${writeSurface} posts no card`)
+  }
   // The parameter facts agree: no binding is a finished agent.
   assert.match(chat, /An agent needs none to exist: with none it lives nowhere yet/)
 })
