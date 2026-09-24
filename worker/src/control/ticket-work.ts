@@ -1,17 +1,19 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import { TICKET_WORK_LIVE_STATUSES } from '@nessie/schemas'
 import {
+  closeTicketWorkQuestion,
   endTicketWork,
   ensureTicketWorkThread,
   lockTicketColumn,
   recordTicketWorkActivity,
+  syncTicketWorkClock,
   ticketWorkThreadTitle,
 } from '@nessie/team-admin'
 
 import { endColumnIds } from './ticket-trigger-decision.js'
-import { describeWakeEvent } from './ticket-work-events.js'
+import { describeWakeEvent, type WakeEventSource } from './ticket-work-events.js'
 import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
-import { queueTicketWorkRun, writeTicketWorkThreadRow } from './ticket-work-run.js'
+import { queueTicketWorkRun, stopTicketWorkAtWakeLimit, writeTicketWorkThreadRow } from './ticket-work-run.js'
 import type {
   TicketWorkSeam,
   TicketWorkSeamOutcome,
@@ -129,7 +131,10 @@ const startTicketWork = async (
       // Recorded, then stopped at once when the day's starts are used up: the
       // ticket and its thread say why nothing started.
       status: overDaily ? 'failed' : 'active',
-      ...(overDaily ? { stateReason: 'limit_daily', endedAt: new Date(), endedReason: 'limit_daily', endedBy: 'system' } : {}),
+      // Live work starts its hours clock with the record.
+      ...(overDaily
+        ? { stateReason: 'limit_daily', endedAt: new Date(), endedReason: 'limit_daily', endedBy: 'system' }
+        : { clockStartedAt: new Date() }),
     },
     select: { id: true, taskId: true, triggerId: true, agentId: true },
   })
@@ -214,6 +219,20 @@ const settleMoveAgainstColumn = async (
   return null
 }
 
+/** Where the kickoff reads what woke the record. */
+const wakeSource = (event: TicketWorkWakeInput['event'], trigger: TicketWorkTrigger): WakeEventSource => {
+  switch (event.kind) {
+    case 'thread_message':
+      return { kind: 'thread_message', messageId: event.id }
+    case 'reminder':
+      return { kind: 'reminder', reminderId: event.id }
+    case 'quiet':
+      return { kind: 'quiet', quietMinutes: ticketWorkConfigOf(trigger.config).quietWakeMinutes ?? 0 }
+    default:
+      return { kind: 'task_event', taskEventId: event.id }
+  }
+}
+
 const wakeTicketWork = async (
   prisma: PrismaClient,
   tx: Prisma.TransactionClient,
@@ -235,9 +254,7 @@ const wakeTicketWork = async (
     projectId: work.projectId,
     taskId: work.taskId,
     reason: input.reason,
-    source: event.kind === 'thread_message'
-      ? { kind: 'thread_message', messageId: event.id }
-      : { kind: 'task_event', taskEventId: event.id },
+    source: wakeSource(event, trigger),
     at: event.createdAt,
     untrusted: input.untrusted,
     machineLess: input.machineLess,
@@ -248,20 +265,16 @@ const wakeTicketWork = async (
   if (resumed) {
     await tx.agentTicketWork.update({ where: { id: work.id }, data: { status: 'active', stateReason: null } })
   }
+  // A person's comment, message or move is the answer to any open question:
+  // it closes, and the hours clock runs again. A reminder, a quiet wake and a
+  // connected board's event answer nothing.
+  const personEvent = live && !input.untrusted && !input.machineLess
+    && event.kind !== 'reminder' && event.kind !== 'quiet'
+  if (personEvent) await closeTicketWorkQuestion(tx, work.id)
+  if (resumed) await syncTicketWorkClock(tx, work.id)
   const outcome = await queueTicketWorkRun(tx, { work, trigger, event: described, deliveryId: input.deliveryId })
   if (outcome.kind === 'over_limit') {
-    if (live) {
-      await endTicketWork(tx, { work, status: 'failed', reason: 'limit_wakes', by: 'system' })
-      await writeTicketWorkThreadRow(tx, {
-        threadId: work.threadId,
-        event: {
-          kind: 'stopped',
-          workId: work.id,
-          reason: 'limit_wakes',
-          summary: `${outcome.wakesUsed} wakes used. Move the ticket out of and back into a start-work column to continue`,
-        },
-      })
-    }
+    if (live) await stopTicketWorkAtWakeLimit(tx, { work, wakesUsed: outcome.wakesUsed })
     return { outcome: 'refused', reason: 'limit_wakes' }
   }
   if (resumed) {

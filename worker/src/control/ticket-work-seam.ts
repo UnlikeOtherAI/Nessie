@@ -31,12 +31,18 @@ export type TicketWorkTrigger = {
 }
 
 export type TicketWorkEvent = {
-  /** The `TaskEvent`'s id, or the message's for a thread message. */
+  /**
+   * The `TaskEvent`'s id; the message's for a thread message; the reminder's
+   * for a reminder; the work record's own for a quiet wake, which nothing caused.
+   */
   id: string
   eventType: string
   createdAt: Date
-  /** A person's message in the work thread rather than a `TaskEvent`. */
-  kind?: 'thread_message'
+  /**
+   * Not a `TaskEvent`: a person's message in the work thread, a
+   * `check_back_in` the agent set, or the platform's quiet wake.
+   */
+  kind?: 'thread_message' | 'reminder' | 'quiet'
   /** The event's `TaskEvent.by`: who a resume or an end it causes names. */
   by?: string | null
 }

@@ -14,6 +14,7 @@ import {
 import type { BoardSourceCommentWriteBackError as BoardSourceWriteBackError } from './board-source-writeback.js'
 import { findAccessibleTask, isUuid, SYSTEM_TASK_EVENT_ORIGIN, taskEventBy, type TaskActor } from './task-access.js'
 import { recordTaskEvent } from './task-event-dispatch.js'
+import { applyTicketWorkAgentComment } from './ticket-work-clock.js'
 import {
   attachmentRemover,
   linkUploadsToTask,
@@ -235,7 +236,17 @@ const readComment = async (prisma: PrismaClient, actor: TaskActor, id: string) =
 export const createTaskComment = async (
   prisma: PrismaClient,
   actor: TaskActor,
-  input: { taskId: string; body: string; attachmentIds?: readonly string[] },
+  input: {
+    taskId: string
+    body: string
+    attachmentIds?: readonly string[]
+    /**
+     * An agent's comment asks the people on the ticket something
+     * (`ticket_comment_add`'s `awaitsAnswer`): stamped on its `comment_added`
+     * event, and it opens the question on the agent's live work for the ticket.
+     */
+    awaitsAnswer?: boolean
+  },
   deps: { writeBack?: TaskCommentWriteBack } = {},
 ): Promise<
   | { comment: TaskCommentRecord; projectId: string | null; propagated: boolean }
@@ -287,9 +298,18 @@ export const createTaskComment = async (
         commentId: comment.id,
         ...(actor.agentId ? { agentId: actor.agentId } : {}),
         ...(external ? { externalId: external.externalId } : {}),
+        ...(actor.agentId && input.awaitsAnswer ? { awaitsAnswer: true } : {}),
       },
       scope: { organizationId: task.organizationId, projectId: task.projectId },
     })
+    // Only an agent's comment opens or closes the question on its own work.
+    if (actor.agentId) {
+      await applyTicketWorkAgentComment(tx, {
+        taskId: task.id,
+        agentId: actor.agentId,
+        awaitsAnswer: input.awaitsAnswer === true,
+      })
+    }
     const linked = await linkUploadsToTask(tx, {
       organizationId: task.organizationId,
       uploaderUserId: actor.userId,

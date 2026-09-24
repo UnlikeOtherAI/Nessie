@@ -158,7 +158,13 @@ export const runTicketCommentListTool = async (
   return result('ticket_comment_list', `ticketId=${args.ticketId}`, output)
 }
 
-const AddInput = z.object({ ticketId: IdSchema, body: z.string().trim().min(1).max(TASK_COMMENT_MAX_CHARS) })
+const AddInput = z.object({
+  ticketId: IdSchema,
+  body: z.string().trim().min(1).max(TASK_COMMENT_MAX_CHARS),
+  // Structural, never read from the words: the agent says its comment asks
+  // the people on the ticket something (docs/standards/ticket-work.md).
+  awaitsAnswer: z.boolean().optional(),
+})
 
 export const runTicketCommentAddTool = async (
   context: BuiltinToolRuntimeContext,
@@ -175,7 +181,7 @@ export const runTicketCommentAddTool = async (
   const created = await createTaskComment(
     context.prisma,
     ticketActorFor(context, member),
-    { taskId: ticket.id, body: args.body },
+    { taskId: ticket.id, body: args.body, ...(args.awaitsAnswer ? { awaitsAnswer: true } : {}) },
     { writeBack: commentWriteBackFor(context) },
   )
   if ('error' in created) return refuse(created)
@@ -193,7 +199,11 @@ export const runTicketCommentAddTool = async (
   return result(
     'ticket_comment_add',
     `ticketId=${args.ticketId}`,
-    [`Added comment | commentId=${comment.id}`, ...(where ? [where] : [])].join('\n'),
+    [
+      `Added comment | commentId=${comment.id}`,
+      ...(where ? [where] : []),
+      ...(args.awaitsAnswer ? ['Marked as a question: your live work on this ticket waits for an answer.'] : []),
+    ].join('\n'),
   )
 }
 

@@ -56,6 +56,16 @@ const isUniqueViolation = (error: unknown): boolean =>
 
 export type SeamAct = (tx: Prisma.TransactionClient, deliveryId: string) => Promise<TicketWorkSeamOutcome>
 
+/**
+ * Claims the thing the delivery is about inside the delivery's own
+ * transaction — a due reminder — and returns false when another worker holds
+ * or already took it. The delivery is then not written at all: its outcome is
+ * the other worker's.
+ */
+export type SettleClaim = (tx: Prisma.TransactionClient) => Promise<boolean>
+
+class ClaimLost extends Error {}
+
 export const settleTicketDelivery = async (
   prisma: PrismaClient,
   input: {
@@ -65,6 +75,7 @@ export const settleTicketDelivery = async (
     decision: SettledDecision
     /** The seam call for a start or a wake; absent for a skip. */
     act?: SeamAct
+    claim?: SettleClaim
     retry?: RetryContext
   },
 ): Promise<void> => {
@@ -80,6 +91,7 @@ export const settleTicketDelivery = async (
   const payload = deliveryPayload(input.base, decision)
   try {
     await prisma.$transaction(async (tx) => {
+      if (input.claim && !(await input.claim(tx))) throw new ClaimLost()
       const delivery = await upsertDelivery(tx, {
         dedupeKey,
         payload,
@@ -110,8 +122,9 @@ export const settleTicketDelivery = async (
       await tx.agentTrigger.update({ where: { id: triggerId }, data: { lastFiredAt: new Date() } })
     })
   } catch (error) {
-    // Another worker settled the same event for this trigger first.
-    if (!input.retry && isUniqueViolation(error)) return
+    // Another worker settled the same event for this trigger first, or holds
+    // the thing it is about.
+    if (error instanceof ClaimLost || (!input.retry && isUniqueViolation(error))) return
     await recordTriggerRunFailure(prisma, {
       dedupeKey,
       error,

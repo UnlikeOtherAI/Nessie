@@ -5,6 +5,7 @@ import {
   type TicketEndOn,
 } from '@nessie/schemas'
 
+import { syncTicketWorkClock } from './ticket-work-clock.js'
 import { lockTicketForWork } from './ticket-work-lock.js'
 import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.js'
 
@@ -95,6 +96,8 @@ export const applyTicketWorkColumnEntry = async (
         where: { id: record.id },
         data: { status: 'parked', stateReason: null },
       })
+      // Parked work waits for people, so its hours clock pauses.
+      await syncTicketWorkClock(tx, record.id)
       await recordTicketWorkActivity(tx, {
         work: record, eventType: 'work_paused', status: 'parked', reason: null, by: input.by ?? null, ...cause,
       })

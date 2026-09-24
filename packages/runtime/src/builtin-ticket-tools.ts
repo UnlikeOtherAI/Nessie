@@ -105,7 +105,18 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'ticket_comment_add', category: 'projects', label: 'Comment on Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Add a comment to a ticket.', safe: false,
     description: `Add a comment to a ticket. On a ticket mirrored from an external system with read & write access it is posted there too; otherwise it stays in Nessie and the result says so. ${MARKDOWN}`,
-    parameters: { type: 'object', properties: { ticketId: UUID, body: { type: 'string' } }, required: ['ticketId', 'body'] },
+    parameters: {
+      type: 'object',
+      properties: {
+        ticketId: UUID,
+        body: { type: 'string' },
+        awaitsAnswer: {
+          type: 'boolean',
+          description: 'Set true when your comment asks the people on the ticket something. While your ticket work waits for an answer it is not woken just because nothing happened, and you are woken when one of them answers.',
+        },
+      },
+      required: ['ticketId', 'body'],
+    },
   },
   {
     id: 'ticket_comment_update', category: 'projects', label: 'Edit Ticket Comment', personalAssistantOnly: true,

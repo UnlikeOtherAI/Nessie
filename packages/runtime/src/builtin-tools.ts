@@ -34,11 +34,7 @@ import { DEMONSTRATION_TOOL_DEFINITIONS } from './builtin-demonstration-tools.js
 import { WEB_FETCH_TOOL_DEFINITION, WEB_SEARCH_TOOL_DEFINITION } from './builtin-web-tools.js'
 
 export { KB_DOCUMENT_COMPOSE_TOOL_ID, KB_DOCUMENT_EDIT_TOOL_ID } from './builtin-kb-tools.js'
-import {
-  CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
-  LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
-  SCHEDULE_TASK_TOOL_DEFINITION,
-} from './builtin-schedule-tools.js'
+import { SCHEDULE_TOOL_DEFINITIONS } from './builtin-schedule-tools.js'
 import {
   FILE_GLOB_TOOL_DEFINITION,
   FILE_READ_TOOL_DEFINITION,
@@ -395,9 +391,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   FILE_READ_TOOL_DEFINITION,
   FILE_WRITE_TOOL_DEFINITION,
   FILE_GLOB_TOOL_DEFINITION,
-  SCHEDULE_TASK_TOOL_DEFINITION,
-  LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
-  CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  ...SCHEDULE_TOOL_DEFINITIONS,
   ...WORKFLOW_AUTHORING_TOOL_DEFINITIONS,
   // sp-messaging slice: full-text search + agent-authored message lifecycle
   {
