@@ -43,7 +43,8 @@ const reminder = { dueAt: new Date(Date.now() + 20 * 60_000).toISOString(), id: 
 
 export const ticketWorkFor = (state: string | null, agentId: string, options: { reminderCancelled?: boolean } = {}) => {
   const record = (extra: Record<string, unknown>) => workRecord(agentId, extra)
-  const answer = <T extends { records: ReturnType<typeof record>[] }>(value: T) => ({ viewerCanEditBoard: true, ...value })
+  const answer = <T extends { records: ReturnType<typeof record>[] }>(value: T) =>
+    ({ viewerCanEditBoard: true, ...value })
   switch (state) {
     case 'active': return answer({
       history: [HISTORY.resumed, HISTORY.paused, HISTORY.started], lastSkip: null, records: [record({})],

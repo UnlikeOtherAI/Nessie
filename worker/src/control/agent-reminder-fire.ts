@@ -34,6 +34,8 @@ import { claimThreadRunOrPend, lockThreadRunSlot } from '../run/thread-serializa
 
 type DueReminder = { id: string; workId: string | null }
 
+const LIVE = new Set<string>(TICKET_WORK_LIVE_STATUSES)
+
 /** Lock one due reminder for this transaction, or learn another worker has it. */
 const lockPendingReminder = async (tx: Prisma.TransactionClient, id: string): Promise<boolean> => {
   const rows = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
@@ -156,7 +158,8 @@ export const fireTicketWorkReminder = async (
   })
   const work = reminder?.work
   const trigger = work?.trigger
-  if (!reminder || !work || !trigger?.agentId || !(TICKET_WORK_LIVE_STATUSES as readonly string[]).includes(work.status)) {
+  const live = work !== null && work !== undefined && LIVE.has(work.status)
+  if (!reminder || !work || !trigger?.agentId || !live) {
     // Ended work cancels its reminders in the transaction that ends it; a
     // record that lost its trigger ended first. Nothing is left to wake.
     await prisma.agentReminder.updateMany({

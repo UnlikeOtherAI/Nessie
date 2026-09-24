@@ -76,7 +76,10 @@ export const writeTicketWorkThreadRow = async (
  */
 export const stopTicketWorkAtWakeLimit = async (
   tx: Prisma.TransactionClient,
-  input: { work: { id: string; taskId: string; triggerId: string | null; agentId: string; threadId: string }; wakesUsed: number },
+  input: {
+    work: { id: string; taskId: string; triggerId: string | null; agentId: string; threadId: string }
+    wakesUsed: number
+  },
 ): Promise<boolean> => {
   const ended = await endTicketWork(tx, { work: input.work, status: 'failed', reason: 'limit_wakes', by: 'system' })
   if (!ended) return false
