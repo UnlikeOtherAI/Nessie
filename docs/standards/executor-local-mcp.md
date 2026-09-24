@@ -596,13 +596,17 @@ that acts as the machine's own user, and these rules follow from that:
   `coding-sessions` is refused.
 - **Its power facts travel, unlike any other launch spec.** The descriptor's
   `codingSessions` states the agents, their permission modes, the number of
-  pre-allowed tools, the names of the environment variables they are given,
-  the root names and the configuration's digest, inside
-  `localPolicyDigest`. Flags that would carry power past those facts are
-  refused in the configuration. Paths, programs and values still stay on the
-  host. The descriptor-review projection carries the facts verbatim, and a
-  review reads them as "Coding agents on this machine: Claude Code (accept
-  edits, 3 pre-allowed commands) in nessie" (`ExecutorCodingAgents.tsx`).
+  pre-allowed tools, each agent's turn budget (`null` when nothing bounds a
+  turn), the live-session quota per owner, the names of the environment
+  variables they are given, the root names and the configuration's digest,
+  inside `localPolicyDigest`; an older daemon's descriptor lacks the budget
+  and the quota, which means not stated, never unlimited. Flags that would
+  carry power past those facts are refused in the configuration. Paths,
+  programs and values still stay on the host. The descriptor-review
+  projection carries the facts verbatim, and a review reads them as "Coding
+  agents on this machine: Claude Code (accept edits, 3 pre-allowed commands,
+  at most $5 a turn) in nessie" and "Each agent may keep up to 3 sessions
+  open at once for the person it works for." (`ExecutorCodingAgents.tsx`).
 - **Only a private executor's pairing owner drives it.** A coding agent acts
   as the machine's own user, so `createExecutorCommand` refuses an `mcp.call`
   to the bridge unless the executor is private and the binding was made for

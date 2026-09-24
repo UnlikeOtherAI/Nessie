@@ -170,11 +170,15 @@ codingSessions?: {
   environmentNames: string[]   // agentEnv.set and agentEnv.pass, names only
   rootNames: string[]
   configDigest: string   // sha256 of the canonical host-local config
+  // Added for standing machine access (ticket-driven agents, T4); absent from
+  // an older daemon's descriptor, which states neither.
+  maxBudgetUsd?: Record<'claude' | 'codex', number | null>   // per turn; Codex always null
+  maxLiveSessionsPerOwner?: number
 }
 ```
 
 Review renders them ("Coding agents on this machine: Claude Code (accept
-edits, 3 pre-allowed commands) in nessie"). The bridge refuses to start a host
+edits, 3 pre-allowed commands, at most $5 a turn) in nessie"). The bridge refuses to start a host
 when the config's digest differs from `configDigest` (passed in its env), so
 editing the file silently changes nothing until a person reviews it. Roots are
 refused when they overlap a workspace folder, the executor state dir, the

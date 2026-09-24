@@ -91,6 +91,9 @@ test('configure generates the bridge entry itself and states its power facts', a
       environmentNames: [],
       rootNames: ['nessie'],
       configDigest: 'x',
+      // No budget configured: nothing bounds a turn of either agent, and the fact says so rather than being left out.
+      maxBudgetUsd: { claude: null, codex: null },
+      maxLiveSessionsPerOwner: 3,
     })
     assert.deepEqual(written, [], 'nothing is written before the whole policy is accepted')
     await assert.rejects(plan.persist(['file.read']), /enable both to offer them/u)
@@ -226,9 +229,12 @@ test('the facts are part of the signed descriptor and of its policy digest', asy
       requested: request(s.root), runtime, current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
     })
     const wider = await planCodingSessions({
-      requested: request(s.root, { maxBudgetUsd: 500 }), runtime,
+      requested: request(s.root, { maxBudgetUsd: 500, maxLiveSessionsPerOwner: 5 }), runtime,
       current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
     })
+    // Claude Code's turns get the budget; Codex has no budget flag, so nothing bounds its turns.
+    assert.deepEqual(wider.facts?.maxBudgetUsd, { claude: 500, codex: null })
+    assert.equal(wider.facts?.maxLiveSessionsPerOwner, 5)
     const key = generateKeyPairSync('ed25519').privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64url')
     const policy = (facts: typeof plan.facts) => ({
       codingSessions: facts!,
@@ -241,8 +247,16 @@ test('the facts are part of the signed descriptor and of its policy digest', asy
     const signed = buildSignedDescriptor(key, policy(plan.facts), noSandboxHost)
     assert.deepEqual(ExecutorCapabilityDescriptorSchema.parse(signed.descriptor).codingSessions, plan.facts)
     const widened = buildSignedDescriptor(key, policy(wider.facts), noSandboxHost)
-    // Only the budget changed, which no fact names — the config digest carries it into review.
+    assert.deepEqual(ExecutorCapabilityDescriptorSchema.parse(widened.descriptor).codingSessions?.maxBudgetUsd, {
+      claude: 500, codex: null,
+    }, 'the signed facts name the budget, so the server can check it')
     assert.notEqual(widened.descriptor.localPolicyDigest, signed.descriptor.localPolicyDigest)
+    // A descriptor an older daemon signed carries neither fact, and still parses: a machine that has not said.
+    const older = Object.fromEntries(Object.entries(plan.facts!)
+      .filter(([name]) => name !== 'maxBudgetUsd' && name !== 'maxLiveSessionsPerOwner')) as typeof plan.facts
+    const olderSigned = buildSignedDescriptor(key, policy(older), noSandboxHost)
+    const olderFacts = ExecutorCapabilityDescriptorSchema.parse(olderSigned.descriptor).codingSessions
+    assert.equal(olderFacts?.maxBudgetUsd, undefined)
     assert.equal(JSON.stringify(signed).includes(s.root), false, 'no root path travels in the descriptor')
   } finally {
     await rm(s.dir, { recursive: true, force: true })

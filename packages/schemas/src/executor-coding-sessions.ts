@@ -75,11 +75,33 @@ export const ExecutorCodingSessionsFactsSchema = z
       .refine(distinct, 'Each environment variable is named once.'),
     rootNames: z.array(CodingRootNameSchema).min(1).max(16).refine(distinct, 'Each coding root is named once.'),
     configDigest: Sha256DigestSchema,
+    /**
+     * Per offered agent: the most one turn may spend, in US dollars, or `null`
+     * when nothing bounds it. Claude Code's is the configuration's
+     * `maxBudgetUsd` (`--max-budget-usd`, with a fresh process whenever a turn
+     * would start with less than the whole budget); Codex has no such flag, so
+     * its turns are never bounded and it is always `null`.
+     *
+     * This and `maxLiveSessionsPerOwner` are absent from a descriptor an older
+     * daemon signed, which is a machine that has not said — never one without
+     * a limit. A check that needs them refuses such a machine.
+     */
+    maxBudgetUsd: z.record(ExecutorCodingAgentNameSchema, z.number().positive().max(1_000).nullable()).optional(),
+    /**
+     * How many live sessions one owner may hold on the machine at once; an
+     * owner is an agent and a person, and one ticket's work is an owner of its
+     * own (`executorCodingSessionOwnerKeyInput`).
+     */
+    maxLiveSessionsPerOwner: z.number().int().min(1).max(20).optional(),
   })
   .strict()
   .refine(
     (facts) => sameMembers(Object.keys(facts.permissionMode), facts.agents),
     'Every offered coding agent states its permission mode, and only those do.',
+  )
+  .refine(
+    (facts) => facts.maxBudgetUsd === undefined || sameMembers(Object.keys(facts.maxBudgetUsd), facts.agents),
+    'Every offered coding agent states its turn budget, and only those do.',
   )
 export type ExecutorCodingSessionsFacts = z.infer<typeof ExecutorCodingSessionsFactsSchema>
 

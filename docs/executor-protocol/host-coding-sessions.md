@@ -326,13 +326,20 @@ The executor then:
 - refuses the bridge unless `mcp.tools` and `mcp.call` are enabled;
 - adds `codingSessions` to the signed descriptor, inside `localPolicyDigest`:
   `{serverName, agents, permissionMode, allowedToolCount, environmentNames,
-  rootNames, configDigest}`. Claude's mode is its `permissionMode`
-  (`default` when unset); Codex's is the stance its reviewed `args` take
-  (`bypassApprovalsAndSandbox`, `fullAuto`, `approveForMe`,
-  `sandbox:<mode>` or `default`). `environmentNames` lists, sorted and by
-  name only, every variable `agentEnv.set` sets or `agentEnv.pass` passes:
-  a `CLAUDE_CONFIG_DIR` or an `ANTHROPIC_BASE_URL` changes what an agent may
-  do, or where its transcript goes, as surely as a flag.
+  rootNames, configDigest, maxBudgetUsd, maxLiveSessionsPerOwner}`. Claude's
+  mode is its `permissionMode` (`default` when unset); Codex's is the stance
+  its reviewed `args` take (`bypassApprovalsAndSandbox`, `fullAuto`,
+  `approveForMe`, `sandbox:<mode>` or `default`). `environmentNames` lists,
+  sorted and by name only, every variable `agentEnv.set` sets or
+  `agentEnv.pass` passes: a `CLAUDE_CONFIG_DIR` or an `ANTHROPIC_BASE_URL`
+  changes what an agent may do, or where its transcript goes, as surely as a
+  flag. `maxBudgetUsd` states, per offered agent, the most one turn may
+  spend: Claude's is the configuration's `maxBudgetUsd`, or `null` when it
+  sets none, and Codex's is always `null`, because nothing bounds a Codex
+  turn. `maxLiveSessionsPerOwner` is the quota. So the server can check both
+  (a standing policy's host profile needs them), and a review shows them. A
+  descriptor an older daemon signed has neither; that is a machine that has
+  not said, never one without limits.
 
 Both CLIs still read their own configuration on this machine — Claude Code
 its user, project and local settings (`~/.claude/settings.json`, a

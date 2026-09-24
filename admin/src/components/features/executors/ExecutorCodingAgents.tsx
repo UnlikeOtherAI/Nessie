@@ -5,8 +5,9 @@ import { EXECUTOR_CODING_AGENT_LABELS } from './executor-presentation'
 /**
  * What the machine's built-in coding bridge may do, read from the power facts
  * the signed descriptor carries: which coding agents, in which standing
- * permission mode, with how many pre-allowed commands, in which named
- * folders, given which environment variables, under which configuration.
+ * permission mode, with how many pre-allowed commands and how much a turn may
+ * spend, in which named folders, how many sessions each may keep open, given
+ * which environment variables, under which configuration.
  *
  * It sits beside {@link ExecutorMcpServers} because a coding agent acts as the
  * machine's own user — their files, their git and SSH credentials, their
@@ -52,24 +53,49 @@ const commandCount = (count: number): string => count === 0
   ? 'no pre-allowed commands'
   : `${count} pre-allowed command${count === 1 ? '' : 's'}`
 
+const dollars = (amount: number): string => new Intl.NumberFormat('en-US', {
+  currency: 'USD',
+  maximumFractionDigits: 2,
+  minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  style: 'currency',
+}).format(amount)
+
+// `null` is a stated fact — nothing bounds that agent's turns — and reads so;
+// an absent map is a machine too old to say, and says nothing.
+const budgetTerm = (budget: number | null | undefined): string | undefined => budget === undefined
+  ? undefined
+  : budget === null ? 'no spending limit per turn' : `at most ${dollars(budget)} a turn`
+
 export const describeExecutorCodingAgents = (facts: ExecutorCodingSessionsFacts): string => {
   const agents = facts.agents.map((agent) => {
     const terms = [modeLabel(agent, facts.permissionMode[agent] ?? 'default')]
     // `allowedToolCount` counts Claude Code's `allowedTools`; Codex has none.
     if (agent === 'claude') terms.push(commandCount(facts.allowedToolCount))
+    const budget = budgetTerm(facts.maxBudgetUsd?.[agent])
+    if (budget) terms.push(budget)
     return `${EXECUTOR_CODING_AGENT_LABELS[agent]} (${terms.join(', ')})`
   })
   return `${listed(agents)} in ${listed(facts.rootNames)}`
 }
 
+/** The live-session quota in words, or nothing for a machine too old to state it. */
+export const describeExecutorCodingSessionQuota = (facts: ExecutorCodingSessionsFacts): string | undefined => {
+  const most = facts.maxLiveSessionsPerOwner
+  if (most === undefined) return undefined
+  return `Each agent may keep ${most === 1 ? 'one session' : `up to ${most} sessions`} open at once for the `
+    + 'person it works for.'
+}
+
 export const ExecutorCodingAgents = ({ codingSessions }: ExecutorCodingAgentsProps) => {
   if (!codingSessions) return null
+  const quota = describeExecutorCodingSessionQuota(codingSessions)
   return (
     <div className="mt-1 grid gap-0.5 text-[color:var(--tx2)]">
       <p>
         <span className="font-medium text-[color:var(--tx)]">Coding agents on this machine:</span>{' '}
         {describeExecutorCodingAgents(codingSessions)}
       </p>
+      {quota ? <p>{quota}</p> : null}
       {codingSessions.environmentNames.length > 0 ? (
         <p>Given the variables {listed(codingSessions.environmentNames)}.</p>
       ) : null}

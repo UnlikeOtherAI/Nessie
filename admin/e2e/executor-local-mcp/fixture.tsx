@@ -195,13 +195,15 @@ const REVIEW_SCENARIOS: Record<string, {
     descriptorRevisions: [mcpRevision],
   },
   // The built-in coding bridge's power facts, which only a descriptor that
-  // offers it carries: the agents, their stance, the folders, the variables.
+  // offers it carries: the agents, their stance and turn budget, the folders,
+  // the live-session quota, the variables.
   'policy-coding-sessions': {
     change: { kind: 'descriptor_review', revision: 6, status: 'active' },
     descriptorRevisions: [{
       codingSessions: {
-        agents: ['claude'], allowedToolCount: 3, configDigest: `sha256:1a2b3c4d5e6f${'0'.repeat(52)}`,
-        environmentNames: ['CLAUDE_CONFIG_DIR'], permissionMode: { claude: 'acceptEdits' },
+        agents: ['claude', 'codex'], allowedToolCount: 3, configDigest: `sha256:1a2b3c4d5e6f${'0'.repeat(52)}`,
+        environmentNames: ['CLAUDE_CONFIG_DIR'], maxBudgetUsd: { claude: 5, codex: null }, maxLiveSessionsPerOwner: 3,
+        permissionMode: { claude: 'acceptEdits', codex: 'sandbox:workspace-write' },
         rootNames: ['nessie'], serverName: 'coding-sessions',
       },
       localPolicyDigest: `sha256:${'e'.repeat(64)}`,

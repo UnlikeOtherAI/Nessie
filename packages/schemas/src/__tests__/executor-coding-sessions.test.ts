@@ -52,9 +52,24 @@ test('the descriptor carries the bridge\'s power facts, and nothing looser', () 
     { ...facts, configDigest: 'sha256:short' },
     { ...facts, environmentNames: ['PATH', 'PATH'] },
     { ...facts, environmentNames: ['NOT A NAME'] },
+    { ...facts, maxBudgetUsd: { claude: 5 } },
+    { ...facts, maxBudgetUsd: { claude: 5, codex: null, cursor: 1 } },
+    { ...facts, maxBudgetUsd: { claude: 0, codex: null } },
+    { ...facts, maxBudgetUsd: { claude: 1_001, codex: null } },
+    { ...facts, maxLiveSessionsPerOwner: 0 },
+    { ...facts, maxLiveSessionsPerOwner: 2.5 },
   ]) {
     assert.equal(ExecutorCodingSessionsFactsSchema.safeParse(loose).success, false, JSON.stringify(loose))
   }
+})
+
+test('the turn budget per agent and the live-session quota are signed facts; an older daemon states neither', () => {
+  const stated = { ...facts, maxBudgetUsd: { claude: 2.5, codex: null }, maxLiveSessionsPerOwner: 3 }
+  const parsed = ExecutorCapabilityDescriptorSchema.parse({ ...descriptor, codingSessions: stated })
+  assert.deepEqual(parsed.codingSessions, stated)
+  const older = ExecutorCodingSessionsFactsSchema.parse(facts)
+  assert.equal(older.maxBudgetUsd, undefined, 'not stated, which is not the same as no budget')
+  assert.equal(older.maxLiveSessionsPerOwner, undefined)
 })
 
 test('the mcp.call payload stamps an owner beside runId, outside the model\'s arguments', () => {
