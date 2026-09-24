@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   BUILTIN_TOOL_DEFINITIONS,
   BUILTIN_TOOL_IDS,
+  findProtectedExplicitToolPolicyKeys,
   PROJECT_OPERATOR_CAPABILITY_ID,
   PROJECT_OPERATOR_TOOL_IDS,
   SYSTEM_TOOL_DEFINITIONS,
@@ -107,6 +108,16 @@ test('the operator verbs are the plan\'s set, and the capability is a grant, nev
   for (const tool of BUILTIN_TOOL_DEFINITIONS.filter((definition) => definition.projectOperator)) {
     assert.equal(tool.personalAssistantOnly, true, tool.id)
   }
+})
+
+test('a generic agent write can never grant project_operator', async () => {
+  // No registry uuid is named, so the gate reads nothing from the database.
+  const prisma = {} as Parameters<typeof findProtectedExplicitToolPolicyKeys>[0]
+  const protectedKeys = await findProtectedExplicitToolPolicyKeys(prisma, {
+    [PROJECT_OPERATOR_CAPABILITY_ID]: true,
+    web_search: true,
+  })
+  assert.deepEqual([...protectedKeys], [PROJECT_OPERATOR_CAPABILITY_ID])
 })
 
 const allEnabled = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))

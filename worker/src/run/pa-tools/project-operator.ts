@@ -26,11 +26,14 @@ import { requireActingUserId, resolveActingMember, type ActingMember } from './a
 export type ActingFace = 'global_agent' | 'personal_assistant' | 'project_operator'
 
 export const actingFaceOf = (
-  context: Pick<BuiltinToolRuntimeContext, 'agentKind' | 'channel'>,
-): ActingFace =>
-  context.agentKind === 'personal_assistant'
-    ? 'personal_assistant'
-    : context.channel.systemChannelType === 'system_agent' ? 'global_agent' : 'project_operator'
+  context: Pick<BuiltinToolRuntimeContext, 'agentKind' | 'channel' | 'runContext'>,
+): ActingFace => {
+  if (context.agentKind === 'personal_assistant') return 'personal_assistant'
+  // The run's own agent row says whether this is a global agent at all; only
+  // a context built without one (a fixture) falls back to the surface alone.
+  const globalAgent = context.runContext ? Boolean(context.runContext.agent.systemSlug) : true
+  return context.channel.systemChannelType === 'system_agent' && globalAgent ? 'global_agent' : 'project_operator'
+}
 
 const REFUSAL =
   'This sets things up for the person talking to you, so it works only on their own turn in a '
