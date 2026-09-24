@@ -267,15 +267,8 @@ runDatabaseTest('a prepared workspace promotion posts the same card, and no toke
 
   // A reviewed draft the owner's own run produced: the command the promotion
   // names, with its encrypted receipt.
-  const revision = await prisma.executorCapabilityRevision.create({
-    data: {
-      descriptor: {},
-      executorId: s.executorId,
-      localPolicyDigest: 'test',
-      reviewStatus: 'active',
-      revision: 1,
-      signature: 'test',
-    },
+  const revision = await prisma.executorCapabilityRevision.findFirstOrThrow({
+    where: { executorId: s.executorId, revision: 1 },
   })
   const trigger = await prisma.message.create({
     data: { content: 'Promote the draft', role: 'user', threadId: s.threadId, userId: s.ownerId },
@@ -335,7 +328,7 @@ runDatabaseTest('a prepared workspace promotion posts the same card, and no toke
     { reviewCommandId: command.id },
   )
 
-  assert.match(result.outputPreview, /Posted an Allow access card in this chat/)
+  assert.match(result.outputPreview, /put a confirmation card in this conversation/)
   assert.doesNotMatch(result.outputPreview, /confirmationToken|#|\/agents\/executors/)
   assert.doesNotMatch(result.outputPreview.replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/, ''), TOKEN_SHAPE)
   assert.equal(result.deliveredToConversation, true)
