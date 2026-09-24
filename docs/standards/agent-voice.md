@@ -22,9 +22,17 @@ reply ends the turn: a promise does not schedule execution. Agents must use
 available tools, follow their results through to the requested outcome, or
 explain a concrete blocker and the next action needed. Approval and deferred
 work must actually be requested through their tools before being described as
-pending. This is model guidance, not a semantic completion guarantee or a
-keyword-based retry rule. Verify follow-through with a real model; an assertion
-against prompt text alone cannot establish that the agent finishes its work.
+pending. Before accepting a normal non-empty text-only answer, the main runner
+asks its utility model for `{needsFollowUp, reason}` against the conversation
+and tool results. A true decision continues the same run, preserving its tool
+history and authorization, at most twice. The counter survives crash resume;
+the check's inference counts toward the same budget. Approval/card suspensions,
+wind-down, and provider-output recovery retain their existing stop behavior.
+Malformed decisions fail visibly; repeated premature answers end with an
+explicit failure instead of another promise. No phrase matching decides intent.
+This resembles Codex's optional Stop-hook continuation, not a guarantee that
+model judgement is infallible. Verify follow-through with a real model; an
+assertion against prompt text alone cannot establish that work is finished.
 
 Agents react rather than reply when a message needs registering but no answer.
 Two paths, both producing real `MessageReaction` rows (an emoji typed into a

@@ -257,6 +257,8 @@ export const createMockLlmServer = async (input: {
     // Main inference always receives its offered schemas. Utility judgements
     // intentionally receive none, so this selects a scenario lane without
     // inspecting natural-language prompt content.
+    const isCompletionReview = messages[0]?.role === 'system'
+      && messages[0].content.startsWith('[nessie.follow_up_review.v1]\n')
     const overrideText = !Array.isArray(body.tools) || body.tools.length === 0
       ? input.utilityResponder?.(messages.map((message) => message.content ?? '').join('\n'))
       : undefined
@@ -266,9 +268,13 @@ export const createMockLlmServer = async (input: {
       ? await mainEngine.next(messages)
       : await engine.nextUtility(
         messages,
-        overrideText === undefined
+        isCompletionReview
+          ? input.scenario.completionReview
+            ?? { latencyMs: 0, text: '{"needsFollowUp":false,"reason":"Scripted work is complete."}', usage: {} }
+          : overrideText === undefined
           ? undefined
           : { latencyMs: 0, text: overrideText, usage: {} },
+        !isCompletionReview,
       )
     if (outcome.kind === 'error') {
       sendProviderError(response, outcome.error)

@@ -71,6 +71,8 @@ export type RecordedToolResult = {
  * ask the provider again.
  */
 export type LoopResumeState = {
+  /** Corrective continuations already used; retained across worker restart. */
+  followUpAttempts?: number
   /** The run-budget zero-output compaction recovery has already been spent. */
   budgetRecoveryAttempted: boolean
   compactionAttempts: number

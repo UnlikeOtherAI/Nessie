@@ -40,6 +40,12 @@ summary and points here; **this file is the rule**.
     catalogue's advertised maximum. Kimi's Messages lane discovers `/v1/models`
     and uses `max_output_tokens`, or its advertised `context_length` when Kimi
     exposes no separate output maximum.
+  - Normal text-only completion is checked by a metered utility-model
+    `{needsFollowUp, reason}` decision. A true decision continues the same run
+    at most twice, without changing its permissions or replaying completed
+    tools. The correction count is checkpointed and existing cancellation,
+    approval, provider-recovery and budget stops take precedence. See
+    [agent voice](agent-voice.md) for the completion contract.
   - The cache-read weight resolves once per run from the org
     `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
     [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25).

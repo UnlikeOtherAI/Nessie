@@ -34,6 +34,13 @@ load runs.
 
 ## Scenario files
 
+`completionReview` scripts the worker's structured stop check independently
+of main turns and other utility calls. Its default is an explicit
+`needsFollowUp: false` fixture decision. Tests of premature completion set it
+to true; this scripts runner behavior and does not test model judgement.
+The HTTP fixture identifies this lane by the fixed
+`[nessie.follow_up_review.v1]` protocol marker in the system message.
+
 One JSON file = one scripted multi-turn conversation. The next turn is selected
 by counting assistant messages in the incoming request, so a single engine
 serves any number of concurrent runs deterministically with no shared state.
