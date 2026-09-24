@@ -287,8 +287,13 @@ runDatabaseTest('with includeAgentEdits another agent\'s save wakes it, but neve
   assert.deepEqual(woke?.parsed.authorKinds, ['agent'])
 
   // The helper reviews this project's documents too: its saves no longer wake
-  // this agent, so two reviewers can never wake each other in a loop.
-  await prisma.agentTrigger.create({
+  // this agent, so two reviewers can never wake each other in a loop. It is
+  // bound to the channel its trigger posts in, as a real reviewer is: its own
+  // trigger's window closes on the same save, and one that lost its channel
+  // or space would pause itself first — and a paused trigger's agent is no
+  // longer a reviewer.
+  await prisma.agentBinding.create({ data: { agentId: helper.id, channelId: s.channelId } })
+  const fellow = await prisma.agentTrigger.create({
     data: {
       agentId: helper.id, type: 'document_changed', targetChannelId: s.channelId, scopeProjectId: s.projectId,
       config: { spaceId: d.spaceId, includeAgentEdits: true, instructions: { general: 'Review too.' } },
@@ -298,4 +303,6 @@ runDatabaseTest('with includeAgentEdits another agent\'s save wakes it, but neve
   await drainDocumentJobs(prisma, s, seen)
   const mine = (await documentDeliveries(prisma, d.documentTriggerId))
   assert.equal(mine.at(-1)?.errorMessage, 'agent_edits_only')
+  assert.equal((await prisma.agentTrigger.findUniqueOrThrow({ where: { id: fellow.id } })).enabled, true,
+    'the fellow reviewer\'s own trigger stayed on through the same save')
 })
