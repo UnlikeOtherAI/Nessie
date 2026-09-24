@@ -659,7 +659,9 @@ routes, and none of it names a machine.
   and waiting-machine records never get one.
 - **`ticket-work.sweep`** (`worker/src/control/ticket-work-sweep.ts`) is one
   job a minute, idempotent by its bucket (`enqueueTicketWorkSweep`, started by
-  `startTicketWorkSweep`, subscribed beside the ticket dispatch). It sends the
+  `startTicketWorkSweep`, subscribed beside the ticket dispatch). It reads
+  every live record, a page at a time in id order, so no status can crowd
+  another out of a window; it sends the
   quiet wakes (`decideTicketWorkSweep`), ends work a lowered `wakesPerTicket`
   left over its wakes (`limit_wakes`, with its `work_ended` row and stop row;
   `startsPerDay` is decided at each pickup, so no live record is over it), and

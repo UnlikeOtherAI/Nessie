@@ -83,11 +83,20 @@ const IN_FLIGHT_RUN_STATUSES: RunStatus[] = ['pending', 'running', 'waiting_appr
 
 type LiveRecord = Awaited<ReturnType<typeof loadLiveRecords>>[number]
 
-const loadLiveRecords = (prisma: PrismaClient, limit: number) =>
+/**
+ * One page of live records, in id order after `after`. The sweep walks every
+ * page each time, so no status — parked work waiting days for review, say —
+ * can crowd the records it has to wake out of the window.
+ */
+const loadLiveRecords = (prisma: PrismaClient, input: { after: string | null; take: number }) =>
   prisma.agentTicketWork.findMany({
-    where: { status: { in: [...TICKET_WORK_LIVE_STATUSES] }, triggerId: { not: null } },
-    orderBy: [{ lastWakeAt: { sort: 'asc', nulls: 'first' } }, { startedAt: 'asc' }],
-    take: limit,
+    where: {
+      status: { in: [...TICKET_WORK_LIVE_STATUSES] },
+      triggerId: { not: null },
+      ...(input.after ? { id: { gt: input.after } } : {}),
+    },
+    orderBy: { id: 'asc' },
+    take: input.take,
     select: {
       id: true,
       organizationId: true,
@@ -302,10 +311,26 @@ export const recoverLostTicketJobs = async (prisma: PrismaClient, now: Date, lim
 
 export const runTicketWorkSweep = async (
   prisma: PrismaClient,
+  /** `limit`: live records read a page; every page is read. */
   input: { now?: Date; limit?: number; seam?: TicketWorkSeam } = {},
 ): Promise<void> => {
   const now = input.now ?? new Date()
-  const records = await loadLiveRecords(prisma, input.limit ?? 200)
+  const take = input.limit ?? 200
+  for (let after: string | null = null; ;) {
+    const records = await loadLiveRecords(prisma, { after, take })
+    await sweepPage(prisma, records, { now, ...(input.seam ? { seam: input.seam } : {}) })
+    if (records.length < take) break
+    after = records[records.length - 1]!.id
+  }
+  await recoverLostTicketJobs(prisma, now)
+}
+
+const sweepPage = async (
+  prisma: PrismaClient,
+  records: readonly LiveRecord[],
+  input: { now: Date; seam?: TicketWorkSeam },
+): Promise<void> => {
+  const { now } = input
   const finished = await lastRunFinishes(prisma, records)
   for (const record of records) {
     // A disabled trigger ends its work as it is switched off; one still
@@ -320,7 +345,6 @@ export const runTicketWorkSweep = async (
       console.error('[worker.ticket-work-sweep] record failed', JSON.stringify({ workId: record.id, decision }), error)
     }
   }
-  await recoverLostTicketJobs(prisma, now)
 }
 
 /**

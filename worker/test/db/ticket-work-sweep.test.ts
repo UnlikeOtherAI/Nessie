@@ -311,3 +311,26 @@ runDatabaseTest('a failed quiet wake retried after a question or a later wake is
   const woken = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
   assert.deepEqual([woken.wakeCount, woken.lastWakeReason], [work.wakeCount + 1, 'quiet'])
 })
+
+runDatabaseTest('the sweep reads every page of live work, so parked records never crowd out a quiet one', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const seen = new Set<string>()
+  // Three tickets parked in review for hours — the oldest wakes on the board.
+  for (let index = 0; index < 3; index += 1) {
+    const { task, work } = await startWork(prisma, s, seen)
+    await move(prisma, s, task.id, s.columns.review)
+    await drainTicketJobs(prisma, s, seen)
+    await finishRuns(prisma, work.threadId)
+    await quietFor(prisma, work.id, 300 + index)
+  }
+  const { work } = await startWork(prisma, s, seen)
+  await quietFor(prisma, work.id, 31)
+
+  // Two records a page: the quiet one is on a later page than the parked ones.
+  await runTicketWorkSweep(prisma, { limit: 2 })
+  const woken = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
+  assert.equal(woken.lastWakeReason, 'quiet')
+  assert.equal((await quietDeliveries(prisma, s)).length, 1, 'only the active record was woken')
+})
