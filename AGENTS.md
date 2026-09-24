@@ -376,7 +376,7 @@ when one changes, the same turn updates it, not this section.
   (trigger, page), whose review carries metadata only — the agent reads the
   change through `kb_page_diff`'s gates — never wakes on the agent's own
   edits, reaches a ticket's live work only for the same agent, and pauses the
-  trigger with a health reason when access is lost.
+  trigger with a health reason when access to its space is lost.
   Read [`docs/standards/document-triggers.md`](docs/standards/document-triggers.md)
   before writing code here.
 - **Provider reasoning ("thinking").** Every OpenAI-shaped stream is read

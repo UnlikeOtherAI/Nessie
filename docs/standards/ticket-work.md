@@ -451,7 +451,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   instruction that no longer parses costs the instructions alone. A comment
   carries its full text and its author, a thread message the message, and
   **(T2)** a description change a line diff (the shared
-  `computeLineDiff`/`renderLineDiffHunks`, bounded at 4 000 characters)
+  `computeLineDiff`/`renderLineDiffHunks`, bounded at 4 000 characters, a
+  long line clipped around its change rather than dropped)
   against the description as the agent last saw it: a kickoff that starts
   the work or tells of a description change records it in its own metadata
   (`ticketWorkKickoff.detailSeen`, never the ticket's history), and
