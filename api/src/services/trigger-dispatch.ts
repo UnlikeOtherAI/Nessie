@@ -87,6 +87,14 @@ export const dispatchAgentTrigger = async (
     return { kind: 'rejected', reason: 'trigger_paused' }
   }
 
+  // A ticket trigger has no thread to run in and no payload to run on: its
+  // work starts when a person moves a ticket, in that ticket's own thread, as
+  // a `ticket.work` run. A hand fire would be an ordinary run in the channel's
+  // General thread acting as whoever fired it (docs/standards/ticket-work.md).
+  if (trigger.type === 'ticket_changed') {
+    return { kind: 'rejected', reason: 'ticket_trigger_not_fireable' }
+  }
+
   if (trigger.workflowInstallationId) {
     return dispatchWorkflowTrigger(prisma, {
       actorContext: input.actorContext,

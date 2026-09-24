@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import { TicketChangedWorkConfigSchema } from '@nessie/schemas'
 
+import { resumeAgentTrigger, TriggerResumeError } from '../src/services/trigger-crud.js'
+
 /**
  * `20260924000000_board_agent_watchers_to_ticket_triggers`, run against rows
  * seeded the way the retired agent-watcher API wrote them
@@ -113,6 +115,28 @@ runDatabaseTest('agent watchers become disabled, follow-only ticket triggers and
 
     const left = await prisma.boardWatcher.findMany({ where: { boardId: world.board.id } })
     assert.deepEqual(left.map((row) => [row.userId, row.agentId]), [[world.other.id, null]])
+
+    // Resume is no back door: it resolves the stored config as a create
+    // would, so a migrated trigger stays off until a person gives it
+    // instructions and a public channel.
+    const resume = (triggerId: string) =>
+      resumeAgentTrigger(prisma, { organizationId: world.organization.id, triggerId })
+    const refusedFor = (pattern: RegExp) => (error: unknown) =>
+      error instanceof TriggerResumeError && pattern.test(error.message)
+    const bound = byAgent.get(world.bound.id)!
+    const unbound = byAgent.get(world.unbound.id)!
+    await assert.rejects(
+      () => resume(bound.id),
+      refusedFor(/^Edit this ticket trigger before resuming it — instructions: /),
+    )
+    await prisma.agentTrigger.update({
+      where: { id: unbound.id },
+      data: { config: { ...(unbound.config as Record<string, unknown>), instructions: { general: 'Triage it.' } } },
+    })
+    await assert.rejects(() => resume(unbound.id), refusedFor(/targetChannelId: a ticket trigger needs the channel/))
+    for (const trigger of [bound, unbound]) {
+      assert.equal((await prisma.agentTrigger.findUniqueOrThrow({ where: { id: trigger.id } })).enabled, false)
+    }
   } finally {
     await prisma.organization.deleteMany({ where: { id: world.organization.id } })
     await prisma.user.deleteMany({ where: { id: { in: [world.adder.id, world.other.id] } } })

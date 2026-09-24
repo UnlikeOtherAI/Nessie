@@ -13,7 +13,7 @@ import {
   endTicketWorkForTrigger,
   getAgentTrigger,
   listAgentTriggers,
-  ticketTriggerPickupConflict,
+  ticketTriggerResumeRefusal,
   updateAgentTrigger,
   validateTodoTemplateTriggerConfig,
   type AgentTriggerScope,
@@ -321,7 +321,7 @@ export const resumeAgentTrigger = async (
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     select: {
-      agent: { select: { agentKind: true, id: true, organizationId: true } },
+      agent: { select: { agentKind: true, id: true, name: true, organizationId: true } },
       config: true,
       enabled: true,
       healthReason: true,
@@ -370,14 +370,14 @@ export const resumeAgentTrigger = async (
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    // Switching a ticket trigger back on is when the one-pickup-per-column
-    // rule can newly bite: another trigger may have claimed its column while
-    // it was off. Checked under the board's lock, like a create or an edit.
+    // Switching a ticket trigger back on resolves its stored config exactly
+    // as a create would: its channel still public and the agent in it, its
+    // instructions written, and no other enabled trigger holding its column
+    // (checked under the board's lock). A migrated board watcher with no
+    // channel or instructions is refused here, not enabled to do nothing.
     if (existing.type === 'ticket_changed') {
-      const conflict = await ticketTriggerPickupConflict(tx, existing)
-      if (conflict) {
-        throw new TriggerResumeError(`${conflict[0]!.toUpperCase()}${conflict.slice(1)}.`)
-      }
+      const refusal = await ticketTriggerResumeRefusal(tx, existing)
+      if (refusal) throw new TriggerResumeError(refusal)
     }
     if (existing.agent && Object.hasOwn(configRecord, 'todoTemplateId')) {
       await acquireAgentTodoAgentLock(tx, existing.agent.id)

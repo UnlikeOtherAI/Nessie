@@ -314,6 +314,70 @@ export const ticketChangedConfigAsInput = (stored: unknown): Record<string, unkn
   }
 }
 
+/** The keys of the config that are objects, which an edit merges one level deep. */
+const NESTED_CONFIG_KEYS = ['follow', 'limits', 'instructions', 'pickup'] as const
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/**
+ * An edit's config patch laid over the stored config in the input's words
+ * (`ticketChangedConfigAsInput`): a top-level key replaces, and an object key
+ * — `follow`, `limits`, `instructions`, `pickup` — merges one level deep, so a
+ * patch naming `follow.kinds` keeps the `follow.includeSourceEvents` a person
+ * chose, and `limits.wakesPerTicket` keeps `startsPerDay`. `pickup: null`
+ * still clears the start-work columns, and an array is replaced whole.
+ */
+export const mergeTicketConfigPatch = (
+  stored: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> => {
+  const merged: Record<string, unknown> = { ...stored, ...patch }
+  for (const key of NESTED_CONFIG_KEYS) {
+    const before = stored[key]
+    const next = patch[key]
+    if (isPlainObject(before) && isPlainObject(next)) merged[key] = { ...before, ...next }
+  }
+  return merged
+}
+
+/**
+ * Why a stored `ticket_changed` trigger may not be switched back on without
+ * an edit (a resume), or null when it may. The stored config is resolved
+ * exactly as a create or an edit would resolve it — a live, ordinary, public
+ * target channel the agent is in, instructions, a board of that channel's
+ * project, one enabled pickup per column — so a resume never enables a
+ * trigger in a state a create would refuse: a board watcher migrated with no
+ * channel and no instructions, say, or one whose channel went private. Call
+ * it inside the transaction that enables the trigger.
+ */
+export const ticketTriggerResumeRefusal = async (
+  tx: Prisma.TransactionClient,
+  trigger: {
+    agent: { id: string; name: string; organizationId: string | null } | null
+    config: unknown
+    id: string
+    targetChannelId: string | null
+  },
+): Promise<string | null> => {
+  const agent = trigger.agent
+  if (!agent?.organizationId) return 'This ticket trigger\'s agent is gone, so it cannot be resumed.'
+  try {
+    await resolveTicketChangedTrigger(tx, {
+      agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
+      config: ticketChangedConfigAsInput(trigger.config),
+      enabled: true,
+      excludeTriggerId: trigger.id,
+      targetChannelId: trigger.targetChannelId,
+    })
+    return null
+  } catch (error) {
+    if (!(error instanceof TriggerConfigRefusalError)) throw error
+    return `Edit this ticket trigger before resuming it — ${
+      error.refusals.map((refusal) => `${refusal.path}: ${refusal.reason}`).join('; ')}.`
+  }
+}
+
 /**
  * The one-pickup rule for a trigger being switched back on without an edit
  * (a resume): its stored pickup columns against every other enabled trigger

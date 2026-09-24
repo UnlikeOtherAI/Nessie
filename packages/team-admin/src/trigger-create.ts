@@ -244,7 +244,10 @@ const createTicketChangedTrigger = async (
       scopeBoardId: resolved.scopeBoardId,
       scopeProjectId: resolved.scopeProjectId,
       targetChannelId: target.channelId,
-      targetThreadId: target.threadId,
+      // A ticket trigger opens one work thread per ticket in its channel and
+      // has no fixed thread: nothing may start a run for it in the channel's
+      // General thread, a hand fire included (`dispatchAgentTrigger` refuses).
+      targetThreadId: null,
     },
   })
   return mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE)

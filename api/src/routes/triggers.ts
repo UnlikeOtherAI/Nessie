@@ -375,6 +375,16 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     })
 
     if (dispatched.kind === 'rejected') {
+      if (dispatched.reason === 'ticket_trigger_not_fireable') {
+        sendApiError(
+          reply,
+          409,
+          'TICKET_TRIGGER_NOT_FIREABLE',
+          'A ticket trigger starts work when a person who can edit the board moves a ticket into one of its '
+          + 'start-work columns; it cannot be fired by hand.',
+        )
+        return reply
+      }
       if (dispatched.reason === 'agent_not_bound') {
         sendApiError(reply, 409, 'AGENT_NOT_BOUND', 'Agent must be bound to a channel before firing')
         return reply

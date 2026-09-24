@@ -122,6 +122,9 @@ export const dispatchEventTriggers = async (
       trigger: {
         agent,
         agentId,
+        // Its prompt and launch origin, as every other fire path passes them;
+        // dropping it ran every event trigger on the generic kickoff.
+        config: trigger.config,
         id: trigger.id,
         targetChannelId,
         targetThreadId,

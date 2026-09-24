@@ -140,7 +140,8 @@ runDatabaseTest('a ticket trigger resolves its project, board and columns on the
   assert.equal(row.scopeProjectId, s.projectId)
   assert.equal(row.scopeBoardId, s.engineering.id)
   assert.equal(row.targetChannelId, s.engId)
-  assert.ok(row.targetThreadId)
+  // One thread per ticket: no fixed thread, so nothing can run it in General.
+  assert.equal(row.targetThreadId, null)
   const stored = TicketChangedStoredConfigSchema.parse(row.config)
   assert.equal(stored.boardId, s.engineering.id)
   assert.deepEqual(stored.pickup, { assignOnPickup: true, columnIds: [s.engineering.inProgress, s.engineering.review] })
@@ -291,6 +292,24 @@ runDatabaseTest('an edit names only what it changes, and the rest is resolved ag
   assert.deepEqual(config['limits'], { startsPerDay: 20, wakesPerTicket: 10 })
   assert.deepEqual(config['instructions'], { general: 'Be brief.', onPickup: 'Comment a plan.' })
   assert.equal(config['authorUserId'], s.ownerId, 'authorship survives an edit')
+
+  // A nested patch merges one level deep: what it does not name survives.
+  await updateAgentTrigger(prisma, scope, { config: { limits: { startsPerDay: 5 } } })
+  const nested = await updateAgentTrigger(prisma, scope, {
+    config: {
+      follow: { kinds: ['comment', 'priority'] },
+      instructions: { onTicketChanged: 'Answer the change.' },
+      limits: { wakesPerTicket: 50 },
+    },
+  })
+  assert.ok(nested)
+  const merged = (await prisma.agentTrigger.findUniqueOrThrow({ where: { id: trigger.id } }))
+    .config as Record<string, unknown>
+  assert.deepEqual(merged['follow'], { includeSourceEvents: true, kinds: ['comment', 'priority'] }, 'the source opt-in stays')
+  assert.deepEqual(merged['limits'], { startsPerDay: 5, wakesPerTicket: 50 }, 'the other limit stays')
+  assert.deepEqual(merged['instructions'], {
+    general: 'Be brief.', onPickup: 'Comment a plan.', onTicketChanged: 'Answer the change.',
+  })
   // The same checks as a create: a channel that is not public is refused.
   assert.deepEqual(await refusalsOf(updateAgentTrigger(prisma, scope, { targetChannelId: s.secretId })), [
     'targetChannelId: #secret is protected. A ticket trigger\'s channel must be public, so that everyone who '

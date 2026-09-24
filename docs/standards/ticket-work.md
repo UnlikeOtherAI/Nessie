@@ -115,7 +115,12 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   pickup column is resolved by id, by name (case-insensitive, exactly one
   match) or by category (every column of it), and stored by id; an `endOn`
   id must be on the board, and a pickup column that `endOn` would end is
-  refused. `targetThreadId` and `nextRunAt` are refused. The stored config is
+  refused. `targetThreadId` and `nextRunAt` are refused, and the trigger row
+  stores no target thread (`target_thread_id` null): it has one work thread
+  per ticket, so `dispatchAgentTrigger` refuses a hand fire of it
+  (`POST /api/triggers/:triggerId/fire` answers 409
+  `TICKET_TRIGGER_NOT_FIREABLE`) rather than run it in the channel's General
+  thread as whoever fired it. The stored config is
   `TicketChangedStoredConfigSchema`'s shape with limits and instructions
   (`TicketChangedWorkConfigSchema` types them), and the trigger's
   `scope_project_id` / `scope_board_id` are the resolved project and board.
@@ -127,20 +132,38 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   with the first path as `error.field` and every refusal in `error.details`;
   `agent_trigger_create` and `agent_trigger_update` relay the message as it
   is, and on success say back the board as a link and the columns it
-  resolved.
+  resolved — and name any of `ticket_read`, `ticket_comment_add` and
+  `ticket_move` the agent's policy does not grant
+  (`describeMissingTicketTools`): board tools are off until granted, and a
+  woken agent without them can do nothing with its ticket. The Designer's
+  setup order is agent, public project channel, those tools through
+  `agent_tool_access_set`, then the trigger; `project_structure_read` names
+  every channel's `channelId` beside its link, as it does boards and
+  columns.
 - **One enabled pickup trigger per column.** At most one enabled
   `ticket_changed` trigger picks up from a column, so two agents never start
   on the same ticket. It is checked on create, on every edit, on switching a
   trigger on (`updateAgentTrigger` with `enabled: true`) and on resume
-  (`resumeAgentTrigger`, `ticketTriggerPickupConflict`), each under a
+  (`resumeAgentTrigger`, `ticketTriggerResumeRefusal`), each under a
   transaction-scoped advisory lock on the board, so two writes racing for a
   column cannot both pass; the refusal names the other trigger and its
   agent. A disabled trigger claims nothing.
+- **A resume resolves the stored config as a create would**
+  (`ticketTriggerResumeRefusal`): its channel still live, ordinary, public
+  and the agent in it, its instructions written, its board its channel's
+  project's, and its columns unclaimed. A migrated board watcher with no
+  channel or instructions, or a trigger whose channel went private, is
+  refused with `TRIGGER_RESUME_BLOCKED` and the fields to fix, never enabled
+  to do nothing.
 - **An edit names only what it changes.** `updateAgentTrigger` reads the
   stored config back in the input's words (`ticketChangedConfigAsInput`),
-  lays the patch's top-level keys over it and resolves the whole again, so a
-  changed channel or board re-checks every column. A name or description
-  edit resolves nothing.
+  lays the patch over it — a top-level key replaces, and `follow`, `limits`,
+  `instructions` and `pickup` merge one level deep
+  (`mergeTicketConfigPatch`), so `{follow: {kinds}}` keeps
+  `includeSourceEvents` and `{limits: {wakesPerTicket}}` keeps
+  `startsPerDay`; `pickup: null` still clears the start-work columns — and
+  resolves the whole again, so a changed channel or board re-checks every
+  column. A name or description edit resolves nothing.
 - **Authorship grants nothing.** Every agent trigger records who set it up
   as `config.authorUserId` (server-owned: stripped from client input, never
   returned). It is not `createdByUserId`, because that key is what
@@ -836,9 +859,15 @@ causes it**:
   never returned. `api/test/trigger-config-refusal-routes.test.ts`: both
   routes answer `TRIGGER_CONFIG_REFUSED` with the field and the details.
 - `worker/test/db/designer-ticket-trigger.test.ts`: `project_structure_read`
-  lists only what the person asking can see, and the Designer's
-  `agent_trigger_create` / `agent_trigger_update` resolve from names, refuse
-  field by field and say back what they resolved.
+  lists only what the person asking can see, with channel ids, and the
+  Designer's `agent_trigger_create` / `agent_trigger_update` resolve from
+  names, refuse field by field, say back what they resolved and which board
+  tools the agent lacks, and keep what a nested patch does not name.
+  `packages/team-admin/test/trigger-ticket-config-db.test.ts` pins the
+  one-level merge; `api/test/board-agent-watchers-migration-postgres.test.ts`
+  a migrated trigger's resume refused; `api/test/trigger-dedupe-namespace.test.ts`
+  a hand fire refused; `packages/runtime/test/trigger-prompt.test.ts` that a
+  webhook's configured prompt still never carries its payload.
 - `api/test/ticket-work-view-routes.test.ts`: the three reads against
   Postgres — the chip's record, wake limit and thread only for its readers,
   a skip said until work starts after it, a refused re-entry said and an

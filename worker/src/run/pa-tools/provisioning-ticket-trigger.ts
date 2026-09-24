@@ -28,6 +28,27 @@ export const describeMirroredSources = (
 }
 
 /**
+ * The board tools a ticket trigger's agent needs to do anything with a wake:
+ * read the ticket, comment on it, move it. Board tools are off unless the
+ * agent's policy says true, and a `ticket.work` run is lent only those its
+ * policy grants, so a trigger whose agent lacks them wakes an agent that can
+ * do nothing — said at once, with the verb that fixes it.
+ */
+export const TICKET_WORK_REQUIRED_TOOL_IDS = ['ticket_read', 'ticket_comment_add', 'ticket_move'] as const
+
+export const describeMissingTicketTools = (
+  agentName: string,
+  toolPolicy: unknown,
+): string | null => {
+  const policy = toolPolicy && typeof toolPolicy === 'object' ? toolPolicy as Record<string, unknown> : {}
+  const missing = TICKET_WORK_REQUIRED_TOOL_IDS.filter((id) => policy[id] !== true)
+  return missing.length === 0
+    ? null
+    : `${agentName} cannot use ${missing.join(', ')} yet, so a wake would give it no way to work the ticket: `
+      + `set ${missing.length === 1 ? 'it' : 'them'} true with agent_tool_access_set before a ticket is moved.`
+}
+
+/**
  * What a `ticket_changed` trigger resolved to, said back after
  * `agent_trigger_create` or `agent_trigger_update`: the board as a link, and
  * the start-work and end columns it stored by id, by name and category. A
@@ -67,6 +88,13 @@ export const describeTicketTriggerScope = async (
     }),
     config.follow.includeSourceEvents,
   )
+  const agent = trigger.agentId
+    ? await context.prisma.agent.findUnique({
+        where: { id: trigger.agentId },
+        select: { name: true, toolPolicy: true },
+      })
+    : null
+  const missingTools = agent ? describeMissingTicketTools(agent.name, agent.toolPolicy) : null
   const column = (candidate: { category: string; id: string; name: string }) =>
     `${candidate.name} (${candidate.category}, columnId=${candidate.id})`
   const pickup = board.columns.filter((candidate) => config.pickup?.columnIds.includes(candidate.id))
@@ -82,5 +110,6 @@ export const describeTicketTriggerScope = async (
     `Wakes the agent on: ${config.follow.kinds.join(', ')}`
     + (config.follow.includeSourceEvents ? ' (the connected board\'s own changes too)' : ''),
     ...(mirrored ? [mirrored] : []),
+    ...(missingTools ? [missingTools] : []),
   ]
 }

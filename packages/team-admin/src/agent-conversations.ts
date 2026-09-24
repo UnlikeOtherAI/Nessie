@@ -19,7 +19,6 @@ import {
   parseThreadId,
   parseUserId,
   resolvePageLimit,
-  ticketWorkThreadRefOf,
   type ActiveRunStatus,
   type AgentConversationRecord,
   type PaginationMeta,
@@ -183,7 +182,6 @@ const conversationThreadSelect = {
   id: true,
   agentId: true,
   title: true,
-  metadata: true,
   startedByUserId: true,
   createdAt: true,
   channel: {
@@ -506,7 +504,6 @@ const buildConversationRecords = async (
       unreadCount: unread.get(row.id) ?? 0,
       activeRun: activeRuns.get(row.id) ?? null,
       lastRunOutcome: outcomes.get(row.id) ?? null,
-      ticket: ticketWorkThreadRefOf(row.metadata),
       createdAt: row.createdAt.toISOString(),
     })
   }
@@ -523,7 +520,7 @@ const buildConversationRecords = async (
  * Nobody named an agent here, so a General thread keeps the oldest-binding rule
  * and a conversation keeps its own `agentId`.
  */
-export const loadConversationForUser = async (
+export const loadConversationRecordForUser = async (
   prisma: PrismaClient,
   input: {
     organizationId: string
@@ -560,7 +557,7 @@ export const loadConversationForUser = async (
  * what lets "zero rows plus an invisible agent is a 404" live here instead of
  * being restated at every door.)
  */
-export const listAgentConversationsForUser = async (
+export const listAgentConversationRecordsForUser = async (
   prisma: PrismaClient,
   input: {
     agentId: string

@@ -227,8 +227,10 @@ export type DispatchTriggerResult =
       // The four claim-time reasons come from `@nessie/schemas` because the
       // worker writes them onto the delivery row when the same question is
       // re-asked after the ack; `webhook_secret_mismatch` is the one rejection
-      // only an inbound request can produce, so it never reaches a job.
-      reason: TriggerFireSkipReason | 'webhook_secret_mismatch'
+      // only an inbound request can produce, so it never reaches a job — as is
+      // `ticket_trigger_not_fireable`: a ticket trigger starts from a person's
+      // move, one work thread per ticket, never from a hand fire.
+      reason: TriggerFireSkipReason | 'webhook_secret_mismatch' | 'ticket_trigger_not_fireable'
     }
   | {
       delivery: AgentTriggerDeliveryRecord

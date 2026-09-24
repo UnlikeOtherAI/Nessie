@@ -86,8 +86,10 @@ const channelLines = async (
         select: { channelId: true },
       })).map((binding) => binding.channelId))
     : null
+  // The id beside the link, as boards and columns carry theirs: a ticket
+  // trigger's `targetChannelId` is that id, never something to dig from a URL.
   return channels.map((channel) =>
-    `- ${formatChannelMarkdownLink(channel)} | ${channel.visibility}`
+    `- ${formatChannelMarkdownLink(channel)} (channelId=${channel.id}) | ${channel.visibility}`
     + (agent && bound ? ` | ${agent.name} ${bound.has(channel.id) ? 'is in it' : 'is not in it'}` : ''))
 }
 

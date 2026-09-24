@@ -191,8 +191,8 @@ runDatabaseTest('project_structure_read returns only what the person asking can 
   }
   // Channels: the public one and the protected one they are in, never the
   // protected one they are not in. Each says whether the agent is in it.
-  assert.ok(text.includes(`- [#eng](/channels/${s.engId}) | public | CTO is in it`))
-  assert.ok(text.includes(`- [#crew](/channels/${s.crewId}) | protected | CTO is in it`))
+  assert.ok(text.includes(`- [#eng](/channels/${s.engId}) (channelId=${s.engId}) | public | CTO is in it`))
+  assert.ok(text.includes(`- [#crew](/channels/${s.crewId}) (channelId=${s.crewId}) | protected | CTO is in it`))
   assert.doesNotMatch(text, /#leads/)
   // Spaces they can read, with top-level folders only.
   assert.ok(text.includes(`Tech docs (spaceId=${s.spaceId}, visibility=project) | top-level folders: Specs (pageId=${s.specsId})`))
@@ -200,7 +200,7 @@ runDatabaseTest('project_structure_read returns only what the person asking can 
 
   // The owner sees their own protected room too, and the same board.
   const ownerRead = await runProjectStructureReadTool(buildContext(prisma, s, s.ownerId), { projectId: s.projectId })
-  assert.ok(ownerRead.outputPreview.includes(`- [#leads](/channels/${s.leadsId}) | protected`))
+  assert.ok(ownerRead.outputPreview.includes(`- [#leads](/channels/${s.leadsId}) (channelId=${s.leadsId}) | protected`))
   assert.doesNotMatch(ownerRead.outputPreview, /is in it|is not in it/, 'no agent named, no placements')
 
   // A project they are not in reads as missing.
@@ -257,10 +257,18 @@ runDatabaseTest('the Designer creates a ticket trigger from names, refused field
       + `In progress (in_progress, columnId=${s.columns['In progress']}), and assigns an unassigned ticket to the agent`,
       `Ends the work in Backlog (todo, columnId=${s.columns['Backlog']}), Done (done, columnId=${s.columns['Done']})`,
       'Wakes the agent on: comment, description, moved, thread_message, document',
+      // Board tools are off by default: the answer says which the agent lacks.
+      'CTO cannot use ticket_read, ticket_comment_add, ticket_move yet, so a wake would give it no way to work '
+      + 'the ticket: set them true with agent_tool_access_set before a ticket is moved.',
     ].join('\n'),
   )
 
-  // An edit names only what it changes, and says back what it resolved.
+  // Granted, the warning goes; an edit names only what it changes, and says
+  // back what it resolved.
+  await prisma.agent.update({
+    where: { id: s.ctoId },
+    data: { toolPolicy: { ticket_read: true, ticket_comment_add: true, ticket_move: true } },
+  })
   const updated = await runAgentTriggerUpdateTool(context, {
     config: { follow: { kinds: ['comment', 'priority'] }, pickup: { assignOnPickup: false, columns: [{ name: 'Review' }] } },
     triggerId: trigger.id,

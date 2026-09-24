@@ -2,7 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
 import type { AgentTriggerRecord, AgentTriggerStatus } from '@nessie/schemas'
 import { mergeTriggerConfigPreservingIdentity, stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
-import { resolveTicketChangedTrigger, ticketChangedConfigAsInput } from './trigger-ticket-config.js'
+import { mergeTicketConfigPatch, resolveTicketChangedTrigger, ticketChangedConfigAsInput } from './trigger-ticket-config.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
 import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
@@ -51,7 +51,9 @@ type AgentTriggerUpdateInput = {
 /**
  * A `ticket_changed` edit. A config patch names only the keys it changes: the
  * stored config is read back in the input's words (`ticketChangedConfigAsInput`),
- * the patch laid over it, and the whole resolved and checked again, exactly as
+ * the patch laid over it one level deep (`mergeTicketConfigPatch`, so
+ * `{follow: {kinds}}` keeps `includeSourceEvents` and `{limits: {wakesPerTicket}}`
+ * keeps `startsPerDay`), and the whole resolved and checked again, exactly as
  * a create is — including when the edit only switches the trigger on, which is
  * when the one-pickup-per-column rule can newly bite. A refusal throws
  * `TriggerConfigRefusalError`; a name or description edit resolves nothing.
@@ -77,7 +79,10 @@ const updateTicketChangedTrigger = async (
     if (reresolve) {
       const resolved = await resolveTicketChangedTrigger(tx, {
         agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
-        config: { ...ticketChangedConfigAsInput(existing.config), ...stripServerOwnedTriggerConfig(input.config) },
+        config: mergeTicketConfigPatch(
+          ticketChangedConfigAsInput(existing.config),
+          stripServerOwnedTriggerConfig(input.config),
+        ),
         enabled: enabled ?? existing.enabled,
         excludeTriggerId: existing.id,
         nextRunAt: input.nextRunAt,
@@ -91,7 +96,8 @@ const updateTicketChangedTrigger = async (
         scopeBoardId: resolved.scopeBoardId,
         scopeProjectId: resolved.scopeProjectId,
         targetChannelId: target.channelId,
-        targetThreadId: target.threadId,
+        // One thread per ticket, never the channel's General thread (`createTicketChangedTrigger`).
+        targetThreadId: null,
       }
     }
     const updated = await tx.agentTrigger.update({
