@@ -166,7 +166,8 @@ runDatabaseTest('past waitingMachineHours the work moves to another machine of t
       where: { threadId: moved.threadId, metadata: { path: ['ticketWorkKickoff', 'workId'], equals: work.id } },
       orderBy: { createdAt: 'desc' },
     })
-    assert.match(kickoff.content, /The coding session this ticket had on its last machine is gone/)
+    assert.match(kickoff.content,
+      /The coding session this ticket had on its last machine was closed when the work moved here/)
 
     // Its session on the offline machine has a close request, which rides that machine's next heartbeat.
     const close = await prisma.executorCodingSessionCloseRequest.findFirstOrThrow({ where: { sessionId } })

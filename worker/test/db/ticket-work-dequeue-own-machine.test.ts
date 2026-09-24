@@ -71,7 +71,8 @@ runDatabaseTest('queued work whose machine went offline takes another free machi
       where: { threadId: moved.threadId, metadata: { path: ['ticketWorkKickoff', 'workId'], equals: moved.id } },
       orderBy: { createdAt: 'desc' },
     })
-    assert.match(kickoff.content, /The coding session this ticket had on its last machine is gone with that machine/)
+    assert.match(kickoff.content,
+      /The coding session this ticket had on its last machine was closed when the work moved here: start a new one/)
   })
 })
 

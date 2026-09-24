@@ -66,8 +66,8 @@ const dequeuedText = (movedOff: boolean): string =>
   'A machine is free, so this ticket\'s queued work starts now on one of its owner\'s machines, and you are bound '
   + 'to it. Read the ticket, then brief the coding agent. Never name the machine on the ticket or in this thread.'
   + (movedOff
-    ? ' The coding session this ticket had on its last machine is gone with that machine: start a new one whose '
-      + 'brief says what was already done, and the pull request below if there is one.'
+    ? ' The coding session this ticket had on its last machine was closed when the work moved here: start a new one '
+      + 'whose brief says what was already done, and the pull request below if there is one.'
     : '')
 
 type Policy = {

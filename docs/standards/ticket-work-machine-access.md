@@ -495,8 +495,10 @@ a busy minute never multiplies them:
   tickets that never began), with a `work_queued` row whose
   `previousReason` is `machine_offline` and `ticket.work.queued`
   (`requeuedFrom`). The dequeue then places it on another machine with a
-  wake that says its session is gone and a new one's brief must say what was
-  done. With a one-machine pool it simply stays queued.
+  wake that says its earlier session was closed when the work moved, and
+  that a new one's brief must say what was done, with the pull request. The
+  same wake follows any dequeue onto another machine than the record's last.
+  With a one-machine pool it simply stays queued.
 - **What it reads as.** The chip says *"Paused: the machine is offline since
   14:32. Work resumes when it reconnects."* (`machineOfflineSince`, the
   machine's last heartbeat, never its name), its history *"resumed the work:
