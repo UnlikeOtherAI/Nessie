@@ -54,7 +54,11 @@ preserved the manual identity mapping, and produced human watcher alerts. Adding
 an ordinary test agent through the board's Watchers controls then produced a
 `run.execute` job on the Done transition. That job reached inference and failed
 at the intentionally disabled test model endpoint; model completion and local
-executor access were not tested. No paid inference was used.
+executor access were not tested. No paid inference was used. Agent watchers
+have since been retired: a board's Watchers are people only, and an agent
+starts work through a `ticket_changed` trigger (board watchers plan, §11:
+[2026-09-06-board-watchers.md](plans/2026-09-06-board-watchers.md)). The
+fixture evaluation now picks a person there and checks no agent is offered.
 
 The test also reproduced a Linear status line on a native-only board and a
 recipient popover covering Save. The source strip now requests the selected

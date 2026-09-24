@@ -15,6 +15,7 @@ export const ids = {
   source: '77777777-7777-4777-8777-877777777777',
   user: '88888888-8888-4888-8888-888888888888',
   watcher: 'abababab-abab-4bab-8bab-abababababab',
+  watcherAgent: 'efefefef-efef-4fef-8fef-efefefefefef',
   watcherOther: 'cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd',
 }
 
@@ -78,24 +79,28 @@ export const createConnectedBoardSourceFixtures = () => {
     session: { issuedAt: now, sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
     user: { displayName: 'Alex Example', email: 'alex@example.test', id: ids.user, roleIds: ['owner'] },
   }
-  const watcherAgents = [
+  // Board watchers are people (docs/plans/2026-09-06-board-watchers.md §11).
+  // The team agent shares the watcher's name, so an address bar that still
+  // offered agents would show two matches for one query.
+  const watcherPeople = [
+    { displayName: 'UnlikeOtherAI QA watcher', email: 'qa-watcher@example.test', id: ids.watcher },
+    { displayName: 'UnlikeOtherAI QA backup', email: 'qa-backup@example.test', id: ids.watcherOther },
+  ]
+  const teamAgents = [
     {
-      agentKind: 'shared', id: ids.watcher, name: 'UnlikeOtherAI QA watcher',
-      role: 'quality', systemManaged: false, visibility: 'team',
-      channelIds: [], createdAt: now, lastActivityAt: now, status: 'idle',
-      todosEnabled: false, updatedAt: now,
-    },
-    {
-      agentKind: 'shared', id: ids.watcherOther, name: 'UnlikeOtherAI QA backup',
+      agentKind: 'shared', id: ids.watcherAgent, name: 'UnlikeOtherAI QA watcher agent',
       role: 'quality', systemManaged: false, visibility: 'team',
       channelIds: [], createdAt: now, lastActivityAt: now, status: 'idle',
       todosEnabled: false, updatedAt: now,
     },
   ]
+  // No agent starts work from these boards.
+  const noTicketWork = { cards: [], pickups: [], viewerCanCreateTriggers: false }
 
   const shell = (pathname) => {
-    if (pathname === '/api/agents' || pathname === '/api/agents/all') return watcherAgents
-    if (pathname === '/api/channels' || pathname === '/api/teams' || pathname === '/api/users' || pathname === '/api/favorites') return []
+    if (pathname === '/api/agents' || pathname === '/api/agents/all') return teamAgents
+    if (pathname === '/api/users') return watcherPeople
+    if (pathname === '/api/channels' || pathname === '/api/teams' || pathname === '/api/favorites') return []
     if (pathname === '/api/integrations/products') return []
     if (pathname === '/api/alerts/summary') return { assignedWork: { projects: {}, total: 0 }, knowledge: { projects: {}, total: 0 }, unreadCount: 0 }
     if (pathname === '/api/threads/activity') return { hasMore: false, items: [], unreadTotal: 0 }
@@ -128,13 +133,14 @@ export const createConnectedBoardSourceFixtures = () => {
     if (pathname === `/api/projects/${ids.project}/members`) return json([])
     if (pathname === `/api/projects/${ids.project}/boards`) return json([board, localBoard])
     if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/tasks` || pathname === `/api/projects/${ids.project}/boards/${ids.localBoard}/tasks`) return json({ tasks: [], truncated: false })
+    if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/ticket-work` || pathname === `/api/projects/${ids.project}/boards/${ids.localBoard}/ticket-work`) return json(noTicketWork)
     if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/watchers` && method === 'GET') return json([])
     if (pathname === `/api/projects/${ids.project}/boards/${ids.board}/watchers` && method === 'PUT') {
       const body = request.postDataJSON()
       calls.at(-1).body = body
       return json(body.watchers.map((watcher, index) => ({
         addedByUserId: ids.user, boardId: ids.board, createdAt: now,
-        displayName: watcher.id === ids.watcher ? 'UnlikeOtherAI QA watcher' : 'UnlikeOtherAI QA backup',
+        displayName: watcherPeople.find((person) => person.id === watcher.id)?.displayName ?? 'Unknown',
         id: `dddddddd-dddd-4ddd-8ddd-${String(index).padStart(12, '0')}`,
         kind: watcher.kind, recipientId: watcher.id,
       })))
