@@ -49,7 +49,12 @@ card shows and every start checks:
   trigger's `ticketUsd`. It bounds a runaway turn, while `ticketUsd` is the
   coarser backstop checked at wakes, intake and the sweep. T4 adds
   `maxBudgetUsd` and `maxLiveSessionsPerOwner` to the signed codingSessions
-  facts, so the server can check both.
+  facts, so the server can check both. As built, `maxBudgetUsd` is stated
+  per offered agent: Claude Code's is the configuration's, and Codex's is
+  always `null`, because Codex has no budget flag and nothing bounds its
+  turn. So a required budget can be met only by Claude Code, and a
+  descriptor an older daemon signed, which states neither fact, meets
+  neither check.
 - **Merge ability.** The card reads the pinned descriptor's `allowedTools`.
   It says whether `Bash(git push:*)`, `Bash(gh pr create:*)`,
   `Bash(gh pr checks:*)` and `Bash(gh pr merge:*)` are allowed. When they are
@@ -163,7 +168,15 @@ shared.
   `ticket:<policyId>:<taskId>` for ticket work, and absent for launches and
   leases. `executorCodingSessionOwnerKeyInput` and the daemon's `_meta`
   derivation both hash it. A lease-end close then cannot reach ticket
-  sessions, and each ticket has its own quota.
+  sessions, and each ticket has its own quota. As built: the key text is
+  the three ids, then `|contextId`, and a context-less key is unchanged. The
+  same holds for the other owner-wide close keyed without a context, one
+  agent's access being withdrawn, so its fence must also end the policy and
+  write the session-scoped closes below. A machine-wide close (pause,
+  revoke, the owner's roster removal) already names every key the last
+  report listed, a ticket's included. The executor page names a session's
+  agent from context-less keys, so a ticket's session reads with no agent
+  until the page learns the policy contexts.
 - **Worker filter (T4, defence in depth):** in `ticket.work` runs the
   `coding_session_*` tools refuse a `sessionId` not in the work record: *"That
   session is not this ticket's."* `sessionId` is optional and defaults to the
