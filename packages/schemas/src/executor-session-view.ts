@@ -47,7 +47,8 @@ export const ExecutorSessionViewResponseSchema = z.object({
   canShare: z.boolean(),
 }).strict()
 
-export const ExecutorHostSessionListSchema = z.array(ExecutorCodingSessionSummarySchema.omit({ ownerKey: true }).extend({
+const HostSessionSummarySchema = ExecutorCodingSessionSummarySchema.omit({ ownerKey: true })
+export const ExecutorHostSessionListSchema = z.array(HostSessionSummarySchema.extend({
   executorId: z.string().uuid(), executorLabel: z.string(), shared: z.boolean(),
 }).strict()).max(200)
 

@@ -632,7 +632,12 @@ jobs:
       # `"cache": false` in turbo.json: its result depends on a database Turbo
       # cannot hash.
       - name: Run tests
-        run: pnpm test
+        # Interactive executor tests launch real, isolated tmux sessions.
+        # The runner image is not our dependency declaration.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y tmux
+          pnpm test
         env:
           TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
           TURBO_CONCURRENCY: 4

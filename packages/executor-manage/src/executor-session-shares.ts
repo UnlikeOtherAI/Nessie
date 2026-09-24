@@ -4,9 +4,12 @@ import type { AuthorizedActionContext } from '@nessie/schemas'
 
 import { requireHostSession, sessionAccessWhere, sessionNotFound, sessionSummary, type HostSessionId } from './executor-session-access.js'
 
-export const listExecutorHostSessions = async (prisma: PrismaClient, actor: AuthorizedActionContext) => {
+export const listExecutorHostSessions = async (
+  prisma: PrismaClient, actor: AuthorizedActionContext, executorId?: string,
+) => {
   const rows = await prisma.executorHostSession.findMany({
-    where: sessionAccessWhere(actor), orderBy: { reportedAt: 'desc' }, take: 200,
+    where: { AND: [sessionAccessWhere(actor), ...(executorId ? [{ executorId }] : [])] },
+    orderBy: { reportedAt: 'desc' }, take: 200,
     include: { executor: { select: { label: true, pairingOwnerUserId: true } } },
   })
   return rows.map((row) => ({
@@ -58,4 +61,3 @@ export const changeExecutorSessionShare = async (
     requestId: actor.actionContext.requestId, resourceId: input.sessionId, resourceType: 'executor_host_session',
   })
 })
-

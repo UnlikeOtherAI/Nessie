@@ -242,7 +242,7 @@ export const createAdminSurfaces = (adminRoot: string): Surface[] => [
     keyScope: () => 'agent',
     intent: { state: ['agentTab'] },
     parentOf: toAgents,
-    pattern: /^\/agents\/(?!task-sets$)([^/]+)$/,
+    pattern: /^\/agents\/(?!(?:task-sets|executor-sessions)$)([^/]+)$/,
     root: adminRoot,
     section: 'admin',
     type: 'detail',

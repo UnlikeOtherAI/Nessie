@@ -115,6 +115,8 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
       toolName: CODING_SESSION_TOOL_NAMES.terminalWrite,
       description: 'Type exact text or key bytes into a terminal session. Include \\r for Enter; '
         + '\\u0003 is Ctrl-C and \\u001b[A is Up. No newline is added. Read the screen afterwards. '
+        + 'Send text and Enter separately if the CLI treats a combined write as paste. '
+        + 'Claude on Windows may need CSI-u Enter (\\u001b[13;1u) instead of \\r. '
         + 'Do not use this for structured Claude/Codex sessions; those use coding_session_send.',
       inputSchema: {
         type: 'object', additionalProperties: false, required: ['sessionId', 'data'],

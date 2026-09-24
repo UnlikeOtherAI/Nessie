@@ -97,7 +97,10 @@ const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-coding-sessions')
  * machine's next report arriving without it.
  */
 const openContext = async (browser, { accessView = access, canClose, names, refuse = [], width }) => {
-  const state = { closing: new Set(), dropped: new Set(), posted: [], reads: 0, viewers: [], screen: 'Claude is working' }
+  const state = {
+    closing: new Set(), dropped: new Set(), posted: [], reads: 0, viewers: [],
+    screen: 'Claude is working', revoked: false,
+  }
   const unexpected = []
   const context = await browser.newContext({ hasTouch: width < 768, viewport: { width, height: 900 } })
   await context.route('**/api/**', async (route) => {
@@ -107,6 +110,7 @@ const openContext = async (browser, { accessView = access, canClose, names, refu
     const respond = (data, status = 200) => route.fulfill({ status, json: { data } })
     const sessionBase = `/api/executors/${executorId}/coding-sessions/${pricing.sessionId}`
     if (path === sessionBase + '/view') {
+      if (state.revoked) return respond(null, 404)
       const { ownerKey: omitted, ...session } = pricing
       return respond({
         canShare: canClose, online: true, session,
@@ -126,7 +130,7 @@ const openContext = async (browser, { accessView = access, canClose, names, refu
     }
     if (path === '/api/executor-sessions') {
       return respond(reported.map(({ ownerKey: omitted, ...session }) => ({
-        ...session, executorId, executorLabel: 'Workstation', shared: false,
+        ...session, executorId, executorLabel: 'Workstation', shared: !canClose,
       })))
     }
     if (path === '/api/executors') return respond([executor])
@@ -294,6 +298,23 @@ try {
   assert.deepEqual(unasked.errors, [])
   assert.deepEqual(unasked.unexpected, [])
   await unasked.context.close()
+
+  // A shared recipient reaches the same viewer without any machine-management reads.
+  const recipient = await openContext(browser, { canClose: false, names: {}, width: 390 })
+  await recipient.page.goto(`${ADMIN_URL}/e2e/executor-coding-sessions/index.html?sessions=1`)
+  await recipient.page.getByRole('link', { name: new RegExp(pricing.title) }).click()
+  await recipient.page.getByTestId('executor-terminal-screen').waitFor()
+  assert.equal(await recipient.page.getByRole('button', { name: 'Share session', exact: true }).count(), 0)
+  assert.equal(recipient.state.reads, 0, 'a shared recipient never reads the machine session roster')
+  assert.ok(await noOverflow(recipient.page), 'the terminal scrolls internally on a phone')
+  await recipient.page.screenshot({ fullPage: true, path: resolve(output, 'shared-terminal-390.png') })
+  recipient.state.revoked = true
+  await recipient.page.getByText('This session is unavailable or you no longer have permission to view it.',
+    { exact: false }).waitFor()
+  assert.equal(await recipient.page.getByTestId('executor-terminal-screen').count(), 0, 'revocation hides cached output')
+  assert.deepEqual(recipient.errors, [])
+  assert.deepEqual(recipient.unexpected, [])
+  await recipient.context.close()
 
   console.log(`Executor coding sessions flows passed; screenshots: ${output}`)
 } finally { await browser.close(); await stopProcess(admin) }

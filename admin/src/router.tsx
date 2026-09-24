@@ -409,7 +409,7 @@ export const router = createBrowserRouter([
         element: lazyElement(ExecutorSessionPage, 'detail'),
       },
       {
-        path: 'agents/executor-sessions',
+        path: '/agents/executor-sessions',
         element: lazyElement(ExecutorSessionsPage, 'detail'),
       },
       {

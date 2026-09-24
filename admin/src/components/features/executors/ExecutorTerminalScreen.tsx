@@ -25,9 +25,9 @@ export const ExecutorTerminalScreen = ({ screen }: { screen: ExecutorSessionScre
     if (!instance || !host) return
     const styles = getComputedStyle(host)
     instance.options.theme = {
-      background: styles.getPropertyValue('--main').trim(),
-      foreground: styles.getPropertyValue('--tx').trim(),
-      cursor: styles.getPropertyValue('--tx').trim(),
+      background: styles.getPropertyValue('--terminal-bg').trim(),
+      foreground: styles.getPropertyValue('--terminal-fg').trim(),
+      cursor: styles.getPropertyValue('--terminal-fg').trim(),
     }
     const identity = `${screen.cols}:${screen.rows}:${screen.ansi}`
     if (last.current === identity) return
@@ -42,7 +42,7 @@ export const ExecutorTerminalScreen = ({ screen }: { screen: ExecutorSessionScre
     })
   }, [screen])
   return (
-    <div className="executor-terminal-screen min-h-0 overflow-auto rounded-lg border border-[color:var(--sep)] p-3"
+    <div className="executor-terminal-screen min-h-0 overflow-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--terminal-bg)] p-3"
       data-testid="executor-terminal-screen" aria-label="Read-only session terminal" role="region">
       <div className="w-max" ref={element} />
     </div>

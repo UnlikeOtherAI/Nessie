@@ -21,6 +21,8 @@ import '../../src/styles.css'
  */
 
 const EXECUTOR_ID = '33333333-3333-4333-8333-333333333333'
+const initialPath = new URLSearchParams(window.location.search).get('sessions') === '1'
+  ? '/agents/executor-sessions' : `/agents/executors/${EXECUTOR_ID}?tab=permissions`
 
 const client = createApiClient({ baseUrl: '', token: 'executor-coding-sessions-fixture' })
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -29,7 +31,7 @@ if (!(root instanceof HTMLElement)) throw new Error('Executor coding sessions fi
 createRoot(root).render(
   <QueryClientProvider client={queries}>
     <ApiClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/agents/executors/${EXECUTOR_ID}?tab=permissions`]}>
+      <MemoryRouter initialEntries={[initialPath]}>
         <LocalBackProvider>
           <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
             <Routes>

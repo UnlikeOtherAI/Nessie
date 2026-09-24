@@ -94,6 +94,7 @@ const DEFINITIVE_FAILURES = new Set(['EXECUTOR_NOT_FOUND', 'EXECUTOR_DAEMON_PROO
 const PENDING_CLOSE_MAXIMUM = 64
 
 export type CodingSessionsDaemon = {
+  inventory: () => Promise<ExecutorCodingSessionSummary[] | undefined>
   screen: (request: ExecutorSessionViewRequest) => Promise<ExecutorSessionScreen | null>
   /** The reserved `_meta` for one call: defined only for the built-in bridge. */
   callMeta: (
@@ -177,6 +178,14 @@ export const createCodingSessionsDaemon = (input: {
   })
 
   return {
+    inventory: async () => {
+      const answer = await serially(() => daemonCall('session_inventory', {}))
+      if (!answer || !Array.isArray(answer.sessions)) return undefined
+      return answer.sessions.flatMap((entry) => {
+        const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
+        return parsed.success ? [parsed.data] : []
+      }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
+    },
     screen: async (request) => {
       const configPath = bridge ? codingSessionsServerConfigPath(bridge) : undefined
       if (!configPath) return null

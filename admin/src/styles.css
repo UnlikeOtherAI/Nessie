@@ -47,6 +47,9 @@
 @property --scrim-strong { syntax: '<color>'; inherits: true; initial-value: #000000; }
 
 :root {
+  /* Terminal applications choose ANSI colours against a dark canvas on every theme. */
+  --terminal-bg: #17181a;
+  --terminal-fg: #e5e7eb;
   color-scheme: dark;
   --rail: #2e1132; --sb: #1e1222; --sb-active: #6d3579; --ink: #2c1832;
   --muted: #7e6e87; --line: rgba(55, 27, 62, 0.18); --main: #1a1d21; --main-hover: #222629;

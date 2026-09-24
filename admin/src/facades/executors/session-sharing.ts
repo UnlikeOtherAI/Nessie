@@ -3,11 +3,12 @@ import { ExecutorHostSessionListSchema, ExecutorSessionSharesSchema } from '@nes
 
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export const useExecutorHostSessions = () => {
+export const useExecutorHostSessions = (executorId?: string) => {
   const api = useApiClient()
   return useQuery({
-    queryKey: ['executors', 'host-sessions'], gcTime: 0,
-    queryFn: () => api.get('/api/executor-sessions', ExecutorHostSessionListSchema),
+    queryKey: ['executors', 'host-sessions', executorId ?? 'all'], gcTime: 0,
+    queryFn: () => api.get('/api/executor-sessions' + (executorId ? '?executorId=' + executorId : ''),
+      ExecutorHostSessionListSchema),
     refetchInterval: 15_000,
   })
 }

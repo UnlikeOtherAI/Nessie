@@ -6,7 +6,7 @@ import { signExecutorDaemonPayload } from './daemon-signature.js'
 import type { ExecutorLocalState } from './state-store.js'
 
 /** The caller owns serialization and cancellation, just like its command poll. */
-export const createSessionViewRelay = (bridge: Pick<CodingSessionsDaemon, 'screen' | 'report'>) => {
+export const createSessionViewRelay = (bridge: Pick<CodingSessionsDaemon, 'screen' | 'inventory'>) => {
   let requests: ExecutorSessionViewRequest[] = []
   let lastReport = 0
   return async (state: ExecutorLocalState): Promise<void> => {
@@ -14,10 +14,11 @@ export const createSessionViewRelay = (bridge: Pick<CodingSessionsDaemon, 'scree
     const frames = await Promise.all(requests.map(async (request) => ({
       ...request, screen: await bridge.screen(request).catch(() => null),
     })))
+    const sessions = Date.now() - lastReport > 15_000 ? await bridge.inventory() : undefined
     const payload = {
       executorId: state.executorId, connectionEpoch: state.connectionEpoch,
       observedAt: new Date().toISOString(), frames,
-      ...(Date.now() - lastReport > 15_000 ? { sessions: await bridge.report() } : {}),
+      ...(sessions ? { sessions } : {}),
     }
     if (payload.sessions) lastReport = Date.now()
     // Clear demand on failure; a reconnected daemon obtains fresh offers before uploading.

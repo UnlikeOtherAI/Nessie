@@ -90,7 +90,9 @@ const OWNER_KEY_PATTERN = /^[A-Za-z0-9:_-]{8,128}$/u
 const CloseReasonSchema = ExecutorCodingSessionCloseSchema.shape.reason
 
 /** What a changed, unreviewed configuration still allows: stopping things, and the daemon's report. */
-const ALLOWED_UNREVIEWED = new Set(['session_close', 'session_interrupt', 'session_close_all', 'session_list_all'])
+const ALLOWED_UNREVIEWED = new Set([
+  'session_close', 'session_interrupt', 'session_close_all', 'session_list_all', 'session_inventory',
+])
 
 /** The report's own limit; a title a rewrite lengthened is clipped rather than dropped from the report. */
 const TITLE_MAX = 120
@@ -370,7 +372,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
    * newest first, by title, status, agent, root and owner — nothing any of
    * them said or did.
    */
-  const listAll = async (value: unknown, meta: CodingBridgeCallMeta): Promise<Record<string, unknown>> => {
+  const listAll = async (
+    value: unknown, meta: CodingBridgeCallMeta, includeClosed = false,
+  ): Promise<Record<string, unknown>> => {
     daemonOnly(meta)
     argumentsFor(value, [])
     const sessions = []
@@ -378,6 +382,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       const paths = codingSessionPaths(stateDir, session.sessionId)
       const state = await readState(paths)
       const derived = await deriveCodingStatus(paths, state)
+      if (!includeClosed && derived.status === 'closed') continue
       sessions.push({
         sessionId: session.sessionId, ownerKey: session.ownerKey,
         title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
@@ -397,12 +402,16 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
         if (!reviewed && !ALLOWED_UNREVIEWED.has(tool)) requireReviewedConfig()
         if (tool === 'session_close_all') return await closeAll(args, meta, commandId)
         if (tool === 'session_list_all') return await listAll(args, meta)
+        if (tool === 'session_inventory') return await listAll(args, meta, true)
         const ownerKey = owner(meta)
         if (tool === 'terminal_read') {
           const view = argumentsFor(args, ['sessionId'])
           const session = await owned(view.sessionId, ownerKey)
           const screen = await readSessionScreen(session.paths, session.meta)
-          return { sessionId: session.meta.sessionId, ...await briefStatus(session.paths), text: await sessionScreenText(screen) }
+          return {
+            sessionId: session.meta.sessionId, ...await briefStatus(session.paths),
+            text: await sessionScreenText(screen),
+          }
         }
         if (tool === 'session_list') {
           argumentsFor(args, [])

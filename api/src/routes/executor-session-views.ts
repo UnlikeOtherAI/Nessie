@@ -19,8 +19,12 @@ export const registerExecutorSessionViewRoutes = (app: FastifyInstance, deps: Ro
   app.get('/api/executor-sessions', async (request, reply) => {
     const actor = deps.requireActorContext(request, reply)
     if (!actor || !deps.requireUserActor(actor, reply)) return reply
+    const query = parseInput(z.object({ executorId: z.string().uuid().optional() }).strict(), request.query, reply)
+    if (!query) return reply
     reply.header('Cache-Control', 'no-store')
-    return createApiResponse(ExecutorHostSessionListSchema.parse(await listExecutorHostSessions(deps.prisma, actor)))
+    return createApiResponse(ExecutorHostSessionListSchema.parse(
+      await listExecutorHostSessions(deps.prisma, actor, query.executorId),
+    ))
   })
   const sharePath = '/api/executors/:executorId/coding-sessions/:sessionId/shares'
   app.get(sharePath, async (request, reply) => {
@@ -30,7 +34,9 @@ export const registerExecutorSessionViewRoutes = (app: FastifyInstance, deps: Ro
     if (!params) return reply
     reply.header('Cache-Control', 'no-store')
     try {
-      return createApiResponse(ExecutorSessionSharesSchema.parse(await listExecutorSessionShares(deps.prisma, actor, params)))
+      return createApiResponse(ExecutorSessionSharesSchema.parse(
+        await listExecutorSessionShares(deps.prisma, actor, params),
+      ))
     } catch (error) {
       if (sendExecutorError(reply, error)) return reply
       throw error
