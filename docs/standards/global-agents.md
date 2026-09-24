@@ -421,6 +421,24 @@ fall back to the agent's own authority, are withheld and refused outright.
 That is the two-lock rule's shape for ticket work: the arm admits only the
 agent's own reach, and no path to a person's exists to be opened.
 
+**Operator verbs are for the live requester only — the two-lock rule's third
+application.** An ordinary agent holding the explicit `project_operator` grant
+(a CTO setting up projects and flows) reaches `project_create`,
+`channel_create`, board columns, document spaces, its own triggers and the
+workflow writes through a third `personalAssistantOnly` arm. The first lock is
+admission: `resolveRunProjectOperatorToolIds` opens the arm only for a user
+actor's interactive turn with **no action purpose**, `effectiveUserId` absent
+or the actor, in an ordinary channel the agent is bound to — so a trigger fire,
+a schedule reconstructing its creator, a `ticket.work` run, a peer delegation
+and every other kickoff get an empty set, and a sub-agent is never handed one.
+The second lock is the call: each handler re-reads the arm from live rows
+(`assertProjectOperatorCall`) before acting as the person, so a stale schema or
+a grant revoked mid-run opens nothing. Authorship still grants nothing: a
+trigger the operator creates records its author, runs as ever, and its machine
+access stays the machines' owner's to set up. The rules are in
+[personal-assistant-tools.md](personal-assistant-tools.md) → "The
+project-operator capability".
+
 A run lent any of these tools that writes recalls memory under project-write
 containment: only organisation and same-project material, never a thought fed
 by a private conversation (`requiresProjectWriteRecallContainment`,
