@@ -181,7 +181,8 @@ delivery's transaction:
    work. Only that agent's record is woken, however many ticket triggers cover
    the board. The event carries the document trigger's own instructions.
    A ticket's state block promises document edits only while such a trigger
-   exists for its agent (`documentsWatched`).
+   exists for its agent (`documentsWatched`), worded as "one of its
+   documents that your document trigger watches", since it may cover only some.
 2. **Otherwise the page's own review thread**: one per (trigger, page) in the
    target channel (`ensureDocumentReviewThread`,
    `worker/src/control/document-trigger-run.ts`), a conversation with the

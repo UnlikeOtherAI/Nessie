@@ -183,7 +183,8 @@ runDatabaseTest('a ticket\'s document reaches that ticket\'s live work for the s
   assert.match(kickoff.content, /What this document trigger asks of you: Review the edit/)
   assert.doesNotMatch(kickoff.content, /PRIVATE-WORDING/)
   // The ticket's own state block now promises document edits.
-  assert.match(kickoff.content, /edits one of its documents/)
+  assert.match(kickoff.content, /edits one of its documents that your document trigger watches/,
+    'promised as far as the trigger watches, never for every document of the ticket')
 })
 
 runDatabaseTest('a ticket document with no live work is reviewed in its own thread, naming the ticket', async (t) => {

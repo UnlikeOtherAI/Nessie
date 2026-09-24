@@ -271,7 +271,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   editor saved part of the change, or it goes to the document's own review
   thread instead ([document-triggers.md](document-triggers.md) → "Where a
   change lands"). A kickoff promises document edits only while such a
-  trigger exists (`documentsWatched`).
+  trigger exists (`documentsWatched`), and then only "one of its documents
+  that your document trigger watches": the trigger may cover some of them.
 - **(T1) Every decision is exactly one `agent_trigger_deliveries` row**,
   deduped on `ticket:<triggerId>:<taskEventId>`, with `source` `pickup` or
   `follow` and a `TicketTriggerDeliveryPayloadSchema` payload (ids, the origin

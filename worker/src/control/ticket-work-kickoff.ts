@@ -111,7 +111,8 @@ const FOLLOW_PHRASES: Record<TicketFollowKind, string> = {
   description: 'edits the description',
   moved: 'moves the ticket',
   thread_message: 'writes in this thread',
-  document: 'edits one of its documents',
+  // Conditional: the trigger may watch only some of the ticket's documents.
+  document: 'edits one of its documents that your document trigger watches',
   priority: 'changes the priority',
   labels: 'changes the labels',
   assignee: 'changes the assignee',
