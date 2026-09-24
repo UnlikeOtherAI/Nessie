@@ -87,7 +87,9 @@ revision in Nessie. Preserve other operations/folders in an existing policy;
 the example is a standalone terminal-only proposal. A coding root may not
 overlap executor state or a copy-on-write workspace root.
 The reviewed descriptor explicitly declares `terminal: hostUser` authority.
-Arguments are passed as argv, not shell-joined. Select the desired program
+Arguments are passed as argv, not shell-joined. tmux launches through `/usr/bin/env
+--` so a lone executable, including a path containing spaces, stays in direct-argv
+mode. Select the desired program
 locally; the agent cannot supply a different executable to the start tool.
 
 ## Agent tools

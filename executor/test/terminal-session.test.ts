@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { terminalProcessArguments } from '../src/coding-session/terminal-process.js'
@@ -8,15 +9,18 @@ import { createCodingHarness, OWNER_B, waitUntil } from './coding-session-harnes
 
 test('the PTY launcher passes configured arguments literally after tmux end-of-options', () => {
   const args = terminalProcessArguments(['/bin/echo', "a'; touch /tmp/nope; '"])
-  assert.deepEqual(args.slice(args.indexOf('--') + 1), ['/bin/echo', "a'; touch /tmp/nope; '"])
+  assert.deepEqual(args.slice(args.indexOf('--') + 1), ['/usr/bin/env', '--', '/bin/echo', "a'; touch /tmp/nope; '"])
 })
 
 test('two real PTYs stay isolated, survive a bridge restart, render ANSI and close independently', {
   timeout: 120_000,
 }, async () => {
+  const programDir = process.platform === 'win32' ? undefined : await mkdtemp(join(tmpdir(), 'nessie-terminal-argv-'))
+  const program = programDir ? join(programDir, 'shell with spaces') : 'C:\\Windows\\System32\\cmd.exe'
+  if (programDir) await symlink('/bin/sh', program)
   const harness = await createCodingHarness({
     codingSessions: { agents: { terminal: {
-      command: process.platform === 'win32' ? ['C:\\Windows\\System32\\cmd.exe'] : ['/bin/sh'],
+      command: [program],
     } } },
     agentEnv: { inheritUserSession: false, set: {
       PATH: process.env.PATH ?? '/usr/bin:/bin',
@@ -62,5 +66,8 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
     await harness.waitForStatus(first, (body) => body.status === 'closed')
     await write(second, 'echo STILL_ALIVE\r')
     await readContaining(second, 'STILL_ALIVE')
-  } finally { await harness.cleanup() }
+  } finally {
+    await harness.cleanup()
+    if (programDir) await rm(programDir, { recursive: true, force: true })
+  }
 })

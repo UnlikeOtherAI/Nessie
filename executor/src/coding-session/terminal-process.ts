@@ -17,9 +17,9 @@ import { resolveProgramPath } from './program-path.js'
 const run = promisify(execFile)
 const delay = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms) })
 
-/** Exact argv after tmux's end-of-options marker; never shell-joined. */
+/** env keeps even a lone executable in tmux's direct-argv mode, never `sh -c`. */
 export const terminalProcessArguments = (argv: readonly string[]): string[] => [
-  'new-session', '-d', '-s', 'nessie', '-x', String(COLS), '-y', String(ROWS), '--', ...argv,
+  'new-session', '-d', '-s', 'nessie', '-x', String(COLS), '-y', String(ROWS), '--', '/usr/bin/env', '--', ...argv,
 ]
 
 /**
