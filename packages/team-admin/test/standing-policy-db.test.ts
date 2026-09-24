@@ -14,6 +14,7 @@ import { AgentCardSpecSchema, ticketWorkCodingSessionContext } from '@nessie/sch
 
 import { applyExecutorAccessChangeEffects, applyRejectedExecutorAccessChangeEffects } from '../src/executor-access-change-effects.js'
 import { standingPolicyTermsDigest } from '../src/standing-policy-terms.js'
+import { standingPolicyTriggerEditSentence } from '../src/standing-policy-trigger-edit.js'
 import { StandingPolicyRefusal } from '../src/standing-policy-trigger.js'
 import { deleteAgentTrigger, updateAgentTrigger } from '../src/trigger-lifecycle.js'
 import { seedStandingPolicyWorld, testPrisma, type StandingPolicyWorld } from './standing-policy-fixture.js'
@@ -293,6 +294,12 @@ dbTest('every pinned field\'s change suspends machine access, a lowered limit do
     const minis = await world.machine()
     const scope = { organizationId: world.organizationId, triggerId: world.triggerId }
     const actor = { actor: { userId: world.colleagueId } }
+    const platform = await prisma.board.create({
+      data: { name: 'Platform', organizationId: world.organizationId, position: 1, projectId: world.projectId },
+    })
+    await prisma.boardColumn.create({
+      data: { boardId: platform.id, category: 'in_progress', name: 'In progress', organizationId: world.organizationId, position: 0 },
+    })
     // A lowered limit keeps it live, with its terms and digest moved down.
     let policyId = await confirmed(world, [minis])
     const lowered = await updateAgentTrigger(prisma, scope, { config: { limits: { wakesPerTicket: 10 } } }, actor)
@@ -311,6 +318,7 @@ dbTest('every pinned field\'s change suspends machine access, a lowered limit do
       ['connected-board events', { config: { follow: { includeSourceEvents: true } } }],
       ['the columns that end work', { config: { endOn: [{ category: 'done' }] } }],
       ['the channel', { targetChannelId: world.opsId }],
+      ['the board', { config: { boardId: platform.id, pickup: { columns: [{ name: 'In progress' }] } } }],
       ['the wakes a ticket', { config: { limits: { wakesPerTicket: 11 } } }],
       ['the tickets a day', { config: { limits: { startsPerDay: 50 } } }],
     ]
@@ -324,6 +332,9 @@ dbTest('every pinned field\'s change suspends machine access, a lowered limit do
       assert.ok(updated?.machineAccess?.kind === 'suspended' && updated.machineAccess.fields.includes(field),
         `${field}: ${JSON.stringify(updated?.machineAccess)}`)
       assert.equal(updated?.machineAccess?.kind === 'suspended' && updated.machineAccess.authorName, 'Ondrej')
+      // What agent_trigger_update tells whoever saved it.
+      assert.match(standingPolicyTriggerEditSentence(updated!.machineAccess!),
+        /^Saving paused Ondrej's machine access for this trigger until they confirm it again \(changed: /)
       policy = await policyOf(prisma, policyId)
       assert.deepEqual([policy.status, policy.suspendedReason], ['suspended', 'trigger_changed'], field)
       const waiting = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: record.id } })
