@@ -57,7 +57,6 @@ export const KanbanColumn = ({
         <span className="text-xs text-[color:var(--tx3)]">{count}</span>
         {headerAction ? <div className="ml-auto flex items-center gap-1">{headerAction}</div> : null}
       </div>
-      {headerBadge ? <div className="shrink-0 px-1">{headerBadge}</div> : null}
       <div
         ref={setNodeRef}
         className={[
@@ -72,6 +71,9 @@ export const KanbanColumn = ({
         data-drop-over={isOver ? '' : undefined}
         data-kanban-dropzone={droppable ? columnId : undefined}
       >
+        {/* At the head of the track rather than above it, so a column with the
+            badge starts its track on the same line as its neighbours. */}
+        {headerBadge ? <div className="shrink-0">{headerBadge}</div> : null}
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
           {children}
         </SortableContext>

@@ -168,10 +168,10 @@ export const KanbanBoard = ({
       workByTask: new Map((ticketWork?.cards ?? []).map((card) => [card.taskId as string, card])),
     }
   }, [ticketWork])
-  // Offered where work usually starts: the categories a pickup names by category.
+  // Offered on every column but Done, whose menu archives: a to-do column can
+  // start work too, and the editor explains why an end column cannot.
   const canStartWorkIn = (column: BoardColumnView): boolean =>
-    Boolean(onStartWork && ticketWork?.viewerCanCreateTriggers)
-    && (column.category === 'in_progress' || column.category === 'review')
+    Boolean(onStartWork && ticketWork?.viewerCanCreateTriggers) && column.category !== 'done'
 
   const taskById = useMemo(() => {
     const map = new Map<string, BoardTaskRecord>()

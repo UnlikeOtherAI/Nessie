@@ -181,7 +181,8 @@ sentence changes only if the invariant itself did.
   sitting on the blocking layer and owning Back, so Back closes it and leaves
   the ticket open (shots 14 and 15, phone). With `&work=` it shots an agent's
   work chip in each T1 state — working, with no thread link for a reader who
-  may not open it, parked, stopped at its wake limit, done — the move that
+  may not open it, parked, parked after a move back that did not resume it,
+  stopped at its wake limit, done — its work history opened, the move that
   started nothing, the card's avatar and state dot, and the chip on a phone
   (shots 16–18; the rules are in
   [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md)). The
@@ -216,8 +217,10 @@ sentence changes only if the invariant itself did.
   trigger's form (public project channels only and why, the board and
   columns picked, an end column that cannot start work), a second pickup on a
   column refused **on the pickup field** and the typed config the corrected
-  create posts, the board's "Moving here starts work" badge, card dots and the
-  column menu that opens the editor prefilled, and a ticket trigger's page
+  create posts, the board's "Moving here starts work" badge at the head of a
+  track still aligned with its neighbours, card dots and the column menu on
+  every column but Done that opens the editor prefilled with its type fixed,
+  and a ticket trigger's page
   with its named facts and deliveries in words — at 1280 and 390 px (the
   phone paged to the columns that matter). The rules are in
   [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md).

@@ -32,8 +32,10 @@ const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/agent-triggers')
 const AGENT_ID = '60000000-0000-4000-8000-000000000001'
 const CHANNEL_ID = '60000000-0000-4000-8000-000000000002'
 const BOARD = '60000000-0000-4000-8000-000000000012'
+const BACKLOG = '60000000-0000-4000-8000-000000000013'
 const DOING = '60000000-0000-4000-8000-000000000014'
 const REVIEW = '60000000-0000-4000-8000-000000000015'
+const DONE = '60000000-0000-4000-8000-000000000016'
 const RELEASED = ['manual', 'scheduled', 'interval', 'webhook', 'event', 'ticket_changed']
 const RELEASED_LABELS = ['Manual', 'Schedule', 'Interval', 'Webhook', 'Event', 'Ticket change']
 const UNRELEASED = /document_changed|document change/i
@@ -222,6 +224,16 @@ try {
         await dots.evaluateAll((nodes) => nodes.map((node) => [node.dataset.workStatus, node.getAttribute('aria-label')])),
         [['active', 'CTO · working'], ['failed', 'CTO · stopped — its wakes are used up']],
       )
+      // The badge sits at the head of its column's track, so every track still
+      // starts on one line.
+      if (name !== 'phone') {
+        const trackTops = await page.locator('[data-kanban-dropzone]').evaluateAll((nodes) =>
+          nodes.map((node) => Math.round(node.getBoundingClientRect().top)))
+        assert.equal(new Set(trackTops).size, 1, `every track starts on one line (${trackTops.join(', ')})`)
+      }
+      // "Start work with an agent…" on every column but Done, whose menu archives.
+      assert.equal(await page.locator(`[data-kanban-column="${BACKLOG}"]`).getByTestId('column-work-menu').count(), 1)
+      assert.equal(await page.locator(`[data-kanban-column="${DONE}"]`).getByTestId('column-work-menu').count(), 0)
       await settled(page)
       await page.screenshot({ path: resolve(SHOTS, `board-${width}.png`) })
       if (name === 'phone') {
@@ -244,7 +256,12 @@ try {
       const dialog = page.getByRole('dialog', { name: 'Create a trigger' })
       await dialog.waitFor()
       await settled(page)
-      assert.equal(await dialog.locator('input[type="radio"][value="ticket_changed"]').isChecked(), true)
+      // Opened on a ticket trigger for this column: its type and target kind are fixed.
+      assert.equal(await dialog.locator('input[type="radio"]').count(), 0, 'no type picker from the board')
+      // (The field labels are set in capitals.)
+      assert.match(await dialog.innerText(), /Trigger type\s+Ticket change/i)
+      assert.match(await dialog.innerText(), /Target kind\s+Agent/i)
+      assert.equal(await dialog.locator('#trigger-target-kind').count(), 0)
       assert.equal(await dialog.getByLabel('Trigger name').inputValue(), 'Start work from In progress')
       assert.equal(await dialog.locator('#ticket-trigger-board').inputValue(), BOARD)
       assert.equal(await dialog.getByRole('checkbox', { name: 'In progress' }).first().isChecked(), true)

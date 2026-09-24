@@ -1,9 +1,11 @@
 import {
-  TICKET_TRIGGER_SKIP_SENTENCES,
   TICKET_WORK_LIVE_STATUSES,
   TicketTriggerDeliveryPayloadSchema,
+  ticketTriggerSkipSentence,
   type TicketTriggerSkipReason,
   type TicketWorkChipRecord,
+  type TicketWorkHistoryEntry,
+  type TicketWorkSkipNotice,
   type TicketWorkStateReason,
   type TicketWorkStatus,
   type TicketWorkWakeReason,
@@ -99,20 +101,55 @@ export const ticketWorkHeadline = (record: TicketWorkChipRecord): string =>
   [record.agent.name, TICKET_WORK_STATUS_LABEL[record.status], `started ${day(record.startedAt)}`].join(' · ')
 
 /**
+ * A refused move back that left this record parked, if the ticket's newest
+ * skip is one: the ticket then sits in a start-work column while its work
+ * waits, and "moving it back resumes it" would be false for everyone reading.
+ */
+export const refusedReentryOf = (
+  record: TicketWorkChipRecord,
+  lastSkip: TicketWorkSkipNotice | null,
+): TicketWorkSkipNotice | null =>
+  record.status === 'parked' && lastSkip?.reentry && lastSkip.triggerId === record.triggerId ? lastSkip : null
+
+/**
  * The line under the headline: why it stopped, or why it waits. A limit reads
  * as the plan's "stopped: 30 wakes used"; the remedy is the chip's own line.
  */
-export const ticketWorkStateLine = (record: TicketWorkChipRecord): string | null => {
+export const ticketWorkStateLine = (
+  record: TicketWorkChipRecord,
+  lastSkip: TicketWorkSkipNotice | null = null,
+): string | null => {
   if (record.stateReason === 'limit_wakes') {
     return `Stopped: ${record.wakeCount} wakes used. Move the ticket out of and back into a start-work column to continue.`
   }
   if (record.stateReason === 'limit_daily') {
     return 'Stopped: the trigger started as many tickets today as it may. Move the ticket out of and back into a start-work column to try again.'
   }
+  const refused = refusedReentryOf(record, lastSkip)
+  if (refused) return ticketSkipSentence(refused.reason, { reentry: true })
   if (record.status === 'parked') return 'Parked while the ticket is in review. Moving it back into a start-work column resumes it.'
   if (!record.stateReason) return null
   const reason = TICKET_WORK_STATE_REASON_LABEL[record.stateReason]
   return `${reason.charAt(0).toUpperCase()}${reason.slice(1)}${record.endedAt ? ` · ${day(record.endedAt)}` : ''}.`
+}
+
+/** What each `work_*` row says happened. */
+const HISTORY_VERB: Record<TicketWorkHistoryEntry['eventType'], string> = {
+  work_started: 'started work',
+  work_queued: 'queued',
+  work_paused: 'parked the work while the ticket is in review',
+  work_resumed: 'resumed the work',
+  work_ended: 'ended the work',
+}
+
+/** "14:05 · Perf agent started work · by Ondrej" — one row of the chip's history. */
+export const ticketWorkHistoryLine = (entry: TicketWorkHistoryEntry): string => {
+  const reason = entry.reason && entry.eventType === 'work_ended' ? `: ${TICKET_WORK_STATE_REASON_LABEL[entry.reason]}` : ''
+  return [
+    day(entry.at),
+    `${entry.agentName} ${HISTORY_VERB[entry.eventType]}${reason}`,
+    ...(entry.byName ? [`by ${entry.byName}`] : []),
+  ].join(' · ')
 }
 
 /** "Last woken 14:32 by a comment · wake 3 of 30" */
@@ -122,7 +159,8 @@ export const ticketWorkWakeLine = (record: TicketWorkChipRecord): string | null 
   return `Last woken ${day(record.lastWakeAt)}: ${TICKET_WAKE_REASON_LABEL[record.lastWakeReason]}${count}`
 }
 
-export const ticketSkipSentence = (reason: TicketTriggerSkipReason): string => TICKET_TRIGGER_SKIP_SENTENCES[reason]
+export const ticketSkipSentence = (reason: TicketTriggerSkipReason, options: { reentry?: boolean } = {}): string =>
+  ticketTriggerSkipSentence(reason, options)
 
 /**
  * A ticket delivery on a trigger's page: what the dispatcher did with one
@@ -133,7 +171,9 @@ export const ticketDeliveryLine = (payload: unknown): string | null => {
   const parsed = TicketTriggerDeliveryPayloadSchema.safeParse(payload)
   if (!parsed.success) return null
   const delivery = parsed.data
-  if (delivery.outcome === 'skipped' && delivery.skipReason) return ticketSkipSentence(delivery.skipReason)
+  if (delivery.outcome === 'skipped' && delivery.skipReason) {
+    return ticketSkipSentence(delivery.skipReason, { reentry: delivery.reentry === true })
+  }
   const reason = delivery.wakeReason ? TICKET_WAKE_REASON_LABEL[delivery.wakeReason] : null
   switch (delivery.outcome) {
     case 'pickup':

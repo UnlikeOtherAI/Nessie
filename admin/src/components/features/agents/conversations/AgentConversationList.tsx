@@ -208,7 +208,13 @@ export const AgentConversationList = ({
           >
             <FontAwesomeIcon aria-hidden className="h-2.5 w-2.5" icon={showTickets ? faChevronDown : faChevronRight} />
             <span className="flex-1">Tickets</span>
-            <span className="font-normal normal-case tracking-normal">{ticketRows.length}</span>
+            {/* Counted over the pages loaded so far: more may sit behind "Show older". */}
+            <span
+              className="font-normal normal-case tracking-normal"
+              title={query.hasNextPage ? `${ticketRows.length} loaded so far` : undefined}
+            >
+              {ticketRows.length}{query.hasNextPage ? '+' : ''}
+            </span>
           </button>
           {showTickets ? (
             <div className="flex flex-col" role="list">

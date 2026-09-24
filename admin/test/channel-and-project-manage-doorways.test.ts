@@ -135,15 +135,15 @@ test('the conversation surface renders the composer behind canPost', () => {
   // ticket's board, too (docs/standards/ticket-work.md → "The work thread").
   assert.match(
     surface,
-    /visibleActiveTab === 'messages' && roomControls\.canPost && !workThreadReadOnly \? \(\s*<ChannelComposer/,
+    /visibleActiveTab === 'messages' && roomControls\.canPost && !workThread\?\.readOnly \? \(\s*<ChannelComposer/,
   )
   // …and the refusal is drawn in its place, so a person is told why rather
   // than shown a room with no way to type in it.
   assert.match(
     surface,
-    /<ChannelPostRefusal postRefusal=\{roomControls\.postRefusal\} workThreadReadOnly=\{workThreadReadOnly\} \/>/,
+    /<ChannelPostRefusal postRefusal=\{roomControls\.postRefusal\} workThread=\{workThread\} \/>/,
   )
   const refusal = source('components/features/channels/ChannelPostRefusal.tsx')
   assert.match(refusal, /if \(postRefusal\)/)
-  assert.match(refusal, /workThreadReadOnly \? <WorkThreadReadOnlyNotice/)
+  assert.match(refusal, /workThread \? <WorkThreadReadOnlyNotice/)
 })

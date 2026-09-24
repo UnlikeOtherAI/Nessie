@@ -296,6 +296,8 @@ export const TriggerEditorDialog = ({
     scheduleMode: form.scheduleMode,
   })
   const showTargetChooser = mode === 'create'
+  // A doorway that opened the editor on one type (the board's column menu) keeps it.
+  const typeLocked = mode === 'create' && defaultTarget?.targetKind === 'agent' && Boolean(defaultTarget.prefill)
   const showAgentTarget = showTargetChooser && form.targetKind === 'agent'
   const showWorkflowTarget = showTargetChooser && form.targetKind === 'workflow'
   const webhookBaseUrl = getBaseUrl() || window.location.origin.replace(/\/$/, '')
@@ -339,6 +341,7 @@ export const TriggerEditorDialog = ({
             setForm={setForm}
             showAgentTarget={showAgentTarget}
             showTargetChooser={showTargetChooser}
+            typeLocked={typeLocked}
             showWorkflowTarget={showWorkflowTarget}
             templatesById={templatesById}
             trigger={trigger}

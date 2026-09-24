@@ -487,16 +487,25 @@ routes, and none of it names a machine.
   *"CTO · working · started 14:05"*, who started it, *"Last woken 14:32: a
   comment · wake 3 of 30"*, the reason it stopped or waits (*"Stopped: 30
   wakes used. Move the ticket out of and back into a start-work column to
-  continue."*, *"Parked while the ticket is in review…"*), and "Open the work
-  thread" for its readers. The board card (`KanbanCard`) shows the agent's
-  avatar with a state dot (`TicketWorkCardDot`). Both re-read while work is
-  live, because work moves in the worker after the move has answered.
+  continue."*, *"Parked while the ticket is in review…"*, or — when the
+  ticket's newest skip refused a move back — *"Moved back by an agent, so
+  work did not resume…"* in its place, because the ticket then already sits
+  in the start-work column), "Open the work thread" for its readers, and a
+  closed **Work history** fold listing the `work_*` rows (*"14:05 · CTO
+  started work · by Ondrej"*, `ticketWorkHistoryLine`). The board card
+  (`KanbanCard`) shows the agent's avatar with a state dot
+  (`TicketWorkCardDot`). Both re-read while work is live, and twice after the
+  viewer's own move or status change (`followTicketWorkAfterMove`), because
+  work moves in the worker after the move has answered; a board with no live
+  work polls nothing, however many columns could start it.
 - **The board column** says *"Moving here starts work: <agent>"* to everyone
-  (`ColumnStartsWorkBadge`). Its menu offers *"Start work with an agent…"* on
-  In progress and Review columns — the categories a pickup names by category —
-  only when `viewerCanCreateTriggers`, and opens the Triggers editor on a
-  ticket trigger for that board and column (`BoardStartWorkDialog`), on a
-  draft of its own so the Triggers page's unsent create never replaces it.
+  (`ColumnStartsWorkBadge`), at the head of its track so every column's track
+  still starts on one line. Its menu offers *"Start work with an agent…"* on
+  every column but Done (whose menu archives) only when
+  `viewerCanCreateTriggers`, and opens the Triggers editor on a ticket
+  trigger for that board and column (`BoardStartWorkDialog`) with its type
+  and target kind fixed, on a draft of its own so the Triggers page's unsent
+  create never replaces it.
 - **The Triggers editor** offers "Ticket change" for an agent target only
   (`TriggerTypePicker offerTicketChanged`). Its fields (`TicketTriggerFields`,
   `ticket-trigger-form.ts`) narrow the channel list to live, ordinary, public
@@ -515,10 +524,15 @@ routes, and none of it names a machine.
   member who cannot edit the ticket's board gets `ChannelPostRefusal`'s line
   in place of the composer — *"Comment on the ticket to give the agent more
   information."* — with the ticket's link, before they type what the server
-  would refuse. In the agent's conversation list, threads whose record names
-  a ticket (`AgentConversationRecord.ticket`, from the thread's own
+  would refuse. A board editor whose message would wake nobody keeps the
+  composer and is told first (`WORK_THREAD_WAKES_NOBODY`, from the gate's
+  `messageOutcome`): *"This ticket's work has ended, so a message here wakes
+  nobody. Move the ticket into a start-work column to start it again."* In
+  the agent's conversation list, threads whose record names a ticket
+  (`AgentConversationRecord.ticket`, from the thread's own
   `{ taskId, triggerId }` metadata) fold under **Tickets**, closed unless the
-  one on screen is in it.
+  one on screen is in it; its count covers the pages loaded so far (`12+`
+  while older ones remain behind "Show older").
 - **Board watchers are people.** An agent recipient is refused with
   `AGENT_WATCHERS_RETIRED` (*"Agents start work from the column menu…"*), the
   Watchers editor offers no agent, and
@@ -840,11 +854,16 @@ causes it**:
   `admin/test/trigger-type-unreleased.test.tsx`: what the editor posts is the
   typed config the server parses, a refusal lands on its field, only a public
   project channel is offered, Ticket change for an agent only.
+  `admin/test/ticket-work-composer.test.tsx`: the composer's wakes-nobody
+  line for each outcome and the read-only line, the parked line after a
+  refused move back, and the history rows.
 - `pnpm --filter @nessie/admin test:e2e:agent-triggers`: the real Triggers
   editor offers the released types, Ticket change for an agent and never
   `document_changed`; a ticket trigger's form, a pickup refused on its field
-  and the typed create; the column badge, card dots and the column menu that
-  opens the editor prefilled; and a ticket trigger's page — at 1280 and
-  390 px. `test:e2e:task-dialog` shots the chip in each state and the card's
-  dot; `test:e2e:agent-conversations` walks the Tickets fold, the wake rows
-  and the read-only composer.
+  and the typed create; the column badge at the head of an aligned track,
+  card dots, and the column menu on every column but Done that opens the
+  editor prefilled with its type fixed; and a ticket trigger's page — at 1280
+  and 390 px. `test:e2e:task-dialog` shots the chip in each state (a refused
+  move back included), its work history and the card's dot;
+  `test:e2e:agent-conversations` walks the Tickets fold, the wake rows and the
+  read-only composer.

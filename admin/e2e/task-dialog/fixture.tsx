@@ -19,6 +19,7 @@ import { BoardSettingsPage } from '../../src/pages/project/BoardSettingsPage'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
+import { ticketWorkFor as ticketWorkForState } from './ticket-work'
 
 /**
  * The ticket dialog over a stubbed API (docs/plans/2026-09-21-ticket-comments-
@@ -283,37 +284,9 @@ if (scenario === 'viewer-back') {
   }
 }
 
-// An agent's work on the ticket, as `GET /api/tasks/:id/work` answers it, in
-// each state T1 reaches: working, parked in review, stopped at its wake limit,
-// done, one whose thread the reader may not open, and a move that started
-// nothing (docs/standards/ticket-work.md → "What the project sees").
+// An agent's work on the ticket in the state `&work=` names (`ticket-work.ts`).
 const WORK_STATE = params.get('work')
-const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
-const workRecord = (extra: Record<string, unknown>) => ({
-  agent: { id: AGENT, name: 'Perf agent' }, endedAt: null, id: '70000000-0000-4000-8000-000000000010',
-  lastWakeAt: minutesAgo(4), lastWakeReason: 'ticket_commented', startedAt: minutesAgo(52),
-  startedByName: 'Ondřej Rafaj', stateReason: null, status: 'active',
-  thread: { channelId: '70000000-0000-4000-8000-000000000011', id: '70000000-0000-4000-8000-000000000012' },
-  triggerId: '70000000-0000-4000-8000-000000000013', wakeCount: 3, wakeLimit: 30, ...extra,
-})
-const ticketWorkFor = (state: string | null) => {
-  switch (state) {
-    case 'active': return { lastSkip: null, records: [workRecord({})] }
-    case 'nolink': return { lastSkip: null, records: [workRecord({ thread: null })] }
-    case 'parked': return { lastSkip: null, records: [workRecord({ lastWakeReason: 'ticket_moved', status: 'parked' })] }
-    case 'stopped': return { lastSkip: null, records: [workRecord({
-      endedAt: minutesAgo(1), lastWakeReason: 'thread_message', stateReason: 'limit_wakes', status: 'failed', wakeCount: 30,
-    })] }
-    case 'done': return { lastSkip: null, records: [workRecord({
-      endedAt: minutesAgo(2), lastWakeReason: 'ticket_moved', stateReason: 'left_flow', status: 'done',
-    })] }
-    case 'skipped': return {
-      lastSkip: { agentName: 'Perf agent', at: minutesAgo(1), reason: 'agent_origin', triggerId: '70000000-0000-4000-8000-000000000013' },
-      records: [],
-    }
-    default: return { lastSkip: null, records: [] }
-  }
-}
+const ticketWorkFor = (state: string | null) => ticketWorkForState(state, AGENT)
 const cardWork = WORK_STATE && WORK_STATE !== 'skipped'
   ? (() => {
       const record = ticketWorkFor(WORK_STATE).records[0]!

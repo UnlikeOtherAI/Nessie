@@ -1,6 +1,6 @@
 import {
   WorkThreadReadOnlyNotice,
-  type WorkThreadReadOnly,
+  type WorkThreadComposer,
 } from '../ticket-work/WorkThreadReadOnlyNotice'
 import type { ChannelRoomControls } from './channel-room-controls'
 
@@ -16,14 +16,16 @@ import type { ChannelRoomControls } from './channel-room-controls'
  *   offers neither.
  * - **A ticket's work thread** (docs/standards/ticket-work.md → "The work
  *   thread"): a member of the room who cannot edit the ticket's board reads
- *   the thread and is pointed at the ticket's comments instead.
+ *   the thread and is pointed at the ticket's comments instead. A board
+ *   editor keeps the composer, and is told first when a message there would
+ *   wake nobody.
  */
 export const ChannelPostRefusal = ({
   postRefusal,
-  workThreadReadOnly,
+  workThread,
 }: {
   postRefusal: ChannelRoomControls['postRefusal']
-  workThreadReadOnly: WorkThreadReadOnly | null
+  workThread: WorkThreadComposer | null
 }) => {
   if (postRefusal) {
     return (
@@ -37,5 +39,5 @@ export const ChannelPostRefusal = ({
       </div>
     )
   }
-  return workThreadReadOnly ? <WorkThreadReadOnlyNotice {...workThreadReadOnly} /> : null
+  return workThread ? <WorkThreadReadOnlyNotice {...workThread} /> : null
 }

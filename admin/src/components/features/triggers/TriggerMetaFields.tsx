@@ -39,6 +39,8 @@ type TriggerMetaFieldsProps = {
   showAgentTarget: boolean
   showTargetChooser: boolean
   showWorkflowTarget: boolean
+  /** Opened on one type by a doorway: the type and the target kind are not the person's to change. */
+  typeLocked?: boolean
   templatesById: Map<string, WorkflowTemplateRecord>
   trigger?: AgentTriggerRecord
   nameInputRef: RefObject<HTMLInputElement | null>
@@ -73,6 +75,7 @@ export const TriggerMetaFields = ({
   showAgentTarget,
   showTargetChooser,
   showWorkflowTarget,
+  typeLocked = false,
   templatesById,
   trigger,
   workflowInstallations,
@@ -95,7 +98,7 @@ export const TriggerMetaFields = ({
       />
     </div>
 
-    {mode === 'create' ? (
+    {mode === 'create' && !typeLocked ? (
       <div className="grid gap-1.5 md:col-span-2">
         <div className={fieldLabelClass}>Trigger type</div>
         <TriggerTypePicker
@@ -115,7 +118,12 @@ export const TriggerMetaFields = ({
       </div>
     )}
 
-    {showTargetChooser ? (
+    {showTargetChooser && typeLocked ? (
+      <div className="grid gap-1.5">
+        <div className={fieldLabelClass}>Target kind</div>
+        <div className="admin-input cursor-default opacity-70">Agent</div>
+      </div>
+    ) : showTargetChooser ? (
       <div className="grid gap-1.5">
         <label className={fieldLabelClass} htmlFor="trigger-target-kind">
           Target kind

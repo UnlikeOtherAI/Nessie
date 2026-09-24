@@ -559,6 +559,9 @@ try {
       ['active', 'active', /^Perf agent · working · started /, /Last woken .+: a comment · wake 3 of 30/, true],
       ['nolink', 'active', /^Perf agent · working · started /, /Last woken .+: a comment/, false],
       ['parked', 'parked', /^Perf agent · parked · /, /Parked while the ticket is in review\./, true],
+      // The ticket sits in a start-work column; the chip must not say moving it back resumes it.
+      ['reentry', 'parked', /^Perf agent · parked · /,
+        /Moved back by an agent, so work did not resume\. A person who can edit the board can resume it\./, true],
       ['stopped', 'failed', /^Perf agent · stopped · /,
         /Stopped: 30 wakes used\. Move the ticket out of and back into a start-work column to continue\./, true],
       ['done', 'done', /^Perf agent · done · /, /The ticket left the flow/, true],
@@ -584,9 +587,26 @@ try {
       const meta = await box(dialog.locator('.task-dialog-meta'))
       const chipBox = await box(chip)
       assert.ok(Math.abs(chipBox.y - meta.y) < 4 && Math.abs(chipBox.x - meta.x) < 4, `${state}: the chip leads the meta column`)
+      if (state === 'reentry') {
+        assert.doesNotMatch(text, /Moving it back into a start-work column resumes it/, 'a false remedy')
+        assert.equal(await dialog.getByTestId('ticket-work-skip').count(), 0, 'said once, on the work\'s own row')
+      }
       await settled(page)
       await chip.screenshot({ path: shot(`16-work-${state}.png`) })
-      if (state === 'active') await page.screenshot({ path: shot('16-work-dialog.png') })
+      if (state === 'active') {
+        await page.screenshot({ path: shot('16-work-dialog.png') })
+        // The ticket's work history: each start, park and resume, and who caused it.
+        const history = dialog.getByTestId('ticket-work-history')
+        assert.match(await history.locator('summary').innerText(), /^Work history \(3\)$/)
+        await history.locator('summary').click()
+        const rows = await history.locator('li').allInnerTexts()
+        assert.equal(rows.length, 3)
+        assert.match(rows[0], /Perf agent resumed the work · by Ondřej Rafaj$/)
+        assert.match(rows[1], /Perf agent parked the work while the ticket is in review · by Perf agent$/)
+        assert.match(rows[2], /Perf agent started work · by Ondřej Rafaj$/)
+        await settled(page)
+        await dialog.locator('section[aria-label="Agent work on this ticket"]').screenshot({ path: shot('16-work-history.png') })
+      }
       await page.close()
     }
 

@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query'
 import {
   TICKET_WORK_LIVE_STATUSES,
   type BoardTicketWorkRecord,
@@ -18,10 +18,11 @@ import { threadKeys } from '../threads/keys'
  * thread's own; none needs the owner-only Triggers routes.
  *
  * Work moves in the worker, after the move that started it has already
- * answered, and nothing announces it yet — so an open chip re-reads while its
- * work is live, and a board re-reads while anything on it can start or is
- * doing work. An idle ticket or board asks nothing more: a move from the
- * dialog closes it, and the next open reads fresh.
+ * answered, and nothing announces it yet — so an open chip and a board
+ * re-read while work on them is live, and the viewer's own move or status
+ * change is followed by two late re-reads (`followTicketWorkAfterMove`), which
+ * is when a pickup lands. An idle ticket or board asks nothing more, however
+ * many columns could start work.
  */
 
 export type { BoardTicketWorkRecord, TaskTicketWorkRecord, TicketWorkThreadGate }
@@ -30,8 +31,24 @@ const LIVE = new Set<string>(TICKET_WORK_LIVE_STATUSES)
 
 /** How often an open ticket with live work re-reads its chip. */
 export const TICKET_WORK_LIVE_POLL_MS = 10_000
-/** How often a board with start-work columns re-reads its badges and dots. */
+/** How often a board with live work re-reads its badges and dots. */
 export const BOARD_TICKET_WORK_POLL_MS = 20_000
+/** After the viewer's own move: when the dispatcher has usually decided it, and a late backstop. */
+export const TICKET_WORK_AFTER_MOVE_MS = [3_000, 10_000] as const
+
+/**
+ * A move or a status change may start, park or end work a moment after it
+ * answered: re-read the ticket's chip and every board's badges then, instead
+ * of polling a board forever for a pickup that may never happen.
+ */
+export const followTicketWorkAfterMove = (queryClient: QueryClient, taskId: string): void => {
+  for (const delay of TICKET_WORK_AFTER_MOVE_MS) {
+    setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
+      void queryClient.invalidateQueries({ queryKey: taskKeys.work(taskId) })
+    }, delay)
+  }
+}
 
 export const useTaskTicketWork = (taskId?: string) => {
   const apiClient = useApiClient()
@@ -51,12 +68,9 @@ export const useBoardTicketWork = (projectId?: string, boardId?: string) => {
     queryKey: taskKeys.boardWork(projectId, boardId),
     queryFn: () => apiClient.get(`/api/projects/${projectId}/boards/${boardId}/ticket-work`),
     enabled: Boolean(projectId && boardId),
-    // A board nothing starts work from, and no work is live on, has nothing to watch.
+    // Only live work moves on its own; a pickup follows the viewer's own move.
     refetchInterval: (query) =>
-      (query.state.data?.pickups.length ?? 0) > 0
-      || (query.state.data?.cards ?? []).some((card) => LIVE.has(card.status))
-        ? BOARD_TICKET_WORK_POLL_MS
-        : false,
+      (query.state.data?.cards ?? []).some((card) => LIVE.has(card.status)) ? BOARD_TICKET_WORK_POLL_MS : false,
   })
 }
 

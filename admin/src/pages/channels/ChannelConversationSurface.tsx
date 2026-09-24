@@ -52,7 +52,7 @@ import type { useDeepWaterResearchLauncher } from './useDeepWaterResearchLaunche
 import type { useExecutorRunLauncher } from './useExecutorRunLauncher'
 import type { useReplyThread } from '../../components/features/channels/useReplyThread'
 import { ChannelPostRefusal } from '../../components/features/channels/ChannelPostRefusal'
-import type { WorkThreadReadOnly } from '../../components/features/ticket-work/WorkThreadReadOnlyNotice'
+import type { WorkThreadComposer } from '../../components/features/ticket-work/WorkThreadReadOnlyNotice'
 
 interface ChannelConversationSurfaceProps {
   activeCall: CallRecord | null | undefined
@@ -161,8 +161,8 @@ interface ChannelConversationSurfaceProps {
   titleFavorite: ChannelTitleFavorite | null
   token: string | null
   visibleActiveTab: ChannelTab
-  /** Set when this is a ticket's work thread and the viewer cannot edit its board. */
-  workThreadReadOnly: WorkThreadReadOnly | null
+  /** Set when this is a ticket's work thread: who may write there, and what a message does. */
+  workThread: WorkThreadComposer | null
 }
 
 /**
@@ -230,7 +230,7 @@ export const ChannelConversationSurface = ({
   titleFavorite,
   token,
   visibleActiveTab,
-  workThreadReadOnly,
+  workThread,
 }: ChannelConversationSurfaceProps) => {
   const {
     addReaction,
@@ -418,10 +418,10 @@ export const ChannelConversationSurface = ({
 
       {/* The composer, or why it is not here (`ChannelPostRefusal`). */}
       {visibleActiveTab === 'messages' ? (
-        <ChannelPostRefusal postRefusal={roomControls.postRefusal} workThreadReadOnly={workThreadReadOnly} />
+        <ChannelPostRefusal postRefusal={roomControls.postRefusal} workThread={workThread} />
       ) : null}
 
-      {visibleActiveTab === 'messages' && roomControls.canPost && !workThreadReadOnly ? (
+      {visibleActiveTab === 'messages' && roomControls.canPost && !workThread?.readOnly ? (
         <ChannelComposer
           attachments={composer.attachments}
           inviteErrors={composer.inviteErrors}

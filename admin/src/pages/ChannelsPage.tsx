@@ -98,8 +98,10 @@ export const ChannelsPage = () => {
   // board (docs/standards/ticket-work.md → "The work thread"); asked only for
   // a conversation that names a ticket.
   const workThreadGate = useTicketWorkThreadGate(threadId, inConversation && Boolean(conversationRecord?.ticket)).data
-  const workThreadReadOnly = workThreadGate && !workThreadGate.viewerCanPost
+  const workThread = workThreadGate
     ? {
+        messageOutcome: workThreadGate.messageOutcome,
+        readOnly: !workThreadGate.viewerCanPost,
         taskTitle: workThreadGate.taskTitle,
         ticketHref: `/projects/${workThreadGate.projectId}/board?task=${encodeURIComponent(workThreadGate.taskId)}`,
       }
@@ -309,7 +311,7 @@ export const ChannelsPage = () => {
         isExternalAgentConversation={isExternalAgentActiveChannel}
         triggersTabAvailable={triggersTabAvailable}
         todosTabAvailable={todosTabAvailable}
-        workThreadReadOnly={workThreadReadOnly}
+        workThread={workThread}
         isPersonalAssistantConversation={isPersonalAssistantConversation}
         joinPending={messageSurface.joinChannel.isPending}
         mentionEntities={messageSurface.mentionEntities}

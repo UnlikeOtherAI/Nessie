@@ -9,6 +9,7 @@ import type {
 
 import { iterationKeys } from '../iterations/keys'
 import { taskKeys } from './keys'
+import { followTicketWorkAfterMove } from '../ticket-work/hooks'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
 export type { TaskPriority, TaskStatus }
@@ -269,6 +270,7 @@ export const useMoveTask = () => {
     onSettled: (_task, _error, input) => {
       refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      followTicketWorkAfterMove(queryClient, input.id)
     },
   })
 }
@@ -293,6 +295,7 @@ export const useTransitionTask = () => {
     onSettled: (_task, _error, input) => {
       refreshPresentedTask(queryClient, input.id)
       void queryClient.invalidateQueries({ queryKey: taskKeys.all })
+      followTicketWorkAfterMove(queryClient, input.id)
     },
   })
 }

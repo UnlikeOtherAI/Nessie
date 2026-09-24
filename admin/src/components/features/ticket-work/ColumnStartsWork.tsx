@@ -21,7 +21,7 @@ export const ColumnStartsWorkBadge = ({ pickups }: { pickups: readonly TicketWor
   const names = [...new Set(pickups.map((pickup) => pickup.agentName))].join(', ')
   return (
     <div
-      className="mb-2 flex min-w-0 items-center gap-1.5 rounded-md bg-[color:var(--overlay)] px-2 py-1 text-[11px] text-[color:var(--tx2)]"
+      className="flex min-w-0 items-center gap-1.5 rounded-md bg-[color:var(--overlay)] px-2 py-1 text-[11px] text-[color:var(--tx2)]"
       data-testid="column-starts-work"
       title={`Moving a ticket here starts ${names}'s work on it`}
     >
