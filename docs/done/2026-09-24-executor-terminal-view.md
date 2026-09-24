@@ -1,6 +1,6 @@
 # Executor terminal sessions
 
-Status: implementation in progress.
+Status: implemented; release gated by PR checks.
 
 The owning surface is an executor's session detail, reached from its Local
 apps session list and from a link returned to an agent supervising a session.
@@ -36,8 +36,21 @@ Persistent metadata and grants live in the control plane's host-session registry
 Executors → Sessions lists owned and explicitly shared sessions. The same detail
 page opens from a machine's Sessions tab or an agent's returned viewer link.
 
-Verification must cover owner isolation, stale epochs, independent concurrent
-sessions, reconnect/reload, input and full-screen ANSI rendering, teardown and
-headless browser screenshots. Real-host checks run Claude on dictator (macOS)
-and Minis (Windows), and `kimix` on umac (Linux), from this branch in isolated
-worktrees and state folders. Verification results remain pending.
+Verification on 2026-09-24:
+
+- Windows (Minis): two real Claude sessions launched through the executor's
+  MCP transport; both answered prompts. After reconnecting the bridge and closing
+  one session, the other answered another prompt.
+- macOS (dictator): the same checks passed with two real Claude sessions in tmux.
+- Linux (umac): the same checks passed with two real `kimix` sessions using Kimi K3
+  in tmux. User-local Node and tmux were installed without changing other checkouts.
+- Real PTY tests passed on all three hosts: concurrent session isolation, ANSI
+  screens, bridge restart, owner denial and independent teardown.
+- Postgres tests passed for encrypted snapshots, independent viewer demand,
+  immutable ownership, stale epochs, explicit sharing and revocation.
+- Headless Playwright verified the owner and shared-recipient viewers, live updates,
+  sharing/removal, access revocation and mobile layout. Screenshots were inspected.
+- API, worker, executor and admin type checks passed through Turbo.
+
+Native CLI checks used isolated development worktrees and temporary state folders;
+they do not assert that a production installer has already shipped.

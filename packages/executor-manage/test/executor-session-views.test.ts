@@ -39,8 +39,14 @@ dbTest('session screens are owner-only, encrypted, independently relayed, and ep
     await assert.rejects(read(randomUUID()), /Session not found/)
     assert.equal((await read(ids[0]!)).screen, null)
     assert.equal((await read(ids[1]!)).screen, null)
-    const exchange = (frames: ExecutorSessionViewExchange['frames'], epoch = '1', time = now) => {
-      const payload = { executorId: world.executorId, connectionEpoch: epoch, observedAt: time.toISOString(), frames }
+    const exchange = (
+      frames: ExecutorSessionViewExchange['frames'], epoch = '1', time = now,
+      sessions?: ExecutorSessionViewExchange['sessions'],
+    ) => {
+      const payload = {
+        executorId: world.executorId, connectionEpoch: epoch, observedAt: time.toISOString(), frames,
+        ...(sessions ? { sessions } : {}),
+      }
       const signature = sign(null, Buffer.from(canonicalExecutorPayload('nessie.executor.daemon.session_view.v1', payload)), privateKey)
         .toString('base64url')
       return exchangeExecutorSessionViews(prisma, secret, { ...payload, signature }, time)
@@ -64,6 +70,12 @@ dbTest('session screens are owner-only, encrypted, independently relayed, and ep
     await assert.rejects(changeExecutorSessionShare(prisma, world.adminContext, input, { email: member.email }),
       /Session not found/)
     await changeExecutorSessionShare(prisma, world.holderContext, input, { email: member.email })
+    await exchange([], '1', later, [{
+      sessionId: ids[0]!, ownerKey: 'sha256:' + 'c'.repeat(64), title: 'Different owner',
+      agent: 'terminal', root: 'work', status: 'working', updatedAt: later.toISOString(),
+    }])
+    assert.equal((await read(ids[0]!, world.memberContext)).session.title, 'Terminal',
+      'a report cannot redirect an existing share to another owner')
     assert.equal((await read(ids[0]!, world.memberContext)).screen?.ansi, 'PRIVATE_TERMINAL_0')
     assert.equal((await read(ids[0]!, world.memberContext)).canShare, false)
     await assert.rejects(read(ids[1]!, world.memberContext), /Session not found/)
@@ -79,6 +91,13 @@ dbTest('session screens are owner-only, encrypted, independently relayed, and ep
     assert.equal((await prisma.executorHostSession.findUniqueOrThrow({
       where: { executorId_sessionId: { executorId: world.executorId, sessionId: ids[1]! } },
     })).screenCiphertext, null)
+    const discovered = randomUUID()
+    await exchange([], '1', expired, [{
+      sessionId: discovered, ownerKey, title: 'Discovered session',
+      agent: 'terminal', root: 'work', status: 'closed', updatedAt: expired.toISOString(),
+    }])
+    assert.equal((await read(discovered)).session.title, 'Discovered session',
+      'signed inventory creates durable session metadata even without an open viewer')
   } finally {
     await world.cleanup()
     await prisma.$disconnect()

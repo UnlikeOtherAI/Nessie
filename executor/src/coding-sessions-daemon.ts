@@ -177,15 +177,17 @@ export const createCodingSessionsDaemon = (input: {
     }
   })
 
+  const sessionReport = async (tool: 'session_inventory' | 'session_list_all') => {
+    const answer = await serially(() => daemonCall(tool, {}))
+    if (!answer || !Array.isArray(answer.sessions)) return undefined
+    return answer.sessions.flatMap((entry) => {
+      const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
+      return parsed.success ? [parsed.data] : []
+    }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
+  }
+
   return {
-    inventory: async () => {
-      const answer = await serially(() => daemonCall('session_inventory', {}))
-      if (!answer || !Array.isArray(answer.sessions)) return undefined
-      return answer.sessions.flatMap((entry) => {
-        const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
-        return parsed.success ? [parsed.data] : []
-      }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
-    },
+    inventory: () => sessionReport('session_inventory'),
     screen: async (request) => {
       const configPath = bridge ? codingSessionsServerConfigPath(bridge) : undefined
       if (!configPath) return null
@@ -255,13 +257,6 @@ export const createCodingSessionsDaemon = (input: {
       const optedIn = loaded?.digest !== input.facts?.configDigest || loaded?.config.closeOnDaemonShutdown === true
       if (optedIn) await serially(async () => { await daemonCall('session_close_all', { reason: 'daemon_shutdown' }) })
     },
-    report: async () => {
-      const answer = await serially(() => daemonCall('session_list_all', {}))
-      if (!answer || !Array.isArray(answer.sessions)) return undefined
-      return answer.sessions.flatMap((entry) => {
-        const parsed = ExecutorCodingSessionSummarySchema.safeParse(entry)
-        return parsed.success ? [parsed.data] : []
-      }).slice(0, EXECUTOR_CODING_SESSION_REPORT_MAXIMUM)
-    },
+    report: () => sessionReport('session_list_all'),
   }
 }

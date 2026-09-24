@@ -5,11 +5,15 @@ import type { CodingSessionsDaemon } from './coding-sessions-daemon.js'
 import { signExecutorDaemonPayload } from './daemon-signature.js'
 import type { ExecutorLocalState } from './state-store.js'
 
+type RelayState = Pick<ExecutorLocalState, 'apiBaseUrl' | 'executorId' | 'machinePrivateKey' | 'connectionEpoch'> & {
+  descriptor: Pick<ExecutorLocalState['descriptor'], 'codingSessions'>
+}
+
 /** The caller owns serialization and cancellation, just like its command poll. */
 export const createSessionViewRelay = (bridge: Pick<CodingSessionsDaemon, 'screen' | 'inventory'>) => {
   let requests: ExecutorSessionViewRequest[] = []
   let lastReport = 0
-  return async (state: ExecutorLocalState): Promise<void> => {
+  return async (state: RelayState): Promise<void> => {
     if (!state.connectionEpoch || !state.descriptor.codingSessions) return
     const frames = await Promise.all(requests.map(async (request) => ({
       ...request, screen: await bridge.screen(request).catch(() => null),

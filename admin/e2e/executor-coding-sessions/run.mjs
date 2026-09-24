@@ -111,7 +111,8 @@ const openContext = async (browser, { accessView = access, canClose, names, refu
     const sessionBase = `/api/executors/${executorId}/coding-sessions/${pricing.sessionId}`
     if (path === sessionBase + '/view') {
       if (state.revoked) return respond(null, 404)
-      const { ownerKey: omitted, ...session } = pricing
+      const session = { ...pricing }
+      delete session.ownerKey
       return respond({
         canShare: canClose, online: true, session,
         screen: { ansi: '\u001b[32m' + state.screen + '\u001b[0m\r\n> ', cols: 120, rows: 36,
@@ -129,9 +130,11 @@ const openContext = async (browser, { accessView = access, canClose, names, refu
       return respond({ success: true })
     }
     if (path === '/api/executor-sessions') {
-      return respond(reported.map(({ ownerKey: omitted, ...session }) => ({
-        ...session, executorId, executorLabel: 'Workstation', shared: !canClose,
-      })))
+      return respond(reported.map((entry) => {
+        const session = { ...entry }
+        delete session.ownerKey
+        return { ...session, executorId, executorLabel: 'Workstation', shared: !canClose }
+      }))
     }
     if (path === '/api/executors') return respond([executor])
     if (path === `/api/executors/${executorId}/access`) return respond(accessView)

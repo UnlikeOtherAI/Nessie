@@ -14,6 +14,7 @@ this document.
 - [Sandbox, forced egress, and credentials](sandbox-forced-egress-and-credentials.md)
 - [Conversation leases](conversation-leases.md) — how a person's own follow-ups keep local apps
 - [Host coding sessions: the `coding-sessions` bridge](host-coding-sessions.md)
+- [Live terminal sessions](terminal-sessions.md) — tmux/ConPTY, read-only viewers, sharing, setup and verification
 - [Host coding sessions: containment and teardown, per supervisor](host-coding-sessions-containment.md)
 - [Command attachments](command-attachments.md) — the images a result references, uploaded before its receipt
 

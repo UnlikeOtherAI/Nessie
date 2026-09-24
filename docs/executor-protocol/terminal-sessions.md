@@ -148,3 +148,8 @@ It is intentionally excluded from automatic CI because it uses real logins.
 Headless browser coverage lives in `admin/e2e/executor-coding-sessions`,
 including live screen updates and share/revoke. Browser Suites must be
 dispatched explicitly for this surface, as required by AGENTS.md.
+
+The implementation was verified on 2026-09-24 with two interactive Claude sessions
+on Windows and macOS and two `kimix` (Kimi K3) sessions on Linux. Each host passed
+bridge reconnection, closing one session and continuing the other. These checks
+ran development executor builds in isolated worktrees, with temporary state.
