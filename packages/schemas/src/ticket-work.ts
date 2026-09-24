@@ -223,7 +223,39 @@ export const AgentReminderCancelledReasonSchema = z.enum([
   'replaced',
   // Its work record ended.
   'work_ended',
+  // Its work record parked in review: it waits for people, and a person
+  // moving the ticket back wakes the agent anyway.
+  'work_parked',
   // A person pressed Cancel on the ticket's chip.
   'person',
+  // It came due where its agent can no longer wake: the thread or its channel
+  // is gone or archived, the channel became a system conversation, or the
+  // agent is no longer in it. Outside ticket work only: a ticket's reminder
+  // always fires, and its delivery says what the wake did.
+  'undeliverable',
 ])
 export type AgentReminderCancelledReason = z.infer<typeof AgentReminderCancelledReasonSchema>
+
+/**
+ * The action purpose of a run a `check_back_in` reminder wakes outside ticket
+ * work. Such a run acts as the agent with no effective user and is not
+ * interactive, and its kickoff drains alone
+ * (`packages/db/src/thread-serialization.ts`): folded into a batch with a
+ * person's message it would run under that person's identity — the reminder
+ * would re-arm it — or consume their message under the agent's. A reminder in
+ * ticket work wakes as `ticket.work` instead.
+ */
+export const AGENT_REMINDER_PURPOSE = 'agent.reminder'
+
+/** `check_back_in`'s bounds, in minutes, and what the tool says when a value is outside them. */
+export const CHECK_BACK_IN_MINUTES = { min: 5, max: 1440 } as const
+
+/** How long a reminder's note may be: a line, never a plan. */
+export const AGENT_REMINDER_NOTE_MAX_CHARS = 280
+
+/**
+ * The caps on reminders outside ticket work. In ticket work a record holds
+ * one pending reminder, which a new one replaces, and every fire counts
+ * against the trigger's `wakesPerTicket`.
+ */
+export const AGENT_REMINDER_CAPS = { pendingPerThread: 3, perAgentPerDay: 24 } as const

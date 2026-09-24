@@ -60,6 +60,14 @@ export const TicketWorkChipRecordSchema = z.object({
     reason: StandingPolicyBindRefusalReasonSchema,
     sentence: z.string().min(1),
   }).strict().nullable().optional(),
+  /**
+   * The `check_back_in` the agent set for this work, while it is live: when it
+   * fires and the agent's own note. The ticket's readers see it, as they see
+   * the agent's comments.
+   */
+  pendingReminder: z.object({ id: uuid, dueAt: TimestampSchema, note: z.string() }).nullable(),
+  /** While the agent's latest comment waits for a person's answer, and since when. */
+  awaitingAnswerAt: TimestampSchema.nullable(),
 })
 export type TicketWorkChipRecord = z.infer<typeof TicketWorkChipRecordSchema>
 
@@ -97,6 +105,10 @@ export const TicketWorkHistoryEntrySchema = z.object({
 })
 export type TicketWorkHistoryEntry = z.infer<typeof TicketWorkHistoryEntrySchema>
 
+/** Why the cancel route refused a viewer who cannot edit the ticket's board (403). */
+export const TICKET_WORK_REMINDER_READ_ONLY_SENTENCE =
+  'Only people who can edit this board can cancel the agent\'s reminder. Comment on the ticket instead.'
+
 /** `GET /api/tasks/:taskId/work`. */
 export const TaskTicketWorkRecordSchema = z.object({
   /** The newest record of each trigger, live ones first. */
@@ -104,6 +116,12 @@ export const TaskTicketWorkRecordSchema = z.object({
   lastSkip: TicketWorkSkipNoticeSchema.nullable(),
   /** The ticket's `work_*` activity, newest first and bounded. */
   history: z.array(TicketWorkHistoryEntrySchema),
+  /**
+   * Whether the viewer can edit the ticket's board: who may cancel a pending
+   * reminder (`DELETE /api/tasks/:taskId/work/reminders/:reminderId` asks the
+   * same rule).
+   */
+  viewerCanEditBoard: z.boolean(),
 })
 export type TaskTicketWorkRecord = z.infer<typeof TaskTicketWorkRecordSchema>
 

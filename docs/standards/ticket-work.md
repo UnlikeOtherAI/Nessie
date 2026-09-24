@@ -48,9 +48,13 @@ Each rule is tagged with the PR that first enforces it in code:
   afresh after seven checks, the ticket's own coding tools, session-scoped
   closes, the policy's hours and spend limits, the fences that end it, host
   output kept to the ticket, the pull request tracked to its merge, and the
-  audit rows of each. The dequeue, session wakes and a machine's return are
-  T5's; the sweep that re-checks authors and runs the limits is T3's.
-- **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
+  audit rows of each. The dequeue across policies, session wakes and a machine's
+  return are T5's.
+- **(T3)** shipped: `check_back_in` and its reminders, the quiet wake, the
+  open question (`awaitsAnswer`) with the hours clock it pauses, and the
+  periodic `ticket-work.sweep`, in their own chapter,
+  [ticket-work-reminders.md](ticket-work-reminders.md).
+- **(from T1)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
   or `document_changed` trigger (below).
@@ -109,7 +113,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   beside a config of `boardId?`, `pickup? { columns: ({id} | {name} |
   {category: in_progress | review})[], assignOnPickup = true }` (null or
   absent: the trigger starts no work), `follow` and `endOn` (the stored
-  schema's own fields and defaults), `limits { wakesPerTicket = 30,
+  schema's own fields and defaults), **(T3)** `quietWakeMinutes = 30`
+  (15–1440, null turns the quiet wake off), `limits { wakesPerTicket = 30,
   startsPerDay = 20 }` capped by `TICKET_TRIGGER_LIMIT_CEILINGS`, and
   `instructions { general, onPickup?, onTicketChanged?, onSessionTurnEnded?,
   onReminder?, onQueued? }`. It is strict: an unknown key is refused. A limit
@@ -441,13 +446,15 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   against its policy's); **(T4)** where it stands with a machine — assigned,
   queued at a position, waiting for its machine or for access — the ticket's
   own coding session as last reported, and the pull request on record with
-  its state and checks (`ticket-work-kickoff-machine.ts`); that this is the
+  its state and checks (`ticket-work-kickoff-machine.ts`); **(T3)** while
+  live, the pending reminder or none, an open question, and how to use
+  `check_back_in`, `awaitsAnswer` and the quiet wake; that this is the
   ticket's work thread and, while the work is live, what wakes it next and
   that its own changes never do) and
   *Instructions* (the trigger's `general`, then — while the work is live —
   each section matching a reason: `onPickup`, `onTicketChanged` for every
-  ticket change and thread message, `onSessionTurnEnded`, `onReminder`,
-  `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
+  ticket change and thread message, `onSessionTurnEnded`, `onReminder` for a
+  reminder and **(T3)** a quiet wake, `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
   instruction that no longer parses costs the instructions alone. A comment
   carries its full text and its author, a description change the new
   description (T2 adds the line diff), a thread message the message.
@@ -463,7 +470,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   (`withoutEndedWorkWrites`), so a stale plan cannot move the ticket back.
 - **Every wake writes one compact thread row** — a `system` message with
   `metadata.ticketWorkEvent` (`TicketWorkThreadEventSchema`: `woken` with its
-  wake reason, or `stopped` with its state reason) and the content *"Woken:
+  wake reason, `stopped` with its state reason, or **(T3)**
+  `reminder_cancelled`) and the content *"Woken:
   Ondrej commented"* or *"Stopped: 30 wakes used. …"*. The thread feed admits
   those rows by their `kind` (`listThreadMessages`,
   `api/src/services/message-read-model.ts`) and still hides every kickoff. A
@@ -504,8 +512,9 @@ routes, and none of it names a machine.
   - `GET /api/tasks/:taskId/work`, behind the ticket's own read rule: each
     trigger's newest record (`TicketWorkChipRecordSchema`: agent, status and
     reason, who started it, last wake and its reason, wake n of
-    `limits.wakesPerTicket`) and the work thread **only for a viewer who may
-    open it** (`buildViewerThreadWhere`); a reader who may not gets the same
+    `limits.wakesPerTicket`, **(T3)** a live record's pending reminder and
+    open question) and `viewerCanEditBoard`, and the work thread **only for a
+    viewer who may open it** (`buildViewerThreadWhere`); a reader who may not gets the same
     state and no door. It also carries `lastSkip`: the newest pickup skip, or
     refused re-entry (`reentry`), in `TICKET_WORK_NOTICE_SKIP_REASONS` (an
     agent's, a token's, a source's or the platform's move, a non-editor's,
@@ -535,8 +544,11 @@ routes, and none of it names a machine.
   continue."*, *"Parked while the ticket is in review…"*, or — when the
   ticket's newest skip refused a move back — *"Moved back by an agent, so
   work did not resume…"* in its place, because the ticket then already sits
-  in the start-work column), "Open the work thread" for its readers, and a
-  closed **Work history** fold listing the `work_*` rows (*"14:05 · CTO
+  in the start-work column), **(T3)** the pending reminder (*"Checking back
+  at 14:35 — waiting for CI"*, `ticketWorkReminderLine`) with **Cancel** only
+  when the read's `viewerCanEditBoard`, and an open question (*"Waiting for an
+  answer on the ticket since 14:20"*), "Open the work thread" for its readers,
+  and a closed **Work history** fold listing the `work_*` rows (*"14:05 · CTO
   started work · by Ondrej"*, `ticketWorkHistoryLine`). The board card
   (`KanbanCard`) shows the agent's avatar with a state dot
   (`TicketWorkCardDot`). Both re-read while work is live, and twice after the
@@ -558,12 +570,14 @@ routes, and none of it names a machine.
   and its columns (a new trigger starts from the board's In progress
   columns, and a column an end rule covers cannot also start work); follow
   kinds with the connected-board opt-in explained, and the mirrored board
-  named when there is one; end columns; both limits; and sectioned
-  instructions with a neutral example. It posts the typed config by column
-  id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its path
-  names** (`groupTicketRefusals`). A ticket trigger's page names its board
-  and columns (`useTicketTriggerFacts`) and says what each delivery decided
-  and why (`ticketDeliveryLine`: the skip sentence, or the wake reason).
+  named when there is one; end columns; both limits; **(T3)** the quiet wake
+  (a switch and its minutes, off posting `null`, and what off costs); and
+  sectioned instructions with a neutral example. It posts the typed config by
+  column id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its
+  path names** (`groupTicketRefusals`). A ticket trigger's page names its
+  board and columns (`useTicketTriggerFacts`) and its quiet wake, and says
+  what each delivery decided and why (`ticketDeliveryLine`: the skip
+  sentence, or the wake reason — a reminder and a quiet wake included).
 - **The work thread** renders each `metadata.ticketWorkEvent` row compactly
   (`TicketWorkEventRow`: *"Woken: Ondrej commented"*, time, no author). A room
   member who cannot edit the ticket's board gets `ChannelPostRefusal`'s line
@@ -589,6 +603,13 @@ routes, and none of it names a machine.
   mirrored project both the editor and the agent tools' answer
   (`describeMirroredSources`) say that a move on the connected board never
   starts work, and what its own changes can still do.
+
+## Reminders, the quiet wake and the sweep (T3)
+
+`check_back_in` reminders in and outside ticket work, the open question
+(`awaitsAnswer`) and the hours clock it pauses, the quiet wake, the lock order
+ticket work takes, and the periodic `ticket-work.sweep` are their own chapter:
+[ticket-work-reminders.md](ticket-work-reminders.md).
 
 ## Standing machine access
 
@@ -620,7 +641,7 @@ hold these, so no read-then-write race can break them:
   executor without holding it. `policyId` / `executorId` are written by the
   dispatcher, never by run setup.
 - `agent_reminders_one_pending_per_work`: one pending reminder per work
-  record; a new `check_back_in` replaces it (from T3).
+  record; a new `check_back_in` replaces it (T3).
 - `executor_standing_policies_one_binding` and
   `executor_standing_policies_one_preparing`: in
   [ticket-work-machine-access.md](ticket-work-machine-access.md).
@@ -716,7 +737,10 @@ causes it**:
   column to continue"* row, and the delivery is skipped `limit_wakes`. A
   pickup past the trigger's `startsPerDay` (UTC day, counted under the
   trigger's start lock) is recorded `failed` with `limit_daily`, starts
-  nothing, and is skipped `limit_starts`. **(T4)** `ticketHours`,
+  nothing, and is skipped `limit_starts`. **(T3)** `ticket-work.sweep` ends
+  work a lowered `wakesPerTicket` leaves over its wakes the same way, and a
+  reminder or quiet wake past the limit stops it like any other wake.
+  **(T4)** `ticketHours`,
   `ticketUsd` and `dailyUsd` fail the record the same way, and its sessions
   get close requests: checked at every wake, by the binder and in the
   heartbeat intake ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
@@ -757,8 +781,8 @@ causes it**:
   subscribed in `worker/src/worker-subscriptions-integrations.ts`),
   `TICKET_WORK_THREAD_MESSAGE_TOPIC` (T1, a person's message in a work
   thread, subscribed beside it),
-  `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (from
-  T3, with an optional idempotency `bucket`) and `TICKET_WORK_SESSION_TOPIC`
+  `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (T3,
+  one job a minute by its `bucket`, subscribed beside them) and `TICKET_WORK_SESSION_TOPIC`
   (from T5, whose `status` is only one that wakes: `waiting_for_input`,
   `interrupted`, `failed` or `closed`). The sweep is also **the pool
   dispatcher**: every transaction that may free a machine — a record ending,
@@ -766,8 +790,8 @@ causes it**:
   online, access being re-confirmed — enqueues it with a short idempotency
   window, and the periodic tick is only the backstop (from T5). So dispatch is
   one idempotent job that reads the queue and the pools afresh, and there is
-  no per-executor dispatch topic. Only `trigger.ticket.dispatch` and
-  `ticket-work.thread-message` have a subscriber so far; each other handler
+  no per-executor dispatch topic. Only `trigger.ticket.dispatch`,
+  `ticket-work.thread-message` and `ticket-work.sweep` have a subscriber so far; each other handler
   parses its payload with its schema when it lands.
 - The dispatch vocabularies are in `packages/schemas/src/ticket-triggers.ts`:
   the stored `ticket_changed` config the dispatcher reads
@@ -889,11 +913,14 @@ causes it**:
   `document_changed`; a ticket trigger's form, a pickup refused on its field
   and the typed create; the column badge at the head of an aligned track,
   card dots, and the column menu on every column but Done that opens the
-  editor prefilled with its type fixed; and a ticket trigger's page — at 1280
-  and 390 px. `test:e2e:task-dialog` shots the chip in each state (a refused
-  move back included), its work history and the card's dot;
-  `test:e2e:agent-conversations` walks the Tickets fold, the wake rows and the
-  read-only composer.
+  editor prefilled with its type fixed; the quiet wake field; and a ticket
+  trigger's page — at 1280 and 390 px. `test:e2e:task-dialog` shots the chip
+  in each state (a refused move back included), its work history, the card's
+  dot, and (shots 19) the reminder with Cancel, cancelled, a reader's without
+  it, and the open question; `test:e2e:agent-conversations` walks the Tickets
+  fold, the wake rows and the read-only composer.
+- **(T3)** The reminder, open-question, quiet-wake and sweep tests are listed in
+  [their chapter](ticket-work-reminders.md#tests-that-hold-these-rules).
 - `packages/team-admin/test/standing-policy-db.test.ts` (fixture
   `standing-policy-fixture.ts`): standing machine access against Postgres —
   prepare refused for a colleague and an owner who are not the author and in

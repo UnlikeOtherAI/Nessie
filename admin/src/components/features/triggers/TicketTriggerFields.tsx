@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
-import { TICKET_TRIGGER_LIMIT_CEILINGS } from '@nessie/schemas'
+import { TICKET_QUIET_WAKE_MINUTES, TICKET_TRIGGER_LIMIT_CEILINGS } from '@nessie/schemas'
 
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { PROVIDER_LABEL, useProjectSources } from '../../../facades/board-sources/hooks'
@@ -242,6 +242,42 @@ export const TicketTriggerFields = ({ errors, form, projectId, setForm }: Ticket
           into a start-work column.
         </p>
         <FieldError field="limits" message={errors.limits} />
+      </Section>
+
+      <Section
+        hint="A safety net for work nothing else will wake: CI finishing, say, when the agent forgot to set a reminder."
+        title="Quiet wake"
+      >
+        <label className="flex items-center gap-2 text-sm text-[color:var(--tx2)]">
+          <Switch
+            checked={ticket.quietWakeEnabled}
+            label="Wake the agent when its work has gone quiet"
+            onChange={(next) => patch({ quietWakeEnabled: next })}
+          />
+          Wake the agent when its work has gone quiet
+        </label>
+        {ticket.quietWakeEnabled ? (
+          <label className="grid max-w-xs gap-1 text-sm text-[color:var(--tx2)]" htmlFor="ticket-trigger-quiet">
+            Minutes of quiet
+            <input
+              className="admin-input"
+              id="ticket-trigger-quiet"
+              inputMode="numeric"
+              max={TICKET_QUIET_WAKE_MINUTES.max}
+              min={TICKET_QUIET_WAKE_MINUTES.min}
+              onChange={(event) => patch({ quietWakeMinutes: event.target.value })}
+              type="number"
+              value={ticket.quietWakeMinutes}
+            />
+          </label>
+        ) : null}
+        <p className="text-xs text-[color:var(--tx3)]">
+          {ticket.quietWakeEnabled
+            ? 'Live work with no reminder set, no question waiting for an answer and no wake for this long is '
+              + 'woken to check where it stands. Each quiet wake counts as one of the ticket\'s wakes.'
+            : 'Off: work the agent forgets to check on waits until a person changes the ticket.'}
+        </p>
+        <FieldError field="quietWakeMinutes" message={errors.quietWakeMinutes} />
       </Section>
 
       <Section

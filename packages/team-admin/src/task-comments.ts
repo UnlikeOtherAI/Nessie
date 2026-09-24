@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { NormalisedComment } from '@nessie/board-sources'
+import { answerTicketWorkQuestions, applyTicketWorkAgentComment } from '@nessie/executor-manage'
 import {
   COMMENT_REMOVAL_REASON,
   inlineAttachmentIds,
@@ -235,7 +236,17 @@ const readComment = async (prisma: PrismaClient, actor: TaskActor, id: string) =
 export const createTaskComment = async (
   prisma: PrismaClient,
   actor: TaskActor,
-  input: { taskId: string; body: string; attachmentIds?: readonly string[] },
+  input: {
+    taskId: string
+    body: string
+    attachmentIds?: readonly string[]
+    /**
+     * An agent's comment asks the people on the ticket something
+     * (`ticket_comment_add`'s `awaitsAnswer`): stamped on its `comment_added`
+     * event, and it opens the question on the agent's live work for the ticket.
+     */
+    awaitsAnswer?: boolean
+  },
   deps: { writeBack?: TaskCommentWriteBack } = {},
 ): Promise<
   | { comment: TaskCommentRecord; projectId: string | null; propagated: boolean }
@@ -278,6 +289,18 @@ export const createTaskComment = async (
           data: { organizationId: task.organizationId, taskId: task.id, body, ...author },
           select: { id: true },
         })
+    // An agent's comment opens or closes the question on its own work; anyone
+    // else's answers every question open on the ticket (ticket-work-clock.ts).
+    let answeredWorkIds: string[] = []
+    if (actor.agentId) {
+      await applyTicketWorkAgentComment(tx, {
+        taskId: task.id,
+        agentId: actor.agentId,
+        awaitsAnswer: input.awaitsAnswer === true,
+      })
+    } else {
+      answeredWorkIds = await answerTicketWorkQuestions(tx, { taskId: task.id })
+    }
     await recordTaskEvent(tx, {
       taskId: task.id,
       eventType: 'comment_added',
@@ -287,6 +310,8 @@ export const createTaskComment = async (
         commentId: comment.id,
         ...(actor.agentId ? { agentId: actor.agentId } : {}),
         ...(external ? { externalId: external.externalId } : {}),
+        ...(actor.agentId && input.awaitsAnswer ? { awaitsAnswer: true } : {}),
+        ...(answeredWorkIds.length > 0 ? { answeredWorkIds } : {}),
       },
       scope: { organizationId: task.organizationId, projectId: task.projectId },
     })

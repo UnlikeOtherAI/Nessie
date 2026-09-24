@@ -114,7 +114,7 @@ const ticketTrigger = {
     boardId: BOARD, endOn: [{ category: 'todo' }, { category: 'done' }],
     follow: { includeSourceEvents: false, kinds: ['comment', 'description', 'moved', 'thread_message', 'document'] },
     instructions: { general: 'Triage every ticket and comment a plan.' }, limits: { startsPerDay: 20, wakesPerTicket: 30 },
-    pickup: { assignOnPickup: true, columnIds: [DOING] },
+    pickup: { assignOnPickup: true, columnIds: [DOING] }, quietWakeMinutes: 30,
   },
   createdAt: T0, description: 'Picks up what people move into In progress.', enabled: true, id: TICKET_TRIGGER,
   lastFiredAt: T0, name: 'Start work from In progress', status: 'active', targetChannelId: CHANNEL_ID,
@@ -122,11 +122,27 @@ const ticketTrigger = {
 } as unknown as AgentTriggerRecord
 const delivery = (n: number, source: string, status: string, payload: Record<string, unknown>) => ({
   createdAt: `2026-09-23T1${n}:00:00.000Z`, id: `60000000-0000-4000-8000-0000000002${n}0`,
-  payload: { taskId: tasks[0]!.id, taskEventId: `60000000-0000-4000-8000-0000000003${n}0`, ...payload },
+  // A reminder names its reminder and a quiet wake nothing; every other event its TaskEvent.
+  payload: {
+    taskId: tasks[0]!.id,
+    ...(payload.eventType === 'reminder' || payload.eventType === 'quiet'
+      ? {}
+      : { taskEventId: `60000000-0000-4000-8000-0000000003${n}0` }),
+    ...payload,
+  },
   source, status, triggerId: TICKET_TRIGGER,
   ...(status === 'skipped' ? { errorMessage: String(payload.skipReason) } : {}),
 })
 const history = [
+  // T3: the agent's own reminder, and the platform's quiet wake.
+  delivery(5, 'quiet', 'delivered', {
+    eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet', followedWakeAt: T0,
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
+  delivery(4, 'reminder', 'delivered', {
+    eventType: 'reminder', originKind: 'system', outcome: 'follow', wakeReason: 'reminder',
+    reminderId: '60000000-0000-4000-8000-000000000500', workId: '60000000-0000-4000-8000-000000000400',
+  }),
   delivery(3, 'follow', 'delivered', {
     eventType: 'comment_added', originKind: 'session', outcome: 'follow', wakeReason: 'ticket_commented',
     workId: '60000000-0000-4000-8000-000000000400',

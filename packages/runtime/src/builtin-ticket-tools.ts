@@ -90,7 +90,7 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     parameters: { type: 'object', properties: { projectId: PROJECT_ID, boardId: UUID }, required: [] },
   },
   {
-    id: 'ticket_label_create', category: 'projects', label: 'Create Ticket Label', personalAssistantOnly: true, projectDelegatedOnly: true,
+    id: 'ticket_label_create', category: 'projects', label: 'Create Ticket Label', personalAssistantOnly: true, projectDelegatedOnly: true, projectOperator: true,
     summary: 'Add a label to a board.', safe: false,
     description: 'Create a label on a board: boardId’s, or the project’s default board when it is omitted. If the name is already taken on that board (ignoring case), the existing label is returned instead; use it. color is #rrggbb and optional.',
     parameters: { type: 'object', properties: { projectId: PROJECT_ID, boardId: UUID, name: { type: 'string' }, color: { type: 'string', description: '#rrggbb' } }, required: ['name'] },
@@ -105,7 +105,18 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
     id: 'ticket_comment_add', category: 'projects', label: 'Comment on Ticket', personalAssistantOnly: true, projectDelegatedOnly: true,
     summary: 'Add a comment to a ticket.', safe: false,
     description: `Add a comment to a ticket. On a ticket mirrored from an external system with read & write access it is posted there too; otherwise it stays in Nessie and the result says so. ${MARKDOWN}`,
-    parameters: { type: 'object', properties: { ticketId: UUID, body: { type: 'string' } }, required: ['ticketId', 'body'] },
+    parameters: {
+      type: 'object',
+      properties: {
+        ticketId: UUID,
+        body: { type: 'string' },
+        awaitsAnswer: {
+          type: 'boolean',
+          description: 'Set true when your comment asks the people on the ticket something. While your ticket work waits for an answer it is not woken just because nothing happened; a comment from a person who can edit the board wakes you. Also call check_back_in, in case nobody answers.',
+        },
+      },
+      required: ['ticketId', 'body'],
+    },
   },
   {
     id: 'ticket_comment_update', category: 'projects', label: 'Edit Ticket Comment', personalAssistantOnly: true,
@@ -177,8 +188,8 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
 
 export const TICKET_BOARD_CREATE_TOOL_DEFINITION: BuiltinToolDefinition = {
   id: 'ticket_board_create', category: 'projects', label: 'Create Ticket Board',
-  personalAssistantOnly: true, projectDelegatedOnly: true, requiresExplicitGrant: true,
-  summary: 'Create a board in the current project.', safe: false,
-  description: 'Create a board in the project this conversation belongs to. Requires a live member of the project (or an organisation owner or admin) or their bounded peer delegation.',
-  parameters: { type: 'object', properties: { name: { type: 'string' }, iconEmoji: { type: ['string', 'null'] }, style: { type: 'string', enum: ['kanban', 'scrum'] } }, required: ['name'] },
+  personalAssistantOnly: true, projectDelegatedOnly: true, projectOperator: true, requiresExplicitGrant: true,
+  summary: 'Create a board in a project.', safe: false,
+  description: 'Create a board, acting as the person asking you with exactly their rights: in the project this conversation belongs to, or — when you set up projects for the person — in the projectId you name. Requires a live member of that project (or an organisation owner or admin) or their bounded peer delegation. The result gives the boardId ticket_board_column_create takes.',
+  parameters: { type: 'object', properties: { name: { type: 'string' }, projectId: { type: 'string', description: 'The project’s UUID. An agent working in its own project channel omits it and gets that channel’s project; only an agent with the project-operator grant may name another the person can change, from project_list or a /projects/… link. The Personal Assistant does not make boards with this tool.' }, iconEmoji: { type: ['string', 'null'] }, style: { type: 'string', enum: ['kanban', 'scrum'] } }, required: ['name'] },
 }

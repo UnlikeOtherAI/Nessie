@@ -333,6 +333,11 @@ export const restartRun = async (
         interactive: replay.interactive,
         messageId: message.id,
         ...(run.promptOverride ? { promptOverride: run.promptOverride } : {}),
+        // Who pressed Restart. The replay acts as them, and the
+        // project-operator arm opens only when the replayed input is theirs.
+        ...(actorContext.actor.actorType === 'user'
+          ? { resumedByUserId: parseUserId(actorContext.actor.actorId) }
+          : {}),
         runId: parseRunId(newRun.id),
         taskId: parseTaskId(newTask.id),
         threadId: parseThreadId(run.threadId),

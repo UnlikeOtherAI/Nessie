@@ -27,6 +27,7 @@ import {
 } from '@nessie/schemas'
 
 import { buildViewerThreadWhere } from './agent-conversations.js'
+import { canMemberEditProjectBoards } from './resource-authority.js'
 import { canPostInTicketWorkThread, findTicketWorkThread, ticketWorkThreadTitle } from './ticket-work-thread.js'
 
 /**
@@ -222,13 +223,21 @@ const loadWorkHistory = async (prisma: PrismaClient, taskId: string): Promise<Ti
 /** `GET /api/tasks/:taskId/work`, for a viewer the caller already let read the ticket. */
 export const loadTaskTicketWork = async (
   prisma: PrismaClient,
-  input: { taskId: string; organizationId: string; viewerUserId: string },
+  input: { taskId: string; organizationId: string; viewerUserId: string; isOrganizationAdmin?: boolean },
 ): Promise<TaskTicketWorkRecord> => {
   const task = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
     select: { projectId: true },
   })
-  if (!task) return { records: [], lastSkip: null, history: [] }
+  if (!task) return { records: [], lastSkip: null, history: [], viewerCanEditBoard: false }
+  const viewerCanEditBoard = task.projectId
+    ? await canMemberEditProjectBoards(prisma, {
+        organizationId: input.organizationId,
+        userId: input.viewerUserId,
+        projectId: task.projectId,
+        ...(input.isOrganizationAdmin !== undefined ? { isOrganizationAdmin: input.isOrganizationAdmin } : {}),
+      })
+    : false
   const rows = await prisma.agentTicketWork.findMany({
     where: { taskId: input.taskId, organizationId: input.organizationId },
     orderBy: { startedAt: 'desc' },
@@ -248,6 +257,13 @@ export const loadTaskTicketWork = async (
       trigger: { select: { config: true } },
       triggerId: true,
       wakeCount: true,
+      awaitingAnswerAt: true,
+      reminders: {
+        where: { status: 'pending' },
+        orderBy: { dueAt: 'asc' },
+        take: 1,
+        select: { id: true, dueAt: true, note: true },
+      },
     },
   })
   // The newest record of each trigger: a ticket worked twice is one chip.
@@ -284,6 +300,11 @@ export const loadTaskTicketWork = async (
       : null,
     queuePosition: row.status === 'queued' ? row.queuePosition : null,
     machineRefusal: refusals.get(row.id) ?? null,
+    // Ended work cancels its reminders and answers nothing more.
+    pendingReminder: LIVE.has(row.status) && row.reminders[0]
+      ? { id: row.reminders[0].id, dueAt: row.reminders[0].dueAt.toISOString(), note: row.reminders[0].note }
+      : null,
+    awaitingAnswerAt: LIVE.has(row.status) ? row.awaitingAnswerAt?.toISOString() ?? null : null,
   }))
 
   const newestByTrigger = new Map<string, Date>()
@@ -296,7 +317,7 @@ export const loadTaskTicketWork = async (
   const lastSkip = task.projectId
     ? await loadLastSkip(prisma, { taskId: input.taskId, projectId: task.projectId, newestByTrigger })
     : null
-  return { records, lastSkip, history: await loadWorkHistory(prisma, input.taskId) }
+  return { records, lastSkip, history: await loadWorkHistory(prisma, input.taskId), viewerCanEditBoard }
 }
 
 /** The statuses a board card shows a dot for: live work, and work a limit stopped. */

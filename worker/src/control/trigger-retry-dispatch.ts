@@ -1,6 +1,6 @@
 import { type PrismaClient } from '@prisma/client'
 import { type AgentTriggerType } from '@nessie/schemas'
-import { reattemptTicketTriggerDelivery } from './ticket-trigger-dispatch.js'
+import { reattemptTicketWorkDelivery } from './ticket-work-retry.js'
 import { queueTriggerRun } from './trigger-run.js'
 import { queueWorkflowTriggerRun } from './workflow-trigger-run.js'
 
@@ -71,7 +71,7 @@ export const reattemptTriggerDelivery = async (
   // A ticket trigger works in one thread per ticket, not a fixed one: its
   // dispatcher decides the stored event again.
   if (trigger.type === 'ticket_changed') {
-    await reattemptTicketTriggerDelivery(prisma, {
+    await reattemptTicketWorkDelivery(prisma, {
       organizationId: trigger.agent?.organizationId ?? null,
       payload: input.payload,
       retryCount: input.retryCount,

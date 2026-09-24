@@ -302,7 +302,9 @@ when one changes, the same turn updates it, not this section.
   before writing code here.
 - **Personal-assistant tools and route mirroring.** A PA tool that does what a
   person does by clicking calls the same function that person's button calls,
-  and mirrors that route's authorization exactly.
+  and mirrors that route's authorization exactly. An ordinary agent reaches
+  the setup verbs only through the explicit `project_operator` grant, on the
+  live requester's own turn in a project channel it is in.
   Read [`docs/standards/personal-assistant-tools.md`](docs/standards/personal-assistant-tools.md)
   before writing code here.
 - **Global agents, specialist delegation and `agent_handoff`.** App-provided

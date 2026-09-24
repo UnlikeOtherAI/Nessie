@@ -19,7 +19,7 @@ import { BoardSettingsPage } from '../../src/pages/project/BoardSettingsPage'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
-import { ticketWorkFor as ticketWorkForState } from './ticket-work'
+import { ticketWorkFor as ticketWorkForState, WORK_REMINDER } from './ticket-work'
 
 /**
  * The ticket dialog over a stubbed API (docs/plans/2026-09-21-ticket-comments-
@@ -286,7 +286,9 @@ if (scenario === 'viewer-back') {
 
 // An agent's work on the ticket in the state `&work=` names (`ticket-work.ts`).
 const WORK_STATE = params.get('work')
-const ticketWorkFor = (state: string | null) => ticketWorkForState(state, AGENT)
+// A board editor's Cancel takes the reminder away, as the route does.
+let reminderCancelled = false
+const ticketWorkFor = (state: string | null) => ticketWorkForState(state, AGENT, { reminderCancelled })
 const cardWork = WORK_STATE && WORK_STATE !== 'skipped'
   ? (() => {
       const record = ticketWorkFor(WORK_STATE).records[0]!
@@ -415,6 +417,11 @@ const mutate = (method: string) => async (path: string, body?: Record<string, un
     }
     attachments = attachments.map((entry) => (entry.id === target.id ? removed : entry))
     return removed
+  }
+  if (method === 'DELETE' && route === `/api/tasks/${TASK}/work/reminders/${WORK_REMINDER}`) {
+    if (reminderCancelled) throw new ApiClientError('This reminder already fired or was cancelled.', 'REMINDER_NOT_FOUND', 404)
+    reminderCancelled = true
+    return { cancelled: true }
   }
   if (route === `/api/tasks/${TASK}` || route === '/api/tasks') return { ...task, ...body }
   return { ok: true }

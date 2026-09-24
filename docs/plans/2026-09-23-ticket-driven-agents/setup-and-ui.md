@@ -105,3 +105,62 @@ run. It never gains standing authority of its own.
   *"Machine access: not set up"*. The requester gets an attention item, *"Set
   up machine access for <trigger>"*, which opens the trigger's Machine access
   section. The CTO says so in its answer.
+
+### As built (T6)
+
+The capability shipped as above; the standard is
+[personal-assistant-tools.md](../../standards/personal-assistant-tools.md) →
+"The project-operator capability". Where the code led somewhere else, the
+intent was kept and the difference is recorded here:
+
+- **`project_operator` is a registry entry, not a tool.** It is one of
+  `CAPABILITY_GRANT_DEFINITIONS`: registered, protected and shown on the Tools
+  page like any explicit-grant builtin, and offered to no model.
+- **"No peer-delegation or channel-policy purpose" became "no purpose at
+  all".** A person's own turn carries none, and every other kickoff
+  (`ticket.work`, peer delegation, channel policy, briefs, deliveries) carries
+  one, so an allow-list refuses the next one too.
+- **`team_create` is in the set** (organisation owners only, as the route),
+  because standing a project up can need its team and the verification list
+  names a non-owner's refusal.
+- **`ticket_board_create` and `ticket_label_create` may name another project**
+  the person can change, so a board and labels can be set up in a project the
+  agent just created. Their lend keeps the channel's project.
+- **`kb_space_create`** takes `kind: "project_documents"` (the idempotent
+  Project Documents provisioning) or `kind: "space"` with a name — a
+  project-visible space such as "Tech docs". A folder inside a space is left to
+  the knowledge tools.
+- **Triggers stay in the run's project.** `agent_trigger_create` and
+  `agent_trigger_update` on the operator arm act for the agent itself or an
+  agent bound in one of the run's project's channels, and their target channel
+  must be in that project. Binding an agent into a channel the person just
+  created is not in the set, so a trigger in a new project is set up from a
+  conversation in that project once the agent is placed there.
+- **`workflow_list`, `workflow_preview` and `workflow_run_status` stay
+  ordinary tools**: a list of names an owner may read, a pointer card each
+  viewer's own access renders, and a status-only read.
+- **Workflow triggers record their creator** as `config.authorUserId`, like
+  agent triggers; the fire is unchanged and runs with no person attached.
+- **"A live requester" means the person's own turn**, not just a user actor on
+  an interactive run: the message the run answers (and every message a drain
+  folded in) is their own composer message, and a Continue, a card or approval
+  resume or a Restart was their own press. Restart and Continue swap in the
+  presser and replay the original input, a card resumes as the parked actor
+  whoever answered, and a drain takes its latest person's actor, so without it
+  somebody else's input could open the verbs. The arm also stays shut in an
+  organisation-wide channel.
+- **The workflow writes and the new verbs need a live turn on every arm**, the
+  Personal Assistant's included, whose arm otherwise opens on its schedules.
+- **`project_structure_read` is in the set**, and `project_create` and
+  `ticket_board_create` answer with their board's columns by id, so the
+  operator shapes the board a project starts with rather than making another.
+- **The migration narrows access, and says so.** A granted agent keeps the
+  workflow verbs only on a person's own turn in a project channel it is in; a
+  second WARNING names each agent whose trigger fires or DM-only use lose them.
+- **The attention item is a `trigger_machine_access` bell row**, "<trigger>
+  needs machine access: ask the machines' owner to set it up, from the
+  trigger's page or the Agent Designer", opening the trigger's page. Until
+  T4's Machine access section lands, the tool result, not the trigger page,
+  says "Machine access: not set up". The row surfaces while the trigger's agent
+  is live, no standing policy for it is preparing or live, and the recipient is
+  an organisation owner; T4 links the section.

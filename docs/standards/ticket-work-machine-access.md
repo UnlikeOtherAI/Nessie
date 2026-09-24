@@ -259,9 +259,12 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   (`policy_ended`, a hand-over's parked records included). Never an
   owner-wide close for ticket work. The next heartbeat carries them.
 - **Limits are the policy's** (`executor-standing-policy-limits.ts`):
-  `ticketHours` against the record's active time — until T3's clock
-  accumulates `activeMs`, the spans its `work_*` history shows it `active`,
-  so time queued, waiting or parked is not counted; `ticketUsd` against
+  `ticketHours` against the record's hours clock (`ticketWorkActiveMs`,
+  `ticket-work-clock.ts`), which runs only while the record is `active` with
+  no open question, so time queued, waiting for a machine or for access,
+  parked, or waiting for a person's answer is never counted — every pool
+  transition (assigned, queued, waiting, suspended, offline) syncs it in its
+  own transaction; `ticketUsd` against
   `costUsd`, which every coding cost delta and each `ticket.work` run's own
   ledger cost add to (`recordTicketWorkRunCost`, once per run, from
   completion, failure and cancel); `dailyUsd` against the day's spend row.

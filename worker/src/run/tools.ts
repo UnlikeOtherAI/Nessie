@@ -95,6 +95,7 @@ import { dispatchSheetTool } from './sheet-tool-dispatch.js'
 import { TICKET_ACTIVITY_TOOL_RUNNERS } from './pa-tools/tickets.js'
 import { ticketWorkHostOutputRefusal, ticketWorkToolRefusal } from './execute/ticket-work-setup.js'
 import { PROJECT_STRUCTURE_TOOL_RUNNERS } from './pa-tools/provisioning-structure.js'
+import { REMINDER_TOOL_RUNNERS } from './pa-tools/check-back-in.js'
 import type { AgenticToolResult, BuiltinToolRuntimeContext } from './tool-types.js'
 import { dispatchSandboxedBuiltinTool } from './sandboxed-tool-dispatch.js'
 
@@ -159,12 +160,11 @@ const executeBuiltinToolUncorrected = async (
   if (mailResult) return mailResult
   const sandboxedResult = await dispatchSandboxedBuiltinTool(toolName, args, context, inputSummary)
   if (sandboxedResult) return sandboxedResult
-  // Ticket activity, and team structure (the project and team a channel lives
+  // Ticket activity, team structure (the project and team a channel lives
   // inside, the read that turns their NAMES into ids, and what a project is
-  // made of): dispatched by table.
-  const tableTool = Object.hasOwn(TICKET_ACTIVITY_TOOL_RUNNERS, toolName)
-    ? TICKET_ACTIVITY_TOOL_RUNNERS[toolName]
-    : Object.hasOwn(PROJECT_STRUCTURE_TOOL_RUNNERS, toolName) ? PROJECT_STRUCTURE_TOOL_RUNNERS[toolName] : undefined
+  // made of) and `check_back_in`: dispatched by table.
+  const tableTool = [TICKET_ACTIVITY_TOOL_RUNNERS, PROJECT_STRUCTURE_TOOL_RUNNERS, REMINDER_TOOL_RUNNERS]
+    .find((table) => Object.hasOwn(table, toolName))?.[toolName]
   if (tableTool) return wrapTool(inputSummary, () => tableTool(context, args))
   switch (toolName) {
     case 'card_post':

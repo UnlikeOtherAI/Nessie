@@ -81,6 +81,8 @@ test('editing a ticket trigger posts its typed config back, never an event list'
     follow: stored.follow,
     endOn: [{ category: 'done' }],
     limits: { startsPerDay: 5, wakesPerTicket: 12 },
+    // A trigger stored before the quiet wake reads back with its default.
+    quietWakeMinutes: 30,
     instructions: { general: 'Triage it.', onPickup: 'Comment a plan.' },
   })
   assert.equal(result.payload.nextRunAt, undefined, 'a ticket trigger has no schedule')

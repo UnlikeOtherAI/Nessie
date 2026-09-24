@@ -3,6 +3,7 @@ import {
   TICKET_TRIGGER_LIMIT_DEFAULTS,
   TICKET_WORK_TERMINAL_STATUSES,
   TicketChangedStoredConfigSchema,
+  TicketQuietWakeMinutesSchema,
   TicketTriggerInstructionsSchema,
   TicketTriggerLimitsSchema,
   type TicketChangedStoredConfig,
@@ -44,16 +45,21 @@ export const ticketWorkConfigOf = (config: unknown): {
   limits: TicketTriggerLimits
   instructions: TicketTriggerInstructions | undefined
   followKinds: readonly TicketFollowKind[]
+  /** Minutes of quiet before a `quiet` wake; null when the trigger turned it off. */
+  quietWakeMinutes: number | null
   stored: TicketChangedStoredConfig | null
 } => {
   const record = config && typeof config === 'object' ? config as Record<string, unknown> : {}
   const limits = TicketTriggerLimitsSchema.safeParse(record['limits'])
   const instructions = TicketTriggerInstructionsSchema.safeParse(record['instructions'])
+  const quiet = TicketQuietWakeMinutesSchema.safeParse(record['quietWakeMinutes'])
   const stored = TicketChangedStoredConfigSchema.safeParse(config)
   return {
     limits: limits.success ? limits.data : { ...TICKET_TRIGGER_LIMIT_DEFAULTS },
     instructions: instructions.success ? instructions.data : undefined,
     followKinds: stored.success ? stored.data.follow.kinds : [],
+    // A value that no longer parses keeps the safety net on, at its default.
+    quietWakeMinutes: quiet.success ? quiet.data : TicketQuietWakeMinutesSchema.parse(undefined),
     stored: stored.success ? stored.data : null,
   }
 }
@@ -80,6 +86,11 @@ export type TicketWorkKickoffFacts = {
     wakeNumber: number
     wakeLimit: number
     pullRequestUrl: string | null
+    /** The record's pending `check_back_in`, if it has one. */
+    pendingReminder: { dueAt: Date; note: string } | null
+    /** When the agent's latest comment asked the people on the ticket something, unanswered. */
+    awaitingAnswerAt: Date | null
+    quietWakeMinutes: number | null
   }
   /** Its machine, limits, coding session and pull request (`ticket-work-kickoff-machine.ts`). */
   machine?: TicketWorkMachineFacts
@@ -105,6 +116,8 @@ const SECTION_FOR_REASON: Partial<Record<TicketWorkWakeReason, keyof TicketTrigg
   session_failed: 'onSessionTurnEnded',
   session_closed: 'onSessionTurnEnded',
   reminder: 'onReminder',
+  // The platform's own check-in, when nothing else was scheduled.
+  quiet: 'onReminder',
 }
 
 /** What each followed kind wakes the agent for, said the way the state block ends. */
@@ -186,11 +199,45 @@ const stateBlock = (facts: TicketWorkKickoffFacts): string[] => {
     ...(facts.machine
       ? ticketWorkMachineLines(facts.machine, ended)
       : [`Pull request: ${facts.work.pullRequestUrl ?? 'none on record'}.`]),
+    ...(ended ? [] : waitingLines(facts)),
     ended
       ? 'This conversation is the ticket\'s work thread.'
       : 'This conversation is the ticket\'s work thread. After this run you are woken again when a person who can '
         + `edit the board ${followed.length > 0 ? followed.join(', ') : 'moves the ticket back into a start-work column'}`
         + '. Your own changes to the ticket never wake you.',
+  ]
+}
+
+/**
+ * What live work is waiting for, and how to say so: the pending reminder, an
+ * open question, and the quiet wake that follows when nothing else is set.
+ * What an answer wakes is said from the trigger's own follow kinds: a board
+ * editor's comment always wakes work whose question it answers, a message in
+ * this thread only when the trigger follows them, and anyone else's reply
+ * wakes nothing but brings the quiet wake back.
+ */
+const waitingLines = (facts: TicketWorkKickoffFacts): string[] => {
+  const { work } = facts
+  const answeredBy = facts.followKinds.includes('thread_message')
+    ? 'a person who can edit the board comments on the ticket or writes in this thread'
+    : 'a person who can edit the board comments on the ticket'
+  const quiet = work.quietWakeMinutes === null
+    ? ''
+    : ` If nothing is scheduled at all — no reminder, no open question — you are woken after `
+      + `${work.quietWakeMinutes} quiet minutes anyway, and that wake counts too.`
+  return [
+    `Pending reminder: ${work.pendingReminder
+      ? `${minute(work.pendingReminder.dueAt)}, ${JSON.stringify(work.pendingReminder.note)} (your own note)`
+      : 'none'}.`,
+    ...(work.awaitingAnswerAt
+      ? [`Open question: your comment at ${minute(work.awaitingAnswerAt)} asked the people on the ticket something, `
+        + `and nobody has answered yet. You are woken when ${answeredBy}; a reply from anyone else does not wake `
+        + 'you. Until someone answers, no quiet wake comes and the hours clock is paused.']
+      : []),
+    'When you wait for something that will not wake you, such as CI, call check_back_in with the minutes and a '
+      + 'short note; it replaces this ticket\'s pending reminder. Set awaitsAnswer on ticket_comment_add when your '
+      + `comment asks the people on the ticket something: you are woken when ${answeredBy}. Set check_back_in `
+      + `as well, in case nobody answers.${quiet}`,
   ]
 }
 
@@ -264,6 +311,8 @@ export const loadTicketWorkKickoffFacts = async (
       startedAt: true,
       endedAt: true,
       pullRequestUrl: true,
+      awaitingAnswerAt: true,
+      reminders: { where: { status: 'pending' }, orderBy: { dueAt: 'asc' }, take: 1, select: { dueAt: true, note: true } },
       startedBy: { select: { displayName: true } },
       task: {
         select: {
@@ -308,6 +357,9 @@ export const loadTicketWorkKickoffFacts = async (
       wakeNumber: input.wakeNumber,
       wakeLimit: config.limits.wakesPerTicket,
       pullRequestUrl: work.pullRequestUrl,
+      pendingReminder: work.reminders[0] ?? null,
+      awaitingAnswerAt: work.awaitingAnswerAt,
+      quietWakeMinutes: config.quietWakeMinutes,
     },
     machine: await loadTicketWorkMachineFacts(prisma, { workId: input.workId }),
     followKinds: config.followKinds,

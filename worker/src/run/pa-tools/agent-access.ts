@@ -6,6 +6,7 @@ import {
   setAgentExplicitToolAccess,
   setDeepWaterAgentAccess,
 } from '@nessie/mcp-manage'
+import { CAPABILITY_GRANT_DEFINITIONS } from '@nessie/runtime'
 import { parseAgentId, parseOrganizationId } from '@nessie/schemas'
 import {
   listAgentToolPolicyTargets,
@@ -216,7 +217,13 @@ export const runAgentToolAccessInspectTool = async (
               (grant) => grant.toolId === entry.id
                 && isCurrentAllowedMcpToolGrant(grant, fingerprint),
             )
+        // A capability grant is no tool anybody would recognise by its label,
+        // so it says what it lets the agent do.
+        const capability = entry.handlerKind === 'builtin'
+          ? CAPABILITY_GRANT_DEFINITIONS.find((definition) => definition.id === entry.toolId)
+          : undefined
         return `- ${entry.label} | registryId=${entry.id} | ${granted ? 'granted' : 'not granted'}`
+          + (capability ? ` | ${capability.description}` : '')
       }),
     ].join('\n'),
     toolName: 'agent_tool_access_inspect',

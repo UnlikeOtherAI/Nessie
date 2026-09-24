@@ -11,11 +11,10 @@ import {
   type ProviderMessage,
   type ToolSchemaDescriptor,
 } from '@nessie/runtime'
-import { carryForwardExecutorBindings, publishExecutorLeaseChanges } from '@nessie/executor-manage'
 import { APPROVAL_ACTIONS, TICKET_WORK_PURPOSE, type RunExecuteJobPayload } from '@nessie/schemas'
 import { fileServiceFor } from '../file-service.js'
 import { launchConversationScope } from '../executor-host-output.js'
-import { buildExecutorToolset, type ExecutorToolset } from '../executor-toolset.js'
+import type { ExecutorToolset } from '../executor-toolset.js'
 import { buildMcpToolset, type McpToolset } from '../mcp-toolset.js'
 import { createRunDeepWaterBinder } from '../deepwater-run-binder.js'
 import { loadAgentTodoPromptFacts } from '@nessie/team-admin'
@@ -24,6 +23,7 @@ import {
   resolveDelegatedRequesterUserId,
   resolveIdentityDelegatedToolIds,
 } from '../delegated-identity.js'
+import { projectOperatorRunInputOfJob, resolveRunProjectOperatorToolIds } from '../project-operator-admission.js'
 import type { DeepWaterHandoffGuard } from '../deepwater-handoff-guard.js'
 import {
   admitRunCheckpoint,
@@ -39,13 +39,13 @@ import {
 import { estimateTokens } from '../context-management.js'
 import { buildModelPrompt, loadConversation } from './prompt.js'
 import { loadExecutorReachFacts } from './executor-reach-facts.js'
+import { prepareRunExecutorToolset } from './run-setup-executor.js'
 import { viewerSatisfiesBasis } from '@nessie/runtime'
 import { resolveLiveEntitlements } from '@nessie/runtime'
 import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import {
-  bindTicketWorkMachine,
   loadTicketWorkRunFacts,
   ticketWorkRecallSkipped,
   TICKET_WORK_PERSON_TOOL_IDS,
@@ -189,6 +189,10 @@ export type RunExecutionSetup = {
    */
   identityToolIds: ReadonlySet<string>
   projectDelegatedToolIds: ReadonlySet<string>
+  /** The third arm's verbs, resolved once like the other two (`project-operator-admission.ts`). */
+  projectOperatorToolIds: ReadonlySet<string>
+  /** A live person's own interactive turn, which a `requiresLiveRequester` verb needs on every arm. */
+  liveRequester: boolean
   executorToolset: ExecutorToolset
   initialMessages: ProviderMessage[]
   mcpToolset: McpToolset
@@ -199,6 +203,21 @@ export type RunExecutionSetup = {
   toolSpecEnabled: boolean
   toolPolicy: Record<string, boolean> | null
 }
+
+/**
+ * The three arm sets the per-call gate reads, resolved together at setup: the
+ * identity arm, the project lend and the project-operator arm. Handed to the
+ * loop as one, so a new arm cannot reach toolset assembly and miss the gate.
+ */
+export const runArmToolIds = (setup: RunExecutionSetup): Pick<
+  RunExecutionSetup,
+  'identityToolIds' | 'liveRequester' | 'projectDelegatedToolIds' | 'projectOperatorToolIds'
+> => ({
+  identityToolIds: setup.identityToolIds,
+  liveRequester: setup.liveRequester,
+  projectDelegatedToolIds: setup.projectDelegatedToolIds,
+  projectOperatorToolIds: setup.projectOperatorToolIds,
+})
 
 export const prepareRunExecution = async (
   deps: ExecutionDependencies,
@@ -269,6 +288,20 @@ export const prepareRunExecution = async (
       interactive: payload.interactive === true,
     }),
   )
+  // The third arm: an ordinary agent holding `project_operator`, on a live
+  // requester's turn in a channel it is bound to. Never on a trigger, a
+  // schedule, ticket work or any other kickoff that carries a purpose.
+  const projectOperatorToolIds = await resolveRunProjectOperatorToolIds(deps.prisma, {
+    ...projectOperatorRunInputOfJob(payload, {
+      agentId: context.agent.id,
+      channelId: context.channel.id,
+      organizationId: context.channel.organizationId,
+      runId: context.run.id,
+      threadId: context.run.threadId,
+    }),
+    toolPolicy,
+  })
+  const liveRequester = payload.interactive === true && payload.actorContext.actor.actorType === 'user'
 
   const {
     descriptors: toolDefs,
@@ -288,6 +321,8 @@ export const prepareRunExecution = async (
       agentSystemSlug: context.agent.systemSlug ?? null,
       identityToolIds,
       projectDelegatedToolIds,
+      projectOperatorToolIds,
+      liveRequester,
       isPersonalAssistantPresence: isPersonalAssistantPresenceRun({
         agentKind: context.agent.agentKind,
         principalUserId: context.run.principalUserId,
@@ -354,49 +389,7 @@ export const prepareRunExecution = async (
         secretResolver: deps.mcpSecrets?.resolver,
       },
     ),
-    (async () => {
-      // A person's own follow-up in the conversation they launched local apps
-      // in is bound afresh here, immediately before the toolset reads the
-      // run's bindings. A refusal is an outcome, never a throw — and the carry
-      // runs for every agent's every turn, so an unexpected failure in it (a
-      // lost connection) must not sink an ordinary one either: the run goes on
-      // with whatever bindings it already has, and no reach facts are told.
-      // A ticket's work is bound by its standing policy, never a lease.
-      if (ticketWork) {
-        context.ticketWorkMachine = await bindTicketWorkMachine(deps.prisma, {
-          job: payload, runId: context.run.id, workId: ticketWork.workId,
-        })
-      }
-      const lease = ticketWork
-        ? undefined
-        : await carryForwardExecutorBindings(deps.prisma, { job: payload, runId: context.run.id })
-        .catch((error: unknown) => {
-          console.warn('[worker] executor lease carry failed for run', context.run.id, error)
-          return undefined
-        })
-      context.executorLease = lease
-      if (lease?.kind === 'carried') {
-        // The carry moved the idle window the holder's composer shows. Only
-        // the holder's own job carries, so the job's actor is the recipient.
-        await publishExecutorLeaseChanges(deps.realtimeTransport, [{
-          actorUserId: payload.actorContext.actor.actorId,
-          id: lease.lease.id,
-          organizationId: context.channel.organizationId,
-          threadId: payload.threadId,
-        }]).catch((error: unknown) => {
-          console.warn('[worker] could not publish the executor lease notice for run', context.run.id, error)
-        })
-      }
-      return buildExecutorToolset(deps.prisma, {
-        agentId: context.agent.id,
-        agentToolPolicy: toolPolicy,
-        encryptionSecret: deps.executorCommandEncryptionSecret,
-        hostOutput,
-        organizationId: context.channel.organizationId,
-        runId: context.run.id,
-        ticketWork: context.ticketWorkMachine?.coding ?? null,
-      })
-    })(),
+    prepareRunExecutorToolset(deps, { context, hostOutput, payload, ticketWork, toolPolicy }),
     (resolvedToolIds.has('todo_start') || resolvedToolIds.has('todo_template_propose'))
       ? loadAgentTodoPromptFacts(deps.prisma, {
           agentId: context.agent.id,
@@ -462,8 +455,12 @@ export const prepareRunExecution = async (
       : null
 
   // A run lent a project write recalls only what every project reader already
-  // has, so recalled material cannot shut its own ticket writes.
-  const projectWriteRecall = holdsProjectWriteTools(projectDelegatedToolIds, resolvedToolIds)
+  // has, so recalled material cannot shut its own ticket writes — and so does a
+  // run holding the operator's, which write boards, columns and spaces.
+  const projectWriteRecall = holdsProjectWriteTools(
+    new Set([...projectDelegatedToolIds, ...projectOperatorToolIds]),
+    resolvedToolIds,
+  )
   // A `ticket.work` run recalls nothing: its context is its kickoff and the
   // filtered window above, and recall from its own thread would bring back
   // exactly the messages that filter keeps out (`ticketWorkRecallSkipped`).
@@ -558,6 +555,8 @@ export const prepareRunExecution = async (
     checkpoint,
     identityToolIds,
     projectDelegatedToolIds,
+    projectOperatorToolIds,
+    liveRequester,
     executorToolset,
     initialMessages: buildModelPrompt(conversation, context, input.prompt, memoryContext, {
       approvalInstruction,

@@ -4,6 +4,7 @@ import {
   executorHeartbeatCutoff,
   placeTicketWorkOnMachineInTransaction,
   recordTicketWorkActivity,
+  syncTicketWorkClock,
   writeTicketWorkAudit,
   type TicketWorkMachinePlacement,
 } from '@nessie/executor-manage'
@@ -142,6 +143,8 @@ export const holdTicketWorkBeforeWake = async (
     where: { id: input.work.id },
     data: { stateReason: 'machine_offline', status: 'waiting_machine' },
   })
+  // Its hours clock pauses until the machine is back.
+  await syncTicketWorkClock(tx, input.work.id, now)
   await recordTicketWorkActivity(tx, {
     eventType: 'work_paused', reason: 'machine_offline', status: 'waiting_machine', work: input.work,
   })

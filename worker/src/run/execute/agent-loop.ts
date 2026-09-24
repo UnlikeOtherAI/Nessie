@@ -74,6 +74,8 @@ export const runExecutionAgentLoop = async (
      */
     identityToolIds: ReadonlySet<string>
     projectDelegatedToolIds: ReadonlySet<string>
+    projectOperatorToolIds: ReadonlySet<string>
+    liveRequester: boolean
     initialMessages: ProviderMessage[]
     inference: RunInference
     /** DeepWater turns retain their own recovery matrix and never suspend. */
@@ -192,6 +194,8 @@ export const runExecutionAgentLoop = async (
         consumeApprovalProof: options.consumeApprovalProof,
         identityToolIds: input.identityToolIds,
         projectDelegatedToolIds: input.projectDelegatedToolIds,
+        projectOperatorToolIds: input.projectOperatorToolIds,
+        liveRequester: input.liveRequester,
         executorToolNames: input.executorToolset.handledNames,
         mcpToolNames: mcpExposedNames,
         skipAutoReview: options.skipAutoReview,
@@ -282,6 +286,7 @@ export const runExecutionAgentLoop = async (
               // identity tools are the person's own authority. (The one global
               // agent that has them denies `delegate` outright, so this arm is
               // unreachable today — it stays correct if that ever changes.)
+              // Nor are the project-operator verbs, for the same reason.
               resolvedBuiltinToolIds: input.resolvedToolIds,
               unregisteredToolNames: new Set([
                 ...subAgentMcpView.handledNames,

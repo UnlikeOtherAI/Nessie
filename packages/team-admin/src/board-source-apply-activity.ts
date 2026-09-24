@@ -10,6 +10,7 @@ import {
   SourceHttpError,
   inlineAssetsIn,
 } from '@nessie/board-sources'
+import { answerTicketWorkQuestions } from '@nessie/executor-manage'
 import type { FileService, LedgerAttribution } from '@nessie/runtime'
 import { inlineAttachmentPath } from '@nessie/schemas'
 
@@ -256,18 +257,23 @@ export const applyInboundComments = async (
         throw cause
       }
       // Its own transaction with its dispatch job: a provider's comment can
-      // wake live work when the trigger opts in to source events.
-      await prisma.$transaction((tx) => recordTaskEvent(tx, {
-        taskId,
-        eventType: 'comment_added',
-        payload: {
-          ...sourceEventAuthorship(source.id),
-          commentId: created.id,
-          bySourceId: source.id,
-          externalId: comment.externalId,
-        },
-        scope: source,
-      }))
+      // wake live work when the trigger opts in to source events. Whoever
+      // wrote it there, it answers a question the ticket's agent asked.
+      await prisma.$transaction(async (tx) => {
+        const answeredWorkIds = await answerTicketWorkQuestions(tx, { taskId })
+        await recordTaskEvent(tx, {
+          taskId,
+          eventType: 'comment_added',
+          payload: {
+            ...sourceEventAuthorship(source.id),
+            commentId: created.id,
+            bySourceId: source.id,
+            externalId: comment.externalId,
+            ...(answeredWorkIds.length > 0 ? { answeredWorkIds } : {}),
+          },
+          scope: source,
+        })
+      })
       touched.add(taskId)
       continue
     }

@@ -707,6 +707,71 @@ try {
   }
   await phone.close()
 
+  // 19 — the reminder the agent set and the question it waits on (T3,
+  // docs/standards/ticket-work.md): "Checking back at 14:35 — waiting for
+  // CI" with Cancel for a board editor, the Cancel sent as the route's DELETE
+  // and the line gone after it, the same line and no Cancel for a reader who
+  // cannot edit the board, and the open question — at 1280 and 390 px.
+  for (const width of [1280, 390]) {
+    const phoneWidth = width < 768
+    const context = await browser.newContext({
+      viewport: { height: phoneWidth ? 844 : 900, width },
+      ...(phoneWidth ? { hasTouch: true, isMobile: true } : {}),
+    })
+    await routeBytes(context)
+    const chipOf = async (query) => {
+      const page = await open(context, query)
+      const chip = page.getByRole('dialog', { name: 'Task details' }).getByTestId('ticket-work-chip')
+      await chip.waitFor()
+      await chip.scrollIntoViewIfNeeded()
+      const scroll = await page.evaluate(() => document.documentElement.scrollWidth)
+      assert.ok(scroll <= width, `${query}: nothing scrolls sideways at ${width}px (${scroll})`)
+      return { chip, page }
+    }
+    {
+      const { chip, page } = await chipOf('scenario=details&work=reminder')
+      const reminder = chip.getByTestId('ticket-work-reminder')
+      assert.match(await reminder.innerText(), /^Checking back at \S.* — waiting for CI\s*Cancel$/)
+      assert.match(await chip.innerText(), /Last woken .+: nothing else was scheduled · wake 3 of 30/)
+      const cancel = reminder.getByRole('button', { name: 'Cancel' })
+      const target = await box(cancel)
+      assert.ok(target.x + target.width <= width, 'Cancel is on screen')
+      await settled(page)
+      await chip.screenshot({ path: shot(`19-work-reminder-${width}.png`) })
+      if (!phoneWidth) await page.screenshot({ path: shot('19-work-reminder-dialog-1280.png') })
+      await cancel.click()
+      await reminder.waitFor({ state: 'detached' })
+      const deletes = (await calls(page)).filter((call) => call.method === 'DELETE').map((call) => call.path)
+      assert.deepEqual(deletes, [
+        '/api/tasks/10000000-0000-4000-8000-000000000006/work/reminders/70000000-0000-4000-8000-000000000014',
+      ])
+      await settled(page)
+      await chip.screenshot({ path: shot(`19-work-reminder-cancelled-${width}.png`) })
+      await page.close()
+    }
+    {
+      const { chip, page } = await chipOf('scenario=details&work=reminder-reader')
+      const reminder = chip.getByTestId('ticket-work-reminder')
+      assert.match(await reminder.innerText(), /^Checking back at \S.* — waiting for CI$/)
+      assert.equal(await reminder.getByRole('button').count(), 0, 'no Cancel for a reader who cannot edit the board')
+      await settled(page)
+      await chip.screenshot({ path: shot(`19-work-reminder-reader-${width}.png`) })
+      await page.close()
+    }
+    {
+      const { chip, page } = await chipOf('scenario=details&work=question')
+      assert.match(
+        await chip.getByTestId('ticket-work-question').innerText(),
+        /^Waiting for an answer on the ticket since \S/,
+      )
+      assert.equal(await chip.getByTestId('ticket-work-reminder').count(), 0)
+      await settled(page)
+      await chip.screenshot({ path: shot(`19-work-question-${width}.png`) })
+      await page.close()
+    }
+    await context.close()
+  }
+
   console.log(`Task dialog proofs passed: ${SHOTS}`)
 } finally {
   await browser.close()

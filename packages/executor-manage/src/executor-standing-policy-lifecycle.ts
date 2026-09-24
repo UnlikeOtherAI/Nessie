@@ -15,6 +15,7 @@ import {
   queueTicketWorkInTransaction,
   standingPolicyPoolReason,
 } from './executor-standing-policy-pool.js'
+import { syncTicketWorkClock } from './ticket-work-clock.js'
 import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-records.js'
 
 /**
@@ -141,6 +142,7 @@ export const suspendStandingPolicyInTransaction = async (
       where: { id: record.id },
       data: { executorId: null, stateReason: 'machine_access_suspended', status: 'waiting_machine' },
     })
+    await syncTicketWorkClock(tx, record.id)
     await recordTicketWorkActivity(tx, {
       work: record, eventType: 'work_paused', status: 'waiting_machine', reason: 'machine_access_suspended',
       by: input.actor.userId,

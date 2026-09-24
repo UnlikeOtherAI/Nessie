@@ -1,4 +1,4 @@
-import { TicketChangedStoredConfigSchema } from '@nessie/schemas'
+import { TicketChangedStoredConfigSchema, TicketQuietWakeMinutesSchema } from '@nessie/schemas'
 
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
@@ -45,5 +45,15 @@ export const useTicketTriggerFacts = (
       ? [{ label: 'Connected board', value: 'Its own changes wake live work too, marked untrusted' }]
       : []),
     { label: 'Ends work', value: ends.length > 0 ? `When a ticket enters ${ends.join(', ')}` : 'Never' },
+    { label: 'Quiet wake', value: quietWakeFact(config.quietWakeMinutes) },
   ]
+}
+
+/** The quiet wake as the page says it: when live work nothing else will wake is checked on. */
+const quietWakeFact = (stored: unknown): string => {
+  const parsed = TicketQuietWakeMinutesSchema.safeParse(stored)
+  const minutes = parsed.success ? parsed.data : TicketQuietWakeMinutesSchema.parse(undefined)
+  return minutes === null
+    ? 'Off'
+    : `After ${minutes} minutes with nothing scheduled — no reminder, no question waiting for an answer`
 }

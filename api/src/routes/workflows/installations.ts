@@ -438,7 +438,10 @@ export const registerWorkflowInstallationRoutes = (app: FastifyInstance, deps: R
       return reply
     }
 
-  const trigger = await createWorkflowTrigger(prisma, installationId, body)
+  // Who set it up, recorded as an agent trigger records it; it grants nothing.
+  const trigger = await createWorkflowTrigger(prisma, installationId, body, {
+    ...(actorContext.actor.actorType === 'user' ? { authorUserId: actorContext.actor.actorId } : {}),
+  })
   if (!trigger) {
     sendApiError(reply, 400, 'TRIGGER_INVALID', 'Trigger configuration is invalid')
     return reply

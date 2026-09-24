@@ -236,6 +236,8 @@ export const AuditActionSchema = z.enum([
   'trigger.reauthorized',
   'trigger.paused',
   'trigger.resumed',
+  // A person cancelled an agent's pending `check_back_in` on a ticket.
+  'trigger.reminder_cancelled',
   'demonstration.started',
   'demonstration.stopped',
   'demonstration.generalized',

@@ -83,7 +83,9 @@ dbTest('a shared agent reads and writes its channel\'s board without naming the 
     await prisma.project.create({ data: { id: otherProjectId, name: 'Other project', organizationId } })
     await prisma.projectMember.create({ data: { projectId, userId: requesterId } })
     await prisma.team.create({ data: { id: teamId, name: 'Project default team', projectId } })
-    await prisma.agent.create({ data: { id: agentId, name: 'CTO', organizationId } })
+    // Lent ticket_label_create, as the gate requires; without the lend a shared
+    // agent's label create is the project-operator arm's, which this is not.
+    await prisma.agent.create({ data: { id: agentId, name: 'CTO', organizationId, toolPolicy: { ticket_label_create: true } } })
     await prisma.channel.create({
       data: {
         id: channelId,

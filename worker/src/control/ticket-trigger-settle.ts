@@ -56,6 +56,17 @@ const isUniqueViolation = (error: unknown): boolean =>
 
 export type SeamAct = (tx: Prisma.TransactionClient, deliveryId: string) => Promise<TicketWorkSeamOutcome>
 
+/**
+ * Claims the thing the delivery is about inside the delivery's own
+ * transaction — a due reminder, a quiet record — and returns false when
+ * another worker holds or already took it, or it no longer applies. A first
+ * attempt then writes no delivery at all: its outcome is the other worker's.
+ * A retry settles its row `no_longer_applies`, so it is never retried again.
+ */
+export type SettleClaim = (tx: Prisma.TransactionClient) => Promise<boolean>
+
+class ClaimLost extends Error {}
+
 export const settleTicketDelivery = async (
   prisma: PrismaClient,
   input: {
@@ -65,6 +76,7 @@ export const settleTicketDelivery = async (
     decision: SettledDecision
     /** The seam call for a start or a wake; absent for a skip. */
     act?: SeamAct
+    claim?: SettleClaim
     retry?: RetryContext
   },
 ): Promise<void> => {
@@ -80,6 +92,12 @@ export const settleTicketDelivery = async (
   const payload = deliveryPayload(input.base, decision)
   try {
     await prisma.$transaction(async (tx) => {
+      if (input.claim && !(await input.claim(tx))) {
+        if (!input.retry?.reuseDeliveryId) throw new ClaimLost()
+        const stale = deliveryPayload(input.base, { kind: 'skip', source: decision.source, reason: 'no_longer_applies' })
+        await markSkipped(tx, input.retry.reuseDeliveryId, stale, 'no_longer_applies')
+        return
+      }
       const delivery = await upsertDelivery(tx, {
         dedupeKey,
         payload,
@@ -110,8 +128,9 @@ export const settleTicketDelivery = async (
       await tx.agentTrigger.update({ where: { id: triggerId }, data: { lastFiredAt: new Date() } })
     })
   } catch (error) {
-    // Another worker settled the same event for this trigger first.
-    if (!input.retry && isUniqueViolation(error)) return
+    // Another worker settled the same event for this trigger first, or holds
+    // the thing it is about.
+    if (error instanceof ClaimLost || (!input.retry && isUniqueViolation(error))) return
     await recordTriggerRunFailure(prisma, {
       dedupeKey,
       error,

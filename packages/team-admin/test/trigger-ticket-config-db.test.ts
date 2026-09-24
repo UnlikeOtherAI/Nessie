@@ -323,3 +323,25 @@ runDatabaseTest('an edit names only what it changes, and the rest is resolved ag
     null,
   )
 })
+
+runDatabaseTest('the quiet wake is stored as resolved, kept by an edit that does not name it, and turned off by null', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seed(prisma)
+  t.after(() => s.cleanup().then(() => prisma.$disconnect()))
+  const configOf = async (id: string) =>
+    (await prisma.agentTrigger.findUniqueOrThrow({ where: { id } })).config as Record<string, unknown>
+
+  const byDefault = await create(prisma, s, { pickup: { columns: [{ name: 'In progress' }] } })
+  assert.ok(byDefault)
+  assert.equal((await configOf(byDefault.id))['quietWakeMinutes'], 30)
+  const scope = { organizationId: s.organizationId, triggerId: byDefault.id }
+  await updateAgentTrigger(prisma, scope, { config: { quietWakeMinutes: 90 } })
+  assert.equal((await configOf(byDefault.id))['quietWakeMinutes'], 90)
+  await updateAgentTrigger(prisma, scope, { config: { limits: { wakesPerTicket: 12 } } })
+  assert.equal((await configOf(byDefault.id))['quietWakeMinutes'], 90, 'an edit that does not name it keeps it')
+  await updateAgentTrigger(prisma, scope, { config: { quietWakeMinutes: null } })
+  assert.equal((await configOf(byDefault.id))['quietWakeMinutes'], null)
+  assert.deepEqual(await refusalsOf(updateAgentTrigger(prisma, scope, { config: { quietWakeMinutes: 5 } })), [
+    'quietWakeMinutes: Number must be greater than or equal to 15',
+  ])
+})

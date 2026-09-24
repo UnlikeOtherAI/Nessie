@@ -1,5 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { writeTicketWorkThreadRow } from '@nessie/executor-manage'
+import {
+  closeTicketWorkSessionsInTransaction,
+  endTicketWork,
+  enqueueTicketWorkSweep,
+  writeTicketWorkThreadRow,
+} from '@nessie/executor-manage'
 import {
   AuthorizedActionContextSchema,
   TICKET_WORK_PURPOSE,
@@ -54,6 +59,40 @@ export type TicketWorkRunOutcome =
 
 /** A thread row: compact, and never ticket text. The writer is executor-manage's, which a limit's stop shares. */
 export { writeTicketWorkThreadRow }
+
+/**
+ * The wake limit is spent: the record fails with `limit_wakes`, its reminders
+ * are cancelled with it, its coding sessions get session-scoped `work_limit`
+ * closes, the pool dispatcher is enqueued for the machine it frees, and its
+ * thread and ticket say how to continue. Shared by a wake that found the limit
+ * spent and the sweep that finds a record over a limit a person lowered.
+ */
+export const stopTicketWorkAtWakeLimit = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    work: { id: string; taskId: string; triggerId: string | null; agentId: string; threadId: string }
+    wakesUsed: number
+  },
+): Promise<boolean> => {
+  const sessions = await tx.agentTicketWork.findUnique({
+    where: { id: input.work.id },
+    select: { executorId: true, policyId: true, sessionIds: true },
+  })
+  const ended = await endTicketWork(tx, { work: input.work, status: 'failed', reason: 'limit_wakes', by: 'system' })
+  if (!ended) return false
+  if (sessions) await closeTicketWorkSessionsInTransaction(tx, [{ ...input.work, ...sessions }], 'work_limit', null)
+  await enqueueTicketWorkSweep(tx)
+  await writeTicketWorkThreadRow(tx, {
+    threadId: input.work.threadId,
+    event: {
+      kind: 'stopped',
+      workId: input.work.id,
+      reason: 'limit_wakes',
+      summary: `${input.wakesUsed} wakes used. Move the ticket out of and back into a start-work column to continue`,
+    },
+  })
+  return true
+}
 
 type PendingKickoff = { messageId: string; metadata: Prisma.JsonValue }
 

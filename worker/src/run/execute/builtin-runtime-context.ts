@@ -82,6 +82,9 @@ export const createBuiltinToolExecutor = ({
     run: {
       id: context.run.id,
       interactive: payload.interactive === true,
+      // Who the turn names, for the project-operator re-check at each call.
+      ...(payload.batchMessageIds ? { batchMessageIds: payload.batchMessageIds } : {}),
+      ...(payload.resumedByUserId ? { resumedByUserId: payload.resumedByUserId } : {}),
       messageId: payload.messageId,
       principalUserId: context.run.principalUserId,
       originatingUserId:

@@ -7,6 +7,7 @@ import {
 
 import { closeTicketWorkSessionsInTransaction } from './executor-standing-policy-lifecycle.js'
 import { enqueueTicketWorkSweep } from './executor-standing-policy-pool.js'
+import { ticketWorkActiveMs } from './ticket-work-clock.js'
 import { endTicketWork, writeTicketWorkThreadRow } from './ticket-work-records.js'
 
 /**
@@ -14,11 +15,11 @@ import { endTicketWork, writeTicketWorkThreadRow } from './ticket-work-records.j
  * and never the model (docs/plans/2026-09-23-ticket-driven-agents/ticket-work.md
  * → "Limits"; docs/standards/ticket-work-machine-access.md):
  *
- * - `ticketHours` against the record's active time. T3 adds the clock that
- *   accumulates `activeMs`; until then the time is read from the record's own
- *   `work_*` history — the spans it spent `active` — on top of whatever
- *   `activeMs` already holds. Time `queued`, `waiting_machine` or `parked` (a
- *   person reviewing) is not counted.
+ * - `ticketHours` against the record's hours clock (`ticket-work-clock.ts`):
+ *   `activeMs` plus the stretch running now. The clock runs only while the
+ *   record is `active` with no open question, so time `queued`,
+ *   `waiting_machine`, `parked` (a person reviewing) or waiting for a
+ *   person's answer is never counted.
  * - `ticketUsd` against `costUsd`: the coding cost each status read and review
  *   saw added since the last, and every Nessie run's own cost.
  * - `dailyUsd` against the policy's spend this UTC day
@@ -47,40 +48,9 @@ export type TicketWorkLimitState = {
 }
 
 type Client = Prisma.TransactionClient | Pick<Prisma.TransactionClient,
-  'agentTicketWork' | 'executorStandingPolicy' | 'executorStandingPolicyDailySpend' | 'taskEvent'>
+  'agentTicketWork' | 'executorStandingPolicy' | 'executorStandingPolicyDailySpend'>
 
 export const utcDay = (at: Date): Date => new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()))
-
-const WORK_ROWS = ['work_started', 'work_queued', 'work_paused', 'work_resumed', 'work_ended']
-
-/**
- * The record's active time so far: `activeMs` plus every span its history
- * shows it `active`, the open one up to `now`. A record with no history rows
- * (written before them) counts from `startedAt` while it is active.
- */
-export const ticketWorkActiveMs = async (
-  client: Pick<Prisma.TransactionClient, 'taskEvent'>,
-  work: { activeMs: bigint | number; id: string; startedAt: Date; status: string; taskId: string },
-  now = new Date(),
-): Promise<number> => {
-  const rows = await client.taskEvent.findMany({
-    where: { eventType: { in: WORK_ROWS }, payload: { path: ['workId'], equals: work.id }, taskId: work.taskId },
-    orderBy: { createdAt: 'asc' },
-    select: { createdAt: true, payload: true },
-  })
-  let total = Number(work.activeMs)
-  if (rows.length === 0) return work.status === 'active' ? total + Math.max(0, now.getTime() - work.startedAt.getTime()) : total
-  let status: string | null = null
-  let since = work.startedAt
-  for (const row of rows) {
-    if (status === 'active') total += Math.max(0, row.createdAt.getTime() - since.getTime())
-    const next = (row.payload as { status?: unknown } | null)?.status
-    status = typeof next === 'string' ? next : status
-    since = row.createdAt
-  }
-  if (status === 'active' && work.status === 'active') total += Math.max(0, now.getTime() - since.getTime())
-  return total
-}
 
 /** Where a record stands against its policy's limits; null when no policy binds its work. */
 export const loadTicketWorkLimitState = async (
@@ -91,22 +61,19 @@ export const loadTicketWorkLimitState = async (
   const work = await client.agentTicketWork.findUnique({
     where: { id: input.workId },
     select: {
-      activeMs: true, costUsd: true, id: true, policyId: true, startedAt: true, status: true, taskId: true,
+      activeMs: true, clockStartedAt: true, costUsd: true, policyId: true,
       policy: { select: { pinnedTerms: true } },
     },
   })
   if (!work?.policyId || !work.policy) return null
   const terms = StandingPolicyPinnedTermsSchema.safeParse(work.policy.pinnedTerms)
   if (!terms.success) return null
-  const [activeMs, daily] = await Promise.all([
-    ticketWorkActiveMs(client, work, now),
-    client.executorStandingPolicyDailySpend.findUnique({
-      where: { policyId_day: { day: utcDay(now), policyId: work.policyId } },
-      select: { costUsd: true },
-    }),
-  ])
+  const daily = await client.executorStandingPolicyDailySpend.findUnique({
+    where: { policyId_day: { day: utcDay(now), policyId: work.policyId } },
+    select: { costUsd: true },
+  })
   return {
-    activeMs,
+    activeMs: Number(ticketWorkActiveMs(work, now)),
     costUsd: Number(work.costUsd),
     dailyUsd: Number(daily?.costUsd ?? 0),
     limits: {

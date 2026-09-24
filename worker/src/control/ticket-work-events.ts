@@ -35,6 +35,13 @@ export type DescribedWakeEvent = TicketWorkKickoffEvent & { summary: string }
 export type WakeEventSource =
   | { kind: 'task_event'; taskEventId: string }
   | { kind: 'thread_message'; messageId: string }
+  /** A `check_back_in` the agent set for this work. */
+  | { kind: 'reminder'; reminderId: string }
+  /** The quiet wake: nothing else was scheduled for this long. */
+  | { kind: 'quiet'; quietMinutes: number }
+
+/** A reminder's note in a thread row: the agent's own line, bounded. */
+const ROW_NOTE_MAX_CHARS = 120
 
 const quote = (text: string): string => {
   const bounded = text.length > FREE_TEXT_MAX_CHARS
@@ -230,6 +237,34 @@ const describeThreadMessage = async (
   return { text: quoted(author, 'wrote in this thread', message.content, false), summary: `${author.name} wrote in this thread` }
 }
 
+/**
+ * A reminder the agent set for itself. Its note is the agent's own words, so
+ * it is not third-party content, and the thread row may carry it: the agent
+ * writes in that thread anyway.
+ */
+const describeReminder = async (loader: Loader, reminderId: string): Promise<Described> => {
+  const reminder = await loader.prisma.agentReminder.findUnique({
+    where: { id: reminderId },
+    select: { note: true, createdAt: true, dueAt: true },
+  })
+  if (!reminder) return { text: 'A reminder you set fired.', summary: 'reminder' }
+  const set = reminder.createdAt.toISOString().slice(11, 16)
+  const minutes = Math.round((reminder.dueAt.getTime() - reminder.createdAt.getTime()) / 60_000)
+  const note = reminder.note.length > ROW_NOTE_MAX_CHARS ? `${reminder.note.slice(0, ROW_NOTE_MAX_CHARS - 1)}…` : reminder.note
+  return {
+    text: `The reminder you set at ${set} UTC to check back in ${minutes} minutes fired. Your note: `
+      + `${JSON.stringify(reminder.note)}. Check what you were waiting for, then decide what to do next.`,
+    summary: `reminder, ${note}`,
+  }
+}
+
+const describeQuiet = (quietMinutes: number): Described => ({
+  text: `Nothing else is scheduled: no wake for ${quietMinutes} minutes, no reminder set and no question waiting `
+    + 'for an answer. Check where the work stands — read the ticket and its comments — then comment, set '
+    + 'check_back_in for what you are waiting for, or move the ticket.',
+  summary: 'nothing else is scheduled',
+})
+
 /** The event as the kickoff lists it, with the one-line summary its thread row shows. */
 export const describeWakeEvent = async (
   prisma: PrismaClient,
@@ -245,24 +280,35 @@ export const describeWakeEvent = async (
   },
 ): Promise<DescribedWakeEvent> => {
   const loader = { prisma, organizationId: input.organizationId, projectId: input.projectId }
-  const described = input.source.kind === 'thread_message'
-    ? await describeThreadMessage(loader, input.source.messageId)
-    : await describeTaskEvent(loader, { ...input, taskEventId: input.source.taskEventId })
+  const { source } = input
+  const described = source.kind === 'thread_message'
+    ? await describeThreadMessage(loader, source.messageId)
+    : source.kind === 'reminder'
+      ? await describeReminder(loader, source.reminderId)
+      : source.kind === 'quiet'
+        ? describeQuiet(source.quietMinutes)
+        : await describeTaskEvent(loader, { ...input, taskEventId: source.taskEventId })
   // What it was and who wrote it, kept on the kickoff: a coding_session_send
-  // in the run it wakes is audited as forwarding exactly this.
-  const by = input.source.kind === 'thread_message'
-    ? (await prisma.message.findUnique({ where: { id: input.source.messageId }, select: { userId: true } }))?.userId
-    : TaskEventAuthorshipSchema.safeParse((await prisma.taskEvent.findUnique({
-        where: { id: input.source.taskEventId }, select: { payload: true },
-      }))?.payload).data?.by
+  // in the run it wakes is audited as forwarding exactly this. A reminder or
+  // the quiet wake is the platform's own, and forwards nobody's words.
+  const by = source.kind === 'thread_message'
+    ? (await prisma.message.findUnique({ where: { id: source.messageId }, select: { userId: true } }))?.userId
+    : source.kind === 'task_event'
+      ? TaskEventAuthorshipSchema.safeParse((await prisma.taskEvent.findUnique({
+          where: { id: source.taskEventId }, select: { payload: true },
+        }))?.payload).data?.by
+      : undefined
+  const origin = source.kind === 'thread_message'
+    ? { kind: 'thread_message' as const, id: source.messageId }
+    : source.kind === 'task_event'
+      ? { kind: 'task_event' as const, id: source.taskEventId }
+      : null
   return {
     reason: input.reason,
     at: input.at.toISOString(),
     text: described.text,
     summary: described.summary,
-    source: input.source.kind === 'thread_message'
-      ? { kind: 'thread_message', id: input.source.messageId }
-      : { kind: 'task_event', id: input.source.taskEventId },
+    ...(origin ? { source: origin } : {}),
     ...(by ? { by } : {}),
   }
 }

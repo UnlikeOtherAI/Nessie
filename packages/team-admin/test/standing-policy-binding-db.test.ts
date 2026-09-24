@@ -240,9 +240,9 @@ dbTest('the heartbeat intake stops a ticket past its hours, with its close on th
     const ownerKey = executorCodingSessionOwnerKey(minis, {
       actorUserId: world.authorId, agentId: world.agentId, contextId: ticketWorkCodingSessionContext(policyId, taskId),
     })
-    // Active for five hours of its four.
+    // Its hours clock has run for five hours of its four.
     await prisma.agentTicketWork.update({
-      where: { id: work.id }, data: { startedAt: new Date(Date.now() - 5 * 3_600_000) },
+      where: { id: work.id }, data: { activeMs: 0n, clockStartedAt: new Date(Date.now() - 5 * 3_600_000) },
     })
     const answer = await heartbeat(prisma, {
       executorId: minis, key, localMcp: bridgeReport([{ ownerKey, sessionId }]),

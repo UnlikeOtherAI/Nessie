@@ -11,6 +11,7 @@ import {
 import { reportedExecutorCodingSessions } from './executor-coding-session-closes.js'
 import { executorCodingSessionOwnerKey } from './executor-coding-session-owner.js'
 import { executorHeartbeatCutoff } from './executor-liveness.js'
+import { syncTicketWorkClock } from './ticket-work-clock.js'
 
 /**
  * The pool queue's assignment half, at dispatch
@@ -157,6 +158,8 @@ export const queueTicketWorkInTransaction = async (
       status: 'queued',
     },
   })
+  // Queued work waits for a machine: its hours clock pauses.
+  await syncTicketWorkClock(tx, input.workId, now)
   const queued = await tx.agentTicketWork.findMany({
     where: { policyId: input.policyId, status: 'queued' }, select: { id: true },
   })
@@ -205,6 +208,7 @@ export const placeTicketWorkOnMachineInTransaction = async (
       where: { id: work.id },
       data: { executorId: null, policyId: policy?.id ?? null, stateReason: reason, status: 'waiting_machine' },
     })
+    await syncTicketWorkClock(tx, work.id, now)
     return { kind: 'waiting', policyId: policy?.id ?? null, reason }
   }
   const pool = await lockStandingPolicyPool(tx, policy.id)
@@ -236,6 +240,7 @@ export const placeTicketWorkOnMachineInTransaction = async (
           executorId: row.executorId, policyId: policy.id, queuePosition: null, stateReason: null, status: 'active',
         },
       })
+      await syncTicketWorkClock(tx, work.id, now)
       return { executorId: row.executorId, kind: 'assigned', policyId: policy.id }
     }
     if (state === 'busy') busy += 1

@@ -107,7 +107,8 @@ sentence changes only if the invariant itself did.
   conversations named by their first message, the one-empty-at-a-time rule
   behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip, and a ticket's work
-  threads folded under Tickets at every width with their wake rows and the
+  threads folded under Tickets at every width with their wake rows, the row a
+  cancelled reminder leaves, and the
   read-only line for a room member who cannot edit the board; two assertions
   deliberately pin known gaps and say so in their own message. It starts its
   own API and admin, on `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT` when set.
@@ -185,7 +186,9 @@ sentence changes only if the invariant itself did.
   may not open it, parked, parked after a move back that did not resume it,
   stopped at its wake limit, done — its work history opened, the move that
   started nothing, the card's avatar and state dot, and the chip on a phone
-  (shots 16–18; the rules are in
+  (shots 16–18), and at 1280 and 390 px the agent's pending reminder with
+  Cancel for a board editor, pressed and gone, a reader's without Cancel, and
+  an open question (shots 19; the rules are in
   [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md)). The
   real-stack half — a label following a ticket to another board by name, a
   removal persisting and still downloading — is in the project-usability
@@ -256,7 +259,7 @@ sentence changes only if the invariant itself did.
   trigger's form (public project channels only and why, the board and
   columns picked, an end column that cannot start work), a second pickup on a
   column refused **on the pickup field** and the typed config the corrected
-  create posts, the board's "Moving here starts work" badge at the head of a
+  create posts (its quiet wake on, off and set), the board's "Moving here starts work" badge at the head of a
   track still aligned with its neighbours, card dots and the column menu on
   every column but Done that opens the editor prefilled with its type fixed,
   and a ticket trigger's page
