@@ -48,6 +48,7 @@ import {
   ticketWorkRecallSkipped,
   TICKET_WORK_PERSON_TOOL_IDS,
   TICKET_WORK_PROJECT_TOOL_IDS,
+  withoutEndedWorkWrites,
 } from './ticket-work-setup.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
@@ -243,7 +244,10 @@ export const prepareRunExecution = async (
     && (await deps.prisma.agentBinding.count({
       where: { agentId: context.agent.id, channelId: context.channel.id },
     })) > 0
-  const projectDelegatedToolIds = resolveProjectDelegatedToolIds(projectDelegation, toolPolicy, ticketWorkRun)
+  const projectDelegatedToolIds = withoutEndedWorkWrites(
+    resolveProjectDelegatedToolIds(projectDelegation, toolPolicy, ticketWorkRun),
+    ticketWork,
+  )
 
   // D3: the one place the identity-tool admission is decided. Both the schema
   // array below and the per-call gate downstream consume this same set, so a

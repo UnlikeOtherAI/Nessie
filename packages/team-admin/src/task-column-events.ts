@@ -3,7 +3,11 @@ import type { TaskEventOrigin } from '@nessie/schemas'
 
 import { resolveProjectTaskDetailPlacement } from './board-placement.js'
 import { recordTaskEvent, type TaskEventScope, type TaskEventWriter } from './task-event-dispatch.js'
-import { applyTicketWorkColumnEntry, type TicketWorkTeardownWriter } from './ticket-work-teardown.js'
+import {
+  applyTicketWorkColumnEntry,
+  applyTicketWorkLeftBoard,
+  type TicketWorkTeardownWriter,
+} from './ticket-work-teardown.js'
 
 type PlacementReader = Pick<Prisma.TransactionClient, 'board' | 'taskBoardPlacement'>
 
@@ -32,7 +36,9 @@ export const resolveHomeColumnId = async (
  *
  * It is also where the ticket's live work learns where the ticket went: the
  * same transaction ends or parks it (`applyTicketWorkColumnEntry`), whoever
- * moved it, so every door that moves a ticket tears its work down alike.
+ * moved it, so every door that moves a ticket tears its work down alike. A
+ * ticket that left every column — archived by a transition or a source —
+ * writes no event, and its live work ends (`applyTicketWorkLeftBoard`).
  */
 export const recordColumnEntered = async (
   tx: TaskEventWriter & TicketWorkTeardownWriter,
@@ -44,7 +50,12 @@ export const recordColumnEntered = async (
     authorship: { by?: string; origin: TaskEventOrigin }
   },
 ): Promise<{ id: string } | null> => {
-  if (!input.toColumnId || input.fromColumnId === input.toColumnId) return null
+  const by = input.authorship.by ? { by: input.authorship.by } : {}
+  if (!input.toColumnId) {
+    if (input.fromColumnId) await applyTicketWorkLeftBoard(tx, { taskId: input.taskId, ...by })
+    return null
+  }
+  if (input.fromColumnId === input.toColumnId) return null
   const event = await recordTaskEvent(tx, {
     taskId: input.taskId,
     eventType: 'column_entered',
@@ -55,10 +66,6 @@ export const recordColumnEntered = async (
     },
     scope: input.scope,
   })
-  await applyTicketWorkColumnEntry(tx, {
-    taskId: input.taskId,
-    toColumnId: input.toColumnId,
-    ...(input.authorship.by ? { by: input.authorship.by } : {}),
-  })
+  await applyTicketWorkColumnEntry(tx, { taskId: input.taskId, toColumnId: input.toColumnId, eventId: event.id, ...by })
   return event
 }

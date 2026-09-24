@@ -211,6 +211,15 @@ export const TicketTriggerSkipReasonSchema = z.enum([
   // `startsPerDay` records the work as stopped without running.
   'limit_wakes',
   'limit_starts',
+  // The ticket had already left the start-work set when the pickup or the
+  // re-entry was decided (a quick move back, or queue lag): nothing starts or
+  // resumes on a ticket that is no longer where the move put it.
+  'left_pickup_column',
+  // A board editor's message in a work thread that wakes nobody: its work
+  // has ended, its trigger does not follow thread messages, or is off.
+  'work_ended',
+  'not_followed',
+  'trigger_disabled',
 ])
 export type TicketTriggerSkipReason = z.infer<typeof TicketTriggerSkipReasonSchema>
 
@@ -233,7 +242,37 @@ export const TICKET_TRIGGER_SKIP_SENTENCES = {
     + 'Move the ticket out of and back into a start-work column to continue.',
   limit_starts: 'This trigger already started work on as many tickets today as it allows, so this one did not start. '
     + 'Move the ticket out of and back into a start-work column to try again later.',
+  left_pickup_column: 'The ticket had already left the start-work column when this was decided, so work did not start or resume.',
+  work_ended: 'This ticket\'s work has ended, so the message woke nobody. '
+    + 'Move the ticket into a start-work column to start it again.',
+  not_followed: 'This trigger does not read messages in the work thread, so the message woke nobody. '
+    + 'Comment on the ticket instead.',
+  trigger_disabled: 'This ticket\'s trigger is off, so the message woke nobody.',
 } as const satisfies Record<TicketTriggerSkipReason, string>
+
+/**
+ * A refused re-entry says it did not *resume*: the work already exists, and
+ * the ticket sits in a start-work column while its record stays parked. Only
+ * the origin rule's refusals have one; any other reason reads as its own
+ * sentence.
+ */
+export const TICKET_TRIGGER_REENTRY_SENTENCES = {
+  agent_origin: 'Moved back by an agent, so work did not resume. A person who can edit the board can resume it.',
+  token_origin: 'Moved back through an API credential, so work did not resume. '
+    + 'A person who can edit the board can resume it.',
+  source_origin: 'Moved back on the connected board, so work did not resume. '
+    + 'A person who can edit the board can resume it.',
+  system_origin: 'Moved back by Nessie itself, so work did not resume.',
+  not_board_editor: 'Moved back by someone who cannot edit this board, so work did not resume.',
+} as const satisfies Partial<Record<TicketTriggerSkipReason, string>>
+
+const REENTRY_SENTENCES: Partial<Record<TicketTriggerSkipReason, string>> = TICKET_TRIGGER_REENTRY_SENTENCES
+
+/** A skip's sentence, the re-entry wording when the skip refused a re-entry. */
+export const ticketTriggerSkipSentence = (
+  reason: TicketTriggerSkipReason,
+  options: { reentry?: boolean } = {},
+): string => (options.reentry ? REENTRY_SENTENCES[reason] : undefined) ?? TICKET_TRIGGER_SKIP_SENTENCES[reason]
 
 /**
  * `agent_trigger_deliveries.payload` of a ticket dispatch. Ids and vocabulary
@@ -254,6 +293,9 @@ export const TicketTriggerDeliveryPayloadSchema = z
     workId: uuid.optional(),
     // A source event woke the work: its text reaches the agent as untrusted.
     untrusted: z.boolean().optional(),
+    // A skip that refused a re-entry into a start-work column — the work
+    // exists and did not resume — rather than a pickup or a follow.
+    reentry: z.boolean().optional(),
   })
   .strict()
   .superRefine((payload, context) => {

@@ -18,13 +18,18 @@ import { recordTriggerRunFailure, upsertDelivery, type RetryContext } from './tr
 export type SettledDecision = Exclude<TicketTriggerDecision, { kind: 'ignore' }>
 
 /** What every delivery payload says about the thing it decided. */
-export type DeliveryBase = Omit<TicketTriggerDeliveryPayload, 'outcome' | 'skipReason' | 'wakeReason' | 'workId' | 'untrusted'>
+export type DeliveryBase = Omit<
+  TicketTriggerDeliveryPayload,
+  'outcome' | 'skipReason' | 'wakeReason' | 'workId' | 'untrusted' | 'reentry'
+>
 
 export const deliveryPayload = (
   base: DeliveryBase,
   decision: SettledDecision,
 ): TicketTriggerDeliveryPayload => {
-  if (decision.kind === 'skip') return { ...base, outcome: 'skipped', skipReason: decision.reason }
+  if (decision.kind === 'skip') {
+    return { ...base, outcome: 'skipped', skipReason: decision.reason, ...(decision.reentry ? { reentry: true } : {}) }
+  }
   return {
     ...base,
     outcome: decision.kind,

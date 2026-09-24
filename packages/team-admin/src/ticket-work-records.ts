@@ -31,6 +31,8 @@ export const recordTicketWorkActivity = async (
     status: TicketWorkStatus
     reason: TicketWorkStateReason | null
     by?: string | null
+    /** The `column_entered` whose move caused it, when a move did. */
+    causeEventId?: string
   },
 ): Promise<void> => {
   const payload: TicketWorkActivityPayload = {
@@ -41,6 +43,7 @@ export const recordTicketWorkActivity = async (
     agentId: input.work.agentId,
     status: input.status,
     reason: input.reason,
+    ...(input.causeEventId ? { causeEventId: input.causeEventId } : {}),
   }
   await tx.taskEvent.create({
     data: { taskId: input.work.taskId, eventType: input.eventType, payload },
@@ -63,6 +66,8 @@ export const endTicketWork = async (
     reason: TicketWorkStateReason
     /** A `TaskEvent.by`: the mover, `agent:<id>`, or `system`. */
     by?: string | null
+    /** The `column_entered` whose move ended it; its end wake is matched by it. */
+    causeEventId?: string
   },
 ): Promise<boolean> => {
   const endedAt = new Date()
@@ -87,6 +92,7 @@ export const endTicketWork = async (
     status: input.status,
     reason: input.reason,
     by: input.by ?? null,
+    ...(input.causeEventId ? { causeEventId: input.causeEventId } : {}),
   })
   return true
 }

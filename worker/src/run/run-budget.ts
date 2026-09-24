@@ -93,6 +93,16 @@ export const resolveEffectiveRunBudget = (
   }
 }
 
+/**
+ * A run job's budget: its agent's own limits under the deployment backstop,
+ * and a `ticket.work` run clamped to its ceiling, read from the job's own
+ * action purpose.
+ */
+export const resolveRunJobBudget = (
+  runLimits: AgentRunLimits | null | undefined,
+  actorContext: { actionContext: { purpose?: string | null | undefined } },
+): BudgetLimits => resolveEffectiveRunBudget(runLimits, process.env, actorContext.actionContext.purpose)
+
 // Delegate sub-agents are a discovery fan-out, not a second full run: their
 // envelope is fixed and small, and the parent run caps how many it may spawn.
 export const DELEGATE_BUDGET: BudgetLimits = {

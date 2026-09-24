@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import type { Prisma } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
 import {
@@ -22,6 +24,15 @@ import {
  * steer work — is the dispatcher's, read afresh when it runs.
  */
 export type TaskEventWriter = Pick<Prisma.TransactionClient, 'taskEvent' | 'task' | 'agentTrigger' | '$executeRaw'>
+
+/**
+ * The description a `detail_edited` event wrote, as a hash: history never
+ * copies the text, but a wake that quotes the description as its author's
+ * words must know the ticket still says what that author wrote, and not what
+ * a later token, agent or board sync replaced it with. Null for a cleared one.
+ */
+export const taskDetailSha256 = (detail: string | null): string | null =>
+  detail === null ? null : createHash('sha256').update(detail).digest('hex')
 
 /** The ticket's organisation and project, when the caller already holds them. */
 export type TaskEventScope = { organizationId: string; projectId: string | null }

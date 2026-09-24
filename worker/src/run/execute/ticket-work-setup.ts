@@ -1,9 +1,12 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
+  TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_PURPOSE,
   TICKET_WORK_STEER_METADATA_KEY,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
+
+const LIVE = new Set<string>(TICKET_WORK_LIVE_STATUSES)
 
 /**
  * A `ticket.work` run's setup (docs/standards/ticket-work.md → "A
@@ -85,7 +88,7 @@ export const ticketWorkToolRefusal = (
       + 'Comment on the ticket to ask the people on it instead.'
     : null
 
-export type TicketWorkRunFacts = { workId: string; projectId: string; taskId: string }
+export type TicketWorkRunFacts = { workId: string; projectId: string; taskId: string; live: boolean }
 
 /**
  * The work record this run serves, re-read at setup: it must name this agent
@@ -104,10 +107,26 @@ export const loadTicketWorkRunFacts = async (
   if (!isTicketWorkRun(input.actorContext) || !workId) return null
   const work = await prisma.agentTicketWork.findFirst({
     where: { id: workId, agentId: input.agentId, threadId: input.threadId },
-    select: { projectId: true, taskId: true },
+    select: { projectId: true, taskId: true, status: true },
   })
-  return work ? { workId, ...work } : null
+  return work
+    ? { workId, projectId: work.projectId, taskId: work.taskId, live: LIVE.has(work.status) }
+    : null
 }
+
+/** The lent tools that change a ticket — its fields, its column, its status. */
+const TICKET_WORK_WRITE_TOOL_IDS: ReadonlySet<string> = new Set(['ticket_update', 'ticket_move', 'ticket_transition'])
+
+/**
+ * A run of work that has already ended — its kickoff pended while the ticket
+ * left the flow, say — reads and comments, and changes nothing: it could
+ * otherwise move the ticket straight back into the flow on a stale plan.
+ */
+export const withoutEndedWorkWrites = (
+  lent: Set<string>,
+  ticketWork: Pick<TicketWorkRunFacts, 'live'> | null,
+): Set<string> =>
+  ticketWork && !ticketWork.live ? new Set([...lent].filter((id) => !TICKET_WORK_WRITE_TOOL_IDS.has(id))) : lent
 
 /**
  * The messages a `ticket.work` run's conversation admits: the agent's own

@@ -5,17 +5,21 @@ import {
   parseChannelId,
   parseTaskId,
   parseThreadId,
+  TICKET_WORK_ACTIVITY_EVENT_TYPES,
   TICKET_WORK_LIVE_STATUSES,
   TICKET_WORK_NOTICE_SKIP_REASONS,
   TicketChangedStoredConfigSchema,
   TicketTriggerDeliveryPayloadSchema,
   TicketTriggerLimitsSchema,
+  TicketWorkActivityPayloadSchema,
   TicketWorkStateReasonSchema,
   TicketWorkStatusSchema,
   TicketWorkWakeReasonSchema,
+  ticketWorkThreadMessageOutcome,
   type BoardTicketWorkRecord,
   type TaskTicketWorkRecord,
   type TicketWorkChipRecord,
+  type TicketWorkHistoryEntry,
   type TicketWorkSkipNotice,
   type TicketWorkStatus,
   type TicketWorkThreadGate,
@@ -65,9 +69,10 @@ const byLiveThenNewest = (
 }
 
 /**
- * The newest pickup skip the ticket's readers should know about, if nothing
- * newer happened under the same trigger: "moved by an agent, so work did not
- * start" belongs on the ticket that did not start.
+ * The newest skip the ticket's readers should know about, if nothing newer
+ * happened under the same trigger: "moved by an agent, so work did not start"
+ * belongs on the ticket that did not start, and "moved back by an agent, so
+ * work did not resume" on the ticket whose parked work stayed parked.
  */
 const loadLastSkip = async (
   prisma: PrismaClient,
@@ -76,15 +81,16 @@ const loadLastSkip = async (
   const deliveries = await prisma.agentTriggerDelivery.findMany({
     where: {
       status: 'skipped',
-      source: 'pickup',
+      source: { in: ['pickup', 'follow'] },
       trigger: { type: 'ticket_changed', scopeProjectId: input.projectId },
       payload: { path: ['taskId'], equals: input.taskId },
     },
     orderBy: { createdAt: 'desc' },
-    take: 5,
+    take: 10,
     select: {
       createdAt: true,
       payload: true,
+      source: true,
       triggerId: true,
       trigger: { select: { agent: { select: { name: true } } } },
     },
@@ -93,16 +99,70 @@ const loadLastSkip = async (
   for (const delivery of deliveries) {
     const payload = TicketTriggerDeliveryPayloadSchema.safeParse(delivery.payload)
     if (!payload.success || !payload.data.skipReason || !notice.has(payload.data.skipReason)) continue
+    // A follow skip is a notice only when it refused a re-entry; any other is
+    // bookkeeping the Triggers page shows its owner.
+    const reentry = payload.data.reentry === true
+    if (delivery.source === 'follow' && !reentry) continue
     const newer = input.newestByTrigger.get(delivery.triggerId)
     if (newer && newer >= delivery.createdAt) return null
     return {
       triggerId: delivery.triggerId,
       agentName: delivery.trigger.agent?.name ?? 'The agent',
       reason: payload.data.skipReason,
+      reentry,
       at: delivery.createdAt.toISOString(),
     }
   }
   return null
+}
+
+/** How many `work_*` rows the chip's history lists. */
+const HISTORY_LIMIT = 12
+
+/**
+ * The ticket's `work_*` activity, newest first: each start, park, resume and
+ * end, with its reason and who caused it — a person by name, an agent by its
+ * name, or nobody when the platform acted on its own.
+ */
+const loadWorkHistory = async (prisma: PrismaClient, taskId: string): Promise<TicketWorkHistoryEntry[]> => {
+  const rows = await prisma.taskEvent.findMany({
+    where: { taskId, eventType: { in: [...TICKET_WORK_ACTIVITY_EVENT_TYPES] } },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: HISTORY_LIMIT,
+    select: { id: true, eventType: true, payload: true, createdAt: true },
+  })
+  const parsed = rows.flatMap((row) => {
+    const payload = TicketWorkActivityPayloadSchema.safeParse(row.payload)
+    const eventType = TICKET_WORK_ACTIVITY_EVENT_TYPES.find((type) => type === row.eventType)
+    return payload.success && eventType ? [{ row, eventType, payload: payload.data }] : []
+  })
+  const agentIds = new Set(parsed.map(({ payload }) => payload.agentId))
+  const userIds = new Set<string>()
+  for (const { payload } of parsed) {
+    if (payload.by?.startsWith('agent:')) agentIds.add(payload.by.slice('agent:'.length))
+    else if (payload.by && !payload.by.includes(':')) userIds.add(payload.by)
+  }
+  const [agents, users] = await Promise.all([
+    prisma.agent.findMany({ where: { id: { in: [...agentIds] } }, select: { id: true, name: true } }),
+    prisma.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, displayName: true } }),
+  ])
+  const agentName = new Map(agents.map((agent) => [agent.id, agent.name]))
+  const userName = new Map(users.map((user) => [user.id, user.displayName]))
+  const nameOf = (by: string | undefined): string | null => {
+    if (!by) return null
+    if (by.startsWith('agent:')) return agentName.get(by.slice('agent:'.length)) ?? 'An agent'
+    if (by.startsWith('source:')) return 'The connected board'
+    return userName.get(by) ?? 'A former member'
+  }
+  return parsed.map(({ row, eventType, payload }) => ({
+    id: row.id,
+    eventType,
+    agentName: agentName.get(payload.agentId) ?? 'The agent',
+    status: payload.status,
+    reason: payload.reason,
+    byName: nameOf(payload.by),
+    at: row.createdAt.toISOString(),
+  }))
 }
 
 /** `GET /api/tasks/:taskId/work`, for a viewer the caller already let read the ticket. */
@@ -114,7 +174,7 @@ export const loadTaskTicketWork = async (
     where: { id: input.taskId, organizationId: input.organizationId },
     select: { projectId: true },
   })
-  if (!task) return { records: [], lastSkip: null }
+  if (!task) return { records: [], lastSkip: null, history: [] }
   const rows = await prisma.agentTicketWork.findMany({
     where: { taskId: input.taskId, organizationId: input.organizationId },
     orderBy: { startedAt: 'desc' },
@@ -178,7 +238,7 @@ export const loadTaskTicketWork = async (
   const lastSkip = task.projectId
     ? await loadLastSkip(prisma, { taskId: input.taskId, projectId: task.projectId, newestByTrigger })
     : null
-  return { records, lastSkip }
+  return { records, lastSkip, history: await loadWorkHistory(prisma, input.taskId) }
 }
 
 /** The statuses a board card shows a dot for: live work, and work a limit stopped. */
@@ -254,7 +314,7 @@ export const loadBoardTicketWork = async (
  */
 export const loadTicketWorkThreadGate = async (
   prisma: PrismaClient,
-  input: { threadId: string; organizationId: string; userId: string },
+  input: { threadId: string; organizationId: string; userId: string; isOrganizationAdmin?: boolean },
 ): Promise<TicketWorkThreadGate | null | undefined> => {
   const visible = await prisma.thread.findFirst({
     where: { id: input.threadId, ...buildViewerThreadWhere(input.userId, input.organizationId) },
@@ -263,6 +323,18 @@ export const loadTicketWorkThreadGate = async (
   if (!visible) return undefined
   const work = await findTicketWorkThread(prisma, input.threadId)
   if (!work || work.organizationId !== input.organizationId) return null
+  // The record a message would wake — the live one, else the newest — as the
+  // dispatcher picks it (`ticketWorkThreadMessageOutcome`).
+  const trigger = { select: { config: true, enabled: true, status: true } } as const
+  const record = await prisma.agentTicketWork.findFirst({
+    where: { threadId: input.threadId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
+    select: { status: true, trigger },
+  }) ?? await prisma.agentTicketWork.findFirst({
+    where: { threadId: input.threadId },
+    orderBy: { startedAt: 'desc' },
+    select: { status: true, trigger },
+  })
+  const config = TicketChangedStoredConfigSchema.safeParse(record?.trigger?.config)
   const task = await prisma.task.findUnique({
     where: { id: work.taskId },
     select: { externalLink: { select: { externalKey: true } }, title: true },
@@ -271,6 +343,18 @@ export const loadTicketWorkThreadGate = async (
     taskId: parseTaskId(work.taskId),
     projectId: work.projectId,
     taskTitle: ticketWorkThreadTitle({ externalLink: task?.externalLink ?? null, title: task?.title ?? null }),
-    viewerCanPost: await canPostInTicketWorkThread(prisma, { thread: work, userId: input.userId }),
+    viewerCanPost: await canPostInTicketWorkThread(prisma, {
+      thread: work,
+      userId: input.userId,
+      ...(input.isOrganizationAdmin === undefined ? {} : { isOrganizationAdmin: input.isOrganizationAdmin }),
+    }),
+    // A deleted trigger wakes nobody, the way a disabled one does not.
+    messageOutcome: record?.trigger
+      ? ticketWorkThreadMessageOutcome({
+          workStatus: record.status,
+          trigger: record.trigger,
+          followKinds: config.success ? config.data.follow.kinds : null,
+        })
+      : record && LIVE.has(record.status) ? 'trigger_disabled' : 'work_ended',
   }
 }

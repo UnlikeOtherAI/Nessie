@@ -269,3 +269,73 @@ dbTest('a work thread says who may write in it; an ordinary thread is none', asy
     assert.equal(ordinary.data, null)
   })
 })
+
+dbTest('a work thread says whether a message there reaches the agent, and why not', async () => {
+  await withRoutes(async ({ app, s, prisma }) => {
+    const outcome = async (threadId: string) =>
+      (await read<TicketWorkThreadGate>(app, `/api/threads/${threadId}/ticket-work`)).data.messageOutcome
+    assert.equal(await outcome(s.workingRecord.threadId), 'wakes')
+    const finished = await prisma.agentTicketWork.findFirstOrThrow({ where: { taskId: s.finished.id } })
+    assert.equal(await outcome(finished.threadId), 'work_ended')
+    await prisma.agentTrigger.update({
+      where: { id: s.trigger.id },
+      data: { config: { ...(s.trigger.config as Record<string, unknown>), follow: { kinds: ['comment'] } } },
+    })
+    assert.equal(await outcome(s.workingRecord.threadId), 'not_followed')
+    await prisma.agentTrigger.update({ where: { id: s.trigger.id }, data: { enabled: false, status: 'paused' } })
+    assert.equal(await outcome(s.workingRecord.threadId), 'trigger_disabled')
+  })
+})
+
+dbTest('the chip lists the ticket\'s work history, and a refused re-entry says the work did not resume', async () => {
+  await withRoutes(async ({ app, s, prisma }) => {
+    const row = (eventType: string, payload: Record<string, unknown>, createdAt: Date) => prisma.taskEvent.create({
+      data: {
+        taskId: s.working.id, eventType, createdAt,
+        payload: {
+          origin: { kind: 'system' }, workId: s.workingRecord.id, triggerId: s.trigger.id, agentId: s.cto.id, ...payload,
+        },
+      },
+    })
+    const base = Date.now() - 10_000
+    await row('work_started', { status: 'active', reason: null, by: s.editor.id }, new Date(base))
+    await row('work_paused', { status: 'parked', reason: null, by: `agent:${s.cto.id}` }, new Date(base + 1000))
+    const { data } = await read<TaskTicketWorkRecord>(app, `/api/tasks/${s.working.id}/work`)
+    assert.deepEqual(
+      data.history.map((entry) => [entry.eventType, entry.agentName, entry.byName]),
+      [['work_paused', 'CTO', 'CTO'], ['work_started', 'CTO', 'Ondrej']],
+      'newest first, who caused each by name',
+    )
+
+    // An agent's move back into the start-work column left the work parked.
+    const parked = await prisma.task.create({
+      data: { organizationId: s.organization.id, projectId: s.project.id, title: 'Parked' },
+    })
+    const record = await prisma.agentTicketWork.create({ data: {
+      agentId: s.cto.id, organizationId: s.organization.id, projectId: s.project.id, taskId: parked.id,
+      triggerId: s.trigger.id, threadId: s.workingRecord.threadId, startedByUserId: s.editor.id, status: 'parked',
+      startedAt: new Date(base),
+    } })
+    const followSkip = (reentry: boolean) => prisma.agentTriggerDelivery.create({
+      data: {
+        dedupeKey: `ticket:${s.trigger.id}:${randomUUID()}`,
+        errorMessage: 'agent_origin',
+        payload: {
+          eventType: 'column_entered', originKind: 'agent', outcome: 'skipped', skipReason: 'agent_origin',
+          taskEventId: randomUUID(), taskId: parked.id, ...(reentry ? { reentry: true } : {}),
+        },
+        source: 'follow',
+        status: 'skipped',
+        triggerId: s.trigger.id,
+      },
+    })
+    // An agent's ordinary move of live work is the Triggers page's business…
+    await followSkip(false)
+    assert.equal((await read<TaskTicketWorkRecord>(app, `/api/tasks/${parked.id}/work`)).data.lastSkip, null)
+    // …a refused re-entry is the ticket's.
+    await followSkip(true)
+    const said = await read<TaskTicketWorkRecord>(app, `/api/tasks/${parked.id}/work`)
+    assert.deepEqual([said.data.lastSkip?.reason, said.data.lastSkip?.reentry], ['agent_origin', true])
+    assert.equal(said.data.records[0]?.id, record.id)
+  })
+})

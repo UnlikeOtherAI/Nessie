@@ -48,6 +48,8 @@ const makeHarness = (linkedCount: number) => {
   }
   const prisma = {
     $transaction: async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
+    // An ordinary thread: no work record names it.
+    agentTicketWork: { findFirst: async () => null },
     channel: {
       findUnique: async () => ({ agentBindings: [], organizationId: ORGANIZATION_ID }),
     },

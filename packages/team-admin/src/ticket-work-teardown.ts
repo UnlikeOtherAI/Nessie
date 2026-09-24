@@ -5,7 +5,8 @@ import {
   type TicketEndOn,
 } from '@nessie/schemas'
 
-import { endTicketWork } from './ticket-work-records.js'
+import { lockTicketForWork } from './ticket-work-lock.js'
+import { endTicketWork, recordTicketWorkActivity } from './ticket-work-records.js'
 
 /**
  * What entering a column does to the ticket's live work, **inside the
@@ -24,27 +25,23 @@ import { endTicketWork } from './ticket-work-records.js'
  *   start-work column resumes it (the dispatcher decides that, under the
  *   origin rule, so a token's or an agent's move back leaves it parked).
  * - Any other column changes nothing here.
+ *
+ * Both take the ticket's work lock first (`lockTicketForWork`), so a pickup
+ * the dispatcher is deciding at the same moment is either already committed
+ * and ended here, or waits and sees where this move put the ticket.
  */
 export type TicketWorkTeardownWriter = Pick<
   Prisma.TransactionClient,
-  'agentTicketWork' | 'agentReminder' | 'boardColumn' | 'taskEvent'
+  'agentTicketWork' | 'agentReminder' | 'boardColumn' | 'taskEvent' | '$queryRaw'
 >
 
 /** Whether an `endOn` list ends the work in this column, of whatever board. */
 const endsWorkIn = (endOn: readonly TicketEndOn[], column: { id: string; category: string }): boolean =>
   endOn.some((entry) => ('id' in entry ? entry.id === column.id : entry.category === column.category))
 
-export const applyTicketWorkColumnEntry = async (
-  tx: TicketWorkTeardownWriter,
-  input: {
-    taskId: string
-    toColumnId: string
-    /** The move's `TaskEvent.by`: who the record's end names. */
-    by?: string
-  },
-): Promise<void> => {
-  const records = await tx.agentTicketWork.findMany({
-    where: { taskId: input.taskId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
+const liveRecords = (tx: TicketWorkTeardownWriter, taskId: string) =>
+  tx.agentTicketWork.findMany({
+    where: { taskId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
     select: {
       id: true,
       taskId: true,
@@ -55,12 +52,27 @@ export const applyTicketWorkColumnEntry = async (
       trigger: { select: { config: true } },
     },
   })
+
+export const applyTicketWorkColumnEntry = async (
+  tx: TicketWorkTeardownWriter,
+  input: {
+    taskId: string
+    toColumnId: string
+    /** The move's `TaskEvent.by`: who the record's end names. */
+    by?: string
+    /** The move's `column_entered`, named on the rows it causes. */
+    eventId?: string
+  },
+): Promise<void> => {
+  await lockTicketForWork(tx, input.taskId)
+  const records = await liveRecords(tx, input.taskId)
   if (records.length === 0) return
   const column = await tx.boardColumn.findUnique({
     where: { id: input.toColumnId },
     select: { id: true, category: true },
   })
   if (!column) return
+  const cause = input.eventId ? { causeEventId: input.eventId } : {}
   for (const record of records) {
     // A trigger deleted without ending its records first, or one whose
     // configuration no longer parses, says nothing about where work ends.
@@ -73,6 +85,7 @@ export const applyTicketWorkColumnEntry = async (
         status,
         reason: status === 'done' && record.lastPrState === 'MERGED' ? 'merged' : 'left_flow',
         by: input.by ?? 'system',
+        ...cause,
       })
       continue
     }
@@ -82,6 +95,27 @@ export const applyTicketWorkColumnEntry = async (
         where: { id: record.id },
         data: { status: 'parked', stateReason: null },
       })
+      await recordTicketWorkActivity(tx, {
+        work: record, eventType: 'work_paused', status: 'parked', reason: null, by: input.by ?? null, ...cause,
+      })
     }
+  }
+}
+
+/**
+ * The ticket left every column — archived, by a person, a board source or
+ * the agent's own `ticket_transition` to cancelled or failed. Archived work
+ * belongs to no column, so no `column_entered` is written and no end column
+ * can match it; its live work ends here instead, `cancelled` with
+ * `left_flow`, in the same transaction. Nothing wakes the agent: its ticket
+ * is gone from the board.
+ */
+export const applyTicketWorkLeftBoard = async (
+  tx: TicketWorkTeardownWriter,
+  input: { taskId: string; by?: string },
+): Promise<void> => {
+  await lockTicketForWork(tx, input.taskId)
+  for (const record of await liveRecords(tx, input.taskId)) {
+    await endTicketWork(tx, { work: record, status: 'cancelled', reason: 'left_flow', by: input.by ?? 'system' })
   }
 }

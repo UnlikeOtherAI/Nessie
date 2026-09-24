@@ -8,6 +8,7 @@ import {
   TICKET_WORK_TERMINAL_STATUSES,
   TicketChangedStoredConfigSchema,
   TicketTriggerDeliveryPayloadSchema,
+  TicketWorkActivityPayloadSchema,
   TicketWorkStatusSchema,
   type ColumnCategory,
   type TicketTriggerEventType,
@@ -43,14 +44,6 @@ import type { RetryContext } from './trigger-run.js'
  * facts and settles it as exactly one `agent_trigger_deliveries` row, deduped
  * on `ticket:<triggerId>:<taskEventId>`, beside whatever the work seam did.
  */
-
-/**
- * How long after an event a record that ended counts as ended *by* it. The
- * move that enters an end column ends the record in its own transaction, so
- * the two timestamps are milliseconds apart; the window only absorbs clock
- * skew between the database and the app writing them.
- */
-const END_WAKE_WINDOW_MS = 60_000
 
 export type TicketDispatchOptions = {
   seam?: TicketWorkSeam
@@ -122,7 +115,12 @@ const readEvent = async (
   }
 }
 
-/** The live record, or for a column move one this event's own move just ended. */
+/**
+ * The live record, or for a column move the one this very move ended — named
+ * by the `work_ended` row its teardown wrote with this event as its cause, so
+ * a second move into an end column never re-announces an end an earlier move
+ * (or a limit, or a disabled trigger) already caused.
+ */
 const readWork = async (
   prisma: PrismaClient,
   triggerId: string,
@@ -135,16 +133,24 @@ const readWork = async (
   })
   if (live) return { id: live.id, status: TicketWorkStatusSchema.parse(live.status), live: true }
   if (event.eventType !== 'column_entered') return null
-  const ended = await prisma.agentTicketWork.findFirst({
+  const endedBy = await prisma.taskEvent.findFirst({
     where: {
-      triggerId,
       taskId: event.task.id,
-      status: { in: [...TICKET_WORK_TERMINAL_STATUSES] },
-      endedAt: { gte: new Date(event.createdAt.getTime() - END_WAKE_WINDOW_MS) },
+      eventType: 'work_ended',
+      AND: [
+        { payload: { path: ['causeEventId'], equals: event.id } },
+        { payload: { path: ['triggerId'], equals: triggerId } },
+      ],
     },
-    orderBy: { endedAt: 'desc' },
-    select,
+    select: { payload: true },
   })
+  const workId = TicketWorkActivityPayloadSchema.safeParse(endedBy?.payload)
+  const ended = workId.success
+    ? await prisma.agentTicketWork.findFirst({
+        where: { id: workId.data.workId, triggerId, status: { in: [...TICKET_WORK_TERMINAL_STATUSES] } },
+        select,
+      })
+    : null
   return ended ? { id: ended.id, status: TicketWorkStatusSchema.parse(ended.status), live: false } : null
 }
 

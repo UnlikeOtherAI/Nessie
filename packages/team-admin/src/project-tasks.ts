@@ -16,6 +16,7 @@ import {
 } from './task-access.js'
 import { recordColumnEntered, resolveHomeColumnId } from './task-column-events.js'
 import { recordTaskEvent } from './task-event-dispatch.js'
+import { recordPickupAssignment, resolvePickupAssignmentForStatus } from './ticket-work-pickup.js'
 import {
   linkUploadsToTask,
   mapProjectTaskWithCount,
@@ -203,7 +204,19 @@ export const createProjectTask = async (
     const missing = labelIds.find((id) => !found.has(id))
     if (missing) return { error: 'LABEL_NOT_ON_BOARD', labelId: missing }
   }
-  const status: TaskStatus = input.assigneeUserId || input.assigneeAgentId ? 'assigned' : 'inbox'
+  const unassigned = !input.assigneeUserId && !input.assigneeAgentId
+  // A person creating an unassigned ticket straight into a start-work column
+  // starts work there, and hands the ticket to its agent (`assignOnPickup`).
+  const pickup = unassigned && input.projectId
+    ? await resolvePickupAssignmentForStatus(prisma, {
+        organizationId: input.organizationId,
+        task: { id: null, projectId: input.projectId, boardId: input.boardId ?? null, status: 'inbox' },
+        fromColumnId: async () => null,
+        actorId: input.createdByUserId,
+        ...(input.origin ? { origin: input.origin } : {}),
+      })
+    : null
+  const status: TaskStatus = unassigned && !pickup ? 'inbox' : 'assigned'
   const authorship = taskEventAuthorship({ ...input, userId: input.createdByUserId })
   const task = await prisma.$transaction(async (tx) => {
     const created = await tx.task.create({
@@ -214,7 +227,7 @@ export const createProjectTask = async (
         priority: input.priority ?? 'medium', dueDate: input.dueDate ?? null,
         createdByUserId: input.createdByUserId, title: input.title,
         purpose: input.purpose ?? null, detail: input.detail ?? null,
-        assigneeUserId: input.assigneeUserId ?? null, assigneeAgentId: input.assigneeAgentId ?? null,
+        assigneeUserId: input.assigneeUserId ?? null, assigneeAgentId: input.assigneeAgentId ?? pickup?.agentId ?? null,
         ownerUserId: input.ownerUserId ?? null, status,
       },
       include: projectTaskInclude,
@@ -233,6 +246,11 @@ export const createProjectTask = async (
       },
       scope: { organizationId: input.organizationId, projectId: input.projectId ?? null },
     })
+    if (pickup) {
+      await recordPickupAssignment(tx, {
+        taskId: created.id, scope: { organizationId: input.organizationId, projectId: input.projectId ?? null }, pickup,
+      })
+    }
     await input.assignmentAttention?.(tx, {
       actorUserId: input.createdByUserId, assigneeUserId: input.assigneeUserId ?? null,
       eventKey: `task-assigned:${event.id}`, organizationId: input.organizationId,
@@ -385,19 +403,34 @@ export const transitionProjectTask = async (
 ): Promise<ProjectTaskRecord | ProjectTaskTransitionError> => {
   const existing = await prisma.task.findFirst({
     where: { id: input.taskId, organizationId: input.organizationId },
-    select: { id: true, status: true, projectId: true, boardId: true, archivedAt: true },
+    select: {
+      id: true, status: true, projectId: true, boardId: true, archivedAt: true,
+      assigneeUserId: true, assigneeAgentId: true,
+    },
   })
   if (!existing) return { error: 'NOT_FOUND' }
   if (!isProjectTaskTransitionValid(existing.status, input.status)) return { error: 'INVALID_TRANSITION', from: existing.status }
   const authorship = taskEventAuthorship({ ...input, userId: input.actorId })
   const scope = { organizationId: input.organizationId, projectId: existing.projectId }
+  // A transition into a start-work column is a pickup like a drag there, so
+  // it hands an unassigned ticket to the trigger's agent the same way.
+  const pickup = existing.projectId && !existing.assigneeUserId && !existing.assigneeAgentId
+    ? await resolvePickupAssignmentForStatus(prisma, {
+        organizationId: input.organizationId,
+        task: { ...existing, projectId: existing.projectId, status: input.status },
+        fromColumnId: () => resolveHomeColumnId(prisma, existing),
+        actorId: input.actorId,
+        ...(input.origin ? { origin: input.origin } : {}),
+      })
+    : null
   const task = await prisma.$transaction(async (tx) => {
     const fromColumnId = await resolveHomeColumnId(tx, existing)
     const { count } = await tx.task.updateMany({
       where: { id: input.taskId, organizationId: input.organizationId, status: existing.status },
-      data: { status: input.status },
+      data: { status: input.status, ...(pickup ? { assigneeAgentId: pickup.agentId } : {}) },
     })
     if (count === 0) return null
+    if (pickup) await recordPickupAssignment(tx, { taskId: input.taskId, scope, pickup })
     // A transition can move the task out of its pinned column's category —
     // into Archived, back out of it, or straight across. `resolveBoardPlacement`
     // ignores a stale pin, but leaving one behind would mean board-written data

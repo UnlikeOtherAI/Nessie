@@ -89,20 +89,26 @@ reads say who made the change and how the call was authenticated.
   checklist events are history only.
 - **A column change also settles the ticket's agent work, in the same
   transaction.** `recordColumnEntered` ends a live work record in an end
-  column or parks it in a review column (`applyTicketWorkColumnEntry`), so
-  every door that moves a ticket tears its work down alike — the trigger's
-  own agent included.
-- **The work an agent does on a ticket is history too**: `work_started` and
-  `work_ended` (`TICKET_WORK_ACTIVITY_EVENT_TYPES`,
-  `TicketWorkActivityPayloadSchema`), each with `system` origin, the work
-  record, its status and reason, and `by` naming whoever caused it. They are
-  not dispatched.
+  column or parks it in a review column (`applyTicketWorkColumnEntry`), and a
+  change that leaves the ticket in no column — archived — ends it
+  (`applyTicketWorkLeftBoard`), so every door that moves a ticket tears its
+  work down alike — the trigger's own agent included — each under the
+  ticket's work lock (`lockTicketForWork`).
+- **`detail_edited` records the new description's hash** (`detailSha256`,
+  `taskDetailSha256`), never the text, so a wake can tell whether the ticket
+  still says what that author wrote.
+- **The work an agent does on a ticket is history too**: `work_started`,
+  `work_paused`, `work_resumed` and `work_ended`
+  (`TICKET_WORK_ACTIVITY_EVENT_TYPES`, `TicketWorkActivityPayloadSchema`),
+  each with `system` origin, the work record, its status and reason, `by`
+  naming whoever caused it and `causeEventId` for the move that did. They
+  are not dispatched; the ticket dialog's work chip lists them.
 - **An unassigned ticket a person starts an agent's work on goes to that
-  agent.** A qualifying move into a start-work column of a trigger that
-  assigns on pickup writes an `assigned` event of `system` origin with reason
-  `assign_on_pickup` instead of the mover's `moved_to_in_progress`
-  ([ticket work](ticket-work.md) → "The work record, its thread, and what
-  every wake says").
+  agent.** A qualifying move, status transition or create into a start-work
+  column of a trigger that assigns on pickup writes an `assigned` event of
+  `system` origin with reason `assign_on_pickup` instead of the mover's
+  `moved_to_in_progress` ([ticket work](ticket-work.md) → "The work record,
+  its thread, and what every wake says").
 
 ## Files: one upload door, several link doors
 

@@ -131,7 +131,21 @@ test('a re-entry that fails the origin rule leaves the record alone, a source in
       work('parked'),
     )
     assert.equal(decision.kind, 'skip', origin.kind)
+    // It says the work did not *resume*, which the ticket tells its readers.
+    assert.equal(decision.kind === 'skip' && decision.reentry, true, origin.kind)
   }
+})
+
+test('moving live work between two start-work columns is an ordinary move, not a re-entry', () => {
+  const within = move(columns.doing, { fromColumnId: columns.inProgress })
+  assert.deepEqual(decideTicketTrigger(within, trigger(), work('active')), {
+    kind: 'follow', source: 'follow', workId: WORK, wakeReason: 'ticket_moved', untrusted: false,
+  })
+  // A trigger that does not follow moves is not woken by it at all.
+  assert.equal(
+    decideTicketTrigger(within, trigger({ follow: { kinds: ['comment'] } }), work('active')).kind,
+    'ignore',
+  )
 })
 
 test('entering an end column wakes the agent once, machine-less, unless it moved the ticket itself', () => {

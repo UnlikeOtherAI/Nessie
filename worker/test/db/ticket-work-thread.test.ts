@@ -90,16 +90,31 @@ runDatabaseTest('a board editor\'s message in the work thread is a thread_messag
   assert.equal(await prisma.run.count({ where: { threadId: work.threadId } }), 2)
 })
 
-runDatabaseTest('a trigger that does not follow thread messages lets them sit in the thread', async (t) => {
+runDatabaseTest('a message that wakes nobody still says why: a trigger that does not follow them, work that ended', async (t) => {
   const prisma = new PrismaClient()
   const s = await seedTicketWork(prisma, { followKinds: ['comment'] })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
-  const { work } = await startWork(prisma, s, seen)
-  await postSteer(prisma, s, work.threadId, s.editorId, 'Just a note.')
+  const { task, work } = await startWork(prisma, s, seen)
+  const skipOf = async (messageId: string) => prisma.agentTriggerDelivery.findUniqueOrThrow({
+    where: { triggerId_dedupeKey: { triggerId: s.triggerId, dedupeKey: `thread:${s.triggerId}:${messageId}` } },
+  })
+
+  const note = await postSteer(prisma, s, work.threadId, s.editorId, 'Just a note.')
   await drainTicketJobs(prisma, s, seen)
-  assert.equal(await prisma.agentTriggerDelivery.count({ where: { triggerId: s.triggerId, dedupeKey: { startsWith: 'thread:' } } }), 0)
-  assert.equal(await prisma.run.count({ where: { threadId: work.threadId } }), 1)
+  assert.deepEqual(
+    [(await skipOf(note.id)).status, (await skipOf(note.id)).errorMessage],
+    ['skipped', 'not_followed'],
+  )
+
+  // The work ends; a later message in its thread is told so, not dropped.
+  await move(prisma, s, task.id, s.columns.done)
+  await drainTicketJobs(prisma, s, seen)
+  await finishRuns(prisma, work.threadId)
+  const late = await postSteer(prisma, s, work.threadId, s.editorId, 'Also fix the footer.')
+  await drainTicketJobs(prisma, s, seen)
+  assert.equal((await skipOf(late.id)).errorMessage, 'work_ended')
+  assert.equal(await prisma.run.count({ where: { threadId: work.threadId } }), 2, 'the pickup, and the end wake')
 })
 
 runDatabaseTest('every wake carries the changed text with its author, framed untrusted unless a board editor wrote it', async (t) => {

@@ -6,7 +6,7 @@ import { projectTaskInclude, type ProjectTaskRecord } from './project-task-recor
 import { linkUploadsToTask, mapProjectTaskWithCount, recordAttachmentsAdded } from './task-attachments.js'
 import { applyTaskLabelPlan, planTaskLabels, type TaskLabelSetError } from './task-labels.js'
 import { SYSTEM_TASK_EVENT_ORIGIN, taskEventBy } from './task-access.js'
-import { recordTaskEvent } from './task-event-dispatch.js'
+import { recordTaskEvent, taskDetailSha256 } from './task-event-dispatch.js'
 import {
   type BoardSourceWriteBack,
   type BoardSourceWriteBackError,
@@ -176,12 +176,14 @@ export const updateProjectTask = async (
     if (labelPlan) {
       await applyTaskLabelPlan(tx, labelPlan, { by, origin, ownedWrittenUpstream: labelsWrittenUpstream })
     }
-    // The description gets a history line at all; the text itself is not copied.
+    // The description gets a history line at all; the text itself is not
+    // copied — only its hash, so a wake can tell whether what the ticket says
+    // now is still what this author wrote (`detailSha256`).
     if (input.fields.detail !== undefined && (input.fields.detail ?? null) !== existing.detail) {
       await recordTaskEvent(tx, {
         taskId: existing.id,
         eventType: 'detail_edited',
-        payload: { by, origin },
+        payload: { by, origin, detailSha256: taskDetailSha256(input.fields.detail ?? null) },
         scope,
       })
     }

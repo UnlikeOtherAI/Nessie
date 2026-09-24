@@ -7,7 +7,7 @@ import {
   type TicketWorkKickoffEvent,
   type TicketWorkWakeReason,
 } from '@nessie/schemas'
-import { canMemberEditProjectBoards } from '@nessie/team-admin'
+import { canMemberEditProjectBoards, taskDetailSha256 } from '@nessie/team-admin'
 
 /**
  * One event as a `ticket.work` kickoff tells it, and as its thread row names it
@@ -164,10 +164,23 @@ const describeTaskEvent = async (
     }
     case 'detail_edited': {
       const task = await loader.prisma.task.findUnique({ where: { id: input.taskId }, select: { detail: true } })
+      const detail = task?.detail ?? null
+      // Trusted only while the ticket still says what this author wrote: a
+      // later write — a token, an agent, a board sync — may have replaced it
+      // before this wake, and its words are not the author's.
+      const wrote = typeof payload['detailSha256'] === 'string' || payload['detailSha256'] === null
+        ? payload['detailSha256']
+        : undefined
+      const unchanged = wrote !== undefined && wrote === taskDetailSha256(detail)
+      const writer: Author = unchanged
+        ? author
+        : { ...author, trusted: false, why: 'the description changed again after this edit, so not every word is theirs' }
       return {
-        text: task?.detail
-          ? quoted(author, 'edited the description, which now reads', task.detail, input.untrusted)
-          : `${author.name} cleared the description.`,
+        text: detail
+          ? quoted(writer, 'edited the description, which now reads', detail, input.untrusted)
+          : unchanged
+            ? `${author.name} cleared the description.`
+            : `${author.name} edited the description, and it has since been cleared.`,
         summary: `${author.name} edited the description`,
       }
     }

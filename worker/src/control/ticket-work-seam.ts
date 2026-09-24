@@ -37,6 +37,8 @@ export type TicketWorkEvent = {
   createdAt: Date
   /** A person's message in the work thread rather than a `TaskEvent`. */
   kind?: 'thread_message'
+  /** The event's `TaskEvent.by`: who a resume or an end it causes names. */
+  by?: string | null
 }
 
 export type TicketWorkStartInput = {
@@ -61,12 +63,14 @@ export type TicketWorkWakeInput = {
   untrusted: boolean
   /**
    * The ticket entered an end column and teardown already ran in the move:
-   * the wake is only for the agent to comment, and binds no machine.
+   * the wake is only for the agent to comment, and binds no machine. Sent
+   * only while the ticket still sits in an end column.
    */
   machineLess: boolean
   /**
    * A person moved the ticket back into a start-work column: a parked record
-   * resumes. Any other wake leaves the record's status as it is.
+   * resumes, while the ticket is still there. Any other wake leaves the
+   * record's status as it is.
    */
   resumes: boolean
   deliveryId: string

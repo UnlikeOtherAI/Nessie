@@ -54,7 +54,13 @@ export type TicketWorkFacts = { id: string; status: TicketWorkStatus; live: bool
 
 export type TicketTriggerDecision =
   | { kind: 'ignore' }
-  | { kind: 'skip'; source: TicketTriggerDeliverySource; reason: TicketTriggerSkipReason }
+  | {
+      kind: 'skip'
+      source: TicketTriggerDeliverySource
+      reason: TicketTriggerSkipReason
+      /** It refused a re-entry: the work exists and did not resume, which the ticket says so. */
+      reentry?: true
+    }
   | { kind: 'pickup'; source: 'pickup'; wakeReason: 'pickup' }
   | { kind: 'reentry' | 'end'; source: 'follow'; workId: string; wakeReason: 'ticket_moved' }
   | {
@@ -87,7 +93,7 @@ export const originRuleRefusal = (
 /** The column ids an `endOn` list names on this board. */
 export const endColumnIds = (
   config: Pick<TicketChangedStoredConfig, 'endOn'>,
-  columns: TicketTriggerFacts['columns'],
+  columns: readonly { id: string; category: string }[],
 ): Set<string> => {
   const ids = new Set<string>()
   for (const entry of config.endOn) {
@@ -144,12 +150,17 @@ export const decideTicketTrigger = (
     }
     if (pickupColumnIds.has(event.toColumnId)) {
       if (!liveWork) return decidePickup(event, pickupColumnIds)
-      // Re-entry is a follow on the same record, never a second pickup, and a
-      // source can never resume work — so a refusal leaves a parked record
-      // parked.
-      const refusal = originRuleRefusal(event, { admitSource: false })
-      if (refusal) return skip('follow', refusal)
-      return { kind: 'reentry', source: 'follow', workId: liveWork.id, wakeReason: 'ticket_moved' }
+      // A move between two start-work columns re-enters nothing: it is an
+      // ordinary `moved` follow, below.
+      const withinPickup = event.fromColumnId !== null && pickupColumnIds.has(event.fromColumnId)
+      if (!withinPickup) {
+        // Re-entry is a follow on the same record, never a second pickup, and
+        // a source can never resume work — so a refusal leaves a parked
+        // record parked, and says it did not resume.
+        const refusal = originRuleRefusal(event, { admitSource: false })
+        if (refusal) return { kind: 'skip', source: 'follow', reason: refusal, reentry: true }
+        return { kind: 'reentry', source: 'follow', workId: liveWork.id, wakeReason: 'ticket_moved' }
+      }
     }
   }
 

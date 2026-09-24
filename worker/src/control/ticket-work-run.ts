@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   AuthorizedActionContextSchema,
   TICKET_WORK_PURPOSE,
@@ -25,7 +25,10 @@ import { claimThreadRunOrPend, lockThreadRunSlot } from '../run/thread-serializa
  *   `interactive: false`, purpose `ticket.work`, and the record's id in
  *   `actionContext.ticketWorkId` for run setup to admit its ticket tools by.
  * - Its kickoff is a `system` message rebuilt from the record: why it was
- *   woken, the state, and the trigger's instructions.
+ *   woken, the state, and the trigger's instructions — here, and again when
+ *   its run starts (`resolveTicketWorkKickoffPrompt`), because a kickoff that
+ *   pended while the ticket moved on must not tell the run a state that is
+ *   gone.
  * - **Pending wakes for the same record coalesce when they are enqueued.**
  *   Under the thread's claim/drain lock, a wake for a record whose kickoff is
  *   still pending folds its event into that kickoff instead of adding a
@@ -98,6 +101,37 @@ const kickoffEvents = (metadata: Prisma.JsonValue): TicketWorkKickoffEvent[] => 
 const kickoffEvent = (event: DescribedWakeEvent): TicketWorkKickoffEvent =>
   ({ reason: event.reason, at: event.at, text: event.text })
 
+/**
+ * A kickoff as its run starts: rendered again from the record and its trigger
+ * as they are now — the work may have ended, parked or resumed while the wake
+ * waited behind another run — and written back, so the thread keeps what the
+ * run was told. Null for any message that is not a kickoff of this agent's
+ * work in this thread, which then runs on its own content.
+ */
+export const rerenderTicketWorkKickoff = async (
+  prisma: Pick<PrismaClient, 'agentTicketWork' | 'board' | 'taskBoardPlacement' | 'message'>,
+  input: { messageId: string; metadata: Prisma.JsonValue | null; agentId: string; threadId: string },
+): Promise<string | null> => {
+  const record = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    ? input.metadata as Record<string, unknown>
+    : {}
+  const kickoff = TicketWorkKickoffMetadataSchema.safeParse(record['ticketWorkKickoff'])
+  if (!kickoff.success) return null
+  const work = await prisma.agentTicketWork.findFirst({
+    where: { id: kickoff.data.workId, agentId: input.agentId, threadId: input.threadId },
+    select: { wakeCount: true, trigger: { select: { config: true } } },
+  })
+  if (!work) return null
+  const facts = await loadTicketWorkKickoffFacts(prisma, {
+    workId: kickoff.data.workId,
+    wakeNumber: kickoff.data.wakeNumber ?? work.wakeCount,
+    trigger: { config: work.trigger?.config ?? null },
+  })
+  const content = renderTicketWorkKickoff(facts, kickoff.data.events)
+  await prisma.message.update({ where: { id: input.messageId }, data: { content } })
+  return content
+}
+
 export const queueTicketWorkRun = async (
   tx: Prisma.TransactionClient,
   input: TicketWorkRunTarget,
@@ -125,7 +159,9 @@ export const queueTicketWorkRun = async (
       where: { id: pending.messageId },
       data: {
         content: renderTicketWorkKickoff(facts, events),
-        metadata: { ticketWorkKickoff: { workId: work.id, events } } as Prisma.InputJsonValue,
+        metadata: {
+          ticketWorkKickoff: { workId: work.id, events, wakeNumber: record.wakeCount },
+        } as Prisma.InputJsonValue,
       },
     })
     await tx.agentTicketWork.update({ where: { id: work.id }, data: touch })
@@ -145,7 +181,7 @@ export const queueTicketWorkRun = async (
       threadId: work.threadId,
       role: 'system',
       content,
-      metadata: { ticketWorkKickoff: { workId: work.id, events } } as Prisma.InputJsonValue,
+      metadata: { ticketWorkKickoff: { workId: work.id, events, wakeNumber } } as Prisma.InputJsonValue,
     },
     select: { id: true },
   })

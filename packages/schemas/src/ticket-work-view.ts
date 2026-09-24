@@ -2,8 +2,10 @@ import { z } from 'zod'
 
 import { AgentIdSchema, ChannelIdSchema, TaskIdSchema, ThreadIdSchema } from './ids.js'
 import { TimestampSchema } from './schema-primitives.js'
+import { TICKET_WORK_ACTIVITY_EVENT_TYPES } from './task-events.js'
 import { TicketTriggerSkipReasonSchema } from './ticket-triggers.js'
 import {
+  TICKET_WORK_LIVE_STATUSES,
   TicketWorkStateReasonSchema,
   TicketWorkStatusSchema,
   TicketWorkWakeReasonSchema,
@@ -50,23 +52,45 @@ export type TicketWorkChipRecord = z.infer<typeof TicketWorkChipRecordSchema>
 
 /**
  * The skip a ticket's reader should know about: a move into a start-work
- * column that started nothing, and why (`TICKET_TRIGGER_SKIP_SENTENCES`). Only
- * one that is newer than every record the same trigger holds for the ticket,
- * so a later start replaces it.
+ * column that started nothing, or moved parked work back without resuming
+ * it, and why (`ticketTriggerSkipSentence`). Only one that is newer than
+ * every record the same trigger holds for the ticket, so a later start
+ * replaces it.
  */
 export const TicketWorkSkipNoticeSchema = z.object({
   triggerId: uuid,
   agentName: z.string(),
   reason: TicketTriggerSkipReasonSchema,
+  /** The move refused was a re-entry: the work exists, parked, and did not resume. */
+  reentry: z.boolean(),
   at: TimestampSchema,
 })
 export type TicketWorkSkipNotice = z.infer<typeof TicketWorkSkipNoticeSchema>
+
+/**
+ * One row of the ticket's work history — a `work_*` activity row, as the
+ * chip's history lists it: which agent, what happened to its work and why,
+ * and who caused it. Nothing here is ticket text or a machine.
+ */
+export const TicketWorkHistoryEntrySchema = z.object({
+  id: uuid,
+  eventType: z.enum(TICKET_WORK_ACTIVITY_EVENT_TYPES),
+  agentName: z.string(),
+  status: TicketWorkStatusSchema,
+  reason: TicketWorkStateReasonSchema.nullable(),
+  /** Who caused it, by name: a person, an agent; null when the platform acted on its own. */
+  byName: z.string().nullable(),
+  at: TimestampSchema,
+})
+export type TicketWorkHistoryEntry = z.infer<typeof TicketWorkHistoryEntrySchema>
 
 /** `GET /api/tasks/:taskId/work`. */
 export const TaskTicketWorkRecordSchema = z.object({
   /** The newest record of each trigger, live ones first. */
   records: z.array(TicketWorkChipRecordSchema),
   lastSkip: TicketWorkSkipNoticeSchema.nullable(),
+  /** The ticket's `work_*` activity, newest first and bounded. */
+  history: z.array(TicketWorkHistoryEntrySchema),
 })
 export type TaskTicketWorkRecord = z.infer<typeof TaskTicketWorkRecordSchema>
 
@@ -119,6 +143,36 @@ export const BoardTicketWorkRecordSchema = z.object({
 export type BoardTicketWorkRecord = z.infer<typeof BoardTicketWorkRecordSchema>
 
 /**
+ * What a board editor's message in a work thread does: it `wakes` the work,
+ * or wakes nobody for one of the skip reasons a thread message can have.
+ */
+export const TicketWorkThreadMessageOutcomeSchema = z.enum([
+  'wakes',
+  'work_ended',
+  'trigger_disabled',
+  'config_invalid',
+  'not_followed',
+])
+export type TicketWorkThreadMessageOutcome = z.infer<typeof TicketWorkThreadMessageOutcomeSchema>
+
+/**
+ * The rule itself, over the thread's newest record and its trigger: the
+ * worker's dispatcher decides a message by it and the composer says it before
+ * a message is sent, so the two can never disagree. `followKinds` is null
+ * when the trigger's stored configuration no longer parses.
+ */
+export const ticketWorkThreadMessageOutcome = (input: {
+  workStatus: string
+  trigger: { enabled: boolean; status: string }
+  followKinds: readonly string[] | null
+}): TicketWorkThreadMessageOutcome => {
+  if (!(TICKET_WORK_LIVE_STATUSES as readonly string[]).includes(input.workStatus)) return 'work_ended'
+  if (!input.trigger.enabled || input.trigger.status !== 'active') return 'trigger_disabled'
+  if (!input.followKinds) return 'config_invalid'
+  return input.followKinds.includes('thread_message') ? 'wakes' : 'not_followed'
+}
+
+/**
  * `GET /api/threads/:threadId/ticket-work`: whether a thread is a ticket's
  * work thread, and whether the viewer may write in it. Null data means an
  * ordinary thread.
@@ -129,6 +183,12 @@ export const TicketWorkThreadGateSchema = z.object({
   taskTitle: z.string(),
   /** Asked live: only people who can edit the ticket's board write here. */
   viewerCanPost: z.boolean(),
+  /**
+   * Whether a message here reaches the agent — `wakes` while the work is live
+   * and its trigger follows thread messages — or why not, which the composer
+   * says before anyone sends one (`TICKET_TRIGGER_SKIP_SENTENCES`).
+   */
+  messageOutcome: TicketWorkThreadMessageOutcomeSchema,
 })
 export type TicketWorkThreadGate = z.infer<typeof TicketWorkThreadGateSchema>
 

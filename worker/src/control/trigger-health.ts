@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { endTicketWorkForTrigger } from '@nessie/team-admin'
 
 import { enqueueQueueJob } from '../queue.js'
 type ClassifiedTriggerHealthError = {
@@ -97,6 +98,10 @@ export const recordTriggerHealthFailure = async (
           RETURNING "health_revision" AS "healthRevision"
         `,
       )
+      // The trigger is off now, so its ticket work ends with it, in this same
+      // write — the rule a person's pause follows. The dispatcher finds only
+      // enabled triggers, so a record left live here would never wake or end.
+      await endTicketWorkForTrigger(tx, { triggerId: input.triggerId })
 
       const healthRevision = rows[0]?.healthRevision
       if (healthRevision === undefined) {

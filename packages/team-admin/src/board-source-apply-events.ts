@@ -3,7 +3,7 @@ import type { TaskEventOrigin } from '@nessie/schemas'
 
 import { resolveProjectTaskDetailPlacement } from './board-placement.js'
 import { recordColumnEntered } from './task-column-events.js'
-import { recordTaskEvent } from './task-event-dispatch.js'
+import { recordTaskEvent, taskDetailSha256 } from './task-event-dispatch.js'
 
 /**
  * The history an inbound board-source change writes. Every row names the
@@ -96,6 +96,6 @@ export const recordInboundItemEvents = async (
     })
   }
   if ((previous.detail ?? null) !== (next.detail ?? null)) {
-    await record('detail_edited', {})
+    await record('detail_edited', { detailSha256: taskDetailSha256(next.detail ?? null) })
   }
 }

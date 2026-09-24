@@ -209,14 +209,22 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `follow.includeSourceEvents` — for a `source`-origin event. Nothing else
   wakes it, and a source event never picks up or resumes work.** A re-entry
   into a start-work column obeys the same rule, so a token's or an agent's
-  move back leaves a parked record parked. **(T1)** Text from anyone but a
+  move back leaves a parked record parked, and its skip carries `reentry` so
+  the ticket says the work did not *resume*; a move between two start-work
+  columns re-enters nothing, and with live work is an ordinary `moved`
+  follow. **(T1)** Text from anyone but a
   board editor — agents, sources (opted in or not), external provider users,
   people who cannot edit the board — reaches the agent only as quoted,
   attributed, untrusted content, which it is told never to forward to the
   coding agent as an instruction: `describeWakeEvent`
   (`worker/src/control/ticket-work-events.ts`) asks each author's right to
   edit the board when it builds the kickoff, and frames a wake the dispatcher
-  marked `untrusted` (an opted-in source event) the same way whoever wrote it. Each follow kind wakes with its own
+  marked `untrusted` (an opted-in source event) the same way whoever wrote it.
+  The ticket's title is quoted as ticket data in every kickoff, and a
+  description is quoted as its author's words only while the ticket still
+  says what they wrote: `detail_edited` records the new text's hash
+  (`detailSha256`, `taskDetailSha256`), and a description a later write
+  replaced is framed untrusted. Each follow kind wakes with its own
   reason (`TICKET_FOLLOW_WAKE_REASONS`): comment `ticket_commented`,
   description `ticket_description_changed`, priority
   `ticket_priority_changed`, labels `ticket_labels_changed`, assignee
@@ -239,9 +247,19 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   — which the delivery-retry poller decides again through
   `reattemptTicketTriggerDelivery` because a ticket trigger has no fixed
   thread. The bookkeeping is `settleTicketDelivery`
-  (`ticket-trigger-settle.ts`), shared with the work thread's messages. Entering an end column sends one machine-less `ticket_moved` wake
-  for the record that move ended, except when the trigger's own agent made
-  the move (`own_agent_event`); a priority change on a `queued` record wakes
+  (`ticket-trigger-settle.ts`), shared with the work thread's messages.
+  **A start, a resume and an end are decided against where the ticket is
+  now**, never the column the event named: the seam takes the ticket's work
+  lock (`lockTicketColumn`, `packages/team-admin/src/ticket-work-lock.ts`) —
+  the same row lock every move's teardown takes — and reads its column, so a
+  ticket moved in and back out before the job ran starts nothing, and a
+  parked one moved back and out again stays parked (both skip
+  `left_pickup_column`). Entering an end column sends one machine-less
+  `ticket_moved` wake for the record *that move* ended — its `work_ended` row
+  names the move as `causeEventId`, so a second move into an end column
+  re-announces nothing — or for a live record the seam ends then, while the
+  ticket is still in an end column; except when the trigger's own agent made
+  the move (`own_agent_event`). A priority change on a `queued` record wakes
   nothing (`priority_while_queued`).
 - **(T1) Only board editors write in a work thread**, checked live on every
   write by every writer (`findTicketWorkThread` and
@@ -262,7 +280,10 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   a `thread_message` follow of the thread's live record — under the origin
   rule again, one delivery deduped on `thread:<triggerId>:<messageId>`,
   retried by the same poller arm. A message that wakes nothing still writes a
-  skipped delivery with its reason (below). **No card is answered in a work
+  skipped delivery with its reason — `work_ended`, `trigger_disabled`,
+  `config_invalid`, `not_followed` (`ticketWorkThreadMessageOutcome`,
+  `packages/schemas/src/ticket-work-view.ts`) — and the composer says the
+  same before anyone sends. **No card is answered in a work
   thread**: `ticket.work` runs cannot post one (`card_post` is in
   `TICKET_WORK_PERSON_TOOL_IDS`, because an unattended run's card is
   answerable by anyone who reads the channel), and `respondToAgentCard`
@@ -353,8 +374,12 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
 - **A pickup creates one record** (`startTicketWork`,
   `worker/src/control/ticket-work.ts`): `active`, no executor, `startedByUserId`
   the mover, `startedByEventId` the `column_entered` or `created` event, and a
-  `work_started` row on the ticket. A pickup racing another for the same
-  ticket refuses (`no_longer_applies`) under the trigger's start lock.
+  `work_started` row on the ticket — only while the ticket is still in a
+  start-work column, read under its work lock (above). A pickup racing
+  another for the same ticket refuses (`no_longer_applies`) under the
+  trigger's start lock. The target channel is re-checked on every start and
+  wake: still live, bound, ordinary and public, or the trigger's health moves
+  (`agent_channel_access_lost`).
 - **One thread per (trigger, ticket)** (`ensureTicketWorkThread`,
   `packages/team-admin/src/ticket-work-thread.ts`, apart from the
   size-capped `agent-conversations.ts`): a conversation with the trigger's
@@ -368,17 +393,31 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   (`renderTicketWorkKickoff`, `worker/src/control/ticket-work-kickoff.ts`),
   with the same three blocks whatever woke it: *Why you were woken* (each
   event's reason code and what happened, in order), *State* (the ticket and
-  its id, board, column and category, priority and assignee; every column of
-  the board with its category and id; when the work started and by whom;
-  "wake n of m"; that no machine does ticket work yet; the pull request on
-  record; that this is the ticket's work thread, what wakes it next, and that
-  its own changes never do) and *Instructions* (the trigger's `general`, then
+  its id, its title quoted as ticket data, board, column and category,
+  priority and assignee; every column of the board with its category, what
+  moving the ticket there does — `starts work`, `ends work`, `parks work` —
+  and its id; the work's status: live, parked (and that only a person moving
+  it back resumes it), or ended with its reason and that nothing wakes it
+  again; "wake n of m"; that no machine does ticket work yet; the pull
+  request on record; that this is the ticket's work thread and, while the
+  work is live, what wakes it next and that its own changes never do) and
+  *Instructions* (the trigger's `general`, then — while the work is live —
   each section matching a reason: `onPickup`, `onTicketChanged` for every
   ticket change and thread message, `onSessionTurnEnded`, `onReminder`,
   `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
   instruction that no longer parses costs the instructions alone. A comment
   carries its full text and its author, a description change the new
   description (T2 adds the line diff), a thread message the message.
+- **A kickoff is rendered again when its run starts**
+  (`rerenderTicketWorkKickoff`, called by `resolveRunKickoffPrompt` in
+  `worker/src/run/execute/run-kickoff-prompt.ts`), from the record as it is
+  then, and written back: a wake that pended behind another run may drain
+  after the work ended or parked, and its run is told so, never the state it
+  was queued in. The wake it counted as is kept in
+  `metadata.ticketWorkKickoff.wakeNumber`. A run whose record has ended
+  (`loadTicketWorkRunFacts`'s `live`) keeps its read and comment tools and
+  loses `ticket_update`, `ticket_move` and `ticket_transition`
+  (`withoutEndedWorkWrites`), so a stale plan cannot move the ticket back.
 - **Every wake writes one compact thread row** — a `system` message with
   `metadata.ticketWorkEvent` (`TicketWorkThreadEventSchema`: `woken` with its
   wake reason, or `stopped` with its state reason) and the content *"Woken:
@@ -387,22 +426,28 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   `api/src/services/message-read-model.ts`) and still hides every kickoff. A
   row never repeats ticket text, because a public channel's audience can be
   wider than the ticket's project.
-- **Ticket activity** gains `work_started` and `work_ended`
+- **Ticket activity** gains `work_started`, `work_paused` (a review column
+  parked it), `work_resumed` (a person moved it back) and `work_ended`
   (`TICKET_WORK_ACTIVITY_EVENT_TYPES`, `TicketWorkActivityPayloadSchema`:
-  `system` origin, the record, its status and reason, and `by` for whoever
-  caused it); `work_queued`, `work_paused` and `work_resumed` are named for
-  the machine queue (from T4). None is dispatched.
-- **(T1) `assignOnPickup` is applied in the move** (`resolvePickupAssignment`,
-  `packages/team-admin/src/ticket-work-pickup.ts`, before
-  `moveProjectTaskToColumn`'s transaction): when an unassigned ticket enters a
-  pickup column of an enabled trigger that assigns on pickup and the move
-  itself qualifies — a person's own session, a board editor, from outside the
-  pickup set, no live work of that trigger on the ticket — the trigger's agent
-  is assigned instead of the mover, with an `assigned` event of `system`
-  origin and reason `assign_on_pickup` that wakes nothing. A ticket with any
-  assignee keeps it, and any other move keeps the assign-the-mover rule (an
-  agent with no person behind it that moves an unassigned ticket into
-  in-progress takes it itself).
+  `system` origin, the record, its status and reason, `by` for whoever caused
+  it, and `causeEventId` for the move that did); `work_queued` is named for
+  the machine queue (from T4). None is dispatched. The ticket dialog's chip
+  lists them (below).
+- **(T1) `assignOnPickup` is applied in the transaction that places the
+  ticket** (`resolvePickupAssignment` and `resolvePickupAssignmentForStatus`,
+  `packages/team-admin/src/ticket-work-pickup.ts`, `recordPickupAssignment`
+  writing the row), at every door that can start work: a drag or
+  `ticket_move` (`moveProjectTaskToColumn`), a status transition
+  (`transitionProjectTask`, the ticket dialog's status select) and a create
+  straight into a start-work column (`createProjectTask`). When an unassigned
+  ticket enters a pickup column of an enabled trigger that assigns on pickup
+  and the change itself qualifies — a person's own session, a board editor,
+  from outside the pickup set, no live work of that trigger on the ticket —
+  the trigger's agent is assigned instead of the mover, with an `assigned`
+  event of `system` origin and reason `assign_on_pickup` that wakes nothing.
+  A ticket with any assignee keeps it, and any other move keeps the
+  assign-the-mover rule (an agent with no person behind it that moves an
+  unassigned ticket into in-progress takes it itself).
 
 ## What the project sees, and where a person sets it up (T1)
 
@@ -418,20 +463,26 @@ routes, and none of it names a machine.
     reason, who started it, last wake and its reason, wake n of
     `limits.wakesPerTicket`) and the work thread **only for a viewer who may
     open it** (`buildViewerThreadWhere`); a reader who may not gets the same
-    state and no door. It also carries `lastSkip`: the newest pickup skip in
-    `TICKET_WORK_NOTICE_SKIP_REASONS` (an agent's, a token's, a source's or
-    the platform's move, a non-editor's, the daily start limit) while nothing
-    newer happened under that trigger — *"Moved by an agent, so work did not
-    start…"* belongs on the ticket that did not start.
+    state and no door. It also carries `lastSkip`: the newest pickup skip, or
+    refused re-entry (`reentry`), in `TICKET_WORK_NOTICE_SKIP_REASONS` (an
+    agent's, a token's, a source's or the platform's move, a non-editor's,
+    the daily start limit) while nothing newer happened under that trigger —
+    *"Moved by an agent, so work did not start…"* belongs on the ticket that
+    did not start, and *"Moved back by an agent, so work did not resume…"*
+    (`ticketTriggerSkipSentence`) on the one whose work stayed parked. And
+    `history`: the ticket's newest `work_*` rows, each with its agent, what
+    happened, why, and who caused it by name.
   - `GET /api/projects/:projectId/boards/:boardId/ticket-work`, behind project
     access: the columns an **enabled, active** ticket trigger starts work from
     (what the dispatcher itself reads), the cards whose newest record is live
     or failed at a limit, and `viewerCanCreateTriggers` — the Triggers
     routes' own `requireOwner`, asked on the server.
   - `GET /api/threads/:threadId/ticket-work`, behind the thread's own read
-    rule: whether it is a work thread (`findTicketWorkThread`) and whether the
+    rule: whether it is a work thread (`findTicketWorkThread`), whether the
     viewer may write there (`canPostInTicketWorkThread`, the rule the message
-    route enforces).
+    route enforces, with the request's own role), and `messageOutcome` —
+    whether a message there reaches the agent, or which skip it would be
+    (`ticketWorkThreadMessageOutcome`, the dispatcher's own rule).
 - **The ticket dialog's chip** (`TicketWorkChip`, first in the meta column):
   *"CTO · working · started 14:05"*, who started it, *"Last woken 14:32: a
   comment · wake 3 of 30"*, the reason it stopped or waits (*"Stopped: 30
@@ -583,16 +634,25 @@ causes it**:
   `recordColumnEntered` calls `applyTicketWorkColumnEntry`
   (`packages/team-admin/src/ticket-work-teardown.ts`), so a drag, a
   `ticket_move`, a status transition and an inbound source change tear down
-  alike. The agent then gets one machine-less `ticket_moved` wake, only to
-  comment (none for its own move). A review-category column outside `endOn`
-  and outside the pickup set parks the record instead. **(from T4)** The same
+  alike, each after taking the ticket's work lock first (`lockTicketForWork`)
+  so a pickup being decided at the same moment is seen or sees this move. A
+  ticket that leaves every column — archived to cancelled or failed, by a
+  person, a source or the agent's own `ticket_transition` — writes no
+  `column_entered`; its live work is `cancelled` with `left_flow` in the same
+  transaction (`applyTicketWorkLeftBoard`), and nothing wakes. The agent then
+  gets one machine-less `ticket_moved` wake, only to comment (none for its
+  own move). A review-category column outside `endOn` and outside the pickup
+  set parks the record instead, with a `work_paused` row; a person's move
+  back resumes it with `work_resumed`. **(from T4)** The same
   transaction frees the record's machine, writes its sessions' close requests
   and enqueues the pool dispatcher; in T1 no record holds a machine.
 - **(T1) Disabling or deleting the trigger** ends every live record with
   `trigger_disabled`, in that transaction (`endTicketWorkForTrigger`,
   `packages/team-admin/src/ticket-work-records.ts`: `updateAgentTrigger`
-  switching it off, the Triggers page's pause, and `deleteAgentTrigger`, which
-  ends them first). **(from T4)** Its sessions get close requests
+  switching it off, the Triggers page's pause, `deleteAgentTrigger`, which
+  ends them first, and `recordTriggerHealthFailure` when a classified failure
+  — a lost target channel, a config that no longer parses — switches it off).
+  **(from T4)** Its sessions get close requests
   (`trigger_changed`), and the trigger's policy ends, with `trigger_disabled`
   or `trigger_deleted`, so re-enabling a trigger takes a fresh confirmation.
 - **(from T4) Suspending machine access** (either `suspendedReason`) moves
@@ -728,8 +788,16 @@ causes it**:
   reused when the ticket comes back; `assignOnPickup`'s three cases; and a
   disabled or deleted trigger ending its work.
   `worker/test/db/ticket-work-thread.test.ts`: a thread message as a
-  `thread_message` wake, a non-editor's refused again at dispatch, and the
-  content rules. `worker/test/db/ticket-work-authority.test.ts`: the ticket
+  `thread_message` wake, a non-editor's refused again at dispatch, a message
+  that wakes nobody skipped with its reason, and the content rules.
+  `worker/test/db/ticket-work-races.test.ts`: each job dispatched after the
+  moves that race it — a ticket moved in and back out starts nothing, a
+  parked one moved back and out stays parked, a second end column
+  re-announces nothing — plus parking and resuming on the history, an
+  archived ticket's work ended, a health failure ending its trigger's work,
+  `assignOnPickup` on a transition and a create, a pended kickoff rendered
+  again as its run starts with the writes withheld, and a description
+  replaced after its edit framed untrusted. `worker/test/db/ticket-work-authority.test.ts`: the ticket
   tools acting as the agent through its binding, the refusals, and the run's
   conversation. `worker/test/db/ticket-work-run.test.ts`: one pickup's run
   through the real run executor against the mock provider, its comment the
@@ -759,8 +827,10 @@ causes it**:
   field by field and say back what they resolved.
 - `api/test/ticket-work-view-routes.test.ts`: the three reads against
   Postgres — the chip's record, wake limit and thread only for its readers,
-  a skip said until work starts after it, the board's badges from enabled
-  triggers only and its dots, the owner gate, and the thread's posting rule.
+  a skip said until work starts after it, a refused re-entry said and an
+  ordinary follow skip not, the work history, the board's badges from
+  enabled triggers only and its dots, the owner gate, and the thread's
+  posting rule and message outcome.
   `api/test/agent-conversations-postgres.test.ts`: a work thread's
   conversation names its ticket. `api/test/board-agent-watchers-migration-postgres.test.ts`:
   the watcher migration on seeded rows. `packages/team-admin/test/board-watchers.test.ts`

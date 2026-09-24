@@ -152,9 +152,10 @@ export type PriorityChangedTaskEventPayload = z.infer<typeof PriorityChangedTask
  * The ticket-activity rows a work record writes, so the ticket says what its
  * agent's work did and why (docs/standards/ticket-work.md → "What the project
  * sees"). They are history only: none is a type a ticket trigger acts on, so
- * none is dispatched. `work_started` and `work_ended` are written from T1;
- * `work_queued`, `work_paused` and `work_resumed` belong to the machine queue
- * and are named here so every reader already knows them.
+ * none is dispatched. `work_started`, `work_paused` (a review column parked
+ * the work), `work_resumed` (a person moved it back) and `work_ended` are
+ * written from T1; `work_queued` belongs to the machine queue and is named
+ * here so every reader already knows it.
  */
 export const TICKET_WORK_ACTIVITY_EVENT_TYPES = [
   'work_started',
@@ -180,6 +181,10 @@ export const TicketWorkActivityPayloadSchema = z
     agentId: uuid,
     status: TicketWorkStatusSchema,
     reason: TicketWorkStateReasonSchema.nullable(),
+    // The `TaskEvent` whose move caused this row — the `column_entered` that
+    // ended, parked or resumed the work — so the dispatcher can tell the end
+    // this move caused from one an earlier move did.
+    causeEventId: uuid.optional(),
   })
   .strict()
 export type TicketWorkActivityPayload = z.infer<typeof TicketWorkActivityPayloadSchema>

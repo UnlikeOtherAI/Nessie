@@ -16,7 +16,7 @@ import { rehomeTaskLabels } from './task-labels.js'
 import { taskEventAuthorship } from './task-access.js'
 import { recordColumnEntered, resolveHomeColumnId } from './task-column-events.js'
 import { recordTaskEvent } from './task-event-dispatch.js'
-import { resolvePickupAssignment } from './ticket-work-pickup.js'
+import { recordPickupAssignment, resolvePickupAssignment } from './ticket-work-pickup.js'
 
 export type ProjectTaskMoveError =
   | { error: 'NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_TRANSITION'; from?: TaskStatus }
@@ -239,14 +239,13 @@ export const moveProjectTaskToColumn = async (
     } else if (Object.keys(taskData).length > 0) {
       await tx.task.update({ where: { id: existing.id }, data: taskData })
     }
-    if (autoAssignee) {
+    if (pickupAssignment) {
+      await recordPickupAssignment(tx, { taskId: existing.id, scope, pickup: pickupAssignment })
+    } else if (autoAssignee) {
       await recordTaskEvent(tx, {
         taskId: existing.id,
         eventType: 'assigned',
-        // The platform assigned the agent, not the mover: `system` wakes nothing.
-        payload: pickupAssignment
-          ? { origin: { kind: 'system' }, ...autoAssignee, reason: 'assign_on_pickup', triggerId: pickupAssignment.triggerId }
-          : { ...authorship, ...autoAssignee, reason: 'moved_to_in_progress' },
+        payload: { ...authorship, ...autoAssignee, reason: 'moved_to_in_progress' },
         scope,
       })
     }

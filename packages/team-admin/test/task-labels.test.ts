@@ -12,6 +12,7 @@ import {
   listProjectLabels,
   moveProjectTaskToColumn,
   setTaskLabels,
+  taskDetailSha256,
   updateBoardLabel,
   updateProjectTask,
   type BoardSourceWriteBack,
@@ -267,9 +268,11 @@ runDatabaseTest('updateProjectTask writes labels and a detail_edited row in one 
   assert.ok(!('error' in result))
   // A native ticket keeps any of its board's labels locally.
   assert.deepEqual(result.labels.map((label) => label.name), ['Local', 'Owned A'])
+  // The text itself is never copied into history: only its hash, which a
+  // ticket wake compares with what the ticket says when it quotes it.
   assert.deepEqual(
     await eventsOf(prisma, s.nativeTaskId, 'detail_edited'),
-    [{ by: s.memberId, origin: { kind: 'system' } }],
+    [{ by: s.memberId, origin: { kind: 'system' }, detailSha256: taskDetailSha256('## Heading') }],
   )
   assert.equal((await eventsOf(prisma, s.nativeTaskId, 'labels_changed')).length, 1)
 

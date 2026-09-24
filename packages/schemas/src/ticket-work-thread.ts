@@ -60,5 +60,11 @@ export type TicketWorkKickoffEvent = z.infer<typeof TicketWorkKickoffEventSchema
 export const TicketWorkKickoffMetadataSchema = z.object({
   workId: uuid,
   events: z.array(TicketWorkKickoffEventSchema).min(1),
+  /**
+   * The wake this kickoff counted as. The kickoff is rendered again when its
+   * run starts, from the record as it is then, and a later wake may already
+   * have counted the next one.
+   */
+  wakeNumber: z.number().int().positive().optional(),
 }).strict()
 export type TicketWorkKickoffMetadata = z.infer<typeof TicketWorkKickoffMetadataSchema>

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   BoardTicketWorkRecordSchema,
+  isAdminActor,
   TaskTicketWorkRecordSchema,
   TicketWorkThreadGateSchema,
   type AuthorizedActionContext,
@@ -104,6 +105,8 @@ export const registerTicketWorkRoutes = (app: FastifyInstance, deps: RouteDeps):
       threadId,
       organizationId: actorContext.tenant.organizationId,
       userId: actorContext.actor.actorId,
+      // The message route's own gate reads this request's verified role too.
+      isOrganizationAdmin: isAdminActor(actorContext),
     })
     if (gate === undefined) {
       sendApiError(reply, 404, 'THREAD_NOT_FOUND', 'Thread not found')
