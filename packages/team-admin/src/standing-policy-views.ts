@@ -119,7 +119,9 @@ export const loadTriggerMachineAccess = async (
         ? shown.executors.map((row) => ({ executorId: row.executor.id, label: row.executor.label }))
         : null,
       limits: terms.success ? {
-        dailyUsd: terms.data.limits.dailyUsd, ticketHours: terms.data.limits.ticketHours, ticketUsd: terms.data.limits.ticketUsd,
+        dailyUsd: terms.data.limits.dailyUsd,
+        ticketHours: terms.data.limits.ticketHours,
+        ticketUsd: terms.data.limits.ticketUsd,
       } : null,
       allowAnyCommand: profile.success ? profile.data.allowAnyCommand : null,
       viewerCanEnd: status !== 'ended' && (viewerIsAuthor || administered.size > 0),

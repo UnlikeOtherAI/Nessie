@@ -79,7 +79,11 @@ export const TriggerMachineAccessViewSchema = z
         /** Named only to the author and the machines' administrators; null for anyone else. */
         machines: z.array(StandingPolicyMachineViewSchema).max(2).nullable(),
         limits: z
-          .object({ dailyUsd: z.number().positive(), ticketHours: z.number().positive(), ticketUsd: z.number().positive() })
+          .object({
+            dailyUsd: z.number().positive(),
+            ticketHours: z.number().positive(),
+            ticketUsd: z.number().positive(),
+          })
           .strict()
           .nullable(),
         allowAnyCommand: z.boolean().nullable(),
