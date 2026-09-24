@@ -3,18 +3,28 @@ import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { launchBrowser } from '../navigation/lib/browser.mjs'
-import { ADMIN_URL, REPO_ROOT } from '../navigation/lib/config.mjs'
 import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
+import { documentDetail, documentForm, documentsFinder } from './documents-run.mjs'
+import {
+  SHOTS,
+  VIEWPORTS,
+  assertNoSidewaysScroll,
+  openDialog,
+  openPage,
+  posted,
+  settled,
+} from './helpers.mjs'
 
 /**
- * The Triggers editor and the board's ticket-work doorways, rendered
+ * The Triggers editor and the board's and the Finder's doorways, rendered
  * (docs/plans/2026-09-23-ticket-driven-agents/verification.md). A pure fixture
  * over a stubbed ApiClient: the real `TriggerEditorDialog`,
- * `TriggerTypePicker`, `KanbanBoard` and `TriggerDetail`, no database.
+ * `TriggerTypePicker`, `KanbanBoard`, `TriggerDetail` and `ProjectDocsTab`, no
+ * database.
  *
  * What it pins (docs/standards/ticket-work.md):
  * - the picker offers the five released types and, for an agent, "Ticket
- *   change"; `document_changed` is named nowhere, because it ships in T2;
+ *   change" and "Document change"; a workflow target is offered neither;
  * - a ticket trigger's editor: public project channels only, and why; the
  *   board and its columns picked, not typed; a server refusal on the field it
  *   names (a second trigger on a column that already starts work); and the
@@ -23,12 +33,16 @@ import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
  *   the agent's avatar and state dot on the cards it works, and the column
  *   menu's "Start work with an agent…", which opens the editor prefilled;
  * - a ticket trigger's page: its board and columns by name, and each delivery
- *   saying what was decided and why.
+ *   saying what was decided and why;
+ * - the document half (`documents-run.mjs`): a document trigger's form, a
+ *   refusal on the space field, the typed create payload, its page, and the
+ *   project's Documents — review badges from one read per folder, and the row
+ *   menu's "Tell an agent when this changes…", which opens the editor
+ *   prefilled with its type fixed.
  *
  * Every state is shot at 1280 and 390 px under e2e/screenshots/agent-triggers/.
  */
 
-const SHOTS = resolve(REPO_ROOT, 'e2e/screenshots/agent-triggers')
 const AGENT_ID = '60000000-0000-4000-8000-000000000001'
 const CHANNEL_ID = '60000000-0000-4000-8000-000000000002'
 const BOARD = '60000000-0000-4000-8000-000000000012'
@@ -36,70 +50,42 @@ const BACKLOG = '60000000-0000-4000-8000-000000000013'
 const DOING = '60000000-0000-4000-8000-000000000014'
 const REVIEW = '60000000-0000-4000-8000-000000000015'
 const DONE = '60000000-0000-4000-8000-000000000016'
-const RELEASED = ['manual', 'scheduled', 'interval', 'webhook', 'event', 'ticket_changed']
-const RELEASED_LABELS = ['Manual', 'Schedule', 'Interval', 'Webhook', 'Event', 'Ticket change']
-const UNRELEASED = /document_changed|document change/i
-const VIEWPORTS = [
-  { name: 'desktop', options: { viewport: { height: 800, width: 1280 } } },
-  { name: 'phone', options: { hasTouch: true, isMobile: true, viewport: { height: 844, width: 390 } } },
-]
+const WORKFLOW_TYPES = ['manual', 'scheduled', 'interval', 'webhook', 'event']
+const AGENT_TYPES = [...WORKFLOW_TYPES, 'ticket_changed', 'document_changed']
+const AGENT_LABELS = ['Manual', 'Schedule', 'Interval', 'Webhook', 'Event', 'Ticket change', 'Document change']
+const AGENT_ONLY = /ticket_changed|document_changed|Ticket change|Document change/
 
-const settled = async (page) => {
-  await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== 'running'))
-  await page.waitForTimeout(150)
-}
-
-const openPage = async (browser, options, scenario) => {
-  const context = await browser.newContext(options)
-  // Nothing leaves for a real API: the session read is signed out, anything else is not in the fixture.
-  await context.route('**/api/**', (route) => route.fulfill({
-    body: '{"error":{"message":"not in fixture"}}', contentType: 'application/json',
-    status: new URL(route.request().url()).pathname === '/api/auth/me' ? 401 : 404,
-  }))
-  const page = await context.newPage()
-  const errors = []
-  page.on('pageerror', (error) => errors.push(String(error)))
-  await page.goto(`${ADMIN_URL}/e2e/agent-triggers/index.html?scenario=${scenario}`)
-  await page.locator('[data-ready="true"]').waitFor()
-  return { context, errors, page }
-}
-
-const openDialog = async (browser, options, scenario) => {
-  const opened = await openPage(browser, options, scenario)
-  const dialog = opened.page.getByRole('dialog', { name: 'Create a trigger' })
-  await dialog.waitFor()
-  await settled(opened.page)
-  return { ...opened, dialog }
-}
-
-const assertNoSidewaysScroll = async (page, label) => {
-  const { inner, scroll } = await page.evaluate(() => ({
-    inner: window.innerWidth,
-    scroll: document.documentElement.scrollWidth,
-  }))
-  assert.ok(scroll <= inner, `${label}: the page scrolls sideways (${scroll} > ${inner})`)
-}
+const radioValues = (dialog) => dialog.getByRole('group', { name: 'Trigger type' })
+  .locator('input[type="radio"]')
+  .evaluateAll((nodes) => nodes.map((node) => node.value))
 
 const assertOffersReleasedTypes = async (dialog, label) => {
   const picker = dialog.getByRole('group', { name: 'Trigger type' })
   await picker.waitFor()
-  const radios = picker.locator('input[type="radio"]')
   assert.deepEqual(
-    await radios.evaluateAll((nodes) => nodes.map((node) => node.value)),
-    RELEASED,
-    `${label}: an agent's picker offers the five released types and Ticket change, in order`,
+    await radioValues(dialog),
+    AGENT_TYPES,
+    `${label}: an agent's picker offers the five released types, Ticket change and Document change, in order`,
   )
-  for (const text of RELEASED_LABELS) {
+  for (const text of AGENT_LABELS) {
     assert.ok(await picker.getByText(text, { exact: true }).isVisible(), `${label}: "${text}" is shown`)
   }
-  // The markup, not just the painted text: a hidden option or an attribute
-  // naming the unreleased type would be the half-exposure this suite exists to catch.
-  assert.doesNotMatch(await dialog.evaluate((node) => node.outerHTML), UNRELEASED,
-    `${label}: document_changed is named nowhere in the dialog`)
-  assert.equal(await radios.nth(0).isChecked(), true, `${label}: a new trigger starts as manual`)
+  assert.equal(await picker.locator('input[type="radio"]').nth(0).isChecked(), true, `${label}: a new trigger starts as manual`)
 }
 
-const posted = (page) => page.evaluate(() => window.__agentTriggersFixture.posted)
+/** A workflow can hold neither agent-only type — named nowhere, not merely hidden — and an agent target offers both. */
+const assertWorkflowPicker = async (dialog) => {
+  assert.equal(await dialog.locator('#trigger-target-kind').inputValue(), 'workflow')
+  assert.deepEqual(await radioValues(dialog), WORKFLOW_TYPES, 'a workflow is offered the five released types only')
+  assert.doesNotMatch(await dialog.evaluate((node) => node.outerHTML), AGENT_ONLY,
+    'no agent-only type is named anywhere in a workflow create')
+  await dialog.locator('#trigger-target-kind').selectOption('agent')
+  assert.deepEqual(await radioValues(dialog), AGENT_TYPES, 'switching to an agent offers both')
+  await dialog.getByText('Document change', { exact: true }).click()
+  await dialog.locator('#trigger-target-kind').selectOption('workflow')
+  assert.equal(await dialog.locator('input[type="radio"][value="manual"]').isChecked(), true,
+    'moving a document trigger to a workflow falls back to manual')
+}
 
 /** Pick Ticket change and check what its form offers before anything is typed. */
 const openTicketForm = async (dialog, label) => {
@@ -150,6 +136,15 @@ try {
         // A webhook may target the protected room; only ticket work is narrowed.
         assert.ok(webhook.body.targetChannelId, 'a channel is posted')
       }
+      assert.deepEqual(errors, [], `${name}: no page errors`)
+      await context.close()
+    }
+
+    // 1b. The same picker for a workflow target.
+    if (name === 'desktop') {
+      const { context, dialog, errors, page } = await openDialog(browser, options, 'workflow')
+      await page.screenshot({ path: resolve(SHOTS, `create-workflow-${width}.png`) })
+      await assertWorkflowPicker(dialog)
       assert.deepEqual(errors, [], `${name}: no page errors`)
       await context.close()
     }
@@ -289,6 +284,11 @@ try {
       assert.deepEqual(errors, [], `${name}: no page errors`)
       await context.close()
     }
+
+    // 5–7. A document trigger's form and page, and the project's Documents.
+    await documentForm(browser, { name, options })
+    await documentDetail(browser, { name, options })
+    await documentsFinder(browser, { name, options })
   }
 
   console.log(`Agent triggers proofs passed; screenshots: ${SHOTS}`)

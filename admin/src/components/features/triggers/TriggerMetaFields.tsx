@@ -12,7 +12,7 @@ import {
   type TriggerTargetKind,
 } from './trigger-config'
 import { getWorkflowInstallationLabel } from './trigger-presentation'
-import { TriggerTypePicker } from './TriggerTypePicker'
+import { AGENT_ONLY_TRIGGER_TYPES, TriggerTypePicker } from './TriggerTypePicker'
 import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
 
 /**
@@ -23,7 +23,10 @@ import { agentSelectionLabel } from '../../shared/AgentVisibilityPill'
  */
 
 type TriggerMetaFieldsProps = {
-  /** The channels this type may target: every bound one, or for a ticket trigger the public project ones. */
+  /**
+   * The channels this type may target: every bound one, or for a ticket or
+   * document trigger the public project ones.
+   */
   agentChannels: ChannelRecord[]
   /** Why the channel list is narrower than the agent's rooms, and a server refusal of it. */
   channelHint?: string
@@ -102,7 +105,7 @@ export const TriggerMetaFields = ({
       <div className="grid gap-1.5 md:col-span-2">
         <div className={fieldLabelClass}>Trigger type</div>
         <TriggerTypePicker
-          offerTicketChanged={form.targetKind === 'agent'}
+          agentTarget={form.targetKind === 'agent'}
           onChange={(nextType) =>
             setForm((current) => ({ ...current, triggerType: nextType }))
           }
@@ -110,7 +113,7 @@ export const TriggerMetaFields = ({
         />
       </div>
     ) : (
-      <div className="grid gap-1.5">
+      <div className="grid content-start gap-1.5">
         <div className={fieldLabelClass}>Trigger type</div>
         <div className="admin-input cursor-default opacity-70">
           {currentTriggerLabel}
@@ -119,12 +122,12 @@ export const TriggerMetaFields = ({
     )}
 
     {showTargetChooser && typeLocked ? (
-      <div className="grid gap-1.5">
+      <div className="grid content-start gap-1.5">
         <div className={fieldLabelClass}>Target kind</div>
         <div className="admin-input cursor-default opacity-70">Agent</div>
       </div>
     ) : showTargetChooser ? (
-      <div className="grid gap-1.5">
+      <div className="grid content-start gap-1.5">
         <label className={fieldLabelClass} htmlFor="trigger-target-kind">
           Target kind
         </label>
@@ -134,8 +137,8 @@ export const TriggerMetaFields = ({
           onChange={(nextEvent) =>
             setForm((current) => {
               const targetKind = nextEvent.target.value as TriggerTargetKind
-              // A ticket trigger wakes an agent; a workflow cannot hold one.
-              const triggerType = targetKind === 'workflow' && current.triggerType === 'ticket_changed'
+              // A ticket or document trigger wakes an agent; a workflow cannot hold one.
+              const triggerType = targetKind === 'workflow' && AGENT_ONLY_TRIGGER_TYPES.includes(current.triggerType)
                 ? 'manual'
                 : current.triggerType
               return { ...current, targetKind, triggerType }
@@ -151,7 +154,7 @@ export const TriggerMetaFields = ({
       </div>
     ) : (
       <>
-        <div className="grid gap-1.5">
+        <div className="grid content-start gap-1.5">
           <div className={fieldLabelClass}>Target</div>
           <div className="admin-input cursor-default opacity-70">
             {trigger?.agentId
@@ -168,7 +171,7 @@ export const TriggerMetaFields = ({
         </div>
 
         {trigger?.agentId ? (
-          <div className="grid gap-1.5">
+          <div className="grid content-start gap-1.5">
             <label className={fieldLabelClass} htmlFor="trigger-edit-channel">
               Channel
             </label>
@@ -200,7 +203,7 @@ export const TriggerMetaFields = ({
 
     {showAgentTarget ? (
       <>
-        <div className="grid gap-1.5">
+        <div className="grid content-start gap-1.5">
           <label className={fieldLabelClass} htmlFor="trigger-agent">
             Agent
           </label>
@@ -224,7 +227,7 @@ export const TriggerMetaFields = ({
           </select>
         </div>
 
-        <div className="grid gap-1.5">
+        <div className="grid content-start gap-1.5">
           <label className={fieldLabelClass} htmlFor="trigger-channel">
             Channel
           </label>

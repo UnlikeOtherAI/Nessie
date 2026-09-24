@@ -8,6 +8,7 @@ import {
 } from '@nessie/schemas'
 
 import type { ChannelRecord } from '../../../lib/api-client'
+import { groupTriggerRefusals, refusalFieldIn, type TriggerFieldErrors } from './trigger-refusals'
 
 /**
  * The `ticket_changed` half of the Triggers editor as form state, and the
@@ -197,41 +198,27 @@ export type TicketFormField =
   | 'limits'
   | 'instructions'
 
-const FIELD_ROOTS = new Set<string>(['targetChannelId', 'boardId', 'pickup', 'follow', 'endOn', 'limits', 'instructions'])
+const FIELD_ROOTS: readonly TicketFormField[] = [
+  'targetChannelId', 'boardId', 'pickup', 'follow', 'endOn', 'limits', 'instructions',
+]
 
 /** `pickup.columns[0]` → `pickup`: the field a refusal's path names, or null for one the editor has no field for. */
-export const ticketRefusalField = (path: string): TicketFormField | null => {
-  const root = path.split(/[.[]/)[0] ?? ''
-  return FIELD_ROOTS.has(root) ? (root as TicketFormField) : null
-}
+export const ticketRefusalField = (path: string): TicketFormField | null => refusalFieldIn(FIELD_ROOTS, path)
 
-export type TicketFieldErrors = Partial<Record<TicketFormField, string>>
+export type TicketFieldErrors = TriggerFieldErrors<TicketFormField>
 
 /**
  * A `TRIGGER_CONFIG_REFUSED` answer's refusals, grouped by the field each
  * lands on, with whatever the editor cannot place kept for the form's banner.
  */
-export const groupTicketRefusals = (details: unknown): { fields: TicketFieldErrors; rest: string[] } => {
-  const refusals = details && typeof details === 'object' && Array.isArray((details as { refusals?: unknown }).refusals)
-    ? (details as { refusals: unknown[] }).refusals
-    : []
-  const fields: TicketFieldErrors = {}
-  const rest: string[] = []
-  for (const refusal of refusals) {
-    if (!refusal || typeof refusal !== 'object') continue
-    const { path, reason } = refusal as { path?: unknown; reason?: unknown }
-    if (typeof path !== 'string' || typeof reason !== 'string') continue
-    const field = ticketRefusalField(path)
-    if (field) fields[field] = fields[field] ? `${fields[field]} ${reason}` : reason
-    else rest.push(`${path}: ${reason}`)
-  }
-  return { fields, rest }
-}
+export const groupTicketRefusals = (details: unknown): { fields: TicketFieldErrors; rest: string[] } =>
+  groupTriggerRefusals(details, ticketRefusalField)
 
 /**
- * A channel a ticket trigger may work in: an ordinary, live, public channel of
- * a project. The server checks this again, and why it must be public is said
- * beside the field.
+ * A channel a ticket or document trigger may work in: an ordinary, live,
+ * public channel of a project. The server checks this again
+ * (`resolveTriggerTargetChannel`, one rule for both types), and why it must
+ * be public is said beside the field.
  */
 export const isTicketTargetChannel = (channel: ChannelRecord): boolean =>
   channel.type === 'standard'

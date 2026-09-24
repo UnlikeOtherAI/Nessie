@@ -2,7 +2,7 @@ import { ApiClientError, ApiClientProvider, type ApiClient } from '@nessie/clien
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 
 import { KanbanBoard } from '../../src/components/features/projects/kanban/KanbanBoard'
 import type { BoardColumnView } from '../../src/components/features/projects/kanban/kanban-config'
@@ -11,6 +11,7 @@ import { TriggerDetail } from '../../src/components/features/triggers/TriggerDet
 import { TriggerEditorDialog } from '../../src/components/features/triggers/TriggerEditorDialog'
 import type { AgentRecord, AgentTriggerRecord, ChannelRecord } from '../../src/lib/api-client'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
+import { DocsScenario, DocumentDetailScenario, documentGet, refuseDocumentCreate } from './documents'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
@@ -22,10 +23,15 @@ import '../../src/styles.css'
  * The real `TriggerEditorDialog`, `TriggerTypePicker`, `KanbanBoard` and
  * `TriggerDetail` render; only the transport is fake, and every write lands on
  * `window.__agentTriggersFixture` for the runner to read. `?scenario=` picks:
- * `create` (the type picker, and a webhook create), `ticket` (a ticket trigger
- * refused on a field, then created), `board` (the column badge, card dots and
- * the column menu that opens the editor prefilled) and `detail` (a ticket
- * trigger's facts and deliveries).
+ * `create` (the type picker, and a webhook create), `workflow` (the picker for
+ * a workflow target), `ticket` (a ticket trigger refused on a field, then
+ * created), `document` (a document trigger refused on its space, then
+ * created), `board` (the column badge, card dots and the column menu that
+ * opens the editor prefilled), `detail` and `document-detail` (a ticket or
+ * document trigger's facts and deliveries) and `docs` (the project's Documents:
+ * review badges, and the row menu's "Tell an agent when this changes…";
+ * `&owner=0` for a viewer the Triggers routes refuse). The document half's
+ * data and stubs are in `documents.tsx`.
  *
  * The CTO is bound to a public project channel and a protected one; only the
  * public one may carry ticket work. The Review column already starts the
@@ -141,7 +147,8 @@ const history = [
 ]
 
 type Posted = { body: unknown; path: string }
-const fixture = { posted: [] as Posted[] }
+// `reads`: every Finder read of document triggers, so the runner can count one per folder.
+const fixture = { location: undefined as string | undefined, posted: [] as Posted[], reads: [] as string[] }
 ;(window as unknown as { __agentTriggersFixture: typeof fixture }).__agentTriggersFixture = fixture
 
 const PICKUP_REFUSAL = 'column "Review" is already a start-work column of the enabled trigger "Review pass" of '
@@ -149,7 +156,10 @@ const PICKUP_REFUSAL = 'column "Review" is already a start-work column of the en
   + 'Disable that trigger, or pick another column'
 
 const get = async (path: string) => {
-  const route = new URL(path, location.origin).pathname
+  const url = new URL(path, location.origin)
+  const route = url.pathname
+  const documents = documentGet(url, fixture, AGENT_ID)
+  if (documents !== undefined) return documents
   if (route === '/api/agents') return agents
   if (route === '/api/channels') return channels
   if (route === `/api/projects/${PROJECT}/boards`) return [board]
@@ -164,7 +174,10 @@ const client = {
   getPage: async (path: string) => ({ data: await get(path), meta: { hasMore: false } }),
   patch: async () => ({ ok: true }),
   post: async (path: string, body: { type: AgentTriggerRecord['type'] } & Record<string, unknown>) => {
+    // Only a trigger create is the runner's business; the docs tab's own writes are not.
+    if (!path.endsWith('/triggers')) return { ok: true }
     fixture.posted.push({ body, path })
+    refuseDocumentCreate(body as never)
     const pickup = (body.config as { pickup?: { columns?: { id: string }[] } } | undefined)?.pickup
     // What `resolveTicketChangedTrigger` answers for the one-pickup-per-column rule.
     const index = pickup?.columns?.findIndex((column) => column.id === REVIEW) ?? -1
@@ -206,9 +219,17 @@ const BoardScenario = () => {
   )
 }
 
+// `workflow`: the editor opens on a workflow target, which can hold neither agent-only type.
+const workflowInstallations = scenario === 'workflow'
+  ? [{ id: '60000000-0000-4000-8000-000000000040', status: 'active', workflowTemplateId: 'tpl' }] as never[]
+  : []
+const workflowTemplates = scenario === 'workflow' ? [{ id: 'tpl', name: 'Nightly digest' }] as never[] : []
+
 const Scenario = () => {
   const [open, setOpen] = useState(true)
   if (scenario === 'board') return <BoardScenario />
+  if (scenario === 'docs') return <DocsScenario state={fixture} />
+  if (scenario === 'document-detail') return <DocumentDetailScenario agents={agents} channels={channels} />
   if (scenario === 'detail') {
     return (
       <div className="p-6">
@@ -231,25 +252,36 @@ const Scenario = () => {
       onClose={() => setOpen(false)}
       onSaved={() => {}}
       open={open}
-      workflowInstallations={[]}
-      workflowTemplates={[]}
+      workflowInstallations={workflowInstallations}
+      workflowTemplates={workflowTemplates}
     />
   )
 }
+
+// A data router, because the docs tab's upload guard blocks navigation (`useBlocker`).
+const router = createMemoryRouter([{
+  element: (
+    // The shell's one Back registry, which the dialog registers with.
+    <LocalBackProvider>
+      <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
+        <Scenario />
+      </div>
+    </LocalBackProvider>
+  ),
+  path: '*',
+}], {
+  // `&view=list` opens the docs tab in the Finder's list view.
+  initialEntries: [scenario === 'docs'
+    ? `/projects/${PROJECT}/docs${params.get('view') ? `?view=${params.get('view')}` : ''}`
+    : '/agents/triggers'],
+})
 
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={queryClient}>
     <AuthSessionProvider>
       <ApiClientProvider client={client}>
         <AgentIdentityProvider>
-          <MemoryRouter initialEntries={['/agents/triggers']}>
-            {/* The shell's one Back registry, which the dialog registers with. */}
-            <LocalBackProvider>
-              <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
-                <Scenario />
-              </div>
-            </LocalBackProvider>
-          </MemoryRouter>
+          <RouterProvider router={router} />
         </AgentIdentityProvider>
       </ApiClientProvider>
     </AuthSessionProvider>

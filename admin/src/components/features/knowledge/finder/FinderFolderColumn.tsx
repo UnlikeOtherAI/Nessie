@@ -20,8 +20,11 @@ import { QueryState } from '../../../shared/QueryState'
 import { EmptyState } from '../../../shared/EmptyState'
 import { RowList } from '../../../shared/RowList'
 import { familyForFilename, familyTone, iconForFamily } from '../../../shared/file-icons'
-import { AgentDraftBadge } from '../AgentDraftBadge'
-import { isAgentDraft } from '../page-status'
+import {
+  useFolderDocumentReviews,
+  type DocumentReviewRecord,
+} from '../../../../facades/knowledge/document-trigger-hooks'
+import { finderRowBadges } from './DocumentReviewBadge'
 import { FinderRow, type FinderRowUpload } from './FinderRow'
 import { familyForRow } from './finder-sort'
 import {
@@ -52,6 +55,9 @@ export type FinderUploadEntry = {
 export type FinderFolderColumnProps = {
   /** Rows to draw, already sorted and filtered by the browser. */
   rows: KnowledgePageRecord[]
+  /** Each reviewed row's newest document-trigger review, by page id. */
+  reviews?: ReadonlyMap<string, DocumentReviewRecord>
+
   /** The row this column contributes to the open path, painted grey when away. */
   pathSelectionId?: string
   selectedIds: readonly string[]
@@ -130,6 +136,7 @@ export const FinderFolderColumn = ({
   onSelect,
   onSubmitFolder,
   pathSelectionId,
+  reviews,
   rows,
   selectedIds,
   uploadEntries,
@@ -212,7 +219,7 @@ export const FinderFolderColumn = ({
                   ? (event) => onRowKeyDown(event, page.id)
                   : undefined}
                 title={page.title}
-                trailing={isAgentDraft(page) ? <AgentDraftBadge /> : undefined}
+                trailing={finderRowBadges(page, reviews?.get(page.id))}
                 transfer={page.transfer ? page.transfer.operation : null}
                 variant="item"
               />
@@ -309,6 +316,8 @@ export const FinderFolderHost = ({
   spaceId,
 }: FinderFolderHostProps) => {
   const order = rows.map((page) => page.id)
+  // One read for the folder on screen, never one per row.
+  const reviews = useFolderDocumentReviews(rows)
   const fileDrop = useColumnFileDrop({
     canWrite,
     columnTitle: level.title,
@@ -409,6 +418,7 @@ export const FinderFolderHost = ({
       })}
       onSubmitFolder={onSubmitFolder}
       pathSelectionId={pathSelectionId}
+      reviews={reviews}
       rows={rows}
       selectedIds={selectedIds}
       uploadEntries={uploads?.placeholdersFor(level.parentPageId)}

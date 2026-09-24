@@ -148,8 +148,9 @@ export const documentTriggerDeliveryKey = (triggerId: string, pageId: string, to
  * asking "I edited it and nothing happened" has an answer on the Triggers page.
  */
 export const DocumentTriggerSkipReasonSchema = z.enum([
-  // Every new version was the agent's own, or another agent's while the
-  // trigger leaves agent edits out: the marker moves past them, nothing wakes.
+  // Every new version was the agent's own, another reviewer's, or another
+  // agent's while the trigger leaves agent edits out: the marker moves past
+  // them, nothing wakes.
   'agent_edits_only',
   // The page left the trigger's scope before its window ended: moved out of
   // the folder, its label removed, its kind changed.
@@ -167,8 +168,8 @@ export const DocumentTriggerSkipReasonSchema = z.enum([
 export type DocumentTriggerSkipReason = z.infer<typeof DocumentTriggerSkipReasonSchema>
 
 export const DOCUMENT_TRIGGER_SKIP_SENTENCES = {
-  agent_edits_only: 'Only the agent itself (or, with agent edits left out, another agent) saved this document, '
-    + 'so nobody was woken.',
+  agent_edits_only: 'Only agents saved this document — the agent itself, another reviewer, or another agent '
+    + 'while agent edits are left out — so nobody was woken.',
   out_of_scope: 'The document left what this trigger watches before its quiet window ended, so nobody was woken.',
   page_gone: 'The document was deleted before its quiet window ended, so nobody was woken.',
   access_lost: 'The agent can no longer read this document or its space, or the space became narrower than the '

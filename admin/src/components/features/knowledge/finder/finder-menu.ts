@@ -4,6 +4,7 @@ import {
   faCircleInfo,
   faClockRotateLeft,
   faCloudArrowUp,
+  faComments,
   faDownload,
   faFileArrowUp,
   faFileLines,
@@ -12,6 +13,7 @@ import {
   faLink,
   faLocationCrosshairs,
   faPenToSquare,
+  faRobot,
   faRotate,
   faTable,
   faTrash,
@@ -94,6 +96,12 @@ export type FinderMenuCapabilities = {
   canShare: boolean
   /** Only a person publishes. An agent's draft goes through the approval. */
   actorIsPerson: boolean
+  /**
+   * The viewer may set up a document trigger here — the Triggers routes' own
+   * owner gate, as the space's Finder read answers it — and the space is one a
+   * public project channel may watch.
+   */
+  canCreateDocumentTriggers?: boolean
 }
 
 /** Everything a menu item can do. The hook binds each to the current target. */
@@ -137,6 +145,13 @@ export type FinderMenuHandlers = {
    * once.
    */
   newFileTypeContext?: NewFileTypeContext
+  /**
+   * "Tell an agent when this changes…": the Triggers editor on a document
+   * trigger for this folder or page. Absent where the host has not mounted it.
+   */
+  tellAgent?: () => void
+  /** "Open review thread": set only for a page a document trigger reviewed in a thread the viewer may open. */
+  openReviewThread?: () => void
 }
 
 export type FinderMenuInput = {
@@ -269,6 +284,16 @@ const pageItems = (
       : []),
     ...(RETRYABLE(page.indexing) && mayEdit
       ? [item('retry-indexing', 'Retry indexing', on.retryIndexing, { icon: faRotate })]
+      : []),
+    SEPARATOR,
+    // A document trigger watches a folder or a document or file where it
+    // lives — never a spreadsheet, whose saves are live cell edits, and never
+    // from a virtual row standing somewhere else.
+    ...(!sheet && !virtual && on.openReviewThread
+      ? [item('open-review-thread', 'Open review thread', on.openReviewThread, { icon: faComments })]
+      : []),
+    ...(!sheet && !virtual && caps.canCreateDocumentTriggers && on.tellAgent
+      ? [item('tell-agent', 'Tell an agent when this changes…', on.tellAgent, { icon: faRobot })]
       : []),
     SEPARATOR,
     // Publishing is the owner's act. An agent actor never sees it: its draft

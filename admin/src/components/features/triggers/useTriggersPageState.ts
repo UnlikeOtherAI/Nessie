@@ -52,6 +52,7 @@ export const TRIGGER_TYPE_FILTERS: readonly TriggerTypeFilter[] = [
   'webhook',
   'event',
   'ticket_changed',
+  'document_changed',
 ]
 
 export type TriggerStatusCounts = Record<TriggerStatusFilter, number>
