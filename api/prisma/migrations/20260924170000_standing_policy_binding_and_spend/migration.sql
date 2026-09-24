@@ -24,9 +24,10 @@ ALTER TABLE "executor_bindings" ADD CONSTRAINT "executor_bindings_ticket_work_id
 ALTER TABLE "executor_bindings" ADD CONSTRAINT "executor_bindings_one_authority"
   CHECK ("standing_policy_id" IS NULL OR "lease_id" IS NULL);
 
--- The newest cumulative coding cost each of the record's sessions reported
--- (`{ "<sessionId>": <usd> }`), so a status read or review adds only what is
--- new to `cost_usd`.
+-- What has already been added to `cost_usd`, by source: the newest cumulative
+-- coding cost each of the record's sessions reported (`"<sessionId>": <usd>`),
+-- so a status read or review adds only what is new, and each run's own cost
+-- once (`"run:<runId>": <usd>`).
 ALTER TABLE "agent_ticket_work"
   ADD COLUMN "session_costs" JSONB NOT NULL DEFAULT '{}';
 

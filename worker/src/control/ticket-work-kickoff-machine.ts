@@ -109,8 +109,7 @@ const machineLine = (facts: TicketWorkMachineFacts, ended: boolean): string => {
   if (facts.status === 'parked') return 'Machine: none while the work is parked; its coding session stays open.'
   if (facts.status === 'active' && facts.pinned && facts.policy === 'live') {
     return 'Machine: one of its owner\'s machines is assigned to this work. Whether it is bound for this run, and what '
-      + 'you can do on it, is said at the end of these instructions. Never name the machine on the ticket or in this '
-      + 'thread.'
+      + 'you can do on it, is in this run\'s machine facts. Never name the machine on the ticket or in this thread.'
   }
   if (facts.policy === 'suspended' || facts.stateReason === 'machine_access_suspended') {
     return 'Machine: none — machine access for this trigger is paused until the machines\' owner confirms it again, so '

@@ -47,8 +47,10 @@ where it and the code differ, the code and this file win.
   skipped delivery on the trigger (`source: 'binding'`, deduped
   `binding:<runId>`, the reason's sentence from
   `STANDING_POLICY_REFUSAL_SENTENCES`), and the run goes on with no machine:
-  the reach facts say `standing_refused` with the same sentence. None names
-  the machine.
+  the reach facts say `standing_refused` with the same sentence, and the
+  ticket's chip record carries it (`machineRefusal`, from
+  `loadTaskTicketWork`, beside a queued record's `queuePosition`) until a
+  later wake. None names the machine.
 - **The dispatch fence** re-checks every command a standing binding creates or
   the daemon collects: the policy `live` with this machine in its pool and the
   candidate's author and agent; the record `active`, pinned to this machine

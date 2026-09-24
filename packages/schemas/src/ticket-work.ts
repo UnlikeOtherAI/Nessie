@@ -196,6 +196,23 @@ export type ExecutorStandingPolicyEndedReason = z.infer<
   typeof ExecutorStandingPolicyEndedReasonSchema
 >
 
+/**
+ * Why the standing-policy binder bound no machine to one `ticket.work` run,
+ * one per check it runs at every wake (docs/standards/ticket-work-machine-access.md
+ * → "The machine owner's authority is read only by the standing-policy
+ * binder"). Written on its audit row and its skipped delivery; not a CHECK.
+ */
+export const StandingPolicyBindRefusalReasonSchema = z.enum([
+  'policy_not_live',
+  'terms_changed',
+  'author_unavailable',
+  'machine_unavailable',
+  'channel_unavailable',
+  'not_this_work',
+  'limit_reached',
+])
+export type StandingPolicyBindRefusalReason = z.infer<typeof StandingPolicyBindRefusalReasonSchema>
+
 /** A `check_back_in` reminder's lifecycle. */
 export const AgentReminderStatusSchema = z.enum(['pending', 'fired', 'cancelled'])
 export type AgentReminderStatus = z.infer<typeof AgentReminderStatusSchema>

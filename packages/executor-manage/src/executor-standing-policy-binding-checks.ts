@@ -3,6 +3,7 @@ import { resolveLiveEntitlementDecision, type ResolveLiveEntitlementsDeps } from
 import {
   isAdminRole,
   ScheduledTriggerLaunchOriginSchema,
+  type StandingPolicyBindRefusalReason,
   StandingPolicyPinnedTermsSchema,
   TicketWorkKickoffMetadataSchema,
   type RunExecuteJobPayload,
@@ -37,14 +38,7 @@ import { standingPolicyLimitsOf, standingPolicyTermsDigest, standingPolicyTermsO
  * 7. `limit_reached` — the record is within its limits.
  */
 
-export type StandingPolicyRefusalReason =
-  | 'policy_not_live'
-  | 'terms_changed'
-  | 'author_unavailable'
-  | 'machine_unavailable'
-  | 'channel_unavailable'
-  | 'not_this_work'
-  | 'limit_reached'
+export type StandingPolicyRefusalReason = StandingPolicyBindRefusalReason
 
 /**
  * What the run and the project's audience are told. None names the machine:

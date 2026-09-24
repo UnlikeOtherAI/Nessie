@@ -5,6 +5,7 @@ import { TimestampSchema } from './schema-primitives.js'
 import { TICKET_WORK_ACTIVITY_EVENT_TYPES } from './task-events.js'
 import { TicketTriggerSkipReasonSchema } from './ticket-triggers.js'
 import {
+  StandingPolicyBindRefusalReasonSchema,
   TICKET_WORK_LIVE_STATUSES,
   TicketWorkStateReasonSchema,
   TicketWorkStatusSchema,
@@ -47,6 +48,18 @@ export const TicketWorkChipRecordSchema = z.object({
    * what the work is doing, never handed a door that refuses them.
    */
   thread: z.object({ id: ThreadIdSchema, channelId: ChannelIdSchema }).nullable(),
+  /** Its place in the machine queue while `queued` (T4); absent or null otherwise. */
+  queuePosition: z.number().int().positive().nullable().optional(),
+  /**
+   * Why its latest wake ran with no machine, when the standing-policy binder
+   * refused it (T4): the reason and the sentence the run was told, which
+   * never names the machine. Null once a later wake came.
+   */
+  machineRefusal: z.object({
+    at: TimestampSchema,
+    reason: StandingPolicyBindRefusalReasonSchema,
+    sentence: z.string().min(1),
+  }).strict().nullable().optional(),
 })
 export type TicketWorkChipRecord = z.infer<typeof TicketWorkChipRecordSchema>
 

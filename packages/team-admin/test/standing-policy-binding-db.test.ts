@@ -11,6 +11,7 @@ import {
 } from '@nessie/executor-manage'
 import { ticketWorkCodingSessionContext } from '@nessie/schemas'
 
+import { loadTaskTicketWork } from '../src/ticket-work-view.js'
 import {
   bindWake,
   bridgeReport,
@@ -112,7 +113,7 @@ dbTest('a live policy binds the pinned machine for the author, and names the pol
 })
 
 dbTest('each of the seven checks refuses on its own, with an audit row and a delivery', async () => {
-  await withBound(async ({ minis, policyId, work, world }, prisma) => {
+  await withBound(async ({ minis, policyId, taskId, work, world }, prisma) => {
     const refusedFor = async (reason: string, options: Parameters<typeof wakeRun>[3] = {}) => {
       const wake = await wakeRun(prisma, world, work, options)
       const outcome = await bindWake(prisma, wake, work.id)
@@ -164,6 +165,13 @@ dbTest('each of the seven checks refuses on its own, with an audit row and a del
     // 4. The machine is online.
     await prisma.executor.update({ where: { id: minis }, data: { status: 'offline' } })
     await refusedFor('machine_unavailable')
+    // The ticket's chip says why its latest wake ran with no machine, and names none.
+    const chip = await loadTaskTicketWork(prisma, {
+      organizationId: world.organizationId, taskId, viewerUserId: world.colleagueId,
+    })
+    assert.deepEqual([chip.records[0]?.machineRefusal?.reason, chip.records[0]?.queuePosition],
+      ['machine_unavailable', null])
+    assert.doesNotMatch(chip.records[0]?.machineRefusal?.sentence ?? '', /Minis/)
     await prisma.executor.update({ where: { id: minis }, data: { lastSeenAt: new Date(), status: 'online' } })
     // 5. The target channel is still public.
     await prisma.channel.update({ where: { id: world.engId }, data: { visibility: 'protected' } })

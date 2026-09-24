@@ -4360,9 +4360,10 @@ model AgentTicketWork {
   /// `{ "<sessionId>": <turn> }`: the newest turn end a `ticket.work` run has
   /// already seen, so a session wake at or below it is skipped.
   lastObservedTurn Json                    @default("{}") @map("last_observed_turn")
-  /// `{ "<sessionId>": <usd> }`: the newest cumulative coding cost each
-  /// session reported to a status read or review, so only what is new is
-  /// added to `costUsd`.
+  /// What `costUsd` already counts, by source: `"<sessionId>": <usd>`, the
+  /// newest cumulative coding cost each session reported to a status read or
+  /// review, so only what is new is added; `"run:<runId>": <usd>`, a run's own
+  /// cost, added once.
   sessionCosts     Json                    @default("{}") @map("session_costs")
   pullRequestUrl   String?                 @map("pull_request_url")
   /// As `gh pr view` reports it: OPEN, CLOSED or MERGED
