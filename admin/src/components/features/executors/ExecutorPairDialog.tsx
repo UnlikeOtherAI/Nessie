@@ -13,6 +13,7 @@ import { FormActions, FormError } from '../../shared/FormActions'
 import { ExecutorPairingReview } from './ExecutorPairingReview'
 
 type ExecutorPairDialogProps = {
+  initialAudience?: 'personal' | 'team'
   fixedProjectId?: string
   onClose: () => void
   onFinished: (executorId: string) => void
@@ -24,7 +25,9 @@ type ExecutorPairDialogProps = {
 export const ExecutorPairDialog = (props: ExecutorPairDialogProps) =>
   props.open ? <PairingSession {...props} /> : null
 
-const PairingSession = ({ fixedProjectId, onClose, onFinished, projects }: ExecutorPairDialogProps) => {
+const PairingSession = ({
+  fixedProjectId, initialAudience, onClose, onFinished, projects,
+}: ExecutorPairDialogProps) => {
   const options = useExecutorPairingOptions(true)
   const previewMutation = usePreviewExecutorPairing()
   const claimMutation = useClaimExecutorPairing()
@@ -153,6 +156,7 @@ const PairingSession = ({ fixedProjectId, onClose, onFinished, projects }: Execu
             busy={busy}
             error={error}
             fixedProjectId={fixedProjectId}
+            initialAudience={initialAudience}
             onBack={restart}
             onClaim={(input) => void claim(input)}
             options={options.data}

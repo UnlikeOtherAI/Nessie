@@ -28,6 +28,7 @@ const Fixture = () => {
               <button className="admin-button admin-button-primary" onClick={() => setOpen(true)} type="button">Pair executor</button>
               {finished ? <p>Executor opened</p> : null}
               <ExecutorPairDialog
+                initialAudience={new URLSearchParams(location.search).has('team') ? 'team' : 'personal'}
                 fixedProjectId={new URLSearchParams(location.search).has('project') ? projectId : undefined}
                 onClose={() => setOpen(false)}
                 onFinished={() => { setOpen(false); setFinished(true) }}

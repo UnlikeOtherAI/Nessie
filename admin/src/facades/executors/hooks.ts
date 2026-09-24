@@ -11,6 +11,7 @@ import {
   PreparedExecutorWorkspacePromotionResponseSchema,
   PreparedExecutorAccessChangeResponseSchema,
   type ImplementedExecutorOperationKey,
+  type ExecutorRecordResponse,
 } from '@nessie/schemas'
 
 import type { ApiClient } from '../../lib/api-client'
@@ -23,6 +24,14 @@ export const useExecutors = () => {
   const apiClient = useApiClient()
   return useQuery({
     queryKey: executorKeys.all,
+    // A GET begun before a heartbeat must not put stale presence back over it.
+    structuralSharing: (oldData, newData) => {
+      const previous = oldData as ExecutorRecordResponse[] | undefined
+      return (newData as ExecutorRecordResponse[]).map((record) => {
+        const current = previous?.find((entry) => entry.id === record.id)
+        return current && current.updatedAt > record.updatedAt ? current : record
+      })
+    },
     queryFn: async () => ExecutorRecordResponseSchema.array().parse(
       await apiClient.get('/api/executors'),
     ),

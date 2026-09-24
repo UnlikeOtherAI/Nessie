@@ -1,3 +1,4 @@
+import { notifyExecutorStatus } from './executor-status-events.js'
 import type { FastifyInstance, FastifyReply } from 'fastify'
 import { countRateLimitHit, rateLimitKeyHash } from '@nessie/db'
 import {
@@ -77,11 +78,11 @@ export const registerExecutorPairingCodeRoutes = (app: FastifyInstance, deps: Ro
     if (!body) return reply
     try {
       const authority = await pairingAuthorityForActor(prisma, actor)
-      return createApiResponse(ExecutorPairingClaimResponseSchema.parse(
-        await claimExecutorCodePairing(
-          prisma, deps.authSecret, ExecutorPairingClaimRequestSchema.parse(body), authority, audit,
-        ),
-      ))
+      const result = await claimExecutorCodePairing(
+        prisma, deps.authSecret, ExecutorPairingClaimRequestSchema.parse(body), authority, audit,
+      )
+      await notifyExecutorStatus(deps, request.log, result.executorId)
+      return createApiResponse(ExecutorPairingClaimResponseSchema.parse(result))
     } catch (error) { return fail(reply, error) }
   })
   app.post('/api/executor-pairing/start', { config: { public: true } }, async (request, reply) => {
@@ -91,12 +92,12 @@ export const registerExecutorPairingCodeRoutes = (app: FastifyInstance, deps: Ro
     try {
       // Pairing again revokes the machine's previous executor row, which ends
       // its conversation leases; their holders are told after the commit.
-      return createApiResponse(ExecutorPairingStartResponseSchema.parse(
-        await startExecutorCodePairing(
-          prisma, deps.authSecret, body, audit, undefined,
-          (leases) => notifyExecutorLeaseChanges(deps, request.log, leases),
-        ),
-      ))
+      const result = await startExecutorCodePairing(
+        prisma, deps.authSecret, body, audit, undefined,
+        (leases) => notifyExecutorLeaseChanges(deps, request.log, leases),
+      )
+      if (body.replacesExecutorId) await notifyExecutorStatus(deps, request.log, body.replacesExecutorId)
+      return createApiResponse(ExecutorPairingStartResponseSchema.parse(result))
     } catch (error) { return fail(reply, error) }
   })
   app.post('/api/executor-pairing/poll', { config: { public: true } }, async (request, reply) => {
@@ -117,9 +118,9 @@ export const registerExecutorPairingCodeRoutes = (app: FastifyInstance, deps: Ro
         : parseInput(ExecutorPairingDecisionRequestSchema, request.body, reply)
       if (!body) return reply
       try {
-        return createApiResponse(ExecutorPairingPollResponseSchema.parse(
-          await decideExecutorCodePairing(prisma, body, action, names, audit),
-        ))
+        const result = await decideExecutorCodePairing(prisma, body, action, names, audit)
+        if (result.claim) await notifyExecutorStatus(deps, request.log, result.claim.executorId)
+        return createApiResponse(ExecutorPairingPollResponseSchema.parse(result))
       } catch (error) { return fail(reply, error) }
     })
   }

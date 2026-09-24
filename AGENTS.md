@@ -192,7 +192,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Every UI change must be visually verified using Playwright before considering the work complete.
 - Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:<admin port>/<path>` — 5455 unless this worktree set `NESSIE_ADMIN_PORT` — screenshot the affected page, and confirm the feature renders correctly.
 - Always run Playwright headless unless the user explicitly requests otherwise.
-- Executor code-pairing verification and its durable browser flow are documented in [docs/executor-pairing.md](docs/executor-pairing.md).
+- Executor pairing, live account-menu presence, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture

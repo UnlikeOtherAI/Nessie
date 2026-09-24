@@ -1,3 +1,4 @@
+import { ExecutorSection } from './user-menu/ExecutorSection'
 import { type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { faArrowRightFromBracket, faCircleQuestion, faGear } from '@fortawesome/free-solid-svg-icons'
@@ -86,6 +87,9 @@ export const UserMenuPopover = ({
       <div className="my-1 h-px bg-[color:var(--sep)]" />
 
       <StatusSection onClose={onClose} />
+
+      <div className="my-1 h-px bg-[color:var(--sep)]" />
+      <ExecutorSection onClose={onClose} />
 
       <div className="my-1 h-px bg-[color:var(--sep)]" />
 

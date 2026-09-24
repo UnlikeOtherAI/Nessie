@@ -19,6 +19,26 @@ from the live team picker. Do not create a similarly named replacement team.
 API clients must use `/api/executor-pairing/options` for the selectable team
 IDs; these are UOA team identifiers, not Nessie's internal team-row IDs.
 
+## Find your machines from the account menu
+
+The user menu has **Executors** for personal machines and **Team executors**
+for shared machines you may see. Green means all are online, orange means some
+are unavailable, and red means none are online. Click the label to open
+**Agents → Executors**, or its arrow to expand the machines. Each machine opens
+its own detail page. The list opens into the available space, including from
+the top-right account menu on an iPad.
+
+An empty group has a gray indicator and a direct **Add Personal Executor** or
+**Add Team Executor** action, with no submenu. These open the same pairing
+flow with personal or shared access selected. Shared access still requires
+the appropriate authority; the doorway grants no permissions.
+
+Presence arrives over the signed-in tab's shared WebSocket and updates the
+menu, inventory and machine detail together. A missed heartbeat expires after
+60 seconds; a background sweep announces the change within the next ten
+seconds. Reconnecting the browser re-reads the current authorized inventory.
+Online describes the machine connection, not permission for an agent to act.
+
 ## Complete both halves
 
 Open **Nessie Executor** on the machine and choose **Pair with Nessie**.

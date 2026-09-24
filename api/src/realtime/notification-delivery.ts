@@ -4,7 +4,7 @@ import {
   type RealtimeReplayEvent,
   type WsEventMessage,
 } from '@nessie/runtime'
-import type { WsScope } from '@nessie/schemas'
+import { ExecutorStatusChangedSchema, type WsScope } from '@nessie/schemas'
 import {
   createEntitlementGate,
   type RealtimeDeliveryEntitlements,
@@ -278,7 +278,8 @@ export const shouldDeliverWsNotification = async (
   // sight of an agent kept its updates for as long as the socket stayed open.
   // Both are now re-asked here, the same shape the channel branch above pays.
   for (const scope of notificationScopes) {
-    if (scope.kind === 'organization' && !(await input.canAccessOrganization(scope.organizationId))) {
+    if ((scope.kind === 'organization' || scope.kind === 'executor_inventory')
+      && !(await input.canAccessOrganization(scope.organizationId))) {
       return false
     }
     if (scope.kind === 'agent' && !(await input.canAccessAgent(scope.agentId))) {
@@ -567,6 +568,11 @@ export const createWsNotificationDelivery = (input: {
       return
     }
 
+    const presence = notification.message.event === 'executor.status.changed'
+      ? ExecutorStatusChangedSchema.safeParse(notification.message.data) : null
+    if (presence && !presence.success) return
+    const executorId = presence?.success ? presence.data.executorId : null
+
     const replayEventId =
       typeof notification.eventId === 'string'
         ? parseLastRealtimeEventId(notification.eventId)
@@ -614,9 +620,11 @@ export const createWsNotificationDelivery = (input: {
         canAccessOrganization: gates.organization,
       })
 
-      if (!shouldDeliver) {
-        continue
-      }
+      if (!shouldDeliver) continue
+      if (executorId && !(await input.entitlements?.canAccessExecutorEvent?.({
+          executorId,
+          organizationId: connection.organizationId, userId: connection.userId,
+        }))) continue
 
       if (!replayEvent) {
         // Live-only, exactly as the mixed-version window is documented to
@@ -663,9 +671,11 @@ export const createWsNotificationDelivery = (input: {
         canAccessOrganization: gates.organization,
       })
 
-      if (!shouldDeliver) {
-        continue
-      }
+      if (!shouldDeliver) continue
+      if (executorId && !(await input.entitlements?.canAccessExecutorEvent?.({
+          executorId,
+          organizationId: connection.organizationId, userId: connection.userId,
+        }))) continue
 
       connection.send(notification.message)
     }

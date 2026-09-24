@@ -36,7 +36,7 @@ export const buildSnapshotForScopes = async (
       })
       continue
     }
-    if (scope.kind === 'user' || scope.kind === 'dashboard') continue
+    if (scope.kind === 'user' || scope.kind === 'dashboard' || scope.kind === 'executor_inventory') continue
     bindingOr.push({
       channel: options?.visibility
         ? buildAccessibleChannelWhere(options.visibility)

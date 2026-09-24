@@ -1,3 +1,4 @@
+import { notifyExecutorStatus } from './executor-status-events.js'
 import {
   claimExecutorConnection,
   pollAuthorizedExecutorCommand,
@@ -73,6 +74,7 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       }
       try {
         const connection = await claimExecutorConnection(prisma, body)
+        await notifyExecutorStatus(deps, request.log, body.executorId)
         return createApiResponse(ExecutorDaemonConnectionSchema.parse(connection))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
@@ -90,6 +92,7 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       try {
         // The connection, and the coding sessions the daemon must close.
         const heartbeat = await reportExecutorHeartbeat(prisma, body)
+        await notifyExecutorStatus(deps, request.log, body.executorId)
         return createApiResponse(ExecutorDaemonHeartbeatSchema.parse(heartbeat))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply
@@ -106,6 +109,7 @@ export const registerExecutorDaemonRoutes = (app: FastifyInstance, deps: RouteDe
       if (!body) return reply
       try {
         const result = await submitExecutorDescriptor(prisma, body)
+        await notifyExecutorStatus(deps, request.log, body.executorId)
         return createApiResponse(ExecutorDaemonDescriptorSchema.parse(result))
       } catch (error) {
         if (sendExecutorError(reply, error)) return reply

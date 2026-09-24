@@ -1,3 +1,4 @@
+import { useExecutorRealtime } from '../../facades/executors/realtime';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAgentRealtime, useAgents } from '../../facades/agents/hooks';
@@ -43,7 +44,8 @@ import {
 export const useAdminShell = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, me, sessionState } = useAuthSession();
+  const { logout, me, sessionState, token } = useAuthSession();
+  useExecutorRealtime(token, me?.context.organizationId);
   const { data: channels = [] } = useChannels();
   const projectsQuery = useProjects();
   const projects = projectsQuery.data ?? [];

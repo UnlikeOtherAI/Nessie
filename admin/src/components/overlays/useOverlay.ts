@@ -51,6 +51,10 @@ export type OverlayState = {
   scrimProps: ReturnType<typeof useOverlayDismiss>
 }
 
+// Same-layer submenus dismiss from the top down. A document-level listener
+// per popover otherwise lets one Escape close every open ancestor at once.
+const popoverEscapes = new Set<{ document: Document; layer: number }>()
+
 export const useOverlay = ({
   id,
   kind,
@@ -115,8 +119,13 @@ export const useOverlay = ({
   useFocusedOverlayControl(panelRef, live && trapsFocus)
   useEffect(() => {
     if (!live || trapsFocus) return undefined
+    const registration = { document, layer: OVERLAY_LAYER[effectiveKind] }
+    popoverEscapes.add(registration)
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      const top = [...popoverEscapes].filter((entry) => entry.document === document)
+        .reduce((highest, entry) => entry.layer >= highest.layer ? entry : highest, registration)
+      if (top !== registration) return
       if (ownerKind === 'modal') {
         const target = event.target
         const panel = panelRef.current
@@ -128,14 +137,18 @@ export const useOverlay = ({
       }
       event.preventDefault()
       event.stopPropagation()
+      escapeAnchorRef?.current?.focus()
       requestClose()
     }
     // A portalled popover can be owned by a modal while focus remains on its
     // trigger inside that modal. Capture closes that focused menu before the
     // modal's focus trap sees Escape; a blocking panel owns focus, so it wins.
     document.addEventListener('keydown', onKeyDown, ownerKind === 'modal')
-    return () => document.removeEventListener('keydown', onKeyDown, ownerKind === 'modal')
-  }, [escapeAnchorRef, live, ownerKind, requestClose, trapsFocus])
+    return () => {
+      popoverEscapes.delete(registration)
+      document.removeEventListener('keydown', onKeyDown, ownerKind === 'modal')
+    }
+  }, [effectiveKind, escapeAnchorRef, live, ownerKind, requestClose, trapsFocus])
 
   const scrimProps = useOverlayDismiss(requestClose)
 
