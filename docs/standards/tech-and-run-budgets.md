@@ -121,8 +121,11 @@ summary and points here; **this file is the rule**.
     steers the coding agent and ends its turn, and the turn's end wakes it
     (T5). Around the runs sit the ticket's and the policy's own limits —
     `wakesPerTicket` and `startsPerDay` on the trigger, `ticketHours`,
-    `ticketUsd` and `dailyUsd` on the policy, a turn bounded by the
-    machine's signed per-turn `maxBudgetUsd` — enforced by the platform
+    `ticketUsd` and `dailyUsd` on the policy (the hours are the record's
+    clock, which runs only while the work is active and owes nobody an
+    answer), a turn bounded by the machine's signed per-turn `maxBudgetUsd` —
+    enforced by the platform at every wake, by the binder, in the heartbeat
+    intake and by `ticket-work.sweep`
     ([ticket-work-machine-access.md](ticket-work-machine-access.md) →
     "Server-side closes, limits and spend").
   - **Executor calls in one batch run in call order**, one after another; the

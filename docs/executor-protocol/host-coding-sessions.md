@@ -273,8 +273,12 @@ one another, each has its own `maxLiveSessionsPerOwner`, and a lease's
 owner-wide close — keyed without a context — never reaches a ticket's
 session. Without a context the key is the three ids exactly as before
 contexts existed, so no session's key changed. The API admits a payload's
-context only when its binding pins that same one, and none does until the
-standing-policy binder lands.
+context only when its binding pins that same one: a standing binding pins its
+ticket's, derived from its policy and work record, never from the payload. A
+standing binding reaches this bridge and nothing else — its `mcp.tools`
+listing and an `mcp.call` to any other server are refused where the command
+is created and again where it is collected (`standingProgramRefusal`), since
+the author's card consented to coding sessions alone.
 
 ## The reviewed configuration
 

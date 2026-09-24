@@ -54,8 +54,10 @@ Each rule is tagged with the PR that first enforces it in code:
   afresh after seven checks, the ticket's own coding tools, session-scoped
   closes, the policy's hours and spend limits, the fences that end it, host
   output kept to the ticket, the pull request tracked to its merge, and the
-  audit rows of each. The dequeue across policies, session wakes and a machine's
-  return are T5's.
+  audit rows of each; the sweep's machine half; and the screens — the
+  trigger's Machine access section, the executor page's Standing access panel
+  and the chip's machine states. The dequeue across policies, session wakes
+  and a machine's return are T5's.
 - **(T3)** shipped: `check_back_in` and its reminders, the quiet wake, the
   open question (`awaitsAnswer`) with the hours clock it pauses, and the
   periodic `ticket-work.sweep`, in their own chapter,

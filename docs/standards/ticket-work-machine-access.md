@@ -360,6 +360,53 @@ each step on its own so one failing never keeps the others from running:
   machine's last report (`ticketSessionWorking`): the coding agent's turn
   ending wakes the agent instead (T5).
 
+## What the screens show (T4)
+
+Every screen names a machine only to its author and the people who
+administer it; everyone else reads states and counts.
+
+- **The trigger's Machine access section** (`MachineAccessSection`, on a
+  ticket trigger's page; `GET /api/triggers/:triggerId/machine-access`, for
+  owners and the author — anyone else is "not found"): the state (not set
+  up, awaiting confirmation, live, suspended with its reason, ended with its
+  reason and by whom) in one sentence, the policy's limits, that the agent
+  drives Claude Code sessions and no other program, every live ticket of the
+  trigger with its place (working — on which machine, for those who may
+  know — queued with its position, paused for an offline machine, waiting
+  for access, parked), and the last wakes in the words the deliveries say
+  them. The author gets **Set up machine access…**
+  (`MachineAccessSetupDialog`, reading `GET …/machine-access/machines`: their
+  own private machines, each refused with its reason when no choice can fix
+  it, and re-checked in the form as they change the "run any command" tick,
+  `ticketUsd` against each machine's per-turn budget, and the coding folders
+  every chosen machine shares), which prepares the one card through the
+  author-only route and shows it in the section, where **Review and
+  confirm** opens the same access-change review the chat card opens, with
+  the password. The author, or an administrator of one of its machines, gets
+  **End** (`POST /api/standing-policies/:policyId/end`, reason `person`).
+  Anyone else reads *"Only Ondrej can set this up: the work would run on
+  their own machines, as them."* The bell item T6 raises for a trigger an
+  agent set up opens this section (`#machine-access`).
+- **The executor page's Standing access panel** (`ExecutorStandingAccessPanel`,
+  private machines only; `GET /api/executors/:executorId/standing-policies`,
+  for the machine's administrators): each policy not yet ended whose pool
+  names the machine — its trigger, agent, author, state, the tickets working
+  there now — with End.
+- **A ticket's own coding session on the executor page** names its agent,
+  its ticket (a link, only for a reader who can read its project) and *"ticket
+  work under Ondrej's standing access"*: the reported session is joined to
+  the work record that lists its id, when the record's owner key for this
+  machine is the session's (`executor-coding-session-tickets.ts`).
+- **The ticket's chip** says where the work stands with its machine —
+  *"queued: position 2"*, *"paused: machine offline"*, *"waiting for machine
+  access"*, *"stopped"* at an hours or spend limit — and a wake the binder
+  ran without a machine as its plain sentence (`machineRefusal`); its history
+  lines say what each pause, resume and queueing was for.
+- **The Designer's proposal card** for a ticket-driven agent has a "Runs on"
+  row — the machines by name only to the person who paired them, otherwise
+  "a machine its owner confirms" — and says one machine-access confirmation
+  follows; its persona ends the setup order with that one card.
+
 ## Host output stays on the ticket (T4)
 
 A `ticket.work` run is stamped with its work thread's channel as the launch

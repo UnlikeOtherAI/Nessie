@@ -120,8 +120,9 @@ sentence changes only if the invariant itself did.
   app-connect-scope suite. It pins the Agent Designer's standard proposal
   card: name and role, the three-line description, where the agent lives, the
   model dropdown, the tool/app fold that arrives closed, and a ticket-driven
-  agent's "Starts work when" row (with no "Runs on" row until machine access
-  ships).
+  agent's "Starts work when" and "Runs on" rows — its machines by name only
+  on their owner's own card, otherwise "a machine its owner confirms" — and
+  the line saying one machine-access confirmation follows.
 - **Android shell bottom-edge coverage:** run
   `DATABASE_URL=… pnpm --filter @nessie/admin test:e2e:android-dock`. It drives
   the admin with the Android shell's own globals and its published dock
@@ -189,8 +190,12 @@ sentence changes only if the invariant itself did.
   started nothing, the card's avatar and state dot, and the chip on a phone
   (shots 16–18), and at 1280 and 390 px the agent's pending reminder with
   Cancel for a board editor, pressed and gone, a reader's without Cancel, and
-  an open question (shots 19; the rules are in
-  [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md)). The
+  an open question (shots 19), and the chip's machine states — queued at its
+  position, paused for an offline machine, waiting for machine access,
+  stopped at an hours or spend limit, a wake that ran without a machine in
+  words, and their history lines (shots 20 on; the rules are in
+  [`docs/standards/ticket-work.md`](docs/standards/ticket-work.md) and
+  [`docs/standards/ticket-work-machine-access.md`](docs/standards/ticket-work-machine-access.md)). The
   real-stack half — a label following a ticket to another board by name, a
   removal persisting and still downloading — is in the project-usability
   suite's `ticket-activity.mjs`. The rules are in
@@ -265,7 +270,13 @@ sentence changes only if the invariant itself did.
   track still aligned with its neighbours, card dots and the column menu on
   every column but Done that opens the editor prefilled with its type fixed,
   and a ticket trigger's page
-  with its named facts and deliveries in words; a document trigger's form
+  with its named facts and deliveries in words (a run the standing-policy
+  binder bound no machine to included) and its Machine access section in
+  every state — not set up, read-only for an owner who is not the author,
+  awaiting confirmation, live with the machines named only to the author,
+  suspended, ended by whom — the author's setup form refusing a machine for
+  each reason, the prepare it posts, a server refusal, the one card with its
+  password review, and End; a document trigger's form
   (the project's Documents space chosen, a team-only space disabled), a
   refusal landing on the space field, the exact typed config its create
   posts, and its page with each delivery in words; and in a project's Docs

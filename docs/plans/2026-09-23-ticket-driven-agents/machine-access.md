@@ -155,7 +155,8 @@ door says it paused access instead.
     context is never bound again. Suspension closes only the `active`
     records' sessions; parked records keep theirs.
   - `ticket-work.sweep` is enqueued by every transaction that may free a
-    machine (T4's binding part); it has no subscriber until T3. Records
+    machine (T4's binding part); T3's subscriber runs it, and T4's last part
+    gives it a machine half (below, "The sweep's machine half"). Records
     queued by a confirmation or a hand-over carry their reason, place and a
     `work_queued` row.
   - Confirm re-checks everything but online-ness; prepare requires it.
@@ -167,7 +168,17 @@ door says it paused access instead.
     reviewed bridge then ends it (`descriptor_narrowed`).
   - The route `POST /api/triggers/:triggerId/machine-access` answers the
     card spec with the token, for the Machine access section to render with
-    the chat's own card renderer; there is no read of a trigger's policy yet.
+    the chat's own card renderer.
+  - **As built (T4, the screens).** The Machine access section renders that
+    card in place and opens the same access-change review for the password,
+    rather than posting it to the author's DM: a chat card needs the run
+    that posted it, and a route has none. The section is on the trigger's
+    own page, which only owners and the author reach, so the card is never
+    shown in a project room; the Designer's tool still posts it to the
+    author's own DM. The reads are `GET /api/triggers/:triggerId/machine-access`
+    (and `/machines` for the author's form), the executor page's
+    `GET /api/executors/:executorId/standing-policies`, and End is
+    `POST /api/standing-policies/:policyId/end`.
 
 ## Binding at each wake
 
@@ -214,9 +225,9 @@ on the chip.
     dispatch, so no run starts. One that goes offline between then and run
     setup is refused `machine_unavailable` by the binder, and that run goes
     on unbound.
-  - `ticketHours` is counted from the record's `work_*` history (the spans
-    it was `active`; parked, queued and waiting are not) until T3's clock
-    accumulates `activeMs`. `dailyUsd` fails a record with `limit_cost`,
+  - `ticketHours` is T3's hours clock (`activeMs` plus the running
+    stretch), which moved into `@nessie/executor-manage` beside the record
+    transitions; every pool transition syncs it. `dailyUsd` fails a record with `limit_cost`,
     because T1 gave `limit_daily` to `startsPerDay`.
   - Coding cost is the difference in a session's cumulative `totalCostUsd`,
     which `session_status` now reports; each run's own cost comes from the
@@ -226,10 +237,16 @@ on the chip.
   - Projects, boards and columns have no archive in the product: their fence
     is their delete. Nothing moves a channel to another project.
   - A binding refusal's delivery is a skipped row with `source: 'binding'`
-    and its own payload (`kind: 'standing_policy_refused'`), which the
-    Triggers page shows raw until the chip and the page learn it.
-  - Until T5 dequeues, a record queued by a confirmation or a hand-over says
-    `queued_no_free_machine` even when the machine it waits for is idle.
+    and its own payload (`TicketTriggerBindingRefusalPayloadSchema`), which
+    the Triggers page and the chip say in one plain sentence per reason.
+  - A standing binding reaches the coding-sessions bridge alone: the run is
+    offered only the `coding_session_*` tools, and the dispatch fence refuses
+    the generic pair and every other program (a lead's decision: the card
+    consents to coding sessions, not to the machine's other programs).
+  - The sweep's machine half ends policies whose author UOA no longer lists,
+    stops work over its limits that nobody wakes, and places queued work on
+    a free machine in each policy's queue order, a first-free assignment;
+    T5's dequeue orders it by priority and age across policies.
 
 ## Session isolation
 
