@@ -43,9 +43,13 @@ Each rule is tagged with the PR that first enforces it in code:
   facts, and standing machine access itself — prepared only by the trigger's
   author, confirmed as one card under one password re-proof, its terms and
   host profile pinned, suspended by an edit of a pinned field or a descriptor
-  review, and ended with the trigger. Nothing binds a machine to a run yet:
-  until the binder and the pool dispatcher land, a live policy holds access
-  and does no ticket work.
+  review, and ended with the trigger; and what it then does — a machine from
+  the pool assigned at dispatch or a place in its queue, every wake bound
+  afresh after seven checks, the ticket's own coding tools, session-scoped
+  closes, the policy's hours and spend limits, the fences that end it, host
+  output kept to the ticket, the pull request tracked to its merge, and the
+  audit rows of each. The dequeue, session wakes and a machine's return are
+  T5's; the sweep that re-checks authors and runs the limits is T3's.
 - **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
@@ -403,10 +407,14 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
 ## The work record, its thread, and what every wake says (T1)
 
 - **A pickup creates one record** (`startTicketWork`,
-  `worker/src/control/ticket-work.ts`): `active`, no executor, `startedByUserId`
-  the mover, `startedByEventId` the `column_entered` or `created` event, and a
-  `work_started` row on the ticket — only while the ticket is still in a
-  start-work column, read under its work lock (above). A pickup racing
+  `worker/src/control/ticket-work.ts`): `startedByUserId` the mover,
+  `startedByEventId` the `column_entered` or `created` event, placed at once
+  **(T4)** on a machine of the trigger's policy — `active` and pinned, or
+  `queued`, or `waiting_machine` for access that is not set up or paused
+  ([ticket-work-machine-access.md](ticket-work-machine-access.md)) — and a
+  `work_started` row on the ticket with where it stands — only while the
+  ticket is still in a start-work column, read under its work lock (above).
+  A pickup racing
   another for the same ticket refuses (`no_longer_applies`) under the
   trigger's start lock. The target channel is re-checked on every start and
   wake: still live, bound, ordinary and public, or the trigger's health moves
@@ -429,9 +437,13 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   moving the ticket there does — `starts work`, `ends work`, `parks work` —
   and its id; the work's status: live, parked (and that only a person moving
   it back resumes it), or ended with its reason and that nothing wakes it
-  again; "wake n of m"; that no machine does ticket work yet; the pull
-  request on record; that this is the ticket's work thread and, while the
-  work is live, what wakes it next and that its own changes never do) and
+  again; "wake n of m" (and, under machine access, the hours and spend
+  against its policy's); **(T4)** where it stands with a machine — assigned,
+  queued at a position, waiting for its machine or for access — the ticket's
+  own coding session as last reported, and the pull request on record with
+  its state and checks (`ticket-work-kickoff-machine.ts`); that this is the
+  ticket's work thread and, while the work is live, what wakes it next and
+  that its own changes never do) and
   *Instructions* (the trigger's `general`, then — while the work is live —
   each section matching a reason: `onPickup`, `onTicketChanged` for every
   ticket change and thread message, `onSessionTurnEnded`, `onReminder`,
@@ -461,8 +473,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   parked it), `work_resumed` (a person moved it back) and `work_ended`
   (`TICKET_WORK_ACTIVITY_EVENT_TYPES`, `TicketWorkActivityPayloadSchema`:
   `system` origin, the record, its status and reason, `by` for whoever caused
-  it, and `causeEventId` for the move that did); `work_queued` is named for
-  the machine queue (from T4). None is dispatched. The ticket dialog's chip
+  it, and `causeEventId` for the move that did); **(T4)** `work_queued` is written
+  when a record queues for a machine. None is dispatched. The ticket dialog's chip
   lists them (below).
 - **(T1) `assignOnPickup` is applied in the transaction that places the
   ticket** (`resolvePickupAssignment` and `resolvePickupAssignmentForStatus`,
@@ -600,11 +612,11 @@ hold these, so no read-then-write race can break them:
   reconnect (`TICKET_WORK_MACHINE_HOLDING_STATUSES`). A dequeue onto a machine
   that just came back therefore cannot take the slot before the ticket that
   was mid-work there resumes, and the pool dispatcher's "free" means no
-  record in either status (from T4 and T5). A `waiting_machine` record that
-  waits for machine access rather than for its machine names no executor and
-  holds nothing: a pickup while access is not set up or suspended is never
-  pinned, and suspending access unpins its `active` records in the same
-  transaction (from T4). A `parked` or `queued` record may still name an
+  record in either status (T4 assigns, T5 dequeues). A `waiting_machine`
+  record that waits for machine access rather than for its machine names no
+  executor and holds nothing: a pickup while access is not set up or
+  suspended is never pinned, and suspending access unpins its `active` records in the same
+  transaction (T4). A `parked` or `queued` record may still name an
   executor without holding it. `policyId` / `executorId` are written by the
   dispatcher, never by run setup.
 - `agent_reminders_one_pending_per_work`: one pending reminder per work
@@ -647,9 +659,10 @@ causes it**:
   gets one machine-less `ticket_moved` wake, only to comment (none for its
   own move). A review-category column outside `endOn` and outside the pickup
   set parks the record instead, with a `work_paused` row; a person's move
-  back resumes it with `work_resumed`. **(from T4)** The same
-  transaction frees the record's machine, writes its sessions' close requests
-  and enqueues the pool dispatcher; in T1 no record holds a machine.
+  back resumes it with `work_resumed` — **(T4)** on a machine from the pool,
+  or queued. **(T4)** Ending or parking the record frees its machine (neither
+  status holds one); ending it writes its sessions' close requests
+  (`ticket_left_flow`); both enqueue the pool dispatcher, in the move.
 - **(T1) Disabling or deleting the trigger** ends every live record with
   `trigger_disabled`, in that transaction (`endTicketWorkForTrigger`,
   `packages/team-admin/src/ticket-trigger-teardown.ts`: `updateAgentTrigger`
@@ -675,11 +688,11 @@ causes it**:
   that leaves a pool machine other digests than it pinned suspends it
   (`descriptor_changed`). The transaction that confirms or re-confirms access
   moves every `waiting_machine` record of the trigger waiting for access to
-  `queued` under the new policy. **(from T4)** A pickup while access is
-  suspended or not yet set up gets one short, unbound pickup wake and then
-  waits the same way, with `machine_access_suspended` or
+  `queued` under the new policy, with its reason and place. **(T4)** A pickup
+  while access is suspended or not yet set up gets one short, unbound pickup
+  wake and then waits the same way, with `machine_access_suspended` or
   `machine_access_not_set_up`; the suspending and confirming transactions
-  enqueue the dispatcher, which resumes them with a `dequeued` wake.
+  enqueue the dispatcher, which (from T5) resumes them with a `dequeued` wake.
   **(T4) Ending machine access** (`endStandingPolicyInTransaction`) cancels
   every live record of the policy with `machine_access_ended`, and their
   sessions get close requests (`policy_ended`) — except a policy a
@@ -689,9 +702,8 @@ causes it**:
   (`requestExecutorCodingSessionCloseForSessionsInTransaction`, named by the
   ticket's owner context) are written in the same transaction as **(T4)** the
   trigger being disabled or deleted (`trigger_changed`) and the policy
-  suspending (`policy_suspended`) or ending (`policy_ended`), and **(from
-  T4)** the ticket leaving the flow (`ticket_left_flow`) or a limit
-  (`work_limit`).
+  suspending (`policy_suspended`) or ending (`policy_ended`), the ticket
+  leaving the flow (`ticket_left_flow`) and a limit (`work_limit`).
   **(T4)** Those five reasons are in `EXECUTOR_CODING_SESSION_CLOSE_REASONS`
   and its CHECK
   (`20260924130000_executor_coding_session_ticket_close_reasons`), which the
@@ -704,16 +716,18 @@ causes it**:
   column to continue"* row, and the delivery is skipped `limit_wakes`. A
   pickup past the trigger's `startsPerDay` (UTC day, counted under the
   trigger's start lock) is recorded `failed` with `limit_daily`, starts
-  nothing, and is skipped `limit_starts`. **(from T4)** `ticketHours`,
+  nothing, and is skipped `limit_starts`. **(T4)** `ticketHours`,
   `ticketUsd` and `dailyUsd` fail the record the same way, and its sessions
-  get close requests.
-- **(from T4) The policy ends in the same transaction as each fence**, reusing
-  the `endExecutorConversationLeasesInTransaction` call sites. The target
-  channel being archived, made non-public or leaving the project is one of
-  them (`target_channel_unavailable`): the audience the author agreed to no
-  longer reads the work. UOA has no removal feed, so the binder and
-  `ticket-work.sweep` re-check the author with UOA and end the policy when
-  UOA no longer lists them.
+  get close requests: checked at every wake, by the binder and in the
+  heartbeat intake ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
+- **(T4) The policy ends in the same transaction as each fence**, reusing
+  the `endExecutorConversationLeasesInTransaction` call sites; the board's
+  side is `standing-policy-fences.ts`. The target channel being archived,
+  deleted or made non-public is one of them (`target_channel_unavailable`):
+  the audience the author agreed to no longer reads the work. UOA has no
+  removal feed, so the binder re-checks the author with UOA at every wake,
+  and **(from T3)** `ticket-work.sweep` ends the policy when UOA no longer
+  lists them.
 
 ## The vocabularies live in two places that change together (T0)
 

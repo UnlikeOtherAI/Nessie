@@ -365,7 +365,14 @@ candidate digest. A retry reuses that binding. Before each command dispatch,
 Nessie repeats the same user, agent, scope, membership, descriptor, operation,
 logical-policy, lifecycle, and revision checks under the executor lock. Dispatch
 then advances the existing queue lease; it cannot select another executor after
-retry, policy change, or revocation.
+retry, policy change, or revocation. The initiating human is the run's own
+message's author — or, for the local-apps pair, a standing policy its author
+(the pairing owner of every executor it names) confirmed with fresh
+verification, for runs of that policy's own trigger on one ticket's work: the
+work was started by a person's move, the trigger and host configuration still
+match what was confirmed, and the run consumes only that work's kickoffs. Each
+such run is bound afresh, every check runs again, and its bindings name the
+policy and the work ([ticket-work-machine-access.md](../standards/ticket-work-machine-access.md)).
 
 Browser work is an exception to ordinary small bundles: it is exactly
 `browser.open`, `browser.observe`, `browser.act`, and `sandbox.stop` on a fresh

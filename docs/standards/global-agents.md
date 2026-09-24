@@ -418,6 +418,10 @@ with the run; `requireActingUserId` is never consulted, so every tool that
 needs a person — identity tools, setup verbs, the rest of the peer set —
 refuses as it does on any unattended run, and schedules and mail, which would
 fall back to the agent's own authority, are withheld and refused outright.
+Standing machine access changes none of this: its author is read only by the
+standing-policy binder and its dispatch fence, which bind the machine for the
+author as its pairing owner and never put them in the run's actor context
+([ticket-work-machine-access.md](ticket-work-machine-access.md)).
 That is the two-lock rule's shape for ticket work: the arm admits only the
 agent's own reach, and no path to a person's exists to be opened.
 

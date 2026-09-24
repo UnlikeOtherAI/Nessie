@@ -154,16 +154,17 @@ door says it paused access instead.
     machine and its sessions closed (`policy_ended`), since the old owner
     context is never bound again. Suspension closes only the `active`
     records' sessions; parked records keep theirs.
-  - Nothing enqueues `ticket-work.sweep` yet (it has no subscriber):
-    `queueTicketWorkForConfirmedPolicyInTransaction`, the suspension and the
-    hand-over should enqueue it where the dispatcher lands. Records queued
-    there carry no `stateReason` and no `work_queued` row until it does.
+  - `ticket-work.sweep` is enqueued by every transaction that may free a
+    machine (T4's binding part); it has no subscriber until T3. Records
+    queued by a confirmation or a hand-over carry their reason, place and a
+    `work_queued` row.
   - Confirm re-checks everything but online-ness; prepare requires it.
-  - Only the trigger disable, pause, health switch-off, delete and the
-    agent's delete end a policy so far (`endTicketWorkForTrigger`, now in
-    `ticket-trigger-teardown.ts`). A review that disables a pool machine's
-    revision suspends (`descriptor_changed`) rather than ending
-    (`descriptor_narrowed`); every other fence below is still to build.
+  - The trigger disable, pause, health switch-off, delete and the agent's
+    delete end a policy (`endTicketWorkForTrigger`, in
+    `ticket-trigger-teardown.ts`); every fence below does too (T4's binding
+    part). A review that changes a pool machine's digests suspends
+    (`descriptor_changed`); one that leaves it without the pair or a
+    reviewed bridge then ends it (`descriptor_narrowed`).
   - The route `POST /api/triggers/:triggerId/machine-access` answers the
     card spec with the token, for the Machine access section to render with
     the chat's own card renderer; there is no read of a trigger's policy yet.
@@ -196,6 +197,39 @@ describe the machine tools. Today `loadExecutorReachFacts` returns nothing
 without a lease. Each refusal writes `executor.run.policy_refused` and a
 delivery row, and the run continues unbound. Its reason is in the facts and
 on the chip.
+
+- **As built (T4, binding and what follows it).** The rules are in
+  `docs/standards/ticket-work-machine-access.md`. Where the code went another
+  way than the text above:
+  - The policy travels on the bindings (`executor_bindings.standing_policy_id`
+    and `ticket_work_id`, never beside a lease), not in
+    `actionContext.standingPolicy`; the dispatch fence reads it there, and the
+    owner context is derived from it.
+  - The binder's checks are `executor-standing-policy-binding-checks.ts`.
+    Board-edit standing is team-admin's rule, so the worker hands it in
+    (`canEditBoard`); the policy's lifecycle, the record transitions and the
+    pinned terms moved into `@nessie/executor-manage`, so the executor fences
+    there end a policy in their own transaction.
+  - A pinned machine found offline is handled when the wake is decided, at
+    dispatch, so no run starts. One that goes offline between then and run
+    setup is refused `machine_unavailable` by the binder, and that run goes
+    on unbound.
+  - `ticketHours` is counted from the record's `work_*` history (the spans
+    it was `active`; parked, queued and waiting are not) until T3's clock
+    accumulates `activeMs`. `dailyUsd` fails a record with `limit_cost`,
+    because T1 gave `limit_daily` to `startsPerDay`.
+  - Coding cost is the difference in a session's cumulative `totalCostUsd`,
+    which `session_status` now reports; each run's own cost comes from the
+    token ledger once, keyed `run:<runId>` in `session_costs`.
+  - A pinned-field edit suspends the policy, so its sessions' closes say
+    `policy_suspended`; `trigger_changed` is written by a disable or delete.
+  - Projects, boards and columns have no archive in the product: their fence
+    is their delete. Nothing moves a channel to another project.
+  - A binding refusal's delivery is a skipped row with `source: 'binding'`
+    and its own payload (`kind: 'standing_policy_refused'`), which the
+    Triggers page shows raw until the chip and the page learn it.
+  - Until T5 dequeues, a record queued by a confirmation or a hand-over says
+    `queued_no_free_machine` even when the machine it waits for is idle.
 
 ## Session isolation
 
