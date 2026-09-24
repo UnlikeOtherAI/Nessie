@@ -51,7 +51,8 @@ export const TICKET_WORK_SWEEP_INTERVAL_MS = 60_000
 
 /** Lost jobs older than this are left alone: the moment they spoke of has passed. */
 const LOST_JOB_HORIZON_MS = 24 * 60 * 60 * 1000
-const LOST_JOB_RECOVERED = 'recovered_by_ticket_work_sweep'
+/** Appended to a lost job's own error, never in place of it: the reason it died stays readable. */
+const LOST_JOB_RECOVERED = '[recovered by ticket-work.sweep]'
 
 export type SweepRecordFacts = {
   status: string
@@ -287,14 +288,22 @@ export const recoverLostTicketJobs = async (prisma: PrismaClient, now: Date, lim
     WHERE topic IN (${TRIGGER_TICKET_DISPATCH_TOPIC}, ${TICKET_WORK_THREAD_MESSAGE_TOPIC})
       AND status = 'dead'
       AND enqueued_at >= ${since}
-      AND error_message IS DISTINCT FROM ${LOST_JOB_RECOVERED}
+      AND position(${LOST_JOB_RECOVERED} in coalesce(error_message, '')) = 0
     ORDER BY enqueued_at ASC
     LIMIT ${limit}
   `)
   let recovered = 0
   for (const job of jobs) {
-    await prisma.$executeRaw(Prisma.sql`
-      UPDATE queue_jobs SET error_message = ${LOST_JOB_RECOVERED} WHERE id::text = ${job.id} AND status = 'dead'`)
+    // The claim: one sweep marks the job, and only the one whose mark landed
+    // dispatches it. Another sweep that read the same job finds it marked.
+    const claimed = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      UPDATE queue_jobs
+      SET error_message = trim(coalesce(error_message, '') || ' ' || ${LOST_JOB_RECOVERED})
+      WHERE id::text = ${job.id}
+        AND status = 'dead'
+        AND position(${LOST_JOB_RECOVERED} in coalesce(error_message, '')) = 0
+      RETURNING id::text AS id`)
+    if (claimed.length === 0) continue
     try {
       if (job.topic === TRIGGER_TICKET_DISPATCH_TOPIC) {
         await dispatchTicketEvent(prisma, TriggerTicketDispatchJobPayloadSchema.parse(job.payload))

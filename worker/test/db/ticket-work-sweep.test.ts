@@ -9,7 +9,7 @@ import {
 } from '@nessie/schemas'
 import { createTaskComment } from '@nessie/team-admin'
 
-import { enqueueTicketWorkSweep, runTicketWorkSweep } from '../../src/control/ticket-work-sweep.js'
+import { enqueueTicketWorkSweep, recoverLostTicketJobs, runTicketWorkSweep } from '../../src/control/ticket-work-sweep.js'
 import { reattemptTicketWorkDelivery } from '../../src/control/ticket-work-retry.js'
 import { runTicketCommentAddTool } from '../../src/run/pa-tools/ticket-comments.js'
 import { runDatabaseTest } from './support.js'
@@ -233,7 +233,10 @@ runDatabaseTest('a pickup whose dispatch job the queue gave up on is recovered o
     WHERE topic = ${TRIGGER_TICKET_DISPATCH_TOPIC} AND payload->>'taskEventId' = ${entered.id}`)
   assert.equal(await prisma.agentTicketWork.count({ where: { taskId: task.id } }), 0, 'nothing started yet')
 
-  await runTicketWorkSweep(prisma)
+  // Two sweeps at once: the one whose mark lands dispatches, the other skips it.
+  const now = new Date()
+  const recovered = await Promise.all([recoverLostTicketJobs(prisma, now), recoverLostTicketJobs(prisma, now)])
+  assert.equal(recovered[0] + recovered[1], 1, 'recovered once')
   const work = await prisma.agentTicketWork.findFirstOrThrow({ where: { triggerId: s.triggerId, taskId: task.id } })
   assert.equal(work.status, 'active')
   assert.equal(work.startedByUserId, s.editorId)
@@ -241,7 +244,8 @@ runDatabaseTest('a pickup whose dispatch job the queue gave up on is recovered o
     where: { topic: TRIGGER_TICKET_DISPATCH_TOPIC, payload: { path: ['taskEventId'], equals: entered.id } },
   })
   assert.equal(job.status, 'dead')
-  assert.equal(job.errorMessage, 'recovered_by_ticket_work_sweep')
+  // Why it died stays readable, with the recovery beside it.
+  assert.equal(job.errorMessage, 'lock_expired_at_max_attempts [recovered by ticket-work.sweep]')
 
   await finishRuns(prisma, work.threadId)
   await runTicketWorkSweep(prisma)

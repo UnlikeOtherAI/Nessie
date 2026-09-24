@@ -673,7 +673,10 @@ routes, and none of it names a machine.
   `ticket-work.thread-message` job the queue dead-lettered in the last day is
   dispatched once more (`recoverLostTicketJobs`) — each dispatcher decides at
   most once per (trigger, event), so a person's move whose worker died still
-  starts its work. It becomes the pool dispatcher in T4 and T5.
+  starts its work. Once is a claim, not luck: the sweep whose conditional
+  update appends `[recovered by ticket-work.sweep]` to the job's own error
+  dispatches it, and one that finds the mark skips it. It becomes the pool
+  dispatcher in T4 and T5.
 
 ## The machine owner's authority is read only by the standing-policy binder (from T4)
 
