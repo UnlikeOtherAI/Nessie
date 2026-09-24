@@ -849,7 +849,13 @@ placement waiting for a suspension in flight and reading it; a
 the machine steps alone, and the heartbeat enqueuing it only for work of a
 trigger that is on); `worker/test/db/ticket-work-session-scope.test.ts`
 (another machine's report, or another owner's session, waking and closing
-nothing; a report without the field between two hiding no close);
+nothing; a report without the field between two hiding no close; a session
+recorded as started on another machine not read here; a session the work
+let go of charged until its machine stops reporting it);
+`worker/test/db/ticket-work-policy-locks.test.ts` (a wake that finds its
+machine back waiting for a suspension in flight and reading it; a
+suspension writing the ticket's history while a wake holds the ticket's
+`FOR NO KEY UPDATE` lock);
 `worker/test/db/ticket-work-session-withdraw.test.ts` (a turn the agent's own
 wait read while its wake pended withdrawn with the wake given back, a folded
 kickoff keeping its other events, an interruption waking however far the
