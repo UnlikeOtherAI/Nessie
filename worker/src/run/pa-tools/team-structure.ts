@@ -9,7 +9,8 @@ import {
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { requireOwnerMember, resolveActingMember } from './access.js'
+import { requireOwnerMember } from './access.js'
+import { resolveOperatorAwareMember } from './project-operator.js'
 import { formatProjectMarkdownLink, formatSection } from './tool-output.js'
 
 /**
@@ -82,7 +83,7 @@ export const runProjectListTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ProjectListInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member } = await resolveOperatorAwareMember(context)
 
   const projects = await listProjectsForUser(context.prisma, {
     isOrganizationAdmin: member.isOrganizationAdmin,
@@ -142,7 +143,7 @@ export const runProjectCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ProjectCreateInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member } = await resolveOperatorAwareMember(context)
 
   let project
   try {
@@ -192,7 +193,7 @@ export const runTeamCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = TeamCreateInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member } = await resolveOperatorAwareMember(context)
 
   requireOwnerMember(member, 'create a team')
 

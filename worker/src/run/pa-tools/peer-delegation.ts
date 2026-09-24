@@ -8,12 +8,19 @@ import {
   PrivateConversationSourceSchema,
 } from '../execute/disclosure-basis.js'
 import { resolveActingMember } from './access.js'
+import { resolveOperatorProjectCall } from './project-operator.js'
 import { assertProjectWriteDestination } from './ticket-context.js'
 import { requireConsumedSources } from './tool-message-basis.js'
 
 const MAX_PEER_DELEGATION_DEPTH = 4
 const DelegateInput = z.object({ agentId: z.string().uuid(), brief: z.string().trim().min(1).max(8_000) })
-const BoardInput = z.object({ name: z.string().trim().min(1).max(120), iconEmoji: z.string().nullable().optional(), style: z.enum(['kanban', 'scrum']).optional() })
+const BoardInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  // Only the project-operator arm reaches another project than this channel's.
+  projectId: z.string().uuid().optional(),
+  iconEmoji: z.string().nullable().optional(),
+  style: z.enum(['kanban', 'scrum']).optional(),
+})
 
 const requesterAndProject = async (context: BuiltinToolRuntimeContext) => {
   const projectId = context.channel.projectId
@@ -106,8 +113,14 @@ export const runTicketBoardCreateTool = async (
   context: BuiltinToolRuntimeContext,
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
-  const args = BoardInput.parse(input)
-  const { member, projectId } = await requesterAndProject(context)
+  const { projectId: named, ...args } = BoardInput.parse(input)
+  // The operator's call re-checks its whole arm and may name a project the
+  // person can change; the lend's stays in this channel's project.
+  const operator = await resolveOperatorProjectCall(context, 'ticket_board_create', named)
+  if (!operator && named !== undefined && named !== context.channel.projectId) {
+    throw new Error('This agent may create a board only in the project that owns this channel. Omit projectId.')
+  }
+  const { member, projectId } = operator ?? await requesterAndProject(context)
   await assertProjectWriteDestination(context, {
     organizationId: member.organizationId,
     projectId,

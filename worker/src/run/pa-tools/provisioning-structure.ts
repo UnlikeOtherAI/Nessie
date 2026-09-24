@@ -7,6 +7,7 @@ import { buildVisibleChannelWhere, resolveActingMember, type ActingMember } from
 import { canReadPageVersions, recordPageVersionRead, resolveKnowledgeAccessViewers } from './knowledge.js'
 import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
+import { PROJECT_OPERATOR_TOOL_RUNNERS } from './project-operator-tools.js'
 import { runProjectCreateTool, runProjectListTool, runTeamCreateTool } from './team-structure.js'
 import { recordProjectRead } from './ticket-context.js'
 import {
@@ -172,8 +173,9 @@ type ProjectStructureToolRunner = (
 ) => Promise<ToolExecutionResult>
 
 /**
- * The projects, the teams inside them and what a project is made of,
- * dispatched by id. One table rather than a `case` each in the main
+ * The projects, the teams inside them and what a project is made of —
+ * with the operator verbs that set its boards' columns and document spaces
+ * up — dispatched by id. One table rather than a `case` each in the main
  * dispatcher, which is at its line cap.
  */
 export const PROJECT_STRUCTURE_TOOL_RUNNERS: Readonly<Record<string, ProjectStructureToolRunner>> = {
@@ -181,4 +183,5 @@ export const PROJECT_STRUCTURE_TOOL_RUNNERS: Readonly<Record<string, ProjectStru
   project_list: runProjectListTool,
   project_structure_read: runProjectStructureReadTool,
   team_create: runTeamCreateTool,
+  ...PROJECT_OPERATOR_TOOL_RUNNERS,
 }

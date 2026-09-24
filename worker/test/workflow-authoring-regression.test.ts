@@ -95,6 +95,9 @@ const createDelegatedContext = (input: {
         tenant: { organizationId },
       },
       agentId: delegatedAgentId,
+      // The Personal Assistant acting for its owner — the one delegate that
+      // reaches workflow_run off the project-operator arm.
+      agentKind: 'personal_assistant',
       channel: { id: channelId, organizationId },
       prisma,
       run: { id: randomUUID(), messageId, threadId },

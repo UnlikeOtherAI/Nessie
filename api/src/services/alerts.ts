@@ -19,6 +19,7 @@ const alertInclude = {
   actorUser: { select: { displayName: true } },
   actorAgent: { select: { name: true } },
   automaticMembershipRule: { select: { team: { select: { name: true } } } },
+  trigger: { select: { name: true } },
 } satisfies Prisma.UserAlertInclude
 
 type AlertWithRelations = Prisma.UserAlertGetPayload<{ include: typeof alertInclude }>
@@ -44,6 +45,8 @@ const mapAlertRecord = (alert: AlertWithRelations): UserAlertRecord => ({
   taskSetId: alert.taskSetId ?? null,
   knowledgePageId: alert.knowledgePageId ?? null,
   triggerId: alert.triggerId ?? null,
+  // Named only where the line names it; the other trigger kind stays generic.
+  ...(alert.kind === 'trigger_machine_access' ? { triggerName: alert.trigger?.name ?? null } : {}),
   automaticMembershipRuleId: alert.automaticMembershipRuleId ?? null,
   automaticMembershipRuleTeamName: alert.automaticMembershipRule?.team.name ?? null,
   boardSourceId: alert.boardSourceId ?? null,

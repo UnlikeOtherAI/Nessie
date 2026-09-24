@@ -15,6 +15,12 @@ import { workflowTriggerTypeRefusal } from './trigger-type-availability.js'
  * The one workflow-trigger write used by both the Admin route and an agent
  * acting for an owner. A workflow schedule belongs to an installation, not to
  * the template's designer-only trigger markers.
+ *
+ * `authorUserId` is the person who set it up — the owner clicking, or the
+ * person an agent was acting for — recorded in `config.authorUserId` exactly
+ * as an agent trigger's is. Authorship only: a workflow fire still runs as
+ * the installation with no person attached, and nothing reads this as the
+ * identity it acts as (docs/standards/ticket-work.md).
  */
 export const createWorkflowTrigger = async (
   prisma: PrismaClient,
@@ -27,11 +33,15 @@ export const createWorkflowTrigger = async (
     nextRunAt?: string
     type: AgentTriggerType
   },
+  trusted: { authorUserId?: string } = {},
 ): Promise<AgentTriggerRecord | null> => {
   // The surfaces refuse an agent-only type with its own sentence first; this
   // is the floor under them, before anything is read or written.
   if (workflowTriggerTypeRefusal(input.type)) return null
-  const clientConfig = stripServerOwnedTriggerConfig(input.config)
+  const clientConfig = {
+    ...stripServerOwnedTriggerConfig(input.config),
+    ...(trusted.authorUserId ? { authorUserId: trusted.authorUserId } : {}),
+  }
   const config = input.type === 'webhook'
     ? ensureWebhookConfig(clientConfig)
     : clientConfig

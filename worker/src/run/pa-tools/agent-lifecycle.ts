@@ -13,6 +13,8 @@ import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { requireOwnerMember, resolveActingMember } from './access.js'
+import { resolveOperatorAwareMember } from './project-operator.js'
+import { assertOperatorTriggerUpdateScope } from './provisioning-operator-trigger.js'
 import { emitWorkerAuditEvent } from '../execute/policy.js'
 import { describeTicketTriggerScope } from './provisioning-ticket-trigger.js'
 import { formatTriggerMarkdownLink } from './tool-output.js'
@@ -69,7 +71,7 @@ export const runAgentTriggerUpdateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = AgentTriggerUpdateInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member, operatorProjectId } = await resolveOperatorAwareMember(context)
   requireOwnerMember(member, 'update another agent’s trigger')
   const trigger = await context.prisma.agentTrigger.findFirst({
     where: {
@@ -84,6 +86,9 @@ export const runAgentTriggerUpdateTool = async (
   )) {
     throw new Error('Trigger not found.')
   }
+  // On the operator face: a trigger of this project, of itself or an agent in
+  // it, and staying in this project.
+  if (operatorProjectId) await assertOperatorTriggerUpdateScope(context, { args, operatorProjectId, trigger })
   // A ticket trigger's refusal names its fields (`TriggerConfigRefusalError`),
   // and travels to the model as it is; every other type answers null.
   const updated = await updateAgentTrigger(context.prisma, {

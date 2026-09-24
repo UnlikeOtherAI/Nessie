@@ -74,6 +74,26 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // A ticket trigger an agent set up for this person, whose machine access
+      // is still to be set up by the machines' owner. It surfaces while the
+      // trigger's agent is live and the person can still open the trigger —
+      // the Triggers routes are an organisation owner's — so a demoted owner
+      // keeps no doorway into it. Deletion cascades the row away. T4's
+      // machine-access section adds "and none is set up yet" here, exactly as
+      // trigger_health revalidates its trigger's health.
+      kind: 'trigger_machine_access',
+      AND: [
+        { trigger: { is: { type: 'ticket_changed', agent: { is: { deletedAt: null } } } } },
+        {
+          user: {
+            organizationMembers: {
+              some: { deactivatedAt: null, organizationId: input.organizationId, role: 'owner' },
+            },
+          },
+        },
+      ],
+    },
+    {
       // An automatic-membership rule that stopped granting. Revalidated against
       // the rule's live health exactly as trigger_health revalidates its
       // trigger: the moment an administrator re-authorizes it, the bell item

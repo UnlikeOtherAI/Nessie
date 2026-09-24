@@ -48,6 +48,10 @@ export const UserAlertKindSchema = z.enum([
   // sends an unparseable realtime alert to an older replica.
   'local_inference_health',
   'task_set_health',
+  // An agent set up a ticket trigger for this person, and its machine access
+  // is still the machines' owner's to set up. Written in the deploy that adds
+  // it: nothing pushes or streams it, so no older replica is handed one.
+  'trigger_machine_access',
 ])
 export type UserAlertKind = z.infer<typeof UserAlertKindSchema>
 
@@ -83,6 +87,10 @@ export const UserAlertRecordSchema = z.object({
   taskSetId: z.string().uuid().nullable().optional(),
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
+  // The trigger's own name, for the one kind whose line names it
+  // ("Set up machine access for <trigger>"). Optional: older rows and every
+  // other kind carry none.
+  triggerName: z.string().nullable().optional(),
   // An automatic-membership health alert is actionable only when the bell can
   // name the exact rule that failed. The optional shape preserves old rows
   // created before this relationship was projected through the alert API.

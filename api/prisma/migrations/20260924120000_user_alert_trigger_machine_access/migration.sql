@@ -1,0 +1,12 @@
+-- The bell kind a ticket trigger an agent set up for someone leaves with that
+-- person: "Set up machine access for <trigger>"
+-- (docs/plans/2026-09-23-ticket-driven-agents/setup-and-ui.md → "The
+-- project-operator capability").
+--
+-- Unlike `knowledge_shared`, this value is written in the same deploy that
+-- adds it, and that is safe: nothing publishes it — no push, no realtime
+-- `alert.created` frame — and a replica of the previous build selects bell
+-- rows only through its own `visibleUserAlertWhere`, which has no arm for this
+-- kind, so it never reads one. The value must exist before the new build
+-- writes it, and `prisma migrate deploy` runs before the swap.
+ALTER TYPE "UserAlertKind" ADD VALUE IF NOT EXISTS 'trigger_machine_access';
