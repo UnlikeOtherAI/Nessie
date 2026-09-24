@@ -1,4 +1,8 @@
-import type { PreparedStandingPolicyResponse, PresentedAgentCardBlock } from '@nessie/schemas'
+import type {
+  PreparedStandingPolicyResponse,
+  PresentedAgentCardBlock,
+  TriggerMachineAccessView,
+} from '@nessie/schemas'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
@@ -40,6 +44,44 @@ import { formatTimestamp } from './trigger-presentation'
 const LAST_WAKES = 5
 
 const noop = () => {}
+
+/**
+ * Where the author answers the card still out, as the server knows it — so a
+ * reload says the same as the page that prepared it: in the conversation the
+ * card was posted to, or nowhere lasting, because it was prepared on this page
+ * and the page was left before it was confirmed. `showPrepare` offers the
+ * prepare here when the section's own "Change machine access…" is not shown.
+ */
+const CardLocationLine = ({
+  location,
+  onPrepare,
+  showPrepare,
+}: {
+  location: TriggerMachineAccessView['cardLocation']
+  onPrepare: () => void
+  showPrepare: boolean
+}) => location?.where === 'conversation' ? (
+  <p className="text-xs text-[color:var(--tx3)]" data-testid="machine-access-card-location">
+    Confirm the card in your conversation with the Agent Designer.{' '}
+    <Link
+      className="font-semibold text-[color:var(--lnk)] hover:underline"
+      to={`/channels/${encodeURIComponent(location.channelId)}/threads/${encodeURIComponent(location.threadId)}`}
+    >
+      Open the conversation
+    </Link>
+  </p>
+) : (
+  <div className="grid justify-items-start gap-2" data-testid="machine-access-card-location">
+    <p className="text-xs text-[color:var(--tx3)]">
+      The card prepared here was not confirmed before you left. Prepare it again to confirm it.
+    </p>
+    {showPrepare ? (
+      <button className="admin-button admin-button-secondary" onClick={onPrepare} type="button">
+        Prepare it again…
+      </button>
+    ) : null}
+  </div>
+)
 
 export const MachineAccessSection = ({
   deliveries,
@@ -140,13 +182,12 @@ export const MachineAccessSection = ({
                   ) : null}
                 </div>
               ) : null}
-              {view.viewerIsAuthor && view.state === 'awaiting_confirmation' && !prepared ? (
-                <p className="text-xs text-[color:var(--tx3)]">
-                  Confirm the card in your conversation with the Agent Designer, or{' '}
-                  <button className="font-semibold text-[color:var(--lnk)] hover:underline" onClick={() => setSetupOpen(true)} type="button">
-                    prepare it again here
-                  </button>.
-                </p>
+              {view.viewerIsAuthor && !prepared && (view.state === 'awaiting_confirmation' || view.pendingCard) ? (
+                <CardLocationLine
+                  location={view.cardLocation}
+                  onPrepare={() => setSetupOpen(true)}
+                  showPrepare={!canSetUp}
+                />
               ) : null}
               <FormError>{endError}</FormError>
 

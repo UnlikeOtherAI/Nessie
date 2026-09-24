@@ -50,6 +50,7 @@ export const TICKET_WORK_STATUS_DOT: Record<TicketWorkStatus, string> = {
 export const TICKET_WORK_STATE_REASON_LABEL: Record<TicketWorkStateReason, string> = {
   queued_no_free_machine: 'every machine is busy',
   queued_machines_offline: 'the machines are offline',
+  queued_daily_limit: 'today’s spending limit is used up, until 00:00 UTC',
   machine_access_not_set_up: 'waiting for machine access',
   machine_access_suspended: 'machine access is paused',
   machine_access_ended: 'machine access ended',
@@ -124,6 +125,7 @@ const LIMIT_REMEDY = 'Move the ticket out of and back into a start-work column t
 const machineWaitLine = (record: TicketWorkChipRecord): string | null => {
   if (record.status === 'queued') {
     const why = record.stateReason === 'queued_no_free_machine' || record.stateReason === 'queued_machines_offline'
+      || record.stateReason === 'queued_daily_limit'
       ? TICKET_WORK_STATE_REASON_LABEL[record.stateReason]
       : null
     if (record.queuePosition) return `Queued: position ${record.queuePosition}${why ? ` — ${why}` : ''}.`

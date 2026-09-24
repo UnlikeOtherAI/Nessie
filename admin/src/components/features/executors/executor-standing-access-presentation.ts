@@ -25,6 +25,7 @@ export const STANDING_ACCESS_STATE: Record<ExecutorStandingPolicyRow['status'], 
 const SUSPENDED_BECAUSE: Record<ExecutorStandingPolicySuspendedReason, string> = {
   trigger_changed: 'The trigger was edited',
   descriptor_changed: 'The reviewed setup of one of its machines changed',
+  agent_changed: 'The agent’s instructions, model, tools or connectors were edited',
 }
 
 type StateRow = Pick<ExecutorStandingPolicyRow, 'authorName' | 'status' | 'suspendedReason'>

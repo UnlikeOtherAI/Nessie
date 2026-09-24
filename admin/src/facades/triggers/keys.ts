@@ -5,6 +5,8 @@
 
 export const triggerKeys = {
   all: ['triggers'] as const,
+  /** One trigger by id: its own page, for a viewer who cannot read the whole list. */
+  detail: (triggerId: string | undefined) => ['triggers', 'detail', triggerId] as const,
   // An absent id keeps its slot rather than collapsing to a placeholder, so a
   // disabled render and an enabled one agree on cache identity.
   history: (triggerId: string | undefined, limit: number) =>

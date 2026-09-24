@@ -175,10 +175,22 @@ door says it paused access instead.
     that posted it, and a route has none. The section is on the trigger's
     own page, which only owners and the author reach, so the card is never
     shown in a project room; the Designer's tool still posts it to the
-    author's own DM. The reads are `GET /api/triggers/:triggerId/machine-access`
+    author's own DM. An owner reads the page from the Triggers list; the
+    author, owner or not, reads it through `GET /api/triggers/:triggerId`
+    and its `/history`, which answer an owner or the ticket trigger's
+    `config.authorUserId` and nobody else, and sees it read-only — no Run
+    now, Edit, Pause or Delete — with the Machine access section working as
+    usual. After a reload the section says where a card still out can be
+    answered (`cardLocation`): the author's conversation it was posted to,
+    linked, or "prepared here and not confirmed", with the prepare offered
+    again. The reads are `GET /api/triggers/:triggerId/machine-access`
     (and `/machines` for the author's form), the executor page's
     `GET /api/executors/:executorId/standing-policies`, and End is
-    `POST /api/standing-policies/:policyId/end`.
+    `POST /api/standing-policies/:policyId/end`. A save of the trigger that
+    would pause live access says so above Save in the editor, and
+    `PUT /api/triggers/:triggerId` answers what it did (`machineAccess`:
+    `suspended` with the author and fields, or `limits_lowered`) for the
+    page to say after it.
 
 ## Binding at each wake
 

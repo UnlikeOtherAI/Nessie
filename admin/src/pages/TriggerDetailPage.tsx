@@ -10,8 +10,8 @@ import {
   getTriggerTone,
   getTriggerTypeLabel,
 } from '../components/features/triggers/trigger-presentation'
+import { machineAccessSavedLine } from '../components/features/triggers/ticket-trigger-machine-access-edit'
 import { ConfirmDialog } from '../components/shared/ConfirmDialog'
-import { OwnerGate } from '../components/shared/OwnerGate'
 import { QueryState } from '../components/shared/QueryState'
 import { ScreenHeader } from '../components/shared/ScreenHeader'
 import type { PageHeaderAction } from '../components/shared/ResponsivePageHeader'
@@ -24,7 +24,9 @@ import {
   usePauseTrigger,
   useReauthorizeTrigger,
   useResumeTrigger,
+  useTrigger,
   useTriggers,
+  type SavedAgentTrigger,
 } from '../facades/triggers/hooks'
 
 /**
@@ -35,13 +37,22 @@ import {
  * screen's one header rather than in a second action row inside the body —
  * "Run now" is the primary, and Delete sits in the overflow so it cannot be
  * hit on the way to it.
+ *
+ * An owner reads it from the Triggers list. Anyone else reads the one trigger
+ * by id, which the server answers only to a ticket trigger's author — so the
+ * person who set it up reaches its Machine access section, the one thing on
+ * the page they can act on — and the page is read-only for them: no header
+ * controls and no editor.
  */
 export const TriggerDetailPage = () => {
   const navigate = useNavigate()
   const { triggerId } = useParams<{ triggerId?: string }>()
   const isOwner = useIsOwner()
   const triggersQuery = useTriggers(isOwner)
-  const trigger = (triggersQuery.data ?? []).find((candidate) => candidate.id === triggerId)
+  const triggerQuery = useTrigger(triggerId, !isOwner)
+  const trigger = isOwner
+    ? (triggersQuery.data ?? []).find((candidate) => candidate.id === triggerId)
+    : triggerQuery.data?.id === triggerId ? triggerQuery.data : undefined
   const { agents, channels, registry, workflowInstallations, workflowTemplates } =
     useTriggerRegistry()
 
@@ -53,11 +64,14 @@ export const TriggerDetailPage = () => {
   const [editorOpen, setEditorOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // What the last save did to the trigger's machine access, said on the page it returns to.
+  const [saved, setSaved] = useState<SavedAgentTrigger['machineAccess'] | null>(null)
 
   // Reset transient state when the screen swaps to another trigger.
   useEffect(() => {
     setConfirmDeleteOpen(false)
     setActionError(null)
+    setSaved(null)
   }, [triggerId])
 
   const backToList = () => void navigate('/agents/triggers')
@@ -68,18 +82,18 @@ export const TriggerDetailPage = () => {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <ScreenHeader backLabel="Back to Triggers" onBack={backToList} title="Trigger" />
-        <OwnerGate>
-          <QueryState
-            className="flex flex-1 items-center justify-center"
-            emptyLabel="This trigger could not be found. It may have been deleted."
-            errorLabel="Triggers could not be loaded."
-            isEmpty
-            loadingLabel="Loading trigger…"
-            query={triggersQuery}
-          >
-            {() => null}
-          </QueryState>
-        </OwnerGate>
+        <QueryState
+          className="flex flex-1 items-center justify-center"
+          emptyLabel="This trigger could not be found. It may have been deleted."
+          errorLabel={isOwner
+            ? 'Triggers could not be loaded.'
+            : 'This trigger could not be opened. Only owners and the person who set it up can open it.'}
+          isEmpty
+          loadingLabel="Loading trigger…"
+          query={isOwner ? triggersQuery : triggerQuery}
+        >
+          {() => null}
+        </QueryState>
       </div>
     )
   }
@@ -150,7 +164,8 @@ export const TriggerDetailPage = () => {
     })
   }
 
-  const actions: PageHeaderAction[] = [
+  // Read-only for anyone but an owner: the server refuses each of these to them.
+  const actions: PageHeaderAction[] = !isOwner ? [] : [
     {
       icon: faTrash,
       id: 'delete-trigger',
@@ -215,67 +230,89 @@ export const TriggerDetailPage = () => {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-[var(--page-gutter)] py-4">
-        <OwnerGate>
-          <div className="grid gap-4">
-            {healthMessage ? (
-              <div
-                className="max-w-3xl rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2.5"
-                role="status"
-              >
-                <div className="text-sm font-medium text-[color:var(--danger-text)]">
-                  This schedule has stopped
-                </div>
-                <p className="mt-1 text-sm text-[color:var(--tx2)]">{healthMessage}</p>
-                {needsTakeOver ? (
-                  <button
-                    className="admin-button admin-button-secondary mt-2"
-                    disabled={reauthorizeTrigger.isPending}
-                    onClick={() => reauthorize(true)}
-                    type="button"
-                  >
-                    Take over and reauthorize
-                  </button>
-                ) : null}
+        <div className="grid gap-4">
+          {!isOwner ? (
+            <p className="max-w-3xl text-sm text-[color:var(--tx3)]" data-testid="trigger-read-only">
+              Only an organisation owner can change this trigger. You can set up its machine access below.
+            </p>
+          ) : null}
+          {healthMessage ? (
+            <div
+              className="max-w-3xl rounded-lg border border-[var(--danger-border)] bg-[var(--danger-soft)] px-3 py-2.5"
+              role="status"
+            >
+              <div className="text-sm font-medium text-[color:var(--danger-text)]">
+                This schedule has stopped
               </div>
-            ) : null}
+              <p className="mt-1 text-sm text-[color:var(--tx2)]">{healthMessage}</p>
+              {needsTakeOver ? (
+                <button
+                  className="admin-button admin-button-secondary mt-2"
+                  disabled={reauthorizeTrigger.isPending}
+                  onClick={() => reauthorize(true)}
+                  type="button"
+                >
+                  Take over and reauthorize
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
-            {fireTrigger.isSuccess && !fireTrigger.isPending ? (
-              <Notice className="max-w-3xl" radius="lg" size="sm" tone="success">
-                Trigger fired — the run appears under recent deliveries below.
-              </Notice>
-            ) : null}
-            {actionError ? (
-              <Notice className="max-w-3xl" radius="lg" size="sm" tone="danger">
-                {actionError}
-              </Notice>
-            ) : null}
+          {fireTrigger.isSuccess && !fireTrigger.isPending ? (
+            <Notice className="max-w-3xl" radius="lg" size="sm" tone="success">
+              Trigger fired — the run appears under recent deliveries below.
+            </Notice>
+          ) : null}
+          {actionError ? (
+            <Notice className="max-w-3xl" radius="lg" size="sm" tone="danger">
+              {actionError}
+            </Notice>
+          ) : null}
+          {saved ? (
+            <Notice
+              className="max-w-3xl"
+              data-testid="trigger-saved-machine-access"
+              radius="lg"
+              role="status"
+              size="sm"
+              tone={saved.kind === 'suspended' ? 'warning' : 'success'}
+            >
+              {machineAccessSavedLine(saved)}
+            </Notice>
+          ) : null}
 
-            <TriggerDetail registry={registry} trigger={trigger} />
-          </div>
-        </OwnerGate>
+          <TriggerDetail registry={registry} trigger={trigger} />
+        </div>
       </div>
 
-      <TriggerEditorDialog
-        agents={agents}
-        channels={channels}
-        onClose={() => setEditorOpen(false)}
-        onSaved={() => setEditorOpen(false)}
-        open={editorOpen}
-        trigger={trigger}
-        workflowInstallations={workflowInstallations}
-        workflowTemplates={workflowTemplates}
-      />
+      {isOwner ? (
+        <>
+          <TriggerEditorDialog
+            agents={agents}
+            channels={channels}
+            onClose={() => setEditorOpen(false)}
+            onSaved={(next) => {
+              setEditorOpen(false)
+              setSaved(next.machineAccess ?? null)
+            }}
+            open={editorOpen}
+            trigger={trigger}
+            workflowInstallations={workflowInstallations}
+            workflowTemplates={workflowTemplates}
+          />
 
-      <ConfirmDialog
-        body="Deleting a trigger cannot be undone. It refuses when the trigger has delivery history — pause it instead."
-        confirmLabel="Delete trigger"
-        destructive
-        onCancel={() => setConfirmDeleteOpen(false)}
-        onConfirm={remove}
-        open={confirmDeleteOpen}
-        pending={deleteTrigger.isPending}
-        title="Delete this trigger?"
-      />
+          <ConfirmDialog
+            body="Deleting a trigger cannot be undone. It refuses when the trigger has delivery history — pause it instead."
+            confirmLabel="Delete trigger"
+            destructive
+            onCancel={() => setConfirmDeleteOpen(false)}
+            onConfirm={remove}
+            open={confirmDeleteOpen}
+            pending={deleteTrigger.isPending}
+            title="Delete this trigger?"
+          />
+        </>
+      ) : null}
     </div>
   )
 }
