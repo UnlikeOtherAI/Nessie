@@ -14,6 +14,11 @@ import {
   EXECUTOR_HEARTBEAT_FRESHNESS_MS,
   expireStaleExecutorHeartbeats,
 } from './executor-liveness.js'
+import {
+  enqueueTicketWorkForMachineInTransaction,
+  executorWasOffline,
+  intakeTicketWorkHeartbeatInTransaction,
+} from './ticket-work-session-intake.js'
 
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex')
 
@@ -191,11 +196,12 @@ export const claimExecutorConnection = async (
       'Executor challenge is invalid or has already been used.',
     )
   }
+  const claimedAt = new Date()
   const updated = await tx.executor.update({
     where: { id: executor.id },
     data: {
       activeConnectionEpoch: { increment: 1 },
-      lastSeenAt: new Date(),
+      lastSeenAt: claimedAt,
       status: executor.status === 'offline' ? 'online' : executor.status,
       statusDetail: executor.status === 'offline'
         ? 'Authenticated executor daemon connected.'
@@ -205,6 +211,12 @@ export const claimExecutorConnection = async (
     },
     select: { activeConnectionEpoch: true, status: true },
   })
+  // A machine back online resumes the ticket work waiting for it and takes queued work.
+  if (updated.status === 'online') {
+    await enqueueTicketWorkForMachineInTransaction(tx, {
+      cameOnline: executorWasOffline(executor, claimedAt), executorId: executor.id, now: claimedAt,
+    })
+  }
   return { connectionEpoch: updated.activeConnectionEpoch.toString(), status: updated.status }
 })
 
@@ -257,6 +269,10 @@ export const reportExecutorHeartbeat = async (
     )) {
       throw new ExecutorError(EXECUTOR_ERROR_CODES.DAEMON_PROOF_INVALID, 'Executor proof is invalid.')
     }
+    // The report this one replaces, for the session intake to compare against.
+    const previousLocalMcp = input.localMcp === undefined
+      ? null
+      : (await tx.executor.findUnique({ where: { id: executor.id }, select: { localMcp: true } }))?.localMcp ?? null
     const updated = await tx.executor.update({
       where: { id: executor.id },
       data: {
@@ -277,8 +293,19 @@ export const reportExecutorHeartbeat = async (
       select: { activeConnectionEpoch: true, status: true },
     })
     // The heartbeat intake: a ticket working on this machine past one of its
-    // limits stops here, and its sessions' closes ride this very answer.
+    // limits stops here, and its sessions' closes ride this very answer; then
+    // its sessions' turns, interruptions and closes wake their tickets, and a
+    // machine back online resumes the work waiting for it.
     await enforceTicketWorkLimitsInTransaction(tx, { now, where: { executorId: executor.id, status: 'active' } })
+    if (updated.status === 'online') {
+      await intakeTicketWorkHeartbeatInTransaction(tx, {
+        cameOnline: executorWasOffline(executor, now),
+        executorId: executor.id,
+        ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }),
+        now,
+        previousLocalMcp,
+      })
+    }
     const codingSessionClose = await takeExecutorCodingSessionClosesInTransaction(tx, {
       executorId: executor.id, ...(input.localMcp === undefined ? {} : { localMcp: input.localMcp }), now,
     })

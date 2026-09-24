@@ -15,6 +15,7 @@ import {
   queueTicketWorkInTransaction,
   standingPolicyPoolReason,
 } from './executor-standing-policy-pool.js'
+import { renumberTicketWorkQueueInTransaction } from './executor-standing-policy-queue.js'
 import { syncTicketWorkClock } from './ticket-work-clock.js'
 import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-records.js'
 
@@ -210,6 +211,8 @@ const handOverTicketWork = async (
     })
   }
   await queueRecords(tx, active, { by: requestedByUserId, policyId: toPolicyId })
+  // Records already queued joined the new policy's queue too: every place is told again.
+  await renumberTicketWorkQueueInTransaction(tx, toPolicyId)
 }
 
 export const endStandingPolicyInTransaction = async (

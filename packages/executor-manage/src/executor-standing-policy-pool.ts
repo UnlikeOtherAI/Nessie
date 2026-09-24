@@ -11,6 +11,12 @@ import {
 import { reportedExecutorCodingSessions } from './executor-coding-session-closes.js'
 import { executorCodingSessionOwnerKey } from './executor-coding-session-owner.js'
 import { executorHeartbeatCutoff } from './executor-liveness.js'
+import {
+  compareTicketWorkQueueEntries,
+  lockTicketWorkQueue,
+  queuedTicketWorkOutranks,
+  renumberTicketWorkQueueInTransaction,
+} from './executor-standing-policy-queue.js'
 import { syncTicketWorkClock } from './ticket-work-clock.js'
 
 /**
@@ -53,8 +59,6 @@ export type TicketWorkMachinePlacement =
     reason: Extract<TicketWorkStateReason, 'machine_access_not_set_up' | 'machine_access_suspended'>
   }
 
-const PRIORITY_RANK: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
-
 /** Lock one policy's pool, then each of its machines, always in the same order. */
 export const lockStandingPolicyPool = async (
   tx: Prisma.TransactionClient,
@@ -73,8 +77,8 @@ export const lockStandingPolicyPool = async (
 
 /**
  * The dispatcher, one idempotent job (`ticket-work.sweep`): every transaction
- * that may free a machine enqueues it with a short idempotency window. Nothing
- * subscribes to it until the sweep lands (T3), and the dequeue is T5's.
+ * that may free a machine enqueues it with a short idempotency window, and the
+ * sweep's dequeue takes it from there (T5).
  */
 export const enqueueTicketWorkSweep = async (
   tx: Pick<Prisma.TransactionClient, '$executeRaw'>,
@@ -88,12 +92,18 @@ export const enqueueTicketWorkSweep = async (
   })
 }
 
-type MachineState = 'free' | 'busy' | 'offline'
+/**
+ * How one pool machine stands for one record: `held` by another record's work
+ * (active on it, or waiting for it to reconnect), at this ticket's own
+ * session `quota`, `offline`, or `free`. Only `held` and `offline` keep the
+ * machine from every record; a quota is this ticket's alone.
+ */
+export type TicketWorkMachineState = 'free' | 'held' | 'quota' | 'offline'
 
 const machineState = async (
   tx: Prisma.TransactionClient,
   input: { executorId: string; maxLiveSessions: number; now: Date; ownerKey: string; workId: string },
-): Promise<MachineState> => {
+): Promise<TicketWorkMachineState> => {
   const executor = await tx.executor.findUnique({
     where: { id: input.executorId },
     select: { lastSeenAt: true, localMcp: true, removedAt: true, status: true },
@@ -107,10 +117,10 @@ const machineState = async (
       status: { in: [...TICKET_WORK_MACHINE_HOLDING_STATUSES] },
     },
   })
-  if (held > 0) return 'busy'
+  if (held > 0) return 'held'
   const live = reportedExecutorCodingSessions(executor.localMcp)
     .filter((session) => session.ownerKey === input.ownerKey && session.status !== 'closed').length
-  return live < input.maxLiveSessions ? 'free' : 'busy'
+  return live < input.maxLiveSessions ? 'free' : 'quota'
 }
 
 /** Where a queued record stands among its policy's queue: priority, then age. */
@@ -122,11 +132,9 @@ export const ticketWorkQueuePosition = async (
     where: { policyId: input.policyId, status: 'queued' },
     select: { enqueuedAt: true, id: true, task: { select: { priority: true } } },
   })
-  const order = queued.sort((left, right) => (
-    (PRIORITY_RANK[left.task.priority] ?? 9) - (PRIORITY_RANK[right.task.priority] ?? 9)
-    || (left.enqueuedAt?.getTime() ?? 0) - (right.enqueuedAt?.getTime() ?? 0)
-    || left.id.localeCompare(right.id)
-  ))
+  const order = queued
+    .map((entry) => ({ enqueuedAt: entry.enqueuedAt, id: entry.id, priority: entry.task.priority }))
+    .sort(compareTicketWorkQueueEntries)
   const index = order.findIndex((entry) => entry.id === input.workId)
   return index < 0 ? order.length + 1 : index + 1
 }
@@ -134,7 +142,10 @@ export const ticketWorkQueuePosition = async (
 /**
  * Queue one record under a policy: its reason, its place, and every queued
  * record of the policy renumbered. Read the pool first: all offline is its
- * own reason, which the chip says.
+ * own reason, which the chip says. A record joins the queue at the moment it
+ * first did (`enqueuedAt`), or at `joinedAt` when the caller names an earlier
+ * one — work taken off a machine that stayed away joins as of its start, ahead
+ * of tickets that never began.
  */
 export const queueTicketWorkInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -143,16 +154,18 @@ export const queueTicketWorkInTransaction = async (
     reason: Extract<TicketWorkStateReason, 'queued_no_free_machine' | 'queued_machines_offline'>
     workId: string
     now?: Date
+    joinedAt?: Date
   },
 ): Promise<number> => {
   const now = input.now ?? new Date()
+  await lockTicketWorkQueue(tx, input.policyId)
   const current = await tx.agentTicketWork.findUniqueOrThrow({
     where: { id: input.workId }, select: { enqueuedAt: true },
   })
   await tx.agentTicketWork.update({
     where: { id: input.workId },
     data: {
-      enqueuedAt: current.enqueuedAt ?? now,
+      enqueuedAt: current.enqueuedAt ?? input.joinedAt ?? now,
       policyId: input.policyId,
       stateReason: input.reason,
       status: 'queued',
@@ -160,16 +173,8 @@ export const queueTicketWorkInTransaction = async (
   })
   // Queued work waits for a machine: its hours clock pauses.
   await syncTicketWorkClock(tx, input.workId, now)
-  const queued = await tx.agentTicketWork.findMany({
-    where: { policyId: input.policyId, status: 'queued' }, select: { id: true },
-  })
-  let position = 0
-  for (const entry of queued) {
-    const at = await ticketWorkQueuePosition(tx, { policyId: input.policyId, workId: entry.id })
-    await tx.agentTicketWork.update({ where: { id: entry.id }, data: { queuePosition: at } })
-    if (entry.id === input.workId) position = at
-  }
-  return position
+  const places = await renumberTicketWorkQueueInTransaction(tx, input.policyId)
+  return places.get(input.workId) ?? 0
 }
 
 /** How a policy's pool stands right now, for a record the caller is queueing. */
@@ -194,7 +199,10 @@ export const placeTicketWorkOnMachineInTransaction = async (
   const now = input.now ?? new Date()
   const work = await tx.agentTicketWork.findUniqueOrThrow({
     where: { id: input.workId },
-    select: { agentId: true, executorId: true, id: true, taskId: true, triggerId: true },
+    select: {
+      agentId: true, enqueuedAt: true, executorId: true, id: true, taskId: true, triggerId: true,
+      task: { select: { priority: true } },
+    },
   })
   const policy = work.triggerId
     ? await tx.executorStandingPolicy.findFirst({
@@ -212,12 +220,6 @@ export const placeTicketWorkOnMachineInTransaction = async (
     return { kind: 'waiting', policyId: policy?.id ?? null, reason }
   }
   const pool = await lockStandingPolicyPool(tx, policy.id)
-  const profile = StandingPolicyHostProfileSchema.safeParse(policy.hostProfile)
-  const ownerFor = (executorId: string) => executorCodingSessionOwnerKey(executorId, {
-    actorUserId: policy.authorUserId,
-    agentId: work.agentId,
-    contextId: ticketWorkCodingSessionContext(policy.id, work.taskId),
-  })
   // A record coming back to work tries the machine it last worked on first:
   // its sessions are there.
   const ordered = [
@@ -226,27 +228,91 @@ export const placeTicketWorkOnMachineInTransaction = async (
   ]
   let busy = 0
   let offline = 0
+  let reserved = false
+  // Where this record would stand in the line, had it joined it now (T5).
+  const entry = { enqueuedAt: work.enqueuedAt ?? now, id: work.id, priority: work.task.priority }
   for (const row of ordered) {
-    const maxLiveSessions = profile.success
-      ? profile.data.machines.find((machine) => machine.executorId === row.executorId)?.maxLiveSessionsPerOwner ?? 0
-      : 0
-    const state = await machineState(tx, {
-      executorId: row.executorId, maxLiveSessions, now, ownerKey: ownerFor(row.executorId), workId: work.id,
-    })
-    if (state === 'free') {
-      await tx.agentTicketWork.update({
-        where: { id: work.id },
-        data: {
-          executorId: row.executorId, policyId: policy.id, queuePosition: null, stateReason: null, status: 'active',
-        },
-      })
-      await syncTicketWorkClock(tx, work.id, now)
+    const state = await machineStateFor(tx, { executorId: row.executorId, now, policy, work })
+    // A free machine that is not this record's own goes to queued work ahead of it first.
+    const taken = state === 'free' && row.executorId !== work.executorId
+      && await queuedTicketWorkOutranks(tx, { executorId: row.executorId, record: entry })
+    if (state === 'free' && !taken) {
+      await assignTicketWork(tx, { executorId: row.executorId, now, policyId: policy.id, workId: work.id })
       return { executorId: row.executorId, kind: 'assigned', policyId: policy.id }
     }
-    if (state === 'busy') busy += 1
-    else offline += 1
+    reserved ||= taken
+    if (state === 'offline') offline += 1
+    else busy += 1
   }
   const reason = busy === 0 ? 'queued_machines_offline' as const : 'queued_no_free_machine' as const
   const position = await queueTicketWorkInTransaction(tx, { now, policyId: policy.id, reason, workId: work.id })
+  // A free machine left to the queue: the dispatcher places whoever is first on it.
+  if (reserved) await enqueueTicketWorkSweep(tx, now)
   return { busy, kind: 'queued', offline, policyId: policy.id, position, reason }
+}
+
+type PlacingPolicy = { authorUserId: string; hostProfile: unknown; id: string }
+type PlacedWork = { agentId: string; id: string; taskId: string }
+
+/** One pool machine for this record, by its pinned quota for the ticket's own owner key. */
+const machineStateFor = (
+  tx: Prisma.TransactionClient,
+  input: { executorId: string; now: Date; policy: PlacingPolicy; work: PlacedWork },
+): Promise<TicketWorkMachineState> => {
+  const profile = StandingPolicyHostProfileSchema.safeParse(input.policy.hostProfile)
+  const maxLiveSessions = profile.success
+    ? profile.data.machines.find((machine) => machine.executorId === input.executorId)?.maxLiveSessionsPerOwner ?? 0
+    : 0
+  const ownerKey = executorCodingSessionOwnerKey(input.executorId, {
+    actorUserId: input.policy.authorUserId,
+    agentId: input.work.agentId,
+    contextId: ticketWorkCodingSessionContext(input.policy.id, input.work.taskId),
+  })
+  return machineState(tx, {
+    executorId: input.executorId, maxLiveSessions, now: input.now, ownerKey, workId: input.work.id,
+  })
+}
+
+/** Pin the record to the machine, `active`, its hours clock running, and its policy's queue renumbered. */
+const assignTicketWork = async (
+  tx: Prisma.TransactionClient,
+  input: { executorId: string; now: Date; policyId: string; workId: string },
+): Promise<void> => {
+  await lockTicketWorkQueue(tx, input.policyId)
+  await tx.agentTicketWork.update({
+    where: { id: input.workId },
+    data: {
+      executorId: input.executorId, policyId: input.policyId, queuePosition: null, stateReason: null, status: 'active',
+    },
+  })
+  await syncTicketWorkClock(tx, input.workId, input.now)
+  await renumberTicketWorkQueueInTransaction(tx, input.policyId)
+}
+
+/**
+ * The dequeue's placement (T5): one queued record onto one named machine of
+ * its live policy's pool, under the pool's locks, or nothing at all. The
+ * dispatcher chose the machine and the record; this says whether the machine
+ * is still free for it — `held` or `offline` for everyone, `quota` for this
+ * ticket alone — and pins it when it is.
+ */
+export const placeTicketWorkOnExecutorInTransaction = async (
+  tx: Prisma.TransactionClient,
+  input: { executorId: string; now?: Date; workId: string },
+): Promise<TicketWorkMachineState | 'not_live'> => {
+  const now = input.now ?? new Date()
+  const work = await tx.agentTicketWork.findUniqueOrThrow({
+    where: { id: input.workId }, select: { agentId: true, id: true, policyId: true, status: true, taskId: true },
+  })
+  const policy = work.policyId
+    ? await tx.executorStandingPolicy.findUnique({
+        where: { id: work.policyId }, select: { authorUserId: true, hostProfile: true, id: true, status: true },
+      })
+    : null
+  if (!policy || policy.status !== 'live' || work.status !== 'queued') return 'not_live'
+  const pool = await lockStandingPolicyPool(tx, policy.id)
+  if (!pool.some((row) => row.executorId === input.executorId)) return 'not_live'
+  const state = await machineStateFor(tx, { executorId: input.executorId, now, policy, work })
+  if (state === 'free') await assignTicketWork(tx, { executorId: input.executorId, now, policyId: policy.id, workId: work.id })
+  return state
 }

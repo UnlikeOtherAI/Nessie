@@ -53,6 +53,9 @@ const controlHarness = () => {
           release ??= await acquire()
           return 1
         },
+        // A claim asks whether ticket work waits for the machine: none here.
+        agentTicketWork: { count: async () => 0 },
+        executorStandingPolicyExecutor: { count: async () => 0 },
         executor: {
           findUnique: async () => ({ ...state }),
           update: async ({ data }: {
