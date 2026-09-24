@@ -56,10 +56,11 @@ const describeAlert = (alert: UserAlertRecord): string => {
   }
   if (alert.kind === 'trigger_machine_access') {
     // An agent set this trigger up for the reader; its machines are the one
-    // thing no agent may set up, and the row opens the trigger where they are.
-    return alert.triggerName
-      ? `Set up machine access for ${alert.triggerName}`
-      : 'Set up machine access for a ticket trigger'
+    // thing no agent may set up. True today, before the trigger page has its
+    // Machine access section: the owner sets it up there or with the Designer.
+    const trigger = alert.triggerName ?? 'A ticket trigger'
+    return `${trigger} needs machine access: ask the machines’ owner to set it up, `
+      + 'from the trigger’s page or the Agent Designer'
   }
   if (alert.kind === 'automatic_membership_health') {
     const team = alert.automaticMembershipRuleTeamName

@@ -123,7 +123,7 @@ export const operatorTriggerFollowUp = async (
   })
   return [
     'Machine access: not set up. The owner of the machines the work runs on sets it up, from this '
-    + 'trigger\'s page or with the Agent Designer; no agent can. The person you are acting for now has a '
-    + '"Set up machine access" item for it in their notifications.',
+    + 'trigger\'s page or with the Agent Designer; no agent can. The person you are acting for now has an '
+    + 'item in their notifications saying so, until it is set up.',
   ]
 }
