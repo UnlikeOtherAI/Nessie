@@ -399,7 +399,7 @@ export const createExecutorCommand = async (
   prisma: Pick<
     PrismaClient,
     'agentTicketWork' | 'executorAvailabilityCandidate' | 'executorBinding' | 'executorCommand'
-    | 'executorConversationLease'
+    | 'executorConversationLease' | 'executorStandingPolicy'
   >,
   input: ExecutorCommandCreateInput,
 ): Promise<void> => {

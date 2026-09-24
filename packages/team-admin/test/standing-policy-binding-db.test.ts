@@ -5,6 +5,7 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import {
   assertExecutorCommandBindingCurrent,
+  assertExecutorMcpCallPayload,
   endStandingPolicyInTransaction,
   executorCodingSessionOwnerKey,
   ExecutorError,
@@ -109,6 +110,21 @@ dbTest('a live policy binds the pinned machine for the author, and names the pol
     assert.deepEqual(facts.owner, {
       actorUserId: world.authorId, agentId: world.agentId, contextId: ticketWorkCodingSessionContext(policyId, taskId),
     })
+    // And a start keeps to the host profile on the server, whatever the worker offered.
+    const start = (agent: string, root: string) => assertExecutorMcpCallPayload(prisma, call.id, {
+      args: { arguments: { agent, prompt: 'Fix it', root }, server: 'coding-sessions', tool: 'session_start' },
+      owner: facts.owner,
+      runId: wake.runId,
+    })
+    await start('claude', 'nessie')
+    await assert.rejects(start('codex', 'nessie'), /only the coding agents its machine access names/)
+    await assert.rejects(start('claude', 'secrets'), /only in the roots its machine access allows/)
+    // A context the binding does not pin is refused like any other owner.
+    await assert.rejects(assertExecutorMcpCallPayload(prisma, call.id, {
+      args: { arguments: {}, server: 'coding-sessions', tool: 'session_list' },
+      owner: { actorUserId: world.authorId, agentId: world.agentId },
+      runId: wake.runId,
+    }), /must carry the owner its binding was made for/)
   })
 })
 

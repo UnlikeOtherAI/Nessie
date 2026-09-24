@@ -232,7 +232,9 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   title under that owner key.
 - **A start is the ticket's:** its title is forced to the ticket's own
   (`ticketWorkThreadTitle`), only the pinned coding agents (Claude Code) and
-  `allowedRootNames` are offered and accepted, and the session it returns is
+  `allowedRootNames` are offered and accepted — and the API refuses any other
+  start on a standing binding before a command exists (`standingStartRefusal`,
+  from `assertExecutorMcpCallPayload`) — and the session it returns is
   appended to the record as it answers (`appendTicketWorkSession`).
 - **Each tool says what it is for in ticket work** (start, send and wait
   texts from the plan, `ticketWorkCodingDescriptors`), a wait reads for at

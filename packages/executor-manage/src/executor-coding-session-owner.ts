@@ -7,7 +7,7 @@ import {
 } from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
-import { standingBindingContextId } from './executor-standing-policy-fence.js'
+import { standingBindingContextId, standingStartRefusal } from './executor-standing-policy-fence.js'
 
 /**
  * Who may drive the executor's built-in coding-sessions bridge
@@ -46,8 +46,9 @@ type ExecutorOwnership = {
   scopeKind: 'private' | 'project' | 'organization'
 }
 
-type OwnerClient = Pick<PrismaClient, 'agentTicketWork' | 'executorAvailabilityCandidate' | 'executorBinding'>
-  | Prisma.TransactionClient
+type OwnerClient = Pick<
+  PrismaClient, 'agentTicketWork' | 'executorAvailabilityCandidate' | 'executorBinding' | 'executorStandingPolicy'
+> | Prisma.TransactionClient
 
 export const executorCodingSessionsAllowed = (executor: ExecutorOwnership, actorUserId: string): boolean =>
   executor.scopeKind === 'private' && executor.pairingOwnerUserId === actorUserId
@@ -153,8 +154,11 @@ export const assertExecutorMcpCallPayload = async (
   if (!candidate) {
     throw new ExecutorError(EXECUTOR_ERROR_CODES.BINDING_FENCED, 'Executor binding provenance is no longer available.')
   }
-  // The ticket's own context, for a binding a standing policy made; none otherwise.
+  // The ticket's own context, for a binding a standing policy made; none
+  // otherwise. Its starts keep to the host profile the author confirmed.
   const contextId = await standingBindingContextId(prisma, binding)
+  const refusal = await standingStartRefusal(prisma, binding, payload)
+  if (refusal) throw new ExecutorError(EXECUTOR_ERROR_CODES.COMMAND_PAYLOAD_INVALID, refusal)
   assertExecutorMcpCallAllowed({
     codingSessionsServer: reviewedCodingSessionsServer(binding.capabilityRevision.descriptor),
     executor: binding.executor,

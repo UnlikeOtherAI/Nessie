@@ -1,5 +1,9 @@
 import type { Prisma } from '@prisma/client'
-import { TICKET_WORK_PURPOSE, ticketWorkCodingSessionContext } from '@nessie/schemas'
+import {
+  StandingPolicyHostProfileSchema,
+  TICKET_WORK_PURPOSE,
+  ticketWorkCodingSessionContext,
+} from '@nessie/schemas'
 
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 
@@ -82,6 +86,37 @@ export const standingBindingContextId = async (
     where: { id: binding.ticketWorkId }, select: { taskId: true },
   })
   return work ? ticketWorkCodingSessionContext(binding.standingPolicyId, work.taskId) : undefined
+}
+
+const record = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+
+/**
+ * The host profile's own rule for a start, on the server, whatever the worker
+ * offered: a standing binding's `session_start` names one of the policy's
+ * coding agents and one of its allowed roots, or it is refused before a
+ * command exists. Null when the payload is not such a start, or passes.
+ */
+export const standingStartRefusal = async (
+  client: Pick<Prisma.TransactionClient, 'executorStandingPolicy'>,
+  binding: Pick<StandingBindingRef, 'standingPolicyId'>,
+  payload: Record<string, unknown>,
+): Promise<string | null> => {
+  const args = record(payload.args)
+  if (!binding.standingPolicyId || args?.tool !== 'session_start') return null
+  const policy = await client.executorStandingPolicy.findUnique({
+    where: { id: binding.standingPolicyId }, select: { hostProfile: true },
+  })
+  const profile = StandingPolicyHostProfileSchema.safeParse(policy?.hostProfile)
+  const start = record(args.arguments)
+  if (!profile.success) return 'The machine access this start runs under no longer states what it allows.'
+  if (!profile.data.codingAgents.some((agent) => agent === start?.agent)) {
+    return 'Ticket work may start only the coding agents its machine access names.'
+  }
+  if (!profile.data.allowedRootNames.some((root) => root === start?.root)) {
+    return 'Ticket work may start a coding agent only in the roots its machine access allows.'
+  }
+  return null
 }
 
 /** A `ticket.work` job's own claim to serve this record, as its actor context states it. */

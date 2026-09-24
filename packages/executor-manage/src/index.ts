@@ -53,6 +53,7 @@ export {
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
 export {
+  assertExecutorMcpCallPayload,
   executorCodingSessionOwnerKey,
   executorCodingSessionsAllowed,
   reviewedCodingSessionsServer,
