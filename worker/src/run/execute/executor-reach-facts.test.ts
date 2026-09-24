@@ -356,3 +356,54 @@ test('without the coding tools the facts say nothing of coding, and never offer 
   assert.deepEqual(facts.servers, ['kelpie'])
   assert.doesNotMatch(buildExecutorReachBlock(facts) ?? '', /coding/)
 })
+
+test('a standing bind reads as bound, lists only the ticket\'s own sessions, and never names the machine', async () => {
+  const contextId = `ticket:${runId}:${agentId}`
+  const ticketKey = executorCodingSessionOwnerKey(executorId, { actorUserId: holderId, agentId, contextId })
+  const personalKey = executorCodingSessionOwnerKey(executorId, { actorUserId: holderId, agentId })
+  const listed = (ownerKey: string, sessionId: string) => ({
+    agent: 'claude', ownerKey, root: 'nessie', sessionId, status: 'waiting_for_input', title: 'Fix login redirect',
+    updatedAt: expiresAt.toISOString(),
+  })
+  const { prisma } = stubPrisma({
+    // Even in a DM-shaped room the work thread has no person to name it to.
+    channel: { members: [], type: 'dm' },
+    descriptor: descriptor(['coding-sessions'], codingFacts),
+    localMcp: [{
+      available: true, observedAt: expiresAt.toISOString(), server: 'coding-sessions',
+      codingSessions: [
+        listed(ticketKey, '00000000-0000-4000-8000-0000000000a1'),
+        listed(personalKey, '00000000-0000-4000-8000-0000000000a2'),
+      ],
+    }],
+  })
+  const standing = {
+    binding: {
+      bindingIds: ['b1', 'b2'], executorId, kind: 'bound' as const, policyId: runId, workId: agentId,
+    },
+    coding: { contextId } as never,
+  }
+  const facts = await loadExecutorReachFacts(prisma, {
+    agentId, channelId, hostOutput: null, lease: undefined, organizationId, personUserId: null, runId, standing,
+    toolNames: CODING_SESSION_TOOL_NAME_SET,
+  })
+  assert.equal(facts?.kind, 'bound')
+  assert.equal(facts?.kind === 'bound' ? facts.executorLabel : 'x', null)
+  assert.deepEqual(facts?.kind === 'bound' ? facts.codingSessions?.sessions : null, [
+    { sessionId: '00000000-0000-4000-8000-0000000000a1', status: 'waiting_for_input' },
+  ])
+  assert.doesNotMatch(buildExecutorReachBlock(facts) ?? '', /Minis/)
+})
+
+test('a standing refusal is its own line, and nothing else is read', async () => {
+  const { calls, prisma } = stubPrisma()
+  const facts = await loadExecutorReachFacts(prisma, {
+    agentId, channelId, hostOutput: null, lease: undefined, organizationId, personUserId: null, runId,
+    standing: { binding: { kind: 'refused', policyId: null, reason: 'machine_unavailable', workId: agentId }, coding: null },
+    toolNames: LOCAL_APPS,
+  })
+  assert.deepEqual(facts, { kind: 'standing_refused', reason: 'machine_unavailable' })
+  assert.deepEqual(calls, [])
+  assert.equal(buildExecutorReachBlock(facts), 'You have no machine tools this turn. The machine is offline or no '
+    + 'longer offers you its coding tools, so no machine is bound this turn.')
+})
