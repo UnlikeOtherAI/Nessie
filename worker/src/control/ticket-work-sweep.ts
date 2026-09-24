@@ -62,6 +62,8 @@ export type SweepRecordFacts = {
   awaitingAnswerAt: Date | null
   pendingReminders: number
   quietWakeMinutes: number | null
+  /** When the agent's newest run in the work thread finished, if one has. */
+  lastRunFinishedAt: Date | null
 }
 
 /** What the sweep does with one live record, decided from its facts alone. */
@@ -70,8 +72,11 @@ export const decideTicketWorkSweep = (record: SweepRecordFacts, now: Date): 'ove
   if (record.status !== 'active' || record.quietWakeMinutes === null) return null
   // Something is already scheduled, or a person owes an answer: not quiet.
   if (record.awaitingAnswerAt !== null || record.pendingReminders > 0) return null
-  const since = record.lastWakeAt ?? record.startedAt
-  return now.getTime() - since.getTime() >= record.quietWakeMinutes * 60_000 ? 'quiet' : null
+  // Quiet since the last thing that happened: the wake, or — a run that took
+  // a while — the moment the run it started finished.
+  const woken = (record.lastWakeAt ?? record.startedAt).getTime()
+  const since = Math.max(woken, record.lastRunFinishedAt?.getTime() ?? 0)
+  return now.getTime() - since >= record.quietWakeMinutes * 60_000 ? 'quiet' : null
 }
 
 const IN_FLIGHT_RUN_STATUSES: RunStatus[] = ['pending', 'running', 'waiting_approval', 'waiting_input']
@@ -103,7 +108,7 @@ const loadLiveRecords = (prisma: PrismaClient, limit: number) =>
     },
   })
 
-const sweepFacts = (record: LiveRecord): SweepRecordFacts => {
+const sweepFacts = (record: LiveRecord, lastRunFinishedAt: Date | null): SweepRecordFacts => {
   const config = ticketWorkConfigOf(record.trigger?.config)
   return {
     status: record.status,
@@ -114,7 +119,22 @@ const sweepFacts = (record: LiveRecord): SweepRecordFacts => {
     awaitingAnswerAt: record.awaitingAnswerAt,
     pendingReminders: record._count.reminders,
     quietWakeMinutes: config.quietWakeMinutes,
+    lastRunFinishedAt,
   }
+}
+
+/** When each record's agent last finished a run in its work thread: where its quiet is measured from. */
+const lastRunFinishes = async (prisma: PrismaClient, records: readonly LiveRecord[]): Promise<Map<string, Date>> => {
+  const active = records.filter((record) => record.status === 'active')
+  if (active.length === 0) return new Map()
+  const rows = await prisma.run.groupBy({
+    by: ['threadId', 'agentId'],
+    where: { threadId: { in: active.map((record) => record.threadId) }, finishedAt: { not: null } },
+    _max: { finishedAt: true },
+  })
+  const finished = new Map<string, Date>()
+  for (const row of rows) if (row._max.finishedAt) finished.set(`${row.threadId}:${row.agentId}`, row._max.finishedAt)
+  return finished
 }
 
 type QuietOptions = {
@@ -285,11 +305,13 @@ export const runTicketWorkSweep = async (
   input: { now?: Date; limit?: number; seam?: TicketWorkSeam } = {},
 ): Promise<void> => {
   const now = input.now ?? new Date()
-  for (const record of await loadLiveRecords(prisma, input.limit ?? 200)) {
+  const records = await loadLiveRecords(prisma, input.limit ?? 200)
+  const finished = await lastRunFinishes(prisma, records)
+  for (const record of records) {
     // A disabled trigger ends its work as it is switched off; one still
     // enabled but in error keeps its records, and wakes none of them.
     if (!record.trigger?.enabled || record.trigger.status !== 'active') continue
-    const facts = sweepFacts(record)
+    const facts = sweepFacts(record, finished.get(`${record.threadId}:${record.agentId}`) ?? null)
     const decision = decideTicketWorkSweep(facts, now)
     try {
       if (decision === 'over_limit') await endOverWakeLimit(prisma, record, facts.wakeLimit)

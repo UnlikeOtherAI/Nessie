@@ -81,7 +81,13 @@ runDatabaseTest('the quiet wake comes only to active work with nothing scheduled
   const running = await prisma.run.create({ data: { agentId: s.agentId, threadId: work.threadId, status: 'running' } })
   await runTicketWorkSweep(prisma)
   assert.equal((await quietDeliveries(prisma, s)).length, 0, 'a run is in flight')
-  await prisma.run.update({ where: { id: running.id }, data: { status: 'completed' } })
+  // Its run ended ten minutes ago: quiet is measured from then, not the wake.
+  await prisma.run.update({
+    where: { id: running.id }, data: { status: 'completed', finishedAt: new Date(Date.now() - 10 * MINUTE) },
+  })
+  await runTicketWorkSweep(prisma)
+  assert.equal((await quietDeliveries(prisma, s)).length, 0, 'quiet since the run ended, not the wake')
+  await prisma.run.update({ where: { id: running.id }, data: { finishedAt: new Date(Date.now() - 32 * MINUTE) } })
 
   // Parked work waits for people: no quiet wake.
   await move(prisma, s, task.id, s.columns.review)

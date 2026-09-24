@@ -647,8 +647,10 @@ routes, and none of it names a machine.
   `packages/team-admin/src/ticket-work-clock.ts`). Parked work pauses it too.
   Nothing enforces `ticketHours` yet (from T4).
 - **The quiet wake** (`quietWakeMinutes`, default 30): an `active` record
-  with no pending reminder, no open question, no run in flight and no wake for
-  that long gets a `quiet` wake, *"nothing else is scheduled"*, counted, one
+  with no pending reminder, no open question, no run in flight and nothing for
+  that long — measured from the later of its last wake and the end of the
+  agent's newest run in the work thread — gets a `quiet` wake, *"nothing else
+  is scheduled"*, counted, one
   delivery deduped on `quiet:<workId>:<the wake it followed>` and naming that
   wake (`followedWakeAt`), whose claim re-reads all of that — and that no wake
   came since — under the thread's run slot. A retried quiet delivery runs the

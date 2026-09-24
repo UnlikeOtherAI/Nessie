@@ -18,6 +18,7 @@ const quiet: SweepRecordFacts = {
   awaitingAnswerAt: null,
   pendingReminders: 0,
   quietWakeMinutes: 30,
+  lastRunFinishedAt: null,
 }
 
 test('active work with nothing scheduled for its quiet minutes gets a quiet wake', () => {
@@ -43,4 +44,21 @@ test('work over a lowered wake limit ends, whatever its status; at the limit it 
   assert.equal(decideTicketWorkSweep({ ...quiet, wakeCount: 31 }, NOW), 'over_limit')
   assert.equal(decideTicketWorkSweep({ ...quiet, wakeCount: 12, wakeLimit: 10, status: 'parked' }, NOW), 'over_limit')
   assert.equal(decideTicketWorkSweep({ ...quiet, wakeCount: 30 }, NOW), 'quiet')
+})
+
+test('the quiet is measured from the later of the last wake and the end of the run it started', () => {
+  // Woken 40 minutes ago, but the run it started finished 10 minutes ago: not quiet yet.
+  assert.equal(
+    decideTicketWorkSweep({ ...quiet, lastWakeAt: minutesAgo(40), lastRunFinishedAt: minutesAgo(10) }, NOW),
+    null,
+  )
+  assert.equal(
+    decideTicketWorkSweep({ ...quiet, lastWakeAt: minutesAgo(40), lastRunFinishedAt: minutesAgo(31) }, NOW),
+    'quiet',
+  )
+  // A run that finished before the last wake measures nothing.
+  assert.equal(
+    decideTicketWorkSweep({ ...quiet, lastWakeAt: minutesAgo(31), lastRunFinishedAt: minutesAgo(90) }, NOW),
+    'quiet',
+  )
 })
