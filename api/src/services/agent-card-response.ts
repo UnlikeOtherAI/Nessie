@@ -1,3 +1,4 @@
+import { ExecutorError } from "@nessie/executor-manage";
 import { Prisma } from "@prisma/client";
 import { adoptPersonalBrowserAccessGrant, CONTROL_CLAIM_TTL_MS, releaseSessionControl, type CloudBrowserConnectionProbeDeps } from "@nessie/browser-cloud";
 import type { CredentialStore } from "@nessie/dashboard";
@@ -11,6 +12,7 @@ import {
 } from "@nessie/schemas";
 import type { ReplyRootMetadata } from "@nessie/runtime";
 import {
+  AgentToolPolicyError,
   createSystemAuthoredReply,
   findTicketWorkThread,
   inheritAgentCardResponseBasis,
@@ -36,6 +38,7 @@ import {
 } from "./agent-card-secret-placement.js";
 import { announceAgentCardResponse } from "./agent-card-response-announce.js";
 import { executorReviewOf, pressExecutorReviewCard } from "./agent-card-executor-review.js";
+import { applyExecutorAccessAnswer, isExecutorAccessAnswer } from "./agent-card-executor-access.js";
 import { completeBrowserLoginHandover } from "./browser-login-handover.js";
 import { ResumeRollback, resumeSuspendedRun } from "./run-resume-core.js";
 import type { RouteDeps } from "../routes/types.js";
@@ -210,7 +213,8 @@ export const respondToAgentCard = async (
   });
   // A review card is pressed, never answered: each press mints a token and
   // resolves nothing (agent-card-executor-review.ts).
-  if (executorReviewOf(prepared.card)) {
+  const executorAccessAnswer = isExecutorAccessAnswer(prepared.card, prepared.actionKey);
+  if (executorReviewOf(prepared.card) && !executorAccessAnswer) {
     const pressed = await pressExecutorReviewCard(deps, {
       actorContext: input.actorContext,
       card: prepared.card,
@@ -244,6 +248,7 @@ export const respondToAgentCard = async (
         },
       });
       if (claimed.count !== 1) throw new ResumeRollback("run_not_waiting");
+      if (executorAccessAnswer) await applyExecutorAccessAnswer(tx, input.actorContext, prepared.card);
       const temporaryLogin = readTemporaryBrowserLogin(prepared.card.browserLogin);
       if (temporaryLogin) {
         // A temporary-login card cannot resume a run until its exact private
@@ -410,6 +415,8 @@ export const respondToAgentCard = async (
         "SECRET_NAME_TAKEN",
         "A secret with that name already exists in this scope. Rename or replace it in Secrets.",
       );
+    if (error instanceof ExecutorError || error instanceof AgentToolPolicyError)
+      throw new AgentCardResponseError(409, error.code, error.message);
     if (error instanceof ResumeRollback)
       throw new AgentCardResponseError(
         409,

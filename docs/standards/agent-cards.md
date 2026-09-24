@@ -190,6 +190,15 @@ this standard, not an exception to it.
   answers 200 whenever the transaction committed, and `useRespondToAgentCard`
   refreshes the card and its thread when the press settles, success or not, so
   a pressed card never looks un-pressed.
+- **An approved machine needs no second code for an agent.** The server-authored
+  `allow_access` action binds an exact `agent_executor_access` continuation.
+  Its chat card names the agent, machine and approved permissions, and named
+  respondents receive the ordinary alert linking to that message. The ordinary
+  card response transaction claims the card, confirms the grant through the same
+  executor authority as the route, writes the user response and queues the wake.
+  Stale revisions, another respondent and replayed presses apply nothing. This
+  direct path never activates a machine revision or approves a standing policy.
+  The `review` action below remains the path for changes needing fresh verification.
 - **An executor review card holds an id, and every press mints a token.** A
   prepared executor change — an access change (`executor_agent_grant_prepare`
   and the other access-change prepare tools) or a workspace promotion

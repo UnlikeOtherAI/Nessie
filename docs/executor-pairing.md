@@ -98,8 +98,13 @@ and the agent's operation grants change together; removing one agent leaves
 other agents' access intact. Pairing itself grants no
 agent access. The selected team limit does not limit the number of agents.
 
-**Fresh verification:** allowing an agent, changing private assignments and
-activating a capability revision require a fresh factor in the review dialog.
+**Approve the machine once:** activating its capability revision requires a fresh
+factor. Adding or removing agents within that approved boundary uses an ordinary
+confirmation, with no additional code or password. In chat, the **Allow access**
+card names the agent, machine and permissions; its alert opens that exact message.
+Pressing it applies the grant, records the answer and wakes the agent in one
+transaction. Changing human administrators or standing unattended policies still
+requires fresh verification, as does approving changed machine permissions.
 Local accounts use their current password. UOA accounts choose **Send code to
 approve**, enter the code sent to their sign-in email, and approve the displayed
 change. Enrolled authenticators are also checked; required but unenrolled 2FA

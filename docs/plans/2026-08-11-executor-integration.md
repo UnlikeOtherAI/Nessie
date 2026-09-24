@@ -604,9 +604,10 @@ single-use confirmation token. The PA cannot apply a draft itself. The web or
 desktop client renders an explicit confirmation control bound to that token;
 the confirmation endpoint re-checks the current human user's entitlement,
 revisions, and the exact digest before applying it. When policy requires
-step-up—or always for a private-assignment change or access elevation—the
-confirmation requires a fresh, server-side password re-proof in
-the first control-plane slice. An account without a password fails closed until
+step-up—for machine capability activation, human-administrator changes or
+standing unattended access—the
+confirmation requires fresh account verification. Agent grants within the
+reviewed machine boundary need no second factor; see [executor pairing](../executor-pairing.md). An account without a password fails closed until
 the platform's SSO/WebAuthn verifier is connected to this continuation contract;
 the opaque verification binding remains on the continuation for that upgrade.
 No factor code or proof is ever placed in chat or a model prompt. This preserves the rule

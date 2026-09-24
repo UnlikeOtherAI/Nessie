@@ -25,6 +25,7 @@ import { hashExecutorContinuationValue } from './executor-continuation-security.
 
 /** The one action a review card offers; a confirmed change records it. */
 export const EXECUTOR_REVIEW_CARD_ACTION_KEY = 'review'
+export const EXECUTOR_ALLOW_ACCESS_CARD_ACTION_KEY = 'allow_access'
 
 type ReviewSubject = 'access_change' | 'invocation'
 

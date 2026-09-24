@@ -394,7 +394,9 @@ test('the block states that an executor grant is whole-suite, never a pick', () 
   assert.match(rendered, /whole-suite and never a per-operation pick/)
   assert.match(rendered, /minus workspace\.promote/)
   assert.match(rendered, /executor_agent_grant_prepare prepares ONE change/)
-  assert.match(rendered, /not itself, and not another agent/)
+  assert.match(rendered, /you and other agents cannot press it/)
+  assert.match(rendered, /adding an agent needs no second code/)
+  assert.match(rendered, /alerts the person with a link to it/)
 })
 
 test('each executor says whether a trigger\'s ticket work can run on it, and the Designer prepares one card', () => {
@@ -449,7 +451,7 @@ test('a face that holds no tools states the rule without naming one', () => {
   for (const writeSurface of ['designer_form', 'read_only'] as const) {
     const rendered = block({ executors: [executor()], writeSurface })
     assert.match(rendered, /whole-suite and never a per-operation pick/)
-    assert.match(rendered, /confirmation happens on the Executors page, not here/)
+    assert.match(rendered, /confirmation happens on the Executors page or its chat card/)
     // The restricted section may still name the tool with its reason — that is
     // the catalogue doing its job. What must not appear is an instruction to
     // call it.
