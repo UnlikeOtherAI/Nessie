@@ -360,8 +360,8 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
 
   /**
    * What the daemon reports on its heartbeat: every session not yet closed,
-   * newest first, by title, status, agent, root and owner — nothing any of
-   * them said or did.
+   * newest first, by title, status, agent, root, owner, its turn count and
+   * when its last turn ended — nothing any of them said or did.
    */
   const listAll = async (value: unknown, meta: CodingBridgeCallMeta): Promise<Record<string, unknown>> => {
     daemonOnly(meta)
@@ -377,6 +377,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
         title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
         ...(derived.reason ? { reason: derived.reason } : {}),
         agent: session.agent, root: session.rootName, updatedAt: state?.updatedAt ?? session.createdAt,
+        turn: state?.turn ?? 0, lastTurnEndedAt: state?.lastTurnEndedAt ?? null,
       })
     }
     sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))

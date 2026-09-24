@@ -147,3 +147,22 @@ test('only the coding-sessions report carries sessions, and a session carries no
   assert.equal(ExecutorCodingSessionSummarySchema.safeParse({ ...session, lastAssistant: 'I edited…' }).success, false)
   assert.equal(ExecutorCodingSessionSummarySchema.safeParse({ ...session, title: 'x'.repeat(121) }).success, false)
 })
+
+test('a session states its turn and when its last turn ended, and an older report without them still parses', () => {
+  const session = {
+    sessionId: runId, ownerKey, title: 'Fix the flaky test', status: 'waiting_for_input', agent: 'claude', root: 'nessie',
+    updatedAt: '2026-09-23T10:00:00.000Z',
+  }
+  const status = (sessions: unknown[]) => [{
+    server: 'coding-sessions', available: true, observedAt: '2026-09-23T10:00:00.000Z', codingSessions: sessions,
+  }]
+  assert.equal(ExecutorLocalMcpReportSchema.safeParse(status([session])).success, true, 'an older daemon’s report')
+  const turned = { ...session, turn: 3, lastTurnEndedAt: '2026-09-23T09:59:00.000Z' }
+  assert.deepEqual(ExecutorCodingSessionSummarySchema.parse(turned), turned)
+  assert.equal(ExecutorLocalMcpReportSchema.safeParse(status([turned])).success, true)
+  const fresh = { ...session, status: 'working', turn: 0, lastTurnEndedAt: null }
+  assert.deepEqual(ExecutorCodingSessionSummarySchema.parse(fresh), fresh, 'no turn has ended yet')
+  for (const bad of [{ ...turned, turn: -1 }, { ...turned, turn: 1.5 }, { ...turned, lastTurnEndedAt: '' }]) {
+    assert.equal(ExecutorCodingSessionSummarySchema.safeParse(bad).success, false, JSON.stringify(bad))
+  }
+})

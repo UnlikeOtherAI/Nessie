@@ -202,8 +202,14 @@ differently from one the owner asked for, which carries none:
 The same daemon-only `session_list_all` feeds the local-MCP report: for
 `coding-sessions` its status carries `codingSessions`, each open session's
 `sessionId`, `ownerKey`, `title`, `status` (with a categorical `reason`),
-`agent`, `root` and `updatedAt`, newest first and at most 32 — never a prompt,
-a transcript or a path. Absent means the bridge was not asked.
+`agent`, `root`, `updatedAt`, `turn` (the turns begun, 0 before the first)
+and `lastTurnEndedAt` (when the host last saw the status leave `working` —
+a result, an interrupt, the agent exiting, a close mid-turn — or `null`),
+newest first and at most 32 — never a prompt, a transcript or a path. A turn
+that begins and ends between two reports keeps the status and moves `turn`,
+which is how a reader tells it from no change. Both are optional in the
+schema: an older daemon's report has neither, and absent infers nothing.
+Absent `codingSessions` means the bridge was not asked.
 
 ### Close requests
 

@@ -92,3 +92,39 @@ test('a heartbeat close ends one owner\'s sessions, or one session, and the repo
     await harness.cleanup()
   }
 })
+
+test('the report states each session\'s turn and when its last turn ended', { timeout: 150_000 }, async () => {
+  const harness = await createCodingHarness({ reviewedDigest: true })
+  try {
+    const daemon = await daemonFor(harness)
+    const reported = async (sessionId: string) => {
+      const entry = (await daemon.report())?.find((session) => session.sessionId === sessionId)
+      assert.ok(entry, 'the daemon kept the entry, so its schema accepts both fields')
+      return entry
+    }
+    const started = await harness.call('session_start', {
+      agent: 'claude', root: 'work', prompt: '#hold=first the first turn',
+    }, { owner: OWNER_A })
+    const sessionId = started.body.sessionId as string
+    await harness.waitForStatus(sessionId, (body) => body.status === 'working', OWNER_A)
+    const working = await reported(sessionId)
+    assert.equal(working.turn, 1)
+    assert.equal(working.lastTurnEndedAt, null, 'the first turn is still running, and none has ended')
+
+    await harness.release('first')
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input', OWNER_A)
+    const first = await reported(sessionId)
+    assert.equal(first.turn, 1)
+    assert.ok(first.lastTurnEndedAt && Date.parse(first.lastTurnEndedAt) >= Date.parse(working.updatedAt))
+
+    // A second turn ends between two reads: the status is the same, and the turn says it moved.
+    await harness.call('session_send', { sessionId, message: 'a second, quick turn' }, { owner: OWNER_A })
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input' && body.turn === 2, OWNER_A)
+    const second = await reported(sessionId)
+    assert.equal(second.status, first.status)
+    assert.equal(second.turn, 2)
+    assert.ok(Date.parse(second.lastTurnEndedAt!) > Date.parse(first.lastTurnEndedAt))
+  } finally {
+    await harness.cleanup()
+  }
+})

@@ -123,6 +123,8 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
     // Confirmed, or answered: from here on the agent's own transcript holds the first message.
     if (patch.agentSessionStarted === true || patch.lastResult !== undefined) delete state.firstPrompt
     state.updatedAt = new Date().toISOString()
+    // Every way a turn ends leaves `working`, so the end is recorded here rather than by each of them.
+    if (before === 'working' && state.status !== 'working') state.lastTurnEndedAt = state.updatedAt
     if (patch.status && patch.status !== before) {
       emit({ kind: 'system', subtype: 'status', status: patch.status, ...(state.reason ? { reason: state.reason } : {}) })
     }

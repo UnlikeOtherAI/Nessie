@@ -237,6 +237,13 @@ export type ExecutorCodingSessionStatus = z.infer<typeof ExecutorCodingSessionSt
  * recognise it and close it, and nothing of what it said or did — no prompt,
  * no transcript, no path. The title is the task's first line as the bridge
  * recorded it, rewritten so no host path survives.
+ *
+ * `turn` counts the turns the coding agent has begun (0 before the first),
+ * and `lastTurnEndedAt` is when the host last saw one end — its result, an
+ * interrupt, the agent exiting, a close mid-turn — or `null` when none has.
+ * A turn that began and ended between two reports still moves `turn`, which
+ * is how a reader tells a fast turn from no change. Both are absent from an
+ * older daemon's report, and absent infers nothing.
  */
 export const ExecutorCodingSessionSummarySchema = z
   .object({
@@ -248,6 +255,8 @@ export const ExecutorCodingSessionSummarySchema = z
     agent: ExecutorCodingAgentNameSchema,
     root: CodingRootNameSchema,
     updatedAt: TimestampSchema,
+    turn: z.number().int().min(0).optional(),
+    lastTurnEndedAt: TimestampSchema.nullable().optional(),
   })
   .strict()
 export type ExecutorCodingSessionSummary = z.infer<typeof ExecutorCodingSessionSummarySchema>
