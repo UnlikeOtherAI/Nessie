@@ -2,16 +2,17 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
-import { PrismaClient, type Prisma } from '@prisma/client'
-import { AuthorizedActionContextSchema, ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
-import { createAgentTrigger } from '@nessie/team-admin'
+import { PrismaClient } from '@prisma/client'
+import { executorCodingSessionOwnerKey } from '@nessie/executor-manage'
+import { AuthorizedActionContextSchema, ticketWorkCodingSessionContext } from '@nessie/schemas'
 import Fastify from 'fastify'
 
-import { hashPassword } from '../src/auth/password.js'
 import { createRequestHelpers } from '../src/lib/request-helpers.js'
 import { registerExecutorRoutes } from '../src/routes/executors.js'
+import { registerStandingPolicyViewRoutes } from '../src/routes/standing-policy-views.js'
 import { registerTriggerMachineAccessRoutes } from '../src/routes/trigger-machine-access.js'
 import type { RouteDeps } from '../src/routes/types.js'
+import { PASSWORD, seedStandingPolicyRoutes as seed } from './standing-policy-routes-fixture.js'
 
 /**
  * A ticket trigger's machine access through its routes, over a real database
@@ -24,83 +25,6 @@ import type { RouteDeps } from '../src/routes/types.js'
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
-const PASSWORD = 'correct horse battery staple'
-
-const seed = async (prisma: PrismaClient, suffix: string) => {
-  const organization = await prisma.organization.create({ data: { name: `standing-routes-${suffix}` } })
-  const organizationId = organization.id
-  const [author, colleague] = await Promise.all(['Ondrej', 'Colleague'].map(async (displayName) => prisma.user.create({
-    data: {
-      displayName, email: `${displayName.toLowerCase()}-${suffix}@example.test`, passwordHash: await hashPassword(PASSWORD),
-    },
-  })))
-  await prisma.organizationMember.createMany({
-    data: [author!, colleague!].map((user) => ({ organizationId, role: 'member' as const, userId: user.id })),
-  })
-  const project = await prisma.project.create({ data: { name: 'Nessie', organizationId } })
-  await prisma.projectMember.createMany({
-    data: [author!, colleague!].map((user) => ({ projectId: project.id, role: 'member' as const, userId: user.id })),
-  })
-  const team = await prisma.team.create({ data: { name: `team-${suffix}`, projectId: project.id } })
-  const board = await prisma.board.create({
-    data: { isDefault: true, name: 'Engineering', organizationId, position: 0, projectId: project.id },
-  })
-  for (const [name, category, position] of [['Backlog', 'todo', 0], ['In progress', 'in_progress', 1], ['Done', 'done', 2]] as const) {
-    await prisma.boardColumn.create({ data: { boardId: board.id, category, name, organizationId, position } })
-  }
-  const channel = await prisma.channel.create({
-    data: {
-      label: 'eng', organizationId, projectId: project.id, slug: `eng-${suffix}`, teamId: team.id, visibility: 'public',
-    },
-  })
-  const agent = await prisma.agent.create({ data: { name: 'CTO', organizationId, projectId: project.id } })
-  await prisma.agentBinding.create({ data: { agentId: agent.id, channelId: channel.id } })
-  const trigger = await createAgentTrigger(prisma, agent.id, {
-    config: { instructions: { general: 'Have Claude fix it.' }, pickup: { columns: [{ name: 'In progress' }] } },
-    name: 'Pick up tickets',
-    targetChannelId: channel.id,
-    type: 'ticket_changed',
-  }, { authorUserId: author!.id })
-  assert.ok(trigger)
-  const machine = async (label: string, codingSessions: Record<string, unknown> | null) => {
-    const descriptor = ExecutorCapabilityDescriptorSchema.parse({
-      ...(codingSessions ? { codingSessions, mcpServers: ['coding-sessions'] } : {}),
-      limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 2 },
-      localPolicyDigest: `sha256:${'1'.repeat(64)}`,
-      operationKeys: ['mcp.tools', 'mcp.call'],
-      platform: { architecture: 'x64', os: 'windows', osMajorVersion: 26100 },
-      profiles: ['workspace_sandbox'],
-      protocolVersion: 1,
-      revision: 1,
-      sandboxBackend: 'none',
-      supervisor: 'service',
-    })
-    return (await prisma.executor.create({
-      data: {
-        capabilityRevisions: {
-          create: {
-            descriptor: descriptor as unknown as Prisma.InputJsonValue, localPolicyDigest: descriptor.localPolicyDigest,
-            reviewStatus: 'active', revision: 1, signature: 'reviewed',
-          },
-        },
-        label, lastSeenAt: new Date(), organizationId, pairingOwnerUserId: author!.id,
-        privateAssignments: { create: { principalKind: 'user', role: 'admin', userId: author!.id } },
-        profiles: ['workspace_sandbox'], scopeKind: 'private', status: 'online',
-      },
-    })).id
-  }
-  const minis = await machine('Minis', {
-    agents: ['claude'], allowedToolCount: 2, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
-    maxBudgetUsd: { claude: 5 }, maxLiveSessionsPerOwner: 3,
-    mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
-    permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
-  })
-  const bare = await machine('Bare', null)
-  return {
-    agentId: agent.id, authorId: author!.id, bare, colleagueId: colleague!.id, minis, organizationId,
-    teamId: team.id, triggerId: trigger.id,
-  }
-}
 
 runDatabaseTest('the author prepares machine access from the trigger and confirms it with their password', async (t) => {
   const prisma = new PrismaClient()
@@ -193,4 +117,161 @@ runDatabaseTest('the author prepares machine access from the trigger and confirm
   assert.equal(await prisma.executorAgentOperationGrant.count({
     where: { agentId: s.agentId, executorId: s.minis, state: 'allowed' },
   }), 2)
+})
+
+runDatabaseTest('the Machine access section, the machines, the Standing access panel, End and a ticket’s own session', async (t) => {
+  const prisma = new PrismaClient()
+  const suffix = randomUUID()
+  const s = await seed(prisma, suffix)
+  const owner = await prisma.user.create({ data: { displayName: 'Owner', email: `owner-${suffix}@example.test` } })
+  await prisma.organizationMember.create({ data: { organizationId: s.organizationId, role: 'owner', userId: owner.id } })
+  t.after(async () => {
+    await prisma.executorContinuation.deleteMany({ where: { executorId: { in: [s.minis, s.bare] } } })
+    await prisma.executorPrivateAssignment.deleteMany({ where: { executorId: { in: [s.minis, s.bare] } } })
+    await prisma.executorAgentOperationGrant.deleteMany({ where: { executorId: { in: [s.minis, s.bare] } } })
+    await prisma.executorCodingSessionCloseRequest.deleteMany({ where: { executorId: { in: [s.minis, s.bare] } } })
+    await prisma.agentTicketWork.deleteMany({ where: { organizationId: s.organizationId } })
+    await prisma.executorStandingPolicy.deleteMany({ where: { organizationId: s.organizationId } })
+    await prisma.executor.deleteMany({ where: { id: { in: [s.minis, s.bare] } } })
+    await prisma.organization.deleteMany({ where: { id: s.organizationId } })
+    await prisma.user.deleteMany({ where: { id: { in: [s.authorId, s.colleagueId, owner.id] } } })
+    await prisma.$disconnect()
+  })
+  let actorId = s.authorId
+  let roles = ['member']
+  const deps = {
+    buildChannelRealtimeScopes: createRequestHelpers(prisma).buildChannelRealtimeScopes,
+    config: { api: { rateLimit: {} } },
+    encryptionKeyRing: `standing-views-${suffix}`,
+    prisma,
+    rateLimiter: { guard: async () => ({ allowed: true }) },
+    realtimeHub: { publishWs: async (_scopes: unknown[], input: Record<string, unknown>) => ({ ...input, type: 'event' }) },
+    requireActorContext: () => AuthorizedActionContextSchema.parse({
+      actionContext: { requestId: randomUUID() },
+      actor: { actorId, actorType: 'user', roles },
+      tenant: { organizationId: s.organizationId, teamId: s.teamId },
+    }),
+    requireUserActor: () => true,
+  } as unknown as RouteDeps
+  const app = Fastify()
+  registerTriggerMachineAccessRoutes(app, deps)
+  registerStandingPolicyViewRoutes(app, deps)
+  registerExecutorRoutes(app, deps)
+  t.after(() => app.close())
+  const as = (userId: string, asRoles: string[] = ['member']) => {
+    actorId = userId
+    roles = asRoles
+  }
+  const get = async <T>(url: string) => {
+    const response = await app.inject({ method: 'GET', url })
+    return { body: JSON.parse(response.body) as { data: T }, status: response.statusCode }
+  }
+  type View = {
+    policy: { endedByName: string | null; machines: Array<{ label: string }> | null; viewerCanEnd: boolean } | null
+    state: string
+    tickets: Array<{ machineLabel: string | null; status: string; title: string }>
+    viewerIsAuthor: boolean
+  }
+  const section = `/api/triggers/${s.triggerId}/machine-access`
+
+  // Before anything: not set up, for the author and an owner alike; a member who is neither sees nothing.
+  assert.equal((await get<View>(section)).body.data.state, 'not_set_up')
+  as(s.colleagueId)
+  assert.equal((await get<View>(section)).status, 404)
+  as(owner.id, ['owner'])
+  const ownerFirst = await get<View>(section)
+  assert.deepEqual([ownerFirst.status, ownerFirst.body.data.viewerIsAuthor], [200, false])
+
+  // The setup form's machines: the author's own, each refused only for what no choice can fix.
+  assert.equal((await get(`${section}/machines`)).status, 403)
+  as(s.authorId)
+  const machines = await get<{ machines: Array<{ label: string; refusal: { reason: string } | null }> }>(`${section}/machines`)
+  assert.deepEqual(machines.body.data.machines.map((machine) => [machine.label, machine.refusal?.reason ?? null]),
+    [['Bare', 'no_reviewed_coding_sessions'], ['Minis', null]])
+
+  // Prepared: awaiting confirmation. Confirmed: live, the machine named to its author only.
+  const prepared = JSON.parse((await app.inject({
+    method: 'POST', payload: { executorIds: [s.minis] }, url: section,
+  })).body) as { data: { accessChangeId: string; confirmationToken: string; policyId: string } }
+  assert.equal((await get<View>(section)).body.data.state, 'awaiting_confirmation')
+  const confirmed = await app.inject({
+    method: 'POST',
+    payload: { confirmationToken: prepared.data.confirmationToken, currentPassword: PASSWORD },
+    url: `/api/executor-access-changes/${prepared.data.accessChangeId}/confirm`,
+  })
+  assert.equal(confirmed.statusCode, 200, confirmed.body)
+  const trigger = await prisma.agentTrigger.findUniqueOrThrow({
+    where: { id: s.triggerId }, select: { scopeProjectId: true, targetChannelId: true },
+  })
+  const task = await prisma.task.create({
+    data: { organizationId: s.organizationId, projectId: trigger.scopeProjectId, status: 'in_progress', title: 'Fix login redirect' },
+  })
+  const thread = await prisma.thread.create({
+    data: { agentId: s.agentId, channelId: trigger.targetChannelId!, title: 'Fix login redirect' },
+  })
+  const sessionId = randomUUID()
+  await prisma.agentTicketWork.create({
+    data: {
+      agentId: s.agentId, executorId: s.minis, organizationId: s.organizationId, policyId: prepared.data.policyId,
+      projectId: trigger.scopeProjectId!, sessionIds: [sessionId], status: 'active', taskId: task.id,
+      threadId: thread.id, triggerId: s.triggerId,
+    },
+  })
+  const live = await get<View>(section)
+  assert.equal(live.body.data.state, 'live')
+  assert.deepEqual(live.body.data.policy?.machines?.map((machine) => machine.label), ['Minis'])
+  assert.deepEqual(live.body.data.tickets.map((ticket) => [ticket.title, ticket.status, ticket.machineLabel]),
+    [['Fix login redirect', 'active', 'Minis']])
+  as(owner.id, ['owner'])
+  const ownerLive = await get<View>(section)
+  assert.equal(ownerLive.body.data.policy?.machines, null, 'an owner who does not administer the machine is not told it')
+  assert.equal(ownerLive.body.data.tickets[0]?.machineLabel, null)
+  assert.equal(ownerLive.body.data.policy?.viewerCanEnd, false)
+
+  // The executor page: its Standing access panel, and the ticket's own session named through its work.
+  as(s.authorId)
+  type Panel = { policies: Array<{ activeTickets: number; authorName: string; trigger: { name: string } }> }
+  const panel = await get<Panel>(
+    `/api/executors/${s.minis}/standing-policies`)
+  assert.deepEqual(panel.body.data.policies.map((row) => [row.trigger.name, row.authorName, row.activeTickets]),
+    [['Pick up tickets', 'Ondrej', 1]])
+  as(s.colleagueId)
+  assert.equal((await get(`/api/executors/${s.minis}/standing-policies`)).status, 404)
+  as(s.authorId)
+  const ownerKey = executorCodingSessionOwnerKey(s.minis, {
+    actorUserId: s.authorId,
+    agentId: s.agentId,
+    contextId: ticketWorkCodingSessionContext(prepared.data.policyId, task.id),
+  })
+  await prisma.executor.update({
+    where: { id: s.minis },
+    data: {
+      localMcp: [{
+        available: true, observedAt: new Date().toISOString(), server: 'coding-sessions',
+        codingSessions: [{
+          agent: 'claude', ownerKey, root: 'nessie', sessionId, status: 'working', title: 'Fix login redirect',
+          updatedAt: new Date().toISOString(),
+        }],
+      }],
+    },
+  })
+  const sessions = await get<{ sessions: Array<{ ownerAgentName: string | null; ticketWork?: unknown }> }>(
+    `/api/executors/${s.minis}/coding-sessions`)
+  assert.deepEqual(sessions.body.data.sessions.map((session) => [session.ownerAgentName, session.ticketWork]), [[
+    'CTO',
+    { authorName: 'Ondrej', ticket: { projectId: trigger.scopeProjectId, taskId: task.id, title: 'Fix login redirect' } },
+  ]])
+
+  // End: a stranger is told nothing; the author ends it, and the section says who.
+  as(s.colleagueId)
+  const byColleague = await app.inject({ method: 'POST', url: `/api/standing-policies/${prepared.data.policyId}/end` })
+  assert.equal(byColleague.statusCode, 404)
+  as(s.authorId)
+  const ended = await app.inject({ method: 'POST', url: `/api/standing-policies/${prepared.data.policyId}/end` })
+  assert.deepEqual([ended.statusCode, JSON.parse(ended.body).data], [200, { ended: true }])
+  const after = await get<View>(section)
+  assert.deepEqual([after.body.data.state, after.body.data.policy?.endedByName, after.body.data.tickets.length],
+    ['ended', 'Ondrej', 0])
+  const close = await prisma.executorCodingSessionCloseRequest.findFirstOrThrow({ where: { sessionId } })
+  assert.equal(close.reason, 'policy_ended')
 })

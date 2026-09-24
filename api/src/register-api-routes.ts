@@ -98,6 +98,7 @@ import { registerMcpEndpointRoutes } from './routes/mcp-endpoint.js'
 import { registerWellKnownMcpResourceRoutes } from './routes/well-known-mcp-resource.js'
 import { registerTriggerRoutes } from './routes/triggers.js'
 import { registerTriggerMachineAccessRoutes } from './routes/trigger-machine-access.js'
+import { registerStandingPolicyViewRoutes } from './routes/standing-policy-views.js'
 import type { RouteDeps } from './routes/types.js'
 import { registerUploadRoutes } from './routes/uploads.js'
 import { registerUserRoutes } from './routes/users.js'
@@ -134,6 +135,7 @@ export const registerApiRoutes = (app: FastifyInstance, deps: RouteDeps): void =
   registerAgentTodoRoutes(app, deps)
   registerTriggerRoutes(app, deps)
   registerTriggerMachineAccessRoutes(app, deps)
+  registerStandingPolicyViewRoutes(app, deps)
   registerMcpAgentAuthRoutes(app, deps)
   // One spreadsheet service per process: the model cache and the presence
   // budget are its closure state, and the page routes' restore branch, the

@@ -298,6 +298,23 @@ export const ExecutorCodingSessionRecordSchema = ExecutorCodingSessionSummarySch
   .extend({
     closing: z.boolean(),
     ownerAgentName: z.string().min(1).nullable(),
+    /**
+     * A ticket's own session, started by its work under its trigger's standing
+     * machine access (its owner key carries the ticket's context): whose
+     * access it runs under, and the ticket — named only when the reader can
+     * read its project. Absent for a launch's or a lease's session.
+     */
+    ticketWork: z
+      .object({
+        authorName: z.string().min(1),
+        ticket: z
+          .object({ taskId: z.string().uuid(), projectId: z.string().uuid(), title: z.string().min(1) })
+          .strict()
+          .nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict()
 export type ExecutorCodingSessionRecord = z.infer<typeof ExecutorCodingSessionRecordSchema>
