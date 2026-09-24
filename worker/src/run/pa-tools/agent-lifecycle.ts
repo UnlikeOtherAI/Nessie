@@ -72,7 +72,7 @@ export const runAgentTriggerUpdateTool = async (
 ): Promise<ToolExecutionResult> => {
   const args = AgentTriggerUpdateInputSchema.parse(input)
   const { member, operatorProjectId } = await resolveOperatorAwareMember(context)
-  requireOwnerMember(member, 'update another agent’s trigger')
+  requireOwnerMember(member, 'update an agent’s trigger')
   const trigger = await context.prisma.agentTrigger.findFirst({
     where: {
       id: args.triggerId,

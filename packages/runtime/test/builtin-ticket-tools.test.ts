@@ -53,7 +53,14 @@ test('a lendable project tool never requires a projectId and says what omitting 
     // Omitting it is promised only where the handler honours it: the PA is
     // never defaulted, so it is told to name the project — and project_list is
     // addressed to it by name, never offered to an agent that does not hold it.
-    assert.match(description, /The Personal Assistant always names it, from project_list/)
+    // ticket_board_create's handler refuses the PA outright, so it says that
+    // instead of promising the PA a project it would refuse.
+    assert.match(
+      description,
+      tool.id === 'ticket_board_create'
+        ? /The Personal Assistant does not make boards with this tool/
+        : /The Personal Assistant always names it, from project_list/,
+    )
     assert.doesNotMatch(description, /otherwise resolve it with project_list/)
   }
   const list = lendable.find((tool) => tool.id === 'ticket_list')
