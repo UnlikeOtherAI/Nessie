@@ -19,7 +19,7 @@ import {
 import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { announceClosedExecutorReviewCards } from '../services/agent-card-executor-review.js'
 import { emitAuditEvent } from '../services/audit.js'
-import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
+import { requireFreshExecutorVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import type { RouteDeps } from './types.js'
 
@@ -102,7 +102,7 @@ export const registerExecutorWorkspacePromotionRoutes = (
       sendApiError(reply, 404, 'EXECUTOR_PROMOTION_NOT_FOUND', 'Workspace promotion not found')
       return reply
     }
-    const freshVerificationSatisfied = await requireFreshExecutorPasswordVerification({
+    const freshVerificationSatisfied = await requireFreshExecutorVerification({
       actorContext,
       currentPassword: body.currentPassword,
       prisma,

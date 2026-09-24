@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ExecutorAccessChangeRequestSchema,
+  ExecutorVerificationChallengeSchema,
+  type ExecutorSsoVerification,
   ExecutorAccessChangeResponseSchema,
   ExecutorAvailabilityResponseSchema,
   ExecutorRecordResponseSchema,
@@ -222,13 +224,26 @@ export const useConfirmExecutorAccessChange = () => {
       accessChangeId: string
       confirmationToken: string
       currentPassword?: string
+      ssoVerification?: ExecutorSsoVerification
     }) => apiClient.post(`/api/executor-access-changes/${input.accessChangeId}/confirm`, {
       confirmationToken: input.confirmationToken,
       ...(input.currentPassword ? { currentPassword: input.currentPassword } : {}),
+      ...(input.ssoVerification ? { ssoVerification: input.ssoVerification } : {}),
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: executorKeys.all })
     },
+  })
+}
+
+export const useStartExecutorVerification = () => {
+  const apiClient = useApiClient()
+  return useMutation({
+    mutationFn: async (input: { accessChangeId: string; confirmationToken: string }) =>
+      ExecutorVerificationChallengeSchema.parse(await apiClient.post(
+        `/api/executor-access-changes/${input.accessChangeId}/verification`,
+        { confirmationToken: input.confirmationToken },
+      )),
   })
 }
 

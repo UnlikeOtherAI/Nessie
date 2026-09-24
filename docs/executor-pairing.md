@@ -64,8 +64,7 @@ team, and appears **Online** in Nessie's Executors list. Online proves a daemon
 connection; it does not prove that a capability is approved or an agent has
 permission. Review the machine's proposed capabilities in **Permissions**, then
 configure the permitted agents in **Agents**. Install and sign in to Claude or
-kimix separately as the same OS user. See the SSO limitation below before
-promising that an SSO-only account can complete those access changes.
+kimix separately as the same OS user. SSO accounts verify changes with an email code in the same review dialog.
 
 For live output, open **Executors → Sessions**, or an executor's **Sessions**
 tab. Agents return the same session link. **Share session** gives named users
@@ -99,19 +98,20 @@ and the agent's operation grants change together; removing one agent leaves
 other agents' access intact. Pairing itself grants no
 agent access. The selected team limit does not limit the number of agents.
 
-**SSO access-change blocker:** allowing an agent, changing private assignments
-and activating a capability revision currently require the control plane's
-fresh local-password verification. Disconnecting and deleting a machine do
-not: they only take access away, so they need the same management right as
-Pause and nothing more. UOA-only accounts cannot complete these
-changes until a shared UOA-backed fresh-verification flow exists. The
-many-agent model is supported, but those grants are not yet usable by SSO-only
-accounts. An ordinary login or refreshed session is not a substitute for
-proof that a fresh authentication factor was checked for this exact change.
-The confirmation explains the missing verification support and does not ask
-SSO-only users to invent a local password. A new login or refresh is not proof
-of fresh authentication: UOA's currently published contract provides no
-authentication-time or factor-assurance claim for a relying party.
+**Fresh verification:** allowing an agent, changing private assignments and
+activating a capability revision require a fresh factor in the review dialog.
+Local accounts use their current password. UOA accounts choose **Send code to
+approve**, enter the code sent to their sign-in email, and approve the displayed
+change. Enrolled authenticators are also checked; required but unenrolled 2FA
+must be set up at UOA. Codes expire after five minutes, permit five guesses,
+and are single-use. A new code invalidates the prior one for that change.
+The proof binds the person, product, prepared change and its immutable terms;
+neither a normal login nor a session refresh substitutes for it. Changes in
+machine authority still invalidate the prepared approval. No local password
+is required for SSO. This also serves review cards opened in chat.
+Disconnect and delete remain available without fresh verification because
+they only remove access. Workspace draft promotion retains its existing
+local-password check; this flow covers executor access changes.
 
 ## Manage a machine
 

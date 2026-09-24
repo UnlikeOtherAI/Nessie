@@ -1,5 +1,6 @@
 import {
   ExecutorAccessChangeRequestSchema,
+  ExecutorSsoVerificationSchema,
   ExecutorAccessChangeResponseSchema,
   ExecutorCreateResponseSchema,
   ExecutorDaemonChallengeResponseSchema,
@@ -140,6 +141,7 @@ export type PrepareExecutorAccessChangeBody = z.infer<
 export const ConfirmExecutorAccessChangeBodySchema = z.object({
   confirmationToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   currentPassword: z.string().min(1).max(1024).optional(),
+  ssoVerification: ExecutorSsoVerificationSchema.optional(),
 }).strict()
 export type ConfirmExecutorAccessChangeBody = z.infer<
   typeof ConfirmExecutorAccessChangeBodySchema
