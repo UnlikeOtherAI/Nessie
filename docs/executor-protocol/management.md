@@ -46,10 +46,16 @@ away and must stay reachable by a manager whose sign-in has no fresh factor.
 and change-preparation reads treat the executor as absent.
 
 The access-change GET response adds `verificationMethod: "password" |
-"unavailable"`, derived from the same factor availability as the existing
-confirmation guard. It lets the review explain when verification cannot be
-completed; it does not introduce an SSO proof or weaken the confirmation
-requirement.
+"sso_code" | "unavailable"`. UOA session holders use
+`POST /api/executor-access-changes/:id/verification` with the confirmation
+token to request a code. The response contains `challengeId`, `expiresAt`, and
+`twoFactorRequired`; confirmation accepts `ssoVerification` containing that
+challenge ID, the email `code` and optional `twoFactorCode`. The API signs a
+fresh subject assertion for each server-to-server UOA request and binds the
+proof to the continuation ID, user, machine, verification nonce and subject
+digest. It never accepts a browser claim that verification succeeded. UOA
+consumes the proof once; Nessie rechecks the continuation and authorization
+revision in its normal confirmation transaction before applying the grant.
 
 `GET /api/executors/attention` returns `{total, executors}`, with one
 `{executorId, policyRevision}` per manageable machine whose absolute latest

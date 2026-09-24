@@ -1,4 +1,5 @@
 export * from './executor-status-realtime.js'
+export { executorAccessVerificationBinding } from './executor-access-verification.js'
 export * from './executor-session-views.js'
 export * from './executor-session-shares.js'
 

@@ -58,6 +58,7 @@ const fixtureApi = () => {
   let failure = null
   let verification = 'password'
   let hiddenIdentity = null
+  let verificationCodesSent = 0
   const paginate = (rows, url) => {
     const query = url.searchParams.get('q') ?? ''
     const matching = rows.filter((row) => row.name.toLowerCase().includes(query.toLowerCase()))
@@ -90,11 +91,11 @@ const fixtureApi = () => {
       if (url.pathname === `/api/agent-cards/${reviewCardId}`) return send({ data: reviewCard(cardResolved) })
       if (url.pathname === `/api/agent-cards/${reviewCardId}/respond`) {
         assert.deepEqual(body, { actionKey: 'review', secrets: {}, values: {} },
-          'a review press carries no value and no secret — the card has no inputs')
+          'a review press carries no value and no secret â€” the card has no inputs')
         assert.equal(cardResolved, false, 'a resolved card is never pressed')
         cardPresses += 1
         // The server's side of the press: a pending change this person
-        // prepared from chat, and a token minted for them at this moment —
+        // prepared from chat, and a token minted for them at this moment â€”
         // replacing the last one, so only the newest confirms.
         const accessChangeId = uuid(2000)
         const confirmationToken = cardMintedToken(cardPresses)
@@ -147,7 +148,8 @@ const fixtureApi = () => {
         prepared.set(accessChangeId, { receipt, change: body.change, verificationMethod: verification })
         return send({ data: receipt })
       }
-      const decision = /^\/api\/executor-access-changes\/([^/]+)(?:\/(confirm|reject))?$/.exec(url.pathname)
+      const decision = /^\/api\/executor-access-changes\/([^/]+)(?:\/(confirm|reject|verification))?$/
+        .exec(url.pathname)
       if (decision) {
         const entry = prepared.get(decision[1])
         assert.ok(entry, 'Review must refer to a prepared change')
@@ -155,10 +157,27 @@ const fixtureApi = () => {
           ...entry.receipt, change: entry.change, status: 'pending', verificationMethod: entry.verificationMethod,
         } })
         assert.equal(body.confirmationToken, entry.receipt.confirmationToken)
+        if (decision[2] === 'verification') {
+          verificationCodesSent += 1
+          return send({ data: { challengeId: uuid(3000 + verificationCodesSent),
+            expiresAt: new Date(Date.now() + 300_000).toISOString(), twoFactorRequired: true } })
+        }
+        if (decision[2] === 'confirm' && entry.verificationMethod === 'sso_code'
+          && body.ssoVerification?.code !== '123456') {
+          return send({ error: { code: 'EXECUTOR_VERIFICATION_FAILED',
+            message: 'Verification failed or expired. Check the code, or send a new one.' } }, 401)
+        }
         if (decision[2] === 'confirm') {
           if (entry.receipt.requiresFreshVerification) {
-            assert.equal(entry.verificationMethod, 'password')
-            assert.equal(body.currentPassword, 'fixture-proof')
+            if (entry.verificationMethod === 'sso_code') {
+              assert.equal(body.currentPassword, undefined)
+              assert.deepEqual(body.ssoVerification, {
+                challengeId: uuid(3000 + verificationCodesSent), code: '123456', twoFactorCode: '654321',
+              })
+            } else {
+              assert.equal(entry.verificationMethod, 'password')
+              assert.equal(body.currentPassword, 'fixture-proof')
+            }
           }
           const { agentId, state } = entry.change
           const source = state === 'allowed' ? candidates : roster
@@ -317,7 +336,7 @@ const evaluate = async (browser, viewport) => {
     await visible(addDialog.getByRole('button', { name: 'Add Personal Assistant', exact: true }))
     await addDialog.getByRole('button', { name: 'Add Personal Assistant', exact: true }).click()
     await visible(review)
-    await visible(review.getByText('Personal Assistant will be able to use this machine’s approved permissions.'))
+    await visible(review.getByText('Personal Assistant will be able to use this machineâ€™s approved permissions.'))
     assert.ok(api.requests.some((entry) => entry.path === '/api/agents' && entry.search === '?scope=all'))
     assert.equal(await review.getByRole('button', { name: 'Allow access' }).isEnabled(), true)
     await page.screenshot({ path: resolve(screenshots, `personal-assistant-review-${viewport.width}.png`) })
@@ -354,7 +373,7 @@ const evaluate = async (browser, viewport) => {
     const reviewButton = card.getByRole('button', { name: 'Review', exact: true })
     await reviewButton.click()
     await visible(review)
-    await visible(review.getByText('Candidate 02 will be able to use this machine’s approved permissions.'))
+    await visible(review.getByText('Candidate 02 will be able to use this machineâ€™s approved permissions.'))
     assert.equal(await review.getByText('The confirmation token is missing', { exact: false }).count(), 0)
     assert.equal(page.url().includes(cardMintedToken(1)), false, 'the minted token never enters the address')
     // Closed without confirming: the change is still pending, so the card is
@@ -382,6 +401,29 @@ const evaluate = async (browser, viewport) => {
     await visible(card.getByText(/^Review by Ondrej Rafaj/))
     assert.equal(await card.getByRole('button', { name: 'Review', exact: true }).count(), 0)
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+    api.verification('sso_code')
+    await page.getByRole('button', { name: 'Add agent', exact: true }).click()
+    await addDialog.getByRole('searchbox').fill('Candidate 05')
+    await addDialog.getByRole('button', { name: 'Add Candidate 05', exact: true }).click()
+    await visible(review)
+    assert.equal(await review.locator('input[type=password]').count(), 0)
+    await review.getByRole('button', { name: 'Send code to approve', exact: true }).click()
+    const emailCode = review.getByLabel('Email verification code', { exact: true })
+    await visible(emailCode)
+    assert.equal(await emailCode.evaluate((element) => element === document.activeElement), true)
+    assert.equal(await review.getByRole('button', { name: 'Allow access' }).isDisabled(), true)
+    await emailCode.fill('000000')
+    await review.getByLabel('Authenticator code', { exact: true }).fill('654321')
+    await review.getByRole('button', { name: 'Allow access', exact: true }).click()
+    await visible(review.getByText('Verification failed or expired.', { exact: false }))
+    await review.getByRole('button', { name: 'Send a new code', exact: true }).click()
+    await page.waitForFunction(() => document.querySelector('input[autocomplete="one-time-code"]')?.value === '')
+    await page.screenshot({ path: resolve(screenshots, `sso-code-${viewport.width}.png`), fullPage: true })
+    await emailCode.fill('123456')
+    await review.getByLabel('Authenticator code', { exact: true }).fill('654321')
+    await review.getByRole('button', { name: 'Allow access', exact: true }).click()
+    await absent(review)
+    assert.ok(api.roster.some((agent) => agent.agentId === uuid(105)), 'SSO verification grants only the reviewed agent')
     assert.deepEqual(errors, [])
     console.log(`Executor agents ${viewport.width}px: pagination, search, add, reject, confirm, remove, retry and the chat confirmation card passed`)
   } catch (error) {

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { ExecutorSsoVerification } from '@nessie/schemas'
 import type { ExecutorDescriptorRevisionView } from '../../../facades/executors/local-mcp'
 import {
   useConfirmExecutorAccessChange,
@@ -7,6 +8,7 @@ import {
   useExecutorWorkspacePromotion,
   useRejectExecutorAccessChange,
   useRejectExecutorWorkspacePromotion,
+  useStartExecutorVerification,
 } from '../../../facades/executors/hooks'
 import { ExecutorGrantedSuite } from './ExecutorGrantedSuite'
 import { Dialog } from '../../shared/Dialog'
@@ -66,7 +68,16 @@ export const ExecutorAccessChangeDialog = ({
   const rejectChange = useRejectExecutorAccessChange()
   const [currentPassword, setCurrentPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const pending = confirmChange.isPending || rejectChange.isPending
+  const startVerification = useStartExecutorVerification()
+  const [verification, setVerification] = useState<ExecutorSsoVerification | null>(null)
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false)
+  const pending = confirmChange.isPending || rejectChange.isPending || startVerification.isPending
+  useEffect(() => {
+    setVerification(null)
+    setTwoFactorRequired(false)
+    setCurrentPassword('')
+    setError(null)
+  }, [accessChangeId, open])
   const agents = useAgents({ scope: 'all' })
   const executorAccess = useExecutorAccess(change?.executorId)
   const terms = change?.change ?? {}
@@ -79,7 +90,9 @@ export const ExecutorAccessChangeDialog = ({
   const copy = executorChangePresentation(terms,
     agents.data?.find((agent) => agent.id === agentId)?.name,
     users.data?.find((user) => user.id === personId)?.displayName)
-  const unavailable = change?.requiresFreshVerification && change.verificationMethod !== 'password'
+  const sso = change?.requiresFreshVerification && change.verificationMethod === 'sso_code'
+  const unavailable = change?.requiresFreshVerification
+    && change.verificationMethod !== 'password' && !sso
   const revisions = executorAccess.data?.executorId === change?.executorId
     ? executorAccess.data?.descriptorRevisions : descriptorRevisions
   const policyFound = terms.kind !== 'descriptor_review' || revisions?.some((revision) => revision.revision === terms.revision)
@@ -89,6 +102,7 @@ export const ExecutorAccessChangeDialog = ({
 
   const close = () => {
     setCurrentPassword('')
+    setVerification(null)
     setError(null)
     onClose()
   }
@@ -97,15 +111,34 @@ export const ExecutorAccessChangeDialog = ({
     if (!change || !confirmationToken) return
     setError(null)
     try {
+      if (sso && !verification) {
+        const challenge = await startVerification.mutateAsync({ accessChangeId, confirmationToken })
+        setVerification({ challengeId: challenge.challengeId, code: '' })
+        setTwoFactorRequired(challenge.twoFactorRequired)
+        return
+      }
       await confirmChange.mutateAsync({
         accessChangeId: change.accessChangeId,
         confirmationToken,
-        ...(change.requiresFreshVerification ? { currentPassword } : {}),
+        ...(sso && verification ? { ssoVerification: verification }
+          : change.requiresFreshVerification ? { currentPassword } : {}),
       })
       onConfirmed?.(change.change)
       close()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to confirm access change.')
+    }
+  }
+
+  const resend = async () => {
+    if (!confirmationToken) return
+    setError(null)
+    try {
+      const challenge = await startVerification.mutateAsync({ accessChangeId, confirmationToken })
+      setVerification({ challengeId: challenge.challengeId, code: '' })
+      setTwoFactorRequired(challenge.twoFactorRequired)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to send a new code.')
     }
   }
 
@@ -152,7 +185,39 @@ export const ExecutorAccessChangeDialog = ({
             {unavailable ? <FormError>
               Your sign-in provider does not yet support the extra identity check needed for this change.
             </FormError> : null}
-            {change.requiresFreshVerification && !unavailable ? (
+            {sso ? <div className="grid gap-3">
+              <p className="text-sm text-[color:var(--tx2)]" role="status">
+                {verification ? 'We sent a code to your sign-in email. Enter it to approve this change.'
+                  : 'To protect your machine, confirm this change with a code sent to your sign-in email.'}
+              </p>
+              {verification ? <>
+                <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
+                  Email verification code
+                  <input
+                    autoComplete="one-time-code"
+                    autoFocus
+                    className="admin-input"
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={(event) => setVerification({ ...verification, code: event.target.value.replace(/\s/g, '') })}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !pending && /^\d{6}$/.test(verification.code)
+                        && (!twoFactorRequired || /^\d{6}$/.test(verification.twoFactorCode ?? ''))) void confirm()
+                    }}
+                    value={verification.code}
+                  />
+                </label>
+                {twoFactorRequired ? <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
+                  Authenticator code
+                  <input className="admin-input" inputMode="numeric" maxLength={6}
+                    onChange={(event) => setVerification({ ...verification, twoFactorCode: event.target.value.trim() })}
+                    value={verification.twoFactorCode ?? ''} />
+                </label> : null}
+                <button className="admin-button admin-button-secondary justify-self-start"
+                  disabled={pending} onClick={() => void resend()} type="button">Send a new code</button>
+              </> : null}
+            </div> : null}
+            {change.requiresFreshVerification && !unavailable && !sso ? (
               <label className="grid gap-1 text-xs font-medium text-[color:var(--tx2)]">
                 Confirm with current password
                 <input
@@ -175,11 +240,14 @@ export const ExecutorAccessChangeDialog = ({
               </button>
               <button
                 className="admin-button admin-button-primary"
-                disabled={!confirmationToken || pending || Boolean(unavailable) || !copy.reviewable || !policyFound || !grantReady || change.status !== 'pending'}
+                disabled={!confirmationToken || pending || Boolean(unavailable) || !copy.reviewable || !policyFound
+                  || !grantReady || change.status !== 'pending' || Boolean(sso && verification
+                    && (!/^\d{6}$/.test(verification.code)
+                      || (twoFactorRequired && !/^\d{6}$/.test(verification.twoFactorCode ?? ''))))}
                 onClick={() => void confirm()}
                 type="button"
               >
-                {copy.action}
+                {startVerification.isPending ? 'Sending code…' : sso && !verification ? 'Send code to approve' : copy.action}
               </button>
             </FormActions>
           </div>
