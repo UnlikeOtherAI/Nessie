@@ -78,6 +78,8 @@ const states = async (browser, { name, options }) => {
     const wakes = await section.getByTestId('machine-access-wakes').innerText()
     assert.match(wakes, /Woke the agent: the machine came back\./)
     assert.match(wakes, /Woke the agent: a coding session’s turn ended\./)
+    // A skipped session wake says what the session did (T5).
+    assert.match(wakes, /A coding session closed, but the agent had closed it itself or the work was not active/)
     await assertNoSidewaysScroll(page, `${name} machine access ${access}`)
     await section.screenshot({ path: shot(`machine-access-${access.replace(/_/g, '-')}`, width) })
     assert.deepEqual(errors, [], `${name} ${access}: no page errors`)

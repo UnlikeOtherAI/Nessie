@@ -144,6 +144,12 @@ const delivery = (n: number, source: string, status: string, payload: Record<str
   ...(status === 'skipped' ? { errorMessage: String(payload.skipReason ?? 'Ran without a machine.') } : {}),
 })
 const history = [
+  // T5: a close the agent made itself, which woke nobody.
+  delivery(9, 'session', 'skipped', {
+    eventType: 'session', originKind: 'system', outcome: 'skipped', skipReason: 'no_longer_applies',
+    session: { sessionId: '60000000-0000-4000-8000-000000000710', status: 'closed', turn: 4 },
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
   // T5: the ticket's machine came back online, and its coding session ended a turn.
   delivery(8, 'machine', 'delivered', {
     eventType: 'machine_back_online', originKind: 'system', outcome: 'follow', wakeReason: 'machine_back_online',
