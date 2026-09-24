@@ -77,3 +77,16 @@ test('the setup form refuses a machine for what the chosen options cannot give i
     { ...minis, facts: { ...minis.facts!, rootNames: ['site', 'docs'] } },
   ]), ['site'])
 })
+
+test('a ticket paused for its offline machine says since when (T5)', () => {
+  const since = new Date()
+  since.setHours(14, 32, 0, 0)
+  const clock = since.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const ticket = {
+    machineLabel: 'Minis', offlineSince: since.toISOString(), position: null, projectId: POLICY.id,
+    stateReason: 'machine_offline' as const, status: 'waiting_machine' as const, taskId: POLICY.id, title: 'NES-1 Fix it',
+    workId: POLICY.id,
+  }
+  assert.equal(machineAccessTicketLine(ticket), `paused: Minis is offline since ${clock}`)
+  assert.equal(machineAccessTicketLine({ ...ticket, machineLabel: null }), `paused: its machine is offline since ${clock}`)
+})

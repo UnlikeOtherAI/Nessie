@@ -1,4 +1,8 @@
-import { TicketChangedStoredConfigSchema, TicketQuietWakeMinutesSchema } from '@nessie/schemas'
+import {
+  TicketChangedStoredConfigSchema,
+  TicketQuietWakeMinutesSchema,
+  TicketWaitingMachineHoursSchema,
+} from '@nessie/schemas'
 
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import type { AgentTriggerRecord } from '../../../lib/api-client'
@@ -46,7 +50,15 @@ export const useTicketTriggerFacts = (
       : []),
     { label: 'Ends work', value: ends.length > 0 ? `When a ticket enters ${ends.join(', ')}` : 'Never' },
     { label: 'Quiet wake', value: quietWakeFact(config.quietWakeMinutes) },
+    { label: 'Offline machine', value: waitingMachineFact(config.waitingMachineHours) },
   ]
+}
+
+/** How long work waits for its own machine to reconnect before another machine may take it. */
+const waitingMachineFact = (stored: unknown): string => {
+  const parsed = TicketWaitingMachineHoursSchema.safeParse(stored)
+  const hours = parsed.success ? parsed.data : TicketWaitingMachineHoursSchema.parse(undefined)
+  return `Work waits ${hours} ${hours === 1 ? 'hour' : 'hours'} for its machine to reconnect, then moves to another`
 }
 
 /** The quiet wake as the page says it: when live work nothing else will wake is checked on. */

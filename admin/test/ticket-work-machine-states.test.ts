@@ -8,10 +8,12 @@ import {
 } from '@nessie/schemas'
 
 import {
+  ticketDeliveryLine,
   ticketWorkHeadline,
   ticketWorkHistoryLine,
   ticketWorkMachineRefusalLine,
   ticketWorkStateLine,
+  ticketWorkWakeLine,
 } from '../src/components/features/ticket-work/ticket-work-presentation'
 
 // What the ticket's chip and its work history say of machines (T4,
@@ -183,4 +185,41 @@ test('a history row says where started work went when no machine took it', () =>
     said({ eventType: 'work_ended', reason: 'machine_access_ended', status: 'cancelled' }),
     'CTO ended the work: machine access ended',
   )
+})
+
+test('work paused for an offline machine says since when, and back online says the machine came back (T5)', () => {
+  const since = new Date()
+  since.setHours(14, 32, 0, 0)
+  const paused = record({ machineOfflineSince: since.toISOString(), stateReason: 'machine_offline', status: 'waiting_machine' })
+  const clock = since.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  assert.equal(ticketWorkStateLine(paused), `Paused: the machine is offline since ${clock}. Work resumes when it reconnects.`)
+  assert.equal(
+    said({ eventType: 'work_resumed', previousReason: 'machine_offline', status: 'active' }),
+    'CTO resumed the work: its machine is back online',
+  )
+  assert.equal(
+    said({ eventType: 'work_queued', previousReason: 'machine_offline', reason: 'queued_no_free_machine', status: 'queued' }),
+    'CTO queued the work for another machine, because its machine stayed offline: every machine is busy',
+  )
+  // Back at work, the chip says working again, and why it last woke.
+  const back = record({ lastWakeAt: new Date().toISOString(), lastWakeReason: 'machine_back_online', status: 'active' })
+  assert.match(ticketWorkHeadline(back), /^CTO · working · started /)
+  assert.match(ticketWorkWakeLine(back) ?? '', /: the machine came back · wake 3 of 30$/)
+  assert.equal(ticketWorkStateLine(back), null)
+})
+
+test('a session wake is said on the trigger\'s page, and a skip it did not need says why (T5)', () => {
+  const base = {
+    originKind: 'system', taskId: 'c1111111-1111-4111-8111-111111111111', workId: 'd1111111-1111-4111-8111-111111111111',
+    eventType: 'session',
+    session: { sessionId: 'e1111111-1111-4111-8111-111111111111', status: 'waiting_for_input', turn: 4 },
+  }
+  assert.equal(ticketDeliveryLine({ ...base, outcome: 'follow', wakeReason: 'session_turn_ended' }),
+    'Woke the agent: a coding session’s turn ended.')
+  assert.match(ticketDeliveryLine({ ...base, outcome: 'skipped', skipReason: 'no_longer_applies' }) ?? '',
+    /^A coding session's turn ended, but the agent had already read it or the work was not active/)
+  assert.equal(ticketDeliveryLine({
+    originKind: 'system', taskId: base.taskId, workId: base.workId,
+    eventType: 'machine_back_online', outcome: 'follow', wakeReason: 'machine_back_online',
+  }), 'Woke the agent: the machine came back.')
 })

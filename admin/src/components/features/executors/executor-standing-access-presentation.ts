@@ -48,6 +48,17 @@ export const standingAccessStateLine = (row: StateRow): string | null => {
 export const standingAccessTicketsLine = (count: number): string =>
   count === 0 ? 'No tickets working here' : `${count} ${count === 1 ? 'ticket' : 'tickets'} working here`
 
+/**
+ * What the ticket holding this machine is doing with it (T5): working on it,
+ * or paused until it reconnects — the machine is held either way. The ticket's
+ * title comes beside it only for a reader who can open the ticket.
+ */
+export const standingAccessHolderLine = (holder: NonNullable<ExecutorStandingPolicyRow['holdingTicket']>): string =>
+  holder.status === 'active' ? 'holds this machine, working' : 'holds this machine, paused until it reconnects'
+
+/** Who holds it, for a reader who may not open the ticket. */
+export const STANDING_ACCESS_UNREADABLE_HOLDER = 'A ticket you cannot open'
+
 /** The trigger's name for a sentence, when the trigger is still there to name. */
 export const standingAccessTriggerName = (row: Pick<ExecutorStandingPolicyRow, 'trigger'>): string =>
   row.trigger ? `“${row.trigger.name}”` : 'a deleted trigger'

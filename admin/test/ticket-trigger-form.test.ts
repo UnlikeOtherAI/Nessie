@@ -175,6 +175,35 @@ test('the quiet wake posts its minutes, posts null when off, reads back, and ref
   )
 })
 
+test('waiting for an offline machine posts its hours, reads back, and refuses out of range on its field (T5)', () => {
+  const base = {
+    ...getDefaultTicketState({ boardId: BOARD, pickupColumnIds: [DOING] }),
+    instructions: { ...getDefaultTicketState().instructions, general: 'Triage it.' },
+  }
+  const byDefault = buildTicketConfig(base)
+  assert.ok('config' in byDefault)
+  assert.equal(byDefault.config.waitingMachineHours, 24)
+  assert.equal(TicketChangedTriggerConfigSchema.parse(byDefault.config).waitingMachineHours, 24)
+  const six = buildTicketConfig({ ...base, waitingMachineHours: '6' })
+  assert.ok('config' in six)
+  assert.equal(six.config.waitingMachineHours, 6)
+  for (const hours of ['0', '169', '1.5', '']) {
+    const refused = buildTicketConfig({ ...base, waitingMachineHours: hours })
+    assert.ok('error' in refused, hours)
+    assert.equal(refused.field, 'waitingMachineHours')
+    assert.match(refused.error, /from 1 to 168/)
+  }
+  assert.deepEqual(
+    [ticketStateFromConfig({ boardId: BOARD, waitingMachineHours: 6 }).waitingMachineHours,
+      ticketStateFromConfig({ boardId: BOARD }).waitingMachineHours],
+    ['6', '24'],
+  )
+  assert.deepEqual(
+    groupTicketRefusals({ refusals: [{ path: 'waitingMachineHours', reason: 'too long' }] }).fields,
+    { waitingMachineHours: 'too long' },
+  )
+})
+
 test('the chip says when the agent checks back, and what it waits on', () => {
   const record = {
     agent: { id: 'a', name: 'CTO' }, endedAt: null, id: 'w', lastWakeAt: null, lastWakeReason: null,

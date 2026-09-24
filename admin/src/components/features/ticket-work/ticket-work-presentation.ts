@@ -131,7 +131,9 @@ const machineWaitLine = (record: TicketWorkChipRecord): string | null => {
   }
   if (record.status !== 'waiting_machine') return null
   switch (record.stateReason) {
-    case 'machine_offline': return 'Paused: the machine is offline. Work resumes when it reconnects.'
+    case 'machine_offline':
+      return `Paused: the machine is offline${record.machineOfflineSince ? ` since ${day(record.machineOfflineSince)}` : ''}. `
+        + 'Work resumes when it reconnects.'
     case 'machine_access_not_set_up': return 'Waiting for machine access: its owner has not set it up yet.'
     case 'machine_access_suspended':
       return 'Waiting for machine access: it is paused until its owner confirms it again.'
@@ -188,11 +190,16 @@ const historyPhrase = (entry: TicketWorkHistoryEntry): string => {
         ? `started work, waiting for ${machineWaitPhrase(entry.reason)}`
         : 'started work'
     case 'work_queued':
+      // Taken off a machine that stayed away too long, for another one to take (T5).
+      if (entry.previousReason === 'machine_offline') {
+        return `queued the work for another machine, because its machine stayed offline${why ? `: ${why}` : ''}`
+      }
       return why ? `queued the work: ${why}` : 'queued the work for a machine'
     // A pause with no reason is the park in review; one with a reason waits for a machine.
     case 'work_paused':
       return why ? `paused the work: ${why}` : 'parked the work while the ticket is in review'
     case 'work_resumed':
+      if (entry.previousReason === 'machine_offline') return 'resumed the work: its machine is back online'
       if (entry.status === 'queued') return 'resumed the work, which is queued for a machine'
       return entry.status === 'waiting_machine'
         ? `resumed the work, which waits for ${machineWaitPhrase(entry.reason)}`
@@ -232,6 +239,11 @@ export const ticketDeliveryLine = (payload: unknown): string | null => {
   const parsed = TicketTriggerDeliveryPayloadSchema.safeParse(payload)
   if (!parsed.success) return null
   const delivery = parsed.data
+  // A coding session's turn the agent had already read, or that ended while its work was not active (T5).
+  if (delivery.outcome === 'skipped' && delivery.session && delivery.skipReason === 'no_longer_applies') {
+    return 'A coding session\'s turn ended, but the agent had already read it or the work was not active, so it was '
+      + 'not woken for it.'
+  }
   if (delivery.outcome === 'skipped' && delivery.skipReason) {
     return ticketSkipSentence(delivery.skipReason, { reentry: delivery.reentry === true })
   }

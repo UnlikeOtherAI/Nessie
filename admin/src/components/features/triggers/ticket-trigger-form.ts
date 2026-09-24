@@ -3,6 +3,7 @@ import {
   TICKET_QUIET_WAKE_MINUTES,
   TICKET_TRIGGER_LIMIT_CEILINGS,
   TICKET_TRIGGER_LIMIT_DEFAULTS,
+  TICKET_WAITING_MACHINE_HOURS,
   TicketChangedWorkConfigSchema,
   type ColumnCategory,
   type TicketFollowKind,
@@ -42,6 +43,8 @@ export type TicketTriggerFormState = {
   /** The quiet wake: on, after this many minutes; off posts null. */
   quietWakeEnabled: boolean
   quietWakeMinutes: string
+  /** Hours work waits for its own offline machine before another machine of the pool may take it. */
+  waitingMachineHours: string
   instructions: Record<TicketInstructionSection, string>
 }
 
@@ -115,6 +118,7 @@ export const getDefaultTicketState = (
   startsPerDay: String(TICKET_TRIGGER_LIMIT_DEFAULTS.startsPerDay),
   quietWakeEnabled: true,
   quietWakeMinutes: String(TICKET_QUIET_WAKE_MINUTES.default),
+  waitingMachineHours: String(TICKET_WAITING_MACHINE_HOURS.default),
   instructions: emptyInstructions(),
 })
 
@@ -140,6 +144,7 @@ export const ticketStateFromConfig = (config: unknown): TicketTriggerFormState =
     startsPerDay: String(stored.limits.startsPerDay),
     quietWakeEnabled: stored.quietWakeMinutes !== null,
     quietWakeMinutes: String(stored.quietWakeMinutes ?? TICKET_QUIET_WAKE_MINUTES.default),
+    waitingMachineHours: String(stored.waitingMachineHours),
     instructions,
   }
 }
@@ -162,6 +167,15 @@ const readLimit = (value: string, ceiling: number): number | null => {
 const readQuietMinutes = (value: string): number | undefined => {
   const parsed = Number(value.trim())
   return Number.isInteger(parsed) && parsed >= TICKET_QUIET_WAKE_MINUTES.min && parsed <= TICKET_QUIET_WAKE_MINUTES.max
+    ? parsed
+    : undefined
+}
+
+/** Hours of waiting for an offline machine, or undefined for a value the server would refuse. */
+const readWaitingHours = (value: string): number | undefined => {
+  const parsed = Number(value.trim())
+  return Number.isInteger(parsed) && parsed >= TICKET_WAITING_MACHINE_HOURS.min
+    && parsed <= TICKET_WAITING_MACHINE_HOURS.max
     ? parsed
     : undefined
 }
@@ -193,6 +207,14 @@ export const buildTicketConfig = (state: TicketTriggerFormState): TicketConfigRe
       field: 'quietWakeMinutes',
     }
   }
+  const waitingMachineHours = readWaitingHours(state.waitingMachineHours)
+  if (waitingMachineHours === undefined) {
+    return {
+      error: `Waiting for an offline machine is a whole number of hours from ${TICKET_WAITING_MACHINE_HOURS.min} to `
+        + `${TICKET_WAITING_MACHINE_HOURS.max}.`,
+      field: 'waitingMachineHours',
+    }
+  }
   const sections = Object.fromEntries(
     TICKET_INSTRUCTION_SECTIONS
       .map(({ key }) => [key, state.instructions[key].trim()] as const)
@@ -211,6 +233,7 @@ export const buildTicketConfig = (state: TicketTriggerFormState): TicketConfigRe
         ...state.endOnColumnIds.map((id) => ({ id })),
       ],
       quietWakeMinutes,
+      waitingMachineHours,
       limits: { startsPerDay, wakesPerTicket },
       instructions: sections,
     },
@@ -226,10 +249,12 @@ export type TicketFormField =
   | 'endOn'
   | 'limits'
   | 'quietWakeMinutes'
+  | 'waitingMachineHours'
   | 'instructions'
 
 const FIELD_ROOTS: readonly TicketFormField[] = [
-  'targetChannelId', 'boardId', 'pickup', 'follow', 'endOn', 'limits', 'quietWakeMinutes', 'instructions',
+  'targetChannelId', 'boardId', 'pickup', 'follow', 'endOn', 'limits', 'quietWakeMinutes', 'waitingMachineHours',
+  'instructions',
 ]
 
 /** `pickup.columns[0]` → `pickup`: the field a refusal's path names, or null for one the editor has no field for. */

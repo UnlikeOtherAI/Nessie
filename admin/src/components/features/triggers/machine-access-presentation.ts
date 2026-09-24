@@ -115,7 +115,7 @@ export const machineAccessTicketLine = (ticket: TriggerMachineAccessTicket): str
         + (ticket.stateReason === 'queued_machines_offline' ? ', the machines are offline' : ', every machine is busy')
     case 'waiting_machine':
       return ticket.stateReason === 'machine_offline'
-        ? `paused: ${ticket.machineLabel ?? 'its machine'} is offline`
+        ? `paused: ${ticket.machineLabel ?? 'its machine'} is offline${ticket.offlineSince ? ` since ${day(ticket.offlineSince)}` : ''}`
         : ticket.stateReason === 'machine_access_suspended'
           ? 'waiting: machine access is paused'
           : 'waiting for machine access'

@@ -1,5 +1,5 @@
 import { useEffect, type Dispatch, type SetStateAction } from 'react'
-import { TICKET_QUIET_WAKE_MINUTES, TICKET_TRIGGER_LIMIT_CEILINGS } from '@nessie/schemas'
+import { TICKET_QUIET_WAKE_MINUTES, TICKET_TRIGGER_LIMIT_CEILINGS, TICKET_WAITING_MACHINE_HOURS } from '@nessie/schemas'
 
 import { useProjectBoards } from '../../../facades/boards/hooks'
 import { PROVIDER_LABEL, useProjectSources } from '../../../facades/board-sources/hooks'
@@ -233,6 +233,24 @@ export const TicketTriggerFields = ({ errors, form, projectId, setForm }: Ticket
           into a start-work column.
         </p>
         <FieldError field="limits" message={errors.limits} />
+        <label className="grid max-w-xs gap-1 text-sm text-[color:var(--tx2)]" htmlFor="ticket-trigger-waiting-hours">
+          Hours to wait for an offline machine
+          <input
+            className="admin-input"
+            id="ticket-trigger-waiting-hours"
+            inputMode="numeric"
+            max={TICKET_WAITING_MACHINE_HOURS.max}
+            min={TICKET_WAITING_MACHINE_HOURS.min}
+            onChange={(event) => patch({ waitingMachineHours: event.target.value })}
+            type="number"
+            value={ticket.waitingMachineHours}
+          />
+        </label>
+        <p className="text-xs text-[color:var(--tx3)]">
+          Work whose machine goes offline pauses until it reconnects. After this many hours it is queued for
+          another machine of its machine access, where a new coding session starts.
+        </p>
+        <FieldError field="waitingMachineHours" message={errors.waitingMachineHours} />
       </Section>
 
       <Section

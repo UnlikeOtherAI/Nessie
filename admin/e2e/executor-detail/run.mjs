@@ -28,9 +28,14 @@ const standingRow = (n, fields) => ({
   id: policyId(n), suspendedReason: null, trigger: null, agentName: null, authorName: 'Alex',
   confirmedAt: timestamp, createdAt: timestamp, activeTickets: 0, viewerCanEnd: true, ...fields,
 })
+// T5: the ticket holding the machine under the live policy, named for a reader who can open it.
+const holdingTicket = {
+  projectId: '77777777-7777-4777-8777-777777777771', status: 'active',
+  taskId: '77777777-7777-4777-8777-777777777772', title: 'NES-140 Fix login redirect',
+}
 const standing = ExecutorStandingPolicyListResponseSchema.parse({ policies: [
   standingRow(1, { status: 'live', trigger: { id: triggerId(1), name: 'Pick up tickets' }, agentName: 'CTO',
-    authorName: 'Ondrej', activeTickets: 1 }),
+    authorName: 'Ondrej', activeTickets: 1, holdingTicket }),
   standingRow(2, { status: 'suspended', suspendedReason: 'trigger_changed',
     trigger: { id: triggerId(2), name: 'Fix reported bugs' }, agentName: 'Bug fixer' }),
   standingRow(3, { status: 'preparing', trigger: { id: triggerId(3), name: 'Write release notes' },
@@ -137,9 +142,15 @@ try {
     const live = standingRowOf(standingSection, 'Pick up tickets')
     await live.waitFor()
     assert.match(await live.innerText(),
-      /Pick up tickets[\s\S]*set up by Ondrej[\s\S]*CTO[\s\S]*Live[\s\S]*1 ticket working here/)
+      new RegExp('Pick up tickets[\\s\\S]*set up by Ondrej[\\s\\S]*CTO[\\s\\S]*Live[\\s\\S]*'
+        + 'NES-140 Fix login redirect[\\s\\S]*holds this machine, working'))
     assert.equal(await standingSection.getByRole('link', { name: 'Pick up tickets' }).getAttribute('href'),
       `/agents/triggers/${triggerId(1)}`, 'the trigger links to its own screen')
+    // Which ticket holds the machine (T5), linked to the ticket on its board.
+    assert.equal(
+      await standingSection.getByRole('link', { name: 'NES-140 Fix login redirect' }).first().getAttribute('href'),
+      `/projects/${holdingTicket.projectId}/board?task=${holdingTicket.taskId}`,
+    )
     assert.match(await standingRowOf(standingSection, 'Fix reported bugs').innerText(),
       /set up by Alex[\s\S]*Suspended[\s\S]*The trigger was edited, so it waits until Alex confirms again\./)
     assert.match(await standingRowOf(standingSection, 'Write release notes').innerText(),

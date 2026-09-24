@@ -45,9 +45,15 @@ const states = async (browser, { name, options }) => {
     const { context, errors, page, section } = await openSection(browser, options, access)
     assert.match(await section.getByTestId('machine-access-state').innerText(), sentence, `${name} ${access}`)
     const text = await section.innerText()
+    // T5: a ticket whose machine went away says since when, and its place is kept.
+    const pausedSince =
+      /NES-141 Refactor billing\s+paused: (Studio|its machine) is offline since \d{1,2}:\d{2}(\s?[AP]M)?/
     if (access === 'live') {
       assert.match(text, /NES-140 Fix login redirect\s+working on Minis/)
+      assert.match(text, pausedSince)
+      assert.match(text, /paused: Studio is offline since/)
       assert.match(text, /NES-143 Speed up search\s+queued: position 1, every machine is busy/)
+      assert.match(text, /NES-144 Tidy settings\s+queued: position 2, every machine is busy/)
       assert.match(text, /Limits: 4 hours and \$20 a ticket, \$60 a day\./)
       assert.match(text, /it gets no other program on them/)
       assert.equal(await section.getByRole('button', { name: 'End' }).count(), 1, 'the author may end it')
@@ -55,6 +61,7 @@ const states = async (browser, { name, options }) => {
     if (access === 'live_other') {
       assert.doesNotMatch(text, /Minis|Studio/, 'an owner who does not administer the machines is not told them')
       assert.match(text, /NES-140 Fix login redirect\s+working/)
+      assert.match(text, /paused: its machine is offline since/)
       assert.equal(await section.getByRole('button', { name: /End|Set up|Change/ }).count(), 0, `${name}: read-only`)
     }
     if (access === 'not_set_up_other') {
@@ -67,8 +74,10 @@ const states = async (browser, { name, options }) => {
       assert.equal(await section.getByRole('button', { name: 'Set up machine access…' }).count(), 1)
     }
     if (access === 'suspended') assert.match(text, /waiting: machine access is paused/)
-    // The last wakes, in the words the deliveries say them.
-    assert.match(await section.getByTestId('machine-access-wakes').innerText(), /Woke the agent: a comment\./)
+    // The last wakes, in the words the deliveries say them — a machine back and a session's turn (T5) among them.
+    const wakes = await section.getByTestId('machine-access-wakes').innerText()
+    assert.match(wakes, /Woke the agent: the machine came back\./)
+    assert.match(wakes, /Woke the agent: a coding session’s turn ended\./)
     await assertNoSidewaysScroll(page, `${name} machine access ${access}`)
     await section.screenshot({ path: shot(`machine-access-${access.replace(/_/g, '-')}`, width) })
     assert.deepEqual(errors, [], `${name} ${access}: no page errors`)

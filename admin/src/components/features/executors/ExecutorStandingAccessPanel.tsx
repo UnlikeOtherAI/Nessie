@@ -11,7 +11,9 @@ import { FormError } from '../../shared/FormActions'
 import { QueryState } from '../../shared/QueryState'
 import {
   STANDING_ACCESS_STATE,
+  STANDING_ACCESS_UNREADABLE_HOLDER,
   standingAccessEndCopy,
+  standingAccessHolderLine,
   standingAccessStateLine,
   standingAccessTicketsLine,
 } from './executor-standing-access-presentation'
@@ -35,11 +37,30 @@ const State = ({ row }: { row: Row }) => {
   )
 }
 
-const Tickets = ({ row }: { row: Row }) => (
-  <span className={row.activeTickets === 0 ? 'text-[color:var(--tx3)]' : undefined}>
-    {standingAccessTicketsLine(row.activeTickets)}
-  </span>
-)
+/** Which ticket holds this machine under the policy, when one does; otherwise how many work here. */
+const Tickets = ({ row }: { row: Row }) => {
+  const holder = row.holdingTicket
+  if (!holder) {
+    return (
+      <span className={row.activeTickets === 0 ? 'text-[color:var(--tx3)]' : undefined}>
+        {standingAccessTicketsLine(row.activeTickets)}
+      </span>
+    )
+  }
+  return (
+    <span className="grid gap-0.5" data-testid="standing-access-holder">
+      {holder.title ? (
+        <Link
+          className="font-medium text-[color:var(--lnk)] underline-offset-2 hover:underline"
+          to={`/projects/${holder.projectId}/board?task=${encodeURIComponent(holder.taskId)}`}
+        >
+          {holder.title}
+        </Link>
+      ) : <span>{STANDING_ACCESS_UNREADABLE_HOLDER}</span>}
+      <span className="text-xs text-[color:var(--tx3)]">{standingAccessHolderLine(holder)}</span>
+    </span>
+  )
+}
 
 /**
  * The ticket triggers whose work runs on this machine as the person who set
