@@ -104,17 +104,20 @@ runDatabaseTest('tools that need a person refuse on a ticket.work run', async (t
   assert.doesNotMatch(kb.output, /Salary review/)
   assert.match(kb.output, /access|not found/i)
 
-  // Schedules and mail would fall back to the agent's own authority: refused.
+  // Schedules and mail would fall back to the agent's own authority, and a
+  // card would be answerable by anyone who reads the channel: refused.
   for (const [tool, args] of [
     ['schedule_task', { instructions: 'Check the ticket', schedule: { kind: 'interval', every_minutes: 5 } }],
     ['mailbox_search', { text: 'invoice' }],
     ['email_send', { to: 'someone@example.test', subject: 'Hi', body: 'Hi' }],
+    ['card_post', { title: 'Which login flow?', actions: [{ key: 'a', label: 'A' }] }],
   ] as const) {
     const refused = await executeBuiltinTool(tool, args, context)
     assert.equal(refused.success, false, tool)
-    assert.match(refused.output, /acts for a person, and ticket work has none behind it/, tool)
+    assert.match(refused.output, /needs a person behind the run, and ticket work has none/, tool)
   }
   assert.equal(await prisma.agentTrigger.count({ where: { agentId: s.agentId } }), 1, 'no schedule was created')
+  assert.equal(await prisma.agentCard.count({ where: { threadId: work.threadId } }), 0, 'no card was posted')
 
   // Every setup verb, and the ticket tools that need a person, refuse too.
   for (const [tool, args] of [

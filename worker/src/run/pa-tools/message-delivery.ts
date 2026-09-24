@@ -1,13 +1,24 @@
 import { Prisma } from '@prisma/client'
 import { grantMessageDisclosure } from '@nessie/runtime'
 import { captureUserMessageMemory } from '@nessie/memory'
-import { CHAT_MESSAGE_MAX_CHARS, redactDetectedSecrets, withActionContext } from '@nessie/schemas'
+import {
+  CHAT_MESSAGE_MAX_CHARS,
+  redactDetectedSecrets,
+  TICKET_WORK_STEER_METADATA_KEY,
+  withActionContext,
+} from '@nessie/schemas'
 import {
   parseChannelId,
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
 import { enqueueOrchestrateDecide } from '@nessie/db'
+import {
+  canPostInTicketWorkThread,
+  enqueueTicketWorkThreadMessage,
+  findTicketWorkThread,
+  TICKET_WORK_THREAD_READ_ONLY_SENTENCE,
+} from '@nessie/team-admin'
 import { isDelegatedSystemDmChannelType } from '../delegated-identity.js'
 import { createMessageMentionAlerts } from '../mention-alerts.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
@@ -84,6 +95,15 @@ export const runSendMessageTool = async (
     )
   }
 
+  // A ticket's work thread has one posting rule for every writer, this tool
+  // included: only a person who can edit the ticket's board writes there, and
+  // what they write steers the work rather than starting an ordinary run
+  // (docs/standards/ticket-work.md → "The work thread").
+  const workThread = await findTicketWorkThread(context.prisma, destination.threadId)
+  if (workThread && !(await canPostInTicketWorkThread(context.prisma, { thread: workThread, userId }))) {
+    throw new Error(TICKET_WORK_THREAD_READ_ONLY_SENTENCE)
+  }
+
   // `send_message` can target a channel other than the one the run is in, so a
   // run holding restricted sources could otherwise relay them somewhere they
   // were never implied. The destination's own chain decides: anything the run
@@ -97,6 +117,7 @@ export const runSendMessageTool = async (
         metadata: {
           delegatedByAgentId: context.agentId,
           delegatedFromRunId: context.run.id,
+          ...(workThread ? { [TICKET_WORK_STEER_METADATA_KEY]: true } : {}),
         } as Prisma.InputJsonValue,
         role: 'user',
         threadId: parseThreadId(destination.threadId),
@@ -139,6 +160,14 @@ export const runSendMessageTool = async (
       messageId: created.id,
       organizationId: String(context.channel.organizationId),
     })
+    // A steer wakes the thread's work record, decided by the worker as a
+    // `thread_message` follow; enqueued with the message so neither lands alone.
+    if (workThread) {
+      await enqueueTicketWorkThreadMessage(tx, {
+        organizationId: workThread.organizationId,
+        messageId: created.id,
+      })
+    }
     return created
   })
 
@@ -245,7 +274,9 @@ export const runSendMessageTool = async (
   }
 
   let queuedReplyCount = 0
-  if (destination.channelAgents.length > 0) {
+  // A work thread's message starts no ordinary run: the job enqueued above is
+  // the agent's only way to hear it.
+  if (destination.channelAgents.length > 0 && !workThread) {
     // The shared chokepoint, not a raw enqueue: it resolves the destination
     // channel and stamps the delegated identity that destination implies. This
     // path used to stamp `effectiveUserId` unconditionally with the *current*

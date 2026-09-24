@@ -10,12 +10,10 @@ import {
   parseChannelId,
   parseThreadId,
   parseUserId,
-  TICKET_WORK_THREAD_MESSAGE_TOPIC,
   type AuthorizedActionContext,
-  type TicketWorkThreadMessageJobPayload,
   type WsScope,
 } from '@nessie/schemas'
-import { enqueueOrchestrateDecide, enqueueQueueJob } from '@nessie/db'
+import { enqueueOrchestrateDecide } from '@nessie/db'
 
 import { enqueuePushDispatch } from '../queue/pgqueue.js'
 import type { CreateThreadMessageResult } from './message-create.js'
@@ -350,25 +348,9 @@ export const deliverCreatedMessage = async (
     )
   }
 
-  if (input.ticketWorkThread) {
-    try {
-      const payload: TicketWorkThreadMessageJobPayload = {
-        organizationId: actorContext.tenant.organizationId,
-        messageId: result.message.id,
-      }
-      await enqueueQueueJob(prisma, {
-        idempotencyKey: `${TICKET_WORK_THREAD_MESSAGE_TOPIC}:${result.message.id}`,
-        payload,
-        topic: TICKET_WORK_THREAD_MESSAGE_TOPIC,
-      })
-    } catch (error) {
-      log.error(
-        { err: error, messageId: result.message.id },
-        '[ticket-work] failed to enqueue the thread message — the agent will not be told',
-      )
-    }
-    return
-  }
+  // The work record's job was enqueued with the message itself
+  // (`createThreadMessage`'s `ticketWorkSteer`); nothing else wakes an agent here.
+  if (input.ticketWorkThread) return
 
   if (result.channelAgents.length > 0) {
     // A single-member system DM — the Personal Assistant's, or a global

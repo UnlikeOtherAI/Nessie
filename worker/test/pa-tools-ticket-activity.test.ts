@@ -13,7 +13,11 @@ import {
   resolveProjectDelegatedToolIds,
   resolveWithheldRunToolIds,
 } from '../src/run/execute/run-setup.js'
-import { TICKET_WORK_PROJECT_TOOL_IDS, ticketWorkToolRefusal } from '../src/run/execute/ticket-work-setup.js'
+import {
+  TICKET_WORK_PROJECT_TOOL_IDS,
+  ticketWorkRecallSkipped,
+  ticketWorkToolRefusal,
+} from '../src/run/execute/ticket-work-setup.js'
 import {
   relativeTime,
   removedText,
@@ -135,14 +139,22 @@ test('a ticket.work run is lent only its agent-capable ticket tools, and only th
 
 test('a ticket.work run withholds and refuses the tools that act for a person', () => {
   const withheld = resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true, ticketWork: true })
-  for (const id of ['schedule_task', 'mailbox_search', 'mailbox_send', 'gmail_search', 'calendar_event_create', 'email_send']) {
+  for (const id of [
+    'schedule_task', 'mailbox_search', 'mailbox_send', 'gmail_search', 'calendar_event_create', 'email_send', 'card_post',
+  ]) {
     assert.ok(withheld.has(id), id)
   }
   assert.equal(resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true }).has('schedule_task'), false)
+  assert.equal(resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true }).has('card_post'), false)
   const ticketWork = { actionContext: { purpose: TICKET_WORK_PURPOSE, requestId: randomUUID() } }
-  assert.match(ticketWorkToolRefusal('schedule_task', ticketWork) ?? '', /acts for a person/)
+  assert.match(ticketWorkToolRefusal('schedule_task', ticketWork) ?? '', /needs a person behind the run/)
+  assert.match(ticketWorkToolRefusal('card_post', ticketWork) ?? '', /Comment on the ticket/)
   assert.equal(ticketWorkToolRefusal('ticket_read', ticketWork), null)
   assert.equal(ticketWorkToolRefusal('schedule_task', { actionContext: { requestId: randomUUID() } }), null)
+
+  // Recall would search the work thread itself and hand back what its window keeps out.
+  assert.equal(ticketWorkRecallSkipped(ticketWork), true)
+  assert.equal(ticketWorkRecallSkipped({ actionContext: { requestId: randomUUID() } }), false)
 })
 
 test('a removed file\'s line names who removed it, when, and why', () => {

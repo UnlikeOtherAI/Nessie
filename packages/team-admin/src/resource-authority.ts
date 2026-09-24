@@ -63,12 +63,14 @@ export const canModifyProject = async (
  * before it lets that start or steer an agent's work
  * (docs/standards/ticket-work.md). `canModifyProject` over the live
  * membership row: a deactivated member, or someone no longer in the
- * organisation, edits nothing. Read here rather than taken from a request,
- * because the question is asked by the worker, after the request has gone.
+ * organisation, edits nothing. The worker asks it after the request has gone,
+ * so it reads the row; a REST caller also passes the request's own verified
+ * role (`isOrganizationAdmin`, see `ChannelModifier`), so a UOA demotion that
+ * has not reached the local row yet is not board-editor standing.
  */
 export const canMemberEditProjectBoards = async (
   prisma: PrismaClient,
-  input: { organizationId: string; userId: string; projectId: string },
+  input: { organizationId: string; userId: string; projectId: string; isOrganizationAdmin?: boolean },
 ): Promise<boolean> => {
   const member = await prisma.organizationMember.findUnique({
     where: { organizationId_userId: { organizationId: input.organizationId, userId: input.userId } },
@@ -78,7 +80,7 @@ export const canMemberEditProjectBoards = async (
   return canModifyProject(prisma, {
     organizationId: input.organizationId,
     userId: input.userId,
-    isOrganizationAdmin: isAdminRole(member.role),
+    isOrganizationAdmin: input.isOrganizationAdmin ?? isAdminRole(member.role),
   }, input.projectId)
 }
 

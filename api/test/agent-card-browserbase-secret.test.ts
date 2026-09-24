@@ -230,6 +230,8 @@ test('a losing card claim cannot persist a Browserbase key that already probed',
   let claimCalls = 0
   const connectionWrites: unknown[] = []
   const prisma = {
+    // An ordinary thread, not a ticket's work thread.
+    agentTicketWork: { findFirst: async () => null },
     $transaction: async <T>(callback: (tx: unknown) => Promise<T>) => callback({
       agentCard: {
         updateMany: async () => {

@@ -2,10 +2,16 @@ import type { FastifyInstance } from 'fastify'
 
 import {
   detectSecrets,
+  isAdminActor,
   parseOrganizationId,
   parseThreadId,
   parseUserId,
 } from '@nessie/schemas'
+import {
+  canPostInTicketWorkThread,
+  findTicketWorkThread,
+  TICKET_WORK_THREAD_READ_ONLY_SENTENCE,
+} from '@nessie/team-admin'
 import {
   ListThreadMessagesQuerySchema,
   MarkThreadReadBodySchema,
@@ -314,6 +320,18 @@ export const registerThreadRoutes = (app: FastifyInstance, deps: RouteDeps): voi
         'SECRET_INTERCEPTED',
         'A possible credential was intercepted before this message was saved. Save it through Secrets instead.',
       )
+      return reply
+    }
+    // A work thread's message steers the ticket's work, so editing one is
+    // writing there again: only someone who can still edit the ticket's board
+    // may, or a stale steer would keep reaching the agent as trusted.
+    const workThread = await findTicketWorkThread(prisma, thread.id)
+    if (workThread && !(await canPostInTicketWorkThread(prisma, {
+      thread: workThread,
+      userId: actorContext.actor.actorId,
+      isOrganizationAdmin: isAdminActor(actorContext),
+    }))) {
+      sendApiError(reply, 403, 'TICKET_WORK_THREAD_READ_ONLY', TICKET_WORK_THREAD_READ_ONLY_SENTENCE)
       return reply
     }
 

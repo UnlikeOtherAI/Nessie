@@ -21,6 +21,7 @@ import {
 import {
   buildAgentVisibilityWhere,
   deriveConversationTitle,
+  enqueueTicketWorkThreadMessage,
 } from '@nessie/team-admin'
 
 import { messageInclude, type MessageWithReactions } from './message-read-model.js'
@@ -217,8 +218,9 @@ export const createThreadMessage = async (
     /**
      * Set only by the message route, for a person who can edit the board
      * writing in a ticket's work thread: stamped as `metadata.ticketWorkSteer`,
-     * the mark a `ticket.work` run's conversation admits a person's words by
-     * (docs/standards/ticket-work.md → "The work thread").
+     * the mark a `ticket.work` run's conversation admits a person's words by,
+     * with the `ticket-work.thread-message` job enqueued in the same
+     * transaction (docs/standards/ticket-work.md → "The work thread").
      */
     ticketWorkSteer?: true
     clientMessageId?: string
@@ -403,6 +405,13 @@ export const createThreadMessage = async (
     ...(input.ticketWorkSteer ? { [TICKET_WORK_STEER_METADATA_KEY]: true } : {}),
   } as Prisma.InputJsonValue
 
+  // A steer in a ticket's work thread wakes the work through its own job,
+  // written with the message so neither commits alone (ticket-work-thread.ts).
+  const enqueueSteer = async (tx: Prisma.TransactionClient, messageId: string): Promise<void> => {
+    if (!input.ticketWorkSteer) return
+    await enqueueTicketWorkThreadMessage(tx, { organizationId: thread.channel.organizationId, messageId })
+  }
+
   let message: MessageWithReactions
   let alertedUserIds: string[] = []
   let broadcastMessage: MessageWithReactions | undefined
@@ -467,6 +476,7 @@ export const createThreadMessage = async (
         })
         : undefined
       await claimSentMessageEmbedding(tx, input.embedding, created, thread.channel.organizationId)
+      await enqueueSteer(tx, created.id)
       if (broadcast) {
         await claimSentMessageEmbedding(tx, input.embedding, broadcast, thread.channel.organizationId)
       }
@@ -528,6 +538,7 @@ export const createThreadMessage = async (
         include: messageInclude,
       })
       await claimSentMessageEmbedding(tx, input.embedding, created, thread.channel.organizationId)
+      await enqueueSteer(tx, created.id)
       await followReplyThread(tx, {
         rootMessageId: created.id,
         // A direct mention is an explicit invitation into this reply

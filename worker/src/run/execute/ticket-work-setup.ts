@@ -43,9 +43,13 @@ export const TICKET_WORK_PROJECT_TOOL_IDS: ReadonlySet<string> = new Set([
  * Withheld from a `ticket.work` run and refused if called: without a person
  * behind the run they would fall back to the agent's own authority, which is
  * exactly the authority a ticket must not widen — an unattended schedule, a
- * mailbox granted to the agent, a person's Google account.
+ * mailbox granted to the agent, a person's Google account. `card_post` too: an
+ * unattended run's card is answerable by anyone who reads the channel, and an
+ * answer would steer the work from outside the board's editors, so the agent
+ * asks through the ticket's comments instead.
  */
 export const TICKET_WORK_PERSON_TOOL_IDS: ReadonlySet<string> = new Set([
+  'card_post',
   'schedule_task', 'list_scheduled_tasks', 'cancel_scheduled_task',
   'email_list', 'email_read', 'email_send', 'email_account_list', 'email_account_connect',
   'email_account_check', 'email_account_disconnect', 'email_account_agent_access',
@@ -60,13 +64,24 @@ export const TICKET_WORK_PERSON_TOOL_IDS: ReadonlySet<string> = new Set([
 export const isTicketWorkRun = (actorContext: Pick<AuthorizedActionContext, 'actionContext'> | undefined): boolean =>
   actorContext?.actionContext?.purpose === TICKET_WORK_PURPOSE
 
+/**
+ * A `ticket.work` run takes no recalled history and no recalled memory. Its
+ * work thread is a conversation with its agent, so recall would search that
+ * same thread — and return the messages its conversation window leaves out:
+ * another agent's replies, a person's unstamped words. What the run knows is
+ * its kickoff, rebuilt from the record, and that filtered window.
+ */
+export const ticketWorkRecallSkipped = (
+  actorContext: Pick<AuthorizedActionContext, 'actionContext'> | undefined,
+): boolean => isTicketWorkRun(actorContext)
+
 /** Why a tool refuses on a `ticket.work` run, or null when it may run. */
 export const ticketWorkToolRefusal = (
   toolName: string,
   actorContext: Pick<AuthorizedActionContext, 'actionContext'> | undefined,
 ): string | null =>
   isTicketWorkRun(actorContext) && TICKET_WORK_PERSON_TOOL_IDS.has(toolName)
-    ? `${toolName} acts for a person, and ticket work has none behind it: you act as yourself. `
+    ? `${toolName} needs a person behind the run, and ticket work has none: you act as yourself. `
       + 'Comment on the ticket to ask the people on it instead.'
     : null
 

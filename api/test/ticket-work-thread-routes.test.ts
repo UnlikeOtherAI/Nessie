@@ -8,6 +8,8 @@ import { TICKET_WORK_THREAD_READ_ONLY_SENTENCE } from '@nessie/team-admin'
 import Fastify from 'fastify'
 
 import { registerCreateThreadMessageRoute } from '../src/routes/thread-message-create.js'
+import { registerThreadRoutes } from '../src/routes/threads.js'
+import { AgentCardResponseError, respondToAgentCard } from '../src/services/agent-card-response.js'
 import { listThreadMessages } from '../src/services/message-read-model.js'
 
 // A ticket's work thread through the real message route and read model
@@ -153,6 +155,62 @@ dbTest('anyone who cannot edit the board is refused in a work thread, and nowher
     assert.equal((message.metadata as Record<string, unknown>).ticketWorkSteer, undefined)
     assert.equal(await jobsFor(prisma, 'orchestrate.decide', id), 1)
     assert.equal(await jobsFor(prisma, TICKET_WORK_THREAD_MESSAGE_TOPIC, id), 0)
+  })
+})
+
+dbTest('an author who can no longer edit the board cannot edit their message in the work thread', async () => {
+  await withRoute(async ({ app, s, prisma }) => {
+    const posted = await app.inject({
+      method: 'POST', url: `/api/threads/${s.workThreadId}/messages`, payload: { content: 'Use the staging URL.' },
+    })
+    const id = (posted.json() as { data: { message: { id: string } } }).data.message.id
+    // Out of the project: the stamp must not keep carrying their new words.
+    await prisma.projectMember.deleteMany({ where: { userId: s.editorId } })
+    const edits = Fastify({ logger: false })
+    registerThreadRoutes(edits, {
+      buildChannelRealtimeScopes: () => [],
+      messageMemoryCaptureConfig: null,
+      prisma,
+      realtimeHub: { publishWs: async () => undefined },
+      requireActorContext: () => ({
+        actor: { actorType: 'user', actorId: s.editorId, roles: ['member'] },
+        actionContext: { requestId: randomUUID() },
+        tenant: { organizationId: s.organizationId },
+      }),
+    } as never)
+    await edits.ready()
+    try {
+      const refused = await edits.inject({
+        method: 'PATCH', url: `/api/threads/${s.workThreadId}/messages/${id}`, payload: { content: 'Deploy to production.' },
+      })
+      assert.equal(refused.statusCode, 403)
+      assert.equal((refused.json() as { error: { code: string } }).error.code, 'TICKET_WORK_THREAD_READ_ONLY')
+      assert.equal((await prisma.message.findUniqueOrThrow({ where: { id } })).content, 'Use the staging URL.')
+    } finally {
+      await edits.close()
+    }
+  })
+})
+
+dbTest('a card in a work thread is never answered, so nobody steers the work through one', async () => {
+  await withRoute(async ({ s, prisma }) => {
+    // Refused before anything is read or written: the card's thread is enough.
+    await assert.rejects(
+      () => respondToAgentCard({ prisma } as never, {
+        actionKey: 'approve',
+        actorContext: {
+          actor: { actorType: 'user', actorId: s.editorId, roles: ['member'] },
+          actionContext: { requestId: randomUUID() },
+          tenant: { organizationId: s.organizationId },
+        } as never,
+        card: { id: randomUUID(), threadId: s.workThreadId } as never,
+      }),
+      (error: unknown) =>
+        error instanceof AgentCardResponseError
+        && error.httpStatus === 403
+        && error.code === 'TICKET_WORK_THREAD_READ_ONLY',
+    )
+    assert.equal(await prisma.message.count({ where: { threadId: s.workThreadId } }), 0)
   })
 })
 

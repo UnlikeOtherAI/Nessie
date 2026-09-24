@@ -243,21 +243,31 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   for the record that move ended, except when the trigger's own agent made
   the move (`own_agent_event`); a priority change on a `queued` record wakes
   nothing (`priority_while_queued`).
-- **(T1) Only board editors write in a work thread**, checked live by the
-  message route on every post (`findTicketWorkThread` and
+- **(T1) Only board editors write in a work thread**, checked live on every
+  write by every writer (`findTicketWorkThread` and
   `canPostInTicketWorkThread`, `packages/team-admin/src/ticket-work-thread.ts`;
   a thread is a work thread for as long as any work record names it, its work
-  ended or its trigger deleted). Anyone else gets 403
-  `TICKET_WORK_THREAD_READ_ONLY` with `TICKET_WORK_THREAD_READ_ONLY_SENTENCE`,
-  the words the composer shows. A board editor's message there is stamped
-  `metadata.ticketWorkSteer = true` and starts no ordinary run: delivery
-  enqueues `ticket-work.thread-message` instead of orchestration, and the
-  worker decides it (`dispatchTicketThreadMessage`) as a `thread_message`
-  follow of the thread's live record — under the origin rule again, one
-  delivery deduped on `thread:<triggerId>:<messageId>`, retried by the same
-  poller arm. A trigger that does not follow `thread_message`, or a thread
-  whose work ended, wakes nothing: the message stays where the next run reads
-  it.
+  ended or its trigger deleted): the message route, an edit of a message there
+  (`PATCH /api/threads/:threadId/messages/:messageId`, so a stamp never keeps
+  carrying the words of someone who lost the right), and `send_message` — a
+  Personal Assistant posting as its person is that person writing. The REST
+  doors pass the request's own UOA-verified role (`isOrganizationAdmin`), so
+  a demotion upstream counts before the local row catches up. Anyone else
+  gets 403 `TICKET_WORK_THREAD_READ_ONLY` (the tool: its error) with
+  `TICKET_WORK_THREAD_READ_ONLY_SENTENCE`, the words the composer shows. A
+  board editor's message there is stamped `metadata.ticketWorkSteer = true`
+  and starts no ordinary run: the transaction that writes it enqueues
+  `ticket-work.thread-message` (`enqueueTicketWorkThreadMessage`) instead of
+  orchestration, and the worker decides it (`dispatchTicketThreadMessage`) as
+  a `thread_message` follow of the thread's live record — under the origin
+  rule again, one delivery deduped on `thread:<triggerId>:<messageId>`,
+  retried by the same poller arm. A message that wakes nothing still writes a
+  skipped delivery with its reason (below). **No card is answered in a work
+  thread**: `ticket.work` runs cannot post one (`card_post` is in
+  `TICKET_WORK_PERSON_TOOL_IDS`, because an unattended run's card is
+  answerable by anyone who reads the channel), and `respondToAgentCard`
+  refuses a card whose thread is a work thread with 403
+  `TICKET_WORK_THREAD_READ_ONLY` before it reads or writes anything.
 
 ## A `ticket.work` run acts as the agent, never as a person
 
@@ -293,7 +303,7 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   is authorship and grants nothing, above), not the machine owner. Tools that
   need a person refuse, and `worker/test/db/ticket-work-authority.test.ts`
   pins each: `kb_page_read` of a person's private space (the agent reads with
-  its own reach), `schedule_task`, the mailbox and every other mail tool, and
+  its own reach), `schedule_task`, `card_post`, the mailbox and every other mail tool, and
   every setup verb (`project_create`, `channel_create`, `agent_create`,
   `agent_trigger_create`, `ticket_board_create`, `ticket_label_create`, and
   the ticket tools that need a person, `ticket_create` and `ticket_assign`).
@@ -322,7 +332,10 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   (`packages/team-admin/src/task-access.ts`) credited `agent:<id>` with its
   run — never through `requireActingUserId`. The run's conversation is only
   the agent's own replies and people's stamped messages
-  (`ticketWorkConversationWhere`). Every kickoff is built from the ticket, so
+  (`ticketWorkConversationWhere`), and it recalls no history and no memory
+  (`ticketWorkRecallSkipped`): the work thread is a conversation with its
+  agent, so recall would search that same thread and hand back exactly what
+  the window leaves out. Every kickoff is built from the ticket, so
   the run starts having read its project: anything it writes where that
   project's audience is not already implied carries the project's basis (in
   the work thread itself, a channel of the project, it is implied).
@@ -720,9 +733,11 @@ causes it**:
   tools acting as the agent through its binding, the refusals, and the run's
   conversation. `worker/test/db/ticket-work-run.test.ts`: one pickup's run
   through the real run executor against the mock provider, its comment the
-  agent's. `api/test/ticket-work-thread-routes.test.ts`: the posting
-  rule, the stamp and the wake job in place of orchestration, and the feed's
-  event rows.
+  agent's. `worker/test/db/ticket-work-writers.test.ts`: `send_message` into a
+  work thread refused for a non-editor and a steer for an editor.
+  `api/test/ticket-work-thread-routes.test.ts`: the posting rule, the stamp
+  and the wake job in place of orchestration, an edit refused once its author
+  lost the right, a card in a work thread refused, and the feed's event rows.
 - `packages/team-admin/test/trigger-type-availability.test.ts`,
   `api/test/trigger-type-unreleased-routes.test.ts`,
   `worker/test/trigger-type-unreleased-tools.test.ts` and

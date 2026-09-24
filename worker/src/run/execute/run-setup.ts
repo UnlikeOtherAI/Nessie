@@ -45,6 +45,7 @@ import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import {
   loadTicketWorkRunFacts,
+  ticketWorkRecallSkipped,
   TICKET_WORK_PERSON_TOOL_IDS,
   TICKET_WORK_PROJECT_TOOL_IDS,
 } from './ticket-work-setup.js'
@@ -446,25 +447,25 @@ export const prepareRunExecution = async (
   // A run lent a project write recalls only what every project reader already
   // has, so recalled material cannot shut its own ticket writes.
   const projectWriteRecall = holdsProjectWriteTools(projectDelegatedToolIds, resolvedToolIds)
-  const memories = await retrieveRelevantMemories(
-    deps,
-    context,
-    payload,
-    input.prompt,
-    liveEntitlements,
-    { holdsProjectWriteTools: projectWriteRecall },
-  )
+  // A `ticket.work` run recalls nothing: its context is its kickoff and the
+  // filtered window above, and recall from its own thread would bring back
+  // exactly the messages that filter keeps out (`ticketWorkRecallSkipped`).
+  const recall = !ticketWorkRecallSkipped(payload.actorContext)
+  const memories = recall
+    ? await retrieveRelevantMemories(deps, context, payload, input.prompt, liveEntitlements, {
+        holdsProjectWriteTools: projectWriteRecall,
+      })
+    : []
   const legacyMemoryContext = buildMemoryContext(memories)
-  const history = await retrieveRelevantHistory(deps, context, payload, {
-    holdsProjectWriteTools: projectWriteRecall,
-    liveEntitlements,
-    prompt: input.prompt,
-    tokenBudget: Math.max(
-      0,
-      RETRIEVED_CONTEXT_TOKEN_BUDGET - estimateTokens(legacyMemoryContext ?? ''),
-    ),
-    viewer,
-  })
+  const history = recall
+    ? await retrieveRelevantHistory(deps, context, payload, {
+        holdsProjectWriteTools: projectWriteRecall,
+        liveEntitlements,
+        prompt: input.prompt,
+        tokenBudget: Math.max(0, RETRIEVED_CONTEXT_TOKEN_BUDGET - estimateTokens(legacyMemoryContext ?? '')),
+        viewer,
+      })
+    : { context: null, messageIds: [], tokenCount: 0 }
   const injectedRecallIds = memories.flatMap((memory) =>
     memory.recallId ? [memory.recallId] : [],
   )

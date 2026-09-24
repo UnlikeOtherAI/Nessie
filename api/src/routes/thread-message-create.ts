@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   CHAT_MESSAGE_MAX_CHARS,
   detectSecrets,
+  isAdminActor,
   parseAgentId,
   parseUserId,
   PERSON_MESSAGE_AUTHORSHIP,
@@ -89,6 +90,8 @@ export const registerCreateThreadMessageRoute = (
     if (workThread && !(await canPostInTicketWorkThread(prisma, {
       thread: workThread,
       userId: actorContext.actor.actorId,
+      // The request's own UOA-verified role, not a local row that may lag it.
+      isOrganizationAdmin: isAdminActor(actorContext),
     }))) {
       sendApiError(reply, 403, 'TICKET_WORK_THREAD_READ_ONLY', TICKET_WORK_THREAD_READ_ONLY_SENTENCE)
       return reply

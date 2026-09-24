@@ -1,5 +1,10 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { CONVERSATION_TITLE_MAX_CHARS } from '@nessie/schemas'
+import { enqueueQueueJob } from '@nessie/db'
+import {
+  CONVERSATION_TITLE_MAX_CHARS,
+  TICKET_WORK_THREAD_MESSAGE_TOPIC,
+  type TicketWorkThreadMessageJobPayload,
+} from '@nessie/schemas'
 
 import { canMemberEditProjectBoards } from './resource-authority.js'
 
@@ -85,16 +90,38 @@ export const findTicketWorkThread = async (
 /**
  * **Only people who can edit the ticket's board write in its work thread**,
  * asked live on every post: what they write steers the agent's work, so the
- * people who may steer it are exactly those who may start it.
+ * people who may steer it are exactly those who may start it. A REST caller
+ * passes the request's verified organisation role (`isOrganizationAdmin`);
+ * the worker's tools have none and read the membership row.
  */
 export const canPostInTicketWorkThread = (
   prisma: PrismaClient,
-  input: { thread: TicketWorkThread; userId: string },
+  input: { thread: TicketWorkThread; userId: string; isOrganizationAdmin?: boolean },
 ): Promise<boolean> => canMemberEditProjectBoards(prisma, {
   organizationId: input.thread.organizationId,
   userId: input.userId,
   projectId: input.thread.projectId,
+  ...(input.isOrganizationAdmin === undefined ? {} : { isOrganizationAdmin: input.isOrganizationAdmin }),
 })
+
+/**
+ * The job that tells the worker a board editor wrote in a work thread
+ * (`ticket-work.thread-message`), enqueued in the transaction that writes the
+ * message — by the message route and by `send_message` alike — so a steer
+ * never commits without the job that delivers it, and a message that rolled
+ * back leaves no job behind.
+ */
+export const enqueueTicketWorkThreadMessage = async (
+  tx: Pick<Prisma.TransactionClient, '$executeRaw'>,
+  input: { organizationId: string; messageId: string },
+): Promise<void> => {
+  const payload: TicketWorkThreadMessageJobPayload = input
+  await enqueueQueueJob(tx, {
+    idempotencyKey: `${TICKET_WORK_THREAD_MESSAGE_TOPIC}:${input.messageId}`,
+    payload,
+    topic: TICKET_WORK_THREAD_MESSAGE_TOPIC,
+  })
+}
 
 /** What a person who may not post there is told, and what the composer says. */
 export const TICKET_WORK_THREAD_READ_ONLY_SENTENCE =

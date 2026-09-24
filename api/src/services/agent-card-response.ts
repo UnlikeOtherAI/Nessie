@@ -12,6 +12,7 @@ import {
 import type { ReplyRootMetadata } from "@nessie/runtime";
 import {
   createSystemAuthoredReply,
+  findTicketWorkThread,
   inheritAgentCardResponseBasis,
 } from "@nessie/team-admin";
 import { toInputJson } from "../db/prisma-json.js";
@@ -187,6 +188,18 @@ export const respondToAgentCard = async (
   },
 ): Promise<AgentCardRespondResult> => {
   const userId = input.actorContext.actor.actorId;
+  // A ticket's work thread is steered only by its board's editors, through
+  // their own messages. An answer here would resume the work, or start an
+  // ordinary run in its thread, on anyone's say who reads the channel — so
+  // no card there is answered (docs/standards/ticket-work.md → "The work
+  // thread"). `ticket.work` runs cannot post one; this holds the door shut.
+  if (await findTicketWorkThread(deps.prisma, input.card.threadId)) {
+    throw new AgentCardResponseError(
+      403,
+      "TICKET_WORK_THREAD_READ_ONLY",
+      "Cards are not answered in a ticket's work thread. Comment on the ticket to give the agent more information.",
+    );
+  }
   const prepared = await prepareResponse(deps, {
     actionKey: input.actionKey,
     card: input.card,
