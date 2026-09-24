@@ -43,6 +43,8 @@ const makeMemberApp = () => {
     tenant: { organizationId, projectId, teamId },
   }
   const prisma = {
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findMany: async () => [
         {
@@ -130,6 +132,8 @@ test('disabled integration still reports a retained bundle as revocable', async 
     tenant: { organizationId, projectId, teamId },
   }
   const prisma = {
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findMany: async () => [{
         agentKind: 'personal_assistant',
@@ -182,6 +186,8 @@ const makeOwnerBootstrapApp = () => {
   const agentBindings: Array<{ agentId: string; channelId: string }> = []
   const db = {
     $executeRaw: async () => 0,
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       create: async () => {
         personalAssistantExists = true
