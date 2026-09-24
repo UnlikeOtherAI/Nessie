@@ -47,6 +47,13 @@ const useSpaceDocumentTriggers = (spaceId: string | undefined, pageIds: string) 
   const apiClient = useApiClient()
   return useQuery<SpaceDocumentTriggersRecord>({
     enabled: Boolean(spaceId),
+    // A folder's badges may stay up while the next folder of the same space
+    // loads — they are matched to rows by page id, so a stale answer paints
+    // nothing on a row it is not about — but never across spaces, whose
+    // doorway answer (`viewerCanCreateTriggers`) is that space's own.
+    placeholderData: (previousData, previousQuery) => (
+      previousQuery?.queryKey[1] === (spaceId ?? 'none') ? previousData : undefined
+    ),
     queryFn: () => apiClient.get(readPath(spaceId ?? '', pageIds)),
     queryKey: knowledgeKeys.documentTriggers(spaceId, pageIds),
     staleTime: 30_000,
