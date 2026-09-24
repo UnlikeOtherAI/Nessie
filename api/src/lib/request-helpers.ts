@@ -1,3 +1,4 @@
+// Executor inventory scopes expose presence only after a per-machine delivery check.
 import type { ChannelSystemType, PrismaClient } from '@prisma/client'
 import {
   isAdminActor,
@@ -458,7 +459,7 @@ export const createRequestHelpers = (prisma: PrismaClient) => {
     const authorizedScopes: WsScope[] = []
 
     for (const scope of scopes) {
-      if (scope.kind === 'organization') {
+      if (scope.kind === 'organization' || scope.kind === 'executor_inventory') {
         if (scope.organizationId === parseOrganizationId(tenantOrganizationId)) {
           authorizedScopes.push(scope)
         }

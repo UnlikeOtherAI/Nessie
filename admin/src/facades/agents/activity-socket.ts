@@ -20,6 +20,7 @@ import {
 } from './realtime-snapshot'
 
 export type ActivityScope = {
+  executorInventory?: boolean
   channelIds: string[]
   dashboardIds: string[]
   organizationId: string
@@ -33,6 +34,7 @@ export type ActivitySubscriber = {
 
 /** One scope entry of a `set_subscriptions` frame. */
 type ActivityScopeFrame =
+  | { kind: 'executor_inventory'; organizationId: string }
   | { channelId: string; kind: 'channel' }
   | { dashboardId: string; kind: 'dashboard' }
   | { kind: 'organization'; organizationId: string }
@@ -54,16 +56,21 @@ const RESUBSCRIBE_DEBOUNCE_MS = 50
  * unchanged set of scopes serialises to an unchanged frame.
  */
 export const unionActivityScopes = (scopes: ActivityScope[]): ActivityScopeFrame[] => {
+  const executorOrganizations = new Set<string>()
   const organizationIds = new Set<string>()
   const channelIds = new Set<string>()
   const dashboardIds = new Set<string>()
   for (const scope of scopes) {
+    if (scope.executorInventory && scope.organizationId) executorOrganizations.add(scope.organizationId)
     if (scope.organizationId) organizationIds.add(scope.organizationId)
     for (const channelId of scope.channelIds) if (channelId) channelIds.add(channelId)
     for (const dashboardId of scope.dashboardIds) if (dashboardId) dashboardIds.add(dashboardId)
   }
   const sorted = (values: Set<string>): string[] => [...values].sort()
   return [
+    ...sorted(executorOrganizations).map((organizationId) => ({
+      kind: 'executor_inventory' as const, organizationId,
+    })),
     ...sorted(organizationIds).map((organizationId) => ({
       kind: 'organization' as const,
       organizationId,

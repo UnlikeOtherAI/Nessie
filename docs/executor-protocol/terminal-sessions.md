@@ -67,7 +67,7 @@ The local policy's `codingSessions` supports this additional agent:
 ```json
 {
   "operationKeys": ["mcp.tools", "mcp.call"],
-  "workspaceFolders": [],
+  "workspaceFolders": [{ "name": "workspace", "path": "/absolute/separate/workspace" }],
   "codingSessions": {
     "roots": [{ "name": "work", "path": "/absolute/working/folder" }],
     "agents": {
@@ -129,6 +129,9 @@ per exchange, prioritising recent viewer demand. Each snapshot is bounded to
 on a subsequent daemon exchange after demand expires. Session identity and
 explicit grants persist. No organisation-wide event broadcasts carry bytes.
 Sharing changes are audited without screen contents.
+The sharing dialog displays the API's actionable error when a grant or removal
+fails. Session lists and sharing grants use the executor facade's central cache
+keys, so mutations invalidate the same identity that the viewer reads.
 
 ## Verification
 

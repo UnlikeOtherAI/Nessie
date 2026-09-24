@@ -233,6 +233,7 @@ jobs:
         if: steps.scope.outputs.code == '1'
         run: |
           pnpm --filter @nessie/admin test:e2e:executor-pairing
+          pnpm --filter @nessie/admin test:e2e:executor-menu
           pnpm --filter @nessie/admin test:e2e:executor-agents
           pnpm --filter @nessie/admin test:e2e:executor-detail
           pnpm --filter @nessie/admin test:e2e:executor-attention

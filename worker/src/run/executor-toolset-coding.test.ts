@@ -28,10 +28,14 @@ const toolset = (input: {
   scopeKind?: 'private' | 'project'
   ticketWork?: TicketWorkCodingScope
   withFacts?: boolean
+  agents?: ExecutorCodingSessionsFacts['agents']
 } = {}) => {
   const descriptor = {
     mcpServers: input.mcpServers ?? ['coding-sessions', 'kelpie'],
-    ...(input.withFacts === false ? {} : { codingSessions: facts }),
+    ...(input.withFacts === false ? {} : { codingSessions: {
+      ...facts, agents: input.agents ?? facts.agents,
+      permissionMode: { ...facts.permissionMode, ...(input.agents?.includes('terminal') ? { terminal: 'hostUser' } : {}) },
+    } }),
   }
   const binding = (id: string, operationKey: string) => ({
     candidateHandleDigest: 'digest',
@@ -134,6 +138,14 @@ test('a machine that names only the bridge offers the coding tools and no generi
   assert.deepEqual(
     offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
     [...STRUCTURED_CODING_SESSION_TOOL_NAMES].sort(),
+  )
+})
+
+test('terminal tools are offered only when the reviewed machine facts include a terminal', async () => {
+  const offered = await toolset({ agents: ['claude', 'terminal'], mcpServers: ['coding-sessions'] }).built
+  assert.deepEqual(
+    offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
+    [...CODING_SESSION_TOOL_NAME_SET].sort(),
   )
 })
 

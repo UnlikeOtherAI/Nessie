@@ -2,6 +2,41 @@
 
 Chapter of [Running the Native Apps](overview.md).
 
+## Pairing and unpairing
+
+1. Install **Nessie Executor.app** in `/Applications` and open it. Normal
+   releases require Developer ID signing and notarization; another certificate
+   or a development build requires an explicit operator decision.
+2. Open its menu bar panel, choose **Pair this Mac**, select **Nessie** and
+   **Choose folder…**, then **Get pairing code**.
+3. Complete the [two-sided pairing flow](../executor-pairing.md#complete-both-halves)
+   in the website and the Mac panel. Check the organisation, team and fingerprint.
+4. Enable **Start at login** in the app's settings and verify the executor is
+   Online in Nessie. The menu bar app owns the daemon: quitting it stops the
+   daemon; merely closing its panel does not.
+5. Configure the local program and real, nonsymlinked coding roots, then review
+   the new permissions in Nessie. Claude and tmux must be available to the
+   daemon's configured environment, including when launched at login.
+
+State normally lives in `~/Library/Application Support/Nessie Executor/executor`.
+The app can adopt one legacy Desktop or CLI pairing in place; multiple legacy
+connections require review. Do not copy a machine's keys to another computer.
+
+To unpair, **Disconnect** or **Delete** the executor in Nessie first, disable
+**Start at login**, and quit the menu bar app. Removing the app alone does not
+revoke its server identity. For a different team, use **Replace pairing…**;
+the app retires the old connection before showing a new code. After pairing
+again, review permissions and agent grants for the new executor.
+
+An installation managed with a custom LaunchAgent must unload that agent too;
+the app's Start at login switch only controls its own SMAppService entry.
+The LAN development installation uses
+`~/Library/LaunchAgents/com.unlikeotherai.nessie.executor.user-install.plist`:
+`launchctl bootout gui/$(id -u) <plist-path>` disables its current registration;
+remove that exact plist to prevent the next login from registering it again.
+
+## Application and distribution
+
 The Nessie Executor menu bar app is how a Mac becomes an executor without
 anybody opening a terminal. It installs from a downloaded disk image, lives as
 an icon in the status bar, and from that icon a person reaches the three things

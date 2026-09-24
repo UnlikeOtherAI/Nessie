@@ -50,6 +50,7 @@ export const ExecutorsPage = () => {
   const fixedProjectId = createIntent.values.create === 'project'
     ? createIntent.values.scopeProjectId ?? undefined
     : undefined
+  const pairingAudience = createIntent.values.create === 'team' ? 'team' : 'personal'
   const [showPair, setShowPair] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const linkedToken = useConsumedHashIntent('confirmationToken', parseConfirmationToken)
@@ -69,8 +70,8 @@ export const ExecutorsPage = () => {
   const [requestedPage, setRequestedPage] = useState(initialState.page)
 
   useEffect(() => {
-    if (fixedProjectId) setShowPair(true)
-  }, [createIntent.serial, fixedProjectId])
+    if (fixedProjectId || ['personal', 'team'].includes(createIntent.values.create ?? '')) setShowPair(true)
+  }, [createIntent.serial, createIntent.values.create, fixedProjectId])
   useEffect(() => {
     if (linkedToken.value) setConfirmationToken(linkedToken.value)
   }, [linkedToken])
@@ -179,6 +180,7 @@ export const ExecutorsPage = () => {
 
       {me ? (
         <ExecutorPairDialog
+          initialAudience={pairingAudience}
           {...(fixedProjectId ? { fixedProjectId } : {})}
           onClose={() => setShowPair(false)}
           onFinished={(executorId) => {

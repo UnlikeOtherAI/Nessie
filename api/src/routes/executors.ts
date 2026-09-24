@@ -1,3 +1,4 @@
+import { notifyExecutorStatus } from './executor-status-events.js'
 import {
   confirmExecutorAccessChange,
   confirmExecutorEnrollment,
@@ -262,6 +263,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
+      await notifyExecutorStatus(deps, request.log, result.executorId, actorContext.tenant.organizationId)
       await announceClosedExecutorReviewCards(deps, result.closedReviewCards)
       return createApiResponse({ rejected: true })
     } catch (error) {
@@ -428,6 +430,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         outcome: 'success',
         metadata: { executorId: result.executorId },
       })
+      await notifyExecutorStatus(deps, request.log, result.executorId, actorContext.tenant.organizationId)
       await announceClosedExecutorReviewCards(deps, result.closedReviewCards)
       // A pause, revoke, narrowed grant or review may have ended leases; each
       // holder hears about their own, and nobody else learns who held one.

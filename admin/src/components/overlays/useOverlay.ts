@@ -51,6 +51,11 @@ export type OverlayState = {
   scrimProps: ReturnType<typeof useOverlayDismiss>
 }
 
+// Same-layer submenus dismiss from the top down. A document-level listener
+// per popover otherwise lets one Escape close every open ancestor at once.
+const popoverEscapes = new Set<{ document: Document; layer: number }>()
+const handledPopoverEscapes = new WeakSet<KeyboardEvent>()
+
 export const useOverlay = ({
   id,
   kind,
@@ -115,8 +120,15 @@ export const useOverlay = ({
   useFocusedOverlayControl(panelRef, live && trapsFocus)
   useEffect(() => {
     if (!live || trapsFocus) return undefined
+    const registration = { document, layer: OVERLAY_LAYER[effectiveKind] }
+    popoverEscapes.add(registration)
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      // A row may prevent Escape's default while focus is returning from a
+      // previous menu. Only another overlay's claim makes this key consumed.
+      if (event.key !== 'Escape' || handledPopoverEscapes.has(event)) return
+      const top = [...popoverEscapes].filter((entry) => entry.document === document)
+        .reduce((highest, entry) => entry.layer >= highest.layer ? entry : highest, registration)
+      if (top !== registration) return
       if (ownerKind === 'modal') {
         const target = event.target
         const panel = panelRef.current
@@ -126,16 +138,21 @@ export const useOverlay = ({
         const onAnchor = escapeAnchorRef?.current?.contains(target)
         if (!inMenu && !onAnchor) return
       }
+      handledPopoverEscapes.add(event)
       event.preventDefault()
       event.stopPropagation()
+      escapeAnchorRef?.current?.focus()
       requestClose()
     }
     // A portalled popover can be owned by a modal while focus remains on its
     // trigger inside that modal. Capture closes that focused menu before the
     // modal's focus trap sees Escape; a blocking panel owns focus, so it wins.
     document.addEventListener('keydown', onKeyDown, ownerKind === 'modal')
-    return () => document.removeEventListener('keydown', onKeyDown, ownerKind === 'modal')
-  }, [escapeAnchorRef, live, ownerKind, requestClose, trapsFocus])
+    return () => {
+      popoverEscapes.delete(registration)
+      document.removeEventListener('keydown', onKeyDown, ownerKind === 'modal')
+    }
+  }, [effectiveKind, escapeAnchorRef, live, ownerKind, requestClose, trapsFocus])
 
   const scrimProps = useOverlayDismiss(requestClose)
 

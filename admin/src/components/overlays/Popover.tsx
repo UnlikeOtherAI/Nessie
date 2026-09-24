@@ -41,6 +41,8 @@ type PopoverProps = {
    * and let the trigger re-open it.
    */
   anchorRef: RefObject<HTMLElement | null>
+  /** A composite anchor may return keyboard focus to its own disclosure button. */
+  returnFocusRef?: RefObject<HTMLElement | null>
   /**
    * A rect to anchor to instead of the trigger's own — the text caret an
    * editor suggestion list hangs off. The trigger still governs outside press.
@@ -95,6 +97,7 @@ export const Popover = ({
   open,
   placement = 'bottom-start',
   role = 'dialog',
+  returnFocusRef,
   style,
 }: PopoverProps) => {
   const generatedId = useId()
@@ -108,7 +111,7 @@ export const Popover = ({
     onClose,
     open,
     ownerKind: effectiveLayer === 'modal' ? 'modal' : undefined,
-    escapeAnchorRef: anchorRef,
+    escapeAnchorRef: returnFocusRef ?? anchorRef,
   })
   const { panelRef, requestClose } = overlay
   const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)

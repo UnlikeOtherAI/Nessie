@@ -1,3 +1,4 @@
+import { ExecutorStatusChangedSchema, type ExecutorStatusChanged } from './executor-realtime.js'
 import { z } from 'zod'
 
 import {
@@ -37,6 +38,8 @@ import { NonEmptyStringSchema, TimestampSchema } from './schema-primitives.js'
 // transports, so its schema is defined once on the SSE side and reused here.
 
 export type WsEventMap = {
+  'executor.status.changed': ExecutorStatusChanged
+  'executor.inventory.changed': Record<string, never>
   'agent.status': {
     agentId: AgentId
     status: AgentStatus
@@ -521,10 +524,13 @@ export const WsEventNameSchema = z.enum([
   'board.updated',
   'task.activity',
   'executor.lease.changed',
+  'executor.status.changed',
+  'executor.inventory.changed',
   'integration.run.updated',
 ])
 
 export const WsScopeSchema = z.union([
+  z.object({ kind: z.literal('executor_inventory'), organizationId: OrganizationIdSchema }),
   z.object({
     kind: z.literal('organization'),
     organizationId: OrganizationIdSchema,
@@ -606,6 +612,14 @@ export const WsSubscribedSchema = z.object({
 export type WsSubscribed = z.infer<typeof WsSubscribedSchema>
 
 export const WsEventSchema = z.union([
+  z.object({
+    type: z.literal('event'), event: z.literal('executor.status.changed'),
+    data: ExecutorStatusChangedSchema, ts: TimestampSchema,
+  }),
+  z.object({
+    type: z.literal('event'), event: z.literal('executor.inventory.changed'),
+    data: z.object({}).strict(), ts: TimestampSchema,
+  }),
   z.object({
     type: z.literal('event'),
     event: z.literal('agent.status'),

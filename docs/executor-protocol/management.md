@@ -148,3 +148,36 @@ The surface is the coding bridge's entry in the **Permissions** tab's *Local
 apps* section: the rows, with Close for the pairing owner, "Closing…" until a
 later report drops the row, and for anyone else the sentence saying who may
 close them.
+
+## Live machine presence
+
+The admin shell subscribes to `executor_inventory` on the tab's existing
+`/api/activity` WebSocket. `executor.status.changed` carries the executor ID,
+status, last heartbeat, status detail, update timestamp and removal flag. It
+contains no machine label, policy, program, path or session content. Claim,
+heartbeat, descriptor, pairing and access-change routes publish committed
+state through the shared PostgreSQL realtime transport. Failed advisory
+publication does not reject an otherwise accepted heartbeat.
+
+Subscription is restricted to the authenticated organization, and both WS
+and user-SSE fan-out check the same live machine visibility as the inventory
+before sending presence bytes. Private assignments, project membership and
+active organization membership are evaluated for every status event. An older
+API replica cannot match the new scope, so rolling deployment does not widen
+private machine visibility. The inventory is live-only, not a durable replay
+lane. A content-free `executor.inventory.changed` announcement after an access
+change causes an authorized REST read, including for a viewer who just lost
+access. Every reconnect does the same resynchronization.
+
+The worker checks expired heartbeats every ten seconds under a shared sweep
+lock. It also announces recent lazy expirations made by REST reads or command
+polls, so those writers cannot swallow an offline transition. Duplicate or
+out-of-order presence frames are harmless: the UI compares `updatedAt`, and
+in-flight older REST reads cannot overwrite newer presence. The browser does
+not poll the inventory to maintain status.
+
+Verification: `admin`'s `test:e2e:executor-menu` exercises the live socket,
+reconnection, both submenu directions, status combinations, navigation and
+empty actions. It is part of the requested Browser Suites workflow alongside
+executor pairing. Database tests cover private-assignment and membership
+boundaries; API fan-out tests cover revocation on both live lanes.
