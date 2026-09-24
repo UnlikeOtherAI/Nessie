@@ -20,16 +20,21 @@ const facts: ExecutorCodingSessionsFacts = {
 }
 
 const policy = { 'executor.mcp.call': true, 'executor.mcp.tools': true }
+const codingToolNames = [...CODING_SESSION_TOOL_NAME_SET].filter((name) => !name.startsWith('terminal_'))
 
 const toolset = (input: {
   actorUserId?: string
   mcpServers?: string[]
   scopeKind?: 'private' | 'project'
   withFacts?: boolean
+  agents?: ExecutorCodingSessionsFacts['agents']
 } = {}) => {
   const descriptor = {
     mcpServers: input.mcpServers ?? ['coding-sessions', 'kelpie'],
-    ...(input.withFacts === false ? {} : { codingSessions: facts }),
+    ...(input.withFacts === false ? {} : { codingSessions: {
+      ...facts, agents: input.agents ?? facts.agents,
+      permissionMode: { ...facts.permissionMode, ...(input.agents?.includes('terminal') ? { terminal: 'hostUser' } : {}) },
+    } }),
   }
   const binding = (id: string, operationKey: string) => ({
     candidateHandleDigest: 'digest',
@@ -71,7 +76,8 @@ test('the owner’s run gets the seven coding tools, and the generic pair stops 
   const { built, transactions } = toolset()
   const offered = await built
   const names = offered.descriptors.map((descriptor) => descriptor.toolName)
-  for (const name of CODING_SESSION_TOOL_NAME_SET) assert.ok(names.includes(name), name)
+  for (const name of codingToolNames) assert.ok(names.includes(name), name)
+  assert.ok(!names.some((name) => name.startsWith('terminal_')))
   assert.ok(offered.codingSessions)
   assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_call'), ['kelpie'])
   assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_tools'), ['kelpie'])
@@ -126,6 +132,14 @@ test('no coding tools for anyone but the pairing owner, on a shared machine, or 
 
 test('a machine that names only the bridge offers the coding tools and no generic pair', async () => {
   const offered = await toolset({ mcpServers: ['coding-sessions'] }).built
+  assert.deepEqual(
+    offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
+    [...codingToolNames].sort(),
+  )
+})
+
+test('terminal tools are offered only when the reviewed machine facts include a terminal', async () => {
+  const offered = await toolset({ agents: ['claude', 'terminal'], mcpServers: ['coding-sessions'] }).built
   assert.deepEqual(
     offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
     [...CODING_SESSION_TOOL_NAME_SET].sort(),

@@ -118,6 +118,9 @@ export const prepareExecutorRuntime = async ({
     platform: 'node',
     target: 'node22',
   })
+  // esbuild follows the builder's umask; group-writable output cannot be a
+  // trusted Linux package even after dpkg gives it root ownership.
+  if (isPosix) await chmod(executorBundlePath, 0o644)
   await copyFile(nodeExecutablePath, nodePath)
   if (isPosix) await chmod(nodePath, 0o755)
   await writeFile(resolve(runtimeDirectory, 'NODE_LICENSE'), license, { mode: 0o644 })

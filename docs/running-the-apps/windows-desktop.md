@@ -2,6 +2,47 @@
 
 Chapter of [Running the Native Apps](overview.md).
 
+## Pairing and unpairing
+
+There are two supervisors with different OS identities. The standalone
+**Nessie Executor** tray controls the boot-time `NessieExecutor` Windows
+service. Its virtual service account cannot run your personal Claude sessions.
+For Claude and interactive terminals, use **Nessie Desktop's user-session
+executor**, running as the Windows account where Claude is authenticated.
+Do not pair both supervisors as if they were one connection.
+
+1. Install the intended application. Public releases use Authenticode signing;
+   an explicitly requested development build can use Desktop's debug runtime.
+2. Open its local executor controls, select **Nessie** as the server, choose a
+   workspace folder and request a pairing code. In a development build, check
+   that the destination is production rather than its local-server option.
+3. Complete the [website claim and local confirmation](../executor-pairing.md#complete-both-halves).
+   Use private access for personal local programs. Review the live team name.
+4. Check Online in Nessie, review Permissions and grant agents access separately.
+   Use the real `claude.exe`, not an npm/PowerShell shim; Windows supplies ConPTY.
+
+The service starts at boot; its tray starts at login. Desktop/user-session
+executors require that user's login environment. Preserve state in the owning
+supervisor's directory: never copy service keys into Desktop or vice versa.
+The tray refuses to silently duplicate an existing Desktop/CLI pairing.
+
+To unpair, **Disconnect** or **Delete** in Nessie first. Then stop the owning
+daemon. For the service, an administrator can run `Stop-Service NessieExecutor`
+and uninstall **Nessie Executor** through Installed apps. For Desktop, stop the
+local executor and use its local forget control after server revocation.
+Uninstalling either application alone does not revoke the server pairing.
+
+The explicitly requested 2026-09-24 LAN development install loads the hosted
+production UI and runs its user daemon at login through
+`%LOCALAPPDATA%\Nessie\executor-start.ps1`. Its two startup values are **Nessie**
+and **Nessie Executor (development)** under
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Remove these values to
+disable that installation's automatic startup. Its executor state is under
+`%LOCALAPPDATA%\com.unlikeotherai.nessie.desktop\executors\<executor-id>`,
+and its daemon log is `%LOCALAPPDATA%\Nessie\executor-daemon.log`.
+This development installation does not claim Authenticode or automatic updates;
+replace it with the signed release when the certificate is available.
+
 ### Desktop application icon
 
 The Mac application's `assets/icon-1024.png` is the canonical Nessie icon for

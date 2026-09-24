@@ -2,11 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExecutorHostSessionListSchema, ExecutorSessionSharesSchema } from '@nessie/schemas'
 
 import { useApiClient } from '../../providers/ApiClientProvider'
+import { executorKeys } from './keys'
 
 export const useExecutorHostSessions = (executorId?: string) => {
   const api = useApiClient()
   return useQuery({
-    queryKey: ['executors', 'host-sessions', executorId ?? 'all'], gcTime: 0,
+    queryKey: executorKeys.hostSessions(executorId), gcTime: 0,
+    // Session titles are private work; never replay another machine's inventory.
+    placeholderData: undefined,
     queryFn: () => api.get('/api/executor-sessions' + (executorId ? '?executorId=' + executorId : ''),
       ExecutorHostSessionListSchema),
     refetchInterval: 15_000,
@@ -17,9 +20,11 @@ export const useExecutorSessionSharing = (executorId: string, sessionId: string,
   const api = useApiClient()
   const cache = useQueryClient()
   const path = `/api/executors/${executorId}/coding-sessions/${sessionId}/shares`
-  const queryKey = ['executors', executorId, 'session', sessionId, 'shares']
+  const queryKey = executorKeys.sessionShares(executorId, sessionId)
   const query = useQuery({
     queryKey, enabled, gcTime: 0, queryFn: () => api.get(path, ExecutorSessionSharesSchema),
+    // A preceding session's recipients cannot describe this session's access.
+    placeholderData: undefined,
   })
   const change = useMutation({
     mutationFn: (input: { email: string } | { userId: string }) => 'email' in input

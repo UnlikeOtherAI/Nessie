@@ -73,6 +73,17 @@ pnpm dev
 That runs the API on **5454** and the admin UI on **5455**, both with hot
 reload. Those ports are fixed — other tooling in the repo assumes them.
 
+## Connect your computers
+
+Executors let agents work on your own computers. Pairing connects a machine;
+reviewing its capabilities and granting an agent access are separate steps.
+
+- [Pairing, permissions, disconnecting and recovery](docs/executor-pairing.md)
+- [macOS menu bar executor](docs/running-the-apps/executor-menu-bar-macos.md#pairing-and-unpairing)
+- [Windows executor and user-session Desktop](docs/running-the-apps/windows-desktop.md#pairing-and-unpairing)
+- [Linux headless executor](docs/running-the-apps/linux-desktop.md#pairing-and-unpairing)
+- [Live terminal sessions and view-only sharing](docs/executor-protocol/terminal-sessions.md)
+
 ## Key features
 
 - **Channels, threads and DMs** — the collaboration surface people already know,
