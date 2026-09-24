@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
+  AGENT_REMINDER_PURPOSE,
   AuthorizedActionContextSchema,
   DEEP_WATER_DELIVERY_PURPOSE,
   GLOBAL_AGENT_BRIEF_PURPOSE,
@@ -32,7 +33,7 @@ import { enqueueRunExecution } from './queue.js'
 // including the budget-gate block), the terminal path batches ordinary pending
 // rows in arrival order. Rows whose purpose is in `DRAINS_ALONE_PURPOSES` —
 // mailbox deliveries (peer-delegated briefs, task-set deliveries, plan and
-// workflow step mail), global-agent briefs, ticket-work wakes and DeepWater
+// workflow step mail), global-agent briefs, ticket-work and reminder wakes and DeepWater
 // delivery wakes — drain one at a time, each as its own follow-up run under its
 // own actor context, principal and reply root. No message is lost across a
 // worker crash: the row is the pending marker, and the periodic
@@ -76,6 +77,10 @@ import { enqueueRunExecution } from './queue.js'
 //   record, and runs as the agent with no effective user, so a person's
 //   message is never consumed by a run that acts as the agent and may hold a
 //   machine binding;
+// - a `check_back_in` reminder outside ticket work (`agent.reminder`) wakes
+//   the agent as itself with no effective user, so it never runs a person's
+//   message under the agent's authority, and a person's later message never
+//   re-arms their identity for the reminder;
 // - a DeepWater delivery wake wakes the agent for one research, under the
 //   identity of the person who asked for it, so two wakes (or a wake and
 //   another person's message) are never coalesced into one run.
@@ -94,6 +99,7 @@ const DRAINS_ALONE_PURPOSES: ReadonlySet<string> = new Set([
   MAILBOX_DELIVERY_PURPOSE,
   GLOBAL_AGENT_BRIEF_PURPOSE,
   TICKET_WORK_PURPOSE,
+  AGENT_REMINDER_PURPOSE,
   DEEP_WATER_DELIVERY_PURPOSE,
 ])
 

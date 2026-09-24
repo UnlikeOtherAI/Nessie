@@ -9,9 +9,12 @@ import {
   getDefaultTicketState,
   groupTicketRefusals,
   isTicketTargetChannel,
+  ticketStateFromConfig,
 } from '../src/components/features/triggers/ticket-trigger-form'
 import {
   ticketDeliveryLine,
+  ticketWorkQuestionLine,
+  ticketWorkReminderLine,
   ticketWorkStateLine,
 } from '../src/components/features/ticket-work/ticket-work-presentation'
 import type { ChannelRecord } from '../src/lib/api-client'
@@ -122,5 +125,59 @@ test('a ticket delivery and a stopped record say why, in words', () => {
       status: 'failed', thread: null, triggerId: null, wakeCount: 30, wakeLimit: 30,
     } as never) ?? '',
     /^Stopped: 30 wakes used\. Move the ticket out of and back into a start-work column to continue\.$/,
+  )
+})
+
+test('the quiet wake posts its minutes, posts null when off, reads back, and refuses out of range on its field', () => {
+  const base = {
+    ...getDefaultTicketState({ boardId: BOARD, pickupColumnIds: [DOING] }),
+    instructions: { ...getDefaultTicketState().instructions, general: 'Triage it.' },
+  }
+  const onByDefault = buildTicketConfig(base)
+  assert.ok('config' in onByDefault)
+  assert.equal(onByDefault.config.quietWakeMinutes, 30)
+  assert.equal(TicketChangedTriggerConfigSchema.parse(onByDefault.config).quietWakeMinutes, 30)
+  const off = buildTicketConfig({ ...base, quietWakeEnabled: false, quietWakeMinutes: 'anything' })
+  assert.ok('config' in off)
+  assert.equal(off.config.quietWakeMinutes, null)
+  assert.equal(TicketChangedTriggerConfigSchema.parse(off.config).quietWakeMinutes, null)
+  for (const minutes of ['10', '1441', '20.5', '']) {
+    const refused = buildTicketConfig({ ...base, quietWakeMinutes: minutes })
+    assert.ok('error' in refused, minutes)
+    assert.equal(refused.field, 'quietWakeMinutes')
+    assert.match(refused.error, /from 15 to 1440, or off/)
+  }
+  // A stored trigger reads back as the editor shows it.
+  assert.deepEqual(
+    [ticketStateFromConfig({ boardId: BOARD, quietWakeMinutes: null }).quietWakeEnabled,
+      ticketStateFromConfig({ boardId: BOARD, quietWakeMinutes: 45 }).quietWakeMinutes,
+      ticketStateFromConfig({ boardId: BOARD }).quietWakeMinutes],
+    [false, '45', '30'],
+  )
+  assert.deepEqual(
+    groupTicketRefusals({ refusals: [{ path: 'quietWakeMinutes', reason: 'too short' }] }).fields,
+    { quietWakeMinutes: 'too short' },
+  )
+})
+
+test('the chip says when the agent checks back, and what it waits on', () => {
+  const record = {
+    agent: { id: 'a', name: 'CTO' }, endedAt: null, id: 'w', lastWakeAt: null, lastWakeReason: null,
+    startedAt: new Date().toISOString(), startedByName: null, stateReason: null, status: 'active', thread: null,
+    triggerId: null, wakeCount: 3, wakeLimit: 30, pendingReminder: null, awaitingAnswerAt: null,
+  }
+  assert.equal(ticketWorkReminderLine(record as never), null)
+  assert.equal(ticketWorkQuestionLine(record as never), null)
+  const due = new Date()
+  due.setHours(14, 35, 0, 0)
+  const line = ticketWorkReminderLine({
+    ...record, pendingReminder: { id: 'r', dueAt: due.toISOString(), note: 'waiting for CI' },
+  } as never)
+  // Today's time as this viewer's locale writes it.
+  const at = due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  assert.equal(line, `Checking back at ${at} — waiting for CI`)
+  assert.equal(
+    ticketWorkQuestionLine({ ...record, awaitingAnswerAt: due.toISOString() } as never),
+    `Waiting for an answer on the ticket since ${at}`,
   )
 })

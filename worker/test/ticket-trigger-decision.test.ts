@@ -243,3 +243,26 @@ test('the origin rule admits a source only where the caller allows it', () => {
   assert.equal(originRuleRefusal(source, { admitSource: false }), 'source_origin')
   assert.equal(originRuleRefusal({ origin: SESSION, authorCanEditBoard: true }, { admitSource: false }), null)
 })
+
+test('a comment that answers the agent\'s open question wakes its work even when comments are not followed', () => {
+  const movesOnly = trigger({ follow: { kinds: ['moved'] } })
+  // Not an answer: an unfollowed kind stays ignored.
+  assert.equal(decideTicketTrigger(event('comment_added'), movesOnly, work()).kind, 'ignore')
+  assert.deepEqual(decideTicketTrigger(event('comment_added', { answeredWorkIds: [WORK] }), movesOnly, work()), {
+    kind: 'follow', source: 'follow', workId: WORK, wakeReason: 'ticket_commented', untrusted: false,
+  })
+  // Another record's question is not this one's.
+  assert.equal(
+    decideTicketTrigger(event('comment_added', { answeredWorkIds: [randomUUID()] }), movesOnly, work()).kind,
+    'ignore',
+  )
+  // The origin rule still holds: a reply from someone who cannot edit the board wakes nothing.
+  assert.deepEqual(
+    decideTicketTrigger(
+      event('comment_added', { answeredWorkIds: [WORK], authorCanEditBoard: false }),
+      movesOnly,
+      work(),
+    ),
+    { kind: 'skip', source: 'follow', reason: 'not_board_editor' },
+  )
+})

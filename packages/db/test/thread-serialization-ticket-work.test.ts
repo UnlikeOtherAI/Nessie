@@ -5,6 +5,7 @@ import test from 'node:test'
 import { Prisma, PrismaClient } from '@prisma/client'
 import {
   parseOrganizationId,
+  AGENT_REMINDER_PURPOSE,
   TICKET_WORK_PURPOSE,
   type AuthorizedActionContext,
   type RunExecuteJobPayload,
@@ -17,10 +18,16 @@ import { claimThreadRunOrPend, drainPendingThreadMessages } from '../src/thread-
 // batch it would either lose its facts behind a person's message or, when it
 // is the latest row, run that person's message under the agent's authority.
 // So a pended `ticket.work` row drains alone, between the batches around it.
+// A `check_back_in` reminder outside ticket work is the same kind of wake
+// (`agent.reminder`): batched behind a person's message it would re-arm that
+// person's identity, so it drains alone too.
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
 
-runDatabaseTest('a ticket-work wake pended between people\'s messages drains as a run of its own', async (t) => {
+const WAKES = [['ticket-work wake', TICKET_WORK_PURPOSE], ['reminder wake', AGENT_REMINDER_PURPOSE]] as const
+
+for (const [name, purpose] of WAKES) {
+runDatabaseTest(`a ${name} pended between people's messages drains as a run of its own`, async (t) => {
   const prisma = new PrismaClient()
   const organization = await prisma.organization.create({ data: { name: `ticket-work drain ${randomUUID()}` } })
   const project = await prisma.project.create({ data: { name: 'Nessie', organizationId: organization.id } })
@@ -58,7 +65,7 @@ runDatabaseTest('a ticket-work wake pended between people\'s messages drains as 
   const wakeContext = (): AuthorizedActionContext => ({
     actor: { actorType: 'agent', actorId: agent.id, roles: ['system'] },
     tenant,
-    actionContext: { purpose: TICKET_WORK_PURPOSE, requestId: randomUUID() },
+    actionContext: { purpose, requestId: randomUUID() },
   })
 
   // The agent is mid-run, so everything below pends.
@@ -99,7 +106,7 @@ runDatabaseTest('a ticket-work wake pended between people\'s messages drains as 
     { batch: [firstAsk, secondAsk], actorType: 'user', purpose: undefined, interactive: true, replyPlacement: null },
     // The hidden kickoff cannot own a reply thread, so the wake answers in the
     // conversation, exactly as a direct claim of it would.
-    { batch: [wake], actorType: 'agent', purpose: TICKET_WORK_PURPOSE, interactive: false, replyPlacement: 'channel' },
+    { batch: [wake], actorType: 'agent', purpose, interactive: false, replyPlacement: 'channel' },
     { batch: [laterAsk], actorType: 'user', purpose: undefined, interactive: true, replyPlacement: null },
   ]
   let predecessorId = busy.id
@@ -126,3 +133,4 @@ runDatabaseTest('a ticket-work wake pended between people\'s messages drains as 
 
   assert.equal(await prisma.runThreadPendingMessage.count({ where: { threadId: thread.id } }), 0)
 })
+}

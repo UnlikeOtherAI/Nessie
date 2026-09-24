@@ -4,17 +4,22 @@ import {
   BoardTicketWorkRecordSchema,
   isAdminActor,
   TaskTicketWorkRecordSchema,
+  TICKET_WORK_REMINDER_READ_ONLY_SENTENCE,
   TicketWorkThreadGateSchema,
   type AuthorizedActionContext,
 } from '@nessie/schemas'
 import {
+  canMemberEditProjectBoards,
+  cancelTicketWorkReminder,
   findBoard,
+  isUuid,
   loadBoardTicketWork,
   loadTaskTicketWork,
   loadTicketWorkThreadGate,
 } from '@nessie/team-admin'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import { getTask } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
@@ -66,7 +71,63 @@ export const registerTicketWorkRoutes = (app: FastifyInstance, deps: RouteDeps):
       taskId: task.id,
       organizationId: actorContext.tenant.organizationId,
       viewerUserId: actorContext.actor.actorId,
+      // The cancel route below asks the same rule with this request's role.
+      isOrganizationAdmin: isAdminActor(actorContext),
     })))
+  })
+
+  /**
+   * Cancel the agent's pending `check_back_in` on this ticket's live work: the
+   * chip's Cancel. Only a person who can edit the board may — the people who
+   * can move the ticket and steer its work — asked live, with this request's
+   * own role; anyone else who reads the ticket sees the reminder and no door.
+   */
+  app.delete('/api/tasks/:taskId/work/reminders/:reminderId', async (request, reply) => {
+    const actorContext = requireActorContext(request, reply)
+    if (!actorContext) return reply
+    if (!requireUserActor(actorContext, reply)) return reply
+    const { taskId, reminderId } = request.params as { taskId: string; reminderId: string }
+    const organizationId = actorContext.tenant.organizationId
+    const task = await getTask(
+      prisma,
+      taskId,
+      organizationId,
+      await taskVisibilityFor(actorContext),
+      actorContext.actor.actorId,
+      actorContext.actionContext.uoaIdentity,
+    )
+    if (!task) {
+      sendApiError(reply, 404, 'NOT_FOUND', 'Task not found')
+      return reply
+    }
+    const editor = task.projectId !== null && await canMemberEditProjectBoards(prisma, {
+      organizationId,
+      userId: actorContext.actor.actorId,
+      projectId: task.projectId,
+      isOrganizationAdmin: isAdminActor(actorContext),
+    })
+    if (!editor) {
+      sendApiError(reply, 403, 'TICKET_WORK_REMINDER_READ_ONLY', TICKET_WORK_REMINDER_READ_ONLY_SENTENCE)
+      return reply
+    }
+    const cancelled = isUuid(reminderId)
+      ? await cancelTicketWorkReminder(prisma, { taskId: task.id, reminderId, byUserId: actorContext.actor.actorId })
+      : null
+    if (!cancelled) {
+      sendApiError(reply, 404, 'REMINDER_NOT_FOUND', 'This reminder already fired or was cancelled.')
+      return reply
+    }
+    // A person stopping an agent's scheduled wake is audited like pausing a
+    // trigger; the work thread says so in a row of its own.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.reminder_cancelled',
+      resourceType: 'agent_reminder',
+      resourceId: reminderId,
+      outcome: 'success',
+      metadata: { taskId: task.id, workId: cancelled.workId },
+    })
+    return createApiResponse({ cancelled: true })
   })
 
   /** The board's column badges, card dots, and whether its column menu offers "Start work with an agent…". */

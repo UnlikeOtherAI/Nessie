@@ -1026,8 +1026,9 @@ const main = async () => {
     const { ensureTicketWorkThread, ticketWorkThreadTitle } =
       await import('../../../packages/team-admin/src/ticket-work-thread.ts')
     const { writeTicketWorkThreadRow } = await import('../../../worker/src/control/ticket-work-run.ts')
+    const { cancelTicketWorkReminder } = await import('../../../packages/team-admin/src/agent-reminders.ts')
     const ticketSeed = await seedTicketThreads(pipeline.prisma, fixture, {
-      ensureTicketWorkThread, ticketWorkThreadTitle, writeTicketWorkThreadRow,
+      cancelTicketWorkReminder, ensureTicketWorkThread, ticketWorkThreadTitle, writeTicketWorkThreadRow,
     })
     visitorId = ticketSeed.visitor.id
     const ticketTitles = ticketSeed.tickets.map((ticket) => ticket.title)
@@ -1062,9 +1063,11 @@ const main = async () => {
     const wakeRows = desktop.locator('[data-testid="ticket-work-event-row"]:visible')
     await wakeRows.first().waitFor({ timeout: 30_000 })
     const wakeTexts = (await wakeRows.allInnerTexts()).map((text) => text.replace(/\s+/g, ' '))
-    assert.equal(wakeTexts.length, 2, `the thread shows its two wake rows: ${wakeTexts}`)
+    assert.equal(wakeTexts.length, 3, `the thread shows its two wake rows and a cancelled reminder: ${wakeTexts}`)
     assert.match(wakeTexts[0], /^Woken: work started — .+ moved the ticket into a start-work column/)
     assert.match(wakeTexts[1], /^Woken: .+ commented/)
+    // T3: who cancelled the agent's reminder, so its quiet is never unexplained.
+    assert.match(wakeTexts[2], /^Reminder cancelled: .+ cancelled the agent's reminder/)
     assert.equal(await desktop.locator('[data-testid="work-thread-read-only"]').count(), 0,
       'a board editor writes in the work thread')
     await desktop.screenshot({ path: resolve(SCREENSHOTS, 'tickets-fold', 'desktop-thread.png') })
@@ -1080,7 +1083,7 @@ const main = async () => {
       await readOnly.waitFor({ timeout: 60_000 })
       assert.match(await readOnly.innerText(), /Comment on the ticket to give the agent more information\./)
       assert.equal(await visitorPage.locator('form.admin-compose:visible').count(), 0, 'and has no composer there')
-      assert.equal(await visitorPage.locator('[data-testid="ticket-work-event-row"]:visible').count(), 2,
+      assert.equal(await visitorPage.locator('[data-testid="ticket-work-event-row"]:visible').count(), 3,
         'the wake rows are the room’s to read')
       await visitorPage.screenshot({ path: resolve(SCREENSHOTS, 'tickets-fold', 'visitor-read-only.png') })
     } finally {

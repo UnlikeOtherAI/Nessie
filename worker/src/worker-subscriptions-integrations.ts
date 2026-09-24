@@ -32,7 +32,9 @@ import {
   AgentEmailInboundJobPayloadSchema,
   AgentEmailRetentionJobPayloadSchema,
   AgentEmailSendJobPayloadSchema,
+  TICKET_WORK_SWEEP_TOPIC,
   TICKET_WORK_THREAD_MESSAGE_TOPIC,
+  TicketWorkSweepJobPayloadSchema,
   TicketWorkThreadMessageJobPayloadSchema,
   TRIGGER_TICKET_DISPATCH_TOPIC,
   TriggerTicketDispatchJobPayloadSchema,
@@ -58,6 +60,7 @@ import {
 } from './control/agent-email/jobs.js'
 import { dispatchTicketEvent } from './control/ticket-trigger-dispatch.js'
 import { dispatchTicketThreadMessage } from './control/ticket-thread-message-dispatch.js'
+import { runTicketWorkSweep } from './control/ticket-work-sweep.js'
 import { enqueueBoardSourceHealthAlert } from './queue.js'
 import { registerExecutionRunners } from './control/execution.js'
 import type { WorkerIntegrationSubscriptionDeps } from './worker-runtime-types.js'
@@ -189,6 +192,17 @@ subscribe(
   async (job) => {
     const payload = TicketWorkThreadMessageJobPayloadSchema.parse(job.payload)
     await dispatchTicketThreadMessage(prisma, payload)
+  },
+  { signal: abortSignal },
+)
+
+// The periodic ticket-work sweep, one job a minute by its bucket: quiet
+// wakes, work over its wake limit, and lost dispatch jobs recovered.
+subscribe(
+  TICKET_WORK_SWEEP_TOPIC,
+  async (job) => {
+    TicketWorkSweepJobPayloadSchema.parse(job.payload)
+    await runTicketWorkSweep(prisma)
   },
   { signal: abortSignal },
 )

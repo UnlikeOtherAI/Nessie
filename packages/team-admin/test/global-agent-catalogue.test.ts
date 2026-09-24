@@ -128,7 +128,7 @@ test('the trigger types offered are the ones a create surface accepts, with thei
   assert.match(rendered, /authorship only: a schedule runs as the person who created it/)
 })
 
-test('the ticket-work facts say what T1 ships, and board tools are no longer a person\'s-turn-only claim', () => {
+test('the ticket-work facts say what T1 and T3 ship, and board tools are no longer a person\'s-turn-only claim', () => {
   const rendered = block()
   assert.doesNotMatch(rendered, /bound to, on a person's turn\./)
   assert.match(rendered, /on a person's turn there, or when a ticket_changed trigger wakes it for a ticket's work/)
@@ -139,8 +139,14 @@ test('the ticket-work facts say what T1 ships, and board tools are no longer a p
   assert.match(rendered, /Limits: 30 model runs per ticket by default \(wakesPerTicket, at most 100\) and 20 tickets/)
   assert.match(rendered, /Its ticket comments are read by everyone on the project/)
   assert.match(rendered, /Ticket work runs on no machine yet/)
+  // T3: reminders, the open question and the quiet wake, with their bounds.
+  assert.match(rendered, /check_back_in \(5 to 1440 minutes and a short note\)/)
+  assert.match(rendered, /It replaces the ticket's pending reminder/)
+  assert.match(rendered, /awaitsAnswer asks the people on the ticket something/)
+  assert.match(rendered, /It should also set check_back_in, in case nobody answers/)
+  assert.match(rendered, /woken after 30 quiet minutes \(quietWakeMinutes, 15 to 1440, or null for off\)/)
   // Nothing from a later PR is promised.
-  assert.doesNotMatch(rendered, /check_back_in|machine access|standing access/i)
+  assert.doesNotMatch(rendered, /machine access|standing access/i)
 })
 
 test('the never-do facts are stated as facts', () => {

@@ -1,5 +1,6 @@
 import {
   DEFAULT_TICKET_FOLLOW_KINDS,
+  TICKET_QUIET_WAKE_MINUTES,
   TICKET_TRIGGER_LIMIT_CEILINGS,
   TICKET_TRIGGER_LIMIT_DEFAULTS,
   TicketChangedWorkConfigSchema,
@@ -37,6 +38,9 @@ export type TicketTriggerFormState = {
   endOnColumnIds: string[]
   wakesPerTicket: string
   startsPerDay: string
+  /** The quiet wake: on, after this many minutes; off posts null. */
+  quietWakeEnabled: boolean
+  quietWakeMinutes: string
   instructions: Record<TicketInstructionSection, string>
 }
 
@@ -52,7 +56,11 @@ export const TICKET_INSTRUCTION_SECTIONS: readonly {
     label: 'When the ticket changes',
     hint: 'Added for a comment, an edit, a move or a message in the work thread.',
   },
-  { key: 'onReminder', label: 'When a reminder fires', hint: 'Added when a reminder the agent set fires.' },
+  {
+    key: 'onReminder',
+    label: 'When a reminder fires',
+    hint: 'Added when a reminder the agent set fires, or when it is woken because nothing else was scheduled.',
+  },
   {
     key: 'onSessionTurnEnded',
     label: 'When a coding session ends a turn',
@@ -104,6 +112,8 @@ export const getDefaultTicketState = (
   endOnColumnIds: [],
   wakesPerTicket: String(TICKET_TRIGGER_LIMIT_DEFAULTS.wakesPerTicket),
   startsPerDay: String(TICKET_TRIGGER_LIMIT_DEFAULTS.startsPerDay),
+  quietWakeEnabled: true,
+  quietWakeMinutes: String(TICKET_QUIET_WAKE_MINUTES.default),
   instructions: emptyInstructions(),
 })
 
@@ -127,6 +137,8 @@ export const ticketStateFromConfig = (config: unknown): TicketTriggerFormState =
     endOnColumnIds: stored.endOn.flatMap((end) => ('id' in end ? [end.id] : [])),
     wakesPerTicket: String(stored.limits.wakesPerTicket),
     startsPerDay: String(stored.limits.startsPerDay),
+    quietWakeEnabled: stored.quietWakeMinutes !== null,
+    quietWakeMinutes: String(stored.quietWakeMinutes ?? TICKET_QUIET_WAKE_MINUTES.default),
     instructions,
   }
 }
@@ -143,6 +155,14 @@ export const columnEndsWork = (
 const readLimit = (value: string, ceiling: number): number | null => {
   const parsed = Number.parseInt(value, 10)
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= ceiling ? parsed : null
+}
+
+/** The quiet wake's minutes, or undefined for a value the server would refuse. */
+const readQuietMinutes = (value: string): number | undefined => {
+  const parsed = Number(value.trim())
+  return Number.isInteger(parsed) && parsed >= TICKET_QUIET_WAKE_MINUTES.min && parsed <= TICKET_QUIET_WAKE_MINUTES.max
+    ? parsed
+    : undefined
 }
 
 export type TicketConfigResult =
@@ -164,6 +184,14 @@ export const buildTicketConfig = (state: TicketTriggerFormState): TicketConfigRe
       field: 'limits',
     }
   }
+  const quietWakeMinutes = state.quietWakeEnabled ? readQuietMinutes(state.quietWakeMinutes) : null
+  if (quietWakeMinutes === undefined) {
+    return {
+      error: `The quiet wake is a whole number of minutes from ${TICKET_QUIET_WAKE_MINUTES.min} to `
+        + `${TICKET_QUIET_WAKE_MINUTES.max}, or off.`,
+      field: 'quietWakeMinutes',
+    }
+  }
   const sections = Object.fromEntries(
     TICKET_INSTRUCTION_SECTIONS
       .map(({ key }) => [key, state.instructions[key].trim()] as const)
@@ -181,6 +209,7 @@ export const buildTicketConfig = (state: TicketTriggerFormState): TicketConfigRe
         ...(state.endOnDone ? [{ category: 'done' }] : []),
         ...state.endOnColumnIds.map((id) => ({ id })),
       ],
+      quietWakeMinutes,
       limits: { startsPerDay, wakesPerTicket },
       instructions: sections,
     },
@@ -195,9 +224,12 @@ export type TicketFormField =
   | 'follow'
   | 'endOn'
   | 'limits'
+  | 'quietWakeMinutes'
   | 'instructions'
 
-const FIELD_ROOTS = new Set<string>(['targetChannelId', 'boardId', 'pickup', 'follow', 'endOn', 'limits', 'instructions'])
+const FIELD_ROOTS = new Set<string>([
+  'targetChannelId', 'boardId', 'pickup', 'follow', 'endOn', 'limits', 'quietWakeMinutes', 'instructions',
+])
 
 /** `pickup.columns[0]` → `pickup`: the field a refusal's path names, or null for one the editor has no field for. */
 export const ticketRefusalField = (path: string): TicketFormField | null => {

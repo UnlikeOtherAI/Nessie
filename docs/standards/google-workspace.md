@@ -46,7 +46,10 @@ file is the rule**.
   seed never ran. Its only bypass is an exact-key standing grant
   (`SendAuthorizationGrant`, `(connectionId, agentId)`, the
   `ScopeDisclosureGrant` shape) that never covers an unattended run or a
-  non-owner, and `ApprovalRequest.requiredApproverUserId` keeps a send-as-you
+  non-owner — a schedule is not a person asking, and neither is a trigger or a
+  reminder the agent set itself (`check_back_in`, which wakes it as itself;
+  [ticket work](ticket-work.md)) — and
+  `ApprovalRequest.requiredApproverUserId` keeps a send-as-you
   gate resolvable only by the person it acts as — approval visibility otherwise
   reaches every member who can read a public channel. One shared
   `sendDraftForUser` serves the human button and the agent tool; api services

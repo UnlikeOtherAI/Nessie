@@ -1,3 +1,5 @@
+import { AGENT_REMINDER_CAPS, CHECK_BACK_IN_MINUTES } from '@nessie/schemas'
+
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 
 export const SCHEDULE_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
@@ -118,3 +120,50 @@ export const CANCEL_SCHEDULED_TASK_TOOL_DEFINITION: BuiltinToolDefinition = {
   },
   safe: false,
 }
+
+/**
+ * `check_back_in`: a one-off reminder an agent sets for itself
+ * (docs/standards/ticket-work.md → "Reminders, the quiet wake and the sweep").
+ * Not a schedule: it never runs as a person, counts against no person's
+ * schedule cap, and in ticket work fires as the work record's own wake.
+ */
+export const CHECK_BACK_IN_TOOL_DEFINITION: BuiltinToolDefinition = {
+  id: 'check_back_in',
+  category: 'scheduling',
+  summary: 'Wake yourself in this thread after a number of minutes.',
+  label: 'Check Back In',
+  description:
+    `Wake me in this thread after \`minutes\` (${CHECK_BACK_IN_MINUTES.min} to ${CHECK_BACK_IN_MINUTES.max}). `
+    + 'Use it when you are waiting for something that will not wake you, such as CI or a person\'s answer. '
+    + 'It replaces this ticket\'s pending reminder. In ticket work every reminder that fires counts as '
+    + 'one of the ticket\'s wakes. Outside ticket work you wake as yourself, with nobody behind the run, '
+    + `and a conversation holds at most ${AGENT_REMINDER_CAPS.pendingPerThread} pending reminders; it is `
+    + 'refused in a direct conversation with the Personal Assistant or the Agent Designer.',
+  parameters: {
+    type: 'object',
+    properties: {
+      minutes: {
+        type: 'integer',
+        minimum: CHECK_BACK_IN_MINUTES.min,
+        maximum: CHECK_BACK_IN_MINUTES.max,
+        description: `Minutes from now, a whole number from ${CHECK_BACK_IN_MINUTES.min} to ${CHECK_BACK_IN_MINUTES.max}.`,
+      },
+      note: {
+        type: 'string',
+        description:
+          'What you are waiting for, in a few words ("waiting for CI"). It is shown on the ticket and '
+          + 'handed back to you when the reminder fires.',
+      },
+    },
+    required: ['minutes', 'note'],
+  },
+  safe: false,
+}
+
+/** Every scheduling tool, in the order the catalogue lists them. */
+export const SCHEDULE_TOOL_DEFINITIONS: readonly BuiltinToolDefinition[] = [
+  SCHEDULE_TASK_TOOL_DEFINITION,
+  LIST_SCHEDULED_TASKS_TOOL_DEFINITION,
+  CANCEL_SCHEDULED_TASK_TOOL_DEFINITION,
+  CHECK_BACK_IN_TOOL_DEFINITION,
+]
