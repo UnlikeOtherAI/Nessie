@@ -186,3 +186,15 @@ export const ticketDeliveryLine = (payload: unknown): string | null => {
       return `Woke the agent: ${reason ?? 'a change'}${delivery.untrusted ? ', marked untrusted' : ''}.`
   }
 }
+
+/** "Checking back at 14:35 — waiting for CI": the agent's pending `check_back_in`. */
+export const ticketWorkReminderLine = (record: TicketWorkChipRecord): string | null =>
+  record.pendingReminder ? `Checking back at ${day(record.pendingReminder.dueAt)} — ${record.pendingReminder.note}` : null
+
+/**
+ * "Waiting for an answer on the ticket since 14:20": the agent's latest
+ * comment asked the people on the ticket something. Until one of them
+ * answers, nothing wakes the work just because it is quiet.
+ */
+export const ticketWorkQuestionLine = (record: TicketWorkChipRecord): string | null =>
+  record.awaitingAnswerAt ? `Waiting for an answer on the ticket since ${day(record.awaitingAnswerAt)}` : null

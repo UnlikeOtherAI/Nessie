@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery, type QueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import {
   TICKET_WORK_LIVE_STATUSES,
   type BoardTicketWorkRecord,
@@ -81,5 +81,18 @@ export const useTicketWorkThreadGate = (threadId: string | null | undefined, ena
     queryKey: threadKeys.ticketWork(threadId ?? undefined),
     queryFn: () => apiClient.get(`/api/threads/${threadId}/ticket-work`),
     enabled: enabled && Boolean(threadId),
+  })
+}
+
+/**
+ * Cancel the agent's pending reminder on a ticket's live work — the chip's
+ * Cancel, offered only to a viewer who can edit the board, as the route asks.
+ */
+export const useCancelTicketWorkReminder = (taskId: string) => {
+  const apiClient = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (reminderId: string) => apiClient.delete(`/api/tasks/${taskId}/work/reminders/${reminderId}`),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: taskKeys.work(taskId) }),
   })
 }
