@@ -38,7 +38,11 @@ Each rule is tagged with the PR that first enforces it in code:
   dot, the work thread's wake rows, read-only composer and Tickets fold — and
   board watchers retired to people only. No machine does ticket work yet: the
   agent reads, comments on and moves tickets.
-- **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
+- **(T3)** shipped: `check_back_in` and its reminders, the quiet wake, the
+  open question (`awaitsAnswer`) with the hours clock it pauses, and the
+  periodic `ticket-work.sweep` (below, "Reminders, the quiet wake and the
+  sweep").
+- **(from T1)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
   or `document_changed` trigger (below).
@@ -97,7 +101,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   beside a config of `boardId?`, `pickup? { columns: ({id} | {name} |
   {category: in_progress | review})[], assignOnPickup = true }` (null or
   absent: the trigger starts no work), `follow` and `endOn` (the stored
-  schema's own fields and defaults), `limits { wakesPerTicket = 30,
+  schema's own fields and defaults), **(T3)** `quietWakeMinutes = 30`
+  (15–1440, null turns the quiet wake off), `limits { wakesPerTicket = 30,
   startsPerDay = 20 }` capped by `TICKET_TRIGGER_LIMIT_CEILINGS`, and
   `instructions { general, onPickup?, onTicketChanged?, onSessionTurnEnded?,
   onReminder?, onQueued? }`. It is strict: an unknown key is refused. A limit
@@ -422,12 +427,14 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   and its id; the work's status: live, parked (and that only a person moving
   it back resumes it), or ended with its reason and that nothing wakes it
   again; "wake n of m"; that no machine does ticket work yet; the pull
-  request on record; that this is the ticket's work thread and, while the
+  request on record; **(T3)** while live, the pending reminder or none, an
+  open question, and how to use `check_back_in`, `awaitsAnswer` and the quiet
+  wake; that this is the ticket's work thread and, while the
   work is live, what wakes it next and that its own changes never do) and
   *Instructions* (the trigger's `general`, then — while the work is live —
   each section matching a reason: `onPickup`, `onTicketChanged` for every
-  ticket change and thread message, `onSessionTurnEnded`, `onReminder`,
-  `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
+  ticket change and thread message, `onSessionTurnEnded`, `onReminder` for a
+  reminder and **(T3)** a quiet wake, `onQueued`). Each setting is read on its own (`ticketWorkConfigOf`), so an
   instruction that no longer parses costs the instructions alone. A comment
   carries its full text and its author, a description change the new
   description (T2 adds the line diff), a thread message the message.
@@ -484,8 +491,9 @@ routes, and none of it names a machine.
   - `GET /api/tasks/:taskId/work`, behind the ticket's own read rule: each
     trigger's newest record (`TicketWorkChipRecordSchema`: agent, status and
     reason, who started it, last wake and its reason, wake n of
-    `limits.wakesPerTicket`) and the work thread **only for a viewer who may
-    open it** (`buildViewerThreadWhere`); a reader who may not gets the same
+    `limits.wakesPerTicket`, **(T3)** a live record's pending reminder and
+    open question) and `viewerCanEditBoard`, and the work thread **only for a
+    viewer who may open it** (`buildViewerThreadWhere`); a reader who may not gets the same
     state and no door. It also carries `lastSkip`: the newest pickup skip, or
     refused re-entry (`reentry`), in `TICKET_WORK_NOTICE_SKIP_REASONS` (an
     agent's, a token's, a source's or the platform's move, a non-editor's,
@@ -515,8 +523,11 @@ routes, and none of it names a machine.
   continue."*, *"Parked while the ticket is in review…"*, or — when the
   ticket's newest skip refused a move back — *"Moved back by an agent, so
   work did not resume…"* in its place, because the ticket then already sits
-  in the start-work column), "Open the work thread" for its readers, and a
-  closed **Work history** fold listing the `work_*` rows (*"14:05 · CTO
+  in the start-work column), **(T3)** the pending reminder (*"Checking back
+  at 14:35 — waiting for CI"*, `ticketWorkReminderLine`) with **Cancel** only
+  when the read's `viewerCanEditBoard`, and an open question (*"Waiting for an
+  answer on the ticket since 14:20"*), "Open the work thread" for its readers,
+  and a closed **Work history** fold listing the `work_*` rows (*"14:05 · CTO
   started work · by Ondrej"*, `ticketWorkHistoryLine`). The board card
   (`KanbanCard`) shows the agent's avatar with a state dot
   (`TicketWorkCardDot`). Both re-read while work is live, and twice after the
@@ -538,12 +549,14 @@ routes, and none of it names a machine.
   and its columns (a new trigger starts from the board's In progress
   columns, and a column an end rule covers cannot also start work); follow
   kinds with the connected-board opt-in explained, and the mirrored board
-  named when there is one; end columns; both limits; and sectioned
-  instructions with a neutral example. It posts the typed config by column
-  id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its path
-  names** (`groupTicketRefusals`). A ticket trigger's page names its board
-  and columns (`useTicketTriggerFacts`) and says what each delivery decided
-  and why (`ticketDeliveryLine`: the skip sentence, or the wake reason).
+  named when there is one; end columns; both limits; **(T3)** the quiet wake
+  (a switch and its minutes, off posting `null`, and what off costs); and
+  sectioned instructions with a neutral example. It posts the typed config by
+  column id, and a `TRIGGER_CONFIG_REFUSED` answer lands **on the field its
+  path names** (`groupTicketRefusals`). A ticket trigger's page names its
+  board and columns (`useTicketTriggerFacts`) and its quiet wake, and says
+  what each delivery decided and why (`ticketDeliveryLine`: the skip
+  sentence, or the wake reason — a reminder and a quiet wake included).
 - **The work thread** renders each `metadata.ticketWorkEvent` row compactly
   (`TicketWorkEventRow`: *"Woken: Ondrej commented"*, time, no author). A room
   member who cannot edit the ticket's board gets `ChannelPostRefusal`'s line
@@ -569,6 +582,73 @@ routes, and none of it names a machine.
   mirrored project both the editor and the agent tools' answer
   (`describeMirroredSources`) say that a move on the connected board never
   starts work, and what its own changes can still do.
+
+## Reminders, the quiet wake and the sweep (T3)
+
+- **`check_back_in { minutes, note }`** (`CHECK_BACK_IN_TOOL_DEFINITION`,
+  handler `worker/src/run/pa-tools/check-back-in.ts`, rules
+  `setAgentReminder` in `packages/team-admin/src/agent-reminders.ts`) is on
+  for every agent, a `ticket.work` run included. `minutes` is an integer
+  schema so the dispatcher's coercion turns "15" into 15; anything else
+  outside 5–1440 is refused with the range. It is an `agent_reminders` row,
+  never a `schedule_task` trigger, and whose it is comes from the run: a
+  `ticket.work` run's belongs to its record, any other to its conversation.
+- **In ticket work** a record holds one pending reminder; a new one replaces
+  it (`replaced`) under the record's row lock. It fires as the record's
+  `reminder` wake through the work seam — a `ticket.work` run counted against
+  `wakesPerTicket`, one delivery (`source: reminder`, deduped on
+  `reminder:<id>`) — and ends with the record (`work_ended`). The chip's
+  Cancel is `DELETE /api/tasks/:taskId/work/reminders/:reminderId`, for a
+  board editor only (403 `TICKET_WORK_REMINDER_READ_ONLY` for another reader).
+- **Outside ticket work** it wakes the agent in the same conversation **as
+  itself**: no effective user, not interactive, purpose `agent.reminder`
+  (`AGENT_REMINDER_PURPOSE`, in `DRAINS_ALONE_PURPOSES`, so it never batches
+  with a person's message and never re-arms their identity). It is refused in
+  a system conversation (a Personal Assistant, Agent Designer or other system
+  agent's DM) and while the run speaks for a person in a shared room; at most
+  3 of the agent's reminders wait in one conversation and it sets 24 a UTC
+  day (`AGENT_REMINDER_CAPS`). One that comes due where the agent can no
+  longer wake is cancelled `undeliverable`. A reminder is not a person asking,
+  so it never rides a standing send grant (`send-authorization.ts`,
+  [Google Workspace](google-workspace.md)).
+- **Delivery.** The scheduler tick that fires scheduled triggers
+  (`worker-sweeps.ts`) calls `sweepDueAgentReminders`
+  (`worker/src/control/agent-reminder-fire.ts`); each reminder is claimed
+  `FOR UPDATE SKIP LOCKED` inside the transaction that delivers it, taking the
+  thread's run slot and the record before the reminder, the order every wake
+  and every teardown takes them. A wake that throws leaves a failed,
+  retryable delivery (`reattemptTicketWorkDelivery`) and the reminder fired.
+- **The open question** is structural: `ticket_comment_add`'s `awaitsAnswer`
+  stamps `awaitsAnswer: true` on the `comment_added` event and sets the
+  agent's live records' `awaitingAnswerAt` (`applyTicketWorkAgentComment`,
+  in the comment's transaction). A person's event that wakes the record — a
+  comment, a thread message, a move — closes it (`closeTicketWorkQuestion`),
+  and so does a later agent comment that asks nothing. A reminder, a quiet
+  wake and a connected board's event answer nothing.
+- **The hours clock.** `activeMs` runs only while a record is `active` with no
+  open question: `clockStartedAt` is when it last started, and every
+  transition — start, park, resume, end, question opened or closed — folds
+  the elapsed time in (`syncTicketWorkClock`,
+  `packages/team-admin/src/ticket-work-clock.ts`). Parked work pauses it too.
+  Nothing enforces `ticketHours` yet (from T4).
+- **The quiet wake** (`quietWakeMinutes`, default 30): an `active` record
+  with no pending reminder, no open question, no run in flight and no wake for
+  that long gets a `quiet` wake, *"nothing else is scheduled"*, counted, one
+  delivery deduped on `quiet:<workId>:<the wake it followed>`, whose claim
+  re-reads all of that under the thread's run slot. No coding session can be
+  working yet, so none is checked (from T5). Queued, parked and
+  waiting-machine records never get one.
+- **`ticket-work.sweep`** (`worker/src/control/ticket-work-sweep.ts`) is one
+  job a minute, idempotent by its bucket (`enqueueTicketWorkSweep`, started by
+  `startTicketWorkSweep`, subscribed beside the ticket dispatch). It sends the
+  quiet wakes (`decideTicketWorkSweep`), ends work a lowered `wakesPerTicket`
+  left over its wakes (`limit_wakes`, with its `work_ended` row and stop row;
+  `startsPerDay` is decided at each pickup, so no live record is over it), and
+  recovers a lost job: a `trigger.ticket.dispatch` or
+  `ticket-work.thread-message` job the queue dead-lettered in the last day is
+  dispatched once more (`recoverLostTicketJobs`) — each dispatcher decides at
+  most once per (trigger, event), so a person's move whose worker died still
+  starts its work. It becomes the pool dispatcher in T4 and T5.
 
 ## The machine owner's authority is read only by the standing-policy binder (from T4)
 
@@ -644,7 +724,7 @@ hold these, so no read-then-write race can break them:
   executor without holding it. `policyId` / `executorId` are written by the
   dispatcher, never by run setup.
 - `agent_reminders_one_pending_per_work`: one pending reminder per work
-  record; a new `check_back_in` replaces it (from T3).
+  record; a new `check_back_in` replaces it (T3).
 - `executor_standing_policies_one_binding` and
   `executor_standing_policies_one_preparing`: above.
 
@@ -722,7 +802,10 @@ causes it**:
   column to continue"* row, and the delivery is skipped `limit_wakes`. A
   pickup past the trigger's `startsPerDay` (UTC day, counted under the
   trigger's start lock) is recorded `failed` with `limit_daily`, starts
-  nothing, and is skipped `limit_starts`. **(from T4)** `ticketHours`,
+  nothing, and is skipped `limit_starts`. **(T3)** `ticket-work.sweep` ends
+  work a lowered `wakesPerTicket` leaves over its wakes the same way, and a
+  reminder or quiet wake past the limit stops it like any other wake.
+  **(from T4)** `ticketHours`,
   `ticketUsd` and `dailyUsd` fail the record the same way, and its sessions
   get close requests.
 - **(from T4) The policy ends in the same transaction as each fence**, reusing
@@ -761,8 +844,8 @@ causes it**:
   subscribed in `worker/src/worker-subscriptions-integrations.ts`),
   `TICKET_WORK_THREAD_MESSAGE_TOPIC` (T1, a person's message in a work
   thread, subscribed beside it),
-  `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (from
-  T3, with an optional idempotency `bucket`) and `TICKET_WORK_SESSION_TOPIC`
+  `TRIGGER_DOCUMENT_DISPATCH_TOPIC` (from T2), `TICKET_WORK_SWEEP_TOPIC` (T3,
+  one job a minute by its `bucket`, subscribed beside them) and `TICKET_WORK_SESSION_TOPIC`
   (from T5, whose `status` is only one that wakes: `waiting_for_input`,
   `interrupted`, `failed` or `closed`). The sweep is also **the pool
   dispatcher**: every transaction that may free a machine — a record ending,
@@ -770,8 +853,8 @@ causes it**:
   online, access being re-confirmed — enqueues it with a short idempotency
   window, and the periodic tick is only the backstop (from T5). So dispatch is
   one idempotent job that reads the queue and the pools afresh, and there is
-  no per-executor dispatch topic. Only `trigger.ticket.dispatch` and
-  `ticket-work.thread-message` have a subscriber so far; each other handler
+  no per-executor dispatch topic. Only `trigger.ticket.dispatch`,
+  `ticket-work.thread-message` and `ticket-work.sweep` have a subscriber so far; each other handler
   parses its payload with its schema when it lands.
 - The dispatch vocabularies are in `packages/schemas/src/ticket-triggers.ts`:
   the stored `ticket_changed` config the dispatcher reads
@@ -893,8 +976,19 @@ causes it**:
   `document_changed`; a ticket trigger's form, a pickup refused on its field
   and the typed create; the column badge at the head of an aligned track,
   card dots, and the column menu on every column but Done that opens the
-  editor prefilled with its type fixed; and a ticket trigger's page — at 1280
-  and 390 px. `test:e2e:task-dialog` shots the chip in each state (a refused
-  move back included), its work history and the card's dot;
-  `test:e2e:agent-conversations` walks the Tickets fold, the wake rows and the
-  read-only composer.
+  editor prefilled with its type fixed; the quiet wake field; and a ticket
+  trigger's page — at 1280 and 390 px. `test:e2e:task-dialog` shots the chip
+  in each state (a refused move back included), its work history, the card's
+  dot, and (shots 19) the reminder with Cancel, cancelled, a reader's without
+  it, and the open question; `test:e2e:agent-conversations` walks the Tickets
+  fold, the wake rows and the read-only composer.
+- **(T3)** `worker/test/db/ticket-work-reminders.test.ts`: coercion, the range
+  refusal, replacement, a reminder fired as a counted `ticket.work` wake and
+  cancelled with its record, and outside ticket work the wake as the agent,
+  `undeliverable`, the system-conversation and presence refusals and both caps.
+  `worker/test/db/ticket-work-sweep.test.ts`: the quiet wake only for active
+  work with nothing scheduled, the open question pausing it and the clock
+  until a person answers, a lowered limit ended, a lost pickup job recovered
+  once, one sweep job a minute. `worker/test/ticket-work-sweep-decision.test.ts`,
+  `worker/test/check-back-in-tool.test.ts`, the drain-alone test for
+  `agent.reminder`, and `api/test/ticket-work-view-routes.test.ts`'s Cancel.
