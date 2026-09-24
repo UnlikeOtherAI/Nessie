@@ -620,6 +620,16 @@ routes, and none of it names a machine.
   longer wake is cancelled `undeliverable`. A reminder is not a person asking,
   so it never rides a standing send grant (`send-authorization.ts`,
   [Google Workspace](google-workspace.md)).
+  **Known gap (T3):** a pending reminder outside ticket work has no screen
+  and no Cancel yet. Setting one is visible as the tool call in the run's
+  thought process, and its fire as the agent's reply in that conversation,
+  but nothing lists what is still pending. The obvious home, the agent
+  page's Triggers tab, is read by the agent's managers, and a reminder's note
+  is written for its own conversation, whose audience can be narrower; a
+  screen therefore needs that conversation's read rule
+  (`buildViewerThreadWhere`) and Cancel for those who may manage the agent.
+  Until it ships, the caps bound what can be pending: 3 in one conversation,
+  24 set a day.
 - **Delivery.** The scheduler tick that fires scheduled triggers
   (`worker-sweeps.ts`) calls `sweepDueAgentReminders`
   (`worker/src/control/agent-reminder-fire.ts`); each reminder is claimed
