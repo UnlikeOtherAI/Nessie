@@ -306,9 +306,19 @@ export const TicketTriggerDeliveryPayloadSchema = z
     // A skip that refused a re-entry into a start-work column — the work
     // exists and did not resume — rather than a pickup or a follow.
     reentry: z.boolean().optional(),
+    // A quiet wake: the record's last wake when the quiet was measured. A
+    // retry that finds a later wake is settled, never sent.
+    followedWakeAt: z.string().datetime().nullable().optional(),
   })
   .strict()
   .superRefine((payload, context) => {
+    if ((payload.followedWakeAt !== undefined) !== (payload.eventType === 'quiet')) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['followedWakeAt'],
+        message: 'A quiet wake names the wake it followed, and only a quiet wake does.',
+      })
+    }
     if ((payload.outcome === 'skipped') !== (payload.skipReason !== undefined)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

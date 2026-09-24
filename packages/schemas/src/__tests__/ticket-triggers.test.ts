@@ -105,12 +105,18 @@ test('a reminder names its reminder, a quiet wake names nothing, and neither a T
       .success,
     false,
   )
+  const quiet = { ...woken, eventType: 'quiet', wakeReason: 'quiet' }
+  const followedWakeAt = '2026-09-24T14:05:00.000Z'
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({ ...quiet, followedWakeAt }).success, true)
+  // A quiet wake names the wake it followed, so a retry after a later wake is settled.
+  assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse(quiet).success, false)
   assert.equal(
-    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'quiet', wakeReason: 'quiet' }).success,
-    true,
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...quiet, followedWakeAt, reminderId: REMINDER }).success,
+    false,
   )
   assert.equal(
-    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'quiet', reminderId: REMINDER }).success,
+    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'reminder', reminderId: REMINDER, followedWakeAt })
+      .success,
     false,
   )
   assert.equal(

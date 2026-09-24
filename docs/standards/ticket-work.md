@@ -649,11 +649,12 @@ routes, and none of it names a machine.
 - **The quiet wake** (`quietWakeMinutes`, default 30): an `active` record
   with no pending reminder, no open question, no run in flight and no wake for
   that long gets a `quiet` wake, *"nothing else is scheduled"*, counted, one
-  delivery deduped on `quiet:<workId>:<the wake it followed>`, whose claim
-  re-reads all of that under the thread's run slot, as a retried one does
-  first. No coding session can be
-  working yet, so none is checked (from T5). Queued, parked and
-  waiting-machine records never get one.
+  delivery deduped on `quiet:<workId>:<the wake it followed>` and naming that
+  wake (`followedWakeAt`), whose claim re-reads all of that — and that no wake
+  came since — under the thread's run slot. A retried quiet delivery runs the
+  same claim and is settled `no_longer_applies` when it fails. No coding
+  session can be working yet, so none is checked (from T5). Queued, parked
+  and waiting-machine records never get one.
 - **`ticket-work.sweep`** (`worker/src/control/ticket-work-sweep.ts`) is one
   job a minute, idempotent by its bucket (`enqueueTicketWorkSweep`, started by
   `startTicketWorkSweep`, subscribed beside the ticket dispatch). It sends the

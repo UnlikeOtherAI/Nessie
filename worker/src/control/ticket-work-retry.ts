@@ -28,7 +28,11 @@ export const reattemptTicketWorkDelivery = async (
     return
   }
   if (parsed.success && parsed.data.eventType === 'quiet' && parsed.data.workId) {
-    await sendQuietWake(prisma, parsed.data.workId, { retry })
+    const followed = parsed.data.followedWakeAt
+    await sendQuietWake(prisma, parsed.data.workId, {
+      retry,
+      followedWakeAt: followed === undefined ? undefined : followed === null ? null : new Date(followed),
+    })
     return
   }
   await reattemptTicketTriggerDelivery(prisma, input)

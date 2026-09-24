@@ -117,16 +117,25 @@ const sweepFacts = (record: LiveRecord): SweepRecordFacts => {
   }
 }
 
-type QuietOptions = { seam?: TicketWorkSeam; retry?: RetryContext; now?: Date }
+type QuietOptions = {
+  seam?: TicketWorkSeam
+  retry?: RetryContext
+  now?: Date
+  /**
+   * A retry's quiet wake: the record's last wake when its quiet was measured,
+   * from the delivery's payload. A retry that names none is settled.
+   */
+  followedWakeAt?: Date | null
+}
 
 /**
  * Whether the record is still quiet: active, no open question, no pending
- * reminder, no run in flight — and, when the wake it followed is named, no
- * wake since. A question waiting for a person never costs a wake.
+ * reminder, no run in flight, and no wake since the one the quiet followed. A
+ * question waiting for a person never costs a wake.
  */
 const stillQuiet = async (
   tx: Pick<Prisma.TransactionClient, 'agentTicketWork' | 'run'>,
-  input: { workId: string; agentId: string; threadId: string; followedWakeAt?: Date | null },
+  input: { workId: string; agentId: string; threadId: string; followedWakeAt: Date | null },
 ): Promise<boolean> => {
   const fresh = await tx.agentTicketWork.findUnique({
     where: { id: input.workId },
@@ -142,17 +151,25 @@ const stillQuiet = async (
   })
   return fresh !== null && fresh.status === 'active' && fresh.awaitingAnswerAt === null
     && fresh._count.reminders === 0 && inFlight === 0
-    && (input.followedWakeAt === undefined
-      || (fresh.lastWakeAt?.getTime() ?? null) === (input.followedWakeAt?.getTime() ?? null))
+    && (fresh.lastWakeAt?.getTime() ?? null) === (input.followedWakeAt?.getTime() ?? null)
+}
+
+/** A retry that can no longer apply: its row settled, never retried again. */
+const settleStaleQuietRetry = async (prisma: PrismaClient, retry: RetryContext | undefined): Promise<void> => {
+  if (!retry?.reuseDeliveryId) return
+  await prisma.agentTriggerDelivery.updateMany({
+    where: { id: retry.reuseDeliveryId, status: 'failed' },
+    data: { status: 'skipped', errorMessage: 'no_longer_applies', nextRetryAt: null },
+  })
 }
 
 /**
- * One quiet wake, deduped on `quiet:<workId>:<the wake it followed>`. Its
- * claim re-reads the record under the thread's run slot — the lock every wake
- * of the record takes first — and writes no delivery at all when something
- * woke or scheduled it in the meantime. Also the delivery-retry poller's arm
- * for a failed quiet delivery, which asks the same (a question opened since
- * settles it instead) and then wakes the work.
+ * One quiet wake, deduped on `quiet:<workId>:<the wake it followed>`, whose
+ * payload names that wake (`followedWakeAt`). Its claim takes the thread's
+ * run slot — the lock every wake of the record takes before it writes — and
+ * re-reads the record under it: something that woke or scheduled it in the
+ * meantime means no delivery at all on a first attempt, and a settled row on
+ * the delivery-retry poller's, which runs the very same claim.
  */
 export const sendQuietWake = async (
   prisma: PrismaClient,
@@ -169,7 +186,6 @@ export const sendQuietWake = async (
       projectId: true,
       threadId: true,
       agentId: true,
-      status: true,
       lastWakeAt: true,
       startedAt: true,
       trigger: { select: { id: true, agentId: true, config: true, targetChannelId: true } },
@@ -178,35 +194,27 @@ export const sendQuietWake = async (
   const trigger = record?.trigger
   const config = TicketChangedStoredConfigSchema.safeParse(trigger?.config)
   const quietMinutes = ticketWorkConfigOf(trigger?.config).quietWakeMinutes
-  const quiet = record && trigger?.agentId && config.success && quietMinutes !== null
-    && await stillQuiet(prisma, { workId: record.id, agentId: trigger.agentId, threadId: record.threadId })
-  if (!record || !trigger?.agentId || !config.success || !quiet) {
-    if (options.retry?.reuseDeliveryId) {
-      await prisma.agentTriggerDelivery.updateMany({
-        where: { id: options.retry.reuseDeliveryId, status: 'failed' },
-        data: { status: 'skipped', errorMessage: 'no_longer_applies', nextRetryAt: null },
-      })
-    }
+  const followedWakeAt = options.retry ? options.followedWakeAt : record?.lastWakeAt ?? null
+  if (!record || !trigger?.agentId || !config.success || quietMinutes === null || followedWakeAt === undefined) {
+    await settleStaleQuietRetry(prisma, options.retry)
     return
   }
   const agentId = trigger.agentId
-  const followed = record.lastWakeAt ?? record.startedAt
+  const followed = followedWakeAt ?? record.startedAt
   const seam = options.seam ?? createTicketWorkSeam(prisma)
   await settleTicketDelivery(prisma, {
     triggerId: trigger.id,
     dedupeKey: `quiet:${record.id}:${followed.toISOString()}`,
-    base: { taskId: record.taskId, eventType: 'quiet', originKind: 'system' },
+    base: {
+      taskId: record.taskId, eventType: 'quiet', originKind: 'system',
+      followedWakeAt: followedWakeAt?.toISOString() ?? null,
+    },
     decision: { kind: 'follow', source: 'quiet', workId: record.id, wakeReason: 'quiet', untrusted: false },
-    ...(options.retry
-      ? { retry: options.retry }
-      : {
-          claim: async (tx) => {
-            await lockThreadRunSlot(tx, { agentId, threadId: record.threadId })
-            return stillQuiet(tx, {
-              workId: record.id, agentId, threadId: record.threadId, followedWakeAt: record.lastWakeAt,
-            })
-          },
-        }),
+    ...(options.retry ? { retry: options.retry } : {}),
+    claim: async (tx) => {
+      await lockThreadRunSlot(tx, { agentId, threadId: record.threadId })
+      return stillQuiet(tx, { workId: record.id, agentId, threadId: record.threadId, followedWakeAt })
+    },
     act: (tx, deliveryId) => seam.wakeTicketWork(tx, {
       trigger: {
         id: trigger.id,

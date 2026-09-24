@@ -58,9 +58,10 @@ export type SeamAct = (tx: Prisma.TransactionClient, deliveryId: string) => Prom
 
 /**
  * Claims the thing the delivery is about inside the delivery's own
- * transaction — a due reminder — and returns false when another worker holds
- * or already took it. The delivery is then not written at all: its outcome is
- * the other worker's.
+ * transaction — a due reminder, a quiet record — and returns false when
+ * another worker holds or already took it, or it no longer applies. A first
+ * attempt then writes no delivery at all: its outcome is the other worker's.
+ * A retry settles its row `no_longer_applies`, so it is never retried again.
  */
 export type SettleClaim = (tx: Prisma.TransactionClient) => Promise<boolean>
 
@@ -91,7 +92,12 @@ export const settleTicketDelivery = async (
   const payload = deliveryPayload(input.base, decision)
   try {
     await prisma.$transaction(async (tx) => {
-      if (input.claim && !(await input.claim(tx))) throw new ClaimLost()
+      if (input.claim && !(await input.claim(tx))) {
+        if (!input.retry?.reuseDeliveryId) throw new ClaimLost()
+        const stale = deliveryPayload(input.base, { kind: 'skip', source: decision.source, reason: 'no_longer_applies' })
+        await markSkipped(tx, input.retry.reuseDeliveryId, stale, 'no_longer_applies')
+        return
+      }
       const delivery = await upsertDelivery(tx, {
         dedupeKey,
         payload,

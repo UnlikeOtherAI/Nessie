@@ -136,7 +136,7 @@ const delivery = (n: number, source: string, status: string, payload: Record<str
 const history = [
   // T3: the agent's own reminder, and the platform's quiet wake.
   delivery(5, 'quiet', 'delivered', {
-    eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet',
+    eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet', followedWakeAt: T0,
     workId: '60000000-0000-4000-8000-000000000400',
   }),
   delivery(4, 'reminder', 'delivered', {

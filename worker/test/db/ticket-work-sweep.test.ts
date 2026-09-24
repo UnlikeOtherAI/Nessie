@@ -260,33 +260,46 @@ runDatabaseTest('the periodic sweep is one job a minute, by its bucket', async (
   assert.deepEqual(jobs.map((job) => (job.payload as { bucket?: string }).bucket).sort(), buckets.sort())
 })
 
-runDatabaseTest('a failed quiet wake retried while a question waits is settled, never a spent wake', async (t) => {
+runDatabaseTest('a failed quiet wake retried after a question or a later wake is settled, never a spent wake', async (t) => {
   const prisma = new PrismaClient()
   const s = await seedTicketWork(prisma)
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)
-  const failedQuiet = (n: number) => prisma.agentTriggerDelivery.create({
+  const failedQuiet = (n: number, followedWakeAt: Date | null) => prisma.agentTriggerDelivery.create({
     data: {
       triggerId: s.triggerId, source: 'quiet', status: 'failed', dedupeKey: `quiet:${work.id}:retry-${n}`,
       errorMessage: 'the target channel was busy', nextRetryAt: new Date(),
-      payload: { taskId: task.id, eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet', workId: work.id },
+      payload: {
+        taskId: task.id, eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet',
+        workId: work.id, followedWakeAt: followedWakeAt?.toISOString() ?? null,
+      },
     },
   })
   const retry = (delivery: { id: string; payload: unknown }) => reattemptTicketWorkDelivery(prisma, {
     organizationId: s.organizationId, payload: delivery.payload, retryCount: 1,
     reuseDeliveryId: delivery.id, triggerId: s.triggerId,
   })
+  const settledAndUnspent = async (id: string) => {
+    const settled = await prisma.agentTriggerDelivery.findUniqueOrThrow({ where: { id } })
+    assert.deepEqual([settled.status, settled.errorMessage], ['skipped', 'no_longer_applies'])
+    assert.equal((await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })).wakeCount, work.wakeCount)
+  }
 
+  // A question opened since the quiet was measured.
   await prisma.agentTicketWork.update({ where: { id: work.id }, data: { awaitingAnswerAt: new Date() } })
-  const asked = await failedQuiet(1)
+  const asked = await failedQuiet(1, work.lastWakeAt)
   await retry(asked)
-  const settled = await prisma.agentTriggerDelivery.findUniqueOrThrow({ where: { id: asked.id } })
-  assert.deepEqual([settled.status, settled.errorMessage], ['skipped', 'no_longer_applies'])
-  assert.equal((await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })).wakeCount, work.wakeCount)
-
+  await settledAndUnspent(asked.id)
   await prisma.agentTicketWork.update({ where: { id: work.id }, data: { awaitingAnswerAt: null } })
-  const quiet = await failedQuiet(2)
+
+  // The record was woken after the wake the quiet followed: it is not quiet.
+  const stale = await failedQuiet(2, new Date(work.lastWakeAt!.getTime() - 40 * MINUTE))
+  await retry(stale)
+  await settledAndUnspent(stale.id)
+
+  // Still quiet since the wake it names: the retry wakes the work.
+  const quiet = await failedQuiet(3, work.lastWakeAt)
   await retry(quiet)
   assert.equal((await prisma.agentTriggerDelivery.findUniqueOrThrow({ where: { id: quiet.id } })).status, 'delivered')
   const woken = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
