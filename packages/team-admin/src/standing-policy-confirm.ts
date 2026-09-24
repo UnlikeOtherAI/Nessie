@@ -11,6 +11,7 @@ import {
   standingPolicyLimitsOf,
   standingPolicyTermsDigest,
   standingPolicyTermsOf,
+  loadStandingPolicyAgentPin,
   writeStandingPolicyAudit,
 } from '@nessie/executor-manage'
 import {
@@ -40,6 +41,10 @@ import { captureScheduledLaunchOrigin } from './trigger-launch-origin.js'
  * (handing its tickets over), it goes live with the author's origin, and the
  * tickets that waited for machine access queue under it. One failure rolls
  * all of it back with the continuation's claim.
+ *
+ * The agent is pinned again once the executor tools are in its tool policy:
+ * turning them on is this confirmation's own doing, not an edit of the agent,
+ * so the definition the policy holds from here on is the one with them.
  */
 
 const stale = (message: string): ExecutorError => new ExecutorError(EXECUTOR_ERROR_CODES.ACCESS_CHANGE_STALE, message)
@@ -79,9 +84,11 @@ export const confirmStandingPolicyInTransaction = async (
     if (error instanceof StandingPolicyRefusal) throw stale(error.message)
     throw error
   }
-  const terms = standingPolicyTermsOf(trigger.row, standingPolicyLimitsOf(pinned.data))
+  const terms = standingPolicyTermsOf(
+    trigger.row, standingPolicyLimitsOf(pinned.data), await loadStandingPolicyAgentPin(tx, trigger.agentId),
+  )
   if (!terms || standingPolicyTermsDigest(terms) !== policy.triggerDigest) {
-    throw stale('The trigger changed after this was prepared. Set up machine access again to see what changed.')
+    throw stale('The trigger or its agent changed after this was prepared. Set up machine access again to see what changed.')
   }
   for (const row of [...policy.executors].sort((left, right) => left.executorId.localeCompare(right.executorId))) {
     await lockExecutorMutation(tx, row.executorId)
@@ -127,6 +134,10 @@ export const confirmStandingPolicyInTransaction = async (
       organizationId,
     })
   }
+  const agentNow = await loadStandingPolicyAgentPin(tx, trigger.agentId)
+  if (!agentNow) throw stale('The agent is gone. Set up machine access again.')
+  const confirmedTerms = { ...terms, agent: agentNow }
+  const triggerDigest = standingPolicyTermsDigest(confirmedTerms)
   const replaced = await tx.executorStandingPolicy.findFirst({
     where: { status: { in: ['live', 'suspended'] }, triggerId: change.triggerId },
     select: { id: true },
@@ -141,7 +152,9 @@ export const confirmStandingPolicyInTransaction = async (
     data: {
       authorOrigin: origin.launchOrigin as unknown as Prisma.InputJsonValue,
       confirmedAt: new Date(),
+      pinnedTerms: confirmedTerms as unknown as Prisma.InputJsonValue,
       status: 'live',
+      triggerDigest,
     },
   })
   const queued = await queueTicketWorkForConfirmedPolicyInTransaction(tx, {
@@ -162,7 +175,7 @@ export const confirmStandingPolicyInTransaction = async (
       })),
       queued,
       ...(replaced ? { replacedPolicyId: replaced.id } : {}),
-      triggerDigest: policy.triggerDigest,
+      triggerDigest,
       triggerId: change.triggerId,
     },
     organizationId,

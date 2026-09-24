@@ -44,7 +44,11 @@ export const applyTriggerEditToStandingPolicyInTransaction = async (
   })
   if (!policy) return null
   const pinned = StandingPolicyPinnedTermsSchema.safeParse(policy.pinnedTerms)
-  const current = pinned.success ? standingPolicyTermsOf(input.trigger, standingPolicyLimitsOf(pinned.data)) : null
+  // The agent's definition is judged where the agent is edited
+  // (`suspendStandingPoliciesForAgentChangeInTransaction`); a trigger edit keeps what was pinned of it.
+  const current = pinned.success
+    ? standingPolicyTermsOf(input.trigger, standingPolicyLimitsOf(pinned.data), pinned.data.agent)
+    : null
   const judged = pinned.success && current
     ? judgeStandingPolicyTermsChange(pinned.data, current)
     : { fields: ['the trigger\'s configuration'], kind: 'changed' as const }

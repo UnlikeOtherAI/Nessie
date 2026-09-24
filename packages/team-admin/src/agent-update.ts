@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { suspendStandingPoliciesForAgentChangeInTransaction } from '@nessie/executor-manage'
 import type {
   AgentAvatarBackgroundColor,
   AgentEffort,
@@ -321,6 +322,9 @@ export const updateAgentRecord = async (
         },
       },
     })
+    // The agent's definition is part of what a standing policy's author
+    // agreed to: an edit of it pauses their machine access, whoever saved it.
+    await suspendStandingPoliciesForAgentChangeInTransaction(tx, { actor: { userId: actor.userId }, agentId })
 
     return mapAgentRecord(agent)
   })

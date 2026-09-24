@@ -11,6 +11,7 @@ import {
 } from '@nessie/schemas'
 
 import { canMemberEditProjectBoards } from '../src/resource-authority.js'
+import { ticketInWorkFlow } from '../src/ticket-work-lock.js'
 import type { StandingPolicyWorld } from './standing-policy-fixture.js'
 
 /**
@@ -73,6 +74,7 @@ export const wakeRun = async (
 export const bindWake = (prisma: PrismaClient, wake: Wake, workId: string) =>
   bindStandingPolicyExecutor(prisma, { job: wake.job, runId: wake.runId }, { workId }, {
     canEditBoard: (check) => canMemberEditProjectBoards(prisma, check),
+    ticketInFlow: (check) => ticketInWorkFlow(prisma, check),
     // A local organisation, whatever UOA settings another suite in this process left behind.
     entitlements: { settings: null, uoaConfigured: false },
   })
@@ -117,13 +119,14 @@ export const heartbeat = async (
 
 /** The coding bridge's report, listing these sessions under this owner key. */
 export const bridgeReport = (
-  sessions: Array<{ ownerKey: string; sessionId: string; status?: string; title?: string }>,
+  sessions: Array<{ ownerKey: string; sessionId: string; status?: string; title?: string; totalCostUsd?: number }>,
   observedAt = new Date(),
 ): ExecutorLocalMcpReport => [{
   available: true,
   codingSessions: sessions.map((session) => ({
     agent: 'claude', ownerKey: session.ownerKey, root: 'nessie', sessionId: session.sessionId,
     status: session.status ?? 'working', title: session.title ?? 'Fix login redirect', updatedAt: observedAt.toISOString(),
+    ...(session.totalCostUsd === undefined ? {} : { totalCostUsd: session.totalCostUsd }),
   })),
   observedAt: observedAt.toISOString(),
   server: 'coding-sessions',

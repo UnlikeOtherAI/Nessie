@@ -55,6 +55,28 @@ const POLICY_SELECT = {
   executors: { orderBy: { position: 'asc' as const }, select: { executor: { select: { id: true, label: true } } } },
 } as const
 
+/**
+ * Where the card of a `preparing` policy can be answered: the conversation a
+ * review card for its access change was posted to (the Designer's or the
+ * Personal Assistant's DM with its author), or this page, whose card lives
+ * only while the page that prepared it is open.
+ */
+const cardLocationOf = async (
+  prisma: PrismaClient,
+  policyId: string | null,
+): Promise<TriggerMachineAccessView['cardLocation']> => {
+  if (!policyId) return null
+  const card = await prisma.agentCard.findFirst({
+    where: {
+      executorAccessChange: { revisions: { equals: policyId, path: ['change', 'policyId'] }, status: 'pending' },
+      status: 'open',
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { channelId: true, threadId: true },
+  })
+  return card ? { channelId: card.channelId, threadId: card.threadId, where: 'conversation' } : { where: 'this_page' }
+}
+
 /** A ticket trigger's machine access, for someone who may read its page; null when it is no ticket trigger here. */
 export const loadTriggerMachineAccess = async (
   prisma: PrismaClient,
@@ -127,6 +149,7 @@ export const loadTriggerMachineAccess = async (
       viewerCanEnd: status !== 'ended' && (viewerIsAuthor || administered.size > 0),
     } : null,
     pendingCard: binding && preparing ? { createdAt: preparing.createdAt.toISOString(), policyId: preparing.id } : null,
+    cardLocation: await cardLocationOf(prisma, preparing?.id ?? null),
     tickets: records.map((record) => {
       const reason = TicketWorkStateReasonSchema.safeParse(record.stateReason)
       const label = record.executorId ? labels.get(record.executorId) : undefined

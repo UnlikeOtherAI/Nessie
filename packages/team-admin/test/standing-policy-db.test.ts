@@ -106,7 +106,7 @@ dbTest('each machine that cannot take the work is refused with its reason, and n
       ['no_turn_budget', /Codexy offers only Codex, which has no per-turn spending limit/, world.machine({
         codingSessions: {
           agents: ['codex'], allowedToolCount: 0, configDigest: `sha256:${'b'.repeat(64)}`, environmentNames: [],
-          maxBudgetUsd: { codex: null }, maxLiveSessionsPerOwner: 3, mergeCommands: [],
+          maxBudgetUsd: { codex: null }, maxLiveSessionsPerOwner: 3, mergeCommands: [], unaskedCommands: 'listed',
           permissionMode: { codex: 'fullAuto' }, rootNames: ['nessie'], serverName: 'coding-sessions',
         },
         label: 'Codexy',
@@ -115,7 +115,7 @@ dbTest('each machine that cannot take the work is refused with its reason, and n
         world.machine({
           codingSessions: {
             agents: ['claude'], allowedToolCount: 0, configDigest: `sha256:${'b'.repeat(64)}`, environmentNames: [],
-            maxBudgetUsd: { claude: 50 }, maxLiveSessionsPerOwner: 3, mergeCommands: [],
+            maxBudgetUsd: { claude: 50 }, maxLiveSessionsPerOwner: 3, mergeCommands: [], unaskedCommands: 'listed',
             permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
           },
           label: 'Spendy',
@@ -140,7 +140,7 @@ dbTest('a bypass-mode Claude Code needs the separate option ticked', async () =>
       codingSessions: {
         agents: ['claude'], allowedToolCount: 0, configDigest: `sha256:${'d'.repeat(64)}`, environmentNames: [],
         maxBudgetUsd: { claude: 5 }, maxLiveSessionsPerOwner: 3,
-        mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
+        mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'], unaskedCommands: 'any',
         permissionMode: { claude: 'bypassPermissions' }, rootNames: ['nessie'], serverName: 'coding-sessions',
       },
       label: 'Yolo',
@@ -150,7 +150,7 @@ dbTest('a bypass-mode Claude Code needs the separate option ticked', async () =>
     assert.match(refused.message, /Let the coding agent run any command without asking\./)
     const prepared = await world.prepare({ allowAnyCommand: true, executorIds: [yolo] })
     const card = AgentCardSpecSchema.parse(prepared.card)
-    assert.match(JSON.stringify(card.blocks), /Any, without asking: you chose/)
+    assert.match(JSON.stringify(card.blocks), /Claude Code may run any command without asking on Yolo: you chose/)
   })
 })
 
@@ -159,7 +159,7 @@ dbTest('one confirmation applies each machine\'s assignment, grant and tools and
     const [minis, studio] = [await world.machine({ label: 'Minis' }), await world.machine({
       codingSessions: {
         agents: ['claude'], allowedToolCount: 1, configDigest: `sha256:${'e'.repeat(64)}`, environmentNames: [],
-        maxBudgetUsd: { claude: 4 }, maxLiveSessionsPerOwner: 2, mergeCommands: ['git push'],
+        maxBudgetUsd: { claude: 4 }, maxLiveSessionsPerOwner: 2, mergeCommands: ['git push'], unaskedCommands: 'listed',
         permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
       },
       label: 'Studio',
@@ -180,8 +180,14 @@ dbTest('one confirmation applies each machine\'s assignment, grant and tools and
     assert.equal(card.title, 'Let CTO use Minis and Studio')
     assert.ok(text.includes('The agent may drive Claude Code sessions on these machines; it gets no other program '
       + 'on them.'), 'the card says the policy reaches coding sessions alone')
-    assert.ok(text.includes('Anyone who can edit this board (3 people) can make Claude run commands on these '
-      + 'machines as you, with your git and coding-agent login.'))
+    assert.ok(text.includes('Anyone who can edit this board — 3 people today, and anyone added to the project '
+      + 'later — can make Claude run commands on these machines as you, with your git and coding-agent login.'))
+    // The agent it pins, and that editing it pauses this access.
+    assert.match(text, /"label":"Agent","value":"CTO"/)
+    assert.match(text, /Editing CTO — its instructions, model, tools or connectors — pauses this access until you /)
+    assert.match(text, /"label":"Quiet wake","value":"After 30 minutes with nothing happening"/)
+    assert.doesNotMatch(text, /"label":"Mirrored board"/, 'shown only when the trigger lets a mirror wake work')
+    assert.doesNotMatch(text, /"label":"On confirm"/, 'no ticket waits for this access yet')
     assert.match(text, /Project members, organisation owners and people on the ticket see what the work does/)
     assert.match(text, /merged under your GitHub identity/)
     assert.match(text, /"label":"Starts work in","value":"In progress"/)
@@ -204,6 +210,8 @@ dbTest('one confirmation applies each machine\'s assignment, grant and tools and
     assert.equal(result.executorId, minis)
     const live = await policyOf(prisma, prepared.policyId)
     assert.equal(live.status, 'live')
+    // Pinned again with the executor tools the confirmation itself turned on: the digest still covers what it holds.
+    assert.equal(live.triggerDigest, standingPolicyTermsDigest(live.pinnedTerms as never))
     assert.ok(live.confirmedAt)
     assert.deepEqual(live.authorOrigin, {
       organizationId: world.organizationId, teamId: world.teamId, userId: world.authorId,
@@ -290,7 +298,7 @@ dbTest('a trigger changed after the card was prepared refuses the confirmation',
     await updateAgentTrigger(prisma, { organizationId: world.organizationId, triggerId: world.triggerId }, {
       config: { instructions: { general: 'Something else entirely.' } },
     })
-    await assert.rejects(world.confirm(prepared), /The trigger changed after this was prepared/)
+    await assert.rejects(world.confirm(prepared), /The trigger or its agent changed after this was prepared/)
     assert.equal((await policyOf(prisma, prepared.policyId)).status, 'preparing')
   })
 })
