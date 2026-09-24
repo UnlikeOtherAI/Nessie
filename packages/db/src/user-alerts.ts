@@ -74,6 +74,35 @@ export const visibleUserAlertWhere = (input: {
       },
     },
     {
+      // A ticket trigger an agent set up for this person, whose machine access
+      // is still to be set up by the machines' owner. It surfaces while the
+      // trigger's agent is live, no standing policy for it is being prepared or
+      // live yet — once the owner sets machine access up the item stops
+      // surfacing, as trigger_health does once its trigger is repaired — and
+      // the person can still open the trigger: the Triggers routes are an
+      // organisation owner's, so a demoted owner keeps no doorway into it.
+      // Deletion cascades the row away.
+      kind: 'trigger_machine_access',
+      AND: [
+        {
+          trigger: {
+            is: {
+              agent: { is: { deletedAt: null } },
+              standingPolicies: { none: { status: { in: ['preparing', 'live'] } } },
+              type: 'ticket_changed',
+            },
+          },
+        },
+        {
+          user: {
+            organizationMembers: {
+              some: { deactivatedAt: null, organizationId: input.organizationId, role: 'owner' },
+            },
+          },
+        },
+      ],
+    },
+    {
       // An automatic-membership rule that stopped granting. Revalidated against
       // the rule's live health exactly as trigger_health revalidates its
       // trigger: the moment an administrator re-authorizes it, the bell item

@@ -1,6 +1,7 @@
 import {
   createProjectForUser,
   createTeamForUser,
+  listBoards,
   listProjectsForUser,
   listTeamsForOrganization,
   ProjectValidationError,
@@ -9,8 +10,9 @@ import {
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { requireOwnerMember, resolveActingMember } from './access.js'
-import { formatProjectMarkdownLink, formatSection } from './tool-output.js'
+import { requireOwnerMember } from './access.js'
+import { resolveOperatorAwareMember } from './project-operator.js'
+import { formatBoardStructureLines, formatProjectMarkdownLink, formatSection } from './tool-output.js'
 
 /**
  * Projects and the teams inside them — the containers a channel needs.
@@ -82,7 +84,7 @@ export const runProjectListTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ProjectListInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member } = await resolveOperatorAwareMember(context)
 
   const projects = await listProjectsForUser(context.prisma, {
     isOrganizationAdmin: member.isOrganizationAdmin,
@@ -142,7 +144,7 @@ export const runProjectCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = ProjectCreateInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member } = await resolveOperatorAwareMember(context)
 
   let project
   try {
@@ -166,17 +168,20 @@ export const runProjectCreateTool = async (
   // that call never depends on the model still holding this call's arguments.
   // Not creating a second channel unasked is a rule in the tool's description
   // and the Designer's prompt, not an instruction inside its result.
-  const team = await context.prisma.team.findUnique({
-    where: { id: args.teamId },
-    select: { id: true, name: true },
-  })
+  // Its board, by column id, so the one it starts with is shaped rather than a
+  // second made beside it.
+  const [team, boards] = await Promise.all([
+    context.prisma.team.findUnique({ where: { id: args.teamId }, select: { id: true, name: true } }),
+    listBoards(context.prisma, { id: project.id, organizationId: member.organizationId }),
+  ])
   return {
     inputSummary: `name="${args.name}" teamId=${args.teamId}`,
     outputPreview: [
       `Created project ${formatProjectMarkdownLink(project)}`
       + ` in team ${formatTeamRef(team ?? { id: args.teamId, name: 'team' })}`,
       'You are its only member — nobody else was added. Anyone you add later has the same rights in it as you.',
-      'It already has its own #general channel.',
+      'It already has its own #general channel, and its board:',
+      ...boards.flatMap((board) => formatBoardStructureLines({ ...board, projectId: project.id })),
     ].join('\n'),
     toolName: 'project_create',
   }
@@ -192,7 +197,7 @@ export const runTeamCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = TeamCreateInputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  const { member } = await resolveOperatorAwareMember(context)
 
   requireOwnerMember(member, 'create a team')
 

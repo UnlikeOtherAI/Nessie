@@ -6,11 +6,16 @@ local bearer supplied through the environment; it never creates credentials or
 calls an upstream model.
 
 `UI_TOKEN`, `UI_AGENT_ID`, and a nonempty `UI_ENTRIES` are required. `UI_ENTRIES` is a
-JSON array of `[toolId, label]` pairs. The agent must start with each tool off
-for `UI_PROOF_PHASE=enable`, and on for `UI_PROOF_PHASE=revoke`.
+JSON array of `[toolId, label]` pairs, or `[toolId, label, explanation]` when the
+entry must also show a line of its explanation — a capability grant such as
+`project_operator` explains itself beside its switch. The agent must start with
+each tool off for `UI_PROOF_PHASE=enable`, and on for `UI_PROOF_PHASE=revoke`.
+The admin is this worktree's (`scripts/dev-ports.mjs`), or `UI_PROOF_ADMIN_URL`.
 
 ```powershell
 $env:UI_ENTRIES = '[["browser_open","Open Browser"]]'
+# or, for the project-operator grant and its explanation:
+# $env:UI_ENTRIES = '[["project_operator","Project operator","Acts as the person talking to it"]]'
 $env:UI_PROOF_PHASE = 'enable' # then run again with revoke
 node admin/e2e/tool-access-ui-proof/run.mjs
 ```

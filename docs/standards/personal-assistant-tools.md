@@ -51,6 +51,159 @@ file is the rule**.
   the session's tenant; a team outside that organisation is the same
   indistinguishable `Team not found`.
   An unattended run has no requesting user and must refuse before minting.
+- **An ordinary agent reaches the act-as-user setup verbs through one explicit
+  grant, `project_operator`, and only for the live person talking to it.** The
+  `personalAssistantOnly` gate in `worker/src/run/tool-policy.ts` has a third
+  arm beside the Personal Assistant's and a global agent's identity arm: a
+  definition flagged `projectOperator`, on a run
+  `resolveRunProjectOperatorToolIds` admitted. Everything that makes it safe is
+  structural and is stated in "The project-operator capability" below; the
+  rule to keep is that the grant widens *who may ask*, never *what the asker
+  may do* — every verb mirrors its route as the person asking.
+
+## The project-operator capability
+
+Asked for in the ticket-driven agents plan
+([setup-and-ui.md](../plans/2026-09-23-ticket-driven-agents/setup-and-ui.md) →
+"The project-operator capability (T6)"): a CTO, or any agent its owner chooses,
+sets up new projects and flows for the person talking to it.
+
+- **One grant, a registry entry that is not a tool.** `project_operator`
+  (`packages/runtime/src/builtin-project-operator-tools.ts`) is in
+  `CAPABILITY_GRANT_DEFINITIONS`, which `SYSTEM_TOOL_DEFINITIONS` includes and
+  `BUILTIN_TOOL_DEFINITIONS` does not. So it is seeded in every organisation's
+  tool registry, protected from generic policy writes like every
+  `requiresExplicitGrant` key, listed on the agent's Tools page and by
+  `agent_tool_access_inspect` (with what it lets the agent do), and written only
+  by the one explicit-grant writer — the owner's protected Tools switch or the
+  Designer's `agent_tool_access_set` — while no run is ever offered it as a
+  function. An owner who switches its registry row off switches the arm off for
+  the organisation.
+- **The arm opens only on a live person's own turn**
+  (`worker/src/run/project-operator-admission.ts`). One loader
+  (`loadProjectOperatorFacts`) and one verdict (`projectOperatorRefusal`) serve
+  run setup and every call alike, so a verb is never offered by one answer and
+  refused by another. The verdict needs all of:
+  - the grant `true` and the capability not switched off;
+  - a live, ordinary channel of a real project — standard type, not archived,
+    no system type, no DM key, and not an organisation-wide channel (its
+    project is the invisible `channelRoot` container, which no one is in) —
+    that the agent is bound to;
+  - an ordinary shared agent (not the PA, not system-managed or a global
+    agent, not a spawned child), a user actor on an interactive turn, **no
+    action purpose at all**, and `effectiveUserId` absent or the actor.
+    "No purpose" is an allow-list: `ticket.work`, peer delegation,
+    channel-policy work, briefs and deliveries all carry one;
+  - **the person's own turn** (`isPersonsOwnTurn`): the job's message is the
+    run row's own trigger, and it and every message a drain folded in is a
+    `user` message by the actor, in this conversation, not deleted, with the
+    composer's person-authorship marker; and a run that replays another — a
+    Continue, a card or approval resume, a Restart — names its presser
+    (`resumedByUserId`, which `restartRun` now stamps as well) and that presser
+    is the actor. "User actor + interactive" alone was not enough: Restart and
+    Continue put the presser in as the actor and replay the original kickoff,
+    a card resumes as the parked run's actor whoever answered, and a drain
+    takes its latest person's actor while folding in others' messages. These
+    are the executor conversation lease's own checks
+    (`executor-lease-carry.ts`), mirrored.
+
+  Trigger fires, schedules, worker checkpoint continuations, relayed posts and
+  sub-agents never qualify. The verbs are resolved once at run setup and
+  handed to both `resolveAgentTools` and `authorizeToolCall`, like the identity
+  arm. On this arm the grant also stands for a verb's own explicit allow
+  (`ticket_board_create`), on no other arm.
+- **Every handler re-checks the arm** (`worker/src/run/pa-tools/project-operator.ts`).
+  `actingFaceOf` reads the face from structural facts — the PA's kind, a
+  global agent's own row in its `system_agent` home, or else the operator's —
+  and on the operator face `assertProjectOperatorCall` re-runs the same loader
+  and verdict before the verb resolves its acting member. A call off the
+  person's own turn is refused with a sentence telling the agent to say what it
+  finished and ask the person to repeat the request
+  (`PROJECT_OPERATOR_LIVE_TURN_REFUSAL`) — a long setup turn that the worker
+  continues after a checkpoint loses the arm midway, and the gate says the same
+  (`liveTurnDenialMessage`). Every other refusal is one sentence naming no
+  condition.
+- **Standing work needs a live turn on every arm.** A definition flagged
+  `requiresLiveRequester` — the workflow writes and the verbs this capability
+  added (`ticket_board_column_create`/`_update`, `kb_space_create`) — is denied
+  by the gate (`live_requester_required`) unless the run is a user actor's
+  interactive turn, whichever arm admitted it. The Personal Assistant's arm is
+  the one it matters for: it also opens on the schedules the PA fires for its
+  owner, so a PA `schedule_task` fire can no longer install a workflow, arm a
+  trigger, make a space or reshape a board as its owner with nobody there. Its
+  handlers re-check it (`resolveOperatorAwareMember(context, toolId)`). The
+  PA-only verbs this capability did not add keep the PA's arm as it was.
+- **The verbs** (`PROJECT_OPERATOR_TOOL_IDS`), each the route's own function as
+  the person asking: `project_list`, `project_structure_read` (what the person
+  can see of a project: boards with their columns by id, channels, spaces),
+  `project_create` (it answers with the board the project starts with, column
+  by column, so the operator renames and recategorises that board rather than
+  making a second), `team_create` (owner), `channel_create` (**protected** when
+  no visibility is named), `ticket_board_create` (answers with its columns) and
+  `ticket_label_create` (in this channel's project, or a project named that the
+  person can change — `canModifyProject`; the lend of either keeps the
+  channel's project), `ticket_board_column_create` and
+  `ticket_board_column_update` (`requireProjectModifier`), `kb_space_create` (a
+  project member, `knowledge_space:create`; Project Documents through its
+  idempotent provisioning, or a named project space; audited `kb.space.created`
+  as the route audits it), `agent_trigger_create` and `agent_trigger_update`
+  (owner, and on this face only for itself or an agent in one of this
+  project's channels, working in this project; refusals name the field), and
+  the workflow writes `workflow_create`, `_update`, `_install`,
+  `_trigger_create` and `_run`. **Project membership is not in the set**, nor
+  is binding an agent to a channel: either would widen who can start work.
+- **Workflow authoring moved behind it.** The workflow writes carried no flag,
+  so every shared agent could author, install, arm (webhook, event, cron) and
+  start workflows as the speaking owner, and on a scheduled fire as the creator
+  it reconstructed. They are `personalAssistantOnly` + `projectOperator` +
+  `requiresLiveRequester` now; the PA and the Designer keep them on their own
+  arms, on live turns. `workflow_list`, `workflow_preview` and
+  `workflow_run_status` stay ordinary: a list of names an owner may read, a card
+  that re-reads the workflow under each viewer's own access, and a status-only
+  read — none creates, arms or starts anything. Migration
+  `20260924120100_project_operator_workflow_grants` grants `project_operator`
+  to every live, top-level, ordinary agent whose policy named one of the five
+  `true` (an agent that only had them by default is granted nothing; a spawned
+  child is left alone). **Access narrows**: the grant keeps them only on a
+  person's own turn in a project channel the agent is in, and loses them on
+  its scheduled, interval, webhook and event fires, in a DM and on a peer
+  delegation — while opening project, team, channel, board, space and trigger
+  setup too. One `WARNING` names each agent granted and says both; a second
+  names each whose use narrows today (an enabled unattended trigger, or no
+  project channel at all). `createWorkflowTrigger` records its creator
+  (`config.authorUserId`, authorship only), from the route and the tool.
+- **Disclosure.** Every operator write names something a wider audience reads,
+  so a private-conversation source closes them all
+  (`blocksPrivateConversationWrite`'s `operatorVerb`), and board, column, label
+  and space writes pass `assertProjectWriteDestination` for their project. An
+  operator run recalls memory under project-write containment, as a lent write
+  does.
+- **Machine access stays the machines' owner's.** A `ticket_changed` trigger
+  the operator creates answers "Machine access: not set up" and raises a
+  `trigger_machine_access` bell item for the person it acted for
+  (`raiseTriggerMachineAccessAttention`), worded so it is true before the
+  trigger page has its Machine access section: "<trigger> needs machine access:
+  ask the machines' owner to set it up, from the trigger's page or the Agent
+  Designer", opening the trigger's page. It surfaces while the trigger's agent
+  is live, no standing policy for it is `preparing` or `live`
+  (`executor_standing_policies`), and the recipient is still an organisation
+  owner; it is written with no push and no realtime frame, which is why it
+  ships in the deploy that adds the kind. T4 links the section.
+
+Pinned by `worker/src/run/project-operator-admission.test.ts` (the predicates,
+the verdict, the set, the gate and the live-turn flag),
+`worker/test/db/project-operator.test.ts` (every refused shape through the real
+loader, at run setup and at the call: fires, schedules, continuations, ticket
+work, Restart and Continue of somebody else's or a trigger's input, a card
+somebody else answered, a mixed drain, a relayed post, an unbound room, an
+organisation-wide channel, a DM, a system conversation, an archived room, the
+switch and the grant), `worker/test/db/project-operator-verbs.test.ts` (each
+verb as the requester and refused beyond their rights, the Mobile board set up
+from the one it starts with, the trigger scope and the attention item),
+`worker/test/workflow-authoring-regression.test.ts` (a PA schedule starts no
+workflow), `api/test/project-operator-workflow-grants-migration-postgres.test.ts`
+and `admin/test/alert-row-trigger-machine-access.test.ts`; the Tools page entry
+is screenshotted by `admin/e2e/tool-access-ui-proof`.
 
 ## Detail
 

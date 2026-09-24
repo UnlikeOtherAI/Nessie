@@ -208,6 +208,7 @@ export const emitWorkerAuditEvent = async (
       | 'trigger.updated'
       | 'policy.evaluated'
       | 'agent.tool_access.updated'
+      | 'kb.space.created'
     metadata?: Record<string, unknown>
     outcome: 'denied' | 'error' | 'success'
     reason?: string

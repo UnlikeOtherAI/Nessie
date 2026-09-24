@@ -170,10 +170,14 @@ export type BuiltinToolRuntimeContext = {
   prisma: PrismaClient
   realtimeTransport: PgRealtimeTransport
   run: {
+    /** Every message a drain folded into this run; the job's own list. */
+    batchMessageIds?: readonly string[]
     id: string
     /** True only for a live human conversational turn, never automation. */
     interactive?: boolean
     messageId: string
+    /** Who pressed the Continue, card answer, approval or Restart this run replays. */
+    resumedByUserId?: string
     originatingUserId?: string | null
     peerDelegationDepth?: number | null
     principalUserId?: string | null

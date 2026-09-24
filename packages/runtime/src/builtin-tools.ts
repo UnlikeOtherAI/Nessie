@@ -41,6 +41,7 @@ import {
   FILE_WRITE_TOOL_DEFINITION,
   HTTP_FETCH_TOOL_DEFINITION,
 } from './builtin-tools-sandboxed.js'
+import { CAPABILITY_GRANT_DEFINITIONS, PROJECT_OPERATOR_TOOL_DEFINITIONS } from './builtin-project-operator-tools.js'
 import type { BuiltinToolDefinition } from './builtin-tools-types.js'
 import { buildWorkflowToolDefinitions } from './workflow-tools.js'
 import { WORKFLOW_AUTHORING_TOOL_DEFINITIONS } from './builtin-workflow-authoring-tools.js'
@@ -510,6 +511,7 @@ export const BUILTIN_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...TEAM_STRUCTURE_TOOL_DEFINITIONS,
   ...TICKET_TOOL_DEFINITIONS,
   TICKET_BOARD_CREATE_TOOL_DEFINITION,
+  ...PROJECT_OPERATOR_TOOL_DEFINITIONS,
   ...AGENT_ADMIN_TOOL_DEFINITIONS,
   ...DASHBOARD_TOOL_DEFINITIONS,
   ...DASHBOARD_EMBED_TOOL_DEFINITIONS,
@@ -546,10 +548,20 @@ export const WORKFLOW_TOOL_IDS = new Set(
   WORKFLOW_TOOL_DEFINITIONS.map((tool) => tool.id),
 )
 
+// Every registry entry the deployment owns: the callable builtins, the
+// workflow-only step tools, and the capability grants (`project_operator`),
+// which are registered and protected like an explicit-grant builtin but are
+// never a function a model is offered.
 export const SYSTEM_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
   ...BUILTIN_TOOL_DEFINITIONS,
   ...WORKFLOW_TOOL_DEFINITIONS.filter((tool) => !BUILTIN_TOOL_IDS.has(tool.id)),
+  ...CAPABILITY_GRANT_DEFINITIONS,
 ]
+
+/** The verbs the `project_operator` grant opens (`BuiltinToolDefinition.projectOperator`). */
+export const PROJECT_OPERATOR_TOOL_IDS: ReadonlySet<string> = new Set(
+  BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.projectOperator === true).map((tool) => tool.id),
+)
 
 export const SYSTEM_TOOL_IDS = new Set(
   SYSTEM_TOOL_DEFINITIONS.map((tool) => tool.id),

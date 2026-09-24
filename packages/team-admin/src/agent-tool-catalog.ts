@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { BUILTIN_TOOL_DEFINITIONS } from '@nessie/runtime'
+import { BUILTIN_TOOL_DEFINITIONS, CAPABILITY_GRANT_DEFINITIONS } from '@nessie/runtime'
 import { findToolCategory, isSharedAgentToolEligible } from '@nessie/schemas'
 
 import {
@@ -158,7 +158,9 @@ export const loadAgentToolCatalog = async (
   const togglable: AgentToolCatalogEntry[] = []
   const restricted: AgentToolCatalogRestrictedEntry[] = []
 
-  for (const tool of BUILTIN_TOOL_DEFINITIONS) {
+  // The capability grants (`project_operator`) are explicit grants like any
+  // other, so they list beside the builtins with their own summary.
+  for (const tool of [...BUILTIN_TOOL_DEFINITIONS, ...CAPABILITY_GRANT_DEFINITIONS]) {
     if (disabledBuiltinIds.has(tool.id)) continue
     // A project board tool is lent to a run only when the policy says `true`
     // (`resolveProjectDelegatedToolIds`), so it is allow-mode like an

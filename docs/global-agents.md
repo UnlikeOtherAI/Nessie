@@ -142,6 +142,16 @@ see "The executors an agent can be given"), plus
 `worker/src/run/pa-tools/agent-config.ts` over shared
 `@nessie/team-admin` functions.
 
+The set is derived, not listed (`DESIGNER_ACT_AS_USER_TOOL_IDS`): every
+`personalAssistantOnly` builtin that is not an explicit grant. It therefore
+also holds the project-operator verbs that are not explicit grants — the
+workflow writes, `ticket_board_column_create`/`_update` and `kb_space_create`
+among them — on its own arm, in its own home DM. The Designer never holds the
+`project_operator` grant itself; it gives it to agents such as a CTO with
+`agent_tool_access_set`
+([personal-assistant-tools.md](standards/personal-assistant-tools.md) → "The
+project-operator capability").
+
 Six of them additionally carry **`identityDelegatedOnly`**: `agent_create`,
 `agent_read`, `agent_update`, `agent_tool_catalog`, `agent_avatar_generate` and
 `agent_avatar_update`.

@@ -343,6 +343,9 @@ test('toolset assembly OMITS the identity tools when the conditions do not hold'
     resolveAgentTools(enabled, BUILTIN_TOOL_DEFINITIONS, AGENT_DESIGNER_BLUEPRINT.toolPolicy, null, 'shared', {
       identityToolIds,
       inlineToolLimit: BUILTIN_TOOL_DEFINITIONS.length,
+      // The identity arm resolves only on the person's own interactive turn,
+      // which is what the verbs that need a live requester ask for too.
+      liveRequester: true,
     })
 
   const inHome = build(resolveIdentityDelegatedToolIds(designerHome, USER))

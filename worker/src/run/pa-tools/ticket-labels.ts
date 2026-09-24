@@ -11,6 +11,7 @@ import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 import { resolveActingMember } from './access.js'
+import { resolveOperatorProjectCall } from './project-operator.js'
 import { resolveTicketMember } from './ticket-member.js'
 import {
   assertProjectWriteDestination,
@@ -110,9 +111,12 @@ export const runTicketLabelCreateTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const parsed = CreateInput.parse(input)
-  const args = { ...parsed, projectId: ticketProjectIdFor(context, parsed.projectId) }
-  const member = await resolveActingMember(context)
-  await projectFor(context, member, args.projectId)
+  // The project-operator arm re-checks itself and may name any project the
+  // person can change; every other face keeps the ticket tools' project gate.
+  const operator = await resolveOperatorProjectCall(context, 'ticket_label_create', parsed.projectId)
+  const args = { ...parsed, projectId: operator?.projectId ?? ticketProjectIdFor(context, parsed.projectId) }
+  const member = operator?.member ?? await resolveActingMember(context)
+  if (!operator) await projectFor(context, member, args.projectId)
   await assertProjectWriteDestination(context, {
     organizationId: member.organizationId,
     projectId: args.projectId,

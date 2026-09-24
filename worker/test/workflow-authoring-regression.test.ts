@@ -26,6 +26,8 @@ const createDelegatedContext = (input: {
   active?: boolean
   activeRuns?: number
   installationVisible?: boolean
+  /** A schedule the assistant fires for its owner: the agent is the actor and nobody is there. */
+  scheduled?: boolean
 } = {}) => {
   const active = input.active ?? true
   const activeRuns = input.activeRuns ?? 0
@@ -91,13 +93,19 @@ const createDelegatedContext = (input: {
     context: {
       actorContext: {
         actionContext: { effectiveUserId: delegatedUserId },
-        actor: { actorId: delegatedAgentId, actorType: 'agent', roles: [] },
+        actor: input.scheduled
+          ? { actorId: delegatedAgentId, actorType: 'agent', roles: [] }
+          : { actorId: delegatedUserId, actorType: 'user', roles: ['member'] },
         tenant: { organizationId },
       },
       agentId: delegatedAgentId,
+      // The Personal Assistant acting for its owner — the one delegate that
+      // reaches workflow_run off the project-operator arm, and only on its
+      // owner's own live turn.
+      agentKind: 'personal_assistant',
       channel: { id: channelId, organizationId },
       prisma,
-      run: { id: randomUUID(), messageId, threadId },
+      run: { id: randomUUID(), interactive: !input.scheduled, messageId, threadId },
     } as unknown as BuiltinToolRuntimeContext,
     writes,
   }
@@ -113,6 +121,15 @@ test('a delegated member starts and reads a workflow as the effective user witho
   assert.equal(writes.auditActorId, delegatedUserId)
   assert.match(status.outputPreview, /Read state: running/)
   assert.doesNotMatch(status.outputPreview, /secret-value/)
+})
+
+test('a schedule the assistant fires for its owner starts no workflow as them', async () => {
+  const { context, writes } = createDelegatedContext({ scheduled: true })
+  await assert.rejects(
+    () => runWorkflowRunTool(context, { workflowInstallationId }),
+    /works only on their own turn/,
+  )
+  assert.equal(writes.runActorId, undefined)
 })
 
 test('workflow run tool rejects inactive, inaccessible, and overlap-skipped installations', async () => {
