@@ -226,6 +226,15 @@ export const ticketWorkWakeLine = (record: TicketWorkChipRecord): string | null 
 export const ticketSkipSentence = (reason: TicketTriggerSkipReason, options: { reentry?: boolean } = {}): string =>
   ticketTriggerSkipSentence(reason, options)
 
+const SESSION_SKIP_LINE = {
+  waiting_for_input: 'A coding session\'s turn ended, but the agent had already read it or the work was not active, '
+    + 'so it was not woken for it.',
+  interrupted: 'A coding session was interrupted while its work was not active, so the agent was not woken for it.',
+  failed: 'A coding session failed while its work was not active, so the agent was not woken for it.',
+  closed: 'A coding session closed, but the agent had closed it itself or the work was not active, so it was not '
+    + 'woken for it.',
+} as const
+
 /**
  * A ticket delivery on a trigger's page: what the dispatcher did with one
  * event, in words. Null for any other trigger's payload, which keeps its raw
@@ -239,10 +248,9 @@ export const ticketDeliveryLine = (payload: unknown): string | null => {
   const parsed = TicketTriggerDeliveryPayloadSchema.safeParse(payload)
   if (!parsed.success) return null
   const delivery = parsed.data
-  // A coding session's turn the agent had already read, or that ended while its work was not active (T5).
+  // A session wake the agent did not need (T5): what the session did, and why that woke nobody.
   if (delivery.outcome === 'skipped' && delivery.session && delivery.skipReason === 'no_longer_applies') {
-    return 'A coding session\'s turn ended, but the agent had already read it or the work was not active, so it was '
-      + 'not woken for it.'
+    return SESSION_SKIP_LINE[delivery.session.status]
   }
   if (delivery.outcome === 'skipped' && delivery.skipReason) {
     return ticketSkipSentence(delivery.skipReason, { reentry: delivery.reentry === true })
