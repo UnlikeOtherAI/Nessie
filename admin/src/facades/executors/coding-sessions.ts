@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ExecutorCodingSessionCloseAcceptedSchema,
   ExecutorCodingSessionListResponseSchema,
+  ExecutorSessionViewResponseSchema,
   type ExecutorCodingSessionCloseBody,
   type ExecutorCodingSessionListResponse,
 } from '@nessie/schemas'
@@ -23,6 +24,21 @@ import { executorKeys } from './keys'
  * mounted or the tab is in the background.
  */
 export const EXECUTOR_CODING_SESSIONS_RECHECK_MS = 20_000
+
+export const useExecutorSessionView = (executorId: string, sessionId: string) => {
+  const apiClient = useApiClient()
+  return useQuery({
+    queryKey: executorKeys.sessionView(executorId, sessionId),
+    queryFn: () => apiClient.get(
+      `/api/executors/${executorId}/coding-sessions/${sessionId}/view`, ExecutorSessionViewResponseSchema,
+    ),
+    enabled: Boolean(executorId && sessionId),
+    placeholderData: undefined,
+    gcTime: 0,
+    retry: false,
+    refetchInterval: 1_000,
+  })
+}
 
 export const useExecutorCodingSessions = (executorId: string) => {
   const apiClient = useApiClient()

@@ -39,7 +39,8 @@ const CODEX_MODE_LABEL: Record<string, string> = {
   fullAuto: 'full auto',
 }
 
-const modeLabel = (agent: 'claude' | 'codex', mode: string): string => {
+const modeLabel = (agent: 'claude' | 'codex' | 'terminal', mode: string): string => {
+  if (agent === 'terminal') return 'interactive tmux session, full host user authority'
   if (agent === 'codex' && mode.startsWith('sandbox:')) return `sandbox ${mode.slice('sandbox:'.length)}`
   return (agent === 'claude' ? CLAUDE_MODE_LABEL : CODEX_MODE_LABEL)[mode] ?? mode
 }

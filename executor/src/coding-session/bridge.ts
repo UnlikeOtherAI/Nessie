@@ -46,6 +46,7 @@ import {
   type CommandRecord,
 } from './session-requests.js'
 import { composeCodingStatus, deriveCodingStatus } from './status.js'
+import { readSessionScreen, sessionScreenText } from './session-view.js'
 import {
   codingSessionIsLive,
   type CodingAgentName,
@@ -205,8 +206,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
     const root = findCodingRoot(rootSet, args.root)
     const path = normalizeCodingPath(args.path)
     await resolveCodingFolder(root, path)
-    const prompt = requiredText(args.prompt, 'prompt', 32_000)
-    const title = args.title === undefined ? titleFrom(prompt) : requiredText(args.title, 'title', 120).trim()
+    const prompt = agent === 'terminal' && args.prompt === '' ? '' : requiredText(args.prompt, 'prompt', 32_000)
+    const title = args.title === undefined ? (agent === 'terminal' ? 'Terminal session' : titleFrom(prompt))
+      : requiredText(args.title, 'title', 120).trim()
     requireReviewedConfig()
     const previous = await replayed(commandId, ownerKey)
     if (previous) {
@@ -246,9 +248,14 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   const request = async (
     kind: 'send' | 'interrupt' | 'close', value: unknown, ownerKey: string, commandId: string,
   ): Promise<Record<string, unknown>> => {
-    const args = argumentsFor(value, kind === 'send' ? ['sessionId', 'message'] : ['sessionId'])
+    const args = argumentsFor(value, kind === 'send' ? ['sessionId', 'message', 'terminal'] : ['sessionId'])
     const { paths, meta } = await owned(args.sessionId, ownerKey)
-    const text = kind === 'send' ? requiredText(args.message, 'message', 32_000) : undefined
+    if (args.terminal === true && meta.agent !== 'terminal') invalidArguments('This is not a terminal session.')
+    const raw = kind === 'send' && meta.agent === 'terminal'
+    if (raw && (typeof args.message !== 'string' || !args.message.length || args.message.length > 32_000)) {
+      invalidArguments('Terminal input must contain 1 to 32000 characters.')
+    }
+    const text = kind === 'send' ? raw ? args.message as string : requiredText(args.message, 'message', 32_000) : undefined
     if (kind === 'send') requireReviewedConfig()
     if (await replayed(commandId, ownerKey)) {
       return { sessionId: meta.sessionId, ...await briefStatus(paths), replayed: true }
@@ -371,7 +378,6 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       const paths = codingSessionPaths(stateDir, session.sessionId)
       const state = await readState(paths)
       const derived = await deriveCodingStatus(paths, state)
-      if (derived.status === 'closed') continue
       sessions.push({
         sessionId: session.sessionId, ownerKey: session.ownerKey,
         title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
@@ -392,6 +398,12 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
         if (tool === 'session_close_all') return await closeAll(args, meta, commandId)
         if (tool === 'session_list_all') return await listAll(args, meta)
         const ownerKey = owner(meta)
+        if (tool === 'terminal_read') {
+          const view = argumentsFor(args, ['sessionId'])
+          const session = await owned(view.sessionId, ownerKey)
+          const screen = await readSessionScreen(session.paths, session.meta)
+          return { sessionId: session.meta.sessionId, ...await briefStatus(session.paths), text: await sessionScreenText(screen) }
+        }
         if (tool === 'session_list') {
           argumentsFor(args, [])
           return await list(ownerKey)

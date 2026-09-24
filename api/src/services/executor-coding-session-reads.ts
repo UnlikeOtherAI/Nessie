@@ -41,7 +41,7 @@ export const listExecutorCodingSessions = async (
   })
   // Every session acts as the person who paired a private machine, and a shared one runs none.
   const canClose = executorCodingSessionsAllowed(row, userId)
-  const sessions = reportedExecutorCodingSessions(row.localMcp).filter((session) => session.status !== 'closed')
+  const sessions = reportedExecutorCodingSessions(row.localMcp)
   if (sessions.length === 0) return { canClose, sessions: [] }
   const [ownerAgentIds, open] = await Promise.all([
     row.scopeKind === 'private' ? executorCodingSessionOwnerAgentIds(prisma, executorId, row.pairingOwnerUserId) : [],

@@ -21,6 +21,8 @@
     "@nessie/local-inference-host": "workspace:*",
     "@nessie/runtime": "workspace:*",
     "@nessie/schemas": "workspace:*",
+    "@xterm/addon-serialize": "0.13.0",
+    "@xterm/headless": "5.5.0",
     "cross-spawn": "^7.0.6"
   },
   "devDependencies": {

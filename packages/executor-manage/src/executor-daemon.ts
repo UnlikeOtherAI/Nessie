@@ -47,6 +47,7 @@ const machineKey = (encoded: string) => {
  * (`attachment`) is not a receipt, and a receipt is not a poll.
  */
 export type ExecutorDaemonControlType =
+  | 'session_view'
   | 'attachment'
   | 'browser_cookie_import.poll'
   | 'browser_cookie_import.upload'

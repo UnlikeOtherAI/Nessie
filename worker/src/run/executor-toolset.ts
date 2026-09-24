@@ -125,6 +125,7 @@ export const buildExecutorToolset = async (
         // Who the binding was made for, and whose machine it is: the coding
         // tools are offered only to a private executor's pairing owner.
         candidateHandleDigest: true,
+        executorId: true,
         executor: { select: { pairingOwnerUserId: true, scopeKind: true } },
         id: true,
         operationKey: true,
@@ -298,6 +299,7 @@ export const buildExecutorToolset = async (
       }, toolName, args, providerToolCallId, options),
       endRecord: endRecord('A status read of the coding session.'),
       facts: codingOffer.facts,
+      executorId: bindings.find((binding) => binding.id === codingOffer.bindingId)?.executorId,
       ...codingWaitRunChecks(prisma, { agentId: input.agentId, runId: input.runId }),
     })
     : null

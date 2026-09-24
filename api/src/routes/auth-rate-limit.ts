@@ -180,6 +180,7 @@ const EXECUTOR_DAEMON_SESSION_ROUTES = new Set([
   '/api/executor-daemon/heartbeat',
   '/api/executor-daemon/descriptor',
   '/api/executor-daemon/commands/poll',
+  '/api/executor-daemon/session-views',
   '/api/executor-daemon/commands/receipt',
   '/api/executor-daemon/browser-cookie-imports/pending',
   '/api/executor-daemon/browser-cookie-imports/upload',

@@ -14,7 +14,7 @@
  */
 export const CODING_SESSION_PROTOCOL_VERSION = 1
 
-export const CODING_AGENT_NAMES = ['claude', 'codex'] as const
+export const CODING_AGENT_NAMES = ['claude', 'codex', 'terminal'] as const
 export type CodingAgentName = typeof CODING_AGENT_NAMES[number]
 
 export type CodingSessionStatus =

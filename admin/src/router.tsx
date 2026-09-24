@@ -30,6 +30,8 @@ import {
   ConnectionsPage,
   DocumentWindowPage,
   ExecutorDetailPage,
+  ExecutorSessionPage,
+  ExecutorSessionsPage,
   ExecutorsPage,
   FeedbackPage,
   KnowledgeBasePage,
@@ -401,6 +403,14 @@ export const router = createBrowserRouter([
       {
         path: '/agents/executors/:executorId',
         element: lazyElement(ExecutorDetailPage, 'detail'),
+      },
+      {
+        path: '/agents/executors/:executorId/sessions/:sessionId',
+        element: lazyElement(ExecutorSessionPage, 'detail'),
+      },
+      {
+        path: 'agents/executor-sessions',
+        element: lazyElement(ExecutorSessionsPage, 'detail'),
       },
       {
         path: '/agents/:agentId/mailbox',
