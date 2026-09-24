@@ -102,6 +102,14 @@ const titleFrom = (prompt: string): string => {
   return first.length > 80 ? `${first.slice(0, 79)}…` : first
 }
 
+/**
+ * What the session has cost across its turns, once a turn has reported a cost — the figure
+ * `session_status` answers, which a ticket's work and the heartbeat intake add to its spend.
+ */
+const costOf = (state: CodingSessionState | undefined): { totalCostUsd?: number } => (
+  state?.totalCostUsd === undefined ? {} : { totalCostUsd: state.totalCostUsd }
+)
+
 export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Promise<CodingBridge> => {
   const reviewed = codingSessionsDigestMatches(loaded)
   const rootSet: CodingRootSet = await resolveCodingRoots(
@@ -171,8 +179,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   }
 
   const briefStatus = async (paths: CodingSessionPaths) => {
-    const derived = await deriveCodingStatus(paths, await readState(paths))
-    return { status: derived.status, ...(derived.reason ? { reason: derived.reason } : {}) }
+    const state = await readState(paths)
+    const derived = await deriveCodingStatus(paths, state)
+    return { status: derived.status, ...(derived.reason ? { reason: derived.reason } : {}), ...costOf(state) }
   }
 
   const list = async (ownerKey: string): Promise<Record<string, unknown>> => {
@@ -279,7 +288,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       status: kind === 'close' ? 'closing' : derived.status,
       // The turn the message was sent at: to a session that is not working it
       // starts the next one, so a caller knows which answer is still owed.
-      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0 } : {}),
+      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0, ...costOf(state) } : {}),
       ...(kind === 'interrupt' ? { interrupted: true } : {}),
     }
   }
@@ -363,8 +372,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
 
   /**
    * What the daemon reports on its heartbeat: every session not yet closed,
-   * newest first, by title, status, agent, root, owner, its turn count and
-   * when its last turn ended — nothing any of them said or did.
+   * newest first, by title, status, agent, root, owner, its turn count, when
+   * its last turn ended and what it has cost so far — nothing any of them said
+   * or did.
    */
   const listAll = async (value: unknown, meta: CodingBridgeCallMeta): Promise<Record<string, unknown>> => {
     daemonOnly(meta)
@@ -380,7 +390,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
         title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
         ...(derived.reason ? { reason: derived.reason } : {}),
         agent: session.agent, root: session.rootName, updatedAt: state?.updatedAt ?? session.createdAt,
-        turn: state?.turn ?? 0, lastTurnEndedAt: state?.lastTurnEndedAt ?? null,
+        turn: state?.turn ?? 0, lastTurnEndedAt: state?.lastTurnEndedAt ?? null, ...costOf(state),
       })
     }
     sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))

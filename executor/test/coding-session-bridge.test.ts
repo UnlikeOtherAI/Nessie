@@ -256,6 +256,7 @@ test('no host path, no account data and no OS user or host name reach any answer
     const review = await harness.call('session_review', { sessionId })
     assert.equal((review.body.lastTest as { exitCode: number }).exitCode, 3)
     assert.equal(review.body.branch, 'main')
+    assert.equal(review.body.totalCostUsd, 0.01, 'a review\'s status states what the session has cost')
     await harness.call('session_list', {})
     const all = harness.outputs.join('\n')
     assert.match(all, /<work>\/README\.md/)

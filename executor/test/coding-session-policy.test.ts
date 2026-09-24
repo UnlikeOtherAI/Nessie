@@ -96,6 +96,8 @@ test('configure generates the bridge entry itself and states its power facts', a
       maxLiveSessionsPerOwner: 3,
       // Bash(git *) and Bash(gh *) cover every command a ticket needs to reach a merge.
       mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
+      // Only the commands those rules name run unasked: a narrower grant than "run any command".
+      unaskedCommands: 'listed',
     })
     assert.deepEqual(written, [], 'nothing is written before the whole policy is accepted')
     await assert.rejects(plan.persist(['file.read']), /enable both to offer them/u)
@@ -253,9 +255,21 @@ test('the facts are part of the signed descriptor and of its policy digest', asy
       claude: 500, codex: null,
     }, 'the signed facts name the budget, so the server can check it')
     assert.notEqual(widened.descriptor.localPolicyDigest, signed.descriptor.localPolicyDigest)
+    // A bare Bash lets Claude Code run any command unasked, and the signed facts say so.
+    const anyCommand = await planCodingSessions({
+      requested: request(s.root, {
+        agents: { claude: { command: ['/usr/local/bin/claude'], allowedTools: ['Bash'] } },
+      }),
+      runtime, current: {}, mcpServers: [], stateDir: s.stateDir, workspaceFolders: [],
+    })
+    const anySigned = buildSignedDescriptor(key, policy(anyCommand.facts), noSandboxHost)
+    assert.equal(ExecutorCapabilityDescriptorSchema.parse(anySigned.descriptor).codingSessions?.unaskedCommands, 'any')
+    assert.equal(ExecutorCapabilityDescriptorSchema.parse(signed.descriptor).codingSessions?.unaskedCommands, 'listed')
     // A descriptor an older daemon signed carries neither fact, and still parses: a machine that has not said.
     const older = Object.fromEntries(Object.entries(plan.facts!)
-      .filter(([name]) => !['maxBudgetUsd', 'maxLiveSessionsPerOwner', 'mergeCommands'].includes(name))) as typeof plan.facts
+      .filter(([name]) => ![
+        'maxBudgetUsd', 'maxLiveSessionsPerOwner', 'mergeCommands', 'unaskedCommands',
+      ].includes(name))) as typeof plan.facts
     const olderSigned = buildSignedDescriptor(key, policy(older), noSandboxHost)
     const olderFacts = ExecutorCapabilityDescriptorSchema.parse(olderSigned.descriptor).codingSessions
     assert.equal(olderFacts?.maxBudgetUsd, undefined)

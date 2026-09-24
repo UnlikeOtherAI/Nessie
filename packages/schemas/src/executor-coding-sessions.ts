@@ -116,6 +116,16 @@ export const ExecutorCodingSessionsFactsSchema = z
      */
     mergeCommands: z.array(ExecutorCodingMergeCommandSchema).max(EXECUTOR_CODING_MERGE_COMMANDS.length)
       .refine(distinct, 'Each merge command is named once.').optional(),
+    /**
+     * Whether Claude Code may run any command at all without asking: `any`
+     * under `bypassPermissions`, or when an `allowedTools` entry covers every
+     * command (a bare `Bash`, `Bash(*)`, `Bash(:*)`) and no `disallowedTools`
+     * entry takes that back; otherwise `listed`. Standing machine access needs
+     * its author's separate "run any command" tick for `any`. Absent from an
+     * older daemon's descriptor: a machine that has not said, which standing
+     * machine access refuses as too old.
+     */
+    unaskedCommands: z.enum(['any', 'listed']).optional(),
   })
   .strict()
   .refine(
@@ -280,6 +290,14 @@ export const ExecutorCodingSessionSummarySchema = z
     updatedAt: TimestampSchema,
     turn: z.number().int().min(0).optional(),
     lastTurnEndedAt: TimestampSchema.nullable().optional(),
+    /**
+     * What the session has cost across its turns, once a turn has reported a
+     * cost — the same cumulative figure `session_status` answers. The heartbeat
+     * intake adds what is new since its last report to a ticket's spend, so a
+     * ticket's limits hold whether or not the model ever reads its status.
+     * Absent from an older daemon's report, which infers nothing.
+     */
+    totalCostUsd: z.number().min(0).max(1_000_000).optional(),
   })
   .strict()
 export type ExecutorCodingSessionSummary = z.infer<typeof ExecutorCodingSessionSummarySchema>

@@ -286,12 +286,17 @@ test('the local-MCP report lists the bridge\'s open sessions, and drops anything
     sessionId: '00000000-0000-4000-8000-000000000807', ownerKey, title: 'Fix the flaky test', status: 'working',
     agent: 'claude', root: 'nessie', updatedAt: '2026-09-23T10:00:00.000Z',
   }
-  const { calls, sessions } = recording(() => ({ sessions: [good, { ...good, transcript: 'I edited…' }, { ...good, ownerKey: 'owner-a' }] }))
+  // What a session has cost travels to the server unchanged, and a figure the schema refuses drops the entry.
+  const costed = { ...good, sessionId: '00000000-0000-4000-8000-000000000808', turn: 3, totalCostUsd: 0.37 }
+  const { calls, sessions } = recording(() => ({ sessions: [
+    good, costed, { ...good, transcript: 'I edited…' }, { ...good, ownerKey: 'owner-a' },
+    { ...costed, totalCostUsd: -1 },
+  ] }))
   const daemon = createCodingSessionsDaemon({ executorId, facts, servers: [bridgeSpec(), otherSpec], sessions })
   const reporter = createLocalMcpReporter([bridgeSpec(), otherSpec], sessions, { codingSessions: daemon.report })
   try {
     const report = await reporter.refresh()
-    assert.deepEqual(report.find((status) => status.server === 'coding-sessions')?.codingSessions, [good])
+    assert.deepEqual(report.find((status) => status.server === 'coding-sessions')?.codingSessions, [good, costed])
     assert.equal(report.find((status) => status.server === 'kelpie')?.codingSessions, undefined)
     assert.deepEqual(calls.map((call) => [call.tool, call.meta?.['nessie/daemon-control']]), [['session_list_all', true]])
   } finally {
