@@ -102,6 +102,10 @@ The platform cannot and must not do these:
   configuration, and have `gh` and Claude Code logged in on the machine with
   the repository under a configured root. The card warns when they are not
   allowed.
+- Set `maxBudgetUsd` for Claude Code in that coding-sessions configuration,
+  at or below the ticket's spend limit, and run an executor new enough to
+  sign it: a machine without a signed per-turn budget cannot take ticket work,
+  and the Designer says "ticket work: not yet" for it.
 - Press the one machine-access confirmation card with fresh verification.
 - Answer the coding agent's product questions, through ticket comments.
 - Widen a machine's permissions after a denial. Restart a ticket that hit a

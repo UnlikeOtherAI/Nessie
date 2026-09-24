@@ -125,7 +125,12 @@ summary and points here; **this file is the rule**.
     clock, which runs only while the work is active and owes nobody an
     answer), a turn bounded by the machine's signed per-turn `maxBudgetUsd` —
     enforced by the platform at every wake, by the binder, in the heartbeat
-    intake and by `ticket-work.sweep`
+    intake and by `ticket-work.sweep`. The coding cost counted against
+    `ticketUsd` and `dailyUsd` is what the machine itself reports for each of
+    the ticket's sessions on every heartbeat, whether or not a run reads the
+    session, and what any coding answer carries (a send, a status read, a
+    review); each is counted once. The day's spend stops only running work:
+    work that did not spend it is queued until the UTC day turns
     ([ticket-work-machine-access.md](ticket-work-machine-access.md) →
     "Server-side closes, limits and spend").
   - **Executor calls in one batch run in call order**, one after another; the
