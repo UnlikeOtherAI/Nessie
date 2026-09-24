@@ -2,7 +2,9 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { parseIntervalMinutes, parseScheduledCronConfig } from '@nessie/runtime'
 import type { AgentTriggerRecord, AgentTriggerStatus, UoaSessionIdentity } from '@nessie/schemas'
 import { mergeTriggerConfigPreservingIdentity, stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
+import { TriggerConfigRefusalError } from './trigger-config-refusal.js'
 import {
+  DOCUMENT_TRIGGER_NEEDS_A_PERSON,
   documentChangedConfigAsInput,
   mergeDocumentConfigPatch,
   resolveDocumentChangedTrigger,
@@ -145,6 +147,11 @@ const updateDocumentChangedTrigger = async (
   if (!agent?.organizationId) return null
   let resolvedData: Prisma.AgentTriggerUncheckedUpdateInput = {}
   if (reresolve) {
+    // A change to what it watches, or switching it back on, is a person's —
+    // asked whether they can read it — never a token's or an agent's alone.
+    if (!editor) {
+      throw new TriggerConfigRefusalError([{ path: 'config', reason: DOCUMENT_TRIGGER_NEEDS_A_PERSON }])
+    }
     const resolved = await resolveDocumentChangedTrigger(prisma, {
       agent: { id: agent.id, name: agent.name, organizationId: agent.organizationId },
       author: editor,

@@ -17,7 +17,7 @@ import {
 } from './trigger-core.js'
 import { stripServerOwnedTriggerConfig } from './trigger-config-identity.js'
 import { TriggerConfigRefusalError } from './trigger-config-refusal.js'
-import { resolveDocumentChangedTrigger } from './trigger-document-config.js'
+import { DOCUMENT_TRIGGER_NEEDS_A_PERSON, resolveDocumentChangedTrigger } from './trigger-document-config.js'
 import { resolveTicketChangedTrigger } from './trigger-ticket-config.js'
 import { unreleasedTriggerTypeRefusal } from './trigger-type-availability.js'
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
@@ -289,10 +289,7 @@ const createDocumentChangedTrigger = async (
   },
 ): Promise<AgentTriggerRecord | null> => {
   if (!input.author) {
-    throw new TriggerConfigRefusalError([{
-      path: 'config',
-      reason: 'a document trigger is set up by a person, who must be able to read the documents it watches',
-    }])
+    throw new TriggerConfigRefusalError([{ path: 'config', reason: DOCUMENT_TRIGGER_NEEDS_A_PERSON }])
   }
   const resolved = await resolveDocumentChangedTrigger(prisma, {
     agent: input.agent,

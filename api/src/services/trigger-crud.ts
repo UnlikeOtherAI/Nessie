@@ -17,6 +17,7 @@ import {
   ticketTriggerResumeRefusal,
   updateAgentTrigger,
   validateTodoTemplateTriggerConfig,
+  type AgentTriggerEditor,
   type AgentTriggerScope,
   agentTriggerScopeWhere,
 } from '@nessie/team-admin'
@@ -319,6 +320,8 @@ const assertTriggerCanResume = async (
 export const resumeAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
+  /** The person resuming it; a document trigger asks whether they can read what it watches. */
+  resumer: AgentTriggerEditor | null = null,
 ): Promise<AgentTriggerRecord | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     select: {
@@ -389,7 +392,7 @@ export const resumeAgentTrigger = async (
     // (docs/standards/document-triggers.md): an access loss that paused it
     // must be repaired first, not re-armed to pause again.
     if (existing.type === 'document_changed') {
-      const refusal = await documentTriggerResumeRefusal(prisma, existing)
+      const refusal = await documentTriggerResumeRefusal(prisma, existing, resumer)
       if (refusal) throw new TriggerResumeError(refusal)
     }
     if (existing.agent && Object.hasOwn(configRecord, 'todoTemplateId')) {

@@ -45,16 +45,24 @@ const seed = async (prisma: PrismaClient) => {
   const user = (name: string) => prisma.user.create({ data: { displayName: name, email: `doc-config-${name}-${suffix}@example.test` } })
   const owner = await user('owner')
   const outsider = await user('outsider')
+  const stranger = await user('stranger')
   const organization = await prisma.organization.create({ data: { name: `doc-config-${suffix}` } })
   await prisma.organizationMember.createMany({
     data: [
       { organizationId: organization.id, role: 'owner', userId: owner.id },
       { organizationId: organization.id, role: 'owner', userId: outsider.id },
+      { organizationId: organization.id, role: 'member', userId: stranger.id },
     ],
   })
   const project = await prisma.project.create({ data: { name: 'Nessie', organizationId: organization.id } })
   const other = await prisma.project.create({ data: { name: 'Elsewhere', organizationId: organization.id } })
-  await prisma.projectMember.create({ data: { projectId: project.id, userId: owner.id } })
+  await prisma.projectMember.createMany({
+    data: [
+      { projectId: project.id, userId: owner.id },
+      { projectId: other.id, userId: owner.id },
+      { projectId: project.id, userId: stranger.id },
+    ],
+  })
   const team = await prisma.team.create({ data: { name: `team-${suffix}`, projectId: project.id } })
   const channel = (label: string, data: Record<string, unknown> = {}) =>
     prisma.channel.create({
@@ -89,14 +97,28 @@ const seed = async (prisma: PrismaClient) => {
   const spec = await provider.createPage({ ...scope, body: '<p>Login</p>', parentPageId: specs.id, spaceId: tech.id, title: 'Login spec' })
   const loose = await provider.createPage({ ...scope, body: '<p>Other</p>', spaceId: tech.id, title: 'Loose note' })
   const foreignPage = await provider.createPage({ ...scope, body: '<p>F</p>', projectId: other.id, spaceId: foreign.id, title: 'Foreign' })
+  const docsPage = await provider.createPage({ ...scope, body: '<p>D</p>', spaceId: docs.id, title: 'Docs page' })
+  // Another person's private space in the same project: the owner may not
+  // read it, so no refusal may say a word about it.
+  const strangers = await prisma.knowledgeSpace.create({
+    data: {
+      createdBy: stranger.id, name: 'Stranger salary notes', organizationId: organization.id,
+      projectId: project.id, visibility: 'private',
+    },
+    select: { id: true },
+  })
+  const strangerScope = { ...scope, authorId: stranger.id, createdBy: stranger.id, spaceId: strangers.id }
+  const strangerFolder = await provider.createPage({ ...strangerScope, kind: 'folder', title: 'Stranger salary folder' })
+  const strangerPage = await provider.createPage({ ...strangerScope, body: '<p>S</p>', title: 'Stranger salary review' })
   return {
-    agentId: agent.id, docsId: docs.id, engId: eng.id, foreignId: foreign.id, foreignPageId: foreignPage.id,
-    looseId: loose.id, organizationId: organization.id, outsiderId: outsider.id, ownerId: owner.id,
-    privateId: privateSpace.id, projectId: project.id, restrictedId: restricted.id, secretId: secret.id,
-    specId: spec.id, specsId: specs.id, techId: tech.id, scope,
+    agentId: agent.id, docsId: docs.id, docsPageId: docsPage.id, engId: eng.id, foreignId: foreign.id,
+    foreignPageId: foreignPage.id, looseId: loose.id, organizationId: organization.id, outsiderId: outsider.id,
+    ownerId: owner.id, privateId: privateSpace.id, projectId: project.id, restrictedId: restricted.id,
+    secretId: secret.id, specId: spec.id, specsId: specs.id, strangerFolderId: strangerFolder.id,
+    strangerPageId: strangerPage.id, strangerSpaceId: strangers.id, techId: tech.id, scope,
     cleanup: async () => {
       await prisma.organization.deleteMany({ where: { id: organization.id } })
-      await prisma.user.deleteMany({ where: { id: { in: [owner.id, outsider.id] } } })
+      await prisma.user.deleteMany({ where: { id: { in: [owner.id, outsider.id, stranger.id] } } })
     },
   }
 }
@@ -177,17 +199,42 @@ runDatabaseTest('every wrong field is refused on its own path, naming what is wr
   assert.match((await refusalsOf(create(prisma, s, {}, { targetChannelId: s.secretId })))[0]!,
     /^targetChannelId: #secret is protected\. A document trigger's channel must be public/)
   assert.match((await refusalsOf(create(prisma, s, { spaceId: s.foreignId })))[0]!,
-    /^spaceId: space Foreign is in another project than #eng/)
+    /^spaceId: this space is in another project than #eng \(project Nessie\)/)
   assert.match((await refusalsOf(create(prisma, s, { spaceId: s.privateId })))[0]!,
-    /^spaceId: space Private notes is private, narrower than #eng/)
+    /^spaceId: this space is private, narrower than #eng/)
   assert.match((await refusalsOf(create(prisma, s, { spaceId: s.restrictedId })))[0]!,
-    /^spaceId: space Payroll holds restricted documents/)
-  assert.match((await refusalsOf(create(prisma, s, { folderPageId: s.specId })))[0]!,
-    /^folderPageId: "Login spec" is a document, not a folder/)
-  assert.deepEqual(await refusalsOf(create(prisma, s, { spaceId: s.techId, pageIds: [s.specId, s.foreignPageId] })),
-    ['pageIds[1]: "Foreign" is not in space Tech docs'])
+    /^spaceId: this space holds restricted documents/)
+  assert.deepEqual(await refusalsOf(create(prisma, s, { folderPageId: s.specId })),
+    ['folderPageId: that page is a document, not a folder'])
+  assert.deepEqual(await refusalsOf(create(prisma, s, { spaceId: s.techId, pageIds: [s.specId, s.docsPageId] })),
+    ['pageIds[1]: that document is not in the space this trigger watches'])
+  // A page of another project the owner reads and the agent does not: the agent is named, the page is not.
+  assert.deepEqual(await refusalsOf(create(prisma, s, { spaceId: s.techId, pageIds: [s.foreignPageId] })), [
+    'pageIds[0]: CTO cannot read this document\'s space; bind it to a channel of the project, or share the space with it',
+  ])
   assert.deepEqual(await refusalsOf(create(prisma, s, { spaceId: s.techId, kinds: ['file'], pageIds: [s.specId] })),
-    ['pageIds[0]: "Login spec" is a document, and this trigger watches file pages'])
+    ['pageIds[0]: that page is a document, and this trigger watches file pages'])
+
+  // What the person may not read, they are not told of: another person's
+  // private space, its folder and its page are each "no such …", and nothing
+  // refused ever carries a title or a space's name.
+  const hidden = [
+    ...await refusalsOf(create(prisma, s, { spaceId: s.strangerSpaceId })),
+    ...await refusalsOf(create(prisma, s, { folderPageId: s.strangerFolderId })),
+    ...await refusalsOf(create(prisma, s, { spaceId: s.techId, pageIds: [s.strangerPageId] })),
+  ]
+  assert.deepEqual(hidden, [
+    'spaceId: no such document space in this organisation',
+    'folderPageId: no such folder',
+    'pageIds[0]: no such document',
+  ])
+  const everyRefusal = [
+    ...hidden,
+    ...await refusalsOf(create(prisma, s, { spaceId: s.privateId })),
+    ...await refusalsOf(create(prisma, s, { spaceId: s.foreignId })),
+    ...await refusalsOf(create(prisma, s, { folderPageId: s.specId })),
+  ].join('\n')
+  assert.doesNotMatch(everyRefusal, /Stranger|salary|Private notes|Foreign|Login spec|Tech docs/)
   assert.deepEqual((await refusalsOf(create(prisma, s, { instructions: undefined }))), [
     'instructions: give the agent standing instructions, at least {"general": "…"}',
   ])
@@ -195,20 +242,43 @@ runDatabaseTest('every wrong field is refused on its own path, naming what is wr
     'targetThreadId: a document trigger opens one review thread per document in its channel; give targetChannelId only',
     'nextRunAt: a document trigger runs when a document changes, not on a schedule',
   ])
-  // The person setting it up must be able to read the space: an owner outside the project cannot.
+  // The person setting it up must be able to read the space: an owner outside
+  // the project cannot, and is told of no space at all.
   assert.deepEqual(await refusalsOf(create(prisma, s, { spaceId: s.techId }, {}, s.outsiderId)), [
-    'spaceId: you cannot read space Tech docs, so you cannot have an agent watch it',
+    'spaceId: no such document space in this organisation',
   ])
-  assert.match((await refusalsOf(create(prisma, s, {}, {}, null)))[0]!, /set up by a person/)
+  assert.deepEqual(await refusalsOf(create(prisma, s, {}, {}, s.outsiderId)), [
+    'spaceId: project Nessie has no Documents space you can read; name the space to watch',
+  ])
+  assert.match((await refusalsOf(create(prisma, s, {}, {}, null)))[0]!, /set up, changed and resumed by a person/)
   assert.equal(await prisma.agentTrigger.count({ where: { agentId: s.agentId } }), 0, 'nothing refused was written')
 
-  // A resume resolves the stored config as a create would: a space that went private is refused.
+  // An edit of what it watches, with no person behind it, is refused; a rename is not.
   const trigger = await create(prisma, s, { spaceId: s.techId })
   assert.ok(trigger)
+  const scope = { organizationId: s.organizationId, triggerId: trigger.id }
+  assert.match((await refusalsOf(updateAgentTrigger(prisma, scope, { config: { labels: ['Spec'] } })))[0]!,
+    /^config: a document trigger is set up, changed and resumed by a person/)
+  assert.equal((await updateAgentTrigger(prisma, scope, { name: 'Renamed' }))?.name, 'Renamed')
+  // An editor who cannot read the space it would now watch is told of no space.
+  assert.deepEqual(
+    await refusalsOf(updateAgentTrigger(prisma, scope, { config: { spaceId: s.strangerSpaceId } }, {
+      editor: { userId: s.ownerId },
+    })),
+    ['spaceId: no such document space in this organisation'],
+  )
+
+  // A resume resolves the stored config as a create would, asking the person
+  // resuming it: with nobody behind it, by someone who cannot read the space,
+  // or once the space went narrower than the channel, it is refused.
   const row = await prisma.agentTrigger.findUniqueOrThrow({ where: { id: trigger.id }, include: { agent: true } })
-  assert.equal(await documentTriggerResumeRefusal(prisma, row), null)
+  assert.equal(await documentTriggerResumeRefusal(prisma, row, { userId: s.ownerId }), null)
+  assert.match(await documentTriggerResumeRefusal(prisma, row, null) ?? '', /cannot be resumed here: a document trigger/)
+  assert.match(await documentTriggerResumeRefusal(prisma, row, { userId: s.outsiderId }) ?? '',
+    /^Edit this document trigger before resuming it — spaceId: no such document space in this organisation\.$/)
   await prisma.knowledgeSpace.update({ where: { id: s.techId }, data: { visibility: 'channel' } })
-  assert.match(await documentTriggerResumeRefusal(prisma, row) ?? '', /^Edit this document trigger before resuming it — spaceId: space Tech docs is channel/)
+  assert.match(await documentTriggerResumeRefusal(prisma, row, { userId: s.ownerId }) ?? '',
+    /^Edit this document trigger before resuming it — spaceId: this space is channel, narrower than #eng/)
 })
 
 const pendingJobs = (prisma: PrismaClient, triggerId: string) => prisma.$queryRaw<Array<{ key: string; delayed: boolean }>>(Prisma.sql`
