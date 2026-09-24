@@ -67,3 +67,52 @@ runDatabaseTest('a report without its sessions between two that have them never 
     assert.deepEqual((await recordOf(prisma, ticket.workId)).sessionIds, [])
   })
 })
+
+runDatabaseTest('a session recorded as started on another machine is not this machine\'s report to speak for', async () => {
+  await withMachinesWorld(['Minis', 'Studio'], async (world, prisma) => {
+    const ticket = await workingTicket(prisma, world)
+    const other = world.machines.find((machine) => machine !== ticket.machine)!
+    // Its origin says the other machine started it, whatever machine the record holds now.
+    await prisma.agentTicketWork.update({
+      where: { id: ticket.workId },
+      data: {
+        sessionOrigins: {
+          [ticket.sessionId]: { executorId: other, policyId: world.policyId, startedAt: new Date().toISOString() },
+        },
+      },
+    })
+    const session = (status: string) =>
+      bridgeReport([{ ownerKey: ticket.ownerKey, sessionId: ticket.sessionId, status, turn: 3 }])
+    await reportFrom(prisma, ticket.machine, session('working'))
+    await reportFrom(prisma, ticket.machine, session('waiting_for_input'))
+    await reportFrom(prisma, ticket.machine, bridgeReport([]))
+    assert.deepEqual(await keysOf(prisma, ticket.workId), [])
+    assert.deepEqual((await recordOf(prisma, ticket.workId)).sessionIds, [ticket.sessionId])
+  })
+})
+
+runDatabaseTest('a session the work let go of is charged until its machine stops reporting it', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const ticket = await workingTicket(prisma, world)
+    await prisma.agentTicketWork.update({
+      where: { id: ticket.workId },
+      data: {
+        sessionOrigins: {
+          [ticket.sessionId]: { executorId: ticket.machine, policyId: world.policyId, startedAt: new Date().toISOString() },
+        },
+      },
+    })
+    const costing = (totalCostUsd: number, status = 'working') => bridgeReport([
+      { ownerKey: ticket.ownerKey, sessionId: ticket.sessionId, status, totalCostUsd, turn: 1 },
+    ])
+    await reportFrom(prisma, ticket.machine, costing(1))
+    assert.equal(Number((await recordOf(prisma, ticket.workId)).costUsd), 1)
+    // The work lets the session go (its agent closed it, or it left the machine): it leaves the live set.
+    await prisma.agentTicketWork.update({ where: { id: ticket.workId }, data: { sessionIds: [] } })
+    await reportFrom(prisma, ticket.machine, costing(2.5))
+    await reportFrom(prisma, ticket.machine, costing(3, 'closed'))
+    assert.equal(Number((await recordOf(prisma, ticket.workId)).costUsd), 3, 'what it cost up to its close is the ticket\'s')
+    await reportFrom(prisma, ticket.machine, bridgeReport([]))
+    assert.equal(Number((await recordOf(prisma, ticket.workId)).costUsd), 3)
+  })
+})

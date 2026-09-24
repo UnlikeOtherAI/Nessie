@@ -15,6 +15,7 @@ import { reportedExecutorCodingSessions } from './executor-coding-session-closes
 import { executorCodingSessionOwnerKey } from './executor-coding-session-owner.js'
 import { executorHeartbeatCutoff } from './executor-liveness.js'
 import { enqueueTicketWorkSweep } from './executor-standing-policy-pool.js'
+import { ticketWorkSessionOriginsOf } from './ticket-work-session-origins.js'
 import { forgetTicketWorkSessionsInTransaction } from './ticket-work-session-release.js'
 
 /**
@@ -25,7 +26,8 @@ import { forgetTicketWorkSessionsInTransaction } from './ticket-work-session-rel
  *
  * **Only this machine's own tickets.** A report speaks for the machine that signed it, so it is
  * read only for the live records pinned to that machine in its organisation, and only for the
- * sessions it lists under each record's own owner key (the author, the agent and the ticket's
+ * sessions recorded as started on that machine (`session_origins`) that it lists under their own
+ * owner key (the author of the policy they were started under, the agent and the ticket's
  * context): another machine's report naming a record's session, or a session under any other
  * owner, wakes nothing and closes nothing.
  *
@@ -132,8 +134,9 @@ const reportedSessionsOrNull = (report: ExecutorLocalMcpReport): readonly Execut
 
 /**
  * The report to store: this one, except that a bridge entry which did not carry its sessions —
- * its probe failed this time — keeps the sessions the last report that had them listed. Absent
- * means not asked, never none, and the next report is compared with what was last known.
+ * its probe failed this time — keeps the sessions the last report that had them listed, with that
+ * report's `observedAt`. Absent means not asked, never none, and the next report is compared with
+ * what was last known; `liveTicketWorkSessions` reads the sessions as of when they were read.
  */
 export const withLastKnownCodingSessions = (
   stored: unknown,
@@ -142,10 +145,14 @@ export const withLastKnownCodingSessions = (
   const bridge = next.find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME)
   if (!bridge || bridge.codingSessions !== undefined) return next
   const last = reportedExecutorCodingSessions(stored)
-  const hadField = Array.isArray(stored) && (stored as Array<{ codingSessions?: unknown; server?: unknown }>)
-    .some((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME && status.codingSessions !== undefined)
-  if (!hadField) return next
-  return next.map((status) => (status === bridge ? { ...status, codingSessions: [...last] } : status))
+  const lastBridge = Array.isArray(stored)
+    ? (stored as Array<{ codingSessions?: unknown; observedAt?: unknown; server?: unknown }>)
+      .find((status) => status.server === EXECUTOR_CODING_SESSIONS_MCP_SERVER_NAME && status.codingSessions !== undefined)
+    : undefined
+  if (!lastBridge) return next
+  // The sessions keep the moment they were read: a session recorded since then is in no report yet.
+  const observedAt = typeof lastBridge.observedAt === 'string' ? lastBridge.observedAt : bridge.observedAt
+  return next.map((status) => (status === bridge ? { ...status, codingSessions: [...last], observedAt } : status))
 }
 
 const intakeSessionReport = async (
@@ -169,23 +176,38 @@ const intakeSessionReport = async (
     },
     select: {
       agentId: true, id: true, lastObservedTurn: true, organizationId: true, policyId: true, sessionIds: true,
-      taskId: true, policy: { select: { authorUserId: true } },
+      sessionOrigins: true, taskId: true,
     },
   })
+  const authors = new Map((await tx.executorStandingPolicy.findMany({
+    where: { id: { in: [...new Set(records.flatMap((record) => [
+      ...(record.policyId ? [record.policyId] : []),
+      ...Object.values(ticketWorkSessionOriginsOf(record.sessionOrigins)).map((origin) => origin.policyId),
+    ]))] } },
+    select: { authorUserId: true, id: true },
+  })).map((policy) => [policy.id, policy.authorUserId]))
   const nextComplete = next.length < EXECUTOR_CODING_SESSION_REPORT_MAXIMUM
   let closedAny = false
   for (const record of records) {
-    if (!record.policy || !record.policyId) continue
-    // The ticket's own owner key on this machine: a session under any other owner is not its.
-    const ownerKey = executorCodingSessionOwnerKey(input.executorId, {
-      actorUserId: record.policy.authorUserId,
-      agentId: record.agentId,
-      contextId: ticketWorkCodingSessionContext(record.policyId, record.taskId),
-    })
+    const origins = ticketWorkSessionOriginsOf(record.sessionOrigins)
+    // Each session's own owner key on this machine — its machine and policy as recorded when it
+    // started (`session_origins`), else the record's: one started on another machine, or listed
+    // under any other owner, is not this report's to speak for.
+    const expected = new Map<string, string>()
+    for (const sessionId of record.sessionIds) {
+      const origin = origins[sessionId]
+      const policyId = origin?.policyId ?? record.policyId
+      const actorUserId = policyId ? authors.get(policyId) : undefined
+      if (!seen.has(sessionId) || (origin && origin.executorId !== input.executorId) || !policyId || !actorUserId) continue
+      expected.set(sessionId, executorCodingSessionOwnerKey(input.executorId, {
+        actorUserId, agentId: record.agentId, contextId: ticketWorkCodingSessionContext(policyId, record.taskId),
+      }))
+    }
+    if (expected.size === 0) continue
     const own = (sessions: readonly ExecutorCodingSessionSummary[]) =>
-      sessions.filter((session) => session.ownerKey === ownerKey)
+      sessions.filter((session) => expected.get(session.sessionId) === session.ownerKey)
     const { closed, wakes } = ticketWorkSessionWakes({
-      named: new Set(record.sessionIds.filter((sessionId) => seen.has(sessionId))),
+      named: new Set(expected.keys()),
       next: own(next),
       nextComplete,
       observed: numberMap(record.lastObservedTurn),

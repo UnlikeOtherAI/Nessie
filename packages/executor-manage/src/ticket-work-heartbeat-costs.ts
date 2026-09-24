@@ -18,6 +18,9 @@ import { ticketWorkSessionOriginsOf } from './ticket-work-session-origins.js'
  *
  * A session counts only for the ticket whose owner key filed it on this
  * machine: its own machine and policy (`session_origins`), else the record's.
+ * A session the record let go of (T5: it left `session_ids` when the work left
+ * its machine, or its agent closed it) keeps its origin, and is charged until
+ * its machine stops reporting it — what it cost up to its close is the ticket's.
  * `session_costs` keeps the newest total per session, so this and the
  * worker's own reading of a coding answer (`recordTicketWorkSessionObservation`)
  * never count the same dollars twice.
@@ -37,11 +40,11 @@ export const recordTicketWorkHeartbeatCostsInTransaction = async (
     .filter((session) => typeof session.totalCostUsd === 'number')
     .map((session) => [session.sessionId, session]))
   if (costed.size === 0) return []
-  const candidates = await tx.agentTicketWork.findMany({
-    where: { sessionIds: { hasSome: [...costed.keys()] } },
-    select: { id: true },
-    orderBy: { id: 'asc' },
-  })
+  const reported = Prisma.sql`ARRAY[${Prisma.join([...costed.keys()])}]::text[]`
+  const candidates = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id::text AS id FROM agent_ticket_work
+    WHERE session_ids && ${reported} OR jsonb_exists_any(session_origins, ${reported})
+    ORDER BY id`)
   const changed: string[] = []
   for (const { id } of candidates) {
     await tx.$queryRaw(Prisma.sql`SELECT id FROM agent_ticket_work WHERE id = ${id}::uuid FOR UPDATE`)
@@ -57,7 +60,7 @@ export const recordTicketWorkHeartbeatCostsInTransaction = async (
     const costs = numberMap(work.sessionCosts)
     const next = { ...costs }
     let delta = 0
-    for (const sessionId of work.sessionIds) {
+    for (const sessionId of new Set([...work.sessionIds, ...Object.keys(origins)])) {
       const session = costed.get(sessionId)
       const policyId = origins[sessionId]?.policyId ?? work.policyId
       const machine = origins[sessionId]?.executorId ?? work.executorId

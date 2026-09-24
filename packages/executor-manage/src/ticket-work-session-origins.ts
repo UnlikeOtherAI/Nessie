@@ -65,7 +65,14 @@ export const liveTicketWorkSessions = (input: {
   const reported = new Map(reportedExecutorCodingSessions(input.localMcp)
     .filter((session) => session.ownerKey === input.ownerKey)
     .map((session) => [session.sessionId, session]))
-  const reportedAt = input.localMcpObservedAt?.getTime() ?? null
+  // The sessions as of when the bridge was last read: a report whose bridge went unasked keeps the
+  // sessions, and the time, of the last one that asked it (`withLastKnownCodingSessions`, T5).
+  const bridgeAt = Array.isArray(input.localMcp)
+    ? Date.parse(String((input.localMcp as Array<{ codingSessions?: unknown; observedAt?: unknown; server?: unknown }>)
+      .find((status) => status.codingSessions !== undefined)?.observedAt ?? ''))
+    : Number.NaN
+  const reportAt = input.localMcpObservedAt?.getTime() ?? null
+  const reportedAt = reportAt !== null && Number.isFinite(bridgeAt) ? Math.min(reportAt, bridgeAt) : reportAt
   const live: LiveTicketWorkSession[] = []
   for (const sessionId of input.sessionIds) {
     const origin = input.origins[sessionId]
