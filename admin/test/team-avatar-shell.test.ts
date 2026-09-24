@@ -17,7 +17,7 @@ test('the public UOA directory URL is never given a cache-buster', () => {
   // the active team is routed through the relay instead.
   const source = readSource('../src/components/primitives/TeamAvatar.tsx')
   assert.ok(
-    source.includes('const url = relayedUrl ?? imageUrl ?? null'),
+    source.includes('? imageUrl ?? relayedUrl ?? null'),
     'the public directory URL must be passed through unchanged',
   )
   assert.ok(
@@ -26,12 +26,32 @@ test('the public UOA directory URL is never given a cache-buster', () => {
   )
 })
 
-test('the shell switcher renders the active team through the current-team relay', () => {
-  // Passing a teamId for the active team routes through the membership-scoped
-  // relay (or skips the relay entirely when avatarTeamId is absent), which is
-  // the lane that kept showing the pre-upload picture. The active team must
-  // omit teamId so TeamAvatar uses /api/team/avatar — the endpoint the
-  // settings panel already proves works.
+test('the shell keeps the directory image used by the picker and native chrome', () => {
+  const avatar = readSource('../src/components/primitives/TeamAvatar.tsx')
+  const menu = readSource('../src/layouts/admin-shell/TeamMenu.tsx')
+  const switcher = readSource('../src/layouts/admin-shell/TeamSwitcher.tsx')
+
+  assert.match(
+    avatar,
+    /const useDirectoryImage = directoryImageFirst && Boolean\(imageUrl\) && revision === 0/,
+  )
+  assert.match(avatar, /const path = useDirectoryImage \? null : teamAvatarPath\(teamId\)/)
+  assert.equal(
+    switcher.match(/directoryImageFirst/g)?.length,
+    2,
+    'desktop and mobile-web selected identities must keep the directory image',
+  )
+  assert.equal(
+    menu.match(/directoryImageFirst/g)?.length,
+    1,
+    'picker rows must use the same directory image as the selected identity',
+  )
+})
+
+test('the shell can refresh an uploaded active avatar through the current-team relay', () => {
+  // A positive revision makes TeamAvatar bypass the directory preference. The
+  // active team must therefore omit teamId so that refresh uses
+  // /api/team/avatar, the endpoint the settings panel already proves works.
   const switcher = readSource('../src/layouts/admin-shell/TeamSwitcher.tsx')
   assert.ok(
     !switcher.includes('teamId={active?'),
@@ -39,7 +59,7 @@ test('the shell switcher renders the active team through the current-team relay'
   )
 })
 
-test('the team menu keeps the membership-scoped relay only for non-active rows', () => {
+test('the team menu reserves the current-team relay for active upload refreshes', () => {
   const menu = readSource('../src/layouts/admin-shell/TeamMenu.tsx')
   assert.ok(
     menu.includes('{...(isActive ? {} : { teamId:'),

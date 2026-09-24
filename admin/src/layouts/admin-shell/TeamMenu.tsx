@@ -110,12 +110,14 @@ export const TeamMenu = ({
             type="button"
           >
             <TeamAvatar
+              directoryImageFirst
               imageUrl={team.avatarImageUrl}
               label={team.label}
               revision={isActive ? avatarRevision : 0}
               size={32}
-              // The active row takes the current-team relay (no teamId — see
-              // TeamSwitcher); other rows keep the membership-scoped relay.
+              // An uploaded active avatar still takes the current-team relay
+              // (no teamId); ordinary rows keep the one directory source the
+              // trigger and native chrome use.
               {...(isActive ? {} : { teamId: team.uoaTeam ? team.avatarTeamId ?? null : team.teamId })}
               token={token}
             />

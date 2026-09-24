@@ -50,6 +50,7 @@
     "test:e2e:tabbar-full": "node e2e/tabbar-full/run.mjs",
     "test:e2e:task-sets": "node e2e/task-sets/run.mjs",
     "test:e2e:task-dialog": "node e2e/task-dialog/run.mjs",
+    "test:e2e:team-avatar-visual": "node e2e/team-avatar-visual/run.mjs",
     "test:e2e:tool-screenshots": "node e2e/tool-screenshots/run.mjs",
     "test:e2e:research-brief": "node e2e/research-brief/run.mjs",
     "test:e2e:research-brief-real": "node e2e/research-brief/real-stack.mjs",
