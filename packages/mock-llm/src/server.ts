@@ -270,7 +270,10 @@ export const createMockLlmServer = async (input: {
         messages,
         isCompletionReview
           ? input.scenario.completionReview
-            ?? { latencyMs: 0, text: '{"needsFollowUp":false,"reason":"Scripted work is complete."}', usage: {} }
+            ?? {
+              latencyMs: 0, text: '{"needsFollowUp":false,"reason":"Scripted work is complete."}',
+              usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+            }
           : overrideText === undefined
           ? undefined
           : { latencyMs: 0, text: overrideText, usage: {} },
