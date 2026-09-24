@@ -189,7 +189,7 @@ test('the arm opens on a live person\'s own turn in a bound project room, and na
 test('the operator verbs are the plan\'s set, and the capability is a grant, never a tool', () => {
   assert.deepEqual([...PROJECT_OPERATOR_TOOL_IDS].sort(), [
     'agent_trigger_create', 'agent_trigger_update', 'channel_create', 'kb_space_create',
-    'project_create', 'project_list', 'team_create', 'ticket_board_column_create',
+    'project_create', 'project_list', 'project_structure_read', 'team_create', 'ticket_board_column_create',
     'ticket_board_column_update', 'ticket_board_create', 'ticket_label_create', 'workflow_create',
     'workflow_install', 'workflow_run', 'workflow_trigger_create', 'workflow_update',
   ])

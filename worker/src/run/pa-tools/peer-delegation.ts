@@ -9,6 +9,7 @@ import {
 } from '../execute/disclosure-basis.js'
 import { resolveActingMember } from './access.js'
 import { resolveOperatorProjectCall } from './project-operator.js'
+import { formatBoardStructureLines } from './tool-output.js'
 import { assertProjectWriteDestination } from './ticket-context.js'
 import { requireConsumedSources } from './tool-message-basis.js'
 
@@ -134,6 +135,8 @@ export const runTicketBoardCreateTool = async (
   return {
     toolName: 'ticket_board_create',
     inputSummary: `projectId=${projectId} name=${args.name}`,
-    outputPreview: `Created board \"${board.name}\" | boardId=${board.id}`,
+    // The columns it starts with, by id, so they are renamed and recategorised
+    // with ticket_board_column_update rather than guessed at.
+    outputPreview: ['Created board:', ...formatBoardStructureLines(board)].join('\n'),
   }
 }

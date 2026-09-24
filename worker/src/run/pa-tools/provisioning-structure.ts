@@ -3,16 +3,17 @@ import { isAgentAccessibleToActor, isProjectAccessibleToUser, listBoards } from 
 import { z } from 'zod'
 
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
-import { buildVisibleChannelWhere, resolveActingMember, type ActingMember } from './access.js'
+import { buildVisibleChannelWhere, type ActingMember } from './access.js'
 import { canReadPageVersions, recordPageVersionRead, resolveKnowledgeAccessViewers } from './knowledge.js'
 import { recordKnowledgeSpaceRead } from './knowledge-basis.js'
 import { recordChannelDirectoryRead, recordVisibleAgentRead } from './message-search-basis.js'
+import { resolveOperatorAwareMember } from './project-operator.js'
 import { PROJECT_OPERATOR_TOOL_RUNNERS } from './project-operator-tools.js'
 import { runProjectCreateTool, runProjectListTool, runTeamCreateTool } from './team-structure.js'
 import { recordProjectRead } from './ticket-context.js'
 import {
   formatAgentMarkdownLink,
-  formatBoardMarkdownLink,
+  formatBoardStructureLines,
   formatChannelMarkdownLink,
   formatProjectMarkdownLink,
   formatSection,
@@ -134,7 +135,9 @@ export const runProjectStructureReadTool = async (
   input: Record<string, unknown>,
 ): Promise<ToolExecutionResult> => {
   const args = InputSchema.parse(input)
-  const member = await resolveActingMember(context)
+  // The Designer's identity arm, or the project operator's: either way the
+  // person asking, read through their own access and never wider.
+  const { member } = await resolveOperatorAwareMember(context)
   const project = await context.prisma.project.findFirst({
     where: { deletedAt: null, id: args.projectId, organizationId: member.organizationId },
     select: { id: true, name: true },
@@ -145,11 +148,7 @@ export const runProjectStructureReadTool = async (
   const agent = await readAgent(context, member, args.agentId)
   const boards = await listBoards(context.prisma, { id: project.id, organizationId: member.organizationId })
   recordProjectRead(context, member, project.id)
-  const boardLines = boards.flatMap((board) => [
-    `- ${formatBoardMarkdownLink({ ...board, projectId: project.id })} (boardId=${board.id})`
-    + (board.isDefault ? ' — the default board' : ''),
-    ...board.columns.map((column) => `  - ${column.name} (${column.category}) | columnId=${column.id}`),
-  ])
+  const boardLines = boards.flatMap((board) => formatBoardStructureLines({ ...board, projectId: project.id }))
   const channels = await channelLines(context, member, project.id, agent)
   const spaces = await spaceLines(context, member, project.id)
   return {
