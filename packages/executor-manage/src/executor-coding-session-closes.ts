@@ -328,6 +328,14 @@ const reportShowsDone = (report: ExecutorLocalMcpReport, request: OpenRequest): 
 }
 
 /**
+ * Close reasons that wait for the machine however long it takes: work that
+ * left an offline machine for another (T5) asks for its sessions there to
+ * close when that machine is back, which is usually more than a day later.
+ * Such a request resolves only when a report taken after it shows it done.
+ */
+const WAITS_FOR_THE_MACHINE: ExecutorCodingSessionCloseReason[] = ['machine_reassigned']
+
+/**
  * The heartbeat's half, inside its transaction: settle what the report it
  * carried shows done and what has waited a day, then answer with the rest,
  * oldest first. A heartbeat without a report settles nothing by report.
@@ -340,6 +348,7 @@ export const takeExecutorCodingSessionClosesInTransaction = async (
     where: {
       createdAt: { lte: new Date(input.now.getTime() - EXECUTOR_CODING_SESSION_CLOSE_TTL_MS) },
       executorId: input.executorId,
+      reason: { notIn: WAITS_FOR_THE_MACHINE },
       resolvedAt: null,
     },
     data: { resolvedAt: input.now },

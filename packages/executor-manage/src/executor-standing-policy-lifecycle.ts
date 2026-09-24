@@ -3,13 +3,10 @@ import type { Prisma } from '@prisma/client'
 import { writeAuditEntryInTransaction } from '@nessie/db'
 import {
   TICKET_WORK_LIVE_STATUSES,
-  ticketWorkCodingSessionContext,
-  type ExecutorCodingSessionCloseReason,
   type ExecutorStandingPolicyEndedReason,
   type ExecutorStandingPolicySuspendedReason,
 } from '@nessie/schemas'
 
-import { requestExecutorCodingSessionCloseForSessionsInTransaction } from './executor-coding-session-closes.js'
 import {
   enqueueTicketWorkSweep,
   queueTicketWorkInTransaction,
@@ -18,6 +15,10 @@ import {
 import { renumberTicketWorkQueueInTransaction } from './executor-standing-policy-queue.js'
 import { syncTicketWorkClock } from './ticket-work-clock.js'
 import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-records.js'
+import {
+  closeTicketWorkSessionsInTransaction,
+  releaseTicketWorkSessionsInTransaction,
+} from './ticket-work-session-release.js'
 
 /**
  * A standing policy's transitions after it was confirmed, each in the
@@ -29,7 +30,8 @@ import { endTicketWork, recordTicketWorkActivity, writeTicketWorkAudit } from '.
  * - **Suspended** (`trigger_changed`, `descriptor_changed`): its `active`
  *   records wait for machine access again (`waiting_machine`,
  *   `machine_access_suspended`, no machine), and their sessions get
- *   `policy_suspended` closes. Everything else keeps its state and waits.
+ *   `policy_suspended` closes and leave their live sets. Everything else
+ *   keeps its state and waits.
  * - **Ended**: every live record is cancelled with `machine_access_ended`
  *   and its sessions get `policy_ended` closes — except when a confirmation
  *   replaced it, which hands its records to the new policy instead: a
@@ -81,40 +83,6 @@ export const writeStandingPolicyAudit = async (
   })
 }
 
-/**
- * Session-scoped close requests for the sessions these records started, each
- * on its own machine and named by its ticket's owner context under the policy
- * that pinned it, so nothing else of its author's is named.
- */
-export const closeTicketWorkSessionsInTransaction = async (
-  tx: Prisma.TransactionClient,
-  records: readonly Pick<LiveRecord, 'agentId' | 'executorId' | 'policyId' | 'sessionIds' | 'taskId'>[],
-  reason: ExecutorCodingSessionCloseReason,
-  requestedByUserId: string | null,
-): Promise<void> => {
-  const withSessions = records.filter((record) => record.executorId && record.policyId && record.sessionIds.length > 0)
-  if (withSessions.length === 0) return
-  const authors = new Map((await tx.executorStandingPolicy.findMany({
-    where: { id: { in: [...new Set(withSessions.map((record) => record.policyId as string))] } },
-    select: { authorUserId: true, id: true },
-  })).map((policy) => [policy.id, policy.authorUserId]))
-  for (const record of withSessions) {
-    const actorUserId = authors.get(record.policyId as string)
-    if (!actorUserId) continue
-    await requestExecutorCodingSessionCloseForSessionsInTransaction(tx, {
-      executorId: record.executorId as string,
-      owner: {
-        actorUserId,
-        agentId: record.agentId,
-        contextId: ticketWorkCodingSessionContext(record.policyId as string, record.taskId),
-      },
-      reason,
-      requestedByUserId,
-      sessionIds: record.sessionIds,
-    })
-  }
-}
-
 export const suspendStandingPolicyInTransaction = async (
   tx: Prisma.TransactionClient,
   input: {
@@ -137,7 +105,7 @@ export const suspendStandingPolicyInTransaction = async (
     where: { policyId: input.policyId, status: 'active' },
     select: RECORD_SELECT,
   })
-  await closeTicketWorkSessionsInTransaction(tx, active, 'policy_suspended', input.actor.userId)
+  await releaseTicketWorkSessionsInTransaction(tx, active, 'policy_suspended', input.actor.userId)
   for (const record of active) {
     await tx.agentTicketWork.update({
       where: { id: record.id },
@@ -202,7 +170,7 @@ const handOverTicketWork = async (
   toPolicyId: string,
   requestedByUserId: string | null,
 ): Promise<void> => {
-  await closeTicketWorkSessionsInTransaction(tx, records, 'policy_ended', requestedByUserId)
+  await releaseTicketWorkSessionsInTransaction(tx, records, 'policy_ended', requestedByUserId)
   const active = records.filter((record) => record.status === 'active')
   for (const record of records) {
     await tx.agentTicketWork.update({

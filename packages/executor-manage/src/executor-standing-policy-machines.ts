@@ -85,6 +85,32 @@ export const standingPolicyMachineDigests = async (
     : null
 }
 
+/**
+ * One pool machine's digests as the dequeue reads them (T5): from its latest
+ * revision while that is active — null digests when it offers no reviewed
+ * bridge — or `unreviewed` while that revision awaits review or was disabled.
+ * The review door settles an unreviewed revision itself, suspending the
+ * policies whose pinned digests it moves, so until then the dequeue places no
+ * work on the machine and suspends nothing.
+ */
+export const standingPolicyMachineRevision = async (
+  client: Client,
+  executorId: string,
+): Promise<{ kind: 'active'; digests: { descriptorConfigDigest: string; localPolicyDigest: string } | null }
+  | { kind: 'unreviewed' }> => {
+  const latest = await client.executorCapabilityRevision.findFirst({
+    where: { executorId },
+    orderBy: { revision: 'desc' },
+    select: { descriptor: true, localPolicyDigest: true, reviewStatus: true },
+  })
+  if (!latest || latest.reviewStatus !== 'active') return { kind: 'unreviewed' }
+  const facts = ExecutorCapabilityDescriptorSchema.safeParse(latest.descriptor).data?.codingSessions
+  return {
+    kind: 'active',
+    digests: facts ? { descriptorConfigDigest: facts.configDigest, localPolicyDigest: latest.localPolicyDigest } : null,
+  }
+}
+
 /** Whether a descriptor offers what ticket work needs: both local-apps keys and the reviewed bridge. */
 export const offersReviewedCodingSessions = (descriptor: {
   codingSessions?: ExecutorCodingSessionsFacts

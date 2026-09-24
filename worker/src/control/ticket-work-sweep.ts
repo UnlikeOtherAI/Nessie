@@ -343,10 +343,24 @@ export const recoverLostTicketJobs = async (prisma: PrismaClient, now: Date, lim
 
 export const runTicketWorkSweep = async (
   prisma: PrismaClient,
-  /** `limit`: live records read a page; every page is read. `entitlements`: the UOA transport; tests stand one in. */
-  input: { now?: Date; limit?: number; seam?: TicketWorkSeam; entitlements?: ResolveLiveEntitlementsDeps } = {},
+  /**
+   * `limit`: live records read a page; every page is read. `entitlements`: the UOA transport;
+   * tests stand one in. `machinesOnly`: an enqueue by a transaction that may have freed a
+   * machine — the machine steps alone (`sweepStandingMachineAccess`).
+   */
+  input: {
+    now?: Date
+    limit?: number
+    machinesOnly?: boolean
+    seam?: TicketWorkSeam
+    entitlements?: ResolveLiveEntitlementsDeps
+  } = {},
 ): Promise<void> => {
   const now = input.now ?? new Date()
+  if (input.machinesOnly) {
+    await sweepStandingMachineAccess(prisma, { machinesOnly: true, now })
+    return
+  }
   const take = input.limit ?? 200
   for (let after: string | null = null; ;) {
     const records = await loadLiveRecords(prisma, { after, take })

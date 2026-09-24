@@ -2,8 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 import { StandingPolicyPinnedTermsSchema, type ExecutorStandingPolicySuspendedReason } from '@nessie/schemas'
 
 import { executorHeartbeatCutoff } from './executor-liveness.js'
-import { closeTicketWorkSessionsInTransaction } from './executor-standing-policy-lifecycle.js'
-import { standingPolicyMachineDigests } from './executor-standing-policy-machines.js'
+import { standingPolicyMachineRevision } from './executor-standing-policy-machines.js'
 import {
   enqueueTicketWorkSweep,
   queueTicketWorkInTransaction,
@@ -12,6 +11,7 @@ import {
 import { standingPolicyLimitsOf, standingPolicyTermsDigest, standingPolicyTermsOf } from './executor-standing-policy-terms.js'
 import { syncTicketWorkClock } from './ticket-work-clock.js'
 import { recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-records.js'
+import { releaseTicketWorkSessionsInTransaction } from './ticket-work-session-release.js'
 
 /**
  * A ticket's work and the machine it waits for (T5; docs/plans/2026-09-23-ticket-driven-agents/ticket-work.md
@@ -24,7 +24,7 @@ import { recordTicketWorkActivity, writeTicketWorkAudit } from './ticket-work-re
  *   `active` on it again, its hours clock running, with a `work_resumed` row that says the
  *   machine came back; the caller wakes the agent with `machine_back_online`. Machine access
  *   paused meanwhile: the work waits for access instead, unpinned, which frees the machine, and
- *   its sessions there close (`policy_suspended`) as a suspension closes an active record's.
+ *   its sessions there close (`policy_suspended`) and leave its live set, as a suspension's do.
  * - **It stays away past the trigger's `waitingMachineHours`**
  *   (`requeueStrandedTicketWorkInTransaction`): the work is unpinned and queued again, as of
  *   when it started, so another machine of the pool can take it. Its sessions on the offline
@@ -82,12 +82,7 @@ const moveTicketWorkOffItsMachine = async (
 ): Promise<void> => {
   const policyId = work.policyId as string
   const movedFrom = work.executorId as string
-  await closeTicketWorkSessionsInTransaction(tx, [work], 'machine_reassigned', null)
-  for (const sessionId of work.sessionIds) {
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE agent_ticket_work SET session_ids = array_remove(session_ids, ${sessionId}), updated_at = now()
-      WHERE id = ${work.id}::uuid`)
-  }
+  await releaseTicketWorkSessionsInTransaction(tx, [work], 'machine_reassigned', null)
   await tx.agentTicketWork.update({ where: { id: work.id }, data: { executorId: null } })
   const reason = await standingPolicyPoolReason(tx, { now: input.now, policyId })
   const position = await queueTicketWorkInTransaction(tx, {
@@ -127,7 +122,7 @@ export const resumeTicketWorkOnItsMachineInTransaction = async (
     return 'requeued'
   }
   if (work.policy?.status !== 'live') {
-    await closeTicketWorkSessionsInTransaction(tx, [work], 'policy_suspended', null)
+    await releaseTicketWorkSessionsInTransaction(tx, [work], 'policy_suspended', null)
     await tx.agentTicketWork.update({
       where: { id: work.id }, data: { executorId: null, stateReason: 'machine_access_suspended' },
     })
@@ -176,11 +171,18 @@ export const requeueStrandedTicketWorkInTransaction = async (
 }
 
 /**
- * Whether a live policy still stands on what its author confirmed: the trigger digests to the
- * pinned terms, and every pool machine to its pinned descriptor digests. The dequeue asks it
- * before placing work; the suspension a drift calls for is the one the suspending doors write.
+ * Whether a live policy still stands on what its author confirmed (T5): the trigger digests to
+ * the pinned terms, and every pool machine whose latest revision is active to its pinned
+ * descriptor digests. A drift is `suspend`, the reason the suspending doors write. A machine
+ * whose latest revision awaits review, or was disabled, is `unplaceable`: its review settles
+ * the policy, so the dequeue only leaves the machine alone until then.
  */
-export const standingPolicyDigestDrift = async (
+export type StandingPolicyDigestCheck = {
+  suspend: ExecutorStandingPolicySuspendedReason | null
+  unplaceable: ReadonlySet<string>
+}
+
+export const standingPolicyDigestCheck = async (
   client: Prisma.TransactionClient | PrismaClient,
   policy: {
     executors: ReadonlyArray<{ descriptorConfigDigest: string; executorId: string; localPolicyDigest: string }>
@@ -188,16 +190,22 @@ export const standingPolicyDigestDrift = async (
     trigger: { agentId: string | null; config: unknown; targetChannelId: string | null } | null
     triggerDigest: string
   },
-): Promise<ExecutorStandingPolicySuspendedReason | null> => {
+): Promise<StandingPolicyDigestCheck> => {
+  const unplaceable = new Set<string>()
   const pinned = StandingPolicyPinnedTermsSchema.safeParse(policy.pinnedTerms)
   const terms = policy.trigger && pinned.success
     ? standingPolicyTermsOf(policy.trigger, standingPolicyLimitsOf(pinned.data))
     : null
-  if (!terms || standingPolicyTermsDigest(terms) !== policy.triggerDigest) return 'trigger_changed'
+  if (!terms || standingPolicyTermsDigest(terms) !== policy.triggerDigest) return { suspend: 'trigger_changed', unplaceable }
   for (const row of policy.executors) {
-    const digests = await standingPolicyMachineDigests(client, row.executorId)
+    const revision = await standingPolicyMachineRevision(client, row.executorId)
+    if (revision.kind === 'unreviewed') {
+      unplaceable.add(row.executorId)
+      continue
+    }
+    const { digests } = revision
     if (!digests || digests.descriptorConfigDigest !== row.descriptorConfigDigest
-      || digests.localPolicyDigest !== row.localPolicyDigest) return 'descriptor_changed'
+      || digests.localPolicyDigest !== row.localPolicyDigest) return { suspend: 'descriptor_changed', unplaceable }
   }
-  return null
+  return { suspend: null, unplaceable }
 }

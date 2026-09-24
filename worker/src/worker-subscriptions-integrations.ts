@@ -231,8 +231,8 @@ subscribe(
 subscribe(
   TICKET_WORK_SWEEP_TOPIC,
   async (job) => {
-    TicketWorkSweepJobPayloadSchema.parse(job.payload)
-    await runTicketWorkSweep(prisma)
+    const payload = TicketWorkSweepJobPayloadSchema.parse(job.payload)
+    await runTicketWorkSweep(prisma, payload.machinesOnly ? { machinesOnly: true } : {})
   },
   { signal: abortSignal },
 )

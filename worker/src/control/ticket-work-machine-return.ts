@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   enforceTicketWorkLimitsInTransaction,
+  lockStandingPolicyRow,
   requeueStrandedTicketWorkInTransaction,
   resumeTicketWorkOnItsMachineInTransaction,
   ticketWorkMachineOnline,
@@ -27,8 +28,9 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  *   another machine of the pool; the dequeue that follows wakes it there.
  *
  * Each record is decided under the locks every wake of it takes, in the one
- * order — its ticket, then its thread's run slot, then the record — and
- * re-read there, so a wake of the record that already resumed it, a second
+ * order — its policy's row (shared, so a suspension or an end waits for the
+ * decision that read it live, and is read after it), its ticket, then its
+ * thread's run slot, then the record — and re-read there, so a wake of the record that already resumed it, a second
  * sweep, or the machine coming back a moment before leaves nothing to do.
  */
 
@@ -40,7 +42,8 @@ const BACK_ONLINE_TEXT = 'The machine working this ticket is back online, so its
   + 'the machine went away. Never name the machine on the ticket or in this thread.'
 
 const WAITING_SELECT = {
-  agentId: true, id: true, organizationId: true, projectId: true, taskId: true, threadId: true, triggerId: true,
+  agentId: true, id: true, organizationId: true, policyId: true, projectId: true, taskId: true, threadId: true,
+  triggerId: true,
   executor: { select: { lastSeenAt: true, removedAt: true, status: true } },
   trigger: { select: { agentId: true, config: true, enabled: true, id: true, status: true } },
 } as const satisfies Prisma.AgentTicketWorkSelect
@@ -50,6 +53,7 @@ type Waiting = Prisma.AgentTicketWorkGetPayload<{ select: typeof WAITING_SELECT 
 const backOnline = async (prisma: PrismaClient, record: Waiting, now: Date): Promise<boolean> => {
   const trigger = record.trigger!
   return prisma.$transaction(async (tx) => {
+    if (record.policyId) await lockStandingPolicyRow(tx, record.policyId)
     await lockTicketForWork(tx, record.taskId)
     await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
     const [ended] = await enforceTicketWorkLimitsInTransaction(tx, { now, where: { id: record.id } })
@@ -90,6 +94,7 @@ const backOnline = async (prisma: PrismaClient, record: Waiting, now: Date): Pro
 
 const strandedOffline = (prisma: PrismaClient, record: Waiting, now: Date): Promise<boolean> =>
   prisma.$transaction(async (tx) => {
+    if (record.policyId) await lockStandingPolicyRow(tx, record.policyId)
     await lockTicketForWork(tx, record.taskId)
     await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
     return requeueStrandedTicketWorkInTransaction(tx, {

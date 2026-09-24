@@ -26,7 +26,8 @@ import { runDatabaseTest } from './support.js'
  * re-sorts a queue and wakes nothing; the record's ticket and its mover are
  * checked again and a record that no longer stands is cancelled with its
  * reason; a policy whose digests moved is suspended, never placed under; a
- * record waits for the machine it last worked on while that machine stands;
+ * record goes back to the machine it last worked on once that machine is free
+ * (`ticket-work-dequeue-own-machine.test.ts` has why it never starves for it);
  * and nothing ever puts two records on one machine.
  */
 
@@ -181,7 +182,7 @@ runDatabaseTest('a policy whose trigger moved under it is suspended at dequeue, 
   })
 })
 
-runDatabaseTest('queued work waits for the machine it last worked on while that machine stands', async () => {
+runDatabaseTest('queued work goes back to the machine it last worked on once that machine is free', async () => {
   await withMachinesWorld(['Minis', 'Studio'], async (world, prisma) => {
     const seen = new Set<string>()
     const first = await pickUp(prisma, world, 'Works on one', seen)
@@ -200,7 +201,7 @@ runDatabaseTest('queued work waits for the machine it last worked on while that 
       executorId: own, policyId: world.policyId, status: 'active', taskId: await world.task('Holds its machine'),
     })
 
-    // The other machine frees: the new ticket takes it, older or not, and the first keeps waiting for its own.
+    // The other machine frees: the older new ticket takes it, and the first, next in line, waits for another.
     await moveTo(prisma, world, second.taskId, world.columns.done)
     await sweep(prisma)
     assert.deepEqual([(await recordOf(prisma, fresh.work.id)).executorId, (await recordOf(prisma, first.work.id)).status],

@@ -11,7 +11,7 @@ import {
   type TicketWorkThreadEvent,
 } from '@nessie/schemas'
 
-import { lockTicketWorkQueue, renumberTicketWorkQueueInTransaction } from './executor-standing-policy-queue.js'
+import { renumberTicketWorkQueueInTransaction } from './executor-standing-policy-queue.js'
 import { syncTicketWorkClock } from './ticket-work-clock.js'
 
 /**
@@ -134,9 +134,7 @@ export const endTicketWork = async (
   },
 ): Promise<boolean> => {
   const endedAt = new Date()
-  // Queued work leaves its policy's queue: its lock first, before the row.
-  const held = await tx.agentTicketWork.findUnique({ where: { id: input.work.id }, select: { policyId: true } })
-  if (held?.policyId) await lockTicketWorkQueue(tx, held.policyId)
+  const before = await tx.agentTicketWork.findUnique({ where: { id: input.work.id }, select: { status: true } })
   const { count } = await tx.agentTicketWork.updateMany({
     where: { id: input.work.id, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
     data: {
@@ -145,6 +143,7 @@ export const endTicketWork = async (
       endedAt,
       endedReason: input.reason,
       endedBy: input.by ?? 'system',
+      queuePosition: null,
     },
   })
   if (count === 0) return false
@@ -167,7 +166,7 @@ export const endTicketWork = async (
     select: { executorId: true, organizationId: true, policyId: true },
   })
   // Work that ended while it was queued leaves its place: the rest move up.
-  if (record.policyId) await renumberTicketWorkQueueInTransaction(tx, record.policyId)
+  if (before?.status === 'queued' && record.policyId) await renumberTicketWorkQueueInTransaction(tx, record.policyId)
   await writeTicketWorkAudit(tx, {
     action: 'ticket.work.ended',
     by: input.by ?? null,

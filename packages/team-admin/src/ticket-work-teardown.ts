@@ -3,7 +3,6 @@ import {
   closeTicketWorkSessionsInTransaction,
   endTicketWork,
   enqueueTicketWorkSweep,
-  lockTicketWorkQueue,
   recordTicketWorkActivity,
   renumberTicketWorkQueueInTransaction,
   syncTicketWorkClock,
@@ -108,7 +107,6 @@ export const applyTicketWorkColumnEntry = async (
     const pickup = new Set(config.data.pickup?.columnIds ?? [])
     if (column.category === 'review' && !pickup.has(column.id) && record.status !== 'parked') {
       // Queued work parked leaves its place in the queue, and the rest move up.
-      if (record.policyId) await lockTicketWorkQueue(tx, record.policyId)
       await tx.agentTicketWork.update({
         where: { id: record.id },
         data: { status: 'parked', stateReason: null, queuePosition: null },

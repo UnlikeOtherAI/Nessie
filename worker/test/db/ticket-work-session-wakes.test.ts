@@ -163,7 +163,7 @@ runDatabaseTest('a session missing from the report counts closed, but not from a
     const record = await client.agentTicketWork.findUniqueOrThrow({ where: { id: ticket.workId } })
     assert.deepEqual(record.sessionIds, [], 'a closed session leaves the record\'s live set at once')
     const bucket = Math.floor(at.getTime() / 10_000)
-    assert.ok(await client.queueJob.findUnique({ where: { idempotencyKey: `${TICKET_WORK_SWEEP_TOPIC}:${bucket}` } }),
+    assert.ok(await client.queueJob.findUnique({ where: { idempotencyKey: `${TICKET_WORK_SWEEP_TOPIC}:machines:${bucket}` } }),
       'the dispatcher is told: the ticket\'s session quota has room again')
 
     await drainSessionJobs(client, ticket.workId, new Set())

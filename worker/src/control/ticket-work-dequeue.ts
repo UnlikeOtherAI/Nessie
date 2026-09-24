@@ -3,17 +3,23 @@ import {
   closeTicketWorkSessionsInTransaction,
   compareTicketWorkQueueEntries,
   endTicketWork,
+  lockStandingPolicyRow,
   placeTicketWorkOnExecutorInTransaction,
   recordTicketWorkActivity,
-  standingPolicyDigestDrift,
+  renumberTicketWorkQueueInTransaction,
+  standingPolicyDigestCheck,
   suspendStandingPolicyInTransaction,
+  ticketWorkMachineOnline,
   writeTicketWorkAudit,
   writeTicketWorkThreadRow,
 } from '@nessie/executor-manage'
-import { TicketChangedStoredConfigSchema, type TicketTriggerDeliveryPayload } from '@nessie/schemas'
+import {
+  TICKET_WORK_MACHINE_HOLDING_STATUSES,
+  TicketChangedStoredConfigSchema,
+  type TicketTriggerDeliveryPayload,
+} from '@nessie/schemas'
 import { canMemberEditProjectBoards, lockTicketColumn } from '@nessie/team-admin'
 
-import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
 import { queueTicketWorkRun, stopTicketWorkAtWakeLimit } from './ticket-work-run.js'
 import { lockThreadRunSlot } from '../run/thread-serialization.js'
 
@@ -25,26 +31,33 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  * Machines are shared across triggers, so the queue belongs to the machine: for each machine
  * of a live policy's pool, in id order, the queued records of **every** live policy whose pool
  * includes it are read in one order — a record that last worked on this machine first (its
- * sessions are there), then ticket priority, then age — and the first that can take it does.
- * A record that last worked on another machine of its pool waits for that one while it still
- * stands: in the pool, not removed, heard from within the trigger's `waitingMachineHours`.
+ * sessions are there, and they never count against its return), then ticket priority, then
+ * age — and the first that can take it does. A record that last worked on another machine
+ * waits for that one only while it could take it: online, in its pool and held by no other
+ * work. Its own machine offline, gone or busy, the record takes any free machine of its pool
+ * rather than starve, and the sessions it had there are closed (`machine_reassigned`).
  *
- * Before any placement a policy is checked against what its author confirmed: a trigger or a
- * machine whose digests moved suspends it (`trigger_changed`, `descriptor_changed`), exactly as
- * the doors that change them do, so its records wait for a new confirmation rather than being
- * placed under terms nobody agreed to — or cancelled one by one for a change none of them made.
+ * Before any placement a policy is checked against what its author confirmed: a trigger whose
+ * terms moved, or a machine whose active revision's digests moved, suspends it
+ * (`trigger_changed`, `descriptor_changed`), exactly as the doors that change them do, so its
+ * records wait for a new confirmation rather than being placed under terms nobody agreed to. A
+ * machine whose newest revision still awaits review takes no work of the policy until it is
+ * reviewed — the review door settles the policy — and suspends nothing.
  *
- * Each placement takes the locks every wake of the record takes, in the one order — the ticket,
- * the thread's run slot, then the pool and the machine — re-reads the record still `queued`,
- * and re-checks the record itself: its ticket still in a start-work column (else `left_flow`),
- * and the person whose move started it still a live member who can edit the board (else
- * `mover_lost_access`). Either failure cancels it, with its `work_ended` row and a stop row in
- * its thread, and the next record is tried. Placed, the record is `active` with a `work_resumed`
- * row, `ticket.work.started` (`dequeued: true`), a delivered `dequeue` delivery and one
- * `dequeued` wake: "a machine is free; you are bound to it". A machine another record holds,
- * or one gone offline, takes nobody this round; one at this ticket's own session quota lets the
- * next record try. Two sweeps racing for a machine serialise on its lock, and the partial
- * unique index `agent_ticket_work_one_per_executor` holds whatever else happens.
+ * Each placement takes the policy's own row first (shared: a suspension or an end waits for
+ * it), then the locks every wake of the record takes, in the one order — the ticket, the
+ * thread's run slot, then the pool and the machine — re-reads the record still `queued`, and
+ * re-checks the record itself: its ticket still in a start-work column (else `left_flow`), and
+ * the person whose move started it still a live member who can edit the board (else
+ * `mover_lost_access`). Either failure cancels it, its sessions closed for that reason, with
+ * its `work_ended` row and a stop row in its thread, and the next record is tried. Placed, the
+ * record is `active` with a `work_resumed` row, `ticket.work.started` (`dequeued: true`), a
+ * delivered `dequeue` delivery and one `dequeued` wake: "a machine is free; you are bound to
+ * it". A machine another record holds, or one gone offline, takes nobody this round; one at
+ * this ticket's own session quota lets the next record try. Two sweeps racing for a machine
+ * serialise on its lock, and the partial unique index `agent_ticket_work_one_per_executor`
+ * holds whatever else happens. Last, every queue it read is renumbered, which gives a row a
+ * renumbering skipped while another transaction held it its place.
  */
 
 const DEQUEUED_SUMMARY = 'a machine is free; you are bound to it'
@@ -71,6 +84,8 @@ type Policy = {
     targetChannelId: string | null
   } | null
   triggerDigest: string
+  /** Pool machines whose newest revision awaits review: none of this policy's work goes on them yet. */
+  unplaceable: ReadonlySet<string>
 }
 
 type Machine = { id: string; lastSeenAt: Date | null; removedAt: Date | null; status: string }
@@ -106,37 +121,42 @@ const standingPolicies = async (prisma: PrismaClient): Promise<Policy[]> => {
   const standing: Policy[] = []
   for (const policy of policies) {
     if (!policy.trigger?.agentId || !policy.trigger.enabled || policy.trigger.status !== 'active') continue
-    const drift = await standingPolicyDigestDrift(prisma, policy)
-    if (drift) {
+    const check = await standingPolicyDigestCheck(prisma, policy)
+    if (check.suspend) {
+      const reason = check.suspend
       await prisma.$transaction((tx) => suspendStandingPolicyInTransaction(tx, {
-        actor: { userId: null }, detail: { foundAt: 'dequeue' }, policyId: policy.id, reason: drift,
+        actor: { userId: null }, detail: { foundAt: 'dequeue' }, policyId: policy.id, reason,
       }))
       continue
     }
-    standing.push(policy)
+    standing.push({ ...policy, unplaceable: check.unplaceable })
   }
   return standing
 }
 
-/** Whether a record's last machine still counts as its own: in its pool, not removed, not away too long. */
-const stillItsOwn = (machine: Machine | undefined, policy: Policy, now: Date): boolean => {
-  if (!machine || machine.removedAt || machine.status === 'revoked') return false
-  if (!policy.executors.some((row) => row.executorId === machine.id)) return false
-  const hours = ticketWorkConfigOf(policy.trigger?.config).waitingMachineHours
-  return machine.lastSeenAt !== null && now.getTime() - machine.lastSeenAt.getTime() < hours * 3_600_000
+type Context = {
+  /** Which record holds each machine now: active on it, or waiting for it to come back. */
+  holders: ReadonlyMap<string, string>
+  machines: ReadonlyMap<string, Machine>
+  now: Date
+  policies: ReadonlyMap<string, Policy>
+}
+
+/** Whether the machine a record last worked on could take it back now. */
+const ownMachineCouldTakeIt = (record: Candidate, policy: Policy, context: Context): boolean => {
+  const own = record.executorId
+  if (!own || !policy.executors.some((row) => row.executorId === own) || policy.unplaceable.has(own)) return false
+  const holder = context.holders.get(own)
+  return ticketWorkMachineOnline(context.machines.get(own) ?? null, context.now) && (!holder || holder === record.id)
 }
 
 /** The records one machine may take, in the order it takes them. */
-const candidatesFor = (
-  executorId: string,
-  queued: readonly Candidate[],
-  context: { machines: ReadonlyMap<string, Machine>; now: Date; policies: ReadonlyMap<string, Policy> },
-): Candidate[] => queued
+const candidatesFor = (executorId: string, queued: readonly Candidate[], context: Context): Candidate[] => queued
   .filter((record) => {
     const policy = context.policies.get(record.policyId)
-    if (!policy?.executors.some((row) => row.executorId === executorId)) return false
-    return !record.executorId || record.executorId === executorId
-      || !stillItsOwn(context.machines.get(record.executorId), policy, context.now)
+    const pooled = policy?.executors.some((row) => row.executorId === executorId) ?? false
+    if (!policy || !pooled || policy.unplaceable.has(executorId)) return false
+    return !record.executorId || record.executorId === executorId || !ownMachineCouldTakeIt(record, policy, context)
   })
   .sort((left, right) => (
     Number(right.executorId === executorId) - Number(left.executorId === executorId)
@@ -148,6 +168,8 @@ const STOPPED_SUMMARY = {
   mover_lost_access: 'the person whose move started this work can no longer edit the board, so its queued work ended',
 } as const
 
+const CLOSE_REASON = { left_flow: 'ticket_left_flow', mover_lost_access: 'mover_lost_access' } as const
+
 /** A queued record that no longer stands: cancelled, with its reason where the ticket and its thread show it. */
 const cancelQueued = async (
   tx: Prisma.TransactionClient,
@@ -157,7 +179,7 @@ const cancelQueued = async (
   const sessions = await tx.agentTicketWork.findUniqueOrThrow({
     where: { id: record.id }, select: { executorId: true, policyId: true, sessionIds: true },
   })
-  await closeTicketWorkSessionsInTransaction(tx, [{ ...record, ...sessions }], 'ticket_left_flow', null)
+  await closeTicketWorkSessionsInTransaction(tx, [{ ...record, ...sessions }], CLOSE_REASON[reason], null)
   if (!await endTicketWork(tx, { by: 'system', reason, status: 'cancelled', work: record })) return
   await writeTicketWorkThreadRow(tx, {
     threadId: record.threadId,
@@ -227,6 +249,8 @@ export const dequeueOnto = async (
   input: { executorId: string; now: Date; policy: Policy; record: Candidate },
 ): Promise<DequeueOutcome> => prisma.$transaction(async (tx) => {
   const { policy, record } = input
+  // The policy's row before the ticket's: an end holds it while it writes the ticket's history.
+  if (await lockStandingPolicyRow(tx, policy.id) !== 'live') return 'stale'
   const columnId = await lockTicketColumn(tx, record.taskId)
   await lockThreadRunSlot(tx, { agentId: record.agentId, threadId: record.threadId })
   const fresh = await tx.agentTicketWork.findUnique({
@@ -270,25 +294,36 @@ export const dequeueTicketWork = async (prisma: PrismaClient, deps: { now: Date 
       startedByUserId: true, taskId: true, threadId: true, triggerId: true, task: { select: { priority: true } },
     },
   })).map(({ task, ...record }) => ({ ...record, policyId: record.policyId as string, priority: task.priority }))
-  const lastMachines = [...new Set(queued.flatMap((record) => (record.executorId ? [record.executorId] : [])))]
+  const lastMachines = queued.flatMap((record) => (record.executorId ? [record.executorId] : []))
+  const known = [...new Set([...machineIds, ...lastMachines])]
   const machines = new Map((await prisma.executor.findMany({
-    where: { id: { in: [...new Set([...machineIds, ...lastMachines])] } },
+    where: { id: { in: known } },
     select: { id: true, lastSeenAt: true, removedAt: true, status: true },
   })).map((machine) => [machine.id, machine]))
+  const holders = new Map((await prisma.agentTicketWork.findMany({
+    where: { executorId: { in: known }, status: { in: [...TICKET_WORK_MACHINE_HOLDING_STATUSES] } },
+    select: { executorId: true, id: true },
+  })).map((record) => [record.executorId as string, record.id]))
+  const context = { holders, machines, now: deps.now, policies: byId }
   const taken = new Set<string>()
   let started = 0
   for (const executorId of machineIds) {
-    const candidates = candidatesFor(executorId, queued.filter((record) => !taken.has(record.id)), {
-      machines, now: deps.now, policies: byId,
-    })
+    const candidates = candidatesFor(executorId, queued.filter((record) => !taken.has(record.id)), context)
     for (const record of candidates) {
       const policy = byId.get(record.policyId)!
       const outcome = await dequeueOnto(prisma, { executorId, now: deps.now, policy, record })
       // Placed or gone, a record is done with; one this machine could not take waits for another.
       if (outcome === 'assigned' || outcome === 'cancelled' || outcome === 'stale') taken.add(record.id)
-      if (outcome === 'assigned') started += 1
+      if (outcome === 'assigned') {
+        started += 1
+        holders.set(executorId, record.id)
+      }
       if (outcome === 'assigned' || outcome === 'held' || outcome === 'offline') break
     }
+  }
+  // A renumbering skips a row another transaction holds: every queue read here is told its places again.
+  for (const policy of policies) {
+    await prisma.$transaction((tx) => renumberTicketWorkQueueInTransaction(tx, policy.id))
   }
   return started
 }

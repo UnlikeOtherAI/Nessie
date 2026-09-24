@@ -93,7 +93,11 @@ runDatabaseTest('work waits for its offline machine with no run, and resumes wit
     const at = new Date()
     await heartbeat(prisma, { executorId: machine, key, now: at })
     const bucket = Math.floor(at.getTime() / 10_000)
-    assert.ok(await prisma.queueJob.findUnique({ where: { idempotencyKey: `${TICKET_WORK_SWEEP_TOPIC}:${bucket}` } }))
+    const enqueued = await prisma.queueJob.findUnique({
+      where: { idempotencyKey: `${TICKET_WORK_SWEEP_TOPIC}:machines:${bucket}` },
+    })
+    // An event's sweep runs the machine steps alone: the minute's tick asks after authors and lost jobs.
+    assert.deepEqual(enqueued?.payload, { bucket: String(bucket), machinesOnly: true })
     await runTicketWorkSweep(prisma, LOCAL)
     const back = await recordOf(prisma, work.id)
     assert.deepEqual([back.status, back.stateReason, back.executorId, back.lastWakeReason],

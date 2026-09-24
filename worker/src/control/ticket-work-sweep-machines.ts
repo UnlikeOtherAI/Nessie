@@ -17,8 +17,9 @@ import { requeueWorkStrandedOffline, resumeWorkWhoseMachineIsBack } from './tick
 
 /**
  * The sweep's machine half (docs/standards/ticket-work-machine-access.md →
- * "The sweep's machine half"), run by `runTicketWorkSweep` each minute and
- * whenever a transaction that may free a machine enqueues it:
+ * "The sweep's machine half"), run by `runTicketWorkSweep` each minute, and —
+ * its last three steps alone — whenever a transaction that may free a machine
+ * enqueues it:
  *
  * - **Authors UOA no longer lists.** UOA has no removal feed, so each author
  *   of a live, suspended or preparing policy is asked again with the identity
@@ -130,12 +131,19 @@ export const ticketSessionWorking = (record: {
  * The machine half, each step on its own: one failing never keeps the others
  * from running. Work whose machine came back resumes before the dequeue, and
  * work taken off a machine that stayed away joins the queue before it, so the
- * dequeue that follows sees both.
+ * dequeue that follows sees both. A sweep a transaction enqueued because it may
+ * have freed a machine (`machinesOnly`) runs those three alone: asking UOA after
+ * every author and reading every live record's limits are the minute's tick's.
  */
-export const sweepStandingMachineAccess = async (prisma: PrismaClient, deps: SweepDeps): Promise<void> => {
+export const sweepStandingMachineAccess = async (
+  prisma: PrismaClient,
+  deps: SweepDeps & { machinesOnly?: boolean },
+): Promise<void> => {
   const steps: Array<[string, () => Promise<unknown>]> = [
-    ['authors', () => endPoliciesOfDepartedAuthors(prisma, deps)],
-    ['limits', () => enforceLimitsOnLiveWork(prisma, deps)],
+    ...(deps.machinesOnly ? [] : [
+      ['authors', () => endPoliciesOfDepartedAuthors(prisma, deps)],
+      ['limits', () => enforceLimitsOnLiveWork(prisma, deps)],
+    ] as Array<[string, () => Promise<unknown>]>),
     ['back online', () => resumeWorkWhoseMachineIsBack(prisma, deps)],
     ['stranded', () => requeueWorkStrandedOffline(prisma, deps)],
     ['dequeue', () => dequeueTicketWork(prisma, deps)],
