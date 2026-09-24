@@ -73,6 +73,37 @@ test('the mcp.call payload stamps an owner beside runId, outside the model\'s ar
   assert.equal(executorCodingSessionOwnerKeyInput('exec', { agentId: 'agent', actorUserId: 'user' }), 'exec|agent|user')
 })
 
+test('a ticket context rides the owner, and only in its one lowercase spelling', () => {
+  const args = { server: 'coding-sessions', tool: 'session_list', arguments: {} }
+  const contextId = `ticket:${agentId}:${runId}`
+  const owner = { agentId, actorUserId, contextId }
+  assert.deepEqual(ExecutorMcpCallPayloadSchema.parse({ args, runId, owner }).owner, owner)
+  for (const bad of [
+    '', 'ticket:', `ticket:${agentId}`, `lease:${agentId}:${runId}`, `ticket:${agentId}:${runId}:x`,
+    `ticket:ABCDEF00-0000-4000-8000-000000000701:${runId}`, `ticket:${agentId}|${runId}`, ` ticket:${agentId}:${runId}`,
+  ]) {
+    const parsed = ExecutorMcpCallPayloadSchema.safeParse({ args, runId, owner: { ...owner, contextId: bad } })
+    assert.equal(parsed.success, false, bad)
+  }
+})
+
+test('the owner-key text: three ids without a context, exactly as before it existed, and four with one', () => {
+  // The same vectors as the executor's daemon test and executor-manage's key
+  // test: each runtime hashes this text, and all three must agree on every OS.
+  const executorId = '00000000-0000-4000-8000-000000000801'
+  const owner = { agentId: '00000000-0000-4000-8000-000000000802', actorUserId: '00000000-0000-4000-8000-000000000803' }
+  const contextId = 'ticket:00000000-0000-4000-8000-000000000901:00000000-0000-4000-8000-000000000902'
+  assert.equal(
+    executorCodingSessionOwnerKeyInput(executorId, owner),
+    '00000000-0000-4000-8000-000000000801|00000000-0000-4000-8000-000000000802|00000000-0000-4000-8000-000000000803',
+  )
+  assert.equal(
+    executorCodingSessionOwnerKeyInput(executorId, { ...owner, contextId }),
+    '00000000-0000-4000-8000-000000000801|00000000-0000-4000-8000-000000000802|00000000-0000-4000-8000-000000000803'
+      + '|ticket:00000000-0000-4000-8000-000000000901:00000000-0000-4000-8000-000000000902',
+  )
+})
+
 test('the heartbeat may tell the daemon whose sessions to close', () => {
   const base = { connectionEpoch: '3', status: 'online' }
   assert.equal(ExecutorDaemonHeartbeatResponseSchema.safeParse(base).success, true)

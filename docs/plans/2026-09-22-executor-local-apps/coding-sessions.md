@@ -194,6 +194,14 @@ other tool answers "No such session" for a foreign id. The quota is per owner.
 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` is set by default so Claude's auto-memory
 is not a channel between owners (the owner may override it in `set`).
 
+The owner is the launch or lease actor, or, for one ticket's work under a
+standing policy, the policy's author with the context
+`ticket:<policyId>:<taskId>`, hashed in as a fourth field
+([ticket-driven agents](../2026-09-23-ticket-driven-agents/machine-access.md#session-isolation)).
+A ticket's sessions are therefore their own owner: a lease's close never
+reaches them, and each ticket has its own quota. Without a context the key is
+the three ids, unchanged.
+
 ## 6. The agents
 
 ### Environment

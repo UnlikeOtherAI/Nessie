@@ -252,15 +252,29 @@ owners.
 
 The owner is stamped by the worker, never taken from the model: the `mcp.call`
 payload is `{args, runId, owner?}` (`ExecutorMcpCallPayloadSchema`, strict),
-with `owner: {agentId, actorUserId}` beside `runId` and under the argument
-digest. For calls to the executor's own bridge only, the daemon derives
-`_meta['nessie/owner'] = sha256:` + hex SHA-256 of
+with `owner: {agentId, actorUserId, contextId?}` beside `runId` and under the
+argument digest. For calls to the executor's own bridge only, the daemon
+derives `_meta['nessie/owner'] = sha256:` + hex SHA-256 of
 `executorCodingSessionOwnerKeyInput(executorId, owner)` — the three ids
-joined by a vertical bar — and sets `_meta['nessie/command']` to the command
-id. "Its own bridge" is structural: the server named `coding-sessions` whose
-argv ends `serve-coding-session-mcp --config <path>` and whose environment
-pins the digest the descriptor states. No other server receives any `_meta`,
-and the model's `arguments` are passed on untouched either way.
+joined by a vertical bar, then `|contextId` when there is one — and sets
+`_meta['nessie/command']` to the command id. "Its own bridge" is structural:
+the server named `coding-sessions` whose argv ends
+`serve-coding-session-mcp --config <path>` and whose environment pins the
+digest the descriptor states. No other server receives any `_meta`, and the
+model's `arguments` are passed on untouched either way.
+
+The owner is the launch or lease actor, or the actor of one ticket's work
+under a standing policy
+([ticket-driven agents](../plans/2026-09-23-ticket-driven-agents/machine-access.md#session-isolation)),
+whose `contextId` is `ticket:<policyId>:<taskId>` in lowercase ids
+(`ExecutorCodingSessionOwnerContextSchema`). A context is its own owner: the
+person's own sessions with that agent and every ticket's are isolated from
+one another, each has its own `maxLiveSessionsPerOwner`, and a lease's
+owner-wide close — keyed without a context — never reaches a ticket's
+session. Without a context the key is the three ids exactly as before
+contexts existed, so no session's key changed. The API admits a payload's
+context only when its binding pins that same one, and none does until the
+standing-policy binder lands.
 
 ## The reviewed configuration
 

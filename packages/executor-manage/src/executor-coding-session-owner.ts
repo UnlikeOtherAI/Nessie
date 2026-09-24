@@ -25,8 +25,12 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
  * bridge from that candidate, and no other server ever gets one.
  */
 
-/** Who an `mcp.call` to the bridge acts for: `ExecutorMcpCallOwnerSchema`, unbranded. */
-export type ExecutorCodingSessionOwner = { actorUserId: string; agentId: string }
+/**
+ * Who an `mcp.call` to the bridge acts for: `ExecutorMcpCallOwnerSchema`,
+ * unbranded. `contextId` names one ticket's work under a standing policy; a
+ * launch and a lease have none, and their key is the three ids alone.
+ */
+export type ExecutorCodingSessionOwner = { actorUserId: string; agentId: string; contextId?: string }
 
 /**
  * The key the bridge isolates an owner's sessions by: `sha256:` + hex SHA-256
@@ -68,19 +72,25 @@ const ownerOnlyRefusal = (executor: ExecutorOwnership): ExecutorError => new Exe
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
+/** Exactly the expected owner: the same ids, the same context or none, and nothing else. */
 const sameOwner = (stamped: unknown, expected: ExecutorCodingSessionOwner | undefined): boolean => {
   if (expected === undefined) return stamped === undefined
   return isRecord(stamped)
-    && Object.keys(stamped).length === 2
+    && Object.keys(stamped).length === (expected.contextId === undefined ? 2 : 3)
     && stamped.agentId === expected.agentId
     && stamped.actorUserId === expected.actorUserId
+    && stamped.contextId === expected.contextId
 }
 
 export type ExecutorMcpCallAuthority = {
   codingSessionsServer: string | null
   executor: ExecutorOwnership
   operationKey: string
-  /** The binding's consumed candidate: the agent and the person it was made for. */
+  /**
+   * The binding's consumed candidate — the agent and the person it was made
+   * for — and the work context the binding pins, when it pins one. A payload
+   * naming a context the binding does not pin is refused like any other owner.
+   */
   owner: ExecutorCodingSessionOwner
 }
 

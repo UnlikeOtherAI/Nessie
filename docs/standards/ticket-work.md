@@ -590,6 +590,14 @@ routes, and none of it names a machine.
 - In a `ticket.work` run, host-output-bearing writes are admitted only to that
   ticket's comments and its work thread, and the machine is named only to its
   owner and executor admins, never to the project audience.
+- **(T4) A ticket's coding sessions are their own owner.** The coding-session
+  owner carries `contextId: ticket:<policyId>:<taskId>`, hashed into the owner
+  key by `executorCodingSessionOwnerKeyInput` and by the daemon alike, so the
+  author's own DM sessions with the agent, and every other ticket's, are
+  neither listed nor reached, a lease's owner-wide close never touches it, and
+  each ticket has its own `maxLiveSessionsPerOwner`. Without a context the key
+  is unchanged. The API admits a context only when the binding pins that same
+  one; the binder that pins it is from T4.
 - **(T0) The policy's shape is enforced by the database.**
   `executor_standing_policies_confirmed_known` requires a `live` or
   `suspended` policy to carry `confirmed_at` and `author_origin`;

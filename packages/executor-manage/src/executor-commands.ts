@@ -10,7 +10,7 @@ import {
   encryptExecutorCommandJson,
   executorCommandDigest,
 } from './executor-command-codec.js'
-import { assertExecutorMcpCallPayload } from './executor-coding-session-owner.js'
+import { assertExecutorMcpCallPayload, type ExecutorCodingSessionOwner } from './executor-coding-session-owner.js'
 import {
   isExecutorLeaseLive,
   touchExecutorConversationLeaseForBinding,
@@ -55,11 +55,12 @@ export type ExecutorCommandCreateInput = {
 /**
  * What a current binding is: its executor, run and session, and whom it was
  * made for — the consumed candidate's agent and person, which the worker
- * stamps as the `owner` of a call to the coding-sessions bridge.
+ * stamps as the `owner` of a call to the coding-sessions bridge, with the work
+ * context when the binding pins one.
  */
 export type ExecutorCommandBindingFacts = {
   executorId: string
-  owner: { actorUserId: string; agentId: string }
+  owner: ExecutorCodingSessionOwner
   runId: string
   sessionId: string | null
 }

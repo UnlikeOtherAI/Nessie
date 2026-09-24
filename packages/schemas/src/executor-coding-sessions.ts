@@ -87,6 +87,21 @@ export type ExecutorCodingSessionsFacts = z.infer<typeof ExecutorCodingSessionsF
 /* Owners                                                                      */
 /* -------------------------------------------------------------------------- */
 
+const LowercaseUuidPattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+/**
+ * The work an owner's sessions belong to, beside the agent and the person:
+ * `ticket:<policyId>:<taskId>` for one ticket's work under a standing policy.
+ * Absent for a launch and a conversation lease, whose sessions are the
+ * person's own with that agent. It is hashed into the owner key, so a ticket's
+ * sessions are isolated from the person's own and from every other ticket's,
+ * and each has its own live-session quota. Lowercase ids only: the key hashes
+ * the text, and one id spelled two ways would be two owners.
+ */
+export const ExecutorCodingSessionOwnerContextSchema = z
+  .string()
+  .regex(new RegExp(`^ticket:${LowercaseUuidPattern}:${LowercaseUuidPattern}$`))
+
 /**
  * Who an `mcp.call` acts for, stamped by the worker from the binding's
  * candidate — never taken from the model. It rides the command payload beside
@@ -97,6 +112,7 @@ export const ExecutorMcpCallOwnerSchema = z
   .object({
     agentId: AgentIdSchema,
     actorUserId: UserIdSchema,
+    contextId: ExecutorCodingSessionOwnerContextSchema.optional(),
   })
   .strict()
 export type ExecutorMcpCallOwner = z.infer<typeof ExecutorMcpCallOwnerSchema>
@@ -106,12 +122,17 @@ export type ExecutorMcpCallOwner = z.infer<typeof ExecutorMcpCallOwnerSchema>
  * of this text. The daemon derives it for `_meta['nessie/owner']`; the control
  * plane derives the same key to name an owner in `codingSessionClose`. The
  * executor id is part of it, so one person's key on one machine means nothing
- * on another. Hashing is each runtime's own; the text is this one function.
+ * on another. A context is a fourth field; without one the text is the three
+ * ids exactly as before it existed, so no session's key changed. None of the
+ * ids can hold a vertical bar, so no three-field text equals a four-field one.
+ * Hashing is each runtime's own; the text is this one function.
  */
 export const executorCodingSessionOwnerKeyInput = (
   executorId: string,
-  owner: { agentId: string; actorUserId: string },
-): string => `${executorId}|${owner.agentId}|${owner.actorUserId}`
+  owner: { agentId: string; actorUserId: string; contextId?: string },
+): string => [
+  executorId, owner.agentId, owner.actorUserId, ...(owner.contextId === undefined ? [] : [owner.contextId]),
+].join('|')
 
 export const ExecutorCodingSessionOwnerKeySchema = Sha256DigestSchema
 
