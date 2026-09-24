@@ -58,6 +58,52 @@ const wholeSuiteRule = (
     : 'that confirmation happens on the Executors page, not here.'),
 ]
 
+/**
+ * Standing machine access, where the Designer reads it: one card per trigger,
+ * prepared only for the person asking, on their own qualifying machines, and
+ * answered in their own DM. Named by the face that holds the tool.
+ */
+const standingAccessRule = (writeSurface: GlobalAgentCatalogueWriteSurface): string[] => [
+  "A ticket trigger's work runs on machines only under standing machine access, which only the person who "
+  + 'set the trigger up can give, for private machines they paired whose coding-sessions bridge is reviewed '
+  + '("ticket work: yes" above). '
+  + (writeSurface === 'agent_tools'
+    ? 'executor_standing_policy_prepare prepares ONE confirmation card for the trigger and one or two such '
+      + "machines — it covers the agent's access to each machine too, so never prepare those separately — and "
+      + 'posts it here; they confirm it with their password. Offer only machines that say "ticket work: yes"; '
+      + 'for the others, say why.'
+    : "They set it up from the trigger's Machine access section."),
+]
+
+/**
+ * Whether a trigger's ticket work can run on it under the person's standing
+ * machine access: a private machine they paired, with a reviewed
+ * coding-sessions bridge that signs Claude Code's per-turn budget
+ * (`maxBudgetUsd`) and is new enough to sign what standing access checks.
+ * Said for every machine, so the Designer proposes only those that qualify
+ * and can say why the others do not.
+ */
+const TICKET_WORK_BLOCKERS: Record<NonNullable<GlobalAgentExecutorFacts['ticketWorkBlocker']>, string> = {
+  no_claude: 'it offers only Codex, which has no per-turn spending limit',
+  no_turn_budget: 'Claude Code there has no per-turn spending limit: set maxBudgetUsd in its coding-sessions '
+    + 'configuration and approve the new revision',
+  older_executor: 'its executor is too old to sign its per-turn budget, session limit and which commands run '
+    + 'unasked: update it and approve the new revision',
+}
+
+const ticketWorkLine = (executor: GlobalAgentExecutorFacts): string => {
+  if (!executor.pairedByYou) {
+    return "    ticket work: no — only a private machine you paired can run a trigger's ticket work as you"
+  }
+  if (executor.codingSessionsReviewed && executor.ticketWorkBlocker) {
+    return `    ticket work: not yet — ${TICKET_WORK_BLOCKERS[executor.ticketWorkBlocker]}`
+  }
+  return executor.codingSessionsReviewed
+    ? `    ticket work: yes — you paired it and its coding-sessions bridge is reviewed${executor.status === 'online'
+      ? '' : ', but it is not online, so bring it online before offering it'}`
+    : '    ticket work: not yet — you paired it, but its active reviewed policy offers no coding-sessions bridge'
+}
+
 const executorLines = (executor: GlobalAgentExecutorFacts): string[] => [
   bullet(
     `${executor.label} | executorId=${executor.executorId} `
@@ -65,6 +111,7 @@ const executorLines = (executor: GlobalAgentExecutorFacts): string[] => [
     + `${executor.projectId ? ` project=${executor.projectId}` : ''} `
     + `| status=${executor.status}`,
   ),
+  ticketWorkLine(executor),
   `    profiles=${executor.profiles.join(', ') || 'none approved yet'}`,
   `    last seen: ${executor.lastSeenAt ?? 'never'}`,
   ...(executor.statusDetail ? [`    status detail: ${executor.statusDetail}`] : []),
@@ -116,5 +163,6 @@ export const executorSection = (
     + 'deployment\'s: somebody else may be able to see more.',
     ...executors.flatMap(executorLines),
     ...wholeSuiteRule(writeSurface),
+    ...standingAccessRule(writeSurface),
   ]
 }

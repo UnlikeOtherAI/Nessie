@@ -69,7 +69,7 @@ it is talking to.
 | **T2 document trigger** | T1 | `document_changed`, the version hook, the shared line diff, `kb_page_diff`, routing a ticket's documents to its thread, and the Finder doorway |
 | **T3 reminders** | T1 | `check_back_in`, the quiet-wake safety net and the `ticket-work.sweep` job |
 | **T4 machine access** | T1, 3b | The coding-session owner *context* and the new close reasons, then the standing policy, host profile, digests, the composite card, pool assignment at dispatch, binding, isolation, closes, fences, audit, ticket-mode coding tools, pull-request tracking, limits and cost, the executor page and trigger Machine access section, and the invariant amendments |
-| **T5 session wakes and dequeue** | T4 | Turn numbers in the session report, the heartbeat intake wake, dequeue across policies, the waiting-machine and back-online states |
+| **T5 session wakes and dequeue** | T4 | The heartbeat intake wake over the session report's turn numbers (which T4 already ships), dequeue across policies, the waiting-machine and back-online states |
 | **T6 project operator** | T1 | The explicit-grant project-operator capability, workflow tools moved behind it, and the CTO setting up new projects and flows for its live requester |
 
 T2, T3, T4 and T6 run in parallel after T1 and merge in that order, each green
@@ -102,6 +102,10 @@ The platform cannot and must not do these:
   configuration, and have `gh` and Claude Code logged in on the machine with
   the repository under a configured root. The card warns when they are not
   allowed.
+- Set `maxBudgetUsd` for Claude Code in that coding-sessions configuration,
+  at or below the ticket's spend limit, and run an executor new enough to
+  sign it: a machine without a signed per-turn budget cannot take ticket work,
+  and the Designer says "ticket work: not yet" for it.
 - Press the one machine-access confirmation card with fresh verification.
 - Answer the coding agent's product questions, through ticket comments.
 - Widen a machine's permissions after a denial. Restart a ticket that hit a

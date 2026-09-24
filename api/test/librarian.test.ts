@@ -140,6 +140,8 @@ const buildFakePrisma = () => {
     $executeRaw: async () => undefined,
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
     agent: agentApi,
+    // No standing machine access to suspend when the agent's grants change.
+    executorStandingPolicy: { findMany: async () => [] },
     toolRegistryEntry: toolRegistryEntryApi,
     toolGrant: toolGrantApi,
   }

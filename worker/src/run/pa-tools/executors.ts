@@ -110,6 +110,9 @@ const reviewCardSubtitle = (change: ExecutorAccessChange): string => {
       return change.action === 'set'
         ? 'Change who can use this executor'
         : 'Remove access to this executor'
+    // Posted by its own tool with its own card (`provisioning-standing-policy.ts`).
+    case 'standing_policy':
+      return 'Give an agent standing access to your machines'
     default:
       return change.state === 'allowed'
         ? 'Give an agent access to this executor'

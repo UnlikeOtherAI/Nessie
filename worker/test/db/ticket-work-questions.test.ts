@@ -53,7 +53,7 @@ const commentAs = (prisma: PrismaClient, s: TicketWorkSeed, taskId: string, user
 
 runDatabaseTest('a board editor\'s answer wakes the work even when its trigger does not follow comments', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma, { followKinds: ['moved'] })
+  const s = await seedTicketWork(prisma, { followKinds: ['moved'], machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)
@@ -92,7 +92,7 @@ runDatabaseTest('a board editor\'s answer wakes the work even when its trigger d
 
 runDatabaseTest('an answer from someone who cannot edit the board wakes nothing but brings the quiet wake back', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)

@@ -9,6 +9,7 @@ import type { InvocationRecord } from '@nessie/runtime'
 
 import { persistInvocationLedgerEvents } from '../inference.js'
 import { createAgentMessage } from './agent-message.js'
+import { recordTicketWorkRunSpend } from './ticket-work-setup.js'
 import { commitSuccessfulRun } from './completion-commit.js'
 import { applyRunReplyBookkeeping } from './lifecycle.js'
 import { noteSubscriptionSuccess } from './subscription-health.js'
@@ -37,6 +38,7 @@ export const completeRunExecution = async (
     runId: context.run.id,
     invocations: input.invocations,
   })
+  await recordTicketWorkRunSpend(deps.prisma, { actorContext: payload.actorContext, runId: context.run.id })
 
   // A successful run on a personal subscription clears any transient health
   // problem and records that the credential was actually used.

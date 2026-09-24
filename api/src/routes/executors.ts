@@ -42,7 +42,8 @@ import { emitAuditEvent } from '../services/audit.js'
 import { executorPairingAudit } from '../services/executor-pairing-audit.js'
 import { launchExecutorRun } from '../services/executor-run-launch.js'
 import { publishMessageNew } from '../services/message-delivery.js'
-import { applyExecutorAgentPolicyChange } from '../services/executor-agent-access-policy.js'
+import { applyExecutorAccessChangeEffects, applyRejectedExecutorAccessChangeEffects } from '@nessie/team-admin'
+import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import { announceClosedExecutorReviewCards } from '../services/agent-card-executor-review.js'
 import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
@@ -55,6 +56,11 @@ import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
 import { registerExecutorManagementReadRoutes } from './executor-management-reads.js'
 import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
 import type { RouteDeps } from './types.js'
+
+// Read once at startup, as the trigger routes do: whether this deployment signs
+// Ledger calls decides whether a standing policy's captured origin must carry
+// a UOA identity it can sign with.
+const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
 
 /**
  * Human executor management and the deliberately narrow public enrollment
@@ -247,7 +253,7 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       const result = await rejectExecutorAccessChange(prisma, actorContext, {
         accessChangeId,
         confirmationToken: body.confirmationToken,
-      })
+      }, (tx, rejected) => applyRejectedExecutorAccessChangeEffects(tx, { actorContext, change: rejected.change }))
       await emitAuditEvent(prisma, {
         actorContext,
         action: 'executor.access_change.rejected',
@@ -411,8 +417,8 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
         accessChangeId,
         confirmationToken: body.confirmationToken,
         freshVerificationSatisfied,
-      }, (tx, change) => applyExecutorAgentPolicyChange(tx, {
-        ...change, organizationId: actorContext.tenant.organizationId, actorUserId: actorContext.actor.actorId,
+      }, (tx, confirmed) => applyExecutorAccessChangeEffects(tx, {
+        actorContext, change: confirmed.change, executorId: confirmed.executorId, ledgerSigningConfigured,
       }))
       await emitAuditEvent(prisma, {
         actorContext,

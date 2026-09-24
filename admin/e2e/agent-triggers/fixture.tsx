@@ -1,6 +1,6 @@
 import { ApiClientError, ApiClientProvider, type ApiClient } from '@nessie/client-core'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 
@@ -12,6 +12,8 @@ import { TriggerEditorDialog } from '../../src/components/features/triggers/Trig
 import type { AgentRecord, AgentTriggerRecord, ChannelRecord } from '../../src/lib/api-client'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
 import { DocsScenario, DocumentDetailScenario, documentGet, refuseDocumentCreate } from './documents'
+import { machineAccessGet, machineAccessPost, suspendMachineAccess } from './machine-access'
+import { installTriggerPageSession, TriggerPageScenario } from './trigger-page'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
@@ -28,10 +30,13 @@ import '../../src/styles.css'
  * created), `document` (a document trigger refused on its space, then
  * created), `board` (the column badge, card dots and the column menu that
  * opens the editor prefilled), `detail` and `document-detail` (a ticket or
- * document trigger's facts and deliveries) and `docs` (the project's Documents:
+ * document trigger's facts and deliveries; a ticket trigger's Machine access
+ * section in the state `&access=` names, from `machine-access.tsx`), `docs` (the project's Documents:
  * review badges, and the row menu's "Tell an agent when this changes…";
- * `&owner=0` for a viewer the Triggers routes refuse). The document half's
- * data and stubs are in `documents.tsx`.
+ * `&owner=0` for a viewer the Triggers routes refuse) and `page` (the real
+ * `TriggerDetailPage` of the ticket trigger, for the `&viewer=` of
+ * `trigger-page.tsx`; a save through its editor pauses live machine access).
+ * The document half's data and stubs are in `documents.tsx`.
  *
  * The CTO is bound to a public project channel and a protected one; only the
  * public one may carry ticket work. The Review column already starts the
@@ -61,6 +66,7 @@ try {
 } catch {
   // A draft left by a previous run would change what the dialog shows.
 }
+if (scenario === 'page') installTriggerPageSession(params.get('viewer') ?? 'owner')
 
 const agents = [
   {
@@ -131,15 +137,20 @@ const delivery = (n: number, source: string, status: string, payload: Record<str
   // A reminder names its reminder and a quiet wake nothing; every other event its TaskEvent.
   payload: {
     taskId: tasks[0]!.id,
-    ...(payload.eventType === 'reminder' || payload.eventType === 'quiet'
+    ...(payload.eventType === 'reminder' || payload.eventType === 'quiet' || payload.kind === 'standing_policy_refused'
       ? {}
       : { taskEventId: `60000000-0000-4000-8000-0000000003${n}0` }),
     ...payload,
   },
   source, status, triggerId: TICKET_TRIGGER,
-  ...(status === 'skipped' ? { errorMessage: String(payload.skipReason) } : {}),
+  ...(status === 'skipped' ? { errorMessage: String(payload.skipReason ?? 'Ran without a machine.') } : {}),
 })
 const history = [
+  // T4: a run the standing-policy binder bound no machine to.
+  delivery(6, 'binding', 'skipped', {
+    kind: 'standing_policy_refused', reason: 'machine_unavailable', runId: '60000000-0000-4000-8000-000000000700',
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
   // T3: the agent's own reminder, and the platform's quiet wake.
   delivery(5, 'quiet', 'delivered', {
     eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet', followedWakeAt: T0,
@@ -174,6 +185,8 @@ const PICKUP_REFUSAL = 'column "Review" is already a start-work column of the en
 const get = async (path: string) => {
   const url = new URL(path, location.origin)
   const route = url.pathname
+  const access = machineAccessGet(url)
+  if (access !== undefined) return access
   const documents = documentGet(url, fixture, AGENT_ID)
   if (documents !== undefined) return documents
   if (route === '/api/agents') return agents
@@ -181,7 +194,25 @@ const get = async (path: string) => {
   if (route === `/api/projects/${PROJECT}/boards`) return [board]
   if (route === `/api/projects/${PROJECT}/fields`) return []
   if (route === `/api/triggers/${TICKET_TRIGGER}/history`) return history
+  // The trigger's page: an owner reads the list, its author the one trigger.
+  if (route === '/api/triggers') return [ticketTrigger]
+  if (route === `/api/triggers/${TICKET_TRIGGER}`) return ticketTrigger
   return []
+}
+
+/**
+ * A save of the ticket trigger: recorded, and answered as the server answers
+ * an edit of a pinned field while its machine access is live — paused, and
+ * said beside the trigger.
+ */
+const put = async (path: string, body: unknown) => {
+  fixture.posted.push({ body, path })
+  if (path !== `/api/triggers/${TICKET_TRIGGER}`) return { ok: true }
+  const paused = suspendMachineAccess()
+  return {
+    ...ticketTrigger,
+    ...(paused ? { machineAccess: { authorName: 'Ondrej', fields: ['the general instructions'], kind: 'suspended' } } : {}),
+  }
 }
 
 const client = {
@@ -190,6 +221,9 @@ const client = {
   getPage: async (path: string) => ({ data: await get(path), meta: { hasMore: false } }),
   patch: async () => ({ ok: true }),
   post: async (path: string, body: { type: AgentTriggerRecord['type'] } & Record<string, unknown>) => {
+    // The Machine access section's prepare and End (machine-access.tsx).
+    const access = machineAccessPost(path, body, fixture.posted)
+    if (access !== undefined) return access
     // Only a trigger create is the runner's business; the docs tab's own writes are not.
     if (!path.endsWith('/triggers')) return { ok: true }
     fixture.posted.push({ body, path })
@@ -207,7 +241,7 @@ const client = {
       updatedAt: new Date().toISOString(),
     } as AgentTriggerRecord
   },
-  put: async () => ({ ok: true }),
+  put,
 } as unknown as ApiClient
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -274,22 +308,23 @@ const Scenario = () => {
   )
 }
 
+const framed = (body: ReactNode) => (
+  // The shell's one Back registry, which the dialog registers with.
+  <LocalBackProvider>
+    <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>{body}</div>
+  </LocalBackProvider>
+)
+
 // A data router, because the docs tab's upload guard blocks navigation (`useBlocker`).
-const router = createMemoryRouter([{
-  element: (
-    // The shell's one Back registry, which the dialog registers with.
-    <LocalBackProvider>
-      <div data-ready="true" style={{ background: 'var(--main)', minHeight: '100vh' }}>
-        <Scenario />
-      </div>
-    </LocalBackProvider>
-  ),
-  path: '*',
-}], {
+const router = createMemoryRouter([
+  // The trigger's own page reads its id from the route, as the admin's router gives it.
+  ...(scenario === 'page' ? [{ element: framed(<TriggerPageScenario />), path: '/agents/triggers/:triggerId' }] : []),
+  { element: framed(<Scenario />), path: '*' },
+], {
   // `&view=list` opens the docs tab in the Finder's list view.
   initialEntries: [scenario === 'docs'
     ? `/projects/${PROJECT}/docs${params.get('view') ? `?view=${params.get('view')}` : ''}`
-    : '/agents/triggers'],
+    : scenario === 'page' ? `/agents/triggers/${TICKET_TRIGGER}` : '/agents/triggers'],
 })
 
 createRoot(document.getElementById('root')!).render(

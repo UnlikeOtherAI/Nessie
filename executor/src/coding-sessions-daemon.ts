@@ -37,11 +37,13 @@ import type { ExecutorMcpSessionManager } from './mcp-session-manager.js'
  * for, and how sessions end when the daemon's authority does.
  *
  * Owners. The worker stamps an `mcp.call` payload with `owner: {agentId,
- * actorUserId}`. For calls to the executor's own coding-sessions bridge — and
- * no other server, ever — the daemon turns it into `_meta['nessie/owner'] =
- * sha256(executorId|agentId|actorUserId)` and adds `_meta['nessie/command']`,
- * the command id that makes a replay a no-op. The model's `arguments` are
- * passed on untouched.
+ * actorUserId, contextId?}`. For calls to the executor's own coding-sessions
+ * bridge — and no other server, ever — the daemon turns it into
+ * `_meta['nessie/owner'] = sha256(executorId|agentId|actorUserId[|contextId])`
+ * and adds `_meta['nessie/command']`, the command id that makes a replay a
+ * no-op. A ticket's context is its own owner, so a close for the person's own
+ * sessions with that agent never reaches it, and each ticket has its own
+ * quota. The model's `arguments` are passed on untouched.
  *
  * Teardown. Coding sessions are built to outlive a bridge, a daemon restart
  * and a dropped connection, so a failed poll or heartbeat alone closes

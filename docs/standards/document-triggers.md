@@ -234,7 +234,10 @@ delivery's transaction:
    follow `document`, and a person who can edit the board must have saved
    part of the change — an agent's or a non-editor's edit never steers ticket
    work. Only that agent's record is woken, however many ticket triggers cover
-   the board. The event carries the document trigger's own instructions.
+   the board. The event says only what changed: the document trigger's own
+   instructions stay with its review threads, because a ticket's work runs
+   on its ticket trigger's instructions, which the ticket's machine access
+   pinned ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
    To the T3 rules ([ticket-work-reminders.md](ticket-work-reminders.md)) it
    is a wake like any follow — it takes the thread's run slot before it
    writes the record, counts, and restarts the quiet wake's wait
@@ -261,8 +264,12 @@ delivery's transaction:
    A ticket's document lands here when that ticket's work is not live for the
    agent, does not follow documents, or was steered by nobody who may, and
    the kickoff names the ticket and says which. A ticket work wake the seam
-   refuses (its wake limit, work that ended a moment ago) is reviewed here
-   too, rather than lost.
+   refuses (a limit, work that ended a moment ago, or — under standing
+   machine access — work whose machine is offline, which the kickoff says is
+   waiting for it rather than ended) is reviewed here too, rather than lost.
+   A wake the seam takes is a `ticket.work` wake like any other: its run is
+   bound through the ticket's standing policy afresh
+   ([ticket-work-machine-access.md](ticket-work-machine-access.md)).
 
 ## What a wake says
 

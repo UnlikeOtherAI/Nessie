@@ -512,3 +512,35 @@ test('the catalog of a program the revision does not name is refused without a c
   assert.equal(answer.failure.correctable, true)
   assert.match(answer.failure.output, /Its programs: kelpie\./)
 })
+
+test('a run a standing policy bound is never offered the generic pair, and with no ticket scope not the coding tools either', async () => {
+  const standing = { standingPolicyId: '00000000-0000-4000-8000-00000000000a', ticketWorkId: '00000000-0000-4000-8000-00000000000b' }
+  const prisma = {
+    executorBinding: {
+      findMany: async () => [
+        { ...standing, id: '00000000-0000-4000-8000-000000000004', operationKey: 'mcp.tools' },
+        { ...standing, id: '00000000-0000-4000-8000-000000000005', operationKey: 'mcp.call' },
+      ],
+    },
+    toolRegistryEntry: {
+      deleteMany: async () => ({ count: 0 }),
+      upsert: async ({ where }: { where: { organizationId_scopeKey_toolId: { toolId: string } } }) => ({
+        id: where.organizationId_scopeKey_toolId.toolId,
+      }),
+    },
+  } as unknown as PrismaClient
+
+  // The ticket's coding scope did not load (its host profile unreadable, say): the bindings still say standing.
+  const toolset = await buildExecutorToolset(prisma, {
+    agentId,
+    agentToolPolicy: { 'executor.mcp.call': true, 'executor.mcp.tools': true },
+    encryptionSecret: 'test-secret',
+    hostOutput: null,
+    organizationId,
+    runId,
+    ticketWork: null,
+  })
+
+  assert.deepEqual([...toolset.handledNames], [])
+  assert.equal(toolset.codingSessions, null)
+})

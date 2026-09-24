@@ -32,7 +32,8 @@ import { ticketWorkFor as ticketWorkForState, WORK_REMINDER } from './ticket-wor
  * `mirrored-readonly`, `viewer` (`viewerCanEdit: false`), `create`, `settings`
  * (Board → Settings → Labels) and `card`. `&work=` gives the ticket an agent's
  * work (`ticketWorkFor`): the chip in the dialog and the dot on the card, in
- * each state T1 can reach. Bytes (`/api/attachments/…`,
+ * each state T1 can reach, T3's reminder and question, and T4's machine
+ * states. Bytes (`/api/attachments/…`,
  * `/api/uploads`) and the session (`/api/auth/me`) are answered by the
  * runner's `page.route`, because they leave through `fetch`/XHR, not the
  * ApiClient.

@@ -101,10 +101,6 @@ const ticketRoute = async (prisma: PrismaClient, input: RouteInput): Promise<Tic
   }
 }
 
-/** The document trigger's own instructions, carried into the ticket's wake beside the ticket trigger's. */
-const withInstructions = (text: string, config: DocumentChangedStoredConfig): string =>
-  config.instructions ? `${text}\nWhat this document trigger asks of you: ${config.instructions.general}` : text
-
 const reviewInThread = async (
   tx: Prisma.TransactionClient,
   input: RouteInput & { channelId: string },
@@ -159,7 +155,11 @@ export const routeDocumentChange = async (
       eventType: 'document_changed',
       createdAt: input.at,
       kind: 'document',
-      described: { text: withInstructions(described.text, input.config), summary: described.summary },
+      // Only what changed: a ticket's work runs on the ticket trigger's own
+      // instructions, which its machine access pinned. The document
+      // trigger's are its review thread's, and never reach a run that may
+      // drive the ticket owner's machine.
+      described: { text: described.text, summary: described.summary },
     },
     workId: route.work.id,
     reason: 'document_changed',
@@ -168,12 +168,14 @@ export const routeDocumentChange = async (
     resumes: false,
     deliveryId: input.deliveryId,
   })
-  // The work stopped before the change reached it (its wake limit, or it
-  // ended a moment ago): the change is still reviewed, in the page's thread.
+  // The work stopped before the change reached it (a limit, or it ended a
+  // moment ago), or waits for its machine to reconnect: the change is still
+  // reviewed, in the page's thread.
   if (outcome.outcome === 'refused') {
     const task = await tx.task.findUnique({ where: { id: route.work.taskId }, select: { title: true } })
     return reviewInThread(tx, { ...input, channelId }, {
-      id: route.work.taskId, title: task?.title ?? null, why: 'work_ended',
+      id: route.work.taskId, title: task?.title ?? null,
+      why: outcome.reason === 'machine_offline' ? 'work_waiting_machine' : 'work_ended',
     })
   }
   return { outcome: 'ticket_work', workId: outcome.workId, threadId: route.work.threadId }

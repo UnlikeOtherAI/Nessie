@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { NormalisedComment } from '@nessie/board-sources'
+import { answerTicketWorkQuestions, applyTicketWorkAgentComment } from '@nessie/executor-manage'
 import {
   COMMENT_REMOVAL_REASON,
   inlineAttachmentIds,
@@ -14,7 +15,6 @@ import {
 import type { BoardSourceCommentWriteBackError as BoardSourceWriteBackError } from './board-source-writeback.js'
 import { findAccessibleTask, isUuid, SYSTEM_TASK_EVENT_ORIGIN, taskEventBy, type TaskActor } from './task-access.js'
 import { recordTaskEvent } from './task-event-dispatch.js'
-import { answerTicketWorkQuestions, applyTicketWorkAgentComment } from './ticket-work-clock.js'
 import {
   attachmentRemover,
   linkUploadsToTask,

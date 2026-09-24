@@ -5,6 +5,10 @@ import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
+import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
+
+import { CODING_SESSIONS_CONFIG_DIGEST_ENV } from '../src/coding-session/config.js'
+import { createCodingSessionsDaemon } from '../src/coding-sessions-daemon.js'
 import { createCodingHarness, OWNER_A, OWNER_B, waitUntil } from './coding-session-harness.js'
 
 /**
@@ -136,6 +140,51 @@ test('each owner gets the configured number of live sessions', { timeout: 120_00
     await harness.call('session_close', { sessionId: first.body.sessionId })
     await harness.waitForStatus(first.body.sessionId as string, (body) => body.status === 'closed')
     assert.equal((await harness.call('session_start', { agent: 'claude', root: 'work', prompt: 'four' })).ok, true)
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('a ticket\'s sessions are their own owner: a lease-end close misses them, and each ticket has its own quota', {
+  timeout: 150_000,
+}, async () => {
+  const harness = await createCodingHarness({ codingSessions: { maxLiveSessionsPerOwner: 1 }, reviewedDigest: true })
+  // The daemon over the harness's own bridge, so the keys are the ones it derives from a stamped owner.
+  const facts: ExecutorCodingSessionsFacts = {
+    serverName: 'coding-sessions', agents: ['claude', 'codex'], permissionMode: { claude: 'default', codex: 'default' },
+    allowedToolCount: 0, environmentNames: [], rootNames: ['work'],
+    configDigest: harness.server.env![CODING_SESSIONS_CONFIG_DIGEST_ENV]!,
+  }
+  const daemon = createCodingSessionsDaemon({
+    executorId: randomUUID(), facts, servers: [harness.server], sessions: harness.manager, log: () => undefined,
+  })
+  const person = { agentId: randomUUID(), actorUserId: randomUUID() }
+  const keyFor = (owner: { agentId: string; actorUserId: string; contextId?: string }): string => {
+    const meta = daemon.callMeta('coding-sessions', { commandId: randomUUID(), owner })
+    return meta?.['nessie/owner'] as string
+  }
+  const own = keyFor(person)
+  const ticketA = keyFor({ ...person, contextId: `ticket:${randomUUID()}:${randomUUID()}` })
+  const ticketB = keyFor({ ...person, contextId: `ticket:${randomUUID()}:${randomUUID()}` })
+  assert.equal(new Set([own, ticketA, ticketB]).size, 3)
+  const start = (owner: string, prompt: string) => harness.call('session_start', { agent: 'claude', root: 'work', prompt }, { owner })
+  try {
+    const mine = await start(own, 'the person\'s own task')
+    const first = await start(ticketA, 'NES-140 fix the pricing page')
+    const second = await start(ticketB, 'NES-141 fix the login page')
+    for (const answer of [mine, first, second]) assert.equal(answer.ok, true, JSON.stringify(answer.body))
+    // The quota of one is per full owner key: the person's own session does not use up a ticket's.
+    assert.equal((await start(own, 'another own task')).code, 'coding_session_quota_exceeded')
+    assert.equal((await start(ticketA, 'NES-140 again')).code, 'coding_session_quota_exceeded')
+    assert.deepEqual(((await harness.call('session_list', {}, { owner: ticketA })).body.sessions as { sessionId: string }[])
+      .map((session) => session.sessionId), [first.body.sessionId], 'a ticket lists its own sessions only')
+    // The person's last lease ends: the control plane asks for their key without a context.
+    await daemon.close([{ ownerKey: own, reason: 'lease_ended' }])
+    await harness.waitForStatus(mine.body.sessionId as string, (body) => body.status === 'closed', own)
+    for (const [sessionId, owner] of [[first.body.sessionId, ticketA], [second.body.sessionId, ticketB]] as const) {
+      const status = await harness.waitForStatus(sessionId as string, (body) => body.status === 'waiting_for_input', owner)
+      assert.equal(status.status, 'waiting_for_input', 'the ticket\'s session is untouched')
+    }
   } finally {
     await harness.cleanup()
   }

@@ -8,6 +8,7 @@ import { ExecutorPlatformFactsSchema, type ExecutorLocalMcpReport } from '@nessi
 import { descriptorRevisionViews, localMcpFor } from './executor-view-projections.js'
 import type {
   AuthorizedActionContext,
+  ExecutorCodingSessionsFacts,
   ExecutorPlatformFacts,
   ExecutorProfile,
   ExecutorScope,
@@ -92,6 +93,8 @@ export type ExecutorAccessView = {
     profiles: ExecutorProfile[]
     reviewStatus: 'pending_review' | 'active' | 'disabled'
     revision: number
+    /** The coding bridge's signed facts, when this proposal offers the bridge. */
+    codingSessions?: ExecutorCodingSessionsFacts
   }>
   /**
    * The daemon's last observation of its named MCP servers. Absent means this

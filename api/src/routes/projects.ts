@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   createProjectForUser,
   deleteProject,
+  endStandingPoliciesForAuthorInTransaction,
   mapProjectRecord,
   projectCountsInclude,
   ProjectValidationError,
@@ -256,6 +257,7 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     // handler: it enumerates every blocking family in one place and returns one
     // typed refusal per family. The route parses, calls, and maps.
     const result = await deleteProject(prisma, {
+      actorUserId: actorContext.actor.actorId,
       organizationId: actorContext.tenant.organizationId,
       projectId,
     })
@@ -387,7 +389,19 @@ export const registerProjectRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const result = await prisma.projectMember.deleteMany({ where: { projectId, userId } })
+    // Removed from the project, they may no longer edit its boards: any
+    // machine access they gave its triggers ends in the same transaction.
+    const result = await prisma.$transaction(async (tx) => {
+      const removed = await tx.projectMember.deleteMany({ where: { projectId, userId } })
+      if (removed.count > 0) {
+        await endStandingPoliciesForAuthorInTransaction(tx, {
+          actor: { requestId: actorContext.actionContext.requestId, userId: actorContext.actor.actorId },
+          organizationId: actorContext.tenant.organizationId,
+          userId,
+        })
+      }
+      return removed
+    })
     if (result.count === 0) {
       sendApiError(reply, 404, 'MEMBER_NOT_FOUND', 'Project member not found')
       return reply

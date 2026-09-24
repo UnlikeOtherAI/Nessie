@@ -8,6 +8,7 @@ import {
   argumentsFor,
   CodingBridgeError,
   invalidArguments,
+  pullRequestArgument,
   requiredText,
   sessionIdArgument,
 } from './bridge-tools.js'
@@ -104,6 +105,14 @@ const titleFrom = (prompt: string): string => {
   return first.length > 80 ? `${first.slice(0, 79)}…` : first
 }
 
+/**
+ * What the session has cost across its turns, once a turn has reported a cost — the figure
+ * `session_status` answers, which a ticket's work and the heartbeat intake add to its spend.
+ */
+const costOf = (state: CodingSessionState | undefined): { totalCostUsd?: number } => (
+  state?.totalCostUsd === undefined ? {} : { totalCostUsd: state.totalCostUsd }
+)
+
 export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Promise<CodingBridge> => {
   const reviewed = codingSessionsDigestMatches(loaded)
   const rootSet: CodingRootSet = await resolveCodingRoots(
@@ -173,8 +182,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   }
 
   const briefStatus = async (paths: CodingSessionPaths) => {
-    const derived = await deriveCodingStatus(paths, await readState(paths))
-    return { status: derived.status, ...(derived.reason ? { reason: derived.reason } : {}) }
+    const state = await readState(paths)
+    const derived = await deriveCodingStatus(paths, state)
+    return { status: derived.status, ...(derived.reason ? { reason: derived.reason } : {}), ...costOf(state) }
   }
 
   const list = async (ownerKey: string): Promise<Record<string, unknown>> => {
@@ -287,7 +297,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       status: kind === 'close' ? 'closing' : derived.status,
       // The turn the message was sent at: to a session that is not working it
       // starts the next one, so a caller knows which answer is still owed.
-      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0 } : {}),
+      ...(kind === 'send' ? { queued: true, turn: state?.turn ?? 0, ...costOf(state) } : {}),
       ...(kind === 'interrupt' ? { interrupted: true } : {}),
     }
   }
@@ -314,8 +324,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
   }
 
   const review = async (value: unknown, ownerKey: string): Promise<Record<string, unknown>> => {
-    const args = argumentsFor(value, ['sessionId'])
+    const args = argumentsFor(value, ['sessionId', 'pullRequest'])
     const { paths, meta } = await owned(args.sessionId, ownerKey)
+    const pullRequest = args.pullRequest === undefined ? undefined : pullRequestArgument(args.pullRequest)
     const root = findCodingRoot(rootSet, meta.rootName)
     const folder = await resolveCodingFolder(root, meta.path)
     const state = await readState(paths)
@@ -324,6 +335,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
       ...await briefStatus(paths),
       ...await reviewCodingSession({
         folder, rootCanonical: root.canonical!, rewriter: rootSet.rewriter, state, env: await reviewEnv(),
+        ...(pullRequest === undefined ? {} : { pullRequest }),
       }),
     }
   }
@@ -369,8 +381,9 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
 
   /**
    * What the daemon reports on its heartbeat: every session not yet closed,
-   * newest first, by title, status, agent, root and owner — nothing any of
-   * them said or did.
+   * newest first, by title, status, agent, root, owner, its turn count, when
+   * its last turn ended and what it has cost so far — nothing any of them said
+   * or did.
    */
   const listAll = async (
     value: unknown, meta: CodingBridgeCallMeta, includeClosed = false,
@@ -388,6 +401,7 @@ export const createCodingBridge = async (loaded: LoadedCodingSessionsConfig): Pr
         title: clipTitle(rootSet.rewriter.rewrite(session.title)), status: derived.status,
         ...(derived.reason ? { reason: derived.reason } : {}),
         agent: session.agent, root: session.rootName, updatedAt: state?.updatedAt ?? session.createdAt,
+        turn: state?.turn ?? 0, lastTurnEndedAt: state?.lastTurnEndedAt ?? null, ...costOf(state),
       })
     }
     sessions.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))

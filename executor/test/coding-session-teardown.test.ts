@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 
@@ -88,6 +89,65 @@ test('a heartbeat close ends one owner\'s sessions, or one session, and the repo
     assert.ok(entry, 'still reported, so a person can still close it')
     assert.equal(entry.title.length, 120)
     assert.ok(entry.title.endsWith('…'))
+  } finally {
+    await harness.cleanup()
+  }
+})
+
+test('the report states each session\'s turn, when its last turn ended and what it has cost', {
+  timeout: 150_000,
+}, async () => {
+  const harness = await createCodingHarness({ reviewedDigest: true })
+  try {
+    const daemon = await daemonFor(harness)
+    const reported = async (sessionId: string) => {
+      const entry = (await daemon.report())?.find((session) => session.sessionId === sessionId)
+      assert.ok(entry, 'the daemon kept the entry, so its schema accepts both fields')
+      return entry
+    }
+    const startCommand = randomUUID()
+    const started = await harness.call('session_start', {
+      agent: 'claude', root: 'work', prompt: '#hold=first the first turn',
+    }, { owner: OWNER_A, command: startCommand })
+    const sessionId = started.body.sessionId as string
+    await harness.waitForStatus(sessionId, (body) => body.status === 'working', OWNER_A)
+    const working = await reported(sessionId)
+    assert.equal(working.turn, 1)
+    assert.equal(working.lastTurnEndedAt, null, 'the first turn is still running, and none has ended')
+    assert.equal('totalCostUsd' in working, false, 'no turn has reported a cost yet, so none is stated')
+
+    await harness.release('first')
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input', OWNER_A)
+    const first = await reported(sessionId)
+    assert.equal(first.turn, 1)
+    assert.ok(first.lastTurnEndedAt && Date.parse(first.lastTurnEndedAt) >= Date.parse(working.updatedAt))
+    // The same cumulative figure session_status answers, carried through the report unchanged.
+    assert.equal(first.totalCostUsd, 0.01)
+    const replayedStart = await harness.call('session_start', {
+      agent: 'claude', root: 'work', prompt: '#hold=first the first turn',
+    }, { owner: OWNER_A, command: startCommand })
+    assert.deepEqual([replayedStart.body.replayed, replayedStart.body.totalCostUsd], [true, 0.01])
+
+    // A second turn ends between two reads: the status is the same, and the turn says it moved.
+    const sent = await harness.call('session_send', { sessionId, message: 'a second, quick turn' }, { owner: OWNER_A })
+    assert.equal(sent.body.totalCostUsd, 0.01, 'the send answer states what the session had cost when it was sent')
+    await harness.waitForStatus(sessionId, (body) => body.status === 'waiting_for_input' && body.turn === 2, OWNER_A)
+    const second = await reported(sessionId)
+    assert.equal(second.status, first.status)
+    assert.equal(second.turn, 2)
+    assert.ok(Date.parse(second.lastTurnEndedAt!) > Date.parse(first.lastTurnEndedAt))
+    assert.equal(second.totalCostUsd, 0.02, 'the cost is the session\'s across its turns, not the last turn\'s')
+
+    // Codex reports no cost, so neither its report entry nor its answers state one.
+    const codex = await harness.call('session_start', {
+      agent: 'codex', root: 'work', prompt: 'a codex turn',
+    }, { owner: OWNER_A })
+    const codexId = codex.body.sessionId as string
+    await harness.waitForStatus(codexId, (body) => body.status === 'waiting_for_input', OWNER_A)
+    assert.equal('totalCostUsd' in await reported(codexId), false)
+    const codexSent = await harness.call('session_send', { sessionId: codexId, message: 'again' }, { owner: OWNER_A })
+    assert.equal(codexSent.ok, true, JSON.stringify(codexSent.body))
+    assert.equal('totalCostUsd' in codexSent.body, false)
   } finally {
     await harness.cleanup()
   }

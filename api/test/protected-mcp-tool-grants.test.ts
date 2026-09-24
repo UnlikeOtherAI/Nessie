@@ -104,6 +104,8 @@ const buildPrisma = (input: {
       lockCalls += 1
       return 0
     },
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findFirst: async ({ where }: { where: { id: string; organizationId: string } }) =>
         agents.find((agent) =>

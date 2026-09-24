@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { AgentTriggerMachineAccessEffect } from '@nessie/schemas'
 import type {
   AgentTriggerActivityRecord,
   AgentTriggerDeliveryRecord,
@@ -6,10 +7,17 @@ import type {
 } from '../../lib/api-client'
 import { agentKeys } from '../agents/keys'
 import { runKeys } from '../runs/keys'
+import { standingPolicyKeys } from '../standing-policies/keys'
 import { taskKeys } from '../tasks/keys'
 import { workflowKeys } from '../workflows/keys'
 import { triggerKeys } from './keys'
 import { useApiClient } from '../../providers/ApiClientProvider'
+
+/**
+ * A saved trigger, and — for a ticket trigger holding standing machine access
+ * — what the save did to that access (`PUT /api/triggers/:triggerId`).
+ */
+export type SavedAgentTrigger = AgentTriggerRecord & { machineAccess?: AgentTriggerMachineAccessEffect }
 
 export const useTriggers = (enabled = true) => {
   const apiClient = useApiClient()
@@ -18,6 +26,21 @@ export const useTriggers = (enabled = true) => {
     queryKey: triggerKeys.all,
     queryFn: () => apiClient.get('/api/triggers'),
     enabled,
+  })
+}
+
+/**
+ * One trigger by id, for its page when the viewer cannot read the owner-only
+ * list: a ticket trigger's author reaches its Machine access section this way.
+ */
+export const useTrigger = (triggerId?: string, enabled = true) => {
+  const apiClient = useApiClient()
+
+  return useQuery<AgentTriggerRecord>({
+    queryKey: triggerKeys.detail(triggerId),
+    queryFn: () => apiClient.get(`/api/triggers/${triggerId}`),
+    enabled: enabled && Boolean(triggerId),
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -178,13 +201,15 @@ export const useUpdateTrigger = () => {
       targetThreadId?: string | null
     }) => {
       const { triggerId, ...body } = input
-      return apiClient.put<AgentTriggerRecord>(`/api/triggers/${triggerId}`, body)
+      return apiClient.put<SavedAgentTrigger>(`/api/triggers/${triggerId}`, body)
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: triggerKeys.all })
       void queryClient.invalidateQueries({ queryKey: agentKeys.all })
       void queryClient.invalidateQueries({ queryKey: taskKeys.boardWorkAll })
       void queryClient.invalidateQueries({ queryKey: workflowKeys.installations })
+      // A save that paused or lowered machine access moves the section that shows it.
+      if (saved.machineAccess) void queryClient.invalidateQueries({ queryKey: standingPolicyKeys.all })
     },
   })
 }

@@ -57,8 +57,9 @@ export const executorDispatchResult = (document: Record<string, unknown>) => ({
 /**
  * The command payload. A call to the bound revision's coding-sessions bridge
  * carries `owner` — the agent and the person the binding's candidate was made
- * for, never anything the model sent — beside `runId`, under the argument
- * digest, and no other call ever does. The model reaches only `args`: an
+ * for, and the work context when the binding pins one, never anything the
+ * model sent — beside `runId`, under the argument digest, and no other call
+ * ever does. The model reaches only `args`: an
  * `owner` it puts there is refused by the daemon's strict envelope, and
  * `_meta` inside `arguments` goes to the program as the program's own.
  */

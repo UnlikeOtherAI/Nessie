@@ -9,6 +9,7 @@ import {
   runExecutorPrivateAssignmentPrepareTool,
   runExecutorWorkspacePromotionPrepareTool,
 } from './executors.js'
+import { runExecutorStandingPolicyPrepareTool } from './provisioning-standing-policy.js'
 import type { BuiltinToolRuntimeContext, ToolExecutionResult } from '../tool-types.js'
 
 type ExecutorToolThunk = () => Promise<ToolExecutionResult>
@@ -60,6 +61,8 @@ export const executorManagementTool = (
         principalKind: args.principalKind,
         role: args.role,
       })
+    case 'executor_standing_policy_prepare':
+      return () => runExecutorStandingPolicyPrepareTool(context, args)
     case 'executor_workspace_promotion_prepare':
       return () => runExecutorWorkspacePromotionPrepareTool(context, {
         reviewCommandId: args.reviewCommandId,

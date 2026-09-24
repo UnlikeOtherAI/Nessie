@@ -256,15 +256,33 @@ owners.
 
 The owner is stamped by the worker, never taken from the model: the `mcp.call`
 payload is `{args, runId, owner?}` (`ExecutorMcpCallPayloadSchema`, strict),
-with `owner: {agentId, actorUserId}` beside `runId` and under the argument
-digest. For calls to the executor's own bridge only, the daemon derives
-`_meta['nessie/owner'] = sha256:` + hex SHA-256 of
+with `owner: {agentId, actorUserId, contextId?}` beside `runId` and under the
+argument digest. For calls to the executor's own bridge only, the daemon
+derives `_meta['nessie/owner'] = sha256:` + hex SHA-256 of
 `executorCodingSessionOwnerKeyInput(executorId, owner)` — the three ids
-joined by a vertical bar — and sets `_meta['nessie/command']` to the command
-id. "Its own bridge" is structural: the server named `coding-sessions` whose
-argv ends `serve-coding-session-mcp --config <path>` and whose environment
-pins the digest the descriptor states. No other server receives any `_meta`,
-and the model's `arguments` are passed on untouched either way.
+joined by a vertical bar, then `|contextId` when there is one — and sets
+`_meta['nessie/command']` to the command id. "Its own bridge" is structural:
+the server named `coding-sessions` whose argv ends
+`serve-coding-session-mcp --config <path>` and whose environment pins the
+digest the descriptor states. No other server receives any `_meta`, and the
+model's `arguments` are passed on untouched either way.
+
+The owner is the launch or lease actor, or the actor of one ticket's work
+under a standing policy
+([ticket-driven agents](../plans/2026-09-23-ticket-driven-agents/machine-access.md#session-isolation)),
+whose `contextId` is `ticket:<policyId>:<taskId>` in lowercase ids
+(`ExecutorCodingSessionOwnerContextSchema`). A context is its own owner: the
+person's own sessions with that agent and every ticket's are isolated from
+one another, each has its own `maxLiveSessionsPerOwner`, and a lease's
+owner-wide close — keyed without a context — never reaches a ticket's
+session. Without a context the key is the three ids exactly as before
+contexts existed, so no session's key changed. The API admits a payload's
+context only when its binding pins that same one: a standing binding pins its
+ticket's, derived from its policy and work record, never from the payload. A
+standing binding reaches this bridge and nothing else — its `mcp.tools`
+listing and an `mcp.call` to any other server are refused where the command
+is created and again where it is collected (`standingProgramRefusal`), since
+the author's card consented to coding sessions alone.
 
 ## The reviewed configuration
 
@@ -316,13 +334,39 @@ The executor then:
 - refuses the bridge unless `mcp.tools` and `mcp.call` are enabled;
 - adds `codingSessions` to the signed descriptor, inside `localPolicyDigest`:
   `{serverName, agents, permissionMode, allowedToolCount, environmentNames,
-  rootNames, configDigest}`. Claude's mode is its `permissionMode`
-  (`default` when unset); Codex's is the stance its reviewed `args` take
-  (`bypassApprovalsAndSandbox`, `fullAuto`, `approveForMe`,
-  `sandbox:<mode>` or `default`). `environmentNames` lists, sorted and by
-  name only, every variable `agentEnv.set` sets or `agentEnv.pass` passes:
-  a `CLAUDE_CONFIG_DIR` or an `ANTHROPIC_BASE_URL` changes what an agent may
-  do, or where its transcript goes, as surely as a flag.
+  rootNames, configDigest, maxBudgetUsd, maxLiveSessionsPerOwner,
+  mergeCommands, unaskedCommands}`. Claude's
+  mode is its `permissionMode` (`default` when unset); Codex's is the stance
+  its reviewed `args` take (`bypassApprovalsAndSandbox`, `fullAuto`,
+  `approveForMe`, `sandbox:<mode>` or `default`). `environmentNames` lists,
+  sorted and by name only, every variable `agentEnv.set` sets or
+  `agentEnv.pass` passes: a `CLAUDE_CONFIG_DIR` or an `ANTHROPIC_BASE_URL`
+  changes what an agent may do, or where its transcript goes, as surely as a
+  flag. `maxBudgetUsd` states, per offered agent, the most one turn may
+  spend: Claude's is the configuration's `maxBudgetUsd`, or `null` when it
+  sets none, and Codex's is always `null`, because nothing bounds a Codex
+  turn. `maxLiveSessionsPerOwner` is the quota. So the server can check both
+  (a standing policy's host profile needs them), and a review shows them. A
+  descriptor an older daemon signed has neither; that is a machine that has
+  not said, never one without limits. `mergeCommands` names which of
+  `git push`, `gh pr create`, `gh pr checks` and `gh pr merge` Claude Code
+  may run without being asked: all four under `bypassPermissions`, otherwise
+  those an `allowedTools` Bash rule covers (`Bash`, `Bash(git *)`,
+  `Bash(gh pr:*)`, a trailing-`*` prefix) and no `disallowedTools` rule
+  does (`executor/src/coding-session/merge-commands.ts`); empty without
+  Claude Code. The host's tool list stays on the host: a standing policy's
+  card needs only to say whether a ticket there can reach a merge, and a
+  descriptor without the fact is read as unable to. `unaskedCommands` says
+  whether Claude Code may run any command at all without asking: `any` under
+  `bypassPermissions`, or when an `allowedTools` rule covers every command
+  (a bare `Bash`, `Bash(*)` or `Bash(:*)`) and no `disallowedTools` rule of
+  those same whole-command forms takes it back — a narrower disallowed rule
+  such as `Bash(rm:*)` leaves it `any`, since everything else still runs
+  unasked; `listed` otherwise, and without Claude Code
+  (`claudeUnaskedCommands`, beside `claudeMergeCommands`). Standing machine
+  access on a machine that states `any` needs its author's separate "run any
+  command" tick, and a descriptor without the fact is a machine too old for
+  standing access.
 
 Both CLIs still read their own configuration on this machine — Claude Code
 its user, project and local settings (`~/.claude/settings.json`, a
@@ -651,7 +695,17 @@ bridge, which never sees the account; its commit subjects are the agent's own
 words.
 
 `session_status` never waits and answers at most 8 KB, `status`,
-`nextCursor` and `pendingNotice` first. `session_review` runs read-only git in
+`nextCursor` and `pendingNotice` first. It carries `totalCostUsd`, what the session has cost
+across every turn so far, once a turn has reported a cost; a ticket's work
+adds only the difference from the last read to its spend. The same figure,
+absent until a turn has reported one (a Codex session never does), rides the
+brief status `session_start` (on a replay), `session_send` and
+`session_review` answer, and each session's entry in the daemon's
+`session_list_all` — so the local-MCP report the heartbeat carries states
+per-session `totalCostUsd` (`ExecutorCodingSessionSummarySchema`), and the
+heartbeat intake adds each session's new cost since its last report to its
+ticket's spend, which holds a ticket's limits whether or not the model ever
+reads its status. `session_review` runs read-only git in
 the session's folder within 20 s, in the same login-like environment the
 agents get (the MCP SDK's minimal `PATH` finds no Homebrew `gh` on macOS):
 branch, the base commit recorded at start, commits since, `git diff --stat`,
@@ -662,6 +716,22 @@ with its exit code, and `staleIndexLock` when a git killed mid-commit left
 names — often their author's — are rewritten like every other string, keys
 of `pullRequests` included (the bridge's last pass rewrites values, not
 keys), while `gh` is still asked about each branch by its real name.
+
+`session_review` also takes an optional `pullRequest`, a URL of exactly the
+shape `https://github.com/<owner>/<repo>/pull/<number>` (`pullRequestArgument`
+in `bridge-tools.ts`; anything else is `coding_session_invalid_arguments`).
+The coding agent usually deletes a merged branch and its worktree, which
+leaves the lookup by branch empty just when the answer is MERGED, so the
+review then also runs `gh pr view <url> --json
+url,state,mergeable,statusCheckRollup` — beside the git reads, with no shell,
+inside the same 20 s budget and 10 s per call — and answers `pullRequest`
+with the same projection and rewriting as a branch's: `url` (path rules
+only), `state`, `mergeable` and the check counts. When `gh` is missing, or
+answers nothing it can parse in time, `pullRequest` is `{url, unavailable:
+'gh_missing' | 'lookup_failed'}` rather than absent. Only the worker fills
+it: the model's `coding_session_review` still takes a `sessionId` alone, and
+ticket work will pass the pull request its record holds
+([ticket-driven agents](../plans/2026-09-23-ticket-driven-agents/machine-access.md#done-means-merged)).
 
 ## Verifying
 
@@ -734,6 +804,15 @@ or any value of the logged-in account, and nothing was left running. On Linux
 the turn finished, a new executor life sent a follow-up to the same agent, and
 the close stopped the unit. Claude cannot log in over SSH on the macOS test
 machine, so macOS ran the suites only.
+
+One owner-key vector with and one without a ticket context is pinned, as
+literal hex, in the schemas' `executor-coding-sessions.test.ts`,
+executor-manage's `executor-coding-session-owner.test.ts` and the executor's
+`coding-session-daemon.test.ts`, so the three derivations agree on every OS
+the suites run on; `coding-session-owners.test.ts` drives a real bridge with
+keys the daemon derived and shows a lease-end close missing a ticket's
+sessions and each ticket getting its own quota. `coding-session-review.test.ts`
+reviews a real repository whose branch was merged and deleted, by URL.
 
 The control plane's half runs against real rows (`DATABASE_URL=…`):
 `packages/executor-manage/test/executor-coding-session-owner.test.ts` and

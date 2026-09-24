@@ -55,12 +55,12 @@ const describeAlert = (alert: UserAlertRecord): string => {
     return 'A scheduled task stopped running'
   }
   if (alert.kind === 'trigger_machine_access') {
-    // An agent set this trigger up for the reader; its machines are the one
-    // thing no agent may set up. True today, before the trigger page has its
-    // Machine access section: the owner sets it up there or with the Designer.
+    // An agent set this trigger up for the reader, who is its author; its
+    // machines are the one thing no agent may set up. The link opens the
+    // trigger's Machine access section, where they do.
     const trigger = alert.triggerName ?? 'A ticket trigger'
-    return `${trigger} needs machine access: ask the machines’ owner to set it up, `
-      + 'from the trigger’s page or the Agent Designer'
+    return `${trigger} needs machine access: set it up from its Machine access section, `
+      + 'or with the Agent Designer'
   }
   if (alert.kind === 'automatic_membership_health') {
     const team = alert.automaticMembershipRuleTeamName

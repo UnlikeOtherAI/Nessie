@@ -113,7 +113,12 @@ Facts not restated there:
   executor run in it, from the launcher's **Local apps on this machine** — is
   the person's consent to show that machine's program output to that
   conversation's audience, and nowhere else. An agent cannot bind an executor
-  on its own, so the consent is always a person's. Every `mcp.*` result
+  on its own, so the consent is always a person's; for a standing policy, the
+  author's confirmation is that consent, host output comes only from the
+  ticket's own coding sessions (no other program on the machine is offered
+  to it), and it is admitted only to the ticket's comments and its work thread
+  ([ticket-work-machine-access.md](ticket-work-machine-access.md) → "Host
+  output stays on the ticket"). Every `mcp.*` result
   stamps the run's sink with the launch conversation's scope before its
   command is sent (`worker/src/run/executor-host-output.ts`; today the run's
   own channel).

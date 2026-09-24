@@ -8,6 +8,7 @@ import {
   canonicalExecutorPayload,
   confirmExecutorAccessChange,
   endExecutorConversationLease,
+  executorCodingSessionOwnerKey,
   expireExecutorConversationLeases,
   prepareExecutorAccessChange,
   removePrivateAssignment,
@@ -274,6 +275,11 @@ dbTest('the table keeps its vocabulary and one open request per owner and per se
         (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
     }
     await world.prisma.executorCodingSessionCloseRequest.create({ data: { ...base, resolvedAt: new Date() } })
+    // A ticket's work closes its own sessions, each by id, for reasons of its own; nothing writes them yet.
+    for (const reason of ['ticket_left_flow', 'trigger_changed', 'policy_suspended', 'policy_ended', 'work_limit']) {
+      const data = { ...base, reason, sessionId: randomUUID() }
+      await world.prisma.executorCodingSessionCloseRequest.create({ data })
+    }
     for (const data of [{ ...base, reason: 'bored' }, { ...base, ownerKey: 'owner-a' }]) {
       await assert.rejects(world.prisma.executorCodingSessionCloseRequest.create({
         data: { ...data, resolvedAt: new Date() },
@@ -378,6 +384,28 @@ dbTest('a daemon that fronts no bridge settles every request; a day settles any;
 
     await ask(world, { createdAt: new Date(now.getTime() - 25 * 60 * 60 * 1_000), ownerKey: holderKey(world) })
     assert.equal((await heartbeat(world, key, { now })).codingSessionClose, undefined, 'a day-old request is settled')
+  })
+})
+
+dbTest('a lease’s end asks for the holder’s own sessions only, never a ticket’s', async () => {
+  await withWorld(OWNED, async (world) => {
+    const key = await pairMachine(world)
+    const ticketKey = executorCodingSessionOwnerKey(world.executorId, {
+      actorUserId: world.holderId, agentId: world.agentId, contextId: `ticket:${randomUUID()}:${randomUUID()}`,
+    })
+    assert.notEqual(ticketKey, holderKey(world))
+    const launch = await launchLocalApps(world)
+    await endExecutorConversationLease(world.prisma, world.holderContext, { leaseId: launch.lease.id })
+    const asked = (await openRows(world)).map((row) => row.ownerKey)
+    assert.deepEqual(asked, [holderKey(world)], 'the key without a context')
+    // Later the machine reports the holder's own session gone and the ticket's still open: the
+    // lease's close is done, and nothing was ever asked of the ticket's.
+    const later = new Date(Date.now() + 90_000)
+    const localMcp = reportListing([{ ownerKey: ticketKey }], later)
+    const answer = await heartbeat(world, key, { localMcp, now: later })
+    assert.equal(answer.codingSessionClose, undefined)
+    assert.equal((await openRows(world)).length, 0)
+    assert.equal((await closeRows(world, { ownerKey: ticketKey })).length, 0)
   })
 })
 

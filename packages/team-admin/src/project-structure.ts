@@ -109,8 +109,11 @@ export const listAccessibleProjectIds = async (
   return memberships.map((membership) => membership.projectId)
 }
 
+/** The reads the board-edit question needs, so it runs inside a transaction too. */
+export type ProjectAccessReader = Pick<PrismaClient, 'organizationMember' | 'project' | 'projectMember'>
+
 export const isProjectAccessibleToUser = async (
-  prisma: PrismaClient,
+  prisma: ProjectAccessReader,
   viewer: ProjectViewer,
   projectId: string,
 ): Promise<boolean> => {

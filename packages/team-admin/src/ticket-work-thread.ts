@@ -2,9 +2,7 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import { enqueueQueueJob } from '@nessie/db'
 import {
   CONVERSATION_TITLE_MAX_CHARS,
-  TICKET_WORK_THREAD_EVENT_LABELS,
   TICKET_WORK_THREAD_MESSAGE_TOPIC,
-  type TicketWorkThreadEvent,
   type TicketWorkThreadMessageJobPayload,
 } from '@nessie/schemas'
 
@@ -130,22 +128,5 @@ export const TICKET_WORK_THREAD_READ_ONLY_SENTENCE =
   'Only people who can edit this ticket\'s board write in its work thread. '
   + 'Comment on the ticket to give the agent more information.'
 
-/**
- * One compact row in a work thread (`metadata.ticketWorkEvent`): why the
- * agent was woken, why the platform stopped it, or who cancelled its
- * reminder. Never ticket text: the channel can be wider than the ticket's
- * project.
- */
-export const writeTicketWorkThreadRow = async (
-  tx: Pick<Prisma.TransactionClient, 'message'>,
-  input: { threadId: string; event: TicketWorkThreadEvent },
-): Promise<void> => {
-  await tx.message.create({
-    data: {
-      threadId: input.threadId,
-      role: 'system',
-      content: `${TICKET_WORK_THREAD_EVENT_LABELS[input.event.kind]}: ${input.event.summary}`,
-      metadata: { ticketWorkEvent: input.event } as Prisma.InputJsonValue,
-    },
-  })
-}
+/** The work thread's one row writer lives beside the record transitions that write most rows. */
+export { writeTicketWorkThreadRow } from '@nessie/executor-manage'

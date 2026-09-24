@@ -4,10 +4,11 @@ import test from 'node:test'
 import type { PrismaClient } from '@prisma/client'
 import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
 
-import { CODING_SESSION_TOOL_NAME_SET } from './coding-session-tools.js'
+import { CODING_SESSION_TOOL_NAME_SET, STRUCTURED_CODING_SESSION_TOOL_NAMES } from './coding-session-tools.js'
 import { CODING_WAIT_TOOL_TIMEOUT_MS } from './coding-session-wait.js'
 import { executorToolTimeoutMs, ExecutorUnknownOutcomeError } from './executor-command-timing.js'
 import { buildExecutorToolset } from './executor-toolset.js'
+import type { TicketWorkCodingScope } from './ticket-work-coding-sessions.js'
 
 const organizationId = '00000000-0000-4000-8000-000000000001'
 const agentId = '00000000-0000-4000-8000-000000000002'
@@ -25,6 +26,7 @@ const toolset = (input: {
   actorUserId?: string
   mcpServers?: string[]
   scopeKind?: 'private' | 'project'
+  ticketWork?: TicketWorkCodingScope
   withFacts?: boolean
 } = {}) => {
   const descriptor = {
@@ -57,6 +59,7 @@ const toolset = (input: {
   return {
     built: buildExecutorToolset(prisma, {
       agentId, agentToolPolicy: policy, encryptionSecret: 'test-secret', hostOutput: null, organizationId, runId,
+      ...(input.ticketWork ? { ticketWork: input.ticketWork } : {}),
     }),
     transactions,
   }
@@ -71,7 +74,9 @@ test('the owner’s run gets the seven coding tools, and the generic pair stops 
   const { built, transactions } = toolset()
   const offered = await built
   const names = offered.descriptors.map((descriptor) => descriptor.toolName)
-  for (const name of CODING_SESSION_TOOL_NAME_SET) assert.ok(names.includes(name), name)
+  // The machine lists no interactive terminal, so the seven and none of the terminal's three.
+  for (const name of STRUCTURED_CODING_SESSION_TOOL_NAMES) assert.ok(names.includes(name), name)
+  assert.ok(!names.some((name) => name.startsWith('terminal_')))
   assert.ok(offered.codingSessions)
   assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_call'), ['kelpie'])
   assert.deepEqual(serverEnum(offered.descriptors, 'executor_mcp_tools'), ['kelpie'])
@@ -128,6 +133,32 @@ test('a machine that names only the bridge offers the coding tools and no generi
   const offered = await toolset({ mcpServers: ['coding-sessions'] }).built
   assert.deepEqual(
     offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
-    [...CODING_SESSION_TOOL_NAME_SET].sort(),
+    [...STRUCTURED_CODING_SESSION_TOOL_NAMES].sort(),
   )
+})
+
+test('a ticket’s work under standing machine access gets the coding tools and no other program', async () => {
+  const ticketWork: TicketWorkCodingScope = {
+    agentId, allowedRootNames: ['nessie'], codingAgents: ['claude'], contextId: `ticket:${runId}:${owner}`,
+    executorId: '00000000-0000-4000-8000-000000000005', organizationId, ownerKey: 'sha256:owner',
+    policyId: runId, runId, taskId: owner, title: 'NES-1 Fix login', workId: '00000000-0000-4000-8000-000000000006',
+  }
+  const { built, transactions } = toolset({ ticketWork })
+  const offered = await built
+  // The author's card consented to coding sessions, so the generic pair is not offered even though
+  // the machine reviews another program and the agent's policy grants the pair.
+  assert.deepEqual(
+    offered.descriptors.map((descriptor) => descriptor.toolName).sort(),
+    [...STRUCTURED_CODING_SESSION_TOOL_NAMES].sort(),
+  )
+  assert.ok(!offered.handledNames.has('executor_mcp_call'))
+  assert.ok(!offered.handledNames.has('executor_mcp_tools'))
+  // Asked for anyway, it is refused as correctable before any command exists, and told why.
+  const viaCall = await offered.dispatch('executor_mcp_call', { server: 'kelpie', tool: 'screenshot' }, 'p1')
+  assert.equal(viaCall.success, false)
+  assert.equal(viaCall.correctable, true)
+  assert.match(viaCall.output, /only coding sessions on this machine; no other program on it is offered to you/)
+  const viaCatalog = await offered.mcpCatalog('kelpie', 'p2')
+  assert.ok('failure' in viaCatalog && viaCatalog.failure.success === false)
+  assert.equal(transactions.length, 0)
 })

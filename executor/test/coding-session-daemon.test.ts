@@ -129,6 +129,35 @@ test('owner and command id reach the built-in bridge as reserved _meta, and no o
   }
 })
 
+test('a ticket context is part of the owner key, and without one the key is the one every session already has', async () => {
+  // The same vectors as the schemas' owner-key text test and executor-manage's
+  // key test: the daemon and the control plane derive one key, on every OS.
+  const contextId = 'ticket:00000000-0000-4000-8000-000000000901:00000000-0000-4000-8000-000000000902'
+  const plain = 'sha256:8b525e6e91d92c5ccdddcd9d9956f71fa0438b1b29371c92103c743f1fe5689c'
+  const ticket = 'sha256:bf37fb2ab3d3d9b845cce071a239f1676a5c1bd29fbd1f7e6805781e04b50187'
+  assert.equal(codingSessionOwnerKey(executorId, { agentId, actorUserId }), plain)
+  assert.equal(codingSessionOwnerKey(executorId, { agentId, actorUserId, contextId }), ticket)
+  const servers = [bridgeSpec()]
+  const mcpSessions = createExecutorMcpSessionManager(servers, { maxResultBytes: 65_536 }, { log: () => undefined })
+  const codingBridge = createCodingSessionsDaemon({ executorId, facts, servers, sessions: mcpSessions })
+  const run = (commandId: string, payload: Record<string, unknown>) => executeExecutorCommand(
+    tmpdir(), stateWith(servers), envelope(commandId, payload), { mcpSessions, codingBridge },
+  )
+  const args = { server: 'coding-sessions', tool: 'echo', arguments: {} }
+  try {
+    const withContext = echoOf(await run('command-t1', { args, owner: { agentId, actorUserId, contextId }, runId }))
+    assert.deepEqual(withContext.meta, { 'nessie/command': 'command-t1', 'nessie/owner': ticket })
+    const without = echoOf(await run('command-t2', { args, owner: { agentId, actorUserId }, runId }))
+    assert.deepEqual(without.meta, { 'nessie/command': 'command-t2', 'nessie/owner': plain })
+    // A context in any other spelling never becomes a key: the envelope refuses it by name.
+    const refused = await run('command-t3', { args, owner: { agentId, actorUserId, contextId: contextId.toUpperCase() }, runId })
+    assert.equal(refused.code, 'EXECUTOR_COMMAND_ARGUMENTS_INVALID')
+    assert.deepEqual(refused.fields, ['owner.contextId'])
+  } finally {
+    await mcpSessions.stopAll()
+  }
+})
+
 test('the bridge alone is started with the daemon\'s supervisor marker, which the SDK would drop', () => {
   const [bridge, other] = withDaemonSupervisor([bridgeSpec(), otherSpec], { NESSIE_EXECUTOR_SUPERVISOR: 'service' })
   assert.equal(bridge!.env?.NESSIE_EXECUTOR_SUPERVISOR, 'service')
@@ -257,12 +286,17 @@ test('the local-MCP report lists the bridge\'s open sessions, and drops anything
     sessionId: '00000000-0000-4000-8000-000000000807', ownerKey, title: 'Fix the flaky test', status: 'working',
     agent: 'claude', root: 'nessie', updatedAt: '2026-09-23T10:00:00.000Z',
   }
-  const { calls, sessions } = recording(() => ({ sessions: [good, { ...good, transcript: 'I edited…' }, { ...good, ownerKey: 'owner-a' }] }))
+  // What a session has cost travels to the server unchanged, and a figure the schema refuses drops the entry.
+  const costed = { ...good, sessionId: '00000000-0000-4000-8000-000000000808', turn: 3, totalCostUsd: 0.37 }
+  const { calls, sessions } = recording(() => ({ sessions: [
+    good, costed, { ...good, transcript: 'I edited…' }, { ...good, ownerKey: 'owner-a' },
+    { ...costed, totalCostUsd: -1 },
+  ] }))
   const daemon = createCodingSessionsDaemon({ executorId, facts, servers: [bridgeSpec(), otherSpec], sessions })
   const reporter = createLocalMcpReporter([bridgeSpec(), otherSpec], sessions, { codingSessions: daemon.report })
   try {
     const report = await reporter.refresh()
-    assert.deepEqual(report.find((status) => status.server === 'coding-sessions')?.codingSessions, [good])
+    assert.deepEqual(report.find((status) => status.server === 'coding-sessions')?.codingSessions, [good, costed])
     assert.equal(report.find((status) => status.server === 'kelpie')?.codingSessions, undefined)
     assert.deepEqual(calls.map((call) => [call.tool, call.meta?.['nessie/daemon-control']]), [['session_list_all', true]])
   } finally {

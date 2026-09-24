@@ -8,7 +8,7 @@ import {
   confirmExecutorAccessChange, ensureExecutorLogicalTools, prepareExecutorAccessChange, rejectExecutorAccessChange,
 } from '@nessie/executor-manage'
 import { AuthorizedActionContextSchema, ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
-import { applyExecutorAgentPolicyChange } from '../src/services/executor-agent-access-policy.js'
+import { applyExecutorAgentPolicyChange } from '@nessie/team-admin'
 import { getExecutorAttentionSummary, listExecutorAgentAccess } from '../src/services/executor-management-reads.js'
 import { registerExecutorRoutes } from '../src/routes/executors.js'
 import type { RouteDeps } from '../src/routes/types.js'

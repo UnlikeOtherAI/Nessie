@@ -140,15 +140,19 @@ test('the ticket-work facts say what T1 and T3 ship, and board tools are no long
   assert.match(rendered, /which is why that channel must be public/)
   assert.match(rendered, /Limits: 30 model runs per ticket by default \(wakesPerTicket, at most 100\) and 20 tickets/)
   assert.match(rendered, /Its ticket comments are read by everyone on the project/)
-  assert.match(rendered, /Ticket work runs on no machine yet/)
+  // T4: machines only under the author's one confirmation, coding sessions alone, within its limits.
+  assert.match(rendered, /Ticket work runs on a machine only under the machine access its trigger's author confirmed/)
+  assert.match(rendered, /drives Claude Code sessions on those machines through the coding_session_\* tools and no /)
+  assert.match(rendered, /\(ticketHours, ticketUsd, dailyUsd\)/)
+  assert.doesNotMatch(rendered, /runs on no machine yet/)
   // T3: reminders, the open question and the quiet wake, with their bounds.
   assert.match(rendered, /check_back_in \(5 to 1440 minutes and a short note\)/)
   assert.match(rendered, /It replaces the ticket's pending reminder/)
   assert.match(rendered, /awaitsAnswer asks the people on the ticket something/)
   assert.match(rendered, /It should also set check_back_in, in case nobody answers/)
   assert.match(rendered, /woken after 30 quiet minutes \(quietWakeMinutes, 15 to 1440, or null for off\)/)
-  // Nothing from a later PR is promised.
-  assert.doesNotMatch(rendered, /machine access|standing access/i)
+  // Nothing from a later PR is promised: no session wake when a coding turn ends (T5).
+  assert.doesNotMatch(rendered, /woken when (its|a coding) turn ends/i)
 })
 
 test('the never-do facts are stated as facts', () => {
@@ -252,7 +256,14 @@ test('the proposal card places an agent in named channels, or nowhere yet', () =
     chat,
     /When the agent gets a ticket_changed trigger, the same fields block has a third field, "Starts work when"/,
   )
-  assert.doesNotMatch(chat, /"Runs on"/)
+  // T4: machines, by name only on the card their own pairer reads, and the one confirmation that follows.
+  assert.match(chat, /When that trigger's work should run on machines, the same fields block also has "Runs on"/)
+  assert.match(chat, /names the machines only when the person asking paired them and is the one reading the card/)
+  assert.match(chat, /otherwise it reads exactly "a machine its owner confirms"/)
+  assert.match(chat, /one machine-access confirmation follows, which the machines' owner confirms with their password/)
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    assert.doesNotMatch(block({ writeSurface }), /"Runs on"/, `${writeSurface} posts no card`)
+  }
   // The parameter facts agree: no binding is a finished agent.
   assert.match(chat, /An agent needs none to exist: with none it lives nowhere yet/)
 })
@@ -285,10 +296,12 @@ const executor = (
   over: Partial<GlobalAgentExecutorFacts> = {},
 ): GlobalAgentExecutorFacts => ({
   canManage: true,
+  codingSessionsReviewed: false,
   executorId: '11111111-0000-4000-8000-00000000aaaa',
   label: 'Ondrej’s Mac',
   lastSeenAt: '2026-09-18T08:00:00.000Z',
   operationKeys: ['file.read', 'command.run', 'workspace.promote'],
+  pairedByYou: false,
   profiles: ['workspace_sandbox'],
   revision: 3,
   scopeKind: 'organization',
@@ -382,6 +395,52 @@ test('the block states that an executor grant is whole-suite, never a pick', () 
   assert.match(rendered, /minus workspace\.promote/)
   assert.match(rendered, /executor_agent_grant_prepare prepares ONE change/)
   assert.match(rendered, /not itself, and not another agent/)
+})
+
+test('each executor says whether a trigger\'s ticket work can run on it, and the Designer prepares one card', () => {
+  const rendered = block({
+    executors: [
+      executor({ label: 'Shared box' }),
+      executor({
+        executorId: '11111111-0000-4000-8000-00000000bbbb', label: 'Studio', pairedByYou: true, scopeKind: 'private',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000cccc', label: 'PC',
+        pairedByYou: true, scopeKind: 'private',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000dddd', label: 'Laptop',
+        pairedByYou: true, scopeKind: 'private', status: 'offline',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000eeee', label: 'Mini',
+        pairedByYou: true, scopeKind: 'private', ticketWorkBlocker: 'no_turn_budget',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000ffff', label: 'Old box',
+        pairedByYou: true, scopeKind: 'private', ticketWorkBlocker: 'older_executor',
+      }),
+    ],
+  })
+  const lineAfter = (label: string): string => {
+    const lines = rendered.split('\n')
+    const at = lines.findIndex((line) => line.startsWith(`- ${label} |`))
+    return lines[at + 1]?.trim() ?? ''
+  }
+  assert.match(lineAfter('Shared box'), /^ticket work: no — only a private machine you paired/)
+  assert.match(lineAfter('Studio'), /^ticket work: not yet — .*offers no coding-sessions bridge/)
+  assert.equal(lineAfter('PC'), 'ticket work: yes — you paired it and its coding-sessions bridge is reviewed')
+  assert.match(lineAfter('Laptop'), /^ticket work: yes — .*, but it is not online/)
+  // A reviewed bridge is not enough: its turns need a signed budget, from an executor new enough to sign it.
+  assert.match(lineAfter('Mini'), /^ticket work: not yet — Claude Code there has no per-turn spending limit: set maxBudgetUsd/)
+  assert.match(lineAfter('Old box'), /^ticket work: not yet — its executor is too old/)
+  assert.match(rendered, /executor_standing_policy_prepare prepares ONE confirmation card/)
+  assert.match(rendered, /never prepare those separately/)
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    const readOnly = block({ executors: [executor()], writeSurface })
+    assert.match(readOnly, /from the trigger's Machine access section/)
+    assert.doesNotMatch(readOnly, /executor_standing_policy_prepare prepares/)
+  }
 })
 
 test('a face that holds no tools states the rule without naming one', () => {

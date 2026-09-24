@@ -76,6 +76,40 @@ test('every field the descriptor carries reaches the sentence', () => {
   assert.match(shown, /Given the variables ANTHROPIC_BASE_URL and CLAUDE_CONFIG_DIR\./)
 })
 
+test('the turn budget and the live-session quota read in plain words, and nothing when the machine never said', () => {
+  const stated = { ...facts, maxBudgetUsd: { claude: 5 }, maxLiveSessionsPerOwner: 3 }
+  const shown = text(renderReview(revision(stated)))
+  assert.match(shown, /Claude Code \(accept edits, 3 pre-allowed commands, at most \$5 a turn\) in nessie/)
+  assert.match(shown, /Each agent may keep up to 3 sessions open at once for the person it works for\./)
+  assert.equal(
+    describeExecutorCodingAgents({
+      ...facts,
+      agents: ['claude', 'codex'],
+      maxBudgetUsd: { claude: 2.5, codex: null },
+      permissionMode: { claude: 'acceptEdits', codex: 'fullAuto' },
+    }),
+    'Claude Code (accept edits, 3 pre-allowed commands, at most $2.50 a turn) and Codex (full auto, no spending limit '
+    + 'per turn) in nessie',
+    'null is a stated fact: nothing bounds that agent’s turns',
+  )
+  assert.match(
+    text(renderReview(revision({ ...stated, maxBudgetUsd: { claude: null }, maxLiveSessionsPerOwner: 1 }))),
+    /3 pre-allowed commands, no spending limit per turn\).*Each agent may keep one session open at once/,
+  )
+  // An older daemon's descriptor states neither: that is a machine that has not said, never one without limits.
+  const older = text(renderReview(revision(facts)))
+  assert.doesNotMatch(older, /spending limit|a turn\)|sessions? open at once/)
+})
+
+test('whether work reaches a merge reads in plain words, and nothing when the machine never said', () => {
+  const all = ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'] as const
+  assert.match(text(renderReview(revision({ ...facts, mergeCommands: [...all] }))),
+    /Claude Code may push, open, watch and merge pull requests without asking./)
+  assert.match(text(renderReview(revision({ ...facts, mergeCommands: ['git push', 'gh pr create'] }))),
+    /Claude Code must ask before gh pr checks and gh pr merge, so work here stops at an open pull request./)
+  assert.doesNotMatch(text(renderReview(revision(facts))), /pull request/)
+})
+
 test('a revision that does not offer the bridge says nothing about coding agents', () => {
   assert.doesNotMatch(text(renderReview(revision())), /Coding agents/)
 })

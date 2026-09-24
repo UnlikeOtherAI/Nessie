@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { ApiClientError } from '@nessie/client-core'
+import { useTriggerMachineAccess } from '../../../facades/standing-policies/hooks'
 import {
   useCreateAgentTrigger,
   useCreateWorkflowInstallationTrigger,
   useUpdateTrigger,
+  type SavedAgentTrigger,
 } from '../../../facades/triggers/hooks'
 import type {
   AgentRecord,
@@ -29,6 +31,7 @@ import { EventTriggerFields } from './EventTriggerFields'
 import { IntervalTriggerFields } from './IntervalTriggerFields'
 import { TicketTriggerFields } from './TicketTriggerFields'
 import { groupTicketRefusals, TICKET_TARGET_CHANNEL_HINT } from './ticket-trigger-form'
+import { machineAccessEditWarning, ticketEditPausesMachineAccess } from './ticket-trigger-machine-access-edit'
 import type { TriggerFieldErrors } from './trigger-refusals'
 import { ScheduledTriggerFields } from './ScheduledTriggerFields'
 import { TriggerMetaFields } from './TriggerMetaFields'
@@ -50,7 +53,8 @@ type TriggerEditorDialogProps = {
    */
   draftId?: string
   onClose: () => void
-  onSaved: (trigger: AgentTriggerRecord) => void
+  /** An edit's answer also says what it did to a ticket trigger's machine access. */
+  onSaved: (trigger: SavedAgentTrigger) => void
   open: boolean
   trigger?: AgentTriggerRecord
   workflowInstallations: WorkflowInstallationRecord[]
@@ -112,6 +116,13 @@ export const TriggerEditorDialog = ({
 
   const isTicketTrigger = form.triggerType === 'ticket_changed'
   const isDocumentTrigger = form.triggerType === 'document_changed'
+  // Editing a ticket trigger whose machine access is live: a change to what it
+  // pinned pauses that access, so the editor says so before Save, not after.
+  const ticketEdit = mode === 'edit' && trigger?.type === 'ticket_changed' ? trigger : undefined
+  const machineAccess = useTriggerMachineAccess(ticketEdit?.id, open && Boolean(ticketEdit))
+  const accessAuthor = machineAccess.data?.author?.name ?? 'the person who set it up'
+  const pausesMachineAccess = ticketEdit !== undefined && machineAccess.data?.state === 'live'
+    && ticketEditPausesMachineAccess(ticketEdit, form)
   const worksInProject = isTicketTrigger || isDocumentTrigger
   const agentChannels = useMemo(
     () => triggerTargetChannels(channels, selectedAgent, form.triggerType),
@@ -404,6 +415,12 @@ export const TriggerEditorDialog = ({
 
           {formError ? (
             <Notice padding="lg" radius="xl" tone="danger">{formError}</Notice>
+          ) : null}
+
+          {pausesMachineAccess ? (
+            <Notice data-testid="machine-access-edit-warning" padding="lg" radius="xl" tone="warning">
+              {machineAccessEditWarning(accessAuthor)}
+            </Notice>
           ) : null}
 
           <div className="flex items-center justify-between gap-3 pt-1">

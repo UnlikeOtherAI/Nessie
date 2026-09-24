@@ -1,4 +1,5 @@
 import type { MemberRole, Prisma } from '@prisma/client'
+import { endStandingPoliciesForAuthorInTransaction } from '@nessie/team-admin'
 
 import type { ExternalAuthTeam } from './identity-display.js'
 import { wouldRemoveLastOwner } from './organization-owner-lock.js'
@@ -359,6 +360,23 @@ export const reconcileUoaMembershipProjection = async (
       data: { deactivatedAt: new Date() },
     })
     deactivatedOrganizationIds.push(membership.organizationId)
+  }
+
+  // UOA no longer placing this person in a project or an organisation ends
+  // any machine access they gave a ticket trigger there, in this same
+  // transaction (docs/standards/ticket-work-machine-access.md → fences).
+  for (const organizationId of deactivatedOrganizationIds) {
+    await endStandingPoliciesForAuthorInTransaction(tx, { deactivated: true, organizationId, userId: input.userId })
+  }
+  if (revoked.length > 0) {
+    const organizations = await tx.executorStandingPolicy.findMany({
+      where: { authorUserId: input.userId, status: { not: 'ended' } },
+      distinct: ['organizationId'],
+      select: { organizationId: true },
+    })
+    for (const { organizationId } of organizations) {
+      await endStandingPoliciesForAuthorInTransaction(tx, { organizationId, userId: input.userId })
+    }
   }
 
   return {

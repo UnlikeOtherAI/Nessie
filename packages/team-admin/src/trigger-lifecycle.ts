@@ -13,7 +13,12 @@ import { mergeTicketConfigPatch, resolveTicketChangedTrigger, ticketChangedConfi
 import { acquireAgentTodoAgentLock } from './agent-todo-lock.js'
 import { ensureWebhookConfig, extractWebhookApiKey, isJsonRecord, mapTriggerRecord, normalizeNextRunAt, resolveExecutionTarget, TRIGGER_ADMIN_AUDIENCE } from './trigger-core.js'
 import { validateTodoTemplateTriggerConfig } from './trigger-create.js'
-import { endTicketWorkForTrigger } from './ticket-work-records.js'
+import type { StandingPolicyActor } from '@nessie/executor-manage'
+import {
+  applyTriggerEditToStandingPolicyInTransaction,
+  type StandingPolicyTriggerEditEffect,
+} from './standing-policy-trigger-edit.js'
+import { endTicketWorkForTrigger } from './ticket-trigger-teardown.js'
 
 export type AgentTriggerScope = { organizationId: string; triggerId: string }
 /** Every trigger is tenant-scoped through its agent (including bound global
@@ -44,6 +49,19 @@ export const getAgentTrigger = async (
   return trigger ? mapTriggerRecord(trigger) : null
 }
 
+/**
+ * An updated trigger, and what the edit did to the standing machine access a
+ * ticket trigger holds, for the door that saved it to say.
+ */
+export type AgentTriggerUpdateResult = AgentTriggerRecord & { machineAccess?: StandingPolicyTriggerEditEffect }
+
+/**
+ * Who is saving: the actor, for the machine-access transitions an edit can
+ * cause, and the editor, for the checks that ask what that person may read (a
+ * document trigger's space).
+ */
+export type AgentTriggerWriteOptions = { actor?: StandingPolicyActor; editor?: AgentTriggerEditor }
+
 type AgentTriggerUpdateInput = {
   config?: Record<string, unknown>
   description?: string | null
@@ -69,7 +87,10 @@ const updateTicketChangedTrigger = async (
   prisma: PrismaClient,
   existing: { agentId: string | null; config: unknown; enabled: boolean; id: string; targetChannelId: string | null },
   input: AgentTriggerUpdateInput,
-): Promise<AgentTriggerRecord | null> => {
+  options: AgentTriggerWriteOptions,
+): Promise<AgentTriggerUpdateResult | null> => {
+  const actor = options.actor ?? { userId: null }
+  let machineAccess: StandingPolicyTriggerEditEffect | null = null
   const agentId = existing.agentId
   if (!agentId) return null
   const status = input.status ?? (input.enabled === undefined ? undefined : input.enabled ? 'active' : 'paused')
@@ -111,11 +132,18 @@ const updateTicketChangedTrigger = async (
       where: { id: existing.id },
       data: { description: input.description, enabled, name: input.name, status, ...resolvedData },
     })
-    // Switching it off ends the work it holds, in this same write.
-    if (enabled === false) await endTicketWorkForTrigger(tx, { triggerId: existing.id })
+    // Switching it off ends the work it holds and its machine access, in this
+    // same write; an edit of a pinned field suspends that access.
+    if (enabled === false) {
+      await endTicketWorkForTrigger(tx, { actor, reason: 'trigger_disabled', triggerId: existing.id })
+    } else if (reresolve) {
+      machineAccess = await applyTriggerEditToStandingPolicyInTransaction(tx, { actor, trigger: updated })
+    }
     return updated
   })
-  return trigger ? mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE) : null
+  return trigger
+    ? { ...mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE), ...(machineAccess ? { machineAccess } : {}) }
+    : null
 }
 
 /** Who is editing, for the checks that ask what that person may read. */
@@ -184,8 +212,8 @@ export const updateAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
   input: AgentTriggerUpdateInput,
-  trusted: { editor?: AgentTriggerEditor } = {},
-): Promise<AgentTriggerRecord | null> => {
+  options: AgentTriggerWriteOptions = {},
+): Promise<AgentTriggerUpdateResult | null> => {
   const existing = await prisma.agentTrigger.findFirst({
     where: agentTriggerScopeWhere(scope),
     select: {
@@ -193,9 +221,9 @@ export const updateAgentTrigger = async (
     },
   })
   if (!existing) return null
-  if (existing.type === 'ticket_changed') return updateTicketChangedTrigger(prisma, existing, input)
+  if (existing.type === 'ticket_changed') return updateTicketChangedTrigger(prisma, existing, input, options)
   if (existing.type === 'document_changed') {
-    return updateDocumentChangedTrigger(prisma, existing, input, trusted.editor ?? null)
+    return updateDocumentChangedTrigger(prisma, existing, input, options.editor ?? null)
   }
   const agentId = existing.agentId
   const targetChanged = input.targetChannelId !== undefined || input.targetThreadId !== undefined
@@ -234,14 +262,19 @@ export const updateAgentTrigger = async (
   return trigger ? mapTriggerRecord(trigger, TRIGGER_ADMIN_AUDIENCE) : null
 }
 
-export const deleteAgentTrigger = async (prisma: PrismaClient, scope: AgentTriggerScope): Promise<boolean> => {
+export const deleteAgentTrigger = async (
+  prisma: PrismaClient,
+  scope: AgentTriggerScope,
+  options: AgentTriggerWriteOptions = {},
+): Promise<boolean> => {
   if (await prisma.agentTriggerDelivery.count({ where: { triggerId: scope.triggerId } })) return false
   return prisma.$transaction(async (tx) => {
     const trigger = await tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope), select: { id: true } })
     if (!trigger) return false
-    // A ticket trigger's work records outlive it (`triggerId` is SetNull), so
-    // they end first, while they still know which trigger held them.
-    await endTicketWorkForTrigger(tx, { triggerId: trigger.id })
+    // A ticket trigger's work records and machine access outlive it
+    // (`triggerId` is SetNull), so they end first, while they still know which
+    // trigger held them.
+    await endTicketWorkForTrigger(tx, { actor: options.actor, reason: 'trigger_deleted', triggerId: trigger.id })
     return (await tx.agentTrigger.deleteMany({ where: { id: trigger.id } })).count > 0
   })
 }

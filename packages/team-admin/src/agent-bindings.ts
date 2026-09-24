@@ -5,6 +5,7 @@ import {
   isChannelBindableAgent,
   mapAgentRecord,
 } from './agent-record.js'
+import { endStandingPoliciesForAgentUnboundInTransaction } from './standing-policy-fences.js'
 
 type AgentChannelBindingInput = {
   agentId: string
@@ -226,11 +227,18 @@ export const unbindAgentFromChannel = async (
   })
 
   if (!binding) return
-  await prisma.agentBinding.deleteMany({
-    where: {
-      agentId: input.agentId,
-      channelId: input.channelId,
-      principalUserId: null,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.agentBinding.deleteMany({
+      where: {
+        agentId: input.agentId,
+        channelId: input.channelId,
+        principalUserId: null,
+      },
+    })
+    // The agent's trigger in this channel can no longer be worked here: its
+    // standing machine access ends with the binding.
+    await endStandingPoliciesForAgentUnboundInTransaction(tx, {
+      actor: { userId: input.userId ?? null }, agentId: input.agentId, channelId: input.channelId,
+    })
   })
 }

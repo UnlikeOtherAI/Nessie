@@ -90,6 +90,12 @@ export type CodingSessionState = {
   /** Canonical host paths of the worktrees that existed at start; never reported raw. */
   worktreesAtStart?: string[]
   turnStartedAt?: string
+  /**
+   * When the host last saw a turn end: the status leaving `working`, however
+   * it did — a result, an interrupt, the agent exiting, a close mid-turn, a
+   * host that found its predecessor had died mid-turn. Absent until one has.
+   */
+  lastTurnEndedAt?: string
   lastResult?: CodingSessionResult
   permissionDenials: CodingPermissionDenial[]
   totalCostUsd?: number

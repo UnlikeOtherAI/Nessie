@@ -16,6 +16,12 @@ import {
 import { resolveProjectTaskDetailPlacement } from '@nessie/team-admin'
 
 import { endColumnIds } from './ticket-trigger-decision.js'
+import {
+  loadTicketWorkMachineFacts,
+  ticketWorkLimitsClause,
+  ticketWorkMachineLines,
+  type TicketWorkMachineFacts,
+} from './ticket-work-kickoff-machine.js'
 
 /**
  * A `ticket.work` kickoff: three blocks rebuilt from the work record on every
@@ -86,6 +92,8 @@ export type TicketWorkKickoffFacts = {
     awaitingAnswerAt: Date | null
     quietWakeMinutes: number | null
   }
+  /** Its machine, limits, coding session and pull request (`ticket-work-kickoff-machine.ts`). */
+  machine?: TicketWorkMachineFacts
   followKinds: readonly TicketFollowKind[]
   /**
    * Whether an edit to one of the ticket's documents can reach this work: the
@@ -167,7 +175,8 @@ const workLine = (facts: TicketWorkKickoffFacts): string => {
       + `it had ${started}. You will not be woken again for this ticket unless a person who can edit the board `
       + 'moves it into a start-work column again. Do not move or change the ticket now: at most, comment on it.'
   }
-  const wake = `this is wake ${work.wakeNumber} of ${work.wakeLimit}`
+  const limits = facts.machine ? ticketWorkLimitsClause(facts.machine) : null
+  const wake = `this is wake ${work.wakeNumber} of ${work.wakeLimit}${limits ? `, ${limits}` : ''}`
   if (work.status === 'parked') {
     return `Work: parked while the ticket is in a review column; ${started}; ${wake}. A person who can edit the `
       + 'board moving it back into a start-work column resumes it; your own move back does not.'
@@ -196,9 +205,9 @@ const stateBlock = (facts: TicketWorkKickoffFacts): string[] => {
           `${entry.name} (${entry.category}${entry.role ? `, ${entry.role}` : ''}) columnId=${entry.id}`).join('; ')}.`
       : 'The ticket is on no board.',
     workLine(facts),
-    'Machine: none. No machine does ticket work yet, so you cannot run or change code: '
-      + 'read the ticket, comment on it and move it.',
-    `Pull request: ${facts.work.pullRequestUrl ?? 'none on record'}.`,
+    ...(facts.machine
+      ? ticketWorkMachineLines(facts.machine, ended)
+      : [`Pull request: ${facts.work.pullRequestUrl ?? 'none on record'}.`]),
     ...(ended ? [] : waitingLines(facts)),
     ended
       ? 'This conversation is the ticket\'s work thread.'
@@ -295,7 +304,7 @@ const columnRoles = (
  * record, or when the run starts.
  */
 export const loadTicketWorkKickoffFacts = async (
-  prisma: Pick<Prisma.TransactionClient, 'agentTicketWork' | 'agentTrigger' | 'board' | 'taskBoardPlacement'>,
+  prisma: Prisma.TransactionClient,
   input: {
     workId: string
     /** The wake this kickoff is for, counted before the record is written. */
@@ -362,6 +371,7 @@ export const loadTicketWorkKickoffFacts = async (
       awaitingAnswerAt: work.awaitingAnswerAt,
       quietWakeMinutes: config.quietWakeMinutes,
     },
+    machine: await loadTicketWorkMachineFacts(prisma, { workId: input.workId }),
     followKinds: config.followKinds,
     documentsWatched: config.followKinds.includes('document') && await prisma.agentTrigger.count({
       where: {

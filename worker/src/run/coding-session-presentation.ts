@@ -101,7 +101,15 @@ export const presentCodingFailure = (
 
 const sessionIdOf = (body: Record<string, unknown>): string => oneLine(body.sessionId, 64)
 
-const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>): string => {
+/**
+ * What a `ticket.work` run does after a start or a send: end its turn. Nessie
+ * wakes it in the ticket's thread when the session's turn ends, so a wait
+ * would only spend its run watching.
+ */
+const TICKET_WOKEN = 'Nessie wakes you here when the session\'s turn ends.'
+const TICKET_END_TURN = `End your turn: ${TICKET_WOKEN}`
+
+const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>, ticket: boolean): string => {
   switch (toolName) {
     case CODING_SESSION_TOOL_NAMES.terminalStart:
       return 'Terminal opened. Read its screen with terminal_session_read. Share its viewPath when asked to show it.'
@@ -110,11 +118,18 @@ const leadFor = (toolName: CodingSessionToolName, body: Record<string, unknown>)
     case CODING_SESSION_TOOL_NAMES.terminalWrite:
       return 'Input queued. Read the terminal screen to see what the application did.'
     case CODING_SESSION_TOOL_NAMES.start:
+      if (ticket) {
+        return body.replayed === true
+          ? `This start was already made: session ${sessionIdOf(body)}. ${TICKET_END_TURN}`
+          : `Started coding session ${sessionIdOf(body)}. Post one short ticket comment, then end your turn: ${TICKET_WOKEN}`
+      }
       return body.replayed === true
         ? `This start was already made: session ${sessionIdOf(body)}. Call coding_session_wait next.`
         : `Started coding session ${sessionIdOf(body)}. Call coding_session_wait next.`
     case CODING_SESSION_TOOL_NAMES.send:
-      return 'Sent. A working session reads it at its next step; call coding_session_wait to follow it.'
+      return ticket
+        ? `Sent. ${TICKET_END_TURN}`
+        : 'Sent. A working session reads it at its next step; call coding_session_wait to follow it.'
     case CODING_SESSION_TOOL_NAMES.interrupt:
       return body.interrupted === false
         ? 'Nothing was running to interrupt.'
@@ -138,11 +153,14 @@ export const presentCodingCall = (
   toolName: CodingSessionToolName,
   parsed: ParsedBridgeResult,
   result: AgenticToolResult,
+  options: { ticket?: boolean } = {},
 ): AgenticToolResult => {
   if (parsed.kind !== 'answer') return presentCodingFailure(parsed, result)
   return {
     ...result,
-    output: frameUntrustedOutput(CODING_AGENT_BANNER, JSON.stringify(parsed.body), leadFor(toolName, parsed.body)),
+    output: frameUntrustedOutput(
+      CODING_AGENT_BANNER, JSON.stringify(parsed.body), leadFor(toolName, parsed.body, options.ticket === true),
+    ),
   }
 }
 
@@ -188,8 +206,11 @@ export const codingProgressLine = (body: CodingStatusBody, activity: CodingWaitA
 const reasonOf = (body: CodingStatusBody): string =>
   typeof body.reason === 'string' ? ` (${oneLine(body.reason, 64)})` : ''
 
-const waitLead = (done: CodingWaitDone): string => {
+const waitLead = (done: CodingWaitDone, ticket: boolean): string => {
   const { last } = done
+  if (ticket && (done.outcome === 'drained' || done.outcome === 'no_answer' || done.outcome === 'window')) {
+    return `${agentLabel(last)} is still working, or the machine has not said otherwise. ${TICKET_END_TURN}`
+  }
   switch (done.outcome) {
     case 'person_wrote':
       return 'The person sent a message; end your turn now with one line of status; you will read it next.'
@@ -225,8 +246,8 @@ const waitLead = (done: CodingWaitDone): string => {
 }
 
 /** A finished wait: our lead, then the digest and — once a turn ended — its full summary, framed. */
-export const presentCodingWait = (done: CodingWaitDone): string => {
+export const presentCodingWait = (done: CodingWaitDone, options: { ticket?: boolean } = {}): string => {
   const ended = codingTurnEnd(done.last)
   const body = [JSON.stringify(codingWaitDigest(done)), ...(ended ? [JSON.stringify(ended)] : [])].join('\n')
-  return frameUntrustedOutput(CODING_AGENT_BANNER, body, waitLead(done))
+  return frameUntrustedOutput(CODING_AGENT_BANNER, body, waitLead(done, options.ticket === true))
 }

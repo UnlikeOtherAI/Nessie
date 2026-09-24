@@ -24,12 +24,24 @@ export type ExecutorCodingAgentName = z.infer<typeof ExecutorCodingAgentNameSche
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 
 /** A root's name: the workspace-folder grammar, which the executor enforces in full. */
-const CodingRootNameSchema = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(40)
+export const CodingRootNameSchema = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(40)
 
 /** A categorical reason, never free text: `lease_ended`, `host_lost`, `agent_missing`, … */
 const CodingReasonSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 
 const distinct = (values: readonly string[]): boolean => new Set(values).size === values.length
+
+/**
+ * The commands a ticket needs to reach a merge on its own: push the branch,
+ * open the pull request, watch its checks and merge it. The descriptor names
+ * which of them Claude Code may run without being asked (`mergeCommands`), so
+ * a standing policy's confirmation card can say whether a ticket on this
+ * machine stops at an open pull request — without the host's tool list ever
+ * leaving the host.
+ */
+export const EXECUTOR_CODING_MERGE_COMMANDS = ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'] as const
+export const ExecutorCodingMergeCommandSchema = z.enum(EXECUTOR_CODING_MERGE_COMMANDS)
+export type ExecutorCodingMergeCommand = z.infer<typeof ExecutorCodingMergeCommandSchema>
 
 const sameMembers = (left: readonly string[], right: readonly string[]): boolean => (
   [...left].sort().join(',') === [...right].sort().join(',')
@@ -75,17 +87,75 @@ export const ExecutorCodingSessionsFactsSchema = z
       .refine(distinct, 'Each environment variable is named once.'),
     rootNames: z.array(CodingRootNameSchema).min(1).max(16).refine(distinct, 'Each coding root is named once.'),
     configDigest: Sha256DigestSchema,
+    /**
+     * Per offered agent: the most one turn may spend, in US dollars, or `null`
+     * when nothing bounds it. Claude Code's is the configuration's
+     * `maxBudgetUsd` (`--max-budget-usd`, with a fresh process whenever a turn
+     * would start with less than the whole budget); Codex has no such flag, so
+     * its turns are never bounded and it is always `null`.
+     *
+     * This and `maxLiveSessionsPerOwner` are absent from a descriptor an older
+     * daemon signed, which is a machine that has not said — never one without
+     * a limit. A check that needs them refuses such a machine.
+     */
+    maxBudgetUsd: z.record(ExecutorCodingAgentNameSchema, z.number().positive().max(1_000).nullable()).optional(),
+    /**
+     * How many live sessions one owner may hold on the machine at once; an
+     * owner is an agent and a person, and one ticket's work is an owner of its
+     * own (`executorCodingSessionOwnerKeyInput`).
+     */
+    maxLiveSessionsPerOwner: z.number().int().min(1).max(20).optional(),
+    /**
+     * Which of `EXECUTOR_CODING_MERGE_COMMANDS` Claude Code may run without
+     * being asked: all of them under `bypassPermissions`, otherwise those an
+     * `allowedTools` entry covers (`Bash`, `Bash(git *)`, `Bash(gh pr:*)`, …)
+     * and no `disallowedTools` entry does. Empty when Claude Code is not
+     * offered, since a Codex turn has no budget and so never works a ticket.
+     * Absent from a descriptor an older daemon signed: a machine that has not
+     * said, which a merge check reads as unable to merge.
+     */
+    mergeCommands: z.array(ExecutorCodingMergeCommandSchema).max(EXECUTOR_CODING_MERGE_COMMANDS.length)
+      .refine(distinct, 'Each merge command is named once.').optional(),
+    /**
+     * Whether Claude Code may run any command at all without asking: `any`
+     * under `bypassPermissions`, or when an `allowedTools` entry covers every
+     * command (a bare `Bash`, `Bash(*)`, `Bash(:*)`) and no `disallowedTools`
+     * entry takes that back; otherwise `listed`. Standing machine access needs
+     * its author's separate "run any command" tick for `any`. Absent from an
+     * older daemon's descriptor: a machine that has not said, which standing
+     * machine access refuses as too old.
+     */
+    unaskedCommands: z.enum(['any', 'listed']).optional(),
   })
   .strict()
   .refine(
     (facts) => sameMembers(Object.keys(facts.permissionMode), facts.agents),
     'Every offered coding agent states its permission mode, and only those do.',
   )
+  .refine(
+    (facts) => facts.maxBudgetUsd === undefined || sameMembers(Object.keys(facts.maxBudgetUsd), facts.agents),
+    'Every offered coding agent states its turn budget, and only those do.',
+  )
 export type ExecutorCodingSessionsFacts = z.infer<typeof ExecutorCodingSessionsFactsSchema>
 
 /* -------------------------------------------------------------------------- */
 /* Owners                                                                      */
 /* -------------------------------------------------------------------------- */
+
+const LowercaseUuidPattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+/**
+ * The work an owner's sessions belong to, beside the agent and the person:
+ * `ticket:<policyId>:<taskId>` for one ticket's work under a standing policy.
+ * Absent for a launch and a conversation lease, whose sessions are the
+ * person's own with that agent. It is hashed into the owner key, so a ticket's
+ * sessions are isolated from the person's own and from every other ticket's,
+ * and each has its own live-session quota. Lowercase ids only: the key hashes
+ * the text, and one id spelled two ways would be two owners.
+ */
+export const ExecutorCodingSessionOwnerContextSchema = z
+  .string()
+  .regex(new RegExp(`^ticket:${LowercaseUuidPattern}:${LowercaseUuidPattern}$`))
 
 /**
  * Who an `mcp.call` acts for, stamped by the worker from the binding's
@@ -97,6 +167,7 @@ export const ExecutorMcpCallOwnerSchema = z
   .object({
     agentId: AgentIdSchema,
     actorUserId: UserIdSchema,
+    contextId: ExecutorCodingSessionOwnerContextSchema.optional(),
   })
   .strict()
 export type ExecutorMcpCallOwner = z.infer<typeof ExecutorMcpCallOwnerSchema>
@@ -106,12 +177,17 @@ export type ExecutorMcpCallOwner = z.infer<typeof ExecutorMcpCallOwnerSchema>
  * of this text. The daemon derives it for `_meta['nessie/owner']`; the control
  * plane derives the same key to name an owner in `codingSessionClose`. The
  * executor id is part of it, so one person's key on one machine means nothing
- * on another. Hashing is each runtime's own; the text is this one function.
+ * on another. A context is a fourth field; without one the text is the three
+ * ids exactly as before it existed, so no session's key changed. None of the
+ * ids can hold a vertical bar, so no three-field text equals a four-field one.
+ * Hashing is each runtime's own; the text is this one function.
  */
 export const executorCodingSessionOwnerKeyInput = (
   executorId: string,
-  owner: { agentId: string; actorUserId: string },
-): string => `${executorId}|${owner.agentId}|${owner.actorUserId}`
+  owner: { agentId: string; actorUserId: string; contextId?: string },
+): string => [
+  executorId, owner.agentId, owner.actorUserId, ...(owner.contextId === undefined ? [] : [owner.contextId]),
+].join('|')
 
 export const ExecutorCodingSessionOwnerKeySchema = Sha256DigestSchema
 
@@ -145,6 +221,18 @@ export type ExecutorCodingSessionClose = z.infer<typeof ExecutorCodingSessionClo
  *   on its roster, was withdrawn;
  * - `executor_paused`, `executor_revoked`: the machine itself was fenced;
  * - `person`: a person pressed Close on one session.
+ *
+ * One ticket's work under a standing policy closes its own sessions, each
+ * named by id (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md
+ * → "Server-side closes"):
+ *
+ * - `ticket_left_flow`: the ticket entered one of the trigger's end columns;
+ * - `trigger_changed`: the trigger was disabled, deleted, or edited in a
+ *   pinned field;
+ * - `policy_suspended`: the policy was suspended, its trigger or descriptor
+ *   digest having changed;
+ * - `policy_ended`: the policy ended — End, a fence, its author gone;
+ * - `work_limit`: the work record hit one of its limits.
  */
 export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
   'lease_ended',
@@ -152,6 +240,11 @@ export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
   'executor_paused',
   'executor_revoked',
   'person',
+  'ticket_left_flow',
+  'trigger_changed',
+  'policy_suspended',
+  'policy_ended',
+  'work_limit',
 ] as const
 export const ExecutorCodingSessionCloseReasonSchema = z.enum(EXECUTOR_CODING_SESSION_CLOSE_REASONS)
 export type ExecutorCodingSessionCloseReason = z.infer<typeof ExecutorCodingSessionCloseReasonSchema>
@@ -177,6 +270,13 @@ export type ExecutorCodingSessionStatus = z.infer<typeof ExecutorCodingSessionSt
  * recognise it and close it, and nothing of what it said or did — no prompt,
  * no transcript, no path. The title is the task's first line as the bridge
  * recorded it, rewritten so no host path survives.
+ *
+ * `turn` counts the turns the coding agent has begun (0 before the first),
+ * and `lastTurnEndedAt` is when the host last saw one end — its result, an
+ * interrupt, the agent exiting, a close mid-turn — or `null` when none has.
+ * A turn that began and ended between two reports still moves `turn`, which
+ * is how a reader tells a fast turn from no change. Both are absent from an
+ * older daemon's report, and absent infers nothing.
  */
 export const ExecutorCodingSessionSummarySchema = z
   .object({
@@ -188,6 +288,16 @@ export const ExecutorCodingSessionSummarySchema = z
     agent: ExecutorCodingAgentNameSchema,
     root: CodingRootNameSchema,
     updatedAt: TimestampSchema,
+    turn: z.number().int().min(0).optional(),
+    lastTurnEndedAt: TimestampSchema.nullable().optional(),
+    /**
+     * What the session has cost across its turns, once a turn has reported a
+     * cost — the same cumulative figure `session_status` answers. The heartbeat
+     * intake adds what is new since its last report to a ticket's spend, so a
+     * ticket's limits hold whether or not the model ever reads its status.
+     * Absent from an older daemon's report, which infers nothing.
+     */
+    totalCostUsd: z.number().min(0).max(1_000_000).optional(),
   })
   .strict()
 export type ExecutorCodingSessionSummary = z.infer<typeof ExecutorCodingSessionSummarySchema>
@@ -206,6 +316,23 @@ export const ExecutorCodingSessionRecordSchema = ExecutorCodingSessionSummarySch
   .extend({
     closing: z.boolean(),
     ownerAgentName: z.string().min(1).nullable(),
+    /**
+     * A ticket's own session, started by its work under its trigger's standing
+     * machine access (its owner key carries the ticket's context): whose
+     * access it runs under, and the ticket — named only when the reader can
+     * read its project. Absent for a launch's or a lease's session.
+     */
+    ticketWork: z
+      .object({
+        authorName: z.string().min(1),
+        ticket: z
+          .object({ taskId: z.string().uuid(), projectId: z.string().uuid(), title: z.string().min(1) })
+          .strict()
+          .nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict()
 export type ExecutorCodingSessionRecord = z.infer<typeof ExecutorCodingSessionRecordSchema>

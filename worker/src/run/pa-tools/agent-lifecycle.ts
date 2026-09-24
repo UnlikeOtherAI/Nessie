@@ -5,6 +5,7 @@ import {
   isAgentAccessibleToActor,
   listAgentTriggers,
   loadChannelForAgentManagement,
+  standingPolicyTriggerEditSentence,
   unbindAgentFromChannel,
   updateAgentTrigger,
 } from '@nessie/team-admin'
@@ -97,7 +98,10 @@ export const runAgentTriggerUpdateTool = async (
   const updated = await updateAgentTrigger(context.prisma, {
     organizationId: member.organizationId,
     triggerId: trigger.id,
-  }, args, { editor: { userId: member.userId, ...(uoaIdentity ? { uoaIdentity } : {}) } })
+  }, args, {
+    actor: { requestId: member.actorContext.actionContext.requestId, userId: member.actorContext.actor.actorId },
+    editor: { userId: member.userId, ...(uoaIdentity ? { uoaIdentity } : {}) },
+  })
   if (!updated) throw new Error('Trigger configuration is invalid.')
   const scope = await describeResolvedTriggerScope(context, member, updated)
   await emitWorkerAuditEvent(context.prisma, member.actorContext, {
@@ -118,6 +122,8 @@ export const runAgentTriggerUpdateTool = async (
     inputSummary: `triggerId=${args.triggerId}`,
     outputPreview: [
       `Updated ${triggerLink(updated)} | status=${updated.status} | enabled=${updated.enabled}`,
+      // The one machine-access consequence an edit can have, said as the editor warns it.
+      ...(updated.machineAccess ? [standingPolicyTriggerEditSentence(updated.machineAccess)] : []),
       ...scope,
     ].join('\n'),
     toolName: 'agent_trigger_update',
@@ -148,6 +154,8 @@ export const runAgentTriggerDeleteTool = async (
   if (!await deleteAgentTrigger(context.prisma, {
     organizationId: member.organizationId,
     triggerId,
+  }, {
+    actor: { requestId: member.actorContext.actionContext.requestId, userId: member.actorContext.actor.actorId },
   })) {
     throw new Error('Trigger with delivery history cannot be deleted.')
   }

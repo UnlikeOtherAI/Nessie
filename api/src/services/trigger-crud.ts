@@ -21,6 +21,7 @@ import {
   type AgentTriggerScope,
   agentTriggerScopeWhere,
 } from '@nessie/team-admin'
+import type { StandingPolicyActor } from '@nessie/executor-manage'
 import type {
   AgentTriggerDeliveryRecord,
   AgentTriggerRecord,
@@ -162,6 +163,7 @@ export { createWorkflowTrigger }
 export const pauseAgentTrigger = async (
   prisma: PrismaClient,
   scope: AgentTriggerScope,
+  actor?: StandingPolicyActor,
 ): Promise<AgentTriggerRecord | null> => {
   const paused = await prisma.$transaction(async (tx) => {
     // Keep a health diagnosis if it races this click. A read followed by the
@@ -184,9 +186,13 @@ export const pauseAgentTrigger = async (
       data: { enabled: false },
     })
     const trigger = await tx.agentTrigger.findFirst({ where: agentTriggerScopeWhere(scope) })
-    // A paused ticket trigger ends the work it holds in the same write
-    // (docs/standards/ticket-work.md); every other type holds none.
-    if (trigger?.type === 'ticket_changed') await endTicketWorkForTrigger(tx, { triggerId: trigger.id })
+    // A paused ticket trigger ends the work and the machine access it holds in
+    // the same write (docs/standards/ticket-work.md); every other type holds none.
+    if (trigger?.type === 'ticket_changed') {
+      await endTicketWorkForTrigger(tx, {
+        ...(actor ? { actor } : {}), reason: 'trigger_disabled', triggerId: trigger.id,
+      })
+    }
     return trigger
   })
   return paused ? mapTriggerRecord(paused, TRIGGER_ADMIN_AUDIENCE) : null

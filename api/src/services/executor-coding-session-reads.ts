@@ -10,7 +10,9 @@ import {
   reportedExecutorCodingSessions,
 } from '@nessie/executor-manage'
 import { buildAgentEntitlementWhere } from '@nessie/team-admin'
-import type { AuthorizedActionContext, ExecutorCodingSessionListResponse } from '@nessie/schemas'
+import { isAdminActor, type AuthorizedActionContext, type ExecutorCodingSessionListResponse } from '@nessie/schemas'
+
+import { loadTicketSessionOwners } from './executor-coding-session-tickets.js'
 
 /**
  * The coding sessions open on one machine, for the people who may manage it
@@ -24,6 +26,8 @@ import type { AuthorizedActionContext, ExecutorCodingSessionListResponse } from 
  * owner — and each agent they bound the local-apps pair for there. Managing
  * the machine does not widen what else the reader may see: that agent is
  * named only when the ordinary agent entitlement would show it to them.
+ * A ticket's own session, keyed by its ticket's context, is named through
+ * the work record that started it (`executor-coding-session-tickets.ts`).
  */
 export const listExecutorCodingSessions = async (
   prisma: PrismaClient,
@@ -43,7 +47,7 @@ export const listExecutorCodingSessions = async (
   const canClose = executorCodingSessionsAllowed(row, userId)
   const sessions = reportedExecutorCodingSessions(row.localMcp).filter((session) => session.status !== 'closed')
   if (sessions.length === 0) return { canClose, sessions: [] }
-  const [ownerAgentIds, open] = await Promise.all([
+  const [ownerAgentIds, open, tickets] = await Promise.all([
     row.scopeKind === 'private' ? executorCodingSessionOwnerAgentIds(prisma, executorId, row.pairingOwnerUserId) : [],
     // A request older than its day is settled by the next heartbeat whatever
     // the machine says, so it no longer reads as closing here either.
@@ -55,15 +59,21 @@ export const listExecutorCodingSessions = async (
       },
       select: { ownerKey: true, sessionId: true },
     }),
+    row.scopeKind === 'private'
+      ? loadTicketSessionOwners(prisma, {
+          executorId, isOrganizationAdmin: isAdminActor(actor), organizationId, sessions, viewerUserId: userId,
+        })
+      : new Map<string, never>(),
   ])
   const ownerAgent = new Map(ownerAgentIds.map((agentId) => [
     executorCodingSessionOwnerKey(executorId, { actorUserId: row.pairingOwnerUserId, agentId }),
     agentId,
   ]))
-  const named = ownerAgentIds.length === 0 ? [] : await prisma.agent.findMany({
+  const namedIds = [...new Set([...ownerAgentIds, ...[...tickets.values()].map((ticket) => ticket.agentId)])]
+  const named = namedIds.length === 0 ? [] : await prisma.agent.findMany({
     where: {
       AND: [
-        { id: { in: ownerAgentIds }, deletedAt: null },
+        { id: { in: namedIds }, deletedAt: null },
         buildAgentEntitlementWhere({
           includeSystemManaged: true,
           includeUnbound: managed.access.organizationRole === 'owner' || managed.access.organizationRole === 'admin',
@@ -78,7 +88,8 @@ export const listExecutorCodingSessions = async (
   return {
     canClose,
     sessions: sessions.map((session) => {
-      const agentId = ownerAgent.get(session.ownerKey)
+      const ticket = tickets.get(session.sessionId)
+      const agentId = ownerAgent.get(session.ownerKey) ?? ticket?.agentId
       return {
         ...session,
         closing: open.some((request) => (
@@ -86,6 +97,7 @@ export const listExecutorCodingSessions = async (
           && (request.sessionId === null || request.sessionId === session.sessionId)
         )),
         ownerAgentName: (agentId && agentNames.get(agentId)) || null,
+        ...(ticket ? { ticketWork: ticket.ticketWork } : {}),
       }
     }),
   }

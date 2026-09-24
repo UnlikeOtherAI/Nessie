@@ -56,6 +56,7 @@ export {
   type ExecutorCommandCreateInput,
 } from './executor-commands.js'
 export {
+  assertExecutorMcpCallPayload,
   executorCodingSessionOwnerKey,
   executorCodingSessionsAllowed,
   reviewedCodingSessionsServer,
@@ -66,6 +67,7 @@ export {
   executorCodingSessionOwnerAgentIds,
   reportedExecutorCodingSessions,
   requestExecutorCodingSessionClose,
+  requestExecutorCodingSessionCloseForSessionsInTransaction,
 } from './executor-coding-session-closes.js'
 export {
   markExecutorCommandUnknownOutcome,
@@ -133,7 +135,9 @@ export {
   executorGrantedOperationKeys,
   executorOperationKeysHeldElsewhere,
   latestActiveCapabilityRevision,
+  lockExecutorMutation,
   removePrivateAssignment,
+  requireManagedExecutor,
   removePrivateAssignmentInTransaction,
   resolveExecutorWholeSuiteOperationKeys,
   setExecutorAgentOperationGrant,
@@ -159,7 +163,15 @@ export {
   type ExecutorLifecycleAction,
 } from './executor-lifecycle.js'
 export {
+  assessStandingPolicyMachine,
+  offersReviewedCodingSessions,
+  standingPolicyMachineDigests,
+  type StandingPolicyMachineAssessment,
+  type StandingPolicyMachineCheck,
+} from './executor-standing-policy-machines.js'
+export {
   confirmExecutorAccessChange,
+  createExecutorAccessChangeContinuationInTransaction,
   getExecutorAccessChangeForUser,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,
@@ -192,3 +204,17 @@ export {
 export * from './executor-code-pairing.js'
 export * from './executor-code-confirmation.js'
 export * from './executor-code-expiry.js'
+export * from './executor-standing-policy-lifecycle.js'
+export * from './executor-standing-policy-terms.js'
+export * from './ticket-work-clock.js'
+export * from './ticket-work-records.js'
+export * from './executor-standing-policy-binding.js'
+export * from './executor-standing-policy-fence.js'
+export * from './executor-standing-policy-fences.js'
+export * from './executor-standing-policy-limits.js'
+export * from './executor-standing-policy-pool.js'
+export * from './ticket-work-session-observations.js'
+export * from './ticket-work-session-origins.js'
+export * from './ticket-work-heartbeat-costs.js'
+export * from './executor-standing-policy-views.js'
+export * from './executor-standing-policy-agent.js'

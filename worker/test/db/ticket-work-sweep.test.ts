@@ -67,7 +67,7 @@ const threadRows = async (prisma: PrismaClient, threadId: string) =>
 
 runDatabaseTest('the quiet wake comes only to active work with nothing scheduled, and counts', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)
@@ -147,7 +147,7 @@ runDatabaseTest('the quiet wake comes only to active work with nothing scheduled
 
 runDatabaseTest('an open question pauses the quiet wake and the hours clock until a person answers, which wakes the work', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)
@@ -205,7 +205,7 @@ runDatabaseTest('an open question pauses the quiet wake and the hours clock unti
 
 runDatabaseTest('the sweep ends work a lowered wake limit left over, with its activity row', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)
@@ -236,7 +236,7 @@ runDatabaseTest('the sweep ends work a lowered wake limit left over, with its ac
 
 runDatabaseTest('a pickup whose dispatch job the queue gave up on is recovered once by the sweep', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const task = await newTask(prisma, s)
   await move(prisma, s, task.id, s.columns.inProgress)
@@ -286,7 +286,7 @@ runDatabaseTest('the periodic sweep is one job a minute, by its bucket', async (
 
 runDatabaseTest('a failed quiet wake retried after a question or a later wake is settled, never a spent wake', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s, seen)
@@ -332,7 +332,7 @@ runDatabaseTest('a failed quiet wake retried after a question or a later wake is
 
 runDatabaseTest('the sweep reads every page of live work, so parked records never crowd out a quiet one', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   // Three tickets parked in review for hours — the oldest wakes on the board.

@@ -86,12 +86,15 @@ runDatabaseTest('a board editor\'s move starts work: one record, its own thread,
 
   const entered = await latestEvent(prisma, task.id, 'column_entered')
   const work = await workOf(prisma, s, task.id)
-  assert.equal(work.status, 'active')
+  // No machine access is set up for the trigger: the work is live and waits
+  // for it, pinned to nothing, and its one wake runs unbound.
+  assert.equal(work.status, 'waiting_machine')
+  assert.equal(work.stateReason, 'machine_access_not_set_up')
   assert.equal(work.startedByUserId, s.editorId)
   assert.equal(work.startedByEventId, entered.id)
   assert.equal(work.wakeCount, 1)
   assert.equal(work.lastWakeReason, 'pickup')
-  assert.equal(work.executorId, null, 'no machine does ticket work in T1')
+  assert.equal(work.executorId, null, 'no machine is pinned without machine access')
   const delivery = await deliveryFor(prisma, s, `ticket:${s.triggerId}:${entered.id}`)
   assert.equal(delivery.status, 'delivered')
   assert.equal((delivery.payload as { workId?: string }).workId, work.id)
@@ -115,7 +118,7 @@ runDatabaseTest('a board editor\'s move starts work: one record, its own thread,
   const started = TicketWorkActivityPayloadSchema.parse((await latestEvent(prisma, task.id, 'work_started')).payload)
   assert.deepEqual(
     { by: started.by, workId: started.workId, status: started.status, reason: started.reason },
-    { by: s.editorId, workId: work.id, status: 'active', reason: null },
+    { by: s.editorId, workId: work.id, status: 'waiting_machine', reason: 'machine_access_not_set_up' },
   )
 
   // A compact wake row, and a hidden kickoff with its three blocks.
@@ -269,7 +272,7 @@ runDatabaseTest('a pickup past startsPerDay is recorded as stopped and starts no
   await move(prisma, s, second.id, s.columns.inProgress)
   await drainTicketJobs(prisma, s, seen)
 
-  assert.equal((await workOf(prisma, s, first.id)).status, 'active')
+  assert.equal((await workOf(prisma, s, first.id)).status, 'waiting_machine')
   const refused = await workOf(prisma, s, second.id)
   assert.equal(refused.status, 'failed')
   assert.equal(refused.endedReason, 'limit_daily')
@@ -344,7 +347,7 @@ runDatabaseTest('a review column parks the work; the editor\'s move back resumes
   await drainTicketJobs(prisma, s, seen)
   const resumed = await workOf(prisma, s, task.id)
   assert.equal(resumed.id, work.id)
-  assert.equal(resumed.status, 'active')
+  assert.equal(resumed.status, 'waiting_machine')
   assert.equal(await prisma.agentTicketWork.count({ where: { triggerId: s.triggerId, taskId: task.id } }), 1)
   const reentered = await latestEvent(prisma, task.id, 'column_entered')
   const delivery = await deliveryFor(prisma, s, `ticket:${s.triggerId}:${reentered.id}`)
@@ -374,7 +377,7 @@ runDatabaseTest('a ticket that comes back after its work ended is worked in the 
   await drainTicketJobs(prisma, s, seen)
   const second = await workOf(prisma, s, task.id)
   assert.notEqual(second.id, first.id)
-  assert.equal(second.status, 'active')
+  assert.equal(second.status, 'waiting_machine')
   assert.equal(second.threadId, first.threadId)
   assert.equal(await prisma.thread.count({ where: { channelId: s.channelId, agentId: s.agentId } }), 1)
 })

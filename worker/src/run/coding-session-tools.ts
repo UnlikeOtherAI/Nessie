@@ -33,6 +33,18 @@ export type CodingSessionToolName = typeof CODING_SESSION_TOOL_NAMES[keyof typeo
 
 export const CODING_SESSION_TOOL_NAME_SET: ReadonlySet<string> = new Set(Object.values(CODING_SESSION_TOOL_NAMES))
 
+/** The interactive terminal's own three, offered only when the machine lists the `terminal` agent. */
+export const TERMINAL_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set([
+  CODING_SESSION_TOOL_NAMES.terminalStart,
+  CODING_SESSION_TOOL_NAMES.terminalRead,
+  CODING_SESSION_TOOL_NAMES.terminalWrite,
+])
+
+/** The structured coding-session seven: what holding "the coding tools" means, terminal or not. */
+export const STRUCTURED_CODING_SESSION_TOOL_NAMES: ReadonlySet<string> = new Set(
+  [...CODING_SESSION_TOOL_NAME_SET].filter((name) => !TERMINAL_SESSION_TOOL_NAMES.has(name)),
+)
+
 export const isCodingSessionToolName = (name: string): name is CodingSessionToolName =>
   CODING_SESSION_TOOL_NAME_SET.has(name)
 
@@ -233,6 +245,12 @@ export const codingBridgeArguments = (
     }
     case CODING_SESSION_TOOL_NAMES.send:
       return { message: args.message, sessionId: args.sessionId }
+    case CODING_SESSION_TOOL_NAMES.review: {
+      // A pull request named by URL, read even after its branch is gone: a
+      // `ticket.work` run fills it from its work record.
+      const pullRequest = text(args.pullRequest)
+      return { sessionId: args.sessionId, ...(pullRequest === undefined ? {} : { pullRequest }) }
+    }
     default:
       return { sessionId: args.sessionId }
   }

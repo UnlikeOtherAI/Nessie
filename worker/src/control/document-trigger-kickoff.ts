@@ -88,12 +88,13 @@ export type DocumentTicketNote = {
   id: string
   title: string | null
   /** Why the change is reviewed here rather than in the ticket's work thread. */
-  why: 'no_work' | 'work_ended' | 'not_followed' | 'other_agent_edits' | 'not_board_editor'
+  why: 'no_work' | 'work_ended' | 'work_waiting_machine' | 'not_followed' | 'other_agent_edits' | 'not_board_editor'
 }
 
 const TICKET_NOTES: Record<DocumentTicketNote['why'], string> = {
   no_work: 'you have no live work on that ticket (it was never picked up)',
   work_ended: 'your work on that ticket has ended',
+  work_waiting_machine: 'your work on that ticket is waiting for its machine to come back online, so it cannot take the change now',
   not_followed: 'your work on that ticket does not follow document edits',
   other_agent_edits: 'only agents saved this change, and an agent\'s edit never steers ticket work',
   not_board_editor: 'the people who saved it cannot edit that ticket\'s board, and only board editors steer its work',

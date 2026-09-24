@@ -118,6 +118,39 @@ export const requestExecutorCodingSessionClosesInTransaction = async (
 }
 
 /**
+ * Close named sessions of one owner: one ticket's work under a standing
+ * policy, whose sessions the platform closes by id when the ticket leaves its
+ * flow, the trigger changes, the policy is suspended or ends, or a limit is
+ * hit (docs/standards/ticket-work.md → "Teardown, limits and session closes
+ * are the platform's"). The owner key carries the ticket's context, so no
+ * other session of the author's is named. The same rules as every close: only
+ * the pairing owner of a private machine can have driven the bridge, and a
+ * machine that never offered it gets nothing.
+ */
+export const requestExecutorCodingSessionCloseForSessionsInTransaction = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    executorId: string
+    owner: ExecutorCodingSessionOwner
+    reason: ExecutorCodingSessionCloseReason
+    requestedByUserId: string | null
+    sessionIds: readonly string[]
+  },
+): Promise<void> => {
+  if (input.sessionIds.length === 0) return
+  const executor = await tx.executor.findUnique({
+    where: { id: input.executorId },
+    select: { localMcp: true, pairingOwnerUserId: true, scopeKind: true },
+  })
+  if (!executor || !executorCodingSessionsAllowed(executor, input.owner.actorUserId)) return
+  if (!await executorMayHoldCodingSessions(tx, input.executorId, executor.localMcp)) return
+  const ownerKey = executorCodingSessionOwnerKey(input.executorId, input.owner)
+  await writeCloseRequests(tx, input.executorId, [...new Set(input.sessionIds)].map((sessionId) => ({
+    ownerKey, reason: input.reason, requestedByUserId: input.requestedByUserId, sessionId,
+  })))
+}
+
+/**
  * The sessions the machine's stored local-MCP report lists for its bridge,
  * or none when it lists none, has not asked the bridge, or cannot be read.
  */

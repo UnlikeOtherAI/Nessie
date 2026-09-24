@@ -154,7 +154,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
     if (!(await requireProjectModifier(actorContext, projectId, reply))) return reply
     const { newDefaultBoardId } = request.query as { newDefaultBoardId?: string }
 
-    const result = await deleteBoard(prisma, project.id, boardId, newDefaultBoardId)
+    const result = await deleteBoard(prisma, project.id, boardId, newDefaultBoardId, actorContext.actor.actorId)
     if (isBoardMutationError(result)) {
       boardMutationError(reply, result)
       return reply
@@ -284,7 +284,7 @@ export const registerBoardRoutes = (app: FastifyInstance, deps: RouteDeps): void
         return reply
       }
 
-      const result = await deleteBoardColumn(prisma, boardId, columnId)
+      const result = await deleteBoardColumn(prisma, boardId, columnId, actorContext.actor.actorId)
       if (isBoardMutationError(result)) {
         boardMutationError(reply, result)
         return reply

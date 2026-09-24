@@ -25,6 +25,14 @@ import { HOST_OUTPUT_OPERATION_KEYS, type ExecutorHostOutputDisclosure } from '.
 import { createExecutorMcpCatalogs, type ExecutorMcpCatalogAnswer } from './executor-mcp-catalog.js'
 import { descriptorFor, executorToolName } from './executor-tool-descriptors.js'
 import { shapeExecutorToolArguments } from './executor-tool-arguments.js'
+import {
+  TICKET_WORK_CODING_WAIT_TIMING,
+  TICKET_WORK_CODING_WAIT_TOOL_TIMEOUT_MS,
+  ticketWorkCodingDescriptors,
+  ticketWorkCodingObserver,
+  ticketWorkCodingSessions,
+  type TicketWorkCodingScope,
+} from './ticket-work-coding-sessions.js'
 import { summarizeToolInput } from './tool-util.js'
 import type { AgenticToolResult } from './tools.js'
 
@@ -100,6 +108,11 @@ export const buildExecutorToolset = async (
     hostOutput: ExecutorHostOutputDisclosure | null
     organizationId: string
     runId: string
+    /**
+     * A `ticket.work` run the standing binder bound: its coding tools are the
+     * ticket's own (`ticket-work-coding-sessions.ts`).
+     */
+    ticketWork?: TicketWorkCodingScope | null
   },
 ): Promise<ExecutorToolset> => {
   const encryptionSecret = input.encryptionSecret
@@ -130,11 +143,22 @@ export const buildExecutorToolset = async (
         id: true,
         operationKey: true,
         session: { select: { id: true, profile: true, status: true } },
+        standingPolicyId: true,
+        ticketWorkId: true,
       },
     }),
   ])
+  // A ticket's work bound through a standing policy gets the coding-session
+  // tools and nothing else: the author's card consented to Claude Code
+  // sessions on these machines, not to the machine's other reviewed programs.
+  // So the generic pair is never offered to it, and the dispatch fence
+  // refuses it too (`standingProgramRefusal`). Standing whenever a binding of
+  // the run says so, whether or not the ticket's coding scope loaded — and
+  // with no scope, not even the coding tools are offered.
+  const standing = Boolean(input.ticketWork)
+    || bindings.some((binding) => Boolean(binding.standingPolicyId || binding.ticketWorkId))
   const mcpCallToolId = logicalTools.get('mcp.call')
-  const codingOffer = await codingSessionsOffer(
+  const codingOffer = standing && !input.ticketWork ? null : await codingSessionsOffer(
     prisma,
     bindings,
     mcpCallToolId !== undefined && input.agentToolPolicy?.[mcpCallToolId] === true,
@@ -205,7 +229,7 @@ export const buildExecutorToolset = async (
     ))
     && commandSessionLive,
   )
-  const entries = bindings.flatMap((binding): ExecutorEntry[] => {
+  const entries = standing ? [] : bindings.flatMap((binding): ExecutorEntry[] => {
     // Connected-browser operations stay unavailable until their private-run
     // disclosure gate lands. In particular, their session must never be
     // exposed through an isolated browser, coding, or command entry.
@@ -288,7 +312,10 @@ export const buildExecutorToolset = async (
   const dispatchCommand = createExecutorCommandDispatch({
     agentId: input.agentId, encryptionSecret, prisma, recordHostOutput, recordIdByProviderCall, runId: input.runId,
   })
-  const codingSessions = codingOffer
+  const ticketWork = input.ticketWork ?? null
+  // The coding tools reach the bridge over the mcp.call binding itself, which
+  // a standing bind pins even though the generic tool is not offered.
+  const baseCodingSessions = codingOffer
     ? createExecutorCodingSessions({
       call: (toolName, args, providerToolCallId, options) => dispatchCommand({
         bindingId: codingOffer.bindingId,
@@ -299,10 +326,24 @@ export const buildExecutorToolset = async (
       }, toolName, args, providerToolCallId, options),
       endRecord: endRecord('A status read of the coding session.'),
       facts: codingOffer.facts,
-      executorId: bindings.find((binding) => binding.id === codingOffer.bindingId)?.executorId,
-      ...codingWaitRunChecks(prisma, { agentId: input.agentId, runId: input.runId }),
+      ...(ticketWork
+        ? {
+            descriptors: ticketWorkCodingDescriptors(codingOffer.facts, ticketWork),
+            observe: ticketWorkCodingObserver(prisma, ticketWork),
+            ticket: true,
+            timing: TICKET_WORK_CODING_WAIT_TIMING,
+          }
+        // A person's own run links each session to its viewer; a ticket's
+        // thread is a project room that never names the machine.
+        : { executorId: bindings.find((binding) => binding.id === codingOffer.bindingId)?.executorId }),
+      ...codingWaitRunChecks(prisma, {
+        agentId: input.agentId, runId: input.runId, ...(ticketWork ? { ticketWorkId: ticketWork.workId } : {}),
+      }),
     })
     : null
+  const codingSessions = baseCodingSessions && ticketWork
+    ? ticketWorkCodingSessions(prisma, baseCodingSessions, ticketWork)
+    : baseCodingSessions
   // The bridge is not a program the generic pair reaches. Asked for anyway,
   // the model is pointed at its own tools, or told why it has none.
   const bridgeViaGenericPair = (args: Record<string, unknown>): AgenticToolResult => ({
@@ -323,6 +364,14 @@ export const buildExecutorToolset = async (
       return codingSessions.execute(toolName, modelArgs, providerToolCallId)
     }
     const entry = entryByName.get(toolName)
+    if (!entry && standing) {
+      return {
+        correctable: true,
+        inputSummary: summarizeToolInput(modelArgs),
+        output: 'Ticket work may drive only coding sessions on this machine; no other program on it is offered to you.',
+        success: false,
+      }
+    }
     if (!entry) {
       return { correctable: true, inputSummary: summarizeToolInput(modelArgs), output: `Unknown executor tool: ${toolName}`, success: false }
     }
@@ -359,7 +408,7 @@ export const buildExecutorToolset = async (
     timeoutErrorFor: timeouts.timeoutErrorFor,
     // A wait is ten minutes of reads; its own deadline ends it inside this.
     timeoutMsFor: (toolName) => (codingSessions && toolName === CODING_SESSION_TOOL_NAMES.wait
-      ? CODING_WAIT_TOOL_TIMEOUT_MS
+      ? ticketWork ? TICKET_WORK_CODING_WAIT_TOOL_TIMEOUT_MS : CODING_WAIT_TOOL_TIMEOUT_MS
       : timeouts.timeoutMsFor(toolName)),
   }
 }

@@ -13,7 +13,7 @@ import { drainTicketJobs, finishRuns, move, newTask, seedTicketWork } from './ti
 
 runDatabaseTest('a person\'s wake waits for the run slot before it writes the record, so a reminder claim holding the slot finishes', async (t) => {
   const prisma = new PrismaClient()
-  const s = await seedTicketWork(prisma)
+  const s = await seedTicketWork(prisma, { machineAccess: true })
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const seen = new Set<string>()
   const task = await newTask(prisma, s)

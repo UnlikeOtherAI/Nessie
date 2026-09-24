@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { TicketChangedTriggerConfigSchema } from '@nessie/schemas'
+import { StandingPolicyBindRefusalReasonSchema, TicketChangedTriggerConfigSchema } from '@nessie/schemas'
 
 import {
   buildTicketConfig,
@@ -118,6 +118,21 @@ test('a ticket delivery and a stopped record say why, in words', () => {
     'Woke the agent: a comment.',
   )
   assert.equal(ticketDeliveryLine({ prompt: 'webhook payload' }), null, 'any other trigger keeps its raw payload')
+  // A run the standing-policy binder bound no machine to, one plain sentence per reason, none naming a machine.
+  for (const reason of StandingPolicyBindRefusalReasonSchema.options) {
+    const line = ticketDeliveryLine({
+      kind: 'standing_policy_refused', reason, runId: '10000000-0000-4000-8000-000000000014',
+      taskId: '10000000-0000-4000-8000-000000000012', workId: '10000000-0000-4000-8000-000000000013',
+    })
+    assert.match(line ?? '', /^Ran without a machine: [a-z].+\.$/, reason)
+  }
+  assert.equal(
+    ticketDeliveryLine({
+      kind: 'standing_policy_refused', reason: 'machine_unavailable', runId: '10000000-0000-4000-8000-000000000014',
+      taskId: '10000000-0000-4000-8000-000000000012', workId: '10000000-0000-4000-8000-000000000013',
+    }),
+    'Ran without a machine: the machine was offline or no longer offers its coding tools.',
+  )
   assert.match(
     ticketWorkStateLine({
       agent: { id: 'a', name: 'CTO' }, endedAt: new Date().toISOString(), id: 'w', lastWakeAt: null,

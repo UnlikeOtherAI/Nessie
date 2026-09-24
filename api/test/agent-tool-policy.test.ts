@@ -93,6 +93,8 @@ const buildPolicyPrisma = (agent: AgentFixture) => {
       lockCalls += 1
       return 0
     },
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findFirst: async ({ where }: { where: { id: string; organizationId: string } }) =>
         where.id === agent.id && where.organizationId === agent.organizationId
@@ -319,6 +321,8 @@ test('individual Deep Water projection revoke blocks during an active run', asyn
   }
   const tx = {
     $executeRaw: async () => 0,
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findFirst: async () => agent,
       update: async () => {

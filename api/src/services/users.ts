@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { MemberRole, Prisma, PrismaClient, User } from '@prisma/client'
 import { parseChannelId, parseUserId, type TeamMemberRecord } from '@nessie/schemas'
+import { endStandingPoliciesForAuthorInTransaction } from '@nessie/team-admin'
 import type { UserRecord } from '../contracts/users-presence.js'
 import { assertNotLastOwner } from './organization-owner-lock.js'
 import { revokeUserRefreshFamilies } from './refresh-session-management.js'
@@ -264,6 +265,11 @@ export const updateOrganizationMemberRole = async (
       },
       data: { role: input.role },
     })
+    // An owner or admin outside a project edits its boards by their role
+    // alone: demoted, the machine access they gave its triggers ends.
+    await endStandingPoliciesForAuthorInTransaction(transaction, {
+      organizationId: input.organizationId, userId: input.userId,
+    })
   })
 }
 
@@ -304,6 +310,13 @@ export const setOrganizationMemberDeactivated = async (
     })
     if (input.deactivated && membership?.deactivatedAt === null) {
       await pausePrivateAgentsForDeactivatedOwner(transaction, input)
+      // Machine access they gave any ticket trigger ends: its work runs as them.
+      await endStandingPoliciesForAuthorInTransaction(transaction, {
+        actor: { requestId: input.requestId, userId: input.actorUserId },
+        deactivated: true,
+        organizationId: input.organizationId,
+        userId: input.userId,
+      })
       // A PA presence is consent for this live organization member only. Keep
       // the invariant true at rest rather than merely excluding old rows while
       // assembling engagement candidates.

@@ -1,5 +1,7 @@
 import {
+  standingPolicyRefusalSentence,
   TICKET_WORK_LIVE_STATUSES,
+  TicketTriggerBindingRefusalPayloadSchema,
   TicketTriggerDeliveryPayloadSchema,
   ticketTriggerSkipSentence,
   type TicketTriggerSkipReason,
@@ -48,6 +50,7 @@ export const TICKET_WORK_STATUS_DOT: Record<TicketWorkStatus, string> = {
 export const TICKET_WORK_STATE_REASON_LABEL: Record<TicketWorkStateReason, string> = {
   queued_no_free_machine: 'every machine is busy',
   queued_machines_offline: 'the machines are offline',
+  queued_daily_limit: 'today’s spending limit is used up, until 00:00 UTC',
   machine_access_not_set_up: 'waiting for machine access',
   machine_access_suspended: 'machine access is paused',
   machine_access_ended: 'machine access ended',
@@ -111,6 +114,33 @@ export const refusedReentryOf = (
 ): TicketWorkSkipNotice | null =>
   record.status === 'parked' && lastSkip?.reentry && lastSkip.triggerId === record.triggerId ? lastSkip : null
 
+/** How a stopped record starts again: the same move for every per-ticket limit. */
+const LIMIT_REMEDY = 'Move the ticket out of and back into a start-work column to continue.'
+
+/**
+ * Live work that waits for a machine, in the chip's words (T4): its place in
+ * the queue and why, the machine it holds gone offline, or machine access its
+ * owner has not set up or has paused. None names the machine.
+ */
+const machineWaitLine = (record: TicketWorkChipRecord): string | null => {
+  if (record.status === 'queued') {
+    const why = record.stateReason === 'queued_no_free_machine' || record.stateReason === 'queued_machines_offline'
+      || record.stateReason === 'queued_daily_limit'
+      ? TICKET_WORK_STATE_REASON_LABEL[record.stateReason]
+      : null
+    if (record.queuePosition) return `Queued: position ${record.queuePosition}${why ? ` — ${why}` : ''}.`
+    return why ? `Queued: ${why}.` : 'Queued for a machine.'
+  }
+  if (record.status !== 'waiting_machine') return null
+  switch (record.stateReason) {
+    case 'machine_offline': return 'Paused: the machine is offline. Work resumes when it reconnects.'
+    case 'machine_access_not_set_up': return 'Waiting for machine access: its owner has not set it up yet.'
+    case 'machine_access_suspended':
+      return 'Waiting for machine access: it is paused until its owner confirms it again.'
+    default: return null
+  }
+}
+
 /**
  * The line under the headline: why it stopped, or why it waits. A limit reads
  * as the plan's "stopped: 30 wakes used"; the remedy is the chip's own line.
@@ -119,38 +149,67 @@ export const ticketWorkStateLine = (
   record: TicketWorkChipRecord,
   lastSkip: TicketWorkSkipNotice | null = null,
 ): string | null => {
-  if (record.stateReason === 'limit_wakes') {
-    return `Stopped: ${record.wakeCount} wakes used. Move the ticket out of and back into a start-work column to continue.`
-  }
+  if (record.stateReason === 'limit_wakes') return `Stopped: ${record.wakeCount} wakes used. ${LIMIT_REMEDY}`
+  if (record.stateReason === 'limit_hours') return `Stopped: its hours are used up. ${LIMIT_REMEDY}`
+  if (record.stateReason === 'limit_cost') return `Stopped: its budget is used up. ${LIMIT_REMEDY}`
   if (record.stateReason === 'limit_daily') {
     return 'Stopped: the trigger started as many tickets today as it may. Move the ticket out of and back into a start-work column to try again.'
+  }
+  if (record.stateReason === 'machine_access_ended' && !isLiveTicketWork(record.status)) {
+    return 'Ended: its machine access ended.'
   }
   const refused = refusedReentryOf(record, lastSkip)
   if (refused) return ticketSkipSentence(refused.reason, { reentry: true })
   if (record.status === 'parked') return 'Parked while the ticket is in review. Moving it back into a start-work column resumes it.'
+  const waiting = machineWaitLine(record)
+  if (waiting) return waiting
   if (!record.stateReason) return null
   const reason = TICKET_WORK_STATE_REASON_LABEL[record.stateReason]
   return `${reason.charAt(0).toUpperCase()}${reason.slice(1)}${record.endedAt ? ` · ${day(record.endedAt)}` : ''}.`
 }
 
-/** What each `work_*` row says happened. */
-const HISTORY_VERB: Record<TicketWorkHistoryEntry['eventType'], string> = {
-  work_started: 'started work',
-  work_queued: 'queued',
-  work_paused: 'parked the work while the ticket is in review',
-  work_resumed: 'resumed the work',
-  work_ended: 'ended the work',
+/**
+ * "Ran without a machine: …" — why the latest wake of live work ran with no
+ * machine, in the finished sentence the run itself was told. The server drops
+ * it once a later wake comes, and ended work never shows it.
+ */
+export const ticketWorkMachineRefusalLine = (record: TicketWorkChipRecord): string | null =>
+  record.machineRefusal && isLiveTicketWork(record.status) ? record.machineRefusal.sentence : null
+
+/** What live work that waits for a machine waits on, for a history row. */
+const machineWaitPhrase = (reason: TicketWorkStateReason | null): string =>
+  reason === 'machine_offline' ? 'the machine to reconnect' : 'machine access'
+
+/** What one `work_*` row says happened, and why, from its event, status and reason. */
+const historyPhrase = (entry: TicketWorkHistoryEntry): string => {
+  const why = entry.reason ? TICKET_WORK_STATE_REASON_LABEL[entry.reason] : null
+  switch (entry.eventType) {
+    case 'work_started':
+      if (entry.status === 'queued') return 'started work, queued for a machine'
+      return entry.status === 'waiting_machine'
+        ? `started work, waiting for ${machineWaitPhrase(entry.reason)}`
+        : 'started work'
+    case 'work_queued':
+      return why ? `queued the work: ${why}` : 'queued the work for a machine'
+    // A pause with no reason is the park in review; one with a reason waits for a machine.
+    case 'work_paused':
+      return why ? `paused the work: ${why}` : 'parked the work while the ticket is in review'
+    case 'work_resumed':
+      if (entry.status === 'queued') return 'resumed the work, which is queued for a machine'
+      return entry.status === 'waiting_machine'
+        ? `resumed the work, which waits for ${machineWaitPhrase(entry.reason)}`
+        : 'resumed the work'
+    case 'work_ended':
+      return why ? `ended the work: ${why}` : 'ended the work'
+  }
 }
 
 /** "14:05 · Perf agent started work · by Ondrej" — one row of the chip's history. */
-export const ticketWorkHistoryLine = (entry: TicketWorkHistoryEntry): string => {
-  const reason = entry.reason && entry.eventType === 'work_ended' ? `: ${TICKET_WORK_STATE_REASON_LABEL[entry.reason]}` : ''
-  return [
-    day(entry.at),
-    `${entry.agentName} ${HISTORY_VERB[entry.eventType]}${reason}`,
-    ...(entry.byName ? [`by ${entry.byName}`] : []),
-  ].join(' · ')
-}
+export const ticketWorkHistoryLine = (entry: TicketWorkHistoryEntry): string => [
+  day(entry.at),
+  `${entry.agentName} ${historyPhrase(entry)}`,
+  ...(entry.byName ? [`by ${entry.byName}`] : []),
+].join(' · ')
 
 /** "Last woken 14:32 by a comment · wake 3 of 30" */
 export const ticketWorkWakeLine = (record: TicketWorkChipRecord): string | null => {
@@ -168,6 +227,10 @@ export const ticketSkipSentence = (reason: TicketTriggerSkipReason, options: { r
  * payload view.
  */
 export const ticketDeliveryLine = (payload: unknown): string | null => {
+  // The standing-policy binder bound no machine to one run: the run went on
+  // without one, and the page says why in the same words the chip does.
+  const refusal = TicketTriggerBindingRefusalPayloadSchema.safeParse(payload)
+  if (refusal.success) return standingPolicyRefusalSentence(refusal.data.reason)
   const parsed = TicketTriggerDeliveryPayloadSchema.safeParse(payload)
   if (!parsed.success) return null
   const delivery = parsed.data

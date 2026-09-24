@@ -78,6 +78,8 @@ test('targeted grant and stale generic PUT serialize without losing either chang
       await acquire()
       return 0
     },
+    // No standing machine access to suspend when the agent's policy changes.
+    executorStandingPolicy: { findMany: async () => [] },
     agent: {
       findFirst: async () => {
         readCalls += 1

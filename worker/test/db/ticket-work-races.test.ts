@@ -96,7 +96,7 @@ runDatabaseTest('a parked ticket moved back and straight out again stays parked,
   const reentry = await deliveryFor(prisma, s, events.at(-2)!.id)
   assert.deepEqual([reentry?.status, reentry?.errorMessage], ['skipped', 'left_pickup_column'])
   assert.equal((await workOf(prisma, s, task.id))!.status, 'parked', 'nothing resumed it while it sat in Review')
-  assert.deepEqual(await activity(prisma, task.id), [['work_started', null], ['work_paused', null]])
+  assert.deepEqual(await activity(prisma, task.id), [['work_started', 'machine_access_not_set_up'], ['work_paused', null]])
 })
 
 runDatabaseTest('parking and a person\'s resume are both on the ticket\'s history', async (t) => {
@@ -110,8 +110,11 @@ runDatabaseTest('parking and a person\'s resume are both on the ticket\'s histor
   await finishRuns(prisma, work.threadId)
   await move(prisma, s, task.id, s.columns.inProgress)
   await drainTicketJobs(prisma, s, seen)
-  assert.equal((await workOf(prisma, s, task.id))!.status, 'active')
-  assert.deepEqual(await activity(prisma, task.id), [['work_started', null], ['work_paused', null], ['work_resumed', null]])
+  // Resumed onto its trigger's machines, of which there are none yet: it waits for machine access again.
+  assert.equal((await workOf(prisma, s, task.id))!.status, 'waiting_machine')
+  assert.deepEqual(await activity(prisma, task.id), [
+    ['work_started', 'machine_access_not_set_up'], ['work_paused', null], ['work_resumed', 'machine_access_not_set_up'],
+  ])
   const resumed = await prisma.taskEvent.findFirstOrThrow({ where: { taskId: task.id, eventType: 'work_resumed' } })
   assert.equal(TicketWorkActivityPayloadSchema.parse(resumed.payload).by, s.editorId)
 })
@@ -184,7 +187,7 @@ runDatabaseTest('a status transition or a create into a start-work column hands 
   assert.deepEqual([row.assigneeAgentId, row.status], [s.agentId, 'assigned'])
   assert.equal((await assignedBy(created.id)).reason, 'assign_on_pickup')
   await drainTicketJobs(prisma, s, new Set())
-  assert.equal((await workOf(prisma, s, created.id))?.status, 'active', 'and the create started its work')
+  assert.equal((await workOf(prisma, s, created.id))?.status, 'waiting_machine', 'and the create started its work')
 
   // A token's transition keeps the ticket unassigned, as ever.
   await prisma.agentTrigger.update({ where: { id: s.triggerId }, data: { config: trigger.config as object } })

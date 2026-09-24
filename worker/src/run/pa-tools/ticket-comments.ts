@@ -174,6 +174,7 @@ export const runTicketCommentAddTool = async (
   const member = await resolveTicketMember(context)
   const ticket = await projectTicketFor(context, member, args.ticketId)
   await assertProjectWriteDestination(context, {
+    destination: { kind: 'ticket_comment', taskId: ticket.id },
     organizationId: member.organizationId,
     projectId: ticket.projectId!,
     taskUserIds: [ticket.assigneeUserId, ticket.ownerUserId],
