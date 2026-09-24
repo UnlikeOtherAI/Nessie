@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { useExecutorSessionSharing } from '../../../facades/executors/session-sharing'
+import { formErrorMessage } from '../../../facades/forms/form-errors'
 import { Dialog } from '../../shared/Dialog'
 import { QueryState } from '../../shared/QueryState'
 import { FormError } from '../../shared/FormActions'
@@ -23,7 +24,9 @@ export const ExecutorSessionSharing = ({ executorId, sessionId, open, onClose }:
         </label>
         <button className="admin-button admin-button-primary" type="submit" disabled={change.isPending}>Add viewer</button>
       </form>
-      <FormError>{change.isError ? 'Could not update sharing. Use an active Nessie user in your organisation.' : null}</FormError>
+      <FormError>{change.isError
+        ? formErrorMessage(change.error, 'Could not update sharing. Use an active Nessie user in your organisation.')
+        : null}</FormError>
       <QueryState query={query} loadingLabel="Loading viewers…" errorLabel="Could not load viewers.">
         {() => query.data?.length ? <ul className="grid gap-3" aria-label="Session viewers">
           {query.data.map((person) => <li key={person.userId} className="flex items-center justify-between gap-3">
