@@ -7,11 +7,11 @@ import { replaceKnowledgePageLinks, resolveLinksToPage } from './native-links.js
 import {
   isMarkdownAttachment,
   projectMarkdownAttachment,
-  type MarkdownAttachmentReader,
   type MarkdownProjection,
 } from './markdown-projection.js'
 import { KnowledgePageRevisionConflictError } from './types.js'
 import { mergeVersionDisclosure, persistVersionDisclosure } from './version-disclosure.js'
+import { announceVersionCreated, type NativeKnowledgeProviderOptions } from './version-events.js'
 import { coreDocumentFilename } from './agent-core-contract.js'
 import type {
   AddFileVersionInput,
@@ -22,41 +22,12 @@ import type {
   UpdatePageInput,
 } from './types.js'
 
-export type KnowledgeVersionIndexedEvent = {
-  organizationId: string
-  pageId: string
-  versionId: string
-}
-
-export type KnowledgePagePublishedEvent = {
-  actorUserId: string | null
-  organizationId: string
-  pageId: string
-  projectId: string
-  spaceId: string
-  versionId: string
-}
-
-export type NativeKnowledgeProviderOptions = {
-  // FileService is the sole byte authority. The native provider uses this
-  // reader to derive Markdown projections and never accepts caller text next
-  // to an attachment id as proof of what was stored.
-  readMarkdownAttachment?: MarkdownAttachmentReader
-  // Invoked inside the same transaction that wrote a version's chunk rows —
-  // the api wires this to enqueue the `knowledge.embed` job, so a failed
-  // enqueue rolls the save back instead of silently losing the embedding pass.
-  onVersionChunksReplaced?: (
-    tx: Prisma.TransactionClient,
-    event: KnowledgeVersionIndexedEvent,
-  ) => Promise<void>
-  // Invoked inside the publication transaction after the page points at its
-  // newly published version. The API owns recipient resolution and the queue
-  // outbox because they are app-level attention policy, not knowledge storage.
-  onPagePublished?: (
-    tx: Prisma.TransactionClient,
-    event: KnowledgePagePublishedEvent,
-  ) => Promise<void>
-}
+export type {
+  KnowledgePagePublishedEvent,
+  KnowledgeVersionCreatedEvent,
+  KnowledgeVersionIndexedEvent,
+  NativeKnowledgeProviderOptions,
+} from './version-events.js'
 
 type AttachmentLookupClient = Pick<Prisma.TransactionClient, 'attachment'>
 
@@ -208,6 +179,7 @@ export const createPage = async (
         versionId: version.id,
       })
       await indexVersionChunks(tx, options, page, version)
+      await announceVersionCreated(tx, options, page, version)
     }
     await replaceLabels(tx, { labels: input.labels, organizationId: input.organizationId, pageId: page.id })
     const created = await fetchPage(tx, input.organizationId, page.id)
@@ -374,6 +346,7 @@ export const restoreVersion = async (
       organizationId: input.organizationId, versionId: restored.id,
     })
     await indexVersionChunks(tx, options, page, restored)
+    await announceVersionCreated(tx, options, page, restored)
     await tx.knowledgePage.update({ where: { id: input.pageId }, data: { status: 'draft' } })
     return fetchPage(tx, input.organizationId, input.pageId)
   }))
@@ -449,6 +422,7 @@ export const addFileVersion = async (
       })
       await tx.knowledgePage.update({ where: { id: input.pageId }, data: {} })
       await indexVersionChunks(tx, options, page, version)
+      await announceVersionCreated(tx, options, page, version)
       return mapVersion(version)
     })
   })
@@ -529,6 +503,7 @@ export const updatePage = async (
         organizationId: input.organizationId, versionId: version.id,
       })
       await indexVersionChunks(tx, options, existing, version)
+      await announceVersionCreated(tx, options, existing, version)
     }
     const updated = await tx.knowledgePage.updateMany({
       where: {

@@ -25,6 +25,8 @@ export {
   createNativeKnowledgeProvider,
 } from './native-provider.js'
 export type {
+  KnowledgePagePublishedEvent,
+  KnowledgeVersionCreatedEvent,
   KnowledgeVersionIndexedEvent,
   NativeKnowledgeProviderOptions,
 } from './native-provider.js'
