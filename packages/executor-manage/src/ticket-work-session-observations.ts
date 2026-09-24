@@ -99,10 +99,11 @@ export const recordTicketWorkSessionObservation = async (
     const turnEnded = typeof input.turn === 'number' && input.status !== undefined && TURN_ENDED.has(input.status)
     const seen = Math.max(turnEnded ? input.turn! : 0, turns[input.sessionId] ?? 0)
     if (seen > (turns[input.sessionId] ?? 0) || (input.closedByAgent && !closed.includes(input.sessionId))) {
+      const closedNow = input.closedByAgent ? [...new Set([...closed, input.sessionId])] : closed
       data.lastObservedTurn = {
         ...turns,
         ...(turns[input.sessionId] !== undefined || turnEnded ? { [input.sessionId]: seen } : {}),
-        closed: input.closedByAgent ? [...new Set([...closed, input.sessionId])] : closed,
+        ...(closedNow.length > 0 ? { closed: closedNow } : {}),
       }
     }
     if (Object.keys(data).length > 0) await tx.agentTicketWork.update({ where: { id: input.workId }, data })
