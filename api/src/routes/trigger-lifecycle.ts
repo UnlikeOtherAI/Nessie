@@ -119,7 +119,9 @@ export const registerTriggerLifecycleRoutes = (
       return reply
     }
 
-    const updated = await pauseAgentTrigger(prisma, scope)
+    const updated = await pauseAgentTrigger(prisma, scope, {
+      requestId: actorContext.actionContext.requestId, userId: actorContext.actor.actorId,
+    })
     if (!updated) {
       sendApiError(reply, 404, 'TRIGGER_NOT_FOUND', 'Trigger not found')
       return reply

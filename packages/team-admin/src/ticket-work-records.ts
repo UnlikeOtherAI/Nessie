@@ -96,25 +96,3 @@ export const endTicketWork = async (
   })
   return true
 }
-
-/**
- * Disabling or deleting a trigger ends every live record it holds, with
- * `trigger_disabled`, in the transaction that disables or deletes it — the
- * delete ends them first, because `triggerId` is `SetNull` and a record that
- * lost its trigger could otherwise never end. Nothing wakes: the trigger that
- * would wake the agent is the thing being switched off.
- */
-export const endTicketWorkForTrigger = async (
-  tx: EndWriter,
-  input: { triggerId: string },
-): Promise<number> => {
-  const live = await tx.agentTicketWork.findMany({
-    where: { triggerId: input.triggerId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
-    select: { id: true, taskId: true, triggerId: true, agentId: true },
-  })
-  let ended = 0
-  for (const work of live) {
-    if (await endTicketWork(tx, { work, status: 'cancelled', reason: 'trigger_disabled', by: 'system' })) ended += 1
-  }
-  return ended
-}

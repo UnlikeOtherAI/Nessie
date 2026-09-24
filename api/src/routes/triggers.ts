@@ -232,7 +232,9 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
 
     let updated
     try {
-      updated = await updateSharedAgentTrigger(prisma, scope, body)
+      updated = await updateSharedAgentTrigger(prisma, scope, body, {
+        actor: { requestId: actorContext.actionContext.requestId, userId: actorContext.actor.actorId },
+      })
     } catch (error) {
       if (sendTriggerConfigRefusal(reply, error)) return reply
       throw error
@@ -280,7 +282,9 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
       return reply
     }
 
-    const deleted = await deleteSharedAgentTrigger(prisma, scope)
+    const deleted = await deleteSharedAgentTrigger(prisma, scope, {
+      actor: { requestId: actorContext.actionContext.requestId, userId: actorContext.actor.actorId },
+    })
     if (!deleted) {
       sendApiError(
         reply,

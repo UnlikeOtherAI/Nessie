@@ -277,10 +277,12 @@ const executor = (
   over: Partial<GlobalAgentExecutorFacts> = {},
 ): GlobalAgentExecutorFacts => ({
   canManage: true,
+  codingSessionsReviewed: false,
   executorId: '11111111-0000-4000-8000-00000000aaaa',
   label: 'Ondrej’s Mac',
   lastSeenAt: '2026-09-18T08:00:00.000Z',
   operationKeys: ['file.read', 'command.run', 'workspace.promote'],
+  pairedByYou: false,
   profiles: ['workspace_sandbox'],
   revision: 3,
   scopeKind: 'organization',
@@ -374,6 +376,41 @@ test('the block states that an executor grant is whole-suite, never a pick', () 
   assert.match(rendered, /minus workspace\.promote/)
   assert.match(rendered, /executor_agent_grant_prepare prepares ONE change/)
   assert.match(rendered, /not itself, and not another agent/)
+})
+
+test('each executor says whether a trigger\'s ticket work can run on it, and the Designer prepares one card', () => {
+  const rendered = block({
+    executors: [
+      executor({ label: 'Shared box' }),
+      executor({
+        executorId: '11111111-0000-4000-8000-00000000bbbb', label: 'Studio', pairedByYou: true, scopeKind: 'private',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000cccc', label: 'PC',
+        pairedByYou: true, scopeKind: 'private',
+      }),
+      executor({
+        codingSessionsReviewed: true, executorId: '11111111-0000-4000-8000-00000000dddd', label: 'Laptop',
+        pairedByYou: true, scopeKind: 'private', status: 'offline',
+      }),
+    ],
+  })
+  const lineAfter = (label: string): string => {
+    const lines = rendered.split('\n')
+    const at = lines.findIndex((line) => line.startsWith(`- ${label} |`))
+    return lines[at + 1]?.trim() ?? ''
+  }
+  assert.match(lineAfter('Shared box'), /^ticket work: no — only a private machine you paired/)
+  assert.match(lineAfter('Studio'), /^ticket work: not yet — .*offers no coding-sessions bridge/)
+  assert.equal(lineAfter('PC'), 'ticket work: yes — you paired it and its coding-sessions bridge is reviewed')
+  assert.match(lineAfter('Laptop'), /^ticket work: yes — .*, but it is not online/)
+  assert.match(rendered, /executor_standing_policy_prepare prepares ONE confirmation card/)
+  assert.match(rendered, /never prepare those separately/)
+  for (const writeSurface of ['designer_form', 'read_only'] as const) {
+    const readOnly = block({ executors: [executor()], writeSurface })
+    assert.match(readOnly, /from the trigger's Machine access section/)
+    assert.doesNotMatch(readOnly, /executor_standing_policy_prepare prepares/)
+  }
 })
 
 test('a face that holds no tools states the rule without naming one', () => {

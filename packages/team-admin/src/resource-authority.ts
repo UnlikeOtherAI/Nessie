@@ -2,7 +2,7 @@ import type { Channel, PrismaClient } from '@prisma/client'
 import { isAdminRole } from '@nessie/schemas'
 
 import { isGroupDm } from './channel-records.js'
-import { isProjectAccessibleToUser, type ProjectViewer } from './project-structure.js'
+import { isProjectAccessibleToUser, type ProjectAccessReader, type ProjectViewer } from './project-structure.js'
 
 /**
  * Who may change a project or a channel: the one authorization decision every
@@ -52,7 +52,7 @@ import { isProjectAccessibleToUser, type ProjectViewer } from './project-structu
  * they "can never drift apart" went with them.
  */
 export const canModifyProject = async (
-  prisma: PrismaClient,
+  prisma: ProjectAccessReader,
   viewer: ProjectViewer,
   projectId: string,
 ): Promise<boolean> => isProjectAccessibleToUser(prisma, viewer, projectId)
@@ -69,7 +69,7 @@ export const canModifyProject = async (
  * has not reached the local row yet is not board-editor standing.
  */
 export const canMemberEditProjectBoards = async (
-  prisma: PrismaClient,
+  prisma: ProjectAccessReader,
   input: { organizationId: string; userId: string; projectId: string; isOrganizationAdmin?: boolean },
 ): Promise<boolean> => {
   const member = await prisma.organizationMember.findUnique({
