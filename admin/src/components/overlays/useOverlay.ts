@@ -54,6 +54,7 @@ export type OverlayState = {
 // Same-layer submenus dismiss from the top down. A document-level listener
 // per popover otherwise lets one Escape close every open ancestor at once.
 const popoverEscapes = new Set<{ document: Document; layer: number }>()
+const handledPopoverEscapes = new WeakSet<KeyboardEvent>()
 
 export const useOverlay = ({
   id,
@@ -122,7 +123,9 @@ export const useOverlay = ({
     const registration = { document, layer: OVERLAY_LAYER[effectiveKind] }
     popoverEscapes.add(registration)
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return
+      // A row may prevent Escape's default while focus is returning from a
+      // previous menu. Only another overlay's claim makes this key consumed.
+      if (event.key !== 'Escape' || handledPopoverEscapes.has(event)) return
       const top = [...popoverEscapes].filter((entry) => entry.document === document)
         .reduce((highest, entry) => entry.layer >= highest.layer ? entry : highest, registration)
       if (top !== registration) return
@@ -135,6 +138,7 @@ export const useOverlay = ({
         const onAnchor = escapeAnchorRef?.current?.contains(target)
         if (!inMenu && !onAnchor) return
       }
+      handledPopoverEscapes.add(event)
       event.preventDefault()
       event.stopPropagation()
       escapeAnchorRef?.current?.focus()

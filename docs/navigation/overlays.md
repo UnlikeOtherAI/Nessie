@@ -260,6 +260,8 @@ A submenu reuses `Popover` and its flip/clamp placement. Its anchor can be the
 whole row while `returnFocusRef` names that row's disclosure button. The shared
 `useOverlay` Escape handler selects the highest-layer, most recently opened
 popover; one press closes that submenu and returns focus to its trigger,
-leaving the account menu open. It does not install a second navigation or
+leaving the account menu open. An Escape is consumed only by an overlay
+claim; a focused Finder row preventing the browser default cannot disable
+menu dismissal. It does not install a second navigation or
 positioning system. `test:e2e:executor-menu` covers both side placements and
 this keyboard path.
