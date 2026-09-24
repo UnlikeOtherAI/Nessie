@@ -88,7 +88,7 @@ export const UserAlertRecordSchema = z.object({
   knowledgePageId: z.string().uuid().nullable(),
   triggerId: z.string().uuid().nullable(),
   // The trigger's own name, for the one kind whose line names it
-  // ("Set up machine access for <trigger>"). Optional: older rows and every
+  // ("<trigger> needs machine access: …"). Optional: older rows and every
   // other kind carry none.
   triggerName: z.string().nullable().optional(),
   // An automatic-membership health alert is actionable only when the bell can

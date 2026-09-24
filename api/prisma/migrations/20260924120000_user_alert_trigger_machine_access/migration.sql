@@ -1,5 +1,6 @@
 -- The bell kind a ticket trigger an agent set up for someone leaves with that
--- person: "Set up machine access for <trigger>"
+-- person: "<trigger> needs machine access: ask the machines' owner to set it
+-- up, from the trigger's page or the Agent Designer"
 -- (docs/plans/2026-09-23-ticket-driven-agents/setup-and-ui.md → "The
 -- project-operator capability").
 --

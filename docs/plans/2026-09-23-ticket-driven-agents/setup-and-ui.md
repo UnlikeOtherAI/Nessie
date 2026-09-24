@@ -141,8 +141,26 @@ intent was kept and the difference is recorded here:
   viewer's own access renders, and a status-only read.
 - **Workflow triggers record their creator** as `config.authorUserId`, like
   agent triggers; the fire is unchanged and runs with no person attached.
-- **The attention item is a `trigger_machine_access` bell row** that opens the
-  trigger's page. Until T4's Machine access section lands, the tool result, not
-  the trigger page, says "Machine access: not set up", and the bell row
-  surfaces while the trigger's agent is live and the recipient is an
-  organisation owner; T4 adds "and none is set up yet" to that predicate.
+- **"A live requester" means the person's own turn**, not just a user actor on
+  an interactive run: the message the run answers (and every message a drain
+  folded in) is their own composer message, and a Continue, a card or approval
+  resume or a Restart was their own press. Restart and Continue swap in the
+  presser and replay the original input, a card resumes as the parked actor
+  whoever answered, and a drain takes its latest person's actor, so without it
+  somebody else's input could open the verbs. The arm also stays shut in an
+  organisation-wide channel.
+- **The workflow writes and the new verbs need a live turn on every arm**, the
+  Personal Assistant's included, whose arm otherwise opens on its schedules.
+- **`project_structure_read` is in the set**, and `project_create` and
+  `ticket_board_create` answer with their board's columns by id, so the
+  operator shapes the board a project starts with rather than making another.
+- **The migration narrows access, and says so.** A granted agent keeps the
+  workflow verbs only on a person's own turn in a project channel it is in; a
+  second WARNING names each agent whose trigger fires or DM-only use lose them.
+- **The attention item is a `trigger_machine_access` bell row**, "<trigger>
+  needs machine access: ask the machines' owner to set it up, from the
+  trigger's page or the Agent Designer", opening the trigger's page. Until
+  T4's Machine access section lands, the tool result, not the trigger page,
+  says "Machine access: not set up". The row surfaces while the trigger's agent
+  is live, no standing policy for it is preparing or live, and the recipient is
+  an organisation owner; T4 links the section.
