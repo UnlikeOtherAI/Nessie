@@ -622,10 +622,17 @@ routes, and none of it names a machine.
 - **The open question** is structural: `ticket_comment_add`'s `awaitsAnswer`
   stamps `awaitsAnswer: true` on the `comment_added` event and sets the
   agent's live records' `awaitingAnswerAt` (`applyTicketWorkAgentComment`,
-  in the comment's transaction). A person's event that wakes the record — a
-  comment, a thread message, a move — closes it (`closeTicketWorkQuestion`),
-  and so does a later agent comment that asks nothing. A reminder, a quiet
-  wake and a connected board's event answer nothing.
+  in the comment's transaction). **Any comment but an agent's answers it, in
+  its own transaction** — a person's, whoever they are, or one a connected
+  board brings in (`answerTicketWorkQuestions`) — and names the records it
+  answered on its `comment_added` (`answeredWorkIds`), so the dispatcher wakes
+  them for it even when their trigger does not follow comments, under the
+  origin rule as ever: a board editor's answer wakes the work, anyone else's
+  wakes nothing but brings the quiet wake back. A person's thread message or
+  move that wakes the record closes it too, and so does a later agent comment
+  that asks nothing; a reminder and a quiet wake answer nothing. The kickoff
+  says what an answer wakes from the trigger's own follow kinds, and tells the
+  agent to set `check_back_in` as well, in case nobody answers.
 - **The hours clock.** `activeMs` runs only while a record is `active` with no
   open question: `clockStartedAt` is when it last started, and every
   transition — start, park, resume, end, question opened or closed — folds

@@ -79,6 +79,31 @@ export const applyTicketWorkAgentComment = async (
 }
 
 /**
+ * A comment on the ticket from anyone but an agent — a person, or a connected
+ * board's own user — answers every question open on the ticket's live work,
+ * in the comment's own transaction: the question closes and the clock runs
+ * again, whatever the trigger follows and whoever wrote it. Closing re-arms
+ * only the quiet wake; it grants the author nothing. Returns the records whose
+ * question it closed, which the comment's `comment_added` event names
+ * (`answeredWorkIds`) so the dispatcher wakes them for it even when their
+ * trigger does not follow comments — still only for a board editor.
+ */
+export const answerTicketWorkQuestions = async (
+  tx: ClockWriter,
+  input: { taskId: string; at?: Date },
+): Promise<string[]> => {
+  const open = await tx.agentTicketWork.findMany({
+    where: { taskId: input.taskId, status: { in: [...TICKET_WORK_LIVE_STATUSES] }, awaitingAnswerAt: { not: null } },
+    select: { id: true },
+  })
+  const closed: string[] = []
+  for (const { id } of open) {
+    if (await closeTicketWorkQuestion(tx, id, input.at)) closed.push(id)
+  }
+  return closed
+}
+
+/**
  * A person's event woke the record — a comment, a thread message, a move — so
  * whatever the agent asked has had its answer: the question closes and the
  * clock runs again. Returns whether a question was open.

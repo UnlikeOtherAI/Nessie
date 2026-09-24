@@ -14,7 +14,7 @@ import {
 import type { BoardSourceCommentWriteBackError as BoardSourceWriteBackError } from './board-source-writeback.js'
 import { findAccessibleTask, isUuid, SYSTEM_TASK_EVENT_ORIGIN, taskEventBy, type TaskActor } from './task-access.js'
 import { recordTaskEvent } from './task-event-dispatch.js'
-import { applyTicketWorkAgentComment } from './ticket-work-clock.js'
+import { answerTicketWorkQuestions, applyTicketWorkAgentComment } from './ticket-work-clock.js'
 import {
   attachmentRemover,
   linkUploadsToTask,
@@ -289,6 +289,18 @@ export const createTaskComment = async (
           data: { organizationId: task.organizationId, taskId: task.id, body, ...author },
           select: { id: true },
         })
+    // An agent's comment opens or closes the question on its own work; anyone
+    // else's answers every question open on the ticket (ticket-work-clock.ts).
+    let answeredWorkIds: string[] = []
+    if (actor.agentId) {
+      await applyTicketWorkAgentComment(tx, {
+        taskId: task.id,
+        agentId: actor.agentId,
+        awaitsAnswer: input.awaitsAnswer === true,
+      })
+    } else {
+      answeredWorkIds = await answerTicketWorkQuestions(tx, { taskId: task.id })
+    }
     await recordTaskEvent(tx, {
       taskId: task.id,
       eventType: 'comment_added',
@@ -299,17 +311,10 @@ export const createTaskComment = async (
         ...(actor.agentId ? { agentId: actor.agentId } : {}),
         ...(external ? { externalId: external.externalId } : {}),
         ...(actor.agentId && input.awaitsAnswer ? { awaitsAnswer: true } : {}),
+        ...(answeredWorkIds.length > 0 ? { answeredWorkIds } : {}),
       },
       scope: { organizationId: task.organizationId, projectId: task.projectId },
     })
-    // Only an agent's comment opens or closes the question on its own work.
-    if (actor.agentId) {
-      await applyTicketWorkAgentComment(tx, {
-        taskId: task.id,
-        agentId: actor.agentId,
-        awaitsAnswer: input.awaitsAnswer === true,
-      })
-    }
     const linked = await linkUploadsToTask(tx, {
       organizationId: task.organizationId,
       uploaderUserId: actor.userId,

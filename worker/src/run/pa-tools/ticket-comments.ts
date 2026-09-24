@@ -202,7 +202,9 @@ export const runTicketCommentAddTool = async (
     [
       `Added comment | commentId=${comment.id}`,
       ...(where ? [where] : []),
-      ...(args.awaitsAnswer ? ['Marked as a question: your live work on this ticket waits for an answer.'] : []),
+      ...(args.awaitsAnswer
+        ? ['Marked as a question: your live work on this ticket waits for an answer. Set check_back_in too, in case nobody answers.']
+        : []),
     ].join('\n'),
   )
 }

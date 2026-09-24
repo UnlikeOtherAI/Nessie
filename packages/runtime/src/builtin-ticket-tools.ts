@@ -112,7 +112,7 @@ export const TICKET_TOOL_DEFINITIONS: BuiltinToolDefinition[] = [
         body: { type: 'string' },
         awaitsAnswer: {
           type: 'boolean',
-          description: 'Set true when your comment asks the people on the ticket something. While your ticket work waits for an answer it is not woken just because nothing happened, and you are woken when one of them answers.',
+          description: 'Set true when your comment asks the people on the ticket something. While your ticket work waits for an answer it is not woken just because nothing happened; a comment from a person who can edit the board wakes you. Also call check_back_in, in case nobody answers.',
         },
       },
       required: ['ticketId', 'body'],

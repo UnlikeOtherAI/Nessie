@@ -190,7 +190,7 @@ const stateBlock = (facts: TicketWorkKickoffFacts): string[] => {
     'Machine: none. No machine does ticket work yet, so you cannot run or change code: '
       + 'read the ticket, comment on it and move it.',
     `Pull request: ${facts.work.pullRequestUrl ?? 'none on record'}.`,
-    ...(ended ? [] : waitingLines(facts.work)),
+    ...(ended ? [] : waitingLines(facts)),
     ended
       ? 'This conversation is the ticket\'s work thread.'
       : 'This conversation is the ticket\'s work thread. After this run you are woken again when a person who can '
@@ -202,24 +202,35 @@ const stateBlock = (facts: TicketWorkKickoffFacts): string[] => {
 /**
  * What live work is waiting for, and how to say so: the pending reminder, an
  * open question, and the quiet wake that follows when nothing else is set.
+ * What an answer wakes is said from the trigger's own follow kinds: a board
+ * editor's comment always wakes work whose question it answers, a message in
+ * this thread only when the trigger follows them, and anyone else's reply
+ * wakes nothing but brings the quiet wake back.
  */
-const waitingLines = (work: TicketWorkKickoffFacts['work']): string[] => [
-  `Pending reminder: ${work.pendingReminder
-    ? `${minute(work.pendingReminder.dueAt)}, ${JSON.stringify(work.pendingReminder.note)} (your own note)`
-    : 'none'}.`,
-  ...(work.awaitingAnswerAt
-    ? [`Open question: your comment at ${minute(work.awaitingAnswerAt)} asked the people on the ticket something, `
-      + 'and nobody has answered yet. You are woken when one of them does; until then no quiet wake comes '
-      + 'and the hours clock is paused.']
-    : []),
-  'When you wait for something that will not wake you, such as CI, call check_back_in with the minutes and a '
-    + 'short note; it replaces this ticket\'s pending reminder. Set awaitsAnswer on ticket_comment_add when your '
-    + 'comment asks the people on the ticket something; you will be woken when one of them answers.'
-    + (work.quietWakeMinutes === null
-      ? ''
-      : ` If nothing is scheduled at all — no reminder, no open question — you are woken after `
-        + `${work.quietWakeMinutes} quiet minutes anyway, and that wake counts too.`),
-]
+const waitingLines = (facts: TicketWorkKickoffFacts): string[] => {
+  const { work } = facts
+  const answeredBy = facts.followKinds.includes('thread_message')
+    ? 'a person who can edit the board comments on the ticket or writes in this thread'
+    : 'a person who can edit the board comments on the ticket'
+  const quiet = work.quietWakeMinutes === null
+    ? ''
+    : ` If nothing is scheduled at all — no reminder, no open question — you are woken after `
+      + `${work.quietWakeMinutes} quiet minutes anyway, and that wake counts too.`
+  return [
+    `Pending reminder: ${work.pendingReminder
+      ? `${minute(work.pendingReminder.dueAt)}, ${JSON.stringify(work.pendingReminder.note)} (your own note)`
+      : 'none'}.`,
+    ...(work.awaitingAnswerAt
+      ? [`Open question: your comment at ${minute(work.awaitingAnswerAt)} asked the people on the ticket something, `
+        + `and nobody has answered yet. You are woken when ${answeredBy}; a reply from anyone else does not wake `
+        + 'you. Until someone answers, no quiet wake comes and the hours clock is paused.']
+      : []),
+    'When you wait for something that will not wake you, such as CI, call check_back_in with the minutes and a '
+      + 'short note; it replaces this ticket\'s pending reminder. Set awaitsAnswer on ticket_comment_add when your '
+      + `comment asks the people on the ticket something: you are woken when ${answeredBy}. Set check_back_in `
+      + `as well, in case nobody answers.${quiet}`,
+  ]
+}
 
 const instructionsBlock = (
   instructions: TicketTriggerInstructions | undefined,

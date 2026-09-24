@@ -37,6 +37,13 @@ export type TicketEventFacts = {
   toColumnId: string | null
   /** `column_entered`: the column left, or null when the ticket had none. */
   fromColumnId: string | null
+  /**
+   * `comment_added`: the work records whose open question this comment
+   * answered, closed in the comment's own transaction (`answeredWorkIds`).
+   * Such a record is woken for the comment whatever its trigger follows — the
+   * agent was told an answer wakes it — under the origin rule as ever.
+   */
+  answeredWorkIds?: readonly string[]
 }
 
 export type TicketTriggerFacts = {
@@ -166,7 +173,9 @@ export const decideTicketTrigger = (
   }
 
   const kind = TICKET_EVENT_FOLLOW_KINDS[event.eventType]
-  if (!kind || !liveWork || !trigger.config.follow.kinds.includes(kind)) return IGNORE
+  if (!kind || !liveWork) return IGNORE
+  const answersItsQuestion = kind === 'comment' && (event.answeredWorkIds ?? []).includes(liveWork.id)
+  if (!trigger.config.follow.kinds.includes(kind) && !answersItsQuestion) return IGNORE
   // A queued ticket's priority re-sorts the queue; it has nothing to tell the agent.
   if (kind === 'priority' && liveWork.status === 'queued') return skip('follow', 'priority_while_queued')
   const refusal = originRuleRefusal(event, { admitSource: trigger.config.follow.includeSourceEvents })
