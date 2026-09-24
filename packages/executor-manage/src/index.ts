@@ -63,6 +63,7 @@ export {
   executorCodingSessionOwnerAgentIds,
   reportedExecutorCodingSessions,
   requestExecutorCodingSessionClose,
+  requestExecutorCodingSessionCloseForSessionsInTransaction,
 } from './executor-coding-session-closes.js'
 export {
   markExecutorCommandUnknownOutcome,
@@ -130,7 +131,9 @@ export {
   executorGrantedOperationKeys,
   executorOperationKeysHeldElsewhere,
   latestActiveCapabilityRevision,
+  lockExecutorMutation,
   removePrivateAssignment,
+  requireManagedExecutor,
   removePrivateAssignmentInTransaction,
   resolveExecutorWholeSuiteOperationKeys,
   setExecutorAgentOperationGrant,
@@ -156,7 +159,15 @@ export {
   type ExecutorLifecycleAction,
 } from './executor-lifecycle.js'
 export {
+  assessStandingPolicyMachine,
+  offersReviewedCodingSessions,
+  standingPolicyMachineDigests,
+  type StandingPolicyMachineAssessment,
+  type StandingPolicyMachineCheck,
+} from './executor-standing-policy-machines.js'
+export {
   confirmExecutorAccessChange,
+  createExecutorAccessChangeContinuationInTransaction,
   getExecutorAccessChangeForUser,
   prepareExecutorAccessChange,
   rejectExecutorAccessChange,

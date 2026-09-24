@@ -5943,6 +5943,9 @@ model ExecutorStandingPolicy {
   /// Digest of the trigger's security-relevant fields at confirmation. A
   /// trigger edit that changes it suspends the policy.
   triggerDigest   String                           @map("trigger_digest")
+  /// The terms `triggerDigest` is the digest of (`StandingPolicyPinnedTermsSchema`):
+  /// the trigger's pinned fields and every limit, the policy's own included.
+  pinnedTerms     Json                             @default("{}") @map("pinned_terms")
   /// Organisation, team and UOA identity captured at confirm, in the
   /// `ScheduledTriggerLaunchOriginSchema` shape.
   authorOrigin    Json?                            @map("author_origin")

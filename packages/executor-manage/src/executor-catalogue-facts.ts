@@ -7,6 +7,7 @@ import type {
 } from '@nessie/schemas'
 
 import { getExecutorAccessView, listVisibleExecutors } from './executor-records.js'
+import { offersReviewedCodingSessions } from './executor-standing-policy-machines.js'
 
 /**
  * One executor as a design-time fact: everything a specialist agent needs to
@@ -24,6 +25,12 @@ import { getExecutorAccessView, listVisibleExecutors } from './executor-records.
 export type GlobalAgentExecutorFacts = {
   /** True when this person may administer it, and so could grant it at all. */
   canManage: boolean
+  /**
+   * Its active reviewed revision offers the local-apps pair and the
+   * coding-sessions bridge. False too when this person cannot read its
+   * policy (`canManage` false): nothing established that it does.
+   */
+  codingSessionsReviewed: boolean
   executorId: string
   label: string
   lastSeenAt?: string
@@ -40,6 +47,12 @@ export type GlobalAgentExecutorFacts = {
    * the person cannot read its policy at all; `canManage` tells the two apart.
    */
   operationKeys?: string[]
+  /**
+   * A private machine this person paired. With `codingSessionsReviewed` it is
+   * one a standing policy of theirs can put a trigger's ticket work on, since
+   * a coding session acts as whoever paired the machine.
+   */
+  pairedByYou: boolean
   profiles: ExecutorProfile[]
   projectId?: string
   revision?: number
@@ -71,10 +84,18 @@ export const listExecutorCatalogueFacts = async (
   actorContext: AuthorizedActionContext,
 ): Promise<GlobalAgentExecutorFacts[]> => {
   const executors = await listVisibleExecutors(prisma, actorContext)
+  const owned = new Set((await prisma.executor.findMany({
+    where: {
+      id: { in: executors.map((executor) => executor.id) },
+      pairingOwnerUserId: actorContext.actor.actorId,
+      scopeKind: 'private',
+    },
+    select: { id: true },
+  })).map((executor) => executor.id))
   const facts: GlobalAgentExecutorFacts[] = []
   for (let index = 0; index < executors.length; index += DETAIL_BATCH) {
     const batch = await Promise.all(
-      executors.slice(index, index + DETAIL_BATCH).map(detailFor(prisma, actorContext)),
+      executors.slice(index, index + DETAIL_BATCH).map(detailFor(prisma, actorContext, owned)),
     )
     facts.push(...batch)
   }
@@ -84,6 +105,7 @@ export const listExecutorCatalogueFacts = async (
 const detailFor = (
   prisma: PrismaClient,
   actorContext: AuthorizedActionContext,
+  owned: ReadonlySet<string>,
 ) =>
   async (executor: Awaited<ReturnType<typeof listVisibleExecutors>>[number],
   ): Promise<GlobalAgentExecutorFacts> => {
@@ -105,6 +127,7 @@ const detailFor = (
     const active = latest?.reviewStatus === 'active' ? latest : undefined
     return {
       canManage,
+      codingSessionsReviewed: active !== undefined && offersReviewedCodingSessions(active),
       executorId: executor.id,
       label: executor.label,
       ...(executor.lastSeenAt ? { lastSeenAt: executor.lastSeenAt } : {}),
@@ -113,6 +136,7 @@ const detailFor = (
         ? { localMcpObservedAt: access.localMcpObservedAt }
         : {}),
       ...(active ? { operationKeys: active.operationKeys, revision: active.revision } : {}),
+      pairedByYou: owned.has(executor.id),
       profiles: executor.profiles,
       ...(executor.scope.kind === 'project' ? { projectId: executor.scope.projectId } : {}),
       scopeKind: executor.scope.kind,

@@ -24,7 +24,7 @@ export type ExecutorCodingAgentName = z.infer<typeof ExecutorCodingAgentNameSche
 const Sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/)
 
 /** A root's name: the workspace-folder grammar, which the executor enforces in full. */
-const CodingRootNameSchema = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(40)
+export const CodingRootNameSchema = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(40)
 
 /** A categorical reason, never free text: `lease_ended`, `host_lost`, `agent_missing`, … */
 const CodingReasonSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
