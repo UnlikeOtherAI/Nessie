@@ -107,7 +107,8 @@ sentence changes only if the invariant itself did.
   conversations named by their first message, the one-empty-at-a-time rule
   behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip, and a ticket's work
-  threads folded under Tickets at every width with their wake rows and the
+  threads folded under Tickets at every width with their wake rows, the row a
+  cancelled reminder leaves, and the
   read-only line for a room member who cannot edit the board; two assertions
   deliberately pin known gaps and say so in their own message. It starts its
   own API and admin, on `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT` when set.

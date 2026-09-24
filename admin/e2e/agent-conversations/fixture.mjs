@@ -273,7 +273,7 @@ export const waitForRun = async (pipeline, { agentId, threadId, timeoutMs = 60_0
 export const seedTicketThreads = async (
   prisma,
   fixture,
-  { ensureTicketWorkThread, ticketWorkThreadTitle, writeTicketWorkThreadRow },
+  { cancelTicketWorkReminder, ensureTicketWorkThread, ticketWorkThreadTitle, writeTicketWorkThreadRow },
 ) => {
   const { scope } = fixture
   const board = await prisma.board.create({
@@ -315,12 +315,24 @@ export const seedTicketThreads = async (
     })
     tickets.push({ task, threadId: thread.id, title })
   }
+  const firstWork = await prisma.agentTicketWork.findFirstOrThrow({ where: { threadId: tickets[0].threadId } })
   await writeTicketWorkThreadRow(prisma, {
     event: {
       kind: 'woken', reason: 'ticket_commented', summary: `${owner.displayName} commented`,
-      workId: (await prisma.agentTicketWork.findFirstOrThrow({ where: { threadId: tickets[0].threadId } })).id,
+      workId: firstWork.id,
     },
     threadId: tickets[0].threadId,
+  })
+  // The agent's reminder, cancelled on the ticket's chip by the owner: the
+  // thread says who, through the very function the cancel route calls.
+  const reminder = await prisma.agentReminder.create({
+    data: {
+      agentId: fixture.agent.id, threadId: tickets[0].threadId, workId: firstWork.id,
+      dueAt: new Date(Date.now() + 20 * 60_000), note: 'waiting for CI',
+    },
+  })
+  await cancelTicketWorkReminder(prisma, {
+    taskId: tickets[0].task.id, reminderId: reminder.id, byUserId: fixture.owner.id,
   })
 
   // Reads the public room and is in it, so the room's composer is theirs —
