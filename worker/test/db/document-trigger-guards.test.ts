@@ -14,6 +14,8 @@ import { documentTriggerOnVersionCreated } from '@nessie/team-admin'
 import { dispatchDocumentChange } from '../../src/control/document-trigger-dispatch.js'
 import { createTicketWorkSeam } from '../../src/control/ticket-work.js'
 import type { TicketWorkSeam } from '../../src/control/ticket-work-seam.js'
+import { createWorkerKnowledgeProvider } from '../../src/run/pa-tools/knowledge-provider.js'
+import type { BuiltinToolRuntimeContext } from '../../src/run/tool-types.js'
 import { runDatabaseTest } from './support.js'
 import { agentScope, documentDeliveries, drainDocumentJobs, seedDocumentTrigger } from './document-trigger-fixture.js'
 import { drainTicketJobs, finishRuns, move, newTask, seedTicketWork, type TicketWorkSeed } from './ticket-work-fixture.js'
@@ -22,10 +24,10 @@ import { drainTicketJobs, finishRuns, move, newTask, seedTicketWork, type Ticket
 // (docs/standards/document-triggers.md): a save that joined a window is seen
 // by it however the commit and the job interleave, and one that lands while
 // the window is decided opens the next; a label filter sees the labels a save
-// leaves; one narrower page is skipped without
-// pausing the trigger; no two reviewers can wake each other, in any project;
-// a page wakes its agent at most so often a day; and route 1 still asks the
-// document trigger's own channel.
+// leaves; an agent's publish opens a publish window; one narrower page is
+// skipped without pausing the trigger; no two reviewers can wake each other,
+// in any project; a page wakes its agent at most so often a day; and route 1
+// still asks the document trigger's own channel.
 
 const windowJobs = (prisma: PrismaClient, triggerId: string) => prisma.queueJob.findMany({
   where: { topic: TRIGGER_DOCUMENT_DISPATCH_TOPIC, payload: { path: ['triggerId'], equals: triggerId } },
@@ -140,6 +142,29 @@ runDatabaseTest('a label-filtered trigger sees a page created with its label, an
   await drainDocumentJobs(prisma, s, new Set())
   const statuses = (await documentDeliveries(prisma, d.documentTriggerId)).map((row) => row.status)
   assert.deepEqual(statuses, ['delivered', 'delivered'])
+})
+
+runDatabaseTest('an agent\'s publish opens a publish-firing trigger\'s window, as a person\'s does', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const d = await seedDocumentTrigger(prisma, s, { fireOn: 'publish' })
+  // The provider every worker document tool writes through.
+  const tools = createWorkerKnowledgeProvider({
+    prisma,
+    agentId: s.agentId,
+    run: { id: randomUUID(), originatingUserId: s.editorId },
+    actorContext: {
+      actor: { actorId: s.agentId, actorType: 'agent' },
+      actionContext: { correlationId: randomUUID(), requestId: randomUUID() },
+      tenant: { organizationId: s.organizationId, teamId: s.teamId },
+    },
+  } as unknown as BuiltinToolRuntimeContext)
+  const page = await tools.createPage({ ...agentScope(s, d), body: '<p>Draft</p>', title: 'Spec' })
+  assert.equal((await openWindows(prisma, d.documentTriggerId)).length, 0, 'a draft opens no publish window')
+  await tools.publishPage({ organizationId: s.organizationId, pageId: page.id })
+  assert.deepEqual((await openWindows(prisma, d.documentTriggerId)).map((row) => row.idempotencyKey),
+    [documentTriggerPendingKey(d.documentTriggerId, page.id)])
 })
 
 runDatabaseTest('one restricted page is skipped with its reason; the trigger keeps watching the rest', async (t) => {
