@@ -177,13 +177,20 @@ export const updateProjectTask = async (
       await applyTaskLabelPlan(tx, labelPlan, { by, origin, ownedWrittenUpstream: labelsWrittenUpstream })
     }
     // The description gets a history line at all; the text itself is not
-    // copied — only its hash, so a wake can tell whether what the ticket says
-    // now is still what this author wrote (`detailSha256`).
+    // copied — only its hashes, so a wake can tell whether what the ticket says
+    // now is still what this author wrote (`detailSha256`), and whether the
+    // text its agent last saw is the one this edit changed
+    // (`previousDetailSha256`), which is when a diff is this author's alone.
     if (input.fields.detail !== undefined && (input.fields.detail ?? null) !== existing.detail) {
       await recordTaskEvent(tx, {
         taskId: existing.id,
         eventType: 'detail_edited',
-        payload: { by, origin, detailSha256: taskDetailSha256(input.fields.detail ?? null) },
+        payload: {
+          by,
+          origin,
+          detailSha256: taskDetailSha256(input.fields.detail ?? null),
+          previousDetailSha256: taskDetailSha256(existing.detail),
+        },
         scope,
       })
     }

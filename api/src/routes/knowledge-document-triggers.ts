@@ -4,7 +4,7 @@ import { SpaceDocumentTriggersRecordSchema } from '@nessie/schemas'
 import { loadDocumentReviews } from '@nessie/team-admin'
 import { z } from 'zod'
 
-import { createApiResponse, parseInput } from '../lib/api.js'
+import { createApiResponse, parseInput, sendApiError } from '../lib/api.js'
 import { createKnowledgeAccess, requireKnowledgePolicy, type KnowledgeRouteDeps } from './knowledge-base-access.js'
 
 /**
@@ -22,13 +22,16 @@ import { createKnowledgeAccess, requireKnowledgePolicy, type KnowledgeRouteDeps 
 
 const MAX_PAGE_IDS = 100
 
-const QuerySchema = z.object({
-  pageIds: z
-    .string()
-    .optional()
-    .transform((value) => (value ? [...new Set(value.split(',').map((id) => id.trim()).filter(Boolean))] : []))
-    .pipe(z.array(z.string().uuid()).max(MAX_PAGE_IDS)),
-})
+const QuerySchema = z.object({ pageIds: z.string().optional() })
+
+const PageIdsSchema = z.array(z.string().uuid()).max(MAX_PAGE_IDS)
+
+/** `a,b,c` as distinct ids, or null when one is not an id or there are too many. */
+const pageIdsOf = (value: string | undefined): string[] | null => {
+  const ids = value ? [...new Set(value.split(',').map((id) => id.trim()).filter(Boolean))] : []
+  const parsed = PageIdsSchema.safeParse(ids)
+  return parsed.success ? parsed.data : null
+}
 
 export const registerKnowledgeDocumentTriggerRoutes = (app: FastifyInstance, deps: KnowledgeRouteDeps): void => {
   const { prisma, requireActorContext, requireUserActor } = deps
@@ -40,6 +43,17 @@ export const registerKnowledgeDocumentTriggerRoutes = (app: FastifyInstance, dep
     if (!requireUserActor(actorContext, reply)) return reply
     const query = parseInput(QuerySchema, request.query, reply, 'query')
     if (!query) return reply
+    const pageIds = pageIdsOf(query.pageIds)
+    if (!pageIds) {
+      sendApiError(
+        reply,
+        400,
+        'VALIDATION_ERROR',
+        `pageIds is a comma-separated list of at most ${MAX_PAGE_IDS} page ids`,
+        'pageIds',
+      )
+      return reply
+    }
     const decision = await requireKnowledgePolicy(deps, actorContext, reply, 'knowledge_page', 'view')
     if (!decision) return reply
     const { spaceId } = request.params as { spaceId: string }
@@ -47,7 +61,7 @@ export const registerKnowledgeDocumentTriggerRoutes = (app: FastifyInstance, dep
     const space = await accessSpace(actorContext, spaceId, viewer, 'read', reply)
     if (!space) return reply
     const organizationId = actorContext.tenant.organizationId
-    const pages = (await Promise.all(query.pageIds.map((pageId) => provider.getPage(organizationId, pageId))))
+    const pages = (await Promise.all(pageIds.map((pageId) => provider.getPage(organizationId, pageId))))
       .filter((page): page is KnowledgePageRecord => page !== null && page.spaceId === space.id)
     const readable = await filterReadablePages(viewer, pages)
     const reviews = await loadDocumentReviews(prisma, {

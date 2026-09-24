@@ -110,6 +110,11 @@ export const documentTriggerOnPagePublished = async (
   tx: Prisma.TransactionClient,
   event: KnowledgePagePublishedEvent,
 ): Promise<void> => {
+  // A publish in a project no document trigger watches reads nothing more.
+  const watching = await tx.agentTrigger.count({
+    where: { type: 'document_changed', enabled: true, status: 'active', scopeProjectId: event.projectId },
+  })
+  if (watching === 0) return
   const page = await tx.knowledgePage.findUnique({ where: { id: event.pageId }, select: { kind: true } })
   if (!page) return
   await enqueueDocumentTriggerDispatch(tx, { ...event, kind: page.kind, fireOn: 'publish' })

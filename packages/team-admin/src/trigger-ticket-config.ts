@@ -73,7 +73,11 @@ const TICKET_CHANNEL_WORDING = {
 }
 
 const resolveChannel = (tx: Prisma.TransactionClient, input: TicketTriggerResolveInput) =>
-  resolveTriggerTargetChannel(tx, { agent: input.agent, targetChannelId: input.targetChannelId, wording: TICKET_CHANNEL_WORDING })
+  resolveTriggerTargetChannel(tx, {
+    agent: input.agent,
+    targetChannelId: input.targetChannelId,
+    wording: TICKET_CHANNEL_WORDING,
+  })
 
 const boardSelect = {
   columns: { orderBy: { position: 'asc' }, select: { category: true, id: true, name: true } },

@@ -276,7 +276,8 @@ export const resolveDocumentChangedTrigger = async (
 export const documentChangedConfigAsInput = (stored: unknown): Record<string, unknown> => {
   const parsed = DocumentChangedStoredConfigSchema.safeParse(stored)
   if (!parsed.success) return {}
-  const { folderPageId, fireOn, includeAgentEdits, instructions, kinds, labels, pageIds, quietSeconds, spaceId } = parsed.data
+  const { folderPageId, instructions, labels, pageIds } = parsed.data
+  const { fireOn, includeAgentEdits, kinds, quietSeconds, spaceId } = parsed.data
   return {
     spaceId,
     kinds,

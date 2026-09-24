@@ -34,7 +34,9 @@ import {
   AgentEmailSendJobPayloadSchema,
   TICKET_WORK_THREAD_MESSAGE_TOPIC,
   TicketWorkThreadMessageJobPayloadSchema,
+  TRIGGER_DOCUMENT_DISPATCH_TOPIC,
   TRIGGER_TICKET_DISPATCH_TOPIC,
+  TriggerDocumentDispatchJobPayloadSchema,
   TriggerTicketDispatchJobPayloadSchema,
 } from '@nessie/schemas'
 import {
@@ -56,6 +58,7 @@ import {
   processAgentEmailSendJob,
   type AgentEmailJobDeps,
 } from './control/agent-email/jobs.js'
+import { dispatchDocumentChange } from './control/document-trigger-dispatch.js'
 import { dispatchTicketEvent } from './control/ticket-trigger-dispatch.js'
 import { dispatchTicketThreadMessage } from './control/ticket-thread-message-dispatch.js'
 import { enqueueBoardSourceHealthAlert } from './queue.js'
@@ -178,6 +181,17 @@ subscribe(
   async (job) => {
     const payload = TriggerTicketDispatchJobPayloadSchema.parse(job.payload)
     await dispatchTicketEvent(prisma, payload)
+  },
+  { signal: abortSignal },
+)
+
+// Document triggers: the end of one quiet window for one page, decided as one
+// review — in the page's ticket's live work, or the page's own thread.
+subscribe(
+  TRIGGER_DOCUMENT_DISPATCH_TOPIC,
+  async (job) => {
+    const payload = TriggerDocumentDispatchJobPayloadSchema.parse(job.payload)
+    await dispatchDocumentChange(prisma, payload)
   },
   { signal: abortSignal },
 )

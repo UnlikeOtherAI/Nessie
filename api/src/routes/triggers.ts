@@ -173,7 +173,9 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     try {
       trigger = await createAgentTrigger(prisma, agentId, body, {
         ...(actorContext.actor.actorType === 'user' ? { authorUserId: actorContext.actor.actorId } : {}),
-        ...(actorContext.actionContext.uoaIdentity ? { authorUoaIdentity: actorContext.actionContext.uoaIdentity } : {}),
+        ...(actorContext.actionContext.uoaIdentity
+          ? { authorUoaIdentity: actorContext.actionContext.uoaIdentity }
+          : {}),
         ...(launchOrigin ? { launchOrigin } : {}),
       })
     } catch (error) {
@@ -235,13 +237,9 @@ export const registerTriggerRoutes = (app: FastifyInstance, deps: RouteDeps): vo
     try {
       // The editor, for the checks that ask what the person making the edit may
       // read (a document trigger's space).
+      const uoaIdentity = actorContext.actionContext.uoaIdentity
       updated = await updateSharedAgentTrigger(prisma, scope, body, actorContext.actor.actorType === 'user'
-        ? {
-            editor: {
-              userId: actorContext.actor.actorId,
-              ...(actorContext.actionContext.uoaIdentity ? { uoaIdentity: actorContext.actionContext.uoaIdentity } : {}),
-            },
-          }
+        ? { editor: { userId: actorContext.actor.actorId, ...(uoaIdentity ? { uoaIdentity } : {}) } }
         : {})
     } catch (error) {
       if (sendTriggerConfigRefusal(reply, error)) return reply

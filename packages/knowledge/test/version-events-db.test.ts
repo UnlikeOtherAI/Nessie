@@ -90,7 +90,9 @@ dbTest('every writer announces its version, and nothing else does', async (t) =>
   await provider.updatePage(page.id, { ...scope, metadata: { pinned: true } })
   assert.equal(events.length, before, 'a metadata-only edit writes no version and announces none')
 
-  const firstVersion = await prisma.knowledgePageVersion.findFirstOrThrow({ where: { pageId: page.id, versionNumber: 1 } })
+  const firstVersion = await prisma.knowledgePageVersion.findFirstOrThrow({
+    where: { pageId: page.id, versionNumber: 1 },
+  })
   await provider.restoreVersion({ ...scope, pageId: page.id, versionId: firstVersion.id })
   assert.equal(events.at(-1)?.versionNumber, 3, 'restoreVersion announces the version it wrote')
 

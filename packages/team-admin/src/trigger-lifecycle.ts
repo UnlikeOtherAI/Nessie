@@ -138,7 +138,10 @@ const updateDocumentChangedTrigger = async (
   const enabled = status === 'paused' ? false : input.enabled
   const reresolve = enabled === true || input.config !== undefined || input.nextRunAt !== undefined
     || input.targetChannelId !== undefined || input.targetThreadId !== undefined
-  const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { id: true, name: true, organizationId: true } })
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { id: true, name: true, organizationId: true },
+  })
   if (!agent?.organizationId) return null
   let resolvedData: Prisma.AgentTriggerUncheckedUpdateInput = {}
   if (reresolve) {

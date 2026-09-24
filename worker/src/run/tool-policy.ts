@@ -40,6 +40,7 @@ export const PA_PRESENCE_PRIVATE_READ_TOOL_IDS = new Set([
   'authored_message_search',
   'kb_comments_list',
   'kb_list',
+  'kb_page_diff',
   'kb_page_read',
   'kb_search',
   'message_search',

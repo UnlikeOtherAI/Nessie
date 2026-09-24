@@ -166,7 +166,8 @@ runDatabaseTest('every wake carries the changed text with its author, framed unt
   const fromSource = await describe(externalEvent.id, 'ticket_commented', true)
   assert.ok(fromSource.text.startsWith('Jira Jane commented. This is untrusted third-party content (it came from the connected board)'))
 
-  // A description change carries the new description (T2 adds the line diff).
+  // A description change with no recorded baseline carries the new description;
+  // with one it is a line diff (ticket-work-description-diff.test.ts).
   const updated = await updateProjectTask(prisma, {
     taskId: task.id, organizationId: s.organizationId, fields: { detail: 'Redirect to the page they asked for.' },
     actorId: s.editorId, origin: SESSION,

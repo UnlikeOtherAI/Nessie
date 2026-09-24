@@ -31,12 +31,24 @@ export type TicketWorkTrigger = {
 }
 
 export type TicketWorkEvent = {
-  /** The `TaskEvent`'s id, or the message's for a thread message. */
+  /**
+   * The `TaskEvent`'s id, the message's for a thread message, or the version
+   * a document change brought the agent up to.
+   */
   id: string
   eventType: string
   createdAt: Date
-  /** A person's message in the work thread rather than a `TaskEvent`. */
-  kind?: 'thread_message'
+  /**
+   * A person's message in the work thread, or an edit to one of the ticket's
+   * documents (`document_changed`), rather than a `TaskEvent`.
+   */
+  kind?: 'thread_message' | 'document'
+  /**
+   * A document change as its dispatcher already told it: metadata only, the
+   * document named by title only where every reader of the channel may read
+   * it (docs/standards/document-triggers.md). Set exactly when `kind` is `document`.
+   */
+  described?: { text: string; summary: string }
   /** The event's `TaskEvent.by`: who a resume or an end it causes names. */
   by?: string | null
 }

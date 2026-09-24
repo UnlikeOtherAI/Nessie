@@ -11,7 +11,7 @@ import {
 import { endColumnIds } from './ticket-trigger-decision.js'
 import { describeWakeEvent } from './ticket-work-events.js'
 import { ticketWorkConfigOf } from './ticket-work-kickoff.js'
-import { queueTicketWorkRun, writeTicketWorkThreadRow } from './ticket-work-run.js'
+import { loadDetailSeen, queueTicketWorkRun, writeTicketWorkThreadRow } from './ticket-work-run.js'
 import type {
   TicketWorkSeam,
   TicketWorkSeamOutcome,
@@ -47,7 +47,10 @@ const startOfUtcDay = (at: Date): Date => new Date(Date.UTC(at.getUTCFullYear(),
  * that lost it cannot work any ticket, so this is the trigger's health, not a
  * skip — the same classified failure a scheduled trigger records.
  */
-const assertTargetChannel = async (tx: Prisma.TransactionClient, trigger: TicketWorkTrigger): Promise<string> => {
+export const assertTargetChannel = async (
+  tx: Pick<Prisma.TransactionClient, 'channel'>,
+  trigger: Pick<TicketWorkTrigger, 'agentId' | 'targetChannelId'>,
+): Promise<string> => {
   const channelId = trigger.targetChannelId
   const channel = channelId
     ? await tx.channel.findFirst({
@@ -230,14 +233,19 @@ const wakeTicketWork = async (
   const settled = await settleMoveAgainstColumn(tx, { ...input, work, live })
   if (settled) return settled
   await assertTargetChannel(tx, trigger)
+  // A description change is told as a diff against what this agent last saw.
+  const detailSeen = event.eventType === 'detail_edited' ? await loadDetailSeen(tx, work) : undefined
   const described = await describeWakeEvent(prisma, {
+    detailSeen,
     organizationId: trigger.organizationId,
     projectId: work.projectId,
     taskId: work.taskId,
     reason: input.reason,
     source: event.kind === 'thread_message'
       ? { kind: 'thread_message', messageId: event.id }
-      : { kind: 'task_event', taskEventId: event.id },
+      : event.kind === 'document' && event.described
+        ? { kind: 'described', ...event.described }
+        : { kind: 'task_event', taskEventId: event.id },
     at: event.createdAt,
     untrusted: input.untrusted,
     machineLess: input.machineLess,
