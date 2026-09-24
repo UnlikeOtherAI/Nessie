@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
   EndStandingPolicyResponse,
   PrepareStandingPolicyBody,
@@ -27,6 +27,8 @@ const LIVE_POLL_MS = 15_000
 export const useTriggerMachineAccess = (triggerId?: string, enabled = true) => {
   const apiClient = useApiClient()
   return useQuery<TriggerMachineAccessView>({
+    // The same viewer's own read of another trigger or machine: nothing private to replay.
+    placeholderData: keepPreviousData,
     enabled: enabled && Boolean(triggerId),
     queryFn: () => apiClient.get(`/api/triggers/${triggerId}/machine-access`),
     queryKey: standingPolicyKeys.trigger(triggerId),
@@ -37,6 +39,8 @@ export const useTriggerMachineAccess = (triggerId?: string, enabled = true) => {
 export const useStandingPolicyMachines = (triggerId?: string, enabled = true) => {
   const apiClient = useApiClient()
   return useQuery<StandingPolicyMachineOptionsResponse>({
+    // The same viewer's own read of another trigger or machine: nothing private to replay.
+    placeholderData: keepPreviousData,
     enabled: enabled && Boolean(triggerId),
     queryFn: () => apiClient.get(`/api/triggers/${triggerId}/machine-access/machines`),
     queryKey: standingPolicyKeys.machines(triggerId),
@@ -58,6 +62,8 @@ export const usePrepareStandingPolicy = (triggerId?: string) => {
 export const useExecutorStandingPolicies = (executorId?: string, enabled = true) => {
   const apiClient = useApiClient()
   return useQuery<ExecutorStandingPolicyListResponse>({
+    // The same viewer's own read of another trigger or machine: nothing private to replay.
+    placeholderData: keepPreviousData,
     enabled: enabled && Boolean(executorId),
     queryFn: () => apiClient.get(`/api/executors/${executorId}/standing-policies`),
     queryKey: standingPolicyKeys.executor(executorId),
