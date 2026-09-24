@@ -6,6 +6,8 @@ import {
   TICKET_WORK_LIVE_STATUSES,
 } from '@nessie/schemas'
 
+import { writeTicketWorkThreadRow } from './ticket-work-thread.js'
+
 /**
  * `check_back_in` reminders (docs/standards/ticket-work.md → "Reminders, the
  * quiet wake and the sweep"). A reminder is its own row, never a
@@ -183,19 +185,37 @@ export const setAgentReminder = async (
 /**
  * A person pressed Cancel on the ticket's chip. The caller checked that they
  * can edit the board; the reminder must be pending and belong to live work on
- * this ticket. Returns whether it was cancelled.
+ * this ticket. The work thread says who cancelled it, in the same
+ * transaction, so the agent's quiet is never unexplained. Returns the
+ * cancelled reminder's work record, or null when nothing was pending.
  */
 export const cancelTicketWorkReminder = async (
-  prisma: Pick<PrismaClient, 'agentReminder'>,
-  input: { taskId: string; reminderId: string },
-): Promise<boolean> => {
-  const { count } = await prisma.agentReminder.updateMany({
+  prisma: PrismaClient,
+  input: { taskId: string; reminderId: string; byUserId: string },
+): Promise<{ workId: string } | null> => prisma.$transaction(async (tx) => {
+  const reminder = await tx.agentReminder.findFirst({
     where: {
       id: input.reminderId,
       status: 'pending',
       work: { taskId: input.taskId, status: { in: [...TICKET_WORK_LIVE_STATUSES] } },
     },
+    select: { workId: true, threadId: true },
+  })
+  if (!reminder?.workId) return null
+  const { count } = await tx.agentReminder.updateMany({
+    where: { id: input.reminderId, status: 'pending' },
     data: { status: 'cancelled', cancelledReason: 'person' },
   })
-  return count > 0
-}
+  if (count === 0) return null
+  const person = await tx.user.findUnique({ where: { id: input.byUserId }, select: { displayName: true } })
+  await writeTicketWorkThreadRow(tx, {
+    threadId: reminder.threadId,
+    event: {
+      kind: 'reminder_cancelled',
+      workId: reminder.workId,
+      reminderId: input.reminderId,
+      summary: `${person?.displayName ?? 'A person'} cancelled the agent's reminder`,
+    },
+  })
+  return { workId: reminder.workId }
+})

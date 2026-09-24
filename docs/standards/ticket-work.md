@@ -450,7 +450,8 @@ still says "from T*n*" after T*n* merged is a false statement about the code.
   (`withoutEndedWorkWrites`), so a stale plan cannot move the ticket back.
 - **Every wake writes one compact thread row** — a `system` message with
   `metadata.ticketWorkEvent` (`TicketWorkThreadEventSchema`: `woken` with its
-  wake reason, or `stopped` with its state reason) and the content *"Woken:
+  wake reason, `stopped` with its state reason, or **(T3)**
+  `reminder_cancelled`) and the content *"Woken:
   Ondrej commented"* or *"Stopped: 30 wakes used. …"*. The thread feed admits
   those rows by their `kind` (`listThreadMessages`,
   `api/src/services/message-read-model.ts`) and still hides every kickoff. A
@@ -604,7 +605,10 @@ routes, and none of it names a machine.
   `check_back_in` on a parked ticket is refused — its work waits for the
   people reviewing it, and a person moving it back wakes the agent. The chip's
   Cancel is `DELETE /api/tasks/:taskId/work/reminders/:reminderId`, for a
-  board editor only (403 `TICKET_WORK_REMINDER_READ_ONLY` for another reader).
+  board editor only (403 `TICKET_WORK_REMINDER_READ_ONLY` for another reader);
+  a cancel writes a `reminder_cancelled` row in the work thread naming who
+  (*"Reminder cancelled: Ondrej cancelled the agent's reminder"*) and an audit
+  row (`trigger.reminder_cancelled`).
 - **Outside ticket work** it wakes the agent in the same conversation **as
   itself**: no effective user, not interactive, purpose `agent.reminder`
   (`AGENT_REMINDER_PURPOSE`, in `DRAINS_ALONE_PURPOSES`, so it never batches

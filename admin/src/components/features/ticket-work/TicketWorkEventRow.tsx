@@ -1,13 +1,18 @@
-import { faBolt, faCircleStop } from '@fortawesome/free-solid-svg-icons'
+import { faBellSlash, faBolt, faCircleStop } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { TicketWorkThreadEventSchema, type TicketWorkThreadEvent } from '@nessie/schemas'
+import {
+  TICKET_WORK_THREAD_EVENT_LABELS,
+  TicketWorkThreadEventSchema,
+  type TicketWorkThreadEvent,
+} from '@nessie/schemas'
 
 import type { ThreadMessageRecord } from '../../../lib/api-client'
 import { formatClock } from '../channels/channel-feed'
 
 /**
  * One compact row in a ticket's work thread for each thing that happened to
- * the work — why the agent woke, or why the platform stopped it
+ * the work — why the agent woke, why the platform stopped it, or who cancelled
+ * its reminder
  * (docs/standards/ticket-work.md → "What the project sees"). A `system`
  * message the feed admits by its `metadata.ticketWorkEvent`; it is not a
  * model message, so it has no author, no avatar and no actions.
@@ -19,6 +24,13 @@ export const ticketWorkEventOf = (message: ThreadMessageRecord): TicketWorkThrea
   const parsed = TicketWorkThreadEventSchema.safeParse(message.metadata?.ticketWorkEvent)
   return parsed.success ? parsed.data : null
 }
+
+const EVENT_ICON = { woken: faBolt, stopped: faCircleStop, reminder_cancelled: faBellSlash } as const
+const EVENT_ICON_TONE = {
+  woken: 'text-[color:var(--info-text)]',
+  stopped: 'text-[color:var(--danger-text)]',
+  reminder_cancelled: 'text-[color:var(--tx3)]',
+} as const satisfies Record<TicketWorkThreadEvent['kind'], string>
 
 export const TicketWorkEventRow = ({
   event,
@@ -35,11 +47,11 @@ export const TicketWorkEventRow = ({
   >
     <FontAwesomeIcon
       aria-hidden
-      className={`mt-0.5 h-3 w-3 shrink-0 ${event.kind === 'stopped' ? 'text-[color:var(--danger-text)]' : 'text-[color:var(--info-text)]'}`}
-      icon={event.kind === 'stopped' ? faCircleStop : faBolt}
+      className={`mt-0.5 h-3 w-3 shrink-0 ${EVENT_ICON_TONE[event.kind]}`}
+      icon={EVENT_ICON[event.kind]}
     />
     <span className="min-w-0 flex-1 break-words">
-      <span className="font-semibold text-[color:var(--tx2)]">{event.kind === 'stopped' ? 'Stopped' : 'Woken'}:</span>{' '}
+      <span className="font-semibold text-[color:var(--tx2)]">{TICKET_WORK_THREAD_EVENT_LABELS[event.kind]}:</span>{' '}
       {event.summary}
     </span>
     <time className="shrink-0 tabular-nums" dateTime={message.createdAt}>{formatClock(message.createdAt)}</time>

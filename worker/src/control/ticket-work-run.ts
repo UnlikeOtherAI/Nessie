@@ -5,9 +5,8 @@ import {
   TicketWorkKickoffMetadataSchema,
   withActionContext,
   type TicketWorkKickoffEvent,
-  type TicketWorkThreadEvent,
 } from '@nessie/schemas'
-import { endTicketWork } from '@nessie/team-admin'
+import { endTicketWork, writeTicketWorkThreadRow } from '@nessie/team-admin'
 
 import { buildAgentActorContext, startAgentRun } from './agent-run-start.js'
 import { loadTicketWorkKickoffFacts, renderTicketWorkKickoff, ticketWorkConfigOf } from './ticket-work-kickoff.js'
@@ -53,20 +52,8 @@ export type TicketWorkRunOutcome =
   | { kind: 'folded'; messageId: string }
   | { kind: 'over_limit'; wakesUsed: number; limit: number }
 
-/** A thread row: compact, and never ticket text (see `TicketWorkThreadEventSchema`). */
-export const writeTicketWorkThreadRow = async (
-  tx: Pick<Prisma.TransactionClient, 'message'>,
-  input: { threadId: string; event: TicketWorkThreadEvent },
-): Promise<void> => {
-  await tx.message.create({
-    data: {
-      threadId: input.threadId,
-      role: 'system',
-      content: `${input.event.kind === 'woken' ? 'Woken' : 'Stopped'}: ${input.event.summary}`,
-      metadata: { ticketWorkEvent: input.event } as Prisma.InputJsonValue,
-    },
-  })
-}
+/** A thread row: compact, and never ticket text (`TicketWorkThreadEventSchema`); shared with the API. */
+export { writeTicketWorkThreadRow }
 
 /**
  * The wake limit is spent: the record fails with `limit_wakes`, its reminders

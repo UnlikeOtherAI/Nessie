@@ -19,6 +19,7 @@ import {
 } from '@nessie/team-admin'
 
 import { createApiResponse, sendApiError } from '../lib/api.js'
+import { emitAuditEvent } from '../services/audit.js'
 import { getTask } from '../services/tasks.js'
 import type { RouteDeps } from './types.js'
 
@@ -109,10 +110,23 @@ export const registerTicketWorkRoutes = (app: FastifyInstance, deps: RouteDeps):
       sendApiError(reply, 403, 'TICKET_WORK_REMINDER_READ_ONLY', TICKET_WORK_REMINDER_READ_ONLY_SENTENCE)
       return reply
     }
-    if (!isUuid(reminderId) || !(await cancelTicketWorkReminder(prisma, { taskId: task.id, reminderId }))) {
+    const cancelled = isUuid(reminderId)
+      ? await cancelTicketWorkReminder(prisma, { taskId: task.id, reminderId, byUserId: actorContext.actor.actorId })
+      : null
+    if (!cancelled) {
       sendApiError(reply, 404, 'REMINDER_NOT_FOUND', 'This reminder already fired or was cancelled.')
       return reply
     }
+    // A person stopping an agent's scheduled wake is audited like pausing a
+    // trigger; the work thread says so in a row of its own.
+    await emitAuditEvent(prisma, {
+      actorContext,
+      action: 'trigger.reminder_cancelled',
+      resourceType: 'agent_reminder',
+      resourceId: reminderId,
+      outcome: 'success',
+      metadata: { taskId: task.id, workId: cancelled.workId },
+    })
     return createApiResponse({ cancelled: true })
   })
 

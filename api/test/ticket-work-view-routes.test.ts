@@ -406,6 +406,16 @@ dbTest('the chip names the pending reminder and the open question, and only a bo
       assert.equal(cancelled.statusCode, 200)
       const row = await prisma.agentReminder.findUniqueOrThrow({ where: { id: reminder.id } })
       assert.deepEqual([row.status, row.cancelledReason], ['cancelled', 'person'])
+      // The work thread says who cancelled it, and the audit trail records it.
+      const trace = await prisma.message.findFirstOrThrow({
+        where: { threadId: s.workingRecord.threadId, role: 'system', metadata: { path: ['ticketWorkEvent', 'kind'], equals: 'reminder_cancelled' } },
+      })
+      assert.equal(trace.content, 'Reminder cancelled: Ondrej cancelled the agent\'s reminder')
+      const audit = await prisma.auditLog.findFirstOrThrow({
+        where: { organizationId: s.organization.id, action: 'trigger.reminder_cancelled', resourceId: reminder.id },
+      })
+      assert.equal(audit.actorId, s.editor.id)
+      assert.equal(audit.resourceType, 'agent_reminder')
       const again = await cancel(reminder.id)
       assert.equal(again.statusCode, 404)
       assert.equal((again.json() as { error: { code: string } }).error.code, 'REMINDER_NOT_FOUND')
