@@ -108,7 +108,8 @@ sentence changes only if the invariant itself did.
   behind the "New conversation" button, the rename doorway, an ordinary
   room's own doorway and a two-agent room's agent strip, and a ticket's work
   threads folded under Tickets at every width with their wake rows and the
-  read-only line for a room member who cannot edit the board; two assertions
+  read-only line for a room member who cannot edit the board, and a document
+  trigger's review threads folded under Documents the same way; two assertions
   deliberately pin known gaps and say so in their own message. It starts its
   own API and admin, on `NAV_E2E_API_PORT` / `NAV_E2E_ADMIN_PORT` when set.
 - **Agent proposal card coverage:** run

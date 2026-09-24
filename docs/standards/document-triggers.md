@@ -193,6 +193,10 @@ delivery's transaction:
    `interactive: false`, purpose `document_changed`, like every event
    trigger. Each wake writes a compact `document_woken` row
    (`TicketWorkThreadEventSchema`), which the thread feed shows as "Woken:".
+   The agent's conversation list folds these threads under **Documents**, as
+   it folds work threads under Tickets: the conversation record carries
+   `document: { pageId }` from the thread's metadata
+   (`documentReviewThreadRefOf`, `agent-conversation-tickets.ts`).
    A ticket's document lands here when that ticket's work is not live for the
    agent, does not follow documents, or was steered by nobody who may, and
    the kickoff names the ticket and says which. A ticket work wake the seam

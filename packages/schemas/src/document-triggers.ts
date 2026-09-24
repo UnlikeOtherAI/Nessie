@@ -259,6 +259,22 @@ export const DocumentTriggerThreadMetadataSchema = z
 export type DocumentTriggerThreadMetadata = z.infer<typeof DocumentTriggerThreadMetadataSchema>
 
 /**
+ * A conversation that is a document's review thread, named on the
+ * conversation record from the thread's own metadata, so the conversation
+ * list folds review threads under Documents as it folds work threads under
+ * Tickets. The page's id only: the thread's own title already says as much
+ * of the page as its channel may hear.
+ */
+export const DocumentReviewThreadRefSchema = z.object({ pageId: uuid })
+export type DocumentReviewThreadRef = z.infer<typeof DocumentReviewThreadRefSchema>
+
+/** `{ pageId, triggerId }` on `Thread.metadata`, as `ensureDocumentReviewThread` writes it. */
+export const documentReviewThreadRefOf = (metadata: unknown): DocumentReviewThreadRef | null => {
+  const parsed = DocumentTriggerThreadMetadataSchema.safeParse(metadata)
+  return parsed.success ? { pageId: parsed.data.pageId } : null
+}
+
+/**
  * One row badge in the Finder and the project's Docs tab: the newest wake a
  * document trigger delivered for a page — *"Reviewed by CTO · v5"* — and the
  * thread it happened in, only for a viewer who may open that thread.
