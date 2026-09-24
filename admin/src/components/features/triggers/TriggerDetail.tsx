@@ -20,6 +20,7 @@ import {
 } from './trigger-presentation'
 import { useDocumentTriggerFacts } from './document-trigger-facts'
 import { documentDeliveryLine } from './document-trigger-presentation'
+import { MachineAccessSection } from './MachineAccessSection'
 import { useTicketTriggerFacts } from './ticket-trigger-facts'
 import { ticketDeliveryLine } from '../ticket-work/ticket-work-presentation'
 
@@ -93,6 +94,9 @@ export const TriggerDetail = ({ registry, trigger }: TriggerDetailProps) => {
           ...documentFacts,
         ]}
       />
+
+      {/* A ticket trigger's work runs on machines only under its author's standing machine access. */}
+      {trigger.type === 'ticket_changed' ? <MachineAccessSection deliveries={history} triggerId={trigger.id} /> : null}
 
       {trigger.type === 'webhook' ? (
         <section>

@@ -12,6 +12,7 @@ import { TriggerEditorDialog } from '../../src/components/features/triggers/Trig
 import type { AgentRecord, AgentTriggerRecord, ChannelRecord } from '../../src/lib/api-client'
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
 import { DocsScenario, DocumentDetailScenario, documentGet, refuseDocumentCreate } from './documents'
+import { machineAccessGet, machineAccessPost } from './machine-access'
 import { AgentIdentityProvider } from '../../src/providers/AgentIdentityProvider'
 import { AuthSessionProvider } from '../../src/providers/AuthSessionProvider'
 import '../../src/styles.css'
@@ -28,7 +29,8 @@ import '../../src/styles.css'
  * created), `document` (a document trigger refused on its space, then
  * created), `board` (the column badge, card dots and the column menu that
  * opens the editor prefilled), `detail` and `document-detail` (a ticket or
- * document trigger's facts and deliveries) and `docs` (the project's Documents:
+ * document trigger's facts and deliveries; a ticket trigger's Machine access
+ * section in the state `&access=` names, from `machine-access.tsx`) and `docs` (the project's Documents:
  * review badges, and the row menu's "Tell an agent when this changes…";
  * `&owner=0` for a viewer the Triggers routes refuse). The document half's
  * data and stubs are in `documents.tsx`.
@@ -131,15 +133,20 @@ const delivery = (n: number, source: string, status: string, payload: Record<str
   // A reminder names its reminder and a quiet wake nothing; every other event its TaskEvent.
   payload: {
     taskId: tasks[0]!.id,
-    ...(payload.eventType === 'reminder' || payload.eventType === 'quiet'
+    ...(payload.eventType === 'reminder' || payload.eventType === 'quiet' || payload.kind === 'standing_policy_refused'
       ? {}
       : { taskEventId: `60000000-0000-4000-8000-0000000003${n}0` }),
     ...payload,
   },
   source, status, triggerId: TICKET_TRIGGER,
-  ...(status === 'skipped' ? { errorMessage: String(payload.skipReason) } : {}),
+  ...(status === 'skipped' ? { errorMessage: String(payload.skipReason ?? 'Ran without a machine.') } : {}),
 })
 const history = [
+  // T4: a run the standing-policy binder bound no machine to.
+  delivery(6, 'binding', 'skipped', {
+    kind: 'standing_policy_refused', reason: 'machine_unavailable', runId: '60000000-0000-4000-8000-000000000700',
+    workId: '60000000-0000-4000-8000-000000000400',
+  }),
   // T3: the agent's own reminder, and the platform's quiet wake.
   delivery(5, 'quiet', 'delivered', {
     eventType: 'quiet', originKind: 'system', outcome: 'follow', wakeReason: 'quiet', followedWakeAt: T0,
@@ -174,6 +181,8 @@ const PICKUP_REFUSAL = 'column "Review" is already a start-work column of the en
 const get = async (path: string) => {
   const url = new URL(path, location.origin)
   const route = url.pathname
+  const access = machineAccessGet(url)
+  if (access !== undefined) return access
   const documents = documentGet(url, fixture, AGENT_ID)
   if (documents !== undefined) return documents
   if (route === '/api/agents') return agents
@@ -190,6 +199,9 @@ const client = {
   getPage: async (path: string) => ({ data: await get(path), meta: { hasMore: false } }),
   patch: async () => ({ ok: true }),
   post: async (path: string, body: { type: AgentTriggerRecord['type'] } & Record<string, unknown>) => {
+    // The Machine access section's prepare and End (machine-access.tsx).
+    const access = machineAccessPost(path, body, fixture.posted)
+    if (access !== undefined) return access
     // Only a trigger create is the runner's business; the docs tab's own writes are not.
     if (!path.endsWith('/triggers')) return { ok: true }
     fixture.posted.push({ body, path })

@@ -38,15 +38,14 @@ const machineAccess: UserAlertRecord = {
 
 test('a machine-access item names the trigger it is for', () => {
   const html = renderToStaticMarkup(createElement(AlertRow, { alert: machineAccess }))
-  // True before the trigger page has a Machine access section: it says who
-  // sets it up and where, and promises no button on the page it opens.
-  assert.match(html, />CTO pickup needs machine access: ask the machines’ owner to set it up, /)
-  assert.match(html, /set it up, from the trigger’s page or the Agent Designer</)
+  // It says where the reader, the trigger's author, sets it up.
+  assert.match(html, />CTO pickup needs machine access: set it up from its Machine access section, /)
+  assert.match(html, /Machine access section, or with the Agent Designer</)
 
   const unnamed = renderToStaticMarkup(createElement(AlertRow, { alert: { ...machineAccess, triggerName: null } }))
   assert.match(unnamed, />A ticket trigger needs machine access: /)
 })
 
-test('a machine-access item opens the trigger it is for', () => {
-  assert.deepEqual(getAlertLink(machineAccess), { to: `/agents/triggers/${machineAccess.triggerId}` })
+test('a machine-access item opens the trigger it is for, at its Machine access section', () => {
+  assert.deepEqual(getAlertLink(machineAccess), { to: `/agents/triggers/${machineAccess.triggerId}#machine-access` })
 })

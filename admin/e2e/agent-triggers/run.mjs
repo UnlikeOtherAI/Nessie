@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { launchBrowser } from '../navigation/lib/browser.mjs'
 import { startAdmin, stopProcess } from '../navigation/lib/servers.mjs'
 import { documentDetail, documentForm, documentsFinder } from './documents-run.mjs'
+import { machineAccess } from './machine-access-run.mjs'
 import {
   SHOTS,
   VIEWPORTS,
@@ -39,7 +40,10 @@ import {
  *   refusal on the space field, the typed create payload, its page, and the
  *   project's Documents — review badges from one read per folder, and the row
  *   menu's "Tell an agent when this changes…", which opens the editor
- *   prefilled with its type fixed.
+ *   prefilled with its type fixed;
+ * - the Machine access section (`machine-access-run.mjs`): every state, the
+ *   author's setup form and its refusals, the one card and its review, and End;
+ *   and a run the binder bound no machine to, in words.
  *
  * Every state is shot at 1280 and 390 px under e2e/screenshots/agent-triggers/.
  */
@@ -295,6 +299,7 @@ try {
       await lines.first().waitFor()
       await page.getByText('After 30 minutes with nothing scheduled', { exact: false }).waitFor()
       assert.deepEqual(await lines.allInnerTexts(), [
+        'Ran without a machine: the machine was offline or no longer offers its coding tools.',
         'Woke the agent: nothing else was scheduled.',
         'Woke the agent: a reminder.',
         'Woke the agent: a comment.',
@@ -312,6 +317,9 @@ try {
     await documentForm(browser, { name, options })
     await documentDetail(browser, { name, options })
     await documentsFinder(browser, { name, options })
+
+    // 8. A ticket trigger's Machine access section: every state, the setup form, the card and End.
+    await machineAccess(browser, { name, options })
   }
 
   console.log(`Agent triggers proofs passed; screenshots: ${SHOTS}`)
