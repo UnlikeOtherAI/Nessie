@@ -4,6 +4,7 @@ import type {
   ProviderToolCall,
 } from '@nessie/runtime'
 import { redactDetectedSecrets } from '@nessie/schemas'
+import { resolveLoopCompletion } from './loop-completion.js'
 import { redactMessageContent } from './message-redaction.js'
 import {
   createDrainGate,
@@ -53,9 +54,6 @@ import {
   deriveProviderInputComponent,
 } from './execute/provenanced-provider-input.js'
 import {
-  advanceOutputFinalization,
-  outputFinalizationInstruction,
-  outputFinalizationTerminalText,
   restoreOutputFinalizationState,
 } from './output-finalization.js'
 
@@ -98,6 +96,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
   if (resume) restoreCompactionGovernor(compactionGovernor, resume)
 
   let iterations = resume?.iterations ?? 0
+  const followUp = { attempts: resume?.followUpAttempts ?? 0 }
   let toolCallsUsed = resume?.toolCallsUsed ?? 0
   let pendingToolResults: ExecutedToolResult[] | null = null
   let totalToolMs = resume?.toolMs ?? 0
@@ -146,6 +145,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
 
   const checkpoint = async (): Promise<void> => {
     await callbacks.onCheckpoint?.({
+      followUpAttempts: followUp.attempts,
       budgetRecoveryAttempted,
       compactionAttempts,
       compactionLastIteration,
@@ -198,7 +198,7 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
     cancelled = false,
     pendingApproval: ToolApprovalSuspension | null = null,
     pendingInput: AgentCardSuspension | null = null,
-    incompleteReason: 'empty_provider_response' | 'provider_output_limit' | null = null,
+    incompleteReason: LoopResult['incompleteReason'] = null,
   ): LoopResult => ({
     cacheReadTokens: spend.cacheReadTokens,
     cancelled,
@@ -407,43 +407,25 @@ export const runAgenticLoop = async (input: AgenticLoopInput): Promise<LoopResul
       const spendStop = stopAfterInference(budget, spend)
       if (spendStop) return stop(spendStop)
 
-      const finalization = advanceOutputFinalization(outputFinalization, {
-        deliveredToConversation,
-        finishReason: result.finishReason,
-        outputText: safeOutputText,
-        toolCalls: result.toolCalls,
-      })
-      if (finalization?.kind === 'recover') {
-        // Persist before the bounded no-tools turn, so a reclaim cannot replay work.
-        messages.push(coverProviderInputComponent(redactMessageContent({
-          content: safeOutputText || null,
-          ...(result.reasoningText ? { reasoning: result.reasoningText } : {}),
-          role: 'assistant',
-        }), 'assistant_output'))
-        messages.push(coverProviderInputComponent({
-          content: outputFinalizationInstruction(finalization.reason, finalization.recovery),
-          role: 'system',
-        }, 'loop_instruction'))
+      const completion = await drainGate.expiry(resolveLoopCompletion({
+        allInvocations, budget, cacheReadWeight, cancelled: cancellationRequested,
+        deliveredToConversation, elapsed, followUp, lastAssistantText, messages,
+        outputFinalization, result, safeOutputText, woundDown,
+        projectedInputTokens: currentAdmission.projectedInputTokens,
+        requestedOutputTokens: currentAdmission.requestedOutputTokens,
+        reviewCompletion: input.reviewCompletion,
+      }))
+      spend = meterSpend(allInvocations, cacheReadWeight)
+      if (completion.kind === 'budget') return stop(completion.reason)
+      if (completion.kind === 'cancelled') return finish(null, lastAssistantText, true)
+      if (completion.kind === 'continue') {
         await checkpoint()
         continue
       }
-      if (finalization?.kind === 'terminal') {
-        const finalText = outputFinalizationTerminalText(finalization.reason, safeOutputText || lastAssistantText)
-        lastAssistantText = finalText
-        // Provider output exhaustion is not a run-token stop. The run can be
-        // well inside its ledger allowance (as the production incident was),
-        // and reporting it as `token_limit` fabricates both the cause and a
-        // misleading manual continuation path.
-        return finish(null, finalText, false, null, null,
-          finalization.reason === 'length' ? 'provider_output_limit' : 'empty_provider_response')
-      }
-
-      if (!result.toolCalls || result.toolCalls.length === 0) {
-        outputFinalization.pending = false
-        if (safeOutputText) {
-          await callbacks.onTextDelta(safeOutputText)
-        }
-        return finish(null, safeOutputText)
+      if (completion.kind === 'finish') {
+        lastAssistantText = completion.text
+        if (completion.text && !completion.incompleteReason) await callbacks.onTextDelta(completion.text)
+        return finish(null, completion.text, false, null, null, completion.incompleteReason)
       }
 
       // The turn's reasoning travels with it: DeepSeek refuses the tool-result

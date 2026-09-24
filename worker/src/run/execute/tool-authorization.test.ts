@@ -367,6 +367,9 @@ const runLoop = async (input: {
     captured?: { toolResults?: Array<{ output: string; toolName: string }> },
   ): Promise<InferenceResult> => {
     const first = Array.isArray(messages) ? messages[0] : null
+    if (first?.content?.startsWith('[nessie.follow_up_review.v1]\n')) {
+      return finalTurn('{"needsFollowUp":false,"reason":"The scripted tool sequence is complete."}')
+    }
     if (
       first
       && typeof first === 'object'

@@ -6,6 +6,7 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import { reviewFollowUp } from '../follow-up-review.js'
 import { WIND_DOWN_FRACTION } from '../loop-budget.js'
 import type { LoopResumeState } from '../loop-resume.js'
 import type { CrashCheckpointWriter } from './crash-checkpoint.js'
@@ -435,6 +436,8 @@ export const runExecutionAgentLoop = async (
   }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
 
   const loopResult = await runAgenticLoop({
+    reviewCompletion: (messages, outputText) =>
+      reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink),
     budget: input.budget,
     cacheReadWeight: input.cacheReadWeight,
     ...(input.drainSignal ? { drainSignal: input.drainSignal } : {}),

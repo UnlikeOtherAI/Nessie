@@ -99,6 +99,9 @@ export const MockScenarioSchema = z.object({
   turns: z.array(MockTurnSchema).min(1),
   utility: MockUtilityTurnSchema.optional(),
   utilityTurns: z.array(MockUtilityTurnSchema).min(1).optional(),
+  // Completion checks have their own script so they do not consume a main
+  // turn or a disclosure/compaction utility response.
+  completionReview: MockUtilityTurnSchema.optional(),
 })
 export type MockScenario = z.infer<typeof MockScenarioSchema>
 

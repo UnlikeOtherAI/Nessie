@@ -7,6 +7,7 @@ import type {
 import type { BudgetExhaustionReason, BudgetLimits } from './loop-budget.js'
 import type { LoopResumeState } from './loop-resume.js'
 import type { ContextPlan } from './context-window.js'
+import type { FollowUpDecision } from './follow-up-review.js'
 import type {
   AgentCardSuspension,
   ExecuteToolFn,
@@ -39,7 +40,7 @@ export type LoopResult = {
   cacheReadTokens: number
   exhaustedBudget: BudgetExhaustionReason | null
   /** A provider success remained empty after the loop's bounded recovery. */
-  incompleteReason?: 'empty_provider_response' | 'provider_output_limit' | null
+  incompleteReason?: 'empty_provider_response' | 'provider_output_limit' | 'follow_up_limit' | null
   pendingApproval?: ToolApprovalSuspension | null
   pendingInput?: AgentCardSuspension | null
   /** Cooperative cancellation keeps any partial answer without a budget stop. */
@@ -68,6 +69,7 @@ export type AgenticLoopInput = {
   prepareTool?: PrepareToolFn
   initialMessages: ProviderMessage[]
   invocationSink?: InvocationRecord[]
+  reviewCompletion?: (messages: ProviderMessage[], outputText: string) => Promise<FollowUpDecision>
   runInference: (
     messages: ProviderMessage[],
     captured?: { toolResults: ExecutedToolResult[] },

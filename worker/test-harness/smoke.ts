@@ -135,13 +135,16 @@ const main = async (): Promise<void> => {
     const timing = timingEvents[0]?.payload as Record<string, unknown>
     assert.equal(timing['outcome'], 'completed')
     assert.equal(timing['runId'], seeded.runId)
-    assert.equal(timing['inferenceCount'], 2, 'two scripted inference turns timed')
+    assert.equal(timing['inferenceCount'], 3, 'two scripted turns and one completion review timed')
     assert.equal(timing['toolCount'], 1)
 
     const ledgerEvents = await pipeline.prisma.tokenLedgerEvent.findMany({
       where: { runId: seeded.runId },
     })
-    assert.equal(ledgerEvents.length, 2, 'one ledger event per inference invocation')
+    assert.equal(ledgerEvents.length, 3, 'one ledger event per main or review invocation')
+    assert.equal(ledgerEvents.filter((event) =>
+      (event.metadata as Record<string, unknown> | null)?.utilityPurpose === 'follow_up_review').length,
+    1, 'exactly one completion review is metered')
     for (const event of ledgerEvents) {
       assert.equal(event.provider, 'openai')
       assert.equal(event.model, 'mock-model')
@@ -161,7 +164,7 @@ const main = async (): Promise<void> => {
     })
     assert.equal(task.status, 'done')
 
-    assert.equal(server.stats().requests, 2, 'mock provider served both scripted turns')
+    assert.equal(server.stats().requests, 3, 'mock provider served two main turns and the completion review')
 
     console.log('[smoke] PASS: message → run → tool call → completion')
     console.log(

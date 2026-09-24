@@ -7,7 +7,8 @@ summary and points here; **this file is the rule**.
 
 
 Agents answer at colleague length by default. The base system prompt
-(`worker/src/run/execute/prompt.ts` `buildModelPrompt`) gives that a *shape*
+(`worker/src/run/execute/agent-behavior-prompt.ts`, assembled by
+`buildModelPrompt` in `prompt.ts`) gives that a *shape*
 rather than an adjective — lead with the answer, one short paragraph of plain
 prose, no headers/tables/bullets unless the content genuinely is a list, go
 long only when asked or when the content is irreducibly large, and on a
@@ -15,6 +16,23 @@ scheduled run report by exception. "Concise" alone had been in there for a
 while and did not work: a routine hardware sweep still came back as ~400 words
 with a table. This is prompt guidance and never an output cap — depth has to
 stay one request away.
+
+For action requests, the shared prompt explicitly explains that a text-only
+reply ends the turn: a promise does not schedule execution. Agents must use
+available tools, follow their results through to the requested outcome, or
+explain a concrete blocker and the next action needed. Approval and deferred
+work must actually be requested through their tools before being described as
+pending. Before accepting a normal non-empty text-only answer, the main runner
+asks its utility model for `{needsFollowUp, reason}` against the conversation
+and tool results. A true decision continues the same run, preserving its tool
+history and authorization, at most twice. The counter survives crash resume;
+the check's inference counts toward the same budget. Approval/card suspensions,
+wind-down, and provider-output recovery retain their existing stop behavior.
+Malformed decisions fail visibly; repeated premature answers end with an
+explicit failure instead of another promise. No phrase matching decides intent.
+This resembles Codex's optional Stop-hook continuation, not a guarantee that
+model judgement is infallible. Verify follow-through with a real model; an
+assertion against prompt text alone cannot establish that work is finished.
 
 Agents react rather than reply when a message needs registering but no answer.
 Two paths, both producing real `MessageReaction` rows (an emoji typed into a
