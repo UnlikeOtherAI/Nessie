@@ -772,6 +772,113 @@ try {
     await context.close()
   }
 
+  // 20–28 — T4's machine states (docs/plans/2026-09-23-ticket-driven-agents/
+  // ticket-work.md → "What the project sees"): the chip's state line for work
+  // queued at position 2, paused with its machine offline, waiting for machine
+  // access not set up or paused, stopped at its hours or its budget, and ended
+  // with its machine access, each with the newest history row that says it;
+  // the line a wake that ran without a machine leaves on live work; and a
+  // history of a queue, an offline pause and two resumes — at 1280 and 390 px.
+  // The record the chip reads carries no machine, so none is named on it.
+  const MACHINE_CHIP_STATES = [
+    ['queued', '20-work-queued', 'queued', /^Perf agent · queued · started /,
+      'Queued: position 2 — every machine is busy.',
+      / · Perf agent queued the work: every machine is busy · by Ondřej Rafaj$/],
+    ['machine-offline', '21-work-machine-offline', 'waiting_machine', /^Perf agent · waiting for a machine · /,
+      'Paused: the machine is offline. Work resumes when it reconnects.',
+      / · Perf agent paused the work: the machine is offline$/],
+    ['access-not-set-up', '22-work-access-not-set-up', 'waiting_machine', /^Perf agent · waiting for a machine · /,
+      'Waiting for machine access: its owner has not set it up yet.',
+      / · Perf agent started work, waiting for machine access · by Ondřej Rafaj$/],
+    ['access-suspended', '23-work-access-suspended', 'waiting_machine', /^Perf agent · waiting for a machine · /,
+      'Waiting for machine access: it is paused until its owner confirms it again.',
+      / · Perf agent paused the work: machine access is paused$/],
+    ['stopped-hours', '24-work-stopped-hours', 'failed', /^Perf agent · stopped · /,
+      'Stopped: its hours are used up. Move the ticket out of and back into a start-work column to continue.',
+      / · Perf agent ended the work: its hours are used up$/],
+    ['stopped-cost', '25-work-stopped-cost', 'failed', /^Perf agent · stopped · /,
+      'Stopped: its budget is used up. Move the ticket out of and back into a start-work column to continue.',
+      / · Perf agent ended the work: its budget is used up$/],
+    ['access-ended', '26-work-access-ended', 'cancelled', /^Perf agent · ended · /,
+      'Ended: its machine access ended.',
+      / · Perf agent ended the work: machine access ended$/],
+  ]
+  const NAMES_A_MACHINE = /executor|Studio|Mac mini|\bPC\b/i
+  for (const width of [1280, 390]) {
+    const phoneWidth = width < 768
+    const context = await browser.newContext({
+      viewport: { height: phoneWidth ? 844 : 900, width },
+      ...(phoneWidth ? { hasTouch: true, isMobile: true } : {}),
+    })
+    await routeBytes(context)
+    const chipOf = async (state) => {
+      const page = await open(context, `scenario=details&work=${state}`)
+      const dialog = page.getByRole('dialog', { name: 'Task details' })
+      const chip = dialog.getByTestId('ticket-work-chip')
+      await chip.waitFor()
+      await chip.scrollIntoViewIfNeeded()
+      const scroll = await page.evaluate(() => document.documentElement.scrollWidth)
+      assert.ok(scroll <= width, `${state}: nothing scrolls sideways at ${width}px (${scroll})`)
+      return { chip, dialog, page }
+    }
+    for (const [state, name, status, headline, line, newestRow] of MACHINE_CHIP_STATES) {
+      const { chip, dialog, page } = await chipOf(state)
+      assert.equal(await chip.getAttribute('data-work-status'), status, state)
+      assert.match(await chip.getByTestId('ticket-work-headline').innerText(), headline, state)
+      assert.equal((await chip.getByTestId('ticket-work-state').innerText()).trim(), line, state)
+      assert.equal(await chip.getByTestId('ticket-work-machine-refusal').count(), 0, `${state}: no refused wake to say`)
+      assert.doesNotMatch(await chip.innerText(), NAMES_A_MACHINE, `${state}: the chip names no machine`)
+      // The history's newest row says the same, folded away: textContent, not
+      // innerText, which skips what a closed fold hides.
+      const newest = await dialog.getByTestId('ticket-work-history').locator('li').first().textContent()
+      assert.match(newest ?? '', newestRow, `${state}: ${newest}`)
+      await settled(page)
+      await chip.screenshot({ path: shot(`${name}-${width}.png`) })
+      await page.close()
+    }
+    // 27 — live work whose latest wake ran without a machine says why, once,
+    // in the sentence the run itself was told.
+    {
+      const { chip, page } = await chipOf('machine-refusal')
+      assert.equal(await chip.getAttribute('data-work-status'), 'active')
+      assert.match(await chip.getByTestId('ticket-work-headline').innerText(), /^Perf agent · working · started /)
+      assert.equal(
+        (await chip.getByTestId('ticket-work-machine-refusal').innerText()).trim(),
+        'Ran without a machine: the machine was offline or no longer offers its coding tools.',
+      )
+      assert.equal(await chip.getByTestId('ticket-work-state').count(), 0, 'working work has no state line')
+      assert.doesNotMatch(await chip.innerText(), NAMES_A_MACHINE, 'the refusal names no machine')
+      await settled(page)
+      await chip.screenshot({ path: shot(`27-work-machine-refusal-${width}.png`) })
+      await page.close()
+    }
+    // 28 — the work history of a start no machine took, its queue, its turn
+    // coming, and its machine going offline and coming back.
+    {
+      const { chip, dialog, page } = await chipOf('machine-history')
+      assert.match(await chip.innerText(), /Last woken .+: the machine came back · wake 6 of 30/)
+      const history = dialog.getByTestId('ticket-work-history')
+      assert.match(await history.locator('summary').innerText(), /^Work history \(5\)$/)
+      await history.locator('summary').click()
+      const rows = await history.locator('li').allInnerTexts()
+      assert.equal(rows.length, 5, rows.join('\n'))
+      assert.match(rows[0], / · Perf agent resumed the work$/)
+      assert.match(rows[1], / · Perf agent paused the work: the machine is offline$/)
+      assert.match(rows[2], / · Perf agent resumed the work$/)
+      assert.match(rows[3], / · Perf agent queued the work: every machine is busy · by Ondřej Rafaj$/)
+      assert.match(rows[4], / · Perf agent started work, queued for a machine · by Ondřej Rafaj$/)
+      assert.doesNotMatch(rows.join('\n'), NAMES_A_MACHINE, 'the history names no machine')
+      const section = dialog.locator('section[aria-label="Agent work on this ticket"]')
+      await section.scrollIntoViewIfNeeded()
+      const scroll = await page.evaluate(() => document.documentElement.scrollWidth)
+      assert.ok(scroll <= width, `the open history does not scroll sideways at ${width}px (${scroll})`)
+      await settled(page)
+      await section.screenshot({ path: shot(`28-work-machine-history-${width}.png`) })
+      await page.close()
+    }
+    await context.close()
+  }
+
   console.log(`Task dialog proofs passed: ${SHOTS}`)
 } finally {
   await browser.close()
