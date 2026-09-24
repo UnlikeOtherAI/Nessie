@@ -74,24 +74,120 @@ export type DiffLineOp =
   | { type: 'remove'; text: string }
 
 // Above this many DP cells, an O(n*m) LCS table is too slow/memory-heavy to
-// build on the main thread. Fall back to a coarse "everything old removed,
-// everything new added" view rather than hanging the tab.
+// build on the main thread; the changed middle is diffed with Myers instead.
 const MAX_DIFF_CELLS = 4_000_000
 
-// Classic LCS-based line diff (patience-diff-adjacent, not Myers, but linear
-// in the common case and simple to verify). Returns a flat list of ops in
-// document order; consecutive 'remove' then 'add' runs render as a changed
-// block when the caller wants that, but callers may also render them plainly.
+// Myers keeps one snapshot of its frontier per edit, (d + 1)² cells in all
+// (16 MB at this bound). A middle that differs in more lines than this falls
+// back to "everything old removed, everything new added" rather than hanging.
+const MAX_MYERS_EDITS = 2_000
+
+/**
+ * A line diff in document order; consecutive 'remove' then 'add' runs render
+ * as a changed block when the caller wants that, but callers may also render
+ * them plainly.
+ *
+ * The unchanged head and tail are trimmed first, so a one-line edit in a long
+ * document diffs one line. The changed middle is diffed by LCS when its table
+ * is small, and by Myers' O((n + m) · d) algorithm when it is not, so a few
+ * scattered edits in a long document stay a few lines.
+ */
 export const computeLineDiff = (oldLines: string[], newLines: string[]): DiffLineOp[] => {
+  const limit = Math.min(oldLines.length, newLines.length)
+  let head = 0
+  while (head < limit && oldLines[head] === newLines[head]) head += 1
+  let tail = 0
+  while (
+    tail < limit - head
+    && oldLines[oldLines.length - 1 - tail] === newLines[newLines.length - 1 - tail]
+  ) tail += 1
+  const oldMiddle = oldLines.slice(head, oldLines.length - tail)
+  const newMiddle = newLines.slice(head, newLines.length - tail)
+  const middle = oldMiddle.length * newMiddle.length <= MAX_DIFF_CELLS
+    ? lcsLineDiff(oldMiddle, newMiddle)
+    : myersLineDiff(oldMiddle, newMiddle) ?? [
+        ...oldMiddle.map((text): DiffLineOp => ({ type: 'remove', text })),
+        ...newMiddle.map((text): DiffLineOp => ({ type: 'add', text })),
+      ]
+  return [
+    ...oldLines.slice(0, head).map((text): DiffLineOp => ({ type: 'equal', text })),
+    ...middle,
+    ...oldLines.slice(oldLines.length - tail).map((text): DiffLineOp => ({ type: 'equal', text })),
+  ]
+}
+
+/**
+ * Myers' greedy diff: the furthest-reaching path on each diagonal, one edit
+ * at a time, then walked back through the kept frontiers. Null past
+ * `MAX_MYERS_EDITS` edits.
+ */
+const myersLineDiff = (a: readonly string[], b: readonly string[]): DiffLineOp[] | null => {
+  const n = a.length
+  const m = b.length
+  const offset = n + m
+  const frontier = new Int32Array(2 * offset + 2)
+  // trace[d]: the frontier as edit d starts, for diagonals -d..d.
+  const trace: Int32Array[] = []
+  for (let d = 0; d <= Math.min(offset, MAX_MYERS_EDITS); d += 1) {
+    trace.push(frontier.slice(offset - d, offset + d + 1))
+    for (let k = -d; k <= d; k += 2) {
+      const down = k === -d
+        || (k !== d && (frontier[offset + k - 1] ?? 0) < (frontier[offset + k + 1] ?? 0))
+      let x = down ? (frontier[offset + k + 1] ?? 0) : (frontier[offset + k - 1] ?? 0) + 1
+      let y = x - k
+      while (x < n && y < m && a[x] === b[y]) {
+        x += 1
+        y += 1
+      }
+      frontier[offset + k] = x
+      if (x >= n && y >= m) return myersPath(a, b, trace, d)
+    }
+  }
+  return null
+}
+
+const myersPath = (
+  a: readonly string[],
+  b: readonly string[],
+  trace: readonly Int32Array[],
+  edits: number,
+): DiffLineOp[] => {
+  const ops: DiffLineOp[] = []
+  let x = a.length
+  let y = b.length
+  for (let d = edits; d > 0; d -= 1) {
+    const before = trace[d]
+    const at = (k: number): number => before?.[k + d] ?? 0
+    const k = x - y
+    const down = k === -d || (k !== d && at(k - 1) < at(k + 1))
+    const previousK = down ? k + 1 : k - 1
+    const previousX = at(previousK)
+    const previousY = previousX - previousK
+    while (x > previousX && y > previousY) {
+      x -= 1
+      y -= 1
+      ops.push({ type: 'equal', text: a[x] ?? '' })
+    }
+    if (down) {
+      y -= 1
+      ops.push({ type: 'add', text: b[y] ?? '' })
+    } else {
+      x -= 1
+      ops.push({ type: 'remove', text: a[x] ?? '' })
+    }
+  }
+  while (x > 0 && y > 0) {
+    x -= 1
+    y -= 1
+    ops.push({ type: 'equal', text: a[x] ?? '' })
+  }
+  return ops.reverse()
+}
+
+// Classic LCS-based line diff over a table small enough to build.
+const lcsLineDiff = (oldLines: readonly string[], newLines: readonly string[]): DiffLineOp[] => {
   const n = oldLines.length
   const m = newLines.length
-
-  if (n * m > MAX_DIFF_CELLS) {
-    return [
-      ...oldLines.map((text): DiffLineOp => ({ type: 'remove', text })),
-      ...newLines.map((text): DiffLineOp => ({ type: 'add', text })),
-    ]
-  }
 
   // lengths[i][j] = length of the LCS of oldLines[i:] and newLines[j:]. Every
   // index below is within [0, n] / [0, m] by construction (loop bounds and the
@@ -155,17 +251,66 @@ type Hunk = { oldStart: number; newStart: number; ops: DiffLineOp[] }
 
 const PREFIX: Record<DiffLineOp['type'], string> = { equal: ' ', add: '+', remove: '-' }
 
+const commonPrefixLength = (left: string, right: string): number => {
+  const limit = Math.min(left.length, right.length)
+  let index = 0
+  while (index < limit && left[index] === right[index]) index += 1
+  return index
+}
+
+/**
+ * One line cut to `max` characters around `focus` — where it starts to differ
+ * from the line it replaced — with what was cut said at either end, so a long
+ * paragraph's change is shown rather than dropped with the line.
+ */
+const clipLine = (text: string, focus: number, max: number): string => {
+  if (text.length <= max) return text
+  const start = Math.max(0, Math.min(focus - Math.floor(max / 4), text.length - max))
+  const end = start + max
+  return `${start > 0 ? `[… ${start} characters] ` : ''}${text.slice(start, end)}`
+    + `${end < text.length ? ` [${text.length - end} more characters …]` : ''}`
+}
+
+/** Where each op of a hunk should be clipped around: a replaced line pairs with its replacement. */
+const clipFocus = (ops: readonly DiffLineOp[]): number[] => {
+  const focus = ops.map(() => 0)
+  let index = 0
+  while (index < ops.length) {
+    if (ops[index]?.type === 'equal') {
+      index += 1
+      continue
+    }
+    const removed: number[] = []
+    const added: number[] = []
+    while (index < ops.length && ops[index]?.type !== 'equal') {
+      if (ops[index]?.type === 'remove') removed.push(index)
+      else added.push(index)
+      index += 1
+    }
+    for (let pair = 0; pair < Math.min(removed.length, added.length); pair += 1) {
+      const [left, right] = [removed[pair] ?? 0, added[pair] ?? 0]
+      const at = commonPrefixLength(ops[left]?.text ?? '', ops[right]?.text ?? '')
+      focus[left] = at
+      focus[right] = at
+    }
+  }
+  return focus
+}
+
 /**
  * A line diff as unified-diff hunks, each changed run with `context` unchanged
  * lines around it, cut at `maxChars` whole lines at a time. What a model or a
  * person reads is bounded however large the documents are, and `truncated`
- * says when it was cut so the reader can be told where the rest is.
+ * says when it was cut so the reader can be told where the rest is. A line
+ * longer than `maxLineChars` (a quarter of `maxChars` by default) is clipped
+ * around where it changed, with a marker saying how much was cut.
  */
 export const renderLineDiffHunks = (
   ops: readonly DiffLineOp[],
-  options: { context?: number; maxChars: number },
+  options: { context?: number; maxChars: number; maxLineChars?: number },
 ): LineDiffHunks => {
   const context = options.context ?? 2
+  const maxLineChars = options.maxLineChars ?? Math.max(200, Math.floor(options.maxChars / 4))
   const added = ops.filter((op) => op.type === 'add').length
   const removed = ops.filter((op) => op.type === 'remove').length
   const hunks: Hunk[] = []
@@ -204,9 +349,10 @@ export const renderLineDiffHunks = (
   for (const hunk of hunks) {
     const oldCount = hunk.ops.filter((op) => op.type !== 'add').length
     const newCount = hunk.ops.filter((op) => op.type !== 'remove').length
+    const focus = clipFocus(hunk.ops)
     const hunkLines = [
       `@@ -${hunk.oldStart},${oldCount} +${hunk.newStart},${newCount} @@`,
-      ...hunk.ops.map((op) => `${PREFIX[op.type]}${op.text}`),
+      ...hunk.ops.map((op, index) => `${PREFIX[op.type]}${clipLine(op.text, focus[index] ?? 0, maxLineChars)}`),
     ]
     for (const line of hunkLines) {
       if (length + line.length + 1 > options.maxChars) {

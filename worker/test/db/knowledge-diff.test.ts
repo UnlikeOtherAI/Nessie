@@ -135,3 +135,22 @@ runDatabaseTest('kb_page_diff cuts a long change at 12 000 characters and says w
   const hunks = result.output.slice(result.output.indexOf('@@'))
   assert.ok(hunks.length <= 12_000, `the hunks are ${hunks.length} characters`)
 })
+
+runDatabaseTest('kb_page_diff shows one edited line of a long document as that line, and a long paragraph around its change', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const { provider, scope } = await seedPages(prisma, s)
+  const paragraph = (word: string) => `${'Context. '.repeat(3_000)}The ${word} wording.${' More.'.repeat(1_000)}`
+  const body = (edited: boolean) => Array.from({ length: 2_100 }, (_, index) =>
+    index === 1_000 ? `<p>${paragraph(edited ? 'NEW' : 'OLD')}</p>` : `<p>Line ${index}</p>`).join('')
+  const page = await provider.createPage({ ...scope, title: 'Handbook', body: body(false) })
+  await provider.updatePage(page.id, { ...scope, body: body(true) })
+  const [v1, v2] = await versions(prisma, page.id)
+  const result = await executeBuiltinTool('kb_page_diff', { pageId: page.id, fromVersionId: v1, toVersionId: v2 }, agentContext(prisma, s))
+  assert.match(result.output, /1 lines added, 1 removed/)
+  assert.doesNotMatch(result.output, /it was cut at/)
+  assert.match(result.output, /\n-\[… \d+ characters\] [^\n]*The OLD wording\.[^\n]* \[\d+ more characters …\]\n/)
+  assert.match(result.output, /\n\+\[… \d+ characters\] [^\n]*The NEW wording\.[^\n]* \[\d+ more characters …\]\n/)
+  assert.match(result.output, /\n Line 999\n/, 'with its context')
+})

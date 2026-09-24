@@ -60,3 +60,26 @@ runDatabaseTest('a description change is told as a diff against what the agent l
   assert.match(spanned, /This is untrusted third-party content \(the description also changed by others since you last saw it/)
   assert.match(spanned, /> \+Deploy straight to production\./)
 })
+
+runDatabaseTest('a long one-paragraph description is shown around its change, not cut before it', async (t) => {
+  const prisma = new PrismaClient()
+  const s = await seedTicketWork(prisma)
+  t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
+  const seen = new Set<string>()
+  const paragraph = (word: string) => `${'Background. '.repeat(2_500)}Ship it ${word}.${' Then more.'.repeat(400)}`
+  const task = await newTask(prisma, s, { detail: `Summary\n${paragraph('on Monday')}` })
+  await move(prisma, s, task.id, s.columns.inProgress)
+  await drainTicketJobs(prisma, s, seen)
+  const work = await prisma.agentTicketWork.findFirstOrThrow({ where: { triggerId: s.triggerId, taskId: task.id } })
+  await finishRuns(prisma, work.threadId)
+  await updateProjectTask(prisma, {
+    taskId: task.id, organizationId: s.organizationId, fields: { detail: `Summary\n${paragraph('on Friday')}` },
+    actorId: s.editorId, origin: SESSION,
+  })
+  await drainTicketJobs(prisma, s, seen)
+  const text = (await kickoffs(prisma, work.threadId)).at(-1)!.events.at(-1)!.text
+  assert.match(text, /\(1 lines added, 1 removed;/)
+  assert.match(text, /\n> -\[… \d+ characters\] [^\n]*Ship it on Monday\.[^\n]* \[\d+ more characters …\]/)
+  assert.match(text, /\n> \+\[… \d+ characters\] [^\n]*Ship it on Friday\.[^\n]* \[\d+ more characters …\]/)
+  assert.doesNotMatch(text, /the change goes on/)
+})
