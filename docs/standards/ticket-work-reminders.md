@@ -122,7 +122,9 @@ win. Every rule here shipped in T3.
   starts its work. Once is a claim, not luck: the sweep whose conditional
   update appends `[recovered by ticket-work.sweep]` to the job's own error
   dispatches it, and one that finds the mark skips it. It becomes the pool
-  dispatcher in T4 and T5.
+  dispatcher in T4 and T5: a transaction that may free a machine enqueues
+  its own job (`machinesOnly`, ten-second bucket), which runs the machine
+  steps alone and none of the above.
 
 ## Tests that hold these rules
 

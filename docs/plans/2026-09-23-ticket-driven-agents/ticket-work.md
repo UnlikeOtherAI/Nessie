@@ -260,8 +260,17 @@ The fix:
     fast one once. A session present with status `closed` wakes as closed
     too, and every closed session leaves the record's `sessionIds` in the
     heartbeat's transaction.
-  - The skip at or below `lastObservedTurn` applies to every status, and so
-    does the skip for a record that is not `active`; each writes its
+  - A report is read only for the records pinned to the machine that sent
+    it, and only for the sessions under each ticket's own owner key. A
+    report without the field is stored with the sessions last known, so a
+    close between two reports that have it is still seen.
+  - The skip at or below `lastObservedTurn` applies to a turn end
+    (`waiting_for_input`) alone: an interruption or a failure always wakes.
+    It is checked when the job runs, and again by the agent's own read: a
+    wait that sees the turn while its wake still pends behind the run
+    withdraws it, the wake given back when nothing else is in the kickoff.
+    The skip for a record that is not `active` applies to every status, and
+    a session the agent closed itself wakes nobody; each skip writes its
     delivery (`no_longer_applies`). The wake itself never writes
     `lastObservedTurn`: only the agent's own reads do.
 
@@ -323,10 +332,15 @@ not to one policy.
     digest do; its queued records wait for a new confirmation instead of
     being cancelled one by one. The ticket's column (`left_flow`) and its
     mover (`mover_lost_access`) are the record's own re-checks and cancel it.
-  - A record that last worked on a machine goes first on that machine and
-    waits for it while it still stands (in the pool, not removed, heard from
-    within `waitingMachineHours`). A pickup or a resume that finds a free
-    machine queues instead when queued work is ahead of it.
+  - A record that last worked on a machine goes first on that machine, and
+    waits for it only while that machine could take it back (online, in the
+    pool, held by no other work); otherwise it takes another free machine
+    rather than starve, and its sessions on the old one are closed
+    (`machine_reassigned`). Its own sessions never count against its quota
+    on its own machine. A pickup or a resume that finds a free machine
+    queues instead when queued work that could take it is ahead of it. A
+    machine whose newest revision awaits review takes no work and suspends
+    nothing: its review settles the policy.
   - Positions stay per policy (the chip's "position 2" is the place in its
     own trigger's queue); the dequeue's order is across policies.
   - Every wake while the machine is away starts no run (`machine_offline`),
@@ -336,7 +350,8 @@ not to one policy.
   - `waitingMachineHours` counts from the later of the newest
     `machine_offline` pause and the machine's last heartbeat. The sessions
     left behind get a close reason of their own, `machine_reassigned`, and
-    leave the record; a close request still expires after a day.
+    leave the record; unlike every other close request, it is not expired
+    after a day, and waits for the machine's report.
 
 ## What the project sees
 
