@@ -244,6 +244,27 @@ this standard, not an exception to it.
     confirmed through its route, with fresh verification),
     `worker/test/db/executor-review-card.test.ts` and the executor-agents
     fixture suite, which closes the review and presses again.
+  - **A standing policy's card is the one composite review.**
+    `executor_standing_policy_prepare`
+    (`worker/src/run/pa-tools/provisioning-standing-policy.ts`) posts a
+    server-written card (`buildStandingPolicyCard`,
+    `packages/team-admin/src/standing-policy-card.ts`) through the same door,
+    holding only the `executorAccessChangeId` of a `standing_policy` change.
+    In plain words: the machines, the host profile and each machine that
+    cannot merge (*"This machine cannot merge; tickets will stop at an open
+    pull request."*), the board and its start-work columns, who can start
+    work (*"Anyone who can edit this board (N people) can make Claude run
+    commands on these machines as you, with your git and coding-agent
+    login."*), who sees it, the limits, that merges happen under the
+    author's GitHub identity, what changed since the policy it replaces, and
+    the instructions fenced word for word in a closed fold — refused as too
+    long rather than cut. Its one action is the `review` above, so the
+    press, the token and the close follow the same rules, and the review
+    dialog names the change (`executorChangePresentation`). It is posted
+    only on the trigger author's own interactive turn in their own Designer
+    or Personal Assistant DM, never in a project room. Pinned by
+    `worker/test/db/standing-policy-prepare-tool.test.ts` and
+    `packages/team-admin/test/standing-policy-db.test.ts`.
 - **Every card goes through one door.** `postAgentCard`
   (`worker/src/run/pa-tools/agent-card-post.ts`) is the only place the worker
   writes an `AgentCard` row: `card_post`, the executor review card and

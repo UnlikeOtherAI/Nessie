@@ -38,6 +38,14 @@ Each rule is tagged with the PR that first enforces it in code:
   dot, the work thread's wake rows, read-only composer and Tickets fold — and
   board watchers retired to people only. No machine does ticket work yet: the
   agent reads, comments on and moves tickets.
+- **(T4)** shipped so far in T4: the coding-session owner context, the five
+  close reasons, the signed turn-budget, session-quota and merge-command
+  facts, and standing machine access itself — prepared only by the trigger's
+  author, confirmed as one card under one password re-proof, its terms and
+  host profile pinned, suspended by an edit of a pinned field or a descriptor
+  review, and ended with the trigger. Nothing binds a machine to a run yet:
+  until the binder and the pool dispatcher land, a live policy holds access
+  and does no ticket work.
 - **(from T1)**, **(from T3)**, **(from T4)**, **(from T5)** are rules the
   design fixes now and a later PR builds. Until that PR lands no code path
   exists that could break them, because nothing can create a `ticket_changed`
@@ -570,63 +578,11 @@ routes, and none of it names a machine.
   (`describeMirroredSources`) say that a move on the connected board never
   starts work, and what its own changes can still do.
 
-## The machine owner's authority is read only by the standing-policy binder (from T4)
+## Standing machine access
 
-- The author of a standing policy is never in the run's actor context. It
-  travels as `actionContext.standingPolicy = { policyId, authorUserId }`, and
-  only `bindStandingPolicyExecutor`
-  (`packages/executor-manage/src/executor-standing-policy-binding.ts`), its
-  provenance arm and the dispatch fence beside
-  `assertExecutorCommandBindingCurrent` read it. No tool, gate or disclosure
-  check may treat it as "act as this person".
-- Every wake with an active record is bound afresh and every check runs again:
-  the policy is `live` and names this trigger, agent and executor; the trigger
-  and descriptor digests still match; the author is re-resolved live with UOA,
-  failing closed and never from a cache; the machine is online and still
-  private to the author; the target channel is still live, ordinary and public
-  in the project; the run consumes only this work record's kickoffs; the limits
-  allow it. A refusal writes `executor.run.policy_refused` and the run
-  continues unbound.
-- In a `ticket.work` run, host-output-bearing writes are admitted only to that
-  ticket's comments and its work thread, and the machine is named only to its
-  owner and executor admins, never to the project audience.
-- **(T4) A ticket's coding sessions are their own owner.** The coding-session
-  owner carries `contextId: ticket:<policyId>:<taskId>`, hashed into the owner
-  key by `executorCodingSessionOwnerKeyInput` and by the daemon alike, so the
-  author's own DM sessions with the agent, and every other ticket's, are
-  neither listed nor reached, a lease's owner-wide close never touches it, and
-  each ticket has its own `maxLiveSessionsPerOwner`. Without a context the key
-  is unchanged. The API admits a context only when the binding pins that same
-  one; the binder that pins it is from T4.
-- **(T0) The policy's shape is enforced by the database.**
-  `executor_standing_policies_confirmed_known` requires a `live` or
-  `suspended` policy to carry `confirmed_at` and `author_origin`;
-  `suspended_reason` is set exactly while suspended, and `ended_at` /
-  `ended_reason` exactly once ended. The pool,
-  `executor_standing_policy_executors`, has one row per machine (composite
-  primary key, unique `(policy_id, position)`, `position` 0 or 1), because a
-  JSON array cannot hold a foreign key.
-- **(T0) One binding policy and one outstanding card per trigger.**
-  `executor_standing_policies_one_binding` allows one `live` or `suspended`
-  policy per `trigger_id`, and `executor_standing_policies_one_preparing` one
-  `preparing` card. So the dispatcher and the binder always find exactly one
-  policy for a trigger; a confirm ends the policy it replaces (`replaced`) in
-  its own transaction before it goes live; and a new prepare ends the card it
-  replaces first, so a stale card can never be confirmed. A policy whose
-  trigger was deleted (`trigger_id` null) blocks nothing.
-- **(T0) The pool's executor key cascades.** No product path hard-deletes an
-  executor: revoking one is a status change and a fence that ends its
-  policies first (from T4). The one hard delete is the organisation's own,
-  which removes its executors and its policies in one statement, and a
-  `RESTRICT` or `NO ACTION` key on the pool refuses that delete whenever a
-  pool exists. A test pins the organisation delete.
-- **(from T4) Limits and digests.** Lowering a limit is the one edit of a
-  pinned field that does not suspend the policy: the edit recomputes
-  `triggerDigest` in the same transaction, so binding check 2 still matches.
-  Raising one takes a new prepare and a new card. `dailyUsd` is per policy per
-  day, while `AgentTicketWork.costUsd` is a record's lifetime total and
-  cannot be split across midnight, so T4 adds a per-policy daily spend ledger
-  (policy, day, cost, unique on the pair) with its migration.
+Who may give a trigger's work their machines, the one card they confirm,
+what it pins, what suspends and ends it, and why only the binder reads its
+author, are in [ticket-work-machine-access.md](ticket-work-machine-access.md).
 
 ## One live record per (trigger, ticket), one record per machine (T0)
 
@@ -654,7 +610,8 @@ hold these, so no read-then-write race can break them:
 - `agent_reminders_one_pending_per_work`: one pending reminder per work
   record; a new `check_back_in` replaces it (from T3).
 - `executor_standing_policies_one_binding` and
-  `executor_standing_policies_one_preparing`: above.
+  `executor_standing_policies_one_preparing`: in
+  [ticket-work-machine-access.md](ticket-work-machine-access.md).
 
 Prisma cannot express a partial index, so these exist only in migration SQL,
 and a generated migration that drops them is wrong.
@@ -695,31 +652,45 @@ causes it**:
   and enqueues the pool dispatcher; in T1 no record holds a machine.
 - **(T1) Disabling or deleting the trigger** ends every live record with
   `trigger_disabled`, in that transaction (`endTicketWorkForTrigger`,
-  `packages/team-admin/src/ticket-work-records.ts`: `updateAgentTrigger`
+  `packages/team-admin/src/ticket-trigger-teardown.ts`: `updateAgentTrigger`
   switching it off, the Triggers page's pause, `deleteAgentTrigger`, which
-  ends them first, and `recordTriggerHealthFailure` when a classified failure
-  — a lost target channel, a config that no longer parses — switches it off).
-  **(from T4)** Its sessions get close requests
-  (`trigger_changed`), and the trigger's policy ends, with `trigger_disabled`
-  or `trigger_deleted`, so re-enabling a trigger takes a fresh confirmation.
-- **(from T4) Suspending machine access** (either `suspendedReason`) moves
-  every `active` record of that policy to `waiting_machine` with
-  `machine_access_suspended` and unpins it, which frees the machine, pauses
-  the hours clock and stops quiet wakes; its sessions get close requests
-  (`policy_suspended`). A pickup while access is suspended or not yet set up
-  gets one short, unbound pickup wake and then waits the same way, with
-  `machine_access_suspended` or `machine_access_not_set_up`. The transaction
-  that confirms or re-confirms access moves those records to `queued` and
-  enqueues the dispatcher, which resumes them with a `dequeued` wake.
-  **Ending machine access** cancels every live record of the policy with
-  `machine_access_ended`, and its sessions get close requests
-  (`policy_ended`).
-- **(from T4) Sessions are closed by the server.** Session-scoped
-  `executorCodingSessionCloseRequest` rows for the record's `sessionIds` are
-  written in the same transaction as the ticket leaving the flow
-  (`ticket_left_flow`), the trigger being disabled, deleted or edited in a
-  pinned field (`trigger_changed`), the policy suspending
-  (`policy_suspended`) or ending (`policy_ended`), or a limit (`work_limit`).
+  ends them first, `recordTriggerHealthFailure` when a classified failure
+  — a lost target channel, a config that no longer parses — switches it off,
+  and **(T4)** `deleteAgent`, which deletes its triggers). **(T4)** Its
+  sessions get close requests (`trigger_changed`), and the trigger's policy
+  and any card still out end, with `trigger_disabled` or `trigger_deleted`
+  and who did it, so re-enabling a trigger takes a fresh confirmation.
+- **(T4) Suspending machine access** (either `suspendedReason`,
+  `suspendStandingPolicyInTransaction` in
+  `packages/team-admin/src/standing-policy-lifecycle.ts`) moves every `active`
+  record of that policy to `waiting_machine` with `machine_access_suspended`
+  and unpins it, with a `work_paused` row, which frees the machine, pauses the
+  hours clock and stops quiet wakes; those records' sessions get close
+  requests (`policy_suspended`). A trigger edit suspends it through
+  `applyTriggerEditToStandingPolicyInTransaction` in `updateAgentTrigger`'s
+  transaction whoever saves, and `agent_trigger_update` and the result's
+  `machineAccess` say so (*"Saving paused Ondrej's machine access for this
+  trigger until they confirm it again (changed: …)"*); a descriptor review
+  that leaves a pool machine other digests than it pinned suspends it
+  (`descriptor_changed`). The transaction that confirms or re-confirms access
+  moves every `waiting_machine` record of the trigger waiting for access to
+  `queued` under the new policy. **(from T4)** A pickup while access is
+  suspended or not yet set up gets one short, unbound pickup wake and then
+  waits the same way, with `machine_access_suspended` or
+  `machine_access_not_set_up`; the suspending and confirming transactions
+  enqueue the dispatcher, which resumes them with a `dequeued` wake.
+  **(T4) Ending machine access** (`endStandingPolicyInTransaction`) cancels
+  every live record of the policy with `machine_access_ended`, and their
+  sessions get close requests (`policy_ended`) — except a policy a
+  confirmation replaced, whose records move to the new policy.
+- **Sessions are closed by the server.** Session-scoped
+  `executorCodingSessionCloseRequest` rows for the record's `sessionIds`
+  (`requestExecutorCodingSessionCloseForSessionsInTransaction`, named by the
+  ticket's owner context) are written in the same transaction as **(T4)** the
+  trigger being disabled or deleted (`trigger_changed`) and the policy
+  suspending (`policy_suspended`) or ending (`policy_ended`), and **(from
+  T4)** the ticket leaving the flow (`ticket_left_flow`) or a limit
+  (`work_limit`).
   **(T4)** Those five reasons are in `EXECUTOR_CODING_SESSION_CLOSE_REASONS`
   and its CHECK
   (`20260924130000_executor_coding_session_ticket_close_reasons`), which the
@@ -908,3 +879,25 @@ causes it**:
   move back included), its work history and the card's dot;
   `test:e2e:agent-conversations` walks the Tickets fold, the wake rows and the
   read-only composer.
+- `packages/team-admin/test/standing-policy-db.test.ts` (fixture
+  `standing-policy-fixture.ts`): standing machine access against Postgres —
+  prepare refused for a colleague and an owner who are not the author and in
+  another organisation; each machine refusal with its reason and nothing
+  written; the bypass option; one confirmation applying every machine's
+  assignment, grant and tool enablement and the policy, with the card's plain
+  words and the audit rows; a failure part-way (the tool policy of the second
+  effect) rolling all of it back with the continuation's claim; a confirm
+  without its service or fresh verification refused; a trigger changed after
+  the card refusing the confirm; every pinned field's edit suspending it
+  (records waiting, their sessions' closes named by the ticket's context), a
+  lowered limit not, a fresh card saying what changed and re-confirming
+  queueing the record; a descriptor review suspending it; a disable and a
+  delete ending it; a new prepare replacing the card still out; a rejected
+  card ending its policy. `worker/test/db/standing-policy-prepare-tool.test.ts`:
+  the tool posts one card in the author's own Designer DM holding only the
+  change id, and refuses a shared room, an unattended run, someone else's
+  Designer and a non-author. `api/test/standing-policy-routes.test.ts`: the
+  author-only route, the machine refusals in `details`, the review naming the
+  change, and a confirm with the password. `packages/executor-manage`'s
+  machine rules are exercised through both; `executor/test/coding-session-merge-commands.test.ts`
+  pins the signed `mergeCommands` fact.

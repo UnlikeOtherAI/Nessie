@@ -59,7 +59,16 @@ card shows and every start checks:
   It says whether `Bash(git push:*)`, `Bash(gh pr create:*)`,
   `Bash(gh pr checks:*)` and `Bash(gh pr merge:*)` are allowed. When they are
   not, it warns *"This machine cannot merge; tickets will stop at an open pull
-  request."*
+  request."* As built: `allowedTools` never leaves the host (the descriptor
+  carries only `allowedToolCount`), so the executor signs a derived fact,
+  `mergeCommands` — which of the four commands Claude Code may run unasked,
+  all of them under `bypassPermissions` — and the card reads that; a
+  descriptor without it reads as unable to merge.
+- **As built, the rest of the profile** (`StandingPolicyHostProfileSchema`):
+  `codingAgents` is `['claude']` (a start naming Codex is refused), the
+  author's `allowAnyCommand` and `allowedRootNames` (default: the roots every
+  pool machine shares, each required on every machine), and per machine its
+  permission mode, turn budget, session quota and merge commands.
 
 ## What is pinned
 
@@ -73,6 +82,16 @@ security-relevant fields:
 
 The pool rows store each machine's `codingSessions` config digest and
 `localPolicyDigest`.
+
+As built: the digest is `standingPolicyTermsDigest` of
+`StandingPolicyPinnedTermsSchema`, which the policy keeps beside it
+(`pinned_terms`) so the next card can say what changed. `ticketHours`,
+`ticketUsd` and `dailyUsd` are the **policy's** limits, chosen at prepare and
+held only in its terms; the trigger keeps `wakesPerTicket` and
+`startsPerDay`. "The author gets a fresh card that shows the diff" is the
+card of their next prepare (its "Changed since you last confirmed" line);
+nothing posts a card on its own when a policy is suspended — the saving
+door says it paused access instead.
 
 - **A trigger edit that changes a pinned field** suspends the policy in the
   same transaction (`suspendedReason: trigger_changed`). This holds whoever
@@ -126,6 +145,28 @@ The pool rows store each machine's `codingSessions` config digest and
   - that merges happen under the author's GitHub identity;
   - the instructions, verbatim.
 - **Changing the pool or raising a limit** takes a new prepare and a new card.
+- **As built (T4, the policy and its card).** The team-admin
+  `standing-policy-*` modules and `assessStandingPolicyMachine`; the rules
+  are in `docs/standards/ticket-work-machine-access.md`. What the rest of T4
+  inherits:
+  - A confirmation that **replaces** a live or suspended policy hands its live
+    records to the new one: an `active` record goes back to `queued` with no
+    machine and its sessions closed (`policy_ended`), since the old owner
+    context is never bound again. Suspension closes only the `active`
+    records' sessions; parked records keep theirs.
+  - Nothing enqueues `ticket-work.sweep` yet (it has no subscriber):
+    `queueTicketWorkForConfirmedPolicyInTransaction`, the suspension and the
+    hand-over should enqueue it where the dispatcher lands. Records queued
+    there carry no `stateReason` and no `work_queued` row until it does.
+  - Confirm re-checks everything but online-ness; prepare requires it.
+  - Only the trigger disable, pause, health switch-off, delete and the
+    agent's delete end a policy so far (`endTicketWorkForTrigger`, now in
+    `ticket-trigger-teardown.ts`). A review that disables a pool machine's
+    revision suspends (`descriptor_changed`) rather than ending
+    (`descriptor_narrowed`); every other fence below is still to build.
+  - The route `POST /api/triggers/:triggerId/machine-access` answers the
+    card spec with the token, for the Machine access section to render with
+    the chat's own card renderer; there is no read of a trigger's policy yet.
 
 ## Binding at each wake
 

@@ -290,6 +290,16 @@ chat is confirmed through the same card. The mechanics are in
 [agent cards](standards/agent-cards.md) → "An executor review card holds an
 id".
 
+**Standing machine access is one card, never five.** For a ticket trigger the
+person set up, `executor_standing_policy_prepare` prepares ONE composite change
+over one or two of their machines — each machine's agent assignment,
+whole-suite grant and tool enablement, and the policy itself — and posts it as
+one plain-words card in their own DM. The catalogue says for every executor
+whether ticket work can run there (`pairedByYou` and `codingSessionsReviewed`,
+"ticket work: yes / not yet / no"), so the Designer offers only machines that
+qualify and says why the others do not. The rules are in
+[ticket work: standing machine access](standards/ticket-work-machine-access.md).
+
 ### What the catalogue states, and what it withholds
 
 `GlobalAgentCatalogueFacts.executors` has the model catalogue's three states
