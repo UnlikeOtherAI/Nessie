@@ -215,6 +215,7 @@ const serveSession = async (context: HostContext, lock: HeldHostLock): Promise<S
       const reason = error instanceof AgentStartError ? error.reason : 'agent_exited'
       if (reason === 'host_superseded') throw new HostSuperseded()
       log(`the agent could not start: ${reason}`)
+      if (meta.agent === 'terminal' && !(error instanceof AgentStartError)) log(String(error))
       emit({ kind: 'system', subtype: 'agent_failed', reason })
       update({ status: state.agentSessionStarted ? 'interrupted' : 'failed', reason, turnStartedAt: undefined })
     }

@@ -18,7 +18,7 @@ export const ExecutorSessionPage = () => {
       <ScreenHeader title={session?.title ?? 'Session'} eyebrow="Executor sessions"
         backLabel="Back to sessions" onBack={() => void navigate('/agents/executor-sessions')}
         actions={view.data?.canShare ? [{
-          id: 'share-session', kind: 'action', label: 'Share session', onClick: () => setSharing(true),
+          id: 'share-session', kind: 'button', label: 'Share session', priority: 80, onSelect: () => setSharing(true),
         }] : []}
         subtitle="View only · The agent controls this session" />
       <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto px-[var(--page-gutter)] py-4">

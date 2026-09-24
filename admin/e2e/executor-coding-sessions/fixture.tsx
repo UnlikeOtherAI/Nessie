@@ -5,6 +5,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 import { LocalBackProvider } from '../../src/navigation/LocalBackContext'
 import { ExecutorDetailContent } from '../../src/pages/ExecutorDetailPage'
+import { ExecutorSessionPage } from '../../src/pages/ExecutorSessionPage'
+import { ExecutorSessionsPage } from '../../src/pages/ExecutorSessionsPage'
 import '../../src/styles.css'
 
 /**
@@ -32,6 +34,8 @@ createRoot(root).render(
           <main className="h-screen bg-[color:var(--main)] text-[color:var(--tx)]">
             <Routes>
               <Route path="/agents/executors/:executorId" element={<ExecutorDetailContent token={null} />} />
+              <Route path="/agents/executors/:executorId/sessions/:sessionId" element={<ExecutorSessionPage />} />
+              <Route path="/agents/executor-sessions" element={<ExecutorSessionsPage />} />
             </Routes>
           </main>
         </LocalBackProvider>

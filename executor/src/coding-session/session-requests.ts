@@ -109,7 +109,7 @@ const validMeta = (value: unknown): value is CodingSessionMeta => {
   if (!value || typeof value !== 'object') return false
   const meta = value as Record<string, unknown>
   return meta.version === 1 && typeof meta.sessionId === 'string' && typeof meta.ownerKey === 'string'
-    && (meta.agent === 'claude' || meta.agent === 'codex') && typeof meta.rootName === 'string'
+    && (meta.agent === 'claude' || meta.agent === 'codex' || meta.agent === 'terminal') && typeof meta.rootName === 'string'
     && typeof meta.path === 'string' && typeof meta.title === 'string' && typeof meta.createdAt === 'string'
 }
 

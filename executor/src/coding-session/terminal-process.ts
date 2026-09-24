@@ -28,6 +28,8 @@ export const terminalProcessArguments = (argv: readonly string[]): string[] => [
  * Local attachment: tmux -S <socket> attach -t nessie.
  */
 export const runTerminalProcess = async (): Promise<void> => {
+  // The marker belongs to this executor helper, never the user's program.
+  delete process.env.NESSIE_EXECUTOR_PACKAGED_CLI
   if (process.platform === 'win32') {
     const { runWindowsTerminal } = await import('./terminal-windows.js')
     return runWindowsTerminal()

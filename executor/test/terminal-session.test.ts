@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 import { terminalProcessArguments } from '../src/coding-session/terminal-process.js'
 import { createCodingHarness, OWNER_B, waitUntil } from './coding-session-harness.js'
@@ -16,7 +18,10 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
     codingSessions: { agents: { terminal: {
       command: process.platform === 'win32' ? ['C:\\Windows\\System32\\cmd.exe'] : ['/bin/sh'],
     } } },
-    agentEnv: { inheritUserSession: false, set: { PATH: process.env.PATH ?? '/usr/bin:/bin' } },
+    agentEnv: { inheritUserSession: false, set: {
+      PATH: process.env.PATH ?? '/usr/bin:/bin',
+      ...(process.env.LD_LIBRARY_PATH ? { LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH } : {}),
+    } },
   })
   try {
     const start = async (title: string) => {
@@ -27,8 +32,16 @@ test('two real PTYs stay isolated, survive a bridge restart, render ANSI and clo
     const first = await start('First terminal')
     const second = await start('Second terminal')
     assert.notEqual(first, second)
-    await harness.waitForStatus(first, (body) => body.status === 'working')
-    await harness.waitForStatus(second, (body) => body.status === 'working')
+    const running = async (sessionId: string) => {
+      try { await harness.waitForStatus(sessionId, (body) => body.status === 'working') }
+      catch (error) {
+        const files = ['session.json', 'host.log', 'agent-stderr.log']
+        for (const file of files) console.error(file, await readFile(join(harness.stateDir, 'sessions', sessionId, file), 'utf8').catch(() => 'unavailable'))
+        throw error
+      }
+    }
+    await running(first)
+    await running(second)
     const write = async (sessionId: string, message: string) => {
       const answer = await harness.call('session_send', { sessionId, message, terminal: true })
       assert.equal(answer.ok, true, JSON.stringify(answer.body))

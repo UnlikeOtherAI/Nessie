@@ -1,5 +1,6 @@
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
 
 import { ExecutorSessionScreenSchema, type ExecutorSessionScreen } from '@nessie/schemas'
 
@@ -22,8 +23,15 @@ export const createTerminalDriver = (context: AgentDriverContext): AgentDriver =
     // PTYs cannot resume a killed process. The closed screen remains readable;
     // a fresh session is required rather than silently replaying its commands.
     if (context.state().turn > 0) throw new AgentStartError('terminal_process_ended')
-    const child = await startAgentProcess(context, [
-      globalThis.process.execPath, ...globalThis.process.execArgv, resolveExecutorEntry(), 'terminal-session-process',
+    const execArgv = globalThis.process.execArgv.map((arg) => (
+      arg === 'tsx' ? pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href : arg
+    ))
+    const helperContext = { ...context, env: {
+      ...context.env,
+      ...(globalThis.process.env.NESSIE_EXECUTOR_PACKAGED_CLI === '1' ? { NESSIE_EXECUTOR_PACKAGED_CLI: '1' } : {}),
+    } }
+    const child = await startAgentProcess(helperContext, [
+      globalThis.process.execPath, ...execArgv, resolveExecutorEntry(), 'terminal-session-process',
     ], (line) => {
       try {
         const message = JSON.parse(line) as { socketPath?: unknown }
