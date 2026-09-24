@@ -29,6 +29,9 @@ import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigat
  *    list is read again.
  * 5. A report whose bridge was not asked for its sessions says exactly that,
  *    and the page asks the API nothing.
+ * 6. A ticket's own session links its ticket and says whose standing access
+ *    it runs under; one whose ticket this reader cannot open says only that a
+ *    ticket's work runs there, with no link. Close is the same on both.
  *
  * Every API answer is the runner's, so this pins what is drawn for each
  * answer; which answer a person gets is `api/test/executor-coding-session-routes.test.ts`.
@@ -88,6 +91,30 @@ const access = ExecutorAccessViewResponseSchema.parse({
   localMcpObservedAt: iso(-2 * 60_000),
 })
 
+// Two sessions a ticket's work started under its trigger's standing access:
+// one whose ticket this reader can open, and one whose project they cannot read.
+const projectId = '77777777-7777-4777-8777-777777777777'
+const taskId = '88888888-8888-4888-8888-888888888888'
+const ticketSessions = [
+  {
+    sessionId: '99999999-9999-4999-8999-999999999994', ownerKey: ownerKey('d'), title: 'Fix the invoice rounding',
+    status: 'working', agent: 'claude', root: 'billing', updatedAt: iso(-2 * 60_000),
+  },
+  {
+    sessionId: '99999999-9999-4999-8999-999999999995', ownerKey: ownerKey('f'), title: 'Update the release checklist',
+    status: 'waiting_for_input', agent: 'claude', root: 'nessie', updatedAt: iso(-12 * 60_000),
+  },
+]
+const [invoice, checklist] = ticketSessions
+const ticketTitle = 'NES-42 Fix the invoice rounding'
+const ticketWork = {
+  [invoice.sessionId]: { authorName: 'Ondrej', ticket: { taskId, projectId, title: ticketTitle } },
+  [checklist.sessionId]: { authorName: 'Ondrej', ticket: null },
+}
+const ticketAccess = ExecutorAccessViewResponseSchema.parse({
+  ...access, localMcp: [{ ...access.localMcp[0], codingSessions: ticketSessions }],
+})
+
 const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-coding-sessions')
 
 /**
@@ -96,7 +123,9 @@ const output = resolve(REPO_ROOT, 'e2e/screenshots/executor-coding-sessions')
  * differ in; a Close marks its row closing, and `dropClosing()` is the
  * machine's next report arriving without it.
  */
-const openContext = async (browser, { accessView = access, canClose, names, refuse = [], width }) => {
+const openContext = async (browser, {
+  accessView = access, canClose, names, refuse = [], sessions = reported, ticketWork: ticketOf = {}, width,
+}) => {
   const state = { closing: new Set(), dropped: new Set(), posted: [], reads: 0 }
   const unexpected = []
   const context = await browser.newContext({ hasTouch: width < 768, viewport: { width, height: 900 } })
@@ -111,8 +140,9 @@ const openContext = async (browser, { accessView = access, canClose, names, refu
       state.reads += 1
       return respond(ExecutorCodingSessionListResponseSchema.parse({
         canClose,
-        sessions: reported.filter((session) => !state.dropped.has(session.sessionId)).map((session) => ({
+        sessions: sessions.filter((session) => !state.dropped.has(session.sessionId)).map((session) => ({
           ...session, closing: state.closing.has(session.sessionId), ownerAgentName: names[session.sessionId] ?? null,
+          ...(ticketOf[session.sessionId] ? { ticketWork: ticketOf[session.sessionId] } : {}),
         })),
       }))
     }
@@ -254,6 +284,38 @@ try {
   assert.deepEqual(unasked.errors, [])
   assert.deepEqual(unasked.unexpected, [])
   await unasked.context.close()
+
+  // A ticket's own sessions: the ticket linked where this reader can open it,
+  // whose standing access the work runs under, and the same Close as any other.
+  for (const width of [1280, 390]) {
+    const tickets = await openContext(browser, {
+      accessView: ticketAccess, canClose: true, names: { [invoice.sessionId]: 'CTO', [checklist.sessionId]: 'CTO' },
+      sessions: ticketSessions, ticketWork, width,
+    })
+    const listed = await open(tickets.page)
+    assert.equal(await listed.getByTestId('executor-coding-session').count(), 2)
+    const linked = rowOf(listed, invoice)
+    assert.match(await linked.innerText(),
+      /Fix the invoice rounding\s*working\s*Claude Code in billing · driven by CTO/)
+    const link = linked.getByRole('link', { name: ticketTitle })
+    assert.equal(await link.getAttribute('href'), `/projects/${projectId}/board?task=${taskId}`,
+      'the ticket opens on its own board')
+    assert.equal((await linked.getByTestId('executor-coding-session-ticket').innerText()).trim(),
+      `${ticketTitle} · ticket work under Ondrej’s standing access`)
+    const unlinked = rowOf(listed, checklist)
+    assert.equal((await unlinked.getByTestId('executor-coding-session-ticket').innerText()).trim(),
+      'A ticket’s work under Ondrej’s standing access')
+    assert.equal(await unlinked.getByRole('link').count(), 0, 'a ticket this reader cannot open is not linked')
+    assert.equal(await listed.getByRole('button', { name: /^Close / }).count(), 2, 'ticket sessions keep their Close')
+    const box = await link.boundingBox()
+    assert.ok(box && box.x >= 0 && box.x + box.width <= width, 'the ticket link is on screen')
+    assert.ok(await noOverflow(tickets.page), 'No page overflow')
+    await listed.scrollIntoViewIfNeeded()
+    await tickets.page.screenshot({ animations: 'disabled', fullPage: true, path: resolve(output, `ticket-work-${width}.png`) })
+    assert.deepEqual(tickets.errors, [])
+    assert.deepEqual(tickets.unexpected, [])
+    await tickets.context.close()
+  }
 
   console.log(`Executor coding sessions flows passed; screenshots: ${output}`)
 } finally { await browser.close(); await stopProcess(admin) }
