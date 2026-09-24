@@ -720,8 +720,10 @@ causes it**:
   (`ticket_left_flow`), the trigger being disabled, deleted or edited in a
   pinned field (`trigger_changed`), the policy suspending
   (`policy_suspended`) or ending (`policy_ended`), or a limit (`work_limit`).
-  T4 adds those five reasons to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and
-  its CHECK.
+  **(T4)** Those five reasons are in `EXECUTOR_CODING_SESSION_CLOSE_REASONS`
+  and its CHECK
+  (`20260924130000_executor_coding_session_ticket_close_reasons`), which the
+  two vocabulary tests below hold together.
 - **Limits are enforced by the platform.** **(T1)** A wake that would start a
   run past `wakesPerTicket` (every model run counts once; a wake folded into a
   pending kickoff does not count again) starts none: the record goes to

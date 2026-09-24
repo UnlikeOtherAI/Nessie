@@ -5866,7 +5866,10 @@ model ExecutorCodingSessionCloseRequest {
   ownerKey          String    @map("owner_key")
   /// Absent means every session of that owner on the machine.
   sessionId         String?   @map("session_id") @db.Uuid
-  /// lease_ended | access_revoked | executor_paused | executor_revoked | person
+  /// EXECUTOR_CODING_SESSION_CLOSE_REASONS, pinned by a CHECK: lease_ended |
+  /// access_revoked | executor_paused | executor_revoked | person, and for a
+  /// ticket's work ticket_left_flow | trigger_changed | policy_suspended |
+  /// policy_ended | work_limit
   reason            String
   requestedByUserId String?   @map("requested_by_user_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at")

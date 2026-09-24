@@ -197,7 +197,8 @@ Sessions are closed by the server, never through the model.
   - the policy ending or being suspended, through any fence;
   - the trigger being deleted, disabled or changed.
 - T4 adds five close reasons to `EXECUTOR_CODING_SESSION_CLOSE_REASONS` and
-  to its CHECK, and records them in `host-coding-sessions.md`:
+  to its CHECK, and records them in the close-requests section of
+  `host-coding-sessions-containment.md`:
 
   | Event | Close reason |
   |---|---|

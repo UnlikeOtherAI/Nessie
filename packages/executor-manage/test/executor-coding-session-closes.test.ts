@@ -275,6 +275,11 @@ dbTest('the table keeps its vocabulary and one open request per owner and per se
         (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
     }
     await world.prisma.executorCodingSessionCloseRequest.create({ data: { ...base, resolvedAt: new Date() } })
+    // A ticket's work closes its own sessions, each by id, for reasons of its own; nothing writes them yet.
+    for (const reason of ['ticket_left_flow', 'trigger_changed', 'policy_suspended', 'policy_ended', 'work_limit']) {
+      const data = { ...base, reason, sessionId: randomUUID() }
+      await world.prisma.executorCodingSessionCloseRequest.create({ data })
+    }
     for (const data of [{ ...base, reason: 'bored' }, { ...base, ownerKey: 'owner-a' }]) {
       await assert.rejects(world.prisma.executorCodingSessionCloseRequest.create({
         data: { ...data, resolvedAt: new Date() },

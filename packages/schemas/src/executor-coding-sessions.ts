@@ -166,6 +166,18 @@ export type ExecutorCodingSessionClose = z.infer<typeof ExecutorCodingSessionClo
  *   on its roster, was withdrawn;
  * - `executor_paused`, `executor_revoked`: the machine itself was fenced;
  * - `person`: a person pressed Close on one session.
+ *
+ * One ticket's work under a standing policy closes its own sessions, each
+ * named by id (docs/plans/2026-09-23-ticket-driven-agents/machine-access.md
+ * → "Server-side closes"):
+ *
+ * - `ticket_left_flow`: the ticket entered one of the trigger's end columns;
+ * - `trigger_changed`: the trigger was disabled, deleted, or edited in a
+ *   pinned field;
+ * - `policy_suspended`: the policy was suspended, its trigger or descriptor
+ *   digest having changed;
+ * - `policy_ended`: the policy ended — End, a fence, its author gone;
+ * - `work_limit`: the work record hit one of its limits.
  */
 export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
   'lease_ended',
@@ -173,6 +185,11 @@ export const EXECUTOR_CODING_SESSION_CLOSE_REASONS = [
   'executor_paused',
   'executor_revoked',
   'person',
+  'ticket_left_flow',
+  'trigger_changed',
+  'policy_suspended',
+  'policy_ended',
+  'work_limit',
 ] as const
 export const ExecutorCodingSessionCloseReasonSchema = z.enum(EXECUTOR_CODING_SESSION_CLOSE_REASONS)
 export type ExecutorCodingSessionCloseReason = z.infer<typeof ExecutorCodingSessionCloseReasonSchema>
