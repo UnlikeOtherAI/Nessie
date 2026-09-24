@@ -101,7 +101,9 @@ test('a reminder names its reminder, a quiet wake names nothing, and neither a T
   )
   assert.equal(TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'reminder' }).success, false)
   assert.equal(
-    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'reminder', reminderId: REMINDER, taskEventId: EVENT })
+    TicketTriggerDeliveryPayloadSchema.safeParse({
+      ...woken, eventType: 'reminder', reminderId: REMINDER, taskEventId: EVENT,
+    })
       .success,
     false,
   )
@@ -115,12 +117,16 @@ test('a reminder names its reminder, a quiet wake names nothing, and neither a T
     false,
   )
   assert.equal(
-    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'reminder', reminderId: REMINDER, followedWakeAt })
+    TicketTriggerDeliveryPayloadSchema.safeParse({
+      ...woken, eventType: 'reminder', reminderId: REMINDER, followedWakeAt,
+    })
       .success,
     false,
   )
   assert.equal(
-    TicketTriggerDeliveryPayloadSchema.safeParse({ ...woken, eventType: 'comment_added', reminderId: REMINDER }).success,
+    TicketTriggerDeliveryPayloadSchema.safeParse({
+      ...woken, eventType: 'comment_added', reminderId: REMINDER,
+    }).success,
     false,
   )
 })

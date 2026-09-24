@@ -366,7 +366,10 @@ dbTest('the chip names the pending reminder and the open question, and only a bo
   await withRoutes(async ({ app, as, s, prisma }) => {
     const dueAt = new Date(Date.now() + 15 * 60 * 1000)
     const reminder = await prisma.agentReminder.create({
-      data: { agentId: s.cto.id, threadId: s.workingRecord.threadId, workId: s.workingRecord.id, dueAt, note: 'waiting for CI' },
+      data: {
+        agentId: s.cto.id, threadId: s.workingRecord.threadId, workId: s.workingRecord.id,
+        dueAt, note: 'waiting for CI',
+      },
     })
     const askedAt = new Date(Date.now() - 5 * 60 * 1000)
     await prisma.agentTicketWork.update({ where: { id: s.workingRecord.id }, data: { awaitingAnswerAt: askedAt } })
@@ -408,7 +411,11 @@ dbTest('the chip names the pending reminder and the open question, and only a bo
       assert.deepEqual([row.status, row.cancelledReason], ['cancelled', 'person'])
       // The work thread says who cancelled it, and the audit trail records it.
       const trace = await prisma.message.findFirstOrThrow({
-        where: { threadId: s.workingRecord.threadId, role: 'system', metadata: { path: ['ticketWorkEvent', 'kind'], equals: 'reminder_cancelled' } },
+        where: {
+          threadId: s.workingRecord.threadId,
+          role: 'system',
+          metadata: { path: ['ticketWorkEvent', 'kind'], equals: 'reminder_cancelled' },
+        },
       })
       assert.equal(trace.content, 'Reminder cancelled: Ondrej cancelled the agent\'s reminder')
       const audit = await prisma.auditLog.findFirstOrThrow({
@@ -419,7 +426,8 @@ dbTest('the chip names the pending reminder and the open question, and only a bo
       const again = await cancel(reminder.id)
       assert.equal(again.statusCode, 404)
       assert.equal((again.json() as { error: { code: string } }).error.code, 'REMINDER_NOT_FOUND')
-      assert.equal((await read<TaskTicketWorkRecord>(app, `/api/tasks/${s.working.id}/work`)).data.records[0]!.pendingReminder, null)
+      const after = await read<TaskTicketWorkRecord>(app, `/api/tasks/${s.working.id}/work`)
+      assert.equal(after.data.records[0]!.pendingReminder, null)
 
       // A reminder on another ticket's work is not this ticket's to cancel.
       const elsewhere = await prisma.agentReminder.create({

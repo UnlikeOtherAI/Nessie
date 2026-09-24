@@ -64,7 +64,11 @@ runDatabaseTest('a board editor\'s answer wakes the work even when its trigger d
   // follows moves only — would wake nothing; this one answers.
   assert.ok(!('error' in await commentAs(prisma, s, task.id, s.editorId, 'Yes, keep it.')))
   const answer = await prisma.taskEvent.findFirstOrThrow({
-    where: { taskId: task.id, eventType: 'comment_added', payload: { path: ['answeredWorkIds'], array_contains: [work.id] } },
+    where: {
+      taskId: task.id,
+      eventType: 'comment_added',
+      payload: { path: ['answeredWorkIds'], array_contains: [work.id] },
+    },
   })
   const closed = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
   assert.equal(closed.awaitingAnswerAt, null, 'the answer closed the question in its own transaction')

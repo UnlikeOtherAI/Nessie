@@ -98,7 +98,10 @@ runDatabaseTest('a ticket reminder fires as the record\'s own ticket.work wake, 
   t.after(async () => { await s.cleanup(); await prisma.$disconnect() })
   const { task, work } = await startWork(prisma, s)
   const context = await onRealRun(prisma, ticketWorkToolContext(prisma, s, work))
-  assert.equal((await executeBuiltinTool('check_back_in', { minutes: 5, note: 'waiting for CI' }, context)).success, true)
+  assert.equal(
+    (await executeBuiltinTool('check_back_in', { minutes: 5, note: 'waiting for CI' }, context)).success,
+    true,
+  )
   const [reminder] = await pendingOf(prisma, { workId: work.id })
   await dueNow(prisma, reminder!.id)
 
@@ -132,19 +135,24 @@ runDatabaseTest('a ticket reminder fires as the record\'s own ticket.work wake, 
   // The test moved it due at once, so it says so; a real one says its minutes.
   assert.match(
     kickoff.content,
-    /^## Why you were woken\nreminder: The reminder you set at \d\d:\d\d UTC to check back in \d+ minutes fired\. Your note: "waiting for CI"/,
+    new RegExp('^## Why you were woken\nreminder: The reminder you set at \\d\\d:\\d\\d UTC to check back in '
+      + '\\d+ minutes fired\\. Your note: "waiting for CI"'),
   )
   assert.match(kickoff.content, /Pending reminder: none\./)
   const rows = (await prisma.message.findMany({ where: { threadId: work.threadId, role: 'system' } }))
     .flatMap((message) => {
-      const event = TicketWorkThreadEventSchema.safeParse((message.metadata as Record<string, unknown> | null)?.ticketWorkEvent)
+      const metadata = message.metadata as Record<string, unknown> | null
+      const event = TicketWorkThreadEventSchema.safeParse(metadata?.ticketWorkEvent)
       return event.success ? [message.content] : []
     })
   assert.ok(rows.includes('Woken: reminder, waiting for CI'), rows.join(' | '))
 
   // Another reminder, then the ticket leaves the flow: cancelled in the move.
   await finishRuns(prisma, work.threadId)
-  assert.equal((await executeBuiltinTool('check_back_in', { minutes: 60, note: 'check the deploy' }, context)).success, true)
+  assert.equal(
+    (await executeBuiltinTool('check_back_in', { minutes: 60, note: 'check the deploy' }, context)).success,
+    true,
+  )
   const [second] = await pendingOf(prisma, { workId: work.id })
   await move(prisma, s, task.id, s.columns.done)
   const cancelled = await prisma.agentReminder.findUniqueOrThrow({ where: { id: second!.id } })
@@ -169,7 +177,10 @@ const personRunContext = async (
   },
   agentId: s.agentId,
   agentKind: 'shared',
-  channel: { id: channel.id, organizationId: s.organizationId, projectId: s.projectId, systemChannelType: channel.systemChannelType ?? null },
+  channel: {
+    id: channel.id, organizationId: s.organizationId, projectId: s.projectId,
+    systemChannelType: channel.systemChannelType ?? null,
+  },
   consumedSources: createConsumedSourceSink(),
   ledgerIdentity: null,
   prisma,
@@ -221,7 +232,8 @@ runDatabaseTest('outside ticket work a reminder wakes the agent as itself, never
   await sweepDueAgentReminders(prisma, { limit: 20 })
   const undelivered = await prisma.agentReminder.findUniqueOrThrow({ where: { id: next!.id } })
   assert.deepEqual([undelivered.status, undelivered.cancelledReason], ['cancelled', 'undeliverable'])
-  assert.equal(await prisma.run.count({ where: { threadId: thread.id, triggerMessageId: { not: null } } }), 1, 'no second run')
+  const woken = await prisma.run.count({ where: { threadId: thread.id, triggerMessageId: { not: null } } })
+  assert.equal(woken, 1, 'no second run')
 })
 
 runDatabaseTest('outside ticket work check_back_in is refused in a system conversation and for a presence, and capped', async (t) => {
@@ -265,7 +277,10 @@ runDatabaseTest('outside ticket work check_back_in is refused in a system conver
 
   const context = await personRunContext(prisma, s, thread.id, { id: s.channelId })
   for (let index = 0; index < AGENT_REMINDER_CAPS.pendingPerThread; index += 1) {
-    assert.equal((await executeBuiltinTool('check_back_in', { minutes: 10 + index, note: `step ${index}` }, context)).success, true)
+    assert.equal(
+      (await executeBuiltinTool('check_back_in', { minutes: 10 + index, note: `step ${index}` }, context)).success,
+      true,
+    )
   }
   const fourth = await executeBuiltinTool('check_back_in', { minutes: 30, note: 'one more' }, context)
   assert.equal(fourth.success, false)
@@ -297,7 +312,10 @@ runDatabaseTest('parking cancels the ticket\'s reminder, and a parked ticket tak
   const seen = new Set<string>()
   const { task, work } = await startWork(prisma, s)
   const context = await onRealRun(prisma, ticketWorkToolContext(prisma, s, work))
-  assert.equal((await executeBuiltinTool('check_back_in', { minutes: 20, note: 'waiting for CI' }, context)).success, true)
+  assert.equal(
+    (await executeBuiltinTool('check_back_in', { minutes: 20, note: 'waiting for CI' }, context)).success,
+    true,
+  )
   const [reminder] = await pendingOf(prisma, { workId: work.id })
 
   // Into review: the work parks, and its reminder goes in the same move.
@@ -314,7 +332,9 @@ runDatabaseTest('parking cancels the ticket\'s reminder, and a parked ticket tak
 
   // One set just before the move that parked it, and due now, is cancelled rather than fired.
   const raced = await prisma.agentReminder.create({
-    data: { agentId: s.agentId, threadId: work.threadId, workId: work.id, dueAt: new Date(Date.now() - 1_000), note: 'late' },
+    data: {
+      agentId: s.agentId, threadId: work.threadId, workId: work.id, dueAt: new Date(Date.now() - 1_000), note: 'late',
+    },
   })
   const wakes = (await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })).wakeCount
   await sweepDueAgentReminders(prisma, { limit: 20 })

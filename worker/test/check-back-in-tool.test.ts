@@ -42,12 +42,16 @@ test('a shared agent may call it with no policy, and a ticket.work run is neithe
     authorizeToolCall('check_back_in', enabled, [...BUILTIN_TOOL_DEFINITIONS], null, null, 'shared'),
     { allowed: true },
   )
-  assert.equal(resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true, ticketWork: true }).has('check_back_in'), false)
+  const withheld = resolveWithheldRunToolIds({ isHandoffTurn: false, todosEnabled: true, ticketWork: true })
+  assert.equal(withheld.has('check_back_in'), false)
   const ticketWork = { actionContext: { purpose: TICKET_WORK_PURPOSE, requestId: randomUUID() } }
   assert.equal(ticketWorkToolRefusal('check_back_in', ticketWork), null)
 })
 
 test('the dispatcher coerces "15" to 15 and leaves what is not a whole number alone', () => {
-  assert.deepEqual(coerceJsonEncodedToolArguments('check_back_in', { minutes: '15', note: 'CI' }), { minutes: 15, note: 'CI' })
+  assert.deepEqual(
+    coerceJsonEncodedToolArguments('check_back_in', { minutes: '15', note: 'CI' }),
+    { minutes: 15, note: 'CI' },
+  )
   assert.deepEqual(coerceJsonEncodedToolArguments('check_back_in', { minutes: '15.5', note: 'CI' }).minutes, '15.5')
 })

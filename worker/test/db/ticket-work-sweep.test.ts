@@ -9,7 +9,11 @@ import {
 } from '@nessie/schemas'
 import { createTaskComment } from '@nessie/team-admin'
 
-import { enqueueTicketWorkSweep, recoverLostTicketJobs, runTicketWorkSweep } from '../../src/control/ticket-work-sweep.js'
+import {
+  enqueueTicketWorkSweep,
+  recoverLostTicketJobs,
+  runTicketWorkSweep,
+} from '../../src/control/ticket-work-sweep.js'
 import { reattemptTicketWorkDelivery } from '../../src/control/ticket-work-retry.js'
 import { runTicketCommentAddTool } from '../../src/run/pa-tools/ticket-comments.js'
 import { runDatabaseTest } from './support.js'
@@ -44,15 +48,20 @@ const startWork = async (prisma: PrismaClient, s: TicketWorkSeed, seen: Set<stri
 
 /** Nothing has woken the record for this long. */
 const quietFor = (prisma: PrismaClient, workId: string, minutes: number) =>
-  prisma.agentTicketWork.update({ where: { id: workId }, data: { lastWakeAt: new Date(Date.now() - minutes * MINUTE) } })
+  prisma.agentTicketWork.update({
+    where: { id: workId }, data: { lastWakeAt: new Date(Date.now() - minutes * MINUTE) },
+  })
 
 const quietDeliveries = (prisma: PrismaClient, s: TicketWorkSeed) =>
   prisma.agentTriggerDelivery.findMany({ where: { triggerId: s.triggerId, source: 'quiet' } })
 
 const threadRows = async (prisma: PrismaClient, threadId: string) =>
-  (await prisma.message.findMany({ where: { threadId, role: 'system' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }))
+  (await prisma.message.findMany({
+    where: { threadId, role: 'system' }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  }))
     .flatMap((message) => {
-      const parsed = TicketWorkThreadEventSchema.safeParse((message.metadata as Record<string, unknown> | null)?.ticketWorkEvent)
+      const metadata = message.metadata as Record<string, unknown> | null
+      const parsed = TicketWorkThreadEventSchema.safeParse(metadata?.ticketWorkEvent)
       return parsed.success ? [message.content] : []
     })
 
@@ -71,11 +80,16 @@ runDatabaseTest('the quiet wake comes only to active work with nothing scheduled
   // A pending reminder is something scheduled.
   await quietFor(prisma, work.id, 31)
   const reminder = await prisma.agentReminder.create({
-    data: { agentId: s.agentId, threadId: work.threadId, workId: work.id, dueAt: new Date(Date.now() + 10 * MINUTE), note: 'CI' },
+    data: {
+      agentId: s.agentId, threadId: work.threadId, workId: work.id,
+      dueAt: new Date(Date.now() + 10 * MINUTE), note: 'CI',
+    },
   })
   await runTicketWorkSweep(prisma)
   assert.equal((await quietDeliveries(prisma, s)).length, 0, 'a reminder is scheduled')
-  await prisma.agentReminder.update({ where: { id: reminder.id }, data: { status: 'cancelled', cancelledReason: 'person' } })
+  await prisma.agentReminder.update({
+    where: { id: reminder.id }, data: { status: 'cancelled', cancelledReason: 'person' },
+  })
 
   // A run still in flight is not quiet either.
   const running = await prisma.run.create({ data: { agentId: s.agentId, threadId: work.threadId, status: 'running' } })
