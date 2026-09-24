@@ -80,3 +80,20 @@ describe('coerceToolArgumentsToSchema', () => {
     assert.equal(coerceToolArgumentsToSchema(undefined, args), args)
   })
 })
+
+describe('nested declared objects', () => {
+  it('coerces "20" inside executor_standing_policy_prepare limits, and a limits object sent as a string', () => {
+    const out = coerceJsonEncodedToolArguments('executor_standing_policy_prepare', {
+      triggerId: 't',
+      executorIds: ['e'],
+      limits: { ticketUsd: '20', ticketHours: '4', dailyUsd: '60' },
+    })
+    assert.deepEqual(out.limits, { ticketUsd: 20, ticketHours: 4, dailyUsd: 60 })
+    const encoded = coerceJsonEncodedToolArguments('executor_standing_policy_prepare', {
+      triggerId: 't',
+      executorIds: ['e'],
+      limits: '{"ticketUsd":"20"}',
+    })
+    assert.deepEqual(encoded.limits, { ticketUsd: 20 })
+  })
+})

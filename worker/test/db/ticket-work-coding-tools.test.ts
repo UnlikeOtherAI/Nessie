@@ -32,10 +32,13 @@ import { runDatabaseTest } from './support.js'
  * isolation", "Done means merged"): the real tool pipeline over a stand-in
  * bridge. A sessionId not on the record is refused and a missing one is the
  * ticket's own; a start is Claude Code in a pinned root under the ticket's own
- * title, appended to the record as it answers, and one whose answer was lost
- * is found in the next report; each read's cost and turn end land on the
- * record; the pull request is recorded from a review and read by URL once its
- * branch is gone; and a send is audited with what it forwarded, and from whom.
+ * title, appended to the record as it answers, with its machine — live before
+ * the machine next reports it, so a second start is refused — and one whose
+ * answer was lost is found in the next report; a start or a send says to end
+ * the turn; each read's cost and turn end land on the record; the pull request
+ * is recorded from a review, read by URL once its branch is gone, and never
+ * taken from the model; the list comes from the policy's pins; and a send is
+ * audited with what it forwarded, and from whom.
  */
 
 const PR = 'https://github.com/unlikeotherai/nessie/pull/142'
@@ -116,6 +119,7 @@ runDatabaseTest('ticket-mode coding tools keep to the ticket\'s own session, tit
       observe: ticketWorkCodingObserver(prisma, scope),
       personWrote: async () => false,
       stopRequested: async () => false,
+      ticket: true,
       timing: { ...TICKET_WORK_CODING_WAIT_TIMING, pollMs: 1, sleep: async () => undefined },
     })
     const tools = ticketWorkCodingSessions(prisma, base, scope)
@@ -128,7 +132,7 @@ runDatabaseTest('ticket-mode coding tools keep to the ticket\'s own session, tit
     assert.match(start.description, /^Start the coding agent for this ticket\./)
     assert.equal((start.inputSchema as { properties: Record<string, unknown> }).properties.title, undefined)
     const wait = base.descriptors.find((descriptor) => descriptor.toolName === 'coding_session_wait')!
-    assert.match(wait.description, /It returns at once\. Do not use it to watch work in progress\./)
+    assert.match(wait.description, /It returns within a minute\. Do not use it to watch work in progress\./)
     assert.deepEqual((wait.inputSchema as { required: string[] }).required, [])
 
     // No session yet: a send has nothing to default to.
@@ -138,20 +142,43 @@ runDatabaseTest('ticket-mode coding tools keep to the ticket\'s own session, tit
       /Ticket work runs Claude Code only/)
     assert.match((await call('coding_session_start', { root: 'secrets', task: 'fix' })).output,
       /may use only these coding roots: nessie, web/)
+    // The list is the policy's pins, never the machine's.
+    const listed = await call('coding_session_list', {})
+    assert.match(listed.output, /^On the ticket owner's machine this ticket may use Claude Code, in these folders: nessie, web\./)
     assert.equal(calls.length, 0)
+    // The machine last reported a minute ago, naming no session of this ticket's.
+    await prisma.executor.update({
+      where: { id: minis },
+      data: { localMcp: bridgeReport([], new Date(Date.now() - 60_000)), localMcpObservedAt: new Date(Date.now() - 60_000) },
+    })
     const begun = await call('coding_session_start', { root: 'nessie', task: 'Fix the redirect', title: 'Anything' })
     assert.equal(begun.success, true, begun.output)
+    assert.match(begun.output, /Post one short ticket comment, then end your turn: Nessie wakes you here/)
+    assert.doesNotMatch(begun.output, /coding_session_wait/)
     assert.deepEqual(calls.at(-1), {
       args: { agent: 'claude', prompt: 'Fix the redirect', root: 'nessie', title: 'Fix login redirect' },
       tool: 'session_start',
     })
-    assert.deepEqual((await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })).sessionIds, [started],
-      'appended in the same step')
+    const appended = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
+    assert.deepEqual(appended.sessionIds, [started], 'appended in the same step')
+    assert.equal((appended.sessionOrigins as Record<string, { executorId: string }>)[started]?.executorId, minis,
+      'with the machine it runs on')
+    // Before the machine reports it again, it is this ticket's live session: a second start is refused …
+    assert.match((await call('coding_session_start', { root: 'nessie', task: 'Again' })).output,
+      /^This ticket already has a coding session; use coding_session_send\./)
+    // … and a send without a sessionId reaches it.
+    const early = await call('coding_session_send', { message: 'Also update the docs.' })
+    assert.equal(early.success, true, early.output)
+    assert.equal(calls.at(-1)?.args.sessionId, started)
+    assert.match(early.output, /^[\s\S]*Sent\. End your turn: Nessie wakes you here/)
 
     // The machine reports it under the ticket's owner key: a missing sessionId is that one.
     await prisma.executor.update({
       where: { id: minis },
-      data: { localMcp: bridgeReport([{ ownerKey: scope.ownerKey, sessionId: started, title: scope.title }]) },
+      data: {
+        localMcp: bridgeReport([{ ownerKey: scope.ownerKey, sessionId: started, title: scope.title }]),
+        localMcpObservedAt: new Date(),
+      },
     })
     const waited = await call('coding_session_wait', {})
     assert.equal(waited.success, true, waited.output)
@@ -188,7 +215,8 @@ runDatabaseTest('ticket-mode coding tools keep to the ticket\'s own session, tit
     let recorded = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
     assert.deepEqual([recorded.pullRequestUrl, recorded.lastPrState, recorded.lastChecks],
       [PR, 'OPEN', { failed: 0, passed: 3, pending: 1 }])
-    await call('coding_session_review', {})
+    // The model cannot point the review at another pull request: only the record names it.
+    await call('coding_session_review', { pullRequest: 'https://github.com/someone/else/pull/1' })
     assert.deepEqual(calls.at(-1)?.args, { pullRequest: PR, sessionId: started }, 'the worker fills the URL in')
     recorded = await prisma.agentTicketWork.findUniqueOrThrow({ where: { id: work.id } })
     assert.deepEqual([recorded.pullRequestUrl, recorded.lastPrState, recorded.lastChecks],

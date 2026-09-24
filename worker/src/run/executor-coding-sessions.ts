@@ -131,6 +131,8 @@ export const createExecutorCodingSessions = (input: {
   ) => Promise<void>
   personWrote: () => Promise<boolean>
   stopRequested: () => Promise<boolean>
+  /** A `ticket.work` run's answers: after a start or a send it ends its turn, and is woken. */
+  ticket?: boolean
   timing?: CodingWaitTiming
 }): ExecutorCodingSessions => {
   const server = input.facts.serverName
@@ -176,7 +178,10 @@ export const createExecutorCodingSessions = (input: {
       remember(toolName, parsed.body)
       await input.observe?.(toolName, args, parsed.body)
     }
-    return { ...presentCodingCall(toolName, parsed, outcome.result), inputSummary: summarizeToolInput(args) }
+    return {
+      ...presentCodingCall(toolName, parsed, outcome.result, { ticket: input.ticket === true }),
+      inputSummary: summarizeToolInput(args),
+    }
   }
 
   const wait = async (
@@ -254,7 +259,7 @@ export const createExecutorCodingSessions = (input: {
     await hooks.onProgress?.(toolName, codingProgressLine(last, activity)).catch(() => undefined)
     return {
       inputSummary,
-      output: presentCodingWait(waited),
+      output: presentCodingWait(waited, { ticket: input.ticket === true }),
       success: true,
       ...recordIdField,
       watch: { progressed, state: watchStateOf(outcome, last) },

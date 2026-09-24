@@ -164,6 +164,12 @@ export type RunContext = {
    * every other run, and until setup has run.
    */
   ticketWorkMachine?: import('./ticket-work-setup.js').TicketWorkMachine
+  /**
+   * A `ticket.work` run's ticket, and whether the run is standing: bound to
+   * its policy's machine, or serving a record that has held a coding session
+   * (`ticket-work-standing-gate.ts`). Absent for every other run.
+   */
+  ticketWorkScope?: import('./ticket-work-standing-gate.js').TicketWorkScope
   run: {
     id: string
     /** Durable trigger identity for last-moment scheduled-run admission. */

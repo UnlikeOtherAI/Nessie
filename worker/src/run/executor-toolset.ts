@@ -142,11 +142,22 @@ export const buildExecutorToolset = async (
         id: true,
         operationKey: true,
         session: { select: { id: true, profile: true, status: true } },
+        standingPolicyId: true,
+        ticketWorkId: true,
       },
     }),
   ])
+  // A ticket's work bound through a standing policy gets the coding-session
+  // tools and nothing else: the author's card consented to Claude Code
+  // sessions on these machines, not to the machine's other reviewed programs.
+  // So the generic pair is never offered to it, and the dispatch fence
+  // refuses it too (`standingProgramRefusal`). Standing whenever a binding of
+  // the run says so, whether or not the ticket's coding scope loaded — and
+  // with no scope, not even the coding tools are offered.
+  const standing = Boolean(input.ticketWork)
+    || bindings.some((binding) => Boolean(binding.standingPolicyId || binding.ticketWorkId))
   const mcpCallToolId = logicalTools.get('mcp.call')
-  const codingOffer = await codingSessionsOffer(
+  const codingOffer = standing && !input.ticketWork ? null : await codingSessionsOffer(
     prisma,
     bindings,
     mcpCallToolId !== undefined && input.agentToolPolicy?.[mcpCallToolId] === true,
@@ -217,12 +228,6 @@ export const buildExecutorToolset = async (
     ))
     && commandSessionLive,
   )
-  // A ticket's work bound through a standing policy gets the coding-session
-  // tools and nothing else: the author's card consented to Claude Code
-  // sessions on these machines, not to the machine's other reviewed programs.
-  // So the generic pair is never offered to it, and the dispatch fence
-  // refuses it too (`standingProgramRefusal`).
-  const standing = Boolean(input.ticketWork)
   const entries = standing ? [] : bindings.flatMap((binding): ExecutorEntry[] => {
     // Connected-browser operations stay unavailable until their private-run
     // disclosure gate lands. In particular, their session must never be
@@ -324,6 +329,7 @@ export const buildExecutorToolset = async (
         ? {
             descriptors: ticketWorkCodingDescriptors(codingOffer.facts, ticketWork),
             observe: ticketWorkCodingObserver(prisma, ticketWork),
+            ticket: true,
             timing: TICKET_WORK_CODING_WAIT_TIMING,
           }
         : {}),

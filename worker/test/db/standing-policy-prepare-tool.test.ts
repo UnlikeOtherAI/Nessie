@@ -69,6 +69,7 @@ const seed = async (prisma: PrismaClient) => {
       agents: ['claude'], allowedToolCount: 2, configDigest: `sha256:${'c'.repeat(64)}`, environmentNames: [],
       maxBudgetUsd: { claude: 5 }, maxLiveSessionsPerOwner: 3,
       mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
+      unaskedCommands: 'listed',
       permissionMode: { claude: 'acceptEdits' }, rootNames: ['nessie'], serverName: 'coding-sessions',
     },
     limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 2 },

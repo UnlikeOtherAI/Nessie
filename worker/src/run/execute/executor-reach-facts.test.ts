@@ -381,7 +381,8 @@ test('a standing bind reads as bound, lists only the ticket\'s own sessions, and
     binding: {
       bindingIds: ['b1', 'b2'], executorId, kind: 'bound' as const, policyId: runId, workId: agentId,
     },
-    coding: { contextId } as never,
+    // Its policy pinned Claude Code in one of the machine's two folders.
+    coding: { allowedRootNames: ['nessie'], codingAgents: ['claude'], contextId } as never,
   }
   const facts = await loadExecutorReachFacts(prisma, {
     agentId, channelId, hostOutput: null, lease: undefined, organizationId, personUserId: null, runId, standing,
@@ -397,6 +398,9 @@ test('a standing bind reads as bound, lists only the ticket\'s own sessions, and
   // Coding sessions alone, and the run is told so.
   assert.doesNotMatch(block, /executor_mcp_call/)
   assert.match(block, /covers its coding sessions alone: no other program on the machine is offered to you/)
+  // Whose machine it is, and only what the policy pinned on it.
+  assert.ok(block.startsWith('You can have a coding agent on the ticket owner\'s machine (Claude Code, in the folders '
+    + 'nessie)'), block)
 })
 
 test('a standing refusal is its own line, and nothing else is read', async () => {

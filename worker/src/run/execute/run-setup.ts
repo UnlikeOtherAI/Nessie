@@ -46,12 +46,16 @@ import { resolveDisclosureViewer } from './disclosure-viewer.js'
 import { loadEmailConversationContext } from './email-conversation-context.js'
 import { loadAllowedToolIds } from './tool-registry.js'
 import {
-  loadTicketWorkRunFacts,
   ticketWorkRecallSkipped,
   TICKET_WORK_PERSON_TOOL_IDS,
   TICKET_WORK_PROJECT_TOOL_IDS,
   withoutEndedWorkWrites,
 } from './ticket-work-setup.js'
+import {
+  prepareTicketWorkRun,
+  TICKET_WORK_STANDING_WITHHELD_TOOL_IDS,
+  withoutMcpTools,
+} from './ticket-work-standing-gate.js'
 import type { ExecutionDependencies, RetrievedMemory, RunContext } from './types.js'
 import {
   browserLoginRequestPromptTools,
@@ -171,10 +175,13 @@ export const resolveWithheldRunToolIds = (input: {
   todosEnabled: boolean
   /** A `ticket.work` run: never the tools that act for a person (`ticket-work-setup.ts`). */
   ticketWork?: boolean
+  /** A standing `ticket.work` run: nothing that reaches past Nessie either (`ticket-work-standing-gate.ts`). */
+  ticketWorkStanding?: boolean
 }): ReadonlySet<string> => new Set([
   ...(input.isHandoffTurn ? [DELEGATE_TOOL_ID] : []),
   ...(input.todosEnabled ? [] : TODO_TOOL_IDS),
   ...(input.ticketWork ? TICKET_WORK_PERSON_TOOL_IDS : []),
+  ...(input.ticketWorkStanding ? TICKET_WORK_STANDING_WITHHELD_TOOL_IDS : []),
 ])
 
 export type RunExecutionSetup = {
@@ -246,11 +253,9 @@ export const prepareRunExecution = async (
   })
   const toolPolicy = agentRecord?.toolPolicy as Record<string, boolean> | null ?? null
   const ticketWorkRun = payload.actorContext.actionContext.purpose === TICKET_WORK_PURPOSE
-  const ticketWork = await loadTicketWorkRunFacts(deps.prisma, {
-    actorContext: payload.actorContext,
-    agentId: context.agent.id,
-    threadId: context.run.threadId,
-  })
+  // Bound before any tool is resolved: a standing run is offered less.
+  const ticketWork = await prepareTicketWorkRun(deps.prisma, { context, payload })
+  const ticketWorkStanding = context.ticketWorkScope?.standing === true
   // Ordinary shared agents may receive project tools only when a real person
   // initiated this project-channel run (or a bounded durable peer request did),
   // the agent remains bound there, and its policy explicitly grants each tool.
@@ -332,6 +337,7 @@ export const prepareRunExecution = async (
         isHandoffTurn: input.isHandoffTurn,
         todosEnabled: agentRecord?.todosEnabled ?? false,
         ticketWork: ticketWorkRun,
+        ticketWorkStanding,
       }),
     },
   )
@@ -361,7 +367,7 @@ export const prepareRunExecution = async (
   // output, a coding session's title in the reach facts — is shown there.
   const hostOutput = { launchScope: launchConversationScope(context.channel.id), sink: context.consumedSources }
   const [mcpToolset, executorToolset, todoFacts] = await Promise.all([
-    buildMcpToolset(
+    ticketWorkStanding ? withoutMcpTools() : buildMcpToolset(
       deps.prisma,
       context.channel.organizationId,
       toolPolicy,
