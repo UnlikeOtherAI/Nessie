@@ -5,9 +5,6 @@
 
 export const executorKeys = {
   all: ['executors'] as const,
-  hostSessions: (executorId?: string) => ['executors', 'host-sessions', executorId ?? 'all'] as const,
-  sessionShares: (executorId: string, sessionId: string) =>
-    ['executors', executorId, 'session', sessionId, 'shares'] as const,
   attention: ['executors', 'attention'] as const,
   detail: (executorId: string) => ['executors', executorId] as const,
   access: (executorId?: string) =>
