@@ -31,6 +31,18 @@ const CodingReasonSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 
 const distinct = (values: readonly string[]): boolean => new Set(values).size === values.length
 
+/**
+ * The commands a ticket needs to reach a merge on its own: push the branch,
+ * open the pull request, watch its checks and merge it. The descriptor names
+ * which of them Claude Code may run without being asked (`mergeCommands`), so
+ * a standing policy's confirmation card can say whether a ticket on this
+ * machine stops at an open pull request — without the host's tool list ever
+ * leaving the host.
+ */
+export const EXECUTOR_CODING_MERGE_COMMANDS = ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'] as const
+export const ExecutorCodingMergeCommandSchema = z.enum(EXECUTOR_CODING_MERGE_COMMANDS)
+export type ExecutorCodingMergeCommand = z.infer<typeof ExecutorCodingMergeCommandSchema>
+
 const sameMembers = (left: readonly string[], right: readonly string[]): boolean => (
   [...left].sort().join(',') === [...right].sort().join(',')
 )
@@ -93,6 +105,17 @@ export const ExecutorCodingSessionsFactsSchema = z
      * own (`executorCodingSessionOwnerKeyInput`).
      */
     maxLiveSessionsPerOwner: z.number().int().min(1).max(20).optional(),
+    /**
+     * Which of `EXECUTOR_CODING_MERGE_COMMANDS` Claude Code may run without
+     * being asked: all of them under `bypassPermissions`, otherwise those an
+     * `allowedTools` entry covers (`Bash`, `Bash(git *)`, `Bash(gh pr:*)`, …)
+     * and no `disallowedTools` entry does. Empty when Claude Code is not
+     * offered, since a Codex turn has no budget and so never works a ticket.
+     * Absent from a descriptor an older daemon signed: a machine that has not
+     * said, which a merge check reads as unable to merge.
+     */
+    mergeCommands: z.array(ExecutorCodingMergeCommandSchema).max(EXECUTOR_CODING_MERGE_COMMANDS.length)
+      .refine(distinct, 'Each merge command is named once.').optional(),
   })
   .strict()
   .refine(

@@ -94,6 +94,8 @@ test('configure generates the bridge entry itself and states its power facts', a
       // No budget configured: nothing bounds a turn of either agent, and the fact says so rather than being left out.
       maxBudgetUsd: { claude: null, codex: null },
       maxLiveSessionsPerOwner: 3,
+      // Bash(git *) and Bash(gh *) cover every command a ticket needs to reach a merge.
+      mergeCommands: ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'],
     })
     assert.deepEqual(written, [], 'nothing is written before the whole policy is accepted')
     await assert.rejects(plan.persist(['file.read']), /enable both to offer them/u)
@@ -253,7 +255,7 @@ test('the facts are part of the signed descriptor and of its policy digest', asy
     assert.notEqual(widened.descriptor.localPolicyDigest, signed.descriptor.localPolicyDigest)
     // A descriptor an older daemon signed carries neither fact, and still parses: a machine that has not said.
     const older = Object.fromEntries(Object.entries(plan.facts!)
-      .filter(([name]) => name !== 'maxBudgetUsd' && name !== 'maxLiveSessionsPerOwner')) as typeof plan.facts
+      .filter(([name]) => !['maxBudgetUsd', 'maxLiveSessionsPerOwner', 'mergeCommands'].includes(name))) as typeof plan.facts
     const olderSigned = buildSignedDescriptor(key, policy(older), noSandboxHost)
     const olderFacts = ExecutorCapabilityDescriptorSchema.parse(olderSigned.descriptor).codingSessions
     assert.equal(olderFacts?.maxBudgetUsd, undefined)

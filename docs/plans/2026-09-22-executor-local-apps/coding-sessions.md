@@ -174,6 +174,9 @@ codingSessions?: {
   // an older daemon's descriptor, which states neither.
   maxBudgetUsd?: Record<'claude' | 'codex', number | null>   // per turn; Codex always null
   maxLiveSessionsPerOwner?: number
+  // Which of git push, gh pr create, gh pr checks, gh pr merge Claude Code may
+  // run unasked; absent from an older daemon's descriptor.
+  mergeCommands?: Array<'git push' | 'gh pr create' | 'gh pr checks' | 'gh pr merge'>
 }
 ```
 

@@ -101,6 +101,15 @@ test('the turn budget and the live-session quota read in plain words, and nothin
   assert.doesNotMatch(older, /spending limit|a turn\)|sessions? open at once/)
 })
 
+test('whether work reaches a merge reads in plain words, and nothing when the machine never said', () => {
+  const all = ['git push', 'gh pr create', 'gh pr checks', 'gh pr merge'] as const
+  assert.match(text(renderReview(revision({ ...facts, mergeCommands: [...all] }))),
+    /Claude Code may push, open, watch and merge pull requests without asking./)
+  assert.match(text(renderReview(revision({ ...facts, mergeCommands: ['git push', 'gh pr create'] }))),
+    /Claude Code must ask before gh pr checks and gh pr merge, so work here stops at an open pull request./)
+  assert.doesNotMatch(text(renderReview(revision(facts))), /pull request/)
+})
+
 test('a revision that does not offer the bridge says nothing about coding agents', () => {
   assert.doesNotMatch(text(renderReview(revision())), /Coding agents/)
 })

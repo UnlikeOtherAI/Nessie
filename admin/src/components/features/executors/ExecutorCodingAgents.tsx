@@ -1,4 +1,4 @@
-import type { ExecutorCodingSessionsFacts } from '@nessie/schemas'
+import { EXECUTOR_CODING_MERGE_COMMANDS, type ExecutorCodingSessionsFacts } from '@nessie/schemas'
 
 import { EXECUTOR_CODING_AGENT_LABELS } from './executor-presentation'
 
@@ -86,9 +86,23 @@ export const describeExecutorCodingSessionQuota = (facts: ExecutorCodingSessions
     + 'person it works for.'
 }
 
+/**
+ * Whether a ticket on this machine can reach a merge on its own, from the
+ * signed `mergeCommands` fact, or nothing for a machine too old to state it.
+ */
+export const describeExecutorCodingMerge = (facts: ExecutorCodingSessionsFacts): string | undefined => {
+  const allowed = facts.mergeCommands
+  if (allowed === undefined || !facts.agents.includes('claude')) return undefined
+  const missing = EXECUTOR_CODING_MERGE_COMMANDS.filter((command) => !allowed.includes(command))
+  return missing.length === 0
+    ? 'Claude Code may push, open, watch and merge pull requests without asking.'
+    : `Claude Code must ask before ${listed(missing)}, so work here stops at an open pull request.`
+}
+
 export const ExecutorCodingAgents = ({ codingSessions }: ExecutorCodingAgentsProps) => {
   if (!codingSessions) return null
   const quota = describeExecutorCodingSessionQuota(codingSessions)
+  const merge = describeExecutorCodingMerge(codingSessions)
   return (
     <div className="mt-1 grid gap-0.5 text-[color:var(--tx2)]">
       <p>
@@ -96,6 +110,7 @@ export const ExecutorCodingAgents = ({ codingSessions }: ExecutorCodingAgentsPro
         {describeExecutorCodingAgents(codingSessions)}
       </p>
       {quota ? <p>{quota}</p> : null}
+      {merge ? <p>{merge}</p> : null}
       {codingSessions.environmentNames.length > 0 ? (
         <p>Given the variables {listed(codingSessions.environmentNames)}.</p>
       ) : null}

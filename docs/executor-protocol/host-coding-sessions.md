@@ -326,7 +326,8 @@ The executor then:
 - refuses the bridge unless `mcp.tools` and `mcp.call` are enabled;
 - adds `codingSessions` to the signed descriptor, inside `localPolicyDigest`:
   `{serverName, agents, permissionMode, allowedToolCount, environmentNames,
-  rootNames, configDigest, maxBudgetUsd, maxLiveSessionsPerOwner}`. Claude's
+  rootNames, configDigest, maxBudgetUsd, maxLiveSessionsPerOwner,
+  mergeCommands}`. Claude's
   mode is its `permissionMode` (`default` when unset); Codex's is the stance
   its reviewed `args` take (`bypassApprovalsAndSandbox`, `fullAuto`,
   `approveForMe`, `sandbox:<mode>` or `default`). `environmentNames` lists,
@@ -339,7 +340,15 @@ The executor then:
   turn. `maxLiveSessionsPerOwner` is the quota. So the server can check both
   (a standing policy's host profile needs them), and a review shows them. A
   descriptor an older daemon signed has neither; that is a machine that has
-  not said, never one without limits.
+  not said, never one without limits. `mergeCommands` names which of
+  `git push`, `gh pr create`, `gh pr checks` and `gh pr merge` Claude Code
+  may run without being asked: all four under `bypassPermissions`, otherwise
+  those an `allowedTools` Bash rule covers (`Bash`, `Bash(git *)`,
+  `Bash(gh pr:*)`, a trailing-`*` prefix) and no `disallowedTools` rule
+  does (`executor/src/coding-session/merge-commands.ts`); empty without
+  Claude Code. The host's tool list stays on the host: a standing policy's
+  card needs only to say whether a ticket there can reach a merge, and a
+  descriptor without the fact is read as unable to.
 
 Both CLIs still read their own configuration on this machine — Claude Code
 its user, project and local settings (`~/.claude/settings.json`, a

@@ -58,6 +58,8 @@ test('the descriptor carries the bridge\'s power facts, and nothing looser', () 
     { ...facts, maxBudgetUsd: { claude: 1_001, codex: null } },
     { ...facts, maxLiveSessionsPerOwner: 0 },
     { ...facts, maxLiveSessionsPerOwner: 2.5 },
+    { ...facts, mergeCommands: ['git push', 'git push'] },
+    { ...facts, mergeCommands: ['git push --force'] },
   ]) {
     assert.equal(ExecutorCodingSessionsFactsSchema.safeParse(loose).success, false, JSON.stringify(loose))
   }
@@ -70,6 +72,9 @@ test('the turn budget per agent and the live-session quota are signed facts; an 
   const older = ExecutorCodingSessionsFactsSchema.parse(facts)
   assert.equal(older.maxBudgetUsd, undefined, 'not stated, which is not the same as no budget')
   assert.equal(older.maxLiveSessionsPerOwner, undefined)
+  assert.equal(older.mergeCommands, undefined, 'a machine that has not said which merge commands it allows')
+  const merging = { ...stated, mergeCommands: ['git push', 'gh pr create'] }
+  assert.deepEqual(ExecutorCodingSessionsFactsSchema.parse(merging).mergeCommands, ['git push', 'gh pr create'])
 })
 
 test('the mcp.call payload stamps an owner beside runId, outside the model\'s arguments', () => {
