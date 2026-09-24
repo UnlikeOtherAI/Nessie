@@ -7,6 +7,7 @@ import { AuthorizedActionContextSchema } from '@nessie/schemas'
 import Fastify from 'fastify'
 
 import { sendApiError } from '../src/lib/api.js'
+import { createGrant, deleteGrant } from '../src/services/tool-grants.js'
 import { createRequestHelpers } from '../src/lib/request-helpers.js'
 import { registerExecutorRoutes } from '../src/routes/executors.js'
 import { registerTriggerMachineAccessRoutes } from '../src/routes/trigger-machine-access.js'
@@ -23,7 +24,9 @@ import { PASSWORD, seedStandingPolicyRoutes as seed } from './standing-policy-ro
  *   limit, `suspended` with the author's name and the fields for an edited
  *   instruction — so the editor never pauses it silently;
  * - `GET /api/triggers/:triggerId` and its `/history` answer an owner and the
- *   trigger's author, who need not be an owner, and nobody else.
+ *   trigger's author, who need not be an owner, and nobody else;
+ * - a connector granted to the agent, or taken from it, suspends the access
+ *   it pins (`agent_changed`) in the grant's own transaction.
  */
 
 const runDatabaseTest = process.env.DATABASE_URL ? test : test.skip
@@ -141,4 +144,37 @@ runDatabaseTest('a trigger edit answers what it did to machine access, and its a
   assert.equal(edited.id, s.triggerId)
   assert.deepEqual(edited.machineAccess, { authorName: 'Ondrej', fields: ['the general instructions'], kind: 'suspended' })
   assert.equal(await policyStatus(), 'suspended')
+
+  // S2: the agent's connectors are pinned too. Confirm again, then grant one and take it back.
+  as(s.authorId)
+  const confirmAgain = async (): Promise<string> => {
+    const again = JSON.parse((await app.inject({
+      method: 'POST', payload: { executorIds: [s.minis] }, url: `${trigger}/machine-access`,
+    })).body) as { data: { accessChangeId: string; confirmationToken: string; policyId: string } }
+    const done = await app.inject({
+      method: 'POST',
+      payload: { confirmationToken: again.data.confirmationToken, currentPassword: PASSWORD },
+      url: `/api/executor-access-changes/${again.data.accessChangeId}/confirm`,
+    })
+    assert.equal(done.statusCode, 200, done.body)
+    return again.data.policyId
+  }
+  const statusOf = async (policyId: string) => prisma.executorStandingPolicy.findUniqueOrThrow({
+    where: { id: policyId }, select: { status: true, suspendedReason: true },
+  })
+  const connector = await prisma.toolRegistryEntry.create({
+    data: {
+      description: 'Create an issue in the tracker.', enabled: true, handlerKind: 'mcp', label: 'Create issue',
+      organizationId: s.organizationId, overview: 'Issue creation.', scopeKey: `scope-${suffix}`,
+      source: 'mcp_remote', status: 'active', toolId: `issue_create_${suffix}`, transport: 'mcp',
+    },
+  })
+  const granted = await confirmAgain()
+  const grant = await createGrant(prisma, {
+    actorUserId: owner.id, agentId: s.agentId, organizationId: s.organizationId, toolRegistryEntryId: connector.id,
+  })
+  assert.deepEqual(await statusOf(granted), { status: 'suspended', suspendedReason: 'agent_changed' })
+  const revoked = await confirmAgain()
+  assert.equal(await deleteGrant(prisma, s.organizationId, connector.id, grant.id, owner.id), true)
+  assert.deepEqual(await statusOf(revoked), { status: 'suspended', suspendedReason: 'agent_changed' })
 })
