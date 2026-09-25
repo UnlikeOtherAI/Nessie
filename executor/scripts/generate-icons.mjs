@@ -99,9 +99,9 @@ const PADDING_RATIO = 0.06
  * The macOS icon grid Nessie's own app icon is drawn on (`mac()` in
  * `assets/logo/generate.py`): an 824-point plate inset 100 points into a
  * 1024-point canvas, 185-point corners, on the same dark ground, with the mark
- * standing where the N stands. Finder, the Dock and Login Items then show the
- * executor as Nessie's sibling rather than as the generic application icon a
- * bundle without one gets.
+ * standing where the N stands. Finder, the DMG window and Login Items then show
+ * the executor as Nessie's sibling rather than as the generic application icon
+ * a bundle without one gets.
  */
 const MAC_GRID = { canvas: 1024, inset: 100, radius: 185, ground: '#07152C', glyph: 0.56 }
 
