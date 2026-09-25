@@ -23,7 +23,6 @@ import { FinderStatusStrip } from './FinderStatusBar'
 import type { FinderVirtualRow } from './FinderVirtualColumn'
 import { FinderVirtualPane } from './FinderVirtualPane'
 import { FinderTreePane } from './FinderTreePane'
-import { FinderTreeDetail } from './FinderTreeDetail'
 import { FinderScopeReadState } from './FinderScopeReadState'
 import { FinderFolderHost, type FinderFolderLevel } from './FinderFolderColumn'
 import { emptyFinderSelection, finderSelectionReducer } from './finder-selection'
@@ -363,6 +362,7 @@ export const DocumentsFinder = ({
       query={rootQuery}
       refuseProps={uploads.refuseProps}
       resize={resizeFor('root')}
+      title={single && !virtualKind ? 'Knowledge' : 'Browse'}
       root={rootQuery.data}
     />
   )
@@ -512,31 +512,27 @@ export const DocumentsFinder = ({
   // Say so where the columns would have been, with the Retry beside it.
   const scopeReadFailed = !orgScope && knowledge.spacesLoadFailed
 
-  const treeDetail = (
-    <FinderTreeDetail
-      activePageId={knowledge.openPageId} agentDocumentsActive={knowledge.selectedRoot?.kind === 'agent-space'}
-      agentsDirectoryActive={agentsDirectoryActive} browseTo={browseTo} documentPane={documentPane}
-      onOpenAgent={openAgentHome}
-      onOpenDocument={(page, path) => openDocument(page, () => knowledge.openPagePath(path))}
-      pagePath={pagePath} pagesQuery={pagesQuery}
-      root={rootQuery.data} rootQuery={rootQuery} rowsIn={rowsIn}
-    />
-  )
-
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[color:var(--main)] text-[color:var(--tx)]">
       {toolbar}
       <div className="flex min-h-0 flex-1">
         {scopeReadFailed ? (
           <FinderScopeReadState query={pagesQuery} />
-        ) : view === 'tree' && !single && !virtualColumnKey ? (
+        ) : view === 'tree' && !single ? (
           <FinderTreePane activePageId={knowledge.openPageId} activeRootRowId={selectedRootRowId} browseTo={browseTo}
             createFolderColumnKey={creatingFolderIn} createFolderPending={knowledge.createFolderPending}
             onCancelFolder={closeNewFolder} onSubmitFolder={(name) => submitFolder(activeParentPageId, name)}
             onOpenDocument={(page, path) => openDocument(page, () => knowledge.openPagePath(path))}
             onOpenRoot={openRootRow} pagePath={pagePath} pagesQuery={pagesQuery}
             root={rootQuery.data} rootQuery={rootQuery} rowsIn={rowsIn}
-            selectedSpaceId={selectedSpaceId} detail={treeDetail} />
+            selectedSpaceId={selectedSpaceId}
+            agentDocumentsActive={knowledge.selectedRoot?.kind === 'agent-space'}
+            agentsDirectoryActive={agentsDirectoryActive}
+            documentPane={documentPane}
+            onOpenAgent={openAgentHome}
+            virtualListing={virtualKind ? { dispatch, kind: virtualKind, openDocument,
+              openPageDeepLink: knowledge.openPageDeepLink, query: virtualQuery,
+              rows: virtualList, selection } : undefined} />
         ) : listView ? (
           <>
             {orgScope ? (
