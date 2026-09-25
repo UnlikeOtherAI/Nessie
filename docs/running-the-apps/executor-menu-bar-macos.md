@@ -242,6 +242,15 @@ the result finished. Its plan — the file layout, the signing arguments, and
 every refusal below — is `executor/packaging/macos/dmg-plan.mjs`, asserted by
 `node --test executor/packaging/macos/dmg-plan.test.mjs` on any host.
 
+The app's icon is the executor's plus on Nessie's dark plate, compiled from
+`executor/menubar-macos/Sources/App/Assets.xcassets`. Those images are drawn
+from `assets/logo/nessie-executor-mark.svg` by
+`node executor/scripts/generate-icons.mjs`, which also draws the Windows
+executor icons, so regenerate them after changing the mark. `build-app.sh`
+refuses a bundle with no application icon. Without one, Finder, the DMG
+window and **System Settings → General → Login Items** show the generic
+application icon.
+
 ### The release build
 
 ```sh

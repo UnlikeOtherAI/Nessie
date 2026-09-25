@@ -1,4 +1,6 @@
-// Draws every tray icon from the one executor mark in `assets/logo`.
+// Draws every executor icon from the one executor mark in `assets/logo`: the
+// Windows tray's four states, the Windows window, taskbar and Apps & features
+// icon, and the macOS menu bar app's application icon.
 //
 // The mark is an SVG of the shape itself, so each raster is drawn rather than
 // resampled from a PNG with a soft, fringed edge — the same rule
@@ -16,18 +18,23 @@
 // rasterises with `sharp`, already in the workspace through `@nessie/runtime`,
 // the same way `assets/logo/generate.py` leans on a Pillow it does not vendor.
 //
-//     node executor/tray-windows/scripts/generate-icons.mjs
+//     node executor/scripts/generate-icons.mjs
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import sharp from 'sharp'
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
-const trayDirectory = resolve(scriptDirectory, '..')
-const repositoryDirectory = resolve(trayDirectory, '../..')
-const iconsDirectory = join(trayDirectory, 'src-tauri/icons')
+const executorDirectory = resolve(scriptDirectory, '..')
+const repositoryDirectory = resolve(executorDirectory, '..')
+const iconsDirectory = join(executorDirectory, 'tray-windows/src-tauri/icons')
+const installerIconPath = join(executorDirectory, 'packaging/windows/assets/nessie-executor.ico')
+const appIconSetDirectory = join(
+  executorDirectory,
+  'menubar-macos/Sources/App/Assets.xcassets/AppIcon.appiconset',
+)
 const markPath = join(repositoryDirectory, 'assets/logo/nessie-executor-mark.svg')
 
 /**
@@ -88,6 +95,19 @@ const TRAY_SIZE = 32
  */
 const PADDING_RATIO = 0.06
 
+/**
+ * The macOS icon grid Nessie's own app icon is drawn on (`mac()` in
+ * `assets/logo/generate.py`): an 824-point plate inset 100 points into a
+ * 1024-point canvas, 185-point corners, on the same dark ground, with the mark
+ * standing where the N stands. Finder, the Dock and Login Items then show the
+ * executor as Nessie's sibling rather than as the generic application icon a
+ * bundle without one gets.
+ */
+const MAC_GRID = { canvas: 1024, inset: 100, radius: 185, ground: '#07152C', glyph: 0.56 }
+
+/** Every point size macOS asks an app icon for, each at 1x and 2x. */
+const MAC_POINT_SIZES = [16, 32, 128, 256, 512]
+
 const recolour = (markup, palette) => {
   let recoloured = markup
   for (const [slot, brandColour] of Object.entries(BRAND)) {
@@ -116,6 +136,28 @@ const render = async (markup, size) => {
     .composite([{ input: mark, top: margin, left: margin }])
     .png({ compressionLevel: 9 })
     .toBuffer()
+}
+
+/**
+ * The plate and the mark are one SVG drawn at the target size, not a mark
+ * raster pasted onto a plate raster: at 16 pixels the 100-point inset is a pixel
+ * and a half, and rounding each layer on its own would set the plus off centre.
+ */
+const renderMac = (markup, size) => {
+  const viewBox = markup.match(/<svg[^>]*\sviewBox="([^"]+)"/)?.[1]
+  if (!viewBox) throw new Error('the mark has no viewBox to place it by')
+  const body = markup.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
+  const { canvas, inset, radius, ground, glyph } = MAC_GRID
+  const plate = canvas - 2 * inset
+  const extent = canvas * glyph
+  const origin = (canvas - extent) / 2
+  const icon = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${canvas} ${canvas}">`,
+    `<rect x="${inset}" y="${inset}" width="${plate}" height="${plate}" rx="${radius}" fill="${ground}"/>`,
+    `<svg x="${origin}" y="${origin}" width="${extent}" height="${extent}" viewBox="${viewBox}">${body}</svg>`,
+    '</svg>',
+  ].join('')
+  return sharp(Buffer.from(icon)).png({ compressionLevel: 9 }).toBuffer()
 }
 
 /**
@@ -155,14 +197,34 @@ for (const [name, palette] of Object.entries(PALETTES)) {
 }
 
 // The window and taskbar icon is the brand mark: those surfaces name the
-// application, and only the tray reports a state.
+// application, and only the tray reports a state. The installer's Apps &
+// features entry names the same application, so it carries the same file.
 await writeFile(join(iconsDirectory, '32x32.png'), await render(markup, 32))
+const windowsIcon = ico(
+  await Promise.all(ICO_SIZES.map(async (size) => ({ size, data: await render(markup, size) }))),
+)
+await writeFile(join(iconsDirectory, 'icon.ico'), windowsIcon)
+await writeFile(installerIconPath, windowsIcon)
+
+// The asset catalog the menu bar app compiles its icon from. Contents.json is
+// written with the images so the set can never name a file it does not hold.
+await mkdir(appIconSetDirectory, { recursive: true })
+const appIconImages = []
+for (const points of MAC_POINT_SIZES) {
+  for (const scale of [1, 2]) {
+    const filename = `icon_${points}x${points}${scale === 2 ? '@2x' : ''}.png`
+    await writeFile(join(appIconSetDirectory, filename), await renderMac(markup, points * scale))
+    appIconImages.push({ filename, idiom: 'mac', scale: `${scale}x`, size: `${points}x${points}` })
+  }
+}
 await writeFile(
-  join(iconsDirectory, 'icon.ico'),
-  ico(await Promise.all(ICO_SIZES.map(async (size) => ({ size, data: await render(markup, size) })))),
+  join(appIconSetDirectory, 'Contents.json'),
+  `${JSON.stringify({ images: appIconImages, info: { author: 'xcode', version: 1 } }, null, 2)}\n`,
 )
 
 console.log(`wrote ${Object.keys(PALETTES).length + 2} icons to ${relativeToRepository(iconsDirectory)}`)
+console.log(`wrote the Apps & features icon to ${relativeToRepository(installerIconPath)}`)
+console.log(`wrote ${appIconImages.length} app icons to ${relativeToRepository(appIconSetDirectory)}`)
 
 function relativeToRepository(path) {
   return path.slice(repositoryDirectory.length + 1).split('\\').join('/')
