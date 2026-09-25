@@ -16,19 +16,21 @@ final class ExecutorConnections: ObservableObject {
 
     init(isDevelopmentBuild: Bool) {
         self.isDevelopmentBuild = isDevelopmentBuild
+        let initialControllers: [ExecutorController]
         switch ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild) {
         case let .success(directories):
-            controllers = directories.map {
+            initialControllers = directories.map {
                 ExecutorController(isDevelopmentBuild: isDevelopmentBuild, stateDirectory: $0)
             }
         case let .failure(refusal):
-            controllers = [ExecutorController(
+            initialControllers = [ExecutorController(
                 isDevelopmentBuild: isDevelopmentBuild,
                 stateDirectory: ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild),
                 refusal: refusal
             )]
         }
-        selectedDirectory = controllers[0].stateDirectory
+        controllers = initialControllers
+        selectedDirectory = initialControllers[0].stateDirectory
         controllers.forEach(observe)
     }
 

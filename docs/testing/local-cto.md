@@ -110,3 +110,9 @@ including Windows and Linux native-transport fixtures. Native folder and
 confirmation dialogs were mocked in those browser checks. Linux native
 bundling passed CI. The Mac GUI was not installed: this machine has no
 Developer ID Application certificate, so its current signed app remains intact.
+
+Installer verification must run the full Mac build, not only `swiftc -typecheck`:
+the Release compiler also checks definite initialization of property wrappers.
+That build caught an account-controller initializer reading a `@Published`
+property before all stored properties were initialized. Constructing the initial
+controllers in a local value before assigning either published property fixes it.
