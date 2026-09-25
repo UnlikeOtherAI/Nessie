@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { getExecutorForManagement, listVisibleExecutors, resolveExecutorAvailabilityCandidates, updateExecutorSharing } from '../src/index.js'
+import {
+  canReadExecutorStatus, getExecutorForManagement, getExecutorSharing, listExecutorsForProject,
+  listVisibleExecutors, resolveExecutorAvailabilityCandidates, updateExecutorSharing,
+} from '../src/index.js'
 import { leaseTestPrisma, seedLeaseWorld, LOCAL_APPS } from './lease-fixture.js'
 
 const dbTest = process.env.DATABASE_URL ? test : test.skip
@@ -47,8 +50,16 @@ dbTest('sharing grants use by team or project, administration only explicitly or
     assert.equal(await visible(world.memberId), true)
     assert.equal(await manage(world.memberId), null, 'project role never grants machine administration')
     assert.ok(await manage(world.holderId), 'team administrator sees the shared machine')
+    assert.equal((await listExecutorsForProject(prisma, world.memberContext, world.projectId)).length, 1)
+    assert.equal((await listExecutorsForProject(prisma, world.memberContext, foreignProject.id)).length, 0)
+    assert.equal(await canReadExecutorStatus(prisma, { executorId: world.executorId,
+      organizationId: world.organizationId, userId: world.memberId }), true)
     assert.equal((await available(world.projectId)).candidates.length, 1)
     assert.equal((await available()).candidates.length, 0, 'project grant does not authorize unrelated work')
+    await prisma.project.update({ where: { id: world.projectId }, data: { visibility: 'protected' } })
+    const sharing = await getExecutorSharing(prisma, world.adminContext, world.executorId, team.id)
+    assert.equal(sharing.ownerUserId, world.adminId)
+    assert.deepEqual(sharing.projects, [{ projectId: world.projectId, name: 'Private project' }])
     await change({ kind: 'project', projectId: world.projectId, enabled: false })
     assert.equal(await visible(world.memberId), false)
     await change({ kind: 'team', enabled: true })
@@ -56,6 +67,8 @@ dbTest('sharing grants use by team or project, administration only explicitly or
     assert.equal(await manage(world.memberId), null)
     await prisma.teamMember.delete({ where: { teamId_userId: { teamId: team.id, userId: world.memberId } } })
     assert.equal((await available()).candidates.length, 0, 'departed members lose use without stale ACL copies')
+    assert.equal(await canReadExecutorStatus(prisma, { executorId: world.executorId,
+      organizationId: world.organizationId, userId: world.memberId }), false)
     await change({ kind: 'team', enabled: false })
     assert.equal(await manage(world.holderId), null)
   } finally {

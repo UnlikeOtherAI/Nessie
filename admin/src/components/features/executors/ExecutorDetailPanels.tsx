@@ -10,7 +10,6 @@ import { ExecutorPermissionsPanel } from './ExecutorPermissionsPanel'
 import { ExecutorActivityPanel } from './ExecutorActivityPanel'
 import { ExecutorLeasesPanel } from './ExecutorLeasesPanel'
 import { ExecutorLocalMcpPanel } from './ExecutorLocalMcpPanel'
-import { ExecutorHostSessionList } from './ExecutorHostSessionList'
 import { ExecutorStandingAccessPanel } from './ExecutorStandingAccessPanel'
 
 export const EXECUTOR_TAB_VALUES = ['agents', 'sessions', 'permissions', 'activity'] as const
@@ -51,7 +50,6 @@ export const ExecutorDetailPanels = ({
             {tab === 'agents' ? <ExecutorAgentsPanel executorId={executor.id} scopeKind={executor.scope.kind} token={token} /> : null}
             {tab === 'permissions' ? <ExecutorPermissionsPanel executorId={executor.id} teamId={teamId} /> : null}
             {tab === 'sessions' ? <div className="grid gap-6">
-              <ExecutorHostSessionList executorId={executor.id} />
               <ExecutorLocalMcpPanel descriptorRevisions={access.descriptorRevisions ?? []}
                 executorId={executor.id} localMcp={access.localMcp} />
             </div> : null}

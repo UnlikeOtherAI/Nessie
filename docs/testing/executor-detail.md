@@ -9,7 +9,8 @@ fixed ports. The real page is exercised headlessly at 1280 and 390 pixels:
 people can receive use/admin access, projects receive use access, the current
 team has one switch, and each action applies without a confirmation dialog.
 Activity, conversation links, standing ticket access and local-model dialogs
-remain covered. Screenshots are in e2e/screenshots/executor-detail/.
+remain covered. The project's Executors tab reuses the inventory table and opens
+the same machine detail. Screenshots are in e2e/screenshots/executor-detail/.
 
 The executor-manage database suite proves authorization, project-scoped runtime
 use, team administrators' conditional visibility, membership removal and

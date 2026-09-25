@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { EmptyState } from '../../components/shared/EmptyState'
+import { Link, useNavigate } from 'react-router-dom'
+import { ExecutorsTable } from '../../components/features/executors/ExecutorsTable'
 import { PageBody, Section } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
 import { useExecutors } from '../../facades/executors/hooks'
@@ -10,6 +10,7 @@ type ProjectExecutorsTabProps = {
 
 export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => {
   const executorsQuery = useExecutors(projectId)
+  const navigate = useNavigate()
   const executors = executorsQuery.data ?? []
 
   return (
@@ -31,29 +32,9 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
           loadingLabel="Loading executors…"
           query={executorsQuery}
         >
-          {() =>
-            executors.length === 0 ? (
-              <EmptyState>
-                No executor is shared with this project. Open an executor’s Permissions tab to share it.
-              </EmptyState>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {executors.map((executor) => (
-                  <Link
-                    className="admin-card grid gap-1 p-4 transition-colors hover:bg-[color:var(--overlay-weak)]"
-                    key={executor.id}
-                    to={`/agents/executors/${executor.id}`}
-                  >
-                    <span className="text-sm font-semibold text-[color:var(--tx)]">{executor.label}</span>
-                    <span className="text-xs text-[color:var(--tx3)]">
-                      {executor.status} · {executor.profiles.join(', ') || 'Waiting for machine capabilities'}
-                    </span>
-                    <span className="text-xs text-[color:var(--tx2)]">Open executor</span>
-                  </Link>
-                ))}
-              </div>
-            )
-          }
+          {() => <ExecutorsTable executors={executors} isLoading={false}
+            emptyMessage="No executor is shared with this project. Open an executor’s Permissions tab to share it."
+            onOpen={(id) => void navigate(`/agents/executors/${id}`)} />}
         </QueryState>
       </Section>
     </PageBody>

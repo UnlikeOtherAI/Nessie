@@ -46,7 +46,8 @@ actually offers. Signatures, monotonic revisions, connection fences and runtime
 checks remain enforced. Replacing a report fences the previous runtime; changes
 to a separately authorized ticket policy's pinned terms suspend that policy.
 
-**Sessions** retains terminal sessions and the local-app/coding-session view.
+**Sessions** shows the local-app/coding-session view with links to live terminals;
+the cross-machine Sessions page lists terminals the reader owns or can view.
 **Activity** retains conversation leases, standing ticket access and recent work.
 A grant to use or manage an executor does not grant access to someone else's
 conversation or terminal contents. Existing session-sharing rules still apply.
