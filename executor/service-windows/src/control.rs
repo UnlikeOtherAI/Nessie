@@ -59,8 +59,13 @@ impl Control {
                     Err(reason) => Response::error(reason),
                 }
             }
-            Command::PairingStatus => match supervisor.pairing_action("status", None, client_sid) {
+            Command::PairingStatus { executor_id } => match executor_id {
+                Some(id) => match supervisor.pairing_connection(&id) {
+                    Ok(pairing) => Response::Pairing { pairing }, Err(reason) => Response::error(reason),
+                },
+                None => match supervisor.pairing_action("status", None, client_sid) {
                 Ok(pairing) => Response::Pairing { pairing }, Err(reason) => Response::error(reason),
+                },
             },
             Command::PairingCancel => match supervisor.pairing_action("cancel", None, client_sid) {
                 Ok(pairing) => Response::Pairing { pairing }, Err(reason) => Response::error(reason),
@@ -167,7 +172,7 @@ mod tests {
         let control = Control::Refused(refusal.to_owned());
         for command in [
             Command::Status,
-            Command::PairingStatus,
+            Command::PairingStatus { executor_id: None },
             Command::PairingCancel,
             Command::PairingConfirm { claim_digest: format!("sha256:{}", "0".repeat(64)) },
             Command::Start { executor_id: "00000000-0000-4000-8000-000000000001".to_owned() },

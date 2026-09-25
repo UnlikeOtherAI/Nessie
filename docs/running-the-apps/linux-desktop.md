@@ -4,6 +4,12 @@ Chapter of [Running the Native Apps](overview.md).
 
 ## Pairing and unpairing
 
+In Nessie Desktop, open **Executors → Pair executor → Connect this computer**.
+Choose a workspace, review the account and team, then confirm the native dialog.
+Repeat while signed into another account to add an independent connection;
+existing connections continue running. Each executor has its own Start/Stop
+controls. The CLI supports the same independent pairings as described below.
+
 For a headless machine, install the standalone Debian executor package as an
 administrator, then pair and run it as the ordinary user who owns the local
 programs. Do not pair as root.
@@ -46,7 +52,8 @@ To unpair, **Disconnect** or **Delete** in Nessie, then run
 `loginctl disable-linger` affects all of your user services, so use it only if
 none must survive logout. Uninstall with `sudo apt remove nessie-executor` if
 desired; this is not server revocation. Preserve state until old work is closed
-and revocation is complete. To switch team, pair again with `--replace`, review
+and revocation is complete. To replace a connection, pair again with
+`--replace --executor <executor-id>`, review
 the new destination, and enable the new executor ID. Never reuse another
 computer's state directory.
 

@@ -2,7 +2,7 @@ let pairingView = null
 let pairingOpen = false
 let pairingBusy = false
 
-const pairingDestination = (view) => [view.organizationName, view.teamName].filter(Boolean).join(' · ')
+const pairingDestination = (view) => [view.organizationName, view.teamName, view.apiBaseUrl].filter(Boolean).join(' · ')
 
 const renderPairing = (view) => {
   pairingView = view
@@ -77,10 +77,8 @@ const restorePairing = async () => {
 
 const openPairForm = async () => {
   showList()
-  if (pairingView?.status === 'paired') {
-    renderPairing({ ...pairingView, status: 'alreadyPaired' })
-    return
-  }
+  document.getElementById('pairing-progress').hidden = true
+  pairingOpen = false
   document.getElementById('pair-form').style.display = 'block'
 }
 
@@ -101,7 +99,10 @@ window.addEventListener('DOMContentLoaded', () => {
       chosenWorkspace = await window.__TAURI__.core.invoke('executor_choose_folder')
       if (!chosenWorkspace) return
     }
-    await pairingAction('executor_pairing_start', { workspaceRoot: chosenWorkspace, replace })
+    await pairingAction('executor_pairing_start', {
+      workspaceRoot: chosenWorkspace, replace,
+      apiBaseUrl: document.getElementById('pairing-server').value,
+    })
   }
   document.getElementById('pair-form').onsubmit = async (event) => { event.preventDefault(); await start(false) }
   document.getElementById('pairing-replace').onclick = () => start(true)

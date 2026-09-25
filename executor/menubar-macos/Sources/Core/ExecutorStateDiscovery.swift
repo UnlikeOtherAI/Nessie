@@ -28,7 +28,7 @@ public enum ExecutorStateDiscovery {
         preferredDirectory: String,
         legacyRoots: [String],
         fileManager: FileManager = .default
-    ) -> Result<String, ExecutorRefusal> {
+    ) -> Result<[String], ExecutorRefusal> {
         do {
             var candidates: Set<String> = []
             if try containsPairing(preferredDirectory, fileManager: fileManager) {
@@ -43,12 +43,7 @@ public enum ExecutorStateDiscovery {
                     }
                 }
             }
-            guard candidates.count <= 1 else {
-                return .failure(ExecutorRefusal(
-                    "This Mac has several existing pairings. Close the extra connections before pairing again."
-                ))
-            }
-            return .success(candidates.first ?? preferredDirectory)
+            return .success(candidates.isEmpty ? [preferredDirectory] : candidates.sorted())
         } catch {
             return .failure(ExecutorRefusal(
                 "Nessie could not check this Mac's existing connections. Resolve their access before pairing again."

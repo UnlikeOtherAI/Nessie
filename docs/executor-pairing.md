@@ -71,9 +71,34 @@ tab. Agents return the same session link. **Share session** gives named users
 in your organisation view-only access to that session, including scrollback;
 the URL alone grants nothing. Remove a viewer in the same dialog to revoke it.
 
-## Existing pairing
+## Multiple accounts and servers
 
-The native app identifies an existing connection by organisation and team and
+Each connection has its own machine key, server, workspace policy and agent
+permissions. Adding another account preserves existing connections. Approving
+one account never grants another account access.
+
+- macOS: choose **Add account** in the menu bar or account selector. Settings,
+  folders and tools apply to the selected connection. Quitting stops the app's
+  managed daemons.
+- Windows tray: choose **Add account**, select the server and workspace, and
+  claim the code from the intended account. Start and Stop act on one row.
+- Windows and Linux Desktop: **Executors → Pair executor → Connect this
+  computer** opens the native folder picker, reuses the normal account/team
+  review, and confirms the destination in a native dialog. Mac Desktop opens
+  the menu bar app, which owns its connections.
+- CLI on macOS/Linux: run `nessie-executor pair` again to add a connection.
+  On Windows, `pair --cli` explicitly chooses a user-session CLI connection;
+  ordinary `pair` points to the tray. `status` lists independent bindings.
+  Linux enables one user service per confirmed executor ID.
+
+An unfinished CLI pairing resumes before another is created. Explicit
+replacement requires `--replace --executor <id>` (or `--state-dir`), so it
+cannot silently select another account. Independent pairings do not copy keys
+between OS accounts or between the Windows user and service supervisors.
+
+## Replacing a connection
+
+The Mac app identifies the selected connection by organisation and team and
 offers to replace it or cancel. Replacement revokes the old executor using
 the machine's existing key, so it does not leave another active executor
 behind. Existing access and audit history stay with that old record.

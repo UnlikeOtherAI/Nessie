@@ -25,7 +25,7 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [the channel policy standard](docs/standards/channel-decision-policy.md) and
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
-Executor pairing and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
+Executor pairing, independent account/server connections on each platform, and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
 Sequential Task Sets, their native agent tools and the configured

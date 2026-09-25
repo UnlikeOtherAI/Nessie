@@ -11,6 +11,13 @@ For Claude and interactive terminals, use **Nessie Desktop's user-session
 executor**, running as the Windows account where Claude is authenticated.
 Do not pair both supervisors as if they were one connection.
 
+Both can hold multiple independent account connections. Choose **Add account**
+in the tray, or **Executors → Pair executor → Connect this computer** in Desktop.
+The latter runs under your Windows account and is appropriate for personal
+terminal programs. Adding an account never replaces or stops an existing one.
+The headless equivalent is `nessie-executor pair --cli`; use `status` to list
+connections and a specific executor ID when starting, stopping or replacing one.
+
 1. Install the intended application. Public releases use Authenticode signing;
    an explicitly requested development build can use Desktop's debug runtime.
 2. Open its local executor controls, select **Nessie** as the server, choose a

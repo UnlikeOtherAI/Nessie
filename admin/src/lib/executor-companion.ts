@@ -63,6 +63,12 @@ const invokeCompanion = async <Result>(command: string, payload?: Record<string,
 export const executorCompanionStatus = (): Promise<ExecutorCompanionStatusResponse> =>
   invokeCompanion('executor_companion_status')
 
+export const startCompanionPairing = (apiBaseUrl: string): Promise<string> =>
+  invokeCompanion('executor_companion_pairing_start', { apiBaseUrl })
+
+export const confirmCompanionPairing = (): Promise<void> => invokeCompanion('executor_companion_pairing_confirm')
+export const cancelCompanionPairing = (): Promise<void> => invokeCompanion('executor_companion_pairing_cancel')
+
 export const startExecutorWithCompanion = (
   executorId: string,
 ): Promise<ExecutorCompanionStatus> =>

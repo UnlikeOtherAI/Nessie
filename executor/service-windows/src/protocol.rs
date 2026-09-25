@@ -46,7 +46,7 @@ pub enum Command {
     EnrollControlClient,
     Pair(PairCommand),
     PairingStart { api_base_url: String, workspace_root: String, replace: bool },
-    PairingStatus,
+    PairingStatus { executor_id: Option<String> },
     PairingConfirm { claim_digest: String },
     PairingCancel,
     Start { executor_id: String },
@@ -84,7 +84,7 @@ enum Request {
         workspace_root: String,
     },
     PairingStart { api_base_url: String, workspace_root: String, replace: bool },
-    PairingStatus,
+    PairingStatus { executor_id: Option<String> },
     PairingConfirm { claim_digest: String },
     PairingCancel,
     Start { executor_id: String },
@@ -232,7 +232,12 @@ pub fn parse_request(line: &str) -> Result<Command, String> {
         Request::PairingStart { api_base_url, workspace_root: workspace, replace } => Ok(Command::PairingStart {
             api_base_url: approved_api_base_url(&api_base_url)?, workspace_root: workspace_root(workspace)?, replace,
         }),
-        Request::PairingStatus => Ok(Command::PairingStatus),
+        Request::PairingStatus { executor_id } => {
+            if let Some(ref id) = executor_id {
+                if !valid_identifier(id) { return Err("The executor id is malformed.".to_owned()); }
+            }
+            Ok(Command::PairingStatus { executor_id })
+        },
         Request::PairingCancel => Ok(Command::PairingCancel),
         Request::PairingConfirm { claim_digest } => {
             if claim_digest.len() != 71 || !claim_digest.starts_with("sha256:")

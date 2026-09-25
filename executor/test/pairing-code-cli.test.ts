@@ -15,12 +15,17 @@ test('pairing on Windows guides an ordinary terminal to the service tray before 
 test('pairing keeps explicit operator state and JSON native commands on their configured path', () => {
   for (const args of [
     ['pair', '--state-dir', 'C:/operator/executor'],
+    ['pair', '--cli'],
     ['pairing-start', '--json', '--pairing-input-stdin'],
     ['pairing-status', '--json'],
     ['pair', '--enrollment', 'existing-enrollment'],
   ]) assert.equal(pairingUsesWindowsTray(args, 'win32'), false)
   assert.equal(pairingUsesWindowsTray(['pair'], 'linux'), false)
   assert.equal(pairingUsesWindowsTray(['pair'], 'darwin'), false)
+})
+
+test('replacement never implicitly selects an existing account', async () => {
+  await assert.rejects(runPairingCodeCli(['pair', '--replace'], 'linux'), /Choose the connection to replace/)
 })
 
 test('pairing refuses a missing operator directory before falling back to a default pairing', async () => {

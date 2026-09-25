@@ -19,7 +19,7 @@ final class ExecutorStateDiscoveryTests: XCTestCase {
             let preferred = root.appendingPathComponent("current").path
             XCTAssertEqual(try ExecutorStateDiscovery.resolve(
                 preferredDirectory: preferred, legacyRoots: [root.appendingPathComponent("desktop").path]
-            ).get(), preferred)
+            ).get(), [preferred])
         }
     }
 
@@ -30,7 +30,7 @@ final class ExecutorStateDiscoveryTests: XCTestCase {
             XCTAssertEqual(try ExecutorStateDiscovery.resolve(
                 preferredDirectory: root.appendingPathComponent("current").path,
                 legacyRoots: [root.appendingPathComponent("desktop").path]
-            ).get(), existing.path)
+            ).get(), [existing.path])
         }
     }
 
@@ -41,18 +41,18 @@ final class ExecutorStateDiscoveryTests: XCTestCase {
             XCTAssertEqual(try ExecutorStateDiscovery.resolve(
                 preferredDirectory: root.appendingPathComponent("current").path,
                 legacyRoots: [root.appendingPathComponent("desktop").path]
-            ).get(), pending.path)
+            ).get(), [pending.path])
         }
     }
 
-    func testMultipleKnownPairingsFailClosed() throws {
+    func testMultipleKnownPairingsAreAllDiscovered() throws {
         try withRoot { root in
             let preferred = root.appendingPathComponent("current")
             try paired(preferred)
             try paired(root.appendingPathComponent("desktop/machine-one"))
-            XCTAssertThrowsError(try ExecutorStateDiscovery.resolve(
+            XCTAssertEqual(try ExecutorStateDiscovery.resolve(
                 preferredDirectory: preferred.path, legacyRoots: [root.appendingPathComponent("desktop").path]
-            ).get())
+            ).get(), [preferred.path, root.appendingPathComponent("desktop/machine-one").path].sorted())
         }
     }
 
@@ -77,7 +77,7 @@ final class ExecutorStateDiscoveryTests: XCTestCase {
             try paired(desktop.appendingPathComponent("unrelated/deeper"))
             XCTAssertEqual(try ExecutorStateDiscovery.resolve(
                 preferredDirectory: preferred, legacyRoots: [desktop.path]
-            ).get(), preferred)
+            ).get(), [preferred])
             try FileManager.default.createSymbolicLink(
                 at: desktop.appendingPathComponent("linked"),
                 withDestinationURL: desktop.appendingPathComponent("unrelated")
