@@ -14,6 +14,9 @@ map: Rule zero, workflow and required CI checks, ports, deployment, and the
 invariants that apply wherever you are working. It is **not** imported into
 this file — open it.
 
+For real-provider testing before deployment, follow
+[local CTO verification](docs/testing/local-cto.md).
+
 Agent response length is prompt-guided rather than application-capped; follow
 the run-budget standard linked from `AGENTS.md` for provider protocol limits.
 

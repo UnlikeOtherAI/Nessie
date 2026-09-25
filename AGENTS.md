@@ -72,6 +72,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - **Desktop bundles, macOS signing (never ad-hoc unless Ondrej explicitly asks), the Developer ID signed and notarized executor menu bar DMG, lint-gated root builds, Prisma generation ordering, and migration immutability:** read [docs/standards/build-and-release.md](docs/standards/build-and-release.md) before building a desktop app or an installer, changing a build pipeline or Dockerfile, or touching `api/prisma/migrations/`.
 - After every server start/restart, verify it is actually running: check the process is up, hit a health endpoint, or confirm the expected log output appears.
 - Package manager: **pnpm**.
+- Real-provider local CTO verification and temporary subscription credentials: see [docs/testing/local-cto.md](docs/testing/local-cto.md).
 - **Private Deep.Agent package access.** CI and Docker use the externally
   managed `DEEP_AGENT_READ_TOKEN` (fine-grained `deep.agent` Contents:Read);
   never commit, log or persist it.
