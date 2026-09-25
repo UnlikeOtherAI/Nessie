@@ -576,7 +576,7 @@ export const DocumentsFinder = ({
       </div>
       {statusBar}
       {documentPane && view !== 'tree' ? (
-        <div className="absolute inset-0 z-[1] bg-[color:var(--main)]">{documentPane}</div>
+        <div className="absolute inset-0 z-[var(--layer-stack)] bg-[color:var(--main)]">{documentPane}</div>
       ) : null}
       <FinderUploadInput
         parentPageId={activeParentPageId}

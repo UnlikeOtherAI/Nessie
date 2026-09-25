@@ -42,7 +42,7 @@ test('Tree owns the adjacent document pane while other views keep full-surface d
 
   assert.match(workspace, /documentPane=\{!stacked && documentOpen \? documentPane : undefined\}/)
   assert.match(documents, /documentPane && view !== 'tree'/)
-  assert.match(documents, /absolute inset-0 z-\[1\]/)
+  assert.match(documents, /absolute inset-0 z-\[var\(--layer-stack\)\]/)
   assert.match(pane, /border-l border-\[color:var\(--sep\)\]/)
   assert.match(pane, /\{detail\}/)
 })
