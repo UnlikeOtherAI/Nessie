@@ -100,3 +100,7 @@ make it pass. It intentionally exercises plaintext local wire transport only.
 Nessie's production connected-mail dialer must continue to reject loopback and
 requires a trusted TLS certificate, so this daemon is never a production-client
 or egress-guard test.
+
+Worker test prerequisites include `@nessie/local-inference-host#build` explicitly:
+the real executor bridge fixture imports that package through executor source.
+A worker-only test selection must build it even when the executor is unaffected.

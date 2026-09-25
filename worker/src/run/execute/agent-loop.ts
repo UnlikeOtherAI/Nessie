@@ -41,7 +41,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 import { persistCurrentRunBasis, runReplyIsRestricted } from './agent-message.js'
 import {
   BUILTIN_TOOL_SPEC_NAME,
-  executeBuiltinToolSpec,
+  executeToolSpec,
 } from '../builtin-toolset-deferred.js'
 
 export const runExecutionAgentLoop = async (
@@ -250,7 +250,7 @@ export const runExecutionAgentLoop = async (
     authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
   ) => {
     if (toolName === BUILTIN_TOOL_SPEC_NAME) {
-      return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+      return executeToolSpec(args, allowedBuiltinDefinitions, [...input.toolDefs, ...mcpView.descriptors])
     }
     if (toolName === 'react') {
       input.onReacted?.()
@@ -314,7 +314,9 @@ export const runExecutionAgentLoop = async (
           gmailDraftSendStandingAuthorized,
         ) =>
           n === BUILTIN_TOOL_SPEC_NAME
-            ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
+            ? Promise.resolve(executeToolSpec(
+              a, subAgentBuiltinDefinitions, [...subAgentBuiltinDescriptors, ...subAgentMcpView.descriptors],
+            ))
             : builtinToolExecutor.execute(
               n,
               a,
