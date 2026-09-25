@@ -2294,6 +2294,8 @@ html[data-desktop-platform='linux'] #root {
 
 .sidebar-tree-panel .admin-sec-hdr,
 .admin-sidebar-nav .admin-sec-hdr {
+  flex: 1;
+  min-width: 0;
   height: 30px;
   gap: 6px;
   padding: 0 10px;
@@ -2302,6 +2304,13 @@ html[data-desktop-platform='linux'] #root {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.admin-sidebar-nav .sidebar-menu-section-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-sidebar-nav .admin-sidebar-plus {

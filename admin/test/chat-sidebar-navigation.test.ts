@@ -39,6 +39,23 @@ test('the organisation-wide channel section names its shared scope', () => {
   assert.match(source, /title="Shared channels"/)
 })
 
+test('section titles truncate instead of wrapping in a narrow Channels sidebar', () => {
+  const menuSection = readSource('../src/layouts/admin-shell/SidebarMenuSection.tsx')
+  const styles = readSource('../src/styles.css')
+  const titleRuleStart = styles.indexOf('.admin-sidebar-nav .sidebar-menu-section-title {')
+  const titleRule = styles.slice(titleRuleStart, styles.indexOf('}', titleRuleStart))
+
+  assert.match(menuSection, /className="sidebar-menu-section-title"/)
+  assert.notEqual(titleRuleStart, -1)
+  assert.match(titleRule, /overflow: hidden;/)
+  assert.match(titleRule, /text-overflow: ellipsis;/)
+  assert.match(titleRule, /white-space: nowrap;/)
+  assert.match(
+    styles,
+    /\.admin-sidebar-nav \.admin-sec-hdr\s*\{[\s\S]*?flex: 1;[\s\S]*?min-width: 0;/,
+  )
+})
+
 test('the Channels sidebar adopts the compact guided tree geometry', () => {
   const sidebar = readSource('../src/layouts/admin-shell/SidebarNav.tsx')
   const projects = readSource('../src/layouts/admin-shell/SidebarProjectsSection.tsx')
