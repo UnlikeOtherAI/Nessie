@@ -77,14 +77,20 @@ today. `PROJECT_INTENT` inherits the two new state names automatically.
   before the first visible column; on `single` every column beyond 0 is a
   `column:<k>` stage (docs/navigation §6) — no Finder-specific stage code.
 - **Column 0** on `/knowledge-base*` is the root column and is the route's
-  own screen: `ColumnBrowserColumn screen` renders the `ScreenHeader`
-  (`h1` "Documents") and the toolbar actions. On `/projects/:id/docs` and the
+  own screen on a single-column layout: `ColumnBrowserColumn screen` renders
+  the `ScreenHeader` (`h1` "Knowledge") and the toolbar actions. In the split
+  layout the screen header names the Knowledge area and the root column is
+  labelled "Browse"; a virtual listing keeps its specific heading ("Latest"
+  or "Shared with me") so the selected context appears only once. On
+  `/projects/:id/docs` and the
   agent tab column 0 is the scope's folder listing and is **not** `screen`
   (the project tab host and the agent page own their `h1`); the toolbar
   renders in that column's own header row via `actions`.
 - **The document pane** — `KnowledgeDocumentPane` inside the
   `knowledge:document` stage — takes the **whole work surface** on `split`
-  when a document is open, with a Back button, the way the editor and the
+  in Columns and List when a document is open; Tree keeps its hierarchy at
+  left and renders the same detail in the right pane. It has a Back button,
+  the way the editor and the
   version history already did; the 46% preview column was too small to read
   in. The browser stays mounted underneath (covered, never unmounted), so
   Back lands on the same folder, the same column scroll and the same
@@ -110,14 +116,10 @@ Rows are `FinderRow` (§4) with `variant="root"`: no size, no date, no
 indexing glyph, always a chevron. The overview's root model fixes the order;
 this fixes the pixels.
 
-The groups: **one continuous first group** — Latest, Shared with me, My
-Documents, then one row per project the person can reach, with no hairline
-between "Shared with me" and "My Documents" — then a hairline, the **Agents**
-section (a labelled group; every agent Documents home, headed by a
-`SectionLabel` rendered as an `<li>` inside the `<ul>`, because a `<div>`
-between `<li>` rows is invalid and browsers reparent it), a hairline, the
-shared folders, a hairline, and any product views. A group with nothing in it
-omits itself and its separator.
+The root destinations are Latest, Shared with me and My Documents, followed by
+the **Projects** section, one **Agents** directory row, and the **Spaces**
+section. Agent document homes are listed inside Agents, not repeated as root
+rows. A group with nothing in it omits itself and its separator.
 
 | Row | Leading (20px, `fixedWidth`) | Title | Subtitle | Trailing |
 |---|---|---|---|---|
@@ -132,7 +134,7 @@ omits itself and its separator.
 
 Separators: `<li role="separator" className="finder-separator" />` — a list
 item, for the same invalid-`<div>`-in-`<ul>` reason the section label is one.
-The list is `role="listbox"` with `aria-label="Documents"`; rows are
+The list is `role="listbox"` with `aria-label="Browse"`; rows are
 `role="option"` with `aria-selected`. The selected root row uses the same
 pill as any selected row (§4).
 
@@ -220,17 +222,31 @@ listed in [uploads-and-indexing.md](uploads-and-indexing.md) §4 and
 ### Tree view (`?view=tree`)
 
 Tree is the compact recursive hierarchy view shared visually with the Channels
-sidebar. It renders only the current space's `rootPages` and `childrenOf`
-pages, with 32px folder rows, 30px leaf rows and a token-coloured guide line
-per depth. Its folder, document and spreadsheet glyphs use the same restrained
-outline language as Channels, and its selected row uses the Channels soft
-active tint. Folder clicks use the existing `browseTo` state. A document,
-spreadsheet or file click keeps the tree mounted and opens the existing detail
-stage in the right pane; Columns and List still open that stage across their
-whole browser surface. Selecting Agents also uses the right pane, so the active
-view remains Tree rather than silently rendering Columns beneath a Tree label.
-The root column remains the space selector in organisation scope. Tree adds no
-data source, navigation doorway or mutation.
+sidebar. It shows Latest, Shared with me, My Documents, Projects, Agents and
+Spaces as one persistent left navigator; the selected space expands its
+`rootPages` and `childrenOf` pages. Selecting an already-open space does not
+collapse it. Folder rows are 32px, leaf rows 30px, with a token-coloured guide
+line per depth. Folder, document and spreadsheet glyphs use the restrained
+Channels outline language; file glyphs follow the filename family, so an image
+is recognisably an image rather than another document. Selected rows use the
+Channels soft active tint with readable foreground text, including in the
+active column.
+
+Latest, Shared with me and Agents keep the hierarchy mounted and show their
+contents in the right pane without switching to Columns. A selected folder
+shows its children there, or "This folder is empty." when it has none; no
+selection shows a short prompt. A document, spreadsheet or file opens the
+existing detail in that right pane. A cold deep link to a nested document
+expands its ancestors and selects its row. Columns and List retain their
+full-surface document detail. Tree reuses the existing data, routes and
+mutations.
+
+For a local read-only sweep of every accessible root, space, nested folder,
+selected-row contrast, virtual destination and nested deep link, start the
+isolated API/admin dev pair and run `pnpm --filter @nessie/admin
+test:e2e:knowledge-tree-ux`. The script reports how many agent homes the
+current fixture exposes; zero homes still verifies the Agents directory's
+empty state but not an individual agent home.
 
 ### List view (`?view=list`)
 
@@ -260,8 +276,8 @@ top with the root folder as its first crumb, then a header row and the rows.
   the status glyph (rendered after the name) — is identical to columns view.
 - On `single` the view does not exist: a column *is* one folder full-width.
 
-Tree is a view of the current space alongside Columns and List; it is not a
-second root navigator or a replacement for the organisation root column.
+Tree is a view of the same Knowledge destinations as Columns and List, not a
+second set of routes or a separate source of document state.
 
 ## 5. Icons
 

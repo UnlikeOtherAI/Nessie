@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
+import { iconForFilename } from '../../../shared/file-icons'
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode, SidebarTreePanel } from '../../../primitives/SidebarTree'
 import { FinderRow } from './FinderRow'
 import { NewFolderRow } from './NewFolderRow'
@@ -13,11 +15,12 @@ type FinderTreeViewProps = {
   onOpenPage: (page: KnowledgePageRecord, path: string[]) => void
   onSubmitFolder?: (name: string) => void
   pagePath: string[]
+  basePath?: string[]
   rootColumnKey?: string
   embedded?: boolean
 }
 
-const TreeItemIcon = ({ kind }: { kind: KnowledgePageRecord['kind'] }) => {
+const TreeItemIcon = ({ kind, title }: { kind: KnowledgePageRecord['kind']; title: string }) => {
   if (kind === 'folder') {
     return (
       <svg aria-hidden="true" className="knowledge-tree-glyph" fill="none" viewBox="0 0 20 20">
@@ -32,6 +35,9 @@ const TreeItemIcon = ({ kind }: { kind: KnowledgePageRecord['kind'] }) => {
         <path d="M3.5 7.5h13M8 7.5v9M12.5 7.5v9M3.5 12h13" />
       </svg>
     )
+  }
+  if (kind === 'file') {
+    return <FontAwesomeIcon aria-hidden="true" className="knowledge-tree-file-glyph" icon={iconForFilename(title)} />
   }
   return (
     <svg aria-hidden="true" className="knowledge-tree-glyph" fill="none" viewBox="0 0 20 20">
@@ -49,6 +55,7 @@ export const FinderTreeView = ({
   onOpenPage,
   onSubmitFolder,
   pagePath,
+  basePath = [],
   rootColumnKey,
   rowsIn,
   embedded = false,
@@ -89,7 +96,7 @@ export const FinderTreeView = ({
               leading={(
                 <SidebarTreeLeading>
                   {children.length > 0 ? <SidebarTreeChevron expanded={open} /> : <span className="h-2.5 w-2.5 shrink-0" />}
-                  <TreeItemIcon kind={page.kind} />
+                  <TreeItemIcon kind={page.kind} title={page.title} />
                 </SidebarTreeLeading>
               )}
               id={page.id}
@@ -115,5 +122,5 @@ export const FinderTreeView = ({
 
   return embedded
     ? <SidebarTreeChildren className="sidebar-tree-depth">{renderPages(rowsIn(null), [], 0)}</SidebarTreeChildren>
-    : <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">{renderPages(rowsIn(null), [], 0)}</SidebarTreePanel>
+    : <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">{renderPages(rowsIn(null), basePath, 0)}</SidebarTreePanel>
 }

@@ -7,13 +7,15 @@ type FinderRootBrowserColumnProps = ComponentProps<typeof FinderRootColumn> & {
   actions?: PageHeaderAction[]
   refuseProps: HTMLAttributes<HTMLDivElement>
   resize: ComponentProps<typeof ColumnBrowserColumn>['resize']
+  title: string
 }
 
-/** The route-owned Documents root and the transfer-refusing drop surface inside it. */
+/** The route-owned Knowledge navigation and its transfer-refusing drop surface. */
 export const FinderRootBrowserColumn = ({
   actions,
   refuseProps,
   resize,
+  title,
   ...rootProps
 }: FinderRootBrowserColumnProps) => (
   <ColumnBrowserColumn
@@ -22,7 +24,7 @@ export const FinderRootBrowserColumn = ({
     resize={resize}
     screen
     scrollKey="finder:root"
-    title="Documents"
+    title={title}
   >
     <div className="h-full" {...refuseProps}>
       <FinderRootColumn {...rootProps} />
