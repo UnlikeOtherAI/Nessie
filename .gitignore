@@ -48,6 +48,9 @@ desktop/src-tauri/appstore/
 # compiled in with include_bytes! rather than read from disk.
 !executor/tray-windows/src-tauri/icons/*.png
 
+# The executor menu bar app's icon, compiled into the bundle by actool.
+!executor/menubar-macos/Sources/App/Assets.xcassets/AppIcon.appiconset/*.png
+
 # Agent worktrees (Claude Code isolation)
 .claude/worktrees/
 

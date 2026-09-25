@@ -23,7 +23,9 @@ import {
   ExecutorLocalMcpReportSchema,
 } from '@nessie/schemas'
 
-import { CODING_AGENT_LABELS, STRUCTURED_CODING_SESSION_TOOL_NAMES } from '../coding-session-tools.js'
+import {
+  CODING_AGENT_LABELS, STRUCTURED_CODING_SESSION_TOOL_NAMES, TERMINAL_SESSION_TOOL_NAMES,
+} from '../coding-session-tools.js'
 import type { ExecutorHostOutputDisclosure } from '../executor-host-output.js'
 import { executorToolName } from '../executor-toolset.js'
 import type { TicketWorkMachine } from './ticket-work-setup.js'
@@ -34,6 +36,7 @@ export type ExecutorCodingSessionsReach = {
   /** The coding agents the reviewed facts offer, as a person knows them. */
   agents: string[]
   roots: string[]
+  terminal?: true
   /**
    * The open sessions this agent holds there for this person, as the machine
    * last reported them; null when its report did not list sessions at all.
@@ -108,9 +111,15 @@ const oneLine = (value: string, max: number): string => {
 }
 
 const codingSentences = (coding: ExecutorCodingSessionsReach, machine: string): string => {
-  const reach = `You can have a coding agent on ${machine} (${coding.agents.join(', ')}, in the folders `
-    + `${coding.roots.join(', ')}) do coding work through the \`coding_session_*\` tools: you brief it, follow it, `
-    + 'and review what it changed; you never write the code yourself.'
+  const agents = coding.agents.filter((label) => label !== CODING_AGENT_LABELS.terminal)
+  const reach = [
+    ...(agents.length ? [`You can have a coding agent on ${machine} (${agents.join(', ')}, in the folders `
+      + `${coding.roots.join(', ')}) do coding work through the \`coding_session_*\` tools: you brief it, follow it, `
+      + 'and review what it changed; you never write the code yourself.'] : []),
+    ...(coding.terminal ? [`You can run authorized commands directly on ${machine} through `
+      + '`terminal_session_start`, `terminal_session_read` and `terminal_session_write`, starting in the folders '
+      + `${coding.roots.join(', ')}. Use \`coding_session_close\` when finished; do not repeat completed commands.`] : []),
+  ].join(' ')
   if (coding.sessions === null) return reach
   if (coding.sessions.length === 0) return `${reach} You hold no open coding sessions there.`
   const listed = coding.sessions.slice(0, SESSIONS_LISTED).map((session) => (session.title === undefined
@@ -287,8 +296,9 @@ export const loadExecutorReachFacts = async (
   // Bound under a lease that has since ended or run out: dispatch fences these.
   if (leaseSummary && !leaseSummary.live) return { kind: 'refused', reason: 'lease_ended' }
   const pair = LOCAL_APPS_TOOL_NAMES.every((name) => input.toolNames.has(name))
-  // The structured seven: a machine with no interactive terminal is offered no terminal tools.
-  const coding = [...STRUCTURED_CODING_SESSION_TOOL_NAMES].every((name) => input.toolNames.has(name))
+  const structured = [...STRUCTURED_CODING_SESSION_TOOL_NAMES].every((name) => input.toolNames.has(name))
+  const terminal = [...TERMINAL_SESSION_TOOL_NAMES].every((name) => input.toolNames.has(name))
+  const coding = structured || terminal
   if (pair || coding) {
     const [binding, ownDm] = await Promise.all([
       prisma.executorBinding.findFirst({
@@ -307,10 +317,12 @@ export const loadExecutorReachFacts = async (
     const scope = input.standing?.coding
     const codingSessions: ExecutorCodingSessionsReach | undefined = coding && facts && binding
       ? {
-          agents: facts.agents.filter((agent) => !scope || scope.codingAgents.includes(agent))
+          agents: facts.agents.filter((agent) => (agent === 'terminal' ? terminal : structured)
+            && (!scope || scope.codingAgents.includes(agent)))
             .map((agent) => CODING_AGENT_LABELS[agent]),
           roots: facts.rootNames.filter((root) => !scope || scope.allowedRootNames.includes(root)),
           sessions: reportedOwnSessions(binding, input.agentId, ownDm, scope?.contextId),
+          ...(terminal && facts.agents.includes('terminal') ? { terminal: true as const } : {}),
         }
       : undefined
     if (codingSessions?.sessions?.some((session) => session.title !== undefined) && input.hostOutput) {

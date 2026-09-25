@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src test --max-warnings 0",
-    "test": "node --test --import tsx test/**/*.test.ts",
+    "test": "node --test --test-concurrency=4 --import tsx test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test:terminal": "node --test --import tsx test/executor-session-views.test.ts"
   },

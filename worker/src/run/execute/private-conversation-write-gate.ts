@@ -31,12 +31,13 @@ const UNSCOPED_CONTENT_SINKS = new Set([
 const SAFE_BUILTIN_TOOL_IDS = new Set(BUILTIN_TOOL_DEFINITIONS.filter((tool) => tool.safe).map((tool) => tool.id))
 
 /**
- * An MCP or executor call has arbitrary third-party side effects, and these
+ * A standalone MCP call has arbitrary third-party side effects, and these
  * builtin writes do not carry a disclosure basis. A private transcript source
  * therefore closes them for a shared agent until that surface gains a scoped
  * author-consent flow. This boundary is deliberately for shared agents: a
  * person's PA continues using that person's private integrations in its own
- * conversation, whose ordinary reply stays destination-contained.
+ * conversation, whose ordinary reply stays destination-contained. Authorized
+ * executor calls use their existing binding and policy, without this second veto.
  */
 export const blocksPrivateConversationWrite = (input: {
   context: RunContext

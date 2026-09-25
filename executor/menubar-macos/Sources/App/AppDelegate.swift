@@ -5,7 +5,7 @@ import AppKit
 /// is why every one of its three surfaces hangs off that icon's menu.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var controller: ExecutorController?
+    private var controller: ExecutorConnections?
     // Held for the app's whole life: the status item lives inside this object,
     // and an unretained status item disappears from the menu bar immediately.
     private var statusItem: StatusItemController?
@@ -14,11 +14,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var secondLaunchObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let controller = ExecutorController(isDevelopmentBuild: AppBuild.isDevelopment)
-        let console = ConsoleWindowController(controller: controller)
+        let controller = ExecutorConnections(isDevelopmentBuild: AppBuild.isDevelopment)
+        let console = ConsoleWindowController(connections: controller)
         self.controller = controller
         self.console = console
-        self.statusItem = StatusItemController(controller: controller, console: console)
+        self.statusItem = StatusItemController(connections: controller, console: console)
         // A second copy — the nested helper inside Nessie Desktop, or the
         // standalone install — exits rather than adding a second status icon, and
         // asks this instance to come forward on its way out. Opening the window

@@ -90,11 +90,19 @@ export const executorPairingAuthority = async (
   } }
 }
 
-export const pairingAuthorityForActor = (prisma: PrismaClient, actor: AuthorizedActionContext) => {
+export const pairingAuthorityForActor = async (prisma: PrismaClient, actor: AuthorizedActionContext) => {
   if (actor.actor.actorType !== 'user' || actor.actionContext.agentCredentialId) refuse()
-  return executorPairingAuthority(prisma, {
+  const authority = await executorPairingAuthority(prisma, {
     organizationId: actor.tenant.organizationId, userId: actor.actor.actorId, identity: actor.actionContext.uoaIdentity,
   })
+  const team = actor.tenant.teamId ? await prisma.team.findFirst({
+    where: { id: actor.tenant.teamId, project: { organizationId: actor.tenant.organizationId } },
+    select: { id: true, externalTeamId: true },
+  }) : null
+  return { ...authority, options: { ...authority.options, scopes: ['private' as const],
+    teams: authority.options.teams.filter((entry) =>
+      team && (entry.id === team.id || entry.id === team.externalTeamId)),
+  } }
 }
 
 /** An authenticated machine may resolve names through its pairing owner's live

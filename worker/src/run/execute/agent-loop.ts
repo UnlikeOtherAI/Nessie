@@ -6,6 +6,7 @@ import {
 } from '@nessie/runtime'
 import { parseAgentId, parseRunId, type RunExecuteJobPayload } from '@nessie/schemas'
 import { runAgenticLoop, type BudgetLimits, type LoopResult } from '../agentic-loop.js'
+import { reviewFollowUp } from '../follow-up-review.js'
 import { WIND_DOWN_FRACTION } from '../loop-budget.js'
 import type { LoopResumeState } from '../loop-resume.js'
 import type { CrashCheckpointWriter } from './crash-checkpoint.js'
@@ -40,7 +41,7 @@ import type { ExecutionDependencies, RunContext } from './types.js'
 import { persistCurrentRunBasis, runReplyIsRestricted } from './agent-message.js'
 import {
   BUILTIN_TOOL_SPEC_NAME,
-  executeBuiltinToolSpec,
+  executeToolSpec,
 } from '../builtin-toolset-deferred.js'
 
 export const runExecutionAgentLoop = async (
@@ -136,10 +137,9 @@ export const runExecutionAgentLoop = async (
     ...input.executorToolset.handledNames,
     ...builtinMetaNames,
   ])
-  const externalContentToolNames = new Set([
-    ...mcpExposedNames,
-    ...input.executorToolset.handledNames,
-  ])
+  // Executor access is already authorized by its binding and reviewed policy.
+  // Private chat context must not impose a second veto on that machine access.
+  const externalContentToolNames = mcpExposedNames
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
   const delegateGate = createDelegateGate()
@@ -250,7 +250,7 @@ export const runExecutionAgentLoop = async (
     authorization: Extract<ToolAuthorizationDecision, { decision: 'allow' }>,
   ) => {
     if (toolName === BUILTIN_TOOL_SPEC_NAME) {
-      return executeBuiltinToolSpec(args, allowedBuiltinDefinitions)
+      return executeToolSpec(args, allowedBuiltinDefinitions, [...input.toolDefs, ...mcpView.descriptors])
     }
     if (toolName === 'react') {
       input.onReacted?.()
@@ -314,7 +314,9 @@ export const runExecutionAgentLoop = async (
           gmailDraftSendStandingAuthorized,
         ) =>
           n === BUILTIN_TOOL_SPEC_NAME
-            ? Promise.resolve(executeBuiltinToolSpec(a, subAgentBuiltinDefinitions))
+            ? Promise.resolve(executeToolSpec(
+              a, subAgentBuiltinDefinitions, [...subAgentBuiltinDescriptors, ...subAgentMcpView.descriptors],
+            ))
             : builtinToolExecutor.execute(
               n,
               a,
@@ -435,6 +437,8 @@ export const runExecutionAgentLoop = async (
   }, { executeTool: executeMainTool, prepareTool: prepareMainTool })
 
   const loopResult = await runAgenticLoop({
+    reviewCompletion: (messages, outputText) =>
+      reviewFollowUp(input.inference.runUtility, messages, outputText, input.invocationSink),
     budget: input.budget,
     cacheReadWeight: input.cacheReadWeight,
     ...(input.drainSignal ? { drainSignal: input.drainSignal } : {}),

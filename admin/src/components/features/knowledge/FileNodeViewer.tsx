@@ -20,6 +20,7 @@ import {
 import { KnowledgePane } from './KnowledgePane'
 import { MarkdownFileEditorDialog } from './MarkdownFileEditorDialog'
 import { ZipContents } from './ZipContents'
+import { AttachmentsDrawer } from './AttachmentsDrawer'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 import { taskSetCreatePath, taskSetSourceFormat } from '../../../navigation/task-sets'
 
@@ -271,6 +272,14 @@ export const FileNodeViewer = ({
             </EmptyState>
           )}
         </div>
+
+        <AttachmentsDrawer
+          canWrite={canWrite}
+          inline
+          onClose={() => undefined}
+          open
+          pageId={page.id}
+        />
 
         <CommentsSection canResolve={canWrite} pageId={page.id} />
       </div>

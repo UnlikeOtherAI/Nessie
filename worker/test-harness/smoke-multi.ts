@@ -434,13 +434,15 @@ const main = async (): Promise<void> => {
     check('one successful channel_list tool call',
       toolCalls.length === 1 && toolCalls[0]?.toolName === 'channel_list' && toolCalls[0]?.success === true,
       `${toolCalls.length} tool call(s)`)
-    // Two chat events, one per scripted turn. Posting the trigger message over
+    // Three chat events: two scripted turns and one completion review. Posting the trigger message over
     // HTTP also books an embedding for memory capture, which smoke.ts never sees.
     const chatEvents = ledger.filter((event) => event.operationType === 'chat')
-    check('two chat token-ledger events', chatEvents.length === 2,
+    check('two main calls and one metered completion review', chatEvents.length === 3
+      && chatEvents.filter((event) =>
+        (event.metadata as Record<string, unknown> | null)?.utilityPurpose === 'follow_up_review').length === 1,
       `${chatEvents.length} chat of ${ledger.length} event(s)`)
     check('run.timing recorded',
-      timing['outcome'] === 'completed' && timing['inferenceCount'] === 2 && timing['toolCount'] === 1,
+      timing['outcome'] === 'completed' && timing['inferenceCount'] === 3 && timing['toolCount'] === 1,
       `outcome=${String(timing['outcome'])} inference=${String(timing['inferenceCount'])}`)
     check('thought log captured', thinking.length >= 3, `${thinking.length} chunk(s)`)
     check('agent back to idle and task done', agentRow.status === 'idle' && task.status === 'done',

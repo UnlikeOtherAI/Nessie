@@ -45,6 +45,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/App/NessieExecutorMenuBar.entitlements
         ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
+        # Drawn by executor/scripts/generate-icons.mjs. Without it Finder, the
+        # DMG window and System Settings → Login Items show the generic
+        # application icon for this app.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # The packaging pipeline owns signing; a local build is unsigned and is
         # never installable.
         CODE_SIGN_IDENTITY: ""

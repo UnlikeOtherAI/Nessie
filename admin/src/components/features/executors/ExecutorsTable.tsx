@@ -1,5 +1,4 @@
 import type { ExecutorRecordResponse } from '@nessie/schemas'
-import { useExecutorAttention } from '../../../facades/executors/attention'
 import { usePrewarm } from '../../../navigation/prewarm'
 import { Skeleton } from '../../primitives/Skeleton'
 import { ExpandableTable } from '../../shared/ExpandableTable'
@@ -52,8 +51,6 @@ export const ExecutorsTable = ({
   onOpen,
 }: ExecutorsTableProps) => {
   const prewarm = usePrewarm()
-  const attention = useExecutorAttention()
-  const needsReview = new Set(attention.isSuccess ? attention.data.executors.map((item) => item.executorId) : [])
 
   if (isLoading) {
     return (
@@ -96,7 +93,6 @@ export const ExecutorsTable = ({
           <ExecutorListRow
             executor={executor}
             key={executor.id}
-            needsReview={needsReview.has(executor.id)}
             onOpen={onOpen}
             prewarm={prewarm}
           />

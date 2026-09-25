@@ -100,12 +100,10 @@ type StoredAccessChange = {
 }
 
 export const requiresFreshExecutorVerification = (change: ExecutorAccessChange): boolean =>
-  change.kind === 'private_assignment'
-  || (change.kind === 'agent_operation_grant' && change.state === 'allowed')
-  // The same rule as one operation, for the same reason: widening what an
-  // agent may reach on somebody's machine is the moment to re-prove the human.
-  || (change.kind === 'agent_executor_grant' && change.state === 'allowed')
-  || (change.kind === 'agent_executor_access' && change.state === 'allowed')
+  (change.kind === 'private_assignment' && (change.action === 'set'
+    ? change.assignment.principalKind === 'user' : change.principal.principalKind === 'user'))
+  // The machine's reviewed capabilities are verified once. Its administrator
+  // can add or remove agents inside that boundary with an ordinary confirmation.
   // Disconnecting or deleting a machine is deliberately absent: it only takes
   // access away, the daemon's next connection is refused, and the machine can
   // pair again. A kill switch must never be harder to reach than what it stops.
@@ -318,13 +316,12 @@ export const prepareExecutorAccessChange = async (
     authorizationRevision: executor.authorizationRevision,
     change: input.change,
     executorId: executor.id,
-    requiresFreshVerification: requiresFreshExecutorVerification(input.change)
-      || (input.change.kind === 'agent_executor_access' && executor.scopeKind === 'private'),
+    requiresFreshVerification: requiresFreshExecutorVerification(input.change),
   })
 })
 
 export const getExecutorAccessChangeForUser = async (
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   accessChangeId: string,
 ): Promise<{
@@ -355,8 +352,8 @@ export const getExecutorAccessChangeForUser = async (
   }
 }
 
-export const confirmExecutorAccessChange = async (
-  prisma: PrismaClient,
+export const confirmExecutorAccessChangeInTransaction = async (
+  tx: Prisma.TransactionClient,
   actorContext: AuthorizedActionContext,
   input: {
     accessChangeId: string
@@ -372,7 +369,7 @@ export const confirmExecutorAccessChange = async (
   endedLeases: ExecutorLeaseRef[]
   executorId: string
 }> =>
-  prisma.$transaction(async (tx) => {
+  {
     const continuation = await tx.executorContinuation.findUnique({
       where: { id: input.accessChangeId },
       select: {
@@ -474,7 +471,15 @@ export const confirmExecutorAccessChange = async (
       endedLeases: liveLeases.filter((lease) => !stillLive.has(lease.id)),
       executorId: executor.id,
     }
-  })
+  }
+
+export const confirmExecutorAccessChange = (
+  prisma: PrismaClient,
+  actorContext: AuthorizedActionContext,
+  input: Parameters<typeof confirmExecutorAccessChangeInTransaction>[2],
+  applyPolicy?: Parameters<typeof confirmExecutorAccessChangeInTransaction>[3],
+): ReturnType<typeof confirmExecutorAccessChangeInTransaction> => prisma.$transaction((tx) =>
+  confirmExecutorAccessChangeInTransaction(tx, actorContext, input, applyPolicy))
 
 export const rejectExecutorAccessChange = async (
   prisma: PrismaClient,

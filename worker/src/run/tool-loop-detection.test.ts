@@ -26,6 +26,29 @@ import {
 const LIST = 'executor_mcp_tools'
 const listKelpie = { server: 'kelpie' }
 
+test('Enter after each new terminal command remains usable across a long run', () => {
+  const counts = new Map<string, number>()
+  for (let command = 0; command < 10; command += 1) {
+    assert.equal(countToolCall(counts, 'terminal_session_write', { sessionId: 'a', data: `echo ${command}` }), null)
+    assert.equal(countToolCall(counts, 'terminal_session_write', { sessionId: 'a', key: 'Enter' }), null)
+    assert.equal(countToolCall(counts, 'terminal_session_read', { sessionId: 'a' }), null)
+  }
+})
+
+test('reads and activity in another terminal do not disguise repeated input, including after resume', () => {
+  let counts = new Map<string, number>()
+  const input = { sessionId: 'a', key: 'Enter' }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    assert.equal(countToolCall(counts, 'terminal_session_write', input), null)
+    countToolCall(counts, 'terminal_session_read', { sessionId: 'a' })
+    countToolCall(counts, 'terminal_session_write', { sessionId: 'b', data: `echo ${attempt}` })
+    counts = restoreLoopCounts(Object.fromEntries(counts))
+  }
+  assert.equal(countToolCall(counts, 'terminal_session_write', input)?.nudge, REPEATED_CALL_NUDGE)
+  assert.equal(countToolCall(counts, 'terminal_session_write', { sessionId: 'a', key: 'CtrlC' }), null)
+  assert.equal(countToolCall(counts, 'terminal_session_write', input), null)
+})
+
 test('the third identical call of an ordinary tool is refused, whatever came between', () => {
   const counts = new Map<string, number>()
   assert.equal(countToolCall(counts, 'kb_search', { q: 'x' }), null)
@@ -122,7 +145,7 @@ test('the coding observation tools are the coding-session tools that only look',
     CODING_SESSION_TOOL_NAMES.terminalStart, CODING_SESSION_TOOL_NAMES.terminalWrite,
   ]
   for (const name of acting) {
-    assert.equal(OBSERVATION_TOOL_NAMES.has(name), false, `${name} acts, so the cumulative rule keeps it`)
+    assert.equal(OBSERVATION_TOOL_NAMES.has(name), false, `${name} acts rather than only observing`)
   }
 })
 

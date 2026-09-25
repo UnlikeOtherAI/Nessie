@@ -10,12 +10,10 @@ export const knowledgeKeys = {
     ['knowledge-annotations', pageId ?? 'none', kind ?? 'all'] as const,
   attachments: (pageId?: string) =>
     ['knowledge-page-attachments', pageId ?? 'none'] as const,
-  // Backlinks and mentions are views of one page's links, so they nest under
+  // Backlinks are a view of one page's explicit links, so they nest under
   // that page: editing a page invalidates them along with its body.
   backlinks: (pageId?: string) =>
     ['knowledge-page', pageId ?? 'none', 'backlinks'] as const,
-  mentions: (pageId?: string) =>
-    ['knowledge-page', pageId ?? 'none', 'mentions'] as const,
   myDocs: ['knowledge-my-docs'] as const,
   // The Finder's virtual folders. Each is its own corpus computed by the
   // server across every readable space, so neither nests under a space's

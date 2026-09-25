@@ -10,6 +10,7 @@ import { resolveExecutorAvailability } from './availability.js'
 import { executorCandidateHandleDigest } from './executor-candidate-handle.js'
 import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
+import { resolveExecutorSharedAccess } from './executor-shared-access.js'
 import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 
 export type ExecutorBindingInput = {
@@ -307,7 +308,8 @@ export const bindExecutorCandidateInTransaction = async (
       executor,
       candidate.actorUserId,
       candidate.agentId,
-      { projectId, projectMember: Boolean(projectMembership) },
+      { projectId, projectMember: Boolean(projectMembership),
+        sharedUse: (await resolveExecutorSharedAccess(tx, executor.id, candidate.actorUserId, projectId)).use },
     ),
   })
   if (

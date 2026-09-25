@@ -152,12 +152,9 @@ export const ExecutorLocalMcpPanel = ({
   localMcp,
 }: ExecutorLocalMcpPanelProps) => {
   // Only the active revision's names carry a question worth asking — a
-  // pending one is reviewed above, a disabled one permits nothing.
-  const namedServers = [...new Set(
-    (descriptorRevisions ?? [])
-      .filter((revision) => revision.reviewStatus === 'active')
-      .flatMap((revision) => revision.mcpServers ?? []),
-  )]
+  // signed report takes effect when the machine submits it.
+  const latest = [...(descriptorRevisions ?? [])].sort((a, b) => b.revision - a.revision)[0]
+  const namedServers = [...new Set(latest?.reviewStatus === 'active' ? latest.mcpServers ?? [] : [])]
   const statuses = localMcp ?? []
   const unreported = namedServers.filter(
     (name) => !statuses.some((status) => status.server === name),

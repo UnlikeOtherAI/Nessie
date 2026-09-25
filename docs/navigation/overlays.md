@@ -185,6 +185,13 @@ and composer emoji pickers, the assignee picker, the model combobox and the
 wikilink suggestion list. Rail tooltips stay as they are: `RailTooltip` is a
 hover hint, not a dismissible anchored surface.
 
+The rail's Create menu passes `anchorOrigin` to `Popover`. After the shared
+placement step, the primitive passes the trigger's position relative to the
+panel into the shared overlay motion. Its reveal grows from that point even
+after a viewport flip or clamp, and opening, closing, and reduced-motion
+behavior stay on the same timeline as other popovers. Its translucent surface
+and blur are scoped to that menu.
+
 An anchored control inside a modal takes the modal-owned popover layer (75),
 above its owner and below `blocking` (80). It also owns Back ahead of that
 modal, but yields to blocking. Its focus behavior remains unchanged. Escape is

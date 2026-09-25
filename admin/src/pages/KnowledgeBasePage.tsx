@@ -76,6 +76,14 @@ export const KnowledgeBasePage = () => {
     if (wanted && selectedRoot?.kind !== wanted) selectVirtual(wanted)
   }, [pathname, routeCovered, selectedRoot, selectVirtual])
 
+  // The base route is the root directory itself. Browser Back, a shared link,
+  // or another doorway can reach it without going through the Finder's own
+  // Back button, so clear the old virtual/space/product selection as well.
+  useEffect(() => {
+    if (routeCovered || pathname !== '/knowledge-base') return
+    if (selectedRoot !== null || activeProductView !== undefined) selectVirtual(null)
+  }, [activeProductView, pathname, routeCovered, selectedRoot, selectVirtual])
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1">

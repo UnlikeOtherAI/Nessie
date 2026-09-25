@@ -114,7 +114,8 @@ const transactionFake = (input: {
     },
     executorPrivateAssignment: { findFirst: async () => null },
     executorSession: { updateMany: async () => ({ count: 0 }) },
-    organizationMember: {
+    executorTeamAccess: { findUnique: async () => null },
+  organizationMember: {
       findUnique: async () => ({ deactivatedAt: null, role: 'owner' }),
     },
     projectMember: { findUnique: async () => null },
@@ -253,10 +254,10 @@ test('an executor with no active reviewed policy grants nothing at all', async (
   assert.equal(fake.bumps(), 0)
 })
 
-test('a whole-suite allow re-proves the human, exactly as one operation does', () => {
+test('a whole-suite agent grant uses the machine approval without another code', () => {
   assert.equal(requiresFreshExecutorVerification({
     kind: 'agent_executor_grant', agentId: AGENT, state: 'allowed',
-  }), true)
+  }), false)
   assert.equal(requiresFreshExecutorVerification({
     kind: 'agent_executor_grant', agentId: AGENT, state: 'denied',
   }), false)

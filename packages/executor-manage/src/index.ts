@@ -1,4 +1,5 @@
 export * from './executor-status-realtime.js'
+export { executorAccessVerificationBinding } from './executor-access-verification.js'
 export * from './executor-session-views.js'
 export * from './executor-session-shares.js'
 
@@ -172,6 +173,7 @@ export {
 } from './executor-standing-policy-machines.js'
 export {
   confirmExecutorAccessChange,
+  confirmExecutorAccessChangeInTransaction,
   createExecutorAccessChangeContinuationInTransaction,
   getExecutorAccessChangeForUser,
   prepareExecutorAccessChange,
@@ -183,6 +185,7 @@ export {
 export {
   closeExecutorReviewCards,
   EXECUTOR_REVIEW_CARD_ACTION_KEY,
+  EXECUTOR_ALLOW_ACCESS_CARD_ACTION_KEY,
   issueExecutorAccessChangeConfirmationToken,
   issueExecutorWorkspacePromotionConfirmationToken,
   settledExecutorReviewOutcome,
@@ -223,3 +226,9 @@ export * from './ticket-work-session-origins.js'
 export * from './ticket-work-heartbeat-costs.js'
 export * from './executor-standing-policy-views.js'
 export * from './executor-standing-policy-agent.js'
+
+export * from './executor-sharing.js'
+
+export * from './executor-direct-access.js'
+
+export * from './executor-project-inventory.js'

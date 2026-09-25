@@ -1,12 +1,14 @@
 import type { PrismaClient } from '@prisma/client'
 import type { NessieConfig } from '@nessie/config'
-import type { AuthorizedActionContext } from '@nessie/schemas'
+import type { AuthorizedActionContext, ExecutorSsoVerification } from '@nessie/schemas'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 
 import { verifyPassword } from '../auth/password.js'
 import { sendApiError } from '../lib/api.js'
 import type { RateLimiter } from '../services/rate-limit.js'
 import { guardAuthRequest, rateLimitForRules } from './auth-rate-limit.js'
+import { executorSsoVerification } from '../services/executor-sso-verification.js'
+import { sendExecutorSsoError } from './executor-sso-verification.js'
 
 /**
  * Step-up verification for an executor access change: a route guard, not a
@@ -15,9 +17,10 @@ import { guardAuthRequest, rateLimitForRules } from './auth-rate-limit.js'
  * it guards rather than in `services/`, where it was the package's only
  * upward import into `routes/`.
  */
-export const requireFreshExecutorPasswordVerification = async (input: {
+export const requireFreshExecutorVerification = async (input: {
   actorContext: AuthorizedActionContext
   currentPassword: string | undefined
+  sso?: { accessChangeId: string; confirmationToken: string; verification: ExecutorSsoVerification }
   rateLimit: NessieConfig['api']['rateLimit']
   rateLimiter: RateLimiter
   prisma: PrismaClient
@@ -42,6 +45,15 @@ export const requireFreshExecutorPasswordVerification = async (input: {
     select: { passwordHash: true },
   })
   if (!user?.passwordHash) {
+    if (input.sso) {
+      try {
+        const proof = await executorSsoVerification(input.prisma, input.actorContext, input.sso)
+        return 'verified' in proof && proof.verified
+      } catch (error) {
+        if (sendExecutorSsoError(input.reply, error)) return false
+        throw error
+      }
+    }
     sendApiError(
       input.reply,
       409,

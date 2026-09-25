@@ -30,9 +30,7 @@ const actionRowClassName = [
 ].join(' ')
 
 const panelClassName = [
-  'w-[272px] overflow-hidden rounded-xl border',
-  'border-[color:var(--sep)] bg-[color:var(--panel)] p-2',
-  'shadow-[0_16px_48px_var(--scrim-strong)]',
+  'create-menu-panel w-[272px] overflow-hidden rounded-xl border p-2',
 ].join(' ')
 
 const CreateMenuPopover = ({
@@ -52,6 +50,7 @@ const CreateMenuPopover = ({
   return (
     <Popover
       anchorRef={anchorRef}
+      anchorOrigin
       className={panelClassName}
       label="Create"
       onClose={onClose}

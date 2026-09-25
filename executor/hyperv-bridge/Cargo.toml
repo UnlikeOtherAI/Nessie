@@ -5,6 +5,12 @@ edition = "2021"
 publish = false
 description = "Bridges a Hyper-V guest's vsock channels onto Windows named pipes for the Nessie executor daemon."
 
+# What Windows names this executable in Task Manager and its properties; the
+# icon beside it is embedded by build.rs.
+[package.metadata.tauri-winres]
+FileDescription = "Nessie Executor Hyper-V Bridge"
+ProductName = "Nessie Executor"
+
 [[bin]]
 name = "nessie-hyperv-bridge"
 path = "src/main.rs"
@@ -24,3 +30,7 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_System_Pipes",
   "Win32_System_Threading",
 ] }
+
+# Windows only, like the sockets: the Linux build above stays dependency-free.
+[target."cfg(windows)".build-dependencies]
+tauri-winres = "0.3.6"

@@ -803,7 +803,7 @@ test('a prose-only recovery never dispatches a newly requested tool', async () =
   assert.equal(result.incompleteReason, 'provider_output_limit')
 })
 
-test('an empty provider success after tools gets one checkpointed no-tools finalisation', async () => {
+test('an empty provider success keeps tools through one checkpointed recovery', async () => {
   const noTools: boolean[] = []
   let checkpoint: LoopResumeState | undefined
   let calls = 0
@@ -862,7 +862,7 @@ test('an empty provider success after tools gets one checkpointed no-tools final
     tools: [{ description: 'creates one board', inputSchema: {}, toolName: 'board_create' }],
   })
   assert.equal(resumed.finalText, 'The board is ready.')
-  assert.deepEqual(resumedNoTools, [true])
+  assert.deepEqual(resumedNoTools, [false])
 })
 
 test('a second empty provider success surfaces a classified terminal reply', async () => {
@@ -878,11 +878,11 @@ test('a second empty provider success surfaces a classified terminal reply', asy
       calls += 1
       return finalAnswerInference('')
     },
-    tools: [{ description: 'must never run during recovery', inputSchema: {}, toolName: 'write' }],
+    tools: [{ description: 'available for authorized recovery', inputSchema: {}, toolName: 'write' }],
   })
 
   assert.equal(calls, 2)
-  assert.deepEqual(noTools, [false, true])
+  assert.deepEqual(noTools, [false, false])
   assert.equal(result.finalText, EMPTY_OUTPUT_TERMINAL_MESSAGE)
   assert.equal(result.incompleteReason, 'empty_provider_response')
 })

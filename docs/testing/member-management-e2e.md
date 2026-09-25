@@ -25,14 +25,14 @@ approval decision. An invitation awaiting UOA approval has not been sent, and
 approval belongs to UOA's organisation approval workflow rather than Nessie's
 member roster.
 
-The Navigation Transitions CI job runs this fixture through the existing
-managed API/admin lifecycle and retains screenshots in
-`e2e/screenshots/member-management/`. Its build alone sets
+Run this fixture manually through the existing managed API/admin lifecycle;
+it retains screenshots in
+`e2e/screenshots/member-management/`. An explicit manual preview build sets
 `NESSIE_MEMBER_MANAGEMENT_E2E_FIXTURE=1`, making the fixture a Vite preview
 entry. Ordinary production builds omit that entry; Turbo includes the flag in
 the admin-build cache key so those two artifacts cannot be reused for each
 other.
 
-The same Navigation Transitions build sets
+The same manual preview build sets
 `NESSIE_APP_CONNECT_SCOPE_E2E_FIXTURE=1` for its isolated App connection
 scope fixture. It follows the same preview-only and cache-key rules.

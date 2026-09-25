@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { faFile, faFileLines, faFolder } from '@fortawesome/free-solid-svg-icons'
-import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
+import { iconForFilename } from '../../../shared/file-icons'
 import { SidebarTreeChevron, SidebarTreeChildren, SidebarTreeLeading, SidebarTreeNode, SidebarTreePanel } from '../../../primitives/SidebarTree'
 import { FinderRow } from './FinderRow'
 import { NewFolderRow } from './NewFolderRow'
@@ -15,8 +15,36 @@ type FinderTreeViewProps = {
   onOpenPage: (page: KnowledgePageRecord, path: string[]) => void
   onSubmitFolder?: (name: string) => void
   pagePath: string[]
+  basePath?: string[]
   rootColumnKey?: string
   embedded?: boolean
+}
+
+const TreeItemIcon = ({ kind, title }: { kind: KnowledgePageRecord['kind']; title: string }) => {
+  if (kind === 'folder') {
+    return (
+      <svg aria-hidden="true" className="knowledge-tree-glyph" fill="none" viewBox="0 0 20 20">
+        <path d="M2.75 5.5A1.75 1.75 0 0 1 4.5 3.75h3l1.5 1.5h6.5a1.75 1.75 0 0 1 1.75 1.75v7.5a1.75 1.75 0 0 1-1.75 1.75h-11a1.75 1.75 0 0 1-1.75-1.75v-9Z" />
+      </svg>
+    )
+  }
+  if (kind === 'spreadsheet') {
+    return (
+      <svg aria-hidden="true" className="knowledge-tree-glyph" fill="none" viewBox="0 0 20 20">
+        <rect height="14" rx="1.75" width="13" x="3.5" y="3" />
+        <path d="M3.5 7.5h13M8 7.5v9M12.5 7.5v9M3.5 12h13" />
+      </svg>
+    )
+  }
+  if (kind === 'file') {
+    return <FontAwesomeIcon aria-hidden="true" className="knowledge-tree-file-glyph" icon={iconForFilename(title)} />
+  }
+  return (
+    <svg aria-hidden="true" className="knowledge-tree-glyph" fill="none" viewBox="0 0 20 20">
+      <path d="M5 2.75h6l4 4v10.5H5V2.75Z" />
+      <path d="M11 2.75v4h4M7.5 10h5M7.5 13h5" />
+    </svg>
+  )
 }
 
 export const FinderTreeView = ({
@@ -27,6 +55,7 @@ export const FinderTreeView = ({
   onOpenPage,
   onSubmitFolder,
   pagePath,
+  basePath = [],
   rootColumnKey,
   rowsIn,
   embedded = false,
@@ -67,11 +96,7 @@ export const FinderTreeView = ({
               leading={(
                 <SidebarTreeLeading>
                   {children.length > 0 ? <SidebarTreeChevron expanded={open} /> : <span className="h-2.5 w-2.5 shrink-0" />}
-                  <FontAwesomeIcon
-                    className="h-3.5 w-3.5 text-[color:var(--tx3)]"
-                    fixedWidth
-                    icon={page.kind === 'document' ? faFileLines : page.kind === 'folder' ? faFolder : faFile}
-                  />
+                  <TreeItemIcon kind={page.kind} title={page.title} />
                 </SidebarTreeLeading>
               )}
               id={page.id}
@@ -85,6 +110,7 @@ export const FinderTreeView = ({
               }}
               selected={page.id === selectedPageId}
               title={page.title}
+              tree
               variant="item"
             />
             {children.length > 0 && open ? renderPages(children, path, depth + 1) : null}
@@ -96,5 +122,5 @@ export const FinderTreeView = ({
 
   return embedded
     ? <SidebarTreeChildren className="sidebar-tree-depth">{renderPages(rowsIn(null), [], 0)}</SidebarTreeChildren>
-    : <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">{renderPages(rowsIn(null), [], 0)}</SidebarTreePanel>
+    : <SidebarTreePanel className="knowledge-sidebar-tree-panel h-full">{renderPages(rowsIn(null), basePath, 0)}</SidebarTreePanel>
 }

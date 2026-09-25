@@ -71,11 +71,13 @@ export type RecordedToolResult = {
  * ask the provider again.
  */
 export type LoopResumeState = {
+  /** Corrective continuations already used; retained across worker restart. */
+  followUpAttempts?: number
   /** The run-budget zero-output compaction recovery has already been spent. */
   budgetRecoveryAttempted: boolean
   compactionAttempts: number
   compactionLastIteration: number | null
-  /** A response that could not yield a final answer gets one no-tools finalisation turn per run. */
+  /** A response that could not yield a final answer gets one mode-preserving recovery turn per run. */
   outputFinalizationUsed: boolean
   /** The retained transcript is waiting for that no-tools turn after a crash. */
   outputFinalizationPending: boolean

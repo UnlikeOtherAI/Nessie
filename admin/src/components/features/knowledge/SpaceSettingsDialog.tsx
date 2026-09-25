@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useAgents } from '../../../facades/agents/hooks'
 import { useUsers } from '../../../facades/users/hooks'
 import { useTeamMembers } from '../../../facades/users/team-members'
@@ -70,6 +70,28 @@ export const SpaceSettingsDialog = ({
         : [])
     : (usersQuery.data ?? []).map((user) => ({ id: user.id, label: user.displayName }))
 
+  // Depend on the actual form values, not the query wrapper's object identity.
+  // Agent/user directory updates can re-render this dialog; resetting from a
+  // freshly allocated but unchanged `space` object made the first checkbox
+  // click visibly flash and then disappear.
+  const memberAgentKey = space.memberAgentIds.join('\u0000')
+  const memberUserKey = space.memberUserIds.join('\u0000')
+  const initialForm = useMemo(() => ({
+    description: space.description ?? '',
+    memberAgentIds: memberAgentKey ? memberAgentKey.split('\u0000') : [],
+    memberUserIds: memberUserKey ? memberUserKey.split('\u0000') : [],
+    name: space.name,
+    visibility: space.visibility,
+    writeRestricted: space.writeRestricted,
+  }), [
+    space.description,
+    memberAgentKey,
+    memberUserKey,
+    space.name,
+    space.visibility,
+    space.writeRestricted,
+  ])
+
   const [name, setName] = useState(space.name)
   const [description, setDescription] = useState(space.description ?? '')
   const [memberAgentIds, setMemberAgentIds] = useState<string[]>(space.memberAgentIds)
@@ -80,15 +102,15 @@ export const SpaceSettingsDialog = ({
 
   useEffect(() => {
     if (open) {
-      setName(space.name)
-      setDescription(space.description ?? '')
-      setMemberAgentIds(space.memberAgentIds)
-      setMemberUserIds(space.memberUserIds)
-      setWriteRestricted(space.writeRestricted)
-      setVisibility(space.visibility)
+      setName(initialForm.name)
+      setDescription(initialForm.description)
+      setMemberAgentIds(initialForm.memberAgentIds)
+      setMemberUserIds(initialForm.memberUserIds)
+      setWriteRestricted(initialForm.writeRestricted)
+      setVisibility(initialForm.visibility)
       setFormError(undefined)
     }
-  }, [open, space])
+  }, [initialForm, open])
 
   if (!open) return null
 

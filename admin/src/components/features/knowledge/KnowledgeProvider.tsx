@@ -230,6 +230,24 @@ export const KnowledgeProvider = ({
     return map
   }, [pages])
 
+  // A document deep link initially knows only its own id. Once that page's
+  // space is loaded, recover its ancestry so Tree can expand every parent and
+  // show the selected row in place.
+  useEffect(() => {
+    if (!openPageId || navigation.pagePath.length !== 1 || navigation.pagePath[0] !== openPageId) return
+    const target = pagesById.get(openPageId)
+    if (!target) return
+    const path: string[] = []
+    const visited = new Set<string>()
+    let current: KnowledgePageRecord | undefined = target
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id)
+      path.unshift(current.id)
+      current = current.parentPageId ? pagesById.get(current.parentPageId) : undefined
+    }
+    if (path.length > 1) navigation.openPagePath(path)
+  }, [navigation, openPageId, pagesById])
+
   const pagesByParent = useMemo(() => {
     const map = new Map<string | null, KnowledgePageRecord[]>()
     for (const page of pages) {

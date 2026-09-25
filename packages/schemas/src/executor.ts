@@ -1099,6 +1099,7 @@ export type ExecutorAccessChangeConfirmation = z.infer<
 >
 
 export const ExecutorRecordResponseSchema = z.object({
+  sharedWithTeam: z.boolean().optional(),
   id: ExecutorIdSchema,
   scope: ExecutorScopeSchema,
   label: z.string().min(1),
@@ -1314,13 +1315,24 @@ export type ExecutorWorkspacePromotionRecordResponse = z.infer<
   typeof ExecutorWorkspacePromotionRecordResponseSchema
 >
 
+export const ExecutorSsoVerificationSchema = z.object({
+  challengeId: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/),
+  twoFactorCode: z.string().regex(/^\d{6}$/).optional(),
+}).strict()
+export type ExecutorSsoVerification = z.infer<typeof ExecutorSsoVerificationSchema>
+
+export const ExecutorVerificationChallengeSchema = z.object({
+  challengeId: z.string().uuid(), expiresAt: TimestampSchema, twoFactorRequired: z.boolean(),
+})
+
 export const ExecutorAccessChangeResponseSchema = z.object({
   accessChangeId: ExecutorAccessChangeIdSchema,
   executorId: ExecutorIdSchema,
   change: z.record(z.string(), z.unknown()),
   expiresAt: TimestampSchema,
   requiresFreshVerification: z.boolean(),
-  verificationMethod: z.enum(['password', 'unavailable']).optional(),
+  verificationMethod: z.enum(['password', 'sso_code', 'unavailable']).optional(),
   status: z.enum(['pending', 'confirmed', 'rejected', 'expired', 'consumed']),
 })
 export type ExecutorAccessChangeResponse = z.infer<

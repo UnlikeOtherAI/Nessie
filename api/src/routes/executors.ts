@@ -1,3 +1,6 @@
+import { ExecutorListQuerySchema } from '@nessie/schemas'
+import { listExecutorsForProject } from '@nessie/executor-manage'
+import { registerExecutorSharingRoutes } from './executor-sharing.js'
 import { notifyExecutorStatus } from './executor-status-events.js'
 import {
   confirmExecutorAccessChange,
@@ -47,7 +50,7 @@ import { applyExecutorAccessChangeEffects, applyRejectedExecutorAccessChangeEffe
 import { loadLedgerIdentitySettings } from '@nessie/runtime'
 import { AgentToolPolicyError } from '../services/agent-tool-policy.js'
 import { announceClosedExecutorReviewCards } from '../services/agent-card-executor-review.js'
-import { requireFreshExecutorPasswordVerification } from './executor-fresh-verification.js'
+import { requireFreshExecutorVerification } from './executor-fresh-verification.js'
 import { sendExecutorError } from './executor-route-errors.js'
 import { registerExecutorCodingSessionRoutes } from './executor-coding-sessions.js'
 import { registerExecutorSessionViewRoutes } from './executor-session-views.js'
@@ -56,6 +59,8 @@ import { notifyExecutorLeaseChanges, registerExecutorLeaseRoutes } from './execu
 import { registerExecutorPairingCodeRoutes } from './executor-pairing-codes.js'
 import { registerExecutorManagementReadRoutes } from './executor-management-reads.js'
 import { registerExecutorWorkspacePromotionRoutes } from './executor-workspace-promotions.js'
+import { registerExecutorSsoVerificationRoutes } from './executor-sso-verification.js'
+import { executorSsoVerificationAvailable } from '../services/executor-sso-verification.js'
 import type { RouteDeps } from './types.js'
 
 // Read once at startup, as the trigger routes do: whether this deployment signs
@@ -69,7 +74,9 @@ const ledgerSigningConfigured = loadLedgerIdentitySettings() !== null
  * of the one-time pairing challenge plus its Ed25519 machine key.
  */
 export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): void => {
+  registerExecutorSharingRoutes(app, deps)
   registerExecutorPairingCodeRoutes(app, deps)
+  registerExecutorSsoVerificationRoutes(app, deps)
   registerExecutorManagementReadRoutes(app, deps)
   registerExecutorWorkspacePromotionRoutes(app, deps)
   registerExecutorLeaseRoutes(app, deps)
@@ -89,7 +96,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     const actorContext = requireActorContext(request, reply)
     if (!actorContext) return reply
     await expireExecutorCodePairings(prisma, actorContext.tenant.organizationId, executorPairingAudit)
-    const executors = await listVisibleExecutors(prisma, actorContext)
+    const query = parseInput(ExecutorListQuerySchema, request.query, reply)
+    if (!query) return reply
+    const executors = query.projectId ? await listExecutorsForProject(prisma, actorContext, query.projectId)
+      : await listVisibleExecutors(prisma, actorContext)
     return createApiResponse(ExecutorRecordSchema.array().parse(executors))
   })
 
@@ -99,6 +109,10 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     const body = parseInput(CreateExecutorBodySchema, request.body, reply)
     if (!body) return reply
     try {
+      if (body.scope.kind !== 'private') {
+        sendApiError(reply, 400, 'EXECUTOR_SCOPE_INVALID', 'Pair a personal executor, then share it from Permissions.')
+        return reply
+      }
       const created = await createExecutor(prisma, actorContext, body)
       // The daemon pairs from outside the browser, so the invitation carries the
       // API origin rather than leaving the operator to retype one. It comes from
@@ -383,7 +397,8 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
       where: { id: actorContext.actor.actorId }, select: { passwordHash: true },
     }) : null
     return createApiResponse(ExecutorAccessChangeRecordSchema.parse({
-      ...found, verificationMethod: user?.passwordHash ? 'password' : 'unavailable',
+      ...found, verificationMethod: user?.passwordHash ? 'password'
+        : executorSsoVerificationAvailable(actorContext) ? 'sso_code' : 'unavailable',
       expiresAt: found.expiresAt.toISOString(),
     }))
   })
@@ -401,9 +416,12 @@ export const registerExecutorRoutes = (app: FastifyInstance, deps: RouteDeps): v
     }
     let freshVerificationSatisfied = false
     if (accessChange.requiresFreshVerification) {
-      freshVerificationSatisfied = await requireFreshExecutorPasswordVerification({
+      freshVerificationSatisfied = await requireFreshExecutorVerification({
         actorContext,
         currentPassword: body.currentPassword,
+        ...(body.ssoVerification ? { sso: {
+          accessChangeId, confirmationToken: body.confirmationToken, verification: body.ssoVerification,
+        } } : {}),
         prisma,
         rateLimit: config.api.rateLimit,
         rateLimiter,

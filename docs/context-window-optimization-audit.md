@@ -335,3 +335,11 @@ Key constants:
 `maxTokens` and `maxCostCents` are enforced against **provider-reported** usage;
 the `len/4` estimator governs only the local context-fit trim.
 </content>
+
+### Run-scoped schema discovery
+
+`tool_spec` resolves full builtin schemas and the current authorized executor and
+loaded MCP descriptors. A terminal schema lookup must not report an approved
+terminal as unavailable merely because it is not a builtin. Delegates use their
+own tool view, without their parent's executor bindings; dropped MCP tools stop
+being discoverable immediately. Schema lookup does not add tools or grant access.

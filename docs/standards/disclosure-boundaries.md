@@ -122,6 +122,13 @@ Facts not restated there:
   stamps the run's sink with the launch conversation's scope before its
   command is sent (`worker/src/run/executor-host-output.ts`; today the run's
   own channel).
+  Executor access itself is the machine authorization boundary. Once a run
+  holds an authorized executor binding, private conversation context does not
+  impose an additional write veto or require another approval. This applies to
+  terminal, coding-session and other executor tools. Binding validity, reviewed
+  machine policy and dispatch checks still apply; standalone MCP connectors
+  retain their separate private-conversation write gate. Output provenance and
+  restrictions on publishing that output elsewhere remain in force.
   The channel is stamped **even when it is public**, the one exception to the
   public-channel skip above: that room's history is the organisation's to
   read, but the program's output was consented to that room alone.

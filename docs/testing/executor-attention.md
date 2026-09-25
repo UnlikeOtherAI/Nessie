@@ -1,45 +1,9 @@
-# Executor attention badges
+# Executor inventory and session evaluations
 
-The Executors sidebar count and each machine's review badge consume the same
-`GET /api/executors/attention` query. A machine contributes one change only when
-its latest proposed permissions need review and the caller can manage it. Old
-pending revisions, revoked machines, unfinished pairing and historical draft
-receipts do not contribute. Those decisions belong to the API, not a second
-client-side interpretation of executor history.
-
-The row's **1 change to review** link opens that machine's **Permissions** tab
-through normal navigation. Ordinary row activation still opens machine detail.
-No badge renders for zero work or a failed/unauthorized summary, including when
-a previous successful result remains cached. The shared query refreshes every
-30 seconds while visible, on window focus, and after executor mutations through
-the existing executor cache family.
-
-Run `node admin/e2e/executor-attention/run.mjs` from the repository root. The
-headless evaluation starts this checkout's live Vite server by default, or its
-built preview when `NAV_E2E_ADMIN_MODE=preview`, on its configured ports and
-refuses to adopt an existing server. It renders the actual sidebar and
-executor table at desktop and phone widths, tests keyboard/touch review
-navigation, checks the shared fetch, clears resolved counts and verifies that
-a denied refresh removes cached badges. Screenshots are written under
-`e2e/screenshots/executor-attention/`.
-
-The fixture supplies API responses and does not claim server authorization
-coverage. The executor-management API tests own latest-revision selection and
-caller entitlement.
-
-The Browser Suites workflow enables eight isolated executor preview entries in
-its Navigation Transitions job, run together in its executor step:
-
-| Fixture | Build flag |
-| --- | --- |
-| Pairing | `NESSIE_EXECUTOR_PAIRING_E2E_FIXTURE=1` |
-| Agent access | `NESSIE_EXECUTOR_AGENTS_E2E_FIXTURE=1` |
-| Machine detail | `NESSIE_EXECUTOR_DETAIL_E2E_FIXTURE=1` |
-| Attention badges | `NESSIE_EXECUTOR_ATTENTION_E2E_FIXTURE=1` |
-| Run launcher | `NESSIE_EXECUTOR_RUN_LAUNCHER_E2E_FIXTURE=1` |
-| Conversation leases | `NESSIE_EXECUTOR_LEASE_E2E_FIXTURE=1` |
-| Coding sessions | `NESSIE_EXECUTOR_CODING_SESSIONS_E2E_FIXTURE=1` |
-| Tool screenshots | `NESSIE_TOOL_SCREENSHOTS_E2E_FIXTURE=1` |
+The permissions-review queue and badges are retired. The historical
+`test:e2e:executor-attention` command now verifies that the real sidebar and
+executor table render without review badges or attention requests, and that
+keyboard and touch activation still open machine detail.
 
 `pnpm --filter @nessie/admin test:e2e:executor-lease` renders the real
 composer, with the lease chip the launcher hook hands it, a reply panel's
@@ -59,7 +23,7 @@ says it may not — with End on screen at phone width. Screenshots go to
 is covered by `api/test/executor-lease-routes.test.ts`.
 
 `pnpm --filter @nessie/admin test:e2e:executor-coding-sessions` renders the
-real executor page on its Permissions tab, whose Local apps section lists the
+real executor page on its Sessions tab, whose Local apps section lists the
 coding bridge's open sessions, over runner-supplied API answers. It pins that
 each row names the title, status, coding agent, folder, the driving agent or
 "an agent you cannot see" and its last update; that the pairing owner's Close

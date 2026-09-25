@@ -9,8 +9,8 @@ Chapter of [deployment.md](../deployment.md). Images build on GitHub and the hos
 permission or the deploy job receives SSH secrets, its read-only gate picks the
 **newest commit on `main` that has a successful `push` CI run for that exact
 SHA from this repository** — the tip when the tip's own CI is green, otherwise
-the newest verified ancestor under it. It then checks out, builds, tags, syncs
-and promotes only that SHA. A failed, cancelled, forked, wrong-branch or stale
+the newest verified ancestor under it. It then checks out that SHA, downloads
+its images from the selected successful CI run, tags, syncs and promotes them. A failed, cancelled, forked, wrong-branch or stale
 CI event cannot promote an image, and a commit that is not on `main` is never a
 candidate however green its CI.
 
@@ -91,10 +91,25 @@ data live in named Docker volumes outside the synced tree.
 
 ### Images are built on GitHub, never on the production host
 
-The Deploy workflow's `build` job builds `app`, `admin`, and `web` on GitHub
-runners and pushes them to GHCR tagged with the commit SHA
-(`ghcr.io/unlikeotherai/nessie-{app,admin,web}:<sha>`, cached per image with
-`type=gha`). The `deploy` job then logs the host into GHCR with the run's own
+Main CI's `Production Image` matrix builds `app`, `admin`, and `web` once,
+exports Docker archives with an exact-SHA tag and OCI revision label, and saves
+`production-image-{app,admin,web}` artifacts for 7 days. Branch CI still builds
+the Dockerfiles but publishes no images or production artifacts. Only main
+refreshes the per-image `type=gha` build cache.
+
+Deploy's `build` job downloads from the **selected trusted successful CI run
+ID**, which can differ from the event that woke Deploy. It loads each image,
+checks its revision label against the gated SHA, and pushes that same image to
+`ghcr.io/unlikeotherai/nessie-{app,admin,web}:<sha>` without recompiling.
+A missing, expired or mismatched artifact fails promotion; rerun CI for that
+SHA to regenerate expired artifacts. Full CI reruns replace the same named
+artifacts; failed-job reruns reuse the images that already passed in that run.
+
+For verified ancestors predating `scripts/promote-ci-image.mjs`, Deploy retains
+the original build path. That file's presence declares the artifact contract:
+new revisions never rebuild silently when an artifact is unavailable.
+
+The `deploy` job then logs the host into GHCR with the run's own
 short-lived `GITHUB_TOKEN`, and `redeploy.sh` **pulls** those images.
 
 This exists because building on the box was an outage. Each deploy ran a full

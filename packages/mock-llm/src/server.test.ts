@@ -229,3 +229,22 @@ test('health and models endpoints answer like a provider', async () => {
     await server.close()
   }
 })
+
+
+test('completion review does not consume a main or utility scenario turn', async () => {
+  const server = await createMockLlmServer({ scenario: parseScenario({
+    name: 'completion-review', turns: [{ text: 'main' }],
+    utilityTurns: [{ text: 'first utility' }, { text: 'second utility' }],
+    completionReview: { text: '{"needsFollowUp":true,"reason":"Keep going."}' },
+  }) })
+  try {
+    const reviewed = await fetch(`${server.url}/v1/chat/completions`, chatRequest({
+      tools: [], messages: [{ role: 'system', content: '[nessie.follow_up_review.v1]\nReview.' }],
+    }))
+    const body = await reviewed.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(JSON.parse(body.choices[0]!.message.content).needsFollowUp, true)
+    const ordinary = await fetch(`${server.url}/v1/chat/completions`, chatRequest({ tools: [] }))
+    const normal = await ordinary.json() as { choices: Array<{ message: { content: string } }> }
+    assert.equal(normal.choices[0]?.message.content, 'first utility')
+  } finally { await server.close() }
+})

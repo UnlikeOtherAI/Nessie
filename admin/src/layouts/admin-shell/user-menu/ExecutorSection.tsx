@@ -71,9 +71,9 @@ export const ExecutorSection = ({ onClose }: { onClose: () => void }) => {
     <Link className={rowClass} onClick={onClose} role="menuitem" to="/agents/executors">Executor status unavailable</Link>
   )
   return <>
-    <ExecutorMenuGroup executors={inventory.data.filter((executor) => executor.scope.kind === 'private')}
+    <ExecutorMenuGroup executors={inventory.data.filter((executor) => !executor.sharedWithTeam && executor.scope.kind === 'private')}
       kind="personal" onClose={onClose} />
-    <ExecutorMenuGroup executors={inventory.data.filter((executor) => executor.scope.kind !== 'private')}
+    <ExecutorMenuGroup executors={inventory.data.filter((executor) => executor.sharedWithTeam || executor.scope.kind !== 'private')}
       kind="team" onClose={onClose} />
   </>
 }

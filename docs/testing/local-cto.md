@@ -1,0 +1,118 @@
+# Test a CTO locally with a real personal provider
+
+Use the local API, its embedded worker, the Vite UI and a separately paired
+executor connection. No deployment is needed to test a worker change.
+
+## Prepare and run
+
+Use a task worktree. Keep the database in the shared local Postgres container
+and executor state outside all checkouts, following
+[local state](../standards/local-state.md). Use a dedicated database for this
+live scenario; never run global-poller tests against it while the API is running.
+
+Install with `pnpm install --frozen-lockfile`, generate Prisma, apply migrations,
+then build the API, worker, executor and UI workspace dependencies through Turbo.
+Build `@nessie/client-core` and `@nessie/sign-in-surface`, not the admin bundle.
+Set the worktree's fixed ports, `NESSIE_MODE=local`, database URL and a random
+local authentication secret. Start `pnpm dev`. Verify `/api/health` returns 200
+and the admin HTML includes `@vite/client`.
+
+For real personal-model calls without a development vault, explicitly set
+`NESSIE_LOCAL_SUBSCRIPTIONS_MEMORY=1` before starting. The API and embedded
+worker share an in-memory credential store; production still requires its vault.
+Link the key through **Connected accounts**, then select that exact connection
+when creating a fresh private CTO. Credentials are lost on server restart:
+relink the same account before the next run. Do not put a provider key in Git,
+a chat prompt, a fixture or a log. No deployment model is used as a fallback
+for this CTO's inference. Avatar generation and memory extraction still use
+the separately configured deployment model.
+
+Pair an additional connection using a separate owner-only executor state
+directory and the local API origin. Do not replace a production connection or
+copy its machine key. Configure an actually installed terminal executable,
+approve its descriptor once and grant the CTO access through the normal API/UI.
+Adding that agent within the approved boundary requires no second password/code.
+The native account-management flow remains separate from this CLI test setup.
+
+Rebuild the worker after changing worker source; the API watches its output.
+Relink the temporary provider connection after that API restart. Use a new
+conversation for an acceptance test so earlier failures do not prime the model.
+
+## Acceptance evidence — Windows, 2026-09-25
+
+A fresh private CTO used a linked personal Kimi account against a local API
+and embedded worker. A Windows executor connected locally while the existing
+production connection on the same machine remained online with its own key.
+
+The first attempt failed because the test setup named an absent PowerShell 7
+executable. Correcting the reviewed local configuration to the installed
+Windows PowerShell executable resolved it without a deployment.
+
+The next clean conversation completed without a reminder: one
+`terminal_session_start`, one initial read, one command write, one Enter write,
+one result read and one `coding_session_close`. The only OS command was:
+
+```powershell
+Get-Volume | Select-Object DriveLetter, FileSystemLabel, Size, SizeRemaining | ConvertTo-Json
+```
+
+The reply showed measured total/free bytes for C:, D: and the letterless
+volume. The session state subsequently became `closed` with no process
+identity. Both executor connections remained online. The reply was inspected
+in the local browser. This verifies Windows and two concurrent connections;
+it does not by itself verify the other platforms or native multi-account UI.
+
+## Continued work acceptance — 2026-09-25
+
+Three further tasks ran through the same personal Kimi connection locally:
+
+- Sales reconciliation: read a CSV, excluded cancelled/refunded orders, wrote
+  and independently reconciled a report: six paid orders, 13 units, 206.90 revenue.
+- Invoice repair: ran the supplied seven tests (five failed), repaired the
+  calculation without editing tests, and reran successfully (seven passed).
+  An independent rerun also passed; the example total was 4,858 cents.
+- Delayed report: launched an 18-second job once, followed it to completion,
+  read its manifest and checked all three source-file hashes and byte lengths.
+  Independent verification matched the artifact. Chat output masked hashes
+  through existing output redaction; it did not expose complete hashes.
+
+All three streamed an acknowledgement before the first tool call and ended
+with a final chat answer and a closed terminal. Streamed progress is distinct
+from the one durable final message. No test reminder remained pending.
+The run exposed and fixed a terminal loop detector that counted Enter across
+different commands: the repeated-input limit now applies since the last
+different input in that same session, including across checkpoints.
+
+## Three-machine and multi-connection acceptance — 2026-09-25
+
+New CLI connections on macOS and Ubuntu used the default pairing flow and
+received separate machine identities alongside their existing production
+connections. Each was approved once and granted to the local CTO. All three
+machines were available concurrently. Three fresh CTO conversations used the
+same personal Kimi subscription and completed a read-only OS, CPU, RAM and
+mounted-filesystem inventory: Windows through PowerShell, Ubuntu through bash,
+and macOS through its installed Claude Code. Each streamed an acknowledgement
+before its first tool call, returned the measured inventory and closed its
+session. Existing output sanitization masks hostnames and some mount paths;
+the CTO explicitly reported that limitation on Mac and Linux.
+
+Local checks also passed: Windows service (56 tests), tray (41 tests),
+Windows Desktop Rust compilation, Mac app source typecheck and all 92 Mac
+core XCTest cases. The executor Turbo suite passed on Node 22.23.3: 517 tests
+in the ordinary pass plus 95 in the native-helper pass; platform-dependent
+skips remain. Its concurrency is bounded to avoid saturating Windows.
+The full repository lint and the admin/executor typechecks passed.
+
+Headless Playwright verified the real Windows tray renderer with two
+simultaneous connections and a service refresh while Add account was open.
+It also verified the shared Desktop pairing dialog at 1280px and 390px,
+including Windows and Linux native-transport fixtures. Native folder and
+confirmation dialogs were mocked in those browser checks. Linux native
+bundling passed CI. The Mac GUI was not installed: this machine has no
+Developer ID Application certificate, so its current signed app remains intact.
+
+Installer verification must run the full Mac build, not only `swiftc -typecheck`:
+the Release compiler also checks definite initialization of property wrappers.
+That build caught an account-controller initializer reading a `@Published`
+property before all stored properties were initialized. Constructing the initial
+controllers in a local value before assigning either published property fixes it.

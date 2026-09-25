@@ -168,7 +168,7 @@ export const seedStandingPolicyWorld = async (prisma: PrismaClient) => {
     await prisma.executorCapabilityRevision.create({
       data: {
         descriptor: descriptor as unknown as Prisma.InputJsonValue, executorId,
-        localPolicyDigest: descriptor.localPolicyDigest, revision, signature: 'proposed',
+        localPolicyDigest: descriptor.localPolicyDigest, reviewStatus: 'pending_review', revision, signature: 'proposed',
       },
     })
   }

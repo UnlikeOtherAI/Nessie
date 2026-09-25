@@ -117,7 +117,7 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
       }}
       anchorRef={editorRef}
       className="flex max-h-64 flex-col overflow-y-auto rounded-lg border border-[color:var(--sep)] bg-[color:var(--panel)] py-1 shadow-[0_16px_40px_var(--scrim-strong)]"
-      label="Page suggestions"
+      label="Document suggestions"
       onClose={() => setDismissedFrom(trigger.from)}
       open
       placement="bottom-start"
@@ -126,7 +126,7 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
     >
       {items.length === 0 ? (
         <div className="px-3 py-2 text-xs text-[color:var(--tx3)]">
-          {query ? 'Searching…' : 'Type to search pages…'}
+          {query ? 'Searching…' : 'Type to search documents…'}
         </div>
       ) : (
         items.map((item, index) => (
@@ -143,7 +143,7 @@ export const WikilinkSuggestionMenu = ({ editor }: { editor: Editor }) => {
             onClick={() => select(item)}
             type="button"
           >
-            {item.kind === 'page' ? item.title : `Link “${item.title}” (page doesn't exist yet)`}
+            {item.kind === 'page' ? item.title : `Link “${item.title}” (document doesn't exist yet)`}
           </button>
         ))
       )}

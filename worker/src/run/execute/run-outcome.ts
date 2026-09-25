@@ -160,7 +160,9 @@ export const handleRunLoopOutcome = async (
       runId: context.run.id,
     })
     await handleRunExecutionFailure(deps, payload, context, {
-      error: input.loopResult.incompleteReason === 'provider_output_limit'
+      error: input.loopResult.incompleteReason === 'follow_up_limit'
+        ? new Error('The agent did not complete its work after two corrective continuations')
+        : input.loopResult.incompleteReason === 'provider_output_limit'
         ? new ProviderOutputLimitError()
         : new EmptyProviderResponseError(),
       planContext: input.planContext,

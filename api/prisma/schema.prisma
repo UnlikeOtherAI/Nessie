@@ -1732,6 +1732,7 @@ model OrganizationMember {
 }
 
 model Project {
+  executorAccess ExecutorProjectAccess[]
   id                       String                    @id @default(uuid()) @db.Uuid
   name                     String
   // A project can show one member-chosen identity in the sidebar: either an
@@ -2506,6 +2507,7 @@ model ProjectMember {
 }
 
 model Team {
+  executorAccess ExecutorTeamAccess[]
   id                       String                    @id @default(uuid()) @db.Uuid
   name                     String
   projectId                String                    @map("project_id") @db.Uuid
@@ -5657,6 +5659,8 @@ model Executor {
   pairingCodes           ExecutorPairingCode[]
   capabilityRevisions    ExecutorCapabilityRevision[]
   privateAssignments     ExecutorPrivateAssignment[]
+  teamAccess             ExecutorTeamAccess?
+  projectAccess          ExecutorProjectAccess[]
   operationGrants        ExecutorAgentOperationGrant[]
   sessions               ExecutorSession[]
   bindings               ExecutorBinding[]
@@ -5675,6 +5679,27 @@ model Executor {
   @@index([projectId])
   @@index([pairingOwnerUserId])
   @@map("executors")
+}
+
+/// Sharing belongs to one selected team; members only receive use access.
+model ExecutorTeamAccess {
+  executorId String   @id @map("executor_id") @db.Uuid
+  teamId     String   @map("team_id") @db.Uuid
+  everyone   Boolean  @default(false)
+  executor   Executor @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("executor_team_access")
+}
+
+model ExecutorProjectAccess {
+  executorId String   @map("executor_id") @db.Uuid
+  projectId  String   @map("project_id") @db.Uuid
+  executor   Executor @relation(fields: [executorId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([executorId, projectId])
+  @@map("executor_project_access")
 }
 
 /// Short-lived, owner-only screen relay. Durable terminal history stays on the executor.
@@ -5757,7 +5782,7 @@ model ExecutorCapabilityRevision {
   descriptor             Json
   localPolicyDigest      String                          @map("local_policy_digest")
   signature              String
-  reviewStatus           ExecutorCapabilityReviewStatus  @default(pending_review) @map("review_status")
+  reviewStatus           ExecutorCapabilityReviewStatus  @default(active) @map("review_status")
   reviewedByUserId       String?                         @map("reviewed_by_user_id") @db.Uuid
   reviewedAt             DateTime?                       @map("reviewed_at")
   createdAt              DateTime                        @default(now()) @map("created_at")

@@ -5,6 +5,8 @@
 
 export const executorKeys = {
   all: ['executors'] as const,
+  project: (projectId: string) => ['executors', 'project', projectId] as const,
+  sharing: (executorId: string, teamId?: string) => ['executors', executorId, 'sharing', teamId ?? 'none'] as const,
   attention: ['executors', 'attention'] as const,
   detail: (executorId: string) => ['executors', executorId] as const,
   access: (executorId?: string) =>

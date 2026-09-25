@@ -94,19 +94,57 @@ reading each other. Ollama's per-model levels are not sent: too few models
 accept them and nothing discovers which, so on this lane effort collapses to
 on or off ([local-ollama-agents.md](local-ollama-agents.md)).
 
-## What is deliberately not done
+## Provider-specific behavior
 
-- **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking;
-  its backend sends `thinking_delta` on its own and the stream reader forwards
-  it. Its tool calls are a text protocol (`<tool_use>{…}</tool_use>` rendered
-  into the system prompt), and Kimi K2.7 frequently ends the turn right after
-  the block's JSON, before the closing tag — production delivered a raw block
-  to a person on 2026-09-22 because the parser demanded the tag. A block is
-  now read by its balanced JSON with the tag optional, every `<tool_use>`
-  fragment is stripped from the delivered text, and a native `tool_use`
-  content block is honoured if the backend ever answers with one. Replaying
-  Kimi's thinking blocks on tool rounds (the "Preserved Thinking" its docs
-  say K2.7-code requires) needs a key to test against and is still open.
+### Kimi continuation ordering
+
+Only leading system messages are hoisted into the Messages API's top-level
+`system` field. Once the conversation has started, application instructions
+(completion review, empty-response recovery and budget wind-down) stay at their
+chronological position, in a user-role `<system_instruction>` text block. This
+is a transport representation of the application instruction, not a new human
+request or a permission grant. Initial policy and tool availability stay intact.
+
+Hoisting a correction after an assistant answer left that answer as the last
+wire message. The endpoint treated it as an assistant prefill and returned an
+empty `end_turn` (seven output tokens), including on the recovery attempt.
+A live comparison on 2026-09-25 reproduced that result; preserving the
+continuation as the final turn produced the requested tool call. Request
+mapping lives in `kimi-messages.ts`, separately from response decoding in
+`kimi-anthropic-protocol.ts`. Cache breakpoints remain on the stable leading
+system block and the transcript tail. Both streaming and non-streaming tests
+cover continuation, one tool call, its result and completion.
+
+See the [Messages API prefill contract](https://platform.claude.com/docs/en/build-with-claude/working-with-messages).
+
+### Other provider continuations
+
+The Codex Responses adapter also keeps only leading system context in top-level
+`instructions`; later application corrections remain ordered `developer`
+input items, matching Codex's runtime context updates. Hoisting them would lose
+their position relative to the assistant answer and completed tool results.
+The [Responses message roles](https://developers.openai.com/api/docs/guides/prompt-engineering)
+support this representation without reducing instruction priority.
+
+OpenAI Chat Completions, the shared OpenAI-compatible connector (including
+OpenRouter, DashScope and Grok), DeepSeek and local Ollama already preserve message
+order. Transport tests cover each path, including correction placement, tool
+availability and returned tool calls; Ollama also retains prior reasoning.
+These are protocol tests, not a claim that every hosted model was live-tested.
+
+### Provider limitations
+
+- **Kimi for Coding** uses native Messages `tools`, `tool_use` and
+  `tool_result` blocks. Provider call IDs and reasoning text survive tool
+  rounds through the normal checkpointed assistant message. Its endpoint
+  accepts replayed thinking text without a signature (verified with the
+  connected personal subscription on 2026-09-25). Tools are no longer XML
+  instructions in the system prompt, and text that resembles a tool call
+  never executes. Native streamed arguments also reach the tool-delta lane.
+  Non-streaming utility calls explicitly disable thinking; streamed main
+  turns keep provider thinking unless effort is `none`, the request is JSON,
+  or forced tool choice requires it off. The cloud graph honors the caller's
+  stream setting, so completion reviews use this utility path as intended.
 - **OpenRouter's `reasoning_details` blocks are not replayed.** Omitting them
   loses reasoning continuity across a tool round on some upstreams; it does
   not fail the request.

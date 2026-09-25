@@ -87,6 +87,15 @@ if [[ ! -d "${app_path}" ]]; then
   exit 1
 fi
 
+# An app with no icon still builds and runs, and every surface that lists it
+# quietly shows the generic application icon instead, so the absence is caught
+# here rather than by somebody opening Login Items.
+icon_file="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${app_path}/Contents/Info.plist" 2>/dev/null || true)"
+if [[ -z "${icon_file}" || ! -f "${app_path}/Contents/Resources/${icon_file%.icns}.icns" ]]; then
+  echo "build-app.sh: the bundle carries no application icon." >&2
+  exit 1
+fi
+
 # Resources, not a subdirectory of the executable's own folder: the app resolves
 # the runtime through `Bundle.main.resourceURL` and nothing else.
 resources="${app_path}/Contents/Resources/executor-runtime"

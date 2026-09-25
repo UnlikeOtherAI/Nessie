@@ -257,8 +257,11 @@ model KnowledgePageLink {
 
 - Reader sidebar gets a **Backlinks** panel: pages linking here (ACL-filtered
   with the standard space-read check).
-- **Unlinked mentions** (pages whose text contains this page's title, via the
-  existing trigram index) listed below backlinks with one-click "link it".
+- The title-substring "unlinked mentions" list and endpoint were removed.
+  Generic titles produced unrelated matches because ordinary prose contains
+  the same words. The document surface now shows only explicit, resolved
+  wikilinks as backlinks; it never reuses another page's backlink rows while
+  a newly selected document loads.
 - Creating a page whose title matches unresolved `targetTitle` rows resolves
   them (fills `targetPageId`).
 
@@ -418,9 +421,10 @@ next starts.
    with suggestion popup and create-on-click for unresolved links;
    `knowledge_page_links` maintained transactionally with chunking; creating
    or renaming a page resolves pending links to its title; ACL-filtered
-   backlinks + unlinked-mentions endpoints and panel. Deliberately dropped
-   from scope: `#tag` autocomplete (labels UI already exists) and the graph
-   view (deferred; the link data is in place). *Acceptance verified live:*
+   backlinks endpoint and panel. Title-substring unlinked mentions were
+   removed because generic titles created unrelated results. Deliberately
+   dropped from scope: `#tag` autocomplete (labels UI already exists) and the
+   graph view (deferred; the link data is in place). *Acceptance verified live:*
    rename keeps id-tracked links; deletes cascade the index.
 5. **Tickets + files + extras** — ✅ **shipped (2026-07-06).** `taskId`
    envelope through pages/chunks/search/kb tools; advisory-locked

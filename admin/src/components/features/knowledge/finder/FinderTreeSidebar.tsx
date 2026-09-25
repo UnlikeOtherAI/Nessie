@@ -13,6 +13,7 @@ import type { FinderRootRow } from './FinderRootColumn'
 
 type FinderTreeSidebarProps = {
   activePageId?: string
+  activeRootRowId?: string
   browseTo: (path: string[]) => void
   createFolderColumnKey: string | null
   createFolderPending: boolean
@@ -30,6 +31,7 @@ type FinderTreeSidebarProps = {
 
 export const FinderTreeSidebar = ({
   activePageId,
+  activeRootRowId,
   browseTo,
   createFolderColumnKey,
   createFolderPending,
@@ -66,17 +68,15 @@ export const FinderTreeSidebar = ({
       leading={leading}
       onOpen={() => {
         if (row.kind === 'space') {
-          setExpandedSpaces((current) => {
-            const next = new Set(current)
-            if (next.has(row.space.spaceId)) next.delete(row.space.spaceId)
-            else next.add(row.space.spaceId)
-            return next
-          })
+          // Selecting a root opens it; it must not turn into a collapse toggle
+          // on the very next click. Child folders have their own chevrons.
+          setExpandedSpaces((current) => new Set([...current, row.space.spaceId]))
         }
         onOpenRoot(row)
       }}
-      selected={row.kind === 'space' ? row.space.spaceId === selectedSpaceId : false}
+      selected={row.id === activeRootRowId}
       title={title}
+      tree
       variant="root"
     />
   )

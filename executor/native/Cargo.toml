@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+# What Windows names this executable in Task Manager and its properties; the
+# icon beside it is embedded by build.rs.
+[package.metadata.tauri-winres]
+FileDescription = "Nessie Executor Helper"
+ProductName = "Nessie Executor"
+
 [[bin]]
 name = "nessie-executor-native"
 path = "src/main.rs"
@@ -31,3 +37,7 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_System_JobObjects",
   "Win32_System_Threading",
 ] }
+
+# Embeds the icon and version information (build.rs); Windows builds only.
+[target."cfg(windows)".build-dependencies]
+tauri-winres = "0.3.6"

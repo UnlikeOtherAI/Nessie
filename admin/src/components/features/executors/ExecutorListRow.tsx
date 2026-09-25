@@ -1,7 +1,6 @@
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { ExecutorRecordResponse } from '@nessie/schemas'
-import { Link } from 'react-router-dom'
 import { prewarmRowHandlers } from '../../../navigation/prewarm'
 import { Pill } from '../../primitives/Pill'
 import {
@@ -13,7 +12,6 @@ import {
 
 type ExecutorListRowProps = {
   executor: ExecutorRecordResponse
-  needsReview: boolean
   onOpen: (executorId: string) => void
   /** From the table's own `usePrewarm()`; a row cannot call a hook itself. */
   prewarm: (to: string) => void
@@ -26,7 +24,7 @@ const lastSeenLabel = (executor: ExecutorRecordResponse): string =>
 // it is in, how it is reached, when it last checked in, and a far-right
 // chevron. The whole row opens executor detail, which owns access, operations
 // and this computer's own companion controls.
-export const ExecutorListRow = ({ executor, needsReview, onOpen, prewarm }: ExecutorListRowProps) => (
+export const ExecutorListRow = ({ executor, onOpen, prewarm }: ExecutorListRowProps) => (
   <tr
     className="cursor-pointer"
     onClick={() => onOpen(executor.id)}
@@ -43,17 +41,6 @@ export const ExecutorListRow = ({ executor, needsReview, onOpen, prewarm }: Exec
     <td className="min-w-0 py-2.5 pl-4 pr-3 align-middle">
       <div className="flex flex-wrap items-center gap-2">
         <span className="truncate text-sm font-medium text-[color:var(--tx)]">{executor.label}</span>
-        {needsReview ? (
-          <Link
-            aria-label={`1 change to review for ${executor.label}`}
-            className="inline-flex items-center [@media(pointer:coarse)]:min-h-11"
-            onClick={(event) => event.stopPropagation()}
-            to={`/agents/executors/${executor.id}?tab=permissions`}
-            {...prewarmRowHandlers(prewarm, `/agents/executors/${executor.id}?tab=permissions`)}
-          >
-            <Pill size="sm" tone="warning" uppercase={false}>1 change to review</Pill>
-          </Link>
-        ) : null}
       </div>
       <div className="truncate text-xs text-[color:var(--tx3)]">
         {executorProfilesLabel(executor)}

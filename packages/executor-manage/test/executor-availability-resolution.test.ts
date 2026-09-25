@@ -74,6 +74,7 @@ const availabilityPrisma = (
     },
     deleteMany: async () => ({ count: 0 }),
   },
+  executorTeamAccess: { findUnique: async () => null },
   organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
   toolRegistryEntry: {
     deleteMany: async () => ({ count: 0 }),

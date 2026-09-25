@@ -17,7 +17,13 @@ test('Knowledge Finder exposes Tree, Columns and List views', () => {
   assert.match(view, /case 'full':\n      return 'list'/)
   assert.match(documents, /view === 'tree'/)
   assert.match(documents, /<FinderTreePane/)
-  assert.match(documents, /view === 'tree' && !single && !virtualColumnKey/)
+  assert.match(documents, /view === 'tree' && !single \?/)
+  assert.doesNotMatch(documents, /view === 'tree'[^?]+!agentsDirectoryOpen/)
+  assert.match(readSource('../src/components/features/knowledge/finder/FinderTreePane.tsx'), /<FinderTreeDetail/)
+  const detail = readSource('../src/components/features/knowledge/finder/FinderTreeDetail.tsx')
+  assert.match(detail, /if \(documentPane\) return documentPane/)
+  assert.match(detail, /if \(agentsDirectoryActive\)/)
+  assert.match(detail, /Select a folder or document to see its contents here\./)
   assert.match(documents, /rowsIn=\{rowsIn\}/)
   assert.match(tree, /rowsIn/)
   const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
@@ -26,6 +32,55 @@ test('Knowledge Finder exposes Tree, Columns and List views', () => {
   assert.match(sidebar, /Spaces/)
   assert.match(sidebar, /onOpenRoot/)
   assert.match(tree, /renderPages/)
+})
+
+test('Tree owns the adjacent document pane while other views keep full-surface detail', () => {
+  const workspace = readSource('../src/components/features/knowledge/KnowledgeWorkspace.tsx')
+  const documents = readSource('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+  const pane = readSource('../src/components/features/knowledge/finder/FinderTreePane.tsx')
+
+  assert.match(workspace, /documentPane=\{!stacked && documentOpen \? documentPane : undefined\}/)
+  assert.match(documents, /documentPane && view !== 'tree'/)
+  assert.match(documents, /absolute inset-0 z-\[var\(--layer-stack\)\]/)
+  assert.match(pane, /border-l border-\[color:var\(--sep\)\]/)
+  assert.match(pane, /<FinderTreeDetail/)
+})
+
+test('Tree keeps Latest and Shared with me in its detail pane', () => {
+  const documents = readSource('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+  const detail = readSource('../src/components/features/knowledge/finder/FinderTreeDetail.tsx')
+
+  const pane = readSource('../src/components/features/knowledge/finder/FinderTreePane.tsx')
+  const virtual = readSource('../src/components/features/knowledge/finder/FinderTreeVirtualDetail.tsx')
+
+  assert.match(documents, /virtualListing=\{virtualKind \?/)
+  assert.match(pane, /<FinderTreeVirtualDetail/)
+  assert.match(virtual, /<FinderVirtualHost/)
+  assert.match(documents, /view === 'tree' && !single \?/)
+  assert.match(detail, /if \(virtualContent\) return virtualContent/)
+})
+
+test('folder-detail navigation keeps the selected folder ancestry in child paths', () => {
+  const detail = readSource('../src/components/features/knowledge/finder/FinderTreeDetail.tsx')
+  const surface = readSource('../src/components/features/knowledge/finder/FinderTreeSurface.tsx')
+  const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+
+  assert.match(detail, /basePath=\{parentPageId \? pagePath : \[\]\}/)
+  assert.match(surface, /basePath=\{basePath\}/)
+  assert.match(tree, /basePath = \[\]/)
+  assert.match(tree, /renderPages\(rowsIn\(null\), basePath, 0\)/)
+})
+
+test('Tree rows use channel-style icons and contextual selection', () => {
+  const tree = readSource('../src/components/features/knowledge/finder/FinderTreeView.tsx')
+  const styles = readSource('../src/styles.css')
+
+  assert.match(tree, /const TreeItemIcon/)
+  assert.match(tree, /kind === 'spreadsheet'/)
+  assert.match(tree, /<TreeItemIcon kind=\{page\.kind\}/)
+  assert.match(tree, /tree\s+variant="item"/)
+  assert.match(styles, /data-finder-tree-row='true'/)
+  assert.match(styles, /color-mix\(in srgb, var\(--sb-active\) 20%, transparent\)/)
 })
 
 test('Tree keeps the existing query recovery and avoids nested buttons', () => {
@@ -59,6 +114,26 @@ test('opening a space makes it the New menu target and Tree creates folders in p
   assert.match(tree, /createFolderColumnKey/)
   const sidebar = readSource('../src/components/features/knowledge/finder/FinderTreeSidebar.tsx')
   assert.match(sidebar, /setExpandedSpaces\(\(current\) => new Set\(\[\.\.\.current, selectedSpaceId\]\)\)/)
+  assert.match(sidebar, /setExpandedSpaces\(\(current\) => new Set\(\[\.\.\.current, row\.space\.spaceId\]\)\)/)
+  assert.doesNotMatch(sidebar, /if \(next\.has\(row\.space\.spaceId\)\) next\.delete/)
+})
+
+test('root navigation keeps the selected Finder view and sort', () => {
+  const navigation = readSource('../src/components/features/knowledge/finder/useFinderRootNavigation.ts')
+  const documents = readSource('../src/components/features/knowledge/finder/DocumentsFinder.tsx')
+
+  assert.match(navigation, /for \(const key of \['view', 'sort'\]\)/)
+  assert.match(navigation, /withFinderQuery\('\/knowledge-base\/agents', search\)/)
+  assert.match(documents, /const \{ pathname, search \} = useLocation\(\)/)
+  assert.match(documents, /navigate, orgScope, search/)
+})
+
+test('returning to the Knowledge root route clears the previously selected root', () => {
+  const page = readSource('../src/pages/KnowledgeBasePage.tsx')
+
+  assert.match(page, /pathname !== '\/knowledge-base'/)
+  assert.match(page, /selectedRoot !== null \|\| activeProductView !== undefined/)
+  assert.match(page, /selectVirtual\(null\)/)
 })
 
 test('every folder view renders the shared inline folder row in place', () => {

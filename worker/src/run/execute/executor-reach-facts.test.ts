@@ -5,7 +5,9 @@ import type { PrismaClient } from '@prisma/client'
 import { executorCodingSessionOwnerKey } from '@nessie/executor-manage'
 import { ExecutorCapabilityDescriptorSchema } from '@nessie/schemas'
 
-import { CODING_SESSION_TOOL_NAME_SET, STRUCTURED_CODING_SESSION_TOOL_NAMES } from '../coding-session-tools.js'
+import {
+  codingSessionDescriptors, CODING_SESSION_TOOL_NAME_SET, STRUCTURED_CODING_SESSION_TOOL_NAMES,
+} from '../coding-session-tools.js'
 import { launchConversationScope, type ExecutorHostOutputDisclosure } from '../executor-host-output.js'
 
 import { createConsumedSourceSink } from './disclosure-basis.js'
@@ -423,4 +425,23 @@ test('a machine with no interactive terminal is still told as coding tools', asy
   const facts = await load(prisma, carried, new Set([...LOCAL_APPS, ...STRUCTURED_CODING_SESSION_TOOL_NAMES]))
   assert.ok(facts?.kind === 'bound')
   assert.deepEqual(facts.codingSessions?.agents, ['Claude Code'])
+})
+
+test('a terminal-only executor is reachable through its actual descriptors on launch and follow-up', async () => {
+  const machine = descriptor(['coding-sessions'], {
+    ...codingFacts, agents: ['terminal'], permissionMode: { terminal: 'hostUser' },
+  })
+  const tools = new Set(codingSessionDescriptors(machine.codingSessions!).map((tool) => tool.toolName))
+  assert.ok(tools.has('terminal_session_start'))
+  assert.equal(tools.has('coding_session_start'), false)
+  for (const lease of [carried, { kind: 'already_bound' as const, lease: liveLease }]) {
+    const { prisma } = stubPrisma({ descriptor: machine, channel: { members: [], type: 'dm' } })
+    const facts = await load(prisma, lease, tools)
+    assert.equal(facts?.kind, 'bound')
+    assert.ok(facts?.kind === 'bound' && facts.codingSessions?.terminal)
+    const prompt = buildExecutorReachBlock(facts) ?? ''
+    assert.match(prompt, /terminal_session_start/)
+    assert.match(prompt, /coding_session_close/)
+    assert.doesNotMatch(prompt, /no machine tools|offline|coding agent on|never write the code yourself/)
+  }
 })

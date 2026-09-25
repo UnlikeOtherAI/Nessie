@@ -97,15 +97,16 @@ locally; the agent cannot supply a different executable to the start tool.
 `terminal_session_start({root, path?, title?})` starts the configured program.
 `terminal_session_read({sessionId})` reads a bounded plain-text screen through
 the normal owner and disclosure gates. `terminal_session_write({sessionId,
-data})` sends exact key/text bytes, without adding a newline.
+data})` sends exact text without adding a newline; `{sessionId, key}` presses
+one named key. Supply exactly one of `data` or `key`. Send text and the key in
+separate calls so interactive applications do not treat the pair as paste.
+Use `Enter` for a shell and `Submit` for Claude on Windows (CSI-u Enter).
+`CtrlC`, `Escape`, `Tab`, `Backspace`, `Up` and `Down` are also supported.
+The worker encodes keys into control bytes; it never unescapes command text.
 `coding_session_list`, `coding_session_interrupt` and
 `coding_session_close` also cover these sessions. Results include a viewer
 link the agent can give the person on request. A link does not grant access.
 
-Send text and Enter separately when a CLI distinguishes paste from a keypress.
-Usually Enter is `\r`, Ctrl-C is `\u0003`, and Up is `\u001b[A`.
-Claude on Windows was verified with CSI-u Enter `\u001b[13;1u`; a plain
-carriage return can insert a newline in its configured input mode.
 The model reads the application screen to decide how to proceed. Nessie does
 not classify prompts, infer completion or answer approvals with keyword rules.
 

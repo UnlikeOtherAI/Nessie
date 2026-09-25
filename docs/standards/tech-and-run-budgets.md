@@ -29,6 +29,11 @@ summary and points here; **this file is the rule**.
   - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
     `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
     (`budget-stop.ts`); member-visible copy carries **no currency figures**.
+  - Terminal input repeats are counted per session until a different input is
+    sent to that session. Enter after a new command must remain usable through
+    the entire run. Reading the screen or using another session does not reset
+    repeated identical input; counts survive checkpoint resume. Ordinary tools
+    retain their cumulative repeat guard.
   - Main conversational turns do not set an application output-token cap.
     The common system prompt asks for complete, proportionate communication;
     real context and run/org spend budgets remain independent safeguards.
@@ -40,6 +45,12 @@ summary and points here; **this file is the rule**.
     catalogue's advertised maximum. Kimi's Messages lane discovers `/v1/models`
     and uses `max_output_tokens`, or its advertised `context_length` when Kimi
     exposes no separate output maximum.
+  - Normal text-only completion is checked by a metered utility-model
+    `{needsFollowUp, reason}` decision. A true decision continues the same run
+    at most twice, without changing its permissions or replaying completed
+    tools. The correction count is checkpointed and existing cancellation,
+    approval, provider-recovery and budget stops take precedence. See
+    [agent voice](agent-voice.md) for the completion contract.
   - The cache-read weight resolves once per run from the org
     `ModelPricingProfile` (`cacheReadPerMillion / inputPerMillion`, clamped to
     [0,1]), else `NESSIE_CACHE_READ_WEIGHT` (0.25).
@@ -207,7 +218,10 @@ summary and points here; **this file is the rule**.
     frame is never dispatched and gets one tool-enabled regeneration under the
     same identity and effect ledger. Crash state carries the mode. Repeated length
     is `provider_output_limit`, never `token_limit`; empty recovery remains
-    `empty_provider_response`.
+    `empty_provider_response`. An empty success also retains tools for one
+    bounded recovery, even after earlier tool calls: no visible answer is not
+    evidence that the work is complete. A recovered text answer still passes
+    the structured completion review; repeated empty responses fail visibly.
 
   - MCP tool descriptors are name-sorted with exposed names allocated in a
     fixed order, so the tool array is byte-identical across iterations and the

@@ -124,7 +124,7 @@ dbTest('executor agent pages preserve privacy, count filtered rows and page the 
       executorId, {}), /Executor not found/)
     await assert.rejects(listExecutorAgentAccess(prisma, actor, executorId, { cursor: 'invalid' }), /Invalid agent page cursor/)
 
-    // Only the latest policy is actionable, regardless of retained history.
+    // Retained capability history never creates a permissions-review queue.
     const policy = (revision: number, reviewStatus: 'pending_review' | 'active') => prisma.executorCapabilityRevision.create({
       data: { executorId, revision, reviewStatus, descriptor: {}, localPolicyDigest: 'test', signature: 'test' },
     })
@@ -134,7 +134,7 @@ dbTest('executor agent pages preserve privacy, count filtered rows and page the 
     assert.deepEqual(await getExecutorAttentionSummary(prisma, actor), { total: 0, executors: [] })
     await policy(3, 'pending_review')
     assert.deepEqual(await getExecutorAttentionSummary(prisma, actor), {
-      total: 1, executors: [{ executorId, policyRevision: 3 }],
+      total: 0, executors: [],
     })
     assert.deepEqual(await getExecutorAttentionSummary(prisma, {
       ...actor, actor: { ...actor.actor, actorId: otherUserId },
@@ -143,6 +143,26 @@ dbTest('executor agent pages preserve privacy, count filtered rows and page the 
       await prisma.executor.update({ where: { id: executorId }, data: { status } })
       assert.deepEqual(await getExecutorAttentionSummary(prisma, actor), { total: 0, executors: [] })
     }
+    await prisma.executor.update({ where: { id: executorId }, data: { status: 'offline' } })
+    await prisma.executorCapabilityRevision.create({ data: {
+      executorId, revision: 4, reviewStatus: 'active', signature: 'test', localPolicyDigest: `sha256:${'a'.repeat(64)}`,
+      descriptor: ExecutorCapabilityDescriptorSchema.parse({
+        protocolVersion: 1, revision: 4, profiles: ['workspace_sandbox'], operationKeys: ['file.read'],
+        platform: { architecture: 'x64', os: 'linux', osMajorVersion: 6 }, supervisor: 'service', sandboxBackend: 'none',
+        localPolicyDigest: `sha256:${'a'.repeat(64)}`,
+        limits: { maxCommandRuntimeSeconds: 30, maxResultBytes: 1024, maxSessions: 1 },
+      }),
+    } })
+    const continuations = await prisma.executorContinuation.count({ where: { executorId } })
+    const direct = (agentId: string, state: string) => app.inject({ method: 'PUT',
+      url: `/api/executors/${executorId}/agents`, payload: { agentId, state },
+    })
+    assert.equal((await direct(ids[4]!, 'allowed')).statusCode, 200, 'assignment needs no password or review')
+    assert.equal(await prisma.executorPrivateAssignment.count({ where: { executorId, agentId: ids[4] } }), 1)
+    assert.equal((await direct(ids[4]!, 'denied')).statusCode, 200)
+    assert.equal(await prisma.executorPrivateAssignment.count({ where: { executorId, agentId: ids[4] } }), 0)
+    assert.equal(await prisma.executorContinuation.count({ where: { executorId } }), continuations)
+    assert.equal((await direct(ids[5]!, 'allowed')).statusCode, 409, 'private-agent authority is enforced')
   } finally {
     try {
       await app.close()
@@ -302,7 +322,7 @@ dbTest('agent policy and executor access commit together only after a valid cont
       scopeKind: 'private', privateAssignments: { create: { principalKind: 'user', userId, role: 'admin' } },
     } })
     const allowed = await prepare('allowed')
-    assert.equal(allowed.requiresFreshVerification, true)
+    assert.equal(allowed.requiresFreshVerification, false)
     await confirm(allowed)
     assert.deepEqual((await snapshot()).agent.toolPolicy, { [policyKey]: true })
     assert.equal((await snapshot()).grants[0]?.state, 'allowed')

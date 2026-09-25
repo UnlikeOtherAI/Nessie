@@ -4,7 +4,6 @@ import { ExecutorRecordResponseSchema } from '@nessie/schemas'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { ExecutorsTable } from '../../src/components/features/executors/ExecutorsTable'
-import { executorKeys } from '../../src/facades/executors/keys'
 import { AdminSidebarNav } from '../../src/layouts/admin-shell/AdminSidebarNav'
 import '../../src/styles.css'
 
@@ -45,20 +44,13 @@ const Fixture = () => {
           isLoading={false}
           onOpen={(id) => navigate(`/agents/executors/${id}`)}
         />
-        <button
-          className="admin-button mt-6"
-          onClick={() => { void queries.invalidateQueries({ queryKey: executorKeys.all }) }}
-          type="button"
-        >
-          Refresh attention
-        </button>
       </main>
     </div>
   )
 }
 
 const root = document.querySelector('#root')
-if (!(root instanceof HTMLElement)) throw new Error('Executor attention fixture root is missing.')
+if (!(root instanceof HTMLElement)) throw new Error('Executor inventory fixture root is missing.')
 createRoot(root).render(
   <QueryClientProvider client={queries}>
     <ApiClientProvider client={client}>

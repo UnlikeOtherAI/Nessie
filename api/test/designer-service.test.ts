@@ -115,6 +115,7 @@ const fakePrisma = (overrides: { withExecutors?: boolean } = {}): PrismaClient =
   },
   executorAgentOperationGrant: { findMany: async () => [] },
   executorCapabilityRevision: { findMany: async () => [] },
+  executorTeamAccess: { findUnique: async () => null },
   executorPrivateAssignment: { findFirst: async () => null, findMany: async () => [] },
   executorSession: { findMany: async () => [] },
   organizationMember: {
@@ -323,7 +324,7 @@ test('the executors this person can reach travel into the sidebar prompt', async
   // This face calls no tool, so the rule is stated without telling it to use
   // one. The restricted section still NAMES the tool with its reason, which is
   // the catalogue doing its job, so the assertion is on the rule's own words.
-  assert.match(systemPromptSent, /confirmation happens on the Executors page, not here/)
+  assert.match(systemPromptSent, /confirmation happens on the Executors page or its chat card/)
   assert.doesNotMatch(
     systemPromptSent,
     /executor_agent_grant_prepare prepares ONE change/,

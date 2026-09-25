@@ -128,7 +128,7 @@ export const PageEditor = ({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!title.trim()) {
-      setTitleError('Give this page a title.')
+      setTitleError('Give this document a title.')
       return
     }
     setTitleError(undefined)
@@ -143,7 +143,7 @@ export const PageEditor = ({
       })
       pageDraft.clear()
     } catch (error) {
-      setFormError(toFormErrors(error).formError ?? 'Unable to save this page.')
+      setFormError(toFormErrors(error).formError ?? 'Unable to save this document.')
     }
   }
 
@@ -161,7 +161,7 @@ export const PageEditor = ({
       label: pending
         ? 'Saving…'
         : mode === 'create'
-          ? 'Create page'
+          ? 'Create document'
           : 'Save version',
       onSelect: () => undefined,
       primary: true,
@@ -190,7 +190,7 @@ export const PageEditor = ({
       <KnowledgePane
         actions={actions}
         onBack={onBack}
-        title={mode === 'create' ? 'New page' : 'Edit page'}
+        title={mode === 'create' ? 'New document' : 'Edit document'}
       >
         <div className="h-full overflow-y-auto">
           <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 py-10 sm:px-10 sm:py-14 lg:px-16">
@@ -217,11 +217,11 @@ export const PageEditor = ({
             <input
               aria-describedby={titleError ? titleErrorId : undefined}
               aria-invalid={Boolean(titleError) || undefined}
-              aria-label="Page title"
+              aria-label="Document title"
               autoFocus
-              className="w-full border-none bg-transparent text-[3.8025rem] font-bold leading-tight text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)] sm:text-[5.07rem]"
+              className="kb-document-title w-full border-none bg-transparent font-bold leading-tight text-[color:var(--tx)] outline-none placeholder:text-[color:var(--tx3)]"
               onChange={(event) => patchDraft({ title: event.target.value })}
-              placeholder="Give this page a title…"
+              placeholder="Give this document a title…"
               value={title}
             />
             {titleError ? (

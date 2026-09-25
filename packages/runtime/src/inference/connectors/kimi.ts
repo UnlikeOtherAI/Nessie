@@ -17,16 +17,23 @@ import {
   collectAnthropicStream,
   nativeToolCallsFromContent,
   normalizeAnthropicFinishReason,
-  parseKimiToolCalls,
-  toAnthropicPayload,
   type AnthropicMessagesResponse,
   usageFromAnthropic,
 } from './kimi-anthropic-protocol.js'
+import { toAnthropicPayload } from './kimi-messages.js'
 import { createBaseSnapshot } from './model-capabilities.js'
 import { isLedgerEndpoint } from '../../ledger-identity.js'
 
 const DEFAULT_KIMI_MODEL = 'kimi-for-coding'
 const DEFAULT_KIMI_BASE_URL = 'https://api.kimi.com/coding'
+
+const nativeToolChoice = (request: ProviderInvocationRequest): Record<string, unknown> => {
+  if (!request.tools?.length || !request.toolChoice) return {}
+  const choice = request.toolChoice
+  return { tool_choice: typeof choice === 'object'
+    ? { type: 'tool', name: choice.function.name }
+    : { type: choice === 'required' ? 'any' : choice } }
+}
 
 export const createKimiConnector = (
   config: ModelProviderConfig,
@@ -114,12 +121,14 @@ export const createKimiConnector = (
   const invokeRequest = async (
     body: Record<string, unknown>,
     requestHeaders?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<Response> => {
     const path = ledgerRouted ? '/messages' : '/v1/messages'
     const response = await fetch(`${baseUrl}${path}`, {
       body: JSON.stringify(body),
       headers: { ...requestHeaders, ...headers },
       method: 'POST',
+      signal,
     })
 
     if (!response.ok) {
@@ -168,8 +177,8 @@ export const createKimiConnector = (
         // images are dropped from the Anthropic payload it builds.
         supportsVision: false,
         systemPromptMode: 'native',
-        toolCallingMode: 'prompt-translated',
-        toolResultMode: 'context-block',
+        toolCallingMode: 'native',
+        toolResultMode: 'native-tool-message',
         }),
         ...capability,
         source: capability.maxOutputTokens === undefined ? 'static' : 'live',
@@ -196,20 +205,20 @@ export const createKimiConnector = (
       try {
         const response = await invokeRequest({
           ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
-          messages: payload.messages,
+          ...payload,
+          ...nativeToolChoice(request),
           model,
-          system: payload.system,
+          thinking: { type: 'disabled' },
           temperature: request.temperature,
-        }, request.requestHeaders)
+        }, request.requestHeaders, request.signal)
 
         const parsed = (await response.json()) as AnthropicMessagesResponse
         const rawText = (parsed.content ?? [])
           .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
           .map((block) => block.text)
           .join('')
-        const textParsed = parseKimiToolCalls(rawText, request.requestId)
-        const outputText = textParsed.outputText
-        const toolCalls = [...nativeToolCallsFromContent(parsed.content), ...textParsed.toolCalls]
+        const outputText = rawText
+        const toolCalls = nativeToolCallsFromContent(parsed.content)
         const baseFinishReason = normalizeAnthropicFinishReason(parsed.stop_reason)
         const finishReason: NormalizedFinishReason | undefined =
           toolCalls.length > 0 ? 'tool-call' : baseFinishReason
@@ -261,12 +270,15 @@ export const createKimiConnector = (
       try {
         const response = await invokeRequest({
           ...(request.maxOutputTokens === undefined ? {} : { max_tokens: request.maxOutputTokens }),
-          messages: payload.messages,
+          ...payload,
+          ...nativeToolChoice(request),
           model,
           stream: true,
-          system: payload.system,
+          ...(request.reasoningEffort === 'none' || request.responseFormat
+            || request.toolChoice === 'required' || typeof request.toolChoice === 'object'
+            ? { thinking: { type: 'disabled' } } : {}),
           temperature: request.temperature,
-        }, request.requestHeaders)
+        }, request.requestHeaders, request.signal)
 
         const stream = collectAnthropicStream(response)
         let next = await stream.next()
@@ -275,9 +287,7 @@ export const createKimiConnector = (
           next = await stream.next()
         }
 
-        const textParsed = parseKimiToolCalls(next.value.outputText, request.requestId)
-        const outputText = textParsed.outputText
-        const toolCalls = [...next.value.toolCalls, ...textParsed.toolCalls]
+        const { outputText, reasoningText, toolCalls } = next.value
         const finishReason: NormalizedFinishReason | undefined =
           toolCalls.length > 0 ? 'tool-call' : next.value.finishReason
 
@@ -295,6 +305,7 @@ export const createKimiConnector = (
             usage: next.value.usage,
           }),
           outputText,
+          reasoningText,
           toolCalls,
         }
       } catch (error) {

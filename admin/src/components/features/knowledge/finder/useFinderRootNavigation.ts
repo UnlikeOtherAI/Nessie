@@ -15,6 +15,17 @@ type FinderRootKnowledge = {
   selectVirtual: (kind: KnowledgeVirtualKind | null) => void
 }
 
+const withFinderQuery = (path: string, search: string): string => {
+  const current = new URLSearchParams(search)
+  const retained = new URLSearchParams()
+  for (const key of ['view', 'sort']) {
+    const value = current.get(key)
+    if (value) retained.set(key, value)
+  }
+  const query = retained.toString()
+  return query ? `${path}?${query}` : path
+}
+
 /**
  * Owns the root directory's route state. Keeping this beside the directory
  * columns makes Agents -> agent home an explicit ancestry instead of a space
@@ -25,8 +36,9 @@ export const useFinderRootNavigation = (input: {
   knowledge: FinderRootKnowledge
   navigate: NavigateFunction
   orgScope: boolean
+  search: string
 }) => {
-  const { dispatch, knowledge, navigate, orgScope } = input
+  const { dispatch, knowledge, navigate, orgScope, search } = input
   const agentsDirectoryOpen = knowledge.selectedRoot?.kind === 'agents'
     || knowledge.selectedRoot?.kind === 'agent-space'
   const selectedRootRowId = knowledge.activeProductView
@@ -47,39 +59,45 @@ export const useFinderRootNavigation = (input: {
       case 'agents':
         knowledge.selectVirtual('agents')
         dispatch({ columnKey: 'virtual:agents', type: 'enterColumn' })
-        return void navigate('/knowledge-base/agents')
+        return void navigate(withFinderQuery('/knowledge-base/agents', search))
       case 'latest':
         knowledge.selectVirtual('latest')
-        return void navigate('/knowledge-base/latest')
+        return void navigate(withFinderQuery('/knowledge-base/latest', search))
       case 'shared-with-me':
         knowledge.selectVirtual('shared-with-me')
-        return void navigate('/knowledge-base/shared-with-me')
+        return void navigate(withFinderQuery('/knowledge-base/shared-with-me', search))
       case 'space':
         knowledge.selectSpace(row.space.spaceId)
         dispatch({ columnKey: `space:${row.space.spaceId}`, type: 'enterColumn' })
-        return void navigate(`/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`)
+        return void navigate(withFinderQuery(
+          `/knowledge-base/spaces/${encodeURIComponent(row.space.spaceId)}`,
+          search,
+        ))
       case 'product-view':
         knowledge.selectProductView(row.view)
-        return void navigate(`/knowledge-base/views/${encodeURIComponent(row.view)}`)
+        return void navigate(withFinderQuery(
+          `/knowledge-base/views/${encodeURIComponent(row.view)}`,
+          search,
+        ))
     }
-  }, [dispatch, knowledge, navigate])
+  }, [dispatch, knowledge, navigate, search])
 
   const openAgentHome = useCallback((space: KnowledgeRootSpace) => {
     const agentId = space.ownerAgentId
     if (!agentId) return
     knowledge.selectAgentSpace(agentId, space.spaceId)
     dispatch({ columnKey: `space:${space.spaceId}`, type: 'enterColumn' })
-    void navigate(`/knowledge-base/agents/${encodeURIComponent(agentId)}`)
-  }, [dispatch, knowledge, navigate])
+    void navigate(withFinderQuery(`/knowledge-base/agents/${encodeURIComponent(agentId)}`, search))
+  }, [dispatch, knowledge, navigate, search])
 
   const backToRoot = useCallback(() => {
     knowledge.selectVirtual(null)
-    void navigate('/knowledge-base')
-  }, [knowledge, navigate])
+    void navigate(withFinderQuery('/knowledge-base', search))
+  }, [knowledge, navigate, search])
   const backToAgents = useCallback(() => {
     knowledge.selectVirtual('agents')
-    void navigate('/knowledge-base/agents')
-  }, [knowledge, navigate])
+    void navigate(withFinderQuery('/knowledge-base/agents', search))
+  }, [knowledge, navigate, search])
 
   return {
     agentsDirectoryOpen,

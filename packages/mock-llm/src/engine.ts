@@ -133,6 +133,7 @@ export class MockLlmEngine {
   async nextUtility(
     messages: ProviderMessage[],
     override?: MockScenario['utility'],
+    advanceScript = true,
   ): Promise<MockTurnOutcome> {
     const scriptedUtilities = this.scenario.utilityTurns
     const utility = override ?? (scriptedUtilities
@@ -140,7 +141,7 @@ export class MockLlmEngine {
       : this.scenario.utility)
     if (!utility) return this.next(messages)
 
-    this.utilityTurnIndex += 1
+    if (advanceScript) this.utilityTurnIndex += 1
     const latencyMs = utility.latencyMs + this.scenario.defaults.latencyMs
     await sleep(latencyMs)
     this.requests += 1

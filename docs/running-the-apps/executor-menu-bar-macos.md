@@ -14,8 +14,8 @@ Chapter of [Running the Native Apps](overview.md).
 4. Enable **Start at login** in the app's settings and verify the executor is
    Online in Nessie. The menu bar app owns the daemon: quitting it stops the
    daemon; merely closing its panel does not.
-5. Configure the local program and real, nonsymlinked coding roots, then review
-   the new permissions in Nessie. Claude and tmux must be available to the
+5. Configure the local program and real, nonsymlinked coding roots, then assign agents
+   and share the executor in Nessie. Claude and tmux must be available to the
    daemon's configured environment, including when launched at login.
 
 State normally lives in `~/Library/Application Support/Nessie Executor/executor`.
@@ -26,7 +26,7 @@ To unpair, **Disconnect** or **Delete** the executor in Nessie first, disable
 **Start at login**, and quit the menu bar app. Removing the app alone does not
 revoke its server identity. For a different team, use **Replace pairing…**;
 the app retires the old connection before showing a new code. After pairing
-again, review permissions and agent grants for the new executor.
+again, assign agents and configure sharing for the new executor.
 
 An installation managed with a custom LaunchAgent must unload that agent too;
 the app's Start at login switch only controls its own SMAppService entry.
@@ -134,11 +134,13 @@ Expired codes cannot be confirmed, and **Cancel pairing** cancels the pending
 attempt through the same runtime that created it. Closing the window leaves
 the attempt available until it expires, including after reopening the app.
 
-An already paired Mac shows the organisation and team by name. **Replace
+An already paired Mac shows connections in the menu and account selector.
+**Add account** creates another while existing connections keep running.
+The selected account uses the same settings and tools views. **Replace
 pairing…** explains which connection will close and offers replacement or
 cancel. Replacement stops this app's executor, retires its old server binding
-through the shared runtime, and only then requests another code. The app never
-deletes the local pairing itself or creates an additional executor beside it.
+through the shared runtime, and only then requests another code. Replacement
+affects only the selected connection; adding an account never replaces one.
 Names are read live from Nessie and held only in memory.
 If replacement is blocked by unfinished local work, the app asks you to remove
 local drafts and stop sandboxes before trying again. This preserves those
@@ -194,12 +196,13 @@ pairing and completed pairing use the same root. Changing packaging cannot
 strand a pairing under an old bundle identifier.
 
 Before creating a connection, the app also checks the documented Desktop,
-older menu bar, and CLI state roots, one level deep. A single existing pairing
-is reused in place and described by the runtime, including its live organisation
-and team names. Several existing pairings stop setup so the app cannot silently
-add another. Discovery never opens keys, follows symbolic links, or scans other
-folders. Development builds with an explicit state-directory override stay
-isolated to that directory.
+older menu bar, and CLI state roots, one level deep. Existing pairings are reused
+in place and described by the runtime, including live organisation and team
+names. New connections live in `Nessie Executor/connections/<connection-id>`
+beside the original `executor` directory. Discovery never opens keys, follows
+symbolic links, or scans other folders. Development builds with an explicit
+state-directory override discover only that directory and its sibling
+`connections` root.
 
 That directory is owner-only and is yours. Nothing in it is uploaded, and no
 part of it is a copy of anything Nessie owns.
@@ -241,6 +244,15 @@ the app and the image, and asks Gatekeeper for its verdict before it will call
 the result finished. Its plan — the file layout, the signing arguments, and
 every refusal below — is `executor/packaging/macos/dmg-plan.mjs`, asserted by
 `node --test executor/packaging/macos/dmg-plan.test.mjs` on any host.
+
+The app's icon is the executor's plus on Nessie's dark plate, compiled from
+`executor/menubar-macos/Sources/App/Assets.xcassets`. Those images are drawn
+from `assets/logo/nessie-executor-mark.svg` by
+`node executor/scripts/generate-icons.mjs`, which also draws the Windows
+executor icons, so regenerate them after changing the mark. `build-app.sh`
+refuses a bundle with no application icon. Without one, Finder, the DMG
+window and **System Settings → General → Login Items** show the generic
+application icon.
 
 ### The release build
 

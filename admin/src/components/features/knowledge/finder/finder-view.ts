@@ -177,9 +177,8 @@ export const useFinderFolderParam = ({
 }
 
 /**
- * What the Finder's bar is titled. Finder names the window after the folder
- * you are standing in, not after the app — which is also what keeps the bar
- * and the root column from saying the same word twice.
+ * What the Finder's screen is titled. The screen names the Knowledge surface;
+ * the browse column and selected listing name the navigation and current data.
  */
 export const finderBarTitle = ({
   deepestFolderTitle,
@@ -190,9 +189,8 @@ export const finderBarTitle = ({
   spaceName: string | undefined
   virtualKind: 'latest' | 'shared-with-me' | null
 }): string => {
-  if (virtualKind === 'latest') return 'Latest'
-  if (virtualKind === 'shared-with-me') return 'Shared with me'
-  return deepestFolderTitle ?? spaceName ?? 'Documents'
+  if (virtualKind || (!deepestFolderTitle && !spaceName)) return 'Knowledge'
+  return deepestFolderTitle ?? spaceName ?? 'Knowledge'
 }
 
 // ── Column widths ───────────────────────────────────────────────────────────

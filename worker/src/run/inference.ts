@@ -51,6 +51,8 @@ type RunInferenceGraphInput = {
   onVisibleReasoningDelta?: (delta: string) => Promise<void>
   onVisibleTextDelta?: (delta: string) => Promise<void>
   signal?: AbortSignal
+  /** Utility calls must not inherit the main turn's streaming/thinking path. */
+  stream?: boolean
   organizationId: string
   /** See `PrepareProviderMessages`; only the main agent loop passes one. */
   prepareMessages?: PrepareProviderMessages
@@ -251,6 +253,7 @@ export const runInferenceGraph = async (
     },
     input.modelConfig,
   )
+  route.streamLive = input.stream !== false
 
   return executeSingleMode(prisma, {
     actorContext: input.actorContext,

@@ -11,19 +11,46 @@ file is the rule.**
 - **A package's test scripts never build another package.** Turbo's `test` task already builds every workspace dependency first (`^build`), and it runs different packages' suites at the same time. A `pretest` that re-ran `tsc` for a shared package rewrote that package's `dist` while other suites were importing it; `tsc` does not write a file atomically, so a concurrent import read a half-written module and failed with `does not provide an export named …` for an export that exists. `@nessie/mcp-manage`, `@nessie/knowledge` and `@nessie/api` each had such a `pretest`; it failed worker suites in CI (`builtin-tools.js`, `budget-admin.js`) whenever the rebuild overlapped them. Declare the dependency in `package.json` so `^build` covers it, and run the package through Turbo.
 - **Export `DATABASE_URL` for that Turbo run, or the database suites do nothing.** Turbo runs in strict env mode, so a task only sees variables it declares; the `test` task declares `DATABASE_URL` (and `NESSIE_TEST_PRISTINE_DATABASE`) in `turbo.json` for exactly this reason. Every Postgres-backed suite gates on `process.env.DATABASE_URL ? test : test.skip`, so with the variable unset they report `# SKIP` and the run is green with zero database coverage — 47 skipped in `@nessie/api` alone. The `test` task is also `"cache": false`: its result depends on a database Turbo cannot hash, so replaying a cached pass over a database that has since been reset or re-pointed would be a false green.
 - **A test file must live where its package's `test` script globs, and `pnpm lint:test-globs` enforces it.** `node --test` is handed explicit globs, so a `*.test.ts` outside them is not skipped loudly — it is never discovered. It reviews as coverage, and runs neither locally nor in CI. `admin/src/lib/popover-placement.test.ts` lived that way from the commit that introduced it: ten cases, two of which had never been true, and nothing said so for as long as the file sat beside its module while the script globbed `test/`. `packages/memory/src/scope-for-visibility.test.ts` was the same, on code the disclosure-boundaries standard names. Colocating tests with source is fine and several packages do it on purpose — `worker`, `mobile` and `packages/mock-llm` all glob `src/**`; what is not fine is a package globbing one place and writing tests in another. `scripts/lint-test-globs.mjs` (part of root `pnpm lint`) compares the two per package, following intra-package `pnpm run` hops, and reports a package whose runner discovers its own files (vitest) as unchecked rather than passing it silently.
-- **`@nessie/api#test` is ordered after `@nessie/worker#test` in `turbo.json`, deliberately.** Plain `test` depends only on `^build`, so Turbo — unlike topological `pnpm -r` — would otherwise run both packages' database suites at once against the one database. `worker/test/db` drives the global queue pollers and refuses to start on a database holding rows they would claim, while api's trigger-dispatch suites legitimately pass through exactly that state; one orphaned `(agent, thread)` pending pair held open fails all four worker DB tests. Do not remove the ordering to reclaim the few seconds of parallelism.
+- **`@nessie/api#test` is ordered after `@nessie/worker#test` in `turbo.json`, deliberately.** Plain `test` depends only on `^build`, so Turbo — unlike topological `pnpm -r` — would otherwise run both packages' database suites at once against the one database. `worker/test/db` drives the global queue pollers and refuses to start on a database holding rows they would claim, while api's trigger-dispatch suites legitimately pass through exactly that state; one orphaned `(agent, thread)` pending pair held open fails all four worker DB tests. Keep this ordering for ordinary shared-database invocations. CI uses the explicitly isolated path below.
+
+## CI with isolated databases
+
+`node scripts/ci-tests.mjs` requires both `DATABASE_URL` and
+`WORKER_TEST_DATABASE_URL`, with distinct database names. CI migrates the first
+and clones its pristine schema into `nessie_test_worker` before tests connect.
+The runner reads the original Turbo test graph (including dependency-added
+worker tests and affected-package scope), finishes its prerequisite builds,
+then runs worker, API and remaining tests concurrently through Turbo `--only`.
+Worker receives its exclusive database; API and other suites share the first.
+At most four package test tasks overlap (one worker, one API, two others).
+All groups finish even if one fails, and any failure fails the job. Tests stay
+uncached. No build runs while tests import its output.
+
+For local verification, create and migrate two dedicated disposable databases,
+export both URLs and run the same script, optionally with Turbo `--filter`
+arguments. Verify before pushing. Ordinary `pnpm test` still builds through
+Turbo and orders worker before API against one database; never use `--only`
+by itself to imitate the isolated runner.
 
 ## Browser usability evaluations
 
-Navigation Transitions CI runs
-`pnpm --filter @nessie/admin test:e2e:browser-cloud` through the same managed
-API, admin, Postgres, and Chromium lifecycle as Project Usability. The runner
-uses a deterministic mediated-provider fixture: it exercises browser grants,
-revocation, preview-only control boundaries, and narrow/mobile interaction
-without requiring a Browserbase credential in CI. Its screenshots are retained
-as the `browser-cloud-screenshots` artifact.
+Browser UI suites run locally on request, outside the GitHub Actions pipeline.
+The `Browser Suites` workflow was retired on 2026-09-24. Older plans and
+verification records describing that workflow are historical, not instructions
+to dispatch it. The main CI workflow retains builds, lint, type checks,
+package tests and non-browser integration smoke checks.
+
+Use the existing `pnpm --filter @nessie/admin test:e2e:<suite>` scripts; their
+individual guides describe database and fixture flags. For example,
+`test:e2e:browser-cloud` uses the managed API, admin, Postgres and Chromium
+lifecycle with a deterministic mediated-provider fixture. Screenshots remain
+local artifacts. UI changes still receive targeted headless visual verification.
 
 ## Process count and memory
+
+The executor test runner also caps file concurrency at four, including its
+Windows native-helper pass. Unbounded terminal/bridge tests exhausted local
+resources and timed out while unrelated suites were starting.
 
 - `node --test` forks **one child process per test file** (~77 MB each), and Turbo runs up to 10 package tasks at once, so a whole-repo `pnpm test` over 295 test files can hold ~100 concurrent node processes — several GB, enough to push a developer machine into swap. Pure unit suites should therefore set `--experimental-test-isolation=none` (Node 22.8+, so it is safe on CI's Node 22) to run every file in a single process, as `@nessie/admin` does. Only use it where files share no process-level state — suites that touch Postgres or mutate module state need the default `process` isolation; cap those with `--test-concurrency` instead. `@nessie/worker`'s unit suite is the example: its 92 files mutate module state, so `test:unit` runs with `--test-concurrency=4` — unbounded it forks all of them at once (~110 MB of tsx-loaded import graph per child, several GB at peak) and under machine load the OS kills a child, which surfaces as a bare `'test failed'` with no assertion output.
 - A test file reported as failed with only `'test failed'` and no assertion output is node's message for a **child process that exited non-zero or was killed by a signal** — commonly the OS reclaiming memory, not a real test failure. Re-run with `--test-reporter=tap`, which prints that child's `exitCode`/`signal`.
@@ -31,7 +58,12 @@ as the `browser-cloud-screenshots` artifact.
 
 ## The shared database
 
-**Postgres-backed suites share one database and run concurrently.** `node --test` runs files within a package in parallel, so a DB-backed test is never alone — several api suites create and delete organizations at the same time. Cross-package overlap depends on how the suites are invoked: CI now runs `pnpm test` (i.e. `turbo run test`, at `TURBO_CONCURRENCY=4`), so worker finishes before api **only** because `turbo.json` pins `@nessie/api#test` behind `@nessie/worker#test` by hand. It used to run `pnpm -r --if-present test`, whose topological order gave the same result as an accident of the dependency graph; that accident is gone, and the hand-written pin is now the sole thing keeping the two apart. Running the two packages' test scripts in parallel yourself still overlaps them, and so does any *new* database suite added to a third package — `packages/runtime` and `packages/memory` already have some, and they are safe only because they create no rows the global pollers claim. Under any of them:
+**Postgres-backed suites share one database and run concurrently.** `node --test` runs files within a package in parallel, so a DB-backed test is never alone — several api suites create and delete organizations at the same time. Cross-package overlap depends on the invocation. Ordinary `pnpm test` keeps
+worker before API through `turbo.json`. CI's isolated runner overlaps them only
+on separate databases. Other package suites (including runtime and memory)
+share API's database and must not create rows the global worker pollers claim.
+Running worker and API directly in parallel against one database is invalid.
+Under any of them:
 
 - **Never write a global mutation.** `DELETE FROM queue_jobs WHERE idempotency_key LIKE 'run:batch:%'` matches every suite's jobs, not the caller's — it deletes a row another suite is about to count. Scope cleanup to the seed (every `run.execute` payload carries a top-level `threadId`: `DELETE FROM queue_jobs WHERE payload->>'threadId' = $1`).
 - **Never assert a global count.** `sweepPendingThreadMessages` drains every orphaned `(agent, thread)` pair in the database and `dispatchNextMailboxMessage` claims the globally oldest queued mailbox row; neither takes a tenant filter. Assert the seed's own outcome instead of the poller's return value.
@@ -54,10 +86,8 @@ Deterministic scripted inference for tests lives in `@nessie/mock-llm` (`package
 [`private-conversation-disclosure.md`](../testing/private-conversation-disclosure.md)
 uses that HTTP transport with the production local-mode API, its embedded
 worker, and headless admin UI. Its Postgres harness owns the isolated fixture
-and terminal observation. It runs first in the **Navigation Transitions** job,
-so it reuses that job's migrated Postgres service, built artifacts, fixed
-ports, and Chromium installation before another suite can start a different
-lifecycle.
+and terminal observation. Run it locally with migrated Postgres, built
+artifacts, fixed ports, and Chromium; do not overlap another lifecycle on those ports.
 It proves the worker and UI
 enforce scripted model decisions; it does not claim live-model language
 understanding.
@@ -74,3 +104,7 @@ make it pass. It intentionally exercises plaintext local wire transport only.
 Nessie's production connected-mail dialer must continue to reject loopback and
 requires a trusted TLS certificate, so this daemon is never a production-client
 or egress-guard test.
+
+Worker test prerequisites include `@nessie/local-inference-host#build` explicitly:
+the real executor bridge fixture imports that package through executor source.
+A worker-only test selection must build it even when the executor is unaffected.

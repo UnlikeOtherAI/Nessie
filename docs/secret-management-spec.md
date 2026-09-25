@@ -7,6 +7,13 @@ holds metadata; the vault holds every value. With no vault there is nowhere
 safe to put one, so the write is refused rather than downgraded — there is
 deliberately no PostgreSQL fallback and no plaintext path.
 
+For temporary personal-model testing only, explicit `NESSIE_MODE=local` plus
+`NESSIE_LOCAL_SUBSCRIPTIONS_MEMORY=1` keeps subscription credentials in the
+embedded API/worker process. Nothing is saved to disk; restarting requires
+relinking in Connected accounts. A configured subscription vault takes priority.
+This switch has no effect in hosted or self-hosted mode and does not enable
+the ordinary Save a secret surface. See [local CTO verification](testing/local-cto.md).
+
 Two independent vault projects gate two surfaces. Configure the one you need:
 
 | Surface | Requires | Without it |

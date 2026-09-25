@@ -1,3 +1,5 @@
+import { applyExecutorCapabilityUpdate } from './executor-capability-update.js'
+import type { ExecutorLeaseRef } from './executor-conversation-lease.js'
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { Prisma, type PrismaClient } from '@prisma/client'
 import {
@@ -336,8 +338,8 @@ export const reportExecutorHeartbeat = async (
 }
 
 /**
- * Descriptor revisions only ever advance. A new revision becomes pending
- * review, so a daemon cannot expand its own cloud-authorized capability set.
+ * Descriptor revisions only ever advance and become active with
+ * runtime fencing. Human access is managed separately through direct sharing.
  */
 export const submitExecutorDescriptor = async (
   prisma: PrismaClient,
@@ -346,7 +348,9 @@ export const submitExecutorDescriptor = async (
     descriptor: ExecutorSignedDescriptor
     executorId: string
   },
-): Promise<{ reviewStatus: string; revision: number }> => prisma.$transaction(async (tx) => {
+): Promise<{
+  reviewStatus: string; revision: number; endedLeases?: ExecutorLeaseRef[]
+}> => prisma.$transaction(async (tx) => {
   await lockExecutorConnection(tx, input.executorId)
   const executor = await requireDaemonExecutor(tx, input.executorId)
   if (executor.activeConnectionEpoch.toString() !== input.connectionEpoch) {
@@ -388,6 +392,7 @@ export const submitExecutorDescriptor = async (
       descriptor: input.descriptor.descriptor as Prisma.InputJsonValue,
       localPolicyDigest: input.descriptor.descriptor.localPolicyDigest,
       signature: input.descriptor.signature,
+      reviewStatus: 'active',
     },
     select: { reviewStatus: true, revision: true },
   })
@@ -405,6 +410,9 @@ export const submitExecutorDescriptor = async (
       profiles: input.descriptor.descriptor.profiles,
     },
   })
+  if (latest) return {
+    ...created, endedLeases: await applyExecutorCapabilityUpdate(tx, executor.id, input.descriptor.descriptor),
+  }
   return created
 })
 
