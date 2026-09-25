@@ -29,6 +29,11 @@ summary and points here; **this file is the rule**.
   - A stop is classified `iteration_limit` / `tool_call_limit` / `time_limit` /
     `token_limit` / `cost_limit` / `repeated_tool_calls` / `org_budget_blocked`
     (`budget-stop.ts`); member-visible copy carries **no currency figures**.
+  - Terminal input repeats are counted per session until a different input is
+    sent to that session. Enter after a new command must remain usable through
+    the entire run. Reading the screen or using another session does not reset
+    repeated identical input; counts survive checkpoint resume. Ordinary tools
+    retain their cumulative repeat guard.
   - Main conversational turns do not set an application output-token cap.
     The common system prompt asks for complete, proportionate communication;
     real context and run/org spend budgets remain independent safeguards.
