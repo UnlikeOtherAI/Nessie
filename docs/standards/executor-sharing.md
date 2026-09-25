@@ -67,7 +67,8 @@ eligible people/projects. `PUT` on the same path takes `{teamId, change}`;
 The migration converts old project scopes into project shares and resolves old
 organisation sharing through the stored pairing-team reference. An unresolved
 organisation scope becomes personal, never a guessed team. Owners and granted
-agents retain their assignments. Previously disabled machine capabilities
+agents retain their assignments. A legacy owner assignment that was downgraded
+to use regains administration under the ownership model. Previously disabled machine capabilities
 become a paused executor, which can be resumed from the Machine menu; pending
 capability reports become active. The retained protocol scope of these machines
 is `private`; it no longer means that a machine has no sharing entries.
