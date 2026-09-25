@@ -2968,7 +2968,7 @@ html[data-desktop-platform='linux'] #root {
 
 .create-menu-panel {
   border-color: color-mix(in srgb, var(--sep) 66%, transparent);
-  background: color-mix(in srgb, var(--panel) 58%, transparent);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, var(--surface-inverse) 55%, transparent),
     0 18px 52px color-mix(in srgb, var(--scrim-strong) 58%, transparent);
