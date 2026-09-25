@@ -236,9 +236,17 @@ export const createInfisicalSubscriptionSecretStore = (
   },
 })
 
+// Local mode embeds the worker in the API process: both must share this store.
+// Opt-in only; restarting the dev server requires linking the account again.
+let localMemoryStore: SubscriptionSecretStore | undefined
+
 export const createSubscriptionSecretStoreFromEnv = (
   env: NodeJS.ProcessEnv = process.env,
 ): SubscriptionSecretStore | null => {
   const settings = resolveSubscriptionVaultSettings(env)
-  return settings ? createInfisicalSubscriptionSecretStore(settings) : null
+  if (settings) return createInfisicalSubscriptionSecretStore(settings)
+  if (env.NESSIE_MODE === 'local' && env.NESSIE_LOCAL_SUBSCRIPTIONS_MEMORY === '1') {
+    return localMemoryStore ??= createInMemorySubscriptionSecretStore()
+  }
+  return null
 }

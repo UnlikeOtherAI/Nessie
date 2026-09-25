@@ -51,6 +51,9 @@ instead of the organization's Ledger credits. Rules that must not drift:
   the shared personal partition, which also holds a person's ordinary captured
   secrets. `model_subscription_credentials` holds only the pointer, and a
   deployment with no vault refuses linking in words — never a column fallback.
+  Explicit local development may use the temporary in-process store described
+  in [local CTO verification](../testing/local-cto.md); it never writes token
+  values to disk and cannot be enabled outside local mode.
   Deleting a pointer tombstones the vault secret in the same transaction, or a
   cascade strands a live refresh token nothing can address.
 - **The lane is pinned at run admission and never falls back.**
@@ -151,4 +154,5 @@ Facts not restated there:
   the "Link a personal subscription…" doorway when none is linked.
 - Vault configuration is `NESSIE_SUBSCRIPTION_VAULT_API_URL` /
   `_TOKEN` / `_PROJECT_ID` (+ optional `_ENVIRONMENT`). Unset ⇒ the settings
-  section says the feature is unavailable and linking is refused.
+  section says the feature is unavailable and linking is refused, unless the
+  explicit local-only temporary store is enabled.

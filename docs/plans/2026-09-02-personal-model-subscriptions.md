@@ -266,7 +266,10 @@ chokepoint — bypassing that chokepoint must be a structural decision, §2.4):
   moving it behind a broker later is mechanical. `docs/secret-management-spec.md`
   and `docs/deployment.md` are updated in the same change that introduces it.
   In local dev the worker runs embedded in the API process, so a compose'd
-  local Infisical (or the API's identity) covers it; a deployment without
+  local Infisical (or the API's identity) covers it. For a temporary real-provider
+  test, explicit `NESSIE_MODE=local` and `NESSIE_LOCAL_SUBSCRIPTIONS_MEMORY=1`
+  share an in-process credential store between the API and worker. Restarting
+  requires relinking; a configured vault always takes precedence. A deployment without
   the vault configured cannot link subscriptions — the settings surface says
   so plainly and linking fails loudly, never a silent Postgres fallback.
 - OAuth state reuses the `comms_oauth_states` shape (own table
