@@ -18,7 +18,7 @@ import { workflowKeys } from '../src/facades/workflows/keys.js'
 // call sites used before this module existed silently orphans a cache entry.
 // Most of these assertions are those literals verbatim. The exceptions are the
 // orphan prefixes this module deliberately re-nested — project members, the
-// project board, dashboard widget data, and knowledge backlinks/mentions —
+// project board, dashboard widget data, and knowledge backlinks —
 // which changed shape precisely so their parent's invalidation reaches them;
 // each is asserted here in its new form and reasoned about at its declaration.
 test('channel keys keep the arrays the call sites used', () => {
@@ -137,10 +137,10 @@ test('re-nested sub-resources sit under the prefix their parent invalidates', ()
     knowledgeKeys.backlinks('pg-1'),
     ['knowledge-page', 'pg-1', 'backlinks'],
   )
-  assert.deepEqual(knowledgeKeys.mentions('pg-1'), ['knowledge-page', 'pg-1', 'mentions'])
-  for (const key of [knowledgeKeys.backlinks('pg-1'), knowledgeKeys.mentions('pg-1')]) {
-    assert.deepEqual(key.slice(0, 2), knowledgeKeys.page('pg-1'))
-  }
+  assert.deepEqual(
+    knowledgeKeys.backlinks('pg-1').slice(0, 2),
+    knowledgeKeys.page('pg-1'),
+  )
 })
 
 test('task and knowledge keys keep their placeholder fallbacks', () => {

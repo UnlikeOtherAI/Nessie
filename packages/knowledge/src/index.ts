@@ -117,13 +117,8 @@ export type {
   ReplaceKnowledgePageLinksInput,
   ResolveLinksToPageInput,
 } from './native-links.js'
-export { listBacklinks, listUnlinkedMentions } from './native-links-queries.js'
-export type {
-  BacklinkRow,
-  ListBacklinksInput,
-  ListUnlinkedMentionsInput,
-  MentionRow,
-} from './native-links-queries.js'
+export { listBacklinks } from './native-links-queries.js'
+export type { BacklinkRow, ListBacklinksInput } from './native-links-queries.js'
 export {
   KnowledgeConflictError,
   isKnowledgeConflictError,

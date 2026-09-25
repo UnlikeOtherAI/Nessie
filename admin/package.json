@@ -33,6 +33,7 @@
     "test:e2e:document-window": "node e2e/document-window/run.mjs",
     "test:e2e:ios-nav-bar": "node e2e/ios-nav-bar/run.mjs",
     "test:e2e:knowledge-markdown": "node e2e/knowledge-markdown/run.mjs",
+    "test:e2e:knowledge-backlinks": "node e2e/knowledge-backlinks/run.mjs",
     "test:e2e:knowledge-tree-ux": "node e2e/knowledge-tree-ux/run.mjs",
     "test:e2e:local-ollama-agents": "node e2e/local-ollama-agents/run.mjs",
     "test:e2e:mailbox-onboarding": "node e2e/mailbox-onboarding/run.mjs",
