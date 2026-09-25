@@ -65,7 +65,7 @@ export const resolveLoopCompletion = async (input: {
   if (result.toolCalls.length > 0) return { kind: 'tools' }
   outputFinalization.pending = false
   if (input.reviewCompletion && safeOutputText && !input.woundDown && !input.deliveredToConversation
-    && !outputFinalization.used) {
+    && !(outputFinalization.used && outputFinalization.noTools)) {
     const spend = meterSpend(input.allInvocations, input.cacheReadWeight)
     const before = stopBeforeIteration(input.budget, { elapsedMs: input.elapsed(), iterations: 0 })
       ?? stopBeforeInference(input.budget, {

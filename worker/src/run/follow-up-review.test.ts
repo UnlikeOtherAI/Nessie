@@ -64,6 +64,36 @@ test('an explicit blocker ends without trying unavailable tools', async () => {
   assert.equal(result.toolCallsUsed, 0)
 })
 
+test('empty-response recovery keeps tools and reviews a premature recovered answer', async () => {
+  let turn = 0
+  let calls = 0
+  let reviews = 0
+  const noTools: boolean[] = []
+  const result = await runAgenticLoop({
+    ...base(),
+    tools: [{ toolName: 'disk', description: 'Read disk size', inputSchema: {} }],
+    runInference: async (_messages, _captured, options) => {
+      noTools.push(options?.noTools === true)
+      turn += 1
+      if (turn === 1) return response('')
+      if (turn === 2) return response('I will check the disk.')
+      if (turn === 3) return response('', [{ toolName: 'disk', toolCallId: 'disk-1', arguments: {} }])
+      return response('Disk: 1 TB.')
+    },
+    reviewCompletion: async () => ({
+      needsFollowUp: reviews++ === 0, reason: 'Finish the authorized disk read.', invocations: [],
+    }),
+    executeTool: async () => {
+      calls += 1
+      return { success: true, inputSummary: 'disk', output: '1 TB' }
+    },
+  })
+  assert.equal(result.finalText, 'Disk: 1 TB.')
+  assert.equal(calls, 1)
+  assert.equal(reviews, 2)
+  assert.deepEqual(noTools, [false, false, false, false])
+})
+
 test('repeated premature answers stop after two corrections, including after crash resume', async () => {
   const checkpoints: LoopResumeState[] = []
   const input = base()
