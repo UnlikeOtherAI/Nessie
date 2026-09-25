@@ -28,7 +28,7 @@ test('a cloud utility call requests non-streaming inference and returns its JSON
       actorContext, organizationId, stream: false,
       agent: { id: '44444444-4444-4444-8444-444444444444', model: 'model', provider: 'openai', routingProfileId: null },
       baseMessages: [{ role: 'user', content: 'Return the completion decision as JSON.' }],
-      modelConfig: { apiKey: 'test', backends: [], baseUrl: 'https://provider.example/v1',
+      modelConfig: { apiKey: 'test', backends: [], baseUrl: 'https://provider.example/v1', maxTokens: 2048,
         modelName: 'model', provider: 'openai', temperature: 0.2 } as ModelConfig,
     })
     assert.equal(result.status, 'completed')
