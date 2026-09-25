@@ -58,7 +58,9 @@ const openContext = async (browser, width, { policies = standing } = {}) => {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const respond = (data) => route.fulfill({ json: { data } })
-    if (path === '/api/executors') return respond([executor])
+    if (path === '/api/executors') return respond([{
+      ...executor, sharedWithTeam: permissions.everyone || permissions.projects.length > 0,
+    }])
     if (path.endsWith('/sharing')) {
       if (method === 'PUT') {
         const { change } = route.request().postDataJSON()

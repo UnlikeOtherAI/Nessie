@@ -10,6 +10,8 @@ An executor belongs to the person who paired it. Pairing uses the current team
 and starts personal; there is no organisation-wide grant or team selector in
 this flow. The pairing owner remains an administrator. A connection belongs to
 one team; distinct connections on a computer retain independent access.
+Inventory and the detail header label a connection Personal, or Shared when
+it has team or project sharing; the Permissions list names its exact audience.
 
 **Agents** assigns or removes an eligible agent immediately. The server changes
 its assignment, operation grants and logical tool policy in one transaction.

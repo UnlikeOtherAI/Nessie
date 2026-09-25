@@ -36,19 +36,15 @@ export const executorStatusTone = (status: ExecutorStatus): PillTone => {
 }
 
 export const executorScopeLabel = (executor: ExecutorRecordResponse): string =>
-  executor.sharedWithTeam ? 'Shared with team' : executor.scope.kind === 'private'
-    ? 'Private'
+  executor.sharedWithTeam ? 'Shared' : executor.scope.kind === 'private'
+    ? 'Personal'
     : executor.scope.kind === 'project'
       ? 'Project'
       : 'Organization'
 
-/** The sentence under the executor's name: who this machine is reachable by. */
+/** Use the same ownership/sharing label in inventory and the detail header. */
 export const executorScopeSummary = (executor: ExecutorRecordResponse): string =>
-  executor.scope.kind === 'private'
-    ? 'Private machine'
-    : executor.scope.kind === 'project'
-      ? 'Project machine'
-      : 'Organisation machine'
+  `${executorScopeLabel(executor)} machine`
 
 export const executorProfilesLabel = (executor: ExecutorRecordResponse): string =>
   executor.profiles.map((profile) => ({

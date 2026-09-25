@@ -64,7 +64,7 @@ export const ExecutorAgentsPanel = ({ executorId, scopeKind, token }: ExecutorAg
             </div>
             {scopeKind === 'private' && !agent.assigned ? (
               <p className="text-xs text-[color:var(--tx3)]">
-                Not assigned to this private machine
+                Not assigned to this machine
               </p>
             ) : null}
             <div className="sm:hidden"><AllowedCapabilities agent={agent} /></div>

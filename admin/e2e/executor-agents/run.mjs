@@ -230,7 +230,7 @@ const evaluate = async (browser, viewport) => {
     assert.match(await first.innerText(), /Private/)
     assert.match(await first.innerText(), /No capabilities allowed yet/)
     const second = table.getByRole('row').filter({ hasText: 'Agent 02' })
-    assert.match(await second.innerText(), /Not assigned to this private machine/)
+    assert.match(await second.innerText(), /Not assigned to this machine/)
     assert.match(await second.innerText(), /Read files, Run permitted programs/)
     assert.doesNotMatch(await table.innerText(), /file\.read|command\.run|44444444|Ready/)
     assert.equal(await page.getByRole('button', { name: /Expand/ }).count(), 0)
