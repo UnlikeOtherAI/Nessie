@@ -103,111 +103,7 @@ export const usageFromAnthropic = (
   }
 }
 
-const TOOL_USE_OPEN = '<tool_use>'
-const TOOL_USE_CLOSE = '</tool_use>'
-
-/**
- * The end of the JSON object that starts at `start` (a `{`), or -1 when the
- * text ends before its braces balance. String-aware, so a brace inside an
- * argument value does not end the object early.
- */
-const balancedObjectEnd = (text: string, start: number): number => {
-  let depth = 0
-  let inString = false
-  for (let index = start; index < text.length; index += 1) {
-    const char = text[index]
-    if (inString) {
-      if (char === '\\') index += 1
-      else if (char === '"') inString = false
-      continue
-    }
-    if (char === '"') inString = true
-    else if (char === '{') depth += 1
-    else if (char === '}') {
-      depth -= 1
-      if (depth === 0) return index
-    }
-  }
-  return -1
-}
-
-const toolCallFromJson = (
-  json: string,
-  toolCallId: string,
-): ProviderToolCall | undefined => {
-  try {
-    const parsed = JSON.parse(json) as { name?: unknown; arguments?: unknown }
-    if (typeof parsed.name !== 'string' || !parsed.name) return undefined
-    return {
-      arguments: parsed.arguments && typeof parsed.arguments === 'object' && !Array.isArray(parsed.arguments)
-        ? parsed.arguments as Record<string, unknown>
-        : {},
-      toolCallId,
-      toolName: parsed.name,
-    }
-  } catch {
-    return undefined
-  }
-}
-
-/**
- * Lift the model's text-form tool calls out of its answer.
- *
- * Kimi K2.7 ends a turn right after the block's JSON more often than not —
- * production's CTO agent delivered a raw
- * `<tool_use>{"name":"task_set_processors","arguments":{}}` to a person on
- * 2026-09-22 because the closing tag never arrived and the old regex needed
- * it. A block is therefore read by its balanced JSON, with the closing tag
- * optional, and every `<tool_use>` fragment — parsed, malformed or cut off —
- * is removed from the delivered text: protocol never reaches a person. A cut
- * block that never balanced is dropped; the loop's empty-output recovery then
- * asks the model again rather than presenting garbage as an answer.
- */
-export const parseKimiToolCalls = (
-  text: string,
-  requestId: string,
-): { outputText: string; toolCalls: ProviderToolCall[] } => {
-  const toolCalls: ProviderToolCall[] = []
-  let outputText = ''
-  let cursor = 0
-  for (;;) {
-    const open = text.indexOf(TOOL_USE_OPEN, cursor)
-    if (open < 0) {
-      outputText += text.slice(cursor)
-      break
-    }
-    outputText += text.slice(cursor, open)
-    const objectStart = text.indexOf('{', open + TOOL_USE_OPEN.length)
-    const between = objectStart < 0 ? '' : text.slice(open + TOOL_USE_OPEN.length, objectStart)
-    if (objectStart < 0 || between.trim() !== '') {
-      // An opening tag with no JSON behind it: drop the tag, keep the rest.
-      cursor = open + TOOL_USE_OPEN.length
-      continue
-    }
-    const objectEnd = balancedObjectEnd(text, objectStart)
-    if (objectEnd < 0) {
-      // Cut off mid-JSON: nothing to call, nothing to show.
-      break
-    }
-    const call = toolCallFromJson(
-      text.slice(objectStart, objectEnd + 1),
-      `kimi_${requestId}_${toolCalls.length}`,
-    )
-    if (call) toolCalls.push(call)
-    cursor = objectEnd + 1
-    const closeAt = text.indexOf(TOOL_USE_CLOSE, cursor)
-    if (closeAt >= 0 && text.slice(cursor, closeAt).trim() === '') {
-      cursor = closeAt + TOOL_USE_CLOSE.length
-    }
-  }
-  return { outputText: outputText.trim(), toolCalls }
-}
-
-/**
- * Native Anthropic-style `tool_use` blocks, should the backend ever answer
- * with them instead of (or beside) the text protocol. Honoured, never
- * requested: the request still carries no `tools`.
- */
+/** Native Messages tool blocks keep provider-issued call IDs. */
 export const nativeToolCallsFromContent = (
   content: AnthropicContentBlock[] | undefined,
 ): ProviderToolCall[] => {
@@ -243,7 +139,9 @@ export const collectAnthropicStream = async function* (
   let usage: InvocationUsage = {}
   // Native tool_use blocks, keyed by content-block index; arguments arrive as
   // input_json_delta fragments and are parsed once the block stops.
-  const pendingNativeCalls = new Map<number, { id: string; json: string; name: string }>()
+  const pendingNativeCalls = new Map<number, {
+    id: string; json: string; name: string; input: Record<string, unknown>
+  }>()
   const toolCalls: ProviderToolCall[] = []
 
   const cleanupToken = registerStreamReaderCleanup(reader)
@@ -293,7 +191,7 @@ export const collectAnthropicStream = async function* (
         if (parsed.type === 'content_block_start') {
           const [native] = nativeToolCallsFromContent([parsed.content_block])
           if (native) {
-            pendingNativeCalls.set(parsed.index, { id: native.toolCallId, json: '', name: native.toolName })
+            pendingNativeCalls.set(parsed.index, { id: native.toolCallId, json: '', name: native.toolName, input: native.arguments })
           }
           continue
         }
@@ -306,7 +204,11 @@ export const collectAnthropicStream = async function* (
             yield { type: 'reasoning_text.delta', text: parsed.delta.thinking }
           } else if (parsed.delta.type === 'input_json_delta') {
             const pending = pendingNativeCalls.get(parsed.index)
-            if (pending) pending.json += parsed.delta.partial_json
+            if (pending) {
+              pending.json += parsed.delta.partial_json
+              yield { type: 'tool_call.delta', index: parsed.index, id: pending.id,
+                toolName: pending.name, text: parsed.delta.partial_json }
+            }
           }
           continue
         }
@@ -316,7 +218,7 @@ export const collectAnthropicStream = async function* (
             pendingNativeCalls.delete(parsed.index)
             let args: Record<string, unknown> = {}
             try {
-              const parsedArgs = pending.json.trim() ? JSON.parse(pending.json) as unknown : {}
+              const parsedArgs = pending.json.trim() ? JSON.parse(pending.json) as unknown : pending.input
               if (parsedArgs && typeof parsedArgs === 'object' && !Array.isArray(parsedArgs)) {
                 args = parsedArgs as Record<string, unknown>
               }

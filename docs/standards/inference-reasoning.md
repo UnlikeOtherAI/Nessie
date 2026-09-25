@@ -134,17 +134,17 @@ These are protocol tests, not a claim that every hosted model was live-tested.
 
 ### Provider limitations
 
-- **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking;
-  its backend sends `thinking_delta` on its own and the stream reader forwards
-  it. Its tool calls are a text protocol (`<tool_use>{…}</tool_use>` rendered
-  into the system prompt), and Kimi K2.7 frequently ends the turn right after
-  the block's JSON, before the closing tag — production delivered a raw block
-  to a person on 2026-09-22 because the parser demanded the tag. A block is
-  now read by its balanced JSON with the tag optional, every `<tool_use>`
-  fragment is stripped from the delivered text, and a native `tool_use`
-  content block is honoured if the backend ever answers with one. Replaying
-  Kimi's thinking blocks on tool rounds (the "Preserved Thinking" its docs
-  say K2.7-code requires) needs a key to test against and is still open.
+- **Kimi for Coding** uses native Messages `tools`, `tool_use` and
+  `tool_result` blocks. Provider call IDs and reasoning text survive tool
+  rounds through the normal checkpointed assistant message. Its endpoint
+  accepts replayed thinking text without a signature (verified with the
+  connected personal subscription on 2026-09-25). Tools are no longer XML
+  instructions in the system prompt, and text that resembles a tool call
+  never executes. Native streamed arguments also reach the tool-delta lane.
+  Non-streaming utility calls explicitly disable thinking; streamed main
+  turns keep provider thinking unless effort is `none`, the request is JSON,
+  or forced tool choice requires it off. The cloud graph honors the caller's
+  stream setting, so completion reviews use this utility path as intended.
 - **OpenRouter's `reasoning_details` blocks are not replayed.** Omitting them
   loses reasoning continuity across a tool round on some upstreams; it does
   not fail the request.

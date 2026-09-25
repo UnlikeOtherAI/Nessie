@@ -41,7 +41,8 @@ test('with cache, the breakpoint sits on the stable block only', () => {
   const blocks = systemBlocks(payload.system)
   assert.equal(blocks.length, 2)
   assert.equal(blocks[0]?.type, 'text')
-  assert.ok(blocks[0]?.text.includes('web_search'), 'tool render joins the stable block')
+  assert.equal(payload.tools?.[0]?.name, 'web_search')
+  assert.equal(blocks[0]?.text.includes('web_search'), false)
   assert.ok(blocks[0]?.text.includes(ANCHOR))
   assert.deepEqual(blocks[0]?.cache_control, { type: 'ephemeral' })
   assert.ok(blocks[1]?.text.includes(MEMORY))
@@ -80,7 +81,8 @@ test('a mid-run instruction follows the assistant instead of turning its answer 
   assert.deepEqual(payload.messages.map((message) => message.role), ['user', 'assistant', 'user'])
   const tail = payload.messages.at(-1)!
   assert.ok(Array.isArray(tail.content))
-  assert.match(tail.content[0]!.text, /<system_instruction>\nBudget notice: wind down and hand over\.\n<\/system_instruction>/)
+  assert.equal(tail.content[0]?.type, 'text')
+  assert.match((tail.content[0] as { text: string }).text, /<system_instruction>\nBudget notice: wind down and hand over\.\n<\/system_instruction>/)
 })
 
 test('with cache, a sliding breakpoint rides on the last message only', () => {
