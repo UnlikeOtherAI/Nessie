@@ -25,7 +25,8 @@ import { fileURLToPath } from 'node:url'
 const EXECUTOR = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 const nodeTest = (node, files, env) => spawnSync(
-  node, ['--test', '--test-force-exit', '--import', 'tsx', ...files], { cwd: EXECUTOR, env, stdio: 'inherit' },
+  node, ['--test', '--test-concurrency=4', '--test-force-exit', '--import', 'tsx', ...files],
+  { cwd: EXECUTOR, env, stdio: 'inherit' },
 ).status ?? 1
 
 const suite = nodeTest(process.execPath, process.argv.slice(2), process.env)

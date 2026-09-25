@@ -1,10 +1,12 @@
 let pairingView = null
 let pairingOpen = false
+let pairingFormOpen = false
 let pairingBusy = false
 
 const pairingDestination = (view) => [view.organizationName, view.teamName, view.apiBaseUrl].filter(Boolean).join(' · ')
 
 const renderPairing = (view) => {
+  pairingFormOpen = false
   pairingView = view
   pairingOpen = ['waiting', 'confirmation', 'alreadyPaired', 'expired'].includes(view.status)
   const progress = document.getElementById('pairing-progress')
@@ -79,12 +81,14 @@ const openPairForm = async () => {
   showList()
   document.getElementById('pairing-progress').hidden = true
   pairingOpen = false
+  pairingFormOpen = true
   document.getElementById('pair-form').style.display = 'block'
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('pair').onclick = openPairForm
   document.getElementById('pair-cancel').onclick = () => {
+    pairingFormOpen = false
     document.getElementById('pair-form').style.display = 'none'
   }
   document.getElementById('choose-workspace').onclick = async () => {
@@ -118,10 +122,10 @@ window.addEventListener('DOMContentLoaded', () => {
     await refresh()
   }
   document.getElementById('open-nessie').onclick = () => window.__TAURI__.core.invoke('executor_open_nessie', {
-    apiBaseUrl: pairingView?.apiBaseUrl ?? 'nessie',
+    apiBaseUrl: connectionNames.get(currentExecutorId)?.apiBaseUrl ?? pairingView?.apiBaseUrl ?? 'nessie',
   })
   setInterval(updatePairingTime, 1000)
-  setInterval(() => { if (!pairingBusy && !pairingOpen) restorePairing() }, 60000)
+  setInterval(() => { if (!pairingBusy && !pairingOpen && !pairingFormOpen) restorePairing() }, 60000)
   setInterval(() => {
     if (!pairingBusy && ['waiting', 'confirmation'].includes(pairingView?.status)) {
       pairingAction('executor_pairing_status')

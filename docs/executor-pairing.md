@@ -103,16 +103,14 @@ offers to replace it or cancel. Replacement revokes the old executor using
 the machine's existing key, so it does not leave another active executor
 behind. Existing access and audit history stay with that old record.
 
-The Windows tray checks for older Desktop and default command-line connections
-before starting. If one exists, close it in the app that manages it first;
-Desktop has a local forget control on its Executors page. Server-side
-revocation is a separate operation; do not forget the key before arranging it.
-The service does not copy a user's existing key into its own store.
-The Mac app reuses a single existing state directory in place and asks you
-to resolve multiple existing connections before pairing.
+Windows service, Desktop and CLI connections keep their own state and keys.
+Adding an account does not retire another supervisor's connection. Desktop's
+local forget control is separate from server-side revocation; arrange revocation
+before forgetting the key. The Mac app discovers every existing connection in
+its documented roots and exposes each in its account selector.
 
-One machine connects to one selected team in this flow. Connecting the same
-machine to several teams is deferred. The team name identifies the connection;
+Each connection names one selected team; add another connection to use another
+account, team or server on the same machine. The team name identifies the connection;
 the chosen private, project or organisation scope still decides access.
 Several agents can use the same executor. Each agent has its own access and
 operation grants; granting a second agent does not replace the first, and
@@ -121,7 +119,7 @@ the executor's **Agents** tab. **Add agent** opens a picker, then a confirmation
 that names the agent and the permissions it will receive. Private assignment
 and the agent's operation grants change together; removing one agent leaves
 other agents' access intact. Pairing itself grants no
-agent access. The selected team limit does not limit the number of agents.
+agent access. A connection's selected team does not limit the number of agents.
 
 **Approve the machine once:** activating its capability revision requires a fresh
 factor. Adding or removing agents within that approved boundary uses an ordinary

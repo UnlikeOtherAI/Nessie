@@ -91,7 +91,7 @@ const render = (view) => {
   currentView = view
   dot.dataset.state = trayState(view)
   headline.textContent = headlineFor(view)
-  if (detailPanel.dataset.open !== 'true' && !pairingOpen) {
+  if (detailPanel.dataset.open !== 'true' && !pairingOpen && !pairingFormOpen) {
     renderList(view)
   }
 }

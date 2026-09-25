@@ -77,7 +77,7 @@ const PairingSession = ({
   const confirmHere = async () => {
     setLocalBusy(true)
     setError(null)
-    try { await confirmCompanionPairing(); await status.refetch() } catch {
+    try { await confirmCompanionPairing() } catch {
       setError('The connection is not confirmed. Review it in the computer confirmation dialog and try again.')
     } finally { setLocalBusy(false) }
   }

@@ -60,4 +60,53 @@ The reply showed measured total/free bytes for C:, D: and the letterless
 volume. The session state subsequently became `closed` with no process
 identity. Both executor connections remained online. The reply was inspected
 in the local browser. This verifies Windows and two concurrent connections;
-it does not claim a three-platform test or a finished native multi-account UI.
+it does not by itself verify the other platforms or native multi-account UI.
+
+## Continued work acceptance — 2026-09-25
+
+Three further tasks ran through the same personal Kimi connection locally:
+
+- Sales reconciliation: read a CSV, excluded cancelled/refunded orders, wrote
+  and independently reconciled a report: six paid orders, 13 units, 206.90 revenue.
+- Invoice repair: ran the supplied seven tests (five failed), repaired the
+  calculation without editing tests, and reran successfully (seven passed).
+  An independent rerun also passed; the example total was 4,858 cents.
+- Delayed report: launched an 18-second job once, followed it to completion,
+  read its manifest and checked all three source-file hashes and byte lengths.
+  Independent verification matched the artifact. Chat output masked hashes
+  through existing output redaction; it did not expose complete hashes.
+
+All three streamed an acknowledgement before the first tool call and ended
+with a final chat answer and a closed terminal. Streamed progress is distinct
+from the one durable final message. No test reminder remained pending.
+The run exposed and fixed a terminal loop detector that counted Enter across
+different commands: the repeated-input limit now applies since the last
+different input in that same session, including across checkpoints.
+
+## Three-machine and multi-connection acceptance — 2026-09-25
+
+New CLI connections on macOS and Ubuntu used the default pairing flow and
+received separate machine identities alongside their existing production
+connections. Each was approved once and granted to the local CTO. All three
+machines were available concurrently. Three fresh CTO conversations used the
+same personal Kimi subscription and completed a read-only OS, CPU, RAM and
+mounted-filesystem inventory: Windows through PowerShell, Ubuntu through bash,
+and macOS through its installed Claude Code. Each streamed an acknowledgement
+before its first tool call, returned the measured inventory and closed its
+session. Existing output sanitization masks hostnames and some mount paths;
+the CTO explicitly reported that limitation on Mac and Linux.
+
+Local checks also passed: Windows service (56 tests), tray (41 tests),
+Windows Desktop Rust compilation, Mac app source typecheck and all 92 Mac
+core XCTest cases. The executor Turbo suite passed on Node 22.23.3: 517 tests
+in the ordinary pass plus 95 in the native-helper pass; platform-dependent
+skips remain. Its concurrency is bounded to avoid saturating Windows.
+The full repository lint and the admin/executor typechecks passed.
+
+Headless Playwright verified the real Windows tray renderer with two
+simultaneous connections and a service refresh while Add account was open.
+It also verified the shared Desktop pairing dialog at 1280px and 390px,
+including Windows and Linux native-transport fixtures. Native folder and
+confirmation dialogs were mocked in those browser checks. Linux native
+bundling passed CI. The Mac GUI was not installed: this machine has no
+Developer ID Application certificate, so its current signed app remains intact.
