@@ -47,6 +47,7 @@ export const OVERLAY_BACK_PRIORITY = Object.freeze({
 export type OverlayDirection = 'open' | 'close'
 
 export type SheetSide = 'left' | 'right' | 'bottom'
+export type OverlayRevealOrigin = { x: number; y: number }
 
 export const overlayDurationMs = (kind: OverlayKind, reducedMotion: boolean): number => {
   if (reducedMotion) return 0
@@ -72,6 +73,7 @@ export const overlayKeyframes = (
   kind: OverlayKind,
   direction: OverlayDirection,
   side: SheetSide = 'right',
+  revealOrigin?: OverlayRevealOrigin | null,
 ): [Keyframe, Keyframe] => {
   const hidden: Keyframe = kind === 'sheet'
     ? { transform: side === 'left' ? 'translate3d(-100%, 0, 0)' : side === 'right' ? 'translate3d(100%, 0, 0)' : 'translate3d(0, 100%, 0)' }
@@ -79,6 +81,11 @@ export const overlayKeyframes = (
   const shown: Keyframe = kind === 'sheet'
     ? { transform: 'translate3d(0, 0, 0)' }
     : { opacity: '1', transform: 'translate3d(0, 0, 0)' }
+  if ((kind === 'popover' || kind === 'modalPopover') && revealOrigin) {
+    const point = `${revealOrigin.x}px ${revealOrigin.y}px`
+    hidden.clipPath = `circle(0px at ${point})`
+    shown.clipPath = `circle(150% at ${point})`
+  }
   return direction === 'open' ? [hidden, shown] : [shown, hidden]
 }
 
@@ -88,6 +95,7 @@ export type OverlayTransitionSpec = {
   direction: OverlayDirection
   reducedMotion: boolean
   side?: SheetSide
+  revealOrigin?: OverlayRevealOrigin | null
 }
 
 export type OverlayTransitionRun = {
@@ -109,11 +117,12 @@ export const runOverlayTransition = ({
   direction,
   reducedMotion,
   side,
+  revealOrigin,
 }: OverlayTransitionSpec): OverlayTransitionRun => {
   const durationMs = overlayDurationMs(kind, reducedMotion)
   const target = element as Animatable | null
   const animation = target && typeof target.animate === 'function'
-    ? target.animate(overlayKeyframes(kind, direction, side), {
+    ? target.animate(overlayKeyframes(kind, direction, side, revealOrigin), {
         duration: durationMs,
         easing: NAV_MOTION.easing,
         fill: 'both',
