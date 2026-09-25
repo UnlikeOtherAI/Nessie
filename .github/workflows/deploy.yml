@@ -65,6 +65,7 @@ jobs:
       contents: read
     outputs:
       behind: ${{ steps.resolve.outputs.behind }}
+      ci_run_id: ${{ steps.resolve.outputs.ci_run_id }}
       eligible: ${{ steps.resolve.outputs.eligible }}
       reason: ${{ steps.resolve.outputs.reason }}
       sha: ${{ steps.resolve.outputs.sha }}
@@ -123,13 +124,13 @@ jobs:
           printf '### Deploy stalled\n\n%s\n' "$REASON" >> "$GITHUB_STEP_SUMMARY"
           exit 1
 
-  # Images are built HERE, on GitHub runners, never on the production host.
+  # CI images are published here without recompiling, never on the host.
   # Building on the box drove its 8-core CPU to load ~340 with 0% idle for the
   # length of every deploy, and the live site timed out through Caddy while it
   # compiled — the containers were healthy, the host simply had nothing left to
   # answer with. The host now only pulls a finished image and swaps.
   build:
-    name: Build ${{ matrix.name }} image
+    name: Publish ${{ matrix.name }} image
     needs: gate
     if: needs.gate.outputs.eligible == 'true'
     runs-on: ubuntu-latest
@@ -137,6 +138,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: read
     strategy:
       fail-fast: true
       matrix:
@@ -159,7 +161,28 @@ jobs:
         with:
           ref: ${{ needs.gate.outputs.sha }}
 
+      # Older verified ancestors predate CI image artifacts. Only those commits
+      # retain their original build path; missing new artifacts fail promotion.
+      - name: Resolve image contract
+        id: contract
+        run: |
+          if [ -f scripts/promote-ci-image.mjs ]; then
+            echo "artifacts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "artifacts=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download verified CI image
+        if: steps.contract.outputs.artifacts == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: production-image-${{ matrix.name }}
+          path: ${{ runner.temp }}/production-image
+          run-id: ${{ needs.gate.outputs.ci_run_id }}
+          github-token: ${{ github.token }}
+
       - name: Set up Buildx
+        if: steps.contract.outputs.artifacts == 'false'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
@@ -174,7 +197,17 @@ jobs:
         id: repo
         run: echo "prefix=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/nessie" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Publish verified CI image
+        if: steps.contract.outputs.artifacts == 'true'
+        env:
+          IMAGE_ARCHIVE: ${{ runner.temp }}/production-image/image.tar
+          IMAGE_NAME: ${{ matrix.name }}
+          IMAGE_SHA: ${{ needs.gate.outputs.sha }}
+          IMAGE_PREFIX: ${{ steps.repo.outputs.prefix }}
+        run: node scripts/promote-ci-image.mjs
+
+      - name: Build and push legacy revision
+        if: steps.contract.outputs.artifacts == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .

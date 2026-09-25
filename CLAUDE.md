@@ -135,6 +135,11 @@ sentence changes only if the invariant itself did.
 - **Browser UI suites are manual local checks, outside GitHub Actions.**
   Use the existing `pnpm --filter @nessie/admin test:e2e:<suite>` commands.
   No browser workflow is dispatched or required before merge.
+- **CI delivery:** main CI saves production images for gated promotion without
+  rebuilding; [redeploying](docs/deployment/redeploying.md) defines the contract.
+  CI overlaps API and worker tests on separate databases through
+  `scripts/ci-tests.mjs`; [testing](docs/standards/testing.md) defines the local
+  verification path and preserves ordinary shared-database test ordering.
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

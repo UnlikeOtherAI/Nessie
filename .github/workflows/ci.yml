@@ -178,7 +178,8 @@ jobs:
           TURBO_CONCURRENCY: 4
 
   # The production images, built exactly as Deploy builds them — same
-  # Dockerfiles, same build args, same private-package secret — but not pushed.
+  # Dockerfiles, same build args, same private-package secret. Main saves the
+  # built images for Deploy; branches never publish production artifacts.
   #
   # This job exists because every other check compiles the workspace on the
   # runner, where the whole repo is on disk, while the images build from a
@@ -191,8 +192,7 @@ jobs:
   #
   # Cost is close to free in wall clock: app is the long leg at ~9m30s against a
   # CI run that already takes 15-21 minutes, and the three legs are parallel.
-  # `cache-from` reads the scope Deploy writes on main, so these start warm;
-  # nothing is written back, which keeps PR branches from evicting main's cache.
+  # Only main refreshes the image cache; branch builds cannot evict it.
   images:
     name: Production Image ${{ matrix.name }}
     runs-on: ubuntu-latest
@@ -234,10 +234,25 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: false
+          tags: nessie-ci-${{ matrix.name }}:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          outputs: ${{ github.ref == 'refs/heads/main' && format('type=docker,dest={0}/image.tar', runner.temp) || '' }}
           build-args: ${{ matrix.build-args }}
           secrets: |
             "deep_agent_read_token=${{ secrets.DEEP_AGENT_READ_TOKEN }}"
           cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=gha,mode=max,scope={0}', matrix.name) || '' }}
+
+      - name: Save production image for gated promotion
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-image-${{ matrix.name }}
+          path: ${{ runner.temp }}/image.tar
+          if-no-files-found: error
+          overwrite: true
+          compression-level: 1
+          retention-days: 7
 
       # The job still reports success, which is what a required check needs.
       - name: Report skip
@@ -566,6 +581,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test
+      WORKER_TEST_DATABASE_URL: postgresql://nessie:nessie@localhost:5432/nessie_test_worker
       # Hosted-mode imports must exercise the same dedicated-ring startup
       # contract as production. This deterministic test root is not a secret.
       NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION: ci-test
@@ -603,7 +619,7 @@ jobs:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
       - name: Test deployment gate policy
-        run: node --test scripts/deploy-gate.test.mjs
+        run: node --test scripts/deploy-gate.test.mjs scripts/ci-tests.test.mjs scripts/promote-ci-image.test.mjs
 
       # The macOS installer's plan: the refusals that keep an unsigned image from
       # being called installable, and its agreement with the release workflow.
@@ -620,24 +636,20 @@ jobs:
       - name: Apply database migrations
         run: pnpm --filter @nessie/api prisma:migrate:deploy
 
-      # Through Turbo, per AGENTS.md: the `test` task's `^build` compiles each
-      # suite's workspace dependencies, which is what the old hand-rolled
-      # "build every package under packages/*" step was standing in for. It also
-      # preserves the `@nessie/api#test` after `@nessie/worker#test` ordering
-      # that turbo.json pins by hand — the worker DB suites need a database no
-      # api trigger-dispatch suite is mid-flight on.
-      #
-      # Concurrency 4 matches what `pnpm -r` was already doing (its default), so
-      # the shared-database contention profile is unchanged. `test` stays
-      # `"cache": false` in turbo.json: its result depends on a database Turbo
-      # cannot hash.
+      # Preserve the original Turbo graph, build once, then overlap suites on
+      # separate databases. Ordinary local pnpm test keeps its serial ordering.
+      # Test results remain uncached because a database is not a cache input.
+      - name: Isolate worker database
+        # Prisma has exited; clone the pristine schema before any tests connect.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'CREATE DATABASE nessie_test_worker TEMPLATE nessie_test'
+
       - name: Run tests
         # Interactive executor tests launch real, isolated tmux sessions.
         # The runner image is not our dependency declaration.
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y tmux
-          pnpm test
+          node scripts/ci-tests.mjs
         env:
           TURBO_SCOPE: ${{ steps.scope.outputs.turbo_scope }}
           TURBO_CONCURRENCY: 4

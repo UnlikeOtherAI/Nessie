@@ -14,6 +14,8 @@ const foreignSha = '4'.repeat(40)
 const mainCommits = [mainSha, middleSha, olderSha]
 
 const successfulRun = (sha = mainSha, overrides = {}) => ({
+  id: 123,
+  run_attempt: 1,
   conclusion: 'success',
   event: 'push',
   head_branch: 'main',
@@ -60,6 +62,7 @@ const githubEvent = ({ eventName, ref = 'refs/heads/main', runId, workflowRun })
 test('accepts the exact current main SHA after its trusted CI push succeeds', () => {
   assert.deepEqual(decide(), {
     behind: 0,
+    ciRunId: 123,
     eligible: true,
     reason: 'current main tip passed trusted CI',
     sha: mainSha,
@@ -92,9 +95,10 @@ test('rejects CI from a non-main branch', () => {
 test('a delayed older successful event resolves the newer verified main tip', () => {
   const result = decide({
     workflowRun: successfulRun(olderSha),
-    workflowRuns: [successfulRun(olderSha), successfulRun(mainSha)],
+    workflowRuns: [successfulRun(olderSha, { id: 100 }), successfulRun(mainSha, { id: 200 })],
   })
   assert.equal(result.sha, mainSha)
+  assert.equal(result.ciRunId, 200)
 })
 
 // This is the behaviour change. It used to assert `eligible: false` — the tip
@@ -110,6 +114,7 @@ test('promotes the newest verified ancestor while the tip CI is still running', 
   })
   assert.deepEqual(result, {
     behind: 1,
+    ciRunId: 123,
     eligible: true,
     reason: 'main tip has no successful trusted CI push run yet — promoting the newest verified ancestor, 1 commit(s) behind the tip',
     sha: middleSha,
@@ -189,7 +194,7 @@ test('concurrency supersession still promotes the newer verified main tip', () =
 test('the workflow fails the run on a stall and publishes the decision', () => {
   const gate = workflow.get('jobs').get('gate')
   const outputs = gate.get('outputs')
-  for (const key of ['behind', 'eligible', 'reason', 'sha', 'stalled']) {
+  for (const key of ['behind', 'ci_run_id', 'eligible', 'reason', 'sha', 'stalled']) {
     assert.ok(outputs.get(key), `the gate job must expose the '${key}' output`)
   }
 
