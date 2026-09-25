@@ -117,6 +117,21 @@ cover continuation, one tool call, its result and completion.
 
 See the [Messages API prefill contract](https://platform.claude.com/docs/en/build-with-claude/working-with-messages).
 
+### Other provider continuations
+
+The Codex Responses adapter also keeps only leading system context in top-level
+`instructions`; later application corrections remain ordered `developer`
+input items, matching Codex's runtime context updates. Hoisting them would lose
+their position relative to the assistant answer and completed tool results.
+The [Responses message roles](https://developers.openai.com/api/docs/guides/prompt-engineering)
+support this representation without reducing instruction priority.
+
+OpenAI Chat Completions, the shared OpenAI-compatible connector (including
+OpenRouter, DashScope and Grok), DeepSeek and local Ollama already preserve message
+order. Transport tests cover each path, including correction placement, tool
+availability and returned tool calls; Ollama also retains prior reasoning.
+These are protocol tests, not a claim that every hosted model was live-tested.
+
 ### Provider limitations
 
 - **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking;
