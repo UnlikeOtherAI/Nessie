@@ -229,12 +229,14 @@ export const ticketSkipSentence = (reason: TicketTriggerSkipReason, options: { r
   ticketTriggerSkipSentence(reason, options)
 
 const SESSION_SKIP_LINE = {
-  waiting_for_input: 'A coding session\'s turn ended, but the agent had already read it or the work was not active, '
-    + 'so it was not woken for it.',
-  interrupted: 'A coding session was interrupted while its work was not active, so the agent was not woken for it.',
-  failed: 'A coding session failed while its work was not active, so the agent was not woken for it.',
-  closed: 'A coding session closed, but the agent had closed it itself or the work was not active, so it was not '
-    + 'woken for it.',
+  waiting_for_input: 'A coding session\'s turn ended, but the agent had already read it, the session had closed or '
+    + 'left the ticket by then, or the work was not active, so it was not woken for it.',
+  interrupted: 'A coding session was interrupted, but it had closed or left the ticket by then, or its work was not '
+    + 'active, so the agent was not woken for it.',
+  failed: 'A coding session failed, but it had closed or left the ticket by then, or its work was not active, so the '
+    + 'agent was not woken for it.',
+  closed: 'A coding session closed, but the agent had closed it itself, the work had moved to another machine, or the '
+    + 'work was not active, so it was not woken for it.',
 } as const
 
 /**

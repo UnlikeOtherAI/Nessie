@@ -50,9 +50,10 @@ const states = async (browser, { name, options }) => {
     const { context, errors, page, section } = await openSection(browser, options, access)
     assert.match(await section.getByTestId('machine-access-state').innerText(), sentence, `${name} ${access}`)
     const text = await section.innerText()
-    // T5: a ticket whose machine went away says since when, and its place is kept.
-    const pausedSince =
-      /NES-141 Refactor billing\s+paused: (Studio|its machine) is offline since \d{1,2}:\d{2}(\s?[AP]M)?/
+    // T5: a ticket whose machine went away says since when — with the day when that is not today:
+    // "14:32", "25 Sept 23:53", "Sep 25 11:53 PM" — and its place is kept.
+    const since = String.raw`(?:\d{1,2} \p{L}+\.? |\p{L}+\.? \d{1,2},? )?\d{1,2}:\d{2}(?:\s?[AP]M)?`
+    const pausedSince = new RegExp(String.raw`NES-141 Refactor billing\s+paused: (Studio|its machine) is offline since ${since}`, 'u')
     if (access === 'live') {
       assert.match(text, /NES-140 Fix login redirect\s+working on Minis/)
       assert.match(text, pausedSince)
@@ -99,7 +100,8 @@ const states = async (browser, { name, options }) => {
     assert.match(wakes, /Woke the agent: the machine came back\./)
     assert.match(wakes, /Woke the agent: a coding session’s turn ended\./)
     // A skipped session wake says what the session did (T5).
-    assert.match(wakes, /A coding session closed, but the agent had closed it itself or the work was not active/)
+    assert.match(wakes,
+      /A coding session closed, but the agent had closed it itself, the work had moved to another machine/)
     await assertNoSidewaysScroll(page, `${name} machine access ${access}`)
     await section.screenshot({ path: shot(`machine-access-${access.replace(/_/g, '-')}`, width) })
     assert.deepEqual(errors, [], `${name} ${access}: no page errors`)

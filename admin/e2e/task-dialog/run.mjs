@@ -783,13 +783,16 @@ try {
   // again for another machine after its own stayed away (29), the machine back
   // in its history (28), and a wake by the coding session's turn (30).
   // The record the chip reads carries no machine, so none is named on it.
+  // A time the chip gives: "14:32", or with its day when that is not today ("25 Sept 23:53", "Sep 25 11:53 PM").
+  const OFFLINE_SINCE = String.raw`(?:\d{1,2} \p{L}+\.? |\p{L}+\.? \d{1,2},? )?\d{1,2}:\d{2}(?:\s?[AP]M)?`
   const MACHINE_CHIP_STATES = [
     ['queued', '20-work-queued', 'queued', /^Perf agent · queued · started /,
       'Queued: position 2 — every machine is busy.',
       / · Perf agent queued the work: every machine is busy · by Ondřej Rafaj$/],
-    // T5: since when its machine has been away — the time only, never the machine.
+    // T5: since when its machine has been away — its time, with the day when that is not today (the
+    // fixture's 38 minutes ago is yesterday just after midnight), never the machine.
     ['machine-offline', '21-work-machine-offline', 'waiting_machine', /^Perf agent · waiting for a machine · /,
-      /^Paused: the machine is offline since \d{1,2}:\d{2}(\s?[AP]M)?\. Work resumes when it reconnects\.$/,
+      new RegExp(`^Paused: the machine is offline since ${OFFLINE_SINCE}\\. Work resumes when it reconnects\\.$`, 'u'),
       / · Perf agent paused the work: the machine is offline$/],
     // T5: its own machine stayed away past waitingMachineHours; it waits for another.
     ['moved-machine', '29-work-moved-machine', 'queued', /^Perf agent · queued · started /,

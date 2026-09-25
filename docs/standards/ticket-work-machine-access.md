@@ -630,7 +630,8 @@ a busy minute never multiplies them:
   With a one-machine pool it simply stays queued.
 - **What it reads as.** The chip says *"Paused: the machine is offline since
   14:32. Work resumes when it reconnects."* (`machineOfflineSince`, the
-  machine's last heartbeat, never its name), its history *"resumed the work:
+  machine's last heartbeat, never its name; its day comes before the time
+  when that is not today, *"since 25 Sept 23:53"*), its history *"resumed the work:
   its machine is back online"* and *"queued the work for another machine,
   because its machine stayed offline"*; the Machine access section *"paused:
   Studio is offline since 14:32"* (the label only for its author and

@@ -319,8 +319,8 @@ try {
       // T5: how long work waits for its own machine, from the trigger's stored config.
       await page.getByText('Work waits 24 hours for its machine to reconnect, then moves to another').waitFor()
       assert.deepEqual(await lines.allInnerTexts(), [
-        'A coding session closed, but the agent had closed it itself or the work was not active, so it was not '
-          + 'woken for it.',
+        'A coding session closed, but the agent had closed it itself, the work had moved to another machine, or the '
+          + 'work was not active, so it was not woken for it.',
         'Woke the agent: the machine came back.',
         'Woke the agent: a coding session’s turn ended.',
         'Ran without a machine: the machine was offline or no longer offers its coding tools.',

@@ -216,17 +216,20 @@ test('a session wake is said on the trigger\'s page, and a skip it did not need 
   }
   assert.equal(ticketDeliveryLine({ ...base, outcome: 'follow', wakeReason: 'session_turn_ended' }),
     'Woke the agent: a coding session’s turn ended.')
-  assert.match(ticketDeliveryLine({ ...base, outcome: 'skipped', skipReason: 'no_longer_applies' }) ?? '',
-    /^A coding session's turn ended, but the agent had already read it or the work was not active/)
-  // Only a turn end can have been read already; a close can have been the agent's own.
+  assert.equal(ticketDeliveryLine({ ...base, outcome: 'skipped', skipReason: 'no_longer_applies' }),
+    'A coding session\'s turn ended, but the agent had already read it, the session had closed or left the ticket by '
+      + 'then, or the work was not active, so it was not woken for it.')
+  // Only a turn end can have been read already; a close can have been the agent's own, or left behind on
+  // a machine the work moved off; any other session can have closed or left the ticket before its wake ran.
   const skipped = (status: string) => ticketDeliveryLine({
     ...base, outcome: 'skipped', skipReason: 'no_longer_applies', session: { ...base.session, status },
   })
-  assert.equal(skipped('interrupted'),
-    'A coding session was interrupted while its work was not active, so the agent was not woken for it.')
-  assert.equal(skipped('failed'), 'A coding session failed while its work was not active, so the agent was not woken for it.')
-  assert.equal(skipped('closed'),
-    'A coding session closed, but the agent had closed it itself or the work was not active, so it was not woken for it.')
+  assert.equal(skipped('interrupted'), 'A coding session was interrupted, but it had closed or left the ticket by then, '
+    + 'or its work was not active, so the agent was not woken for it.')
+  assert.equal(skipped('failed'), 'A coding session failed, but it had closed or left the ticket by then, or its work '
+    + 'was not active, so the agent was not woken for it.')
+  assert.equal(skipped('closed'), 'A coding session closed, but the agent had closed it itself, the work had moved to '
+    + 'another machine, or the work was not active, so it was not woken for it.')
   assert.equal(ticketDeliveryLine({
     originKind: 'system', taskId: base.taskId, workId: base.workId,
     eventType: 'machine_back_online', outcome: 'follow', wakeReason: 'machine_back_online',
