@@ -252,6 +252,12 @@ its server-authored prompt stays byte-identical. The fact is one of:
   disclosure basis with the launch conversation as a coding tool's answer
   does; anywhere else a session is its id and status alone. A machine that
   names only the bridge is told as the coding sentence alone.
+  Terminal availability is checked independently from the structured coding
+  tools. A terminal-only executor is still bound and its prompt names
+  `terminal_session_start`, `terminal_session_read`, `terminal_session_write`
+  and `coding_session_close`, with the configured starting folders. It must
+  never receive the offline/no-machine-tools sentence merely because it does
+  not offer Claude Code or Codex. This applies to both launch and carried turns.
 - **A lease exists and did not carry.** "You have no machine tools this turn."
   and one line for the refusal reason — for example "Machine tools only come
   with messages from the person who started the session", "The session ended",
