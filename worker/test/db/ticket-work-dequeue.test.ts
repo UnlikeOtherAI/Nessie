@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import { renumberTicketWorkQueueInTransaction } from '@nessie/executor-manage'
 import { createAgentTrigger, updateProjectTask } from '@nessie/team-admin'
 
 import { INSTRUCTIONS } from '../../../packages/team-admin/test/standing-policy-fixture.js'
@@ -120,6 +121,40 @@ runDatabaseTest('a queued ticket\'s new priority re-sorts its queue and wakes no
     const [first, second] = [await recordOf(prisma, older.work.id), await recordOf(prisma, newer.work.id)]
     assert.deepEqual([first.queuePosition, second.queuePosition], [1, 2], 'the urgent ticket goes first')
     assert.deepEqual([first.wakeCount, second.wakeCount], [older.work.wakeCount, before.wakeCount], 'and nobody woke')
+  })
+})
+
+runDatabaseTest('a record that leaves the queue between a renumbering\'s read and its row lock keeps no place from it', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const seen = new Set<string>()
+    await pickUp(prisma, world, 'Holds the machine', seen)
+    const first = await pickUp(prisma, world, 'Queued first', seen)
+    const leaving = await pickUp(prisma, world, 'Leaves the queue', seen)
+    assert.deepEqual([(await recordOf(prisma, first.work.id)).queuePosition, (await recordOf(prisma, leaving.work.id)).queuePosition],
+      [1, 2])
+    // Both places stale, so the renumbering means to write both.
+    await prisma.agentTicketWork.updateMany({ where: { id: { in: [first.work.id, leaving.work.id] } }, data: { queuePosition: 9 } })
+    // After its read and before its row lock, a transaction that never takes this queue's lock (a hand-over
+    // renumbers only the queue it joins) commits the second record out of it.
+    let interposed = false
+    await prisma.$transaction(async (tx) => {
+      const client = new Proxy(tx, {
+        get: (target, key) => (key === '$queryRaw' && !interposed
+          ? async (...args: Parameters<Prisma.TransactionClient['$queryRaw']>) => {
+            interposed = true
+            await prisma.agentTicketWork.update({
+              where: { id: leaving.work.id }, data: { queuePosition: null, stateReason: null, status: 'parked' },
+            })
+            return target.$queryRaw(...args)
+          }
+          : Reflect.get(target, key)),
+      })
+      await renumberTicketWorkQueueInTransaction(client, world.policyId)
+    })
+    assert.ok(interposed, 'the renumbering locked its rows through the interposed read')
+    const [kept, left] = [await recordOf(prisma, first.work.id), await recordOf(prisma, leaving.work.id)]
+    assert.equal(kept.queuePosition, 1)
+    assert.deepEqual([left.status, left.queuePosition], ['parked', null], 'no queue place written onto work that left the queue')
   })
 })
 

@@ -6,12 +6,14 @@ import { loadTicketWorkKickoffFacts, renderTicketWorkKickoff } from './ticket-wo
 import { findPendingKickoff, kickoffMetadata } from './ticket-work-run.js'
 
 /**
- * A turn-ended session wake the agent no longer needs (T5;
+ * A session wake the agent no longer needs (T5;
  * docs/standards/ticket-work-machine-access.md → "Session wakes"): a wait or a
  * review of its own read that turn end while the wake still pended behind the
- * run making it. The session job that wrote the wake read the record before the
- * agent's run had seen the turn; without this, the next run would be told
- * again what the agent already acted on.
+ * run making it — or the agent closed the session itself, and its machine
+ * reported the close before the close's own answer was recorded, so a closed
+ * wake pends for what the agent did. The session job that wrote the wake read
+ * the record before the agent's run had seen it; without this, the next run
+ * would be told again what the agent already acted on.
  *
  * Called from the tools' observation, under the thread's run slot — the lock
  * every wake folds or pends under, and every drain claims under — so the
@@ -25,10 +27,16 @@ import { findPendingKickoff, kickoffMetadata } from './ticket-work-run.js'
  */
 
 const seenBy = (seen: ObservedSessionTurn) => (event: TicketWorkKickoffEvent): boolean =>
-  event.reason === 'session_turn_ended' && event.session?.sessionId === seen.sessionId
-  && event.session.turn <= seen.turn
+  event.session?.sessionId === seen.sessionId && (
+    (event.reason === 'session_turn_ended' && event.session.turn <= seen.turn)
+    || (seen.closed === true && event.reason === 'session_closed'))
 
-type WokenRowMetadata = { ticketWorkEvent?: { kind?: unknown; session?: { turn?: unknown }; workId?: unknown } }
+type WokenRowMetadata = {
+  ticketWorkEvent?: { kind?: unknown; reason?: unknown; session?: { turn?: unknown }; workId?: unknown }
+}
+
+/** One withdrawn event's row in the thread: the reason and the turn it woke for. */
+const rowKey = (reason: unknown, turn: unknown): string => `${String(reason)}:${String(turn)}`
 
 export const withdrawSeenSessionWakes = async (
   tx: Prisma.TransactionClient,
@@ -58,7 +66,7 @@ export const withdrawSeenSessionWakes = async (
       },
     })
   }
-  const turns = new Set(withdrawn.map((event) => event.session!.turn))
+  const keys = new Set(withdrawn.map((event) => rowKey(event.reason, event.session!.turn)))
   const rows = await tx.message.findMany({
     where: {
       role: 'system',
@@ -70,7 +78,7 @@ export const withdrawSeenSessionWakes = async (
   const woken = rows.filter((row) => {
     const event = (row.metadata as WokenRowMetadata | null)?.ticketWorkEvent
     return event?.kind === 'woken' && event.workId === input.workId && typeof event.session?.turn === 'number'
-      && turns.has(event.session.turn)
+      && keys.has(rowKey(event.reason, event.session.turn))
   })
   if (woken.length > 0) await tx.message.deleteMany({ where: { id: { in: woken.map((row) => row.id) } } })
 

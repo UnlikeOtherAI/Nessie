@@ -275,7 +275,10 @@ where it and the code differ, the code and this file win.
   transaction holds (`FOR UPDATE SKIP LOCKED`), so it closes no cycle with a
   transaction that holds a record and wants the lock; a skipped row gets its
   place from the next renumbering, and the dequeue renumbers every queue it
-  reads. The ticket gets `work_started` and `work_queued`
+  reads. The lock re-checks that each row is still queued in that policy: a
+  record placed, parked, ended or handed over after the read keeps no place
+  from it (a hand-over renumbers only the queue it joins, so it can commit
+  between the read and the lock). The ticket gets `work_started` and `work_queued`
   rows, the chain `ticket.work.started` and `ticket.work.queued`, and the work
   one short unbound wake with reason `queued`, whose text gives its place and
   how many machines are busy or offline — never which — and whose
@@ -333,7 +336,10 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   was recorded says otherwise** (`liveTicketWorkSessions`,
   `ticket-work-session-origins.ts`, against `localMcpObservedAt`): the
   machine reports on its heartbeat, so a session started a moment ago is in no
-  report yet. So a start while the ticket has a live session is refused
+  report yet. **(T5)** A report that never read the bridge — no bridge entry,
+  or one whose probe failed with no earlier sessions to carry forward — says
+  nothing either way, as the heartbeat intake infers nothing from it: every
+  recorded session stays live. So a start while the ticket has a live session is refused
   (*"This ticket already has a coding session; use coding_session_send."*),
   and the kickoff's session line uses the same rule. A start whose answer was
   lost is taken back onto the record from the next report by its title under
@@ -372,7 +378,11 @@ A `ticket.work` run the binder bound gets the coding tools of its ticket
   leaves the thread, and a kickoff left with nothing goes whole, its wake
   given back to `wakesPerTicket`. The agent's own `coding_session_close`
   takes the session off the record and keeps it under
-  `lastObservedTurn.closed`, so its close wakes nobody.
+  `lastObservedTurn.closed`, so its close wakes nobody — also when its
+  machine reported the close before the close's answer landed and the
+  heartbeat intake already took the session off: its origin still names it
+  the ticket's, and a closed wake that report left pending in the thread is
+  withdrawn the same way.
 
 ## Server-side closes, limits and spend (T4)
 
@@ -550,10 +560,20 @@ a busy minute never multiplies them:
   `no_longer_applies` — and said so on the Triggers page, in words that
   follow the status — when the record is not `active` (parked, queued,
   waiting or ended), when a turn-ended wake's turn or a later one was seen
-  to end by a wait or review of the agent's own (`lastObservedTurn`), and
-  when a closed session is one the agent closed itself
-  (`lastObservedTurn.closed`); an interruption or a failure always wakes. All
-  of it is read under the thread's run slot, and a wait that sees the turn
+  to end by a wait or review of the agent's own (`lastObservedTurn`), when
+  a closed session is one the agent closed itself
+  (`lastObservedTurn.closed`), and when the session is no longer the
+  ticket's on the machine the work holds: started on another machine than
+  the one pinned now (`session_origins`), or — for any status but closed —
+  let go since the report, because the agent closed it, the work released
+  it, or a later report closed it. (A closed wake's session left the live
+  set with the report that enqueued it, so only its machine is asked.) An
+  interruption or a failure of a session still the ticket's always wakes.
+  All of it is read under the thread's run slot and the record's policy
+  rows, shared — the locks the wake itself then takes, in the same order —
+  so the tools' observation, a machine's return and a dequeue (the slot),
+  and a suspension, an end and a hand-over (the policy row) each land before
+  the read, never between it and the wake; and a wait that sees the turn
   while its wake still pends behind that run withdraws the wake (above, "A
   ticket's coding tools are the ticket's own"); a trigger off or in error
   skips it `trigger_disabled`.
@@ -580,8 +600,18 @@ a busy minute never multiplies them:
   (`policy_suspended`), with no wake. Handed to a policy whose pool does not
   name the machine (a confirmation that replaced it with other machines): it
   is queued for one that does, as below, since the binder would never bind
-  it there. A person's wake that finds the machine back resumes the work the
-  same way first. Only work of a trigger that is on and not in error counts
+  it there. It goes back only on the terms its author confirmed, read as the
+  dequeue reads them (`standingPolicyTermsForMachine`): a live policy whose
+  trigger, agent or a pool machine's active revision moved while the machine
+  was away is suspended first, in a transaction of its own (`foundAt:
+  machine_back_online`), so the resume reads it suspended and the work waits
+  for access; a machine whose newest revision awaits review, or was
+  disabled, takes nothing back, and the work keeps waiting for it. A
+  person's wake that finds the machine back resumes the work the same way
+  first — or, finding the terms no longer stand, is skipped
+  `machine_offline` while the work keeps waiting — and a person's wake that
+  finds the work paused for access or queued as the machine came back runs
+  unbound, as any wake of work in either state does. Only work of a trigger that is on and not in error counts
   — for the heartbeat's enqueue as for the sweep — so a trigger in error
   never makes every heartbeat enqueue a sweep.
 - **Gone too long.** Past the trigger's `waitingMachineHours` (default 24,
@@ -795,7 +825,8 @@ mover's origin, the heartbeat's cost intake, each session closed on its own
 machine, returning work going back to its own machine while it could take
 it and to another once it is held, a spent day queueing,
 unasked commands needing the tick); `packages/executor-manage/test/ticket-work-session-origins.test.ts`
-(the live rule); `worker/src/run/execute/ticket-work-standing-gate.test.ts`
+(the live rule, and a report that never read the bridge leaving every
+session live); `worker/src/run/execute/ticket-work-standing-gate.test.ts`
 (the standing gate, its withheld tools, own-ticket writes, the host-output
 stamp); `worker/src/run/executor-toolset-coding.test.ts` and
 `executor-toolset.test.ts` (a standing-bound run offered the coding tools and
@@ -836,7 +867,8 @@ and waking nothing, a ticket out of its column and a mover off the board
 cancelled with their reasons, a drifted trigger suspending its policy, a
 record going back to its own machine once it is free, a new pickup not
 jumping the line, two racing dequeues putting one record on the machine and
-the index refusing a second);
+the index refusing a second, and a record that left the queue between a
+renumbering's read and its row lock keeping no place from it);
 `worker/test/db/ticket-work-dequeue-own-machine.test.ts` (a record whose
 machine went offline, or is held by other work, taking another free one with
 its old sessions closed `machine_reassigned` and forgotten; back on its own
@@ -851,7 +883,9 @@ trigger that is on); `worker/test/db/ticket-work-session-scope.test.ts`
 (another machine's report, or another owner's session, waking and closing
 nothing; a report without the field between two hiding no close; a session
 recorded as started on another machine not read here; a session the work
-let go of charged until its machine stops reporting it);
+let go of charged until its machine stops reporting it; a turn's wake whose
+session was let go before its job ran, and a session's wake from a machine
+the work left before its job ran, waking nothing);
 `worker/test/db/ticket-work-policy-locks.test.ts` (a wake that finds its
 machine back waiting for a suspension in flight and reading it; a
 suspension writing the ticket's history while a wake holds the ticket's
@@ -860,13 +894,18 @@ suspension writing the ticket's history while a wake holds the ticket's
 wait read while its wake pended withdrawn with the wake given back, a folded
 kickoff keeping its other events, an interruption waking however far the
 agent read, and a session the agent closed waking nobody even from a racing
-report); `worker/test/db/ticket-work-machine-back.test.ts` (no run while the
+report — whether the report's job runs before the close's answer lands, its
+pending wake then withdrawn and given back, or after it);
+`worker/test/db/ticket-work-machine-back.test.ts` (no run while the
 machine is away, the heartbeat's sweep and one `machine_back_online` wake, a
 wake that finds it back, `waitingMachineHours` moving the work to the other
 machine with its old session's `machine_reassigned` close riding that
 machine's next heartbeat, work handed to a pool without its machine queued
-for one that has it, and what the chip, the section and the executor page
-read); `api/test/standing-policy-routes.test.ts` (the holding ticket);
+for one that has it — by the sweep, or by a person's wake that then runs
+unbound — a machine back with a revision awaiting review holding the work
+until it is reviewed, a policy whose terms moved while the machine was away
+suspended as it comes back, and what the chip, the section and the executor
+page read); `api/test/standing-policy-routes.test.ts` (the holding ticket);
 the admin's `ticket-work-machine-states`, `machine-access-presentation`,
 `executor-standing-access` and `ticket-trigger-form` tests; and the
 task-dialog (21, 28–30), agent-triggers (the waiting-hours field, the page's

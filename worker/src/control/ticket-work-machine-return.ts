@@ -4,6 +4,8 @@ import {
   lockStandingPolicyRow,
   requeueStrandedTicketWorkInTransaction,
   resumeTicketWorkOnItsMachineInTransaction,
+  standingPolicyTermsForMachine,
+  suspendStandingPolicyInTransaction,
   ticketWorkMachineOnline,
 } from '@nessie/executor-manage'
 import type { TicketTriggerDeliveryPayload } from '@nessie/schemas'
@@ -22,7 +24,11 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  *   once more and the agent gets one `machine_back_online` wake, bound to it,
  *   with a delivered `machine` delivery. Its limits are checked first, as at
  *   every wake. Machine access paused meanwhile: the work waits for access
- *   instead and the machine is freed, with no wake.
+ *   instead and the machine is freed, with no wake. Its live policy's
+ *   confirmed terms are read first, as the dequeue reads them: terms that
+ *   moved suspend the policy in a transaction of its own — the resume then
+ *   reads it suspended, and the work waits for access — and a machine whose
+ *   newest revision awaits review takes nothing back until it is reviewed.
  * - **Stayed away** (`requeueWorkStrandedOffline`): past the trigger's
  *   `waitingMachineHours`, the work is taken off it and queued again for
  *   another machine of the pool; the dequeue that follows wakes it there.
@@ -42,16 +48,35 @@ const BACK_ONLINE_TEXT = 'The machine working this ticket is back online, so its
   + 'the machine went away. Never name the machine on the ticket or in this thread.'
 
 const WAITING_SELECT = {
-  agentId: true, id: true, organizationId: true, policyId: true, projectId: true, taskId: true, threadId: true,
-  triggerId: true,
+  agentId: true, executorId: true, id: true, organizationId: true, policyId: true, projectId: true, taskId: true,
+  threadId: true, triggerId: true,
   executor: { select: { lastSeenAt: true, removedAt: true, status: true } },
+  policy: { select: { status: true } },
   trigger: { select: { agentId: true, config: true, enabled: true, id: true, status: true } },
 } as const satisfies Prisma.AgentTicketWorkSelect
 
 type Waiting = Prisma.AgentTicketWorkGetPayload<{ select: typeof WAITING_SELECT }>
 
+/**
+ * A live policy whose confirmed terms moved while its machine was away is suspended here, in a
+ * transaction of its own, as the dequeue suspends one; false when the machine's newest revision
+ * awaits review, so nothing goes back onto it until the review settles the policy.
+ */
+const termsStandOnReturn = async (prisma: PrismaClient, record: Waiting): Promise<boolean> => {
+  if (record.policy?.status !== 'live' || !record.policyId || !record.executorId) return true
+  const policyId = record.policyId
+  const terms = await standingPolicyTermsForMachine(prisma, { executorId: record.executorId, policyId })
+  if (terms.kind === 'drifted') {
+    await prisma.$transaction((tx) => suspendStandingPolicyInTransaction(tx, {
+      actor: { userId: null }, detail: { foundAt: 'machine_back_online' }, policyId, reason: terms.reason,
+    }))
+  }
+  return terms.kind !== 'unreviewed'
+}
+
 const backOnline = async (prisma: PrismaClient, record: Waiting, now: Date): Promise<boolean> => {
   const trigger = record.trigger!
+  if (!await termsStandOnReturn(prisma, record)) return false
   return prisma.$transaction(async (tx) => {
     if (record.policyId) await lockStandingPolicyRow(tx, record.policyId)
     await lockTicketForWork(tx, record.taskId)

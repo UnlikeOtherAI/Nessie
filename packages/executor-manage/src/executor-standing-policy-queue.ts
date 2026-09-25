@@ -49,8 +49,12 @@ export const lockTicketWorkQueue = async (
 
 /**
  * Every queued record of one policy gets its place again. Returns the places,
- * by record id; writes only the rows whose place changed and that no other
- * transaction holds.
+ * by record id; writes only the rows whose place changed, that no other
+ * transaction holds, and that are still queued in this policy once locked: a
+ * record placed, ended or handed to another policy after the read keeps no
+ * place from this one. (Not every such transaction takes this policy's queue
+ * lock before it commits — a hand-over renumbers the queue it joins — and a
+ * row it committed is locked in its new state, which the lock re-checks.)
  */
 export const renumberTicketWorkQueueInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -70,6 +74,7 @@ export const renumberTicketWorkQueueInTransaction = async (
   const free = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT id::text AS id FROM agent_ticket_work
     WHERE id IN (${Prisma.join(moved.map((id) => Prisma.sql`${id}::uuid`))})
+      AND policy_id = ${policyId}::uuid AND status = 'queued'
     ORDER BY id
     FOR UPDATE SKIP LOCKED`)
   for (const { id } of free) {

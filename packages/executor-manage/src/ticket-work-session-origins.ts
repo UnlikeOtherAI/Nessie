@@ -50,9 +50,10 @@ export type LiveTicketWorkSession = {
  * The ticket's sessions that are live on this machine: each recorded session
  * started here (or with no origin on record, from before origins were kept),
  * open in the machine's last report — or missing from a report taken before
- * it was recorded. A session this ticket's owner key holds that the record
- * missed (a start whose answer was lost) is live while the report shows it
- * open. A session started on another machine is never live here.
+ * it was recorded, or from one that never read the bridge. A session this
+ * ticket's owner key holds that the record missed (a start whose answer was
+ * lost) is live while the report shows it open. A session started on another
+ * machine is never live here.
  */
 export const liveTicketWorkSessions = (input: {
   executorId: string
@@ -71,8 +72,12 @@ export const liveTicketWorkSessions = (input: {
     ? Date.parse(String((input.localMcp as Array<{ codingSessions?: unknown; observedAt?: unknown; server?: unknown }>)
       .find((status) => status.codingSessions !== undefined)?.observedAt ?? ''))
     : Number.NaN
+  // A report that never read the bridge — no report yet, or its probe failed with nothing earlier to
+  // carry — says nothing about any session, as the heartbeat intake infers nothing from it: the
+  // heartbeat's own time is not when the sessions were read.
+  const bridgeRead = Number.isFinite(bridgeAt)
   const reportAt = input.localMcpObservedAt?.getTime() ?? null
-  const reportedAt = reportAt !== null && Number.isFinite(bridgeAt) ? Math.min(reportAt, bridgeAt) : reportAt
+  const reportedAt = reportAt !== null && bridgeRead ? Math.min(reportAt, bridgeAt) : null
   const live: LiveTicketWorkSession[] = []
   for (const sessionId of input.sessionIds) {
     const origin = input.origins[sessionId]
@@ -84,8 +89,8 @@ export const liveTicketWorkSessions = (input: {
     }
     const startedAt = origin ? Date.parse(origin.startedAt) : null
     const reportPredatesIt = reportedAt === null || (startedAt !== null && startedAt >= reportedAt)
-    // No origin and a report that does not list it: from before origins were kept, and gone.
-    if (reportPredatesIt && (origin || input.localMcp == null)) live.push({ sessionId, status: 'starting', turn: null })
+    // No origin and a bridge read that does not list it: from before origins were kept, and gone.
+    if (reportPredatesIt && (origin || !bridgeRead)) live.push({ sessionId, status: 'starting', turn: null })
   }
   for (const [sessionId, session] of reported) {
     if (!input.sessionIds.includes(sessionId) && session.status !== 'closed') {

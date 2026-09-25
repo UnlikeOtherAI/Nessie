@@ -1,5 +1,9 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
-import { agentClosedTicketWorkSessions } from '@nessie/executor-manage'
+import {
+  agentClosedTicketWorkSessions,
+  lockTicketWorkPoliciesInTransaction,
+  ticketWorkSessionOriginsOf,
+} from '@nessie/executor-manage'
 import {
   TicketChangedStoredConfigSchema,
   type TicketWorkSessionJobPayload,
@@ -28,10 +32,20 @@ import { lockThreadRunSlot } from '../run/thread-serialization.js'
  * turn-ended wake's turn, or a later one, was already seen to end by a wait or
  * review of the agent's own (`lastObservedTurn`), and when a closed session is
  * one the agent closed itself: the agent knows, and a second wake would only
- * repeat it. An interruption or a failure always wakes. All of it is read
- * under the thread's run slot, the lock the tools' observation writes under —
- * and a wait that sees the turn while this wake still pends behind its run
- * withdraws it (`ticket-work-session-withdraw.ts`).
+ * repeat it. It is skipped too when the session is no longer the ticket's on
+ * the machine the work holds now: the intake read the record in the
+ * heartbeat's transaction, and before this job ran the work may have moved
+ * off the machine the session runs on (`session_origins`), or let the session
+ * go — the agent closed it, the work was released from its machine, or a
+ * later report closed it. A closed wake's session has already left the live
+ * set, by the report that enqueued it, so only its machine is asked. An
+ * interruption or a failure of a session still the ticket's always wakes. All
+ * of it is read under the thread's run slot and the record's policy rows,
+ * shared — the locks the wake itself then takes, in the same order — so the
+ * tools' observation, a machine's return, a dequeue (the slot), a suspension,
+ * an end and a hand-over (the policy row) each land before the read, never
+ * between it and the wake; and a wait that sees the turn while this wake
+ * still pends behind its run withdraws it (`ticket-work-session-withdraw.ts`).
  *
  * Nothing the session said reaches the wake: only its turn, its status and a
  * categorical reason. The agent reads the rest with its coding tools.
@@ -133,14 +147,23 @@ export const dispatchTicketWorkSession = async (
     ...retry,
     act: async (tx, deliveryId) => {
       await lockThreadRunSlot(tx, { agentId, threadId: record.threadId })
+      const pinned = await tx.agentTicketWork.findUnique({ where: { id: record.id }, select: { policyId: true } })
+      await lockTicketWorkPoliciesInTransaction(tx, { policyId: pinned?.policyId ?? null, triggerId: trigger.id })
       const fresh = await tx.agentTicketWork.findUnique({
-        where: { id: record.id }, select: { lastObservedTurn: true, status: true },
+        where: { id: record.id },
+        select: { executorId: true, lastObservedTurn: true, sessionIds: true, sessionOrigins: true, status: true },
       })
-      const seen = observedTurn(fresh?.lastObservedTurn, wake.sessionId)
+      if (fresh?.status !== 'active') return { outcome: 'refused', reason: 'no_longer_applies' }
+      const seen = observedTurn(fresh.lastObservedTurn, wake.sessionId)
       const alreadySeen = wake.status === 'waiting_for_input' && seen !== undefined && wake.turn <= seen
       const closedItself = wake.status === 'closed'
-        && agentClosedTicketWorkSessions(fresh?.lastObservedTurn).includes(wake.sessionId)
-      if (fresh?.status !== 'active' || alreadySeen || closedItself) {
+        && agentClosedTicketWorkSessions(fresh.lastObservedTurn).includes(wake.sessionId)
+      // Still the ticket's, on the machine the work holds now: a job read before the work moved or
+      // let the session go speaks for a session that is no longer this work's.
+      const startedOn = ticketWorkSessionOriginsOf(fresh.sessionOrigins)[wake.sessionId]?.executorId
+      const elsewhere = startedOn !== undefined && startedOn !== fresh.executorId
+      const letGo = wake.status !== 'closed' && !fresh.sessionIds.includes(wake.sessionId)
+      if (alreadySeen || closedItself || elsewhere || letGo) {
         return { outcome: 'refused', reason: 'no_longer_applies' }
       }
       return seam.wakeTicketWork(tx, {

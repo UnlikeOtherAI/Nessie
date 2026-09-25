@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { ticketWorkCodingSessionContext } from '@nessie/schemas'
 
 import { bridgeReport } from '../../../packages/team-admin/test/standing-policy-binding-fixture.js'
@@ -27,7 +27,8 @@ import { runDatabaseTest } from './support.js'
  * gone, and the wake given back when nothing else was in the kickoff; an
  * interruption wakes however far the agent had read; and a session the agent
  * closed itself leaves the record, so its close wakes nobody, even from a
- * report that raced the close.
+ * report that raced the close — whichever of the machine's report, its job
+ * and the close's own answer lands first.
  */
 
 const recordOf = (prisma: PrismaClient, id: string) => prisma.agentTicketWork.findUniqueOrThrow({ where: { id } })
@@ -134,5 +135,70 @@ runDatabaseTest('an interruption wakes however far the agent read, and a session
     })
     assert.deepEqual([raced.status, raced.errorMessage], ['skipped', 'no_longer_applies'])
     assert.equal((await recordOf(prisma, ticket.workId)).wakeCount, closed.wakeCount)
+  })
+})
+
+runDatabaseTest('the agent\'s own close wakes nobody when its machine reports the close before the answer lands', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const ticket = await workingTicket(prisma, world)
+    const seen = new Set<string>()
+    const observe = observer(prisma, world, ticket)
+    /** A session of the ticket's, recorded as its coding tools record a start: on the record, with its origin. */
+    const record = async (sessionId: string) => {
+      const work = await recordOf(prisma, ticket.workId)
+      await prisma.agentTicketWork.update({
+        where: { id: ticket.workId },
+        data: {
+          sessionIds: [...new Set([...work.sessionIds, sessionId])],
+          sessionOrigins: {
+            ...(work.sessionOrigins as Prisma.JsonObject),
+            [sessionId]: { executorId: ticket.machine, policyId: world.policyId, startedAt: new Date().toISOString() },
+          } as Prisma.InputJsonObject,
+        },
+      })
+    }
+    /** The machine lists the session working, then closed, before the close's own answer is recorded. */
+    const reportedClosed = async (sessionId: string) => {
+      await reportFrom(prisma, ticket.machine, bridgeReport([{ ownerKey: ticket.ownerKey, sessionId, status: 'working', turn: 2 }]))
+      await reportFrom(prisma, ticket.machine, bridgeReport([{ ownerKey: ticket.ownerKey, sessionId, status: 'closed', turn: 2 }]))
+      assert.ok(!(await recordOf(prisma, ticket.workId)).sessionIds.includes(sessionId), 'the report let it go')
+    }
+    const closedDelivery = (sessionId: string) => prisma.agentTriggerDelivery.findFirstOrThrow({
+      where: { dedupeKey: `session:${sessionId}:2:closed`, triggerId: world.triggerId },
+    })
+    await record(ticket.sessionId)
+    // The agent's run is closing the session.
+    await prisma.run.create({ data: { agentId: world.agentId, status: 'running', threadId: ticket.threadId } })
+    const before = await recordOf(prisma, ticket.workId)
+
+    // The report's job runs first: the closed wake pends behind the run. The answer then lands and withdraws it.
+    await reportedClosed(ticket.sessionId)
+    await drainSessionJobs(prisma, ticket.workId, seen)
+    const [pending] = await prisma.runThreadPendingMessage.findMany({ where: { threadId: ticket.threadId } })
+    assert.ok(pending, 'the closed wake pends behind the run')
+    assert.equal((await recordOf(prisma, ticket.workId)).wakeCount, before.wakeCount + 1)
+    await observe('coding_session_close', { sessionId: ticket.sessionId }, {
+      sessionId: ticket.sessionId, status: 'closed', turn: 2,
+    })
+    const withdrawn = await recordOf(prisma, ticket.workId)
+    assert.deepEqual((withdrawn.lastObservedTurn as { closed?: string[] }).closed, [ticket.sessionId])
+    assert.equal(await prisma.runThreadPendingMessage.count({ where: { threadId: ticket.threadId } }), 0)
+    assert.equal(await prisma.message.count({ where: { id: pending.messageId } }), 0, 'its kickoff went with it')
+    assert.equal(withdrawn.wakeCount, before.wakeCount, 'the wake is given back')
+    const first = await closedDelivery(ticket.sessionId)
+    assert.deepEqual([first.status, first.errorMessage], ['skipped', 'no_longer_applies'])
+    assert.equal(await prisma.message.count({
+      where: { threadId: ticket.threadId, metadata: { path: ['ticketWorkEvent', 'session', 'sessionId'], equals: ticket.sessionId } },
+    }), 0, 'and its row leaves the thread')
+
+    // A second session: the answer lands before the report's job runs, and the job finds the close the agent's.
+    const second = randomUUID()
+    await record(second)
+    await reportedClosed(second)
+    await observe('coding_session_close', { sessionId: second }, { sessionId: second, status: 'closed', turn: 2 })
+    await drainSessionJobs(prisma, ticket.workId, seen)
+    const raced = await closedDelivery(second)
+    assert.deepEqual([raced.status, raced.errorMessage], ['skipped', 'no_longer_applies'])
+    assert.deepEqual((await recordOf(prisma, ticket.workId)).wakeCount, before.wakeCount)
   })
 })

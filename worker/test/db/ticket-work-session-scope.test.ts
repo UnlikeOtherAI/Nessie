@@ -4,7 +4,15 @@ import type { PrismaClient } from '@prisma/client'
 import type { ExecutorLocalMcpReport } from '@nessie/schemas'
 
 import { bridgeReport } from '../../../packages/team-admin/test/standing-policy-binding-fixture.js'
-import { reportFrom, sessionJobs, ticketOwnerKey, withMachinesWorld, workingTicket } from './ticket-work-machines-fixture.js'
+import {
+  drainSessionJobs,
+  reportFrom,
+  sessionJobs,
+  ticketOwnerKey,
+  withMachinesWorld,
+  workingTicket,
+  type WorkingTicket,
+} from './ticket-work-machines-fixture.js'
 import { runDatabaseTest } from './support.js'
 
 /**
@@ -13,13 +21,29 @@ import { runDatabaseTest } from './support.js'
  * wakes its work"): only the machine the record is pinned to, and only for the
  * sessions it lists under the ticket's own owner key — another machine, or
  * another owner, wakes and closes nothing. And a report that did not carry the
- * sessions between two that did never hides a close.
+ * sessions between two that did never hides a close. A wake is decided again
+ * when its job runs: a session the work let go of, or one on a machine the
+ * work has since left, wakes nothing.
  */
 
 const keysOf = async (prisma: PrismaClient, workId: string) =>
   (await sessionJobs(prisma, workId)).map((job) => job.idempotencyKey)
 
 const recordOf = (prisma: PrismaClient, id: string) => prisma.agentTicketWork.findUniqueOrThrow({ where: { id } })
+
+/** The ticket's session recorded as started on its machine, as a start through its coding tools records it. */
+const startedHere = (prisma: PrismaClient, world: { policyId: string }, ticket: WorkingTicket) =>
+  prisma.agentTicketWork.update({
+    where: { id: ticket.workId },
+    data: {
+      sessionOrigins: {
+        [ticket.sessionId]: { executorId: ticket.machine, policyId: world.policyId, startedAt: new Date().toISOString() },
+      },
+    },
+  })
+
+const deliveryOf = (prisma: PrismaClient, triggerId: string, dedupeKey: string) =>
+  prisma.agentTriggerDelivery.findFirstOrThrow({ where: { dedupeKey, triggerId } })
 
 runDatabaseTest('a report from a machine the work is not pinned to, or a session under another owner, wakes nothing', async () => {
   await withMachinesWorld(['Minis', 'Studio'], async (world, prisma) => {
@@ -114,5 +138,47 @@ runDatabaseTest('a session the work let go of is charged until its machine stops
     assert.equal(Number((await recordOf(prisma, ticket.workId)).costUsd), 3, 'what it cost up to its close is the ticket\'s')
     await reportFrom(prisma, ticket.machine, bridgeReport([]))
     assert.equal(Number((await recordOf(prisma, ticket.workId)).costUsd), 3)
+  })
+})
+
+runDatabaseTest('a turn\'s wake whose session the work let go of before its job ran wakes nothing', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const ticket = await workingTicket(prisma, world)
+    await startedHere(prisma, world, ticket)
+    const session = (status: string, turn = 3) =>
+      bridgeReport([{ ownerKey: ticket.ownerKey, sessionId: ticket.sessionId, status, turn }])
+    const before = await recordOf(prisma, ticket.workId)
+    // Turn 3 ends, then the next report says the session closed; neither job has run yet.
+    await reportFrom(prisma, ticket.machine, session('working'))
+    await reportFrom(prisma, ticket.machine, session('waiting_for_input'))
+    await reportFrom(prisma, ticket.machine, session('closed'))
+    assert.deepEqual(await keysOf(prisma, ticket.workId),
+      [`session:${ticket.sessionId}:3:waiting_for_input`, `session:${ticket.sessionId}:3:closed`])
+    await drainSessionJobs(prisma, ticket.workId, new Set())
+    // The turn's wake names a session that is no longer the ticket's to read: only the close wakes.
+    const turn = await deliveryOf(prisma, world.triggerId, `session:${ticket.sessionId}:3:waiting_for_input`)
+    assert.deepEqual([turn.status, turn.errorMessage], ['skipped', 'no_longer_applies'])
+    const closed = await deliveryOf(prisma, world.triggerId, `session:${ticket.sessionId}:3:closed`)
+    assert.equal(closed.status, 'delivered')
+    assert.equal((await recordOf(prisma, ticket.workId)).wakeCount, before.wakeCount + 1)
+  })
+})
+
+runDatabaseTest('a session\'s wake from a machine the work left before its job ran wakes nothing', async () => {
+  await withMachinesWorld(['Minis', 'Studio'], async (world, prisma) => {
+    const ticket = await workingTicket(prisma, world)
+    const other = world.machines.find((machine) => machine !== ticket.machine)!
+    await startedHere(prisma, world, ticket)
+    const session = (status: string) =>
+      bridgeReport([{ ownerKey: ticket.ownerKey, sessionId: ticket.sessionId, status, turn: 3 }])
+    const before = await recordOf(prisma, ticket.workId)
+    await reportFrom(prisma, ticket.machine, session('working'))
+    await reportFrom(prisma, ticket.machine, session('closed'))
+    // Before the close's job runs, the work goes to the author's other machine, as a dequeue places it.
+    await prisma.agentTicketWork.update({ where: { id: ticket.workId }, data: { executorId: other } })
+    await drainSessionJobs(prisma, ticket.workId, new Set())
+    const closed = await deliveryOf(prisma, world.triggerId, `session:${ticket.sessionId}:3:closed`)
+    assert.deepEqual([closed.status, closed.errorMessage], ['skipped', 'no_longer_applies'])
+    assert.equal((await recordOf(prisma, ticket.workId)).wakeCount, before.wakeCount)
   })
 })

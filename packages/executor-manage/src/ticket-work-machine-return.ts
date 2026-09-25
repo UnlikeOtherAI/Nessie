@@ -26,6 +26,11 @@ import { releaseTicketWorkSessionsInTransaction } from './ticket-work-session-re
  *   machine came back; the caller wakes the agent with `machine_back_online`. Machine access
  *   paused meanwhile: the work waits for access instead, unpinned, which frees the machine, and
  *   its sessions there close (`policy_suspended`) and leave its live set, as a suspension's do.
+ *   It is taken back only on the terms its author confirmed, read as the dequeue reads them
+ *   (`standingPolicyTermsForMachine`): a policy whose terms moved, or a machine whose newest
+ *   revision awaits review, takes nothing back (`unconfirmed`) and the work keeps waiting — the
+ *   sweep suspends a drifted policy in a transaction of its own, and the review settles the
+ *   revision.
  * - **It stays away past the trigger's `waitingMachineHours`**
  *   (`requeueStrandedTicketWorkInTransaction`): the work is unpinned and queued again, as of
  *   when it started, so another machine of the pool can take it. Its sessions on the offline
@@ -104,7 +109,14 @@ const moveTicketWorkOffItsMachine = async (
   await enqueueTicketWorkSweep(tx, input.now)
 }
 
-export type TicketWorkMachineReturn = 'resumed' | 'access_paused' | 'requeued' | 'still_offline' | 'not_waiting'
+export type TicketWorkMachineReturn =
+  | 'resumed'
+  | 'access_paused'
+  | 'requeued'
+  /** Back, but not on the confirmed terms: they moved, or its newest revision awaits review. */
+  | 'unconfirmed'
+  | 'still_offline'
+  | 'not_waiting'
 
 export const resumeTicketWorkOnItsMachineInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -135,6 +147,10 @@ export const resumeTicketWorkOnItsMachineInTransaction = async (
     await enqueueTicketWorkSweep(tx, now)
     return 'access_paused'
   }
+  const terms = await standingPolicyTermsForMachine(tx, {
+    executorId: work.executorId as string, policyId: work.policyId as string,
+  })
+  if (terms.kind !== 'confirmed') return 'unconfirmed'
   await tx.agentTicketWork.update({ where: { id: work.id }, data: { stateReason: null, status: 'active' } })
   // Back at work on its machine: the hours clock runs again.
   await syncTicketWorkClock(tx, work.id, now)
@@ -212,4 +228,34 @@ export const standingPolicyDigestCheck = async (
       || digests.localPolicyDigest !== row.localPolicyDigest) return { suspend: 'descriptor_changed', unplaceable }
   }
   return { suspend: null, unplaceable }
+}
+
+export type StandingPolicyMachineTerms =
+  | { kind: 'confirmed' }
+  | { kind: 'unreviewed' }
+  | { kind: 'drifted'; reason: ExecutorStandingPolicySuspendedReason }
+
+/**
+ * Whether a live policy still stands on its confirmed terms for one machine of its pool, read as
+ * the dequeue reads them (`standingPolicyDigestCheck`): `drifted` when the trigger, its agent or a
+ * pool machine's active revision moved — the suspension it calls for — and `unreviewed` while this
+ * machine's newest revision awaits review, which the review door settles. Work goes back onto the
+ * machine only when it is `confirmed`.
+ */
+export const standingPolicyTermsForMachine = async (
+  client: Prisma.TransactionClient | PrismaClient,
+  input: { executorId: string; policyId: string },
+): Promise<StandingPolicyMachineTerms> => {
+  const policy = await client.executorStandingPolicy.findUniqueOrThrow({
+    where: { id: input.policyId },
+    select: {
+      pinnedTerms: true,
+      triggerDigest: true,
+      executors: { select: { descriptorConfigDigest: true, executorId: true, localPolicyDigest: true } },
+      trigger: { select: { agentId: true, config: true, targetChannelId: true } },
+    },
+  })
+  const check = await standingPolicyDigestCheck(client, policy)
+  if (check.suspend) return { kind: 'drifted', reason: check.suspend }
+  return check.unplaceable.has(input.executorId) ? { kind: 'unreviewed' } : { kind: 'confirmed' }
 }

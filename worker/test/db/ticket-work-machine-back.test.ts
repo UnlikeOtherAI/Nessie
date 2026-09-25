@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { TICKET_WORK_SWEEP_TOPIC } from '@nessie/schemas'
 import { loadExecutorHoldingTicket, loadTaskTicketWork, loadTriggerMachineAccess } from '@nessie/team-admin'
 
@@ -27,8 +27,11 @@ import { runDatabaseTest } from './support.js'
  * later wakes too; its machine's next online heartbeat enqueues the sweep,
  * which resumes it with one `machine_back_online` wake; and past the trigger's
  * `waitingMachineHours` the work is taken off it and queued for another
- * machine of the pool, its sessions there closing when it reconnects. The
- * chip, the Machine access section and the executor page say each state.
+ * machine of the pool, its sessions there closing when it reconnects. It goes
+ * back only on the terms its author confirmed: terms that moved while it was
+ * away suspend the policy, and a revision awaiting review holds the work until
+ * it is reviewed. The chip, the Machine access section and the executor page
+ * say each state.
  */
 
 const HOUR = 60 * MINUTE
@@ -198,5 +201,85 @@ runDatabaseTest('work handed to a policy whose pool does not name its machine qu
     assert.deepEqual([close.executorId, close.reason], [machine, 'machine_reassigned'])
     assert.equal(await prisma.agentTriggerDelivery.count({ where: { source: 'machine', triggerId: world.triggerId } }), 0,
       'no machine_back_online wake for a machine the work is not bound to')
+  })
+})
+
+runDatabaseTest('a machine back with a revision awaiting review takes nothing back until it is reviewed', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const { machine, taskId, work } = await pausedOffline(prisma, world)
+    const reviewed = await prisma.executorCapabilityRevision.findFirstOrThrow({ where: { executorId: machine, revision: 1 } })
+    const proposed = await prisma.executorCapabilityRevision.create({
+      data: {
+        descriptor: { ...(reviewed.descriptor as Record<string, unknown>), revision: 2 } as Prisma.InputJsonValue,
+        executorId: machine, localPolicyDigest: reviewed.localPolicyDigest, reviewStatus: 'pending_review', revision: 2,
+        signature: 'proposed',
+      },
+    })
+    await prisma.executor.update({ where: { id: machine }, data: { lastSeenAt: new Date(), status: 'online' } })
+    await runTicketWorkSweep(prisma, LOCAL)
+    const held = await recordOf(prisma, work.id)
+    assert.deepEqual([held.status, held.stateReason, held.executorId], ['waiting_machine', 'machine_offline', machine])
+    assert.equal(await prisma.agentTriggerDelivery.count({ where: { source: 'machine', triggerId: world.triggerId } }), 0)
+    // A person's comment meanwhile starts no run either, and the policy is left for the review to settle.
+    const runs = await prisma.run.count({ where: { threadId: work.threadId } })
+    const later = await comment(prisma, world, taskId)
+    const skipped = await prisma.agentTriggerDelivery.findFirstOrThrow({
+      where: { dedupeKey: `ticket:${world.triggerId}:${later}` },
+    })
+    assert.deepEqual([skipped.status, skipped.errorMessage], ['skipped', 'machine_offline'])
+    assert.equal(await prisma.run.count({ where: { threadId: work.threadId } }), runs)
+    const policy = await prisma.executorStandingPolicy.findUniqueOrThrow({ where: { id: world.policyId } })
+    assert.deepEqual([policy.status, (await recordOf(prisma, work.id)).status], ['live', 'waiting_machine'])
+
+    // Reviewed as it stood: the next sweep resumes the work with its one wake.
+    await prisma.executorCapabilityRevision.update({ where: { id: proposed.id }, data: { reviewStatus: 'active' } })
+    await runTicketWorkSweep(prisma, LOCAL)
+    const back = await recordOf(prisma, work.id)
+    assert.deepEqual([back.status, back.executorId, back.lastWakeReason], ['active', machine, 'machine_back_online'])
+  })
+})
+
+runDatabaseTest('a policy whose terms moved while its machine was away is suspended as it comes back, and the work waits for access', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const { machine, work } = await pausedOffline(prisma, world)
+    const sessionId = randomUUID()
+    await prisma.agentTicketWork.update({ where: { id: work.id }, data: { sessionIds: [sessionId] } })
+    // A pinned field changed without the door that suspends.
+    const trigger = await prisma.agentTrigger.findUniqueOrThrow({ where: { id: world.triggerId } })
+    const config = trigger.config as { instructions: Record<string, string> }
+    await prisma.agentTrigger.update({
+      where: { id: world.triggerId },
+      data: { config: { ...config, instructions: { ...config.instructions, general: 'Something else entirely.' } } },
+    })
+    await prisma.executor.update({ where: { id: machine }, data: { lastSeenAt: new Date(), status: 'online' } })
+    await runTicketWorkSweep(prisma, LOCAL)
+    const policy = await prisma.executorStandingPolicy.findUniqueOrThrow({ where: { id: world.policyId } })
+    assert.deepEqual([policy.status, policy.suspendedReason], ['suspended', 'trigger_changed'])
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { action: 'executor.policy.suspended', resourceId: world.policyId },
+    })
+    assert.equal((audit.metadata as { foundAt?: string }).foundAt, 'machine_back_online')
+    const waiting = await recordOf(prisma, work.id)
+    assert.deepEqual([waiting.status, waiting.stateReason, waiting.executorId, waiting.sessionIds],
+      ['waiting_machine', 'machine_access_suspended', null, []], 'never resumed under terms nobody confirmed')
+    const close = await prisma.executorCodingSessionCloseRequest.findFirstOrThrow({ where: { sessionId } })
+    assert.deepEqual([close.executorId, close.reason], [machine, 'policy_suspended'])
+    assert.equal(await prisma.agentTriggerDelivery.count({ where: { source: 'machine', triggerId: world.triggerId } }), 0)
+  })
+})
+
+runDatabaseTest('a wake that finds its machine back but out of the pool queues the work and wakes it unbound', async () => {
+  await withMachinesWorld(['Minis'], async (world, prisma) => {
+    const { machine, taskId, work } = await pausedOffline(prisma, world)
+    await prisma.executorStandingPolicyExecutor.deleteMany({ where: { executorId: machine, policyId: world.policyId } })
+    await prisma.executor.update({ where: { id: machine }, data: { lastSeenAt: new Date(), status: 'online' } })
+    const later = await comment(prisma, world, taskId)
+    const moved = await recordOf(prisma, work.id)
+    assert.deepEqual([moved.status, moved.executorId, moved.lastWakeReason], ['queued', null, 'ticket_commented'],
+      'queued for a machine of its pool, never left waiting for this one')
+    const delivery = await prisma.agentTriggerDelivery.findFirstOrThrow({
+      where: { dedupeKey: `ticket:${world.triggerId}:${later}` },
+    })
+    assert.equal(delivery.status, 'delivered')
   })
 })

@@ -38,7 +38,8 @@ runDatabaseTest('a machine whose identical new revision awaits review takes no w
     const proposed = await prisma.executorCapabilityRevision.create({
       data: {
         descriptor: descriptor as Prisma.InputJsonValue, executorId: minis, localPolicyDigest: reviewed.localPolicyDigest,
-        revision: 2, signature: 'proposed',
+        // A signed report is active as it lands now; one still awaiting review is only ever an older row.
+        reviewStatus: 'pending_review', revision: 2, signature: 'proposed',
       },
     })
     await moveTo(prisma, world, holder.taskId, world.columns.done)

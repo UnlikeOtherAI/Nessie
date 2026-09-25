@@ -3,7 +3,7 @@ import { lockThreadRunSlot } from '@nessie/db'
 import { TicketWorkPullRequestStateSchema } from '@nessie/schemas'
 
 import { addTicketWorkCostInTransaction } from './executor-standing-policy-limits.js'
-import { ticketWorkSessionOriginEntry } from './ticket-work-session-origins.js'
+import { ticketWorkSessionOriginEntry, ticketWorkSessionOriginsOf } from './ticket-work-session-origins.js'
 import { forgetTicketWorkSessionsInTransaction } from './ticket-work-session-release.js'
 
 /**
@@ -23,7 +23,10 @@ import { forgetTicketWorkSessionsInTransaction } from './ticket-work-session-rel
  *   pending in the thread is withdrawn by the caller's `withdrawWakes`; both
  *   under the thread's run slot, the lock every wake is written under;
  * - a session the agent closed itself: it leaves the live set, and is kept
- *   under `lastObservedTurn.closed`, so its closing wakes nobody;
+ *   under `lastObservedTurn.closed`, so its closing wakes nobody — even when
+ *   its machine reported the close first and the heartbeat intake already let
+ *   it go: its origin still names it the ticket's, and a closed wake that
+ *   report already left pending in the thread is withdrawn;
  * - the pull request, the first time a review returns one, then its state and
  *   checks each time a review reads it — so a merged pull request whose branch
  *   the coding agent deleted is still on record, and still read by URL.
@@ -66,7 +69,8 @@ export const agentClosedTicketWorkSessions = (value: Prisma.JsonValue | null | u
   return Array.isArray(closed) ? closed.filter((id): id is string => typeof id === 'string') : []
 }
 
-export type ObservedSessionTurn = { sessionId: string; turn: number }
+/** A turn end the agent's own read saw, and whether it was the agent's own close of the session. */
+export type ObservedSessionTurn = { closed?: boolean; sessionId: string; turn: number }
 
 export const recordTicketWorkSessionObservation = async (
   prisma: Client,
@@ -78,7 +82,10 @@ export const recordTicketWorkSessionObservation = async (
     status?: string
     totalCostUsd?: number
     turn?: number
-    /** Under the thread's run slot, once a turn end is seen: withdraw the wakes still pending for it. */
+    /**
+     * Under the thread's run slot, once a turn end or the agent's own close is seen: withdraw the
+     * wakes still pending for it.
+     */
     withdrawWakes?: (
       tx: Prisma.TransactionClient,
       input: { agentId: string; seen: ObservedSessionTurn; threadId: string },
@@ -95,9 +102,15 @@ export const recordTicketWorkSessionObservation = async (
     await lockThreadRunSlot(tx, { agentId: thread.agentId, threadId: thread.threadId })
     await lockWork(tx, input.workId)
     const work = await tx.agentTicketWork.findUnique({
-      where: { id: input.workId }, select: { lastObservedTurn: true, sessionCosts: true, sessionIds: true },
+      where: { id: input.workId },
+      select: { lastObservedTurn: true, sessionCosts: true, sessionIds: true, sessionOrigins: true },
     })
-    if (!work || !work.sessionIds.includes(input.sessionId)) return
+    if (!work) return
+    // The agent's own close of a session the heartbeat intake already let go — its machine reported
+    // the close before this answer landed — is still this ticket's to record: its origin names it.
+    const ownClose = input.closedByAgent === true
+      && ticketWorkSessionOriginsOf(work.sessionOrigins)[input.sessionId] !== undefined
+    if (!work.sessionIds.includes(input.sessionId) && !ownClose) return
     const costs = numberMap(work.sessionCosts)
     const turns = numberMap(work.lastObservedTurn)
     const closed = agentClosedTicketWorkSessions(work.lastObservedTurn)
@@ -122,8 +135,11 @@ export const recordTicketWorkSessionObservation = async (
     if (input.closedByAgent) {
       await forgetTicketWorkSessionsInTransaction(tx, { sessionIds: [input.sessionId], workId: input.workId })
     }
-    if (turnEnded && input.withdrawWakes) {
-      await input.withdrawWakes(tx, { ...thread, seen: { sessionId: input.sessionId, turn: seen } })
+    if ((turnEnded || input.closedByAgent) && input.withdrawWakes) {
+      await input.withdrawWakes(tx, {
+        ...thread,
+        seen: { sessionId: input.sessionId, turn: seen, ...(input.closedByAgent ? { closed: true } : {}) },
+      })
     }
   })
 }
