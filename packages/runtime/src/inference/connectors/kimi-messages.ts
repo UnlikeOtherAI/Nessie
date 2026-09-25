@@ -1,160 +1,86 @@
-import type { ProviderMessage, ProviderToolCall, ToolSchemaDescriptor } from '../types.js'
+import type { ProviderMessage, ToolSchemaDescriptor } from '../types.js'
 
-const KIMI_TOOL_PREAMBLE = `You can invoke tools by emitting blocks of the form:
-<tool_use>{"name":"<tool_name>","arguments":{...}}</tool_use>
-Rules:
-- Emit the entire JSON on a single block — name and arguments are required.
-- You may emit multiple <tool_use> blocks; each will be dispatched and the results returned to you.
-- Wait for tool results before drawing final conclusions; do not invent results.
-- If no tool is needed, answer in plain text.`
-
-const renderKimiTools = (
-  tools: ToolSchemaDescriptor[] | undefined,
-): string | undefined => {
-  if (!tools || tools.length === 0) {
-    return undefined
-  }
-  const lines = tools.map((tool) => {
-    const schema = JSON.stringify(tool.inputSchema)
-    return `- ${tool.toolName}: ${tool.description}\n  input_schema: ${schema}`
-  })
-  return `${KIMI_TOOL_PREAMBLE}\n\nAvailable tools:\n${lines.join('\n')}`
-}
-
-const renderAssistantWithToolCalls = (
-  content: string | null,
-  toolCalls: ProviderToolCall[] | undefined,
-): string => {
-  const parts: string[] = []
-  if (content && content.trim()) {
-    parts.push(content)
-  }
-  for (const call of toolCalls ?? []) {
-    parts.push(
-      `<tool_use>${JSON.stringify({ name: call.toolName, arguments: call.arguments })}</tool_use>`,
-    )
-  }
-  return parts.join('\n')
-}
-
-// A text block in Anthropic's content-block array form, which lets us attach a
-// cache_control breakpoint for prompt caching.
-type AnthropicTextBlock = {
-  type: 'text'
-  text: string
-  cache_control?: { type: 'ephemeral' }
-}
+type CacheControl = { cache_control?: { type: 'ephemeral' } }
+type AnthropicTextBlock = { type: 'text'; text: string } & CacheControl
+type AnthropicBlock = AnthropicTextBlock
+  | ({ type: 'thinking'; thinking: string } & CacheControl)
+  | ({ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } & CacheControl)
+  | ({ type: 'tool_result'; tool_use_id: string; content: string } & CacheControl)
 type AnthropicSystem = string | AnthropicTextBlock[]
 export type AnthropicPayloadMessage = {
   role: 'user' | 'assistant'
-  content: string | AnthropicTextBlock[]
+  content: string | AnthropicBlock[]
 }
 
-// Anthropic puts the system prompt at the top level and forbids it as a
-// message role. Hoist the leading system entries there, then map the rest. Tool/result
-// messages are folded into text turns so the prompt-translated tool layer can
-// flow through unchanged.
-//
-// When `cache` is set, the system is emitted as a content-block array whose
-// cache_control breakpoint sits on the stable block ONLY — the rendered tool
-// block plus the FIRST system message (the agent's byte-stable anchor). Every
-// later leading system message (memory context, checkpoint notes) is volatile
-// and lands in uncached follow-on blocks, so it can
-// vary without busting the cached prefix. A second, sliding breakpoint goes on
-// the last message: each loop iteration only appends turns, so the previous
-// tail breakpoint still names a valid prefix and a multi-iteration run
-// cache-reads its whole transcript (Anthropic's protocol allows 4 breakpoints).
-// Verified accepted + honored by Kimi's Anthropic endpoint.
+const blocks = (content: AnthropicPayloadMessage['content']): AnthropicBlock[] =>
+  typeof content === 'string' ? [{ type: 'text', text: content }] : content
+
+const messageContent = (message: ProviderMessage): AnthropicPayloadMessage['content'] => {
+  if (message.role === 'tool') {
+    return [{ type: 'tool_result', tool_use_id: message.toolCallId, content: message.content }]
+  }
+  if (message.role === 'system') return `<system_instruction>\n${message.content}\n</system_instruction>`
+  if (message.role !== 'assistant') return message.content
+  const content: AnthropicBlock[] = []
+  // Kimi accepts its reasoning text without a signature on replay. Keep it
+  // before the native call, using the same checkpointed field as DeepSeek.
+  if (message.reasoning) content.push({ type: 'thinking', thinking: message.reasoning })
+  if (message.content) content.push({ type: 'text', text: message.content })
+  for (const call of message.toolCalls ?? []) {
+    content.push({ type: 'tool_use', id: call.toolCallId, name: call.toolName, input: call.arguments })
+  }
+  return content.length === 1 && content[0]?.type === 'text' ? content[0].text : content
+}
+
+// Only leading system entries belong in the top-level system prompt. Later
+// application instructions stay after the answer they are correcting.
+// Native calls/results retain their IDs and block ordering across tool rounds.
 export const toAnthropicPayload = (
   messages: ProviderMessage[],
   tools?: ToolSchemaDescriptor[],
   opts?: { cache?: boolean },
-): { system?: AnthropicSystem; messages: AnthropicPayloadMessage[] } => {
-  const stableParts: string[] = []
-  const volatileParts: string[] = []
-  const toolBlock = renderKimiTools(tools)
-  if (toolBlock) {
-    stableParts.push(toolBlock)
-  }
-  let sawSystemAnchor = false
-  const out: Array<{ role: 'user' | 'assistant'; content: string }> = []
-
+): {
+  system?: AnthropicSystem
+  messages: AnthropicPayloadMessage[]
+  tools?: Array<{ name: string; description: string; input_schema: Record<string, unknown> }>
+} => {
+  const systemParts: string[] = []
+  const out: AnthropicPayloadMessage[] = []
   for (const message of messages) {
     if (message.role === 'system' && out.length === 0) {
-      if (sawSystemAnchor) {
-        volatileParts.push(message.content)
-      } else {
-        stableParts.push(message.content)
-        sawSystemAnchor = true
-      }
+      systemParts.push(message.content)
       continue
     }
-    const role: 'user' | 'assistant' = message.role === 'assistant' ? 'assistant' : 'user'
-    let content: string
-    if (message.role === 'tool') {
-      content = `<tool_result tool_call_id="${message.toolCallId}">\n${message.content}\n</tool_result>`
-    } else if (message.role === 'assistant') {
-      content = renderAssistantWithToolCalls(message.content, message.toolCalls)
-    } else if (message.role === 'system') {
-      // Hoisting a continuation leaves the prior assistant answer last, which
-      // Messages treats as a prefill and Kimi ends with an empty response.
-      content = `<system_instruction>\n${message.content}\n</system_instruction>`
-    } else {
-      content = message.content
-    }
-    if (!content) {
-      continue
-    }
+    const role = message.role === 'assistant' ? 'assistant' : 'user'
+    const content = messageContent(message)
+    if (content.length === 0) continue
     const last = out.at(-1)
-    if (last && last.role === role) {
-      // Anthropic rejects consecutive same-role turns; concatenate them.
-      last.content += `\n\n${content}`
-      continue
-    }
-    out.push({ role, content })
-  }
-
-  // Anthropic also requires the first message to be `user`.
-  const first = out[0]
-  if (first && first.role !== 'user') {
-    out.unshift({ role: 'user', content: '(continue)' })
-  }
-
-  if (!opts?.cache) {
-    const allParts = [...stableParts, ...volatileParts]
-    return {
-      system: allParts.length > 0 ? allParts.join('\n\n') : undefined,
-      messages: out,
+    if (last?.role === role) {
+      last.content = typeof last.content === 'string' && typeof content === 'string'
+        ? `${last.content}\n\n${content}` : [...blocks(last.content), ...blocks(content)]
+    } else {
+      out.push({ role, content })
     }
   }
+  if (out[0] && out[0].role !== 'user') out.unshift({ role: 'user', content: '(continue)' })
 
-  const system: AnthropicTextBlock[] = []
-  if (stableParts.length > 0) {
-    system.push({
-      cache_control: { type: 'ephemeral' },
-      text: stableParts.join('\n\n'),
-      type: 'text',
-    })
+  let system: AnthropicSystem | undefined = systemParts.length ? systemParts.join('\n\n') : undefined
+  if (opts?.cache) {
+    // Cache only the stable first system block; later context is volatile.
+    system = systemParts.length ? systemParts.map((text, index) => ({
+      type: 'text', text, ...(index === 0 ? { cache_control: { type: 'ephemeral' as const } } : {}),
+    })) : undefined
+    const tail = out.at(-1)
+    if (tail) {
+      tail.content = blocks(tail.content)
+      const last = tail.content.at(-1)
+      if (last && last.type !== 'thinking') last.cache_control = { type: 'ephemeral' }
+    }
   }
-  for (const part of volatileParts) {
-    system.push({ text: part, type: 'text' })
-  }
-
-  const lastIndex = out.length - 1
   return {
-    system: system.length > 0 ? system : undefined,
-    messages: out.map((message, index): AnthropicPayloadMessage =>
-      index === lastIndex
-        ? {
-            content: [{
-              cache_control: { type: 'ephemeral' },
-              text: message.content,
-              type: 'text',
-            }],
-            role: message.role,
-          }
-        : message,
-    ),
+    system, messages: out,
+    ...(tools?.length ? { tools: tools.map((tool) => ({
+      name: tool.toolName, description: tool.description, input_schema: tool.inputSchema,
+    })) } : {}),
   }
 }
-

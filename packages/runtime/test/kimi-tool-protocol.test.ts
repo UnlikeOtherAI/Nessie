@@ -4,86 +4,15 @@ import test from 'node:test'
 import {
   collectAnthropicStream,
   nativeToolCallsFromContent,
-  parseKimiToolCalls,
 } from '../src/inference/connectors/kimi-anthropic-protocol.js'
 import type { ProviderStreamEvent } from '../src/inference/types.js'
-
-/**
- * Kimi speaks a text tool protocol, and Kimi K2.7 frequently ends a turn right
- * after a block's JSON, before the closing tag. Production delivered a raw
- * `<tool_use>{"name":"task_set_processors","arguments":{}}` to a person on
- * 2026-09-22 because the parser demanded the tag. These tests pin that a
- * block is read by its balanced JSON and that protocol text never reaches the
- * delivered answer.
- */
-
-test('a block cut off before its closing tag is still a tool call, and nothing leaks', () => {
-  const { outputText, toolCalls } = parseKimiToolCalls(
-    '<tool_use>{"name":"task_set_processors","arguments":{}}',
-    'req',
-  )
-  assert.deepEqual(toolCalls, [{ arguments: {}, toolCallId: 'kimi_req_0', toolName: 'task_set_processors' }])
-  assert.equal(outputText, '')
-})
-
-test('a closed block is parsed and stripped exactly as before', () => {
-  const { outputText, toolCalls } = parseKimiToolCalls(
-    'Let me look.\n<tool_use>{"name":"weather","arguments":{"city":"London"}}</tool_use>\nOne moment.',
-    'req',
-  )
-  assert.deepEqual(toolCalls, [{ arguments: { city: 'London' }, toolCallId: 'kimi_req_0', toolName: 'weather' }])
-  assert.equal(outputText, 'Let me look.\n\nOne moment.')
-})
-
-test('braces inside argument strings do not end the block early', () => {
-  const { toolCalls } = parseKimiToolCalls(
-    '<tool_use>{"name":"note","arguments":{"text":"a } brace and a \\" quote"}}',
-    'req',
-  )
-  assert.equal(toolCalls[0]?.toolName, 'note')
-  assert.equal(toolCalls[0]?.arguments.text, 'a } brace and a " quote')
-})
-
-test('several blocks, terminated or not, all dispatch in order', () => {
-  const { outputText, toolCalls } = parseKimiToolCalls(
-    '<tool_use>{"name":"a","arguments":{}}</tool_use>\n<tool_use>{"name":"b","arguments":{"n":1}}',
-    'req',
-  )
-  assert.deepEqual(toolCalls.map((call) => call.toolName), ['a', 'b'])
-  assert.deepEqual(toolCalls.map((call) => call.toolCallId), ['kimi_req_0', 'kimi_req_1'])
-  assert.equal(outputText, '')
-})
-
-test('a block cut off mid-JSON is dropped and never shown to a person', () => {
-  const { outputText, toolCalls } = parseKimiToolCalls(
-    'Checking now.\n<tool_use>{"name":"task_set_processors","arguments":{"offs',
-    'req',
-  )
-  assert.deepEqual(toolCalls, [])
-  assert.equal(outputText, 'Checking now.')
-})
-
-test('a malformed block is dropped without leaking, and the prose around it survives', () => {
-  const { outputText, toolCalls } = parseKimiToolCalls(
-    'Before.\n<tool_use>{"arguments":{}}</tool_use>\nAfter.',
-    'req',
-  )
-  assert.deepEqual(toolCalls, [])
-  assert.equal(outputText, 'Before.\n\nAfter.')
-})
-
-test('plain prose is untouched', () => {
-  const { outputText, toolCalls } = parseKimiToolCalls('Just an answer.', 'req')
-  assert.deepEqual(toolCalls, [])
-  assert.equal(outputText, 'Just an answer.')
-})
 
 const sse = (events: unknown[]): Response =>
   new Response(events.map((event) => `data:${JSON.stringify(event)}\n\n`).join(''), {
     headers: { 'content-type': 'text/event-stream' },
   })
 
-test('a native tool_use content block on the stream is honoured beside the text protocol', async () => {
+test('a native tool_use content block on the stream retains its arguments and reasoning', async () => {
   const stream = collectAnthropicStream(sse([
     { type: 'message_start', message: { usage: { input_tokens: 3, output_tokens: 0 } } },
     { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },

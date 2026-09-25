@@ -228,6 +228,7 @@ export const createRunInference = (
         organizationId: context.channel.organizationId,
         ...(prepareMessages ? { prepareMessages } : {}),
         reasoningEffort,
+        stream: streaming,
         requestHeadersForProvider,
         signal: signal && controller ? AbortSignal.any([signal, controller.signal]) : controller?.signal ?? signal,
         // Note/compaction calls carry no tools at all; providers reject an empty

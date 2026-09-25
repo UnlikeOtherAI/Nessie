@@ -74,6 +74,10 @@ export const CODING_AGENT_LABELS: Record<ExecutorCodingAgentName, string> = {
 const TEXT_MAX = 32_000
 const PATH_MAX = 1_000
 const TITLE_MAX = 120
+const TERMINAL_KEYS: Record<string, string> = {
+  Enter: '\r', Submit: '\u001b[13;1u', CtrlC: '\u0003', Escape: '\u001b',
+  Tab: '\t', Backspace: '\u007f', Up: '\u001b[A', Down: '\u001b[B',
+}
 const SESSION_ID = {
   pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
   type: 'string',
@@ -125,14 +129,17 @@ export const codingSessionDescriptors = (facts: ExecutorCodingSessionsFacts): To
     },
     {
       toolName: CODING_SESSION_TOOL_NAMES.terminalWrite,
-      description: 'Type exact text or key bytes into a terminal session. Include \\r for Enter; '
-        + '\\u0003 is Ctrl-C and \\u001b[A is Up. No newline is added. Read the screen afterwards. '
-        + 'Send text and Enter separately if the CLI treats a combined write as paste. '
-        + 'Claude on Windows may need CSI-u Enter (\\u001b[13;1u) instead of \\r. '
+      description: 'Type text with data, OR press one named key with key. Send text first, then the key in a separate call. '
+        + 'Use key="Enter" for shells, key="Submit" for Claude on Windows, and key="CtrlC" to cancel input. '
+        + 'Keys are encoded by Nessie: never put escaped key names in data. No newline is added to data. Read the screen afterwards. '
         + 'Do not use this for structured Claude/Codex sessions; those use coding_session_send.',
       inputSchema: {
-        type: 'object', additionalProperties: false, required: ['sessionId', 'data'],
-        properties: { sessionId: SESSION_ID, data: { type: 'string', minLength: 1, maxLength: TEXT_MAX } },
+        type: 'object', additionalProperties: false, required: ['sessionId'],
+        oneOf: [{ required: ['data'] }, { required: ['key'] }],
+        properties: {
+          sessionId: SESSION_ID, data: { type: 'string', minLength: 1, maxLength: TEXT_MAX },
+          key: { type: 'string', enum: Object.keys(TERMINAL_KEYS) },
+        },
       },
     },
   ] : []
@@ -228,8 +235,14 @@ export const codingBridgeArguments = (
       return { agent: 'terminal', prompt: '', root: args.root,
         ...(text(args.path) ? { path: text(args.path) } : {}),
         ...(text(args.title) ? { title: text(args.title) } : {}) }
-    case CODING_SESSION_TOOL_NAMES.terminalWrite:
-      return { message: args.data, sessionId: args.sessionId, terminal: true }
+    case CODING_SESSION_TOOL_NAMES.terminalWrite: {
+      const key = typeof args.key === 'string' ? TERMINAL_KEYS[args.key] : undefined
+      if ((args.key !== undefined && (key === undefined || args.data !== undefined))
+        || (args.key === undefined && (typeof args.data !== 'string' || !args.data.length))) {
+        throw new Error('Provide either terminal text in data or one supported key, not both.')
+      }
+      return { message: key ?? args.data, sessionId: args.sessionId, terminal: true }
+    }
     case CODING_SESSION_TOOL_NAMES.list:
       return {}
     case CODING_SESSION_TOOL_NAMES.start: {
