@@ -120,6 +120,9 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - `pnpm --filter @nessie/admin build` produces the static admin bundle
   (`dist/`); `pnpm --filter @nessie/admin preview` serves it. Prod/CI only —
   use `pnpm dev` for the local loop.
+- The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
+  its workspace dependencies, and prepares the packaged runtime before Tauri
+  builds; keep that ordering aligned with the Windows desktop workflow.
 - Everything else — desktop and App Store bundles, signing, lint-gated root
   builds, Prisma generation ordering, migration immutability:
   [docs/standards/build-and-release.md](docs/standards/build-and-release.md).

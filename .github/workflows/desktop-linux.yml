@@ -71,6 +71,15 @@ jobs:
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      # Tauri's pre-build command bundles the executor from workspace package
+      # dist exports. Prisma client generation and these dependency builds must
+      # finish before prepare:executor-runtime runs.
+      - name: Build executor bundle dependencies
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
       - name: Resolve release version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
@@ -80,8 +89,11 @@ jobs:
       - name: Shell tests
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml
 
+      - name: Prepare desktop executor runtime
+        run: pnpm --dir desktop run prepare:executor-runtime
+
       - name: Build desktop bundles
-        run: pnpm --filter @nessie/desktop tauri:build -- --bundles deb,appimage
+        run: pnpm --dir desktop run tauri:build:linux
 
       - name: Build the standalone executor package
         run: node executor/packaging/linux/build-deb.mjs
@@ -119,7 +131,9 @@ jobs:
       - name: The nessie:// scheme reaches the desktop entry
         run: |
           set -euo pipefail
-          entry="$(grep --files-with-matches --recursive 'x-scheme-handler/nessie' /usr/share/applications)"
+          entry="$(find /usr/share/applications -maxdepth 1 -type f -name '*.desktop' \
+            -exec grep --files-with-matches 'x-scheme-handler/nessie' {} + | sed -n '1p')"
+          test -n "${entry}"
           echo "desktop entry declaring the scheme: ${entry}"
           # `xdg-mime query default` reads the XDG default lists, which a fresh
           # headless runner has none of; the association written by the package's
@@ -150,19 +164,23 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get install --yes xvfb xdotool
-          entry="$(grep --files-with-matches --recursive 'x-scheme-handler/nessie' /usr/share/applications)"
+          entry="$(find /usr/share/applications -maxdepth 1 -type f -name '*.desktop' \
+            -exec grep --files-with-matches 'x-scheme-handler/nessie' {} + | sed -n '1p')"
+          test -n "${entry}"
           command="$(grep --max-count=1 '^Exec=' "${entry}" | cut --delimiter='=' --fields=2- | cut --delimiter=' ' --fields=1)"
           echo "launching ${command}"
-          export DISPLAY=:99
-          xvfb-run --server-num=99 --server-args='-screen 0 1280x800x24' "${command}" &
-          wrapper=$!
-          sleep 10
-          # Alive after ten seconds, and owning a window: a shell that starts and
-          # dies immediately would otherwise pass as a build success.
-          kill -0 "${wrapper}"
-          pgrep --full "${command}" > /dev/null
-          xdotool search --name Nessie
-          kill "${wrapper}"
+          xvfb-run --server-num=99 --server-args='-screen 0 1280x800x24' \
+            bash -euo pipefail -c '
+              "$1" &
+              app_pid=$!
+              trap "kill \"${app_pid}\" 2>/dev/null || true" EXIT
+              sleep 10
+              # Alive after ten seconds, and owning a window: a shell that starts and
+              # dies immediately would otherwise pass as a build success.
+              kill -0 "${app_pid}"
+              pgrep --full -- "$1" > /dev/null
+              xdotool search --name Nessie
+            ' _ "${command}"
 
   firecracker-conformance:
     name: Firecracker backend conformance
