@@ -17,16 +17,8 @@ import { ExecutorReachableFolders } from '../src/components/features/executors/E
 import { ExecutorPermittedPrograms } from '../src/components/features/executors/ExecutorPermittedPrograms.js'
 import { ExecutorReviewedPolicy } from '../src/components/features/executors/ExecutorReviewedPolicy.js'
 
-/**
- * Nobody may approve `command.run` without reading the programs they are
- * approving. The list travels on the signed descriptor, so the screen that
- * offers "Review activation" has to state it next to that control.
- *
- * The state this pins hardest is the absent one. A descriptor that names no
- * program permits none — it is not an unrestricted executor — and a card that
- * simply omitted the line would read exactly like a card whose list happened
- * to be short.
- */
+/** Capability summaries remain on legacy confirmation cards; the sharing
+ * screen never offers a machine-permission review, even for older reports. */
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -103,32 +95,12 @@ const renderPanels = (accessView: ExecutorAccessViewResponse): string =>
     ),
   )
 
-test('the policy proposal names the programs beside its review control', () => {
-  const html = renderPanels(access(['git', 'node', 'rg']))
-  assert.match(html, /Permitted programs \(3\)/)
-  assert.match(html, /git, node, rg/)
-  assert.match(html, /Review changes/)
-})
-
-test('a proposal that names no program says so rather than leaving a gap', () => {
-  const html = renderPanels(access())
-  assert.match(html, /Permitted programs: none named/)
-  assert.match(html, /No programs can run until one is selected/)
-  // An absent list must never be dressed up as a list, empty or otherwise.
-  assert.doesNotMatch(html, /Permitted programs \(0\)/)
-  assert.match(html, /Review changes/)
-})
-
-test('the two states do not render alike', () => {
-  assert.notEqual(renderPanels(access(['git'])), renderPanels(access()))
-})
-
-// A proposal that enables no command execution has no approval decision the
-// list would inform, so the line stays off rather than asserting a boundary
-// that is not on offer.
-test('a proposal without command.run carries no permitted-program line', () => {
-  const html = renderPanels(access(undefined, ['file.read', 'workspace.review']))
-  assert.doesNotMatch(html, /Permitted programs/)
+test('permissions does not offer capability review for a legacy pending report', () => {
+  for (const view of [access(['git', 'node', 'rg']), access(), access(undefined, ['file.read'])]) {
+    const html = renderPanels(view)
+    assert.doesNotMatch(html, /Review changes|Review activation|Permitted programs/)
+    assert.match(html, /Select a team to manage sharing/)
+  }
 })
 
 test('a list without command.run is still shown, and says it is not enabled', () => {

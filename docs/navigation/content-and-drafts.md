@@ -48,6 +48,9 @@ for it. Four pieces, plus one cache underneath them all.
   and an executor conversation lease (`admin/src/facades/executors/leases.ts`),
   which reaches one conversation — a previous room's lease beside this
   composer would claim a reach the room lacks, and its End would act from here.
+  Executor sharing and project inventory also clear on identity changes: old
+  roles must never become edit controls for another machine or team, and a
+  project's inventory must not briefly include another project's machines.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its

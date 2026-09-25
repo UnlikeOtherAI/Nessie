@@ -6,6 +6,8 @@ import { executorKeys } from './keys'
 export const useExecutorSharing = (executorId: string, teamId?: string) => {
   const client = useApiClient()
   return useQuery({
+    // Never edit another machine's or team's sharing while this identity loads.
+    placeholderData: undefined,
     queryKey: executorKeys.sharing(executorId, teamId), enabled: Boolean(teamId),
     queryFn: () => client.get(`/api/executors/${executorId}/sharing?teamId=${teamId}`, ExecutorSharingViewSchema),
   })

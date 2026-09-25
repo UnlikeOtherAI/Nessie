@@ -25,6 +25,8 @@ import { useApiClient } from '../../providers/ApiClientProvider'
 export const useExecutors = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
+    // A project switch must not show machines shared with the previous project.
+    placeholderData: undefined,
     queryKey: projectId ? executorKeys.project(projectId) : executorKeys.all,
     // A GET begun before a heartbeat must not put stale presence back over it.
     structuralSharing: (oldData, newData) => {
