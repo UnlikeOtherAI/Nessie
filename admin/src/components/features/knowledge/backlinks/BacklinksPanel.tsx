@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import { faChevronDown, faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import {
-  useKnowledgeBacklinks,
-  useKnowledgeMentions,
-} from '../../../../facades/knowledge/backlinks-hooks'
+import { useKnowledgeBacklinks } from '../../../../facades/knowledge/backlinks-hooks'
 import { SectionLabel } from '../../../primitives/SectionLabel'
 import { useKnowledge } from '../KnowledgeProvider'
 
@@ -29,76 +26,41 @@ const SectionHeader = ({
   </button>
 )
 
-// "Linked from" (backlinks) + "Unlinked mentions" — the Obsidian-style panel
-// that shows what else in the knowledge base points at this page. Both lists
-// are lazy-fetched via react-query and collapsed by default (only the count
-// shows until expanded); the whole section is omitted once loaded if both are
-// empty, so there is no empty-state box taking up space.
+// "Linked from" shows pages that explicitly link to this page. It is
+// lazy-fetched and collapsed by default; an empty section takes no space.
 export const BacklinksPanel = ({ pageId }: { pageId: string }) => {
   const { openPageDeepLink } = useKnowledge()
   const backlinksQuery = useKnowledgeBacklinks(pageId)
-  const mentionsQuery = useKnowledgeMentions(pageId)
   const [backlinksOpen, setBacklinksOpen] = useState(false)
-  const [mentionsOpen, setMentionsOpen] = useState(false)
 
-  if (backlinksQuery.isLoading || mentionsQuery.isLoading) return null
+  if (backlinksQuery.isLoading) return null
 
   const backlinks = backlinksQuery.data ?? []
-  const mentions = mentionsQuery.data ?? []
-  if (backlinks.length === 0 && mentions.length === 0) return null
+  if (backlinks.length === 0) return null
 
   return (
     <div className="mt-8 border-t border-[color:var(--sep)] pt-2">
-      {backlinks.length > 0 ? (
-        <div>
-          <SectionHeader
-            count={backlinks.length}
-            expanded={backlinksOpen}
-            label="Linked from"
-            onToggle={() => setBacklinksOpen((value) => !value)}
-          />
-          {backlinksOpen ? (
-            <div className="flex flex-col gap-1 pb-2">
-              {backlinks.map((hit) => (
-                <button
-                  className="rounded-md px-2 py-1.5 text-left hover:bg-[var(--overlay-weak)]"
-                  key={hit.pageId}
-                  onClick={() => openPageDeepLink({ spaceId: hit.spaceId, pageId: hit.pageId })}
-                  type="button"
-                >
-                  <div className="text-sm text-[color:var(--tx)]">{hit.title}</div>
-                  {hit.snippet ? (
-                    <div className="text-xs text-[color:var(--tx3)]">{hit.snippet}</div>
-                  ) : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {mentions.length > 0 ? (
-        <div>
-          <SectionHeader
-            count={mentions.length}
-            expanded={mentionsOpen}
-            label="Unlinked mentions"
-            onToggle={() => setMentionsOpen((value) => !value)}
-          />
-          {mentionsOpen ? (
-            <div className="flex flex-col gap-1 pb-2">
-              {mentions.map((hit) => (
-                <button
-                  className="rounded-md px-2 py-1.5 text-left text-sm text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[color:var(--tx)]"
-                  key={hit.pageId}
-                  onClick={() => openPageDeepLink({ spaceId: hit.spaceId, pageId: hit.pageId })}
-                  type="button"
-                >
-                  This page mentions <span className="font-medium text-[color:var(--tx)]">{hit.title}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
+      <SectionHeader
+        count={backlinks.length}
+        expanded={backlinksOpen}
+        label="Linked from"
+        onToggle={() => setBacklinksOpen((value) => !value)}
+      />
+      {backlinksOpen ? (
+        <div className="flex flex-col gap-1 pb-2">
+          {backlinks.map((hit) => (
+            <button
+              className="rounded-md px-2 py-1.5 text-left hover:bg-[var(--overlay-weak)]"
+              key={hit.pageId}
+              onClick={() => openPageDeepLink({ spaceId: hit.spaceId, pageId: hit.pageId })}
+              type="button"
+            >
+              <div className="text-sm text-[color:var(--tx)]">{hit.title}</div>
+              {hit.snippet ? (
+                <div className="text-xs text-[color:var(--tx3)]">{hit.snippet}</div>
+              ) : null}
+            </button>
+          ))}
         </div>
       ) : null}
     </div>

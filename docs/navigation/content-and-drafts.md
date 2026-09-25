@@ -48,6 +48,9 @@ for it. Four pieces, plus one cache underneath them all.
   and an executor conversation lease (`admin/src/facades/executors/leases.ts`),
   which reaches one conversation — a previous room's lease beside this
   composer would claim a reach the room lacks, and its End would act from here.
+  Knowledge backlinks (`admin/src/facades/knowledge/backlinks-hooks.ts`) also
+  opt out: their rows describe links to one exact page and must never appear
+  under another page while it loads.
   The corollary is that **`isSuccess` no longer means "this entity's data"** —
   a query serving placeholder data reports success — so a consumer that acts
   on identity guards with the id: the thread read marker refuses while its
