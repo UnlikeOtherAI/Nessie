@@ -11,6 +11,11 @@ agent drives by conversation. Unlike guest work, such a session acts with the
 host OS user's full authority: their files, their git and SSH credentials,
 their Claude or ChatGPT subscription.
 
+An authorized executor grant is sufficient to use its offered tools. Private
+chat context does not add a second approval or block terminal/coding calls;
+the binding and reviewed machine policy remain the dispatch authority. Results
+retain the launch conversation's disclosure scope.
+
 Interactive terminal sessions, their tmux/ConPTY lifecycle, live read-only
 viewer, explicit sharing and platform setup are documented in
 [Live terminal sessions](terminal-sessions.md).

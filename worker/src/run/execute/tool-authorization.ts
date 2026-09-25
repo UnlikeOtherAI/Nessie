@@ -73,7 +73,7 @@ export type ToolAuthorizationContext = {
   resolvedBuiltinToolIds?: Set<string>
   /** Names that bypass the builtin registry (MCP, executor and worker metadata). */
   unregisteredToolNames?: Set<string>
-  /** Calls capable of arbitrary external side effects (MCP and executor only). */
+  /** Standalone MCP connectors; executor access has its own grant boundary. */
   externalContentToolNames?: Set<string>
   /**
    * The `personalAssistantOnly` ids this run's global-agent blueprint may

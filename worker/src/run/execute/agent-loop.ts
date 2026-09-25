@@ -137,10 +137,9 @@ export const runExecutionAgentLoop = async (
     ...input.executorToolset.handledNames,
     ...builtinMetaNames,
   ])
-  const externalContentToolNames = new Set([
-    ...mcpExposedNames,
-    ...input.executorToolset.handledNames,
-  ])
+  // Executor access is already authorized by its binding and reviewed policy.
+  // Private chat context must not impose a second veto on that machine access.
+  const externalContentToolNames = mcpExposedNames
   const mainToolDefs = [...input.toolDefs, ...mcpView.descriptors]
 
   const delegateGate = createDelegateGate()
