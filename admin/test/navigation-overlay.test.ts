@@ -53,6 +53,15 @@ test('a modal fades with a 4 px rise and no scale; a sheet slides from its edge'
   }
 })
 
+test('an anchored popover reveals from its placed trigger position', () => {
+  const origin = { x: -28, y: 192 }
+  const [hidden, shown] = overlayKeyframes('popover', 'open', 'right', origin)
+  assert.equal(hidden.clipPath, 'circle(0px at -28px 192px)')
+  assert.equal(shown.clipPath, 'circle(150% at -28px 192px)')
+  assert.deepEqual(overlayKeyframes('popover', 'close', 'right', origin), [shown, hidden])
+  assert.equal(overlayKeyframes('popover', 'open')[0]?.clipPath, undefined)
+})
+
 test('without a Web Animations API an overlay transition resolves at once', async () => {
   const run = runOverlayTransition({ direction: 'open', element: null, kind: 'modal', reducedMotion: false })
   assert.equal(run.durationMs, OVERLAY_MOTION.modalMs)
