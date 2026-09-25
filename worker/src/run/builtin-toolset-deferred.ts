@@ -52,7 +52,7 @@ export const BUILTIN_STUB_INPUT_SCHEMA: Record<string, unknown> = {
 const TOOL_SPEC_DESCRIPTOR: ToolSchemaDescriptor = {
   toolName: BUILTIN_TOOL_SPEC_NAME,
   description:
-    'Return the full descriptions and exact argument schemas for allowed builtin tools. '
+    'Return the full descriptions and exact argument schemas for tools available in this run. '
     + 'This lookup does not change the available tool list.',
   inputSchema: {
     type: 'object',
@@ -60,7 +60,7 @@ const TOOL_SPEC_DESCRIPTOR: ToolSchemaDescriptor = {
       names: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Exact builtin tool names to inspect.',
+        description: 'Exact tool names from the current tool list to inspect.',
       },
     },
     required: ['names'],
@@ -168,14 +168,21 @@ export const buildBuiltinToolsetView = (
   }
 }
 
-export const executeBuiltinToolSpec = (
+export const executeToolSpec = (
   args: Record<string, unknown>,
   allowedDefinitions: BuiltinToolDefinition[],
+  availableDescriptors: readonly ToolSchemaDescriptor[],
 ): AgenticToolResult => {
   const requestedNames = Array.isArray(args['names'])
     ? args['names'].filter((name): name is string => typeof name === 'string')
     : []
-  const byName = new Map(allowedDefinitions.map((tool) => [tool.id, tool]))
+  // The current view already contains only authorized tools. Full builtin
+  // definitions replace its deferred stubs; executor and loaded MCP schemas
+  // come from this run's view, never from another run or the global registry.
+  const byName = new Map([
+    ...availableDescriptors.map((tool) => [tool.toolName, tool] as const),
+    ...allowedDefinitions.map((tool) => [tool.id, fullDescriptor(tool)] as const),
+  ])
   // `default.ticket_create` is how a namespaced tool protocol (Meta's) spells
   // `ticket_create`; answer the tool it means rather than calling it unknown.
   const resolveName = (name: string): string => {
@@ -189,9 +196,9 @@ export const executeBuiltinToolSpec = (
     const definition = byName.get(name)
     return definition
       ? [{
-        name: definition.id,
+        name: definition.toolName,
         description: definition.description,
-        inputSchema: definition.parameters,
+        inputSchema: definition.inputSchema,
       }]
       : []
   })
@@ -205,7 +212,7 @@ export const executeBuiltinToolSpec = (
         ? {
           unknownNames,
           message:
-            'Unknown or unavailable builtin tool name(s). Use exact names from the current tool list.',
+            'Unknown or unavailable tool name(s). Use exact names from the current tool list.',
         }
         : {}),
     }, null, 2),

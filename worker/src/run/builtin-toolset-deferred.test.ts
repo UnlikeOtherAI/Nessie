@@ -13,7 +13,7 @@ import {
   BUILTIN_TOOL_SPEC_NAME,
   appendStubbedBuiltinSchema,
   buildBuiltinToolsetView,
-  executeBuiltinToolSpec,
+  executeToolSpec,
 } from './builtin-toolset-deferred.js'
 import { resolveAgentTools } from './tool-policy.js'
 
@@ -239,9 +239,10 @@ test('a shared agent\'s lent project tools and explicit grants are resolved in f
 })
 
 test('tool_spec returns allowed full schemas and corrects unknown names', () => {
-  const result = executeBuiltinToolSpec(
+  const result = executeToolSpec(
     { names: ['send_message', 'not_allowed'] },
     definitions,
+    [],
   )
   const output = JSON.parse(result.output) as {
     message: string
@@ -303,7 +304,7 @@ test('repeated composition produces a byte-stable descriptor array', () => {
 // list from the run's RESOLVED tool ids, never the raw registry. A shared
 // agent must not be able to read a PA-only tool's schema through tool_spec —
 // this is what breaks if a refactor ever passes BUILTIN_TOOL_DEFINITIONS
-// unfiltered into executeBuiltinToolSpec.
+// unfiltered into executeToolSpec.
 test('tool_spec cannot surface a PA-only schema to a shared agent', () => {
   const enabledIds = new Set(BUILTIN_TOOL_DEFINITIONS.map((tool) => tool.id))
   const resolved = resolveAgentTools(
@@ -319,9 +320,10 @@ test('tool_spec cannot surface a PA-only schema to a shared agent', () => {
   )
   assert.equal(resolved.allowedIds.has('send_message'), false)
 
-  const result = executeBuiltinToolSpec(
+  const result = executeToolSpec(
     { names: ['send_message', 'team_search'] },
     allowedDefinitions,
+    resolved.descriptors,
   )
   const output = JSON.parse(result.output) as {
     tools: Array<{ name: string }>
@@ -329,4 +331,36 @@ test('tool_spec cannot surface a PA-only schema to a shared agent', () => {
   }
   assert.deepEqual(output.tools.map((tool) => tool.name), ['team_search'])
   assert.deepEqual(output.unknownNames, ['send_message'])
+})
+
+
+test('tool_spec returns current executor schemas, including namespaced requests, without widening access', () => {
+  const terminal = {
+    toolName: 'terminal_session_start',
+    description: 'Open the approved terminal.',
+    inputSchema: { type: 'object', properties: { root: { enum: ['projects'] } }, required: ['root'] },
+  }
+  const currentView = buildBuiltinToolsetView(definitions, 0).descriptors
+  const before = JSON.stringify(currentView)
+  const names = ['default.terminal_session_start', 'send_message', 'executor_command_run']
+  const result = executeToolSpec({ names }, definitions, [...currentView, terminal])
+  const output = JSON.parse(result.output)
+  assert.deepEqual(output.tools, [
+    { name: terminal.toolName, description: terminal.description, inputSchema: terminal.inputSchema },
+    { name: definitions[1]!.id, description: definitions[1]!.description, inputSchema: definitions[1]!.parameters },
+  ])
+  assert.deepEqual(output.unknownNames, ['executor_command_run'])
+  assert.equal(JSON.stringify(currentView), before)
+  // A delegate without the machine binding cannot discover its parent's tools.
+  const delegated = JSON.parse(executeToolSpec({ names }, definitions, currentView).output)
+  assert.deepEqual(delegated.unknownNames, ['default.terminal_session_start', 'executor_command_run'])
+})
+
+test('tool_spec uses the current MCP view after a tool is dropped', () => {
+  const tool = { toolName: 'connected_tool', description: 'Loaded tool', inputSchema: { type: 'object' } }
+  const view = [tool]
+  assert.equal(JSON.parse(executeToolSpec({ names: [tool.toolName] }, [], view).output).tools.length, 1)
+  view.pop()
+  const dropped = JSON.parse(executeToolSpec({ names: [tool.toolName] }, [], view).output)
+  assert.deepEqual(dropped.unknownNames, [tool.toolName])
 })

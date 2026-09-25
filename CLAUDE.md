@@ -140,6 +140,7 @@ sentence changes only if the invariant itself did.
   CI overlaps API and worker tests on separate databases through
   `scripts/ci-tests.mjs`; [testing](docs/standards/testing.md) defines the local
   verification path and preserves ordinary shared-database test ordering.
+  Worker-only tests also build the real executor bridge fixture dependency.
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

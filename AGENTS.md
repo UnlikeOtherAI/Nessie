@@ -75,7 +75,7 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - **Private Deep.Agent package access.** CI and Docker use the externally
   managed `DEEP_AGENT_READ_TOKEN` (fine-grained `deep.agent` Contents:Read);
   never commit, log or persist it.
-- Run package tests through Turbo (`pnpm test`, or `pnpm exec turbo run test --filter=<pkg>`) **with `DATABASE_URL` exported for that run** — unset, every Postgres-backed suite silently skips and the run is green with zero database coverage.
+- Run package tests through Turbo (`pnpm test`, or `pnpm exec turbo run test --filter=<pkg>`) **with `DATABASE_URL` exported for that run** — unset, every Postgres-backed suite silently skips and the run is green with zero database coverage. Turbo also builds the executor bridge fixture dependency for worker-only tests.
 - **The full testing standard** — why only the Turbo path is valid, the local worker-before-api ordering and CI’s isolated parallel databases, process/memory limits, the shared-database discipline (no global mutations, counts, or poller assumptions), Prisma-fake obligations, the mock-LLM harness, and the local SMTP/IMAP wire smoke: read [docs/standards/testing.md](docs/standards/testing.md) before writing or debugging any test.
 
 ## Ports

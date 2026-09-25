@@ -95,6 +95,19 @@
     // open fails all four worker DB tests. Ordering api after worker gives the
     // worker suites the exclusive database they require and matches the order
     // `pnpm -r --if-present test` already produces in CI.
+    // The worker's real executor bridge fixture imports this runtime package.
+    // It is outside the worker's package dependency graph, so build it explicitly.
+    "@nessie/worker#test": {
+      "dependsOn": ["^build", "@nessie/local-inference-host#build"],
+      "outputs": [],
+      "cache": false,
+      "env": [
+        "DATABASE_URL",
+        "NESSIE_ENCRYPTION_ACTIVE_KEY_VERSION",
+        "NESSIE_ENCRYPTION_KEY_RING",
+        "NESSIE_TEST_PRISTINE_DATABASE"
+      ]
+    },
     "@nessie/api#test": {
       "dependsOn": ["^build", "@nessie/worker#test"],
       "outputs": [],
