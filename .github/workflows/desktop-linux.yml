@@ -71,6 +71,11 @@ jobs:
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
+      # Tauri's pre-build command bundles the executor from workspace package
+      # dist exports. Build those dependencies before prepare:executor-runtime.
+      - name: Build executor bundle dependencies
+        run: pnpm exec turbo run build --filter=@nessie/executor...
+
       - name: Resolve release version
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
