@@ -289,6 +289,15 @@ three binaries the package builds *before* they are staged, because the native
 helper's bytes are pinned in the runtime manifest and a signature added
 afterwards would no longer match it.
 
+Every executable the package builds carries the executor's icon and a name.
+The tray gets them from Tauri. The service, the native helper and the Hyper-V
+bridge embed them through their crates' `build.rs`, so Task Manager lists
+**Nessie Executor Service**, **Nessie Executor Helper** and **Nessie Executor
+Hyper-V Bridge** rather than bare file names beside the generic program icon.
+Those icons, the tray's four states and the Apps & features icon are drawn by
+`node executor/scripts/generate-icons.mjs` from
+`assets/logo/nessie-executor-mark.svg`.
+
 **Install** with one administrator prompt:
 
 ```powershell
