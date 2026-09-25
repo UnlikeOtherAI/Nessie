@@ -9,9 +9,11 @@ import { knowledgePageAncestors } from './page-ancestors'
 import { ProductDocumentsView } from './ProductDocumentsView'
 import { QueryState } from '../../shared/QueryState'
 import { useKnowledge } from './KnowledgeProvider'
-import { DocumentsFinder, type FinderScope } from './finder/DocumentsFinder'
+import { DocumentsFinder } from './finder/DocumentsFinder'
+import type { FinderScope } from './finder/documents-finder-types'
 import { PageEditor } from './PageEditor'
 import { SpaceSettingsDialog } from './SpaceSettingsDialog'
+import { FolderSettingsDialog } from './FolderSettingsDialog'
 import { VersionHistory } from './VersionHistory'
 
 /**
@@ -22,12 +24,10 @@ import { VersionHistory } from './VersionHistory'
  * All three are nested stages (docs/navigation/overview.md §6). Where a
  * single-column stack hosts them each is a real layer: it slides in, Back
  * unwinds exactly one level and the edge swipe drives the top one. Where no
- * stack hosts stages (a split layout, an isolated render) they render inline —
- * and inline, an open document takes the whole work surface with a Back
- * button, the way the editor and the history already did. The 46% preview
- * column beside the browser was too small to read a document in; the browser
- * stays mounted underneath (covered, not unmounted) so Back lands on the same
- * folder, the same column scroll and the same selection it left.
+ * stack hosts stages (a split layout, an isolated render) they render inline.
+ * The Finder places documents beside the hierarchy in Tree and over its whole
+ * browser in Columns/List; the editor and history remain full-width stages.
+ * Keeping the Finder mounted preserves its folder, scroll and selection.
  *
  * `knowledge:folder` is **gone**: the Finder sits on `ColumnBrowserViewport`,
  * whose columns are already `column:<k>` stages on `single`, so a folder is a
@@ -99,15 +99,14 @@ export const KnowledgeWorkspace = ({
   // writeRestricted, even when that switch removes ordinary content writes.
   const canManage = (canWrite && (canManageSpace ?? true)) || canManageAccess
 
-  // Which stages are open. A stack shows them all at once, one layer each; an
-  // inline host shows the document, the editor or the history *over* the
-  // browser — a covered browser keeps its folder, scroll and selection, which
-  // is the whole point of the document's Back button.
+  // Which stages are open. A stack shows them all at once, one layer each. On
+  // wider layouts the Finder owns document placement: Tree keeps it in the
+  // reading pane beside the hierarchy, while Columns and List cover their
+  // browser with the same document surface.
   const editorOpen = Boolean(editor) && canWrite
   const historyOpen = Boolean(historyPage) && (stacked || !editorOpen)
   const documentOpen = Boolean(current) && (stacked || !(editorOpen || historyOpen))
   const browserVisible = stacked || !(editorOpen || historyOpen)
-  const browserCovered = !stacked && documentOpen
 
   // The space-pages list omits page bodies (they're large and the browser never
   // shows them). Fetch the full body on demand for whichever page actually
@@ -126,37 +125,7 @@ export const KnowledgeWorkspace = ({
   // The single-file doorway that stood here until Wave 2 landed is gone —
   // two file inputs on one screen is two answers to one question.
   const [createSpaceOpen, setCreateSpaceOpen] = useState(false)
-
-  const browser = (
-    <div className="relative h-full w-full">
-      <DocumentsFinder
-        canManageSpace={canManage}
-        onCreateRootFolder={scope.kind === 'org' ? () => setCreateSpaceOpen(true) : undefined}
-        onOpenSettings={openSpaceSettings}
-        scope={scope}
-      />
-      {selectedSpace && canManage ? (
-        <SpaceSettingsDialog
-          canManageAccess={canManageAccess}
-          onClose={closeSpaceSettings}
-          onSave={updateSpace}
-          open={spaceSettingsOpen}
-          pending={updateSpacePending}
-          space={selectedSpace}
-        />
-      ) : null}
-      {/* A new space needs a visibility choice, which an inline folder-name
-          field cannot carry — so the Knowledge root uses this dialog. */}
-      <CreateSpaceDialog
-        onClose={() => setCreateSpaceOpen(false)}
-        onCreate={async (name, memberAgentIds, visibility) => {
-          await createSpace(name, memberAgentIds, visibility)
-        }}
-        open={createSpaceOpen}
-        pending={createSpacePending}
-      />
-    </div>
-  )
+  const [settingsFolder, setSettingsFolder] = useState<NonNullable<typeof current> | null>(null)
 
   // The open document or file node, with its attachments and versions.
   const documentPane = current ? (
@@ -171,6 +140,49 @@ export const KnowledgeWorkspace = ({
       spaceName={selectedSpace?.name ?? 'Documents'}
     />
   ) : null
+
+  const browser = (
+    <div className="relative h-full w-full">
+      <DocumentsFinder
+        canManageSpace={canManage}
+        documentPane={!stacked && documentOpen ? documentPane : undefined}
+        onCreateRootFolder={scope.kind === 'org' ? () => setCreateSpaceOpen(true) : undefined}
+        onOpenSettings={(folder) => {
+          if (folder?.kind === 'folder') setSettingsFolder(folder)
+          else openSpaceSettings()
+        }}
+        scope={scope}
+      />
+      {selectedSpace && canManage ? (
+        <SpaceSettingsDialog
+          canManageAccess={canManageAccess}
+          onClose={closeSpaceSettings}
+          onSave={updateSpace}
+          open={spaceSettingsOpen}
+          pending={updateSpacePending}
+          space={selectedSpace}
+        />
+      ) : null}
+      {settingsFolder && selectedSpaceId ? (
+        <FolderSettingsDialog
+          folder={settingsFolder}
+          onClose={() => setSettingsFolder(null)}
+          open
+          spaceId={selectedSpaceId}
+        />
+      ) : null}
+      {/* A new space needs a visibility choice, which an inline folder-name
+          field cannot carry — so the Knowledge root uses this dialog. */}
+      <CreateSpaceDialog
+        onClose={() => setCreateSpaceOpen(false)}
+        onCreate={async (name, memberAgentIds, visibility) => {
+          await createSpace(name, memberAgentIds, visibility)
+        }}
+        open={createSpaceOpen}
+        pending={createSpacePending}
+      />
+    </div>
+  )
 
   const historyPane = historyPage ? (
     <KnowledgePane
@@ -238,19 +250,7 @@ export const KnowledgeWorkspace = ({
         // main area instead of a folder's pages.
         <ProductDocumentsView view={activeProductView} />
       ) : browserVisible ? (
-        <div className="relative h-full min-h-0 w-full">
-          {/* `invisible`, not unmounted and not `display: none`: the covered
-              browser keeps its layout and its column scroll positions, so
-              the document's Back returns to the exact browser it left. */}
-          <div className={`flex h-full min-h-0 w-full${browserCovered ? ' invisible' : ''}`}>
-            <div className="min-w-0 flex-1">{browser}</div>
-          </div>
-          {browserCovered ? (
-            // On a split layout the open document is a full-surface screen
-            // over the browser, the way the editor and the history are.
-            <div className="absolute inset-0">{documentPane}</div>
-          ) : null}
-        </div>
+        <div className="relative h-full min-h-0 w-full">{browser}</div>
       ) : null}
       <NestedStage
         active={stacked && documentOpen}

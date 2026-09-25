@@ -38,6 +38,7 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 #[derive(Default)]
 pub struct ExecutorCompanionState {
     children: Mutex<BTreeMap<String, ManagedExecutorDaemon>>,
+    pub(super) pairing: Mutex<()>,
 }
 
 struct ManagedExecutorDaemon {

@@ -10,18 +10,18 @@ import SwiftUI
 /// the short sections ended up with a field of empty white below them.
 @MainActor
 final class ConsoleWindowController: NSObject, NSWindowDelegate {
-    private let controller: ExecutorController
+    private let connections: ExecutorConnections
     private let selection: ConsoleSelection
     private var window: NSWindow?
 
-    init(controller: ExecutorController) {
-        self.controller = controller
+    init(connections: ExecutorConnections) {
+        self.connections = connections
         self.selection = ConsoleSelection()
     }
 
     func show(_ section: ConsoleSection) {
-        controller.refresh()
-        controller.pairing.restore()
+        connections.selected.refresh()
+        connections.selected.pairing.restore()
         selection.section = section
         if let window {
             NSApp.activate(ignoringOtherApps: true)
@@ -29,9 +29,7 @@ final class ConsoleWindowController: NSObject, NSWindowDelegate {
             return
         }
         let hosting = NSHostingController(
-            rootView: ConsoleView()
-                .environmentObject(controller)
-                .environmentObject(controller.pairing)
+            rootView: ConnectionConsoleView(connections: connections)
                 .environmentObject(selection)
         )
         hosting.sizingOptions = [.preferredContentSize]

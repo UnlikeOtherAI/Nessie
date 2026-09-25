@@ -429,24 +429,44 @@ that column):
     width applied to **all** columns at once — drag widens/narrows every column
     together (min 300px), persisted in the `nessie.admin.knowledgeColumnWidth`
     cookie.
-  - **Tree** shows an expandable/collapsible hierarchy with animated branches.
+  - **Tree** is the documentation-oriented, two-pane view. Its left pane shows
+    the expandable/collapsible hierarchy with the same outline icon language
+    and soft active-row treatment as Channels; opening Agents keeps this view
+    selected and uses the right pane for the agent directory. Opening a
+    document, spreadsheet, or uploaded file keeps the hierarchy visible and
+    renders its detail in the right pane. Column and Full page/List retain
+    their existing full-surface document detail.
   - **Page preview** (`PagePreview`) is a read-only document view (status, title,
     labels, rendered body, backlinks, comments, and document actions) rendered on a
     centered white "sheet" (`.kb-reader`) so content reads like paper — the sheet
-    stays white with dark text under **any** theme. Selecting a document from any
-    browsing view opens this document state; **Back** returns to its containing
-    folder or the browser root. A document is a leaf: it never offers creation or
-    renders children.
+    stays white with dark text under **any** theme. Selecting a document opens
+    this document state in Tree's right pane or as the existing full-surface
+    detail in the other browsing views; **Back** returns to its containing
+    folder or the browser root. A document is a leaf: it never offers creation
+    or renders children. Its attachments are visible on the document itself,
+    with an Add attachment action and list/grid presentation rather than being
+    discoverable only through a detached drawer.
   - **Editor** (`PageEditor`) and **version History** are full-width. The editor
     fills the whole main area as a borderless writing canvas: the title and body
     are edited in place with descriptive placeholders, labels and the optional
     change comment sit below the body, and there is no separate Summary field.
     On creation its Location picker chooses the space root or an existing folder
-    as the parent. **New page** is available at the space root and inside folders,
-    never on an open document. Page previews show clickable
+    as the parent. **New document** is available at the space root and inside
+    folders, never on an open document, and its submission action is **Create
+    document**. The document title is visually distinct from body copy through a
+    larger serif treatment; formatting controls use the same restrained icon
+    language as the channel composer. Page previews show clickable
     breadcrumbs from the space through every ancestor to the current page. A
     published page shows no redundant `Published` control or status chip;
-    History and Archive page live in its always-visible three-dot action menu.
+    History and Archive document live in its always-visible three-dot action
+    menu. History compares the selected version with the current rich document
+    as a readable semantic diff: removed content is red, additions green, and
+    formatting-only changes blue; raw stored HTML is never the comparison UI.
+  - **Settings** are contextual. At a managed space root the gear opens Space
+    settings. Inside a folder it opens Folder settings for that folder, including
+    its real name; it never substitutes the space name for the selected folder.
+    Clicking an agent row or its checkbox toggles membership once without a
+    query refresh resetting the first selection.
 
 Shared state lives in `KnowledgeProvider`
 (`admin/src/components/features/knowledge/`), which wraps the sidebar and the

@@ -279,17 +279,17 @@ test('routes phone Knowledge selections and Projects rows to stack details', () 
   // Every root row is a real route, not a selection inside the root page: a
   // surface reached by leaving another screen has to be a route, or its state
   // dies with the popped layer.
-  assert.match(finderNavigation, /navigate\('\/knowledge-base\/latest'\)/)
-  assert.match(finderNavigation, /navigate\('\/knowledge-base\/shared-with-me'\)/)
+  assert.match(finderNavigation, /withFinderQuery\('\/knowledge-base\/latest', search\)/)
+  assert.match(finderNavigation, /withFinderQuery\('\/knowledge-base\/shared-with-me', search\)/)
   assert.match(
     finderNavigation,
-    /navigate\(`\/knowledge-base\/spaces\/\$\{encodeURIComponent\(row\.space\.spaceId\)\}`\)/,
+    /withFinderQuery\(\s*`\/knowledge-base\/spaces\/\$\{encodeURIComponent\(row\.space\.spaceId\)\}`/,
   )
   assert.match(
     finderNavigation,
-    /navigate\(`\/knowledge-base\/views\/\$\{encodeURIComponent\(row\.view\)\}`\)/,
+    /withFinderQuery\(\s*`\/knowledge-base\/views\/\$\{encodeURIComponent\(row\.view\)\}`/,
   )
-  assert.match(finderNavigation, /navigate\('\/knowledge-base\/agents'\)/)
+  assert.match(finderNavigation, /withFinderQuery\('\/knowledge-base\/agents', search\)/)
   assert.match(rootColumn, /prewarmRowHandlers\(prewarm, to\)/)
   assert.match(projectsSidebar, /usePhoneLayout/)
   assert.match(projectsSidebar, /`\/projects\/\$\{project\.id\}\/board`/)

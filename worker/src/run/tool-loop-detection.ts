@@ -1,12 +1,14 @@
 /**
  * Loop detection, decided before dispatch.
  *
- * Every tool gets the cumulative rule: the third identical call (same name,
+ * Ordinary tools get the cumulative rule: the third identical call (same name,
  * same arguments) anywhere in the run is short-circuited. Observation tools
  * are the exception. Watching something that takes time means asking the same
  * question again, so for them only **consecutive** identical calls count, any
  * other call in between resets the streak, and the fourth in a row is the one
  * refused.
+ * Terminal input instead counts identical writes since the last different
+ * write to that session: Enter after each new command is useful work.
  *
  * A wait is the one observation that is not refused for being repeated:
  * waiting on a coding agent that is still working means calling the same wait
@@ -86,6 +88,7 @@ export const CODING_WAIT_END_TURN_NUDGE =
 // read back as a consecutive streak would refuse a call the new rule allows.
 // `#` never appears in a tool name, so no unprefixed key can look like these.
 const REPEAT_KEY_PREFIX = '#repeat:'
+const TERMINAL_KEY_PREFIX = '#terminal:'
 const OBSERVE_KEY_PREFIX = '#observe:'
 // A wait that stopped because the model must act, by the session it waited on;
 // ended by any call that is not an observation, since only such a call can
@@ -164,7 +167,9 @@ const settledKeyOf = (toolName: string, args: Record<string, unknown>): string =
   watchKeyOf(SETTLED_KEY_PREFIX, toolName, args)
 const endedKeyOf = (toolName: string): string => `${ENDED_KEY_PREFIX}${toolName}`
 
-const RESTORED_KEY_PREFIXES = [REPEAT_KEY_PREFIX, OBSERVE_KEY_PREFIX, SETTLED_KEY_PREFIX, ENDED_KEY_PREFIX]
+const RESTORED_KEY_PREFIXES = [
+  REPEAT_KEY_PREFIX, TERMINAL_KEY_PREFIX, OBSERVE_KEY_PREFIX, SETTLED_KEY_PREFIX, ENDED_KEY_PREFIX,
+]
 
 // A wait's key checkpointed when it still named the whole arguments object,
 // `#settled:coding_session_wait:{"sessionId":"a"}`, under the session it names.
@@ -223,6 +228,16 @@ export const countToolCall = (
     counts.set(streakKey, streak)
     if (streak < OBSERVATION_LOOP_THRESHOLD) return null
     return CODING_OBSERVATION_TOOL_NAMES.has(toolName) ? REPEATED_CODING_OBSERVATION : REPEATED_OBSERVATION
+  }
+  if (toolName === 'terminal_session_write') {
+    const sessionPrefix = `${TERMINAL_KEY_PREFIX}${JSON.stringify(sessionOf(args) ?? null)}:`
+    const key = `${sessionPrefix}${JSON.stringify(args)}`
+    const count = (counts.get(key) ?? 0) + 1
+    for (const previous of counts.keys()) {
+      if (previous.startsWith(sessionPrefix)) counts.delete(previous)
+    }
+    counts.set(key, count)
+    return count >= LOOP_DETECTION_THRESHOLD ? REPEATED_CALL : null
   }
   const repeatKey = `${REPEAT_KEY_PREFIX}${signature}`
   const count = (counts.get(repeatKey) ?? 0) + 1

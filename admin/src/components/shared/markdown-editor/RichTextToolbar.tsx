@@ -7,7 +7,18 @@ import {
   type ReactNode,
 } from 'react'
 import type { Editor } from '@tiptap/react'
-import { faImage } from '@fortawesome/free-solid-svg-icons'
+import {
+  faBold,
+  faCode,
+  faFileCode,
+  faHeading,
+  faImage,
+  faItalic,
+  faLink,
+  faListOl,
+  faListUl,
+  faQuoteLeft,
+} from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { Popover } from '../../overlays/Popover'
 
@@ -15,7 +26,7 @@ type ToolbarButtonProps = {
   /** Set for a toggle (a mark or a block type); omitted for a one-shot action. */
   active?: boolean
   disabled?: boolean
-  /** The visible glyph: a letter or two, or an icon. */
+  /** The visible icon for the action. */
   label: ReactNode
   onClick: () => void
   title: string
@@ -23,7 +34,7 @@ type ToolbarButtonProps = {
 
 /**
  * One toolbar control. `title` is also the accessible name — the visible
- * label is a glyph ("B", "•", "{ }") that reads as nothing to a screen reader.
+ * label is an icon, while the button keeps the channel composer's compact shape.
  */
 export const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(
   ({ active, disabled, label, onClick, title }, ref) => (
@@ -31,10 +42,10 @@ export const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(
       aria-label={title}
       aria-pressed={active === undefined ? undefined : active}
       className={[
-        'min-w-[28px] rounded px-2 py-1 text-xs font-semibold',
+        'admin-compose-action flex h-7 w-7 items-center justify-center rounded text-[color:var(--tx3)]',
         active
           ? 'bg-[color:var(--accent)] text-[var(--on-accent)]'
-          : 'text-[color:var(--tx2)] hover:bg-[var(--overlay-weak)] hover:text-[var(--tx)]',
+          : 'hover:bg-[var(--overlay)] hover:text-[var(--tx)]',
       ].join(' ')}
       disabled={disabled}
       // Keep the editor selection while clicking toolbar buttons.
@@ -116,7 +127,7 @@ const LinkToolbarButton = ({ editor, shortcut }: { editor: Editor; shortcut: boo
     <>
       <ToolbarButton
         active={editor.isActive('link')}
-        label="🔗"
+        label={<FontAwesomeIcon className="h-4 w-4" icon={faLink} />}
         onClick={openPopover}
         ref={anchorRef}
         title="Link"
@@ -199,13 +210,13 @@ export const RichTextToolbar = ({
   <div aria-label="Formatting" className={className} role="toolbar">
     <ToolbarButton
       active={editor.isActive('bold')}
-      label="B"
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faBold} />}
       onClick={() => editor.chain().focus().toggleBold().run()}
       title="Bold"
     />
     <ToolbarButton
       active={editor.isActive('italic')}
-      label="I"
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faItalic} />}
       onClick={() => editor.chain().focus().toggleItalic().run()}
       title="Italic"
     />
@@ -214,7 +225,12 @@ export const RichTextToolbar = ({
       <ToolbarButton
         active={editor.isActive('heading', { level })}
         key={level}
-        label={`H${level}`}
+        label={(
+          <>
+            <FontAwesomeIcon className="h-4 w-4" icon={faHeading} />
+            <span className="-ml-0.5 text-[9px] font-semibold leading-none">{level}</span>
+          </>
+        )}
         onClick={() => editor.chain().focus().toggleHeading({ level }).run()}
         title={`Heading ${level}`}
       />
@@ -222,32 +238,32 @@ export const RichTextToolbar = ({
     <ToolbarDivider />
     <ToolbarButton
       active={editor.isActive('bulletList')}
-      label="•"
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faListUl} />}
       onClick={() => editor.chain().focus().toggleBulletList().run()}
       title="Bullet list"
     />
     <ToolbarButton
       active={editor.isActive('orderedList')}
-      label="1."
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faListOl} />}
       onClick={() => editor.chain().focus().toggleOrderedList().run()}
       title="Numbered list"
     />
     <ToolbarButton
       active={editor.isActive('blockquote')}
-      label="❝"
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faQuoteLeft} />}
       onClick={() => editor.chain().focus().toggleBlockquote().run()}
       title="Quote"
     />
     <ToolbarDivider />
     <ToolbarButton
       active={editor.isActive('code')}
-      label="‹›"
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faCode} />}
       onClick={() => editor.chain().focus().toggleCode().run()}
       title="Inline code"
     />
     <ToolbarButton
       active={editor.isActive('codeBlock')}
-      label="{ }"
+      label={<FontAwesomeIcon className="h-4 w-4" icon={faFileCode} />}
       onClick={() => editor.chain().focus().toggleCodeBlock().run()}
       title="Code block"
     />

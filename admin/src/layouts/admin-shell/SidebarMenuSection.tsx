@@ -50,7 +50,7 @@ export const SidebarMenuSection = ({
   <div className={className}>
     <SidebarTreeSectionHeader action={action} collapsed={isCollapsed} controls={id} onToggle={onToggle}>
       {titleIcon}
-      {title}
+      <span className="sidebar-menu-section-title">{title}</span>
     </SidebarTreeSectionHeader>
     {!isCollapsed ? <div id={id}>{children}</div> : null}
   </div>

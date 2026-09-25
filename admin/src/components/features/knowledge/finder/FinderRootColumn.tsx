@@ -320,7 +320,7 @@ export const FinderRootColumn = ({
           root === undefined ? (
             <Skeleton count={5} variant="list" />
           ) : (
-            <RowList label="Documents" role="listbox" variant="finder">
+            <RowList label="Browse" role="listbox" variant="finder">
               {rendered.map((group, index) => (
                 <Fragment key={index}>
                   {index > 0 ? <Separator /> : null}

@@ -8,6 +8,7 @@ import {
   OVERLAY_LAYER,
   runOverlayTransition,
   type OverlayKind,
+  type OverlayRevealOrigin,
   type SheetSide,
 } from '../../navigation/overlay'
 import { useReducedMotion } from '../../navigation/reduced-motion'
@@ -37,6 +38,8 @@ export type UseOverlayOptions = {
   escapeAnchorRef?: RefObject<HTMLElement | null>
   initialFocusRef?: RefObject<HTMLElement | null>
   side?: SheetSide
+  motionReady?: boolean
+  revealOrigin?: OverlayRevealOrigin | null
 }
 
 export type OverlayState = {
@@ -67,8 +70,12 @@ export const useOverlay = ({
   escapeAnchorRef,
   initialFocusRef,
   side,
+  motionReady = true,
+  revealOrigin,
 }: UseOverlayOptions): OverlayState => {
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const revealOriginRef = useRef<OverlayRevealOrigin | null>(null)
+  if (revealOrigin) revealOriginRef.current = revealOrigin
   const reducedMotion = useReducedMotion()
   const layout = useNavigationLayout()
   const [closing, setClosing] = useState(false)
@@ -158,16 +165,17 @@ export const useOverlay = ({
 
   // Open motion on the panel once it is in the DOM.
   useLayoutEffect(() => {
-    if (!open) return undefined
+    if (!open || !motionReady) return undefined
     const run = runOverlayTransition({
       direction: 'open',
       element: panelRef.current,
       kind: effectiveKind,
       reducedMotion,
       side,
+      revealOrigin: revealOriginRef.current,
     })
     return () => run.cancel()
-  }, [effectiveKind, open, reducedMotion, side])
+  }, [effectiveKind, motionReady, open, reducedMotion, side])
 
   // Close motion: the element stays mounted, inert, until it has played out.
   const wasOpen = useRef(open)
@@ -178,7 +186,10 @@ export const useOverlay = ({
     const element = panelRef.current
     if (!element) return undefined
     setClosing(true)
-    const run = runOverlayTransition({ direction: 'close', element, kind: effectiveKind, reducedMotion, side })
+    const run = runOverlayTransition({
+      direction: 'close', element, kind: effectiveKind, reducedMotion, side,
+      revealOrigin: revealOriginRef.current,
+    })
     let cancelled = false
     void run.finished.then(() => {
       if (!cancelled) setClosing(false)

@@ -7,18 +7,35 @@ const read = (relativePath: string): string =>
 
 const editor = read('PageEditor.tsx')
 const preview = read('PagePreview.tsx')
+const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 const workspace = read('KnowledgeWorkspace.tsx')
 
 test('the page editor is a borderless writing canvas with descriptive placeholders', () => {
-  assert.match(editor, /placeholder="Give this page a title…"/)
-  assert.match(editor, /text-\[3\.8025rem\]/)
-  assert.match(editor, /sm:text-\[5\.07rem\]/)
+  assert.match(editor, /placeholder="Give this document a title…"/)
+  assert.match(editor, /aria-label="Document title"/)
+  assert.match(editor, /kb-document-title/)
+  assert.match(editor, /title=\{mode === 'create' \? 'New document' : 'Edit document'\}/)
+  assert.match(editor, /label: pending[\s\S]*?\? 'Saving…'[\s\S]*?\? 'Create document'/)
+  assert.match(styles, /\.kb-document-title\s*\{[^}]*font-size: 3rem/)
+  assert.match(styles, /@media \(min-width: 640px\)[\s\S]*?\.kb-document-title\s*\{[^}]*font-size: 4rem/)
+  assert.doesNotMatch(editor, /Create page|New page|Edit page/)
   assert.match(editor, /placeholder="Start writing…"/)
   assert.match(editor, /placeholder="Add labels, separated by commas"/)
   assert.doesNotMatch(editor, /label="Title"|label="Summary"|label="Body"/)
 
   const richText = read('RichTextEditor.tsx')
   assert.doesNotMatch(richText, /kb-editor[^\n]*rounded[^\n]*border/)
+})
+
+test('document title uses its display serif and the rich-text toolbar uses channel-style icon controls', () => {
+  const toolbar = readFileSync(new URL('../src/components/shared/markdown-editor/RichTextToolbar.tsx', import.meta.url), 'utf8')
+  assert.match(styles, /--font-family-document-title: Georgia, 'Times New Roman', serif/)
+  assert.match(styles, /\.kb-document-title\s*\{[^}]*font-family: var\(--font-family-document-title\)/)
+  assert.match(toolbar, /admin-compose-action flex h-7 w-7/)
+  for (const icon of ['faBold', 'faItalic', 'faHeading', 'faListUl', 'faListOl', 'faQuoteLeft', 'faCode', 'faFileCode', 'faLink']) {
+    assert.match(toolbar, new RegExp(`\\b${icon}\\b`))
+  }
+  assert.doesNotMatch(toolbar, /label="🔗"|label="❝"|label="\{ \}"/)
 })
 
 test('new pages can choose only an existing folder as their parent', () => {
@@ -40,7 +57,7 @@ test('published pages use a three-dot actions menu instead of redundant publicat
   assert.match(preview, /icon: faEllipsis/)
   assert.match(preview, /kind: 'menu'/)
   assert.match(preview, /label: 'History'/)
-  assert.match(preview, /label: 'Archive page'/)
+  assert.match(preview, /label: 'Archive document'/)
   assert.match(preview, /page\.status !== 'published'/)
   assert.doesNotMatch(preview, /<Pill[^>]*>[\s\S]*?published[\s\S]*?<\/Pill>/)
 })

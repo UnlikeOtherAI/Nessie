@@ -25,7 +25,7 @@ Assistant's `channel_list` / `channel_update` tools. Read
 [the channel policy standard](docs/standards/channel-decision-policy.md) and
 [its browser evaluation](docs/testing/channel-decisions.md) before changing them.
 
-Executor pairing and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
+Executor pairing, independent account/server connections on each platform, and live account-menu presence follow [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md), including their browser verification.
 Authorized executor access has no additional private-conversation write veto; output disclosure still follows [the disclosure standard](docs/standards/disclosure-boundaries.md).
 
 Sequential Task Sets, their native agent tools and the configured
@@ -144,6 +144,9 @@ sentence changes only if the invariant itself did.
   `scripts/ci-tests.mjs`; [testing](docs/standards/testing.md) defines the local
   verification path and preserves ordinary shared-database test ordering.
   Worker-only tests also build the real executor bridge fixture dependency.
+  The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
+  its workspace dependencies, and prepares the packaged runtime before Tauri
+  builds, matching Windows.
 - **Preview fixtures stay out of production bundles.** Register the fixture
   in `admin/vite.config.ts` behind its `NESSIE_<NAME>_E2E_FIXTURE` flag, set
   that flag for a manual preview build, and list it in `@nessie/admin#build`

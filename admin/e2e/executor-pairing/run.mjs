@@ -120,6 +120,39 @@ try {
     await page.getByText('Open Nessie Executor on your machine to confirm', { exact: false }).waitFor()
     assert.equal(await page.getByRole('button', { name: 'Confirm fingerprint', exact: true }).count(), 0)
     await page.screenshot({ path: resolve(output, `pending-${width}.png`) })
+    // Both Desktop platforms use this same surface; the native picker and
+    // confirmation transport are mocked, not the React pairing flow.
+    for (const platform of ['windows', 'linux']) {
+      status = 'pending_pairing'
+      expired = false
+      await context.exposeFunction(`confirmed_${platform}`, () => { status = 'offline' })
+      await context.addInitScript((os) => {
+        if (new URLSearchParams(location.search).get('native') !== os) return
+        window.__nessieDesktopPlatform = os
+        window.__companionCalls = []
+        window.__TAURI_INTERNALS__ = { invoke: async (command) => {
+          window.__companionCalls.push(command)
+          if (command === 'executor_companion_status') return {
+            availability: 'available', platform: os, executors: [], reason: '',
+          }
+          if (command === 'executor_companion_pairing_start') return '01234567'
+          if (command === 'executor_companion_pairing_confirm') await window[`confirmed_${os}`]()
+        } }
+      }, platform)
+      await page.goto(`${ADMIN_URL}/e2e/executor-pairing/index.html?native=${platform}`)
+      await page.getByRole('button', { name: 'Pair executor', exact: true }).click()
+      await page.getByRole('button', { name: 'Connect this computer', exact: true }).click()
+      assert.equal(await page.getByRole('combobox').count(), 0, 'Desktop pairing also uses the current team')
+      await page.getByLabel('The fingerprint matches').check()
+      await page.screenshot({ path: resolve(output, `desktop-${platform}-${width}.png`) })
+      await page.getByRole('button', { name: 'Pair machine', exact: true }).click()
+      await page.getByRole('heading', { name: 'Machine paired', exact: true }).waitFor()
+      const nativeCalls = await page.evaluate(() => window.__companionCalls)
+      assert.equal(nativeCalls.filter((call) => call === 'executor_companion_pairing_start').length, 1)
+      assert.equal(nativeCalls.filter((call) => call === 'executor_companion_pairing_confirm').length, 1)
+      assert.ok(!nativeCalls.includes('executor_companion_stop'), 'An existing connection is never stopped')
+      await page.getByRole('button', { name: 'Close', exact: true }).last().click()
+    }
     assert.deepEqual(errors, [])
     await context.close()
   }

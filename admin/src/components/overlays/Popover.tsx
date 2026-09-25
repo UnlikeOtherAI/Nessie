@@ -48,6 +48,8 @@ type PopoverProps = {
    * editor suggestion list hangs off. The trigger still governs outside press.
    */
   anchorRect?: PopoverAnchorRect | null
+  /** Reveal the panel from the trigger through the shared overlay motion. */
+  anchorOrigin?: boolean
   children: ReactNode
   className?: string
   id?: string
@@ -86,6 +88,7 @@ const samePlacement = (a: Placed | null, b: Placed): boolean =>
 export const Popover = ({
   anchorRef,
   anchorRect = null,
+  anchorOrigin = false,
   children,
   className,
   id,
@@ -101,6 +104,16 @@ export const Popover = ({
   style,
 }: PopoverProps) => {
   const generatedId = useId()
+  const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)
+  const motionAnchor = anchorOrigin && rectPlaced
+    ? anchorRect ?? anchorRef.current?.getBoundingClientRect()
+    : null
+  const revealOrigin = motionAnchor && rectPlaced
+    ? {
+        x: (motionAnchor.left + motionAnchor.right) / 2 - rectPlaced.left,
+        y: (motionAnchor.top + motionAnchor.bottom) / 2 - rectPlaced.top,
+      }
+    : null
   // The layer the call site asked for, else the one its surroundings imply.
   const owner = useOverlayOwner()
   const effectiveLayer: PopoverLayer = layer ?? (owner === 'modal' ? 'modal' : 'popover')
@@ -112,9 +125,10 @@ export const Popover = ({
     open,
     ownerKind: effectiveLayer === 'modal' ? 'modal' : undefined,
     escapeAnchorRef: returnFocusRef ?? anchorRef,
+    motionReady: !anchorOrigin || rectPlaced !== null,
+    revealOrigin,
   })
   const { panelRef, requestClose } = overlay
-  const [rectPlaced, setRectPlaced] = useState<Placed | null>(null)
 
   const measure = useCallback(() => {
     const panel = panelRef.current

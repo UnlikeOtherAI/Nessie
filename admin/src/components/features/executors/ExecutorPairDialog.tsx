@@ -2,6 +2,11 @@ import { useEffect, useState } from 'react'
 import { ApiClientError } from '@nessie/client-core'
 import type { ExecutorPairingPreview, ExecutorScope } from '@nessie/schemas'
 import type { ProjectRecord } from '../../../lib/api-client'
+import { getBaseUrl, getExecutorApiOrigin } from '../../../lib/api-client'
+import { isDesktopApp } from '../../../lib/desktop'
+import {
+  cancelCompanionPairing, confirmCompanionPairing, executorCompanionStatus, startCompanionPairing,
+} from '../../../lib/executor-companion'
 import {
   useClaimExecutorPairing,
   useExecutorPairingOptions,
@@ -36,11 +41,51 @@ const PairingSession = ({
   const [executorId, setExecutorId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now)
+  const [canPairHere, setCanPairHere] = useState(false)
+  const [localPairing, setLocalPairing] = useState(false)
+  const [localBusy, setLocalBusy] = useState(false)
   const status = useExecutorPairingStatus(executorId)
   const remaining = preview ? Math.max(0, Math.ceil((Date.parse(preview.expiresAt) - now) / 1_000)) : 0
   const paired = status.data !== undefined && !['pending_pairing', 'revoked'].includes(status.data.status)
   const rejected = status.data?.status === 'revoked'
-  const busy = previewMutation.isPending || claimMutation.isPending
+  const busy = localBusy || previewMutation.isPending || claimMutation.isPending
+
+  useEffect(() => {
+    if (!isDesktopApp()) return
+    let active = true
+    void executorCompanionStatus().then((companion) => {
+      if (active) setCanPairHere(companion.platform !== 'macos'
+        && ['available', 'workspace_only'].includes(companion.availability))
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [])
+
+  const pairHere = async () => {
+    setLocalBusy(true)
+    setError(null)
+    try {
+      const localCode = await startCompanionPairing(getExecutorApiOrigin(getBaseUrl()))
+      setLocalPairing(true)
+      setCode(localCode)
+      setPreview(await previewMutation.mutateAsync(localCode))
+      setNow(Date.now())
+    } catch {
+      setError('Pairing could not start. Update Nessie Desktop, then choose a workspace folder and try again.')
+    } finally { setLocalBusy(false) }
+  }
+
+  const confirmHere = async () => {
+    setLocalBusy(true)
+    setError(null)
+    try { await confirmCompanionPairing() } catch {
+      setError('The connection is not confirmed. Review it in the computer confirmation dialog and try again.')
+    } finally { setLocalBusy(false) }
+  }
+
+  const close = async () => {
+    if (localPairing && !paired) await cancelCompanionPairing().catch(() => undefined)
+    onClose()
+  }
 
   useEffect(() => {
     if (!preview || paired) return
@@ -70,6 +115,7 @@ const PairingSession = ({
       setCode('')
       previewMutation.reset()
       claimMutation.reset()
+      if (localPairing) await confirmHere()
     } catch (cause) {
       setError(cause instanceof ApiClientError && cause.status === 429
         ? 'Too many attempts. Wait a few minutes, then try again.'
@@ -90,13 +136,18 @@ const PairingSession = ({
     <Dialog
       description={!preview ? 'Open Nessie Executor on your machine and choose Pair with Nessie.' : undefined}
       dismissDisabled={busy}
-      onClose={onClose}
+      onClose={() => void close()}
       open
       title={paired ? 'Machine paired' : executorId ? 'Confirm on your machine' : 'Pair an executor'}
     >
       <div className="grid gap-4">
         {!preview ? (
           <form className="grid gap-4" onSubmit={(event) => void lookup(event)}>
+            {canPairHere ? (
+              <button className="admin-button admin-button-secondary" disabled={busy} onClick={() => void pairHere()} type="button">
+                {localBusy ? 'Connecting…' : 'Connect this computer'}
+              </button>
+            ) : null}
             <label className="grid gap-2 text-sm font-medium text-[color:var(--tx2)]">
               Eight-digit code
               <input
@@ -115,7 +166,7 @@ const PairingSession = ({
             </label>
             <FormError>{error}</FormError>
             <FormActions>
-              <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Cancel</button>
+              <button className="admin-button admin-button-secondary" onClick={() => void close()} type="button">Cancel</button>
               <button className="admin-button admin-button-primary" disabled={busy || code.length !== 8} type="submit">
                 {busy ? 'Checking…' : 'Continue'}
               </button>
@@ -133,8 +184,14 @@ const PairingSession = ({
                     : `Confirm the organisation and team in Nessie Executor on ${preview.machineName}.`}
             </p>
             <FormError>{status.isError ? 'Unable to check pairing. Check your connection, then try again.' : null}</FormError>
+            <FormError>{error}</FormError>
             <FormActions>
-              <button className="admin-button admin-button-secondary" onClick={onClose} type="button">Close</button>
+              <button className="admin-button admin-button-secondary" onClick={() => void close()} type="button">Close</button>
+              {localPairing && !paired && !rejected && remaining > 0 ? (
+                <button className="admin-button admin-button-primary" disabled={busy} onClick={() => void confirmHere()} type="button">
+                  Confirm connection
+                </button>
+              ) : null}
               {paired ? (
                 <button className="admin-button admin-button-primary" onClick={() => onFinished(executorId)} type="button">
                   Open executor

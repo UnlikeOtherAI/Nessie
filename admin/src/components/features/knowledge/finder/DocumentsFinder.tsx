@@ -54,37 +54,19 @@ import { useFinderTransfers } from './useFinderTransfers'
 import { useFinderSpreadsheets } from './useFinderSpreadsheets'
 import { useFinderRootNavigation } from './useFinderRootNavigation'
 import { finderRouteColumns, isKnowledgeAgentsRoute } from './finder-route-columns'
+import type { DocumentsFinderProps } from './documents-finder-types'
 
-/**
- * The Documents Finder: the viewport, its columns, the status bar and the
- * toolbar that acts on whichever column is active. It holds no row markup, and
- * it is the same component wherever documents are browsed; only the scope
- * differs (the root column, a project's folder, an agent's).
- */
-
-export type FinderScope =
-  | { kind: 'org' }
-  | { kind: 'project'; projectId: string }
-  | { kind: 'agent'; spaceId: string; agentId: string }
-
-type DocumentsFinderProps = {
-  /** The ⚙ action; the dialog it opens belongs to the workspace. */
-  canManageSpace: boolean
-  /** The Knowledge root's "New space…" action and visibility dialog. */
-  onCreateRootFolder?: () => void
-  onOpenSettings: () => void
-  // Uploading is the Finder's own (uploads-and-indexing.md §2).
-  scope: FinderScope
-}
+/** Shared document viewport; only its root scope changes between doorways. */
 
 export const DocumentsFinder = ({
   canManageSpace,
   onCreateRootFolder,
   onOpenSettings,
+  documentPane,
   scope,
 }: DocumentsFinderProps) => {
   const knowledge = useKnowledge()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const navigate = useNavigate()
   const single = useNavigationLayout() === 'single'
   const [searchParams, setSearchParams] = useSearchParams()
@@ -103,8 +85,7 @@ export const DocumentsFinder = ({
   const sharedQuery = useSharedWithMe(virtualKind === 'shared-with-me')
 
   // ── View, sort and the open folder, all in the URL ────────────────────────
-  // Read once per mount: the fallback must not move under the hook that
-  // deletes the param when the fallback is selected.
+  // Read once so the fallback cannot move under the hook that deletes it.
   const [storedView] = useState(() => migrateStoredFinderView(getCookie(FINDER_VIEW_COOKIE)))
   const [view, selectView] = useTabParam('view', FINDER_VIEWS, storedView)
   const [storedSort] = useState(() => {
@@ -239,7 +220,7 @@ export const DocumentsFinder = ({
 
   // ── Opening ───────────────────────────────────────────────────────────────
   const { agentsDirectoryOpen, backToAgents, backToRoot, openAgentHome, openRootRow,
-    selectedRootRowId } = useFinderRootNavigation({ dispatch, knowledge, navigate, orgScope })
+    selectedRootRowId } = useFinderRootNavigation({ dispatch, knowledge, navigate, orgScope, search })
 
   // Where an opened document goes: the pane beside the browser, or — on the
   // desktop shell — a window of its own. A folder never reaches it.
@@ -294,7 +275,9 @@ export const DocumentsFinder = ({
     onCreateRootFolder,
     onCreateSpreadsheet: spaceCanWrite ? spreadsheets.openCreate : undefined,
     onImportSpreadsheet: spaceCanWrite ? spreadsheets.openImport : undefined,
-    onOpenSettings,
+    onOpenSettings: () => onOpenSettings(
+      activeParentPageId ? pageById(activeParentPageId) : undefined,
+    ),
     onSelectSort: chooseSort,
     onSelectView: (next) => {
       selectView(next)
@@ -379,6 +362,7 @@ export const DocumentsFinder = ({
       query={rootQuery}
       refuseProps={uploads.refuseProps}
       resize={resizeFor('root')}
+      title={single && !virtualKind ? 'Knowledge' : 'Browse'}
       root={rootQuery.data}
     />
   )
@@ -529,19 +513,26 @@ export const DocumentsFinder = ({
   const scopeReadFailed = !orgScope && knowledge.spacesLoadFailed
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[color:var(--main)] text-[color:var(--tx)]">
+    <div className="relative flex h-full min-h-0 flex-col bg-[color:var(--main)] text-[color:var(--tx)]">
       {toolbar}
       <div className="flex min-h-0 flex-1">
         {scopeReadFailed ? (
           <FinderScopeReadState query={pagesQuery} />
-        ) : view === 'tree' && !single && !virtualColumnKey && !agentsDirectoryOpen ? (
-          <FinderTreePane activePageId={knowledge.openPageId} browseTo={browseTo}
+        ) : view === 'tree' && !single ? (
+          <FinderTreePane activePageId={knowledge.openPageId} activeRootRowId={selectedRootRowId} browseTo={browseTo}
             createFolderColumnKey={creatingFolderIn} createFolderPending={knowledge.createFolderPending}
             onCancelFolder={closeNewFolder} onSubmitFolder={(name) => submitFolder(activeParentPageId, name)}
             onOpenDocument={(page, path) => openDocument(page, () => knowledge.openPagePath(path))}
             onOpenRoot={openRootRow} pagePath={pagePath} pagesQuery={pagesQuery}
             root={rootQuery.data} rootQuery={rootQuery} rowsIn={rowsIn}
-            selectedSpaceId={selectedSpaceId} />
+            selectedSpaceId={selectedSpaceId}
+            agentDocumentsActive={knowledge.selectedRoot?.kind === 'agent-space'}
+            agentsDirectoryActive={agentsDirectoryActive}
+            documentPane={documentPane}
+            onOpenAgent={openAgentHome}
+            virtualListing={virtualKind ? { dispatch, kind: virtualKind, openDocument,
+              openPageDeepLink: knowledge.openPageDeepLink, query: virtualQuery,
+              rows: virtualList, selection } : undefined} />
         ) : listView ? (
           <>
             {orgScope ? (
@@ -580,6 +571,9 @@ export const DocumentsFinder = ({
         )}
       </div>
       {statusBar}
+      {documentPane && view !== 'tree' ? (
+        <div className="absolute inset-0 z-[var(--layer-stack)] bg-[color:var(--main)]">{documentPane}</div>
+      ) : null}
       <FinderUploadInput
         parentPageId={activeParentPageId}
         spaceId={selectedSpaceId}

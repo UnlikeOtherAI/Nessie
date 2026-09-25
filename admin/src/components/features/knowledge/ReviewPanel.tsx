@@ -93,7 +93,7 @@ export const ReviewPanel = ({
         <div className="mt-4 rounded-md border border-[color:var(--sep)] bg-[color:var(--main)] p-3">
           {!published ? (
             <p className="mb-2 text-xs text-[color:var(--tx3)]">
-              New page — no published version to compare.
+              New document — no published version to compare.
             </p>
           ) : null}
           {diff.length === 0 ? (

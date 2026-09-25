@@ -21,8 +21,9 @@ pub async fn executor_pairing_start(
     app: AppHandle,
     workspace_root: String,
     replace: bool,
+    api_base_url: String,
 ) -> Result<serde_json::Value, String> {
-    crate::user_pairing::require_no_user_pairing(&app)?;
+    let origin = pairing_origin::approve(&api_base_url, cfg!(debug_assertions))?.origin;
     let workspace = PathBuf::from(&workspace_root);
     if !workspace.is_absolute() || !workspace.is_dir() {
         return Err("Choose the folder this computer may read.".to_owned());
@@ -47,16 +48,15 @@ pub async fn executor_pairing_start(
     tauri::async_runtime::spawn_blocking(move || request_workspace_grant(&workspace))
         .await
         .map_err(|_| "Workspace access could not be granted.".to_owned())??;
-    let origin = pairing_origin::NESSIE_PRESET_ORIGIN;
     tauri::async_runtime::spawn_blocking(move || request(serde_json::json!({
         "command": "pairingStart", "apiBaseUrl": origin, "workspaceRoot": workspace_root, "replace": replace,
     }))).await.map_err(|_| "Pairing could not be started.".to_owned())?
 }
 
 #[tauri::command]
-pub async fn executor_pairing_status() -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        request(serde_json::json!({ "command": "pairingStatus" }))
+pub async fn executor_pairing_status(executor_id: Option<String>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        request(serde_json::json!({ "command": "pairingStatus", "executorId": executor_id }))
     })
     .await
     .map_err(|_| "Pairing status could not be read.".to_owned())?

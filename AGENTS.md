@@ -120,6 +120,9 @@ It is the only way, and adding a second one is the defect Rule zero names.
 - `pnpm --filter @nessie/admin build` produces the static admin bundle
   (`dist/`); `pnpm --filter @nessie/admin preview` serves it. Prod/CI only —
   use `pnpm dev` for the local loop.
+- The Linux desktop workflow generates Prisma, builds `@nessie/executor` with
+  its workspace dependencies, and prepares the packaged runtime before Tauri
+  builds; keep that ordering aligned with the Windows desktop workflow.
 - Everything else — desktop and App Store bundles, signing, lint-gated root
   builds, Prisma generation ordering, migration immutability:
   [docs/standards/build-and-release.md](docs/standards/build-and-release.md).
@@ -193,7 +196,7 @@ Every change must keep documentation and stated goals in sync with the code. Thi
 - Every UI change must be visually verified using Playwright before considering the work complete.
 - Use Playwright (`mcp__plugin_playwright`, or a local Playwright script) to load `http://localhost:<admin port>/<path>` — 5455 unless this worktree set `NESSIE_ADMIN_PORT` — screenshot the affected page, and confirm the feature renders correctly.
 - Always run Playwright headless unless the user explicitly requests otherwise.
-- Executor pairing, live account-menu presence, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
+- Executor pairing, independent account/server connections on each platform, live account-menu presence, and their browser verification are documented in [docs/executor-pairing.md](docs/executor-pairing.md) and [docs/executor-protocol/management.md](docs/executor-protocol/management.md).
 - This applies to all frontend work: new components, layout changes, styling fixes, and interaction flows.
 
 ## Architecture

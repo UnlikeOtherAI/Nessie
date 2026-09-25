@@ -4,6 +4,7 @@ use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
 mod runtime;
+pub mod code_pairing;
 
 use runtime::{
     companion_availability, companion_root, daemon_status, executor_state_dir, forget_local_pairing,

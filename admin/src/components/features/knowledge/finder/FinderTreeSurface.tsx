@@ -8,6 +8,9 @@ type FinderTreeSurfaceProps = {
   browseTo: (path: string[]) => void
   onOpenDocument: (page: KnowledgePageRecord, path: string[]) => void
   pagePath: string[]
+  basePath?: string[]
+  parentPageId?: string | null
+  emptyLabel?: string
   query: {
     isError: boolean
     isLoading: boolean
@@ -21,6 +24,9 @@ export const FinderTreeSurface = ({
   browseTo,
   onOpenDocument,
   pagePath,
+  basePath = [],
+  parentPageId = null,
+  emptyLabel = 'Nothing here yet.',
   query,
   rowsIn,
 }: FinderTreeSurfaceProps) => (
@@ -30,7 +36,7 @@ export const FinderTreeSurface = ({
     loadingLabel="Loading documents…"
     query={query}
   >
-    {() => rowsIn(null).length === 0 ? <EmptyState className="mt-2">Nothing here yet.</EmptyState> : (
+    {() => rowsIn(parentPageId).length === 0 ? <EmptyState className="mt-2">{emptyLabel}</EmptyState> : (
       <FinderTreeView
         activePageId={activePageId}
         onOpenPage={(page, path) => {
@@ -38,7 +44,8 @@ export const FinderTreeSurface = ({
           onOpenDocument(page, path)
         }}
         pagePath={pagePath}
-        rowsIn={rowsIn}
+        basePath={basePath}
+        rowsIn={(parentId) => parentId === null ? rowsIn(parentPageId) : rowsIn(parentId)}
       />
     )}
   </QueryState>
