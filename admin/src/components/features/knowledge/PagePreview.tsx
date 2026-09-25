@@ -17,6 +17,7 @@ import { KnowledgePane } from './KnowledgePane'
 import { PageNotesLayer } from './notes/PageNotesLayer'
 import { isAgentDraft, pageStatusPillTone } from './page-status'
 import { ReviewPanel } from './ReviewPanel'
+import { AttachmentsDrawer } from './AttachmentsDrawer'
 import type { PageHeaderAction } from '../../shared/ResponsivePageHeader'
 
 type PagePreviewProps = {
@@ -109,7 +110,7 @@ export const PagePreview = ({
               disabled: archivePending,
               icon: faBoxArchive,
               id: 'archive-page',
-              label: 'Archive page',
+              label: 'Archive document',
               onSelect: () => {
                 setArchiveError(null)
                 setArchiveConfirmOpen(true)
@@ -118,7 +119,7 @@ export const PagePreview = ({
           : []),
       ],
       kind: 'menu',
-      label: 'Page actions',
+      label: 'Document actions',
       priority: 10,
     },
   ]
@@ -198,6 +199,14 @@ export const PagePreview = ({
           </QueryState>
         </div>
 
+        <AttachmentsDrawer
+          canWrite={canWrite}
+          inline
+          onClose={() => undefined}
+          open
+          pageId={page.id}
+        />
+
         <BacklinksPanel pageId={page.id} />
 
         <CommentsSection canResolve={canWrite} composerRef={commentsComposerRef} pageId={page.id} />
@@ -205,13 +214,13 @@ export const PagePreview = ({
       <ConfirmDialog
         body={
           <>
-            <p>The page will be removed from this space. Its version history is retained.</p>
+            <p>The document will be removed from this space. Its version history is retained.</p>
             {archiveError ? (
               <p className="mt-2 text-[color:var(--danger-text)]" role="alert">{archiveError}</p>
             ) : null}
           </>
         }
-        confirmLabel={archivePending ? 'Archiving…' : 'Archive page'}
+        confirmLabel={archivePending ? 'Archiving…' : 'Archive document'}
         destructive
         onCancel={() => {
           setArchiveConfirmOpen(false)
@@ -222,7 +231,7 @@ export const PagePreview = ({
           void onArchive()
             .then(() => setArchiveConfirmOpen(false))
             .catch((error: unknown) => {
-              setArchiveError(toFormErrors(error).formError ?? 'Unable to archive this page.')
+              setArchiveError(toFormErrors(error).formError ?? 'Unable to archive this document.')
             })
         }}
         open={archiveConfirmOpen}

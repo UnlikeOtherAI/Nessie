@@ -51,7 +51,7 @@ export const WikilinkCreateConfirm = ({
             : { top: 0, left: 0, visibility: 'hidden' as const }),
         }}
       >
-        <p className="text-[color:var(--tx)]">Create page “{title}” in this space?</p>
+        <p className="text-[color:var(--tx)]">Create document “{title}” in this space?</p>
         <div className="flex justify-end gap-2">
           <button
             className="admin-button admin-button-secondary admin-button-compact"

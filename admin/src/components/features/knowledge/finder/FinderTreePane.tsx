@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { KnowledgePageRecord } from '../../../../facades/knowledge/hooks'
 import type { KnowledgeRoot } from '@nessie/schemas'
 import type { FinderRootRow } from './FinderRootColumn'
@@ -5,6 +6,7 @@ import { FinderTreeSidebar } from './FinderTreeSidebar'
 
 type FinderTreePaneProps = {
   activePageId?: string
+  activeRootRowId?: string
   browseTo: (path: string[]) => void
   createFolderColumnKey: string | null
   createFolderPending: boolean
@@ -18,10 +20,12 @@ type FinderTreePaneProps = {
   rootQuery: { isError: boolean; isLoading: boolean; refetch: () => unknown }
   rowsIn: (parentPageId: string | null) => KnowledgePageRecord[]
   selectedSpaceId?: string
+  detail?: ReactNode
 }
 
 export const FinderTreePane = ({
   activePageId,
+  activeRootRowId,
   browseTo,
   createFolderColumnKey,
   createFolderPending,
@@ -35,10 +39,12 @@ export const FinderTreePane = ({
   rootQuery,
   rowsIn,
   selectedSpaceId,
+  detail,
 }: FinderTreePaneProps) => (
   <div className="flex min-w-0 flex-1">
     <FinderTreeSidebar
       activePageId={activePageId}
+      activeRootRowId={activeRootRowId}
       browseTo={browseTo}
       createFolderColumnKey={createFolderColumnKey}
       createFolderPending={createFolderPending}
@@ -53,6 +59,8 @@ export const FinderTreePane = ({
       rowsIn={rowsIn}
       selectedSpaceId={selectedSpaceId}
     />
-    <div className="min-w-0 flex-1" />
+    <div className="min-w-0 flex-1 border-l border-[color:var(--sep)] bg-[color:var(--main)]">
+      {detail}
+    </div>
   </div>
 )

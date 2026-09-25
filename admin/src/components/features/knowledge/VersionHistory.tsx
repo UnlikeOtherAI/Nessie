@@ -4,6 +4,7 @@ import type {
   KnowledgePageRecord,
   KnowledgeVersionRecord,
 } from '../../../facades/knowledge/hooks'
+import { buildVersionDiff, type VersionDiffOperation } from './version-history-diff'
 
 type VersionHistoryProps = {
   canRestore: boolean
@@ -13,38 +14,48 @@ type VersionHistoryProps = {
   versions: KnowledgeVersionRecord[]
 }
 
-type DiffLine = {
-  left: string
-  right: string
-  state: 'same' | 'changed' | 'added' | 'removed'
+const changeTone: Record<VersionDiffOperation['change'], { old: string; current: string }> = {
+  same: { old: 'text-[color:var(--tx2)]', current: 'text-[color:var(--tx2)]' },
+  removed: {
+    old: 'bg-[color:var(--danger-soft)] text-[color:var(--danger-text)]',
+    current: '',
+  },
+  added: {
+    old: '',
+    current: 'bg-[color:var(--success-soft)] text-[color:var(--success-text)]',
+  },
+  format: {
+    old: 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
+    current: 'bg-[color:var(--accent-soft)] text-[color:var(--accent)]',
+  },
 }
 
-const buildLineDiff = (leftBody: string, rightBody: string): DiffLine[] => {
-  const left = leftBody.split('\n')
-  const right = rightBody.split('\n')
-  const length = Math.max(left.length, right.length)
-  return Array.from({ length }, (_, index) => {
-    const leftLine = left[index] ?? ''
-    const rightLine = right[index] ?? ''
-    if (leftLine === rightLine) {
-      return { left: leftLine, right: rightLine, state: 'same' }
-    }
-    if (left[index] === undefined) {
-      return { left: '', right: rightLine, state: 'added' }
-    }
-    if (right[index] === undefined) {
-      return { left: leftLine, right: '', state: 'removed' }
-    }
-    return { left: leftLine, right: rightLine, state: 'changed' }
-  })
+const marksClass = (marks: string) => {
+  const classes: string[] = []
+  if (marks.includes('bold')) classes.push('font-semibold')
+  if (marks.includes('italic')) classes.push('italic')
+  if (marks.includes('underline')) classes.push('underline')
+  if (marks.includes('strike')) classes.push('line-through')
+  if (marks.includes('code')) classes.push('rounded bg-[color:var(--overlay-weak)] px-1 font-mono text-[0.9em]')
+  if (marks.includes('heading-')) classes.push('font-semibold text-[1.15em]')
+  return classes.join(' ')
 }
 
-const lineTone: Record<DiffLine['state'], string> = {
-  same: 'text-[color:var(--tx2)]',
-  changed: 'bg-[var(--warning-soft)] text-[var(--warning-text)]',
-  added: 'bg-[var(--success-soft)] text-[var(--success-text)]',
-  removed: 'bg-[var(--danger-soft)] text-[var(--danger-text)]',
-}
+const renderSide = (diff: VersionDiffOperation[], side: 'old' | 'current') => (
+  <div className="min-h-28 whitespace-pre-wrap break-words px-3 py-3 text-sm leading-7">
+    {diff.map((operation, index) => {
+      const token = side === 'old' ? operation.oldToken : operation.newToken
+      if (!token) return null
+      const tone = changeTone[operation.change][side]
+      const marks = marksClass(token.marks)
+      return (
+        <span className={`${tone} ${marks}`} key={`${index}-${side}`}>
+          {token.text}
+        </span>
+      )
+    })}
+  </div>
+)
 
 export const VersionHistory = ({
   canRestore,
@@ -59,7 +70,7 @@ export const VersionHistory = ({
   const currentBody = page.latestVersion?.body ?? ''
   const selectedBody = selectedVersion?.body ?? ''
   const diff = useMemo(
-    () => buildLineDiff(selectedBody, currentBody),
+    () => buildVersionDiff(selectedBody, currentBody),
     [currentBody, selectedBody],
   )
 
@@ -107,17 +118,16 @@ export const VersionHistory = ({
               <div className="border-b border-[color:var(--sep)] px-3 py-2 text-xs text-[color:var(--tx3)]">
                 Current
               </div>
-              {diff.map((line, index) => (
-                <div className="contents" key={`${index}-${line.state}`}>
-                  <pre className={`border-r border-[color:var(--sep)] px-3 py-1 text-xs ${lineTone[line.state]}`}>
-                    {line.left || ' '}
-                  </pre>
-                  <pre className={`px-3 py-1 text-xs ${lineTone[line.state]}`}>
-                    {line.right || ' '}
-                  </pre>
-                </div>
-              ))}
+              <div className="border-r border-[color:var(--sep)]">
+                {renderSide(diff, 'old')}
+              </div>
+              {renderSide(diff, 'current')}
             </div>
+            <p className="mt-3 text-xs text-[color:var(--tx3)]">
+              <span className="mr-3 text-[color:var(--danger-text)]">Removed</span>
+              <span className="mr-3 text-[color:var(--success-text)]">Added</span>
+              <span className="text-[color:var(--accent)]">Formatting changed</span>
+            </p>
           </div>
         </>
       ) : (

@@ -115,6 +115,8 @@ export type FinderRowProps = {
   trailing?: ReactNode
   /** Live cross-space move or copy: the row is read-only until it lands. */
   transfer?: 'move' | 'copy' | null
+  /** Tree rows use the same soft selected treatment as Channels navigation. */
+  tree?: boolean
   upload?: FinderRowUpload
   variant: FinderRowVariant
 }
@@ -257,6 +259,7 @@ export const FinderRow = ({
   title,
   trailing,
   transfer,
+  tree = false,
   upload,
   variant,
 }: FinderRowProps) => {
@@ -302,6 +305,7 @@ export const FinderRow = ({
         'data-finder-row': id,
         'data-finder-variant': variant,
         ...(kind ? { 'data-finder-kind': kind } : {}),
+        ...(tree ? { 'data-finder-tree-row': 'true' } : {}),
         ...(kind === 'folder' || variant === 'root' ? { 'data-finder-folder': 'true' } : {}),
       }}
       disabled={disabled || transferring}
