@@ -327,6 +327,7 @@ when one changes, the same turn updates it, not this section.
   Every read that enters a run's context feeds the `ConsumedSourceSink` in the
   same change; an empty basis means unrestricted, so a forgotten read fails
   open.
+  Authorized executor access has no additional private-conversation write veto.
   Read [`docs/standards/disclosure-boundaries.md`](docs/standards/disclosure-boundaries.md)
   before writing code here.
 - **Agent ownership, visibility and edit authority.** An agent belongs to a

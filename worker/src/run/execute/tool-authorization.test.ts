@@ -289,6 +289,7 @@ const runLoop = async (input: {
   executorTools?: Record<string, AgenticToolResult>
   reviewer?: 'allow' | 'deny' | 'unavailable' | 'unparseable' | 'require_approval'
   restricted?: boolean
+  privateConversation?: boolean
   resolvedBuiltinToolIds?: Set<string>
   rules?: Array<Record<string, unknown>>
   // Sequence of sub-agent turns used by the delegate path.
@@ -299,6 +300,9 @@ const runLoop = async (input: {
 }): Promise<LoopHarness> => {
   const fake = fakePrisma()
   const context = runContext()
+  if (input.privateConversation) {
+    context.consumedSources.addPrivateConversationSource({ sourceChannelId: CHANNEL_ID, sourceAuthorUserId: USER_ID })
+  }
   const wsEvents: PublishedWsEvent[] = []
   if (input.restricted) {
     context.consumedSources.add({
@@ -718,12 +722,35 @@ for (const [reviewer, expectedReason] of [
 
 // --- main executor ---
 
+for (const toolName of ['terminal_session_start', 'terminal_session_write', 'coding_session_close', 'executor_mcp_call']) {
+  test(`private conversation does not veto authorized executor tool ${toolName}`, async () => {
+    const harness = await runLoop({
+      executorTools: { [toolName]: { inputSummary: 'authorized machine call', output: 'done', success: true } },
+      privateConversation: true,
+      toolName,
+    })
+    assert.deepEqual(harness.dispatchedExecutor, [toolName])
+    assert.equal(harness.fake.approvalRequests.length, 0)
+  })
+}
+
+test('private conversation still blocks a standalone MCP connector', async () => {
+  const harness = await runLoop({
+    mcpTools: { mcp_publish: { inputSummary: 'publish', output: 'done', success: true } },
+    privateConversation: true,
+    toolName: 'mcp_publish',
+  })
+  assert.deepEqual(harness.dispatchedMcp, [])
+  assert.equal(deniedOutput(harness.result, 'mcp_publish')['reason'], 'private_conversation_disclosure_required')
+})
+
 test('main executor: a policy deny intercepts before dispatch and is audited', async () => {
   const harness = await runLoop({
     executorTools: {
       'executor_file_read': { inputSummary: 'read', output: 'read', success: true },
     },
     rules: [denyRule('executor_file_read')],
+    privateConversation: true,
     toolName: 'executor_file_read',
   })
   assert.deepEqual(harness.dispatchedExecutor, [])
