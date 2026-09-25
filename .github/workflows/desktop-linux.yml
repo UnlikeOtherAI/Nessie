@@ -169,16 +169,18 @@ jobs:
           test -n "${entry}"
           command="$(grep --max-count=1 '^Exec=' "${entry}" | cut --delimiter='=' --fields=2- | cut --delimiter=' ' --fields=1)"
           echo "launching ${command}"
-          export DISPLAY=:99
-          xvfb-run --server-num=99 --server-args='-screen 0 1280x800x24' "${command}" &
-          wrapper=$!
-          sleep 10
-          # Alive after ten seconds, and owning a window: a shell that starts and
-          # dies immediately would otherwise pass as a build success.
-          kill -0 "${wrapper}"
-          pgrep --full "${command}" > /dev/null
-          xdotool search --name Nessie
-          kill "${wrapper}"
+          xvfb-run --server-num=99 --server-args='-screen 0 1280x800x24' \
+            bash -euo pipefail -c '
+              "$1" &
+              app_pid=$!
+              trap "kill \"${app_pid}\" 2>/dev/null || true" EXIT
+              sleep 10
+              # Alive after ten seconds, and owning a window: a shell that starts and
+              # dies immediately would otherwise pass as a build success.
+              kill -0 "${app_pid}"
+              pgrep --full -- "$1" > /dev/null
+              xdotool search --name Nessie
+            ' _ "${command}"
 
   firecracker-conformance:
     name: Firecracker backend conformance
