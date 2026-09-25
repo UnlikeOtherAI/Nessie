@@ -37,7 +37,10 @@ createRoot(document.getElementById('root')!).render(
       <main style={workspace}>
         <h1 style={{ color: 'var(--tx)', fontSize: 28, fontWeight: 700 }}>Agents</h1>
         <p style={{ color: 'var(--tx3)', marginTop: 10 }}>Your workspace</p>
-        <div style={{ background: 'var(--accent-soft)', borderRadius: 20, height: 180, marginTop: 70, width: 360 }} />
+        <div style={{ background: 'var(--accent-soft)', borderRadius: 20, height: 280, marginTop: 160, padding: 30, width: 360 }}>
+          <div style={{ background: 'var(--accent)', borderRadius: 16, height: 52, width: 220 }} />
+          <div style={{ background: 'var(--success-soft)', borderRadius: 12, height: 48, marginTop: 28, width: 260 }} />
+        </div>
       </main>
     </div>
   </TransientMenuProvider>,
