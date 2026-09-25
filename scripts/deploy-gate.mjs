@@ -79,6 +79,7 @@ export function decideDeployGate({ eventName, repository, ref, workflowRun, main
 
   return {
     behind,
+    ciRunId: workflowRuns.find((run) => trustedSuccessfulMainRun(run, repository, candidates[behind])).id,
     eligible: true,
     reason: behind === 0
       ? 'current main tip passed trusted CI'
@@ -143,6 +144,7 @@ const main = async () => {
   if (decision.eligible) {
     writeOutput('behind', String(decision.behind))
     writeOutput('sha', decision.sha)
+    writeOutput('ci_run_id', String(decision.ciRunId))
   }
 }
 
