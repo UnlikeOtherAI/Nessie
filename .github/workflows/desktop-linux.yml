@@ -71,8 +71,12 @@ jobs:
         with:
           deep-agent-read-token: ${{ secrets.DEEP_AGENT_READ_TOKEN }}
 
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
       # Tauri's pre-build command bundles the executor from workspace package
-      # dist exports. Build those dependencies before prepare:executor-runtime.
+      # dist exports. Prisma client generation and these dependency builds must
+      # finish before prepare:executor-runtime runs.
       - name: Build executor bundle dependencies
         run: pnpm exec turbo run build --filter=@nessie/executor...
 
