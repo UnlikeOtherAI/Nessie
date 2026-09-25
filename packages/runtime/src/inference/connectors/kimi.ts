@@ -18,10 +18,10 @@ import {
   nativeToolCallsFromContent,
   normalizeAnthropicFinishReason,
   parseKimiToolCalls,
-  toAnthropicPayload,
   type AnthropicMessagesResponse,
   usageFromAnthropic,
 } from './kimi-anthropic-protocol.js'
+import { toAnthropicPayload } from './kimi-messages.js'
 import { createBaseSnapshot } from './model-capabilities.js'
 import { isLedgerEndpoint } from '../../ledger-identity.js'
 

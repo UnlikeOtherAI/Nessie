@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   toAnthropicPayload,
   type AnthropicPayloadMessage,
-} from '../src/inference/connectors/kimi-anthropic-protocol.js'
+} from '../src/inference/connectors/kimi-messages.js'
 import type { ProviderMessage, ToolSchemaDescriptor } from '../src/inference/types.js'
 
 const ANCHOR = 'You are a helpful agent.'
@@ -62,7 +62,7 @@ test('volatile system variance never changes the cached block bytes', () => {
   assert.deepEqual(systemBlocks(a.system)[0], systemBlocks(b.system)[0])
 })
 
-test('a mid-run wind-down system turn lands in a volatile block, not the cached one', () => {
+test('a mid-run instruction follows the assistant instead of turning its answer into a prefill', () => {
   const payload = toAnthropicPayload(
     [
       { role: 'system', content: ANCHOR },
@@ -74,11 +74,13 @@ test('a mid-run wind-down system turn lands in a volatile block, not the cached 
     { cache: true },
   )
   const blocks = systemBlocks(payload.system)
-  assert.equal(blocks.length, 2)
+  assert.equal(blocks.length, 1)
   assert.ok(blocks[0]?.text.includes(ANCHOR))
   assert.deepEqual(blocks[0]?.cache_control, { type: 'ephemeral' })
-  assert.ok(blocks[1]?.text.includes('wind down'))
-  assert.equal(blocks[1]?.cache_control, undefined)
+  assert.deepEqual(payload.messages.map((message) => message.role), ['user', 'assistant', 'user'])
+  const tail = payload.messages.at(-1)!
+  assert.ok(Array.isArray(tail.content))
+  assert.match(tail.content[0]!.text, /<system_instruction>\nBudget notice: wind down and hand over\.\n<\/system_instruction>/)
 })
 
 test('with cache, a sliding breakpoint rides on the last message only', () => {
@@ -103,4 +105,19 @@ test('without cache, messages stay plain strings', () => {
 test('cache flag with no system content yields no system', () => {
   const payload = toAnthropicPayload([{ role: 'user', content: 'hi' }], undefined, { cache: true })
   assert.equal(payload.system, undefined)
+})
+
+test('empty-answer recovery stays after the request even when the empty assistant turn is omitted', () => {
+  const payload = toAnthropicPayload([
+    { role: 'system', content: ANCHOR },
+    { role: 'user', content: 'Measure once.' },
+    { role: 'assistant', content: null },
+    { role: 'system', content: 'No answer or tool call arrived. Continue the authorized work.' },
+  ])
+  assert.equal(payload.system, ANCHOR)
+  assert.deepEqual(payload.messages, [{
+    role: 'user',
+    content: 'Measure once.\n\n<system_instruction>\n'
+      + 'No answer or tool call arrived. Continue the authorized work.\n</system_instruction>',
+  }])
 })

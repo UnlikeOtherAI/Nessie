@@ -94,7 +94,45 @@ reading each other. Ollama's per-model levels are not sent: too few models
 accept them and nothing discovers which, so on this lane effort collapses to
 on or off ([local-ollama-agents.md](local-ollama-agents.md)).
 
-## What is deliberately not done
+## Provider-specific behavior
+
+### Kimi continuation ordering
+
+Only leading system messages are hoisted into the Messages API's top-level
+`system` field. Once the conversation has started, application instructions
+(completion review, empty-response recovery and budget wind-down) stay at their
+chronological position, in a user-role `<system_instruction>` text block. This
+is a transport representation of the application instruction, not a new human
+request or a permission grant. Initial policy and tool availability stay intact.
+
+Hoisting a correction after an assistant answer left that answer as the last
+wire message. The endpoint treated it as an assistant prefill and returned an
+empty `end_turn` (seven output tokens), including on the recovery attempt.
+A live comparison on 2026-09-25 reproduced that result; preserving the
+continuation as the final turn produced the requested tool call. Request
+mapping lives in `kimi-messages.ts`, separately from response decoding in
+`kimi-anthropic-protocol.ts`. Cache breakpoints remain on the stable leading
+system block and the transcript tail. Both streaming and non-streaming tests
+cover continuation, one tool call, its result and completion.
+
+See the [Messages API prefill contract](https://platform.claude.com/docs/en/build-with-claude/working-with-messages).
+
+### Other provider continuations
+
+The Codex Responses adapter also keeps only leading system context in top-level
+`instructions`; later application corrections remain ordered `developer`
+input items, matching Codex's runtime context updates. Hoisting them would lose
+their position relative to the assistant answer and completed tool results.
+The [Responses message roles](https://developers.openai.com/api/docs/guides/prompt-engineering)
+support this representation without reducing instruction priority.
+
+OpenAI Chat Completions, the shared OpenAI-compatible connector (including
+OpenRouter, DashScope and Grok), DeepSeek and local Ollama already preserve message
+order. Transport tests cover each path, including correction placement, tool
+availability and returned tool calls; Ollama also retains prior reasoning.
+These are protocol tests, not a claim that every hosted model was live-tested.
+
+### Provider limitations
 
 - **Kimi for Coding** (Anthropic Messages wire) is not asked for thinking;
   its backend sends `thinking_delta` on its own and the stream reader forwards

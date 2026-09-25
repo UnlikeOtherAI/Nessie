@@ -27,7 +27,7 @@ export const DEFAULT_CODEX_MODEL = 'gpt-5-codex'
 
 /** A Responses `input` item. Tool results are their own item type here. */
 type CodexInputItem =
-  | { role: 'user' | 'assistant'; content: Array<Record<string, unknown>> }
+  | { role: 'user' | 'assistant' | 'developer'; content: Array<Record<string, unknown>> }
   | { type: 'function_call'; call_id: string; name: string; arguments: string }
   | { type: 'function_call_output'; call_id: string; output: string }
 
@@ -48,8 +48,8 @@ export type CodexRequestBody = {
 /**
  * Fold Nessie's provider messages into a Responses request.
  *
- * System turns become `instructions` (the Responses API's own slot for them)
- * rather than a pseudo-message, and an assistant turn carrying tool calls
+ * Leading system turns become `instructions`; later application corrections
+ * stay in place as developer input. An assistant turn carrying tool calls
  * expands into one `function_call` item per call — the shape the backend
  * echoes back, so a replayed transcript round-trips.
  */
@@ -62,7 +62,8 @@ export const mapMessagesToCodex = (
 
   for (const message of messages) {
     if (message.role === 'system') {
-      instructions.push(message.content)
+      if (input.length === 0) instructions.push(message.content)
+      else input.push({ role: 'developer', content: [{ type: 'input_text', text: message.content }] })
       continue
     }
     if (message.role === 'tool') {
