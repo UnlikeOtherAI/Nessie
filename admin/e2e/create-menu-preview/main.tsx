@@ -37,9 +37,11 @@ createRoot(document.getElementById('root')!).render(
       <main style={workspace}>
         <h1 style={{ color: 'var(--tx)', fontSize: 28, fontWeight: 700 }}>Agents</h1>
         <p style={{ color: 'var(--tx3)', marginTop: 10 }}>Your workspace</p>
-        <div style={{ background: 'var(--accent-soft)', borderRadius: 20, height: 280, marginTop: 160, padding: 30, width: 360 }}>
-          <div style={{ background: 'var(--accent)', borderRadius: 16, height: 52, width: 220 }} />
-          <div style={{ background: 'var(--success-soft)', borderRadius: 12, height: 48, marginTop: 28, width: 260 }} />
+        <div style={{ background: 'var(--accent-soft)', borderRadius: 20, height: 310, marginTop: 160, padding: 30, width: 360 }}>
+          <div style={{ background: 'var(--accent)', borderRadius: 16, height: 68, marginTop: 40, width: 220 }} />
+          <div style={{ color: 'var(--tx)', fontSize: 18, fontWeight: 700, marginTop: 14 }}>Project updates</div>
+          <div style={{ color: 'var(--tx2)', marginTop: 12 }}>Review the new proposal</div>
+          <div style={{ color: 'var(--tx2)', marginTop: 12 }}>Share notes with the team</div>
         </div>
       </main>
     </div>
