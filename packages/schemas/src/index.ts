@@ -153,3 +153,5 @@ export * from './schema-prose.js'
 export * from './trigger-configs.js'
 export * from './local-inference-resource.js'
 export * from './agent-reaction.js'
+
+export * from './executor-sharing.js'

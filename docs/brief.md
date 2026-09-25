@@ -50,6 +50,13 @@ and the Nessie/deep.agent boundary are specified in the
 [agent documents and learning plan](plans/2026-09-08-agent-documents-and-learning.md).
 This is planned work, not a claim that the learning loop has shipped.
 
+## Executor sharing (2026-09-25)
+
+An executor's owner directly assigns agents and shares use with people,
+projects or the current team. People may be made administrators; project and
+whole-team sharing also exposes management to that team's administrators.
+Machine capabilities require no review. See [executor sharing](standards/executor-sharing.md).
+
 ## Local model agents direction (2026-09-20)
 
 An existing agent may explicitly use an installed Ollama model through a paired

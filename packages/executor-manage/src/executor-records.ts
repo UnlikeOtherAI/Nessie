@@ -1,17 +1,18 @@
+import { recordFromRow, type ExecutorRecord } from './executor-inventory-record.js'
+export type { ExecutorRecord } from './executor-inventory-record.js'
+import { executorSharingVisibility } from './executor-shared-access.js'
 import { createHash, randomBytes } from 'node:crypto'
 
 import type { PrismaClient } from '@prisma/client'
 import {
-  ExecutorScopeSchema, IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
+  IMPLEMENTED_EXECUTOR_OPERATION_KEYS,
 } from '@nessie/schemas'
-import { ExecutorPlatformFactsSchema, type ExecutorLocalMcpReport } from '@nessie/schemas'
+import { type ExecutorLocalMcpReport } from '@nessie/schemas'
 import { descriptorRevisionViews, localMcpFor } from './executor-view-projections.js'
 import type {
   AuthorizedActionContext,
   ExecutorCodingSessionsFacts,
-  ExecutorPlatformFacts,
   ExecutorProfile,
-  ExecutorScope,
 } from '@nessie/schemas'
 
 import {
@@ -26,40 +27,6 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 
 const PAIRING_TTL_MS = 10 * 60 * 1_000
-
-type ExecutorRow = {
-  id: string
-  organizationId: string
-  projectId: string | null
-  scopeKind: 'private' | 'project' | 'organization'
-  pairingOwnerUserId: string
-  label: string
-  profiles: ExecutorProfile[]
-  platformFacts: unknown
-  machineKeyFingerprint: string | null
-  status: 'pending_pairing' | 'online' | 'offline' | 'paused' | 'draining' | 'revoked' | 'error'
-  authorizationRevision: number
-  lastSeenAt: Date | null
-  statusDetail: string | null
-  createdAt: Date
-  updatedAt: Date
-}
-
-export type ExecutorRecord = {
-  id: string
-  scope: ExecutorScope
-  label: string
-  profiles: ExecutorProfile[]
-  /** Read-only host facts the daemon stated under its own signature. */
-  platformFacts?: ExecutorPlatformFacts
-  machineKeyFingerprint?: string
-  status: ExecutorRow['status']
-  authorizationRevision: number
-  lastSeenAt?: string
-  statusDetail?: string
-  createdAt: string
-  updatedAt: string
-}
 
 export type ExecutorPairingInvitation = {
   enrollmentId: string
@@ -135,31 +102,6 @@ export type CreateExecutorInput = {
     | { principalKind: 'agent'; agentId: string; role: 'use' }
   >
 }
-
-// A row written before the platform contract widened states no supervisor or
-// sandbox backend, so it reads as absent rather than half-guessed; the daemon
-// replaces it with its next proposed revision.
-const platformFactsFor = (stored: unknown): { platformFacts?: ExecutorPlatformFacts } => {
-  const parsed = ExecutorPlatformFactsSchema.safeParse(stored)
-  return parsed.success ? { platformFacts: parsed.data } : {}
-}
-
-const recordFromRow = (row: ExecutorRow): ExecutorRecord => ({
-  id: row.id,
-  scope: ExecutorScopeSchema.parse(row.scopeKind === 'project'
-    ? { kind: 'project', organizationId: row.organizationId, projectId: row.projectId! }
-    : { kind: row.scopeKind, organizationId: row.organizationId }),
-  label: row.label,
-  profiles: row.profiles,
-  ...platformFactsFor(row.platformFacts),
-  ...(row.machineKeyFingerprint ? { machineKeyFingerprint: row.machineKeyFingerprint } : {}),
-  status: row.status,
-  authorizationRevision: row.authorizationRevision,
-  ...(row.lastSeenAt ? { lastSeenAt: row.lastSeenAt.toISOString() } : {}),
-  ...(row.statusDetail ? { statusDetail: row.statusDetail } : {}),
-  createdAt: row.createdAt.toISOString(),
-  updatedAt: row.updatedAt.toISOString(),
-})
 
 const challengeVerifier = (challenge: string): string =>
   `sha256:${createHash('sha256').update(challenge).digest('hex')}`
@@ -352,6 +294,7 @@ export const listVisibleExecutors = async (
       organizationId,
       removedAt: null,
       OR: [
+        executorSharingVisibility(userId),
         { scopeKind: 'organization' },
         ...(visibleSharedScope ? [{ scopeKind: 'project' as const }] : []),
         ...(projectIds.length > 0 ? [{ scopeKind: 'project' as const, projectId: { in: projectIds } }] : []),
@@ -363,6 +306,7 @@ export const listVisibleExecutors = async (
         },
       ],
     },
+    include: { teamAccess: { select: { everyone: true } }, _count: { select: { projectAccess: true } } },
     orderBy: [{ createdAt: 'desc' }],
   })
   return rows.map(recordFromRow)
@@ -377,6 +321,7 @@ export const getExecutorForUser = async (
   if (!userId) return null
   const executor = await prisma.executor.findFirst({
     where: { id: executorId, organizationId: actorContext.tenant.organizationId, removedAt: null },
+    include: { teamAccess: { select: { everyone: true } }, _count: { select: { projectAccess: true } } },
   })
   if (!executor) return null
   const access = await resolveExecutorHumanAccess(

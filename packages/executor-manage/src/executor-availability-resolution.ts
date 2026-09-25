@@ -9,6 +9,7 @@ import {
   type ImplementedExecutorOperationKey,
 } from '@nessie/schemas'
 
+import { executorSharingVisibility, resolveExecutorSharedAccess } from './executor-shared-access.js'
 import { requireHumanActor } from './executor-access.js'
 import { executorCandidateHandleDigest } from './executor-candidate-handle.js'
 import {
@@ -149,6 +150,7 @@ export const resolveExecutorAvailabilityCandidates = async (
       organizationId,
       ...(input.executorId ? { id: input.executorId } : {}),
       OR: [
+        executorSharingVisibility(actorUserId),
         { scopeKind: 'organization' },
         ...(context.projectId ? [{ projectId: context.projectId, scopeKind: 'project' as const }] : []),
         {
@@ -190,6 +192,7 @@ export const resolveExecutorAvailabilityCandidates = async (
   }> = []
 
   for (const executor of executors) {
+    const sharedUse = (await resolveExecutorSharedAccess(prisma, executor.id, actorUserId, context.projectId)).use
     const latest = executor.capabilityRevisions[0]
     const descriptor = latest
       ? ExecutorCapabilityDescriptorSchema.safeParse(latest.descriptor)
@@ -207,7 +210,7 @@ export const resolveExecutorAvailabilityCandidates = async (
           && descriptor.data.operationKeys.includes(operationKey)),
         logicalToolAllowed: policy[logicalTools.get(operationKey) ?? ''] === true,
         operationGrantState: grants.get(operationKey) ?? null,
-        scope: resolveExecutorScopeFacts(executor, actorUserId, agent.id, context),
+        scope: resolveExecutorScopeFacts(executor, actorUserId, agent.id, { ...context, sharedUse }),
       })
       if (decision.available) {
         readyKeys.push(operationKey)

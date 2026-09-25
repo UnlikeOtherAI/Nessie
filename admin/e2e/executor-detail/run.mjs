@@ -9,6 +9,9 @@ import { assertFreshServersAvailable, startAdmin, stopProcess } from '../navigat
 const executorId = '33333333-3333-4333-8333-333333333333'
 const userId = '11111111-1111-4111-8111-111111111111'
 const changeId = '44444444-4444-4444-8444-444444444444'
+const teamId = '77777777-7777-4777-8777-777777777777'
+const invitedId = '88888888-8888-4888-8888-888888888888'
+const projectId = '99999999-9999-4999-8999-999999999999'
 const timestamp = '2026-09-21T00:00:00.000Z'
 const executor = { id: executorId, label: 'Studio Mac', profiles: ['workspace_sandbox'], status: 'offline',
   scope: { kind: 'private', organizationId: '22222222-2222-4222-8222-222222222222' },
@@ -45,13 +48,33 @@ ExecutorAccessViewResponseSchema.parse(access)
  * the list leaves out what has ended.
  */
 const openContext = async (browser, width, { policies = standing } = {}) => {
-  const state = { ended: [], policies: [...policies], prepared: null, unexpected: [] }
+  const permissions = { executorId, teamId, ownerUserId: userId, everyone: false,
+    people: [{ userId, name: 'Alex', role: 'admin' }], projects: [],
+    availablePeople: [{ userId: invitedId, name: 'Sam' }],
+    availableProjects: [{ projectId, name: 'Website' }] }
+  const state = { sharing: [], ended: [], policies: [...policies], prepared: null, unexpected: [] }
   const context = await browser.newContext({ hasTouch: width === 390, viewport: { width, height: 900 } })
   await context.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     const method = route.request().method()
     const respond = (data) => route.fulfill({ json: { data } })
-    if (path === '/api/executors') return respond([executor])
+    if (path === '/api/executors') return respond([{
+      ...executor, sharedWithTeam: permissions.everyone || permissions.projects.length > 0,
+    }])
+    if (path.endsWith('/sharing')) {
+      if (method === 'PUT') {
+        const { change } = route.request().postDataJSON()
+        state.sharing.push(change)
+        if (change.kind === 'team') permissions.everyone = change.enabled
+        if (change.kind === 'person') {
+          permissions.people = permissions.people.filter((entry) => entry.userId !== change.userId)
+          if (change.role) permissions.people.push({ userId: change.userId, name: 'Sam', role: change.role })
+        }
+        if (change.kind === 'project') permissions.projects = change.enabled ? [{ projectId, name: 'Website' }] : []
+        return respond({ updated: true })
+      }
+      return respond(permissions)
+    }
     if (path.endsWith('/access')) return respond(access)
     if (path === `/api/executors/${executorId}/agents`) return route.fulfill({ json: { data: [], meta: { total: 0, hasMore: false, prevCursor: null, nextCursor: null } } })
     if (path === `/api/executors/${executorId}/leases`) return respond([])
@@ -108,20 +131,23 @@ try {
     assert.equal(await page.getByText('Local Ollama', { exact: true }).count(), 0)
     await page.screenshot({ animations: 'disabled', path: resolve(output, `agents-${width}.png`) })
     await page.getByRole('tab', { name: /^Permissions/ }).click()
-    await page.getByText('projects', { exact: false }).waitFor()
-    assert.equal(await page.getByText('old-folder', { exact: false }).count(), 0)
-    assert.equal(await page.getByText('sha256:', { exact: false }).count(), 0)
-    assert.equal(await page.getByText('pending_review', { exact: false }).count(), 0)
+    await page.getByLabel('Everyone in this team can use this executor').waitFor()
+    assert.equal(await page.getByRole('button', { name: 'Review changes', exact: true }).count(), 0)
+    await page.getByLabel('Person', { exact: true }).selectOption(invitedId)
+    await page.getByLabel('Access', { exact: true }).selectOption('admin')
+    await page.getByRole('button', { name: 'Add person', exact: true }).click()
+    await page.getByLabel('Access for Sam').waitFor()
+    assert.equal(await page.getByRole('dialog').count(), 0)
+    await page.getByLabel('Project', { exact: true }).selectOption(projectId)
+    await page.getByRole('button', { name: 'Add project', exact: true }).click()
+    await page.getByRole('region', { name: 'Projects with access' }).getByText('Website', { exact: true }).waitFor()
+    await page.getByLabel('Everyone in this team can use this executor').click()
+    await page.waitForFunction(() => document.querySelector('input[type=checkbox]')?.checked)
+    assert.deepEqual(state.sharing, [
+      { kind: 'person', userId: invitedId, role: 'admin' },
+      { kind: 'project', projectId, enabled: true }, { kind: 'team', enabled: true },
+    ])
     await page.screenshot({ animations: 'disabled', path: resolve(output, `permissions-${width}.png`) })
-    await page.getByRole('button', { name: 'Review changes', exact: true }).click()
-    const review = page.getByRole('dialog', { name: 'Approve machine changes' })
-    await review.waitFor()
-    await review.getByText('extra identity check', { exact: false }).waitFor()
-    assert.equal(await review.getByRole('button', { name: 'Approve changes', exact: true }).isEnabled(), false)
-    assert.equal(await review.locator('input[type=password]').count(), 0)
-    assert.equal(await review.locator('pre').count(), 0)
-    await page.screenshot({ animations: 'disabled', path: resolve(output, `review-${width}.png`) })
-    await page.keyboard.press('Escape')
     await page.getByRole('tab', { name: 'Activity', exact: true }).click()
     const conversation = page.getByRole('link', { name: 'Open conversation' })
     await conversation.waitFor()
@@ -176,11 +202,11 @@ try {
     await page.keyboard.press('Escape')
     assert.equal(await models.isVisible(), true, 'Nested confirmation closes before its owning modal')
     await page.keyboard.press('Escape')
-    await page.getByRole('button', { name: 'Machine', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Manage people' }).click()
-    await page.getByRole('dialog', { name: 'People who can use this machine' }).getByText('Alex', { exact: true }).first().waitFor()
-    await page.screenshot({ animations: 'disabled', path: resolve(output, `people-${width}.png`) })
-    await page.keyboard.press('Escape')
+    await page.goto(`${ADMIN_URL}/e2e/executor-detail/index.html?project=1`)
+    await page.getByRole('row').filter({ hasText: 'Studio Mac' }).waitFor()
+    await page.screenshot({ animations: 'disabled', path: resolve(output, `project-${width}.png`) })
+    await page.getByRole('row').filter({ hasText: 'Studio Mac' }).click()
+    await page.getByRole('heading', { name: 'Studio Mac' }).waitFor()
     assert.deepEqual(errors, [])
     assert.deepEqual(unexpected, [])
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'No page overflow')

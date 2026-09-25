@@ -22,10 +22,12 @@ import { executorKeys } from './keys'
 import { ExecutorAccessViewWithLocalMcpSchema } from './local-mcp'
 import { useApiClient } from '../../providers/ApiClientProvider'
 
-export const useExecutors = () => {
+export const useExecutors = (projectId?: string) => {
   const apiClient = useApiClient()
   return useQuery({
-    queryKey: executorKeys.all,
+    // A project switch must not show machines shared with the previous project.
+    placeholderData: undefined,
+    queryKey: projectId ? executorKeys.project(projectId) : executorKeys.all,
     // A GET begun before a heartbeat must not put stale presence back over it.
     structuralSharing: (oldData, newData) => {
       const previous = oldData as ExecutorRecordResponse[] | undefined
@@ -35,7 +37,7 @@ export const useExecutors = () => {
       })
     },
     queryFn: async () => ExecutorRecordResponseSchema.array().parse(
-      await apiClient.get('/api/executors'),
+      await apiClient.get(projectId ? `/api/executors?projectId=${projectId}` : '/api/executors'),
     ),
   })
 }

@@ -109,7 +109,8 @@ const bindingPrisma = (state: { authorizationRevision?: number; consumed?: numbe
     executorCapabilityRevision: {
       findUnique: async () => ({ descriptor, id: capabilityRevisionId, reviewStatus: 'active' }),
     },
-    organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
+    executorTeamAccess: { findUnique: async () => null },
+  organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
     projectMember: { findFirst: async () => null },
     run: {
       findUnique: async () => ({

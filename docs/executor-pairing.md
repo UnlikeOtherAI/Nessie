@@ -13,9 +13,8 @@ server: select production explicitly when that is the intended destination.
 Keep executor state outside a repository or worktree; it contains the machine's
 private key and must stay owned by the account that runs the executor.
 
-For personal Claude, Codex or terminal sessions, choose **private** access and
-pair as the person whose OS account owns those programs. Select the real team
-from the live team picker. Do not create a similarly named replacement team.
+Pair as the person whose OS account owns the programs. Pairing uses the current
+team and starts with personal access; share it afterwards from Permissions.
 API clients must use `/api/executor-pairing/options` for the selectable team
 IDs; these are UOA team identifiers, not Nessie's internal team-row IDs.
 
@@ -30,8 +29,7 @@ the top-right account menu on an iPad.
 
 An empty group has a gray indicator and a direct **Add Personal Executor** or
 **Add Team Executor** action, with no submenu. These open the same pairing
-flow with personal or shared access selected. Shared access still requires
-the appropriate authority; the doorway grants no permissions.
+flow in the current team. Pairing starts personal; use Permissions to share it.
 
 Presence arrives over the signed-in tab's shared WebSocket and updates the
 menu, inventory and machine detail together. A missed heartbeat expires after
@@ -46,9 +44,9 @@ Choose the folder it may work with. The app displays eight digits, a
 fingerprint and the time remaining.
 
 In Nessie, open **Agents → Executors → Pair executor** and enter those digits.
-Choose the team and who may use the machine, then check its fingerprint and
-press **Pair machine**. A project's **Executors** tab opens the same popup
-with that project and its team selected.
+Check the current team and the machine's fingerprint, then press **Pair
+machine**. Pairing starts with personal access; add agents and configure sharing
+on the machine's detail page. A project's **Executors** tab links to that page.
 
 Return to Nessie Executor on the machine. It names the organisation and team
 that claimed the code. Confirm them to finish pairing and start the executor,
@@ -61,10 +59,10 @@ confirm a pending attempt.
 
 Verify that the machine says **Paired**, names the intended organisation and
 team, and appears **Online** in Nessie's Executors list. Online proves a daemon
-connection; it does not prove that a capability is approved or an agent has
-permission. Review the machine's proposed capabilities in **Permissions**, then
-configure the permitted agents in **Agents**. Install and sign in to Claude or
-kimix separately as the same OS user. SSO accounts verify changes with an email code in the same review dialog.
+connection; it does not assign an agent. Add agents in **Agents** and share the
+machine with people, projects or the whole team in **Permissions**. Both changes
+take effect directly. Install and sign in to Claude or kimix separately as the
+same OS user.
 
 For live output, open **Executors → Sessions**, or an executor's **Sessions**
 tab. Agents return the same session link. **Share session** gives named users
@@ -109,37 +107,14 @@ local forget control is separate from server-side revocation; arrange revocation
 before forgetting the key. The Mac app discovers every existing connection in
 its documented roots and exposes each in its account selector.
 
-Each connection names one selected team; add another connection to use another
-account, team or server on the same machine. The team name identifies the connection;
-the chosen private, project or organisation scope still decides access.
-Several agents can use the same executor. Each agent has its own access and
-operation grants; granting a second agent does not replace the first, and
-removing one agent's access does not remove another's. Manage these grants on
-the executor's **Agents** tab. **Add agent** opens a picker, then a confirmation
-that names the agent and the permissions it will receive. Private assignment
-and the agent's operation grants change together; removing one agent leaves
-other agents' access intact. Pairing itself grants no
-agent access. A connection's selected team does not limit the number of agents.
+Each connection belongs to the current team; add another connection to use
+another account, team or server on the same machine. **Add agent** and **Remove**
+apply immediately, without permission review or another identity check. Signed
+machine capabilities become active automatically. Several agents can share an
+executor; removing one leaves the others assigned. The owner shares access
+through people, projects and the whole-team switch; see
+[executor sharing](standards/executor-sharing.md).
 
-**Approve the machine once:** activating its capability revision requires a fresh
-factor. Adding or removing agents within that approved boundary uses an ordinary
-confirmation, with no additional code or password. In chat, the **Allow access**
-card names the agent, machine and permissions; its alert opens that exact message.
-Pressing it applies the grant, records the answer and wakes the agent in one
-transaction. Changing human administrators or standing unattended policies still
-requires fresh verification, as does approving changed machine permissions.
-Local accounts use their current password. UOA accounts choose **Send code to
-approve**, enter the code sent to their sign-in email, and approve the displayed
-change. Enrolled authenticators are also checked; required but unenrolled 2FA
-must be set up at UOA. Codes expire after five minutes, permit five guesses,
-and are single-use. A new code invalidates the prior one for that change.
-The proof binds the person, product, prepared change and its immutable terms;
-neither a normal login nor a session refresh substitutes for it. Changes in
-machine authority still invalidate the prepared approval. No local password
-is required for SSO. This also serves review cards opened in chat.
-Disconnect and delete remain available without fresh verification because
-they only remove access. Workspace draft promotion retains its existing
-local-password check; this flow covers executor access changes.
 
 ## Manage a machine
 
@@ -148,17 +123,15 @@ server search, cursor pagination and the standard page-size picker. Rows state
 stored grants and private assignment, never claim that every runtime condition
 is currently satisfied.
 
-**Permissions** shows the latest machine proposal in plain language. Only a
-current proposal awaiting review contributes to the Executors menu badge and
-the row's review link. Superseded versions and old draft reviews are history,
-not work awaiting a decision. The permission review lists the same folders,
-programs and local apps that the machine signed; hashes and protocol names
-remain in the protocol and audit records.
+**Permissions** lists people (Can use or Admin), projects (Can use), and the
+Everyone in this team switch. Sharing with a project or the whole team also
+makes the machine manageable by the team's administrators. **Sessions** retains
+terminal views and local-app coding sessions.
 
 **Activity** shows the 20 most recent sessions and links to their conversations
 only when the viewer can open them. It has no per-session disconnect button:
 disconnecting revokes the whole executor. The **Machine** menu owns
-Pause/Resume, Disconnect, Delete, private-machine people, local models when
+Pause/Resume, Disconnect, Delete, local models when
 connected, and local Desktop controls when available. Drain stays an operator
 API action; it is not a graceful finish-and-resume operation.
 

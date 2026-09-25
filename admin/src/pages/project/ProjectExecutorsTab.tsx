@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { EmptyState } from '../../components/shared/EmptyState'
+import { Link, useNavigate } from 'react-router-dom'
+import { ExecutorsTable } from '../../components/features/executors/ExecutorsTable'
 import { PageBody, Section } from '../../components/shared/PageBody'
 import { QueryState } from '../../components/shared/QueryState'
 import { useExecutors } from '../../facades/executors/hooks'
@@ -9,10 +9,9 @@ type ProjectExecutorsTabProps = {
 }
 
 export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => {
-  const executorsQuery = useExecutors()
-  const executors = (executorsQuery.data ?? []).filter(
-    (executor) => executor.scope.kind === 'project' && executor.scope.projectId === projectId,
-  )
+  const executorsQuery = useExecutors(projectId)
+  const navigate = useNavigate()
+  const executors = executorsQuery.data ?? []
 
   return (
     <PageBody>
@@ -20,12 +19,12 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
         actions={
           <Link
             className="admin-button admin-button-primary"
-            to={`/agents/executors?create=project&scopeProjectId=${projectId}`}
+            to="/agents/executors"
           >
-            New project executor
+            Share an executor
           </Link>
         }
-        description="These paired machines are available only to entitled work in this exact project. Agent operation access is managed in the shared Executors surface."
+        description="Executors shared with this project or its whole team. Open an executor to manage its agents and sharing."
         title="Project executors"
       >
         <QueryState
@@ -33,30 +32,9 @@ export const ProjectExecutorsTab = ({ projectId }: ProjectExecutorsTabProps) => 
           loadingLabel="Loading executors…"
           query={executorsQuery}
         >
-          {() =>
-            executors.length === 0 ? (
-              <EmptyState>
-                No executor is configured for this project. Pair one here when the work needs a
-                governed sandbox or coding session.
-              </EmptyState>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {executors.map((executor) => (
-                  <Link
-                    className="admin-card grid gap-1 p-4 transition-colors hover:bg-[color:var(--overlay-weak)]"
-                    key={executor.id}
-                    to={`/agents/executors/${executor.id}`}
-                  >
-                    <span className="text-sm font-semibold text-[color:var(--tx)]">{executor.label}</span>
-                    <span className="text-xs text-[color:var(--tx3)]">
-                      {executor.status} · {executor.profiles.join(', ') || 'Awaiting descriptor review'}
-                    </span>
-                    <span className="text-xs text-[color:var(--tx2)]">Open access and operations</span>
-                  </Link>
-                ))}
-              </div>
-            )
-          }
+          {() => <ExecutorsTable executors={executors} isLoading={false}
+            emptyMessage="No executor is shared with this project. Open an executor’s Permissions tab to share it."
+            onOpen={(id) => void navigate(`/agents/executors/${id}`)} />}
         </QueryState>
       </Section>
     </PageBody>

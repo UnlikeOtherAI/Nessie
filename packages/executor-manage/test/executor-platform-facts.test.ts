@@ -66,7 +66,7 @@ const descriptorPrisma = (machinePublicKey: string) => {
         },
       },
       executorCapabilityRevision: {
-        create: async () => ({ reviewStatus: 'pending_review', revision: 2 }),
+        create: async () => ({ reviewStatus: 'active', revision: 2 }),
         findFirst: async () => null,
       },
     }),
@@ -85,7 +85,7 @@ test('a Linux service executor is accepted and its host facts are persisted', as
       descriptor: signed,
       executorId: 'executor-1',
     }),
-    { reviewStatus: 'pending_review', revision: 2 },
+    { reviewStatus: 'active', revision: 2 },
   )
   assert.equal(updates.length, 1)
   assert.deepEqual(updates[0].platformFacts, {

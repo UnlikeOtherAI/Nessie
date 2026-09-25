@@ -14,8 +14,8 @@ Chapter of [Running the Native Apps](overview.md).
 4. Enable **Start at login** in the app's settings and verify the executor is
    Online in Nessie. The menu bar app owns the daemon: quitting it stops the
    daemon; merely closing its panel does not.
-5. Configure the local program and real, nonsymlinked coding roots, then review
-   the new permissions in Nessie. Claude and tmux must be available to the
+5. Configure the local program and real, nonsymlinked coding roots, then assign agents
+   and share the executor in Nessie. Claude and tmux must be available to the
    daemon's configured environment, including when launched at login.
 
 State normally lives in `~/Library/Application Support/Nessie Executor/executor`.
@@ -26,7 +26,7 @@ To unpair, **Disconnect** or **Delete** the executor in Nessie first, disable
 **Start at login**, and quit the menu bar app. Removing the app alone does not
 revoke its server identity. For a different team, use **Replace pairing…**;
 the app retires the old connection before showing a new code. After pairing
-again, review permissions and agent grants for the new executor.
+again, assign agents and configure sharing for the new executor.
 
 An installation managed with a custom LaunchAgent must unload that agent too;
 the app's Start at login switch only controls its own SMAppService entry.

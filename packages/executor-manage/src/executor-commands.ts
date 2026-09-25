@@ -19,6 +19,7 @@ import { EXECUTOR_ERROR_CODES, ExecutorError } from './executor-errors.js'
 import { expireStaleExecutorHeartbeats } from './executor-liveness.js'
 import { resolveExecutorAvailability } from './availability.js'
 import { ensureExecutorLogicalTools } from './executor-logical-tools.js'
+import { resolveExecutorSharedAccess } from './executor-shared-access.js'
 import { resolveExecutorScopeFacts } from './executor-scope-facts.js'
 import { assertStandingPolicyBindingCurrent, isStandingBinding } from './executor-standing-policy-fence.js'
 
@@ -278,7 +279,8 @@ export const assertExecutorCommandBindingCurrent = async (
       executor,
       candidate.actorUserId,
       candidate.agentId,
-      { projectId, projectMember: Boolean(projectMembership) },
+      { projectId, projectMember: Boolean(projectMembership),
+        sharedUse: (await resolveExecutorSharedAccess(tx, executor.id, candidate.actorUserId, projectId)).use },
     ),
   })
   // A standing policy's binding answers to its policy and work record

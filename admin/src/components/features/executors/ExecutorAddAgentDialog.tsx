@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { PreparedExecutorAccessChangeResponse } from '@nessie/schemas'
-import { usePrepareExecutorAccessChange } from '../../../facades/executors/hooks'
+import { useSetExecutorAgentAccess } from '../../../facades/executors/sharing'
 import { useExecutorAgentCandidates } from '../../../facades/executors/manage'
 import { usePagedListReset } from '../../../facades/pagination/usePagedList'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
@@ -17,19 +16,18 @@ import { Row, RowList } from '../../shared/RowList'
 type ExecutorAddAgentDialogProps = {
   executorId: string
   onClose: () => void
-  onPrepared: (prepared: PreparedExecutorAccessChangeResponse) => void
   token: string | null
 }
 
-/** Mounted only while open; selection prepares a review and never activates access itself. */
-export const ExecutorAddAgentDialog = ({ executorId, onClose, onPrepared, token }: ExecutorAddAgentDialogProps) => {
+/** Mounted only while open; selection immediately assigns the agent. */
+export const ExecutorAddAgentDialog = ({ executorId, onClose, token }: ExecutorAddAgentDialogProps) => {
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [, setSearchParams] = useSearchParams()
   const searchRef = useRef<HTMLInputElement | null>(null)
   const candidates = useExecutorAgentCandidates(executorId, useDebouncedValue(query, 200))
   const resetPage = usePagedListReset('executor-add-')
-  const prepare = usePrepareExecutorAccessChange()
+  const prepare = useSetExecutorAgentAccess()
 
   const close = () => {
     setSearchParams((current) => {
@@ -43,11 +41,10 @@ export const ExecutorAddAgentDialog = ({ executorId, onClose, onPrepared, token 
   const add = async (agentId: string) => {
     setError(null)
     try {
-      const prepared = await prepare.mutateAsync({
-        executorId, change: { kind: 'agent_executor_access', agentId, state: 'allowed' },
+      await prepare.mutateAsync({
+        executorId, change: { agentId, state: 'allowed' },
       })
       close()
-      onPrepared(prepared)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'This agent could not be added. Try again.')
     }
@@ -55,7 +52,7 @@ export const ExecutorAddAgentDialog = ({ executorId, onClose, onPrepared, token 
 
   return (
     <Dialog
-      description="Choose an agent. You will review its access before adding it."
+      description="Choose an agent to give it access to this executor."
       dismissDisabled={prepare.isPending}
       initialFocusRef={searchRef}
       onClose={close}

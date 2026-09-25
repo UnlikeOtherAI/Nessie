@@ -68,7 +68,8 @@ test('executor managers can inspect bounded review receipts without draft conten
     executorPrivateAssignment: {
       findFirst: async () => ({ role: 'admin' }),
     },
-    organizationMember: {
+    executorTeamAccess: { findUnique: async () => null },
+  organizationMember: {
       findUnique: async () => ({ deactivatedAt: null, role: 'member' }),
     },
   } as unknown as PrismaClient

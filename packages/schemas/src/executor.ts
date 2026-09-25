@@ -1099,6 +1099,7 @@ export type ExecutorAccessChangeConfirmation = z.infer<
 >
 
 export const ExecutorRecordResponseSchema = z.object({
+  sharedWithTeam: z.boolean().optional(),
   id: ExecutorIdSchema,
   scope: ExecutorScopeSchema,
   label: z.string().min(1),

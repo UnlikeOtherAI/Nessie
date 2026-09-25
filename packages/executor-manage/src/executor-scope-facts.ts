@@ -14,6 +14,7 @@ type ExecutorScopeFacts = {
 type RunScopeFacts = {
   projectId: string | null
   projectMember: boolean
+  sharedUse?: boolean
 }
 
 /**
@@ -35,7 +36,7 @@ export const resolveExecutorScopeFacts = (
       agentAssigned: executor.privateAssignments.some(
         (assignment) => assignment.principalKind === 'agent' && assignment.agentId === agentId,
       ),
-      humanAssignment: human?.role ?? 'none',
+      humanAssignment: human?.role ?? (context.sharedUse ? 'use' : 'none'),
       kind: 'private',
     }
   }

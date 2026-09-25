@@ -168,6 +168,7 @@ export const claimExecutorCodePairing = async (
     await tx.executorCapabilityRevision.create({ data: {
       executorId: executor.id, revision: descriptor.descriptor.revision,
       descriptor: descriptor.descriptor as Prisma.InputJsonValue,
+      reviewStatus: 'active',
       signature: descriptor.signature, localPolicyDigest: descriptor.descriptor.localPolicyDigest,
     } })
     const claimDigest = pairingDigest(canonicalExecutorJson({

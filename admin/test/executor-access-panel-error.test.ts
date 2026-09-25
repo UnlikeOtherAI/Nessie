@@ -6,6 +6,7 @@ import * as ReactNamespace from 'react'
 
 import type { ExecutorRecordResponse } from '@nessie/schemas'
 import type { ExecutorAccessViewWithLocalMcp } from '../src/facades/executors/local-mcp.js'
+import { executorKeys } from '../src/facades/executors/keys.js'
 
 /**
  * What the screen says when it cannot read the access view.
@@ -103,6 +104,12 @@ const render = (accessQuery: unknown): Promise<string> => withDom(async () => {
   const root = createRoot(container)
   const client = createApiClient({ baseUrl: 'https://api.example.test', token: () => 'token' })
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  queryClient.setQueryData(executorKeys.sharing(executor.id, 'team'), {
+    executorId: executor.id, teamId: 'team', ownerUserId: 'owner', everyone: false,
+    people: [{ userId: 'owner', name: 'Owner', role: 'admin' }],
+    projects: [], availablePeople: [], availableProjects: [],
+  })
+  queryClient.setQueryDefaults(executorKeys.sharing(executor.id, 'team'), { staleTime: Infinity })
   await act(async () => {
     root.render(h(
       QueryClientProvider,
@@ -116,6 +123,7 @@ const render = (accessQuery: unknown): Promise<string> => withDom(async () => {
           h(ExecutorDetailPanels, {
             accessQuery: accessQuery as never,
             executor,
+            teamId: 'team',
             onPrepared: () => {},
           }),
         ),
@@ -174,7 +182,10 @@ test('when the access view reads, the grant controls are on screen', async () =>
     isLoading: false,
     refetch: () => {},
   })
-  assert.match(text, /machine has not sent its permissions yet/)
+  assert.match(text, /Everyone in this team can use this executor/)
+  assert.match(text, /Can useAdmin/)
+  assert.match(text, /Projects/)
+  assert.doesNotMatch(text, /Review changes|Review activation/)
   assert.doesNotMatch(text, /could not be loaded/)
-  assert.equal(selects, 0, 'grant forms stay in a popup')
+  assert.equal(selects, 3, 'person, access role and project are editable directly')
 })

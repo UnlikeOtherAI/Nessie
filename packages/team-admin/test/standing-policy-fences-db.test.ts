@@ -126,7 +126,7 @@ dbTest('a review that leaves the machine without the pair or the coding bridge e
     await prisma.executorCapabilityRevision.create({
       data: {
         descriptor: descriptor as unknown as Prisma.InputJsonValue, executorId: fence.minis,
-        localPolicyDigest: descriptor.localPolicyDigest, revision: 2, signature: 'proposed',
+        localPolicyDigest: descriptor.localPolicyDigest, reviewStatus: 'pending_review', revision: 2, signature: 'proposed',
       },
     })
     const review = await prepareExecutorAccessChange(prisma, fence.world.authorContext, {

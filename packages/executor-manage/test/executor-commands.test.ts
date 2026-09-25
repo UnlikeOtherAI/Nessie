@@ -106,7 +106,8 @@ test('command payload and terminal result are encrypted at rest and receipt tran
         revision: 1,
       }, reviewStatus: 'active' }),
     },
-    organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
+    executorTeamAccess: { findUnique: async () => null },
+  organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
     agent: { findFirst: async () => ({ toolPolicy: { 'executor.sandbox.stop': true } }) },
     run: {
       findUnique: async () => ({
@@ -452,7 +453,8 @@ const currentBindingPrisma = (
         revision: 1,
       }, reviewStatus: 'active' }),
     },
-    organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
+    executorTeamAccess: { findUnique: async () => null },
+  organizationMember: { findUnique: async () => ({ deactivatedAt: null }) },
     run: {
       findUnique: async () => ({
         agentId: candidate.agentId,

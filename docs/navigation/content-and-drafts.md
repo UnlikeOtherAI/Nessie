@@ -48,6 +48,9 @@ for it. Four pieces, plus one cache underneath them all.
   and an executor conversation lease (`admin/src/facades/executors/leases.ts`),
   which reaches one conversation — a previous room's lease beside this
   composer would claim a reach the room lacks, and its End would act from here.
+  Executor sharing and project inventory also clear on identity changes: old
+  roles must never become edit controls for another machine or team, and a
+  project's inventory must not briefly include another project's machines.
   Knowledge backlinks (`admin/src/facades/knowledge/backlinks-hooks.ts`) also
   opt out: their rows describe links to one exact page and must never appear
   under another page while it loads.

@@ -206,7 +206,7 @@ dbTest('a descriptor review that drops mcp.* ends the lease; one that keeps it d
     const keeps = localAppsDescriptor(2)
     await world.prisma.executorCapabilityRevision.create({ data: {
       executorId: world.executorId, revision: 2, descriptor: keeps, signature: 'keeps-pair',
-      localPolicyDigest: keeps.localPolicyDigest,
+      localPolicyDigest: keeps.localPolicyDigest, reviewStatus: 'pending_review',
     } })
     await confirm(world, { kind: 'descriptor_review', revision: 2, status: 'active' })
     assert.equal((await leaseRow(world, launch.lease.id)).endedAt, null, 'the pair survives this review')
@@ -214,7 +214,7 @@ dbTest('a descriptor review that drops mcp.* ends the lease; one that keeps it d
     const narrowed = localAppsDescriptor(3, ['file.read'])
     await world.prisma.executorCapabilityRevision.create({ data: {
       executorId: world.executorId, revision: 3, descriptor: narrowed, signature: 'drops-pair',
-      localPolicyDigest: narrowed.localPolicyDigest,
+      localPolicyDigest: narrowed.localPolicyDigest, reviewStatus: 'pending_review',
     } })
     await confirm(world, { kind: 'descriptor_review', revision: 3, status: 'active' })
     await assertEnded(world, launch.lease.id, { endedByUserId: world.adminId, reason: 'descriptor_narrowed' })

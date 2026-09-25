@@ -18,19 +18,13 @@ try {
   await mkdir(output, { recursive: true })
   for (const width of [1280, 390]) {
     const context = await browser.newContext({ hasTouch: width === 390, viewport: { width, height: 900 } })
-    let mode = 'review'
     let attentionRequests = 0
     await context.route('**/api/**', async (route) => {
       const path = new URL(route.request().url()).pathname
       if (path === '/api/workflow-runs') return route.fulfill({ json: { data: [] } })
       if (path === '/api/executors/attention') {
         attentionRequests += 1
-        if (mode === 'denied') return route.fulfill({
-          status: 403, json: { error: { code: 'FORBIDDEN', message: 'Access changed' } },
-        })
-        return route.fulfill({ json: { data: mode === 'review'
-          ? { total: 1, executors: [{ executorId, policyRevision: 8 }] }
-          : { total: 0, executors: [] } } })
+        throw new Error('The retired permissions-review queue must not be requested')
       }
       // Hover/focus prewarms the real detail query; the destination is owned
       // by the detail suite rather than duplicated in this badge fixture.
@@ -43,32 +37,15 @@ try {
     const errors = []
     page.on('pageerror', (error) => errors.push(String(error)))
     await page.goto(`${ADMIN_URL}/e2e/executor-attention/index.html`)
-    const count = page.getByTestId('nav-executors-attention-count')
-    const review = page.getByRole('link', { name: '1 change to review for Office Mac', exact: true })
-    await review.waitFor()
-    assert.equal(await count.locator('[aria-hidden="true"]').innerText(), '1')
-    assert.equal(await page.getByRole('link', { name: /Executors.*1 change to review/ }).count(), 1)
-    assert.equal(await page.getByRole('link', { name: /change to review for Studio PC/ }).count(), 0)
-    assert.equal(attentionRequests, 1, 'Sidebar and table share one summary fetch')
-    await page.screenshot({ path: resolve(output, `review-${width}.png`), fullPage: true })
-    if (width === 390) {
-      assert.ok((await review.boundingBox()).height >= 44, 'Touch review doorway remains reachable')
-      await review.tap()
-    }
-    else { await review.focus(); await page.keyboard.press('Enter') }
-    await page.waitForURL(`**/agents/executors/${executorId}?tab=permissions`)
-    mode = 'clear'
-    await page.getByRole('button', { name: 'Refresh attention' }).click()
-    await count.waitFor({ state: 'detached' })
-    assert.equal(await review.count(), 0, 'Resolved or superseded work clears the row badge')
-    await page.screenshot({ path: resolve(output, `clear-${width}.png`), fullPage: true })
-    mode = 'review'
-    await page.getByRole('button', { name: 'Refresh attention' }).click()
-    await review.waitFor()
-    mode = 'denied'
-    await page.getByRole('button', { name: 'Refresh attention' }).click()
-    await count.waitFor({ state: 'detached' })
-    assert.equal(await review.count(), 0, 'Denied refresh cannot display a previously authorized badge')
+    const row = page.getByRole('row').filter({ hasText: 'Office Mac' })
+    await row.waitFor()
+    assert.equal(await page.getByTestId('nav-executors-attention-count').count(), 0)
+    assert.equal(await page.getByRole('link', { name: /change to review/ }).count(), 0)
+    await page.screenshot({ path: resolve(output, 'inventory-' + width + '.png'), fullPage: true })
+    if (width === 390) await row.tap()
+    else { await row.focus(); await page.keyboard.press('Enter') }
+    await page.waitForURL('**/agents/executors/' + executorId)
+    assert.equal(attentionRequests, 0)
     assert.deepEqual(errors, [])
     await context.close()
   }

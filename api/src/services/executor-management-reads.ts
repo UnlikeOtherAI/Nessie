@@ -71,36 +71,7 @@ export const listExecutorAgentAccess = async (
   })) }
 }
 
-/** A proposal is actionable only when it is the absolute latest revision. */
+/** Capability reports take effect immediately; no human review queue remains. */
 export const getExecutorAttentionSummary = async (
-  prisma: PrismaClient, actor: AuthorizedActionContext,
-): Promise<ExecutorAttentionSummary> => {
-  if (actor.actor.actorType !== 'user') return { total: 0, executors: [] }
-  const organizationId = actor.tenant.organizationId
-  const userId = actor.actor.actorId
-  const membership = await prisma.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId, userId } }, select: { role: true, deactivatedAt: true },
-  })
-  if (!membership || membership.deactivatedAt) return { total: 0, executors: [] }
-  const manager = membership.role === 'owner' || membership.role === 'admin'
-  const rows = await prisma.executor.findMany({
-    where: {
-      organizationId, status: { notIn: ['pending_pairing', 'revoked'] },
-      capabilityRevisions: { some: { reviewStatus: 'pending_review' } },
-      OR: [
-        { scopeKind: 'private', privateAssignments: { some: { principalKind: 'user', userId, role: 'admin' } } },
-        ...(manager ? [{ scopeKind: { in: ['project', 'organization'] as ('project' | 'organization')[] } }] : [{
-          scopeKind: 'project' as const,
-          project: { members: { some: { userId, role: { in: ['owner', 'admin'] as ('owner' | 'admin')[] } } } },
-        }]),
-      ],
-    },
-    orderBy: { id: 'asc' }, select: {
-      id: true,
-      capabilityRevisions: { orderBy: { revision: 'desc' }, take: 1, select: { revision: true, reviewStatus: true } },
-    },
-  })
-  const executors = rows.flatMap((row) => row.capabilityRevisions[0]?.reviewStatus === 'pending_review'
-    ? [{ executorId: row.id, policyRevision: row.capabilityRevisions[0].revision }] : [])
-  return { total: executors.length, executors }
-}
+  _prisma: PrismaClient, _actor: AuthorizedActionContext,
+): Promise<ExecutorAttentionSummary> => ({ total: 0, executors: [] })
