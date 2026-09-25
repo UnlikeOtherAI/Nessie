@@ -2,9 +2,7 @@ import AppKit
 import Combine
 import Foundation
 
-/// Where this app keeps executor state. One Mac, one executor: the menu bar is a
-/// personal surface, and a person who needs several executors on one machine is
-/// the headless CLI's case, not this one.
+/// Each connection keeps its own key and policy beneath the product's state roots.
 enum ExecutorPaths {
     static let stateDirectoryOverrideVariable = "NESSIE_EXECUTOR_MENUBAR_STATE_DIR"
 
@@ -28,14 +26,17 @@ enum ExecutorPaths {
             .path
     }
 
-    static func discover(isDevelopmentBuild: Bool) -> Result<String, ExecutorRefusal> {
+    static func discover(isDevelopmentBuild: Bool) -> Result<[String], ExecutorRefusal> {
         let preferred = stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
         if isDevelopmentBuild,
            ProcessInfo.processInfo.environment[stateDirectoryOverrideVariable]?.isEmpty == false {
-            return .success(preferred)
+            let root = URL(fileURLWithPath: preferred).deletingLastPathComponent()
+                .appendingPathComponent("connections").path
+            return ExecutorStateDiscovery.resolve(preferredDirectory: preferred, legacyRoots: [root])
         }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return ExecutorStateDiscovery.resolve(preferredDirectory: preferred, legacyRoots: [
+            support.appendingPathComponent("Nessie Executor/connections").path,
             support.appendingPathComponent("com.unlikeotherai.nessie.desktop/executors").path,
             support.appendingPathComponent("com.unlikeotherai.nessie.executor.menubar/executors").path,
             (NSHomeDirectory() as NSString).appendingPathComponent(".local/state/nessie-executor")
@@ -51,17 +52,10 @@ enum ExecutorPaths {
         )
     }
 
-    static func refusalBeforePairing(in directory: String, isDevelopmentBuild: Bool) -> ExecutorRefusal? {
-        switch discover(isDevelopmentBuild: isDevelopmentBuild) {
-        case let .success(discovered) where discovered == directory:
-            return nil
-        case .success:
-            return ExecutorRefusal(
-                "This Mac gained another connection. Reopen Nessie Executor to review it before pairing again."
-            )
-        case let .failure(refusal):
-            return refusal
-        }
+    static func newConnectionDirectory(isDevelopmentBuild: Bool) -> String {
+        let preferred = URL(fileURLWithPath: stateDirectory(isDevelopmentBuild: isDevelopmentBuild))
+        return preferred.deletingLastPathComponent()
+            .appendingPathComponent("connections").appendingPathComponent(UUID().uuidString).path
     }
 
     /// Owner-only, created before anything is written into it.
@@ -92,12 +86,10 @@ final class ExecutorController: ObservableObject {
     private var refreshTimer: Timer?
     private var startAfterRefresh = false
 
-    init(isDevelopmentBuild: Bool) {
+    init(isDevelopmentBuild: Bool, stateDirectory: String, refusal: ExecutorRefusal? = nil) {
         self.isDevelopmentBuild = isDevelopmentBuild
-        let discovery = ExecutorPaths.discover(isDevelopmentBuild: isDevelopmentBuild)
-        self.stateDirectory = (try? discovery.get())
-            ?? ExecutorPaths.stateDirectory(isDevelopmentBuild: isDevelopmentBuild)
-        self.runtime = discovery.flatMap { _ in PackagedRuntime.locate(in: Bundle.main.resourceURL) }
+        self.stateDirectory = stateDirectory
+        self.runtime = refusal.map { .failure($0) } ?? PackagedRuntime.locate(in: Bundle.main.resourceURL)
         let runtime = try? self.runtime.get()
         self.pairing = ExecutorPairingController(
             runner: runtime.map { ExecutorProcessRunner(runtime: $0, isDevelopmentBuild: isDevelopmentBuild) },
@@ -106,14 +98,6 @@ final class ExecutorController: ObservableObject {
         )
         pairing.onPaired = { [weak self] in self?.refresh(startWhenPaired: true) }
         pairing.onChanged = { [weak self] in self?.refresh() }
-        pairing.beforeStart = { [weak self] in
-            guard let self else { return false }
-            guard let refusal = ExecutorPaths.refusalBeforePairing(
-                in: self.stateDirectory, isDevelopmentBuild: self.isDevelopmentBuild
-            ) else { return true }
-            self.fail(refusal.message)
-            return false
-        }
         pairing.beforeReplace = { [weak self] in
             guard let self, self.model.daemon != .stopping else { return false }
             return self.stopDaemon()

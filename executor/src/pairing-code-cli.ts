@@ -45,11 +45,11 @@ const show = (view: PairingCodeView): void => {
   } else process.stdout.write(view.status === 'expired' ? 'The code expired. Start pairing again.\n' : 'Pairing cancelled.\n')
 }
 
-/** The Windows service owns the machine pairing; the ordinary CLI must not create a second user-owned one. */
+/** An explicit --cli connection runs under this OS account on Windows too. */
 export const pairingUsesWindowsTray = (args: string[], platform: NodeJS.Platform): boolean => (
   platform === 'win32'
   && ['pair', 'pairing-start'].includes(args[0] ?? 'pair')
-  && !args.some((argument) => ['--state-dir', '--json', '--enrollment'].includes(argument))
+  && !args.some((argument) => ['--cli', '--state-dir', '--json', '--enrollment'].includes(argument))
 )
 
 /** Native clients consume JSON; a terminal gets one complete guided pairing flow. */
@@ -64,10 +64,14 @@ export const runPairingCodeCli = async (
     return true
   }
   const explicitDirectory = value(args, '--state-dir')
+  const executorId = value(args, '--executor')
+  if (args.includes('--replace') && !explicitDirectory && !executorId) {
+    throw new Error('Choose the connection to replace with --executor <id> from status, or --state-dir.')
+  }
   const json = args.includes('--json')
   const rootLease = explicitDirectory ? null : await acquireDefaultPairingLease()
   try {
-    const directory = explicitDirectory ?? await defaultPairingDirectory()
+    const directory = explicitDirectory ?? await defaultPairingDirectory(executorId)
     let view: PairingCodeView
     if (command === 'pairing-status') view = await pairingCodeStatus(directory)
     else if (command === 'pairing-confirm') {

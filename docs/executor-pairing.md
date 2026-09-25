@@ -71,23 +71,46 @@ tab. Agents return the same session link. **Share session** gives named users
 in your organisation view-only access to that session, including scrollback;
 the URL alone grants nothing. Remove a viewer in the same dialog to revoke it.
 
-## Existing pairing
+## Multiple accounts and servers
 
-The native app identifies an existing connection by organisation and team and
+Each connection has its own machine key, server, workspace policy and agent
+permissions. Adding another account preserves existing connections. Approving
+one account never grants another account access.
+
+- macOS: choose **Add account** in the menu bar or account selector. Settings,
+  folders and tools apply to the selected connection. Quitting stops the app's
+  managed daemons.
+- Windows tray: choose **Add account**, select the server and workspace, and
+  claim the code from the intended account. Start and Stop act on one row.
+- Windows and Linux Desktop: **Executors → Pair executor → Connect this
+  computer** opens the native folder picker, reuses the normal account/team
+  review, and confirms the destination in a native dialog. Mac Desktop opens
+  the menu bar app, which owns its connections.
+- CLI on macOS/Linux: run `nessie-executor pair` again to add a connection.
+  On Windows, `pair --cli` explicitly chooses a user-session CLI connection;
+  ordinary `pair` points to the tray. `status` lists independent bindings.
+  Linux enables one user service per confirmed executor ID.
+
+An unfinished CLI pairing resumes before another is created. Explicit
+replacement requires `--replace --executor <id>` (or `--state-dir`), so it
+cannot silently select another account. Independent pairings do not copy keys
+between OS accounts or between the Windows user and service supervisors.
+
+## Replacing a connection
+
+The Mac app identifies the selected connection by organisation and team and
 offers to replace it or cancel. Replacement revokes the old executor using
 the machine's existing key, so it does not leave another active executor
 behind. Existing access and audit history stay with that old record.
 
-The Windows tray checks for older Desktop and default command-line connections
-before starting. If one exists, close it in the app that manages it first;
-Desktop has a local forget control on its Executors page. Server-side
-revocation is a separate operation; do not forget the key before arranging it.
-The service does not copy a user's existing key into its own store.
-The Mac app reuses a single existing state directory in place and asks you
-to resolve multiple existing connections before pairing.
+Windows service, Desktop and CLI connections keep their own state and keys.
+Adding an account does not retire another supervisor's connection. Desktop's
+local forget control is separate from server-side revocation; arrange revocation
+before forgetting the key. The Mac app discovers every existing connection in
+its documented roots and exposes each in its account selector.
 
-One machine connects to one selected team in this flow. Connecting the same
-machine to several teams is deferred. The team name identifies the connection;
+Each connection names one selected team; add another connection to use another
+account, team or server on the same machine. The team name identifies the connection;
 the chosen private, project or organisation scope still decides access.
 Several agents can use the same executor. Each agent has its own access and
 operation grants; granting a second agent does not replace the first, and
@@ -96,7 +119,7 @@ the executor's **Agents** tab. **Add agent** opens a picker, then a confirmation
 that names the agent and the permissions it will receive. Private assignment
 and the agent's operation grants change together; removing one agent leaves
 other agents' access intact. Pairing itself grants no
-agent access. The selected team limit does not limit the number of agents.
+agent access. A connection's selected team does not limit the number of agents.
 
 **Approve the machine once:** activating its capability revision requires a fresh
 factor. Adding or removing agents within that approved boundary uses an ordinary

@@ -130,7 +130,9 @@ export const UNMARKED_BUNDLE_MESSAGE =
 
 const usage = (): never => {
   throw new Error(
-    'Usage: nessie-executor pair --api <nessie|deeptest|https://your-nessie.example> --enrollment <uuid> '
+    'Usage: nessie-executor pairing-start --api <nessie|deeptest|https://your-nessie.example> '
+    + '[--cli] [--state-dir <owner-only-path>] [--replace --executor <uuid>]\n'
+    + '       nessie-executor pair --api <nessie|deeptest|https://your-nessie.example> --enrollment <uuid> '
     + '(--challenge <token>|--challenge-stdin) --state-dir <owner-only-path> '
     + '(--workspace <absolute-read-only-root>'
     + '|--folder <name>=<absolute-read-only-root> [--folder ...])\n'

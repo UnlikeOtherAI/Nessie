@@ -143,7 +143,11 @@
       <div class="panel" id="list-panel" data-open="true">
         <div id="executors-list"></div>
         <form id="pair-form">
-          <p>Connect this computer to your organisation in Nessie.</p>
+          <p>Add an account. Your existing connections stay online.</p>
+          <div class="form-field">
+            <label for="pairing-server">Nessie server</label>
+            <input id="pairing-server" type="text" value="https://api.nessie.works" />
+          </div>
           <div class="form-field">
             <button type="button" id="choose-workspace">Choose workspace folder…</button>
             <span class="hint" id="chosen-workspace">No folder chosen</span>
@@ -216,7 +220,7 @@
     </main>
 
     <footer>
-      <button id="pair">Pair with Nessie</button>
+      <button id="pair">Add account</button>
       <button id="open-nessie">Open Nessie</button>
       <button id="open-logs">Logs</button>
     </footer>

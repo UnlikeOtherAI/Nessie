@@ -24,14 +24,19 @@ fn pairing_failure(output: &str) -> String {
 }
 
 impl Supervisor {
+    pub fn pairing_connection(&self, executor: &str) -> Result<serde_json::Value, String> {
+        let directory = self.state_dir(executor)?;
+        if !has_executor_state(&directory) || directory.join(PENDING_FILE).exists() {
+            return Err("This connection is not paired yet.".to_owned());
+        }
+        self.run_pairing(&directory, "status", Vec::new(), None)
+    }
+
     fn pairing_directory(&self) -> Result<PathBuf, String> {
         let pending = pending_root(&self.root).join("machine");
         let mut directories = BTreeSet::new();
         if pending.join(PENDING_FILE).exists() || has_executor_state(&pending) {
             directories.insert(pending.clone());
-        }
-        for executor in paired_executors(&self.root) {
-            directories.insert(self.state_dir(&executor)?);
         }
         if let Ok(entries) = fs::read_dir(executors_root(&self.root)) {
             for entry in entries.flatten() {
@@ -44,7 +49,7 @@ impl Supervisor {
             }
         }
         if directories.len() > 1 {
-            return Err("This computer has several existing pairings. Remove the extra pairings before connecting it again.".to_owned());
+            return Err("Several connections are being paired. Finish the pending connections first.".to_owned());
         }
         Ok(directories.into_iter().next().unwrap_or(pending))
     }
@@ -114,13 +119,20 @@ impl Supervisor {
         replace: bool,
         sid: Option<&str>,
     ) -> Result<serde_json::Value, String> {
-        let directory = self.pairing_directory()?;
-        secure_directory(&self.runtime().native_helper, &directory)?;
-        if replace {
-            for executor in paired_executors(&self.root) {
-                self.stop(&executor)?;
+        let directory = if replace {
+            let executors = paired_executors(&self.root);
+            if executors.len() != 1 {
+                return Err("Choose one connection to remove before replacing it, or add another account.".to_owned());
             }
-        }
+            let executor = &executors[0];
+            let directory = self.state_dir(executor)?;
+            self.check_pairing_owner(&directory, sid)?;
+            self.stop(executor)?;
+            directory
+        } else {
+            self.pairing_directory()?
+        };
+        secure_directory(&self.runtime().native_helper, &directory)?;
         self.check_pairing_owner(&directory, sid)?;
         if let Some(sid) = sid {
             fs::write(directory.join(PAIRED_BY_FILE), format!("{sid}\n"))
@@ -233,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pending_attempt_cannot_hide_a_separate_existing_pairing() {
+    fn a_pending_connection_coexists_with_an_existing_pairing() {
         for pending_is_promoted in [false, true] {
             let root = tempfile::tempdir().unwrap();
             let host = supervisor(root.path());
@@ -247,10 +259,7 @@ mod tests {
             };
             fs::create_dir_all(&pending).unwrap();
             fs::write(pending.join(PENDING_FILE), "{}").unwrap();
-            assert!(host
-                .pairing_directory()
-                .unwrap_err()
-                .contains("several existing pairings"));
+            assert_eq!(host.pairing_directory().unwrap(), pending);
         }
     }
 

@@ -14,6 +14,10 @@ let currentExecutorId = null
 let currentTab = 'settings'
 let chosenWorkspace = null
 let pendingFingerprint = null
+const connectionNames = new Map()
+
+const connectionLabel = (connection) => [connection.machineName, connection.organizationName,
+  connection.teamName, connection.apiBaseUrl].filter(Boolean).join(' · ')
 
 const trayState = (view) => {
   if (view.kind !== 'reachable') return 'error'
@@ -55,7 +59,14 @@ const renderList = (view) => {
     row.className = 'row'
     const id = document.createElement('span')
     id.className = 'id'
-    id.textContent = pairingView?.machineName ?? 'This computer'
+    const connection = connectionNames.get(executor.executorId)
+    id.textContent = connection ? connectionLabel(connection) : `Connection ${executor.executorId.slice(0, 8)}`
+    if (!connection) {
+      void invoke('executor_pairing_status', { executorId: executor.executorId }).then((paired) => {
+        connectionNames.set(executor.executorId, paired)
+        id.textContent = connectionLabel(paired)
+      }).catch(() => undefined)
+    }
     const state = document.createElement('span')
     state.className = 'state'
     state.textContent = executor.daemonStatus
@@ -80,7 +91,7 @@ const render = (view) => {
   currentView = view
   dot.dataset.state = trayState(view)
   headline.textContent = headlineFor(view)
-  if (detailPanel.dataset.open !== 'true' && !pairingOpen) {
+  if (detailPanel.dataset.open !== 'true' && !pairingOpen && !pairingFormOpen) {
     renderList(view)
   }
 }
@@ -143,8 +154,9 @@ const updateTabs = () => {
 const renderDetail = (description) => {
   document.getElementById('detail-executor').textContent = `Executor ${description.shortExecutorId}`
   document.getElementById('setting-executor-id').textContent = description.executorId
-  document.getElementById('setting-organisation').textContent = pairingView?.organizationName ?? 'Nessie'
-  document.getElementById('setting-team').textContent = pairingView?.teamName ?? 'No team'
+  const connection = connectionNames.get(description.executorId)
+  document.getElementById('setting-organisation').textContent = connection?.organizationName ?? description.apiBaseUrl
+  document.getElementById('setting-team').textContent = connection?.teamName ?? 'No team'
   const revision = document.getElementById('setting-revision')
   revision.textContent = `Local policy is at revision ${description.policy.revision}. Saving a change writes revision ${description.policy.revision + 1} and submits it when the daemon next connects. It takes effect only after a person reviews it in Nessie.`
   const fingerprintBanner = document.getElementById('fingerprint-banner')

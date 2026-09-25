@@ -12,12 +12,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// retained is removed from the menu bar the moment it is released, which
     /// looks exactly like an app that never started.
     private let statusItem: NSStatusItem
-    private let controller: ExecutorController
+    private let connections: ExecutorConnections
+    private var controller: ExecutorController { connections.selected }
     private let console: ConsoleWindowController
     private var observations: Set<AnyCancellable> = []
 
-    init(controller: ExecutorController, console: ConsoleWindowController) {
-        self.controller = controller
+    init(connections: ExecutorConnections, console: ConsoleWindowController) {
+        self.connections = connections
         self.console = console
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
@@ -28,10 +29,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.isVisible = true
         statusItem.menu = NSMenu()
         statusItem.menu?.delegate = self
-        controller.$model
-            .sink { [weak self] model in Task { @MainActor in self?.render(model) } }
-            .store(in: &observations)
-        controller.$busy
+        connections.objectWillChange
             .sink { [weak self] _ in Task { @MainActor in self?.render(self?.controller.model) } }
             .store(in: &observations)
         render(controller.model)
@@ -54,6 +52,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let header = NSMenuItem(title: menuHeader(for: model), action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
+        menu.addItem(.separator())
+
+        for connection in connections.controllers {
+            let item = NSMenuItem(title: connections.label(connection), action: #selector(selectConnection(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = connection.stateDirectory
+            item.state = connection === controller ? .on : .off
+            menu.addItem(item)
+        }
+        let add = NSMenuItem(title: "Add account…", action: #selector(addConnection), keyEquivalent: "")
+        add.target = self
+        menu.addItem(add)
         menu.addItem(.separator())
 
         let start = NSMenuItem(title: "Start executor", action: #selector(startDaemon), keyEquivalent: "")
@@ -98,6 +108,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func startDaemon() { controller.startDaemon() }
+
+    @objc private func selectConnection(_ sender: NSMenuItem) {
+        guard let directory = sender.representedObject as? String else { return }
+        connections.selectedDirectory = directory
+        console.show(.settings)
+    }
+
+    @objc private func addConnection() {
+        connections.add()
+        console.show(.settings)
+    }
 
     @objc private func stopDaemon() { controller.stopDaemon() }
 

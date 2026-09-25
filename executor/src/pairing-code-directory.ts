@@ -13,10 +13,15 @@ export const acquireDefaultPairingLease = async () => (
   acquireExecutorProcessLease(await ensureOwnerOnlyStateDirectory(root()), 'pairing-operation.pid')
 )
 
-/** Only the documented CLI root is searched; a second local binding is never implicit. */
-export const defaultPairingDirectory = async (): Promise<string> => {
+/** A new account gets its own key; replacement must name an existing connection. */
+export const defaultPairingDirectory = async (executorId?: string): Promise<string> => {
   const directory = await ensureOwnerOnlyStateDirectory(root())
-  const paired: string[] = []
+  if (executorId) {
+    if (!/^[a-f0-9-]{36}$/i.test(executorId)) throw new Error('Choose a valid executor id from status.')
+    const selected = resolve(directory, executorId)
+    if (!await loadExecutorState(selected)) throw new Error('That connection is not paired on this computer.')
+    return selected
+  }
   const pending: string[] = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.isSymbolicLink() || !/^[A-Za-z0-9-]+$/.test(entry.name)) continue
@@ -25,16 +30,18 @@ export const defaultPairingDirectory = async (): Promise<string> => {
       if (absent(error)) return null
       throw error
     })) pending.push(child)
-    const state = await loadExecutorState(child).catch((error: unknown) => {
-      if (absent(error)) return null
-      throw error
-    })
-    if (state) paired.push(child)
   }
-  if (new Set([...pending, ...paired]).size > 1) {
-    throw new Error('This computer has several pairings. Choose the existing pairing before continuing.')
+  if (pending.length > 1) {
+    throw new Error('Several pairings are in progress. Use --state-dir to finish or cancel one first.')
   }
-  return pending[0] ?? paired[0] ?? resolve(directory, 'pairing')
+  if (pending[0]) return pending[0]
+  const staging = resolve(directory, 'pairing')
+  const completed = await loadExecutorState(staging).catch((error: unknown) => {
+    if (absent(error)) return null
+    throw error
+  })
+  if (completed) await promoteDefaultPairing(staging, completed.executorId)
+  return staging
 }
 
 /** systemd's fixed template resolves by executor id, assigned only after the claim. */
